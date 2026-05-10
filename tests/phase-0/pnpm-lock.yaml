@@ -20,6 +20,9 @@ importers:
       typescript:
         specifier: 5.8.3
         version: 5.8.3
+      upng-js:
+        specifier: 2.1.0
+        version: 2.1.0
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -201,6 +204,9 @@ packages:
   get-tsconfig@4.14.0:
     resolution: {integrity: sha512-yTb+8DXzDREzgvYmh6s9vHsSVCHeC0G3PI5bEXNBHtmshPnO+S5O7qgLEOn0I5QvMy6kpZN8K1NKGyilLb93wA==}
 
+  pako@1.0.11:
+    resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
+
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
@@ -216,6 +222,9 @@ packages:
 
   undici-types@7.19.2:
     resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
+
+  upng-js@2.1.0:
+    resolution: {integrity: sha512-d3xzZzpMP64YkjP5pr8gNyvBt7dLk/uGI67EctzDuVp4lCZyVMo0aJO6l/VDlgbInJYDY6cnClLoBp29eKWI6g==}
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
@@ -342,6 +351,8 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
+  pako@1.0.11: {}
+
   resolve-pkg-maps@1.0.0: {}
 
   tsx@4.21.0:
@@ -354,5 +365,9 @@ snapshots:
   typescript@5.8.3: {}
 
   undici-types@7.19.2: {}
+
+  upng-js@2.1.0:
+    dependencies:
+      pako: 1.0.11
 
   zod@4.4.3: {}

@@ -1,0 +1,29 @@
+{
+  "id": "evfoundryvtt-phase-0-probe",
+  "title": "EVF Phase 0 MidiQOL Probe",
+  "description": "Probe-only module that reads MidiQOL configuration settings and POSTs them to a localhost harness endpoint. Install ONLY in disposable test world 'phase-0-midiqol-test'. NEVER install in production. Read-only — never mutates settings.",
+  "version": "0.0.1",
+  "compatibility": {
+    "minimum": "13.347",
+    "verified": "14",
+    "maximum": "14"
+  },
+  "authors": [
+    {
+      "name": "EvenFoundryVTT",
+      "url": "https://github.com/aiacos/EvenFoundryVTT"
+    }
+  ],
+  "esmodules": ["scripts/probe.js"],
+  "url": "https://github.com/aiacos/EvenFoundryVTT",
+  "manifest": "https://github.com/aiacos/EvenFoundryVTT/raw/main/tests/phase-0/midiqol-probe-module/module.json",
+  "download": "https://github.com/aiacos/EvenFoundryVTT/raw/main/tests/phase-0/midiqol-probe-module.zip",
+  "relationships": {
+    "requires": [
+      { "id": "midi-qol", "type": "module" }
+    ],
+    "systems": [
+      { "id": "dnd5e", "type": "system", "compatibility": { "minimum": "5.3.3" } }
+    ]
+  }
+}
