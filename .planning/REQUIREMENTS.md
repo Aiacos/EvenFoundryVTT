@@ -57,7 +57,7 @@
 - [ ] **FOUN-02**: Bridge service Node.js (Fastify + ws + Docker Compose) come reverse-proxy CORS-friendly + auth bearer 24h
 - [ ] **FOUN-03**: Write path via `activity.use()` + MidiQOL workflow (GM veto power preserved, no nesting)
 - [ ] **FOUN-04**: `TokenLayer.setTargets()` v13 multi-target (singolare `Token`, no `Tokens`)
-- [ ] **MIDIQ-01**: MidiQOL config check al boot — verificare `autoFastForward` mode attivo. Senza, manual write stalla su chat-card buttons. Declare MidiQOL **required** in `module.json` `relationships.requires`. *Adversarial gap Vector B — Specs §12.B q.11–12 open.*
+- [~] **MIDIQ-01**: MidiQOL config check al boot — verificare `autoFastForward` mode attivo. Senza, manual write stalla su chat-card buttons. Declare MidiQOL **required** in `module.json` `relationships.requires`. *Adversarial gap Vector B — Specs §12.B q.11–12 open.* **Code complete 2026-05-10** (Plan 02: probe + Foundry mini-module + harness, commits 15e9922 + c1c82e5). `relationships.requires.midi-qol` declaration shape proven via probe `module.json`; Phase 2 production module inherits identically. **Evidence emission pending Plan 04 operational step** (researcher executes probe against Foundry test world `phase-0-midiqol-test` → commits resulting `docs/perf/phase-0/midiqol-config-probe-{ISO8601}.json`).
 
 ### i18n / Localization
 
@@ -137,7 +137,7 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIDIQ-01 | Phase 0 — Validation Gates | Pending |
+| MIDIQ-01 | Phase 0 — Validation Gates | Code Complete (evidence pending Plan 04) |
 | FOUN-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
 | FOUN-04 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
 | I18N-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |

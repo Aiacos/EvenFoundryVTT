@@ -47,7 +47,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 Plans:
 **Wave 1**
 - [ ] 00-01-PLAN.md — Test infrastructure scaffolding: package.json + tsconfig + _shared utilities (output, schemas, stats, branch-decision, hub) + ADR-0005/0006 template stubs + evidence dir placeholders (Wave 0)
-- [ ] 00-02-PLAN.md — MidiQOL config probe (REQ MIDIQ-01) + Foundry-side mini-module + run-all.ts orchestrator with --skip-hardware flag (Wave 1, software-only)
+- [x] 00-02-PLAN.md — MidiQOL config probe (REQ MIDIQ-01) + Foundry-side mini-module + run-all.ts orchestrator with --skip-hardware flag (Wave 1, software-only) — code complete 2026-05-10 (commits 15e9922 + c1c82e5); evidence emission pending Plan 04 operational step
 - [ ] 00-03-PLAN.md — 6 hardware test scripts (10-0-1 R1 timing, 10-0-2 image format, 10-0-3 BLE multi-env, 10-0-7 DLE sustained, 10-0-8 queue depth, 10-0-9 palette calibration) — type-check green, execution gated on Even Hub access (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
