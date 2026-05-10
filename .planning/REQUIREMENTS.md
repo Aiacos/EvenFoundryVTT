@@ -133,18 +133,81 @@ Esplicitamente esclusi. Documentati per prevenire scope creep. Riferimenti a Spe
 
 ## Traceability
 
-Riempita durante roadmap creation. Empty initially — `gsd-roadmapper` mappa ogni requirement a esattamente una phase.
+Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No orphans, no duplicates. MVP scope = Phase 0 → 10; v2 REQ-IDs (VOICE-*, ACT-04, STRETCH-*) deferred to Phase 11-13 OPZIONALE.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(populated by roadmapper in Step 8)_ | _phase N_ | _Pending_ |
+| MIDIQ-01 | Phase 0 — Validation Gates | Pending |
+| FOUN-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| FOUN-04 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| I18N-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| I18N-03 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-02 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-03 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-04 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-05 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| FOUN-02 | Phase 3 — Bridge Service Skeleton | Pending |
+| DISP-01 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| DISP-02 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| DISP-03 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| MAP-01 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| MAP-02 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| MAP-03 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| MAP-04 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| NAV-04 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| I18N-04 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
+| MAP-05 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
+| DEATH-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
+| TOAST-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
+| BOOT-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
+| CONC-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
+| SHEET-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| SHEET-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| SHEET-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| SHEET-04 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| COMB-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| I18N-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| I18N-05 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
+| NAV-02 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
+| NAV-03 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
+| FOUN-03 | Phase 7 — Foundry Module Write Path | Pending |
+| ACT-02 | Phase 7 — Foundry Module Write Path | Pending |
+| ACT-03 | Phase 7 — Foundry Module Write Path | Pending |
+| MULTI-01 | Phase 7 — Foundry Module Write Path | Pending |
+| REACT-01 | Phase 7 — Foundry Module Write Path | Pending |
+| ACT-01 | Phase 8 — Manual Action UX | Pending |
+| COMB-02 | Phase 9 — Action Economy & Edge Cases | Pending |
 
 **Coverage:**
-- v1 requirements: **48** total (Display 6 · Map 5 · Sheet 4 · Combat 6 · Nav 4 · Foundry 5 · i18n 5 · Conn 5 + Action 3 outside main = 48)
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 48 ⚠️ (will be 0 after Step 8)
+- v1 requirements: **48** total (Display 6 · Map 5 · Sheet 4 · Combat & Action 9 · Nav 4 · Foundry 5 · i18n 5 · Conn 5 = 48)
+- Mapped to phases: **48** ✓
+- Unmapped: **0** ✓
+- MVP phases used: 0, 2, 3, 4a, 4b, 5, 6, 7, 8, 9 (Phase 1 + Phase 10 are structural/verification — no direct REQ-IDs land but they enable/verify all others)
+- V2 OPZIONALE: VOICE-01..05 + ACT-04 + STRETCH-01..08 deferred to Phase 11-13 (NOT counted in v1 coverage)
+
+**Distribution by phase:**
+
+| Phase | REQ-IDs | Count |
+|-------|---------|-------|
+| 0 | MIDIQ-01 | 1 |
+| 1 | *(structural — no direct REQ-IDs)* | 0 |
+| 2 | FOUN-01, FOUN-04, I18N-01, I18N-03, CONN-01, CONN-02, CONN-03, CONN-04, CONN-05 | 9 |
+| 3 | FOUN-02 | 1 |
+| 4a | DISP-01, DISP-02, DISP-03, MAP-01, MAP-02, MAP-03, MAP-04, NAV-04, I18N-04 | 9 |
+| 4b | MAP-05, DEATH-01, TOAST-01, BOOT-01, CONC-01 | 5 |
+| 5 | SHEET-01, SHEET-02, SHEET-03, SHEET-04, COMB-01, COMB-03, I18N-02, I18N-05 | 8 |
+| 6 | NAV-01, NAV-02, NAV-03 | 3 |
+| 7 | FOUN-03, ACT-02, ACT-03, MULTI-01, REACT-01 | 5 |
+| 8 | ACT-01 | 1 |
+| 9 | COMB-02 | 1 |
+| 10 | *(cross-cutting verification — no direct REQ-IDs)* | 0 |
+| **Total v1 mapped** | | **48** ✓ |
 
 ---
 
 *Requirements defined: 2026-05-10 — derived from Specs.md v0.9.11 §1.2/§1.3/§1.4 + research SUMMARY 7 adversarial gaps*
-*Last updated: 2026-05-10 after initialization*
+*Traceability mapped: 2026-05-10 by roadmapper — 48/48 v1 REQ-IDs in exactly one phase, no orphans, no duplicates*
+*Last updated: 2026-05-10 after roadmap creation*
