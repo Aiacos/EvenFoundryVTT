@@ -428,6 +428,7 @@ footer.show a { color: var(--g2); border: none; }
     <li><a href="#pillars">Pillars</a></li>
     <li><a href="#invariants">Invariants</a></li>
     <li><a href="#hardware">Hardware</a></li>
+    <li><a href="#setup">Setup</a></li>
     <li><a href="#hud">HUD</a></li>
     <li><a href="#arch">Architecture</a></li>
     <li><a href="#pipeline">Pipeline</a></li>
@@ -459,7 +460,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="stat"><span class="num">5–15</span><span class="lab">fps target</span></div>
       <div class="stat"><span class="num">13</span><span class="lab">weeks MVP</span></div>
       <div class="stat"><span class="num">3500+</span><span class="lab">lines spec</span></div>
-      <div class="stat"><span class="num">v0.9.10</span><span class="lab">4 invariants · ×4 cross-check</span></div>
+      <div class="stat"><span class="num">v0.9.11</span><span class="lab">4 invariants · ×5 cross-check</span></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="../../Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
@@ -636,6 +637,60 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>Operating temp</th><td>-10 °C to 45 °C</td></tr>
         </table>
         <div class="verified">✓ verified · evenrealities.com/smart-ring</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ SETUP (phone-side) ═══════════════════════════════════════ -->
+  <section class="show reveal" id="setup">
+    <span class="section-tag">▣ phone-side setup</span>
+    <h2>Setup happens on the phone. The G2 stays keyboardless.</h2>
+    <p>The G2 has no virtual keyboard, by design. Foundry connection bootstrap — bridge URL, auth token, character pick — lives in the <strong>Even Realities App</strong> per-plugin settings UI, the same surface Conversate / Translate / Teleprompt use. Pairing is a <strong>QR scan</strong> from the Foundry desktop module: no manual token copy-paste in the clipboard, audit trail kept by the DM. See <a href="../../Specs.md" style="color:var(--g3)">§3.8 / §7.14.7</a>.</p>
+    <div class="hud-sim" style="max-width:720px;margin-top:2rem;">
+<pre style="font-family:var(--mono);color:var(--g3);font-size:0.74rem;line-height:1.25;text-shadow:0 0 6px var(--g2);margin:0;white-space:pre;">
+┌───────────────────────────────────────────────────────────────────┐
+│  EvenFoundryVTT — Setup                                       ✕   │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  STEP 1 / 3 · Connection profile                                  │
+│  ◉ Homelab (LAN)        ○ Cloud bridge        ○ Local dev         │
+│  Bridge URL                                                       │
+│  ┌─────────────────────────────────────────────────────────┐      │
+│  │ https://homelab.lan:8910                                │      │
+│  └─────────────────────────────────────────────────────────┘      │
+│                                                                   │
+│  STEP 2 / 3 · Auth token                                          │
+│  ┌─────────────────────────────────────────────────────────┐      │
+│  │ evf_•••••••••••••••••••••••••                          │      │
+│  └─────────────────────────────────────────────────────────┘      │
+│  [ 📷 Scan QR from Foundry module ]   [ 📋 Paste from clipboard ] │
+│                                                                   │
+│  STEP 3 / 3 · Character                                           │
+│  ✓ Connected to Foundry world "Homebrew 2024"                    │
+│  ◉ Thorin Mountainforge  (Fighter 3 / Wizard 5, multi)            │
+│  ○ Lyra Brightleaf       (Cleric 7)                               │
+│  ○ Drak'val              (Barbarian 6)                            │
+│  ☑ Auto-connect when G2 is worn                                   │
+│                                                                   │
+│              [ Back ]              [ Save & connect ▶ ]           │
+└───────────────────────────────────────────────────────────────────┘
+</pre>
+    </div>
+    <div class="pillars" style="margin-top:2rem;">
+      <div class="pillar">
+        <div class="icon">▤</div>
+        <h3>Three settings surfaces</h3>
+        <p>Foundry world (server-side, all players). Even App phone settings (text input, per-device bootstrap). G2 device-local (gesture toggles only, e.g. <code>[M]</code> map mode, <code>[N]</code> language). A simple decision tree picks where each new setting lives. <a href="../../Specs.md" style="color:var(--g3)">§7.14.6</a></p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⌬</div>
+        <h3>QR pair, never paste</h3>
+        <p>Foundry module Settings → "Pair a G2 device" → 24h opaque bearer + QR. Scan once, persist on phone. The bearer never sees the user's clipboard. Pairings are listed and revocable from Foundry by the DM.<a href="../../Specs.md" style="color:var(--g3)"> §7.14.7.3 / §11.5.4</a></p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⊟</div>
+        <h3>Server-hosted plugin code</h3>
+        <p>Plugin code lives on a server (CDN-friendly static HTML+JS). The Even Realities App fetches the URL into the WebView. Two URLs in <code>app.json</code>: plugin host + bridge. Local dev uses your LAN IP — <em>not</em> <code>localhost</code> (the phone can't resolve it). <a href="../../Specs.md" style="color:var(--g3)">§3.7</a></p>
       </div>
     </div>
   </section>
@@ -978,11 +1033,11 @@ footer.show a { color: var(--g2); border: none; }
                         ▓                                  ▓
                         ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 </div>
-    <p>EvenFoundryVTT — design specification v0.9.10 (2026-05-10).<br/>
+    <p>EvenFoundryVTT — design specification v0.9.11 (2026-05-10).<br/>
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">No actual application code yet. Four rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing. Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Specs ready for Phase 0.</p>
+    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">No actual application code yet. Five rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing. Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Plugin code is server-hosted; the Even Realities App loads it in a phone WebView and exposes a per-plugin settings UI for Foundry connection bootstrap (URL + QR-paired token). Specs ready for Phase 0.</p>
   </footer>
 
 </div><!-- /bezel -->

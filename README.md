@@ -3,7 +3,7 @@
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
 [![status: design](https://img.shields.io/badge/status-design--only-yellow)](#status)
-[![spec: v0.9.10](https://img.shields.io/badge/spec-v0.9.10-blue)](Specs.md)
+[![spec: v0.9.11](https://img.shields.io/badge/spec-v0.9.11-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
 [![Foundry: v13.347+](https://img.shields.io/badge/foundry-v13.347%2B-orange)](https://foundryvtt.com)
@@ -42,6 +42,7 @@ Three boundaries, three contracts, every plugin slot versioned. dnd5e v6 lands? 
 - **Dual D&D edition support** — both PHB 2014 and PHB 2024 ("One D&D") via `core.modernRules` setting, sourced live from `actor.system.*`.
 - **i18n ready from MVP** — locale auto-detected from Foundry (`game.i18n.lang`), runtime override directly from the glasses via `[N] Language` Quick Action. Device-local override never touches the world setting. See [§7.16](Specs.md).
 - **Voice control hardware-feasible** (V2 OPZIONALE) — the G2 4-mic array streams **PCM 16 kHz s16le mono** to plugins via `bridge.audioControl()` (verified upstream `hub.evenrealities.com/docs/guides/device-apis`). STT/LLM run **off-glasses** via the bridge or an MCP client — the G2 has no speaker (visual-only feedback) and the native EvenAI is opaque to dev apps. See [§3.5 / §3.6](Specs.md).
+- **Setup happens on the phone** — Foundry connection bootstrap (bridge URL, auth token, character pick) lives in the **Even Realities App** per-plugin settings UI (verified upstream `support.evenrealities.com`: *"configure each widget individually through the Even App"*). Pairing is a **QR scan** from the Foundry desktop module, never a manual token copy-paste. The G2 stays keyboardless — no virtual keyboard, ever. See [§3.8 / §7.14.7](Specs.md).
 - **No mocks at the boundary** — Foundry is the single source of truth, every action goes through `Activity#use()` / MidiQOL workflow, GM keeps full veto power.
 - **Phase 0 gating** — every hardware assumption (R1 events, image API format, BLE bandwidth, partial-update API, DLE, audio chunk size) has a written GO/NO-GO test before code lands.
 
@@ -52,15 +53,15 @@ Four rules govern every PR, every audit, every release. They are constraints, no
 | # | Invariant | One-line rule |
 |---|---|---|
 | **INV-1** | **Layout integrity** | Formatting and layout are **dynamic and always perfect** — frame corners, dividers and columns align to the character in every state, every content, every locale. **Never misaligned for any reason.** Verified by snapshot tests (§7.14.4 ck 11–15) and by the `Box` / `TextRun` render contract (§7.1a.7). |
-| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **4 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10). |
+| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **5 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11). |
 | **INV-3** | **Documentation coherence** | `Specs.md` (canonical), `README.md` and `docs/showcase/index.html` are **always coherent** and updated **in the same commit** for any change touching cross-cutting claims (version, fps target, phase count, hardware spec, library version, locale set). No half-updated states. |
 | **INV-4** | **Code quality** | Code is **clean, optimized, documented** — and **zero dead or unreachable code** is tolerated. Biome + TypeScript strict + Vitest coverage gate enforce it in CI. `// TODO` without an issue/ADR link is a CI failure. JSDoc/TSDoc on every public API. Hot-path benchmarks gate regressions. See §0.1 INV-4. |
 
 ## Status
 
-**Design only.** Not a single line of application code yet. The current artifact is the **~4040-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **4 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10), with four **non-negotiable Project Invariants** ratified in §0.1.
+**Design only.** Not a single line of application code yet. The current artifact is the **~4250-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11), with four **non-negotiable Project Invariants** ratified in §0.1.
 
-The spec covers requirements, hardware constraints (Even Hub display + networking + audio + native AI limits + R1 product page), Foundry/dnd5e API surface (with `game.i18n` Localization API), data models, full UI/UX with ASCII mockups, layout integrity rules (§7.1a), i18n architecture with on-glasses language toggle (§7.16), G2 audio surface and plugin execution model (§3.5/§3.7), the 6-layer raster pipeline, the optional MCP voice module, a 13-week MVP roadmap with Phase 0 validation protocol, risk register, library stack research, and failure modes.
+The spec covers requirements, hardware constraints (Even Hub display + networking + audio + native AI limits + R1 product page), Foundry/dnd5e API surface (with `game.i18n` Localization API), data models, full UI/UX with ASCII mockups, layout integrity rules (§7.1a), i18n architecture with on-glasses language toggle (§7.16), G2 audio surface (§3.5), plugin execution model and 3-hop server-hosted distribution (§3.7), Even Realities App phone-side configuration UI for connection bootstrap (§3.8 / §7.14.7), the 6-layer raster pipeline, the optional MCP voice module, a 13-week MVP roadmap with Phase 0 validation protocol, risk register, library stack research, and failure modes.
 
 ## Roadmap snapshot
 
@@ -98,7 +99,7 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 
 ## Documentation
 
-- **[`Specs.md`](Specs.md)** — single source of truth (v0.9.10, ~4040 lines, fully cross-checked against upstream docs across 4 rounds)
+- **[`Specs.md`](Specs.md)** — single source of truth (v0.9.11, ~4250 lines, fully cross-checked against upstream docs across 5 rounds)
 - **[`docs/showcase/index.html`](docs/showcase/index.html)** — interactive feature showcase (HTML5/JS, animated)
 - *Coming with implementation*: ADR-0001 layered UI · ADR-0002 protocol versioning · ADR-0003 plugin registry · ADR-0004 voice via MCP · ADR-0005 Phase 0 results · ADR-0006 raster library stack · ADR-0007 RTL deferred to V2 · ADR-0008 code quality configuration
 

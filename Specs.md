@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.10)
+# EvenFoundryVTT — Project Specification (v0.9.11)
 
 ## 0. Executive Summary
 
@@ -430,36 +430,74 @@ Il G2 ha **feature AI nativa** controllata da Even Realities. Tutte sono **opaqu
 - **Nessuna dipendenza** da EvenAI nativo: non è dependable surface (proprietary, non-versioned, no SLA dev).
 - **Nessun conflitto UX desiderato**: il nostro `[L]ong-press` apre il nostro Quick Action, non "Hey Even" (l'utente può comunque triggerare EvenAI parallelamente — è una feature OS-level che non blocca i plugin).
 
-### 3.7 Plugin Execution Model (verificato su `hub.evenrealities.com/docs/getting-started/overview`)
+### 3.7 Plugin Execution Model (verificato su `hub.evenrealities.com/docs/getting-started/overview` + `github.com/BxNxM/even-dev` + `github.com/brianmatzelle/even-realities-g2-glasses`)
 
-Verbatim upstream: *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."*
+Verbatim upstream Even Hub: *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."*
 
-**Conseguenza architettura evenfoundryvtt**:
+Verbatim simulator README: *"G2 plugins are web apps where **your code runs on a server**, the iPhone Even App loads it in a WebView, and relays display/input over BLE to the glasses."*
+
+**Conseguenza architettura evenfoundryvtt** — **3 hop deployment** (correzione v0.9.11 vs v0.9.10):
 
 ```
-┌──────────────────────┐  BLE LC3 audio + display container ops  ┌──────────────────────────────┐
-│  Even G2 (firmware)  │ ◀──────────────────────────────────────▶│  Even Realities App (phone)  │
-│  • Display 576×288   │                                         │  • WebView host                │
-│  • 4-mic array       │                                         │  • Hub SDK (bridge.*)          │
-│  • Touchpads + IMU   │                                         │  • Plugin: evenfoundryvtt G2   │
-│  • EvenOS (closed)   │                                         │     ↓                          │
-└──────────────────────┘                                         │     HTTPS/WSS                  │
-                                                                 │     ↓                          │
-                                                                 └────┬─────────────────────────┘
-                                                                      │
-                                                                      ▼
-                                                                 [ Bridge service §5.2 ]
-                                                                 [ Foundry VTT §3.4 ]
-                                                                 [ MCP client (V2) §5.7 ]
+┌──────────────────────┐  BLE LC3 audio + display ops  ┌──────────────────────────────┐
+│  Even G2 (firmware)  │ ◀────────────────────────────▶│  Even Realities App (phone)  │
+│  • Display 576×288   │                               │  • WebView host                │
+│  • 4-mic array       │                               │  • Hub SDK runtime (bridge.*)  │
+│  • Touchpads + IMU   │                               │  • Per-app phone settings UI   │
+│  • EvenOS (closed)   │                               │     (vedi §7.14.7)             │
+└──────────────────────┘                               └──────┬───────────────────────┘
+                                                              │ HTTPS GET (load WebView)
+                                                              ▼
+                                                       ┌──────────────────────────────┐
+                                                       │  Plugin host (server)        │
+                                                       │  evenfoundryvtt-g2/index.html│
+                                                       │  + JS bundle                  │
+                                                       └──────┬───────────────────────┘
+                                                              │ HTTPS / WSS (game state)
+                                                              ▼
+                                                       [ Bridge service §5.2 ]
+                                                       [ Foundry VTT §3.4 ]
+                                                       [ MCP client (V2) §5.7 ]
 ```
 
 **Punti chiave**:
 
-- L'app evenfoundryvtt G2 **non gira sul G2** — gira nel WebView dell'Even Realities App sul telefono.
-- Il G2 espone display + sensori; il telefono espone compute + network outbound + WebView API.
-- **Network whitelist** (§3.3) è enforced sul WebView del telefono, non sul G2.
-- **Audio mic** arriva al WebView in PCM 16 kHz (decoded by SDK), non come LC3 raw.
-- Nessun "on-glasses LLM" è disponibile, né per noi né per nessun altro plugin dev.
+- **Il codice plugin è servito da un server HTTP**, NON bundlato nell'Even Realities App. Il manifest (`app.json`) dichiara una URL → WebView phone fetcha quella URL → JS gira nel WebView.
+- **Due URL distinte nel deployment**:
+  - **Plugin host URL** (es. `https://evenfoundryvtt.example/g2/`) — serve l'HTML+JS del plugin. Statico, CDN-friendly, zero state.
+  - **Bridge URL** (es. `https://homelab.lan:8910` o tunnel `https://br.evenfoundryvtt.example`) — endpoint REST/WS dinamico verso Foundry (§4.2). Configurato runtime via §7.14.7.
+- **Local dev**: usare l'IP della LAN della macchina dev (verbatim simulator: *"use your machine's local network IP, not localhost"*) — `localhost` non risolve dal phone WebView.
+- **Network whitelist** (§3.3) è enforced sul WebView del telefono. **Entrambi** plugin host URL e bridge URL devono essere in `app.json` whitelist (origin completo, no wildcards).
+- **Audio mic** (§3.5) arriva al WebView in PCM 16 kHz mono già decoded.
+- **Nessun "on-glasses LLM"** disponibile (§3.6 vincolo).
+
+### 3.8 Plugin Configuration Surface (Even Realities App)
+
+Verbatim upstream `support.evenrealities.com`: *"You can configure each widget individually through the Even App."* La Even Realities App **espone una settings UI per-plugin** sul telefono (analog Conversate / Translate / Teleprompt / Even AI hanno tutte un loro settings panel). evenfoundryvtt usa questo canale per le **connection-bootstrap settings** che richiedono input testuale (impossibile sul G2 — no keyboard, vincolo §3.1).
+
+**Settings esposte nell'Even Realities App per il plugin evenfoundryvtt** (vedi mockup §7.14.7):
+
+| Campo | Tipo | Esempio | Note |
+|---|---|---|---|
+| Bridge URL | URL string | `https://homelab.lan:8910` | Endpoint REST/WS verso Foundry. HTTPS prod, HTTP solo dev. Whitelist app.json richiesta. |
+| Auth token | password (paste) | `evf_a3b2c1...` | Bearer 24h dal Foundry module §11.5.4. Pasted dal client Foundry del player o scansionato via QR (§7.14.7.3). |
+| Player / character | enum (post-handshake) | `Thorin (multi)` | Lista popolata via bridge `/v1/actor` dopo connessione. Selezione via tap sul phone. |
+| World identifier (opt) | string | `homebrew-2024` | Auto-detected via handshake; override manuale se più world condivisi. |
+| Connection profile | enum | `homelab / cloud / dev` | Multi-profile per chi gioca su più server (es. Linux homelab + remote VPS). |
+| Auto-connect at G2 wear | boolean | `true` | Se G2 indossato e profilo selezionato → connect automatico, no input richiesto. |
+
+**Storage**: queste settings vivono nel **phone-side persistent storage** del plugin (managed dall'Even Realities App, non dal nostro codice). Sopravvivono al kill del WebView, all'app restart, al G2 reboot. Vengono resettate solo a uninstall plugin o factory-reset Even Realities App.
+
+**Discovery & bootstrap flow** (worked example §7.14.7.2):
+
+1. User installa plugin via QR scan (verbatim tutorial *"deployment involves scanning a QR code with the Even Realities App on your phone"*).
+2. Plugin host URL diventa available in Even Realities App.
+3. User apre il plugin → Even Realities App carica WebView → plugin detecta first-run (no settings) → mostra **on-phone setup wizard** (HTML form rendered nel WebView phone-side, **non** sul G2).
+4. User paste/scan bridge URL + auth token via QR generato dal Foundry module Settings.
+5. Plugin chiama handshake `GET /v1/actor` → riceve lista character → user seleziona → settings persistite.
+6. User mette G2 → plugin auto-connecta con settings persistite → render HUD (§7.4).
+
+**Verbatim quote pertinente** (`support.evenrealities.com/User-guide`): *"go to 'Setting - Notification' to select which app you want notifications in the glasses, and go to 'Setting - Dashboard' to organize your dashboard"* — conferma il pattern "Setting - <plugin name>" come surface standard.
 
 ---
 
@@ -2455,7 +2493,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.10                                          ║
+║                              EVENFOUNDRYVTT  v0.9.11                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -2633,20 +2671,157 @@ Dentro Combat overlay, tap cicla l'highlight tra le 4 quick-action:
 | Crash overlay (errore render) | App ritorna a MAIN_MAP automaticamente; log error event in `error.*` telemetry; toast banner notifica utente. |
 | BLE saturato (raster mode) | Frame skip: priorità a state delta > raster delta. Toast warning se p99 latency > 3 sec. |
 
-#### 7.14.6 Settings UI
+#### 7.14.6 Settings UI — Tre superfici di configurazione
 
-**Decisione MVP**: nessuna settings UI sul G2. Tutte le configurazioni (character selection, view mode glyph/raster, dither algorithm, polling rate, voice provider) vivono nel modulo Foundry come settings server-side, modificabili dal client Foundry del player. Vantaggi:
+**Decisione MVP**: nessun input testuale sul G2 (no virtual keyboard, vincolo hardware §3.1). Le configurazioni vivono su **tre superfici distinte**, ognuna con un ruolo netto:
 
-- G2 layout focalizzato su gameplay, non config
-- Settings persistenti in `world.settings` Foundry, hot-reload automatico
-- Nessun problema di input testuale su G2 (no tastiera virtuale)
+| # | Surface | Cosa vive qui | Esempi | Storage |
+|---|---|---|---|---|
+| 1 | **Foundry world settings** (server-side) | Settings world-scope condivise tra tutti i giocatori | dither algo default, polling rate, voice provider preferito V2, dual-edition `core.modernRules`, dnd5e config | `world.settings` Foundry, hot-reload via `config.update` event (§5.6.5) |
+| 2 | **Even Realities App phone settings** (per-plugin) | Connection bootstrap + identità device — input testuale necessario | Bridge URL, auth token (paste/QR), player/character selection, connection profile, auto-connect | Phone persistent storage managed dall'Even Realities App (§3.8). Vedi mockup §7.14.7 |
+| 3 | **G2 device-local runtime overrides** (gesture-only) | Toggle binari/enum gesture-friendly che NON richiedono testo | Mode toggle glyph↔raster (`[M]` Map ctrl), Language override (`[N]`), eventuali futuri toggle V2 | LRU localStorage WebView phone, device-scoped (§11.5.5) |
 
-**Eccezioni user-side sul G2** (operazioni runtime gesture-friendly, no input testuale):
+**Regole di assegnazione** (decision tree per dove mettere una nuova setting):
 
-1. **Mode toggle glyph↔raster** via `[M]` Map ctrl submenu (Quick Action) — operazione binaria.
-2. **Language override** via `[N]` Language submenu (Quick Action) — selezione da lista chiusa di locale disponibili in Foundry. Vedi §7.16.
+```
+Need text/URL/secret input? ──yes──▶ Even Realities App settings (#2)
+              │
+              no
+              ▼
+Affects all players in the world? ──yes──▶ Foundry world settings (#1)
+              │
+              no (per-device runtime preference)
+              ▼
+Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
+              │
+              no (rare combo)
+              ▼
+       Even Realities App settings (#2 fallback)
+```
 
-Entrambe sono **per-device runtime overrides** (LRU storage, vedi §11.5.5) — non modificano i settings server-side Foundry, isolando il dispositivo G2 dal mondo Foundry condiviso.
+**Implicazioni di INV-3 (doc coherence)**: ogni nuova setting deve essere documentata nella superficie che ospita, con cross-ref. Non duplicare; se serve in due posti, usare `#2 phone-side` come canonical.
+
+#### 7.14.7 Phone-Side Configuration UI (Even Realities App)
+
+> Surface canonica per **connection-bootstrap settings** (§3.8). HTML form renderizzato nel WebView del plugin sul telefono — **non** sul G2 — quando l'utente apre l'app evenfoundryvtt dall'Even Realities App. Risolve il chicken-and-egg "G2 senza tastiera, ma serve URL+token per connettersi a Foundry".
+
+##### 7.14.7.1 Mockup wizard first-run (phone WebView)
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│  EvenFoundryVTT — Setup                                       ✕   │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Welcome. Connect your G2 to a Foundry VTT session.               │
+│                                                                   │
+│  ─────────────────────────────────────────────────────────────    │
+│                                                                   │
+│  STEP 1 / 3 · Connection profile                                  │
+│                                                                   │
+│  ◉ Homelab (LAN)        ○ Cloud bridge        ○ Local dev         │
+│                                                                   │
+│  Bridge URL                                                       │
+│  ┌─────────────────────────────────────────────────────────┐      │
+│  │ https://homelab.lan:8910                                │      │
+│  └─────────────────────────────────────────────────────────┘      │
+│  ⓘ HTTPS in production. Domain must be in app.json whitelist.    │
+│                                                                   │
+│  ─────────────────────────────────────────────────────────────    │
+│                                                                   │
+│  STEP 2 / 3 · Auth token                                          │
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────┐      │
+│  │ evf_•••••••••••••••••••••••••                          │      │
+│  └─────────────────────────────────────────────────────────┘      │
+│                                                                   │
+│  [ 📷 Scan QR from Foundry module ]   [ 📋 Paste from clipboard ] │
+│                                                                   │
+│  ⓘ Generate the QR in Foundry: Settings → EvenFoundryVTT →       │
+│    "Pair G2 device" (24h validity).                              │
+│                                                                   │
+│  ─────────────────────────────────────────────────────────────    │
+│                                                                   │
+│  STEP 3 / 3 · Character                                           │
+│                                                                   │
+│  ✓ Connected to Foundry world "Homebrew 2024"                    │
+│                                                                   │
+│  Select your character:                                           │
+│  ◉ Thorin Mountainforge   (Fighter 3 / Wizard 5, multi)           │
+│  ○ Lyra Brightleaf        (Cleric 7)                              │
+│  ○ Drak'val               (Barbarian 6)                           │
+│                                                                   │
+│  ☑ Auto-connect when G2 is worn                                   │
+│                                                                   │
+│  ─────────────────────────────────────────────────────────────    │
+│                                                                   │
+│              [ Back ]              [ Save & connect ▶ ]           │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+**Note di rendering** (questo è il phone WebView, NON G2):
+
+- Layout responsive standard (no constraint 96×24 char). Può usare HTML/CSS/flex normale.
+- Stile coerente con resto del plugin (phosphor-green su sfondo scuro) per continuità visiva con il G2 HUD, ma free-form.
+- Testo input via tastiera virtuale del phone (iOS/Android native).
+- QR scan tramite Web API del WebView (`navigator.mediaDevices.getUserMedia`) — richiede permission camera, dichiarata in `app.json`.
+
+##### 7.14.7.2 Worked example bootstrap (zero → connesso)
+
+1. **User**: scansiona QR `evenfoundryvtt-g2/install` con Even Realities App → plugin URL aggiunto.
+2. **User**: apre "EvenFoundryVTT" dalla home dell'Even App → WebView fetcha plugin URL.
+3. **Plugin**: detect first-run (`localStorage["evf:bridge_url"] == null`) → render setup wizard §7.14.7.1.
+4. **User**: seleziona profilo "Homelab", incolla `https://homelab.lan:8910`.
+5. **User**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair G2 device"** → genera token 24h → mostra QR.
+6. **User**: tap "📷 Scan QR" sul phone → camera leggi QR → token autocompila.
+7. **Plugin**: chiama `GET /v1/actor` con bearer → bridge risponde con lista character.
+8. **User**: seleziona "Thorin", checkbox "Auto-connect when G2 worn".
+9. **Plugin**: persiste settings phone-side, dismissa wizard, mostra status "Pronto. Indossa il G2 per iniziare".
+10. **User**: indossa G2 → Even Realities App detecta wear (via `bridge.onWear`) → riapre plugin auto → handshake completo → render HUD §7.4.
+
+**Latenza target end-to-end** primo setup: ≤90 sec dalla scansione QR install al primo HUD on-glasses.
+
+##### 7.14.7.3 Foundry module — pair-G2 flow
+
+Per chiudere il loop, il modulo Foundry `evenfoundryvtt` espone in **Settings UI Foundry desktop**:
+
+```
+Foundry — Game Settings → Module Settings → EvenFoundryVTT
+─────────────────────────────────────────────────────────
+[ Pair a G2 device ▼ ]
+
+When clicked:
+  1. Generate opaque bearer token (32 byte random, 24h TTL)
+  2. Persist token in user's foundry profile (server-side)
+  3. Render QR with payload:
+     {
+       "bridge_url": "<auto-detected from settings>",
+       "token": "evf_<...>",
+       "world": "<id>",
+       "expires": <iso8601>
+     }
+  4. Display QR for 60 sec; auto-dismiss after scan or timeout
+  5. Log pairing event in module event-log (audit trail)
+
+Existing pairings:
+  • iPhone Lorenzo · Thorin · paired 2026-05-08 · expires 2026-05-09
+    [ Revoke ]
+  • iPhone Lyra · Lyra Brightleaf · paired 2026-05-09 · expires 2026-05-10
+    [ Revoke ]
+```
+
+Auth token in §11.5.4 si arricchisce: il bearer è **provisioned via QR scan**, non via copy-paste manuale (ridotto attack surface — nessuna esposizione del token in clipboard non sicura). Il foundry-module mantiene un registro pairing per revoca.
+
+##### 7.14.7.4 Edge cases
+
+| Caso | Comportamento |
+|---|---|
+| Bridge URL irraggiungibile | Wizard step 3 mostra "❌ Cannot reach bridge — check URL and network whitelist". Step Save disabilitato. |
+| Token expired/revoked | Plugin runtime mostra `⌁ AUTH EXPIRED` in header HUD G2 + toast on phone "Re-pair from Foundry". Auto-reopen wizard al prossimo open plugin. |
+| Token whitelist mismatch | Foundry bridge restituisce 403 → wizard mostra "Token not authorized for this world. Re-pair from Foundry." |
+| Multi-device same character | Foundry module registra pairing distinte; nessun conflitto. Però **HP/state** sono shared → due G2 mostrano stessa view. |
+| QR scan fallisce (camera permission denied) | Fallback a "📋 Paste from clipboard" sempre disponibile. |
+| User cambia phone | Re-installa plugin, re-scan QR install, re-pair via QR Foundry. Settings phone-side perse. Foundry pairings storiche revocabili da DM. |
+| G2 viene tolto durante sessione | `bridge.onWear(false)` → plugin entra in "standby" mode (nessuna BLE op), auto-resume on wear. Settings preservate. |
 
 ---
 
@@ -3412,23 +3587,34 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 ### 11.5.4 Authentication scheme
 
 - **Decisione**: **Bearer token opaco per-player**, generato server-side dal modulo Foundry. Token derivato da `user.id + secret + timestamp`, hash HMAC-SHA256, expiry 24h con refresh automatico.
+- **Provisioning** (v0.9.11): il bearer è **paired via QR scan** dal Foundry module Settings UI desktop verso l'Even Realities App phone (vedi §7.14.7.3). Riduce attack surface (no token in clipboard non sicura) e rende auditable il pairing dal DM-side. Paste manuale resta fallback per accessibility.
 - **Lifecycle**:
-  1. Player apre G2 plugin → Boot Splash chiama `/v1/handshake` con `playerId`
-  2. Bridge verifica con modulo Foundry: utente attivo? Permission ≥ Player?
-  3. Se OK, bridge mints token + sessione → torna al G2 plugin
-  4. G2 usa token in header `Authorization: Bearer <token>` per tutte le API
-  5. Token rotation a 24h (silent refresh in background)
-- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy.
+  1. DM/player genera QR pairing in Foundry Settings → EvenFoundryVTT → "Pair G2 device" — payload: `{bridge_url, token, world, expires}` (24h TTL)
+  2. Player scansiona QR dall'Even Realities App phone → settings persistite (§3.8)
+  3. Plugin G2 chiama `/v1/handshake` con `Authorization: Bearer <token>` al boot
+  4. Bridge verifica con modulo Foundry: token valido? non revocato? user permission ≥ Player?
+  5. Se OK, bridge restituisce session metadata (character list, world id) → boot splash → main HUD
+  6. Token rotation a 24h (silent refresh in background); revoca dal Foundry module pairing registry
+- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. QR pairing standardizza il pattern delle phone-side bootstrap (no flusso "trovati il token e copialo").
 
 ### 11.5.5 Storage backend
 
-Tre tier di storage, con ruoli distinti:
+**Quattro tier di storage**, con ruoli distinti (v0.9.11 aggiunto tier #4 phone-side):
 
-- **Bridge-side (Decisione MVP)**: **In-memory LRU cache** nel bridge (Node.js `Map` con TTL). State per-session dura quanto la sessione del player.
-- **Bridge-side (Stretch Phase 13)**: Redis quando multi-player e/o si vuole persistenza tra restart bridge.
-- **G2 device-local (MVP)**: piccolo store key-value sull'Even Hub WebView (`localStorage` o IndexedDB se disponibile) per **runtime override gesture-based** che NON devono toccare i settings world-scope Foundry. Chiavi attualmente: `view.map.mode` (vedi §7.4b), `i18n.override` (vedi §7.16), eventuali UI prefs future. Quota tipica G2 ≤ 5 KB. Wiped on app reinstall, OK per UX runtime overrides ma **mai** dati di gioco autoritativi.
+- **Tier 1 — Bridge-side runtime (MVP)**: **In-memory LRU cache** nel bridge (Node.js `Map` con TTL). State per-session, dura quanto la sessione del player.
+- **Tier 2 — Bridge-side persistente (Stretch Phase 13)**: Redis quando multi-player e/o si vuole persistenza tra restart bridge.
+- **Tier 3 — Even Realities App phone settings (per-plugin, MVP)**: storage gestito dall'host Even Realities App per il plugin evenfoundryvtt — sopravvive a kill WebView, app restart, G2 reboot. Reset solo su uninstall plugin o factory-reset. Chiavi (vedi §3.8 + §7.14.7): `bridge_url`, `auth_token`, `character_id`, `world_id`, `connection_profile`, `auto_connect_on_wear`. **Sorgente di verità per le connection-bootstrap settings** (input testuale impossibile sul G2). Persistenza phone-side garantita dall'host, non dal nostro codice.
+- **Tier 4 — G2 device-local runtime (MVP)**: piccolo store key-value sull'Even Hub WebView (`localStorage` o IndexedDB se disponibile) per **gesture-only runtime overrides**. Chiavi: `view.map.mode` (§7.4b), `i18n.override` (§7.16), eventuali UI prefs future. Quota tipica ≤5 KB. Wiped on app reinstall.
 
-**Rationale**: in-memory bridge è zero-config, sufficiente per single-player MVP. Redis è natural upgrade path quando serve scale. G2 device-local è isolato per design — un dispositivo non condiziona altri device dello stesso world Foundry.
+**Decision tree** "dove va questa setting?": vedi §7.14.6 tabella + flowchart.
+
+**Rationale**:
+- Tier 1 (bridge in-memory) è zero-config, sufficiente per single-player MVP.
+- Tier 2 (Redis) è natural upgrade path per scale/multi-player.
+- Tier 3 (phone settings) **canonical per le bootstrap credentials** — l'unica superficie con tastiera del sistema. Isolata per-device: due paia di occhiali sullo stesso world possono avere connection profile diversi (es. homelab via LAN, cloud via tunnel) senza interferire.
+- Tier 4 (G2 device-local) è isolato per design — un dispositivo non condiziona altri device dello stesso world Foundry.
+
+**Conflict resolution** quando la stessa logical setting esiste su più tier (raro): Tier 3 phone wins per connection-bootstrap; Tier 4 G2 wins per gesture overrides; Tier 1/2 bridge è invisibile lato user.
 
 ### 11.5.6 Branch strategy
 
@@ -3667,8 +3853,12 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 - Translation Glasses — https://www.evenrealities.com/translation-glasses (33-35 langs, cloud-only)
 - Smart Glasses product — https://www.evenrealities.com/smart-glasses (4-mic array spec)
 - Conversate — https://support.evenrealities.com/hc/en-us/articles/14273795154319-Conversate
-- Even Hub Simulator (BxNxM/even-dev) — https://github.com/BxNxM/even-dev (audioControl + audioPcm verbatim)
+- Even Hub Simulator (BxNxM/even-dev) — https://github.com/BxNxM/even-dev (audioControl + audioPcm verbatim; "your code runs on a server, the iPhone Even App loads it in a WebView")
 - EvenDemoApp (BLE protocol) — https://github.com/even-realities/EvenDemoApp (cmd 0x0E mic activate, 0xF1 LC3 reception)
+- TS+Vite starter template — https://github.com/brianmatzelle/even-realities-g2-glasses (server-hosted plugin pattern)
+- Even Realities App User Guide — https://support.evenrealities.com/hc/en-us/articles/14301335051023-User-guide ("configure each widget individually through the Even App")
+- Even Realities App settings category — https://support.evenrealities.com/hc/en-us/categories/13493252271887-Even-Realities-APP
+- Dashboard widget management — https://support.evenrealities.com/hc/en-us/articles/14269247458319-Dashboard
 - R1 Smart Ring product — https://www.evenrealities.com/products/r1
 - G2+R1 announcement (Wareable) — https://www.wareable.com/wearable-tech/even-realities-g2-smart-glasses-r1-ring-controller-announcement
 - CES 2026 award — https://www.ces.tech/ces-innovation-awards/2026/even-realities-g2-display-smart-glasses-and-r1-companion-ring/
@@ -3735,6 +3925,26 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ## Changelog
 
+- **2026-05-10 (v0.9.11)** — Online cross-check round 5: plugin distribution model corrected + Even Realities App phone-side settings UI surface formalized (Foundry connection bootstrap).
+  - **Audit method (INV-2)**: 3 WebFetch + 1 WebSearch su `support.evenrealities.com/User-guide`, `hub.evenrealities.com/docs/getting-started/{overview,first-app}`, GitHub `BxNxM/even-dev` + `brianmatzelle/even-realities-g2-glasses`. **2 sorgenti convergenti** sul pattern phone-hosted-WebView-loading-server-served-code, **2 sorgenti convergenti** sul "Setting - <plugin>" UI pattern in Even Realities App.
+  - **CRITICAL drift fix §3.7 Plugin Execution Model** — v0.9.10 diceva *"App logic runs on the phone"* (corretto ma incompleto). v0.9.11 corregge a **3-hop deployment**: il codice plugin è **servito da un server HTTP separato** (plugin host URL), l'Even Realities App **fetcha** quella URL nel WebView phone, da cui parte il traffico verso il bridge. Verbatim simulator README: *"G2 plugins are web apps where your code runs on a server, the iPhone Even App loads it in a WebView, and relays display/input over BLE."* Diagramma aggiornato con plugin host URL distinto da bridge URL. Aggiunta nota dev workflow: *"use your machine's local network IP, not localhost"* per phone WebView.
+  - **NEW §3.8 Plugin Configuration Surface (Even Realities App)** — formalizza che l'Even Realities App espone una **settings UI per-plugin** sul telefono (verbatim user guide: *"configure each widget individually through the Even App"*). evenfoundryvtt usa questo canale per le connection-bootstrap settings che richiedono input testuale (impossibile sul G2 — no keyboard, vincolo §3.1). Tabella 6-row con i campi user-facing: bridge URL, auth token, player/character, world id, connection profile, auto-connect on wear. Storage = phone persistent (managed dall'host, sopravvive a kill/restart/reboot). Bootstrap flow worked example (zero → connesso) in §7.14.7.2.
+  - **§7.14.6 Settings UI riscritta** — ora riconosce **3 superfici** distinte invece di 2: (1) Foundry world settings server-side, (2) **Even Realities App phone settings** [NEW canonical per text-input], (3) G2 device-local gesture overrides. Decision-tree flowchart per assegnare nuove settings al tier giusto. Il vecchio dualismo "Foundry world / G2 device-local" lasciava un buco implicito (dove vive il bridge URL pre-Foundry-connect?) — ora chiuso.
+  - **NEW §7.14.7 Phone-Side Configuration UI (Even Realities App)** — 4 sub-sezioni:
+    - 7.14.7.1 mockup wizard first-run (HTML form 3-step nel WebView phone, NON sul G2): Connection profile + Bridge URL → Auth token (QR scan or paste) → Character selection + auto-connect.
+    - 7.14.7.2 worked example bootstrap step-by-step (10-step, latency target ≤90s end-to-end primo setup).
+    - 7.14.7.3 Foundry module pair-G2 flow: Settings UI Foundry desktop → "Pair a G2 device" button → genera bearer 24h + QR payload `{bridge_url, token, world, expires}` → audit trail pairings registry con revoca per-device.
+    - 7.14.7.4 edge cases: bridge unreachable, token expired, whitelist mismatch, multi-device same character, QR scan camera permission denied, phone change, G2 wear off mid-session.
+  - **§11.5.4 Authentication scheme** esteso — bearer token ora **paired via QR scan** (non solo paste manuale). Riduce attack surface (no token in clipboard non sicura) e rende auditable il pairing dal DM-side. Lifecycle aggiornato: DM/player genera QR in Foundry Settings → player scansiona dall'Even Realities App → settings persistite. Paste manuale resta fallback per accessibility.
+  - **§11.5.5 Storage backend** ora **4 tier** invece di 3:
+    - Tier 1 bridge in-memory LRU (MVP)
+    - Tier 2 bridge Redis (Phase 13 stretch)
+    - Tier 3 **NEW Even Realities App phone settings** — canonical per connection-bootstrap, sopravvive a kill/restart/reboot, reset solo su uninstall plugin. Chiavi: `bridge_url`, `auth_token`, `character_id`, `world_id`, `connection_profile`, `auto_connect_on_wear`.
+    - Tier 4 G2 device-local LRU (gesture overrides only)
+    Conflict resolution policy aggiunta: Tier 3 phone wins per bootstrap; Tier 4 G2 wins per gesture; Tier 1/2 bridge invisible lato user.
+  - **§13 References** — 4 nuove sorgenti aggiunte: brianmatzelle TS+Vite starter template, Even Realities App User Guide, Even Realities App settings category, Dashboard widget management.
+  - **README.md + showcase**: aggiornati versione + cross-check round 4 → 5 + nota plugin distribution model (server-hosted) + phone-side settings UI surface.
+  - **Bump v0.9.10 → v0.9.11**.
 - **2026-05-10 (v0.9.10)** — Online cross-check round 4: G2 audio surface + native AI integration (RESOLVED §12.C item 19) + plugin execution model.
   - **Audit method (INV-2 in atto)**: 8 WebFetch + 2 WebSearch in parallelo contro sorgenti canoniche Even Realities (`hub.evenrealities.com/docs/*`, `evenrealities.com/{ai-glasses,smart-glasses,translation-glasses}`, `support.evenrealities.com`, `github.com/BxNxM/even-dev`, `github.com/even-realities/EvenDemoApp`). 4 sorgenti convergenti su mic/PCM, 5 sorgenti convergenti su EvenAI no-API.
   - **§3.1 Even G2 Display ESTESO** — aggiunte 4 righe hardware finora implicite:
