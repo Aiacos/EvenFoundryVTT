@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: executing
-stopped_at: Phase 0 context gathered
-last_updated: "2026-05-10T21:00:11.368Z"
-last_activity: 2026-05-10 -- Phase 0 planning complete
+stopped_at: "Completed 00-01-PLAN.md (test infrastructure scaffolding)"
+last_updated: "2026-05-10T21:13:11.000Z"
+last_activity: "2026-05-10 -- Phase 0 Plan 01 complete (3 tasks, 16 files, type-check green)"
 progress:
   total_phases: 15
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 1
 ---
 
 # Project State
@@ -21,34 +21,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 0 — Validation Gates (hardware/SDK GO/NO-GO tests gating all downstream work).
+**Current focus:** Phase 0 — Validation Gates
 
 ## Current Position
 
-Phase: 0 of 13 (Validation Gates) — MVP scope = Phase 0-10; Phase 11-13 are V2 OPZIONALE
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-05-10 -- Phase 0 planning complete
+Phase: 0 (Validation Gates) — EXECUTING
+Plan: 2 of 4 (next: MidiQOL probe — software-only)
+Status: Plan 01 complete; Plan 02 + Plan 03 may proceed in parallel against stable `_shared/` foundation
+Last activity: 2026-05-10 -- Phase 0 Plan 01 complete (3 tasks, 16 files, type-check green)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 1%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1
+- Average duration: 7 min
+- Total execution time: 7 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| — | — | — | — |
+| 0 | 1 | 7 min | 7 min |
 
 **Recent Trend:**
 
-- No execution yet.
+- 2026-05-10 — Phase 0 Plan 01 (test infrastructure scaffolding): 7 min, 16 files, 3 commits (40732fe / f301aaf / 96f4c85), type-check green at exit 0.
 
 *Updated after each plan completion.*
 
@@ -62,10 +62,12 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Phase 0 (pre-planning): MidiQOL declared *required* for MVP (`relationships.requires` in module.json) — without `autoFastForward` mode, manual writes stall on chat-card buttons.
 - Phase 0 (pre-planning): Phase 4 carries 6 of 17 research pitfalls — highest risk concentration; allocated 4 weeks split into 4a (weeks 4-5) + 4b (weeks 6-7) instead of monolithic 4 weeks.
 - Phase 0 (pre-planning): Single-workflow-origin discipline option A (`socketlib.executeAsGM` only; player client never invokes `activity.use()` directly) — locked for Phase 7 (research Pitfall 6).
+- Phase 0 Plan 01 deviation: TypeScript pinned at `5.8.3` (latest 5.8 stable on npm) instead of plan-cited `5.8.5` — `5.8.5` does not exist on npm registry. STACK.md and CLAUDE.md "TypeScript 5.8.5" references should be corrected to `5.8.3` in next INV-3 cross-cutting commit.
+- Phase 0 Plan 01 deviation: pnpm tooling at `10.33.4` (latest-10 dist-tag) instead of cited `10.3.1` (does not exist on npm). Affects only global tooling, not committed package.json.
 
 ### Pending Todos
 
-None yet.
+- INV-3 doc-coherence cycle: align STACK.md + CLAUDE.md TypeScript pin from `5.8.5` → `5.8.3` and pnpm pin from `10.3.1` → `10.33.4` (verifiable via `npm view`).
 
 ### Blockers/Concerns
 
@@ -85,6 +87,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-10T20:03:29.343Z
-Stopped at: Phase 0 context gathered
-Resume file: .planning/phases/00-validation-gates/00-CONTEXT.md
+Last session: 2026-05-10T21:13:11.000Z
+Stopped at: Completed 00-01-PLAN.md (test infrastructure scaffolding)
+Resume file: .planning/phases/00-validation-gates/00-02-PLAN.md (next: MidiQOL probe — software-only)

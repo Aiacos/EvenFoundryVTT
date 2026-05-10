@@ -223,7 +223,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Validation Gates | 0/4 | Planned | - |
+| 0. Validation Gates | 1/4 | In progress | - |
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Foundry Module Core + Pairing UI | 0/TBD | Not started | - |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
