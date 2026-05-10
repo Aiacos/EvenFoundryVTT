@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EvenFoundryVTT — D&D 5e on Even Realities G2 + R1</title>
+<meta name="description" content="A glanceable HUD of FoundryVTT D&D sessions on Even Realities G2 AR glasses, driven by R1 ring gestures. Phosphor-green tactical HUD, 576x288 4-bit greyscale, MVP design spec." />
+<meta name="theme-color" content="#0a0f0a" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Major+Mono+Display&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --p0: #050a05;        /* deepest */
+  --p1: #0a0f0a;        /* page bg */
+  --p2: #0f1810;        /* card bg */
+  --p3: #142214;        /* card hover */
+  --g0: #2d4a2d;        /* dark green */
+  --g1: #4a8c4a;        /* mid green */
+  --g2: #6dd56d;        /* bright green */
+  --g3: #9cffaf;        /* hi green */
+  --g4: #d8ffd8;        /* pale green */
+  --warn: #ffb84d;      /* warn amber */
+  --crit: #ff6b6b;      /* crit red */
+  --shadow-glow: 0 0 24px rgba(109,213,109,0.15);
+  --shadow-glow-strong: 0 0 36px rgba(109,213,109,0.35);
+  --bezel-grad: linear-gradient(180deg, var(--p2), var(--p1));
+  --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --display: 'Major Mono Display', var(--mono);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--p1);
+  color: var(--g3);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.55;
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+/* CRT scanline overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(0,0,0,0.0) 0px,
+    rgba(0,0,0,0.0) 2px,
+    rgba(0,0,0,0.18) 3px,
+    rgba(0,0,0,0.0) 4px
+  );
+  mix-blend-mode: multiply;
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.45) 100%),
+    linear-gradient(180deg, rgba(15,30,15,0.10), transparent 25%, transparent 75%, rgba(15,30,15,0.10));
+}
+
+::selection { background: var(--g1); color: var(--p0); }
+
+a { color: var(--g3); text-decoration: none; border-bottom: 1px dotted var(--g1); transition: color .2s, border-color .2s, text-shadow .2s; }
+a:hover { color: var(--g4); border-color: var(--g3); text-shadow: 0 0 8px var(--g2); }
+
+/* Bezel container */
+.bezel {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  position: relative;
+}
+
+h1, h2, h3, h4 { font-family: var(--display); font-weight: 400; letter-spacing: 0.04em; color: var(--g3); text-shadow: 0 0 12px rgba(109,213,109,0.4); }
+h2 { font-size: 1.75rem; margin: 0 0 1rem; }
+h3 { font-size: 1.15rem; margin: 0 0 .75rem; color: var(--g2); }
+h4 { font-size: 0.95rem; color: var(--g1); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .12em; }
+
+p { margin-bottom: 0.85rem; color: var(--g4); }
+
+code { font-family: var(--mono); background: var(--p2); padding: 0.1em 0.4em; border-radius: 2px; color: var(--g2); border: 1px solid var(--g0); font-size: 0.92em; }
+
+/* ─── NAV ──────────────────────────────────────────────────────────── */
+nav.topnav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: rgba(10,15,10,0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--g0);
+  z-index: 900;
+  padding: 0.6rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.topnav .logo {
+  font-family: var(--display);
+  color: var(--g3);
+  font-size: 1.05rem;
+  text-shadow: 0 0 8px var(--g2);
+}
+.topnav .logo .blink { display: inline-block; animation: blink 1.2s infinite; color: var(--g2); }
+.topnav ul { list-style: none; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.topnav a { border: none; font-size: 0.85rem; color: var(--g1); text-transform: uppercase; letter-spacing: .14em; }
+.topnav a:hover { color: var(--g3); }
+
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* ─── HERO ─────────────────────────────────────────────────────────── */
+.hero { padding-top: 6rem; padding-bottom: 5rem; min-height: 90vh; display: flex; flex-direction: column; justify-content: center; }
+.hero pre.ascii-title {
+  font-family: var(--mono);
+  color: var(--g3);
+  text-shadow: 0 0 14px var(--g2), 0 0 28px rgba(109,213,109,0.3);
+  font-size: clamp(0.45rem, 1.4vw, 1rem);
+  line-height: 1.05;
+  margin-bottom: 1.5rem;
+  white-space: pre;
+  overflow-x: auto;
+  letter-spacing: 0;
+}
+.hero .tagline { font-size: 1.15rem; color: var(--g4); margin-bottom: 0.5rem; min-height: 2em; }
+.hero .tagline .typed::after { content: '_'; animation: blink 1s infinite; color: var(--g2); margin-left: 2px; }
+.hero .subtagline { color: var(--g1); font-size: 0.95rem; margin-bottom: 2rem; max-width: 720px; }
+.hero .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.hero .stats .stat {
+  border: 1px solid var(--g0);
+  padding: .9rem;
+  background: var(--p2);
+  position: relative;
+  overflow: hidden;
+}
+.hero .stats .stat .num { font-size: 1.45rem; color: var(--g3); display: block; text-shadow: 0 0 8px var(--g2); }
+.hero .stats .stat .lab { font-size: 0.72rem; color: var(--g1); text-transform: uppercase; letter-spacing: .12em; }
+.hero .stats .stat::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--g2), transparent); animation: scan 4s linear infinite; }
+@keyframes scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(60px); opacity: 0; } }
+
+.hero .actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .7rem 1.3rem;
+  background: transparent;
+  border: 1px solid var(--g1);
+  color: var(--g3);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  transition: all .2s;
+}
+.btn:hover { background: var(--g0); color: var(--g4); box-shadow: var(--shadow-glow-strong); border-color: var(--g2); }
+.btn.primary { border-color: var(--g2); background: rgba(74,140,74,0.12); }
+.btn .arrow { color: var(--g2); }
+
+/* ─── SECTION ──────────────────────────────────────────────────────── */
+section.show { padding: 5rem 0; border-top: 1px solid var(--g0); position: relative; }
+section.show .section-tag {
+  display: inline-block;
+  font-size: 0.74rem;
+  color: var(--g1);
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  border: 1px solid var(--g0);
+  padding: .25rem .65rem;
+  background: var(--p2);
+  margin-bottom: 1rem;
+}
+
+/* Pillars */
+.pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 2rem; }
+.pillars .pillar {
+  border: 1px solid var(--g0);
+  background: var(--p2);
+  padding: 1.4rem;
+  position: relative;
+  transition: all .3s ease;
+}
+.pillars .pillar:hover { border-color: var(--g2); transform: translateY(-3px); box-shadow: var(--shadow-glow); }
+.pillars .pillar .icon { font-family: var(--mono); color: var(--g2); font-size: 1.6rem; margin-bottom: .5rem; }
+.pillars .pillar h3 { font-size: 1rem; margin-bottom: .6rem; }
+.pillars .pillar p { font-size: 0.85rem; color: var(--g1); margin: 0; }
+
+/* Hardware grid */
+.hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem; }
+@media (max-width: 800px) { .hw-grid { grid-template-columns: 1fr; } }
+.hw-card { border: 1px solid var(--g0); background: var(--p2); padding: 1.5rem; }
+.hw-card .device { display: flex; justify-content: center; padding: 1rem 0 1.5rem; min-height: 220px; align-items: center; }
+.hw-card .device svg { max-width: 100%; height: auto; }
+.hw-card table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.hw-card table tr { border-bottom: 1px dotted var(--g0); }
+.hw-card table tr:last-child { border-bottom: 0; }
+.hw-card table th { text-align: left; color: var(--g1); padding: .5rem 0; font-weight: 500; width: 40%; vertical-align: top; }
+.hw-card table td { color: var(--g3); padding: .5rem 0; }
+.hw-card .verified { font-size: 0.72rem; color: var(--g2); margin-top: 1rem; }
+
+/* HUD simulator */
+.hud-sim {
+  margin: 2rem auto;
+  max-width: 1100px;
+  background: #000;
+  border: 2px solid var(--g0);
+  border-radius: 4px;
+  padding: 1rem;
+  position: relative;
+  box-shadow: var(--shadow-glow), inset 0 0 60px rgba(0,0,0,0.8);
+}
+.hud-sim::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(74,140,74,0.4);
+  pointer-events: none;
+  border-radius: 2px;
+}
+.hud-sim .tabs { display: flex; gap: .25rem; margin-bottom: .75rem; flex-wrap: wrap; padding-bottom: .5rem; border-bottom: 1px dashed var(--g0); }
+.hud-sim .tab {
+  padding: .35rem .85rem;
+  background: var(--p2);
+  border: 1px solid var(--g0);
+  color: var(--g1);
+  font-size: 0.78rem;
+  cursor: pointer;
+  letter-spacing: .08em;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  transition: all .15s;
+}
+.hud-sim .tab:hover { color: var(--g3); border-color: var(--g1); }
+.hud-sim .tab.active { background: var(--g0); color: var(--g4); border-color: var(--g2); box-shadow: 0 0 10px rgba(109,213,109,0.4); }
+.hud-sim .screen {
+  background: #020602;
+  padding: 1rem;
+  font-size: clamp(0.55rem, 1.05vw, 0.85rem);
+  line-height: 1.05;
+  color: var(--g3);
+  text-shadow: 0 0 6px rgba(109,213,109,0.5);
+  white-space: pre;
+  overflow-x: auto;
+  font-family: var(--mono);
+  border: 1px solid var(--g0);
+  position: relative;
+  min-height: 360px;
+}
+.hud-sim .screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 1px, rgba(109,213,109,0.04) 2px, transparent 3px);
+  pointer-events: none;
+}
+.hud-sim .meta { margin-top: 0.6rem; font-size: 0.72rem; color: var(--g1); display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+
+/* Architecture */
+.arch-diagram { background: var(--p2); border: 1px solid var(--g0); padding: 1.5rem; margin-top: 1.5rem; overflow-x: auto; }
+.arch-diagram svg { display: block; max-width: 100%; height: auto; min-width: 700px; }
+.arch-diagram svg .node { fill: var(--p1); stroke: var(--g1); stroke-width: 1.5; }
+.arch-diagram svg .node-mvp { stroke: var(--g2); }
+.arch-diagram svg .node-v2 { stroke: var(--g0); stroke-dasharray: 5 3; }
+.arch-diagram svg .label { fill: var(--g4); font-family: var(--mono); font-size: 13px; }
+.arch-diagram svg .label-sm { fill: var(--g1); font-size: 11px; }
+.arch-diagram svg .arrow { stroke: var(--g1); stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+.arch-diagram svg .arrow-mvp { stroke: var(--g2); }
+.arch-diagram svg .arrow-v2 { stroke-dasharray: 5 3; stroke: var(--g0); }
+.arch-diagram svg .pulse { animation: pulse-stroke 2.5s ease-in-out infinite; }
+@keyframes pulse-stroke { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; filter: drop-shadow(0 0 4px var(--g2)); } }
+
+/* Pipeline diagram */
+.pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; margin-top: 1.5rem; }
+.pipe-step {
+  border: 1px solid var(--g0);
+  padding: 0.85rem 0.6rem;
+  text-align: center;
+  font-size: 0.78rem;
+  background: var(--p2);
+  position: relative;
+  transition: all .3s;
+}
+.pipe-step:hover { border-color: var(--g2); transform: translateY(-2px); box-shadow: var(--shadow-glow); }
+.pipe-step .num { color: var(--g0); font-family: var(--display); font-size: 0.95rem; }
+.pipe-step .nm { color: var(--g3); display: block; margin: .35rem 0 .25rem; font-weight: 500; }
+.pipe-step .det { color: var(--g1); font-size: 0.7rem; }
+
+/* Layers chart */
+.fps-chart { background: var(--p2); border: 1px solid var(--g0); padding: 1.5rem; margin-top: 1.5rem; }
+.fps-chart .layer { display: grid; grid-template-columns: 60px 1fr 80px; gap: .8rem; align-items: center; margin-bottom: .65rem; font-size: 0.85rem; }
+.fps-chart .layer .lbl { color: var(--g2); font-weight: 700; }
+.fps-chart .layer .nm { color: var(--g4); }
+.fps-chart .layer .nm small { color: var(--g1); display: block; font-size: 0.72rem; }
+.fps-chart .layer .bar-track { background: var(--p1); height: 24px; border: 1px solid var(--g0); position: relative; grid-column: 1 / span 2; margin-top: .25rem; }
+.fps-chart .layer-row { display: grid; grid-template-columns: 1fr 80px; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+.fps-chart .layer-row .info { display: grid; grid-template-columns: 60px 1fr; gap: .8rem; align-items: center; }
+.fps-chart .layer-row .info .lbl { color: var(--g2); font-weight: 700; font-size: 0.85rem; text-align: center; }
+.fps-chart .layer-row .info .desc strong { color: var(--g4); font-size: 0.85rem; }
+.fps-chart .layer-row .info .desc small { color: var(--g1); font-size: 0.72rem; display: block; }
+.fps-chart .layer-row .bar-track { background: var(--p1); height: 26px; border: 1px solid var(--g0); position: relative; overflow: hidden; }
+.fps-chart .layer-row .bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--g0), var(--g2));
+  width: 0;
+  transition: width 1.4s cubic-bezier(.18,.84,.36,1.04);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.1), 0 0 8px rgba(109,213,109,0.3);
+  position: relative;
+}
+.fps-chart .layer-row .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,0.10) 6px 7px);
+}
+.fps-chart .layer-row .fps-val { color: var(--g3); font-weight: 700; text-align: right; font-size: 0.95rem; }
+.fps-chart .legend { font-size: 0.72rem; color: var(--g1); margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--g0); }
+
+/* Roadmap timeline */
+.timeline { position: relative; margin-top: 2rem; padding-left: 1.5rem; border-left: 1px dashed var(--g0); }
+.timeline .phase { margin-bottom: 1.5rem; position: relative; padding-left: 1.5rem; }
+.timeline .phase::before {
+  content: '';
+  position: absolute;
+  left: -1.95rem;
+  top: 0.5rem;
+  width: 12px;
+  height: 12px;
+  background: var(--p1);
+  border: 2px solid var(--g1);
+  border-radius: 50%;
+  transition: all .3s;
+}
+.timeline .phase.mvp::before { border-color: var(--g2); box-shadow: 0 0 8px var(--g2); }
+.timeline .phase.v2::before { border-color: var(--g0); border-style: dashed; }
+.timeline .phase .head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.timeline .phase .head .ph { font-family: var(--display); color: var(--g2); font-size: 1.15rem; }
+.timeline .phase .head .wks { font-size: 0.75rem; color: var(--g1); }
+.timeline .phase .head .v2tag { font-size: 0.7rem; color: var(--warn); border: 1px solid var(--warn); padding: 1px 6px; }
+.timeline .phase .ttl { color: var(--g4); font-size: 0.95rem; margin: .25rem 0; }
+.timeline .phase .det { color: var(--g1); font-size: 0.82rem; }
+.timeline .divider {
+  border-top: 1px dashed var(--g0);
+  margin: 1.2rem 0 1.5rem -1.5rem;
+  padding-top: .4rem;
+  padding-left: 1.5rem;
+  font-size: 0.78rem;
+  color: var(--g1);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+/* Voice MCP flow */
+.voice-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; margin-top: 1.5rem; align-items: stretch; }
+.voice-flow .vstep {
+  border: 1px solid var(--g0);
+  padding: 1rem;
+  background: var(--p2);
+  position: relative;
+  font-size: 0.82rem;
+}
+.voice-flow .vstep .num { color: var(--g1); font-family: var(--display); font-size: 0.85rem; letter-spacing: .14em; }
+.voice-flow .vstep .what { color: var(--g3); margin: .3rem 0; font-weight: 500; }
+.voice-flow .vstep .lat { font-size: 0.7rem; color: var(--g1); }
+.voice-flow .vstep code { font-size: 0.72rem; }
+
+/* Tech stack chips */
+.tech-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
+.tech-chips .chip {
+  border: 1px solid var(--g0);
+  padding: .35rem .85rem;
+  font-size: 0.8rem;
+  color: var(--g3);
+  background: var(--p2);
+  transition: all .15s;
+}
+.tech-chips .chip:hover { border-color: var(--g2); background: var(--g0); color: var(--g4); }
+
+/* Footer */
+footer.show {
+  border-top: 1px solid var(--g0);
+  padding: 3rem 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--g1);
+}
+footer.show .ascii-foot {
+  font-family: var(--mono);
+  white-space: pre;
+  font-size: 0.7rem;
+  color: var(--g0);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+footer.show a { color: var(--g2); border: none; }
+
+/* Reveal-on-scroll */
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity .8s, transform .8s; }
+.reveal.in { opacity: 1; transform: translateY(0); }
+
+/* ─── INDIVIDUAL DEVICE SVGs ─────────────────────────────────────── */
+.device-svg .stroke-g { stroke: var(--g2); stroke-width: 1.6; fill: none; }
+.device-svg .stroke-d { stroke: var(--g0); stroke-width: 1.2; fill: none; }
+.device-svg .fill-bg { fill: var(--p2); stroke: var(--g0); stroke-width: 1; }
+.device-svg .fill-glow { fill: rgba(109,213,109,0.25); }
+.device-svg .label { fill: var(--g1); font-family: var(--mono); font-size: 11px; }
+.device-svg .pulse-fill { animation: pulse-fill 3s ease-in-out infinite; transform-origin: center; }
+@keyframes pulse-fill { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+.device-svg .float-up { animation: float-up 4s ease-in-out infinite; }
+@keyframes float-up { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="logo">EVENFOUNDRYVTT<span class="blink">_</span></div>
+  <ul>
+    <li><a href="#pillars">Pillars</a></li>
+    <li><a href="#hardware">Hardware</a></li>
+    <li><a href="#hud">HUD</a></li>
+    <li><a href="#arch">Architecture</a></li>
+    <li><a href="#pipeline">Pipeline</a></li>
+    <li><a href="#fps">FPS</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#voice">Voice V2</a></li>
+    <li><a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">GitHub</a></li>
+  </ul>
+</nav>
+
+<div class="bezel">
+
+  <!-- ═══ HERO ═════════════════════════════════════════════════════ -->
+  <header class="hero">
+<pre class="ascii-title" id="asciiTitle">
+  ███████ ██    ██ ███████ ███    ██  ███████  ██████  ██    ██ ███    ██ ██████  ██████  ██    ██ ██    ██ ████████ ████████
+  ██      ██    ██ ██      ████   ██  ██      ██    ██ ██    ██ ████   ██ ██   ██ ██   ██  ██  ██  ██    ██ ╚══██╔══╝╚══██╔══╝
+  █████   ██    ██ █████   ██ ██  ██  █████   ██    ██ ██    ██ ██ ██  ██ ██   ██ ██████    ████   ██    ██    ██       ██
+  ██       ██  ██  ██      ██  ██ ██  ██      ██    ██ ██    ██ ██  ██ ██ ██   ██ ██   ██    ██    ╚██  ██╔╝   ██       ██
+  ███████   ████   ███████ ██   ████  ██       ██████   ██████  ██   ████ ██████  ██   ██    ██     ╚████╔╝    ██       ██
+</pre>
+    <div class="tagline"><span class="typed" id="typedHero"></span></div>
+    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / scroll / long-press gestures from the Even R1 smart ring. Eyes on the table, not on a laptop.</p>
+
+    <div class="stats">
+      <div class="stat"><span class="num">576×288</span><span class="lab">px / eye</span></div>
+      <div class="stat"><span class="num">4-bit</span><span class="lab">greyscale</span></div>
+      <div class="stat"><span class="num">5–15</span><span class="lab">fps target</span></div>
+      <div class="stat"><span class="num">13</span><span class="lab">weeks MVP</span></div>
+      <div class="stat"><span class="num">3500+</span><span class="lab">lines spec</span></div>
+      <div class="stat"><span class="num">v0.9.8</span><span class="lab">cross-checked ×3</span></div>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="../../Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
+      <a class="btn" href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener"><span class="arrow">⌁</span> GITHUB</a>
+      <a class="btn" href="#hud"><span class="arrow">◈</span> TRY THE HUD</a>
+    </div>
+  </header>
+
+  <!-- ═══ PILLARS ══════════════════════════════════════════════════ -->
+  <section class="show reveal" id="pillars">
+    <span class="section-tag">◈ pillars</span>
+    <h2>Four ideas, no magic.</h2>
+    <p>The MVP is deterministic — every action is explicit gesture → tool → Foundry. AI is an optional V2 add-on, never a dependency.</p>
+    <div class="pillars">
+      <div class="pillar">
+        <div class="icon">▤</div>
+        <h3>Glanceable HUD</h3>
+        <p>Map base · persistent status corner card · overlay panels stacked like Foundry desktop windows. A single layered UI, never a paginated app.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⌬</div>
+        <h3>Gesture-driven</h3>
+        <p>R1 ring: tap to cycle, double-tap to back, scroll to navigate, long-press for the Quick Action menu. No on-glass keyboard, ever.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">✦</div>
+        <h3>Foundry as truth</h3>
+        <p>Every action goes through <code>Activity#use()</code> with all rules, hooks, MidiQOL, advantage / disadvantage. The DM keeps full veto power.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">≣</div>
+        <h3>Voice via MCP (V2)</h3>
+        <p>Optional <code>foundry-mcp</code> server exposes Foundry tools as Model Context Protocol. Drive from Claude Desktop or any MCP client. Plug-out, no cascade.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HARDWARE ═════════════════════════════════════════════════ -->
+  <section class="show reveal" id="hardware">
+    <span class="section-tag">⌬ hardware</span>
+    <h2>Validated against upstream docs.</h2>
+    <p>Every spec parameter below is cited verbatim from Even Realities and FoundryVTT documentation, re-verified across <strong>3 cross-check rounds</strong> on 2026-05-10.</p>
+
+    <div class="hw-grid">
+      <!-- G2 -->
+      <div class="hw-card">
+        <h3>Even Realities G2</h3>
+        <h4>Smart Glasses · Display</h4>
+        <div class="device device-svg">
+          <svg viewBox="0 0 320 200" width="320" height="200" aria-label="Even Realities G2 glasses">
+            <!-- Frame -->
+            <g class="float-up">
+              <!-- temple left -->
+              <path class="stroke-g" d="M 30 100 Q 25 95 30 80 L 60 78" />
+              <!-- temple right -->
+              <path class="stroke-g" d="M 290 100 Q 295 95 290 80 L 260 78" />
+              <!-- left lens -->
+              <rect class="stroke-g" x="60" y="60" width="90" height="55" rx="6" />
+              <rect x="62" y="62" width="86" height="51" rx="4" fill="rgba(109,213,109,0.06)" />
+              <!-- right lens -->
+              <rect class="stroke-g" x="170" y="60" width="90" height="55" rx="6" />
+              <rect x="172" y="62" width="86" height="51" rx="4" fill="rgba(109,213,109,0.06)" />
+              <!-- bridge -->
+              <path class="stroke-g" d="M 150 75 Q 160 72 170 75" />
+              <!-- nose pads -->
+              <path class="stroke-d" d="M 105 115 L 110 122" />
+              <path class="stroke-d" d="M 215 115 L 210 122" />
+              <!-- HUD content overlays on lens -->
+              <g class="pulse-fill">
+                <rect x="68" y="68" width="74" height="2" fill="var(--g2)" />
+                <rect x="68" y="74" width="50" height="2" fill="var(--g1)" />
+                <rect x="68" y="80" width="62" height="2" fill="var(--g1)" />
+                <rect x="68" y="86" width="40" height="2" fill="var(--g0)" />
+                <rect x="68" y="92" width="55" height="2" fill="var(--g1)" />
+                <rect x="68" y="98" width="30" height="2" fill="var(--g2)" />
+              </g>
+              <g class="pulse-fill">
+                <rect x="178" y="68" width="74" height="2" fill="var(--g2)" />
+                <rect x="178" y="74" width="50" height="2" fill="var(--g1)" />
+                <rect x="178" y="80" width="62" height="2" fill="var(--g1)" />
+                <rect x="178" y="86" width="40" height="2" fill="var(--g0)" />
+                <rect x="178" y="92" width="55" height="2" fill="var(--g1)" />
+                <rect x="178" y="98" width="30" height="2" fill="var(--g2)" />
+              </g>
+            </g>
+            <text class="label" x="160" y="160" text-anchor="middle">576 × 288 · 4-bit greyscale · 16 levels green</text>
+            <text class="label" x="160" y="178" text-anchor="middle">4 image + 8 other containers · isEventCapture</text>
+          </svg>
+        </div>
+        <table>
+          <tr><th>Resolution</th><td>576 × 288 px / eye</td></tr>
+          <tr><th>Color</th><td>4-bit greyscale (16 levels green)</td></tr>
+          <tr><th>Containers</th><td>max 4 image + 8 text/list per page</td></tr>
+          <tr><th>Image size</th><td>20–200 px W × 20–100 px H</td></tr>
+          <tr><th>Text container</th><td>1 000 char (2 000 with upgrade)</td></tr>
+          <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
+          <tr><th>Networking</th><td>fetch / XHR / WebSocket · whitelisted origins</td></tr>
+          <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
+        </table>
+        <div class="verified">✓ verified · hub.evenrealities.com/docs/guides/display</div>
+      </div>
+
+      <!-- R1 -->
+      <div class="hw-card">
+        <h3>Even Realities R1</h3>
+        <h4>Smart Ring · Controller</h4>
+        <div class="device device-svg">
+          <svg viewBox="0 0 320 200" width="320" height="200" aria-label="Even Realities R1 ring">
+            <defs>
+              <radialGradient id="ringInner" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0%" stop-color="#0a0f0a" />
+                <stop offset="100%" stop-color="#142214" />
+              </radialGradient>
+            </defs>
+            <g class="float-up">
+              <!-- Outer ring (zirconia ceramic) -->
+              <ellipse cx="160" cy="100" rx="80" ry="60" fill="none" stroke="var(--g2)" stroke-width="3" />
+              <ellipse cx="160" cy="100" rx="74" ry="54" fill="none" stroke="var(--g1)" stroke-width="1" />
+              <!-- Inner ring (stainless steel) -->
+              <ellipse cx="160" cy="100" rx="50" ry="32" fill="url(#ringInner)" stroke="var(--g0)" stroke-width="1.5" />
+              <!-- Top sensor / accent -->
+              <ellipse cx="160" cy="40" rx="14" ry="6" fill="rgba(109,213,109,0.4)" stroke="var(--g2)" />
+              <circle cx="160" cy="40" r="3" fill="var(--g3)" class="pulse-fill" />
+              <!-- gesture indicators around ring -->
+              <text class="label" x="60" y="105" text-anchor="middle">tap</text>
+              <text class="label" x="160" y="180" text-anchor="middle">scroll</text>
+              <text class="label" x="260" y="105" text-anchor="middle">long-press</text>
+              <!-- biometric pulse line -->
+              <path d="M 110 105 L 130 105 L 135 90 L 145 120 L 155 80 L 165 110 L 175 105 L 210 105"
+                    stroke="var(--g3)" stroke-width="1.5" fill="none" class="pulse-fill" />
+            </g>
+          </svg>
+        </div>
+        <table>
+          <tr><th>Connection</th><td>BLE → Even App → G2</td></tr>
+          <tr><th>Gestures</th><td>tap · scroll · long-press</td></tr>
+          <tr><th>Biometrics</th><td>HR · HRV · SpO₂ · skin temp · steps · sleep</td></tr>
+          <tr><th>Material</th><td>zirconia ceramic + medical-grade stainless steel</td></tr>
+          <tr><th>Water</th><td>IP68 · 50 m / 30 min</td></tr>
+          <tr><th>Battery</th><td>~4 days · ~90 min full charge</td></tr>
+          <tr><th>Operating temp</th><td>-10 °C to 45 °C</td></tr>
+        </table>
+        <div class="verified">✓ verified · evenrealities.com/smart-ring</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HUD SIMULATOR ════════════════════════════════════════════ -->
+  <section class="show reveal" id="hud">
+    <span class="section-tag">▤ live preview</span>
+    <h2>The HUD, in your face.</h2>
+    <p>Click a tab to mount a panel over the map base layer. The persistent status HUD never disappears — it's always there in the corner, exactly like a Foundry window with a pinned mini character sheet. Mockups taken verbatim from the spec § 7.</p>
+
+    <div class="hud-sim">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-panel="map">▶ MAP</button>
+        <button class="tab" data-panel="sheet">SHEET</button>
+        <button class="tab" data-panel="combat">COMBAT</button>
+        <button class="tab" data-panel="log">LOG</button>
+        <button class="tab" data-panel="spell">SPELLBOOK</button>
+        <button class="tab" data-panel="inv">INVENTORY</button>
+        <button class="tab" data-panel="quick">QUICK ACTION</button>
+      </div>
+      <pre class="screen" id="hudScreen"></pre>
+      <div class="meta">
+        <span id="hudHint">R1: scroll = pan · tap = ping · long-press = quick action</span>
+        <span id="hudMode">mode: ▶ RASTER (toggle GLYPH)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ARCHITECTURE ════════════════════════════════════════════ -->
+  <section class="show reveal" id="arch">
+    <span class="section-tag">⌥ architecture</span>
+    <h2>Three boundaries, three contracts.</h2>
+    <p>Every plugin slot is versioned. dnd5e v6 lands? swap the Foundry adapter — no cascade. Even SDK changes? swap the provider. New ring (R2)? swap the event source. Forward compat is a primary requirement.</p>
+
+    <div class="arch-diagram">
+      <svg viewBox="0 0 800 480" width="100%">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--g1)" />
+          </marker>
+          <marker id="arrowhead-mvp" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--g2)" />
+          </marker>
+        </defs>
+
+        <!-- MVP Layer -->
+        <text class="label-sm" x="20" y="20">▶ MVP (always-on, deterministic)</text>
+
+        <!-- G2 -->
+        <g>
+          <rect class="node node-mvp pulse" x="40" y="40" width="180" height="80" />
+          <text class="label" x="130" y="68" text-anchor="middle">Even G2 Glasses</text>
+          <text class="label-sm" x="130" y="86" text-anchor="middle">576 × 288 · 4-bit</text>
+          <text class="label-sm" x="130" y="102" text-anchor="middle">layered HUD UI</text>
+        </g>
+        <!-- R1 -->
+        <g>
+          <rect class="node node-mvp" x="280" y="40" width="160" height="80" />
+          <text class="label" x="360" y="68" text-anchor="middle">Even R1 Ring</text>
+          <text class="label-sm" x="360" y="86" text-anchor="middle">tap · scroll · long-press</text>
+          <text class="label-sm" x="360" y="102" text-anchor="middle">+ biometrics</text>
+        </g>
+        <line class="arrow arrow-mvp" x1="280" y1="80" x2="220" y2="80" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="245" y="74">BLE</text>
+
+        <!-- Bridge -->
+        <g>
+          <rect class="node node-mvp pulse" x="40" y="180" width="400" height="100" />
+          <text class="label" x="240" y="210" text-anchor="middle">Bridge Service (Node.js · homelab)</text>
+          <text class="label-sm" x="240" y="230" text-anchor="middle">REST + WS · auth · CORS · rate limit</text>
+          <text class="label-sm" x="240" y="246" text-anchor="middle">tool registry · state cache · delta diff</text>
+          <text class="label-sm" x="240" y="262" text-anchor="middle">capability negotiation</text>
+        </g>
+        <line class="arrow arrow-mvp" x1="130" y1="180" x2="130" y2="120" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="135" y="155">HTTPS / WS</text>
+
+        <!-- Foundry -->
+        <g>
+          <rect class="node node-mvp" x="40" y="340" width="400" height="100" />
+          <text class="label" x="240" y="370" text-anchor="middle">FoundryVTT v13.347+ · dnd5e 5.x</text>
+          <text class="label-sm" x="240" y="390" text-anchor="middle">evenfoundryvtt module · readers · writers</text>
+          <text class="label-sm" x="240" y="406" text-anchor="middle">Activity#use · MidiQOL · socketlib · hooks</text>
+          <text class="label-sm" x="240" y="422" text-anchor="middle">SINGLE SOURCE OF TRUTH</text>
+        </g>
+        <line class="arrow arrow-mvp" x1="240" y1="340" x2="240" y2="280" marker-end="url(#arrowhead-mvp)" />
+
+        <!-- V2 right side -->
+        <text class="label-sm" x="500" y="20">⋯ V2 OPTIONAL</text>
+
+        <g>
+          <rect class="node node-v2" x="500" y="40" width="280" height="80" />
+          <text class="label" x="640" y="68" text-anchor="middle">MCP Client</text>
+          <text class="label-sm" x="640" y="86" text-anchor="middle">Claude Desktop · Code · ChatGPT</text>
+          <text class="label-sm" x="640" y="102" text-anchor="middle">built-in STT + UI</text>
+        </g>
+
+        <g>
+          <rect class="node node-v2" x="500" y="180" width="280" height="100" />
+          <text class="label" x="640" y="210" text-anchor="middle">foundry-mcp</text>
+          <text class="label-sm" x="640" y="230" text-anchor="middle">stdio · Streamable HTTP</text>
+          <text class="label-sm" x="640" y="246" text-anchor="middle">cast_spell · weapon_attack · clarify</text>
+          <text class="label-sm" x="640" y="262" text-anchor="middle">resources: actor / scene / combat</text>
+        </g>
+
+        <line class="arrow arrow-v2" x1="640" y1="180" x2="640" y2="120" marker-end="url(#arrowhead)" />
+        <text class="label-sm" x="650" y="155">MCP</text>
+
+        <line class="arrow arrow-v2" x1="500" y1="220" x2="440" y2="220" marker-end="url(#arrowhead)" />
+        <text class="label-sm" x="445" y="214">HTTPS</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ═══ RASTER PIPELINE ═════════════════════════════════════════ -->
+  <section class="show reveal" id="pipeline">
+    <span class="section-tag">⊞ pipeline</span>
+    <h2>Foundry canvas → 4-bit dithered phosphor.</h2>
+    <p>Inspired by the <em>Doom-on-exotic-devices</em> pattern: state runs on capable hardware, gets rasterized + dithered server-side, frames stream to the constrained display via slow channel. Nine deterministic stages, each with a time budget.</p>
+    <div class="pipeline">
+      <div class="pipe-step"><div class="num">01</div><span class="nm">Capture</span><div class="det">PIXI extract</div><div class="det">30–80 ms</div></div>
+      <div class="pipe-step"><div class="num">02</div><span class="nm">Resample</span><div class="det">OffscreenCanvas Lanczos</div><div class="det">5–10 ms</div></div>
+      <div class="pipe-step"><div class="num">03</div><span class="nm">Greyscale</span><div class="det">Y = 0.299R + …</div><div class="det">2–5 ms</div></div>
+      <div class="pipe-step"><div class="num">04</div><span class="nm">Quantize</span><div class="det">FS / Atkinson / Bayer</div><div class="det">5–15 ms</div></div>
+      <div class="pipe-step"><div class="num">05</div><span class="nm">Tile 200×100</span><div class="det">2 × 2 split</div><div class="det">&lt; 1 ms</div></div>
+      <div class="pipe-step"><div class="num">06</div><span class="nm">Delta</span><div class="det">xxHash per tile</div><div class="det">&lt; 1 ms</div></div>
+      <div class="pipe-step"><div class="num">07</div><span class="nm">Encode</span><div class="det">PNG indexed 4-bit + RLE</div><div class="det">5–15 ms</div></div>
+      <div class="pipe-step"><div class="num">08</div><span class="nm">Wire</span><div class="det">WS → BLE 4.2+ DLE</div><div class="det">3–80 ms</div></div>
+      <div class="pipe-step"><div class="num">09</div><span class="nm">Apply</span><div class="det">updateImageRawData</div><div class="det">firmware</div></div>
+    </div>
+    <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--g1);">Library stack benchmarked: <code>image-q</code> + <code>upng-js</code> + <code>xxhash-wasm</code> = <strong>30–50 % compute reduction</strong> vs roll-your-own. Bundle ~ 90 KB gzipped.</p>
+  </section>
+
+  <!-- ═══ FPS LAYERED STRATEGY ════════════════════════════════════ -->
+  <section class="show reveal" id="fps">
+    <span class="section-tag">▰ frame rate</span>
+    <h2>Six layers, 5 to 15 fps.</h2>
+    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. The MVP commits to <strong>5 fps event-based standard</strong>. The 15 fps stretch needs all six layers + Phase 0 favorable signals (partial-update API, BLE 4.2 DLE).</p>
+    <div class="fps-chart" id="fpsChart">
+      <div class="layer-row" data-fps="3" data-target="20">
+        <div class="info">
+          <div class="lbl">L0</div>
+          <div class="desc"><strong>naïve baseline</strong><small>4 tiles full PNG, no delta</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="20"></div></div>
+        <div class="fps-val">~ 1.5 fps</div>
+      </div>
+      <div class="layer-row" data-fps="6" data-target="40">
+        <div class="info">
+          <div class="lbl">L1</div>
+          <div class="desc"><strong>Per-tile delta hash</strong><small>xxHash · push only changed tiles</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="40"></div></div>
+        <div class="fps-val">~ 3–6 fps</div>
+      </div>
+      <div class="layer-row" data-fps="8" data-target="55">
+        <div class="info">
+          <div class="lbl">L3</div>
+          <div class="desc"><strong>Static layer caching</strong><small>walls/floors recomputed only on scene change</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="55"></div></div>
+        <div class="fps-val">~ 5–8 fps</div>
+      </div>
+      <div class="layer-row" data-fps="10" data-target="70">
+        <div class="info">
+          <div class="lbl">L4</div>
+          <div class="desc"><strong>Custom RLE 4-bit</strong><small>uniform regions 1.5–25× compression</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="70"></div></div>
+        <div class="fps-val">~ 5–10 fps</div>
+      </div>
+      <div class="layer-row" data-fps="12" data-target="85">
+        <div class="info">
+          <div class="lbl">L2</div>
+          <div class="desc"><strong>Sub-tile delta 20×20</strong><small>partial updates · token move = 4–9 sub-tiles</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="85"></div></div>
+        <div class="fps-val">~ 8–12 fps</div>
+      </div>
+      <div class="layer-row" data-fps="15" data-target="100">
+        <div class="info">
+          <div class="lbl">L5</div>
+          <div class="desc"><strong>BLE 4.2+ DLE</strong><small>MTU 244 byte · 700–1000 kbps real-world</small></div>
+        </div>
+        <div></div>
+        <div class="bar-track"><div class="bar-fill" data-fill="100"></div></div>
+        <div class="fps-val">15 fps ✓</div>
+      </div>
+      <div class="legend">
+        L6 — adaptive frame rate (idle 0.3 / slow 3–5 / active 8–15 / storm 0.5–2 fps) reduces battery drain ~ 50 % across a session.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ROADMAP ═════════════════════════════════════════════════ -->
+  <section class="show reveal" id="roadmap">
+    <span class="section-tag">⤳ roadmap</span>
+    <h2>Phase 0–13. MVP in 13 weeks.</h2>
+    <div class="timeline">
+      <div class="phase mvp"><div class="head"><span class="ph">P0</span><span class="wks">Week 0</span></div><div class="ttl">Hardware / SDK validation</div><div class="det">R1 events · <code>updateImageRawData</code> format · BLE bandwidth · partial-update API · DLE 4.2+ · GO/NO-GO decision tree (Branch A / B / C)</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P1</span><span class="wks">Week 1–2</span></div><div class="ttl">Foundation</div><div class="det">monorepo skeleton (pnpm + TypeScript) · shared protocol · CI pipeline · ADR-0001 to ADR-0004</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P2</span><span class="wks">Week 2–3</span></div><div class="ttl">Foundry module core</div><div class="det">readers (character / combat / scene / log) · WS server · capability handshake · contract fixtures</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · CORS · /healthz /readyz /metrics · Docker</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P4</span><span class="wks">Week 4–7</span></div><div class="ttl">G2 layered engine + map modes</div><div class="det">layer manager · raster pipeline (Layers 1+3+4+6 base, 2+5 conditional) · glyph fallback · boot splash · render primitives</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P5</span><span class="wks">Week 6–8</span></div><div class="ttl">Panel plugin system</div><div class="det">Sheet 6-tab · Combat · Log · Spellbook · Inventory · auto-discovered panels · snapshot fixtures</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P6</span><span class="wks">Week 7–8</span></div><div class="ttl">R1 + event plumbing</div><div class="det">ring-r1 provider · Quick Action menu · gesture latency telemetry</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P7</span><span class="wks">Week 8–9</span></div><div class="ttl">Foundry write path</div><div class="det">Activity#use wrapper · v13 targeting · AbilityTemplate AoE · socketlib GM forward · MidiQOL workflow</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P8</span><span class="wks">Week 9–10</span></div><div class="ttl">Manual action UX</div><div class="det">tap-to-cast · tap-to-use · target picker · toast banner · action economy widget</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P9</span><span class="wks">Week 10–11</span></div><div class="ttl">Action economy + edge cases</div><div class="det">precondition checks · concentration drop · multi-attack · slot consumption · reaction prompts</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P10</span><span class="wks">Week 11–13</span></div><div class="ttl">Polish + 4 h field test</div><div class="det">offline mode · latency profiling · real D&amp;D session · runbook + video demo</div></div>
+
+      <div class="divider">— end MVP — V2 OPTIONAL below —</div>
+
+      <div class="phase v2"><div class="head"><span class="ph">P11</span><span class="wks">Week 14–15</span><span class="v2tag">V2</span></div><div class="ttl">foundry-mcp server</div><div class="det">MCP TS SDK · tools mirror Tool Registry · resources actor/scene/combat · Claude Desktop integration</div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">system prompt template · IT↔EN spell name lookup · worked examples A/B/C end-to-end</div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P13</span><span class="wks">post-V2</span><span class="v2tag">V2</span></div><div class="ttl">Stretch goals</div><div class="det">reaction bot · biometric narrative cues · multi-player bridge · dnd5e 6.x adapter · PF2e adapter · portrait images · Dice So Nice raster · headless Foundry session</div></div>
+    </div>
+  </section>
+
+  <!-- ═══ VOICE FLOW ═════════════════════════════════════════════ -->
+  <section class="show reveal" id="voice">
+    <span class="section-tag">≣ voice via mcp</span>
+    <h2>"I cast Fireball on the goblins" · ~1.2 s.</h2>
+    <p>V2 only — never required. The MCP server lives outside the core, exposes the same tool registry the MVP already uses for manual actions. Add Claude Desktop or any MCP client; remove it without touching anything else.</p>
+    <div class="voice-flow">
+      <div class="vstep"><div class="num">▸ 01</div><div class="what">Player long-presses R1 and speaks naturally</div><div class="lat">~ 0 ms</div></div>
+      <div class="vstep"><div class="num">▸ 02</div><div class="what">MCP client captures audio + STT</div><div class="lat">~ 250–310 ms · AssemblyAI / built-in</div></div>
+      <div class="vstep"><div class="num">▸ 03</div><div class="what">LLM tool call streamed</div><div class="lat">~ 600 ms · Claude Sonnet 4.6</div></div>
+      <div class="vstep"><div class="num">▸ 04</div><div class="what"><code>cast_spell</code> tool received by foundry-mcp</div><div class="lat">~ 5 ms</div></div>
+      <div class="vstep"><div class="num">▸ 05</div><div class="what">POST <code>/v1/action/use-activity</code> on bridge</div><div class="lat">~ 10 ms</div></div>
+      <div class="vstep"><div class="num">▸ 06</div><div class="what"><code>activity.use()</code> + MidiQOL + AbilityTemplate</div><div class="lat">~ 150 ms · saves rolled, damage applied</div></div>
+      <div class="vstep"><div class="num">▸ 07</div><div class="what">Foundry hooks → bridge WS → G2 toast</div><div class="lat">~ 60 ms · HUD updated</div></div>
+    </div>
+    <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--g1);">The G2 itself never runs an LLM. It receives the result, renders a 3-second toast banner over the map, and the persistent status HUD updates (HP, slots, conditions). The LLM is free to be replaced — every component is a plugin slot.</p>
+  </section>
+
+  <!-- ═══ TECH ════════════════════════════════════════════════════ -->
+  <section class="show reveal" id="tech">
+    <span class="section-tag">⊟ stack</span>
+    <h2>Open-source, mostly TypeScript.</h2>
+    <p>Library choices are research-driven and documented as ADRs. Every external dependency was evaluated against alternatives in <code>§ 11.5.7</code> of the spec.</p>
+    <div class="tech-chips">
+      <span class="chip">TypeScript</span>
+      <span class="chip">pnpm workspaces</span>
+      <span class="chip">Vitest</span>
+      <span class="chip">Biome</span>
+      <span class="chip">Changesets</span>
+      <span class="chip">Node.js 22</span>
+      <span class="chip">Fastify</span>
+      <span class="chip">ws</span>
+      <span class="chip">Redis (opt)</span>
+      <span class="chip">Docker Compose</span>
+      <span class="chip">FoundryVTT v13.347+</span>
+      <span class="chip">dnd5e 5.x</span>
+      <span class="chip">socketlib</span>
+      <span class="chip">MidiQOL</span>
+      <span class="chip">Even Hub SDK</span>
+      <span class="chip">image-q v4</span>
+      <span class="chip">upng-js v2</span>
+      <span class="chip">xxhash-wasm v1</span>
+      <span class="chip">sharp (bridge)</span>
+      <span class="chip">OffscreenCanvas</span>
+      <span class="chip">@modelcontextprotocol/sdk</span>
+      <span class="chip">AssemblyAI</span>
+      <span class="chip">Anthropic Claude</span>
+      <span class="chip">GitHub Actions</span>
+      <span class="chip">pino</span>
+      <span class="chip">Prometheus</span>
+    </div>
+  </section>
+
+  <!-- ═══ FOOTER ═════════════════════════════════════════════════ -->
+  <footer class="show reveal">
+<div class="ascii-foot">
+                        ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+                        ▓                                  ▓
+                        ▓     "EYES ON THE TABLE."         ▓
+                        ▓                                  ▓
+                        ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+</div>
+    <p>EvenFoundryVTT — design specification v0.9.8 (2026-05-10).<br/>
+       Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
+       <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
+       MIT License</p>
+    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">No actual application code yet. Three rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing. Specs ready for Phase 0.</p>
+  </footer>
+
+</div><!-- /bezel -->
+
+<script>
+/* ─── HERO TYPED TAGLINE ─────────────────────────────────────── */
+(() => {
+  const target = document.getElementById('typedHero');
+  const lines = [
+    'D&D 5e on AR glasses, controlled by a smart ring.',
+    'Phosphor-green tactical HUD over your real table.',
+    'FoundryVTT is the source of truth. The DM is still in charge.',
+    'Voice via MCP is optional — never a dependency.'
+  ];
+  let li = 0, ci = 0, deleting = false;
+  const speed = 38, pause = 1700, delspeed = 18;
+  function tick() {
+    const cur = lines[li];
+    if (!deleting) {
+      target.textContent = cur.slice(0, ci + 1);
+      ci++;
+      if (ci === cur.length) { deleting = true; setTimeout(tick, pause); return; }
+      setTimeout(tick, speed);
+    } else {
+      target.textContent = cur.slice(0, ci - 1);
+      ci--;
+      if (ci === 0) { deleting = false; li = (li + 1) % lines.length; }
+      setTimeout(tick, delspeed);
+    }
+  }
+  tick();
+})();
+
+/* ─── REVEAL ON SCROLL ───────────────────────────────────────── */
+(() => {
+  const items = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        // trigger animations contained in revealed section
+        if (e.target.id === 'fps') {
+          e.target.querySelectorAll('.bar-fill').forEach(b => {
+            const w = b.getAttribute('data-fill') || '0';
+            requestAnimationFrame(() => { b.style.width = w + '%'; });
+          });
+        }
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  items.forEach(el => io.observe(el));
+})();
+
+/* ─── HUD SIMULATOR PANELS (mockups taken verbatim from spec) ─ */
+(() => {
+  const screen = document.getElementById('hudScreen');
+  const hint = document.getElementById('hudHint');
+  const mode = document.getElementById('hudMode');
+  const tabs = document.querySelectorAll('.hud-sim .tab');
+
+  const panels = {
+map: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti · raster                ROUND 3 · TURN 2/5                ⌁ R1 92%   ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║                                                                      ║ THORIN  F3/W5    ║
+║   ┌─[ tile 1 · 200×100 ]──────┬─[ tile 2 · 200×100 ]──────┐         ║ ──────────────── ║
+║   │ Foundry canvas — upper L  │ Foundry canvas — upper R  │         ║ HP ████████░░    ║
+║   │ Floyd-Steinberg dither    │ Floyd-Steinberg dither    │         ║    45/68  +10t   ║
+║   │ 4-bit greyscale verde     │ 4-bit greyscale verde     │         ║ AC 18  SPD 30    ║
+║   │ texture, lighting, walls  │ texture, lighting, walls  │         ║                  ║
+║   ├─[ tile 3 · 200×100 ]──────┼─[ tile 4 · 200×100 ]──────┤         ║ Act ░  Bns ░  R░ ║
+║   │ Foundry canvas — lower L  │ Foundry canvas — lower R  │         ║ Move 30/30       ║
+║   │                           │                           │         ║                  ║
+║   │                           │                           │         ║ Slots            ║
+║   │                           │                           │         ║   1° ▓▓░░ 2/4    ║
+║   │                           │                           │         ║   2° ▓░░  1/3    ║
+║   └───────────────────────────┴───────────────────────────┘         ║   3° ░░   0/2    ║
+║                                                                      ║ Conditions       ║
+║   400×200 px · 2×2 tile · FS+RLE+delta · 5 fps std / 15 stretch     ║  ▶ Bless (7r)    ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: scroll=pan  tap=ping  long=quick   mode: ▶RASTER (toggle GLYPH)                       ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+sheet: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti  ▶ SHEET                     ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║ ┌─[▶MAIN ]─[ SKILLS ]─[ INV ]─[ SPELLS ]─[ FEATS ]─[ BIO ]───────┐   ║ THORIN  F3/W5    ║
+║ │ ┌──────────┐  THORIN OAKENSHIELD                                │   ║ ──────────────── ║
+║ │ │ portrait │  Mountain Dwarf · Soldier        XP ▰▰▰▰▰▰▰▱▱▱     │   ║ HP ████████░░    ║
+║ │ │ image    │  Fighter (Champ) 3 / Wizard 5    34000/48000 (8)   │   ║    45/68  +10t   ║
+║ │ │ 100×60   │                                                    │   ║ AC 18  SPD 30    ║
+║ │ └──────────┘                                                    │   ║                  ║
+║ │  ♥ HP    ████████████░░░  45/68    +10 temp                     │   ║ Act ░  Bns ░  R░ ║
+║ │  ⛨ AC 18    ⚡ INIT +2    ⚔ SPD 30 ft    ★ INSP ░    ◈ PROF +3  │   ║ Move 30/30       ║
+║ │                                                                 │   ║                  ║
+║ │  ┌── ABILITIES ──────────┐  ┌── SAVING THROWS ──────┐           │   ║ Slots            ║
+║ │  │ STR  16  +3            │ │ ◉ STR  +5    DEX  +2  │           │   ║   1° ▓▓░░ 2/4    ║
+║ │  │ DEX  14  +2            │ │ ◉ CON  +4    INT  +0  │           │   ║   2° ▓░░  1/3    ║
+║ │  │ CON  15  +2            │ │   WIS  +1    CHA  +1  │           │   ║   3° ░░   0/2    ║
+║ │  │ INT  10  +0            │ └────────────────────────┘           │   ║                  ║
+║ │  │ WIS  12  +1            │  Hit Dice  3/3 d10 + 3/5 d6           │   ║ Conditions       ║
+║ │  │ CHA  13  +1            │                                       │   ║  ▶ Bless (7r)    ║
+║ │  └────────────────────────┘                                       │   ║    Concentr.     ║
+║ │  Senses    Darkvision 60 ft · pPer 14 · pIns 11 · pInv 10        │   ║                  ║
+║ └─────────────────────────────────────────────────────────────────┘   ║                  ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: tap=next tab  scroll=content  tap×2=close  long=quick                                 ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+combat: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti  ▶ COMBAT                    ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║ ┌─── COMBAT TRACKER ─────────────────────────────────────────────┐   ║ THORIN  F3/W5    ║
+║ │  18  ▶ GOBLIN ARCHER     HP ████░░░░  5/15  AC 13   30ft NE  ✕ │   ║ ──────────────── ║
+║ │  15  ▶ THORIN  ◀ YOU     HP ████████ 45/68  AC 18    --      ★ │   ║ HP ████████░░    ║
+║ │  13    GOBLIN BRUTE      HP ████████ 11/15  AC 14   40ft E   ✕ │   ║    45/68  +10t   ║
+║ │  11    LYRA   (party)    HP █████████ 32/32 AC 14   10ft W   ★ │   ║ AC 18  SPD 30    ║
+║ │   8    SHADOW HOUND      HP ███████░ 18/22  AC 12   55ft N   ✕ │   ║                  ║
+║ │                                                                │   ║ Act ░  Bns ░  R░ ║
+║ │  Active effects:                                               │   ║ Move 30/30       ║
+║ │   · Bless    on Thorin, Lyra      (7 rounds left · conc Lyra)  │   ║                  ║
+║ │   · Hunter's Mark  on Goblin Archer (Lyra)                     │   ║ Slots            ║
+║ │                                                                │   ║   1° ▓▓░░ 2/4    ║
+║ │  Quick:  [ A ]ttack    [ S ]pell    [ I ]tem    [ M ]ove        │   ║   2° ▓░░  1/3    ║
+║ └────────────────────────────────────────────────────────────────┘   ║   3° ░░   0/2    ║
+║                                                                      ║ Conditions       ║
+║                                                                      ║  ▶ Bless (7r)    ║
+║                                                                      ║    Concentr.     ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: scroll=initiative  tap=quick  long=quick                                              ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+log: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti  ▶ LOG                       ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║ ┌─── EVENT LOG ──── [ALL] Rolls Damage Status Chat ──────────────┐   ║ THORIN  F3/W5    ║
+║ │  T+00:01  THORIN     ⚔ Longsword  vs Goblin Archer             │   ║ ──────────────── ║
+║ │             → 23 vs AC 13   HIT     12 slashing                │   ║ HP ████████░░    ║
+║ │  T+00:00  THORIN     ✦ Second Wind (bonus)        +9 HP        │   ║    45/68  +10t   ║
+║ │  T-00:12  GOB ARCHER ⚔ Shortbow   vs Thorin                    │   ║ AC 18  SPD 30    ║
+║ │             → 14 vs AC 18   MISS                               │   ║                  ║
+║ │  T-00:30  LYRA       ✧ Bless [slot 1] on Thorin, Lyra          │   ║ Act ░  Bns ░  R░ ║
+║ │             CONCENTRATING                                      │   ║ Move 30/30       ║
+║ │  T-00:45  ── ROUND 3 begins ──                                 │   ║                  ║
+║ │  T-01:10  THORIN     Athletics vs DC 14    → 17  PASS          │   ║ Slots            ║
+║ │  T-01:45  GOB BRUTE  ⚔ Scimitar  vs Lyra                       │   ║   1° ▓▓░░ 2/4    ║
+║ │             → 19 vs AC 14   HIT      8 slashing                │   ║   2° ▓░░  1/3    ║
+║ │  T-02:20  PERCEPTION passive 14 — footprint spotted            │   ║   3° ░░   0/2    ║
+║ │  ▼ scroll for older                                            │   ║                  ║
+║ └────────────────────────────────────────────────────────────────┘   ║ Conditions       ║
+║                                                                      ║  ▶ Bless (7r)    ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: scroll=history  tap=detail  long=quick                                                ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+spell: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti  ▶ SPELLBOOK                 ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║ ┌─── SPELLBOOK · prepared 5/5 ───────────────────────────────────┐   ║ THORIN  F3/W5    ║
+║ │  CANTRIPS                                                      │   ║ ──────────────── ║
+║ │   ◉ Fire Bolt        action  120 ft   1d10 fire                │   ║ HP ████████░░    ║
+║ │   ◉ Mage Hand        action  30 ft    util                     │   ║    45/68  +10t   ║
+║ │                                                                │   ║ AC 18  SPD 30    ║
+║ │  L1   slots ▓▓░░  2/4                                          │   ║                  ║
+║ │   ◉ Shield           reaction  self   +5 AC vs hit             │   ║ Act ░  Bns ░  R░ ║
+║ │   ◉ Magic Missile    action    120 ft 3×1d4+1 force            │   ║ Move 30/30       ║
+║ │                                                                │   ║                  ║
+║ │  L2   slots ▓░░   1/3                                          │   ║ Slots            ║
+║ │   ◉ Misty Step       bonus     30 ft  teleport                 │   ║   1° ▓▓░░ 2/4    ║
+║ │                                                                │   ║   2° ▓░░  1/3    ║
+║ │  L3   slots ░░    0/2   ← available                            │   ║   3° ░░   0/2    ║
+║ │   ▶ Fireball         action  150 ft   8d6 fire  20-ft sphere   │   ║                  ║
+║ │     Counterspell     reaction  60 ft  block spell ≤ 3rd        │   ║ Conditions       ║
+║ │                                                                │   ║  ▶ Bless (7r)    ║
+║ │  long-press = cast highlighted                                 │   ║    Concentr.     ║
+║ └────────────────────────────────────────────────────────────────┘   ║                  ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: scroll=spell  tap=detail  long=cast                                                   ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+inv: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti  ▶ INVENTORY                 ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
+╠══════════════════════════════════════════════════════════════════════╦══════════════════╣
+║ ┌─── INVENTORY · 47/120 lb ──────────────────────────────────────┐   ║ THORIN  F3/W5    ║
+║ │  EQUIPPED                                                      │   ║ ──────────────── ║
+║ │   ⚔ Longsword          1d8 slashing  versatile (1d10)          │   ║ HP ████████░░    ║
+║ │   ⚔ Handaxe            1d6 slashing  thrown 20/60              │   ║    45/68  +10t   ║
+║ │   ⛨ Chain Mail         AC 16  disadv stealth                   │   ║ AC 18  SPD 30    ║
+║ │   ⛨ Shield             +2 AC                                   │   ║                  ║
+║ │                                                                │   ║ Act ░  Bns ░  R░ ║
+║ │  CONSUMABLES                                                   │   ║ Move 30/30       ║
+║ │   ▶ Potion of Healing  ×3    2d4+2 HP        1 action          │   ║                  ║
+║ │     Potion of Climbing ×1    +20 climb spd   1 action          │   ║ Slots            ║
+║ │     Holy Water         ×2    2d6 radiant     1 action          │   ║   1° ▓▓░░ 2/4    ║
+║ │                                                                │   ║   2° ▓░░  1/3    ║
+║ │  CARRIED                                                       │   ║   3° ░░   0/2    ║
+║ │     Rope (50 ft)   Torch ×4   Bedroll   Rations ×7   45 gp     │   ║                  ║
+║ │  ▼ scroll for more                                             │   ║ Conditions       ║
+║ └────────────────────────────────────────────────────────────────┘   ║  ▶ Bless (7r)    ║
+║                                                                      ║    Concentr.     ║
+╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
+║ R1: scroll=item  tap=detail  long=use/equip                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
+
+quick: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                           ║
+║                              ◈  QUICK ACTION                                              ║
+║                                                                                           ║
+║                       ▶ [ S ]  Sheet                                                      ║
+║                         [ C ]  Combat tracker                                             ║
+║                         [ L ]  Event log                                                  ║
+║                         [ B ]  Spellbook                                                  ║
+║                         [ I ]  Inventory                                                  ║
+║                         [ A ]  Attack (current target)                                    ║
+║                         [ M ]  Map controls                                               ║
+║                         [ X ]  Cancel                                                     ║
+║                                                                                           ║
+║                              R1 scroll=select  tap=open  long=cancel                      ║
+║                                                                                           ║
+║                              modal full-screen — status HUD hidden                         ║
+║                                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝`
+  };
+
+  const hints = {
+    map:    'R1: scroll = pan · tap = ping cell · long-press = quick action',
+    sheet:  'R1: tap = next tab · scroll = content · tap×2 = close · long-press = quick',
+    combat: 'R1: scroll = initiative · tap = quick action [A][S][I][M] · long-press = quick',
+    log:    'R1: scroll = history · tap = detail · long-press = quick',
+    spell:  'R1: scroll = spell · tap = detail · long-press = CAST highlighted',
+    inv:    'R1: scroll = item · tap = detail · long-press = USE / EQUIP',
+    quick:  'R1: scroll = select · tap = open panel · long-press = cancel'
+  };
+
+  function setPanel(name) {
+    screen.textContent = panels[name];
+    hint.textContent = hints[name];
+    mode.style.opacity = (name === 'map' || name === 'quick') ? '1' : '0.5';
+    tabs.forEach(t => {
+      const active = t.dataset.panel === name;
+      t.classList.toggle('active', active);
+      t.textContent = active ? '▶ ' + t.textContent.replace(/^▶\s*/, '') : t.textContent.replace(/^▶\s*/, '');
+    });
+  }
+
+  tabs.forEach(t => t.addEventListener('click', () => setPanel(t.dataset.panel)));
+  setPanel('map');
+})();
+
+/* ─── SUBTLE SCREEN GLITCH ON HUD-SIM EVERY ~7s ──────────────── */
+(() => {
+  const screen = document.getElementById('hudScreen');
+  if (!screen) return;
+  setInterval(() => {
+    if (document.hidden) return;
+    screen.style.transition = 'filter .12s';
+    screen.style.filter = 'brightness(1.4) hue-rotate(8deg)';
+    setTimeout(() => { screen.style.filter = 'none'; }, 90);
+  }, 7000);
+})();
+</script>
+</body>
+</html>
