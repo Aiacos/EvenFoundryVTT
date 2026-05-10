@@ -83,6 +83,8 @@ async function main(): Promise<void> {
 
   const hub = await loadHub();
   if (!hub.available) {
+    // Zod 4 z.record(z.enum, schema) requires ALL enum keys present — populate empty stubs for skip.
+    const emptyGesture = { mean_ms: 0, sd_ms: 0, p95_ms: 0, n: 0 };
     const skipped = R1TimingResult.parse({
       schema_version: 1,
       test_id: "10-0-1-r1-timing",
@@ -91,7 +93,14 @@ async function main(): Promise<void> {
       rationale: hub.reason,
       sessions: 1,
       samples_per_gesture: 1,
-      gestures: {},
+      gestures: {
+        tap: emptyGesture,
+        "double-tap": emptyGesture,
+        "scroll-up": emptyGesture,
+        "scroll-down": emptyGesture,
+        "long-press-1s": emptyGesture,
+        "long-press-2s": emptyGesture,
+      },
       bimodality: {
         tap_vs_double_tap_dip: 0,
         tap_vs_double_tap_p_value: 1,

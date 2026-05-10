@@ -6,3 +6,6 @@ dist/
 .env.*.local
 *.secret.json
 *.local.json
+# Runtime evidence written when scripts run from inside tests/phase-0 (cwd-relative path).
+# Real evidence is committed under repo-root docs/perf/phase-0/ when scripts run from repo root.
+docs/
