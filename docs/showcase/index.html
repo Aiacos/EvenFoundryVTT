@@ -426,11 +426,13 @@ footer.show a { color: var(--g2); border: none; }
   <div class="logo">EVENFOUNDRYVTT<span class="blink">_</span></div>
   <ul>
     <li><a href="#pillars">Pillars</a></li>
+    <li><a href="#invariants">Invariants</a></li>
     <li><a href="#hardware">Hardware</a></li>
     <li><a href="#hud">HUD</a></li>
     <li><a href="#arch">Architecture</a></li>
     <li><a href="#pipeline">Pipeline</a></li>
     <li><a href="#fps">FPS</a></li>
+    <li><a href="#i18n">i18n</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#voice">Voice V2</a></li>
     <li><a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">GitHub</a></li>
@@ -457,7 +459,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="stat"><span class="num">5–15</span><span class="lab">fps target</span></div>
       <div class="stat"><span class="num">13</span><span class="lab">weeks MVP</span></div>
       <div class="stat"><span class="num">3500+</span><span class="lab">lines spec</span></div>
-      <div class="stat"><span class="num">v0.9.8</span><span class="lab">cross-checked ×3</span></div>
+      <div class="stat"><span class="num">v0.9.10</span><span class="lab">4 invariants · ×4 cross-check</span></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="../../Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
@@ -491,6 +493,35 @@ footer.show a { color: var(--g2); border: none; }
         <div class="icon">≣</div>
         <h3>Voice via MCP (V2)</h3>
         <p>Optional <code>foundry-mcp</code> server exposes Foundry tools as Model Context Protocol. Drive from Claude Desktop or any MCP client. Plug-out, no cascade.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ INVARIANTS ═══════════════════════════════════════════════ -->
+  <section class="show reveal" id="invariants">
+    <span class="section-tag">▰ project invariants</span>
+    <h2>Four rules. Non-negotiable.</h2>
+    <p>Every PR, every audit, every release must satisfy them. They're constraints, not guidelines &mdash; ratified in <a href="../../Specs.md" style="color:var(--g3)">§0.1 of the spec</a> as the contract between today's design and tomorrow's implementation.</p>
+    <div class="pillars">
+      <div class="pillar">
+        <div class="icon">⌬</div>
+        <h3>INV-1 · Layout integrity</h3>
+        <p>Formatting and layout are <strong>dynamic and always perfect</strong>. Frame corners, dividers and columns align to the character in every state &mdash; HP <code>7</code> / <code>70</code> / <code>700</code>, names from 4ch to 16ch, Italian to English &mdash; <strong>never misaligned for any reason</strong>. Snapshot tests + <code>Box</code>/<code>TextRun</code> render contract.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⌥</div>
+        <h3>INV-2 · Online cross-validation</h3>
+        <p>Every technical claim cites a canonical upstream source &mdash; Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing. Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed and logged. Three rounds completed; the fourth is the next pre-implementation audit.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">▤</div>
+        <h3>INV-3 · Documentation coherence</h3>
+        <p>Spec / README / showcase are <strong>always coherent</strong> and updated <strong>in the same commit</strong> for any cross-cutting change &mdash; version, fps target, phase count, hardware spec, locale set. No half-updated states. Cross-reference integrity is a hard gate.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">≣</div>
+        <h3>INV-4 · Code quality</h3>
+        <p>Code is <strong>clean, optimized, documented</strong> &mdash; and <strong>zero dead or unreachable code</strong> tolerated. Biome + TS strict + Vitest coverage gate enforce in CI. <code>// TODO</code> without an issue/ADR link fails the build. JSDoc/TSDoc on every public API. Hot-path benchmarks gate regressions.</p>
       </div>
     </div>
   </section>
@@ -556,8 +587,12 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
           <tr><th>Networking</th><td>fetch / XHR / WebSocket · whitelisted origins</td></tr>
           <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
+          <tr><th>Microphone</th><td>4-mic directional array · PCM 16 kHz s16le mono via <code>bridge.audioControl()</code></td></tr>
+          <tr><th>Audio out</th><td>❌ no speaker · feedback is visual only</td></tr>
+          <tr><th>Camera</th><td>❌ none (intentional)</td></tr>
+          <tr><th>Plugin runs on</th><td>paired phone WebView (not on G2 firmware)</td></tr>
         </table>
-        <div class="verified">✓ verified · hub.evenrealities.com/docs/guides/display</div>
+        <div class="verified">✓ verified · hub.evenrealities.com/docs/guides/{display, device-apis, getting-started/overview}</div>
       </div>
 
       <!-- R1 -->
@@ -799,6 +834,47 @@ footer.show a { color: var(--g2); border: none; }
     </div>
   </section>
 
+  <!-- ═══ I18N ════════════════════════════════════════════════════ -->
+  <section class="show reveal" id="i18n">
+    <span class="section-tag">🌐 multilingua</span>
+    <h2>Locale follows Foundry. Override on the glasses.</h2>
+    <p>Internationalization is wired in from the MVP &mdash; the locale auto-detects from <code>game.i18n.lang</code> in Foundry and broadcasts at handshake; the player can override it directly from the glasses without touching the world setting. Catalogs live in Foundry (dnd5e + module languages), the G2 carries no strings of its own. See <a href="../../Specs.md" style="color:var(--g3)">§7.16 of the spec</a>.</p>
+    <div class="hud-sim" style="max-width:780px;margin-top:2rem;">
+<pre style="font-family:var(--mono);color:var(--g3);font-size:0.78rem;line-height:1.25;text-shadow:0 0 6px var(--g2);margin:0;white-space:pre;">
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                              ◈  LANGUAGE                                      ║
+║                                                                               ║
+║                       ▶ [ • ]  Auto (Foundry: it)                             ║
+║                         [ ◦ ]  English        (en)                            ║
+║                         [ ◦ ]  Italiano       (it)                            ║
+║                         [ ◦ ]  Deutsch        (de)                            ║
+║                         [ ◦ ]  Español        (es)                            ║
+║                         [ ◦ ]  Français       (fr)                            ║
+║                         [ X ]  Cancel                                         ║
+║                                                                               ║
+║                       R1 scroll=select  tap=apply  long=cancel                ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+</pre>
+    </div>
+    <div class="pillars" style="margin-top:2rem;">
+      <div class="pillar">
+        <div class="icon">▶</div>
+        <h3>Source of truth: Foundry</h3>
+        <p>Locale is read from <code>game.i18n.lang</code> at handshake. Catalogs come from dnd5e (en/de/es/fr/it/ja/ko/pl/pt-BR/ru/zh-CN) and the <code>evenfoundryvtt</code> module. The G2 ships no strings.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⌬</div>
+        <h3>Override on glasses</h3>
+        <p>Long-press R1 → Quick Action → <code>[N] Language</code>. Selection is <strong>device-local</strong>: it never modifies the world setting. Auto mode follows the GM live; explicit override sticks per-device.</p>
+      </div>
+      <div class="pillar">
+        <div class="icon">▤</div>
+        <h3>Width-budget by key</h3>
+        <p>Every i18n key carries a <code>_max</code> width. The build verifies all locales fit, otherwise falls back to English. Layout integrity (INV-1) holds even when Italian strings run 30% longer than English.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ ROADMAP ═════════════════════════════════════════════════ -->
   <section class="show reveal" id="roadmap">
     <span class="section-tag">⤳ roadmap</span>
@@ -829,6 +905,23 @@ footer.show a { color: var(--g2); border: none; }
     <span class="section-tag">≣ voice via mcp</span>
     <h2>"I cast Fireball on the goblins" · ~1.2 s.</h2>
     <p>V2 only — never required. The MCP server lives outside the core, exposes the same tool registry the MVP already uses for manual actions. Add Claude Desktop or any MCP client; remove it without touching anything else.</p>
+    <div class="pillars" style="margin-bottom:2rem;">
+      <div class="pillar">
+        <div class="icon">⌬</div>
+        <h3>Mic capture: hardware-feasible ✓</h3>
+        <p>Verified upstream (<code>hub.evenrealities.com/docs/guides/device-apis</code>): G2 4-mic array streams <strong>PCM 16 kHz s16le mono</strong> to plugins via <code>bridge.audioControl(true)</code>. No extra hardware. <a href="../../Specs.md" style="color:var(--g3)">§3.5</a></p>
+      </div>
+      <div class="pillar">
+        <div class="icon">⊟</div>
+        <h3>AI on-glasses: NOT possible</h3>
+        <p>EvenAI ("Hey Even") is proprietary, cloud-backed, and exposes <strong>no API</strong> to dev apps — not us, not anyone. The voice/transcript event types simply aren't in the SDK taxonomy. Our MCP-via-external-client is therefore a platform constraint, not a design choice. <a href="../../Specs.md" style="color:var(--g3)">§3.6</a></p>
+      </div>
+      <div class="pillar">
+        <div class="icon">▤</div>
+        <h3>No speaker → visual feedback only</h3>
+        <p>The G2 has no speaker, bone-conduction or audio output (verbatim Even docs: <em>"no audio output, no arbitrary pixel drawing, no camera"</em>). Every result lands as a toast banner (<a href="../../Specs.md" style="color:var(--g3)">§7.15.2</a>) or status HUD update — never a beep, never a TTS line.</p>
+      </div>
+    </div>
     <div class="voice-flow">
       <div class="vstep"><div class="num">▸ 01</div><div class="what">Player long-presses R1 and speaks naturally</div><div class="lat">~ 0 ms</div></div>
       <div class="vstep"><div class="num">▸ 02</div><div class="what">MCP client captures audio + STT</div><div class="lat">~ 250–310 ms · AssemblyAI / built-in</div></div>
@@ -885,11 +978,11 @@ footer.show a { color: var(--g2); border: none; }
                         ▓                                  ▓
                         ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 </div>
-    <p>EvenFoundryVTT — design specification v0.9.8 (2026-05-10).<br/>
+    <p>EvenFoundryVTT — design specification v0.9.10 (2026-05-10).<br/>
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">No actual application code yet. Three rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing. Specs ready for Phase 0.</p>
+    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">No actual application code yet. Four rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing. Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Specs ready for Phase 0.</p>
   </footer>
 
 </div><!-- /bezel -->

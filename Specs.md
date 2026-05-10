@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.8)
+# EvenFoundryVTT — Project Specification (v0.9.10)
 
 ## 0. Executive Summary
 
@@ -17,6 +17,97 @@ tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 **Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 e il bridge non integrano AI direttamente — restano deterministici.
 
 **Stato**: design only. Nessuna riga di codice scritta. Hardware target già verificato (G2 + R1 sono prodotti commerciali Even Realities, vedi §3 e §13).
+
+---
+
+## 0.1 Project Invariants (NON-NEGOTIABLE)
+
+Quattro invarianti governano l'intero progetto. Ogni decisione di design, ogni PR, ogni audit deve poterli verificare. Sono **vincoli vincolanti**, non linee guida.
+
+### INV-1 · Layout Integrity — formattazione e layout sempre dinamici, sempre perfetti
+
+Il layout HUD su G2 (4-bit greyscale 576×288 ≈ 96×24 char @ 6×12 mono, vedi §7.3) **non può mai essere disallineato per nessun motivo**, in nessuno stato, con nessun contenuto.
+
+- **Dinamico**: il layout si adatta a contenuto variabile (HP `7` vs `70` vs `700`, nomi PG da 4 a 16 caratteri, slot count 0-9, condizioni 0-N, durate concentrazione, lingue lunghe come "Concentrazione" vs "Concentration") **mantenendo le stesse coordinate di riferimento** dei frame ASCII e delle colonne.
+- **Sempre perfetto**: corner glyphs (`┌ ┐ └ ┘ ╔ ╗ ╚ ╝`), verticali (`│ ║`), divisori (`├ ┤ ╠ ╣ ─ ═`) **devono allinearsi a colonna esatta** in ogni stato — boot, MAIN_MAP, ogni overlay, ogni tab dello Sheet, modal, toast, loading, error, edge case `⚠ SYNC LOST`. Zero off-by-one tollerati.
+- **Mai disallineato**: la spec, i mockup, i test snapshot e il rendering runtime devono coincidere al carattere. Le regole concrete sono in §7.1a "Layout Integrity Invariants".
+
+**Verifica**: §7.14.4 checklist 11-15 (snapshot a contenuto estremo) + Phase 4 layer-engine test suite.
+
+### INV-2 · Online Cross-Validation — tutto verificato contro upstream
+
+Ogni claim tecnico (API surface, hardware spec, library version, pricing, protocol shape, gesture mapping, formato dati) deve essere **citabile da una sorgente upstream canonica** e **re-verificato periodicamente** contro la documentazione online corrente.
+
+- **Sorgenti canoniche** (non aggregator/blog/AI summary):
+  - Even Realities — `hub.evenrealities.com/docs/*` + `evenrealities.com/smart-ring` + `support.evenrealities.com/specs`
+  - FoundryVTT — `foundryvtt.com/api/*` + `github.com/foundryvtt/dnd5e` (system.json + module/*)
+  - dnd5e wiki — `github.com/foundryvtt/dnd5e/wiki`
+  - MCP — `modelcontextprotocol.io/specification/*`
+  - socketlib — `github.com/farling42/foundryvtt-socketlib`
+  - MidiQOL — `gitlab.com/tposney/midi-qol`
+  - Vendor pricing — solo dalla pagina ufficiale del vendor (Deepgram, AssemblyAI, ecc.), mai da fonti terze
+  - Library stack — npm registry + GitHub repo ufficiale
+- **Cadenza minima di re-verify**: pre-Phase 0 GO/NO-GO, pre-major-bump (v0.X → v0.X+1), pre-implementation-kickoff. WebFetch in parallelo (≥4 agenti, fan-out su domini indipendenti) è il pattern standard (vedi changelog v0.9.6/v0.9.7/v0.9.8).
+- **Drift policy**: ogni drift trovato → classificato CRITICAL / IMPORTANT / NICE-TO-HAVE → fixato in PR dedicato → annotato nel changelog con la riga `Re-verified ✓` o `Drift: ...` **in modo esplicito**, mai implicito.
+- **Hedge esplicito**: quando upstream e fonti terze divergono (es. Deepgram pricing v0.9.7), la spec deve dire **quale fonte ha autorità** e **quale è l'approccio runtime** (es. "leggere live da pricing API anziché hard-code").
+
+**Verifica**: §3 + §4 + §13 References. Ogni claim qui ha un URL upstream o è marcato `(target Phase 0 validation)`.
+
+### INV-3 · Documentation Coherence — sempre aggiornata e coerente
+
+La documentazione (`Specs.md` + `README.md` + `docs/showcase/index.html` + futuri ADR) deve essere **sempre coerente con sé stessa** e **sempre aggiornata** rispetto allo stato corrente del progetto. Non esiste uno stato "documentazione stale" tollerato.
+
+- **Single Source of Truth**: `Specs.md` è canonica. README e showcase sono **proiezioni derivate** che devono restare allineate (numero di versione, claim hardware, fps target, tab count Sheet, pipeline stage count, phase count, cross-check round count, ecc.).
+- **Atomicità per-cambio**: ogni modifica che tocca un claim trasversale (versione, fps, phase numerotomi, tab count, library version) **deve aggiornare tutte le proiezioni nello stesso commit**. Non si committano stati intermedi incoerenti.
+- **Cross-reference integrity**: nessun broken cross-ref `§X.Y` tollerato. Phase 1 cleanup (vedi changelog v0.9.1/v0.9.2/v0.9.4) è un pattern: pre-bump audit cerca cross-ref morti e li fixa.
+- **Changelog discipline**: ogni bump di versione documenta cosa è cambiato e PERCHÉ. Le rationale sono load-bearing per il futuro auditor.
+- **Stale guard**: prima di un audit major, scan delle parole sentinel (es. "TBD", "v12", "Approach C hybrid", numeri vecchi di phase) — se compaiono fuori dal changelog, sono drift.
+- **Coherence vs progress**: in conflitto, vince la coerenza. Meglio una versione bumpata pulita che un mix half-updated.
+
+**Verifica**: pre-bump checklist (manuale, fino a quando non scriviamo una CI rule):
+1. README badge versione = `Specs.md` versione = showcase versione
+2. README hardware bullets = §3 hardware spec
+3. README phase table = §10 phase list (count + weeks)
+4. Showcase stats = §3 + §10 + changelog count rounds
+5. Cross-ref scan: `grep -nE '§[0-9]+\.[0-9]+' Specs.md` → ogni reference esiste
+
+### INV-4 · Code Quality — pulito, ottimizzato, documentato, zero codice morto
+
+Il codice (quando inizierà ad esistere, post-Phase 0) deve essere **sempre pulito, ottimizzato e documentato**. **Nessun codice morto, nessun codice irraggiungibile**, nessun TODO non tracciato, nessuna funzione orfana.
+
+- **Cleanliness**:
+  - Naming intenzionale (no `data`, `tmp`, `helper2`, `doStuff`); ogni nome esprime intento.
+  - Funzioni piccole, single-purpose; complessità ciclomatica ≤ 10 (lint rule).
+  - Niente magic number — costanti named in `shared-render/constants.ts` o in scope locale con commento WHY.
+  - Stile uniforme via **Biome** (formatter + linter); CI fail su violazioni.
+  - Niente commented-out code committato. Se serve preservazione storica → git log.
+- **Optimization**:
+  - Hot path identificati (raster pipeline §7.4b.4 stage 1-9, layered render, BLE flush) → benchmark coverage in CI (regression gate).
+  - Object/buffer pooling dove rilevante (tile buffers, byte arrays per BLE chunk) — vedi §11.5.7.1 fps gain quantification.
+  - Niente premature optimization in cold path; **deciderlo via profiler**, non via gut feel.
+  - Worker boundaries esplicite (raster pipeline gira in `OffscreenCanvas` worker, mai sul main thread G2).
+- **Documentation in-code**:
+  - Public API: **JSDoc/TSDoc** completo (params, return, throws, since-version, cross-ref a §spec).
+  - Private complexity: comment WHY (non WHAT — il nome dice WHAT). Esempi: invarianti algoritmiche, vincoli hardware (es. "BLE chunk ≤ 244 byte payload, vedi §3.3"), workaround firmware.
+  - Module-level header: scopo, dipendenze, cross-ref §spec.
+  - **No documentation rot tolerated** — INV-3 si applica ai commenti: se il codice cambia, i commenti che lo descrivono cambiano nello stesso commit.
+- **Dead/unreachable code — ZERO**:
+  - **Lint enforced** (Biome `noUnusedVariables`, `noUnusedImports`, `noUselessFragments`, TypeScript `noUnusedLocals`/`noUnusedParameters` — CI fail, non warn).
+  - **Coverage gate**: Phase 4+ richiede branch coverage ≥ 80% per i moduli core (renderer, layer engine, BLE chunker). Branch non coperti → o test, o cancellazione.
+  - Feature flag dimenticati (es. `if (false)`, `if (DEBUG_OLD_PIPELINE)`) → CI grep blocker prima del bump.
+  - `// TODO` senza tracker (issue/ADR link) → CI fail. Pattern obbligatorio: `// TODO(#issue-N): <reason>` o `// TODO(ADR-NNNN): <reason>`.
+  - Funzioni esportate senza usage interno né external API doc → unused-export lint.
+  - Backwards-compat shims: scadenza esplicita (es. `// DEPRECATED removed-in v0.10`) — il codice è cancellato a quella versione, non lasciato indefinitamente.
+- **Refactor discipline** (post-MVP cycle):
+  - Ogni cycle (=phase) include 5% budget refactor. La regola "boy scout": chi tocca un modulo lo lascia più pulito di come l'ha trovato.
+  - Refactor atomici (no mix con feature). Un commit = un'intenzione.
+
+**Verifica**:
+- CI: Biome lint + TypeScript strict + Vitest coverage gate + grep blockers (`TODO\b(?!\()`, `if \(false\)`, `console\.log` non-test).
+- Phase 10 polish gate: dead-code scan finale + bundle-size review (target G2 panel bundle ≤ 200 KB gz).
+- Pre-bump checklist (manual finché CI non lo copre): `pnpm lint && pnpm typecheck && pnpm test --coverage && grep -rE 'TODO\b(?!\()' src/` → tutti zero.
+
+> **Stato attuale (2026-05-10)**: nessuna riga di codice scritta. INV-4 è **ratificato in spec ora**, applicato al primo commit di Phase 1 (monorepo skeleton). Configurazioni concrete (Biome rules, TS config, CI gate definitions) sono in **ADR-0008 Code Quality Configuration** (placeholder, redatto in Phase 1).
 
 ---
 
@@ -173,7 +264,7 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 
 ## 3. Hardware & Platform Constraints (Verified)
 
-### 3.1 Even G2 Display (verificato su `hub.evenrealities.com/docs/guides/display`)
+### 3.1 Even G2 Display (verificato su `hub.evenrealities.com/docs/guides/display` + `/guides/device-apis`)
 
 | Parametro | Valore |
 |---|---|
@@ -186,6 +277,10 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 | List container | **max 20 item × 64 char** ciascuno, no styling per-item, **no in-place updates** |
 | Layout | coordinate assolute pixel da top-left, no CSS/DOM/flex |
 | Storage | nessun localStorage/sessionStorage (sandbox iframe) |
+| **Microphone array** | **4-mic direzionali**, voice pickup ~3 m a 60-70 dB, ~2 m a 45-60 dB. Single audio stream esposto agli app dev come **PCM 16 kHz s16le mono** (§3.5). Codec BLE raw = LC3 (decoded by Hub SDK). Source: `evenrealities.com/smart-glasses` + `hub.evenrealities.com/docs/guides/device-apis` |
+| **Audio output / speaker** | ❌ **NESSUNO**. G2 non ha speaker, bone-conduction o uscita audio. Verbatim hub.evenrealities.com/docs/guides/device-apis: *"no audio output, no arbitrary pixel drawing, no camera"*. Verbatim buyer guide: *"Even G2 also omits cameras and speakers"*. **Implicazione**: tutti i feedback "vocali" del nostro sistema devono essere visivi (toast HUD §7.15.2, status update §7.4) |
+| **Camera** | ❌ assente (intentional privacy/form-factor design Even Realities) |
+| **IMU** | ✅ esposto via `imuControl(isOpen, reportFrq)` con report pacing P100–P1000. Non usato MVP, riserva V2 (head-tracking pings) |
 
 **Implicazioni design** (correzioni rispetto a v0.1):
 
@@ -255,6 +350,116 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 - **Targeting v13**: `Token#setTarget` non accetta più parametro `user` — il bridge deve agire come l'utente del player; **`TokenLayer#setTargets(tokens)`** (singolare `Token`, NON `Tokens`) per multi-target.
 - **Hooks chiave per write path**: `dnd5e.preUseActivity`, `dnd5e.postUseActivity`, `dnd5e.preRollAttackV2` / `dnd5e.rollAttackV2` / `dnd5e.postRollAttackV2`, `dnd5e.preRollDamageV2` / `dnd5e.rollDamageV2`, `dnd5e.preCreateActivityTemplate`. **Nota dnd5e 5.x**: i pre-roll moderni sono i **V2** (V1 deprecati). Future-proof: usare V2 ovunque.
 - **Permission boundaries**: un player può eseguire `activity.use()` solo su actor posseduto. Per azioni GM-side, forward via `socketlib.executeAsGM`.
+- **i18n / Localization** (verificato su `foundryvtt.com/api/classes/foundry.helpers.Localization.html`): `game.i18n` (istanza `Localization`) espone `lang` (current BCP-47 code, es. `"it"`, `"en"`), `defaultLanguage`, `localize(key)`, `format(key, data)`, `has(key)`. Setting core: `core.language`. Modules registrano cataloghi via `manifest.languages: [{lang, name, path}]`. dnd5e ufficialmente fornisce IT + EN + altri. **Strategia evenfoundryvtt**: la lingua iniziale viene **dedotta da `game.i18n.lang`** al boot; runtime override possibile dal G2 senza cambiare il setting Foundry server-side (vedi §7.16).
+
+### 3.5 G2 SDK Audio Surface (verificato su `hub.evenrealities.com/docs/guides/device-apis` + `BxNxM/even-dev` simulator)
+
+Il G2 espone **mic capture** agli app di terze parti. È l'unica capability audio disponibile (no output, no TTS).
+
+**API**:
+
+```js
+// Start capture
+bridge.audioControl(true);
+
+// Stop capture
+bridge.audioControl(false);
+
+// Receive PCM frames
+bridge.onEvenHubEvent((event) => {
+  if (event.audioEvent?.audioPcm) {
+    // event.audioEvent.audioPcm = ArrayBuffer / Uint8Array
+    // Format: PCM 16 kHz, signed 16-bit little-endian, MONO
+  }
+});
+```
+
+**Format esposto agli app**: PCM 16 kHz · s16le · 1 canale (verbatim hub.evenrealities.com/docs/guides/device-apis).
+
+**Pipeline interna** (informativa, non manipolabile dall'app):
+
+```
+G2 4-mic array → BLE (LC3 codec, BT 4.2+) → Even Realities App phone
+                                                    │
+                                                    ├─ Hub SDK decode LC3
+                                                    ▼
+                                          PCM 16 kHz s16le mono
+                                                    │
+                                                    ▼
+                                          event.audioEvent.audioPcm  →  app dev (WebView)
+```
+
+LC3 raw è il codec BLE Audio (verificato su `github.com/even-realities/EvenDemoApp` cmd `0x0E` activate mic + `0xF1` LC3 reception). L'app dev **non vede LC3** — riceve già PCM decompresso.
+
+**Limitazioni documentate**:
+
+- **No audio output**: l'API è unidirezionale (input only). Nessun TTS, nessun beep, nessun feedback acustico.
+- **No transcript on-glasses**: il PCM non è pre-processato da STT firmware; arriva grezzo.
+- **No event type "voice"** in `bridge.onEvenHubEvent` event taxonomy (§3.4 analog: solo `CLICK_EVENT` / `DOUBLE_CLICK_EVENT` / `SCROLL_TOP_EVENT` / `SCROLL_BOTTOM_EVENT` / `FOREGROUND_*` / `ABNORMAL_EXIT_EVENT` — verbatim `hub.evenrealities.com/docs/guides/input-events`).
+- **Chunk size / buffering**: non documentato upstream (Phase 0 §10.0.4 measure).
+- **Concorrenza con EvenAI nativo**: aprire `audioControl(true)` mentre l'utente attiva "Hey Even" → comportamento non documentato (Phase 0 test → §10.0.4 esteso).
+
+**Implicazione architetturale per evenfoundryvtt**:
+
+- **Voice control è hardware-fattibile** sul nostro stack: cattura PCM → STT cloud (§4.5) → tool MCP (§5.7).
+- L'audio capture **non gira sul G2 firmware** ma sul WebView dell'Even Realities App sul telefono (vedi §3.7). Latenza BLE già contabilizzata.
+- Phase 0 §10.0.4 (Test Audio Capture) è **già nel roadmap V2** — nessun cambio.
+
+### 3.6 G2 Native AI Features (NOT integrable as developer)
+
+Il G2 ha **feature AI nativa** controllata da Even Realities. Tutte sono **opaque agli app dev** (no API, no events, no transcript subscription).
+
+| Feature | Cosa fa | Activation | Processing | API per dev? |
+|---|---|---|---|---|
+| **EvenAI** ("Hey Even") | Q&A, weather, currency, multi-turn conversation, 22+ lingue | wake word "Hey Even" o TouchPad | "Even LLM" proprietario, cloud via paired phone (verbatim `evenrealities.com/ai-glasses`: *"connect to your phone's internet connection to access the AI engine"*) | ❌ |
+| **Translate** | Real-time translation, **33-35 lingue** display sui lens | manuale via app | cloud-only (verbatim `evenrealities.com/translation-glasses`: *"translation requires internet access through our app, as it uses the cloud to translate your conversation in real-time"*) | ❌ |
+| **Conversate** | Trascrive conversation → AI summary nell'app | manuale | cloud STT + LLM | ❌ |
+| **Teleprompt** | Ambient script display | manuale | local | ❌ (display feature, non AI) |
+| **QuickNote / dictation** | (G1, non G2 confirmed) | — | — | — |
+
+**Verbatim limitations** (cross-validated):
+
+- `hub.evenrealities.com/docs/guides/input-events`: nessun event type `voice`, `transcript`, `aiResponse` — only touch+lifecycle (vedi §3.5 tassonomia).
+- `hub.evenrealities.com/docs/guides/device-apis`: nessuna API per invocare EvenAI o subscribe transcript.
+- `evenrealities.com/ai-glasses`: ChatGPT è **G1-only** (footnote `*Even G1 only`); G2 usa "Even LLM" proprietario non-API.
+
+**Implicazione architetturale per evenfoundryvtt**:
+
+- **AI on-glasses è IMPOSSIBILE per la nostra app** — non è una scelta di design, è un vincolo di piattaforma.
+- La nostra V2 voice/AI strategy **deve restare external** — è esattamente il pattern §5.7 `foundry-mcp` (LLM gira nel client MCP esterno; il G2 vede solo il risultato come toast/status update). Confermato architettonicamente corretto.
+- **Nessuna dipendenza** da EvenAI nativo: non è dependable surface (proprietary, non-versioned, no SLA dev).
+- **Nessun conflitto UX desiderato**: il nostro `[L]ong-press` apre il nostro Quick Action, non "Hey Even" (l'utente può comunque triggerare EvenAI parallelamente — è una feature OS-level che non blocca i plugin).
+
+### 3.7 Plugin Execution Model (verificato su `hub.evenrealities.com/docs/getting-started/overview`)
+
+Verbatim upstream: *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."*
+
+**Conseguenza architettura evenfoundryvtt**:
+
+```
+┌──────────────────────┐  BLE LC3 audio + display container ops  ┌──────────────────────────────┐
+│  Even G2 (firmware)  │ ◀──────────────────────────────────────▶│  Even Realities App (phone)  │
+│  • Display 576×288   │                                         │  • WebView host                │
+│  • 4-mic array       │                                         │  • Hub SDK (bridge.*)          │
+│  • Touchpads + IMU   │                                         │  • Plugin: evenfoundryvtt G2   │
+│  • EvenOS (closed)   │                                         │     ↓                          │
+└──────────────────────┘                                         │     HTTPS/WSS                  │
+                                                                 │     ↓                          │
+                                                                 └────┬─────────────────────────┘
+                                                                      │
+                                                                      ▼
+                                                                 [ Bridge service §5.2 ]
+                                                                 [ Foundry VTT §3.4 ]
+                                                                 [ MCP client (V2) §5.7 ]
+```
+
+**Punti chiave**:
+
+- L'app evenfoundryvtt G2 **non gira sul G2** — gira nel WebView dell'Even Realities App sul telefono.
+- Il G2 espone display + sensori; il telefono espone compute + network outbound + WebView API.
+- **Network whitelist** (§3.3) è enforced sul WebView del telefono, non sul G2.
+- **Audio mic** arriva al WebView in PCM 16 kHz (decoded by SDK), non come LC3 raw.
+- Nessun "on-glasses LLM" è disponibile, né per noi né per nessun altro plugin dev.
 
 ---
 
@@ -281,6 +486,11 @@ game.modules.get('evenfoundryvtt').api = {
   // Voice/AI helpers
   describeActorCapabilities(actorId): ActorCapabilities  // tools menu for LLM
   describeSceneSnapshot(): SceneSnapshot                  // visible tokens, ranges
+
+  // i18n (vedi §7.16)
+  getLocale(): { foundry: string, override: string | null, effective: string, available: string[] }
+  setLocale(code: string | null): void   // null = clear override, fallback to foundry locale
+  subscribeLocale(cb: (effective: string) => void): UnsubscribeFn
 }
 ```
 
@@ -306,7 +516,7 @@ Auth: bearer token per-player, derivato dal Foundry user. Rate limit: 10 req/s p
 | Page lifecycle | `onPageLoad`, `onPageUnload` |
 | Container CRUD | `createTextContainer`, `createImageContainer`, `createListContainer`, `updateText`, `updateImageRawData`, `updateList` |
 | Event capture | `isEventCapture: 1` su un container, riceve `onTap`, `onScroll`, `onLongPress` |
-| Audio | `startAudioCapture`, `stopAudioCapture` (verificare codec — assumere PCM 16k) |
+| Audio | **`bridge.audioControl(true \| false)`** + `event.audioEvent.audioPcm` → **PCM 16 kHz s16le mono** (verificato §3.5). Mic input only — no audio output (G2 has no speaker, vedi §3.1) |
 | Networking | `fetch`, `WebSocket` (whitelist obbligatoria) |
 
 ### 4.4 Even R1 Ring SDK
@@ -325,6 +535,8 @@ Eventi ring espressi al plugin via Even App:
 ### 4.5 STT (Speech-to-Text) — V2 opzionale
 
 > Non richiesto dal MVP. Solo se si abilita il modulo voice (§5.7).
+>
+> **Hardware feasibility (RESOLVED v0.9.10)**: l'input audio è disponibile **direttamente dal G2** via `bridge.audioControl()` → PCM 16 kHz s16le mono (vedi §3.5). Nessun hardware aggiuntivo richiesto. STT cloud o self-hosted gira nel **bridge service** (§5.2) o nel **client MCP** (§5.7) — il G2 non vede mai un LLM (vincolo §3.6: AI nativa Even è non-API, deve essere external).
 
 **Default cloud**: AssemblyAI Universal-Streaming, P50 ~250–310 ms (median ~307 ms), **$0.0025/min** ($0.15/h — verificato 2026-05 su `assemblyai.com/pricing`).
 **Alternativa cloud**: Deepgram Nova-3, **TTFT <300 ms**. Pricing 2026-05 (verificato direct su `deepgram.com/pricing`):
@@ -679,6 +891,8 @@ Il client adatta in base a quello che il server offre — se `clarify` non è di
 
 **Hot-reload**: cambio setting nel modulo Foundry → push `config.update` event al bridge → bridge re-inietta config nei panel attivi senza disconnettere il G2.
 
+**i18n**: schema `i18n.override` + `i18n.fallback` definiti in §7.16.7. Override è **device-local** (LRU per-device, non world-scope) — non passa tramite il flusso `config.update` Foundry → bridge → panel, ma è gestito direttamente sul G2 via `[N]` Quick Action (vedi §7.16.3).
+
 #### 5.6.6 Telemetry & Observability
 
 Ogni componente emette **structured events** (`pino` JSON):
@@ -962,6 +1176,79 @@ Il G2 rende **verde monocromatico 4-bit**. Trattiamo questa limitazione come fea
 - **Glyph bar** invece di barre grafiche: `███████░░░ 70%`
 - **Cursor `▶`** per indicare focus
 - **Blink `_` underscore** per attesa input
+- **Layout integrity** (vedi INV-1 §0.1 + §7.1a) — formattazione **dinamica e sempre perfetta**, **mai disallineata in nessun caso**: corner glyphs, divisori e colonne si allineano al carattere in ogni stato e con ogni contenuto.
+
+### 7.1a Layout Integrity Invariants (INV-1 concrete rules)
+
+> Implementazione concreta di INV-1 (§0.1). Ogni regola è verificabile via snapshot test (vedi §7.14.4 checklist 11-15) e applicata dal layer engine, **mai a mano nei mockup**.
+
+#### 7.1a.1 Frame integrity (corner & divider alignment)
+
+- **Corner & verticale** (`┌ ┐ └ ┘ ┤ ├ ┬ ┴ ┼ │` + variant doppia `╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬ ║`): la **stessa colonna fisica** dal top al bottom della finestra. Layer engine emette `frame(width, height)` — il chiamante non scrive corner a mano.
+- **Divisori orizzontali** (`─ ═`): **estensione esatta** dalla colonna del primo verticale a quella dell'ultimo. Sempre stessi caratteri di intersezione (`├ ┤ ╠ ╣`) ai bordi.
+- **Mixing single/double**: regole esplicite — bezel page = `╔ ╗ ╚ ╝ ║ ═` (double); panel popup = `┌ ┐ └ ┘ │ ─` (single). Mai mischiare nello stesso frame.
+
+#### 7.1a.2 Variable-content discipline (the "HP=7 vs 700" problem)
+
+Ogni cella di contenuto ha un **width budget al build time**. Il layer engine taglia o pad **deterministicamente**, mai best-effort.
+
+| Tipo di campo | Strategia | Esempio (budget=4) |
+|---|---|---|
+| Numerico | right-align, leading space-pad | `   7` · `  70` · ` 700` · `9999` |
+| Numerico con max noto | progress glyph + valore | `███▓░ 7/10` (budget barra fisso) |
+| Testo identificativo | left-align, truncate suffix `…` | `Thorin Mountainforge` (16) → `Thorin Mounta…` (14) |
+| Testo enumerato (cond/feat) | left-align, truncate prefix se serve coda | `Bless (7r)` |
+| Time/duration | format normalizzato | `7r` · `1m` · `1h` (mai `7 rounds`) |
+
+**Truncation marker**: sempre `…` (U+2026), **mai** `...`. Position: suffix per testi liberi, prefix per liste right-aligned.
+
+#### 7.1a.3 Column alignment (multi-column rows)
+
+- Quando una row contiene N colonne (es. Status HUD: `HP <bar> <num> <delta>`), le **colonne sono fixed-grid** definite a top-of-panel, non a content-driven.
+- Ogni colonna ha: `width`, `align` (`left | right | center`), `pad-char` (default ` `), `overflow` (`truncate | ellipsis | scroll-marquee` — `marquee` solo in V2).
+- **Mai allineamento a tab `\t`** — il G2 mono non garantisce stop tabulati uniformi cross-firmware.
+
+#### 7.1a.4 Tab strip & menu equal-width
+
+- Pattern tab strip: `[ XXX ]` (inactive) ↔ `[▶XXX ]` (active) — **stessa larghezza**, swap leading-space ↔ `▶` (vedi §7.5.1). Tab label trunc a budget fisso (4 char) per garantirlo.
+- Quick Action menu list: ogni voce **stessa larghezza** = larghezza modal − padding. Voci shorter → space-padded a destra.
+
+#### 7.1a.5 Status HUD invariants
+
+Il corner card `~28×21 char` (vedi §7.3) ha **layout fisso indipendente dal contenuto**:
+
+- Header: `<NAME ≤8> <CLASS ≤8>` — entrambi truncate. PG con nome lungo → suffix `…`.
+- Bar lines: glyph bar **larghezza fissa** (8 caratteri di `█▓░`); il valore numerico segue con budget fisso `4/4` o `nn/nn`.
+- Conditions: max 4 visibili; overflow → `+N` (es. `Bless (7r) Conc … +2`).
+- Slot tracker: 3 livelli max visibili; overflow → side panel via Sheet → Spells.
+
+**Garantito**: il corner card occupa **sempre le stesse coordinate** (col 70-95, row 1-21). Mai shrink, mai grow.
+
+#### 7.1a.6 Multi-byte & glyph width safety
+
+- Tutti i glyph in uso (box-drawing, block elements, arrows, dice, status icons) sono **width-1** in monospace G2. Lista canonica: §7.4a.1 Glyph Dictionary + design-token glossary in `shared-render`.
+- **Vietati**: emoji policroma, glyph CJK, zero-width joiner, combining marks. Se serve un'icona non in dictionary → estensione esplicita del dictionary, mai inline ad-hoc.
+- **Numeri**: solo ASCII `0-9`. Niente `①②③` o full-width.
+
+#### 7.1a.7 Render contract (engine vs view)
+
+- Un panel/view **non costruisce stringhe ASCII concatenate**. Costruisce un albero `Box { children: Box[] | TextRun }` tipato; il layer engine fa il layout finale.
+- Stati error/loading/disconnected (`⚠ SYNC LOST`, `⌁ R1 DISC`) usano **gli stessi box** del normale, con content swappato — mai layout alternativi.
+- Snapshot fixture per ogni view (`/test/snapshots/<view>.<state>.txt`) committate nel repo. CI fail se diff non zero (vedi §7.14.4 ck 11-15).
+
+#### 7.1a.8 Edge cases che hanno rotto layout in altri progetti (and we forbid here)
+
+| Trap | Regola |
+|---|---|
+| Numeri che crescono di una cifra mid-session | budget pre-allocato sempre; mai relayout in-place |
+| Nomi PG con accenti / non-ASCII | normalize NFC + width-check; rifiuta nomi che eccedono budget al boot |
+| Conditions list crescente | max-4 + `+N`; mai overflow visivo |
+| Concentration timer countdown | format `<n>r` width-2 padded; mai `1 round left` |
+| Frame mid-update (raster tile delta) | layer engine garantisce frame chrome non shifta durante delta tile (z=0 raster ≠ z=1 chrome) |
+| Tab strip che cresce con un tab nuovo | tab count fisso 6; nuovo tab = ADR + bump spec, mai aggiunta runtime |
+| Localizzazione IT con stringhe più lunghe | catalogo i18n con `max-width` per chiave; fallback EN se IT eccede |
+
+**Verifica**: §7.14.4 ck 11-15 + Phase 4 task `layer-engine layout invariants test suite`.
 
 ### 7.2 Layered Rendering Model
 
@@ -2075,7 +2362,7 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 
 ### 7.10 Voice Overlay (size=`modal`, full-screen) — **V2 OPZIONALE**
 
-> **Non parte del MVP**. La voice UI vive nel client MCP (§5.7), non sul G2. Questo mockup descrive l'aspetto **futuro** quando/se il G2 ospiterà direttamente la cattura audio.
+> **Non parte del MVP**. La voice UI vive nel client MCP (§5.7) — l'LLM non è on-glasses (vincolo §3.6). Tuttavia la **cattura audio sul G2 è hardware-fattibile** (verificato v0.9.10, vedi §3.5): il G2 ha 4-mic e SDK espone `audioControl()` → PCM 16 kHz s16le mono al plugin nel WebView del telefono. Architettura V2: G2 mic → plugin WebView → bridge `/v1/voice` (§4.2) → STT cloud (§4.5) → tool MCP → toast risultato sul G2. **Audio output non disponibile** (G2 no speaker §3.1) → tutto il feedback è visivo (toast HUD §7.15.2, status update §7.4).
 
 Mostrato durante long-press R1. Sostituisce temporaneamente la vista di base (status HUD nascosta — focus totale sull'azione vocale).
 
@@ -2168,7 +2455,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.8                                           ║
+║                              EVENFOUNDRYVTT  v0.9.10                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -2200,6 +2487,7 @@ Apparso su **long-press R1** quando nessun overlay è aperto. Selezione via scro
 ║                         [ I ]  Inventory                                                  ║
 ║                         [ A ]  Attack (current target)                                    ║
 ║                         [ M ]  Map controls                                               ║
+║                         [ N ]  laNguage  (Foundry: it · override: —)                      ║
 ║                         [ X ]  Cancel                                                     ║
 ║                                                                                           ║
 ║                              R1 scroll=select  tap=open  long=cancel                      ║
@@ -2328,6 +2616,11 @@ Dentro Combat overlay, tap cicla l'highlight tra le 4 quick-action:
 | 8 | Quick Action menu cancellabile via long-press senza side effects. | ✓ |
 | 9 | Long-press semantica context-sensitive ben definita per ogni schermata (vedi tabella §7.14.2 colonna "Long-press"). | ✓ |
 | 10 | Cross-overlay navigation (es. da Combat → Spellbook senza passare da MAIN_MAP) supportata via long-press → Quick Action → tap nuova destinazione. | ✓ |
+| 11 | **INV-1 Layout integrity — corner alignment**: snapshot test verifica che `┌ ┐ └ ┘` (e variant doppia) di ogni overlay siano sulla **stessa colonna** dal top al bottom in ogni stato (idle/loading/error/disconnect). Diff atteso = 0. | ✓ |
+| 12 | **INV-1 Layout integrity — variable-content stress**: snapshot test con HP `7` / `70` / `700` / `7000`, nome PG `4ch` / `8ch` / `16ch` / `20ch` (truncate `…`), conditions `0` / `4` / `7` (overflow `+N`) — Status HUD occupa sempre col 70-95 row 1-21. | ✓ |
+| 13 | **INV-1 Layout integrity — tab strip equal-width**: ogni tab dello Sheet (Main/Skills/Inv/Spells/Feats/Bio) ha **stessa larghezza char-count** in entrambi gli stati `[ XXX ]`/`[▶XXX ]`; toggle non shifta gli adiacenti. | ✓ |
+| 14 | **INV-1 Layout integrity — i18n stress**: snapshot test con catalogo IT ed EN per ogni view; stringhe IT più lunghe rispettano `max-width` per chiave; fallback EN se eccede; layout invariato. | ✓ |
+| 15 | **INV-1 Layout integrity — layer-engine contract**: nessun panel costruisce stringhe ASCII concatenate; tutti emettono `Box`/`TextRun` tree (lint check) — la spec §7.1a.7 è verificabile via static analysis. | ✓ |
 
 #### 7.14.5 Edge Cases
 
@@ -2348,7 +2641,12 @@ Dentro Combat overlay, tap cicla l'highlight tra le 4 quick-action:
 - Settings persistenti in `world.settings` Foundry, hot-reload automatico
 - Nessun problema di input testuale su G2 (no tastiera virtuale)
 
-L'unica eccezione user-side sul G2 è il **mode toggle glyph↔raster** via `[M]` Map ctrl submenu (Quick Action) — operazione binaria, gesture-friendly.
+**Eccezioni user-side sul G2** (operazioni runtime gesture-friendly, no input testuale):
+
+1. **Mode toggle glyph↔raster** via `[M]` Map ctrl submenu (Quick Action) — operazione binaria.
+2. **Language override** via `[N]` Language submenu (Quick Action) — selezione da lista chiusa di locale disponibili in Foundry. Vedi §7.16.
+
+Entrambe sono **per-device runtime overrides** (LRU storage, vedi §11.5.5) — non modificano i settings server-side Foundry, isolando il dispositivo G2 dal mondo Foundry condiviso.
 
 ---
 
@@ -2467,6 +2765,125 @@ BLE budget: OK (sotto 25 KB/s real-world)
 **Footer chip-bar**: visualizza il panel attivo (es. `[▶sheet] [combat] [log] [spell] [inv]`) come breadcrumb **read-only** — non è un'area di tap perché solo 1 container ha capture. Per cambiare panel: tap-doppio per uscire → long-press per Quick Action → tap nuovo panel. Cross-overlay rapido: long-press dentro un overlay apre Quick Action senza chiudere prima.
 
 Per il dettaglio per-schermata e la verifica di reachability, vedere **§7.14**.
+
+---
+
+### 7.16 Localization & Internationalization (i18n)
+
+> Predisposizione **multilingua dal MVP**, con sorgente di verità Foundry e override runtime sul G2. Implementa l'eccezione user-side §7.14.6 #2 e l'INV-3 (doc coherence — i cataloghi seguono la stessa disciplina della spec).
+
+#### 7.16.1 Architettura — 3 layer
+
+```
+        ┌────────────────────────────────────────────────────────────┐
+  z=0   │  Foundry locale  (game.i18n.lang, source of truth)         │
+        │  • dnd5e ufficiale: en/de/es/fr/it/ja/ko/pl/pt-BR/ru/zh-CN  │
+        │  • setting Foundry: core.language                          │
+        └──────────────┬─────────────────────────────────────────────┘
+                       │ broadcast at boot + on change
+                       ▼
+        ┌────────────────────────────────────────────────────────────┐
+  z=1   │  Bridge i18n service                                        │
+        │  • catalogs proxied: dnd5e + evenfoundryvtt + plugin panels │
+        │  • normalized BCP-47 codes                                  │
+        └──────────────┬─────────────────────────────────────────────┘
+                       │ WS push: { foundry, available[] }
+                       ▼
+        ┌────────────────────────────────────────────────────────────┐
+  z=2   │  G2 i18n runtime                                           │
+        │  • effective = override ?? foundry  (LRU per-device)        │
+        │  • render via t(key, vars) — no string concat in views      │
+        │  • [N] Language Quick Action → choose override             │
+        └────────────────────────────────────────────────────────────┘
+```
+
+**Single source of truth**: i cataloghi vivono in Foundry (dnd5e + module languages). Il G2 **non porta cataloghi propri** — li riceve dal bridge al boot. Aggiornare un termine = aggiornare il catalogo Foundry, niente sync drift G2-side.
+
+#### 7.16.2 Locale resolution (boot + runtime)
+
+1. **Boot**: bridge legge `game.i18n.lang` dal modulo Foundry → push handshake `{ locale: { foundry: "it", available: ["en","it","de",…] } }` al G2.
+2. **G2 carica override** da LRU storage (chiave `i18n.override`, default `null`).
+3. **Effective locale** = `override ?? foundry`. Tutte le `t(key)` usano questo.
+4. **User toggle**: `[N]` Quick Action → list-modal con `available[]` → tap → setLocale → re-render.
+5. **Foundry GM cambia `core.language`** durante la sessione → push event → se override è `null`, hot-reload UI; se override esiste, mantiene override e mostra hint footer `🌐 it (DM:en)`.
+
+#### 7.16.3 Quick Action — `[N] Language` submenu
+
+```
+╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║                              ◈  LANGUAGE                                                   ║
+║                                                                                           ║
+║                       ▶ [ • ]  Auto (Foundry: it)                                         ║
+║                         [ ◦ ]  English        (en)                                        ║
+║                         [ ◦ ]  Italiano       (it)                                        ║
+║                         [ ◦ ]  Deutsch        (de)                                        ║
+║                         [ ◦ ]  Español        (es)                                        ║
+║                         [ ◦ ]  Français       (fr)                                        ║
+║                         [ X ]  Cancel                                                     ║
+║                                                                                           ║
+║                              R1 scroll=select  tap=apply  long=cancel                     ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+- `[ • ]` indica selezione effettiva (Auto = nessun override, segue Foundry).
+- Lista filtrata da `available[]` — solo locale che il modulo Foundry o dnd5e supportano (no fallback a inglese mascherato).
+- Switch è **hot-reload** — re-render senza riavvio. Layout invariato (vedi INV-1 §0.1 + §7.1a.2: stringhe IT più lunghe rispettano `max-width` per chiave; fallback EN se eccede).
+
+#### 7.16.4 String-table contract (per chi scrive panel)
+
+- Ogni view (`src/panels/*/view.js`) usa `t("ns.key", vars)` — **mai** literal in lingua.
+- Naming chiavi: `<panel>.<element>.<sub>` (es. `combat.tracker.round`, `sheet.tab.spells`).
+- Cataloghi vivono in `lang/<bcp47>.json` del modulo Foundry `evenfoundryvtt` (registrati via `manifest.languages`).
+- Override per dnd5e: termini riusati direttamente da `dnd5e.*` (es. `DND5E.SpellLevel1` → "1° livello" / "1st Level"). No duplicazione.
+- **Width budget per chiave** (vedi §7.1a.2): ogni chiave ha `_max` pair (es. `combat.tracker.round_max: 12`). Build step (Phase 4 task) verifica per ogni locale `string.length ≤ _max`. Fallback EN se viola.
+- **Numeri/date**: format via `Intl.NumberFormat` / `Intl.DateTimeFormat` con `effective` locale, **mai** concat manuale.
+
+#### 7.16.5 Locale set MVP
+
+| Locale | Status MVP | Source |
+|---|---|---|
+| `en` | ✓ canonical (fallback ovunque) | dnd5e built-in + evenfoundryvtt strings |
+| `it` | ✓ MVP target | dnd5e community (verificare upstream) + evenfoundryvtt strings |
+| `de`, `es`, `fr`, `pt-BR` | ⏳ best-effort (Foundry/dnd5e ufficiali) | dnd5e ufficiale, evenfoundryvtt fallback EN |
+| altri (`ja`, `ko`, `zh-CN`, `pl`, `ru`) | ⏳ V2 stretch | dnd5e ufficiale, evenfoundryvtt comunity contribution |
+
+**Verifica upstream** (INV-2): la lista `dnd5e` ufficiale è citata da `github.com/foundryvtt/dnd5e/tree/master/lang` — re-checkare in pre-Phase 0.
+
+#### 7.16.6 Edge cases
+
+| Caso | Comportamento |
+|---|---|
+| Foundry locale = lingua non in `available[]` | bridge fallback EN, log warning, hint footer `⚠ locale unsupported, fallback en` |
+| Override = lingua scomparsa (catalogo rimosso da Foundry) | clear override automatico, fallback a foundry locale + toast notify |
+| Stringa missing in catalogo locale | fallback EN per quella key (no UI broken); telemetry event `i18n.missing` |
+| Stringa eccede `_max` width budget | truncate `…` + telemetry event `i18n.overflow`; layout INV-1 garantito |
+| Switch durante overlay aperto | re-render in-place, mantiene focus; nessuna chiusura panel |
+| RTL languages (Arabic, Hebrew) | NON supportate MVP (G2 firmware monospace LTR-only); marcato V2 stretch + ADR-0007 |
+
+**Verifica**: §7.14.4 ck 14 (i18n stress test).
+
+#### 7.16.7 Settings schema (estensione §5.6.5)
+
+```json
+{
+  "i18n": {
+    "override": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "BCP-47 locale code, null = inherit Foundry game.i18n.lang",
+      "scope": "device-local",
+      "available_source": "bridge.i18n.available"
+    },
+    "fallback": {
+      "type": "string",
+      "default": "en",
+      "description": "Catch-all when key missing in effective locale"
+    }
+  }
+}
+```
+
+Settings i18n sono **device-local** (LRU per-device, non world-scope) — ogni paio di occhiali può avere override diverso pur condividendo lo stesso world Foundry.
 
 ---
 
@@ -3005,9 +3422,13 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 
 ### 11.5.5 Storage backend
 
-- **Decisione MVP**: **In-memory LRU cache** nel bridge (Node.js `Map` con TTL). State per-session dura quanto la sessione del player.
-- **Stretch (Phase 13)**: Redis quando multi-player e/o si vuole persistenza tra restart bridge.
-- **Rationale**: in-memory è zero-config, sufficiente per single-player MVP. Redis è natural upgrade path quando serve scale.
+Tre tier di storage, con ruoli distinti:
+
+- **Bridge-side (Decisione MVP)**: **In-memory LRU cache** nel bridge (Node.js `Map` con TTL). State per-session dura quanto la sessione del player.
+- **Bridge-side (Stretch Phase 13)**: Redis quando multi-player e/o si vuole persistenza tra restart bridge.
+- **G2 device-local (MVP)**: piccolo store key-value sull'Even Hub WebView (`localStorage` o IndexedDB se disponibile) per **runtime override gesture-based** che NON devono toccare i settings world-scope Foundry. Chiavi attualmente: `view.map.mode` (vedi §7.4b), `i18n.override` (vedi §7.16), eventuali UI prefs future. Quota tipica G2 ≤ 5 KB. Wiped on app reinstall, OK per UX runtime overrides ma **mai** dati di gioco autoritativi.
+
+**Rationale**: in-memory bridge è zero-config, sufficiente per single-player MVP. Redis è natural upgrade path quando serve scale. G2 device-local è isolato per design — un dispositivo non condiziona altri device dello stesso world Foundry.
 
 ### 11.5.6 Branch strategy
 
@@ -3217,7 +3638,7 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 16. **Concentration drop**: tradurre "lascia Bless e lancia Hold Person" in due tool call ordinate o un tool call con `concentration_drop: true`? Design del Tool Registry §5.3.
 17. **Italiano vs Inglese STT**: combat e nomi spell sono in inglese standard D&D; speech player è italiano. Verificare LLM mapping "palla di fuoco" → `spell.fireball` robusto. Lookup table fuzzy locale come pre-step.
 18. **Modalità "spectator"** (non player turn): AI ascolta passivamente per info on-demand?
-19. **Audio capture su G2** (V2 stretch oltre Phase 13): codec, sample rate, latenza hardware se mai si vorrà fare voice modal nativo G2 — vedi §10.0.4.
+19. ~~**Audio capture su G2**~~ — **RESOLVED v0.9.10** in §3.5: `bridge.audioControl(true|false)` + `event.audioEvent.audioPcm` → PCM 16 kHz s16le mono. Codec BLE raw = LC3 (decoded by Hub SDK). 4-mic array, single audio stream esposto al plugin WebView. Latenza hardware da misurare empiricamente in §10.0.4 (chunk size + buffering — non documentati upstream). **Native EvenAI integration: NOT POSSIBLE for dev apps** (§3.6 — proprietary, no API, no transcript subscription). V2 voice deve usare STT esterno (cloud §4.5 o self-hosted) + LLM via MCP §5.7.
 
 ### 12.D — Design decisions (resolved)
 
@@ -3239,6 +3660,15 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 - G2 Display Guide — https://hub.evenrealities.com/docs/guides/display
 - G2 Networking Guide — https://hub.evenrealities.com/docs/guides/networking
 - G2 Design Guidelines — https://hub.evenrealities.com/docs/guides/design-guidelines
+- G2 Device APIs — https://hub.evenrealities.com/docs/guides/device-apis (audioControl + IMU + device info)
+- G2 Input Events — https://hub.evenrealities.com/docs/guides/input-events (CLICK / DOUBLE_CLICK / SCROLL_TOP / SCROLL_BOTTOM / FOREGROUND lifecycle — no voice events)
+- Even Hub Overview — https://hub.evenrealities.com/docs/getting-started/overview ("App logic runs on the phone; the glasses handle display rendering")
+- Even AI features — https://www.evenrealities.com/ai-glasses (EvenAI proprietary "Even LLM", "Hey Even" wake word, 22+ langs)
+- Translation Glasses — https://www.evenrealities.com/translation-glasses (33-35 langs, cloud-only)
+- Smart Glasses product — https://www.evenrealities.com/smart-glasses (4-mic array spec)
+- Conversate — https://support.evenrealities.com/hc/en-us/articles/14273795154319-Conversate
+- Even Hub Simulator (BxNxM/even-dev) — https://github.com/BxNxM/even-dev (audioControl + audioPcm verbatim)
+- EvenDemoApp (BLE protocol) — https://github.com/even-realities/EvenDemoApp (cmd 0x0E mic activate, 0xF1 LC3 reception)
 - R1 Smart Ring product — https://www.evenrealities.com/products/r1
 - G2+R1 announcement (Wareable) — https://www.wareable.com/wearable-tech/even-realities-g2-smart-glasses-r1-ring-controller-announcement
 - CES 2026 award — https://www.ces.tech/ces-innovation-awards/2026/even-realities-g2-display-smart-glasses-and-r1-companion-ring/
@@ -3256,6 +3686,9 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 - Foundry Sockets — https://foundryvtt.wiki/en/development/api/sockets
 - Foundry Permissions — https://foundryvtt.com/article/users/
 - v13 targeting change — https://github.com/foundryvtt/foundryvtt/issues/10613
+- Foundry Localization API — https://foundryvtt.com/api/classes/foundry.helpers.Localization.html
+- dnd5e language catalogs — https://github.com/foundryvtt/dnd5e/tree/master/lang
+- Foundry localization guide — https://foundryvtt.com/article/localization/
 
 ### Foundry Bridges & Automation
 - socketlib — https://github.com/farling42/foundryvtt-socketlib
@@ -3302,6 +3735,47 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ## Changelog
 
+- **2026-05-10 (v0.9.10)** — Online cross-check round 4: G2 audio surface + native AI integration (RESOLVED §12.C item 19) + plugin execution model.
+  - **Audit method (INV-2 in atto)**: 8 WebFetch + 2 WebSearch in parallelo contro sorgenti canoniche Even Realities (`hub.evenrealities.com/docs/*`, `evenrealities.com/{ai-glasses,smart-glasses,translation-glasses}`, `support.evenrealities.com`, `github.com/BxNxM/even-dev`, `github.com/even-realities/EvenDemoApp`). 4 sorgenti convergenti su mic/PCM, 5 sorgenti convergenti su EvenAI no-API.
+  - **§3.1 Even G2 Display ESTESO** — aggiunte 4 righe hardware finora implicite:
+    - **4-mic array direzionale** (single audio stream esposto come PCM 16 kHz s16le mono) — verbatim `evenrealities.com/smart-glasses`
+    - **No speaker / no audio output** confermato esplicitamente — verbatim `hub.evenrealities.com/docs/guides/device-apis`: *"no audio output, no arbitrary pixel drawing, no camera"*. **Implicazione**: tutti i feedback "vocali" della nostra UI devono restare visivi (toast §7.15.2)
+    - **No camera** (intentional Even Realities design)
+    - **IMU** esposto via `imuControl(isOpen, reportFrq)` con pacing P100–P1000 (riserva V2 head-tracking)
+  - **NEW §3.5 G2 SDK Audio Surface** — documenta `bridge.audioControl(true|false)` + `event.audioEvent.audioPcm` → PCM 16 kHz s16le mono, verbatim verificato. Pipeline interna G2 4-mic → BLE LC3 → Hub SDK decode → PCM al plugin WebView. Limitazioni esplicite: input only (no TTS/output), no event type "voice" in event taxonomy, chunk size non documentato (Phase 0 §10.0.4).
+  - **NEW §3.6 G2 Native AI Features (NOT integrable)** — documenta EvenAI / Translate / Conversate / Teleprompt come feature native cloud-backed **opaque** agli app dev. Tabella 4-row con activation, processing location, API status (tutto ❌). Verbatim citazioni: ChatGPT è G1-only (G2 usa "Even LLM" proprietario non-API), translation cloud-only ("uses the cloud to translate your conversation in real-time"), zero voice/transcript events nell'input event taxonomy. **Conferma architetturale**: la nostra V2 voice strategy via `foundry-mcp` (§5.7) è **vincolo di piattaforma**, non scelta di design — AI on-glasses è IMPOSSIBILE per qualunque dev third-party.
+  - **NEW §3.7 Plugin Execution Model** — verbatim `hub.evenrealities.com/docs/getting-started/overview`: *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."* Diagramma flow G2 ↔ Even Realities App phone (WebView host) ↔ bridge ↔ Foundry. Conseguenze esplicite: network whitelist enforced sul WebView phone, audio mic decoded a PCM lato phone (non LC3 raw all'app), no on-glasses LLM disponibile.
+  - **§4.3 SDK Surface — riga Audio aggiornata**: era *"`startAudioCapture`/`stopAudioCapture` (verificare codec — assumere PCM 16k)"*; ora **`bridge.audioControl()` + `event.audioEvent.audioPcm` PCM 16 kHz s16le mono** verificato §3.5, con nota "no audio output (G2 no speaker §3.1)".
+  - **§4.5 STT V2** — aggiunto callout "Hardware feasibility RESOLVED v0.9.10": input audio disponibile direttamente dal G2, no hardware aggiuntivo richiesto. STT cloud o self-hosted gira nel bridge service o client MCP, mai sul G2.
+  - **§7.10 Voice Overlay V2** — aggiornato preamble: la cattura audio sul G2 è **hardware-fattibile** (verificato), AI/LLM resta external (vincolo §3.6). Architettura V2 esplicita: G2 mic → plugin WebView → bridge `/v1/voice` → STT cloud → tool MCP → toast risultato sul G2.
+  - **§12.C item 19 RESOLVED** — "Audio capture su G2" chiusa con cross-ref §3.5 (formato confermato) + §3.6 (EvenAI non integrabile) + §10.0.4 (chunk size + buffering empirici Phase 0).
+  - **§13 References ESTESO** — 8 nuove sorgenti Even Realities aggiunte: device-apis, input-events, getting-started/overview, ai-glasses, translation-glasses, smart-glasses, Conversate support article, BxNxM/even-dev simulator, EvenDemoApp BLE protocol.
+  - **README.md + showcase**: aggiornati versione + cross-check round (×3 → ×4) + nota "G2 audio surface verified, AI on-glasses non integrable".
+  - **Bump v0.9.9 → v0.9.10**.
+- **2026-05-10 (v0.9.9)** — Project Invariants (INV-1/2/3/4) + Layout Integrity rules + i18n predisposition + Code Quality discipline.
+  - **NEW §0.1 Project Invariants (NON-NEGOTIABLE)** — eleva quattro regole trasversali a vincoli vincolanti:
+    - **INV-1 Layout Integrity** — formattazione e layout sempre dinamici, sempre perfetti, mai disallineati. Concretato in §7.1a (8 sub-rules verificabili: frame integrity, variable-content discipline, column alignment, tab strip equal-width, status HUD invariants, multi-byte safety, render contract Box/TextRun, edge-case forbidden list).
+    - **INV-2 Online Cross-Validation** — ogni claim tecnico cita upstream canonico (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Cadenza re-verify minima (pre-Phase-0 / pre-bump / pre-impl). Drift policy CRITICAL/IMPORTANT/NICE-TO-HAVE + changelog discipline. Upstream-vs-fonti-terze hedge esplicito.
+    - **INV-3 Documentation Coherence** — Specs/README/showcase sempre allineati per-commit; cross-ref integrity; pre-bump checklist (5-step manual, future CI).
+    - **INV-4 Code Quality** — codice sempre pulito, ottimizzato, documentato; **zero codice morto o irraggiungibile** tollerato. Biome + TS strict + Vitest coverage gate; JSDoc/TSDoc su public API; `// TODO(#N)` o `// TODO(ADR-NNNN)` obbligatorio; hot-path benchmarks gate regression; deprecated removal scheduling. ADR-0008 Code Quality Configuration (placeholder, Phase 1).
+  - **NEW §7.1a Layout Integrity Invariants** — 8 sub-rules concrete che implementano INV-1: corner alignment, HP=7-vs-700 problem, fixed-grid columns, tab equal-width, Status HUD coordinate freeze (col 70-95 row 1-21), monochrome glyph dictionary canonical, render contract `Box{children}` (vietate string concat), 7 edge-case traps esplicitati come forbidden.
+  - **NEW §7.16 Localization & Internationalization** — predisposizione i18n MVP:
+    - 3-layer architecture: Foundry locale (source of truth) → Bridge i18n service → G2 runtime override
+    - Boot resolution: `effective = override ?? game.i18n.lang`
+    - Quick Action `[N] Language` submenu (gesture-friendly, lista chiusa da `available[]`)
+    - String-table contract: `t(key, vars)` only, mai literal in lingua, `_max` width budget per chiave (linkato a INV-1 §7.1a.2)
+    - Locale set MVP: `en` (canonical fallback) + `it` (target) + `de/es/fr/pt-BR` (best-effort) + others V2
+    - Edge cases: missing keys, overflow truncate, RTL marked V2 stretch + ADR-0007
+    - Settings schema (estensione §5.6.5): `i18n.override` device-local, `i18n.fallback` default `en`
+  - **§3.4 Foundry**: aggiunto bullet `i18n / Localization` con `game.i18n` API verificata su `foundryvtt.com/api/classes/foundry.helpers.Localization.html`.
+  - **§4.1 Module API**: aggiunto `getLocale()` / `setLocale(code)` / `subscribeLocale(cb)`.
+  - **§5.6.5 Settings**: nota i18n device-local (non passa via `config.update` Foundry → bridge).
+  - **§7.13a Quick Action**: aggiunta entry `[N] laNguage` + indicator inline `Foundry: it · override: —`.
+  - **§7.14.4 Verification Checklist**: estesa da 10 a **15 check** — 11 (corner alignment), 12 (variable-content stress HP/name/cond), 13 (tab strip equal-width), 14 (i18n stress IT vs EN width budget), 15 (lint check Box/TextRun no string-concat).
+  - **§7.14.6 Settings UI**: ora 2 eccezioni user-side G2 — `[M]` map mode + `[N]` language. Esplicitato che entrambe sono **device-local runtime overrides** (LRU §11.5.5), isolate dai settings world-scope Foundry.
+  - **§13 References**: aggiunti Foundry Localization API + dnd5e language catalogs + Foundry localization guide.
+  - **README.md + docs/showcase/index.html**: aggiornati per riflettere v0.9.9 + invariants + i18n (INV-3 doc coherence applicata in atomico).
+  - **Bump v0.9.8 → v0.9.9**.
 - **2026-05-10 (v0.9.8)** — Online cross-check round 3 (independent re-verify, confirms v0.9.7).
   - **Audit**: 8 WebFetch in parallelo contro fonti canoniche, **zero CRITICAL / zero IMPORTANT drift** rispetto a v0.9.7. Tutti i claim §3 + §4 confermati esatti contro upstream 2026-05.
   - **NICE-TO-HAVE enrichment** (4 dettagli upstream non in v0.9.7, non drift ma utili a implementatori):
