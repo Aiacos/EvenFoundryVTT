@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v0.9.11
+milestone_name: milestone
+status: planning
+stopped_at: Phase 0 context gathered
+last_updated: "2026-05-10T20:03:29.350Z"
+last_activity: "2026-05-10 — Roadmap created (48/48 v1 requirements mapped, research adjustments applied: Phase 0 expansion, Phase 4 4a/4b split, CONN pulled forward, INV-5 ratified, Phase 10 extended)."
+progress:
+  total_phases: 15
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -19,6 +35,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: —
 - Total execution time: —
@@ -30,6 +47,7 @@ Progress: [░░░░░░░░░░] 0%
 | — | — | — | — |
 
 **Recent Trend:**
+
 - No execution yet.
 
 *Updated after each plan completion.*
@@ -67,6 +85,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-10
-Stopped at: ROADMAP.md created (Phase 0 → 13 + V2 OPZIONALE structure), 48/48 v1 REQ-IDs mapped, REQUIREMENTS.md traceability table populated.
-Resume file: None — next action is `/gsd:plan-phase 0`.
+Last session: 2026-05-10T20:03:29.343Z
+Stopped at: Phase 0 context gathered
+Resume file: .planning/phases/00-validation-gates/00-CONTEXT.md
