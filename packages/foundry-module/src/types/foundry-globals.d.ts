@@ -154,11 +154,153 @@ declare const socketlib: {
   executeAsGM(moduleId: string, handlerId: string, ...args: unknown[]): Promise<unknown>;
 };
 
+// ─── dnd5e 5.x actor system shape ─────────────────────────────────────────────
+// Read-only fields consumed by character-reader.ts (Phase 2 — no writes).
+// Migration alert: dnd5e 5.3.0+ uses object-iteration for advancement data.
+
+/** Subset of the dnd5e 5.x actor system attributes used by character-reader. */
+interface Dnd5eAttributes {
+  hp: {
+    value: number;
+    max: number;
+    temp: number;
+    tempmax: number;
+  };
+  ac: { value: number };
+  exhaustion: number;
+}
+
+/** Subset of the dnd5e 5.x actor system details used by character-reader. */
+interface Dnd5eDetails {
+  level: number;
+}
+
+/** Subset of the dnd5e 5.x actor system schema (attributes + details). */
+interface Dnd5eActorSystem {
+  attributes: Dnd5eAttributes;
+  details: Dnd5eDetails;
+}
+
+// ─── Foundry Actor (minimal read shape) ───────────────────────────────────────
+
+/** Minimal Foundry Actor document shape consumed by character-reader and combat-reader. */
+interface FoundryActor {
+  /** Foundry document ID. */
+  id: string;
+  /** Actor display name. */
+  name: string;
+  /** Actor type ("character", "npc", "vehicle", etc.). */
+  type: string;
+  /** dnd5e 5.x system data. */
+  system: Dnd5eActorSystem;
+  /**
+   * Active condition IDs (Foundry v13+ Set<string>).
+   * Examples: "poisoned", "prone", "blinded".
+   */
+  statuses: Set<string>;
+}
+
+// ─── Foundry Token (minimal read shape) ───────────────────────────────────────
+
+/** Minimal Foundry Token shape used by targetToken hook and scene-reader. */
+interface FoundryToken {
+  /** Token document ID. */
+  id: string;
+  /** Token display name. */
+  name: string;
+  /** Linked actor document, or null for unlinked tokens. */
+  document: {
+    actorId: string | null;
+  };
+}
+
+// ─── Foundry Combatant (minimal read shape) ────────────────────────────────────
+
+/** Minimal Foundry Combatant document shape. */
+interface FoundryCombatant {
+  id: string;
+  name: string;
+  /** Linked actor ID (null for unlinked combatants). */
+  actorId: string | null;
+  /** Actor reference (may be null if actor not found in world). */
+  actor: FoundryActor | null;
+  /** Initiative roll result (null if not yet rolled). */
+  initiative: number | null;
+}
+
+// ─── Foundry Combat (minimal read shape) ──────────────────────────────────────
+
+/** Minimal Foundry Combat encounter document. */
+interface FoundryCombat {
+  id: string;
+  /** Current round number (1-indexed). */
+  round: number;
+  /** Current turn index within the round (0-indexed). */
+  turn: number;
+  /** The combatant whose turn it currently is (null between rounds). */
+  combatant: FoundryCombatant | null;
+  /** All combatants in initiative order. */
+  combatants: { contents: FoundryCombatant[] };
+}
+
+// ─── Foundry Scene (minimal read shape) ───────────────────────────────────────
+
+/** Minimal Foundry Scene document. */
+interface FoundryScene {
+  id: string;
+  name: string;
+  /** All token documents in this scene. */
+  tokens: { contents: Array<{ id: string }> };
+}
+
+// ─── Foundry Canvas (minimal read shape) ──────────────────────────────────────
+
+/** Minimal Foundry Canvas object for viewport reads. */
+interface FoundryCanvas {
+  /** The PIXI.js stage, used for viewport position. */
+  stage: {
+    pivot: { x: number; y: number };
+    scale: { x: number };
+  };
+}
+
+// ─── Foundry User (minimal read shape) ────────────────────────────────────────
+
+/** Minimal Foundry User document. */
+interface FoundryUser {
+  id: string;
+  /** Set of currently targeted tokens for this user. */
+  targets: Set<FoundryToken>;
+}
+
+// ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
+
+/** Foundry Collection — Map-like with `.get(id)` and iteration. */
+interface FoundryCollection<T> {
+  get(id: string): T | undefined;
+  contents: T[];
+}
+
 /** Foundry game singleton — available globally after the "init" hook fires. */
 declare const game: {
   settings: FoundrySettings;
   i18n: FoundryI18n;
+  /** All actor documents in the active world. */
+  actors: FoundryCollection<FoundryActor>;
+  /** Active combat encounter (null when no combat is active). */
+  combat: FoundryCombat | null;
+  /** All scene documents in the active world. */
+  scenes: FoundryCollection<FoundryScene> & { active: FoundryScene | null };
+  /** The current logged-in user. */
+  user: FoundryUser;
 };
+
+/**
+ * Foundry canvas singleton — available after the "canvasReady" hook fires.
+ *
+ * May be null/undefined before the canvas is initialised.
+ */
+declare const canvas: FoundryCanvas | null | undefined;
 
 /**
  * Foundry Hooks registry — global event bus for module lifecycle events.
@@ -181,4 +323,11 @@ declare const Hooks: {
    * @param fn - Handler called on every invocation; returns hook ID
    */
   on(event: string, fn: (...args: unknown[]) => void): number;
+
+  /**
+   * Remove a persistent handler by its hook ID.
+   *
+   * @param hookId - ID returned by `Hooks.on(...)`
+   */
+  off(hookId: number): void;
 };

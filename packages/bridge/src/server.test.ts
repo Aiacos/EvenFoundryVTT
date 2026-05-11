@@ -212,4 +212,347 @@ describe('buildServer integration', () => {
       expect(res.statusCode).toBe(200);
     });
   });
+
+  // ── GET /v1/character/:actorId ────────────────────
+
+  describe('GET /v1/character/:actorId', () => {
+    const mockSnapshot = {
+      actorId: 'actor-1',
+      name: 'Aragorn',
+      hp: 42,
+      maxHp: 50,
+      tempHp: 0,
+      ac: 16,
+      level: 7,
+      conditions: [],
+      exhaustion: 0,
+    };
+
+    it('returns 200 with CharacterSnapshot for valid bearer + actorId', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockSnapshot;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-1',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<typeof mockSnapshot>();
+      expect(body.actorId).toBe('actor-1');
+      expect(body.name).toBe('Aragorn');
+      expect(body.hp).toBe(42);
+    });
+
+    it('returns 404 when snapshot fn returns null (actor not found)', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => null;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/unknown-actor',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json<{ error: string }>().error).toBe('actor_not_found');
+    });
+
+    it('returns 401 without auth header', async () => {
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({ method: 'GET', url: '/v1/character/actor-1' });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── GET /v1/combat/current ────────────────────────
+
+  describe('GET /v1/combat/current', () => {
+    const mockCombat = {
+      combatId: 'combat-1',
+      round: 2,
+      turn: 1,
+      currentCombatantId: 'comb-a',
+      combatants: [
+        {
+          id: 'comb-a',
+          name: 'Goblin',
+          actorId: 'actor-g',
+          initiative: 14,
+          hp: 5,
+          maxHp: 7,
+          isCurrentTurn: true,
+        },
+      ],
+    };
+
+    it('returns 200 with CombatSnapshot when combat is active', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockCombat;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/combat/current',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<typeof mockCombat>();
+      expect(body.combatId).toBe('combat-1');
+      expect(body.round).toBe(2);
+    });
+
+    it('returns 204 when no active combat (null)', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => null;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/combat/current',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(204);
+    });
+
+    it('returns 401 without auth', async () => {
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+      const res = await app.inject({ method: 'GET', url: '/v1/combat/current' });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── GET /v1/scene/viewport ────────────────────────
+
+  describe('GET /v1/scene/viewport', () => {
+    const mockViewport = {
+      sceneId: 'scene-1',
+      sceneName: 'Dungeon Level 1',
+      viewX: 300,
+      viewY: 200,
+      scale: 1.5,
+      tokenIds: ['tok-1', 'tok-2'],
+    };
+
+    it('returns 200 with SceneViewport', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockViewport;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/scene/viewport',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<typeof mockViewport>();
+      expect(body.sceneId).toBe('scene-1');
+      expect(body.scale).toBe(1.5);
+    });
+
+    it('returns 401 without auth', async () => {
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+      const res = await app.inject({ method: 'GET', url: '/v1/scene/viewport' });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── GET /v1/events ────────────────────────────────
+
+  describe('GET /v1/events', () => {
+    const mockEventResponse = {
+      entries: [
+        { seq: 5, ts: Date.now(), type: 'chat', actorId: null, content: 'Hello' },
+        { seq: 6, ts: Date.now(), type: 'damage', actorId: 'actor-1', content: '-5 HP' },
+      ],
+      cursor: 6,
+    };
+
+    it('returns 200 with event log entries', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockEventResponse;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/events?since=4&limit=10',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<typeof mockEventResponse>();
+      expect(body.entries).toHaveLength(2);
+      expect(body.cursor).toBe(6);
+    });
+
+    it('returns empty entries on schema mismatch', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => ({ bad: true });
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/events',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ entries: unknown[] }>().entries).toHaveLength(0);
+    });
+
+    it('returns 401 without auth', async () => {
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+      const res = await app.inject({ method: 'GET', url: '/v1/events' });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── GET /v1/characters ────────────────────────────
+
+  describe('GET /v1/characters', () => {
+    it('returns 200 with character list', async () => {
+      const mockList = [
+        { actorId: 'actor-1', name: 'Aragorn', level: 7 },
+        { actorId: 'actor-2', name: 'Legolas', level: 7 },
+      ];
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockList;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters?world=test-world',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: typeof mockList }>();
+      expect(body.characters).toHaveLength(2);
+      expect(body.characters[0]?.name).toBe('Aragorn');
+    });
+
+    it('returns 401 without auth', async () => {
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+      const res = await app.inject({ method: 'GET', url: '/v1/characters' });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── POST /internal/delta ──────────────────────────
+
+  describe('POST /internal/delta', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    it('returns 200 when internal secret matches and body is valid', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'character.delta', payload: { hp: 30 } }),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ ok: boolean }>().ok).toBe(true);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 when secret is wrong', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: 'Bearer wrong-secret',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'character.delta', payload: {} }),
+      });
+
+      expect(res.statusCode).toBe(401);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 when EVF_INTERNAL_SECRET is not set', async () => {
+      delete process.env.EVF_INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'character.delta', payload: {} }),
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('returns 400 when body has no type field', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ payload: {} }),
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json<{ error: string }>().error).toBe('invalid_body');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+  });
 });

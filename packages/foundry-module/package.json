@@ -10,6 +10,7 @@
     "test": "vitest --run --project @evf/foundry-module --root ../.."
   },
   "dependencies": {
+    "@evf/shared-protocol": "workspace:*",
     "qrcode": "1.5.4"
   },
   "devDependencies": {
