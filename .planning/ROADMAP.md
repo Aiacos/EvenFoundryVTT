@@ -16,7 +16,7 @@ Specs.md is the canonical SoT; this roadmap is the GSD-shaped projection. Drift 
 MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 
 - [ ] **Phase 0: Validation Gates** - Hardware/SDK GO/NO-GO tests (R1 events · `updateImageRawData` format · BLE bandwidth multi-env · DLE 30-min sustained · queue depth · palette calibration · MidiQOL config check) → ADR-0005 decision document
-- [⏳] **Phase 1: Foundation** - Monorepo skeleton + shared protocol + CI + first 5 ADRs + versioned config schema + INV-1/2/3/4 binding *(2/3 plans complete — Wave 0+1 ✅, Wave 2 ADRs/CI pending)*
+- [x] **Phase 1: Foundation** - Monorepo skeleton + shared protocol + CI + first 5 ADRs + versioned config schema + INV-1/2/3/4 binding *(3/3 plans complete — Wave 0+1+2 ✅; INV-3 atomic doc-coherence verified via single commit 671a22d)*
 - [ ] **Phase 2: Foundry Module Core + Pairing UI** - `module.json` + versioned `dnd5e@5.x` adapter + readers (character/combat/scene/log) + WS handshake + locale auto-detect + phone-side bootstrap wizard + QR pairing flow
 - [ ] **Phase 3: Bridge Service Skeleton** - Fastify + ws + bearer auth + Tool Registry + REST + healthz/readyz/metrics + idempotency keys + seq envelope + replay buffer + Docker Compose
 - [ ] **Phase 4a: G2 Engine + Raster + Status HUD** - Layer manager + persistent Status HUD + raster pipeline (image-q + upng-js + xxhash-wasm + OffscreenCanvas) + 6-layer optimization stack + glyph fallback + boot splash + capability handshake

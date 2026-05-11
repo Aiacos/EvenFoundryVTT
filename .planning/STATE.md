@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md (Wave 1 packages + validation-harness fold-in — all 5 gates green)
-last_updated: "2026-05-11T08:36:17.000Z"
-last_activity: 2026-05-11 -- Phase 1 Plan 02 complete
+stopped_at: Completed 01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure; Phase 1 complete)
+last_updated: "2026-05-11T10:55:00.000Z"
+last_activity: 2026-05-11 -- Phase 1 Plan 03 complete (Phase 1 closed)
 progress:
   total_phases: 15
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 85
 ---
 
 # Project State
@@ -25,30 +25,31 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 1 (Foundation) — EXECUTING
-Plan: 3 of 3 (Wave 2 — ADRs + snapshot framework + CI + INV-3 closure)
-Status: Executing Phase 1
-Last activity: 2026-05-11 -- Phase 1 Plan 02 (Wave 1 packages + fold-in) complete
+Phase: 1 (Foundation) — COMPLETE
+Plan: 3 of 3 (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure) — DONE
+Status: Phase 1 complete; Phase 2 entry unblocked
+Last activity: 2026-05-11 -- Phase 1 Plan 03 (Wave 2) complete; all WAVE-2-G1..G5 green; INV-3 atomic commit verified
 
-Progress: [████████░░░] 71%
+Progress: [█████████░░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
-- Average duration: 12.40 min
-- Total execution time: 62 min
+- Total plans completed: 6
+- Average duration: 12.33 min
+- Total execution time: 74 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 0 | 3 | 43 min | 14 min |
-| 1 | 2 | 18 min | 9 min  |
+| 1 | 3 | 30 min | 10 min |
 
 **Recent Trend:**
 
+- 2026-05-11 — Phase 1 Plan 03 (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure): ~12 min, 13 files created + 5 modified, 5 commits (d68d7fe / fcb17ef / 5e13149 / 938c6f2 / 671a22d INV-3 atomic), all 5 WAVE-2-G1..G5 gates green + INV-3 verified (CLAUDE.md + STACK.md in single commit HEAD). TDD on AsciiGrid (11 unit tests RED-then-GREEN). 5 MADR ADRs ACCEPTED (0001-0004 + 0008). GHA workflow with 7 quality gates + T-01-03/T-01-04 hardening. Deviations: Vitest 4 defineProject rejects extends:true (Rule 3 — TS strict catches it; dropped from per-package config; Vitest 4 merges root via test.projects glob automatically); AsciiGrid runtime guard for row===undefined (Rule 3 — noUncheckedIndexedAccess); Biome auto-format on test files (cosmetic).
 - 2026-05-11 — Phase 1 Plan 02 (Wave 1 packages + validation-harness fold-in): ~10 min, 25 files created + 11 modified + 16 moved via git mv + 6 deleted, 3 commits (e5641cc / 0fa1364 / b67a029), all 5 WAVE-1-G1..G5 gates green; tests/phase-0/ entirely removed; Pitfall 8 path-resolution fix (fileURLToPath + EVF_REPO_ROOT) with 4-test smoke suite. Deviations: shared-render vitest devDep added for workspace visibility (Rule 3); package test script delegates to root vitest with --project filter (Pitfall 3 — Rule 3); Biome auto-formatted 15 Phase 0 files post-fold-in (cosmetic).
 - 2026-05-11 — Phase 1 Plan 01 (Wave 0 tooling foundation): ~8 min, 16 files, 3 commits (5096129 / e448e0d / 06819bf), all 6 WAVE-0-G1..G6 gates green; vitest test.projects deviation documented (Wave 1 re-enables); Biome `useBiomeIgnoreFolder` rule + design-asset exclusions auto-fixed (Rule 3).
 - 2026-05-10 — Phase 0 Plan 03 (6 hardware test scripts pre-grant scaffold): ~25 min, 9 files, 3 commits (15e9922 absorbed Task 1 / 3b2578d Task 2 / 8670b0c fix-up), tsc green at exit 0, smoke run all 6 → exit 2 (Pattern 3 skip uniform).
@@ -83,11 +84,15 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Phase 1 Plan 02 decision (D-1.02 / Phase 0 D-15): tests/phase-0/ folded into packages/validation-harness/ via git mv (history-preserving); tests/ parent dir also removed. Hardware scripts stay tsx-executable in scripts/ (RESEARCH Open Question 1 — NOT converted to Vitest).
 - Phase 1 Plan 02 decision (Pitfall 8): validation-harness/src/lib/output.ts computes REPO_ROOT via fileURLToPath(import.meta.url) + 4-level-up walk, with EVF_REPO_ROOT env override priority. Smoke test (tests/path-resolution.test.ts) asserts both branches. Evidence writes still target repo-root docs/perf/phase-0/ regardless of cwd.
 - Phase 1 Plan 02 deviation: package test script uses `vitest --run --project @evf/validation-harness --root ../..` so sub-package invocation resolves the root projects config (Pitfall 3 — Vitest 4 projects glob only resolved from cwd). Plan 03 g2-app test script must follow same pattern.
+- Phase 1 Plan 03 decision (D-1.07 honored): 5 MADR ADRs ACCEPTED — 0001 layered-ui-model (z=0 map / z=1 status HUD / z=2 overlay + single capture container; binds Phase 4a/4b/5), 0002 protocol-versioning (WS envelope + 60s LRU idempotency + 60s replay buffer; binds Phase 2/3/7/11), 0003 tool-registry-pattern (Zod-typed shared dispatch table consumed by Bridge + foundry-mcp; binds Phase 3/7/8/11), 0004 voice-via-mcp-not-internal (Streamable HTTP only; HTTP+SSE deprecated 2025-03-26; binds Phase 11/12), 0008 code-quality-configuration (Biome+TS+Vitest+7-gate CI + Conventional Commits; binds every Phase 1+ commit).
+- Phase 1 Plan 03 decision (D-1.11 honored): @evf/shared-render exports AsciiGrid (char-precision grid, noUncheckedIndexedAccess compliant) + matchAsciiFixture (Vitest 4 expect.toMatchFileSnapshot wrapper). TDD discipline: 11 unit tests RED-then-GREEN. Example INV-1 wire-up test in g2-app proves end-to-end before Phase 4a.
+- Phase 1 Plan 03 decision (D-1.09 + D-1.10): GitHub Actions workflow .github/workflows/ci.yml with 7 quality gates (frozen-lockfile + ignore-scripts, biome ci, typecheck, test:coverage, TODO discipline grep, snapshot drift, changeset:status PR-only) + parallel commit-lint-pr-title job. T-01-03 hardening: PR title via env: block, NOT inlined in run: bash. T-01-04 hardening: server-side commitlint cannot be bypassed by local --no-verify.
+- Phase 1 Plan 03 decision (INV-3 atomic closure): single commit 671a22d propagated drift correction back to docs layer — CLAUDE.md §Repository state "Design-only" → "Phase 1 active" + STACK.md TS 5.8.5→5.8.3 + pnpm 10.3.1→10.33.4 + Drift Corrections Log §11. `git log -1 --name-only HEAD` shows both CLAUDE.md + STACK.md (INV-3 verified).
+- Phase 1 Plan 03 deviation: Vitest 4 `defineProject` rejects `extends: true` under TS strict (UserProjectConfigExport type does not include the field — only TestProjectInlineConfiguration consumed by ROOT test.projects array does). Dropped from per-package vitest.config.ts; Vitest 4 still merges root coverage/reporters via test.projects glob discovery automatically (Rule 3).
 
 ### Pending Todos
 
-- INV-3 doc-coherence cycle: align STACK.md + CLAUDE.md TypeScript pin from `5.8.5` → `5.8.3` and pnpm pin from `10.3.1` → `10.33.4` (verifiable via `npm view`). **Target: Phase 1 Plan 03 (Wave 2) atomic closure commit.**
-- Wave 2 hand-off: ADR-0001..0004 + 0008 to write (MADR format); CI workflow .github/workflows/ci.yml wiring all 5 Wave 1 gates + Wave 0 gates; @evf/shared-render snapshot framework (ascii-grid + snapshot.ts + fixture); @evf/g2-app example INV-1 snapshot test (D-1.16 wire-up demo); CLAUDE.md §Repository state update Design-only → Phase 1+.
+(none — Phase 1 complete; Phase 2 entry is the next planning step)
 
 ### Blockers/Concerns
 
@@ -107,6 +112,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-11T08:36:17.000Z
-Stopped at: Completed 01-02-PLAN.md (Wave 1 packages + validation-harness fold-in — all 5 gates green)
-Resume file: .planning/phases/01-foundation/01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 closure)
+Last session: 2026-05-11T10:55:00.000Z
+Stopped at: Completed 01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure; Phase 1 complete; all gates green; INV-3 verified via single commit 671a22d)
+Resume file: Phase 2 entry — next plan to generate
