@@ -232,7 +232,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 |-------|----------------|--------|-----------|
 | 0. Validation Gates | 1/4 | In progress | - |
 | 1. Foundation | 0/3 | Not started | - |
-| 2. Foundry Module Core + Pairing UI | 0/TBD | Not started | - |
+| 2. Foundry Module Core + Pairing UI | 2/5 | In Progress|  |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
 | 4a. G2 Engine + Raster + Status HUD | 0/TBD | Not started | - |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 0/TBD | Not started | - |
