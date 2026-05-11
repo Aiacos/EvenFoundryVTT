@@ -14,12 +14,20 @@
  * - Register `Hooks.once("ready")` → `registerSocketlibHandlers()`
  *   socketlib is guaranteed available on "ready" (farling42/foundryvtt-socketlib README).
  *
+ * Wave 3 scope (Plan 05):
+ * - `Hooks.once("ready")` also calls `registerHookSubscribers(bridgeDeltaEmitter)`
+ *   — wires the 5 Foundry hooks → delta push pipeline (D-2.14).
+ * - `bridgeDeltaEmitter` POSTs to bridge `/internal/delta` authenticated with
+ *   `EVF_INTERNAL_SECRET` stored in Foundry module settings at pair time.
+ *   Fire-and-forget: logs warning on failure but never throws (T-02-01).
+ *
  * @see packages/foundry-module/module.json — `esmodules: ["dist/module.js"]`
  * @see Specs.md §3.4 (Foundry compatibility minimum 13.347, verified 14)
  * @see 02-CONTEXT.md D-2.01, D-2.12, D-2.18 (pair button, socketlib, locale)
  */
 
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
+import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
 
 /**
@@ -29,15 +37,116 @@ import { registerSettings } from './settings.js';
  */
 export const MODULE_ID = 'evenfoundryvtt' as const;
 
+/**
+ * Retrieves the internal_secret for the given token from the bearer registry.
+ *
+ * Returns null if no matching active entry is found.
+ * Used by bridgeDeltaEmitter to authenticate POSTs to /internal/delta.
+ */
+function getInternalSecret(): string | null {
+  const stored = game.settings.get(MODULE_ID, 'bearerRegistry') as
+    | {
+        entries: Record<
+          string,
+          { internalSecret: string; revokedAt: number | null; expiresAt: number }
+        >;
+      }
+    | undefined;
+
+  if (stored === undefined || stored === null) {
+    return null;
+  }
+
+  const now = Date.now();
+  // Use the first active (non-revoked, non-expired) entry's internal secret
+  for (const entry of Object.values(stored.entries)) {
+    if (entry.revokedAt === null && entry.expiresAt > now) {
+      return entry.internalSecret;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Bridge URL for outbound delta POSTs.
+ *
+ * Read from the first active bearer entry's bridgeUrl at emit time.
+ * Returns null if no active pair exists.
+ */
+function getBridgeUrl(): string | null {
+  const stored = game.settings.get(MODULE_ID, 'bearerRegistry') as
+    | {
+        entries: Record<string, { bridgeUrl: string; revokedAt: number | null; expiresAt: number }>;
+      }
+    | undefined;
+
+  if (stored === undefined || stored === null) {
+    return null;
+  }
+
+  const now = Date.now();
+  for (const entry of Object.values(stored.entries)) {
+    if (entry.revokedAt === null && entry.expiresAt > now) {
+      return entry.bridgeUrl;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fire-and-forget delta emitter — posts to bridge /internal/delta.
+ *
+ * Logs a warning on failure but NEVER throws (T-02-01).
+ * A failed network call must not interrupt the Foundry session.
+ *
+ * Auth: `Authorization: Bearer <internal_secret>` header.
+ * The internal_secret is the per-pair value stored in the bearer registry
+ * at pair time (H-1 fix — included in QR payload; see bearer-registry.ts).
+ *
+ * @param type    - Delta type discriminant (e.g. "character.delta")
+ * @param payload - Delta payload (typed by caller; serialised as JSON)
+ */
+function bridgeDeltaEmitter(type: string, payload: unknown): void {
+  const internalSecret = getInternalSecret();
+  const bridgeUrl = getBridgeUrl();
+
+  if (internalSecret === null || bridgeUrl === null) {
+    // No active pair — delta silently dropped (not a warning; normal before pairing)
+    return;
+  }
+
+  // Fire-and-forget
+  void (async () => {
+    try {
+      await fetch(`${bridgeUrl}/internal/delta`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${internalSecret}`,
+        },
+        body: JSON.stringify({ type, payload }),
+      });
+    } catch (err) {
+      // Warning only — bridge unavailability must not crash Foundry session
+      // console.warn allowed per biome.jsonc noConsole allow:[error,warn]
+      console.warn('[EVF] bridgeDeltaEmitter failed:', (err as Error).message ?? err);
+    }
+  })();
+}
+
 // Bootstrap: register settings when Foundry's init hook fires.
 // `init` is the earliest safe point to call game.settings.registerMenu.
 Hooks.once('init', () => {
   registerSettings();
 });
 
-// Register socketlib GM-side handlers on "ready".
+// Register socketlib GM-side handlers + hook subscribers on "ready".
 // socketlib is guaranteed available on "ready" (before "ready" it may not yet be initialised).
-// All bridge→Foundry bearer registry writes go through these handlers (D-2.12).
+// All bridge→Foundry bearer registry writes go through socketlib handlers (D-2.12).
+// Hook subscribers (Plan 05) push deltas to bridge via bridgeDeltaEmitter (D-2.14).
 Hooks.once('ready', () => {
   registerSocketlibHandlers();
+  registerHookSubscribers(bridgeDeltaEmitter);
 });

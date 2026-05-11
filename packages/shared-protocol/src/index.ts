@@ -4,7 +4,7 @@
  * Single source of truth for protocol contracts per ADR-0002 (WS envelope + idempotency)
  * and ADR-0003 (Tool Registry tool input shapes).
  *
- * Phase 2: first real schemas — WS envelope + handshake messages.
+ * Phase 2: first real schemas — WS envelope + handshake messages + payload schemas.
  * Phase 5: fills delta payload union arms (CharacterDelta, CombatTurnDelta, etc.)
  *
  * @see docs/architecture/0002-protocol-versioning.md
@@ -26,3 +26,37 @@ export {
   SERVER_CAPS_V1,
   type ServerCap,
 } from './handshake.js';
+
+// ─── Payload schemas (Phase 2 Plan 05 — reader API) ───────────────────────────
+
+export {
+  CHARACTER_DELTA_TYPE,
+  type CharacterSnapshot,
+  CharacterSnapshotSchema,
+} from './payloads/character.js';
+
+export {
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TARGETS_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
+  type Combatant,
+  CombatantSchema,
+  type CombatSnapshot,
+  CombatSnapshotSchema,
+  type CombatTargetsPayload,
+  CombatTargetsPayloadSchema,
+} from './payloads/combat.js';
+export {
+  EVENT_LOG_DELTA_TYPE,
+  type EventLogEntry,
+  EventLogEntrySchema,
+  type EventLogResponse,
+  EventLogResponseSchema,
+  type EventType,
+  EventTypeSchema,
+} from './payloads/event.js';
+export {
+  SCENE_VIEWPORT_DELTA_TYPE,
+  type SceneViewport,
+  SceneViewportSchema,
+} from './payloads/scene.js';

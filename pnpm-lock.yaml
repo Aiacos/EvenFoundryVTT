@@ -90,6 +90,9 @@ importers:
 
   packages/foundry-module:
     dependencies:
+      '@evf/shared-protocol':
+        specifier: workspace:*
+        version: link:../shared-protocol
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
