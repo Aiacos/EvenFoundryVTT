@@ -1,0 +1,29 @@
+{
+  "evf.settings.section_title": "EvenFoundryVTT",
+  "evf.settings.pair_button": "Pair a G2 device",
+
+  "evf.pair.modal.title": "EvenFoundryVTT — Pair a G2 Device",
+  "evf.pair.qr.scan_instruction": "Scan with Even Realities App",
+  "evf.pair.qr.expires_in": "Expires in: {time}",
+  "evf.pair.qr.refresh": "Refresh",
+  "evf.pair.qr.awaiting": "Awaiting connection...",
+  "evf.pair.qr.expired.title": "Pair Token Expired",
+  "evf.pair.qr.expired.body": "This QR code has expired. Click \"New Code\" to generate a fresh 24-hour pairing code.",
+  "evf.pair.qr.expired.cta": "New Code",
+
+  "evf.pair.table.heading": "Paired Devices",
+  "evf.pair.table.col.alias": "Alias",
+  "evf.pair.table.col.paired": "Paired",
+  "evf.pair.table.col.last_seen": "Last seen",
+  "evf.pair.table.col.action": "Action",
+  "evf.pair.table.empty.heading": "No devices paired yet.",
+  "evf.pair.table.empty.body": "Scan the QR code above to connect your first Even Realities G2.",
+  "evf.pair.table.last_seen.online": "Online",
+
+  "evf.pair.revoke.button": "Revoke",
+  "evf.pair.revoke.confirm.body": "Revoke this device? All active sessions will be disconnected.",
+  "evf.pair.revoke.confirm.cancel": "Cancel",
+  "evf.pair.revoke.confirm.proceed": "Confirm Revoke",
+  "evf.pair.revoke.success": "Device revoked.",
+  "evf.pair.revoke.error.bridge_unreachable": "Could not revoke — bridge unreachable. Try again or reload module settings."
+}
