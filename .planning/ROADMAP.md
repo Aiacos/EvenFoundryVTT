@@ -16,7 +16,7 @@ Specs.md is the canonical SoT; this roadmap is the GSD-shaped projection. Drift 
 MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 
 - [ ] **Phase 0: Validation Gates** - Hardware/SDK GO/NO-GO tests (R1 events · `updateImageRawData` format · BLE bandwidth multi-env · DLE 30-min sustained · queue depth · palette calibration · MidiQOL config check) → ADR-0005 decision document
-- [ ] **Phase 1: Foundation** - Monorepo skeleton + shared protocol + CI + first 5 ADRs + versioned config schema + INV-1/2/3/4 binding
+- [⏳] **Phase 1: Foundation** - Monorepo skeleton + shared protocol + CI + first 5 ADRs + versioned config schema + INV-1/2/3/4 binding *(2/3 plans complete — Wave 0+1 ✅, Wave 2 ADRs/CI pending)*
 - [ ] **Phase 2: Foundry Module Core + Pairing UI** - `module.json` + versioned `dnd5e@5.x` adapter + readers (character/combat/scene/log) + WS handshake + locale auto-detect + phone-side bootstrap wizard + QR pairing flow
 - [ ] **Phase 3: Bridge Service Skeleton** - Fastify + ws + bearer auth + Tool Registry + REST + healthz/readyz/metrics + idempotency keys + seq envelope + replay buffer + Docker Compose
 - [ ] **Phase 4a: G2 Engine + Raster + Status HUD** - Layer manager + persistent Status HUD + raster pipeline (image-q + upng-js + xxhash-wasm + OffscreenCanvas) + 6-layer optimization stack + glyph fallback + boot splash + capability handshake
@@ -68,7 +68,7 @@ Plans:
 **Wave 0**
 - [x] 01-01-PLAN.md — Tooling foundation: package.json + pnpm-workspace + tsconfig.base + biome.jsonc + vitest.config + .changeset/ + commitlint + husky + .nvmrc/.gitattributes/.editorconfig/.gitignore (Wave 0) — ✅ 2026-05-11 (16 files, 3 commits, all 6 gates G1-G6 green)
 **Wave 1** *(blocked on Wave 0)*
-- [ ] 01-02-PLAN.md — Workspace packages + validation-harness fold-in: scaffold 5 new packages (g2-app, bridge, foundry-module, shared-protocol, shared-render) + promote tests/phase-0/ → packages/validation-harness/ with repo-root path-resolution (Pitfall 8 mitigation) (Wave 1)
+- [x] 01-02-PLAN.md — Workspace packages + validation-harness fold-in: scaffold 5 new packages (g2-app, bridge, foundry-module, shared-protocol, shared-render) + promote tests/phase-0/ → packages/validation-harness/ with repo-root path-resolution (Pitfall 8 mitigation) (Wave 1) — ✅ 2026-05-11 (25 files created + 11 modified + 16 git-mv + 6 deleted, 3 commits, all 5 gates G1-G5 green; tests/phase-0/ entirely removed)
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 01-03-PLAN.md — ADRs + snapshot framework + CI + INV-3 closure: 5 MADR ADRs (0001/0002/0003/0004/0008) + shared-render AsciiGrid + matchAsciiFixture + example wire-up test (D-1.16) + .github/workflows/ci.yml 7-gate + CONTRIBUTING.md + atomic INV-3 commit (CLAUDE.md + STACK.md drift correction) (Wave 2, NOT autonomous — human-verify checkpoint for INV-3 doc coherence)
 

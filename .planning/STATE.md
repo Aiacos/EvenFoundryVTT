@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md (Wave 0 tooling foundation — all 6 gates green)
-last_updated: "2026-05-11T08:22:00.000Z"
-last_activity: 2026-05-11 -- Phase 1 Plan 01 complete
+stopped_at: Completed 01-02-PLAN.md (Wave 1 packages + validation-harness fold-in — all 5 gates green)
+last_updated: "2026-05-11T08:36:17.000Z"
+last_activity: 2026-05-11 -- Phase 1 Plan 02 complete
 progress:
   total_phases: 15
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -26,29 +26,30 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 ## Current Position
 
 Phase: 1 (Foundation) — EXECUTING
-Plan: 2 of 3 (Wave 1 — packages skeleton + tests/phase-0/ fold-in)
+Plan: 3 of 3 (Wave 2 — ADRs + snapshot framework + CI + INV-3 closure)
 Status: Executing Phase 1
-Last activity: 2026-05-11 -- Phase 1 Plan 01 (Wave 0) complete
+Last activity: 2026-05-11 -- Phase 1 Plan 02 (Wave 1 packages + fold-in) complete
 
-Progress: [████████░░░] 57%
+Progress: [████████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
-- Average duration: 12.75 min
-- Total execution time: 51 min
+- Total plans completed: 5
+- Average duration: 12.40 min
+- Total execution time: 62 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 0 | 3 | 43 min | 14 min |
-| 1 | 1 | 8 min  | 8 min  |
+| 1 | 2 | 18 min | 9 min  |
 
 **Recent Trend:**
 
+- 2026-05-11 — Phase 1 Plan 02 (Wave 1 packages + validation-harness fold-in): ~10 min, 25 files created + 11 modified + 16 moved via git mv + 6 deleted, 3 commits (e5641cc / 0fa1364 / b67a029), all 5 WAVE-1-G1..G5 gates green; tests/phase-0/ entirely removed; Pitfall 8 path-resolution fix (fileURLToPath + EVF_REPO_ROOT) with 4-test smoke suite. Deviations: shared-render vitest devDep added for workspace visibility (Rule 3); package test script delegates to root vitest with --project filter (Pitfall 3 — Rule 3); Biome auto-formatted 15 Phase 0 files post-fold-in (cosmetic).
 - 2026-05-11 — Phase 1 Plan 01 (Wave 0 tooling foundation): ~8 min, 16 files, 3 commits (5096129 / e448e0d / 06819bf), all 6 WAVE-0-G1..G6 gates green; vitest test.projects deviation documented (Wave 1 re-enables); Biome `useBiomeIgnoreFolder` rule + design-asset exclusions auto-fixed (Rule 3).
 - 2026-05-10 — Phase 0 Plan 03 (6 hardware test scripts pre-grant scaffold): ~25 min, 9 files, 3 commits (15e9922 absorbed Task 1 / 3b2578d Task 2 / 8670b0c fix-up), tsc green at exit 0, smoke run all 6 → exit 2 (Pattern 3 skip uniform).
 - 2026-05-10 — Phase 0 Plan 02 (MidiQOL probe + run-all orchestrator): 11 min, 6 files, 2 task commits (15e9922 / c1c82e5), tsc green at exit 0, smoke run exits 2 (within plan-acceptable 0/2 range).
@@ -78,11 +79,15 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Phase 1 Plan 01 decision (D-1.03 D-1.15): TS 5.8.3, pnpm 10.33.4, Biome 2.4.15, Vitest 4.1.5, Changesets 2.31.0, Node 24 LTS pinned exactly (T-01-01 mitigation); ghost-version drift from STACK.md/CLAUDE.md (5.8.5/10.3.1) still pending Wave 2 closure.
 - Phase 1 Plan 01 decision (D-1.06): Vitest 4 test.projects API used; temporarily commented during Wave 0 (zero packages exist; Vitest 4 errors on empty glob); Wave 1 re-enables. `passWithNoTests: true` added as safeguard.
 - Phase 1 Plan 01 decision (D-1.14): commitlint scope-enum severity 1 (warn) per RESEARCH OQ4 — allows phase plan-ID scopes (NN-NN) until regex-pattern plugin lands; subject-case disabled for Italian commits.
+- Phase 1 Plan 02 decision (D-1.01 honored): 6 @evf/* private workspace packages scaffolded (g2-app, bridge, foundry-module, shared-protocol, shared-render + validation-harness folded from tests/phase-0/) at version 0.1.0-alpha.0; foundry-mcp deliberately omitted (V2 OPZIONALE Phase 11).
+- Phase 1 Plan 02 decision (D-1.02 / Phase 0 D-15): tests/phase-0/ folded into packages/validation-harness/ via git mv (history-preserving); tests/ parent dir also removed. Hardware scripts stay tsx-executable in scripts/ (RESEARCH Open Question 1 — NOT converted to Vitest).
+- Phase 1 Plan 02 decision (Pitfall 8): validation-harness/src/lib/output.ts computes REPO_ROOT via fileURLToPath(import.meta.url) + 4-level-up walk, with EVF_REPO_ROOT env override priority. Smoke test (tests/path-resolution.test.ts) asserts both branches. Evidence writes still target repo-root docs/perf/phase-0/ regardless of cwd.
+- Phase 1 Plan 02 deviation: package test script uses `vitest --run --project @evf/validation-harness --root ../..` so sub-package invocation resolves the root projects config (Pitfall 3 — Vitest 4 projects glob only resolved from cwd). Plan 03 g2-app test script must follow same pattern.
 
 ### Pending Todos
 
 - INV-3 doc-coherence cycle: align STACK.md + CLAUDE.md TypeScript pin from `5.8.5` → `5.8.3` and pnpm pin from `10.3.1` → `10.33.4` (verifiable via `npm view`). **Target: Phase 1 Plan 03 (Wave 2) atomic closure commit.**
-- Wave 1 hand-off: uncomment `test.projects: ['packages/*']` in `vitest.config.ts` once first package directory lands. Tagged with `WAVE 0 DEVIATION` comment block.
+- Wave 2 hand-off: ADR-0001..0004 + 0008 to write (MADR format); CI workflow .github/workflows/ci.yml wiring all 5 Wave 1 gates + Wave 0 gates; @evf/shared-render snapshot framework (ascii-grid + snapshot.ts + fixture); @evf/g2-app example INV-1 snapshot test (D-1.16 wire-up demo); CLAUDE.md §Repository state update Design-only → Phase 1+.
 
 ### Blockers/Concerns
 
@@ -102,6 +107,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-11T08:22:00.000Z
-Stopped at: Completed 01-01-PLAN.md (Wave 0 tooling foundation — all 6 gates green)
-Resume file: .planning/phases/01-foundation/01-02-PLAN.md (Wave 1 — packages skeleton)
+Last session: 2026-05-11T08:36:17.000Z
+Stopped at: Completed 01-02-PLAN.md (Wave 1 packages + validation-harness fold-in — all 5 gates green)
+Resume file: .planning/phases/01-foundation/01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 closure)
