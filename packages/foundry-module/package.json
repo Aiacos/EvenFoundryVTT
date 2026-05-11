@@ -9,7 +9,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest --run --project @evf/foundry-module --root ../.."
   },
+  "dependencies": {
+    "qrcode": "1.5.4"
+  },
   "devDependencies": {
+    "@types/qrcode": "1.5.5",
     "tsup": "8.5.1",
     "typescript": "5.8.3",
     "vitest": "4.1.5",
