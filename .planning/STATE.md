@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered (--auto)
-last_updated: "2026-05-11T07:39:22.370Z"
-last_activity: 2026-05-11 -- Phase 1 planning complete
+stopped_at: Completed 01-01-PLAN.md (Wave 0 tooling foundation — all 6 gates green)
+last_updated: "2026-05-11T08:22:00.000Z"
+last_activity: 2026-05-11 -- Phase 1 Plan 01 complete
 progress:
   total_phases: 15
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -21,33 +21,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 0 — Validation Gates
+**Current focus:** Phase 1 — Foundation
 
 ## Current Position
 
-Phase: 0 (Validation Gates) — EXECUTING
-Plan: 4 of 4 (next: closure — execute 6 hardware tests + MidiQOL probe in real hardware/Foundry, populate ADR-0005 verdict + ADR-0006 conditional, INV-3 doc cycle)
-Status: Ready to execute
-Last activity: 2026-05-11 -- Phase 1 planning complete
+Phase: 1 (Foundation) — EXECUTING
+Plan: 2 of 3 (Wave 1 — packages skeleton + tests/phase-0/ fold-in)
+Status: Executing Phase 1
+Last activity: 2026-05-11 -- Phase 1 Plan 01 (Wave 0) complete
 
-Progress: [███░░░░░░░] 5%
+Progress: [████████░░░] 57%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
-- Average duration: 14 min
-- Total execution time: 43 min
+- Total plans completed: 4
+- Average duration: 12.75 min
+- Total execution time: 51 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 0 | 3 | 43 min | 14 min |
+| 1 | 1 | 8 min  | 8 min  |
 
 **Recent Trend:**
 
+- 2026-05-11 — Phase 1 Plan 01 (Wave 0 tooling foundation): ~8 min, 16 files, 3 commits (5096129 / e448e0d / 06819bf), all 6 WAVE-0-G1..G6 gates green; vitest test.projects deviation documented (Wave 1 re-enables); Biome `useBiomeIgnoreFolder` rule + design-asset exclusions auto-fixed (Rule 3).
 - 2026-05-10 — Phase 0 Plan 03 (6 hardware test scripts pre-grant scaffold): ~25 min, 9 files, 3 commits (15e9922 absorbed Task 1 / 3b2578d Task 2 / 8670b0c fix-up), tsc green at exit 0, smoke run all 6 → exit 2 (Pattern 3 skip uniform).
 - 2026-05-10 — Phase 0 Plan 02 (MidiQOL probe + run-all orchestrator): 11 min, 6 files, 2 task commits (15e9922 / c1c82e5), tsc green at exit 0, smoke run exits 2 (within plan-acceptable 0/2 range).
 - 2026-05-10 — Phase 0 Plan 01 (test infrastructure scaffolding): 7 min, 16 files, 3 commits (40732fe / f301aaf / 96f4c85), type-check green at exit 0.
@@ -73,10 +75,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Phase 0 Plan 03 decision: skip-case payloads use `1` for all `z.number().int().positive()` schema fields (sessions, samples_per_gesture, duration_sec, initial_mtu_bytes, iterations) — semantic "no measurement performed" sentinel; the `verdict: "skipped"` field carries the operational signal. Avoids 0-rejection by Zod's `positive()` constraint.
 - Phase 0 Plan 03 decision: Task 1 deliverables (10-0-7/8/9 + package.json upng-js add) bundled into Plan 02 commit `15e9922` due to parallel Wave 1 execution sharing the `tests/phase-0/` working tree. Plan 04 closure must reference 3 commits for full Plan 03 history (15e9922 + 3b2578d + 8670b0c). Documented in 00-03-SUMMARY.md Deviations §5.
 - Phase 0 Plan 03 decision: `tests/phase-0/.gitignore` extended with `docs/` to exclude runtime evidence written when scripts execute with cwd=tests/phase-0/ (smoke testing); real evidence under repo-root `docs/perf/phase-0/` when Plan 04 runs scripts from repo root.
+- Phase 1 Plan 01 decision (D-1.03 D-1.15): TS 5.8.3, pnpm 10.33.4, Biome 2.4.15, Vitest 4.1.5, Changesets 2.31.0, Node 24 LTS pinned exactly (T-01-01 mitigation); ghost-version drift from STACK.md/CLAUDE.md (5.8.5/10.3.1) still pending Wave 2 closure.
+- Phase 1 Plan 01 decision (D-1.06): Vitest 4 test.projects API used; temporarily commented during Wave 0 (zero packages exist; Vitest 4 errors on empty glob); Wave 1 re-enables. `passWithNoTests: true` added as safeguard.
+- Phase 1 Plan 01 decision (D-1.14): commitlint scope-enum severity 1 (warn) per RESEARCH OQ4 — allows phase plan-ID scopes (NN-NN) until regex-pattern plugin lands; subject-case disabled for Italian commits.
 
 ### Pending Todos
 
-- INV-3 doc-coherence cycle: align STACK.md + CLAUDE.md TypeScript pin from `5.8.5` → `5.8.3` and pnpm pin from `10.3.1` → `10.33.4` (verifiable via `npm view`).
+- INV-3 doc-coherence cycle: align STACK.md + CLAUDE.md TypeScript pin from `5.8.5` → `5.8.3` and pnpm pin from `10.3.1` → `10.33.4` (verifiable via `npm view`). **Target: Phase 1 Plan 03 (Wave 2) atomic closure commit.**
+- Wave 1 hand-off: uncomment `test.projects: ['packages/*']` in `vitest.config.ts` once first package directory lands. Tagged with `WAVE 0 DEVIATION` comment block.
 
 ### Blockers/Concerns
 
@@ -96,6 +102,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-11T07:04:13.501Z
-Stopped at: Phase 1 context gathered (--auto)
-Resume file: .planning/phases/01-foundation/01-CONTEXT.md
+Last session: 2026-05-11T08:22:00.000Z
+Stopped at: Completed 01-01-PLAN.md (Wave 0 tooling foundation — all 6 gates green)
+Resume file: .planning/phases/01-foundation/01-02-PLAN.md (Wave 1 — packages skeleton)

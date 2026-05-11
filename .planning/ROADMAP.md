@@ -66,7 +66,7 @@ Plans:
 **Plans:** 3 plans
 Plans:
 **Wave 0**
-- [ ] 01-01-PLAN.md — Tooling foundation: package.json + pnpm-workspace + tsconfig.base + biome.jsonc + vitest.config + .changeset/ + commitlint + husky + .nvmrc/.gitattributes/.editorconfig/.gitignore (Wave 0)
+- [x] 01-01-PLAN.md — Tooling foundation: package.json + pnpm-workspace + tsconfig.base + biome.jsonc + vitest.config + .changeset/ + commitlint + husky + .nvmrc/.gitattributes/.editorconfig/.gitignore (Wave 0) — ✅ 2026-05-11 (16 files, 3 commits, all 6 gates G1-G6 green)
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 01-02-PLAN.md — Workspace packages + validation-harness fold-in: scaffold 5 new packages (g2-app, bridge, foundry-module, shared-protocol, shared-render) + promote tests/phase-0/ → packages/validation-harness/ with repo-root path-resolution (Pitfall 8 mitigation) (Wave 1)
 **Wave 2** *(blocked on Wave 1)*
