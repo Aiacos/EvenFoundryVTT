@@ -3,9 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": [],
-    "outDir": "dist",
-    "rootDir": "src"
+    "outDir": "dist"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/**/*"],
   "exclude": ["dist", "node_modules"]
 }

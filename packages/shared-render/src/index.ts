@@ -1,12 +1,13 @@
 /**
- * @evf/shared-render — placeholder.
+ * @evf/shared-render — ASCII grid model + INV-1 layout integrity snapshot matcher.
  *
- * Wave 2 (Plan 03) implements:
- * - `ascii-grid.ts` — character-precision grid model per INV-1 §7.14.4 ck 11-15
- * - `snapshot.ts` — `matchAsciiFixture(grid, path)` Vitest 4 matcher
- * - `fixtures/status-hud-baseline.txt` — example INV-1 fixture (D-1.16)
+ * Public API:
+ * - `AsciiGrid` — character-precision rectangular grid (immutable)
+ * - `matchAsciiFixture(grid, fixturePath)` — Vitest 4 expect.toMatchFileSnapshot wrapper
  *
- * @see Specs.md §7.1a (Layout Integrity Invariants) + §7.14.4 (verification checklist)
- * @see docs/architecture/0001-layered-ui-model.md (Wave 2)
+ * @see Specs.md §7.1a (Layout Integrity Invariants) + §7.14.4 ck 11-15
+ * @see docs/architecture/0001-layered-ui-model.md
  */
+export { AsciiGrid, type Cell } from './ascii-grid.js';
+export { matchAsciiFixture } from './snapshot.js';
 export const PACKAGE_NAME = '@evf/shared-render';
