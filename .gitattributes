@@ -1,0 +1,12 @@
+# Baseline: all text auto-detected, normalized to LF on commit
+* text=auto eol=lf
+
+# INV-1 ASCII fixtures: HARD LF requirement — character-precision snapshot tests will diff on CRLF
+packages/shared-render/src/fixtures/*.txt text eol=lf
+packages/*/src/__tests__/**/*.txt text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary

@@ -1,0 +1,3 @@
+# Source: pnpm.io/pnpm-workspace_yaml (verified 2026-05-11)
+packages:
+  - 'packages/*'

@@ -1,19 +1,43 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build outputs
 dist/
 build/
+*.tsbuildinfo
+
+# Caches
 .cache/
 .vite/
 .parcel-cache/
+
+# Test artifacts
+coverage/
+.nyc_output/
+.vitest-cache/
+
+# Changesets working cache (committed: .changeset/*.md, config.json, README.md)
+.changeset/__cache__/
+
+# Husky internals (committed: .husky/{commit-msg,pre-commit})
+.husky/_/
+
+# OS junk
 .DS_Store
 Thumbs.db
-*.log
-.env
-.env.local
-.env.*.local
+
+# Editor
 .idea/
 .vscode/
 *.swp
 *~
-coverage/
-.nyc_output/
-.pnpm-store/
+
+# Logs
+*.log
+
+# Env files (defense-in-depth — repo should never need these)
+.env
+.env.local
+.env.*.local
+*.secret.json
