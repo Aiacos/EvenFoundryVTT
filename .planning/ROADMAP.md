@@ -63,7 +63,14 @@ Plans:
   3. ADRs 0001 (layered-ui-model), 0002 (protocol-versioning), 0003 (tool-registry-pattern), 0004 (voice-via-mcp-not-internal), 0008 (code-quality-config) exist and are referenced from `docs/architecture/README.md`
   4. Versioned config schema `config/schema.json` + migration `0001_init` round-trips a fixture; telemetry event schema is locked (avoid thousand-paper-cut renames)
   5. Snapshot-test framework (ASCII layout fixtures, INV-1 layout integrity) is wired in `shared-render` and consumed by `g2-app` Vitest suite
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+**Wave 0**
+- [ ] 01-01-PLAN.md — Tooling foundation: package.json + pnpm-workspace + tsconfig.base + biome.jsonc + vitest.config + .changeset/ + commitlint + husky + .nvmrc/.gitattributes/.editorconfig/.gitignore (Wave 0)
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 01-02-PLAN.md — Workspace packages + validation-harness fold-in: scaffold 5 new packages (g2-app, bridge, foundry-module, shared-protocol, shared-render) + promote tests/phase-0/ → packages/validation-harness/ with repo-root path-resolution (Pitfall 8 mitigation) (Wave 1)
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 01-03-PLAN.md — ADRs + snapshot framework + CI + INV-3 closure: 5 MADR ADRs (0001/0002/0003/0004/0008) + shared-render AsciiGrid + matchAsciiFixture + example wire-up test (D-1.16) + .github/workflows/ci.yml 7-gate + CONTRIBUTING.md + atomic INV-3 commit (CLAUDE.md + STACK.md drift correction) (Wave 2, NOT autonomous — human-verify checkpoint for INV-3 doc coherence)
 
 ### Phase 2: Foundry Module Core + Pairing UI
 **Goal**: Players can pair a G2 to Foundry, the module reads character/combat/scene/log state over a versioned WS, and a phone-side wizard onboards the device — without writing anything yet.
@@ -224,7 +231,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Validation Gates | 1/4 | In progress | - |
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Not started | - |
 | 2. Foundry Module Core + Pairing UI | 0/TBD | Not started | - |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
 | 4a. G2 Engine + Raster + Status HUD | 0/TBD | Not started | - |
