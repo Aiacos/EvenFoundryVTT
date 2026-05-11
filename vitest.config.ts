@@ -1,17 +1,15 @@
 // Source: vitest.dev/guide/workspace (verified 2026-05-11)
 // NOTE: vitest.workspace.ts is DEPRECATED since Vitest 3.2 — use test.projects only.
 //
-// WAVE 0 DEVIATION: `test.projects` is intentionally commented-out until Wave 1
-// (Plan 02) creates the `packages/*` workspace members. Vitest 4 errors out
-// (exit 1) if `projects` glob resolves to zero directories — see
-// https://github.com/vitest-dev/vitest/issues (no projects found is fatal).
-// Re-enable `projects: ['packages/*']` in Wave 1 after first package lands.
-// Tracked in 01-01-SUMMARY.md §Deviations.
+// WAVE 1 (Plan 02): re-enabled `test.projects: ['packages/*']` now that the 6
+// workspace packages exist (5 scaffolded + validation-harness folded from
+// tests/phase-0/). `passWithNoTests: true` kept as belt-and-suspenders for
+// packages that contain no test files yet (Phase 2+ wires real tests).
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    // projects: ['packages/*'],  // ⚠ Wave 1 will enable this
+    projects: ['packages/*'],
     passWithNoTests: true,
     coverage: {
       provider: 'v8',

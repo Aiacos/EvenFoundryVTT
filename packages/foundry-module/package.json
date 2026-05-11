@@ -1,0 +1,17 @@
+{
+  "name": "@evf/foundry-module",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF Foundry VTT module (evenfoundryvtt) — readers, writers, pairing UI (Phase 2 fills real implementation).",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --target es2022",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@evf/shared-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "8.5.1"
+  }
+}

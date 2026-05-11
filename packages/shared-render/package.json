@@ -1,0 +1,21 @@
+{
+  "name": "@evf/shared-render",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF shared render — ASCII grid model + snapshot matcher for INV-1 layout integrity testing.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "vitest": "4.1.5"
+  }
+}

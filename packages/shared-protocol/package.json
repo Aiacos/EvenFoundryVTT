@@ -1,0 +1,21 @@
+{
+  "name": "@evf/shared-protocol",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF shared protocol — TypeScript types + Zod schemas. Single source of truth per ADR-0002.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@evf/bridge",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF Bridge service — Fastify + ws CORS proxy with bearer auth + Tool Registry (Phase 3 fills real implementation).",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --target node24",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@evf/shared-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "8.5.1"
+  }
+}

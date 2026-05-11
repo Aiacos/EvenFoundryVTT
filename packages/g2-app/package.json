@@ -1,0 +1,19 @@
+{
+  "name": "@evf/g2-app",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF G2 plugin host bundle — served via static HTTP to Even Realities App WebView (Phase 4a fills real implementation).",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@evf/shared-protocol": "workspace:*",
+    "@evf/shared-render": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "8.0.11"
+  }
+}
