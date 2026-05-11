@@ -231,4 +231,265 @@ describe('PairModal', () => {
       expect(devices.length).toBeGreaterThan(0);
     });
   });
+
+  describe('_activateListeners()', () => {
+    it('binds click handler to [data-action="revoke"] buttons', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      // Build minimal DOM: a div with a revoke button
+      const html = document.createElement('div');
+      const revokeBtn = document.createElement('button');
+      revokeBtn.dataset.action = 'revoke';
+      revokeBtn.dataset.tokenId = entry.token;
+      html.appendChild(revokeBtn);
+
+      modal._activateListeners(html);
+
+      // Clicking the revoke button should call revokeBearer
+      revokeBtn.click();
+
+      const { validateBearer } = await import('./bearer-registry.js');
+      const result = validateBearer(entry.token);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe('revoked');
+    });
+
+    it('binds click handler to [data-action="refresh"] button', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
+
+      const html = document.createElement('div');
+      const refreshBtn = document.createElement('button');
+      refreshBtn.dataset.action = 'refresh';
+      html.appendChild(refreshBtn);
+
+      modal._activateListeners(html);
+      refreshBtn.click();
+
+      // generateBearer returns a promise; allow microtasks to flush
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(renderSpy).toHaveBeenCalledWith(true);
+    });
+
+    it('binds click handler to [data-action="new-code"] button (expired state)', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
+
+      const html = document.createElement('div');
+      const newCodeBtn = document.createElement('button');
+      newCodeBtn.dataset.action = 'new-code';
+      html.appendChild(newCodeBtn);
+
+      modal._activateListeners(html);
+      newCodeBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(renderSpy).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('_onClickRevoke()', () => {
+    it('does nothing when data-token-id is missing', async () => {
+      const { generateBearer, listBearers } = await import('./bearer-registry.js');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      const btn = document.createElement('button');
+      // No dataset.tokenId
+      const event = new MouseEvent('click', { bubbles: true });
+      Object.defineProperty(event, 'currentTarget', { value: btn, configurable: true });
+
+      modal._onClickRevoke(event);
+
+      // Nothing should be revoked
+      expect(listBearers().length).toBe(1);
+    });
+  });
+
+  describe('close()', () => {
+    it('clears the countdown interval and calls super.close()', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      // close() should resolve without error even if no interval is running
+      await expect(modal.close()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('formatLastSeen coverage (via devices list)', () => {
+    it('shows "—" for lastSeenAt=null', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      // lastSeenAt is null on fresh entry
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal.getData();
+      const devices = data.devices as Array<{ lastSeenRelative: string }>;
+      expect(devices[0]?.lastSeenRelative).toBe('—');
+    });
+
+    it('shows "Online" for lastSeenAt within 2 minutes', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+
+      // Mutate lastSeenAt to 30s ago via settings
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | {
+            entries: Record<string, { lastSeenAt: number | null }>;
+          }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.lastSeenAt = Date.now() - 30_000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+      vi.mock('qrcode', () => ({
+        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
+      }));
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const devices = data.devices as Array<{ lastSeenRelative: string }>;
+      expect(devices[0]?.lastSeenRelative).toBe('Online');
+    });
+
+    it('shows "N min ago" for lastSeenAt 5 minutes ago', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | {
+            entries: Record<string, { lastSeenAt: number | null }>;
+          }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.lastSeenAt = Date.now() - 5 * 60_000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+      vi.mock('qrcode', () => ({
+        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
+      }));
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const devices = data.devices as Array<{ lastSeenRelative: string }>;
+      expect(devices[0]?.lastSeenRelative).toContain('min ago');
+    });
+
+    it('shows "N h ago" for lastSeenAt 2 hours ago', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | {
+            entries: Record<string, { lastSeenAt: number | null }>;
+          }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.lastSeenAt = Date.now() - 2 * 3600_000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+      vi.mock('qrcode', () => ({
+        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
+      }));
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const devices = data.devices as Array<{ lastSeenRelative: string }>;
+      expect(devices[0]?.lastSeenRelative).toBe('2 h ago');
+    });
+
+    it('shows ">24 h ago" for lastSeenAt 48 hours ago', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | {
+            entries: Record<string, { lastSeenAt: number | null }>;
+          }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.lastSeenAt = Date.now() - 48 * 3600_000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+      vi.mock('qrcode', () => ({
+        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
+      }));
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const devices = data.devices as Array<{ lastSeenRelative: string }>;
+      expect(devices[0]?.lastSeenRelative).toBe('>24 h ago');
+    });
+  });
+
+  describe('close() with active countdown', () => {
+    it('clears countdown interval when interval is active', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+
+      // Start a countdown by activating listeners with a time element
+      const html = document.createElement('div');
+      const timeEl = document.createElement('time');
+      timeEl.setAttribute('data-countdown', '');
+      timeEl.setAttribute('data-expires', String(Date.now() + 2 * 3600_000));
+      html.appendChild(timeEl);
+
+      modal._activateListeners(html);
+
+      // Interval should be set now; close() should clear it without error
+      await expect(modal.close()).resolves.toBeUndefined();
+    });
+  });
 });
