@@ -31,9 +31,9 @@ const catalogs = new Map<SupportedLang, Record<string, string>>();
 function loadCatalogs(langDirOverride?: string): void {
   const langDir =
     langDirOverride ??
+    // Path from src/routes/: routes → src → bridge → packages/foundry-module/lang
     resolve(
       fileURLToPath(new URL('.', import.meta.url)),
-      '..',
       '..',
       '..',
       '..',
