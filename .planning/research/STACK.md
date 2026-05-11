@@ -16,11 +16,11 @@ A single block to copy/paste into Phase 1 monorepo bootstrap:
 ```bash
 # Repo root
 corepack enable
-corepack prepare pnpm@10.3.1 --activate
+corepack prepare pnpm@10.33.4 --activate
 
 # Workspace devDeps (root package.json)
 pnpm add -Dw \
-  typescript@5.8.5 \
+  typescript@5.8.3 \
   @biomejs/biome@2.4.15 \
   vitest@4.1.5 \
   @vitest/coverage-v8@4.1.5 \
@@ -54,7 +54,7 @@ Runs inside the WebView of the Even Realities iPhone app, fetched from a server 
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| **TypeScript** | **5.8.5** | Type-safe authoring of plugin sources | Strict mode mandatory per INV-4 §0.1 (`noUnusedLocals`, `noUnusedParameters`). 5.8 stable; 6.0.x is also "latest" on npm but only 9 days old at time of research — **stay on 5.8.x for Phase 1** until 6.0 has a quarter of ecosystem catch-up. |
+| **TypeScript** | **5.8.3** | Type-safe authoring of plugin sources | Strict mode mandatory per INV-4 §0.1 (`noUnusedLocals`, `noUnusedParameters`). 5.8 stable; 6.0.x is also "latest" on npm but only 9 days old at time of research — **stay on 5.8.x for Phase 1** until 6.0 has a quarter of ecosystem catch-up. Drift-corrected 2026-05-11: original `5.8.5` does not exist on npm (Phase 0 Plan 01 finding); `5.8.3` is the actual latest in the 5.8.x series. Re-verified ✓ 2026-05-11. |
 | **Vite** | **8.0.11** | Dev server + production bundler | Fastest iteration loop (HMR <50 ms), worker-aware (`?worker` import suffix), tree-shakes `image-q`/`upng-js` cleanly. Outputs an `index.html` + JS chunks suitable for plain HTTP hosting (CDN-friendly per Specs.md §3.7). Vite 8 is current `latest` (verified 2026-05-10). |
 | **`image-q`** | **4.0.0** | Floyd-Steinberg / Atkinson / Bayer dither + custom 16-step greyscale palette | Specs.md §11.5.7 already settled; only library on npm with FS+Atkinson+Bayer **and** custom palette support. ~60 KB gz tree-shaken. **Worker-safe** (no DOM dep). |
 | **`upng-js`** | **2.1.0** | 4-bit indexed-palette PNG encode | Only mature npm encoder supporting `depth: 4` indexed-palette (matches G2 wire format §3.1). Photopea-maintained. ~25 KB gz. |
@@ -102,7 +102,7 @@ Foundry runs **its own** v8/Node-flavored module loader; modules ship as raw JS+
 | **dnd5e system** | **≥ 5.3.3** (latest 2026-05-07) | Game system providing Activity API | Verified live on github.com/foundryvtt/dnd5e/releases. Specs.md §11.5.1 mandates dual-edition (PHB 2014 + PHB 2024 via `core.modernRules`); dnd5e 5.x supports both. **Migration alert**: dnd5e 5.3.0 changed advancement data from array → object; if Phase 2 readers iterate that data, they must use object iteration. |
 | **`socketlib`** | **mandatory** (latest from `farling42/foundryvtt-socketlib`) | GM-side `executeAsGM` plumbing | **NOT on npm** (verified — `npm view socketlib` returns 404). It's a Foundry module installed as a sibling module via Foundry's manifest. Declare as `relationships.requires` in our `module.json` (Foundry will surface install prompt). Specs.md §4.8. |
 | **MidiQOL** | **optional** (latest from `gitlab.com/tposney/midi-qol`) | Attack→damage→save→effect full-flow | Module-level dependency, optional. When present, our writers (§Phase 7) call `MidiQOL.completeActivityUse`; when absent, fallback to vanilla `activity.use()`. Capability handshake §5.6.3 detects presence. |
-| **TypeScript** | **5.8.5** + `tsup` | Source authoring | We author TS, compile to plain ESM JS for Foundry. Foundry doesn't run TS directly; ship compiled output + sourcemap. `module.json` references the compiled JS. |
+| **TypeScript** | **5.8.3** + `tsup` | Source authoring | We author TS, compile to plain ESM JS for Foundry. Foundry doesn't run TS directly; ship compiled output + sourcemap. `module.json` references the compiled JS. Drift-corrected 2026-05-11 (was 5.8.5 — ghost version). |
 | **`fvtt-types`** | community types (verify Phase 2) | Type defs for Foundry globals | The `fvtt-types` package on npm is community-maintained. Pin to a version compatible with Foundry v13/v14 schema. Re-verify per INV-2 in Phase 2. |
 
 **`module.json` shape** (canonical fields per Foundry v13+ manifest):
@@ -146,7 +146,7 @@ Deferred to Phase 11 per Specs.md §10. Isolated package; not a runtime dependen
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| **TypeScript** | 5.8.5 | Type defs only | Pure types + Zod schemas. No runtime apart from Zod itself. |
+| **TypeScript** | 5.8.3 | Type defs only | Pure types + Zod schemas. No runtime apart from Zod itself. Drift-corrected 2026-05-11 (was 5.8.5 — ghost version). |
 | **`zod`** | 4.4.3 | Runtime + static schema | Schemas defined here, imported by bridge, foundry-module, g2-app, foundry-mcp. |
 
 This is the canonical place for: `CharacterState`, `CombatState`, `Tool` discriminated union (§5.3), `Panel` contracts (§5.6.2), `even-hub.d.ts` ambient types, and the `app.json` shape for the plugin host.
@@ -162,10 +162,10 @@ This is the canonical place for: `CharacterState`, `CombatState`, `Tool` discrim
 | **`happy-dom`** | 20.9.0 | Test environment for plugin code | Faster than jsdom for simple WebView-shaped code. Switch to jsdom only if a corner case demands it. |
 | **Playwright** | **`@playwright/test@1.59.1`** | E2E for the plugin host UI | Drives the WebView-equivalent (plain Chromium) for visual snapshot of HUD layouts and bridge-mock integration. **Don't use Cypress** — slower, multi-tab limited, and our flow is single-page. Phase 4+ only; not Phase 1. |
 | **Biome** | **2.4.15** | Lint + format (replaces ESLint + Prettier) | Specs.md INV-4 already chose Biome. Single binary, ~10× faster than ESLint+Prettier combined, TS-aware out of the box. CI rule: `biome ci .` fails on any warning. v2 is the current `latest`. **Don't add Prettier or ESLint** — Biome covers both, and dual-tooling is the original sin we're avoiding. |
-| **TypeScript** | 5.8.5 | Type-check (`tsc --noEmit`) in CI | Strict + `noUnusedLocals` + `noUnusedParameters` per INV-4 §0.1. |
+| **TypeScript** | 5.8.3 | Type-check (`tsc --noEmit`) in CI | Strict + `noUnusedLocals` + `noUnusedParameters` per INV-4 §0.1. Drift-corrected 2026-05-11 (was 5.8.5 — ghost version). |
 | **`tsx`** | 4.21.0 | TS execution for dev scripts | Node native loader for `.ts` — replaces `ts-node`. |
 | **`tsup`** | 8.5.1 | Bundle bridge + foundry-mcp to ESM | Zero-config; fast esbuild backend. Outputs single-file dist for Docker. |
-| **pnpm** | **10.3.1** | Package manager + workspaces | Specs.md §10 already chose pnpm. Strict by default (`shamefully-hoist=false`), workspace protocol (`workspace:*`) for inter-package deps. Pin via `corepack` so Docker builds are reproducible. |
+| **pnpm** | **10.33.4** | Package manager + workspaces | Specs.md §10 already chose pnpm. Strict by default (`shamefully-hoist=false`), workspace protocol (`workspace:*`) for inter-package deps. Pin via `corepack` so Docker builds are reproducible. Drift-corrected 2026-05-11 (was 10.3.1 — ghost version; current `latest-10` dist-tag is 10.33.4). Re-verified ✓ 2026-05-11. |
 | **Changesets** | **2.31.0** (`@changesets/cli`) | Versioning + changelog | Specs.md §11.5.6 already chose Changesets. Each PR adds a `.changeset/*.md` file declaring bump type per package. |
 
 ---
@@ -211,7 +211,7 @@ deploy/
 | In-memory `Map` | Redis (MVP) | Specs.md §11.5.5 — Tier 2 Redis is **Phase 13 stretch** only. Single-tenant homelab does not need it. |
 | Plain TS modules | React / Vue / Svelte (g2-app) | No DOM emitted. The "render target" is `bridge.createTextContainer({...})` calls. Virtual DOM brings zero value. |
 | Playwright | Cypress | Multi-tab limited, slower, weaker TS story. |
-| TypeScript 5.8.5 | TypeScript 6.0.x | 6.0 is `latest` on npm but only days old at time of research. Wait one quarter for ecosystem (esp. Vitest, Biome, fvtt-types) catch-up. |
+| TypeScript 5.8.3 | TypeScript 6.0.x | 6.0 is `latest` on npm but only days old at time of research. Wait one quarter for ecosystem (esp. Vitest, Biome, fvtt-types) catch-up. (Drift-corrected 2026-05-11: was 5.8.5.) |
 | Node 24 LTS | Node 22 LTS (Maintenance) | 24 is Active LTS as of 2026-05. Pin in `.nvmrc`. |
 
 ---
@@ -229,7 +229,7 @@ deploy/
 | **ESLint + Prettier** (separately) | Two tools, ~10× slower combined, two configs to maintain. INV-4 wants single source of code-quality truth. | Biome 2.4.15 |
 | **Jest** | ESM still painful in 2026; needs `babel-jest`. | Vitest 4.1.5 |
 | **`ts-node`** | Deprecated in favor of `tsx` for new projects. | `tsx@4.21.0` |
-| **`yarn` / `npm workspaces`** | pnpm's strict hoisting catches the kind of bug INV-4 wants caught. | pnpm 10.3.1 |
+| **`yarn` / `npm workspaces`** | pnpm's strict hoisting catches the kind of bug INV-4 wants caught. | pnpm 10.33.4 |
 | **React / Vue / Svelte** in `g2-app` | No DOM emitted to G2 — all output is `bridge.createTextContainer` / `updateImageRawData` calls. Virtual DOM brings zero value, just bundle bloat. | Plain TS modules + observable state-store (Specs.md §5.4) |
 | **Redis** in MVP bridge | Specs.md §11.5.5 — Tier 1 in-memory `Map` is sufficient for single-tenant. Redis is Phase 13 stretch. | `Map<sessionId, State>` with TTL |
 | **EvenAI native LLM** | Specs.md §3.6 — **non-API for developers** (Even Realities proprietary). | External MCP via `foundry-mcp` (V2) |
@@ -286,7 +286,7 @@ These are **drift signals** flagged for ADR-0006 / ADR-0008 follow-up:
 
 2. **TypeScript 6.0.x is `latest` but very recent**
    - `npm view typescript dist-tags` returns `latest: 6.0.3` and `next: 6.0.0-dev.20260416`.
-   - Phase 1 should pin **5.8.5** until Vitest, Biome, fvtt-types, and the rest publish 6-compat releases. Re-evaluate per INV-2 cadence at Phase 4 entry.
+   - Phase 1 should pin **5.8.3** until Vitest, Biome, fvtt-types, and the rest publish 6-compat releases. Re-evaluate per INV-2 cadence at Phase 4 entry. (Drift-corrected 2026-05-11: original `5.8.5` does not exist on npm; `5.8.3` is the actual latest 5.8.x.)
    - **Confidence: HIGH** — version state is empirical.
 
 3. **Node 24 LTS vs 22 LTS choice**
@@ -313,10 +313,10 @@ This section tells the roadmap exactly what Phase 1 must bootstrap.
 ```json
 {
   "private": true,
-  "packageManager": "pnpm@10.3.1",
+  "packageManager": "pnpm@10.33.4",
   "engines": { "node": ">=24.0.0", "pnpm": ">=10" },
   "devDependencies": {
-    "typescript": "^5.8.5",
+    "typescript": "^5.8.3",
     "@biomejs/biome": "^2.4.15",
     "vitest": "^4.1.5",
     "@vitest/coverage-v8": "^4.1.5",
@@ -381,7 +381,7 @@ packages/
 | Streamable HTTP only (no HTTP+SSE) for MCP | **HIGH** | modelcontextprotocol.io/specification/2025-06-18 quoted directly. |
 | Node 24 LTS | **HIGH** | nodejs.org/en/about/previous-releases verified 2026-05-10. |
 | `dnd5e@5.3.3` + Foundry v13.347 / v14 | **HIGH** | Live `system.json` from `release-5.3.3` tag. |
-| TypeScript 5.8.5 (deferring 6.0) | **MEDIUM-HIGH** | TypeScript 6.0 is `latest` on npm but 9 days old at research time; conservative pin until ecosystem catches up. Decision: pragmatic, not blocking. |
+| TypeScript 5.8.3 (deferring 6.0) | **MEDIUM-HIGH** | TypeScript 6.0 is `latest` on npm but 9 days old at research time; conservative pin until ecosystem catches up. Decision: pragmatic, not blocking. (Drift-corrected 2026-05-11: was 5.8.5.) |
 | Biome 2 (no ESLint/Prettier) | **HIGH** | Specs.md INV-4 already chose; Biome 2.4.15 is current `latest`. |
 | Vitest 4 + Playwright 1.59 + happy-dom | **HIGH** | Specs.md INV-4 already chose Vitest; live npm verification of v4 series. |
 | pnpm 10 + Changesets + monorepo layout | **HIGH** | Specs.md §5.6.10 already settled. |
@@ -417,13 +417,13 @@ All retrieved or verified on **2026-05-10** unless noted:
 - `npm view @fastify/cors version` → 11.2.0 (latest).
 - `npm view @fastify/rate-limit version` → 10.3.0 (latest).
 - `npm view ws version` → 8.20.0 (latest).
-- `npm view typescript dist-tags` → `latest: 6.0.3`, plus 5.8.5 in 5-series.
+- `npm view typescript dist-tags` → `latest: 6.0.3`; latest 5-series is `5.8.3` (drift-corrected from 5.8.5 — that version never existed; re-verified ✓ 2026-05-11).
 - `npm view vite version` → 8.0.11 (latest).
 - `npm view vitest version` → 4.1.5 (latest).
 - `npm view @vitest/coverage-v8 version` → 4.1.5 (latest).
 - `npm view @biomejs/biome version` → 2.4.15 (latest).
 - `npm view @modelcontextprotocol/sdk version` → 1.29.0 (latest).
-- `npm view pnpm version` → 10.3.1 (latest).
+- `npm view pnpm dist-tags` → `latest: 11.0.9`, `latest-10: 10.33.4` (drift-corrected from 10.3.1 — ghost version; MVP pins `latest-10` track; re-verified ✓ 2026-05-11).
 - `npm view zod version` → 4.4.3 (latest).
 - `npm view pino version` → 10.3.1 (latest).
 - `npm view @playwright/test version` → 1.59.1 (latest).
@@ -446,6 +446,20 @@ All retrieved or verified on **2026-05-10** unless noted:
 
 ---
 
+## 11. Drift Corrections Log
+
+Per INV-2 discipline (Specs §0.1), versions cited in this document that diverged from npm registry state at the time of pinning are tracked here. Each row records the discovery context and the actual pinned value in repo configuration (`package.json` + `.changeset` + `tsconfig.base.json`).
+
+| Date | Library | Was | Is | Source | Notes |
+|------|---------|-----|-----|--------|-------|
+| 2026-05-11 | TypeScript | 5.8.5 | 5.8.3 | `npm view typescript versions` | `5.8.5` does not exist on npm; `5.8.3` is the actual latest 5.8-series tag at research time. Discovered by Phase 0 Plan 01 SUMMARY (commit `40732fe`). Re-verified ✓ 2026-05-11 via npm registry query. |
+| 2026-05-11 | pnpm | 10.3.1 | 10.33.4 | `npm view pnpm dist-tags → latest-10` | `10.3.1` does not exist; `10.33.4` is current `latest-10` dist-tag (pnpm 11 is `latest`, but MVP stays on 10-track for monorepo stability — re-evaluate Phase 13). Discovered by Phase 0 Plan 01 SUMMARY. Re-verified ✓ 2026-05-11. |
+
+**Note:** `npm view pnpm dist-tags` reports `latest: 11.0.9` as of 2026-05-11 — MVP intentionally pins `latest-10: 10.33.4` per CLAUDE.md "pnpm@10" convention to keep workspace toolchain on the LTS-track major. Re-evaluate at Phase 13 multi-tenant cloud migration.
+
+---
+
 *Stack research for: FoundryVTT D&D 5e companion plugin running on Even Realities G2 AR glasses (EvenFoundryVTT / EVF)*
 *Researched: 2026-05-10*
+*Drift corrections: 2026-05-11 (Phase 1 Plan 03 closure — INV-3 atomic commit)*
 *Methodology: live npm registry queries, current spec WebFetches, INV-2 cross-validation discipline. No claim is rooted in training data alone.*

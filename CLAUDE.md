@@ -4,15 +4,68 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-**Design-only.** There is no application code yet — no build, no lint, no test. The repo currently contains exactly four artifacts:
+**Phase 1 active.** Monorepo skeleton lives under `packages/`; tooling foundation is committed and CI gates active. The repo contains:
 
-- `Specs.md` (~4040 lines, **canonical source of truth**, v0.9.10) — requirements, hardware constraints, APIs, data models, UI/UX with ASCII mockups, layered raster pipeline, optional V2 MCP voice module, 13-week MVP roadmap, risk register
+**Config (root):**
+
+- `package.json` — pnpm workspace, `packageManager: pnpm@10.33.4`, scripts for lint/typecheck/test/changeset
+- `pnpm-workspace.yaml` — `packages/*` glob
+- `tsconfig.base.json` — strict + 6 flags (lifted from Phase 0 proven config)
+- `biome.jsonc` — Biome 2.4.15 config (recommended + 4 strict rules)
+- `vitest.config.ts` — Vitest 4 `test.projects` workspace API + v8 coverage 80%
+- `.changeset/config.json` — independent per-package semver, pre-1.0 no-publish
+- `commitlint.config.js` + `.husky/{pre-commit,commit-msg}` — Conventional Commits enforcement
+- `.nvmrc=24`, `.npmrc`, `.gitattributes`, `.editorconfig`, `.gitignore`
+
+**Packages:**
+
+- `packages/g2-app/` — Phase 4a placeholder (Vite 8 → Even Realities App WebView)
+- `packages/bridge/` — Phase 3 placeholder (Fastify + ws Node 24 service)
+- `packages/foundry-module/` — Phase 2 placeholder (Foundry module `evenfoundryvtt`)
+- `packages/shared-protocol/` — Zod schemas + types (Phase 2+ fills real schemas)
+- `packages/shared-render/` — ASCII grid + INV-1 snapshot matcher (Phase 4a real consumer)
+- `packages/validation-harness/` — folded from `tests/phase-0/` per Phase 0 D-15 + Phase 1 D-1.02 (hardware execution gated on Even Hub access)
+
+**Architecture:**
+
+- `docs/architecture/` — 5 ADRs accepted (0001-0004 + 0008) + 2 Phase 0 stubs (0005, 0006); ADR-0007 reserved for V2 RTL stretch
+
+**Documentation:**
+
+- `Specs.md` (~4040 lines, **canonical source of truth**, v0.9.11) — requirements, hardware constraints, APIs, data models, UI/UX with ASCII mockups, layered raster pipeline, optional V2 MCP voice module, 13-week MVP roadmap, risk register
 - `README.md` — projection of `Specs.md` for GitHub readers; must stay coherent (see INV-3)
-- `docs/showcase/index.html` — animated single-file showcase deployed to GitHub Pages; another projection of the spec
+- `docs/showcase/index.html` — animated single-file showcase deployed to GitHub Pages; another projection
 - `docs/index.html` — root redirect to `/showcase/`
 - `LICENSE` (MIT)
 
-When code starts landing (Phase 1+), update this file with real build/lint/test commands.
+**CI:** GitHub Actions `.github/workflows/ci.yml` enforces D-1.10 7 quality gates on every PR.
+
+### Build/Test/Lint Commands (Phase 1+)
+
+```bash
+pnpm install                  # install workspace deps
+pnpm typecheck                # tsc --noEmit -p tsconfig.base.json && pnpm -r exec tsc --noEmit
+pnpm lint                     # biome check . (writes fixes? use lint:ci for read-only)
+pnpm lint:ci                  # biome ci . (read-only, CI-style)
+pnpm format                   # biome check --write .
+pnpm test                     # vitest --run (workspace-wide)
+pnpm test:watch               # vitest --watch
+pnpm test:coverage            # vitest --run --coverage
+pnpm changeset                # add a changeset for the current PR
+pnpm changeset:status         # check changeset declared since main
+
+# Per-package (filter via pnpm)
+pnpm --filter @evf/g2-app build
+pnpm --filter @evf/validation-harness validate:all      # full hardware run (with Even Hub access)
+pnpm --filter @evf/validation-harness validate:all -- --skip-hardware   # software-only smoke
+```
+
+### Phase 1 self-test (clean clone)
+
+```bash
+pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:coverage && pnpm changeset:status
+# All exit 0 = Phase 1 healthy
+```
 
 ## Project Invariants (NON-NEGOTIABLE)
 
@@ -103,6 +156,13 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
+
+> **Drift corrections (2026-05-11)** — the §Technology Stack rows below are a snapshot from `.planning/research/STACK.md` (researched 2026-05-10). Two version pins were drift-corrected after live `npm view` queries during Phase 0 Plan 01 (commit `40732fe`) and Phase 1 Plan 01 (commit `5096129`):
+>
+> - **TypeScript** — research cited `5.8.5`; actual pinned version is **`5.8.3`** (5.8.5 does not exist on npm registry). Re-verified ✓ 2026-05-11.
+> - **pnpm** — research cited `10.3.1`; actual pinned version is **`10.33.4`** (10.3.1 does not exist; current `latest-10` dist-tag). Re-verified ✓ 2026-05-11.
+>
+> Authoritative current pins live in repo configuration (`package.json` `packageManager`, root `devDependencies`, `.changeset/config.json`). Drift Corrections Log: `.planning/research/STACK.md` §11.
 
 ## 0. TL;DR — Phase 1 install matrix
 # Repo root
