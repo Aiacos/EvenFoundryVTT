@@ -6,7 +6,7 @@
   "description": "EVF validation harness — Phase 0 hardware/SDK validation tests + future re-validation entry point. Folded from tests/phase-0/ during Phase 1 per D-15.",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest --run",
+    "test": "vitest --run --project @evf/validation-harness --root ../..",
     "validate:all": "tsx scripts/run-all.ts",
     "validate:all:skip-hardware": "tsx scripts/run-all.ts --skip-hardware",
     "validate:r1-timing": "tsx scripts/10-0-1-r1-timing.ts",
