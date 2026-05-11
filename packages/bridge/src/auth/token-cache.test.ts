@@ -1,0 +1,180 @@
+/**
+ * Unit tests for TokenCache.
+ *
+ * Covers: cache hit (within TTL), cache miss (expired TTL), explicit invalidation,
+ * foundry_unreachable default stub, negative result caching.
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { TokenCache, type ValidateTokenResult } from './token-cache.js';
+
+const VALID_RESULT: ValidateTokenResult = {
+  valid: true,
+  entry: { alias: 'Test G2', expiresAt: Date.now() + 24 * 60 * 60 * 1000, worldId: 'test-world' },
+};
+
+const INVALID_RESULT: ValidateTokenResult = {
+  valid: false,
+  reason: 'unknown_token',
+};
+
+describe('TokenCache', () => {
+  describe('cache miss → calls foundryValidateFn', () => {
+    it('calls the validation function on first access', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      const result = await cache.validate('token-abc');
+
+      expect(fn).toHaveBeenCalledOnce();
+      expect(fn).toHaveBeenCalledWith('token-abc');
+      expect(result).toEqual(VALID_RESULT);
+    });
+
+    it('stores result in cache after first call', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('token-abc');
+      await cache.validate('token-abc');
+
+      expect(fn).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('cache hit (within TTL)', () => {
+    it('returns cached result without calling foundryValidateFn again', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      const first = await cache.validate('token-xyz');
+      const second = await cache.validate('token-xyz');
+
+      expect(fn).toHaveBeenCalledOnce();
+      expect(second).toEqual(first);
+    });
+  });
+
+  describe('cache expiry (TTL elapsed)', () => {
+    it('re-calls foundryValidateFn after TTL expires', async () => {
+      const now = Date.now();
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('token-ttl');
+      expect(fn).toHaveBeenCalledOnce();
+
+      // Advance past 5-minute TTL
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+
+      await cache.validate('token-ttl');
+      expect(fn).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    it('returns stale result before TTL expires', async () => {
+      const now = Date.now();
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('token-ttl2');
+      vi.advanceTimersByTime(5 * 60 * 1000 - 1); // 1ms before expiry
+      await cache.validate('token-ttl2');
+
+      expect(fn).toHaveBeenCalledOnce();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('explicit invalidation', () => {
+    it('forces re-validation after invalidateToken', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('token-inv');
+      cache.invalidateToken('token-inv');
+      await cache.validate('token-inv');
+
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('reduces cache size after invalidation', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('token-size');
+      expect(cache.size).toBe(1);
+
+      cache.invalidateToken('token-size');
+      expect(cache.size).toBe(0);
+    });
+
+    it('is a no-op for a token not in the cache', () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      // Should not throw
+      expect(() => cache.invalidateToken('ghost-token')).not.toThrow();
+    });
+  });
+
+  describe('default stub (no foundryValidateFn provided)', () => {
+    it('returns foundry_unreachable when no fn injected', async () => {
+      const cache = new TokenCache();
+      const result = await cache.validate('any-token');
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe('foundry_unreachable');
+    });
+  });
+
+  describe('negative result caching', () => {
+    it('caches invalid results to avoid hammering Foundry with bad tokens', async () => {
+      const fn = vi.fn().mockResolvedValue(INVALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      await cache.validate('bad-token');
+      await cache.validate('bad-token');
+      await cache.validate('bad-token');
+
+      expect(fn).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('size', () => {
+    it('tracks number of cached entries', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      expect(cache.size).toBe(0);
+
+      await cache.validate('t1');
+      await cache.validate('t2');
+      expect(cache.size).toBe(2);
+    });
+  });
+
+  describe('multiple tokens independently cached', () => {
+    it('validates each token independently', async () => {
+      const fn = vi.fn().mockImplementation(async (t: string): Promise<ValidateTokenResult> => {
+        if (t === 'valid-token') return VALID_RESULT;
+        return INVALID_RESULT;
+      });
+      const cache = new TokenCache(fn);
+
+      const r1 = await cache.validate('valid-token');
+      const r2 = await cache.validate('invalid-token');
+
+      expect(r1.valid).toBe(true);
+      expect(r2.valid).toBe(false);
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+  });
+});
