@@ -20,6 +20,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 type TestPlan = {
   id: string;
@@ -98,8 +101,8 @@ function runOne(
 ): Promise<{ exitCode: number; durationMs: number }> {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const child = spawn('pnpm', ['exec', 'tsx', file], {
-      cwd: path.resolve('.'),
+    const child = spawn('pnpm', ['exec', 'tsx', path.join(SCRIPT_DIR, file)], {
+      cwd: SCRIPT_DIR,
       env: { ...process.env, ...env },
       stdio: 'inherit',
     });
@@ -137,7 +140,7 @@ async function main(): Promise<void> {
       runs.push({ id: test.id, outcome: 'skipped-by-flag', exitCode: 0, durationMs: 0 });
       continue;
     }
-    if (!existsSync(test.file)) {
+    if (!existsSync(path.join(SCRIPT_DIR, test.file))) {
       console.log(
         `[NOT-YET-CREATED] ${test.id} — file ${test.file} does not exist (Plan 03 will create)`,
       );
