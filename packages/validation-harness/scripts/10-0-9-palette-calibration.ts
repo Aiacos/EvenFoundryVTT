@@ -14,10 +14,10 @@
 // Threat model T-00-03: ZERO network introspection. Photographs scrubbed of EXIF GPS by researcher
 // per methodology.md operational protocol before commit.
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence } from "./_shared/output.js";
-import { PaletteCalibrationResult } from "./_shared/schemas.js";
-import { readFile } from "node:fs/promises";
+import { readFile } from 'node:fs/promises';
+import { loadHub } from '../src/lib/hub.js';
+import { writeJsonEvidence } from '../src/lib/output.js';
+import { PaletteCalibrationResult } from '../src/lib/schemas.js';
 
 // THRESHOLDS pre-committed top-level (D-12 strict numeric, no runtime overrides).
 const THRESHOLDS = {
@@ -32,7 +32,7 @@ const THRESHOLDS = {
 function yToLstar(yNormalized: number): number {
   if (yNormalized <= 0) return 0;
   if (yNormalized > 0.008856) {
-    return 116 * Math.pow(yNormalized, 1 / 3) - 16;
+    return 116 * yNormalized ** (1 / 3) - 16;
   }
   return 903.3 * yNormalized;
 }
@@ -43,10 +43,10 @@ function deriveUniformLstarPalette(): number[] {
   for (let i = 0; i < THRESHOLDS.palette_steps; i++) {
     const targetLstar = (i / (THRESHOLDS.palette_steps - 1)) * 100;
     // Solve L* = 116·(Y/Yn)^(1/3) - 16 for Y/Yn assuming Yn=1
-    const yNorm = targetLstar > 8 ? Math.pow((targetLstar + 16) / 116, 3) : targetLstar / 903.3;
+    const yNorm = targetLstar > 8 ? ((targetLstar + 16) / 116) ** 3 : targetLstar / 903.3;
     // Linear → sRGB encode (gamma 2.4 segmented)
     const linear = yNorm;
-    const srgb = linear <= 0.0031308 ? linear * 12.92 : 1.055 * Math.pow(linear, 1 / 2.4) - 0.055;
+    const srgb = linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
     palette.push(Math.round(srgb * 255));
   }
   return palette;
@@ -68,7 +68,7 @@ function makeRampImage(palette: number[]): Uint8Array {
 async function loadMeasuredLuminance(iteration: number): Promise<number[] | null> {
   const fpath = `docs/perf/phase-0/calibration/measured-iter-${iteration}.json`;
   try {
-    const text = await readFile(fpath, "utf8");
+    const text = await readFile(fpath, 'utf8');
     const parsed = JSON.parse(text) as { g_means: number[] };
     if (!Array.isArray(parsed.g_means) || parsed.g_means.length !== THRESHOLDS.palette_steps) {
       console.error(
@@ -83,8 +83,8 @@ async function loadMeasuredLuminance(iteration: number): Promise<number[] | null
 }
 
 async function main(): Promise<void> {
-  console.log("Specs §10.0.9 — Palette calibration (Pitfall 15 mitigation)");
-  console.log("=============================================================");
+  console.log('Specs §10.0.9 — Palette calibration (Pitfall 15 mitigation)');
+  console.log('=============================================================');
   console.log(`Steps: ${THRESHOLDS.palette_steps}`);
   console.log(`Max iterations: ${THRESHOLDS.max_iterations}`);
   console.log(
@@ -96,16 +96,16 @@ async function main(): Promise<void> {
   if (!hub.available) {
     const skipped = PaletteCalibrationResult.parse({
       schema_version: 1,
-      test_id: "10-0-9-palette-calibration",
+      test_id: '10-0-9-palette-calibration',
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       iterations: 1,
       uniform_palette_lstar: [],
       derived_palette_lstar: [],
       spacing_uniformity_pct: 0,
       passes_within_10pct: false,
-      camera_settings: { iso: 100, exposure_sec: 1 / 30, white_balance: "daylight" },
+      camera_settings: { iso: 100, exposure_sec: 1 / 30, white_balance: 'daylight' },
     });
     const fpath = await writeJsonEvidence(skipped);
     console.log(`[SKIP] ${hub.reason}`);
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   }
 
   await hub.bridge.createImageContainer({
-    id: "palette-cal",
+    id: 'palette-cal',
     x: 0,
     y: 0,
     w: THRESHOLDS.ramp_width,
@@ -133,7 +133,7 @@ async function main(): Promise<void> {
 
   for (iter = 1; iter <= THRESHOLDS.max_iterations; iter++) {
     console.log(`Iteration ${iter}: rendering palette ${JSON.stringify(palette)}`);
-    await hub.bridge.updateImageRawData("palette-cal", makeRampImage(palette));
+    await hub.bridge.updateImageRawData('palette-cal', makeRampImage(palette));
     console.log(`Photograph G2 now (camera locked: ISO 100, 1/30s, daylight WB).`);
     console.log(`Save as: docs/perf/phase-0/calibration/ramp-iter-${iter}-{ts}.png`);
     console.log(
@@ -177,14 +177,14 @@ async function main(): Promise<void> {
     palette = deriveUniformLstarPalette();
   }
 
-  const verdict: "pass" | "fail" = passes ? "pass" : "fail";
+  const verdict: 'pass' | 'fail' = passes ? 'pass' : 'fail';
   const rationale = passes
     ? `Iteration ${iter}: spacing within ±${spacingUniformityPct.toFixed(1)}% L* uniform — palette calibrated`
     : `After ${iter} iteration(s): spacing ${spacingUniformityPct.toFixed(1)}% exceeds ±${THRESHOLDS.spacing_uniformity_pct_threshold}% threshold — needs Phase 4a follow-up (CIEDE2000 / photometer)`;
 
   const result = PaletteCalibrationResult.parse({
     schema_version: 1,
-    test_id: "10-0-9-palette-calibration",
+    test_id: '10-0-9-palette-calibration',
     timestamp: new Date().toISOString(),
     verdict,
     rationale,
@@ -193,17 +193,17 @@ async function main(): Promise<void> {
     derived_palette_lstar: derivedLstars,
     spacing_uniformity_pct: spacingUniformityPct,
     passes_within_10pct: passes,
-    camera_settings: { iso: 100, exposure_sec: 1 / 30, white_balance: "daylight" },
+    camera_settings: { iso: 100, exposure_sec: 1 / 30, white_balance: 'daylight' },
   });
   const fpath = await writeJsonEvidence(result);
   console.log();
   console.log(`Verdict: ${verdict.toUpperCase()}`);
   console.log(`Rationale: ${rationale}`);
   console.log(`Evidence: ${fpath}`);
-  process.exit(verdict === "pass" ? 0 : 1);
+  process.exit(verdict === 'pass' ? 0 : 1);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

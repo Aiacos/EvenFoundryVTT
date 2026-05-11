@@ -16,10 +16,10 @@
 // Threat model T-00-03: ZERO network introspection. No navigator.connection, no SSID/BSSID capture.
 // Only SDK-callback timestamps + payload size are recorded.
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence, writeCsvEvidence } from "./_shared/output.js";
-import { percentile } from "./_shared/stats.js";
-import { DleSustainedResult } from "./_shared/schemas.js";
+import { loadHub } from '../src/lib/hub.js';
+import { writeCsvEvidence, writeJsonEvidence } from '../src/lib/output.js';
+import { DleSustainedResult } from '../src/lib/schemas.js';
+import { percentile } from '../src/lib/stats.js';
 
 // THRESHOLDS pre-committed top-level (D-12 strict numeric, no runtime overrides).
 const THRESHOLDS = {
@@ -38,8 +38,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log("Specs §10.0.7 — DLE 30-min sustained throughput");
-  console.log("================================================");
+  console.log('Specs §10.0.7 — DLE 30-min sustained throughput');
+  console.log('================================================');
   console.log(`Duration: ${THRESHOLDS.duration_ms / 60_000} min`);
   console.log(`Tile: ${THRESHOLDS.tile_size_bytes} bytes every ${THRESHOLDS.tile_interval_ms} ms`);
   console.log(
@@ -51,9 +51,9 @@ async function main(): Promise<void> {
   if (!hub.available) {
     const skipped = DleSustainedResult.parse({
       schema_version: 1,
-      test_id: "10-0-7-dle-sustained",
+      test_id: '10-0-7-dle-sustained',
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       duration_sec: 1,
       initial_mtu_bytes: 1,
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  await hub.bridge.createImageContainer({ id: "dle-test", x: 0, y: 0, w: 200, h: 100 });
+  await hub.bridge.createImageContainer({ id: 'dle-test', x: 0, y: 0, w: 200, h: 100 });
   const tile = new Uint8Array(THRESHOLDS.tile_size_bytes);
   for (let i = 0; i < tile.length; i++) tile[i] = i & 0xff;
   const heartbeat = new Uint8Array(THRESHOLDS.heartbeat_size_bytes);
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   const t0 = performance.now();
   while (performance.now() - t0 < THRESHOLDS.duration_ms) {
     const tStart = performance.now();
-    await hub.bridge.updateImageRawData("dle-test", tile);
+    await hub.bridge.updateImageRawData('dle-test', tile);
     const tEnd = performance.now();
     const elapsedMs = Math.max(0.001, tEnd - tStart);
     const kbps = (THRESHOLDS.tile_size_bytes * 8) / (elapsedMs / 1000) / 1000;
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     // Heartbeat (inferred-MTU canary — Pitfall 10 mitigation 2)
     if (tEnd - lastHeartbeatAt >= THRESHOLDS.heartbeat_interval_ms) {
       const hbStart = performance.now();
-      await hub.bridge.updateImageRawData("dle-test", heartbeat);
+      await hub.bridge.updateImageRawData('dle-test', heartbeat);
       const hbMs = Math.max(0.001, performance.now() - hbStart);
       // Inferred-MTU heuristic: 50-byte payload should round-trip in <50 ms when DLE-extended
       // MTU (247 bytes) is in effect. If the heartbeat takes ≥50 ms, MTU likely degraded
@@ -127,15 +127,15 @@ async function main(): Promise<void> {
   const p99 = percentile(samples, 99);
   const initialMtu = inferredMtuHistory[0]?.inferred_mtu_bytes ?? 247;
 
-  const verdict: "pass" | "fail" = p99 >= THRESHOLDS.pass_p99_kbps ? "pass" : "fail";
+  const verdict: 'pass' | 'fail' = p99 >= THRESHOLDS.pass_p99_kbps ? 'pass' : 'fail';
   const rationale =
-    verdict === "pass"
+    verdict === 'pass'
       ? `30-min sustained: p50=${p50.toFixed(1)} kbps, p99=${p99.toFixed(1)} kbps; ${renegotiationEvents.length} renegotiation event(s) captured`
       : `p99=${p99.toFixed(1)} kbps below pass threshold ${THRESHOLDS.pass_p99_kbps} kbps; ${renegotiationEvents.length} renegotiation event(s)`;
 
   const result = DleSustainedResult.parse({
     schema_version: 1,
-    test_id: "10-0-7-dle-sustained",
+    test_id: '10-0-7-dle-sustained',
     timestamp: new Date().toISOString(),
     verdict,
     rationale,
@@ -156,10 +156,10 @@ async function main(): Promise<void> {
   console.log(`Verdict: ${verdict.toUpperCase()}`);
   console.log(`Rationale: ${rationale}`);
   console.log(`Evidence: ${fpath}`);
-  process.exit(verdict === "pass" ? 0 : 1);
+  process.exit(verdict === 'pass' ? 0 : 1);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

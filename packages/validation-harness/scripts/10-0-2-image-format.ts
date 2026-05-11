@@ -12,12 +12,12 @@
 //
 // Threat model T-00-03: ZERO network introspection. Probe pattern hash anchors INV-2 traceability.
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence } from "./_shared/output.js";
-import { ImageFormatResult } from "./_shared/schemas.js";
-import { createInterface } from "node:readline/promises";
-import { createHash } from "node:crypto";
-import UPNG from "upng-js";
+import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline/promises';
+import UPNG from 'upng-js';
+import { loadHub } from '../src/lib/hub.js';
+import { writeJsonEvidence } from '../src/lib/output.js';
+import { ImageFormatResult } from '../src/lib/schemas.js';
 
 // upng-js ships no .d.ts in 2.1.0; ambient module declaration lives in tests/phase-0/upng-js.d.ts.
 // CLAUDE.md §11.5.7 pins upng-js@2.1.0; @types/upng-js does not exist on npm (verified 2026-05-10).
@@ -45,9 +45,7 @@ function makeFormatA(width: number, height: number): Uint8Array {
   // Note: upng-js indexed mode auto-derives palette from buffer values; we pre-quantize to 0..15
   // so the palette ends up as a 16-entry greyscale ramp.
   // Cast Uint8Array.buffer → ArrayBuffer (Node TS lib types may surface ArrayBufferLike).
-  return new Uint8Array(
-    UPNG.encodeLL([indexed.buffer as ArrayBuffer], width, height, 1, 0, 4),
-  );
+  return new Uint8Array(UPNG.encodeLL([indexed.buffer as ArrayBuffer], width, height, 1, 0, 4));
 }
 
 function makeFormatB(width: number, height: number): Uint8Array {
@@ -82,8 +80,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log("Specs §10.0.2 — updateImageRawData byte format probe (Pitfall 7)");
-  console.log("==================================================================");
+  console.log('Specs §10.0.2 — updateImageRawData byte format probe (Pitfall 7)');
+  console.log('==================================================================');
   console.log(`Image dimensions: ${THRESHOLDS.width}×${THRESHOLDS.height}`);
   console.log(`Hold per format: ${THRESHOLDS.hold_per_format_sec} sec`);
   console.log();
@@ -92,14 +90,14 @@ async function main(): Promise<void> {
   if (!hub.available) {
     const skipped = ImageFormatResult.parse({
       schema_version: 1,
-      test_id: "10-0-2-image-format",
+      test_id: '10-0-2-image-format',
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       formats_tested: [],
-      identified_format: "none",
-      probe_pattern_hash: "",
-      researcher_visual_verdict: "skipped — Hub unavailable",
+      identified_format: 'none',
+      probe_pattern_hash: '',
+      researcher_visual_verdict: 'skipped — Hub unavailable',
     });
     const fpath = await writeJsonEvidence(skipped);
     console.log(`[SKIP] ${hub.reason}`);
@@ -108,7 +106,7 @@ async function main(): Promise<void> {
   }
 
   await hub.bridge.createImageContainer({
-    id: "img-probe",
+    id: 'img-probe',
     x: 0,
     y: 0,
     w: THRESHOLDS.width,
@@ -118,15 +116,15 @@ async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   const formats = [
-    { id: "A-png-indexed" as const, data: makeFormatA(THRESHOLDS.width, THRESHOLDS.height) },
-    { id: "B-raw-4bit-be" as const, data: makeFormatB(THRESHOLDS.width, THRESHOLDS.height) },
-    { id: "C-raw-4bit-le" as const, data: makeFormatC(THRESHOLDS.width, THRESHOLDS.height) },
+    { id: 'A-png-indexed' as const, data: makeFormatA(THRESHOLDS.width, THRESHOLDS.height) },
+    { id: 'B-raw-4bit-be' as const, data: makeFormatB(THRESHOLDS.width, THRESHOLDS.height) },
+    { id: 'C-raw-4bit-le' as const, data: makeFormatC(THRESHOLDS.width, THRESHOLDS.height) },
   ];
 
   // Hash for INV-2 traceability — anchors the canonical probe pattern across re-runs
-  const hash = createHash("sha256");
+  const hash = createHash('sha256');
   for (const f of formats) hash.update(f.data);
-  const probePatternHash = hash.digest("hex");
+  const probePatternHash = hash.digest('hex');
 
   console.log(`Probe pattern hash (sha256): ${probePatternHash}`);
   console.log(
@@ -136,7 +134,7 @@ async function main(): Promise<void> {
 
   for (const f of formats) {
     console.log(`\n>>> Sending Format ${f.id} (${f.data.length} bytes)...`);
-    await hub.bridge.updateImageRawData("img-probe", f.data);
+    await hub.bridge.updateImageRawData('img-probe', f.data);
     console.log(`>>> Photograph G2 NOW. Holding for ${THRESHOLDS.hold_per_format_sec} sec.`);
     await sleep(THRESHOLDS.hold_per_format_sec * 1000);
   }
@@ -152,27 +150,27 @@ async function main(): Promise<void> {
   );
   const cleanVerdict = verdict.trim().toUpperCase();
   const identified =
-    cleanVerdict === "A"
-      ? "A-png-indexed"
-      : cleanVerdict === "B"
-        ? "B-raw-4bit-be"
-        : cleanVerdict === "C"
-          ? "C-raw-4bit-le"
-          : "none";
+    cleanVerdict === 'A'
+      ? 'A-png-indexed'
+      : cleanVerdict === 'B'
+        ? 'B-raw-4bit-be'
+        : cleanVerdict === 'C'
+          ? 'C-raw-4bit-le'
+          : 'none';
   await rl.close();
 
-  const passOrFail: "pass" | "fail" = identified === "none" ? "fail" : "pass";
+  const passOrFail: 'pass' | 'fail' = identified === 'none' ? 'fail' : 'pass';
 
   const result = ImageFormatResult.parse({
     schema_version: 1,
-    test_id: "10-0-2-image-format",
+    test_id: '10-0-2-image-format',
     timestamp: new Date().toISOString(),
     verdict: passOrFail,
     rationale:
-      identified === "none"
+      identified === 'none'
         ? `No format rendered correctly — Phase 4a raster pipeline blocked, glyph-only mode required (Branch C trigger or SDK API mismatch — re-verify post-grant SDK signature)`
         : `Format ${identified} renders correctly — Phase 4a raster pipeline + boot-time format probe pattern locked (Pitfall 7 mitigation 2)`,
-    formats_tested: ["A-png-indexed", "B-raw-4bit-be", "C-raw-4bit-le"],
+    formats_tested: ['A-png-indexed', 'B-raw-4bit-be', 'C-raw-4bit-le'],
     identified_format: identified,
     probe_pattern_hash: probePatternHash,
     researcher_visual_verdict: `Researcher entered: "${verdict.trim()}" → identified ${identified}`,
@@ -182,10 +180,10 @@ async function main(): Promise<void> {
   console.log(`Verdict: ${passOrFail.toUpperCase()}`);
   console.log(`Identified format: ${identified}`);
   console.log(`Evidence: ${fpath}`);
-  process.exit(passOrFail === "pass" ? 0 : 1);
+  process.exit(passOrFail === 'pass' ? 0 : 1);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

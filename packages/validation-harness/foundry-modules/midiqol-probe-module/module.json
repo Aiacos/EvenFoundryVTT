@@ -19,11 +19,7 @@
   "manifest": "https://github.com/aiacos/EvenFoundryVTT/raw/main/tests/phase-0/midiqol-probe-module/module.json",
   "download": "https://github.com/aiacos/EvenFoundryVTT/raw/main/tests/phase-0/midiqol-probe-module.zip",
   "relationships": {
-    "requires": [
-      { "id": "midi-qol", "type": "module" }
-    ],
-    "systems": [
-      { "id": "dnd5e", "type": "system", "compatibility": { "minimum": "5.3.3" } }
-    ]
+    "requires": [{ "id": "midi-qol", "type": "module" }],
+    "systems": [{ "id": "dnd5e", "type": "system", "compatibility": { "minimum": "5.3.3" } }]
   }
 }

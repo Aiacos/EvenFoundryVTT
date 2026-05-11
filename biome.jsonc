@@ -19,8 +19,7 @@
       "!Specs.md",
       "!README.md",
       "!LICENSE",
-      "!.planning/**/*",
-      "!tests/phase-0/**/*"
+      "!.planning/**/*"
     ]
   },
   "formatter": {

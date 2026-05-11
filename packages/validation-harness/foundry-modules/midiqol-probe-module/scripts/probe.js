@@ -12,16 +12,16 @@
 //   - Does NOT read game.userId, session tokens, world data, actor data, or anything PII-bearing
 //   - Endpoint URL validated to localhost (T-00-05 mitigation)
 
-Hooks.once("ready", async () => {
-  console.log("[EVF Phase 0 Probe] ready hook fired");
+Hooks.once('ready', async () => {
+  console.log('[EVF Phase 0 Probe] ready hook fired');
 
-  const endpoint = window.localStorage.getItem("evf-probe-endpoint");
+  const endpoint = window.localStorage.getItem('evf-probe-endpoint');
   if (!endpoint) {
     ui.notifications?.warn(
-      "EVF Phase 0 Probe: no endpoint set. In console, run: localStorage.setItem('evf-probe-endpoint', '<harness URL>')"
+      "EVF Phase 0 Probe: no endpoint set. In console, run: localStorage.setItem('evf-probe-endpoint', '<harness URL>')",
     );
     console.warn(
-      "[EVF Phase 0 Probe] localStorage['evf-probe-endpoint'] is empty. Set it to the harness URL printed by `pnpm exec tsx midiqol-config-probe.ts` then reload."
+      "[EVF Phase 0 Probe] localStorage['evf-probe-endpoint'] is empty. Set it to the harness URL printed by `pnpm exec tsx midiqol-config-probe.ts` then reload.",
     );
     return;
   }
@@ -31,25 +31,25 @@ Hooks.once("ready", async () => {
   try {
     parsed = new URL(endpoint);
   } catch {
-    console.error("[EVF Phase 0 Probe] localStorage endpoint is not a valid URL:", endpoint);
+    console.error('[EVF Phase 0 Probe] localStorage endpoint is not a valid URL:', endpoint);
     return;
   }
-  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+  if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') {
     console.error(
-      "[EVF Phase 0 Probe] endpoint hostname not localhost; refusing POST. Got:",
-      parsed.hostname
+      '[EVF Phase 0 Probe] endpoint hostname not localhost; refusing POST. Got:',
+      parsed.hostname,
     );
     return;
   }
-  if (parsed.protocol !== "http:") {
-    console.error("[EVF Phase 0 Probe] endpoint protocol must be http:; got:", parsed.protocol);
+  if (parsed.protocol !== 'http:') {
+    console.error('[EVF Phase 0 Probe] endpoint protocol must be http:; got:', parsed.protocol);
     return;
   }
 
   // Detect MidiQOL presence.
-  const midiQolModule = game.modules.get("midi-qol");
+  const midiQolModule = game.modules.get('midi-qol');
   const midiqolActive = Boolean(midiQolModule?.active);
-  const midiqolVersion = midiQolModule?.version ?? "unknown";
+  const midiqolVersion = midiQolModule?.version ?? 'unknown';
 
   let settings = null;
   if (midiqolActive) {
@@ -57,15 +57,15 @@ Hooks.once("ready", async () => {
     // not referenced anywhere in this file (T-00-02 grep gate).
     try {
       settings = {
-        AutoFastForwardAbilityRolls: game.settings.get("midi-qol", "AutoFastForwardAbilityRolls"),
-        autoRollAttack: game.settings.get("midi-qol", "autoRollAttack"),
-        autoRollDamage: game.settings.get("midi-qol", "autoRollDamage"),
-        autoFastForwardRolls: game.settings.get("midi-qol", "autoFastForwardRolls"),
-        autoCompleteWorkflow: game.settings.get("midi-qol", "autoCompleteWorkflow"),
-        removeButtons: game.settings.get("midi-qol", "removeButtons"),
+        AutoFastForwardAbilityRolls: game.settings.get('midi-qol', 'AutoFastForwardAbilityRolls'),
+        autoRollAttack: game.settings.get('midi-qol', 'autoRollAttack'),
+        autoRollDamage: game.settings.get('midi-qol', 'autoRollDamage'),
+        autoFastForwardRolls: game.settings.get('midi-qol', 'autoFastForwardRolls'),
+        autoCompleteWorkflow: game.settings.get('midi-qol', 'autoCompleteWorkflow'),
+        removeButtons: game.settings.get('midi-qol', 'removeButtons'),
       };
     } catch (err) {
-      console.error("[EVF Phase 0 Probe] failed to read midi-qol settings:", err);
+      console.error('[EVF Phase 0 Probe] failed to read midi-qol settings:', err);
       // Continue with partial — harness will surface what's available
     }
   }
@@ -76,24 +76,24 @@ Hooks.once("ready", async () => {
     settings: settings ?? {},
   };
 
-  console.log("[EVF Phase 0 Probe] POSTing payload to", endpoint);
-  console.log("[EVF Phase 0 Probe] payload:", payload);
+  console.log('[EVF Phase 0 Probe] POSTing payload to', endpoint);
+  console.log('[EVF Phase 0 Probe] payload:', payload);
 
   try {
     const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const body = await res.json();
-    console.log("[EVF Phase 0 Probe] harness response:", body);
+    console.log('[EVF Phase 0 Probe] harness response:', body);
     ui.notifications?.info(
-      `EVF Phase 0 Probe: verdict=${body.verdict ?? "unknown"} (see CLI for details)`
+      `EVF Phase 0 Probe: verdict=${body.verdict ?? 'unknown'} (see CLI for details)`,
     );
   } catch (err) {
-    console.error("[EVF Phase 0 Probe] POST failed:", err);
+    console.error('[EVF Phase 0 Probe] POST failed:', err);
     ui.notifications?.error(
-      "EVF Phase 0 Probe: failed to POST to harness. Is `pnpm exec tsx midiqol-config-probe.ts` still running?"
+      'EVF Phase 0 Probe: failed to POST to harness. Is `pnpm exec tsx midiqol-config-probe.ts` still running?',
     );
   }
 });

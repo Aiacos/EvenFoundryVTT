@@ -10,11 +10,11 @@
 //
 // Threat model T-00-03: ZERO network introspection. Only SDK-callback gesture timestamps recorded.
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence } from "./_shared/output.js";
-import { percentile, hartiganDipTest, ci95 } from "./_shared/stats.js";
-import { R1TimingResult } from "./_shared/schemas.js";
-import { createInterface } from "node:readline/promises";
+import { createInterface } from 'node:readline/promises';
+import { loadHub } from '../src/lib/hub.js';
+import { writeJsonEvidence } from '../src/lib/output.js';
+import { R1TimingResult } from '../src/lib/schemas.js';
+import { ci95, hartiganDipTest, percentile } from '../src/lib/stats.js';
 
 // THRESHOLDS pre-committed top-level (D-12 strict numeric, no runtime overrides).
 const THRESHOLDS = {
@@ -25,12 +25,12 @@ const THRESHOLDS = {
 } as const;
 
 const GESTURES = [
-  "tap",
-  "double-tap",
-  "scroll-up",
-  "scroll-down",
-  "long-press-1s",
-  "long-press-2s",
+  'tap',
+  'double-tap',
+  'scroll-up',
+  'scroll-down',
+  'long-press-1s',
+  'long-press-2s',
 ] as const;
 type Gesture = (typeof GESTURES)[number];
 
@@ -50,7 +50,7 @@ async function captureGestureTimings(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const off = bridge.onR1Event((ev) => {
       // Filter: only count events whose type matches the requested gesture (best-effort firmware match)
-      const gestureRoot = gesture.split("-")[0] ?? "";
+      const gestureRoot = gesture.split('-')[0] ?? '';
       if (!ev.type.includes(gestureRoot)) return;
       if (lastT > 0) {
         const isi = ev.t_ms - lastT;
@@ -72,8 +72,8 @@ async function captureGestureTimings(
 }
 
 async function main(): Promise<void> {
-  console.log("Specs §10.0.1 — R1 gesture timing windows");
-  console.log("==========================================");
+  console.log('Specs §10.0.1 — R1 gesture timing windows');
+  console.log('==========================================');
   console.log(`Sessions: ${THRESHOLDS.sessions}`);
   console.log(`Samples per gesture per session: ${THRESHOLDS.samples_per_gesture_per_session}`);
   console.log(
@@ -87,19 +87,19 @@ async function main(): Promise<void> {
     const emptyGesture = { mean_ms: 0, sd_ms: 0, p95_ms: 0, n: 0 };
     const skipped = R1TimingResult.parse({
       schema_version: 1,
-      test_id: "10-0-1-r1-timing",
+      test_id: '10-0-1-r1-timing',
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       sessions: 1,
       samples_per_gesture: 1,
       gestures: {
         tap: emptyGesture,
-        "double-tap": emptyGesture,
-        "scroll-up": emptyGesture,
-        "scroll-down": emptyGesture,
-        "long-press-1s": emptyGesture,
-        "long-press-2s": emptyGesture,
+        'double-tap': emptyGesture,
+        'scroll-up': emptyGesture,
+        'scroll-down': emptyGesture,
+        'long-press-1s': emptyGesture,
+        'long-press-2s': emptyGesture,
       },
       bimodality: {
         tap_vs_double_tap_dip: 0,
@@ -117,11 +117,11 @@ async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const allSamples: Record<Gesture, number[]> = {
     tap: [],
-    "double-tap": [],
-    "scroll-up": [],
-    "scroll-down": [],
-    "long-press-1s": [],
-    "long-press-2s": [],
+    'double-tap': [],
+    'scroll-up': [],
+    'scroll-down': [],
+    'long-press-1s': [],
+    'long-press-2s': [],
   };
 
   for (let session = 1; session <= THRESHOLDS.sessions; session++) {
@@ -140,7 +140,10 @@ async function main(): Promise<void> {
   await rl.close();
 
   // Compute per-gesture stats
-  const gestureStats: Record<string, { mean_ms: number; sd_ms: number; p95_ms: number; n: number }> = {};
+  const gestureStats: Record<
+    string,
+    { mean_ms: number; sd_ms: number; p95_ms: number; n: number }
+  > = {};
   for (const g of GESTURES) {
     const samples = allSamples[g];
     const ci = ci95(samples);
@@ -157,28 +160,31 @@ async function main(): Promise<void> {
   }
 
   // Bimodality check on tap vs double-tap distribution
-  const tapAndDouble = [...allSamples["tap"], ...allSamples["double-tap"]];
+  const tapAndDouble = [...allSamples['tap'], ...allSamples['double-tap']];
   const dip = hartiganDipTest(tapAndDouble);
   const distinguishable = dip.pValue < THRESHOLDS.bimodality_p_threshold;
 
   // Recommended windows: tap_max = midpoint between tap p95 and double-tap mean
-  const tapP95 = gestureStats["tap"]?.p95_ms ?? 250;
-  const doubleMean = gestureStats["double-tap"]?.mean_ms ?? 400;
-  const longPress1Mean = gestureStats["long-press-1s"]?.mean_ms ?? 1000;
+  const tapP95 = gestureStats['tap']?.p95_ms ?? 250;
+  const doubleMean = gestureStats['double-tap']?.mean_ms ?? 400;
+  const longPress1Mean = gestureStats['long-press-1s']?.mean_ms ?? 1000;
   const tapMax = Math.round(Math.max(150, Math.min(tapP95 + 50, (tapP95 + doubleMean) / 2)));
   const doubleTapMax = Math.round(Math.max(tapMax + 100, doubleMean + 100));
-  const longPressMin = Math.max(THRESHOLDS.long_press_min_ms_floor, Math.round(longPress1Mean * 0.7));
+  const longPressMin = Math.max(
+    THRESHOLDS.long_press_min_ms_floor,
+    Math.round(longPress1Mean * 0.7),
+  );
 
-  const verdict: "pass" | "fail" =
-    distinguishable && longPressMin >= THRESHOLDS.long_press_min_ms_floor ? "pass" : "fail";
+  const verdict: 'pass' | 'fail' =
+    distinguishable && longPressMin >= THRESHOLDS.long_press_min_ms_floor ? 'pass' : 'fail';
   const rationale =
-    verdict === "pass"
+    verdict === 'pass'
       ? `Tap vs double-tap bimodal (Hartigan dip p=${dip.pValue.toFixed(3)} < ${THRESHOLDS.bimodality_p_threshold}); long_press_min=${longPressMin}ms ≥ ${THRESHOLDS.long_press_min_ms_floor}ms floor`
       : `Distinguishability failed: dip p=${dip.pValue.toFixed(3)}, long_press_min=${longPressMin}ms — INV-5 design needs explicit visual feedback chip (Pitfall 5)`;
 
   const result = R1TimingResult.parse({
     schema_version: 1,
-    test_id: "10-0-1-r1-timing",
+    test_id: '10-0-1-r1-timing',
     timestamp: new Date().toISOString(),
     verdict,
     rationale,
@@ -190,7 +196,11 @@ async function main(): Promise<void> {
       tap_vs_double_tap_p_value: dip.pValue,
       distinguishable,
     },
-    recommended_windows_ms: { tap_max: tapMax, double_tap_max: doubleTapMax, long_press_min: longPressMin },
+    recommended_windows_ms: {
+      tap_max: tapMax,
+      double_tap_max: doubleTapMax,
+      long_press_min: longPressMin,
+    },
   });
   const fpath = await writeJsonEvidence(result);
   console.log();
@@ -200,10 +210,10 @@ async function main(): Promise<void> {
     `Recommended windows (Phase 6 INV-5 input): tap_max=${tapMax}ms, double_tap_max=${doubleTapMax}ms, long_press_min=${longPressMin}ms`,
   );
   console.log(`Evidence: ${fpath}`);
-  process.exit(verdict === "pass" ? 0 : 1);
+  process.exit(verdict === 'pass' ? 0 : 1);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

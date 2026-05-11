@@ -14,14 +14,14 @@
 // {clean, 5ghz-loaded, 2-4ghz-microwave} — does NOT leak SSID/MAC/BSSID. Only application-observable
 // throughput timestamps via SDK callback (no link-layer detail per RESEARCH §"Don't Hand-Roll").
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence, writeCsvEvidence } from "./_shared/output.js";
-import { percentile } from "./_shared/stats.js";
-import { deriveBranch, DEFAULT_THRESHOLDS } from "./_shared/branch-decision.js";
-import { BleMultiEnvResult } from "./_shared/schemas.js";
+import { DEFAULT_THRESHOLDS, deriveBranch } from '../src/lib/branch-decision.js';
+import { loadHub } from '../src/lib/hub.js';
+import { writeCsvEvidence, writeJsonEvidence } from '../src/lib/output.js';
+import { BleMultiEnvResult } from '../src/lib/schemas.js';
+import { percentile } from '../src/lib/stats.js';
 
 // THRESHOLDS pre-committed top-level (D-12 strict numeric, no runtime overrides).
-// References DEFAULT_THRESHOLDS from _shared/branch-decision.ts (D-09 envelope locked there).
+// References DEFAULT_THRESHOLDS from ../src/lib/branch-decision.ts (D-09 envelope locked there).
 const THRESHOLDS = {
   duration_ms: 30 * 60 * 1000,
   tile_size_bytes: 4096,
@@ -30,7 +30,7 @@ const THRESHOLDS = {
   renegotiation_drop_threshold_pct: 50,
 } as const;
 
-const VALID_ENVS = ["clean", "5ghz-loaded", "2-4ghz-microwave"] as const;
+const VALID_ENVS = ['clean', '5ghz-loaded', '2-4ghz-microwave'] as const;
 type Env = (typeof VALID_ENVS)[number];
 
 function sleep(ms: number): Promise<void> {
@@ -38,17 +38,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 function parseEnv(): Env {
-  const v = process.env["RF_ENV"];
+  const v = process.env['RF_ENV'];
   if (!v) {
     console.error(
-      "ERROR: RF_ENV env var is required. Set to one of: clean, 5ghz-loaded, 2-4ghz-microwave",
+      'ERROR: RF_ENV env var is required. Set to one of: clean, 5ghz-loaded, 2-4ghz-microwave',
     );
     process.exit(3);
   }
   if (!VALID_ENVS.includes(v as Env)) {
-    console.error(
-      `ERROR: RF_ENV='${v}' not valid. Must be one of: ${VALID_ENVS.join(", ")}`,
-    );
+    console.error(`ERROR: RF_ENV='${v}' not valid. Must be one of: ${VALID_ENVS.join(', ')}`);
     process.exit(3);
   }
   return v as Env;
@@ -67,10 +65,10 @@ async function main(): Promise<void> {
   if (!hub.available) {
     const skipped = BleMultiEnvResult.parse({
       schema_version: 1,
-      test_id: "10-0-3-ble-multi-env",
+      test_id: '10-0-3-ble-multi-env',
       env,
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       duration_sec: 1,
       tile_size_bytes: THRESHOLDS.tile_size_bytes,
@@ -87,7 +85,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  await hub.bridge.createImageContainer({ id: "ble-test", x: 0, y: 0, w: 200, h: 100 });
+  await hub.bridge.createImageContainer({ id: 'ble-test', x: 0, y: 0, w: 200, h: 100 });
   const tile = new Uint8Array(THRESHOLDS.tile_size_bytes);
   for (let i = 0; i < tile.length; i++) tile[i] = i & 0xff;
 
@@ -101,7 +99,7 @@ async function main(): Promise<void> {
 
   while (performance.now() - t0 < THRESHOLDS.duration_ms) {
     const tStart = performance.now();
-    await hub.bridge.updateImageRawData("ble-test", tile);
+    await hub.bridge.updateImageRawData('ble-test', tile);
     const tEnd = performance.now();
     const elapsedMs = Math.max(0.001, tEnd - tStart);
     const kbps = (THRESHOLDS.tile_size_bytes * 8) / (elapsedMs / 1000) / 1000;
@@ -147,7 +145,7 @@ async function main(): Promise<void> {
 
   const result = BleMultiEnvResult.parse({
     schema_version: 1,
-    test_id: "10-0-3-ble-multi-env",
+    test_id: '10-0-3-ble-multi-env',
     env,
     timestamp: new Date().toISOString(),
     verdict: branchVerdict,
@@ -165,19 +163,17 @@ async function main(): Promise<void> {
   await writeCsvEvidence(result);
   console.log();
   console.log(`Verdict (this env only): ${branchVerdict}`);
-  console.log(
-    `p50=${p50.toFixed(1)} kbps, p95=${p95.toFixed(1)} kbps, p99=${p99.toFixed(1)} kbps`,
-  );
+  console.log(`p50=${p50.toFixed(1)} kbps, p95=${p95.toFixed(1)} kbps, p99=${p99.toFixed(1)} kbps`);
   console.log(`Renegotiation events: ${renegotiationEvents.length}`);
   console.log(`Rationale: ${branch.rationale}`);
   console.log(`Evidence: ${fpath}`);
   console.log();
   console.log(`(Plan 04 closure will combine all 3 RF envs for final ADR-0005 Branch verdict.)`);
   // Exit 0 if A or B or borderline (per-env), 1 if C, 2 if skipped (handled earlier)
-  process.exit(branchVerdict === "C" ? 1 : 0);
+  process.exit(branchVerdict === 'C' ? 1 : 0);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

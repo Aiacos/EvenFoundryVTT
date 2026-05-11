@@ -28,7 +28,7 @@ export type HubLoadOptions = {
 };
 
 export type HubLoadResult =
-  | { available: true; bridge: HubBridge; source: "simulator" | "real-sdk" }
+  | { available: true; bridge: HubBridge; source: 'simulator' | 'real-sdk' }
   | { available: false; reason: string };
 
 // In a real WebView context this looks at globalThis.bridge (injected by Even Realities App)
@@ -36,18 +36,18 @@ export type HubLoadResult =
 // is present, so we return { available: false } and tests emit "skipped" evidence.
 export async function loadHub(opts: HubLoadOptions = {}): Promise<HubLoadResult> {
   // Read env-only credential per T-00-04 — never accept inline.
-  const token = process.env["EVEN_HUB_TOKEN"];
+  const token = process.env['EVEN_HUB_TOKEN'];
   if (!token && opts.required) {
     return {
       available: false,
       reason:
-        "EVEN_HUB_TOKEN env var not set — set in .env.local (gitignored) before running hardware tests",
+        'EVEN_HUB_TOKEN env var not set — set in .env.local (gitignored) before running hardware tests',
     };
   }
   // globalThis.bridge is injected by Even Realities App WebView OR the simulator's iframe shim.
   const maybeBridge = (globalThis as { bridge?: HubBridge }).bridge;
   if (maybeBridge) {
-    return { available: true, bridge: maybeBridge, source: "simulator" };
+    return { available: true, bridge: maybeBridge, source: 'simulator' };
   }
   // Defer real-SDK dynamic import to post-grant (will be:
   //   const sdk = await import("@evenrealities/even_hub_sdk");
@@ -56,7 +56,7 @@ export async function loadHub(opts: HubLoadOptions = {}): Promise<HubLoadResult>
   return {
     available: false,
     reason:
-      "Even Hub bridge not present in globalThis. Run inside Even Hub Simulator (BxNxM/even-dev) or the Even Realities App WebView with a paired G2.",
+      'Even Hub bridge not present in globalThis. Run inside Even Hub Simulator (BxNxM/even-dev) or the Even Realities App WebView with a paired G2.',
   };
 }
 

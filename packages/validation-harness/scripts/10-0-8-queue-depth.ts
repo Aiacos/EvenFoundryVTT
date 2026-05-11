@@ -1,5 +1,5 @@
 // Specs §10.0.8 + Pitfall 12 — G2 firmware queue depth assumption (full table {1,2,3,≥4}).
-// CONTEXT.md D-10 strict tier mapping → deriveQueueDepthTier helper from _shared/branch-decision.ts.
+// CONTEXT.md D-10 strict tier mapping → deriveQueueDepthTier helper from ../src/lib/branch-decision.ts.
 //
 // Protocol:
 //   - Issue 8 distinct tile IDs back-to-back (no awaiting individual SDK promises sequentially)
@@ -12,10 +12,10 @@
 //
 // Threat model T-00-03: ZERO network introspection. Only application-observable promise resolution.
 
-import { loadHub } from "./_shared/hub.js";
-import { writeJsonEvidence } from "./_shared/output.js";
-import { deriveQueueDepthTier } from "./_shared/branch-decision.js";
-import { QueueDepthResult } from "./_shared/schemas.js";
+import { deriveQueueDepthTier } from '../src/lib/branch-decision.js';
+import { loadHub } from '../src/lib/hub.js';
+import { writeJsonEvidence } from '../src/lib/output.js';
+import { QueueDepthResult } from '../src/lib/schemas.js';
 
 // THRESHOLDS pre-committed top-level (D-12 strict numeric, no runtime overrides).
 const THRESHOLDS = {
@@ -29,15 +29,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 const QUEUE_TABLE = {
-  "1": "20 fps cap (linear serialization)",
-  "2": "tier A — push 2 tiles, wait for settle, push next 2",
-  "3": "tier B — adaptive fps Layer 6 + warning chip",
-  ">=4": "tier C — automatic degrade glyph mode",
+  '1': '20 fps cap (linear serialization)',
+  '2': 'tier A — push 2 tiles, wait for settle, push next 2',
+  '3': 'tier B — adaptive fps Layer 6 + warning chip',
+  '>=4': 'tier C — automatic degrade glyph mode',
 } as const;
 
 async function main(): Promise<void> {
-  console.log("Specs §10.0.8 — Queue depth empirical probe");
-  console.log("============================================");
+  console.log('Specs §10.0.8 — Queue depth empirical probe');
+  console.log('============================================');
   console.log(`Burst: ${THRESHOLDS.burst_size} tiles back-to-back`);
   console.log();
 
@@ -45,9 +45,9 @@ async function main(): Promise<void> {
   if (!hub.available) {
     const skipped = QueueDepthResult.parse({
       schema_version: 1,
-      test_id: "10-0-8-queue-depth",
+      test_id: '10-0-8-queue-depth',
       timestamp: new Date().toISOString(),
-      verdict: "skipped",
+      verdict: 'skipped',
       rationale: hub.reason,
       burst_size: THRESHOLDS.burst_size,
       measured_max_queue: 0,
@@ -76,13 +76,13 @@ async function main(): Promise<void> {
     dist[0] = i; // unique payload prefix (first byte distinct per tile)
     return hub.bridge
       .updateImageRawData(`queue-test-${i}`, dist)
-      .then(() => ({ i, status: "accepted" as const }))
-      .catch((err: unknown) => ({ i, status: "rejected" as const, err: String(err) }));
+      .then(() => ({ i, status: 'accepted' as const }))
+      .catch((err: unknown) => ({ i, status: 'rejected' as const, err: String(err) }));
   });
 
   type SettleEntry =
-    | { i: number; status: "accepted" }
-    | { i: number; status: "rejected"; err: string };
+    | { i: number; status: 'accepted' }
+    | { i: number; status: 'rejected'; err: string };
 
   const settled = await Promise.race<SettleEntry[] | null>([
     Promise.all(promises),
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     measuredMaxQueue = 4;
     dropped = THRESHOLDS.burst_size - measuredMaxQueue;
   } else {
-    const accepted = settled.filter((s) => s.status === "accepted").length;
+    const accepted = settled.filter((s) => s.status === 'accepted').length;
     measuredMaxQueue = accepted;
     dropped = THRESHOLDS.burst_size - accepted;
     // Coalesce inference: if SDK returned accept but tile not visible, firmware coalesced.
@@ -110,11 +110,11 @@ async function main(): Promise<void> {
   const tier = deriveQueueDepthTier(measuredMaxQueue);
   // Per-test verdict mapping: tier A → pass; tier B/C → fail (signals Branch B/C downgrade).
   // ADR-0005 (Plan 04) reconciles across all 7 tests; this is a per-test signal.
-  const verdict: "pass" | "fail" = tier.tier === "A" ? "pass" : "fail";
+  const verdict: 'pass' | 'fail' = tier.tier === 'A' ? 'pass' : 'fail';
 
   const result = QueueDepthResult.parse({
     schema_version: 1,
-    test_id: "10-0-8-queue-depth",
+    test_id: '10-0-8-queue-depth',
     timestamp: new Date().toISOString(),
     verdict,
     rationale: tier.rationale,
@@ -130,10 +130,10 @@ async function main(): Promise<void> {
   console.log(`Tier: ${tier.tier}`);
   console.log(`Rationale: ${tier.rationale}`);
   console.log(`Evidence: ${fpath}`);
-  process.exit(verdict === "pass" ? 0 : 1);
+  process.exit(verdict === 'pass' ? 0 : 1);
 }
 
 main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+  console.error('Fatal:', err);
   process.exit(1);
 });

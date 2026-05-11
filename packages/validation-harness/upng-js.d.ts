@@ -2,7 +2,7 @@
 // CLAUDE.md §11.5.7 pins upng-js@2.1.0; @types/upng-js does not exist on npm (verified 2026-05-10).
 // encodeLL signature confirmed via UPNG.js source: encodeLL(buffers, w, h, channels, depthChannels, depth)
 
-declare module "upng-js" {
+declare module 'upng-js' {
   const UPNG: {
     encodeLL: (
       buffers: ArrayBuffer[],

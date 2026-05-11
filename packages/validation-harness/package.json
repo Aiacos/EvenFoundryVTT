@@ -1,0 +1,25 @@
+{
+  "name": "@evf/validation-harness",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "EVF validation harness — Phase 0 hardware/SDK validation tests + future re-validation entry point. Folded from tests/phase-0/ during Phase 1 per D-15.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "validate:all": "tsx scripts/run-all.ts",
+    "validate:all:skip-hardware": "tsx scripts/run-all.ts --skip-hardware",
+    "validate:r1-timing": "tsx scripts/10-0-1-r1-timing.ts",
+    "validate:image-format": "tsx scripts/10-0-2-image-format.ts",
+    "validate:ble-multi-env": "tsx scripts/10-0-3-ble-multi-env.ts",
+    "validate:dle-sustained": "tsx scripts/10-0-7-dle-sustained.ts",
+    "validate:queue-depth": "tsx scripts/10-0-8-queue-depth.ts",
+    "validate:palette-calibration": "tsx scripts/10-0-9-palette-calibration.ts",
+    "validate:midiqol-probe": "tsx scripts/midiqol-config-probe.ts"
+  },
+  "dependencies": {
+    "csv-stringify": "6.5.2",
+    "upng-js": "2.1.0",
+    "zod": "4.4.3"
+  }
+}
