@@ -1,0 +1,85 @@
+# EVF CI Workflow — D-1.09 (GitHub Actions) + D-1.10 (7 quality gates)
+# Source: github.com/pnpm/action-setup (verified 2026-05-11)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # changeset status --since=main needs full history
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # D-1.10 gate 1: deterministic install (T-01-01 mitigation)
+      # --ignore-scripts avoids Husky prepare on shallow clone (Pitfall 4)
+      - name: Install dependencies (frozen-lockfile + ignore-scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # D-1.10 gate 2: Biome lint + format (read-only `ci` mode)
+      - name: Biome CI
+        run: pnpm biome ci .
+
+      # D-1.10 gate 3: TS strict per package
+      - name: TypeScript typecheck
+        run: pnpm typecheck
+
+      # D-1.10 gate 4: Vitest coverage
+      - name: Vitest with coverage
+        run: pnpm test:coverage
+
+      # D-1.10 gate 5: // TODO discipline (INV-4)
+      # Pattern matches // TODO that is NOT followed by (#NN) or (ADR-NNNN)
+      - name: TODO discipline grep
+        run: |
+          if grep -RnE '// TODO(?!\((#[0-9]+|ADR-[0-9]+)\))' \
+              --include='*.ts' --include='*.tsx' --include='*.js' \
+              packages/ docs/architecture/ 2>/dev/null; then
+            echo "::error::Found // TODO without (#issue) or (ADR-NNNN) reference"
+            exit 1
+          fi
+
+      # D-1.10 gate 6: snapshot drift (Vitest fails when --update=false finds mismatch)
+      - name: Snapshot drift check
+        run: pnpm vitest --run --update=false
+
+      # D-1.10 gate 7: changeset status (PR only — main branch doesn't need to declare changes)
+      - name: Changeset status
+        if: github.event_name == 'pull_request'
+        run: pnpm changeset:status
+
+  commit-lint-pr-title:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # T-01-04 mitigation: server-side commitlint cannot be bypassed by --no-verify
+      # T-01-03 mitigation: PR title interpolated via env block (NOT inlined into bash run:),
+      #                     preventing shell injection via crafted PR titles
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$PR_TITLE" | pnpm commitlint
