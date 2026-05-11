@@ -4,8 +4,8 @@ milestone: v0.9.11
 milestone_name: milestone
 status: executing
 stopped_at: Completed 01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure; Phase 1 complete)
-last_updated: "2026-05-11T10:55:00.000Z"
-last_activity: 2026-05-11 -- Phase 1 Plan 03 complete (Phase 1 closed)
+last_updated: "2026-05-11T13:00:00.000Z"
+last_activity: 2026-05-11 -- Quick task 260511-kqh: CI coverage gate fix (main green restored)
 progress:
   total_phases: 15
   completed_phases: 1
@@ -57,6 +57,12 @@ Progress: [█████████░░] 85%
 - 2026-05-10 — Phase 0 Plan 01 (test infrastructure scaffolding): 7 min, 16 files, 3 commits (40732fe / f301aaf / 96f4c85), type-check green at exit 0.
 
 *Updated after each plan completion.*
+
+## Quick Tasks Completed
+
+| Date       | Slug                                                  | Commit    | Notes                                                                                |
+|------------|-------------------------------------------------------|-----------|--------------------------------------------------------------------------------------|
+| 2026-05-11 | `260511-kqh-fix-ci-coverage-gate-exclude-phase-2-pla` | `2800995` | CI green restored: coverage.include narrowed to `.{ts,tsx}` + 4 placeholder index.ts excludes + `validation-harness/src/lib/**` excluded. Migration policy documented. ~10 min. |
 
 ## Accumulated Context
 
@@ -112,6 +118,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-11T10:55:00.000Z
-Stopped at: Completed 01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure; Phase 1 complete; all gates green; INV-3 verified via single commit 671a22d)
-Resume file: Phase 2 entry — next plan to generate
+Last session: 2026-05-11T13:00:00.000Z
+Stopped at: Quick task 260511-kqh complete — `main` CI green restored (commit 2800995); milestone branch `gsd/v0.9.11-milestone` exists with Phase 0 closure artifacts (Plan 04 SUMMARY pending-hardware + 00-VERIFICATION.md status=human_needed + 00-HUMAN-UAT.md 8 items) rebased on top of main.
+Resume file: Phase 2 entry — next plan to generate (Phase 0 hardware closure deferred to researcher; tracked via 00-HUMAN-UAT.md in /gsd-progress)
