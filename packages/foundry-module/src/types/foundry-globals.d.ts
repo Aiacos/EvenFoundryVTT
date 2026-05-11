@@ -29,7 +29,10 @@ interface FoundrySettings {
       name: string;
       label: string;
       icon: string;
-      type: new () => Application;
+      // Foundry accepts any constructor — args vary by runtime context
+      type: new (
+        ...args: unknown[]
+      ) => object;
       restricted: boolean;
     },
   ): void;

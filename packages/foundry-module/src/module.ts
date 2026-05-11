@@ -10,11 +10,16 @@
  * - Export MODULE_ID constant
  * - Register `Hooks.once("init")` → `registerSettings()`
  *
+ * Wave 1 scope (Plan 02):
+ * - Register `Hooks.once("ready")` → `registerSocketlibHandlers()`
+ *   socketlib is guaranteed available on "ready" (farling42/foundryvtt-socketlib README).
+ *
  * @see packages/foundry-module/module.json — `esmodules: ["dist/module.js"]`
  * @see Specs.md §3.4 (Foundry compatibility minimum 13.347, verified 14)
- * @see 02-CONTEXT.md D-2.01, D-2.18 (pair button + locale detection at boot)
+ * @see 02-CONTEXT.md D-2.01, D-2.12, D-2.18 (pair button, socketlib, locale)
  */
 
+import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerSettings } from './settings.js';
 
 /**
@@ -28,4 +33,11 @@ export const MODULE_ID = 'evenfoundryvtt' as const;
 // `init` is the earliest safe point to call game.settings.registerMenu.
 Hooks.once('init', () => {
   registerSettings();
+});
+
+// Register socketlib GM-side handlers on "ready".
+// socketlib is guaranteed available on "ready" (before "ready" it may not yet be initialised).
+// All bridge→Foundry bearer registry writes go through these handlers (D-2.12).
+Hooks.once('ready', () => {
+  registerSocketlibHandlers();
 });

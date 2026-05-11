@@ -18,13 +18,30 @@ import type { BearerRegistry } from './bearer-registry.js';
 /**
  * Minimal Application base class stub.
  * Required because settings.ts (imported transitively via module.ts) has
- * `class PairModalStub extends Application` which evaluates at import time.
- *
- * @see packages/foundry-module/src/module.test.ts — same pattern
+ * code that extends Application. Evaluated at import time.
  */
 class ApplicationStub {
   get title(): string {
     return '';
+  }
+}
+
+/**
+ * Minimal ApplicationV2 base class stub.
+ * Required because settings.ts now imports PairModal which extends ApplicationV2.
+ * PairModal class definition evaluates `extends ApplicationV2` at module load.
+ */
+class ApplicationV2Stub {
+  render(_force?: boolean): this {
+    return this;
+  }
+  async close(): Promise<void> {}
+  async getData(): Promise<Record<string, unknown>> {
+    return {};
+  }
+  _activateListeners(_html: HTMLElement): void {}
+  static get defaultOptions() {
+    return { id: '', title: '', template: '', width: 400, height: 'auto', resizable: false };
   }
 }
 
@@ -93,6 +110,7 @@ describe('generateBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -199,6 +217,7 @@ describe('validateBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -249,6 +268,7 @@ describe('validateBearer', () => {
     // Reset modules so bearer-registry re-reads settings on next call
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', { settings: settingsMock });
     vi.stubGlobal('crypto', makeCryptoMock());
@@ -263,6 +283,7 @@ describe('revokeBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -304,6 +325,7 @@ describe('listBearers', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
