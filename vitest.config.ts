@@ -38,7 +38,8 @@ export default defineConfig({
         'packages/*/dist/**',
         // Phase 2+ placeholders (single export-only stubs; remove when logic lands)
         'packages/bridge/src/index.ts', // Phase 3
-        'packages/foundry-module/src/index.ts', // Phase 2
+        // foundry-module/src/index.ts removed — Phase 2 Plan 01 replaced it with
+        // module.ts + settings.ts which carry real logic and are covered by tests.
         'packages/g2-app/src/index.ts', // Phase 4a
         'packages/shared-protocol/src/index.ts', // Phase 2 (real schemas land then)
         // Hardware-test utilities — exercised by packages/validation-harness/scripts/

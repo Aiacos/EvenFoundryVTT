@@ -1,0 +1,49 @@
+{
+  "id": "evenfoundryvtt",
+  "title": "EvenFoundryVTT",
+  "description": "Projects your Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by Even R1 ring gestures.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "EvenFoundryVTT",
+      "url": "https://github.com/aiacos/EvenFoundryVTT"
+    }
+  ],
+  "url": "https://github.com/aiacos/EvenFoundryVTT",
+  "manifest": "https://github.com/aiacos/EvenFoundryVTT/releases/latest/download/module.json",
+  "download": "https://github.com/aiacos/EvenFoundryVTT/releases/latest/download/evenfoundryvtt.zip",
+  "compatibility": {
+    "minimum": "13.347",
+    "verified": "14"
+  },
+  "esmodules": ["dist/module.js"],
+  "languages": [
+    { "lang": "en", "name": "English", "path": "lang/en.json" },
+    { "lang": "it", "name": "Italiano", "path": "lang/it.json" }
+  ],
+  "socket": true,
+  "relationships": {
+    "requires": [
+      {
+        "id": "socketlib",
+        "type": "module",
+        "compatibility": {
+          "minimum": "1.0.0"
+        }
+      },
+      {
+        "id": "midi-qol",
+        "type": "module"
+      }
+    ],
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "5.3.3"
+        }
+      }
+    ]
+  }
+}

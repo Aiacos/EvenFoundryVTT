@@ -3,15 +3,16 @@
   "version": "0.1.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "EVF Foundry VTT module (evenfoundryvtt) — readers, writers, pairing UI (Phase 2 fills real implementation).",
+  "description": "EVF Foundry VTT module (evenfoundryvtt) — module skeleton, settings panel, pairing UI, readers.",
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target es2022",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@evf/shared-protocol": "workspace:*"
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run --project @evf/foundry-module --root ../.."
   },
   "devDependencies": {
-    "tsup": "8.5.1"
+    "tsup": "8.5.1",
+    "typescript": "5.8.3",
+    "vitest": "4.1.5",
+    "happy-dom": "20.9.0"
   }
 }

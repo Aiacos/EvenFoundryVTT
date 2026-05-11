@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-03-PLAN.md (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure; Phase 1 complete)
-last_updated: "2026-05-11T15:35:00.000Z"
-last_activity: 2026-05-11 -- Phase 2 planning complete: CONTEXT + UI-SPEC + 5 PLANs + plan-check + 2 gap-fix edits (ready for execute-phase)
+stopped_at: "Phase 2 planning artifacts complete on `gsd/v0.9.11-milestone` — `02-CONTEXT.md` (c17d32d) + `02-UI-SPEC.md` (3b754cf) + 5 `02-NN-PLAN.md` files (Wave 0→3, commits b3c4d5e/0577e9c/dbaf1c3/74da105/6278c1f) + `02-PLAN-CHECK.md` (f06f4c6) + plan-check gap-fixes (0148b0d, H-1 internal_secret bootstrap + M-1 missing files in Plan 05 frontmatter). User accepted: per-pair internal_secret in QR payload `{ bridge_url, bearer, internal_secret, world, expires }` for module→bridge HTTP POST /internal/delta auth."
+last_updated: "2026-05-11T19:23:13.735Z"
+last_activity: 2026-05-11 -- Phase 02 execution started
 progress:
   total_phases: 15
-  completed_phases: 1
-  total_plans: 7
-  completed_plans: 6
-  percent: 85
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 7
+  percent: 58
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 02 — foundry-module-core-pairing-ui
 
 ## Current Position
 
-Phase: 1 (Foundation) — COMPLETE
-Plan: 3 of 3 (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure) — DONE
-Status: Phase 1 complete; Phase 2 entry unblocked
-Last activity: 2026-05-11 -- Phase 1 Plan 03 (Wave 2) complete; all WAVE-2-G1..G5 green; INV-3 atomic commit verified
+Phase: 02 (foundry-module-core-pairing-ui) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 02
+Last activity: 2026-05-11 -- Phase 02 execution started
 
 Progress: [█████████░░] 85%
 
