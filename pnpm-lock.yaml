@@ -78,6 +78,9 @@ importers:
       '@evf/shared-render':
         specifier: workspace:*
         version: link:../shared-render
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       vite:
         specifier: 8.0.11
