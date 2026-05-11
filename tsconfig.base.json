@@ -1,5 +1,11 @@
 {
   // Source: TypeScript handbook (verified 2026-05-11) + tests/phase-0/tsconfig.json (Phase 0 proven green)
+  //
+  // Exclude packages that declare DOM types in their own tsconfig.
+  // packages/g2-app uses lib:["ES2023","DOM"] — excluded here so the root
+  // tsc --noEmit pass (ES2023-only, no DOM) does not pick up browser files.
+  // The per-package `tsc --noEmit` (via `pnpm -r exec tsc --noEmit`) covers g2-app.
+  "exclude": ["packages/g2-app"],
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",

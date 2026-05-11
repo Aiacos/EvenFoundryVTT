@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="description" content="EvenFoundryVTT — Phone Setup Wizard" />
+    <title>EvenFoundryVTT Setup</title>
+    <!--
+      All assets must be inlined by Vite at build time — no external CDN requests.
+      Even Hub network constraint: app.json whitelist forbids wildcards (Specs.md §3.3).
+      @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 2
+    -->
+    <link rel="stylesheet" href="./wizard.css" />
+  </head>
+  <body>
+    <!--
+      Global wizard layout:
+        - Step indicator (top nav)
+        - Step title (h1)
+        - Scrollable step content area
+        - Sticky bottom CTA row (managed per-step component)
+
+      Accessibility:
+        - <main role="main"> wraps step content (WCAG 2.4.1 bypass blocks)
+        - <nav aria-label="Setup progress"> for step indicator
+        - Focus management: wizard.ts moves focus to #evf-step-title on step advance
+        - aria-live regions injected by step components
+    -->
+
+    <nav aria-label="Setup progress" class="evf-step-nav">
+      <ol class="evf-step-list">
+        <li class="evf-step-item" aria-current="step" aria-label="Step 1 of 3">
+          <span class="evf-step-dot evf-step-dot--active" aria-hidden="true"></span>
+        </li>
+        <li class="evf-step-item" aria-label="Step 2 of 3">
+          <span class="evf-step-dot evf-step-dot--future" aria-hidden="true"></span>
+        </li>
+        <li class="evf-step-item" aria-label="Step 3 of 3">
+          <span class="evf-step-dot evf-step-dot--future" aria-hidden="true"></span>
+        </li>
+      </ol>
+    </nav>
+
+    <main role="main" class="evf-wizard-main">
+      <!-- Step title — updated by wizard.ts on step change; tabindex=-1 for focus management -->
+      <h1
+        id="evf-step-title"
+        class="evf-step-title"
+        tabindex="-1"
+        aria-live="polite"
+      >
+        Bridge Profile
+      </h1>
+
+      <!-- Step content — replaced by each step component -->
+      <div id="step-content" class="evf-step-content" role="region" aria-labelledby="evf-step-title">
+        <!-- Step 1, 2, 3, or Completion rendered here by wizard.ts -->
+      </div>
+    </main>
+
+    <script type="module" src="./wizard.ts"></script>
+    <script type="module">
+      // Bootstrap — calls initWizard() when the module loads.
+      // wizard.ts exports initWizard; this inline script fires after DOMContentLoaded.
+      import { initWizard } from './wizard.ts';
+
+      document.addEventListener('DOMContentLoaded', () => {
+        initWizard().catch((err) => {
+          console.error('[EVF] wizard: initWizard failed:', err);
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@evf/shared-protocol": "workspace:*",
-    "@evf/shared-render": "workspace:*"
+    "@evf/shared-render": "workspace:*",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "vite": "8.0.11"
