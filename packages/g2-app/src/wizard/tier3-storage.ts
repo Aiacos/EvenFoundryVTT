@@ -83,7 +83,7 @@ export async function loadSession(profileId: string): Promise<Session | null> {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    // biome-ignore lint/suspicious/noConsole: Tier 3 JSON parse failure — informational
+    // console.warn is in the biome allow list — no suppression needed
     console.warn(
       `[EVF] tier3-storage: corrupted session JSON for profile ${profileId} — dropping.`,
     );
@@ -92,7 +92,7 @@ export async function loadSession(profileId: string): Promise<Session | null> {
 
   const result = SessionSchema.safeParse(parsed);
   if (!result.success) {
-    // biome-ignore lint/suspicious/noConsole: Tier 3 schema validation failure — informational
+    // console.warn is in the biome allow list — no suppression needed
     console.warn(
       `[EVF] tier3-storage: session schema validation failed for profile ${profileId} — dropping.`,
       result.error.flatten(),

@@ -74,7 +74,7 @@ export async function loadI18n(
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
-      // biome-ignore lint/suspicious/noConsole: i18n fetch non-200 — informational
+      // console.warn is in the biome allow list — no suppression needed
       console.warn(
         `[EVF] i18n: fetch returned HTTP ${response.status} for ${url} — using empty catalog.`,
       );
@@ -83,7 +83,7 @@ export async function loadI18n(
       const body: unknown = await response.json();
       const validated = _validateCatalog(body);
       if (validated === null) {
-        // biome-ignore lint/suspicious/noConsole: i18n response shape invalid — informational
+        // console.warn is in the biome allow list — no suppression needed
         console.warn(
           `[EVF] i18n: invalid catalog shape from ${url} — expected Record<string,string>.`,
         );
@@ -93,8 +93,7 @@ export async function loadI18n(
       }
     }
   } catch (err) {
-    // AbortError (timeout) or network error
-    // biome-ignore lint/suspicious/noConsole: i18n fetch failure — informational
+    // AbortError (timeout) or network error — console.warn in biome allow list
     console.warn(`[EVF] i18n: failed to fetch catalog from ${url} — using empty catalog.`, err);
     catalog = {};
   } finally {

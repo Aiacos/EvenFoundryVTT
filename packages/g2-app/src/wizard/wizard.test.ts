@@ -37,12 +37,12 @@ function createHubMock() {
 
 // Assign hub to globalThis before tests that use tier3-storage
 function installHubMock(hubInstance: typeof hub) {
-  (globalThis as unknown as Record<string, unknown>)['hub'] = hubInstance;
+  (globalThis as unknown as Record<string, unknown>).hub = hubInstance;
 }
 
 function uninstallHubMock() {
   // biome-ignore lint/suspicious/noExplicitAny: test cleanup
-  delete (globalThis as any)['hub'];
+  delete (globalThis as any).hub;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,8 @@ describe('tier3-storage', () => {
 
       const stored = mock.store.get('evf.session.00000000-0000-4000-8000-000000000001');
       expect(stored).toBeDefined();
-      const parsed = JSON.parse(stored!) as unknown;
+      if (!stored) throw new Error('stored should be defined');
+      const parsed = JSON.parse(stored) as unknown;
       expect(parsed).toMatchObject({
         profileId: '00000000-0000-4000-8000-000000000001',
         characterId: 'abc123',
@@ -99,7 +100,8 @@ describe('tier3-storage', () => {
 
       const indexRaw = mock.store.get('evf.profile.index');
       expect(indexRaw).toBeDefined();
-      const index = JSON.parse(indexRaw!) as unknown;
+      if (!indexRaw) throw new Error('indexRaw should be defined');
+      const index = JSON.parse(indexRaw) as unknown;
       expect(index).toContain('00000000-0000-4000-8000-000000000002');
     });
 

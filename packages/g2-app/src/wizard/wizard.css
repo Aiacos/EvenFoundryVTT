@@ -1,0 +1,454 @@
+/**
+ * EvenFoundryVTT — Phone WebView Wizard styles
+ *
+ * Design contract: 02-UI-SPEC.md UI-B
+ * No external fonts, no CDN dependencies (Even Hub §3.3 whitelist constraint).
+ * System-ui font stack only. All colours via custom properties.
+ *
+ * Dark mode: activated automatically via prefers-color-scheme media query.
+ * Even Realities App runs on phones typically in dark mode during tabletop play.
+ *
+ * Token naming:
+ *   --evf-bg          Dominant 60% (page background)
+ *   --evf-surface     Secondary 30% (input/card backgrounds)
+ *   --evf-accent      10% (CTAs, focused rings, active step dot)
+ *   --evf-destructive Destructive actions
+ *   --evf-text        Primary text
+ *   --evf-text-subtle Secondary/hint text
+ *   --evf-border      Border colour
+ *   --evf-success     Validation success (checkmark, selected card border)
+ *
+ * Spacing scale (8pt): xs=4px sm=8px md=16px lg=24px xl=32px 2xl=48px
+ *
+ * @see .planning/phases/02-foundry-module-core-pairing-ui/02-UI-SPEC.md UI-B Color + Spacing
+ */
+
+/* ============================================================
+   Custom properties — light mode defaults
+   ============================================================ */
+:root {
+  --evf-bg: #ffffff;
+  --evf-surface: #f5f5f7;
+  --evf-accent: #0071e3;
+  --evf-destructive: #d70015;
+  --evf-text: #1d1d1f;
+  --evf-text-subtle: #6e6e73;
+  --evf-border: #d2d2d7;
+  --evf-success: #28a745;
+
+  /* Spacing scale */
+  --evf-xs: 4px;
+  --evf-sm: 8px;
+  --evf-md: 16px;
+  --evf-lg: 24px;
+  --evf-xl: 32px;
+  --evf-2xl: 48px;
+
+  /* Typography */
+  --evf-font: system-ui, -apple-system, sans-serif;
+  --evf-font-body: 16px;
+  --evf-font-label: 14px;
+  --evf-font-heading: 20px;
+  --evf-font-caption: 12px;
+
+  /* Touch targets (WCAG 2.5.5 AAA) */
+  --evf-touch-min: 44px;
+}
+
+/* ============================================================
+   Dark mode override
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --evf-bg: #1c1c1e;
+    --evf-surface: #2c2c2e;
+    --evf-accent: #0a84ff;
+    --evf-destructive: #ff453a;
+    --evf-text: #f5f5f7;
+    --evf-text-subtle: #98989d;
+    --evf-border: #3a3a3c;
+    --evf-success: #32d74b;
+  }
+}
+
+/* ============================================================
+   Reset / base
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: var(--evf-bg);
+  color: var(--evf-text);
+  font-family: var(--evf-font);
+  font-size: var(--evf-font-body);
+  font-weight: 400;
+  line-height: 1.5;
+  /* Minimum supported width: 320px */
+  min-width: 320px;
+}
+
+/* ============================================================
+   Step indicator nav
+   ============================================================ */
+.evf-step-nav {
+  padding: var(--evf-md) var(--evf-lg) 0;
+}
+
+.evf-step-list {
+  display: flex;
+  align-items: center;
+  gap: var(--evf-sm);
+  list-style: none;
+}
+
+.evf-step-item {
+  display: flex;
+  align-items: center;
+}
+
+.evf-step-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--evf-border);
+  transition: background-color 0.2s ease;
+}
+
+.evf-step-dot--active {
+  background-color: var(--evf-accent);
+  width: 12px;
+  height: 12px;
+}
+
+.evf-step-dot--past {
+  background-color: var(--evf-text-subtle);
+}
+
+.evf-step-dot--future {
+  background-color: var(--evf-border);
+}
+
+/* ============================================================
+   Main wizard layout
+   ============================================================ */
+.evf-wizard-main {
+  display: flex;
+  flex-direction: column;
+  padding: var(--evf-md) var(--evf-lg) var(--evf-2xl);
+  min-height: calc(100vh - 50px);
+}
+
+.evf-step-title {
+  font-size: var(--evf-font-heading);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--evf-text);
+  margin-bottom: var(--evf-lg);
+  /* Allows programmatic focus for step advance (accessibility) */
+  outline: none;
+}
+
+.evf-step-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============================================================
+   Form elements
+   ============================================================ */
+.evf-select,
+.evf-input {
+  width: 100%;
+  background-color: var(--evf-surface);
+  border: 1.5px solid var(--evf-border);
+  border-radius: 8px;
+  color: var(--evf-text);
+  font-family: var(--evf-font);
+  font-size: var(--evf-font-body);
+  padding: var(--evf-sm) var(--evf-md);
+  min-height: var(--evf-touch-min);
+  outline: none;
+  transition: border-color 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.evf-select:focus,
+.evf-input:focus {
+  border-color: var(--evf-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--evf-accent) 25%, transparent);
+}
+
+.evf-input-error {
+  border-color: var(--evf-destructive);
+}
+
+.evf-input-valid {
+  border-color: var(--evf-success);
+}
+
+.evf-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+label {
+  display: block;
+  font-size: var(--evf-font-label);
+  font-weight: 600;
+  color: var(--evf-text);
+  margin-bottom: var(--evf-xs);
+  margin-top: var(--evf-md);
+}
+
+label:first-child {
+  margin-top: 0;
+}
+
+.evf-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.evf-input-wrapper .evf-input {
+  padding-right: var(--evf-xl);
+}
+
+.evf-valid-icon {
+  position: absolute;
+  right: var(--evf-sm);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Hint and error text
+   ============================================================ */
+.evf-hint {
+  font-size: var(--evf-font-caption);
+  color: var(--evf-text-subtle);
+  margin-top: var(--evf-xs);
+  line-height: 1.4;
+}
+
+.evf-error-msg {
+  font-size: var(--evf-font-body);
+  color: var(--evf-destructive);
+  margin-top: var(--evf-xs);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.evf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--evf-touch-min);
+  min-width: var(--evf-touch-min);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--evf-font);
+  font-size: var(--evf-font-body);
+  font-weight: 600;
+  line-height: 1.2;
+  padding: var(--evf-sm) var(--evf-md);
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+  text-decoration: none;
+}
+
+.evf-btn:focus-visible {
+  outline: 3px solid var(--evf-accent);
+  outline-offset: 2px;
+}
+
+.evf-btn-primary {
+  background-color: var(--evf-accent);
+  color: #ffffff;
+}
+
+.evf-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.evf-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.evf-btn-ghost {
+  background-color: transparent;
+  color: var(--evf-accent);
+  border: 1.5px solid var(--evf-border);
+}
+
+.evf-btn-ghost:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--evf-accent) 8%, transparent);
+}
+
+/* ============================================================
+   CTA row — sticky bottom
+   ============================================================ */
+.wizard-cta {
+  position: sticky;
+  bottom: 0;
+  background-color: var(--evf-bg);
+  padding: var(--evf-md) var(--evf-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--evf-sm);
+  border-top: 1px solid var(--evf-border);
+  /* Ensure CTA is always visible above scroll */
+  z-index: 10;
+}
+
+.wizard-cta .evf-btn-primary {
+  flex: 1;
+  max-width: 200px;
+  margin-left: auto;
+}
+
+/* ============================================================
+   Character card grid
+   ============================================================ */
+.evf-char-grid {
+  display: grid;
+  /* 2-column on ≥360px, 1-column below */
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--evf-md);
+  margin-top: var(--evf-md);
+}
+
+@media (max-width: 359px) {
+  .evf-char-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.evf-char-card {
+  background-color: var(--evf-surface);
+  border: 2px solid var(--evf-border);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--evf-xs);
+  min-height: var(--evf-touch-min);
+  padding: var(--evf-md);
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+  min-width: 120px;
+  font-family: var(--evf-font);
+}
+
+.evf-char-card:focus-visible {
+  outline: 3px solid var(--evf-accent);
+  outline-offset: 2px;
+}
+
+.evf-char-card--selected {
+  border-color: var(--evf-accent);
+  background-color: color-mix(in srgb, var(--evf-accent) 10%, var(--evf-surface));
+}
+
+.evf-char-name {
+  font-size: var(--evf-font-label);
+  font-weight: 600;
+  color: var(--evf-text);
+}
+
+.evf-char-info {
+  font-size: var(--evf-font-caption);
+  color: var(--evf-text-subtle);
+}
+
+/* ============================================================
+   Completion screen
+   ============================================================ */
+.evf-completion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--evf-2xl) var(--evf-lg);
+  gap: var(--evf-md);
+}
+
+.evf-completion__icon {
+  margin-bottom: var(--evf-md);
+}
+
+.evf-completion__heading {
+  font-size: var(--evf-font-heading);
+  font-weight: 600;
+  color: var(--evf-text);
+}
+
+.evf-completion__detail {
+  font-size: var(--evf-font-body);
+  color: var(--evf-text-subtle);
+}
+
+.evf-completion__instructions {
+  font-size: var(--evf-font-body);
+  color: var(--evf-text);
+  margin-top: var(--evf-sm);
+}
+
+.evf-completion__repair {
+  margin-top: var(--evf-lg);
+  font-size: var(--evf-font-caption);
+  color: var(--evf-accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: var(--evf-xs);
+  min-height: var(--evf-touch-min);
+}
+
+/* ============================================================
+   Status / loading
+   ============================================================ */
+.evf-status {
+  font-size: var(--evf-font-body);
+  color: var(--evf-text-subtle);
+  padding: var(--evf-md) 0;
+  text-align: center;
+}
+
+/* ============================================================
+   Utility classes
+   ============================================================ */
+.evf-hidden {
+  display: none;
+}
+
+.evf-qr-row {
+  margin-top: var(--evf-md);
+  padding-top: var(--evf-md);
+  border-top: 1px solid var(--evf-border);
+}
