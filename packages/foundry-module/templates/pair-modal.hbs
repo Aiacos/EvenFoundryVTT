@@ -1,0 +1,137 @@
+{{!--
+  pair-modal.hbs — EvenFoundryVTT ApplicationV2 pair modal template.
+
+  Rendered by PairModal.getData() → ApplicationV2 template engine.
+  All user-facing strings come from {{i18n.*}} (pre-resolved in getData, never raw keys).
+  QR SVG uses triple-mustache {{{qrSvg}}} — trusted server-generated SVG, not user content.
+
+  States handled:
+    - "empty"              — no devices paired; informational copy + no table headers
+    - "active"             — valid QR shown; countdown timer; paired devices table
+    - "pairing-in-progress"— same as active + spinner
+    - "refresh-needed"     — QR shown; countdown accent-coloured; Refresh CTA
+    - "expired"            — expired banner; no QR; paired devices still shown
+
+  Accessibility:
+    - QR SVG block has aria-label + role="img"
+    - Countdown wrapped in <time datetime="...">
+    - Device table has <thead> with <th scope="col">
+    - Revoke buttons have aria-label="Revoke {alias}"
+    - Inline confirmation uses aria-live="polite"
+
+  @see 02-UI-SPEC.md §UI-A (layout, wireframe, i18n keys, accessibility)
+  @see packages/foundry-module/src/pair/PairModal.ts (getData context shape)
+--}}
+
+<div class="evf-pair-modal">
+
+  {{!-- ── QR Region ─────────────────────────────────────────────────────────── --}}
+  {{#unless (eq state "empty")}}
+  <section class="evf-pair-modal__qr-region">
+
+    {{#if (eq state "expired")}}
+    {{!-- Expired state: banner instead of QR --}}
+    <div class="evf-pair-modal__expired-banner" role="alert">
+      <h2>{{i18n.expiredTitle}}</h2>
+      <p>{{i18n.expiredBody}}</p>
+      <button type="button" data-action="new-code" class="evf-btn evf-btn--primary">
+        {{i18n.expiredCta}}
+      </button>
+    </div>
+
+    {{else}}
+    {{!-- active | refresh-needed | pairing-in-progress: show QR SVG --}}
+    <div
+      class="evf-pair-modal__qr-wrap"
+      role="img"
+      aria-label="Pairing QR code for EvenFoundryVTT"
+    >
+      {{{qrSvg}}}
+    </div>
+
+    <p class="evf-pair-modal__scan-hint">{{i18n.scanInstruction}}</p>
+
+    <div class="evf-pair-modal__ttl-row">
+      {{!-- Countdown: expiresAt as data-expires epoch ms; text updated by JS every 60s --}}
+      <span class="evf-pair-modal__expires-label">{{i18n.expiresIn}}</span>
+      <time
+        class="evf-pair-modal__ttl{{#if (eq state "refresh-needed")}} evf-ttl--urgent{{/if}}"
+        datetime="{{expiresIso}}"
+        data-countdown
+        data-expires="{{expiresAtMs}}"
+      >
+        {{ttlDisplay}}
+      </time>
+
+      {{#if (eq state "refresh-needed")}}
+      <button type="button" data-action="refresh" class="evf-btn evf-btn--accent">
+        {{i18n.refresh}}
+      </button>
+      {{/if}}
+    </div>
+
+    {{#if (eq state "pairing-in-progress")}}
+    <div class="evf-pair-modal__awaiting" role="status" aria-live="polite">
+      <span class="evf-spinner" aria-hidden="true">↺</span>
+      <span>{{i18n.awaiting}}</span>
+    </div>
+    {{/if}}
+
+    {{/if}}{{!-- end expired/active branch --}}
+  </section>
+  {{/unless}}
+
+  {{!-- ── Paired Devices Table ──────────────────────────────────────────────── --}}
+  <section class="evf-pair-modal__devices">
+    <h2 class="evf-pair-modal__devices-heading">{{i18n.tableHeading}}</h2>
+    <hr class="evf-pair-modal__divider" />
+
+    {{#if devices.length}}
+    <div class="evf-pair-modal__table-wrap">
+      <table class="evf-pair-modal__table">
+        <thead>
+          <tr>
+            <th scope="col">{{i18n.colAlias}}</th>
+            <th scope="col">{{i18n.colPaired}}</th>
+            <th scope="col">{{i18n.colLastSeen}}</th>
+            <th scope="col">{{i18n.colAction}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each devices}}
+          <tr class="evf-pair-modal__device-row" data-token-id="{{this.token}}">
+            <td class="evf-pair-modal__alias" title="{{this.alias}}">{{this.alias}}</td>
+            <td class="evf-pair-modal__paired-date">{{this.pairedDate}}</td>
+            <td class="evf-pair-modal__last-seen">{{this.lastSeenRelative}}</td>
+            <td class="evf-pair-modal__action" aria-live="polite">
+              <button
+                type="button"
+                class="evf-btn evf-btn--destructive evf-revoke-btn"
+                data-action="revoke"
+                data-token-id="{{this.token}}"
+                aria-label="{{../i18n.revokeButton}} {{this.alias}}"
+              >
+                {{../i18n.revokeButton}}
+              </button>
+            </td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+
+    {{else}}
+    {{!-- Empty state: informational copy --}}
+    <p class="evf-pair-modal__empty-heading">{{i18n.emptyHeading}}</p>
+    <p class="evf-pair-modal__empty-body">{{i18n.emptyBody}}</p>
+    {{/if}}
+  </section>
+
+  {{!-- ── Footer ───────────────────────────────────────────────────────────── --}}
+  <footer class="evf-pair-modal__footer">
+    <button type="button" class="evf-btn" data-action="close">
+      {{i18n.close}}
+    </button>
+  </footer>
+
+</div>

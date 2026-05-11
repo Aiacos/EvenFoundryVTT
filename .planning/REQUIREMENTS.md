@@ -71,9 +71,9 @@
 
 - [ ] **CONN-01**: Phone setup wizard nell'Even Realities App WebView (3-step: profile/URL → token → character). *Render phone-side, NOT G2.*
 - [ ] **CONN-02**: Bridge URL + auth token persistente phone-side (Tier 3 storage §11.5.5, sopravvive a kill/restart/reboot)
-- [ ] **CONN-03**: Pair-G2 flow Foundry-desktop-side: bottone "Pair a G2 device" in module Settings → genera bearer 24h + QR payload `{bridge_url, token, world, expires}`
+- [x] **CONN-03**: Pair-G2 flow Foundry-desktop-side: bottone "Pair a G2 device" in module Settings → genera bearer 24h + QR payload `{bridge_url, token, world, expires}`
 - [ ] **CONN-04**: Auto-connect on G2 wear (Even Realities App detecta wear via SDK → riapre plugin)
-- [ ] **CONN-05**: Bearer token rotation 24h (silent refresh) + revoke registry DM-side per device
+- [x] **CONN-05**: Bearer token rotation 24h (silent refresh) + revoke registry DM-side per device
 
 ## v2 Requirements
 
@@ -144,9 +144,9 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | I18N-03 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
 | CONN-01 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
 | CONN-02 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
-| CONN-03 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-03 | Phase 2 — Foundry Module Core + Pairing UI | Complete |
 | CONN-04 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
-| CONN-05 | Phase 2 — Foundry Module Core + Pairing UI | Pending |
+| CONN-05 | Phase 2 — Foundry Module Core + Pairing UI | Complete |
 | FOUN-02 | Phase 3 — Bridge Service Skeleton | Pending |
 | DISP-01 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |
 | DISP-02 | Phase 4a — G2 Engine + Raster + Status HUD | Pending |

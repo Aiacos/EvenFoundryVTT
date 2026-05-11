@@ -23,11 +23,30 @@ type HookHandler = (...args: unknown[]) => void;
 /**
  * Minimal Application base class stub.
  * Foundry provides this globally at runtime; in tests we inject it via
- * vi.stubGlobal so that `PairModalStub extends Application` can be evaluated.
+ * vi.stubGlobal so that any `extends Application` can be evaluated.
  */
 class ApplicationStub {
   get title(): string {
     return '';
+  }
+}
+
+/**
+ * Minimal ApplicationV2 base class stub.
+ * Required because settings.ts now imports PairModal which extends ApplicationV2.
+ * Must be stubbed before any dynamic import of settings.ts or module.ts.
+ */
+class ApplicationV2Stub {
+  render(_force?: boolean): this {
+    return this;
+  }
+  async close(): Promise<void> {}
+  async getData(): Promise<Record<string, unknown>> {
+    return {};
+  }
+  _activateListeners(_html: HTMLElement): void {}
+  static get defaultOptions() {
+    return { id: '', title: '', template: '', width: 400, height: 'auto', resizable: false };
   }
 }
 
@@ -45,13 +64,20 @@ function makeGameMock(lang = 'it') {
     };
   }> = [];
 
+  const settingsStore = new Map<string, unknown>();
+
   return {
     settings: {
+      register: vi.fn(),
       registerMenu: vi.fn(
         (module: string, key: string, data: Parameters<typeof game.settings.registerMenu>[2]) => {
           menuRegistrations.push({ module, key, data });
         },
       ),
+      get: vi.fn((moduleId: string, key: string) => settingsStore.get(`${moduleId}.${key}`)),
+      set: vi.fn((moduleId: string, key: string, value: unknown) => {
+        settingsStore.set(`${moduleId}.${key}`, value);
+      }),
     },
     i18n: {
       lang,
@@ -94,6 +120,7 @@ describe('MODULE_ID', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
   });
 
   it('equals "evenfoundryvtt"', async () => {
@@ -109,9 +136,10 @@ describe('Hooks.once("init") → registerSettings()', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
   });
 
-  it('registers exactly one "init" hook handler on module load', async () => {
+  it('registers "init" and "ready" hook handlers on module load', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     vi.stubGlobal('game', gameMock);
@@ -119,8 +147,10 @@ describe('Hooks.once("init") → registerSettings()', () => {
 
     await import('./module.js');
 
-    expect(hooksMock.once).toHaveBeenCalledTimes(1);
+    // Wave 1: two Hooks.once registrations — "init" (settings) and "ready" (socketlib)
+    expect(hooksMock.once).toHaveBeenCalledTimes(2);
     expect(hooksMock.once).toHaveBeenCalledWith('init', expect.any(Function));
+    expect(hooksMock.once).toHaveBeenCalledWith('ready', expect.any(Function));
   });
 
   it('calls registerSettings() exactly once when init hook fires', async () => {
@@ -162,18 +192,35 @@ describe('Hooks.once("init") → registerSettings()', () => {
   });
 });
 
-describe('PairModalStub', () => {
+describe('PairModal (registered in settings)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
   });
 
-  it('has title "EVF Pair"', async () => {
-    vi.stubGlobal('game', makeGameMock('en'));
-    vi.stubGlobal('Hooks', makeHooksMock());
-    const { PairModalStub } = await import('./settings.js');
-    const stub = new PairModalStub();
-    expect(stub.title).toBe('EVF Pair');
+  it('registerSettings registers PairModal (not PairModalStub) as the menu type', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.registerMenu).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'pairDevice',
+      expect.objectContaining({
+        name: 'evf.settings.pair_button',
+        restricted: true,
+      }),
+    );
+    // The registered type should be a constructor (PairModal class)
+    const calls = gameMock.settings.registerMenu.mock.calls;
+    const pairDeviceCall = calls.find((c) => c[1] === 'pairDevice');
+    expect(pairDeviceCall).toBeDefined();
+    expect(typeof pairDeviceCall?.[2]?.type).toBe('function');
   });
 });
 
@@ -181,6 +228,7 @@ describe('detectedLocale', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
   });
 
   it('is set to game.i18n.lang (primary tag) when init fires with "it"', async () => {
