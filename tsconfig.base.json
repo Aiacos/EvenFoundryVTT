@@ -1,0 +1,30 @@
+{
+  // Source: TypeScript handbook (verified 2026-05-11) + tests/phase-0/tsconfig.json (Phase 0 proven green)
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "types": [],
+
+    // INV-4 strict mode (D-1.04 — verbatim Phase 0)
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // ESM hygiene
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": false,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // No emit at base level — each package decides
+    "noEmit": true
+  }
+}
