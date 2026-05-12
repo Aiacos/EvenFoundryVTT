@@ -250,7 +250,7 @@ describe('JSON Schema drift test (T-03-15)', () => {
   it('every TOOL_REGISTRY entry inputSchema deep-equals its schema .toJSONSchema()', () => {
     for (const entry of TOOL_REGISTRY) {
       const schema = schemaMap[entry.name];
-      expect(schema).toBeDefined();
+      if (schema === undefined) throw new Error(`schemaMap missing entry for ${entry.name}`);
       expect(entry.inputSchema).toEqual(schema.toJSONSchema());
     }
   });

@@ -358,7 +358,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(() => hooksMock.fire('ready')).not.toThrow();
   });
 
-  it('registers all 7 socketlib handlers on ready', async () => {
+  it('registers all 14 socketlib handlers on ready (7 read + 7 tool stubs)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -374,6 +374,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     hooksMock.fire('ready');
 
     const handlers = socketlibMock._registered.get('evenfoundryvtt');
+    // 7 read handlers (Phase 02)
     expect(handlers?.has('evf.validateToken')).toBe(true);
     expect(handlers?.has('evf.revokeToken')).toBe(true);
     expect(handlers?.has('evf.getCharacterSnapshot')).toBe(true);
@@ -381,7 +382,15 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(handlers?.has('evf.getSceneViewport')).toBe(true);
     expect(handlers?.has('evf.getEventLog')).toBe(true);
     expect(handlers?.has('evf.listCharacters')).toBe(true);
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(7);
+    // 7 tool stubs (Phase 03-04 — phase-07-pending placeholders)
+    expect(handlers?.has('evf.castSpell')).toBe(true);
+    expect(handlers?.has('evf.weaponAttack')).toBe(true);
+    expect(handlers?.has('evf.useItem')).toBe(true);
+    expect(handlers?.has('evf.skillCheck')).toBe(true);
+    expect(handlers?.has('evf.moveToken')).toBe(true);
+    expect(handlers?.has('evf.placeTemplate')).toBe(true);
+    expect(handlers?.has('evf.setTargets')).toBe(true);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 
   it('hook subscribers are registered (updateActor, updateCombat, etc.) on ready', async () => {

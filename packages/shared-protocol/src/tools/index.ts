@@ -21,13 +21,13 @@
  */
 
 import type { z } from 'zod';
-import { type CastSpellInput, CastSpellInputSchema } from './cast-spell.js';
-import { type MoveTokenInput, MoveTokenInputSchema } from './move-token.js';
-import { type PlaceTemplateInput, PlaceTemplateInputSchema } from './place-template.js';
-import { type SetTargetsInput, SetTargetsInputSchema } from './set-targets.js';
-import { type SkillCheckInput, SkillCheckInputSchema } from './skill-check.js';
-import { type UseItemInput, UseItemInputSchema } from './use-item.js';
-import { type WeaponAttackInput, WeaponAttackInputSchema } from './weapon-attack.js';
+import { CastSpellInputSchema } from './cast-spell.js';
+import { MoveTokenInputSchema } from './move-token.js';
+import { PlaceTemplateInputSchema } from './place-template.js';
+import { SetTargetsInputSchema } from './set-targets.js';
+import { SkillCheckInputSchema } from './skill-check.js';
+import { UseItemInputSchema } from './use-item.js';
+import { WeaponAttackInputSchema } from './weapon-attack.js';
 
 export { type CastSpellInput, CastSpellInputSchema } from './cast-spell.js';
 export { type MoveTokenInput, MoveTokenInputSchema } from './move-token.js';
@@ -36,16 +36,6 @@ export { type SetTargetsInput, SetTargetsInputSchema } from './set-targets.js';
 export { type SkillCheckInput, SkillCheckInputSchema } from './skill-check.js';
 export { type UseItemInput, UseItemInputSchema } from './use-item.js';
 export { type WeaponAttackInput, WeaponAttackInputSchema } from './weapon-attack.js';
-
-/** Suppress unused import warnings — types are re-exported above. */
-type _SuppressUnused =
-  | CastSpellInput
-  | WeaponAttackInput
-  | UseItemInput
-  | SkillCheckInput
-  | MoveTokenInput
-  | PlaceTemplateInput
-  | SetTargetsInput;
 
 /**
  * A single entry in the Tool Registry as served by `GET /v1/tools`.
