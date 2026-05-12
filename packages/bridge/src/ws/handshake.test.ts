@@ -126,7 +126,7 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', makeValidHandshake());
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).not.toHaveBeenCalled();
       expect(socket.send).toHaveBeenCalledOnce();
@@ -136,6 +136,15 @@ describe('handleHandshake', () => {
       expect(sent.server_caps).toBeInstanceOf(Array);
       expect(sent.session_id).toBeTypeOf('string');
       expect(sent.replay_seq).toBe(0);
+
+      // Phase 03: success path returns a non-empty UUID string (not null)
+      expect(sessionId).toBeTypeOf('string');
+      expect(sessionId).not.toBeNull();
+      expect(sessionId?.length).toBeGreaterThan(0);
+      // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+      expect(sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
     });
 
     it('returns intersection of client caps and SERVER_CAPS_V1', async () => {
@@ -154,12 +163,15 @@ describe('handleHandshake', () => {
           capabilities: ['read_char', 'read_combat', 'midiqol_capability_v1'],
         }),
       );
-      await promise;
+      const sessionId = await promise;
 
       const sent = JSON.parse(firstCallArg(socket.send)) as Record<string, unknown>;
       // midiqol_capability_v1 is NOT in SERVER_CAPS_V1 (Phase 7)
       expect(sent.server_caps).toEqual(expect.arrayContaining(['read_char', 'read_combat']));
       expect(sent.server_caps as string[]).not.toContain('midiqol_capability_v1');
+
+      // Phase 03: success path returns non-null sessionId
+      expect(sessionId).not.toBeNull();
     });
   });
 
@@ -181,10 +193,12 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', makeValidHandshake({ token: 'bad-token' }));
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_TOKEN, 'invalid_token');
       expect(socket.send).not.toHaveBeenCalled();
+      // Phase 03: failure path returns null
+      expect(sessionId).toBeNull();
     });
 
     it('closes with 4401 on expired token', async () => {
@@ -200,9 +214,11 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', makeValidHandshake());
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_TOKEN, 'invalid_token');
+      // Phase 03: failure path returns null
+      expect(sessionId).toBeNull();
     });
 
     it('closes with 4401 on revoked token', async () => {
@@ -218,9 +234,11 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', makeValidHandshake());
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_TOKEN, 'invalid_token');
+      // Phase 03: failure path returns null
+      expect(sessionId).toBeNull();
     });
   });
 
@@ -238,10 +256,12 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', 'not-valid-json{{{');
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
       expect(socket.send).not.toHaveBeenCalled();
+      // Phase 03: failure path returns null
+      expect(sessionId).toBeNull();
     });
 
     it('closes with 4400 when schema validation fails', async () => {
@@ -255,9 +275,11 @@ describe('handleHandshake', () => {
       );
 
       socket.emit('message', JSON.stringify({ proto: 'wrong-proto', token: 'x' }));
-      await promise;
+      const sessionId = await promise;
 
       expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
+      // Phase 03: failure path returns null
+      expect(sessionId).toBeNull();
     });
   });
 

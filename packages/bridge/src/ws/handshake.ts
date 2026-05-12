@@ -38,8 +38,14 @@ export const CLOSE_INVALID_TOKEN = 4401;
  * Handle the WS handshake for a newly connected client.
  *
  * Called from the Fastify route handler that wraps `@fastify/websocket`.
- * After this function returns, the socket is either closed (on error)
- * or has received a valid HandshakeServerSchema response.
+ * After this function resolves:
+ * - Returns `null` if the handshake was rejected (socket already closed).
+ * - Returns the `sessionId` string if the handshake succeeded and the socket
+ *   is ready to receive deltas.
+ *
+ * Phase 03 change: return type promoted from `Promise<void>` to
+ * `Promise<string | null>` so `server.ts` can wire `deltaEmitter.registerSession`
+ * in the `.then()` handler without any test-only injection.
  *
  * @param socket - Raw ws WebSocket instance from @fastify/websocket connection
  * @param _req - Fastify request (available for IP logging etc., unused for now)
@@ -47,6 +53,10 @@ export const CLOSE_INVALID_TOKEN = 4401;
  * @param replayBuffer - Shared ReplayBuffer instance
  * @param sessionStore - Shared SessionStore instance
  * @param logger - pino logger (with redact config applied at server level)
+ * @returns `sessionId` on success, `null` on failure (socket already closed)
+ *
+ * @see .planning/phases/03-bridge-service-skeleton/03-01-PLAN.md Task 1
+ * @see docs/architecture/0002-protocol-versioning.md
  */
 export async function handleHandshake(
   socket: WebSocket,
@@ -55,8 +65,8 @@ export async function handleHandshake(
   replayBuffer: ReplayBuffer,
   sessionStore: SessionStore,
   logger: Logger,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
+): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
     socket.once('message', async (rawData) => {
       try {
         // Parse first message as HandshakeClientSchema
@@ -66,7 +76,7 @@ export async function handleHandshake(
         } catch {
           logger.warn('WS handshake: received non-JSON message — closing 4400');
           socket.close(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
-          resolve();
+          resolve(null);
           return;
         }
 
@@ -77,7 +87,7 @@ export async function handleHandshake(
             'WS handshake: schema validation failed — closing 4400',
           );
           socket.close(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
-          resolve();
+          resolve(null);
           return;
         }
 
@@ -95,7 +105,7 @@ export async function handleHandshake(
             'WS handshake: token invalid — closing 4401',
           );
           socket.close(CLOSE_INVALID_TOKEN, 'invalid_token');
-          resolve();
+          resolve(null);
           return;
         }
 
@@ -150,11 +160,11 @@ export async function handleHandshake(
         HandshakeServerSchema.parse(response);
 
         socket.send(JSON.stringify(response));
-        resolve();
+        resolve(sessionId);
       } catch (err) {
         logger.error({ err }, 'WS handshake: unexpected error — closing 4400');
         socket.close(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
-        resolve();
+        resolve(null);
       }
     });
   });

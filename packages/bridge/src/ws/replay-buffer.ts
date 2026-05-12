@@ -88,6 +88,47 @@ export class ReplayBuffer {
   }
 
   /**
+   * Detect a gap in the buffered sequence for a session.
+   *
+   * Returns `true` if the entries with seq > fromSeq are non-contiguous, meaning
+   * at least one seq number is missing from the range. A single buffered entry
+   * cannot have a gap; zero buffered entries returns `false` (handled separately by
+   * `replay()` returning an empty array).
+   *
+   * Used by the resume handler (T-03-01): if `hasGap` returns `true`, the bridge
+   * MUST send `resume_full_snapshot { reason: "buffer_gap" }` and MUST NOT replay
+   * the gapped envelopes — a partial replay would hide a real game-state mutation.
+   *
+   * Implementation guards against `noUncheckedIndexedAccess` by using explicit
+   * `prev !== undefined && curr !== undefined` checks (no non-null assertions).
+   *
+   * @param sessionId - UUID v4 session identifier
+   * @param fromSeq   - Last seq the client already has; check entries with seq > fromSeq
+   * @returns `true` if any consecutive pair in relevant entries has seq[i] !== seq[i-1]+1
+   *
+   * @see docs/architecture/0002-protocol-versioning.md
+   * @see .planning/phases/03-bridge-service-skeleton/03-01-PLAN.md T-03-01
+   */
+  hasGap(sessionId: string, fromSeq: number): boolean {
+    const entries = this.sessions.get(sessionId) ?? [];
+    const relevant = entries.filter((e) => e.seq > fromSeq);
+
+    // Zero or one entry cannot have a gap between consecutive entries.
+    if (relevant.length < 2) return false;
+
+    for (let i = 1; i < relevant.length; i++) {
+      const prev = relevant[i - 1];
+      const curr = relevant[i];
+      // Explicit undefined guards per noUncheckedIndexedAccess (Phase 02 pattern).
+      if (prev !== undefined && curr !== undefined && curr.seq !== prev.seq + 1) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Clear the buffer for a specific session.
    *
    * Used when a session is permanently closed (not a reconnect).
