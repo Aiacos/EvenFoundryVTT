@@ -163,6 +163,40 @@ describe('ReplayBuffer', () => {
     });
   });
 
+  // ─── hasGap() ─────────────────────────────────────────────────────────────
+
+  describe('hasGap()', () => {
+    it('returns false when buffer is empty for the session', () => {
+      expect(buffer.hasGap(SESSION_A, 0)).toBe(false);
+    });
+
+    it('returns false when buffered entries (seq 1, 2, 3) are contiguous and fromSeq=0', () => {
+      buffer.push(makeEnvelope(SESSION_A, 1, NOW));
+      buffer.push(makeEnvelope(SESSION_A, 2, NOW + 1000));
+      buffer.push(makeEnvelope(SESSION_A, 3, NOW + 2000));
+
+      expect(buffer.hasGap(SESSION_A, 0)).toBe(false);
+    });
+
+    it('returns true when buffer holds seq 1, 3, 4 and fromSeq=0 (gap at 2)', () => {
+      buffer.push(makeEnvelope(SESSION_A, 1, NOW));
+      // seq 2 intentionally missing (gap injection — T-03-01)
+      buffer.push(makeEnvelope(SESSION_A, 3, NOW + 2000));
+      buffer.push(makeEnvelope(SESSION_A, 4, NOW + 3000));
+
+      expect(buffer.hasGap(SESSION_A, 0)).toBe(true);
+    });
+
+    it('returns false when buffer holds seq 1, 2, 3 and fromSeq=2 (filtered to seq 3 only — single entry, no gap)', () => {
+      buffer.push(makeEnvelope(SESSION_A, 1, NOW));
+      buffer.push(makeEnvelope(SESSION_A, 2, NOW + 1000));
+      buffer.push(makeEnvelope(SESSION_A, 3, NOW + 2000));
+
+      // fromSeq=2 → relevant entries = [seq 3] only; < 2 entries → no gap
+      expect(buffer.hasGap(SESSION_A, 2)).toBe(false);
+    });
+  });
+
   describe('clearSession()', () => {
     it('removes all buffered entries for the session', () => {
       buffer.push(makeEnvelope(SESSION_A, 1, NOW));

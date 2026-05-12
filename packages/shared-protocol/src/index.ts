@@ -12,10 +12,16 @@
  * @see Specs.md §4 (architecture) + §5.3 (Tool Registry)
  */
 export {
+  type ClientResume,
+  ClientResumeSchema,
   type DeltaEnvelope,
   DeltaEnvelopeSchema,
   type Envelope,
   EnvelopeSchema,
+  type ResumeFullSnapshot,
+  ResumeFullSnapshotSchema,
+  type ResumeReplay,
+  ResumeReplaySchema,
 } from './envelope.js';
 
 export {
