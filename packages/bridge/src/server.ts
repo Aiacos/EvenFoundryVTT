@@ -39,6 +39,7 @@ import { registerToolsRoute } from './routes/tools.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
+import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
 
 export interface BuildServerOptions {
@@ -128,10 +129,45 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await registerInternalDeltaRoute(app, deltaEmitter);
 
   // --- 8. WS handshake route ---
+  // Wires handshake → registerSession → message-loop → close-cleanup. This is
+  // the production wiring that closes the Phase 02 latent gap where deltaEmitter
+  // never received any session registrations (#03-01 RESEARCH §1).
   app.get('/ws', { websocket: true }, (socket, req) => {
-    // handleHandshake is async; errors are caught internally and close the socket
-    // Cast app.log to pino Logger — Fastify's BaseLogger is a strict subset of pino's Logger
-    void handleHandshake(socket, req, tokenCache, replayBuffer, sessionStore, app.log as Logger);
+    const logger = app.log as Logger;
+    // handleHandshake is async and returns sessionId | null. Errors are caught
+    // internally and close the socket — we just await for the resolved sessionId.
+    handleHandshake(socket, req, tokenCache, replayBuffer, sessionStore, logger)
+      .then((sessionId) => {
+        if (sessionId === null) {
+          // Handshake rejected; handleHandshake already closed the socket.
+          return;
+        }
+        // T-03-01 wiring: every accepted handshake must register with the emitter
+        // so deltas from /internal/delta reach this client. Phase 02's tests
+        // injected this Map directly — production never wired it, so live deltas
+        // were silently dropped.
+        deltaEmitter.registerSession(sessionId, socket);
+
+        // Resume listener: only client_resume messages are recognised at this
+        // protocol level. Other future message types route through their own
+        // handlers (Phase 04+). handleResume itself is no-op on unrecognised input.
+        socket.on('message', (rawData) => {
+          handleResume(socket, sessionId, replayBuffer, rawData, logger);
+        });
+
+        // Close cleanup: undo every per-session registration so the bridge frees
+        // resources promptly. Each unregister/delete is idempotent.
+        socket.on('close', () => {
+          deltaEmitter.unregisterSession(sessionId);
+          sessionStore.deleteSession(sessionId);
+          replayBuffer.clearSession(sessionId);
+        });
+      })
+      .catch((err) => {
+        // handleHandshake catches its own errors, so this should never fire.
+        // Defensive log to surface any unhandled rejection during development.
+        logger.error({ err }, 'WS handshake: unexpected promise rejection');
+      });
   });
 
   return app;
