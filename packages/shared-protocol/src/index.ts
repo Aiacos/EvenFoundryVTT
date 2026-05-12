@@ -66,3 +66,27 @@ export {
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
+
+// ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
+
+export {
+  type CastSpellInput,
+  CastSpellInputSchema,
+  type MoveTokenInput,
+  MoveTokenInputSchema,
+  type PlaceTemplateInput,
+  PlaceTemplateInputSchema,
+  type SetTargetsInput,
+  SetTargetsInputSchema,
+  type SkillCheckInput,
+  SkillCheckInputSchema,
+  TOOL_INPUT_SCHEMAS,
+  TOOL_NAMES,
+  TOOL_REGISTRY,
+  type ToolEntry,
+  type ToolName,
+  type UseItemInput,
+  UseItemInputSchema,
+  type WeaponAttackInput,
+  WeaponAttackInputSchema,
+} from './tools/index.js';
