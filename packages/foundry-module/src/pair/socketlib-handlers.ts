@@ -3,6 +3,7 @@
  *
  * Registers the two original handlers (Plan 02) PLUS five new snapshot-read handlers
  * (Plan 05 — M-1 gap fix) that bridge REST routes call via socketlib.executeAsGM.
+ * Also registers 7 write-path stub handlers (Plan 03-04 — ADR-0003 Tool Registry).
  *
  * All handlers:
  * - `evf.validateToken`      — validates a bearer token (Plan 02)
@@ -12,15 +13,26 @@
  * - `evf.getSceneViewport`     — returns SceneViewport (Plan 05)
  * - `evf.getEventLog`          — returns EventLogEntry[] paginated by since/limit (Plan 05)
  * - `evf.listCharacters`       — returns all PC actors (Plan 05, wizard Step 3)
+ * - `evf.castSpell`            — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.weaponAttack`         — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.useItem`              — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.skillCheck`           — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.moveToken`            — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.placeTemplate`        — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.setTargets`           — Phase 07 stub returning phase-07-pending (Plan 03-04)
  *
  * The single-workflow-origin discipline (Phase 0 D-15 Option A) requires ALL reads
  * from Foundry game state via the bridge to go through `socketlib.executeAsGM`.
  *
- * Security (T-02-04): all handlers validate token before touching any game state.
+ * T-03-14 [HIGH] boundary: the 7 Plan 03-04 stub handlers MUST NOT call any write API.
+ * They return a literal `{ status: 'phase-07-pending' }` object only.
+ *
+ * Security (T-02-04): all read handlers validate token before touching any game state.
  * Handler returns null / empty result for invalid tokens rather than throwing.
  *
  * @see 02-02-PLAN.md Task 2 (original handlers)
  * @see 02-05-PLAN.md Task 2 (M-1 fix — 5 snapshot handlers added here)
+ * @see 03-04-PLAN.md Task 2 (7 ADR-0003 Tool Registry stub handlers)
  * @see 02-CONTEXT.md D-2.12 (socketlib executeAsGM bridge→Foundry communication)
  * @see packages/foundry-module/src/pair/bearer-registry.ts (validateBearer, revokeBearer)
  * @see packages/foundry-module/src/readers/ (snapshot reader functions)
@@ -180,6 +192,59 @@ function handleListCharacters(
   return listPlayerCharacters();
 }
 
+// ─── Plan 03-04: 7 ADR-0003 Tool Registry stub handlers ──────────────────────
+//
+// T-03-14 boundary: these stubs MUST NOT call any write API.
+// They return { status: 'phase-07-pending' } only.
+// Phase 07 will replace each stub with a real activity.use() call
+// (or MidiQOL.completeActivityUse when present).
+//
+// NB: Phase 03 bridge does NOT call these handlers via executeAsGM —
+// the bridge's TOOL_DISPATCH_TABLE stubs return phase-07-pending directly.
+// These registrations exist so Phase 07 wiring is trivial (registration scaffolding only).
+
+/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
+function handleCastSpellStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
+function handleWeaponAttackStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
+function handleUseItemStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real actor.rollSkill() — this stub returns immediately. */
+function handleSkillCheckStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real actor.rollSkill() call — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real Token.update() — this stub returns immediately. */
+function handleMoveTokenStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real Token.update() call — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real MeasuredTemplate.create() — this stub returns immediately. */
+function handlePlaceTemplateStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real MeasuredTemplate.create() call — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
+/** T-03-14: no game state write; Phase 07 dispatches real TokenLayer target update — this stub returns immediately. */
+function handleSetTargetsStub(_input: unknown): { status: 'phase-07-pending' } {
+  // Phase 07 will dispatch the real TokenLayer target update — this stub returns immediately.
+  return { status: 'phase-07-pending' };
+}
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 /**
@@ -218,4 +283,14 @@ export function registerSocketlibHandlers(): void {
   socketlib.registerComplexHandler(MODULE_ID, 'evf.getSceneViewport', handleGetSceneViewport);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.getEventLog', handleGetEventLog);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.listCharacters', handleListCharacters);
+
+  // Plan 03-04: 7 Tool Registry stub handlers (Phase 07 replaces with real activity.use())
+  // T-03-14: each handler returns { status: 'phase-07-pending' } ONLY — no write API calls.
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.castSpell', handleCastSpellStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.weaponAttack', handleWeaponAttackStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.useItem', handleUseItemStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.skillCheck', handleSkillCheckStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveTokenStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplateStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.setTargets', handleSetTargetsStub);
 }

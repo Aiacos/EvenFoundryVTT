@@ -45,6 +45,7 @@ import { registerMetricsRoute } from './routes/metrics.js';
 import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
 import { registerToolsRoute } from './routes/tools.js';
+import type { ToolHandler } from './routes/tools-dispatch.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
@@ -82,6 +83,16 @@ export interface BuildServerOptions {
    * @see metrics/registry.ts
    */
   metricsRegistry?: Registry;
+  /**
+   * Inject per-tool dispatch handler overrides for test isolation (Plan 03-04).
+   *
+   * In production: pass `undefined` — `TOOL_DISPATCH_TABLE` defaults apply.
+   * In tests: override individual `ToolName` entries with `vi.fn()` spies to
+   *   assert dispatch call counts and verify idempotency dedup (test 9 in tools.test.ts).
+   *
+   * @see routes/tools-dispatch.ts
+   */
+  toolDispatchOverride?: Partial<Record<import('@evf/shared-protocol').ToolName, ToolHandler>>;
 }
 
 /**
@@ -197,7 +208,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // --- 6. HTTP routes ---
   await registerHealthRoute(app, tokenCache);
   await registerI18nRoute(app, opts.langDirOverride);
-  await registerToolsRoute(app, tokenCache);
+  await registerToolsRoute(app, tokenCache, opts.toolDispatchOverride);
 
   // --- 7. Reader REST routes ---
   await registerCharacterRoute(app, tokenCache, foundryFn);
