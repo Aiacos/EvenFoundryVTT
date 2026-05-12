@@ -3,13 +3,15 @@ status: human_needed
 phase: 02-foundry-module-core-pairing-ui
 goal: "Players can pair a G2 to Foundry, the module reads character/combat/scene/log state over a versioned WS, and a phone-side wizard onboards the device — without writing anything yet."
 generated: 2026-05-12
+updated: 2026-05-12
 verifier_model: sonnet
 gates:
   typecheck: pass
   lint_ci: pass
-  tests: 233/233
+  tests: 359/359
+  coverage: pass (stmt 92.63% / branch 81.16% / func 90.79% / line 92.92%)
 score:
-  must_haves_verified: 21
+  must_haves_verified: 23
   must_haves_total: 23
   requirements_verified: 7
   requirements_total: 9
@@ -23,10 +25,10 @@ human_verification:
     - "WS handshake completes with live bridge + real Foundry socketlib evf.validateToken roundtrip (packages/bridge/src/ws/handshake.ts:51, packages/bridge/src/auth/token-cache.ts)"
     - "Delta push pipeline fires live: Foundry hook → bridgeDeltaEmitter POST → bridge /internal/delta → DeltaEmitter WS fanout (packages/foundry-module/src/module.ts:111–137, packages/bridge/src/routes/internal-delta.ts)"
 gaps:
-  count: 2
-  items:
-    - "GAP-01: pnpm test:coverage exits 1 — global 80% threshold fails due to wizard step components (wizard.ts=0%, steps/*=0%) and module.ts (13%) lacking unit tests. pnpm test itself passes 233/233; individual packages (bridge 91%, foundry-module/pair 77%) meet per-file targets. CI D-1.10 gate 4 will fail on any PR that runs test:coverage without first excluding wizard step files or adding coverage."
-    - "GAP-02 (minor, doc inconsistency): Plan 02-02 must_have claims internal_secret is 'stored under setting key `evf.internalSecrets` (world scope)' — code stores it as the `internalSecret` field inside `BearerEntry` within the `bearerRegistry` Foundry setting. No separate `evf.internalSecrets` setting key exists. Functionally equivalent (world scope, non-revoked entries only), but the plan wording is misleading."
+  count: 0
+  closed:
+    - "GAP-01 [closed 2026-05-12 commit 681ec7f]: happy-dom DOM tests added — coverage 46.9% → 92.63% statements (≥80% threshold). +126 new tests (233→359). See test(02) commit for breakdown."
+    - "GAP-02 [closed 2026-05-12 commit 207b0af]: bearer-registry.ts:12 comment corrected to reflect actual storage (internalSecret field inside bearerRegistry setting), not a separate evf.internalSecrets setting key."
 ---
 
 # Phase 02 Verification

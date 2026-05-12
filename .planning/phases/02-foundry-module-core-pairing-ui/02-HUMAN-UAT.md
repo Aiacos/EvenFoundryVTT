@@ -55,8 +55,8 @@ blocked: 6  # all blocked on real G2 hardware + Foundry + Even Hub access
 
 ### GAP-01: pnpm test:coverage exits 1 (CI gate)
 Severity: Medium. See 02-VERIFICATION.md "Gaps" for details.
-Status: open
+Status: resolved 2026-05-12 (commit 681ec7f) — +126 happy-dom tests; coverage 46.9% → 92.63% stmts.
 
 ### GAP-02: `evf.internalSecrets` setting key name mismatch (doc inconsistency)
 Severity: Low. See 02-VERIFICATION.md "Gaps" for details.
-Status: open
+Status: resolved 2026-05-12 (commit 207b0af) — bearer-registry.ts:12 comment corrected.
