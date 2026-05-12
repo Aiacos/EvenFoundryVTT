@@ -10,11 +10,13 @@
  * 3. @fastify/rate-limit — 100 req/min per bearer token (falls back to IP)
  * 4. @fastify/websocket — WS support
  * 4a. Idempotency middleware — preHandler+onSend hooks (ADR-0002, Plan 03-02)
- * 5. HTTP routes: /v1/health, /v1/i18n/:lang, /v1/tools
- * 6. Reader REST routes: /v1/character/:actorId, /v1/combat/current, /v1/scene/viewport,
+ * 4b. HTTP duration hooks — onRequest + onResponse for Prometheus histogram (Plan 03-03)
+ * 5. Ops routes (no auth): /healthz, /readyz, /metrics
+ * 6. HTTP routes: /v1/health, /v1/i18n/:lang, /v1/tools
+ * 7. Reader REST routes: /v1/character/:actorId, /v1/combat/current, /v1/scene/viewport,
  *    /v1/events, /v1/characters
- * 7. Internal route: POST /internal/delta (module → bridge delta push)
- * 8. WS route: /ws (handshake)
+ * 8. Internal route: POST /internal/delta (module → bridge delta push)
+ * 9. WS route: /ws (handshake)
  *
  * @see Specs.md §5.2 (Bridge stack)
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.12
@@ -25,8 +27,10 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
+import type { Registry } from 'prom-client';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
+import { createMetricsRegistry } from './metrics/registry.js';
 import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
 import type { FoundrySnapshotFn } from './routes/character.js';
 import { registerCharacterRoute } from './routes/character.js';
@@ -34,8 +38,11 @@ import { registerCharactersListRoute } from './routes/characters-list.js';
 import { registerCombatRoute } from './routes/combat.js';
 import { registerEventsRoute } from './routes/events.js';
 import { registerHealthRoute } from './routes/health.js';
+import { registerHealthzRoute } from './routes/healthz.js';
 import { registerI18nRoute } from './routes/i18n.js';
 import { registerInternalDeltaRoute } from './routes/internal-delta.js';
+import { registerMetricsRoute } from './routes/metrics.js';
+import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
 import { registerToolsRoute } from './routes/tools.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
@@ -65,6 +72,16 @@ export interface BuildServerOptions {
    * @see middleware/idempotency.ts
    */
   idempotencyStore?: IdempotencyStore;
+  /**
+   * Inject a custom prom-client Registry for test isolation (Pitfall 2 — T-03-10).
+   *
+   * In production: `createMetricsRegistry()` creates a fresh Registry per call.
+   * In tests: pass an existing Registry to inspect metric values after requests,
+   *   or rely on the default fresh Registry to avoid cross-test global collisions.
+   *
+   * @see metrics/registry.ts
+   */
+  metricsRegistry?: Registry;
 }
 
 /**
@@ -117,42 +134,86 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await app.register(fastifyWebsocket);
 
   // --- 4. Shared services (singletons per server instance) ---
-  const tokenCache = new TokenCache(opts.foundryValidateFn);
   const replayBuffer = new ReplayBuffer();
   const sessionStore = new SessionStore();
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
   // Use injected store for test isolation; production creates a fresh instance.
   const idempotencyStore = opts.idempotencyStore ?? new IdempotencyStore();
 
+  // --- 4a. Metrics registry (per-server-instance, Pitfall 2 — T-03-10) ---
+  // Create AFTER idempotencyStore and replayBuffer so the accessors can
+  // capture live sizes. Fresh Registry per call — no global Registry collision.
+  const metrics = createMetricsRegistry(
+    {
+      replayBufferSize: () => replayBuffer.size(),
+      idempotencyStoreSize: () => idempotencyStore.size,
+    },
+    opts.metricsRegistry,
+  );
+
+  // --- 4b. Token cache (with metrics hooks) ---
+  const tokenCache = new TokenCache(opts.foundryValidateFn, {
+    onHit: () => metrics.tokenCacheHitsTotal.inc(),
+    onMiss: () => metrics.tokenCacheMissesTotal.inc(),
+  });
+
   // Default no-op snapshot fn — production passes the real socketlib wrapper via opts
   const foundryFn: FoundrySnapshotFn =
     // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
     opts.foundrySnapshotFn ?? (async (_h: string, ..._a: unknown[]): Promise<any> => null);
 
-  // --- 4a. Idempotency middleware ---
+  // --- 4c. Idempotency middleware ---
   // Must be registered BEFORE route registration so the preHandler+onSend hooks
-  // intercept all POST requests. Plan 03-03 will pass { onDedup: () => metrics.inc() }.
-  await registerIdempotencyHooks(app, idempotencyStore);
+  // intercept all POST requests. Pass onDedup to increment the dedup counter (Plan 03-03).
+  await registerIdempotencyHooks(app, idempotencyStore, {
+    onDedup: () => metrics.idempotencyDedupTotal.inc(),
+  });
 
-  // --- 5. HTTP routes ---
+  // --- 4d. HTTP duration histogram hooks (T-03-09 label allowlist) ---
+  // onRequest: capture start timestamp on the request object.
+  // onResponse: compute duration, observe with bounded labels only (method, route pattern, status_code).
+  app.addHook('onRequest', async (request) => {
+    request.evfStartTime = Date.now();
+  });
+  app.addHook('onResponse', async (request, reply) => {
+    if (request.evfStartTime === undefined) return;
+    const duration = (Date.now() - request.evfStartTime) / 1000;
+    // Use Fastify route URL pattern (e.g. /v1/tools/:name), NOT the resolved URL.
+    // This keeps cardinality bounded to the number of registered routes — T-03-09.
+    const route = request.routeOptions?.url ?? 'unknown';
+    metrics.httpRequestDuration.observe(
+      { method: request.method, route, status_code: String(reply.statusCode) },
+      duration,
+    );
+  });
+
+  // --- 5. Ops routes (no auth — k8s probe + Prometheus scrape convention) ---
+  // Registered BEFORE bearer-auth routes so probes are reachable even if a later
+  // route registration fails (Fastify registers in declaration order).
+  await registerHealthzRoute(app);
+  await registerReadyzRoute(app);
+  await registerMetricsRoute(app, metrics.registry);
+
+  // --- 6. HTTP routes ---
   await registerHealthRoute(app, tokenCache);
   await registerI18nRoute(app, opts.langDirOverride);
   await registerToolsRoute(app, tokenCache);
 
-  // --- 6. Reader REST routes ---
+  // --- 7. Reader REST routes ---
   await registerCharacterRoute(app, tokenCache, foundryFn);
   await registerCombatRoute(app, tokenCache, foundryFn);
   await registerSceneRoute(app, tokenCache, foundryFn);
   await registerEventsRoute(app, tokenCache, foundryFn);
   await registerCharactersListRoute(app, tokenCache, foundryFn);
 
-  // --- 7. Internal delta route (module → bridge push) ---
+  // --- 8. Internal delta route (module → bridge push) ---
   await registerInternalDeltaRoute(app, deltaEmitter);
 
-  // --- 8. WS handshake route ---
+  // --- 9. WS handshake route ---
   // Wires handshake → registerSession → message-loop → close-cleanup. This is
   // the production wiring that closes the Phase 02 latent gap where deltaEmitter
   // never received any session registrations (#03-01 RESEARCH §1).
+  // metrics.wsSessionsActive is instrumented inline: inc on registerSession, dec on close.
   app.get('/ws', { websocket: true }, (socket, req) => {
     const logger = app.log as Logger;
     // handleHandshake is async and returns sessionId | null. Errors are caught
@@ -168,6 +229,8 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // injected this Map directly — production never wired it, so live deltas
         // were silently dropped.
         deltaEmitter.registerSession(sessionId, socket);
+        // Instrument: increment WS sessions gauge on successful registration.
+        metrics.wsSessionsActive.inc();
 
         // Resume listener: only client_resume messages are recognised at this
         // protocol level. Other future message types route through their own
@@ -182,6 +245,8 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           deltaEmitter.unregisterSession(sessionId);
           sessionStore.deleteSession(sessionId);
           replayBuffer.clearSession(sessionId);
+          // Instrument: decrement WS sessions gauge when the connection closes.
+          metrics.wsSessionsActive.dec();
         });
       })
       .catch((err) => {
