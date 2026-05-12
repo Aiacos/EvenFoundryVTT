@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: ready_to_plan
+status: executing
 stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-05-11T19:59:32.180Z"
-last_activity: 2026-05-11
+last_updated: "2026-05-12T13:36:05.958Z"
+last_activity: 2026-05-12 -- Phase 03 execution started
 progress:
   total_phases: 15
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 9
-  percent: 20
+  total_plans: 17
+  completed_plans: 12
+  percent: 71
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 02 — foundry-module-core-pairing-ui
+**Current focus:** Phase 03 — bridge-service-skeleton
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-05-12
+Phase: 03 (bridge-service-skeleton) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 03
+Last activity: 2026-05-12 -- Phase 03 execution started
 
 Progress: [█████████░░] 85%
 
