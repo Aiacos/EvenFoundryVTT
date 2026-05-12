@@ -177,4 +177,38 @@ describe('TokenCache', () => {
       expect(fn).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('metricsHooks (Plan 03-03 observability)', () => {
+    it('fires onMiss on first validate (cache cold)', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const onHit = vi.fn();
+      const onMiss = vi.fn();
+      const cache = new TokenCache(fn, { onHit, onMiss });
+
+      await cache.validate('token-cold');
+
+      expect(onMiss).toHaveBeenCalledOnce();
+      expect(onHit).not.toHaveBeenCalled();
+    });
+
+    it('fires onHit on second validate within TTL (cache warm)', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const onHit = vi.fn();
+      const onMiss = vi.fn();
+      const cache = new TokenCache(fn, { onHit, onMiss });
+
+      await cache.validate('token-warm'); // miss
+      await cache.validate('token-warm'); // hit
+
+      expect(onMiss).toHaveBeenCalledOnce();
+      expect(onHit).toHaveBeenCalledOnce();
+    });
+
+    it('does not throw when metricsHooks is omitted (default no-op)', async () => {
+      const fn = vi.fn().mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn); // no metricsHooks
+
+      await expect(cache.validate('token-nohooks')).resolves.toEqual(VALID_RESULT);
+    });
+  });
 });

@@ -34,6 +34,19 @@ interface CacheEntry {
 const TTL_MS = 5 * 60 * 1_000;
 
 /**
+ * Optional observability hooks for `TokenCache`.
+ *
+ * Plan 03-03 wires these to Prometheus counters in `server.ts`.
+ * Omitting them (or passing `{}`) leaves the cache behaviour unchanged.
+ */
+export interface TokenCacheMetricsHooks {
+  /** Called on every cache hit (token found in cache within TTL). */
+  onHit?: () => void;
+  /** Called on every cache miss (cold cache or TTL expired — Foundry roundtrip needed). */
+  onMiss?: () => void;
+}
+
+/**
  * In-memory bearer token validation cache.
  *
  * Production: inject the real socketlib roundtrip function.
@@ -43,15 +56,16 @@ const TTL_MS = 5 * 60 * 1_000;
  * ```ts
  * const cache = new TokenCache(async (token) => {
  *   return await socketlib.executeAsGM('evf.validateToken', token);
- * });
+ * }, { onHit: () => hitsCounter.inc(), onMiss: () => missesCounter.inc() });
  * const result = await cache.validate(token);
  * ```
  */
 export class TokenCache {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly foundryValidateFn: FoundryValidateFn;
+  private readonly metricsHooks: TokenCacheMetricsHooks;
 
-  constructor(foundryValidateFn?: FoundryValidateFn) {
+  constructor(foundryValidateFn?: FoundryValidateFn, metricsHooks: TokenCacheMetricsHooks = {}) {
     // Default stub: always returns foundry_unreachable.
     // Production code passes the real socketlib fn via server.ts.
     this.foundryValidateFn =
@@ -60,6 +74,7 @@ export class TokenCache {
         valid: false,
         reason: 'foundry_unreachable',
       }));
+    this.metricsHooks = metricsHooks;
   }
 
   /**
@@ -68,13 +83,17 @@ export class TokenCache {
    * Returns cached result if within TTL; calls Foundry on cache miss.
    * Negative results (invalid/expired) are also cached to avoid hammering Foundry
    * with invalid tokens — they will evict on TTL (5 min) or explicit invalidation.
+   *
+   * Fires `metricsHooks.onHit` on a cache hit and `metricsHooks.onMiss` on a miss.
    */
   async validate(token: string): Promise<ValidateTokenResult> {
     const cached = this.cache.get(token);
     if (cached !== undefined && Date.now() - cached.cachedAt < TTL_MS) {
+      this.metricsHooks.onHit?.();
       return cached.result;
     }
 
+    this.metricsHooks.onMiss?.();
     const result = await this.foundryValidateFn(token);
     this.cache.set(token, { result, cachedAt: Date.now() });
     return result;
