@@ -52,6 +52,21 @@ const makeGameMock = () => {
       registerMenu: vi.fn(),
     },
     i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+    actors: {
+      get: vi.fn((_actorId: string) => undefined),
+      contents: [] as unknown[],
+    },
+    combat: null,
+    scenes: {
+      active: null,
+    },
+    user: {
+      isGM: false,
+      targets: new Set(),
+    },
+    users: {
+      get: vi.fn((_userId: string) => undefined),
+    },
   };
 };
 
@@ -187,6 +202,149 @@ describe('registerSocketlibHandlers', () => {
 
       const result = socketlibMock.callHandler('evf.revokeToken', { evil: 'object' });
       expect(result).toMatchObject({ success: false, reason: 'invalid_input' });
+    });
+  });
+
+  // ─── Plan 05 snapshot handler guards (T-02-04) ───────────────────────────────
+
+  describe('evf.getCharacterSnapshot handler', () => {
+    it('returns null for non-string actorId (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getCharacterSnapshot', 123, 'some-token');
+      expect(result).toBeNull();
+    });
+
+    it('returns null for non-string token (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getCharacterSnapshot', 'actor-1', null);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid bearer token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getCharacterSnapshot', 'actor-1', 'bad-token');
+      expect(result).toBeNull();
+    });
+
+    it('returns null for valid token but actor not found', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      // game.actors.get returns undefined (default mock)
+      const result = socketlibMock.callHandler('evf.getCharacterSnapshot', 'actor-1', entry.token);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('evf.getCombatSnapshot handler', () => {
+    it('returns null for non-string token (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getCombatSnapshot', 42);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getCombatSnapshot', 'bad-token');
+      expect(result).toBeNull();
+    });
+
+    it('returns null for valid token when no combat active', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      // game.combat is null (default mock)
+      const result = socketlibMock.callHandler('evf.getCombatSnapshot', entry.token);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('evf.getSceneViewport handler', () => {
+    it('returns null for non-string token (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getSceneViewport', null);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getSceneViewport', 'bad-token');
+      expect(result).toBeNull();
+    });
+
+    it('returns scene viewport for valid token (no active scene → zero state)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      // game.scenes.active is null → returns zero-state SceneViewport
+      const result = socketlibMock.callHandler('evf.getSceneViewport', entry.token);
+      expect(result).not.toBeNull();
+      expect(result).toMatchObject({ sceneId: '', tokenIds: [] });
+    });
+  });
+
+  describe('evf.getEventLog handler', () => {
+    it('returns empty array for non-string token (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getEventLog', null, 0, 200);
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array for invalid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.getEventLog', 'bad-token', 0, 200);
+      expect(result).toEqual([]);
+    });
+
+    it('returns event log entries for valid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      // eventLogBuffer is empty by default; signature is (since, limit, token)
+      const result = socketlibMock.callHandler('evf.getEventLog', 0, 200, entry.token);
+      expect(Array.isArray(result)).toBe(true);
+    });
+  });
+
+  describe('evf.listCharacters handler', () => {
+    it('returns empty array for non-string token (T-02-04 guard)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.listCharacters', 123);
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array for invalid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+      const result = socketlibMock.callHandler('evf.listCharacters', 'bad-token');
+      expect(result).toEqual([]);
+    });
+
+    it('returns actor list for valid token', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      // Handler signature is (_worldId, token); pass 'world-1' as worldId, token second
+      expect(() =>
+        socketlibMock.callHandler('evf.listCharacters', 'world-1', entry.token),
+      ).not.toThrow();
+      const result = socketlibMock.callHandler('evf.listCharacters', 'world-1', entry.token);
+      expect(Array.isArray(result)).toBe(true);
     });
   });
 });

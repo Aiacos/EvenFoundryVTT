@@ -83,6 +83,17 @@ function makeGameMock(lang = 'it') {
       lang,
       localize: vi.fn((key: string) => key),
     },
+    actors: {
+      get: vi.fn((_actorId: string): unknown => undefined),
+    },
+    combat: null,
+    user: {
+      isGM: false,
+      targets: new Set(),
+    },
+    users: {
+      get: vi.fn((_userId: string) => undefined),
+    },
     _menuRegistrations: menuRegistrations,
   };
 }
@@ -281,5 +292,406 @@ describe('detectedLocale', () => {
 
     const { detectedLocale } = await import('./settings.js');
     expect(detectedLocale).toBe('en');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ready hook — registerSocketlibHandlers + registerHookSubscribers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal socketlib stub that records handler registrations. */
+function makeSocketlibMock() {
+  const registered = new Map<string, Map<string, (...args: unknown[]) => unknown>>();
+  return {
+    registerComplexHandler: vi.fn(
+      (moduleId: string, handlerName: string, fn: (...args: unknown[]) => unknown) => {
+        if (!registered.has(moduleId)) {
+          registered.set(moduleId, new Map());
+        }
+        registered.get(moduleId)?.set(handlerName, fn);
+      },
+    ),
+    _registered: registered,
+  };
+}
+
+/** Minimal canvas stub for scene hook tests. */
+function makeCanvasMock() {
+  return {
+    scene: {
+      id: 'scene-1',
+      name: 'Dungeon',
+      grid: { size: 100, type: 1 },
+      width: 3000,
+      height: 2000,
+      padding: 0.1,
+      background: { src: null },
+    },
+    tokens: {
+      controlled: [],
+    },
+  };
+}
+
+describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscribers', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+  });
+
+  it('fires ready hook without throwing when socketlib stub is present', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    // Fire ready — should not throw
+    expect(() => hooksMock.fire('ready')).not.toThrow();
+  });
+
+  it('registers all 7 socketlib handlers on ready', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    const handlers = socketlibMock._registered.get('evenfoundryvtt');
+    expect(handlers?.has('evf.validateToken')).toBe(true);
+    expect(handlers?.has('evf.revokeToken')).toBe(true);
+    expect(handlers?.has('evf.getCharacterSnapshot')).toBe(true);
+    expect(handlers?.has('evf.getCombatSnapshot')).toBe(true);
+    expect(handlers?.has('evf.getSceneViewport')).toBe(true);
+    expect(handlers?.has('evf.getEventLog')).toBe(true);
+    expect(handlers?.has('evf.listCharacters')).toBe(true);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(7);
+  });
+
+  it('hook subscribers are registered (updateActor, updateCombat, etc.) on ready', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // hooksMock.on should have been called for each game hook subscriber
+    // (updateActor, updateCombat, combatStart, canvasReady, controlToken, createChatMessage, targetToken)
+    expect(hooksMock.on).toHaveBeenCalled();
+    // At minimum updateActor and updateCombat must be subscribed
+    const registeredEvents = hooksMock.on.mock.calls.map((c) => c[0]);
+    expect(registeredEvents).toContain('updateActor');
+    expect(registeredEvents).toContain('updateCombat');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bridgeDeltaEmitter — via hook subscriber pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('bridgeDeltaEmitter — via hook pipeline', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+  });
+
+  it('drops delta silently when no active bearer entry exists', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    // No bearerRegistry entry — game.settings.get returns undefined
+    gameMock.settings.get.mockReturnValue(undefined);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // Fire updateActor hook with a stub actor
+    const stubActor = {
+      id: 'actor-1',
+      name: 'Aragorn',
+      type: 'character',
+      system: {
+        attributes: {
+          hp: { value: 40, max: 50, temp: 0, tempmax: 0 },
+          ac: { value: 18 },
+          exhaustion: 0,
+        },
+        details: { level: 5 },
+      },
+      statuses: new Set<string>(),
+    };
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: { value: 40 } } } });
+
+    // No active pair → fetch should NOT have been called (delta dropped silently)
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('emits delta via fetch when an active bearer entry exists', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    // Build a stub actor that getCharacterSnapshot can read
+    const stubActor = {
+      id: 'actor-1',
+      name: 'Aragorn',
+      type: 'character',
+      system: {
+        attributes: {
+          hp: { value: 40, max: 50, temp: 0, tempmax: 0 },
+          ac: { value: 18 },
+          exhaustion: 0,
+        },
+        details: { level: 5 },
+      },
+      statuses: new Set<string>(),
+    };
+
+    // Return the stubActor from game.actors.get
+    gameMock.actors.get.mockReturnValue(stubActor);
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Set up an active bearer entry — return for ANY settings.get call
+    const now = Date.now();
+    gameMock.settings.get.mockReturnValue({
+      entries: {
+        'token-1': {
+          internalSecret: 'secret-abc',
+          bridgeUrl: 'https://bridge.local:8910',
+          revokedAt: null,
+          expiresAt: now + 86_400_000, // 24h in the future
+        },
+      },
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // Fire updateActor hook
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: { value: 40 } } } });
+
+    // Wait for the fire-and-forget fetch to be called
+    await vi.waitFor(() => fetchMock.mock.calls.length > 0, { timeout: 2000 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://bridge.local:8910/internal/delta',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer secret-abc',
+        }),
+      }),
+    );
+  });
+
+  it('bridgeDeltaEmitter catches fetch errors and logs warning (T-02-01)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const stubActor = {
+      id: 'actor-1',
+      name: 'Thorin',
+      type: 'character',
+      system: {
+        attributes: {
+          hp: { value: 20, max: 60, temp: 0, tempmax: 0 },
+          ac: { value: 16 },
+          exhaustion: 0,
+        },
+        details: { level: 8 },
+      },
+      statuses: new Set<string>(),
+    };
+
+    gameMock.actors.get.mockReturnValue(stubActor);
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('Bridge offline');
+      }),
+    );
+
+    // Active entry
+    const now = Date.now();
+    gameMock.settings.get.mockReturnValue({
+      entries: {
+        'token-1': {
+          internalSecret: 'secret-xyz',
+          bridgeUrl: 'https://bridge.local:8910',
+          revokedAt: null,
+          expiresAt: now + 86_400_000,
+        },
+      },
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: {} } } });
+
+    // Wait for the warning to be logged
+    await vi.waitFor(
+      () => warnSpy.mock.calls.some((c) => String(c[0]).includes('bridgeDeltaEmitter failed')),
+      { timeout: 2000 },
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('bridgeDeltaEmitter failed'),
+      expect.anything(),
+    );
+  });
+
+  it('drops delta when bearer entry is revoked', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const now = Date.now();
+    gameMock.settings.get.mockReturnValue({
+      entries: {
+        'token-1': {
+          internalSecret: 'secret-abc',
+          bridgeUrl: 'https://bridge.local:8910',
+          revokedAt: now - 1000, // revoked in the past
+          expiresAt: now + 86_400_000,
+        },
+      },
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    const stubActor = {
+      id: 'actor-1',
+      name: 'Legolas',
+      type: 'character',
+      system: {
+        attributes: {
+          hp: { value: 45, max: 50, temp: 0, tempmax: 0 },
+          ac: { value: 16 },
+          exhaustion: 0,
+        },
+        details: { level: 10 },
+      },
+      statuses: new Set<string>(),
+    };
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: {} } } });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('drops delta when bearer entry is expired', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const now = Date.now();
+    gameMock.settings.get.mockReturnValue({
+      entries: {
+        'token-1': {
+          internalSecret: 'secret-abc',
+          bridgeUrl: 'https://bridge.local:8910',
+          revokedAt: null,
+          expiresAt: now - 1000, // expired in the past
+        },
+      },
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    const stubActor = {
+      id: 'actor-1',
+      name: 'Gimli',
+      type: 'character',
+      system: {
+        attributes: {
+          hp: { value: 30, max: 70, temp: 0, tempmax: 0 },
+          ac: { value: 20 },
+          exhaustion: 0,
+        },
+        details: { level: 7 },
+      },
+      statuses: new Set<string>(),
+    };
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: {} } } });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
