@@ -98,12 +98,9 @@ describe('PairModal', () => {
     gameMock = makeGameMock('it');
     vi.stubGlobal('game', gameMock);
     vi.stubGlobal('crypto', makeCryptoMock());
-    // Re-mock qrcode after resetModules
-    vi.mock('qrcode', () => ({
-      default: {
-        toString: vi.fn().mockResolvedValue('<svg data-testid="mock-qr">MOCK QR SVG</svg>'),
-      },
-    }));
+    // The top-level vi.mock('qrcode', ...) at module scope is automatically re-applied
+    // after vi.resetModules(). Do NOT call vi.mock() here — it is not hoisted inside
+    // beforeEach and emits a Vitest 4 runtime warning. (WR-03 fix)
   });
 
   it('PairModal class is exported', async () => {
@@ -155,11 +152,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: {
-          toString: vi.fn().mockResolvedValue('<svg>MOCK QR SVG</svg>'),
-        },
-      }));
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
@@ -190,11 +182,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: {
-          toString: vi.fn().mockResolvedValue('<svg>MOCK QR SVG</svg>'),
-        },
-      }));
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
@@ -367,9 +354,7 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
-      }));
+      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
@@ -398,9 +383,7 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
-      }));
+      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
@@ -429,9 +412,7 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
-      }));
+      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
@@ -460,9 +441,7 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      vi.mock('qrcode', () => ({
-        default: { toString: vi.fn().mockResolvedValue('<svg>MOCK</svg>') },
-      }));
+      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc').getData();

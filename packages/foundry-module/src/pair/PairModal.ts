@@ -388,8 +388,11 @@ export class PairModal extends ApplicationV2 {
    */
   _onClickRefresh(event: Event): void {
     event.preventDefault();
+    // Propagate the existing device alias so the refreshed entry keeps its label (WR-04).
+    // listBearers() returns non-revoked entries; the first is the active device.
+    const currentAlias = listBearers()[0]?.alias ?? '';
     // Generate new bearer with grace period (D-2.11)
-    generateBearer('', this._bridgeUrl, this._worldId, true)
+    generateBearer(currentAlias, this._bridgeUrl, this._worldId, true)
       .then(() => {
         this.render(true);
       })

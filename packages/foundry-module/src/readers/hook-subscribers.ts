@@ -120,8 +120,11 @@ function handleUpdateActor(actor: FoundryActor, changes: unknown, emitFn: EmitFn
 
 /**
  * Handles the `updateCombat` hook.
- * Emits combat.turn on every update (round/turn changes).
- * Emits combat.state as an alias for the full snapshot.
+ * Emits `combat.turn` on every round/turn change.
+ *
+ * Note: `combat.state` (full snapshot on combat creation) is emitted separately by
+ * the `combatStart` hook lambda in `registerHookSubscribers`. This function only
+ * emits `combat.turn`.
  *
  * @param _combat  - Combat document (unused; we always read from game.combat)
  * @param emitFn   - Delta emission function

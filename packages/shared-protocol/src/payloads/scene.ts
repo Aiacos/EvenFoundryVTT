@@ -17,8 +17,11 @@ import { z } from 'zod';
  * Phase 4a consumes this to determine which map tile to raster-render for G2 display.
  */
 export const SceneViewportSchema = z.strictObject({
-  /** Foundry scene document ID of the currently active scene. */
-  sceneId: z.string().min(1),
+  /**
+   * Foundry scene document ID of the currently active scene.
+   * Empty string `''` is the canonical zero-state when no scene is active.
+   */
+  sceneId: z.string(),
   /** Display name of the active scene. */
   sceneName: z.string(),
   /** Canvas X offset of the current viewport centre (canvas pixels). */

@@ -7,7 +7,7 @@
  * Plugin registration order (matters for Fastify):
  * 1. pino logger with security redact list (T-02-01)
  * 2. @fastify/cors — origin whitelist from env (D-2.19)
- * 3. @fastify/rate-limit — 100 req/min per IP
+ * 3. @fastify/rate-limit — 100 req/min per bearer token (falls back to IP)
  * 4. @fastify/websocket — WS support
  * 5. HTTP routes: /v1/health, /v1/i18n/:lang, /v1/tools
  * 6. Reader REST routes: /v1/character/:actorId, /v1/combat/current, /v1/scene/viewport,
@@ -78,17 +78,24 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   });
 
   // --- 1. CORS ---
-  // TODO (#42): pin EVF_PLUGIN_HOST_URL in production — wildcard only for dev
-  const pluginHostUrl = process.env.EVF_PLUGIN_HOST_URL;
+  // EVF_PLUGIN_HOST_URL must be set in production (Specs.md §3.3 — no wildcard origins).
+  // Dev fallback is 'http://localhost:5173' (Vite default). Never use `true` (allow-all).
+  // TODO (#42): enforce EVF_PLUGIN_HOST_URL as required in Docker entrypoint.
+  const pluginHostUrl = process.env.EVF_PLUGIN_HOST_URL ?? 'http://localhost:5173';
   await app.register(cors, {
-    origin: pluginHostUrl ?? true,
+    origin: pluginHostUrl,
     methods: ['GET', 'HEAD', 'OPTIONS', 'POST'],
   });
 
   // --- 2. Rate limit ---
+  // Per-token limiting: key on the bearer token from Authorization header so that
+  // a compromised token can be rate-limited independently from others on the same LAN IP.
+  // Falls back to IP if no Authorization header is present (e.g. /v1/health).
+  // TODO (#44): lower max to 60 req/min once Phase 3 action endpoints land.
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    keyGenerator: (req) => req.headers.authorization?.slice(7) ?? req.ip ?? 'unknown',
   });
 
   // --- 3. WebSocket support ---

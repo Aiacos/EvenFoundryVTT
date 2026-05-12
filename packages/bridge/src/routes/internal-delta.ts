@@ -23,6 +23,7 @@
  * @see packages/shared-protocol/src/envelope.ts (DeltaEnvelopeSchema)
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DeltaEmitter } from '../ws/delta-emitter.js';
@@ -34,6 +35,21 @@ const InternalDeltaBodySchema = z.object({
   /** Arbitrary serialisable delta payload — validated by capability-specific handlers. */
   payload: z.unknown(),
 });
+
+/**
+ * Constant-time string comparison to prevent timing-oracle attacks on secret comparison.
+ *
+ * `timingSafeEqual` requires equal-length Buffers; mismatched lengths return false
+ * immediately (before the byte loop) which is acceptable — length itself is not secret.
+ */
+function secretsEqual(a: string, b: string): boolean {
+  try {
+    return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  } catch {
+    // Buffer.from can throw on invalid input; treat as unequal
+    return false;
+  }
+}
 
 /**
  * Register the POST /internal/delta route.
@@ -58,7 +74,8 @@ export async function registerInternalDeltaRoute(
     if (
       internalSecret === undefined ||
       internalSecret === '' ||
-      providedSecret !== internalSecret
+      providedSecret === undefined ||
+      !secretsEqual(providedSecret, internalSecret)
     ) {
       return reply.status(401).send({ error: 'unauthorized' });
     }
