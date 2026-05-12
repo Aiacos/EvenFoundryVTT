@@ -132,7 +132,7 @@ describe('buildServer integration', () => {
   // ── GET /v1/tools ─────────────────────────────────
 
   describe('GET /v1/tools', () => {
-    it('returns 200 with empty tools array for valid bearer', async () => {
+    it('returns 200 with 7-entry tools array for valid bearer (ADR-0003 Plan 03-04)', async () => {
       app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
 
       const res = await app.inject({
@@ -143,7 +143,9 @@ describe('buildServer integration', () => {
 
       expect(res.statusCode).toBe(200);
       const body = res.json<{ tools: unknown[] }>();
-      expect(body.tools).toEqual([]);
+      // Phase 03-04: TOOL_REGISTRY has 7 entries (cast_spell, weapon_attack, use_item,
+      // skill_check, move_token, place_template, set_targets)
+      expect(body.tools).toHaveLength(7);
     });
 
     it('returns 401 for invalid bearer', async () => {
