@@ -9,8 +9,8 @@
  *   (D-2.10: opaque = rotatable, revocable O(1), no verifiable-claims overhead)
  * - `internal_secret` is a second 32-byte random value generated per-pair.
  *   Consumed by the Foundry module to authenticate outbound HTTP POST requests
- *   to bridge `/internal/delta` (Plan 05). Stored under `evf.internalSecrets`
- *   (world scope).
+ *   to bridge `/internal/delta` (Plan 05). Stored as the `internalSecret` field
+ *   inside each `BearerEntry` within the `evf.bearerRegistry` setting (world scope).
  * - Tokens are NEVER logged (T-02-01 threat mitigation).
  * - Token values are NEVER rendered in ApplicationV2 HTML — only alias + expiry.
  *
