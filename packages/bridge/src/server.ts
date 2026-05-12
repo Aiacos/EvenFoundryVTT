@@ -5,10 +5,11 @@
  * Tests call `buildServer()` and use `.inject()` for HTTP routes.
  *
  * Plugin registration order (matters for Fastify):
- * 1. pino logger with security redact list (T-02-01)
+ * 1. pino logger with security redact list (T-02-01 + T-03-07)
  * 2. @fastify/cors — origin whitelist from env (D-2.19)
  * 3. @fastify/rate-limit — 100 req/min per bearer token (falls back to IP)
  * 4. @fastify/websocket — WS support
+ * 4a. Idempotency middleware — preHandler+onSend hooks (ADR-0002, Plan 03-02)
  * 5. HTTP routes: /v1/health, /v1/i18n/:lang, /v1/tools
  * 6. Reader REST routes: /v1/character/:actorId, /v1/combat/current, /v1/scene/viewport,
  *    /v1/events, /v1/characters
@@ -26,6 +27,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
+import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
 import type { FoundrySnapshotFn } from './routes/character.js';
 import { registerCharacterRoute } from './routes/character.js';
 import { registerCharactersListRoute } from './routes/characters-list.js';
@@ -54,6 +56,15 @@ export interface BuildServerOptions {
    * In tests: mock returning fixture data directly.
    */
   foundrySnapshotFn?: FoundrySnapshotFn;
+  /**
+   * Inject a custom IdempotencyStore for test isolation.
+   *
+   * In production: a fresh `IdempotencyStore` is created per `buildServer()` call.
+   * In tests: pass an existing store to observe its state after requests.
+   *
+   * @see middleware/idempotency.ts
+   */
+  idempotencyStore?: IdempotencyStore;
 }
 
 /**
@@ -66,11 +77,14 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
-      // T-02-01: bearer tokens + internal secrets must NEVER appear in logs
+      // T-02-01: bearer tokens + internal secrets must NEVER appear in logs.
+      // T-03-07: idempotency-key must also be redacted to prevent accidental
+      //   logging of client-supplied intent identifiers.
       redact: [
         'token',
         'bearer',
         'headers.authorization',
+        'headers.idempotency-key',
         '*.token',
         '*.bearer',
         'EVF_INTERNAL_SECRET',
@@ -107,11 +121,18 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const replayBuffer = new ReplayBuffer();
   const sessionStore = new SessionStore();
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
+  // Use injected store for test isolation; production creates a fresh instance.
+  const idempotencyStore = opts.idempotencyStore ?? new IdempotencyStore();
 
   // Default no-op snapshot fn — production passes the real socketlib wrapper via opts
   const foundryFn: FoundrySnapshotFn =
     // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
     opts.foundrySnapshotFn ?? (async (_h: string, ..._a: unknown[]): Promise<any> => null);
+
+  // --- 4a. Idempotency middleware ---
+  // Must be registered BEFORE route registration so the preHandler+onSend hooks
+  // intercept all POST requests. Plan 03-03 will pass { onDedup: () => metrics.inc() }.
+  await registerIdempotencyHooks(app, idempotencyStore);
 
   // --- 5. HTTP routes ---
   await registerHealthRoute(app, tokenCache);
