@@ -45,8 +45,17 @@ export let detectedLocale: string = 'en';
  * ```
  */
 export function registerSettings(): void {
-  // I18N-01: detect locale at module boot, normalise to primary tag
-  detectedLocale = game.i18n.lang.split('-')[0] ?? 'en';
+  // I18N-01: detect locale at module boot, normalise to primary tag.
+  // Guard against `game.i18n` being undefined at the `init` hook (Foundry v13
+  // re-ordered some globals; this function used to throw silently before
+  // reaching the register calls below, leaving zero settings registered —
+  // observed in production after manifest install. Caught by HUMAN-UAT).
+  try {
+    const lang = game.i18n?.lang ?? 'en';
+    detectedLocale = lang.split('-')[0] ?? 'en';
+  } catch {
+    detectedLocale = 'en';
+  }
 
   // Bearer registry — world scope, hidden from UI (programmatic only)
   game.settings.register(MODULE_ID, 'bearerRegistry', {
