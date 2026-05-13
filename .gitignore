@@ -41,3 +41,7 @@ Thumbs.db
 .env.local
 .env.*.local
 *.secret.json
+
+# deploy: never commit real secrets (deploy/.env.example is the template)
+deploy/.env
+deploy/.env.local
