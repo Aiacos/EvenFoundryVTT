@@ -2,12 +2,47 @@
 
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
-[![status: design](https://img.shields.io/badge/status-design--only-yellow)](#status)
+[![status: phase 3 complete](https://img.shields.io/badge/status-phase%203%20complete%20(4%2F15)-brightgreen)](#status)
 [![spec: v0.9.11](https://img.shields.io/badge/spec-v0.9.11-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
 [![Foundry: v13.347+](https://img.shields.io/badge/foundry-v13.347%2B-orange)](https://foundryvtt.com)
 [![i18n: ready](https://img.shields.io/badge/i18n-ready-brightgreen)](Specs.md#716-localization--internationalization-i18n)
+
+---
+
+## Quick install (Foundry desktop / The Forge)
+
+In Foundry → **Setup** → **Add-on Modules** → **Install Module** → paste this **Manifest URL**:
+
+```
+https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
+```
+
+Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*). Foundry will auto-install `socketlib`, `midi-qol`, and require dnd5e ≥ 5.3.3.
+
+> **Note:** the manifest URL only works once a GitHub Release exists. If install fails with *"Failed to fetch package manifest"*, no release has been published yet — see [`docs/release/foundry-module.md`](docs/release/foundry-module.md) for cutting a release. Until then, install in dev mode by symlinking `packages/foundry-module/` into your Foundry `Data/modules/evenfoundryvtt/` folder (then run `pnpm --filter @evf/foundry-module build`).
+
+---
+
+## In una frase
+
+**EvenFoundryVTT è un ponte tra Foundry VTT e gli occhiali AR Even Realities G2.** Il giocatore di D&D 5e indossa gli occhiali, controlla i pannelli con l'anello R1, e vede la sua scheda PG / combat tracker / mappa / log direttamente nel campo visivo — senza mai distogliere lo sguardo dal tavolo, dal master, dagli altri giocatori. Il modulo gira sul lato Foundry (legge stato e lo manda agli occhiali); un bridge Node.js fa da reverse-proxy con auth bearer e idempotency; un'app companion sul telefono gestisce il pairing.
+
+### Cosa fa oggi (Phase 02 + 03, in produzione sulla branch)
+
+- ✓ **Pairing G2 ↔ Foundry** via QR code dalle impostazioni master
+- ✓ **Lettura stato Foundry** (PG, combat, scena, eventi log) + push real-time via WebSocket
+- ✓ **Wizard di setup** vanilla TS sul telefono (3-step: bridge URL → token → PG)
+- ✓ **Bridge production-ready**: Fastify + Docker Compose + `/healthz`/`/readyz`/`/metrics` Prometheus + idempotency-key middleware RFC-compliant + Tool Registry stub (7 azioni MVP)
+- ✓ **Auth**: bearer opaque 24h, internal_secret per coppia, timing-safe-equal su tutti i confronti segreti
+- ✓ **451 unit test** verdi, coverage 92.63%, typecheck strict
+
+### Cosa NON fa ancora
+
+- ✗ Rendering raster vero della scena sugli occhiali (Phase 04a — richiede accesso hardware Even Hub)
+- ✗ Esecuzione azioni di gioco via R1 — il bridge ha le route pronte, gli handler Foundry tornano `phase-07-pending` (Phase 07)
+- ✗ Voce/AI (Phase 11-12, opzionale V2 via `foundry-mcp` server)
 
 ---
 

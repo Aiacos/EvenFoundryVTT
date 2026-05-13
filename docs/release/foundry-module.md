@@ -19,56 +19,57 @@ Both URLs become real assets attached to the GitHub Release by
 
 ---
 
-## 2. Publishing a new release
+## 2. Publishing a new release (fully automated)
 
-End-to-end, the operator workflow is:
+End-to-end, **one command after your commits are on `main`** (or any branch):
 
-1. **Bump version** in `packages/foundry-module/module.json` (optional — the
-   workflow will overwrite it from the tag, but keeping main in sync is good
-   hygiene).
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
 
-2. **Add a Changeset** (the workspace uses `@changesets/cli`) and commit it on
-   `main`:
+That's it. The `foundry-module-release` workflow triggers on the tag push and:
 
-   ```bash
-   pnpm changeset
-   # describe the change; choose `minor`/`patch` per semver
-   git add .changeset/*.md packages/foundry-module/module.json
-   git commit -m "release: foundry-module v<X.Y.Z>"
-   git push
-   ```
+1. Validates the tag matches `vMAJOR.MINOR.PATCH[-prerelease]`.
+2. Installs deps (`pnpm install --frozen-lockfile --ignore-scripts`).
+3. Builds the module bundle (`pnpm --filter @evf/foundry-module build` →
+   `dist/module.js` with `@evf/shared-protocol` + `qrcode` bundled in).
+4. Patches `module.json` with `version = 0.2.0` and the version-pinned
+   `download` URL.
+5. Assembles the release tree (`module.json` + `dist/` + `lang/` + `templates/`).
+6. Zips it as `evenfoundryvtt.zip` (sourcemaps excluded).
+7. **Creates the GitHub Release** (if it doesn't exist yet) with auto-generated
+   notes from commit history. Tags with `-prerelease` suffix are marked as
+   pre-release automatically.
+8. Uploads `module.json` + `evenfoundryvtt.zip` to the release.
 
-3. **Tag and push** matching the version (the workflow accepts
-   `vMAJOR.MINOR.PATCH[-prerelease]`):
+After ~2 min, the manifest URL `…/releases/latest/download/module.json`
+resolves to the new `module.json`. Foundry desktop + The Forge poll it; users
+see "Update available" within minutes.
 
-   ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
+### Optional: changeset hygiene before tagging
 
-4. **Create the GitHub Release** on that tag:
-   - Open `https://github.com/Aiacos/EvenFoundryVTT/releases/new`
-   - Select tag `v0.2.0`
-   - Write release notes (paste relevant `.changeset` summaries — or auto-generate)
-   - Click **Publish release**
+The workspace uses `@changesets/cli`. To track what shipped in each tag, add a
+changeset before tagging:
 
-5. **Workflow runs.** It will:
-   - install dependencies (`pnpm install --frozen-lockfile --ignore-scripts`)
-   - build the module bundle (`pnpm --filter @evf/foundry-module build` →
-     `dist/module.js` with `@evf/shared-protocol` + `qrcode` bundled in)
-   - patch `module.json` with `version = 0.2.0` and the version-pinned
-     `download` URL
-   - assemble the release tree (`module.json` + `dist/` + `lang/` + `templates/`)
-   - zip it as `evenfoundryvtt.zip` (sourcemaps excluded from runtime zip)
-   - `gh release upload` both `module.json` and `evenfoundryvtt.zip` to the
-     release
+```bash
+pnpm changeset
+# describe the change; choose `minor`/`patch` per semver
+git add .changeset/*.md
+git commit -m "release: foundry-module v0.2.0"
+git push
+git tag v0.2.0 && git push origin v0.2.0
+```
 
-6. **Verify** the release page now has two attached assets:
-   - `module.json`
-   - `evenfoundryvtt.zip`
+The changeset summary becomes part of the auto-generated release notes.
 
-The manifest URL `…/releases/latest/download/module.json` now resolves to the
-new `module.json` automatically.
+### Manual re-run (failed workflow)
+
+If a workflow run failed mid-way and you need to re-trigger without changing the tag:
+- Open **Actions → Foundry Module Release → Run workflow** in the GitHub UI.
+- Enter the tag (e.g. `v0.2.0`) in the `workflow_dispatch` input.
+- The workflow is idempotent — `gh release create` skips if the release already
+  exists, and `gh release upload --clobber` overwrites stale assets.
 
 ---
 
