@@ -74,20 +74,13 @@ interface FoundryI18n {
 }
 
 /**
- * Foundry Application base class — minimal surface for Wave 0.
- *
- * @see https://foundryvtt.com/api/v13/classes/foundry.applications.api.ApplicationV2.html
- */
-declare class Application {
-  /** Human-readable title shown in the application window header. */
-  get title(): string;
-}
-
-/**
  * Foundry ApplicationV2 — Wave 1 pair modal base class.
  *
  * ApplicationV2 is the v13+ unified application framework replacing
- * the legacy Application class. Pair modal extends this class.
+ * the legacy Application class. Lives at `foundry.applications.api.ApplicationV2`
+ * — NOT a bare global (verified at runtime against Foundry v13/v14; the bare-global
+ * declaration that previously sat here lied about the runtime and caused
+ * `ReferenceError: ApplicationV2 is not defined` at module-load).
  *
  * Key lifecycle:
  * - `getData()` — returns context for the Handlebars template
@@ -98,25 +91,31 @@ declare class Application {
  * @see https://foundryvtt.com/api/v13/classes/foundry.applications.api.ApplicationV2.html
  * @see 02-02-PLAN.md Task 2 (PairModal ApplicationV2)
  */
-declare class ApplicationV2 {
-  /** Renders the application (force=true ensures re-render even if already open). */
-  render(force?: boolean): this | Promise<this>;
-  /** Closes the application. Returns a promise that resolves when closed. */
-  close(options?: { animate?: boolean }): Promise<void>;
-  /** Returns template context data (override in subclass). */
-  getData(): Promise<Record<string, unknown>>;
-  /** Binds DOM event listeners (override in subclass). */
-  _activateListeners(html: HTMLElement): void;
-  /** Static default options for the application (override in subclass). */
-  static get defaultOptions(): {
-    id: string;
-    title: string;
-    template: string;
-    width: number;
-    height: string | number;
-    resizable: boolean;
-    [key: string]: unknown;
-  };
+declare namespace foundry {
+  namespace applications {
+    namespace api {
+      class ApplicationV2 {
+        /** Renders the application (force=true ensures re-render even if already open). */
+        render(force?: boolean): this | Promise<this>;
+        /** Closes the application. Returns a promise that resolves when closed. */
+        close(options?: { animate?: boolean }): Promise<void>;
+        /** Returns template context data (override in subclass). */
+        getData(): Promise<Record<string, unknown>>;
+        /** Binds DOM event listeners (override in subclass). */
+        _activateListeners(html: HTMLElement): void;
+        /** Static default options for the application (override in subclass). */
+        static get defaultOptions(): {
+          id: string;
+          title: string;
+          template: string;
+          width: number;
+          height: string | number;
+          resizable: boolean;
+          [key: string]: unknown;
+        };
+      }
+    }
+  }
 }
 
 /**

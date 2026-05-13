@@ -110,7 +110,9 @@ describe('generateBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -217,7 +219,9 @@ describe('validateBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -268,7 +272,9 @@ describe('validateBearer', () => {
     // Reset modules so bearer-registry re-reads settings on next call
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', { settings: settingsMock });
     vi.stubGlobal('crypto', makeCryptoMock());
@@ -283,7 +289,9 @@ describe('revokeBearer', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });
@@ -325,7 +333,9 @@ describe('listBearers', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock });

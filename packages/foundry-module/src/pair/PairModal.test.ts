@@ -93,7 +93,9 @@ describe('PairModal', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
     vi.stubGlobal('Hooks', makeHooksMock());
     gameMock = makeGameMock('it');
     vi.stubGlobal('game', gameMock);
@@ -148,7 +150,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
@@ -178,7 +182,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
@@ -350,7 +356,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
@@ -379,7 +387,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
@@ -408,7 +418,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
@@ -437,7 +449,9 @@ describe('PairModal', () => {
 
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
-      vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+      vi.stubGlobal('foundry', {
+        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
