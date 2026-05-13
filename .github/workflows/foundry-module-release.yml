@@ -1,0 +1,128 @@
+name: Foundry Module Release
+
+# Triggered when a GitHub Release is published.
+#
+# Recommended flow (matches League of Foundry Developers template):
+#   1. Bump `version` in packages/foundry-module/module.json (or rely on this
+#      workflow to overwrite it from the tag — both work).
+#   2. Push a tag of the form `v<MAJOR>.<MINOR>.<PATCH>` (e.g. `v0.1.0`).
+#      Convention: the tag MUST match the version in module.json.
+#   3. Create a GitHub Release on that tag and "Publish release". This fires
+#      the workflow.
+#
+# What this workflow does:
+#   • builds the Foundry module (pnpm + tsup, bundles @evf/shared-protocol and qrcode)
+#   • patches module.json `version` + `download` from the release tag
+#   • zips the runtime assets (module.json + dist/ + lang/ + templates/)
+#   • uploads BOTH module.json and evenfoundryvtt.zip as release assets so the
+#     manifest URL `releases/latest/download/module.json` and the version-pinned
+#     `releases/download/v<X>/evenfoundryvtt.zip` URL both resolve.
+#   • Foundry desktop + The Forge Bazaar auto-update poll the manifest URL.
+#
+# To install the module after a release:
+#   • In Foundry Setup → Add-on Modules → "Install Module" → paste:
+#       https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
+#   • On The Forge: same Manifest URL field in the Bazaar custom-install dialog.
+#   • Subsequent updates are detected automatically.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write  # required for `gh release upload`
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          # pnpm cache is handled by pnpm/action-setup below
+
+      - name: Setup pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+          pnpm --version
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Derive release version from tag
+        id: vars
+        run: |
+          # Tag format: refs/tags/vMAJOR.MINOR.PATCH → strip the `v` prefix
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match required vMAJOR.MINOR.PATCH[-prerelease] format"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build foundry-module bundle
+        run: pnpm --filter @evf/foundry-module build
+
+      - name: Patch module.json (version + download URL)
+        working-directory: packages/foundry-module
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          # Use a tiny Node one-liner — robust JSON edit, no jq dependency.
+          node -e "
+            const fs = require('node:fs');
+            const path = 'module.json';
+            const m = JSON.parse(fs.readFileSync(path, 'utf-8'));
+            m.version = process.env.VERSION;
+            m.download = 'https://github.com/${{ github.repository }}/releases/download/' + process.env.TAG + '/evenfoundryvtt.zip';
+            fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\\n');
+            console.log('Patched module.json → version=' + m.version + ', download=' + m.download);
+          "
+          cat module.json | head -20
+
+      - name: Assemble release tree
+        working-directory: packages/foundry-module
+        run: |
+          # Stage exactly the files Foundry needs at runtime — nothing else.
+          mkdir -p release-tree
+          cp module.json release-tree/
+          cp -r dist release-tree/
+          cp -r lang release-tree/
+          cp -r templates release-tree/
+          ls -R release-tree
+
+      - name: Create evenfoundryvtt.zip
+        working-directory: packages/foundry-module/release-tree
+        run: |
+          zip -r ../evenfoundryvtt.zip . -x "*.map"  # exclude sourcemaps from runtime zip
+          ls -la ../evenfoundryvtt.zip
+          unzip -l ../evenfoundryvtt.zip | head -20
+
+      - name: Upload module.json + zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          # --clobber: overwrite if the release already has these assets (re-run safety)
+          gh release upload "$TAG" \
+            packages/foundry-module/module.json \
+            packages/foundry-module/evenfoundryvtt.zip \
+            --clobber
+
+      - name: Print install manifest URL
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          echo "::notice title=Module ready::Install URL → https://github.com/${{ github.repository }}/releases/latest/download/module.json"
+          echo "::notice title=Version-pinned ZIP::https://github.com/${{ github.repository }}/releases/download/${TAG}/evenfoundryvtt.zip"

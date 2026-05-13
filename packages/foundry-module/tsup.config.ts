@@ -18,9 +18,17 @@ export default defineConfig({
   // Foundry does not consume .d.ts from the module bundle
   dts: false,
   sourcemap: true,
-  // Foundry globals are ambient — nothing to mark external explicitly,
-  // but tsup will NOT bundle anything not imported (tree-shaken away).
-  external: [],
+  // Foundry globals (game, Hooks, ApplicationV2, etc.) come from the Foundry
+  // runtime — those are ambient TS types in src/types/foundry-globals.d.ts,
+  // not real imports, so tsup never touches them.
+  //
+  // BUT: pnpm workspace deps + node_modules deps MUST be bundled into the
+  // single dist/module.js because the Foundry data folder has no node_modules.
+  // @evf/shared-protocol points main/exports at src/index.ts (workspace-link
+  // pattern), and Foundry's ESM loader can't resolve npm-style imports anyway —
+  // so bundle everything required at runtime. Caught the same way as the bridge
+  // image's deploy/smoke.sh first run (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
+  noExternal: ['@evf/shared-protocol', 'qrcode'],
   // Target ES2022 to align with Foundry v13+ baseline (modern browser/Chrome engine)
   target: 'es2022',
   // Clean dist before each build to avoid stale artefacts
