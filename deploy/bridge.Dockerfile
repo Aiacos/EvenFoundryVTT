@@ -1,0 +1,58 @@
+# EvenFoundryVTT — Bridge service multi-stage Dockerfile
+#
+# Security notes (T-03-17): NO build args for secrets.
+# EVF_INTERNAL_SECRET and EVF_PLUGIN_HOST_URL are supplied at runtime via
+# docker-compose env_file — NEVER baked into image layers.
+#
+# Usage (from repo root):
+#   docker compose -f deploy/docker-compose.yml up --build
+
+# ---------------------------------------------------------------------------
+# Stage 1: builder
+# ---------------------------------------------------------------------------
+FROM node:24-alpine AS builder
+WORKDIR /workspace
+
+# Copy workspace root configuration
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY tsconfig.base.json biome.jsonc vitest.config.ts ./
+
+# Copy all packages (workspace deps must be resolvable by pnpm install)
+COPY packages/ ./packages/
+
+# Enable corepack so pnpm version matches packageManager field in package.json
+RUN corepack enable
+
+# Install with frozen lockfile; --ignore-scripts prevents postinstall surprises
+# (matches CI gate 1 from .github/workflows/ci.yml)
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# Build ALL workspace packages (shared-protocol MUST be built before bridge).
+# Pitfall 10: pnpm --prod deploy uses symlinks resolved at build time; if
+# shared-protocol/dist doesn't exist, the runner image gets a broken symlink.
+RUN pnpm -r build
+
+# pnpm deploy creates a self-contained, symlink-free directory for the runner.
+# --prod strips devDependencies. Output: /app/bridge/
+RUN pnpm --filter @evf/bridge --prod deploy /app/bridge
+
+# ---------------------------------------------------------------------------
+# Stage 2: runner
+# ---------------------------------------------------------------------------
+FROM node:24-alpine AS runner
+WORKDIR /app
+
+# Set NODE_ENV so the bridge's startup guard activates (T-03-21)
+ENV NODE_ENV=production
+
+# Copy the self-contained deployment from builder stage
+COPY --from=builder /app/bridge .
+
+# Expose the bridge HTTP port (default 8910)
+EXPOSE 8910
+
+# wget is included in busybox on Alpine — used by the docker-compose healthcheck.
+# No additional packages needed.
+
+# Real production entrypoint (packages/bridge/src/index.ts → dist/index.js via tsup)
+ENTRYPOINT ["node", "dist/index.js"]

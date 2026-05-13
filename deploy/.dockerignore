@@ -1,0 +1,51 @@
+# Docker build context exclusions — keeps the build context lean.
+# Context root is the REPO ROOT (docker-compose.yml build.context: ..)
+
+# Dependencies and built output (rebuilt inside Docker)
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+
+# Source control
+.git
+.gitattributes
+.gitignore
+
+# Changeset tooling
+.changeset
+
+# Planning and docs (not needed in image)
+.planning
+docs
+
+# Test artifacts
+coverage
+.nyc_output
+.vitest-cache
+
+# Editor and OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# CI/CD
+.github
+.husky
+
+# Claude/Cursor/Agents dev tooling
+.claude
+.cursor
+.agents
+
+# Env files — never bake secrets into images (T-03-17, T-03-18)
+.env
+.env.local
+.env.*.local
+deploy/.env
+*.secret.json
+
+# Markdown docs (keep Dockerfiles/compose/examples, drop prose)
+*.md

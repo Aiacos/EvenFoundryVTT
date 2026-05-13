@@ -1,0 +1,34 @@
+# EvenFoundryVTT Bridge — Production-shape Docker Compose
+#
+# Usage (from deploy/ directory):
+#   docker compose up -d --build
+#
+# Security notes:
+#   - T-03-17: secrets supplied via env_file at runtime, NEVER via build args.
+#   - T-03-18: deploy/.env is gitignored. Copy deploy/.env.example to deploy/.env
+#     and fill in real values before running.
+#   - T-03-19: port is bound to all interfaces by default (homelab single-tenant).
+#     For single-host, change to "127.0.0.1:8910:8910" to restrict to localhost.
+#
+# Env file: deploy/.env (gitignored, see deploy/.env.example for template)
+
+services:
+  bridge:
+    build:
+      context: ..
+      dockerfile: deploy/bridge.Dockerfile
+    ports:
+      - "8910:8910"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - PORT=8910
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8910/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
