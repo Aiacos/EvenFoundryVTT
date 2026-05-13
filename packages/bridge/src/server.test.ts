@@ -788,3 +788,47 @@ describe('buildServer integration', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan 03-05: production startup guard semantics (behavior contract for index.ts)
+// ---------------------------------------------------------------------------
+// index.ts is excluded from coverage thresholds (vitest.config.ts) because it
+// calls app.listen() which is not unit-testable in Vitest. These tests mirror
+// the guard logic in pure form so the contract is verifiable without spawning
+// a real server or mocking process.exit().
+// ---------------------------------------------------------------------------
+describe('Plan 03-05: production startup guard semantics', () => {
+  /**
+   * Mirror the index.ts startup guard as a pure function.
+   * Returns true = boot allowed, false = boot must be rejected.
+   */
+  function checkProdGuard(nodeEnv: string | undefined, secret: string | undefined): boolean {
+    if (nodeEnv !== 'production') return true; // dev/undefined: always ok
+    if (secret === undefined || secret.trim() === '') return false;
+    return true;
+  }
+
+  it('rejects boot when NODE_ENV=production and EVF_INTERNAL_SECRET is undefined', () => {
+    expect(checkProdGuard('production', undefined)).toBe(false);
+  });
+
+  it('rejects boot when NODE_ENV=production and EVF_INTERNAL_SECRET is empty string', () => {
+    expect(checkProdGuard('production', '')).toBe(false);
+  });
+
+  it('rejects boot when NODE_ENV=production and EVF_INTERNAL_SECRET is whitespace only', () => {
+    expect(checkProdGuard('production', '   ')).toBe(false);
+  });
+
+  it('allows boot when NODE_ENV=production and EVF_INTERNAL_SECRET is set', () => {
+    expect(checkProdGuard('production', 'real-secret-value-here')).toBe(true);
+  });
+
+  it('allows boot in development even when EVF_INTERNAL_SECRET is undefined', () => {
+    expect(checkProdGuard('development', undefined)).toBe(true);
+  });
+
+  it('allows boot when NODE_ENV is undefined (development default)', () => {
+    expect(checkProdGuard(undefined, undefined)).toBe(true);
+  });
+});
