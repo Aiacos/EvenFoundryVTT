@@ -31,6 +31,13 @@ export default defineConfig({
   noExternal: ['@evf/shared-protocol', 'qrcode'],
   // Target ES2022 to align with Foundry v13+ baseline (modern browser/Chrome engine)
   target: 'es2022',
+  // CRITICAL: Foundry modules run in the BROWSER (Foundry's Electron-wrapped Chromium).
+  // `qrcode@1.5.4` has dual entry points: lib/server.js (Node — uses fs, Sharp) and
+  // lib/browser.js (Canvas). Without platform: 'browser', tsup/esbuild bundles the
+  // Node entry → `require('fs')` throws at module-load time → entire module init
+  // crashes silently → Hooks.once('init') never registers → settings missing.
+  // Caught by HUMAN-UAT first install (user reported empty settings list).
+  platform: 'browser',
   // Clean dist before each build to avoid stale artefacts
   clean: true,
 });
