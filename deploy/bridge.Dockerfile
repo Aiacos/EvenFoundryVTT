@@ -15,6 +15,11 @@ WORKDIR /workspace
 
 # Copy workspace root configuration
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy .npmrc so pnpm honours auto-install-peers=false / ignore-scripts=true
+# inside the container — without this, container defaults diverge from what
+# the lockfile expects and `pnpm install --frozen-lockfile` errors with
+# ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Caught by deploy/smoke.sh first run.
+COPY .npmrc ./
 COPY tsconfig.base.json biome.jsonc vitest.config.ts ./
 
 # Copy all packages (workspace deps must be resolvable by pnpm install)
@@ -34,7 +39,11 @@ RUN pnpm -r build
 
 # pnpm deploy creates a self-contained, symlink-free directory for the runner.
 # --prod strips devDependencies. Output: /app/bridge/
-RUN pnpm --filter @evf/bridge --prod deploy /app/bridge
+# --legacy: pnpm 10+ requires either inject-workspace-packages=true OR --legacy
+#   flag OR force-legacy-deploy=true config. We use --legacy here (container-
+#   build-scoped) instead of repo-wide .npmrc changes that would affect every
+#   developer's pnpm install behavior. Caught by deploy/smoke.sh first run.
+RUN pnpm --filter @evf/bridge --prod deploy --legacy /app/bridge
 
 # ---------------------------------------------------------------------------
 # Stage 2: runner

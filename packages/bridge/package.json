@@ -5,7 +5,7 @@
   "type": "module",
   "description": "EVF Bridge service — Fastify + ws CORS proxy with bearer auth + Tool Registry (Phase 3 fills real implementation).",
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target node24",
+    "build": "tsup",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run"
