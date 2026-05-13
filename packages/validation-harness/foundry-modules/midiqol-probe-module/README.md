@@ -11,13 +11,18 @@
 
 ## Install (test world only)
 
+Path was migrated from `tests/phase-0/` → `packages/validation-harness/` during Phase 1 D-1.02 fold-in. Use the current path:
+
 ```bash
-# From repo root, symlink or copy to Foundry user data modules folder
-ln -s "$(pwd)/tests/phase-0/midiqol-probe-module" \
+# From repo root, symlink (preferred — edits sync) or copy to the Foundry
+# user data modules folder.
+
+# Linux (typical):
+ln -s "$(pwd)/packages/validation-harness/foundry-modules/midiqol-probe-module" \
       ~/.local/share/FoundryVTT/Data/modules/evfoundryvtt-phase-0-probe
 
-# OR copy
-cp -r tests/phase-0/midiqol-probe-module \
+# OR copy:
+cp -r packages/validation-harness/foundry-modules/midiqol-probe-module \
       ~/.local/share/FoundryVTT/Data/modules/evfoundryvtt-phase-0-probe
 ```
 
@@ -25,11 +30,21 @@ cp -r tests/phase-0/midiqol-probe-module \
 
 ## Use
 
-1. From `tests/phase-0/`, run: `pnpm exec tsx midiqol-config-probe.ts` — copy the printed harness URL.
-2. Boot Foundry, load test world `phase-0-midiqol-test` (dnd5e 5.3.3+ + midi-qol latest).
-3. In Foundry browser console (F12), run: `localStorage.setItem('evf-probe-endpoint', '<URL from step 1>')`
-4. Enable "EVF Phase 0 MidiQOL Probe" in module settings. Reload the world (F5).
-5. The probe fires on `ready` hook → POSTs to harness → harness writes evidence to `docs/perf/phase-0/midiqol-config-probe-{ISO8601}.json` and exits with code 0 (pass), 1 (fail), or 2 (skipped).
+1. From repo root, run the harness:
+   ```bash
+   pnpm --filter @evf/validation-harness exec tsx scripts/midiqol-config-probe.ts
+   ```
+   The script binds an ephemeral HTTP server on `127.0.0.1:<random-high-port>` and prints the harness URL. Keep this terminal open.
+2. Boot Foundry VTT v13.347+ (or v14) and load test world `phase-0-midiqol-test` (must have dnd5e 5.3.3+ + midi-qol latest installed and active).
+3. In the Foundry browser console (F12), run:
+   ```javascript
+   localStorage.setItem('evf-probe-endpoint', '<URL from step 1>')
+   ```
+4. Enable "EVF Phase 0 MidiQOL Probe" in **Module Settings** → **Manage Modules**. Reload the world (F5).
+5. The probe fires on the `ready` hook → POSTs MidiQOL config to the harness → harness writes evidence to `docs/perf/phase-0/midiqol-config-probe-{ISO8601}.json` and exits with code:
+   - **0** (pass — MidiQOL config matches REQ MIDIQ-01 expectations)
+   - **1** (fail — MidiQOL config wrong; the evidence JSON has `verdict: "fail"` + reason)
+   - **2** (skipped — no POST received within 60s; verify the probe module is enabled and `localStorage` key is set)
 
 ## Uninstall (after Phase 0 closure)
 
