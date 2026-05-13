@@ -1,0 +1,17 @@
+# EvenFoundryVTT Bridge — Development override for docker-compose.yml
+#
+# Merges on top of docker-compose.yml. Usage (from deploy/ directory):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Overrides:
+#   - LOG_LEVEL=debug for verbose bridge logging
+#   - EVF_PLUGIN_HOST_URL fallback for local Vite dev server (port 5173)
+#   - NODE_ENV kept as production to exercise the real startup guard path
+#     (if you want dev-mode guard skip, change to development here)
+
+services:
+  bridge:
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=debug
+      - EVF_PLUGIN_HOST_URL=http://localhost:5173
