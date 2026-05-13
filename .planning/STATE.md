@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-05-12T13:36:05.958Z"
-last_activity: 2026-05-12 -- Phase 03 execution started
+status: planning
+stopped_at: context exhaustion at 75% (2026-05-13)
+last_updated: "2026-05-13T12:57:52.551Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 15
   completed_phases: 4
   total_plans: 17
-  completed_plans: 12
+  completed_plans: 17
   percent: 27
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 Phase: 4a
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-05-13
+Last activity: 2026-05-13 — Completed quick task 260513-l12: fix ApplicationV2 ReferenceError in foundry-module for Foundry v13+
 
 Progress: [█████████░░] 85%
 
@@ -66,6 +66,7 @@ Progress: [█████████░░] 85%
 | Date       | Slug                                                  | Commit    | Notes                                                                                |
 |------------|-------------------------------------------------------|-----------|--------------------------------------------------------------------------------------|
 | 2026-05-11 | `260511-kqh-fix-ci-coverage-gate-exclude-phase-2-pla` | `2800995` | CI green restored: coverage.include narrowed to `.{ts,tsx}` + 4 placeholder index.ts excludes + `validation-harness/src/lib/**` excluded. Migration policy documented. ~10 min. |
+| 2026-05-13 | `260513-l12-fix-applicationv2-referenceerror-in-foun` | `3fee9dd` | Foundry v13+ runtime fix: `ApplicationV2` no longer a bare global — added `const { ApplicationV2 } = foundry.applications.api;` destructure in PairModal.ts; replaced ambient `declare class ApplicationV2` with `declare namespace foundry.applications.api { class ApplicationV2 }` (modeled actual v13 shape, removed unused `declare class Application`); migrated 19 `vi.stubGlobal('ApplicationV2', …)` calls across 4 test files to namespace-shape stub. Unblocks `registerSettings` (init hook was aborting on `ReferenceError`). |
 
 ## Accumulated Context
 
@@ -123,6 +124,6 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-11T19:59:25.759Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-05-13T12:57:52.545Z
+Stopped at: context exhaustion at 75% (2026-05-13)
 Resume file: None
