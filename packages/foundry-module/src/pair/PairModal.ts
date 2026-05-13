@@ -30,6 +30,10 @@ import QRCode from 'qrcode';
 import type { BearerEntry } from './bearer-registry.js';
 import { generateBearer, listBearers, revokeBearer } from './bearer-registry.js';
 
+// Foundry v13+: ApplicationV2 lives under foundry.applications.api, not as a bare global.
+// Local destructure preserves the v12-style ergonomics at use sites below (extends + defaultOptions).
+const { ApplicationV2 } = foundry.applications.api;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /** Modal render state discriminant. */

@@ -131,7 +131,9 @@ describe('MODULE_ID', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('equals "evenfoundryvtt"', async () => {
@@ -147,7 +149,9 @@ describe('Hooks.once("init") → registerSettings()', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('registers "init" and "ready" hook handlers on module load', async () => {
@@ -207,7 +211,9 @@ describe('PairModal (registered in settings)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('registerSettings registers PairModal (not PairModalStub) as the menu type', async () => {
@@ -239,7 +245,9 @@ describe('detectedLocale', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('is set to game.i18n.lang (primary tag) when init fires with "it"', async () => {
@@ -337,7 +345,9 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('fires ready hook without throwing when socketlib stub is present', async () => {
@@ -426,7 +436,9 @@ describe('bridgeDeltaEmitter — via hook pipeline', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
-    vi.stubGlobal('ApplicationV2', ApplicationV2Stub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
   });
 
   it('drops delta silently when no active bearer entry exists', async () => {
