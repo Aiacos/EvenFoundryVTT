@@ -106,7 +106,21 @@ Plans:
   3. With Branch A inputs, raster sustains ≥5 fps standard with measured BLE p50 latency in Phase 0's measured envelope; Branch B/C path automatically degrades to glyph mode without operator intervention (MAP-02 + MAP-04, Specs §11.5.8.2)
   4. INV-1 snapshot fixtures ck 11-15 pass for default raster view, glyph view, status HUD width-budget under IT (longest-string), EN, and DE strings (DISP-03 + I18N-04)
   5. PIXI canvas extract via OffscreenCanvas hand-off does NOT block the player's own Foundry desktop UI (research pitfall 11 internal performance test passes)
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+**Wave 0**
+- [ ] 04A-01-PLAN.md — Scaffolding: npm deps (image-q@4.0.0, upng-js@2.1.0, xxhash-wasm@1.1.0) + ADR-0009 scaffold + layer-types.ts interface contracts + test dirs + worker-mock helper
+
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 04A-02-PLAN.md — Engine: LayerManager singleton (capture-invariant + capability gate + atomic bundle) + page-lifecycle wrappers + capability-handshake WS client + boot-splash 5-step checklist
+
+**Wave 2** *(blocked on Wave 1; Plans 03 + 04 run in parallel — no files_modified overlap)*
+- [ ] 04A-03-PLAN.md — Raster pipeline: singleton Web Worker (image-q FS dither + upng-js 4-bit PNG + xxhash-wasm sub-tile delta) + RasterController (200 ms debounce + 0.3 fps heartbeat) + glyph fallback renderer + MapBaseLayer (z=0)
+- [ ] 04A-04-PLAN.md — Status HUD (z=1) + i18n width budgets (IT/EN/DE build-time `satisfies` gate) + IdleInfillLayer (z=0.5) + 9 INV-1 ASCII fixtures (ck 11-15)
+
+**Wave 3** *(blocked on Wave 2; NOT autonomous — human-verify checkpoint for hardware-pending SC)*
+- [ ] 04A-05-PLAN.md — Integration smoke: real boot entry (packages/g2-app/src/index.ts) + end-to-end scene-renderer-smoke.test.ts + ADR-0009 ACCEPTed + human-verify checkpoint acknowledging 5 hardware-pending SC remain on human_needed gate per ADR-0005 PROVISIONAL Branch A
+
 
 ### Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI
 **Goal**: Lock the overlay layer-manager contract so Phase 5 panels plug in cleanly, and land the four adversarial UI primitives (toast queue, boot error states, death-saves HUD, concentration-drop modal) that the spec mockups happy-path.
@@ -234,7 +248,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 1. Foundation | 0/3 | Not started | - |
 | 2. Foundry Module Core + Pairing UI | 2/5 | In Progress|  |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
-| 4a. G2 Engine + Raster + Status HUD | 0/TBD | Not started | - |
+| 4a. G2 Engine + Raster + Status HUD | 0/5 | Not started | - |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 0/TBD | Not started | - |
 | 5. Panel Plugin System + Read-Only Panels | 0/TBD | Not started | - |
 | 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
