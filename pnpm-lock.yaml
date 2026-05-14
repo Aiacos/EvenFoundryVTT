@@ -118,6 +118,9 @@ importers:
 
   packages/g2-app:
     dependencies:
+      '@evenrealities/even_hub_sdk':
+        specifier: 0.0.10
+        version: 0.0.10
       '@evf/shared-protocol':
         specifier: workspace:*
         version: link:../shared-protocol
@@ -532,6 +535,10 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@evenrealities/even_hub_sdk@0.0.10':
+    resolution: {integrity: sha512-95zmlbFzyyh+TxPz5Wq8Ix4IxUDZzo/WJWAUXPQ/83kaU8R78MOYYBgKDM47Yw61LoEn+Ob5GNLDu/T9bj85xA==}
+    engines: {node: ^20.0.0 || >=22.0.0}
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
@@ -2617,6 +2624,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.7':
     optional: true
+
+  '@evenrealities/even_hub_sdk@0.0.10': {}
 
   '@fastify/ajv-compiler@4.0.5':
     dependencies:

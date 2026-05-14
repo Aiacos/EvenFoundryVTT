@@ -18,6 +18,10 @@
  * @see docs/architecture/0002-protocol-versioning.md ADR-0002 (WS envelope)
  */
 
+// Install the legacy `hub` global polyfill BEFORE any wizard module reads it.
+// See `hub-polyfill.ts` header for OQ-INV2-4 discovery + rationale.
+import { installHubPolyfill } from '../hub-polyfill.js';
+
 import { initAutoConnect } from './auto-connect.js';
 import { clearI18nCache, loadI18n, makeT } from './i18n.js';
 import { createInitialState, createStore, defaultI18n, WizardStep } from './state.js';
@@ -25,6 +29,9 @@ import * as Completion from './steps/completion.js';
 import * as Step1 from './steps/step1-profile.js';
 import * as Step2 from './steps/step2-token.js';
 import * as Step3 from './steps/step3-character.js';
+
+// Idempotent — returns early when tests have stubbed `globalThis.hub` first.
+installHubPolyfill();
 
 /**
  * All 25 UI-B i18n keys from 02-UI-SPEC.md.

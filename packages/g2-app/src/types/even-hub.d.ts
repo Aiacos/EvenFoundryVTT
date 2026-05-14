@@ -1,20 +1,35 @@
 /**
- * Ambient type declarations for the Even Hub SDK injected by the Even Realities App WebView.
+ * Ambient type declarations for the legacy `hub.*` API surface used by the
+ * Phase 2 wizard. **This `hub` global is NOT injected by the Even Realities
+ * App WebView.** The canonical runtime API is `EvenAppBridge` from
+ * `@evenrealities/even_hub_sdk@0.0.10` (envelope-based dispatch via
+ * `flutterBridge.callHandler('evenAppMessage', json({type, method, data}))`).
  *
- * Source: hub.evenrealities.com/docs/guides/device-apis (INV-2 verified 2026-05-11)
+ * The discrepancy was discovered 2026-05-14 via live probing of the official
+ * `@evenrealities/evenhub-simulator@0.7.3`:
+ *   - Only `flutterBridge.callHandler` is injected at runtime
+ *   - No `hub.setItem` / `hub.getItem` / `hub.eventBus` / `hub.camera` globals
+ *   - Original "INV-2 verified 2026-05-11" claim was not runtime-validated
  *
- * The `hub` global is provided by the host WebView environment.
- * It is NOT available in Node.js / test environments — mock it in tests.
+ * To preserve Phase 2 wizard code without rewriting it, a **runtime polyfill**
+ * (`packages/g2-app/src/hub-polyfill.ts`) installs `globalThis.hub` by mapping
+ * to `EvenAppBridge` calls. Phase 4a+ code should use `EvenAppBridge` directly,
+ * not this legacy surface.
  *
- * Key constraints (Specs.md §3.1, §3.5, §3.6):
- *   - No speaker / no audio output / no camera (firmware constraint).
- *   - `hub.camera` may be undefined on all or some OS variants — always probe availability.
- *   - `hub.setItem` / `hub.getItem` are the ONLY persistent storage mechanism
- *     available in the sandboxed iframe (no localStorage per Specs.md §3.1).
+ * Mapping:
+ *   - `hub.setItem(k, v)`      → `bridge.setLocalStorage(k, v)`
+ *   - `hub.getItem(k)`         → `bridge.getLocalStorage(k)` (`""` from SDK → `null`)
+ *   - `hub.removeItem(k)`      → `bridge.setLocalStorage(k, '')` (no explicit delete in SDK)
+ *   - `hub.eventBus.on('g2.wear'|'g2.unwear', cb)` → derived from `bridge.onDeviceStatusChanged`
+ *   - `hub.camera`             → `undefined` (camera APIs are phone-side WebView, not in EvenHub SDK)
  *
- * @see Specs.md §3.1 (G2 hardware constraints)
- * @see Specs.md §3.7 (plugin execution model — WebView, not G2 firmware)
- * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md D-2.08, D-2.09
+ * Tests typically `vi.stubGlobal('hub', mockHub)` to bypass the polyfill;
+ * the polyfill is idempotent and respects prior installations.
+ *
+ * @see packages/g2-app/src/hub-polyfill.ts (the runtime installer)
+ * @see .planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md § Appendix C — OQ-INV2-4
+ * @see docs/architecture/0005-phase0-go-no-go.md § OQ-INV2-4
+ * @see Specs.md §3.1 / §3.5 / §3.7 (pending v0.9.13 amendment for envelope-based dispatch)
  */
 declare const hub: {
   /**

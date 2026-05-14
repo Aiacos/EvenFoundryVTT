@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@evenrealities/even_hub_sdk": "0.0.10",
     "@evf/shared-protocol": "workspace:*",
     "@evf/shared-render": "workspace:*",
     "zod": "4.4.3"
