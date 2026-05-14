@@ -3,7 +3,7 @@
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
 [![status: phase 3 complete](https://img.shields.io/badge/status-phase%203%20complete%20(4%2F15)-brightgreen)](#status)
-[![spec: v0.9.11](https://img.shields.io/badge/spec-v0.9.11-blue)](Specs.md)
+[![spec: v0.9.12](https://img.shields.io/badge/spec-v0.9.12-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
 [![Foundry: v13.347+](https://img.shields.io/badge/foundry-v13.347%2B-orange)](https://foundryvtt.com)
@@ -52,7 +52,8 @@ Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*).
 
 | Pillar | What it gives you |
 |---|---|
-| **Map base layer** | Live Foundry canvas, rasterized + Floyd-Steinberg dithered into 4-bit green, 400×200 px effective. Glyph fallback (text grid) when bandwidth is thin. |
+| **Map base layer** | Live Foundry canvas, rasterized + Floyd-Steinberg dithered into 4-bit green, 400×200 px effective (hardware max — 4 image containers × 200×100). Glyph fallback (text grid) when bandwidth is thin. |
+| **Idle Content Infill (z=0.5)** | **NEW v0.9.12** — text strips that fill the otherwise-empty rows below the raster tiles when no overlay is active (combat log mini · z=0.5 label · stats: mode / fps / BLE). Auto-demolished when an overlay opens, auto-reborn when it closes. INV-1 layout-preserving. See [§7.4c](Specs.md). |
 | **Persistent Status HUD** | HP / AC / action economy / spell slots / conditions, always in the corner — never hidden by overlays. |
 | **Overlay panels** | Sheet (6 tabs: Main / Skills / Inventory / Spells / Feats / Bio), Combat tracker, Event log, Spellbook, Inventory — all stacked over the map like Foundry desktop windows. |
 | **R1 gesture control** | tap = cycle • double-tap = back to map • scroll = navigate • long-press = Quick Action menu. |
@@ -88,13 +89,13 @@ Four rules govern every PR, every audit, every release. They are constraints, no
 | # | Invariant | One-line rule |
 |---|---|---|
 | **INV-1** | **Layout integrity** | Formatting and layout are **dynamic and always perfect** — frame corners, dividers and columns align to the character in every state, every content, every locale. **Never misaligned for any reason.** Verified by snapshot tests (§7.14.4 ck 11–15) and by the `Box` / `TextRun` render contract (§7.1a.7). |
-| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **5 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11). |
+| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **5 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) plus a **v0.9.12 INV-2 spot-check** re-verifying the image-API constraint against canonical (2026-05-14, drift verdict NEUTRO). |
 | **INV-3** | **Documentation coherence** | `Specs.md` (canonical), `README.md` and `docs/showcase/index.html` are **always coherent** and updated **in the same commit** for any change touching cross-cutting claims (version, fps target, phase count, hardware spec, library version, locale set). No half-updated states. |
 | **INV-4** | **Code quality** | Code is **clean, optimized, documented** — and **zero dead or unreachable code** is tolerated. Biome + TypeScript strict + Vitest coverage gate enforce it in CI. `// TODO` without an issue/ADR link is a CI failure. JSDoc/TSDoc on every public API. Hot-path benchmarks gate regressions. See §0.1 INV-4. |
 
 ## Status
 
-**Design only.** Not a single line of application code yet. The current artifact is the **~4250-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11), with four **non-negotiable Project Invariants** ratified in §0.1.
+**Phase 1-3 implemented; Phase 4+ pending hardware access.** The current artifact is the **~4380-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) plus a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint re-verified, drift NEUTRO), with four **non-negotiable Project Invariants** ratified in §0.1 and a new `z=0.5` Idle Content Infill layer (§7.4c) that fills previously-empty raster-mode rows without violating the 4-image hardware budget.
 
 The spec covers requirements, hardware constraints (Even Hub display + networking + audio + native AI limits + R1 product page), Foundry/dnd5e API surface (with `game.i18n` Localization API), data models, full UI/UX with ASCII mockups, layout integrity rules (§7.1a), i18n architecture with on-glasses language toggle (§7.16), G2 audio surface (§3.5), plugin execution model and 3-hop server-hosted distribution (§3.7), Even Realities App phone-side configuration UI for connection bootstrap (§3.8 / §7.14.7), the 6-layer raster pipeline, the optional MCP voice module, a 13-week MVP roadmap with Phase 0 validation protocol, risk register, library stack research, and failure modes.
 
@@ -134,7 +135,7 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 
 ## Documentation
 
-- **[`Specs.md`](Specs.md)** — single source of truth (v0.9.11, ~4250 lines, fully cross-checked against upstream docs across 5 rounds)
+- **[`Specs.md`](Specs.md)** — single source of truth (v0.9.12, ~4380 lines, fully cross-checked against upstream docs across 5 rounds + v0.9.12 spot-check)
 - **[`docs/showcase/index.html`](docs/showcase/index.html)** — interactive feature showcase (HTML5/JS, animated)
 - *Coming with implementation*: ADR-0001 layered UI · ADR-0002 protocol versioning · ADR-0003 plugin registry · ADR-0004 voice via MCP · ADR-0005 Phase 0 results · ADR-0006 raster library stack · ADR-0007 RTL deferred to V2 · ADR-0008 code quality configuration
 

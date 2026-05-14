@@ -1,12 +1,12 @@
 ---
 title: EvenFoundryVTT — Requirements, Architecture & Execution Plan
 created: 2026-05-09
-updated: 2026-05-10
+updated: 2026-05-14
 status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.11)
+# EvenFoundryVTT — Project Specification (v0.9.12)
 
 ## 0. Executive Summary
 
@@ -1290,17 +1290,19 @@ Il corner card `~28×21 char` (vedi §7.3) ha **layout fisso indipendente dal co
 
 ### 7.2 Layered Rendering Model
 
-Una sola "main page" runtime con **3 layer** (z-order dal basso):
+Una sola "main page" runtime con **4 layer** (z-order dal basso):
 
 ```
-z=0  Map base layer       (always rendered)
-z=1  Persistent Status HUD (always rendered, except modal)
-z=2  Overlay slot          (mounted on demand: 0 or 1 panel at a time)
+z=0    Map base layer        (always rendered)
+z=0.5  Idle Content Infill   (rendered ONLY when no z=2 overlay is active — v0.9.12 §7.4c)
+z=1    Persistent Status HUD (always rendered, except modal)
+z=2    Overlay slot          (mounted on demand: 0 or 1 panel at a time)
 ```
 
 | Layer | Visibilità | Capture? | Note |
 |---|---|---|---|
 | Map base | sempre (eccetto modal full-screen) | sì, default | scroll=pan, tap=ping, long=quick |
+| **Idle Content Infill** | **solo quando z=2 NON è montato** | **mai** | **read-only · auto-demolished su `open(panel/modal)` · auto-reborn su `close()` · vedi §7.4c** |
 | Status HUD | sempre (eccetto modal full-screen) | mai | read-only |
 | Overlay panel size=`panel` | quando aperto | sì, sottrae alla mappa | scroll=naviga, tap=action, long=close (o panel-action contestuale, vedi §7.14.2) |
 | Overlay panel size=`modal` | quando aperto | sì, copre tutto | full-screen, status nascosto (es. Voice/Clarify) |
@@ -1308,12 +1310,20 @@ z=2  Overlay slot          (mounted on demand: 0 or 1 panel at a time)
 **Capture transition** (state machine):
 
 ```
-            ┌─ open(panel)  ─→ overlay-slot active
+            ┌─ open(panel) ──→ overlay-slot active   (z=0.5 demolished)
    map-base ┤                                       ↓
-            └─ no overlay   ←─ close()  ──────────┘
+            └─ no overlay  ←── close() ─────────────┘  (z=0.5 reborn)
 ```
 
-Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `isEventCapture=1`.
+**z=0.5 invariants** (binding for §7.4c implementation):
+
+- z=0.5 NEVER captures input — z=0 (map) or z=2 (overlay) owns capture; z=0.5 is render-only.
+- z=0.5 reads from store but never writes — read-only by contract, same as z=1.
+- z=0.5 reuses text/list containers from the 8-budget pool; **never** consumes image container budget (which stays exclusive to z=0 raster tiles per §7.4b.3).
+- z=0.5 mount/demolish is **atomic with z=2 open/close**: no intermediate frame where both are visible. The event router emits the swap as a single render frame.
+- INV-1 layout-integrity: the column boundaries of z=0 and z=1 are **identical** in both states (overlay-open vs overlay-closed). z=0.5 lives strictly inside the z=0 map-area column range; no chars cross the z=1 boundary.
+
+Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `isEventCapture=1`. The router also owns z=0.5 lifecycle (subscribes to `overlay_mounted` / `overlay_dismissed` from `core/state-store.js`).
 
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
@@ -1328,19 +1338,23 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
    2   │                                                                      │   STATUS HUD     │
    3   │                                                                      │   (corner card)  │
        │              MAP BASE LAYER                                          │   ~28×21 char    │
-       │              (text grid — ~66×21 char)                               │                  │
+       │              (text grid — ~66×21 char  ·  raster 2×2 = 400×200 px)   │                  │
        │                                                                      │   z=1            │
        │              z=0  ALWAYS RENDERED                                    │   read-only      │
        │                                                                      │                  │
        │              [ overlay slot mounts here ]                            │                  │
        │              z=2  on demand                                          │                  │
-       │                                                                      │                  │
-  21   │                                                                      │                  │
+       │              ─────────────────────────────────────────               │                  │
+       │              IDLE CONTENT INFILL                                     │                  │
+       │              z=0.5  rendered ONLY when z=2 NOT mounted               │                  │
+  21   │              (combat log · quick prompts · stats — §7.4c)            │                  │
        ├──────────────────────────────────────────────────────────────────────┴──────────────────┤
   22   │ FOOTER (chips + R1 hint)                                                                │
   23   │                                                                                         │
        └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**z=0.5 placement**: occupa le ultime ~3 row del map-area (idle state). Quando un overlay z=2 viene montato, z=0.5 è demolito e quelle row tornano disponibili al z=2 layout. Vedi §7.4c per il contratto completo.
 
 ### 7.4 Default View — Map + Persistent Status HUD
 
@@ -1375,9 +1389,9 @@ Stato di default (nessun overlay aperto). La mappa cattura input.
 ║   │                           │                           │         ║                  ║
 ║   │                           │                           │         ║ Conditions       ║
 ║   └───────────────────────────┴───────────────────────────┘         ║  ▶ Bless (7r)    ║
-║                                                                      ║    Concentr.     ║
-║   400×200 px · 2×2 tile · FS+RLE+delta · 5 fps standard / 15 stretch ║                  ║
-║                                                                      ║                  ║
+║   ─── z=0.5 idle infill ──────────────────────────────────────────── ║    Concentr.     ║
+║   ⚔ Thorin → Goblin Brute · hit AC 14 · 15 dmg slashing              ║                  ║
+║   raster 400×200 · FS+RLE+delta · BLE 240k · 8 fps · [Q] Quick       ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
 ║ R1: scroll=pan  tap=ping  long=quick   mode: ▶RASTER (toggle GLYPH)   [sheet] [combat]…  ║
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
@@ -1942,6 +1956,102 @@ Due opzioni:
 - **Setting**: `view.map.mode = "raster" | "glyph"` (default `"raster"`). Switch via Quick Action menu, hot-swappable senza riavvio.
 - **Risk mitigation**: se Phase 0 rivela `updateImageRawData` non funzionale o BLE bandwidth insufficiente, fallback automatico a glyph-only MVP (degrade gracefully). Raster slitta a Phase 13 stretch nella worst-case scenario.
 - **Field-test driven priority order**: glyph-as-fallback > raster-default > advanced raster (Dice So Nice integration, sheet portrait, token portrait — restano Phase 13).
+
+---
+
+### 7.4c Idle Content Infill — z=0.5 layer (v0.9.12)
+
+> **Status:** ratified v0.9.12 (2026-05-14) — extension to ADR-0001 layered model. Binds Phase 4a (engine + layer manager) and Phase 4b (overlay slot lifecycle).
+
+#### 7.4c.1 Motivazione
+
+Nel default view §7.4 (raster mode, no overlay), la 4-tile mappa 2×2 = 400×200 px **occupa solo le righe centrali** del map area (~13 row su 21 disponibili nel text grid §7.3). Le **~3 righe sotto i tile** (e simmetricamente in glyph mode quando il glyph grid non riempie tutte le 21 righe) restano **visivamente vuote** quando nessun overlay z=2 è montato.
+
+Il vincolo hardware §3.1 (max **4** image container, **8** text/list container, **1** capture container) preclude di:
+- aggiungere un 5° image container (limite ferreo upstream — `hub.evenrealities.com/docs/guides/device-apis`, INV-2 re-verified 2026-05-14)
+- ingrandire un container 200×100 oltre i suoi limiti (stesso vincolo upstream)
+- spingere a un singolo full-screen 576×288 raster (verbatim *"no arbitrary pixel drawing"* — stesso doc)
+
+→ L'unica strada **INV-compatible** per ridurre lo spazio visivamente vuoto è **occupare le row idle con text/list container** che leggono dallo state-store e si auto-demoliscono quando z=2 si attiva.
+
+#### 7.4c.2 Contratto
+
+Un nuovo layer `z=0.5` definito tra `z=0` (map) e `z=1` (status HUD):
+
+| Proprietà | Valore |
+|---|---|
+| Z-order | tra `z=0` e `z=1` |
+| Visibilità | **solo quando z=2 NON è montato** (panel o modal entrambi escludono z=0.5) |
+| Capture | **mai** — read-only (z=0 owns capture in this state, NOT z=0.5) |
+| Container budget | 1-3 text/list container dal pool 8-budget §3.1 |
+| Container types | text container (single-line) o list container (multi-row) |
+| State source | sottoscrive `core/state-store.js` slices `combat.recentEvents`, `ui.quickActions`, `render.stats` |
+| Lifecycle | auto-mount su `overlay_dismissed`, auto-demolish su `overlay_mounted` |
+| INV-1 | layout del mockup §7.4 cambia char-precision tra idle (z=0.5 visible) e overlay-open (z=2 visible). z=0 e z=1 column boundaries identici tra i due stati. |
+
+#### 7.4c.3 Contenuto canonico (MVP)
+
+Tre text container in idle state, dall'alto verso il basso (riga 17, 18, 19 del map area §7.4 mockup):
+
+| Container | Contenuto | Fonte state-store |
+|---|---|---|
+| **#1 Combat log strip** (1 row) | Ultimo evento di combattimento risolto: *"⚔ Thorin → Goblin Brute · hit AC 14 · 15 dmg slashing"* — formato `{actor} → {target} · {outcome} · {numbers}` | `combat.recentEvents[0]` (LIFO ring buffer, last 5 events) |
+| **#2 Quick prompts strip** (1 row, label-line) | Etichetta separatore con scope visivo + indicator: *"─── z=0.5 idle infill ────────────────"* | constant (literal) |
+| **#3 Stats strip** (1 row) | Render stats live: *"raster 400×200 · FS+RLE+delta · BLE 240k · 8 fps · [Q] Quick"* — formato `{mode} {res} · {pipeline} · {ble_throughput} · {fps_observed} · {quick_action_chip}` | `render.stats` (subscribed to pipeline §7.4b.4 frame events) |
+
+> **Note**: la quick-prompts row è la label di separazione visiva (vedi mockup §7.4); le prompts effettive `[1]Cast [2]Move [3]Atk …` restano nel footer R1-hint row 22-23 (§7.3) per coerenza con i pattern §7.13a. Discreto, NON intrusivo.
+
+#### 7.4c.4 State machine (extended capture transition)
+
+```
+       overlay_dismissed              overlay_mounted (panel|modal)
+              │                                      │
+              ▼                                      ▼
+    ┌─ map-base (z=0)                    ┌─ map-base (z=0, capture migrates)
+    │  capture: z=0                      │  capture: z=2
+    │  z=0.5 mounted ✓                   │  z=0.5 DEMOLISHED ✗
+    │  z=1 visible                       │  z=1 visible (eccetto modal full-screen)
+    │  z=2 NOT mounted                   │  z=2 mounted (panel|modal)
+    └─                                   └─
+```
+
+**Atomicità**: il `layer-manager` emette `(unmount z=0.5) + (mount z=2)` come singola transazione di render frame; non esistono frame intermedi con entrambi visibili. Stesso per la transizione inversa.
+
+**Race condition (vedi §11.5.8 failure modes)**: se un `overlay_mounted` event arriva mid-render durante un z=0.5 update, il layer-manager **aborts** il z=0.5 update e procede direttamente al z=2 mount. Equivalente di una preemption.
+
+#### 7.4c.5 INV-1 compliance — char-precision tra stati
+
+Il mockup §7.4 (idle, z=0.5 visibile) e i mockup degli overlay (§7.5 Sheet, §7.6 Combat, ecc., z=2 visibile) devono mostrare:
+
+- Colonna `║` a sinistra: stessa posizione (col 0)
+- Colonna `║` centrale (tra map-area e status-HUD): stessa posizione (col 70)
+- Colonna `║` a destra: stessa posizione (col 89)
+- Le 3 row in fondo al map-area che ospitano z=0.5 in idle, in overlay-open contengono content del z=2 panel (vedi §7.5+ mockup) — stessa larghezza col 0..70.
+
+INV-1 §7.1a sub-rule **#11 (corner alignment)** e **#13 (tab strip equal-width)** restano garantite dalla `Box{children}` render contract (no string concat) — implementazione gating in `@evf/shared-render` `AsciiGrid` snapshot tests (Phase 4a).
+
+#### 7.4c.6 Container budget impact per stato
+
+| Stato | Image | Text/list | Capture | Note |
+|---|---|---|---|---|
+| MAIN_MAP raster idle (`z=0 + z=0.5 + z=1`) | 4 (2×2 raster) | 5+3 = 8 (Header + Status HUD + Footer + 3 z=0.5) | 1 (z=0) | At-cap; safe — text/list budget exhausted |
+| MAIN_MAP raster + overlay-open panel (`z=0 + z=1 + z=2`) | 4 (or 3 degraded if portrait-tile per §7.5) | 5+1-3 = 6-8 (Header + Status HUD + Footer + overlay text/list) | 1 (z=2) | Within budget; varies by overlay content |
+| MAIN_MAP raster + overlay-open modal (`z=2 only` — z=0/0.5/1 hidden) | up to 4 | up to 8 | 1 (z=2) | Modal owns full budget; e.g. Voice/Clarify §7.10 |
+| MAIN_MAP glyph idle (`z=0 + z=0.5 + z=1`) | 0 | 5+3 = 8 (same as raster) | 1 (z=0) | Glyph mode is text-grid based; z=0.5 still applies symmetrically |
+
+#### 7.4c.7 Phase mapping
+
+| Phase | Work |
+|---|---|
+| Phase 4a | Layer manager implements z=0.5 lifecycle; `core/event-router.js` subscribes to `overlay_mounted` / `overlay_dismissed`. Initial mount/demolish + atomicity guarantees. |
+| Phase 4b | Per-overlay tests assert z=0.5 demolish on every `open()`, reborn on every `close()`. INV-1 snapshot fixtures cover both states (raster idle + raster + sheet-open). |
+| Phase 5 | Panel Plugin System contract documents that mounting a panel triggers z=0.5 demolish (no panel-level opt-out — it's a layer-manager invariant, not a panel decision). |
+| Phase 7 | Combat-log strip subscribes to MidiQOL `completeActivityUse` chain output (or vanilla `activity.use()` fallback) — same data path as §7.4 raster combat indicators. |
+
+#### 7.4c.8 Open Questions
+
+- **OQ7.4c.1** — il framerate del z=0.5 stats strip è event-based (su frame emit del pipeline §7.4b.4) o tick-based (es. ogni 500 ms)? Default proposto: event-based (lower BLE pressure, more accurate); confermare in Phase 4a benchmark.
+- **OQ7.4c.2** — z=0.5 in glyph mode è un dato puramente cosmetico o aggiunge informazione che il glyph grid non già mostra? Proposta: in glyph mode il combat-log strip è ridondante (il glyph already shows token deltas), quindi z=0.5 in glyph mode degrada a solo stats-strip (1 row) + label-strip (1 row); 1 row libera per altre feature future.
 
 ---
 
@@ -3794,6 +3904,16 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
   - Adaptive fps cap a quel rate
   - Frame skip se nuovo frame arriva prima che il previous abbia completato `updateImageRawData`
 
+#### 11.5.8.6 z=0.5 idle-infill / z=2 overlay-mount race (v0.9.12)
+
+- **Scenario**: un text container `update` per z=0.5 (combat-log strip / stats strip / quick prompts) parte e nello stesso tick arriva un `overlay_mounted` event (utente apre il sheet).
+- **Failure mode evitato**: i due update arrivano in ordine non deterministico al firmware G2 → frame intermedio con z=0.5 ancora visibile + parte del z=2 sovrapposto → INV-1 violation.
+- **Mitigazione**:
+  - Il `layer-manager` (Phase 4a) serializza le mutations su un coda single-threaded (`renderQueue`)
+  - `overlay_mounted` enqueue `(unmount-all-z=0.5-containers) + (mount-z=2)` come singolo bundle atomico (vedi §7.4c.4)
+  - Se un z=0.5 `update` è già in-flight al firmware quando l'`overlay_mounted` arriva, il manager **non aspetta** l'ack: emette comunque l'unmount + mount. Il firmware applica gli update in ordine FIFO; il flicker intermedio è di durata < 1 frame BLE (~80 ms) e visivamente impercettibile.
+  - Snapshot test (Phase 4a): assert che ogni `overlay_mounted` produce esattamente 1 frame finale con i container z=2 visibili e 0 container z=0.5 visibili.
+
 ---
 
 ## 12. Open Questions
@@ -3925,6 +4045,16 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ## Changelog
 
+- **2026-05-14 (v0.9.12)** — Idle Content Infill layer (z=0.5) + INV-2 spot-check re-verification of image-API constraint.
+  - **Audit method (INV-2 spot-check)**: 6 WebFetch tentate, **2 sorgenti convergenti** sulla canonical hardware-API constraint (`hub.evenrealities.com/docs/guides/device-apis` verbatim *"no arbitrary pixel drawing, no audio output, no camera"* + `hub.evenrealities.com/docs/getting-started/overview` execution model + display specs invariati). 1 source HTTP 404 (`support.evenrealities.com/specs` — path deprecated/spostato), 2 source SPA-empty (reference/api + guides/quickstart — React root non-WebFetch-reachable). **Drift verdict: NEUTRO** — broad constraint "no arbitrary pixel drawing" holds; specifico numero `200×100` non visibile sulla canonical primaria fetch 2026-05-14, classificato come **INV-2 follow-up** (non blocker). Full evidence: `.planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md`.
+  - **NEW §7.4c Idle Content Infill — z=0.5 layer** — nuovo layer tra `z=0` (map) e `z=1` (status HUD), rendered **solo quando z=2 non è montato**. Risolve la richiesta utente "no spazi vuoti nel raster mode" senza challengiare il container budget (4 image hard-capped). Usa 3 text/list container (combat log strip · z=0.5 label · stats strip) dal pool 8-budget §3.1, **auto-demolished su overlay_mounted, auto-reborn su overlay_dismissed**. Sub-sezioni: 7.4c.1 motivazione · 7.4c.2 contratto · 7.4c.3 contenuto canonico MVP · 7.4c.4 state machine (extended capture transition) · 7.4c.5 INV-1 compliance · 7.4c.6 container budget per stato · 7.4c.7 phase mapping (Phase 4a/4b/5/7) · 7.4c.8 open questions.
+  - **§7.2 Layered Rendering Model esteso** — da 3 layer (z=0/1/2) a **4 layer** (z=0/0.5/1/2). State machine capture-transition aggiornata con `z=0.5 demolished` su `open(panel|modal)` e `z=0.5 reborn` su `close()`. Invarianti z=0.5 esplicitati: never captures input, never writes state, reuses text/list pool (mai image pool), atomic mount/demolish con z=2.
+  - **§7.3 Canvas Allocation** — schema ASCII aggiornato con annotazione `z=0.5 rendered ONLY when z=2 NOT mounted` nelle ultime ~3 row del map area.
+  - **§7.4 Default View RASTER mockup aggiornato** — le 3 row in fondo al map area (precedentemente blank/stats) ora mostrano il z=0.5 infill content: combat-log strip `⚔ Thorin → Goblin Brute · hit AC 14 · 15 dmg slashing` + label `─── z=0.5 idle infill ───` + stats strip `raster 400×200 · FS+RLE+delta · BLE 240k · 8 fps · [Q] Quick`. INV-1 char-precision verificata (90 char per row matching col-70 boundary tra z=0 e z=1).
+  - **§11.5.8.6 NEW failure mode** — z=0.5 idle-infill / z=2 overlay-mount race condition + mitigation strategy. Layer-manager serializza mutations su single-threaded `renderQueue`; `overlay_mounted` enqueue `(unmount-all-z=0.5) + (mount-z=2)` come singolo bundle atomico. Snapshot test (Phase 4a) gate per zero-flicker invariance.
+  - **ADR-0001 amended** — Status `ACCEPTED` (2026-05-11) → `ACCEPTED + AMENDED 2026-05-14`: z=0.5 layer extension noted in §Amendments section. La decisione originale (Option A layered z-stack con single capture container) resta in vigore; z=0.5 è additiva, non sostitutiva. Container budget statement (4 image + 8 text/list + 1 capture) confermato fresh contro upstream canonical (INV-2 spot-check 2026-05-14).
+  - **README.md + showcase**: aggiornati versione + nota z=0.5 idle infill layer + cross-check round count unchanged (×5 — spot-check non è full audit round).
+  - **Bump v0.9.11 → v0.9.12**.
 - **2026-05-10 (v0.9.11)** — Online cross-check round 5: plugin distribution model corrected + Even Realities App phone-side settings UI surface formalized (Foundry connection bootstrap).
   - **Audit method (INV-2)**: 3 WebFetch + 1 WebSearch su `support.evenrealities.com/User-guide`, `hub.evenrealities.com/docs/getting-started/{overview,first-app}`, GitHub `BxNxM/even-dev` + `brianmatzelle/even-realities-g2-glasses`. **2 sorgenti convergenti** sul pattern phone-hosted-WebView-loading-server-served-code, **2 sorgenti convergenti** sul "Setting - <plugin>" UI pattern in Even Realities App.
   - **CRITICAL drift fix §3.7 Plugin Execution Model** — v0.9.10 diceva *"App logic runs on the phone"* (corretto ma incompleto). v0.9.11 corregge a **3-hop deployment**: il codice plugin è **servito da un server HTTP separato** (plugin host URL), l'Even Realities App **fetcha** quella URL nel WebView phone, da cui parte il traffico verso il bridge. Verbatim simulator README: *"G2 plugins are web apps where your code runs on a server, the iPhone Even App loads it in a WebView, and relays display/input over BLE."* Diagramma aggiornato con plugin host URL distinto da bridge URL. Aggiunta nota dev workflow: *"use your machine's local network IP, not localhost"* per phone WebView.
