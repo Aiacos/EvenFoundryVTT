@@ -15,10 +15,10 @@ Specs.md is the canonical SoT; this roadmap is the GSD-shaped projection. Drift 
 
 MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 
-- [ ] **Phase 0: Validation Gates** - Hardware/SDK GO/NO-GO tests (R1 events · `updateImageRawData` format · BLE bandwidth multi-env · DLE 30-min sustained · queue depth · palette calibration · MidiQOL config check) → ADR-0005 decision document
+- [x] **Phase 0: Validation Gates** - Hardware/SDK GO/NO-GO tests (R1 events · `updateImageRawData` format · BLE bandwidth multi-env · DLE 30-min sustained · queue depth · palette calibration · MidiQOL config check) → ADR-0005 decision document *(3/3 plans complete — ADR-0005 PROVISIONAL-ACCEPTED Branch A via INV-2 lit-review; OQ-INV2-1.a/4 resolved via Even Realities simulator probe + SDK polyfill — see STATE.md Quick Tasks 2026-05-14)*
 - [x] **Phase 1: Foundation** - Monorepo skeleton + shared protocol + CI + first 5 ADRs + versioned config schema + INV-1/2/3/4 binding *(3/3 plans complete — Wave 0+1+2 ✅; INV-3 atomic doc-coherence verified via single commit 671a22d)*
-- [ ] **Phase 2: Foundry Module Core + Pairing UI** - `module.json` + versioned `dnd5e@5.x` adapter + readers (character/combat/scene/log) + WS handshake + locale auto-detect + phone-side bootstrap wizard + QR pairing flow
-- [ ] **Phase 3: Bridge Service Skeleton** - Fastify + ws + bearer auth + Tool Registry + REST + healthz/readyz/metrics + idempotency keys + seq envelope + replay buffer + Docker Compose
+- [x] **Phase 2: Foundry Module Core + Pairing UI** - `module.json` + versioned `dnd5e@5.x` adapter + readers (character/combat/scene/log) + WS handshake + locale auto-detect + phone-side bootstrap wizard + QR pairing flow *(5/5 plans complete)*
+- [x] **Phase 3: Bridge Service Skeleton** - Fastify + ws + bearer auth + Tool Registry + REST + healthz/readyz/metrics + idempotency keys + seq envelope + replay buffer + Docker Compose *(5/5 plans complete)*
 - [ ] **Phase 4a: G2 Engine + Raster + Status HUD** - Layer manager + persistent Status HUD + raster pipeline (image-q + upng-js + xxhash-wasm + OffscreenCanvas) + 6-layer optimization stack + glyph fallback + boot splash + capability handshake
 - [ ] **Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI** - Stable layer-manager API for Phase 5 + map mode toggle + toast queue + boot error states + death-saves HUD + concentration-drop modal primitive
 - [ ] **Phase 5: Panel Plugin System + Read-Only Panels** - Panel API contract + 6-tab Sheet + Combat tracker + Log + Inventory + Spellbook + i18n width budget + dual-edition support
