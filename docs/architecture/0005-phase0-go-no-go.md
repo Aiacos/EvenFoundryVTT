@@ -151,8 +151,24 @@ updateImageRawData · textContainerUpgrade · audioControl
 
 #### Remaining sub-questions (deferred to follow-up probes)
 
-- **OQ-INV2-1.a** — Struct shapes for `CreateStartUpPageContainer`, `UpdateImageRawData`, etc. — needed for actual implementation. Probe-able via simulator with more iterations (the simulator's Rust-side errors leak field names when partial data is provided).
-- **OQ-INV2-1.b** — Specific hardware size limits per image slot (the 200×100 claim in Specs §3.1) — REQUIRES real G2 hardware (simulator does NOT enforce hardware-size constraints per its own README §"Image Processing").
+- ~~**OQ-INV2-1.a** — Struct shapes for `CreateStartUpPageContainer`, `UpdateImageRawData`, etc.~~ → **PARTIALLY RESOLVED 2026-05-14 PM via probes v7+v8** (see EVIDENCE.md §C). Required field types known for `getLocalStorage`, `setLocalStorage`, `shutDownPageContainer`, `audioControl`. Lenient-deserializer methods (`createStartUpPageContainer`, `rebuildPageContainer`, `updateImageRawData`, `textContainerUpgrade`) still need real-hardware refinement to discover the strict schema. The `containers: [...]` field name on `createStartUpPageContainer` is confirmed empirically.
+- **OQ-INV2-1.b** — Specific hardware size limits per image slot (the 200×100 claim in Specs §3.1) — REQUIRES real G2 hardware (simulator does NOT enforce hardware-size constraints per its own README §"Image Processing"). Partial info: simulator README v0.7.x changelog says **text containers cap at 999 bytes**, **list containers cap at 20 items × 63 bytes** — image container width/height cap value TBD.
+
+### OQ-INV2-4 — Phase 2 wizard `hub.*` API mismatch (NEW finding, 2026-05-14 PM)
+
+**Severity:** HIGH — Phase 2 was marked complete on 2026-05-13, but the wizard's `hub.setItem` / `hub.getItem` / `hub.removeItem` / `hub.eventBus` / `hub.camera` API surface does NOT exist in the canonical simulator (only `flutterBridge.callHandler('evenAppMessage', ...)` is injected).
+
+**Discovery:** Grep + inspection of `packages/g2-app/src/wizard/` revealed 8+ call sites using a `hub` global that has no matching injection on the simulator. Existing `packages/g2-app/src/types/even-hub.d.ts` (commented as "INV-2 verified 2026-05-11") describes an API surface that is **not present** in the canonical 10-method enum.
+
+**Implications:**
+
+- Wizard's 451 unit tests pass because they mock `hub` global. On real hardware or canonical simulator, the wizard would fail with `ReferenceError: hub is not defined`.
+- Specs.md §3.1 implicit hub-global assumption may need amendment to canonical flutterBridge dispatch shape.
+- Phase 4a planning MUST decide between Option A (polyfill `hub` → flutterBridge) vs Option B (refactor wizard) vs Option C (further probing — is `hub` injected by the real Even Realities App but NOT the simulator?).
+
+**Recommendation:** Open as a dedicated quick task before Phase 4a starts coding. Cheapest first move: Option C — fetch the official Even Realities App documentation or community resources to determine whether a `hub` wrapper exists on the phone-side runtime (which would make the wizard correct but require a separate compatibility note in our docs that the simulator doesn't model it).
+
+Full detail in: `.planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md` § Appendix C.4.
 
 #### Recommended next steps
 

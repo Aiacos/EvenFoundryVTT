@@ -177,7 +177,115 @@ The image container API is **page-based declarative**, NOT imperative-per-contai
 
 ## Next steps (deferred to subsequent quick tasks)
 
-- **B.1** — Resolve the remaining struct shapes (CreateStartUpPageContainer, UpdateImageRawData, etc.) via more focused probes
+- ~~**B.1** — Resolve the remaining struct shapes~~ → **PARTIALLY RESOLVED via probe v7+v8** (Appendix C below); simulator-lenient structs still need real-hardware refinement.
 - **B.2** — Determine empirical hardware size limits (200×100? other?) — requires real G2 (simulator does NOT enforce)
-- **B.3** — Map the `listen_even_app_data` variant to specific async-subscription semantics (audio chunk streaming? touch events? IMU?)
-- **B.4** — Post-resolution: spec-bump v0.9.13 with the page-based API correction (§4.3 SDK Surface, §7.2 layered model implementation, §7.4c idle infill state machine)
+- ~~**B.3** — Map the `listen_even_app_data` variant~~ → **PARTIALLY RESOLVED**: `listen_even_app_data` accepts the same 10-method enum, returns `{status: "success"}` confirming subscription started. Actual event delivery mechanism (postMessage? Tauri event?) TBD.
+- **B.4** — Post-resolution: spec-bump v0.9.13 with the page-based API correction (§4.3 SDK Surface, §7.2 layered model implementation, §7.4c idle infill state machine, §3.5 audio surface envelope shape)
+- **B.5 NEW** — Reconcile Phase 2 wizard's `hub.*` API usage with canonical `flutterBridge.callHandler('evenAppMessage', ...)` shape (see Appendix C §C.4 below)
+
+---
+
+# Appendix C — Struct shape probing v7+v8 (2026-05-14 PM)
+
+## C.1 Methodology
+
+Two further probe iterations after Appendix B:
+
+- **Probe v7**: walk struct fields by sending empty `data: {}`, parsing "missing field X" errors, adding X with heuristic candidate value, retry. Iterate until success OR type-mismatch on a field.
+- **Probe v8**: targeted field-name probing — try known patterns for the lenient methods that accepted `{}`, plus complete the simple-method struct shapes with proper types.
+
+Both probes used the same setup: `python3 -m http.server 8765` serving a probe HTML, `evenhub-simulator http://127.0.0.1:8765/index.html --automation-port 9900`, console retrieved via `GET http://127.0.0.1:9900/api/console`.
+
+## C.2 Complete struct shapes (known fields and types)
+
+| Method | Required fields | Field types | Return value (sample) | Notes |
+|---|---|---|---|---|
+| `getUserInfo` | (none) | — | `{avatar, country, name, uid}` | All-strings response |
+| `getGlassesInfo` | (none) | — | `{model:"g2", sn:"S2001234567890", status:{batteryLevel:100, connectType:"connected", isCharging:false, isInCase:false, isWearing:true, sn}}` | Returns canonical G2 model + serial + connection-status |
+| `getLocalStorage` | `key` | `key: String` | `""` (empty string if key missing) — actual string value otherwise | Strict — rejects `key: number` |
+| `setLocalStorage` | `key`, `value` | both `String` | `true` on success | Rejects `value: number` (must be `String`) |
+| `shutDownPageContainer` | `exitMode` | `exitMode: u64`, **enum {0, 1}** | `true` for valid modes; ERROR `unknown ExitMode value: 2` for mode ≥ 2 | Only 2 valid exit modes |
+| `audioControl` | `isOpen` | `isOpen: bool` | `false` (status indicator?) | Returns `false` for both open=true and open=false — TBD what `false` means here |
+| `createStartUpPageContainer` | (none — lenient, but `{containers: [...]}` is the recognized field) | `containers: Array<?>` | `0` if `{containers: []}`, **`1` for any non-empty payload (even unknown fields)** | Simulator stub returns 1 by default; real hardware likely stricter |
+| `rebuildPageContainer` | (none, same struct as create) | same | `true` for any payload (stub) | Same simulator-lenient behavior |
+| `updateImageRawData` | (none, lenient) | unknown | `"sendfailed"` for all attempted payloads | Simulator can't deliver to a non-existent page slot |
+| `textContainerUpgrade` | (none, lenient) | unknown | `false` for all attempted payloads | Same — no active page to upgrade |
+
+## C.3 `listen_even_app_data` semantics
+
+Verified probe-empirically: `listen_even_app_data` accepts the **same 10-method enum** as `call_even_app_method`. Subscribing returns `{status: "success"}`. Async data delivery mechanism not yet characterized.
+
+Likely semantic: `listen_even_app_data({method: "audioControl"})` subscribes to async audio PCM events delivered as `audioEvents` (simulator README confirms 100ms / 3200 bytes / 1600 samples chunks). Other methods may have async return data (e.g., `listen_even_app_data({method: "getGlassesInfo"})` for status change notifications).
+
+## C.4 CRITICAL: Phase 2 wizard `hub.*` API mismatch
+
+Inspection of existing repo code reveals our Phase 2 wizard (`packages/g2-app/src/wizard/`) calls methods that **do not exist** on the canonical `flutterBridge.callHandler('evenAppMessage', ...)` API:
+
+| Wizard usage | Source | Canonical equivalent (verified 2026-05-14) | Status |
+|---|---|---|---|
+| `hub.setItem(key, value)` | `tier3-storage.ts:61, 161, 168` | `flutterBridge.callHandler('evenAppMessage', json({type:'call_even_app_method', method:'setLocalStorage', data:{key, value}}))` | Wrong path — needs polyfill |
+| `hub.getItem(key)` | `tier3-storage.ts:77, 142` | `flutterBridge.callHandler('evenAppMessage', json({type:'call_even_app_method', method:'getLocalStorage', data:{key}}))` | Wrong path — needs polyfill |
+| `hub.removeItem(key)` | `tier3-storage.ts:113` | **NOT IN 10-METHOD ENUM** — simulate via `setLocalStorage(key, "")` or new method | Wrong — no canonical equivalent |
+| `hub.eventBus.on('g2.wear', cb)` | `auto-connect.ts:85, 94; wizard.ts:132` | Likely `listen_even_app_data({method: ?})` — exact method name TBD | Wrong path — no `g2.wear` event source identified on simulator (simulator README: "Status Events: Not emitted") |
+| `hub.eventBus.off` | `auto-connect.ts:63, 94` | Subscription teardown API TBD | Wrong path |
+| `hub.camera?.requestAccess()` | `step2-token.ts:367` | **NOT IN 10-METHOD ENUM** — likely a phone-side WebView API (`navigator.mediaDevices`?) not Even SDK | Wrong path — but may work as phone WebView API |
+| `hub.camera?.scanQRCode()` | `step2-token.ts:364` | **NOT IN 10-METHOD ENUM** — likely a custom phone-side wrapper | Wrong path |
+
+### Why Phase 2 wizard "worked"
+
+The wizard's 451 unit tests pass because they MOCK `hub` global. The wizard would FAIL on real hardware OR on the canonical simulator (`hub is not defined` — only `flutterBridge` is injected).
+
+### Severity assessment
+
+- **Phase 2 was marked complete on 2026-05-13** with full coverage on unit tests
+- **Phase 2 was NOT validated against the canonical simulator** during its discuss/plan/execute cycle
+- **Phase 4a planning MUST address this mismatch** before any plan touches the wizard code path or builds on the `hub.*` ambient declarations
+
+### Proposed reconciliation (deferred to dedicated quick task)
+
+Option A — **Polyfill layer** (`packages/g2-app/src/hub-polyfill.ts`): translate `hub.setItem(k,v)` → `flutterBridge.callHandler('evenAppMessage', json({type:'call_even_app_method', method:'setLocalStorage', data:{key:k, value:v}}))`. Wizard tests pass unchanged; real-hardware code path works.
+
+Option B — **Refactor wizard** to use `flutterBridge.callHandler` directly. More work; more honest about the underlying API; better for Phase 4a+ code reuse.
+
+Option C — **Stand-alone investigation**: probe further whether there IS a `hub` polyfill injected by the Even Realities App phone-side WebView wrapper (maybe the wrapper auto-injects `hub` for backwards-compat with G1-era apps?). The simulator may NOT inject this wrapper. The Real-App-on-phone might.
+
+Recommendation: Option C first (cheapest — fetch Even Realities App documentation on what globals the WebView injects), then A or B based on findings.
+
+## C.5 Container-budget findings (incremental)
+
+The simulator's lenient handling of `createStartUpPageContainer` (returns `1` for almost any non-empty payload) means we cannot determine the **maximum container count** or **per-container size limits** from the simulator alone. The simulator README v0.7.1 changelog says:
+
+> "cap width/height for single container"
+> "add text container bytes limit to 999"
+
+And v0.7.3:
+
+> "constraint list item text size to be maximum 63 bytes and 20 items"
+
+Concrete numeric constraints **confirmed** for v0.7.3:
+- **List container**: max 20 items, max 63 bytes per item
+- **Text container**: max 999 bytes content
+- **Single image container width/height**: capped (specific values TBD)
+
+## C.6 Container shape — best guess from probing
+
+The fact that `createStartUpPageContainer({containers: []})` returned `0` while `createStartUpPageContainer({containers: [{type: 'image'}]})` returned `1` is a **strong hint** that:
+
+- Field name `containers` IS recognized by the deserializer
+- Each container has at least a `type` discriminator
+- The return value is the count of created containers (0 for empty array, 1+ for non-empty)
+
+Probable shape (subject to confirmation):
+```typescript
+type Container =
+  | { type: 'image'; id: number; x: number; y: number; width: number; height: number }
+  | { type: 'text';  id: number; x: number; y: number; width: number; height: number; content: string }
+  | { type: 'list';  id: number; x: number; y: number; width: number; height: number; items: string[] };
+
+type CreateStartUpPageContainer = {
+  containers: Container[];
+  // possibly more fields TBD (page-level config: id, background, captureContainerId, etc.)
+};
+```
+
+This is consistent with Specs.md §3.1 (max 4 image + 8 text/list + 1 capture container per page) — the **page** is a flat list of containers with types, sizes, positions.
