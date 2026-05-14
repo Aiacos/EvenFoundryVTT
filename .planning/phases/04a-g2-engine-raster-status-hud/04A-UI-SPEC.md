@@ -542,7 +542,7 @@ Source: Specs.md §7.16.5.
 | Map header: scene name | (from Foundry `scene.name`, passthrough) | — | 24 (truncate) |
 | Map header: mode indicator | `raster` / `glyph` | `raster` / `glyph` | 6 |
 | Map header: round/turn | `ROUND {N} · TURNO {n}/{max}` | `ROUND {N} · TURN {n}/{max}` | 26 |
-| Footer: R1 hint | `R1: scroll=pana  tap=ping  long=quick` | `R1: scroll=pan  tap=ping  long=quick` | 38 |
+| Footer: R1 hint | `R1: scroll=pan  tap=ping  long=quick` | `R1: scroll=pan  tap=ping  long=quick` | 38 |
 | Footer: mode toggle active | `modo: ▶RASTER (toggle GLYPH)` | `mode: ▶RASTER (toggle GLYPH)` | 30 |
 | Footer: mode toggle active glyph | `modo: ▶GLYPH (toggle RASTER)` | `mode: ▶GLYPH (toggle RASTER)` | 30 |
 | HUD: HP label | `PF` | `HP` | 2 |
