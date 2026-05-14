@@ -7,7 +7,9 @@
 
 ## Status
 
-**PROVISIONAL-ACCEPTED** — 2026-05-14 — Branch **A** presumed via INV-2 literature review (online canonical sources fetched 2026-05-14), pending real-device empirical re-validation of §10.0.3-10.0.9 hardware-gated tests when Even Hub developer access is granted and physical G2 + R1 are available.
+**PROVISIONAL-ACCEPTED** — 2026-05-14 — Branch **A** presumed via INV-2 literature review (online canonical sources fetched 2026-05-14) + **§10.0.2 image format RESOLVED empirically via official simulator probe `@evenrealities/evenhub-simulator@0.7.3`** (same day, afternoon). Branch verdict + BLE/queue/DLE/audio-chunk tests pending real-device empirical re-validation of §10.0.3-10.0.9 hardware-gated tests when paired G2 + R1 + 3 RF environments are available.
+
+**Spec amendment v0.9.13 required** as direct consequence of OQ-INV2-1 resolution — Specs.md §3.5 (audio surface dispatch), §4.3 (SDK Surface table), §7.2 (layered model implementation), §7.4c (idle infill state machine) all need rewrite to reflect the actual envelope-based API contract (`flutterBridge.callHandler('evenAppMessage', json({type, method, data}))` with 10-method enum). Existing §3.1 hardware budget claims (4 image + 8 text/list + 1 capture per page) remain plausible; specific 200×100 size limit still pending real-hardware probe.
 
 **Re-validation triggers (PROVISIONAL → ACCEPTED):** All four conditions below must hold simultaneously.
 
@@ -18,7 +20,7 @@
 
 **Contested triggers (PROVISIONAL → CONTESTED, re-open before Phase 4a starts coding):** Any of:
 
-- §10.0.2 image format probe reveals G2 API surface ≠ "4 image container 200×100" (e.g., single full-frame 576×288 4-bit BMP like G1's documented protocol shape — see OQ-INV2-1 below)
+- ~~§10.0.2 image format probe reveals G2 API surface ≠ "4 image container 200×100" (e.g., single full-frame 576×288 4-bit BMP like G1's documented protocol shape — see OQ-INV2-1 below)~~ — **RESOLVED 2026-05-14 via official simulator probe**: actual API is *page-based declarative* (not per-container imperative nor single full-frame); see §OQ-INV2-1 below for the resolution. Specs.md §3.5 / §4.3 / §7.2 / §7.4c flagged for v0.9.13 amendment.
 - §10.0.3 BLE bandwidth measurement falls into Branch B (degraded raster) or Branch C (glyph-only) thresholds in any of the 3 RF envs
 
 ## Context
@@ -80,7 +82,7 @@ This ADR makes Branch A presumption based on canonical Even Realities online doc
 | Test | Specs § | Evidence | Verdict | Confidence | Rationale |
 |------|---------|----------|---------|-----------|-----------|
 | R1 timing | §10.0.1 | PENDING simulator + hardware | PROVISIONAL Branch A | `lit-review-inferred` | R1 ring published as gesture-only (tap/scroll/long-press); simulator BxNxM/even-dev capable of validating event capture shape (free of dev-access). Real-device run pending. |
-| Image format | §10.0.2 | PENDING simulator + hardware | PROVISIONAL Branch A — **OQ-INV2-1 flagged** | `lit-review-inferred` | G1 canonical: 1-bit 576×136 BMP @ 194-byte chunks (per EvenDemoApp README). G2 presumed 4-bit 576×288. **Specs §3.1 "4 image container 200×100" not verbatim findable on canonical primary** — see Open Question OQ-INV2-1 below. |
+| Image format | §10.0.2 | Simulator probe 2026-05-14 (Appendix B in EVIDENCE.md) + hardware pending | **RESOLVED — page-based declarative API** | `simulator-confirmed` | **Updated 2026-05-14 PM**: G2 API surface is `flutterBridge.callHandler('evenAppMessage', json({type, method, data}))` with 10-method enum (`createStartUpPageContainer`, `rebuildPageContainer`, `updateImageRawData`, `shutDownPageContainer`, ...). Image slots are page-definition declarative; raw bytes are pushed via `updateImageRawData`. Specific 200×100 size limit unconfirmed (simulator doesn't enforce hardware-size). Triggers Specs v0.9.13 amendment for §3.5/§4.3/§7.2/§7.4c. See §OQ-INV2-1 resolution below. |
 | BLE clean RF | §10.0.3 | PENDING hardware | PROVISIONAL Branch A | `lit-review-inferred` | BLE 5.x with DLE published sustained 250-500 kbps typical. G2 likely Branch A in clean 2.4 GHz environment. Real measurement needed. |
 | BLE 5GHz-loaded | §10.0.3 | PENDING hardware | PROVISIONAL Branch A | `lit-review-inferred` | Same BLE 5.x DLE basis. 5 GHz WiFi loaded does not affect 2.4 GHz BLE coexistence under Specs of modern BLE 5.x AFH (Adaptive Frequency Hopping). |
 | BLE 2.4GHz+microwave | §10.0.3 | PENDING hardware | PROVISIONAL Branch A | `lit-review-inferred` | Worst-case RF scenario; BLE 5.x AFH mitigates microwave interference. Likely Branch A or B borderline. |
@@ -91,34 +93,78 @@ This ADR makes Branch A presumption based on canonical Even Realities online doc
 
 ## Open INV-2 Questions (gating-critical for Phase 4a re-validation)
 
-### OQ-INV2-1 — G2 image API surface: single full-frame vs multi-container?
+### OQ-INV2-1 — G2 image API surface: single full-frame vs multi-container? **[RESOLVED 2026-05-14 — new interpretation (3) found via live simulator probe]**
 
 **Discovery date:** 2026-05-14 (during this ADR's lit review)
-**Severity:** GATING for Phase 4a — IF resolved to single-frame, then Specs.md §7.4 mockup + §7.4c z=0.5 idle infill + ADR-0001 layered model all need significant rewrite before Phase 4a starts coding.
+**Resolution date:** 2026-05-14 (later same day, via official simulator `@evenrealities/evenhub-simulator@0.7.3` probe)
+**Severity:** GATING for Phase 4a — resolved before Phase 4a starts. Specs.md §3.5 / §4.3 / §7.2 / §7.4c need post-v0.9.12 amendment (v0.9.13) to reflect the actual API shape.
 
-**Findings:**
+#### Original hypotheses (2026-05-14 morning, lit-review only)
 
-- **G1 canonical protocol** (`github.com/even-realities/EvenDemoApp` README, fetched 2026-05-14, verbatim): *"1-bit, 576×136 pixel BMP images"*, *"Divide the BMP image data into packets (each packet is 194 bytes)"*, *"send the packet end command [0x20, 0x0d, 0x0e]"*. This is **single full-frame**, not multi-container.
+1. **(60%) G2 has multi-container image API as Specs claims** — separate `createImageContainer({width, height})` calls per slot.
+2. **(30%) G2 has single full-frame BMP API like G1** — extended to 4-bit + 576×288.
+3. **(10%) G2 has a different multi-container API** — different default tile size, max count, etc.
 
-- **G2 specifications canonical** (`hub.evenrealities.com/docs/getting-started/overview` + `evenrealities.com/smart-glasses`, fetched 2026-05-14): Display 576×288 4-bit greyscale, 4-mic array, no speaker, no camera. **No mention of image container limits or multi-container model.**
+#### Actual resolution (2026-05-14 afternoon, simulator-confirmed) — **NONE of the above; interpretation (3) NEW**
 
-- **Specs.md §3.1 claim** (`max 4 image container, max 8 text/list container, 200×100 px per image container, 1 capture container`): **not verbatim findable on canonical primary** (`hub.evenrealities.com/docs/guides/device-apis`) at 2026-05-14 snapshot. The page verbatim says *"no arbitrary pixel drawing, no audio output, no camera, images are greyscale only"* but does NOT cite container counts or sizes.
+The G2 SDK uses a **page-based declarative API** routed through a single dispatcher:
 
-**Possible interpretations** (in descending likelihood):
+```javascript
+// Canonical envelope (extracted from live simulator):
+flutterBridge.callHandler('evenAppMessage', JSON.stringify({
+  type: 'call_even_app_method' | 'listen_even_app_data',
+  method: <one-of-10>,  // SEE TABLE BELOW
+  data: <method-specific-struct>
+}))
+```
 
-1. **(60%) G2 has multi-container image API as Specs claims** — but the specific 200×100 / 4-container number lives in a JS-rendered SDK reference page or behind developer-access that WebFetch cannot reach. The §3.1 claim originated from a prior canonical snapshot that has not drift-corrected.
+**The 10 canonical method names** (exhaustive — extracted from simulator's Rust enum error):
 
-2. **(30%) G2 has single full-frame BMP API like G1** — extended to 4-bit + 576×288. The Specs.md §3.1 "4 container" model is a design interpretation, not a hardware constraint. The §7.4 mockup and §7.4c z=0.5 layer are still implementable (just with one big image container instead of 4 tiles), but the bandwidth math changes: a 576×288×4-bit full frame is ~82 KB raw / ~10-30 KB after PNG indexed-palette encode + xxHash delta — comparable to 4× 200×100 tiles, but the "delta per tile" optimization (Specs §11.5.7.1 Layer 1) becomes "delta per sub-tile within single full frame" instead.
+```
+getUserInfo · getGlassesInfo · setLocalStorage · getLocalStorage ·
+createStartUpPageContainer · rebuildPageContainer · shutDownPageContainer ·
+updateImageRawData · textContainerUpgrade · audioControl
+```
 
-3. **(10%) G2 has a different multi-container API** — e.g., different default tile size, different max count. Possible in 2026 firmware; would force re-design of §7.2-7.4 mockup.
+**Key findings**:
 
-**Recommended resolution path:**
+- **NO `createImageContainer({width, height})` method exists.** The simulator rejects it explicitly.
+- **NO single-frame `pushFullFrameBmp` method exists.** Same rejection.
+- **Actual mechanism**: page definitions are declared up-front via `createStartUpPageContainer.data` (initial mount) or `rebuildPageContainer.data` (transition — same struct shape!). The page definition includes image/text/list slots, the hardware enforces per-page slot count budgets (Specs §3.1 + ADR-0001), and image bytes are pushed into named slots via `updateImageRawData`.
+- **Lifecycle**: `createStartUpPageContainer` → (zero or more `rebuildPageContainer` + `updateImageRawData`) → `shutDownPageContainer`.
+- **Atomic page swap**: overlay open/close transitions = `rebuildPageContainer` with different page definitions. This is the actual mechanism for Specs §7.4c z=0.5 idle infill auto-mount/demolish — NOT individual container lifecycle.
 
-- (a) When Even Hub developer access is granted, fetch the FULL device APIs page including JS-rendered content (use chrome-devtools MCP or authenticated WebFetch) to find the verbatim image container API documentation.
-- (b) Alternatively, run `tests/phase-0/10-0-2-image-format.ts` via BxNxM/even-dev simulator — the simulator exposes the same `bridge.*` API surface, so the format probe will reveal whether `createImageContainer({width: 200, height: 100})` is valid or whether the API requires different shape (e.g., `bridge.pushFullFrameBmp(...)`).
-- (c) Cross-check against the Even Realities Discord / community channels for prior dev questions on image API shape.
+**Confirmed live empirically**:
 
-Until OQ-INV2-1 resolves to interpretation (1), **Phase 4a planning should treat §7.4 mockup as a contingent design** and include a fallback Plan that targets single-frame BMP API as Plan 02 alternative if probe reveals (2).
+- `getGlassesInfo` returned `{model: "g2", sn: "S2001234567890", status: {batteryLevel, connectType, isCharging, isInCase, isWearing, sn}}` — exposes hardware identity + connection status, but **no display resolution or BLE version fields** (those remain canonical via `hub.evenrealities.com/docs/getting-started/overview`).
+- `getUserInfo` returned `{avatar, country, name, uid}` — minimal user identity.
+
+#### Implications for Specs.md (post-v0.9.12 amendments required)
+
+| Section | Issue (resolved at simulator probe 2026-05-14) | Action |
+|---|---|---|
+| §3.5 G2 SDK Audio Surface | Says `bridge.audioControl(true|false)` — actual is dispatched via envelope, not a direct method | v0.9.13 §3.5 rewrite — actual envelope shape |
+| §4.3 SDK Surface table | Lists separate `bridge.createXxx` methods that **DO NOT EXIST** as direct methods | v0.9.13 §4.3 rewrite — single dispatcher + 10-method enum |
+| §7.2 Layered Rendering Model | Concept valid; implementation pattern was implicit-imperative — actual is page-replacement via `rebuildPageContainer` | v0.9.13 clarification — z=0.5 mount/demolish = atomic rebuildPageContainer |
+| §7.4c Idle Content Infill | "Auto-demolish on overlay_mounted, auto-reborn on overlay_dismissed" — actual is rebuildPageContainer with different page def | v0.9.13 §7.4c.4 state machine rewrite — same observable behavior, different vocabulary |
+| §3.1 hardware budget claims (4 image + 8 text/list + 1 capture) | Plausible — simulator enforces per-page slot counts. Specific 200×100 size constraint NOT confirmed by simulator (simulator README v0.7.1 changelog mentions "cap width/height for single container" but no canonical numerical value visible). | Keep §3.1 budget statement; flag specific 200×100 as `// TODO(ADR-0005-OQ-INV2-1.b)` pending real-hardware empirical probe |
+
+#### Remaining sub-questions (deferred to follow-up probes)
+
+- **OQ-INV2-1.a** — Struct shapes for `CreateStartUpPageContainer`, `UpdateImageRawData`, etc. — needed for actual implementation. Probe-able via simulator with more iterations (the simulator's Rust-side errors leak field names when partial data is provided).
+- **OQ-INV2-1.b** — Specific hardware size limits per image slot (the 200×100 claim in Specs §3.1) — REQUIRES real G2 hardware (simulator does NOT enforce hardware-size constraints per its own README §"Image Processing").
+
+#### Recommended next steps
+
+- (a) **Quick follow-up probe** to extract the struct shapes of `CreateStartUpPageContainer` and `UpdateImageRawData` — 30-60 min, simulator already installed.
+- (b) **Spec amendment v0.9.13** to update §3.5, §4.3, §7.2, §7.4c with the correct envelope-based API contract — atomic INV-3 commit.
+- (c) **Phase 4a planning**: must use the envelope-based API contract from day one. Plan 02 (raster wire path) writes to `evenAppMessage` envelopes, not to imaginary `bridge.createImageContainer` calls.
+
+**Phase 4a is NOT blocked by OQ-INV2-1 anymore** — but Phase 4a's PLAN.md must reference the v0.9.13 amendment (or this ADR-0005 §OQ-INV2-1 resolution) for the correct API contract. Without it, Phase 4a code would be built against the obsolete §4.3 SDK Surface table.
+
+#### Full simulator-probe evidence
+
+See: `.planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md` § Appendix B — Live simulator probe (2026-05-14) for the complete probing methodology, intermediate findings across 6 probe iterations, and the extracted JS source of `flutterBridge.callHandler`.
 
 ### OQ-INV2-2 — BLE 5.x version specific to G2 (4.2 vs 5.0 vs 5.1+)
 
