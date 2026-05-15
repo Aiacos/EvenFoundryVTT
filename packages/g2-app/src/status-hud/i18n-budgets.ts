@@ -14,10 +14,21 @@
  * budgeting (IT canonical per CONTEXT.md §Area 3 fallback rule); EN + DE must fit
  * within the same numeric `max` budget.
  *
- * **Phase 4b additions (Plan 01 Wave-0 centralisation):** 28 new keys landed
+ * **Phase 4b additions (Plan 01 Wave-0 centralisation):** 27 new keys landed
  * atomically in Wave 0 so downstream plans (TOAST-01 / Plan 03, BOOT-01 / Plan 04,
  * DEATH-01 + CONC-01 / Plan 05) are READ-ONLY consumers of this table — no
  * same-wave file-overlap conflicts.
+ *
+ * **Phase 5 additions (Plan 05-01 Wave-0 centralisation):** ~82 new keys spanning
+ * CharacterSheet (Main+Skills+Inv+Spells+Feats+Bio), CombatTracker, LogPanel,
+ * InventoryPanel, SpellbookPanel, empty states, panel titles, footer hints, and
+ * PanelRouter boot-error states. Downstream plans 05-02..05-06 are READ-ONLY
+ * consumers of this extension — Wave-0 atomic fan-out pattern (Phase 4b Plan 01
+ * playbook).
+ *
+ * **HudLocale widened (Plan 05-01):** type now includes 'es' | 'fr' | 'pt-br' as
+ * best-effort locales. `getLabel()` returns the EN string for best-effort keys
+ * (per-key fallback per I18N-05). Canonical locales (it/en/de) unchanged.
  *
  * **B-1 adversarial typecheck (04A-PLAN-CHECK.md):** the colocated
  * `__tests__/i18n-budgets-adversarial.test.ts` spawns `tsc --noEmit` against a
@@ -239,10 +250,375 @@ export const HUD_WIDTH_BUDGETS = {
     de: '[N] Abbrechen',
     max: 14,
   },
+  // ─── Phase 5 — Panel keys (Plan 05-01 Wave-0 centralisation) ────────────
+  // All IT/EN/DE strings verbatim from 05-UI-SPEC.md §5.2-§5.11 + §8.1-§8.4.
+  // Downstream plans 05-02..05-06 are READ-ONLY consumers of this table.
+
+  // §5.2 Sheet Main tab — 15 keys
+  'sheet.ability.str': { it: 'FOR', en: 'STR', de: 'STR', max: 3 },
+  'sheet.ability.dex': { it: 'DES', en: 'DEX', de: 'GES', max: 3 },
+  'sheet.ability.con': { it: 'COS', en: 'CON', de: 'KON', max: 3 },
+  'sheet.ability.int': { it: 'INT', en: 'INT', de: 'INT', max: 3 },
+  'sheet.ability.wis': { it: 'SAG', en: 'WIS', de: 'WEI', max: 3 },
+  'sheet.ability.cha': { it: 'CAR', en: 'CHA', de: 'CHA', max: 3 },
+  'sheet.section.abilities': {
+    it: 'CARATTERISTICHE',
+    en: 'ABILITIES',
+    de: 'ATTRIBUTE',
+    max: 16,
+  },
+  'sheet.section.saves': {
+    it: 'TIRI SALVEZZA',
+    en: 'SAVING THROWS',
+    de: 'RETTUNGSWÜRFE',
+    max: 14,
+  },
+  'sheet.vitals.hp': { it: 'PF', en: 'HP', de: 'TP', max: 2 },
+  'sheet.vitals.ac': { it: 'CA', en: 'AC', de: 'RK', max: 2 },
+  'sheet.vitals.init': { it: 'INI', en: 'INI', de: 'INI', max: 3 },
+  'sheet.vitals.speed': { it: 'VEL', en: 'SPD', de: 'GES', max: 3 },
+  'sheet.vitals.prof': { it: 'COMP', en: 'PROF', de: 'PROF', max: 4 },
+  'sheet.vitals.hit_dice': {
+    it: 'Dadi Vita',
+    en: 'Hit Dice',
+    de: 'Trefferwürfel',
+    max: 14,
+  },
+  'sheet.vitals.senses': { it: 'Sensi', en: 'Senses', de: 'Sinne', max: 6 },
+
+  // §5.3 Sheet Skills tab — 2 keys
+  'sheet.skill.prof_legend': {
+    it: '◉ competente · ★ maestria · ○ non addestrato',
+    en: '◉ proficient · ★ expertise · ○ untrained',
+    de: '◉ geübt · ★ expertise · ○ ungeübt',
+    max: 46,
+  },
+  'sheet.skill.scroll_hint': {
+    it: '▼ scroll per altre · scroll-tap = tira abilità',
+    en: '▼ scroll for more · R1 scroll-tap = roll skill',
+    de: '▼ scrollen für mehr · scroll-tap = würfeln',
+    max: 48,
+  },
+
+  // §5.4 Sheet Inventory tab — 7 keys
+  'sheet.inv.currency': { it: '◈ Monete', en: '◈ Currency', de: '◈ Währung', max: 11 },
+  'sheet.inv.carried': { it: '⚖ Portato', en: '⚖ Carried', de: '⚖ Getragen', max: 11 },
+  'sheet.inv.equipped': {
+    it: '◆ EQUIPAGGIAMENTO',
+    en: '◆ EQUIPPED',
+    de: '◆ AUSGERÜSTET',
+    max: 18,
+  },
+  'sheet.inv.consumables': {
+    it: '◆ CONSUMABILI',
+    en: '◆ CONSUMABLES',
+    de: '◆ VERBRAUCHSMITTEL',
+    max: 19,
+  },
+  'sheet.inv.equipment': { it: '◆ OGGETTI', en: '◆ EQUIPMENT', de: '◆ AUSRÜSTUNG', max: 13 },
+  'sheet.inv.container': {
+    it: '◆ CONTENITORE',
+    en: '◆ CONTAINER',
+    de: '◆ BEHÄLTER',
+    max: 14,
+  },
+  'sheet.inv.mastery_flag': { it: '[M]', en: '[M]', de: '[M]', max: 3 },
+
+  // §5.5 Sheet Spells tab — 6 keys
+  'sheet.spell.header_title': {
+    it: 'Incantesimi',
+    en: 'Spellcasting',
+    de: 'Zauberei',
+    max: 12,
+  },
+  'sheet.spell.prepared_label': { it: 'Prep', en: 'Prep', de: 'Vor.', max: 4 },
+  'sheet.spell.filter_bar': {
+    it: 'Filtro [▶TUTTI]  Preparati · Cantrip · Conc. · Rituale',
+    en: 'Filter [▶ALL]  Prepared · Cantrips · Concentration · Ritual',
+    de: 'Filter [▶ALLE]  Vorbereitet · Cantrips · Konz. · Ritual',
+    max: 60,
+  },
+  'sheet.spell.cantrips_section': {
+    it: '◇ CANTRIP  ────── (sempre)',
+    en: '◇ CANTRIPS  ────── (at-will)',
+    de: '◇ ZAUBERTRICKS  ────── (immer)',
+    max: 30,
+  },
+  'sheet.spell.level_section': { it: '◇ LIVELLO N', en: '◇ LEVEL N', de: '◇ GRAD N', max: 11 },
+  'sheet.spell.scroll_hint': {
+    it: '▼ scroll · long-press = lancia',
+    en: '▼ scroll · long-press = cast',
+    de: '▼ scrollen · long-press = zaubern',
+    max: 34,
+  },
+
+  // §5.6 Sheet Feats tab — 6 keys
+  'sheet.feat.class_section': {
+    it: '◆ CLASSE ·',
+    en: '◆ CLASS ·',
+    de: '◆ KLASSE ·',
+    max: 11,
+  },
+  'sheet.feat.race_section': { it: '◆ RAZZA ·', en: '◆ RACE ·', de: '◆ RASSE ·', max: 10 },
+  'sheet.feat.background_section': {
+    it: '◆ BACKGROUND ·',
+    en: '◆ BACKGROUND ·',
+    de: '◆ HINTERGRUND ·',
+    max: 16,
+  },
+  'sheet.feat.feats_section': { it: '◆ TALENTI', en: '◆ FEATS', de: '◆ TALENTE', max: 10 },
+  'sheet.feat.origin_flag': { it: '[Origine]', en: '[Origin]', de: '[Ursprung]', max: 10 },
+  'sheet.feat.scroll_hint': {
+    it: '▼ scroll · tap = usa abilità',
+    en: '▼ scroll · tap on item = use feature',
+    de: '▼ scrollen · tap = Fähigkeit nutzen',
+    max: 37,
+  },
+
+  // §5.7 Sheet Bio tab — 6 keys
+  'sheet.bio.personality': {
+    it: '◇ Tratti di personalità',
+    en: '◇ Personality Traits',
+    de: '◇ Persönlichkeitsmerkmale',
+    max: 26,
+  },
+  'sheet.bio.ideal': { it: '◇ Ideale', en: '◇ Ideal', de: '◇ Ideal', max: 8 },
+  'sheet.bio.bond': { it: '◇ Legame', en: '◇ Bond', de: '◇ Bindung', max: 9 },
+  'sheet.bio.flaw': { it: '◇ Difetto', en: '◇ Flaw', de: '◇ Schwäche', max: 10 },
+  'sheet.bio.backstory': {
+    it: '◇ Storia',
+    en: '◇ Backstory',
+    de: '◇ Hintergrundgeschichte',
+    max: 24,
+  },
+  'sheet.bio.scroll_hint': {
+    it: '▼ scroll per altro · long-press = chiudi',
+    en: '▼ scroll for more · long-press = close',
+    de: '▼ scrollen für mehr · long-press = schließen',
+    max: 45,
+  },
+
+  // §5.8 Combat Tracker panel — 11 keys
+  'combat.tracker.panel_title': {
+    it: 'COMBAT TRACKER',
+    en: 'COMBAT TRACKER',
+    de: 'KAMPF-TRACKER',
+    max: 15,
+  },
+  'combat.tracker.effects_section': {
+    it: 'Effetti attivi:',
+    en: 'Active effects:',
+    de: 'Aktive Effekte:',
+    max: 16,
+  },
+  'combat.tracker.you_marker': { it: '◀ TU', en: '◀ YOU', de: '◀ DU', max: 6 },
+  'combat.tracker.party_label': { it: '(gruppo)', en: '(party)', de: '(Gruppe)', max: 8 },
+  'combat.tracker.quick_label': { it: 'Rapida:', en: 'Quick:', de: 'Schnell:', max: 9 },
+  'combat.tracker.quick_attack': { it: 'ttacco', en: 'ttack', de: 'ngriff', max: 6 },
+  'combat.tracker.quick_spell': { it: 'pell', en: 'pell', de: 'zauber', max: 6 },
+  'combat.tracker.quick_item': { it: 'tem', en: 'tem', de: 'tem', max: 3 },
+  'combat.tracker.quick_move': { it: 'ovi', en: 'ove', de: 'ew', max: 3 },
+  'combat.hp_label': { it: 'PF', en: 'HP', de: 'TP', max: 2 },
+  'combat.ac_label': { it: 'CA', en: 'AC', de: 'RK', max: 2 },
+
+  // §5.9 Log panel — 13 keys
+  'log.panel_title': {
+    it: 'REGISTRO EVENTI',
+    en: 'EVENT LOG',
+    de: 'EREIGNISPROTOKOLL',
+    max: 18,
+  },
+  'log.filter.all': { it: '[TUTTI]', en: '[ALL]', de: '[ALLE]', max: 7 },
+  'log.filter.rolls': { it: 'Tiri', en: 'Rolls', de: 'Würfe', max: 5 },
+  'log.filter.damage': { it: 'Danni', en: 'Damage', de: 'Schaden', max: 7 },
+  'log.filter.status': { it: 'Stato', en: 'Status', de: 'Status', max: 6 },
+  'log.filter.chat': { it: 'Chat', en: 'Chat', de: 'Chat', max: 4 },
+  'log.result.hit': { it: 'COLPITO', en: 'HIT', de: 'TREFFER', max: 8 },
+  'log.result.miss': { it: 'MANCATO', en: 'MISS', de: 'VERFEHLT', max: 9 },
+  'log.result.pass': { it: 'SUPERATO', en: 'PASS', de: 'BESTANDEN', max: 10 },
+  'log.result.fail': { it: 'FALLITO', en: 'FAIL', de: 'MISSLUNGEN', max: 11 },
+  'log.concentrating': {
+    it: 'CONCENTRANDO',
+    en: 'CONCENTRATING',
+    de: 'KONZENTRIERT',
+    max: 14,
+  },
+  'log.round_marker': {
+    it: '── ROUND N inizia ──',
+    en: '── ROUND N begins ──',
+    de: '── RUNDE N beginnt ──',
+    max: 22,
+  },
+  'log.scroll_hint': {
+    it: '▼ scroll per i più vecchi',
+    en: '▼ scroll for older',
+    de: '▼ scrollen für ältere',
+    max: 26,
+  },
+
+  // §5.10 Inventory standalone panel — 5 keys
+  'inv.panel_title': { it: 'INVENTARIO', en: 'INVENTORY', de: 'INVENTAR', max: 11 },
+  'inv.section.equipped': {
+    it: 'EQUIPAGGIAMENTO',
+    en: 'EQUIPPED',
+    de: 'AUSGERÜSTET',
+    max: 16,
+  },
+  'inv.section.consumables': {
+    it: 'CONSUMABILI',
+    en: 'CONSUMABLES',
+    de: 'VERBRAUCHSMITTEL',
+    max: 17,
+  },
+  'inv.section.carried': { it: 'PORTATO', en: 'CARRIED', de: 'GETRAGEN', max: 8 },
+  'inv.scroll_hint': {
+    it: '▼ scroll per altro',
+    en: '▼ scroll for more',
+    de: '▼ scrollen für mehr',
+    max: 22,
+  },
+
+  // §5.11 Spellbook standalone panel — 11 keys
+  'spell.panel_title': {
+    it: 'LIBRO INCANTESIMI',
+    en: 'SPELLBOOK',
+    de: 'ZAUBERBUCH',
+    max: 18,
+  },
+  'spell.prepared_count': {
+    it: 'preparati',
+    en: 'prepared',
+    de: 'vorbereitet',
+    max: 12,
+  },
+  'spell.cantrips_section': {
+    it: 'CANTRIP',
+    en: 'CANTRIPS',
+    de: 'ZAUBERTRICKS',
+    max: 13,
+  },
+  'spell.level_section': {
+    it: 'L{N}   slot',
+    en: 'L{N}   slots',
+    de: 'G{N}   Sl.',
+    max: 12,
+  },
+  'spell.available_marker': {
+    it: '← disponibili',
+    en: '← available',
+    de: '← verfügbar',
+    max: 15,
+  },
+  'spell.activation.action': { it: 'azione', en: 'action', de: 'Aktion', max: 6 },
+  'spell.activation.reaction': { it: 'reaziN', en: 'reactN', de: 'ReaktN', max: 6 },
+  'spell.activation.bonus': { it: 'bonusA', en: 'bonusA', de: 'BonusA', max: 6 },
+  'spell.activation.ritual': { it: 'ritual', en: 'ritual', de: 'ritual', max: 6 },
+  'spell.cursor_marker': { it: '▶', en: '▶', de: '▶', max: 1 },
+  'spell.scroll_hint': {
+    it: '▼ scroll · long-press = lancia',
+    en: '▼ scroll · long-press = cast',
+    de: '▼ scrollen · long-press = zaubern',
+    max: 34,
+  },
+
+  // §8.1 Empty states — 4 keys
+  'combat.empty': {
+    it: 'Nessun combattimento attivo',
+    en: 'No active combat',
+    de: 'Kein aktiver Kampf',
+    max: 28,
+  },
+  'log.empty': {
+    it: 'Nessun evento nel registro',
+    en: 'No events in log',
+    de: 'Keine Einträge im Protokoll',
+    max: 29,
+  },
+  'inv.empty': {
+    it: "Nessun oggetto nell'inventario",
+    en: 'No items in inventory',
+    de: 'Keine Gegenstände',
+    max: 31,
+  },
+  'spell.empty': {
+    it: 'Nessun incantesimo disponibile',
+    en: 'This character has no spells',
+    de: 'Keine Zaubersprüche',
+    max: 31,
+  },
+
+  // §8.2 Panel titles (header breadcrumb) — 5 keys
+  'panel.title.sheet': { it: 'SCHEDA', en: 'SHEET', de: 'BLATT', max: 6 },
+  'panel.title.combat': { it: 'COMBAT', en: 'COMBAT', de: 'KAMPF', max: 6 },
+  'panel.title.log': { it: 'LOG', en: 'LOG', de: 'PROTOKOLL', max: 10 },
+  'panel.title.inventory': { it: 'INVENTORY', en: 'INVENTORY', de: 'INVENTAR', max: 10 },
+  'panel.title.spellbook': { it: 'SPELLBOOK', en: 'SPELLBOOK', de: 'ZAUBERBUCH', max: 11 },
+
+  // §8.3 Footer hints (CTA per panel) — 5 keys
+  // Note: DE strings for Combat, Log, Inventory, Spellbook exceed their IT/EN
+  // budget hints slightly — assertWithinBudget warns at runtime; the renderer
+  // falls back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
+  'footer.hint.sheet': {
+    it: 'tap=prossimo tab  scroll=contenuto  tap×2=chiudi  long=rapida',
+    en: 'tap=next tab  scroll=content  tap×2=close  long=quick',
+    de: 'tap=nächster Tab  scroll=Inhalt  tap×2=schließen  long=schnell',
+    max: 63,
+  },
+  'footer.hint.combat': {
+    it: 'scroll=iniziativa  tap=rapida  long=rapida',
+    en: 'scroll=initiative  tap=quick  long=quick',
+    de: 'scroll=Initiative  tap=schnell  long=schnell',
+    max: 46,
+  },
+  'footer.hint.log': {
+    it: 'scroll=storia  tap=dettaglio  long=rapida',
+    en: 'scroll=history  tap=detail  long=quick',
+    de: 'scroll=Verlauf  tap=Detail  long=schnell',
+    max: 42,
+  },
+  'footer.hint.inventory': {
+    it: 'scroll=oggetto  tap=usa  long=rapida',
+    en: 'scroll=item  tap=use  long=quick',
+    de: 'scroll=Gegenstand  tap=nutzen  long=schnell',
+    max: 45,
+  },
+  'footer.hint.spellbook': {
+    it: 'scroll=incantesimo  tap=lancia  long=rapida',
+    en: 'scroll=spell  tap=cast  long=quick',
+    de: 'scroll=Zauber  tap=zaubern  long=schnell',
+    max: 44,
+  },
+
+  // §8.4 PanelRouter boot-error states — 2 keys
+  // Note: `panel_cap_denied_template` has {panel} + {cap} placeholders; the
+  // `_template` suffix exempts it from IB-3 literal-length check (Phase 4b
+  // Plan 01 Deviation #2 precedent).
+  panel_router_zero_panels: {
+    it: 'Nessun panel caricato. Reinstalla il modulo.',
+    en: 'No panels loaded. Reinstall the module.',
+    de: 'Keine Panels geladen. Modul neu installieren.',
+    max: 46,
+  },
+  panel_cap_denied_template: {
+    it: '<panel> richiede <cap> — non disponibile',
+    en: '<panel> requires <cap> — unavailable',
+    de: '<panel> erfordert <cap> — nicht verfügbar',
+    max: 42,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
-/** Supported HUD locales (CONTEXT.md §Area 3 — INV-1 ck 14 stress set). */
-export type HudLocale = 'it' | 'en' | 'de';
+/**
+ * Supported HUD locales.
+ *
+ * Canonical locales (it/en/de) have full IT/EN/DE row entries in
+ * `HUD_WIDTH_BUDGETS`. Best-effort locales (es/fr/pt-br) fall back to the EN
+ * string for each key at render time via `getLabel()`.
+ *
+ * @see CONTEXT.md §Area 4 — locale set with budget tiers
+ * @see 05-UI-SPEC.md §8.5 — LOCALE_MENU source of truth
+ * @see I18N-05 — per-key EN fallback rule for best-effort locales
+ */
+export type HudLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 
 /** Discriminated keys of the HUD width-budget table. */
 export type HudBudgetField = keyof typeof HUD_WIDTH_BUDGETS;
@@ -250,12 +626,25 @@ export type HudBudgetField = keyof typeof HUD_WIDTH_BUDGETS;
 /**
  * Look up the localised label for a HUD field.
  *
- * Always returns a non-empty string — the build-time `satisfies` clause guarantees
- * every `(field, locale)` pair is populated. Use this in the renderer; callers
- * never index `HUD_WIDTH_BUDGETS[field][locale]` directly.
+ * Canonical locales (it/en/de) return the verbatim string from the budget row.
+ * Best-effort locales (es/fr/pt-br) return the EN string for each key (per-key
+ * fallback per I18N-05). This is NOT a full-locale fallback — it is per-key,
+ * meaning a given es/fr/pt-br translation may be better in a future extension
+ * without breaking the budget contract.
+ *
+ * Always returns a non-empty string — the build-time `satisfies` clause
+ * guarantees every `(field, canonical-locale)` pair is populated.
+ *
+ * @see I18N-05 — per-key EN fallback rule
+ * @see 05-UI-SPEC.md §4.4 — footer hint i18n fallback scope
  */
 export function getLabel(field: HudBudgetField, locale: HudLocale): string {
-  return HUD_WIDTH_BUDGETS[field][locale];
+  const row = HUD_WIDTH_BUDGETS[field];
+  if (locale === 'it') return row.it;
+  if (locale === 'en') return row.en;
+  if (locale === 'de') return row.de;
+  // Best-effort locales (es, fr, pt-br): per-key EN fallback per I18N-05.
+  return row.en;
 }
 
 /**

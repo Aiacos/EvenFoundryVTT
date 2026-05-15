@@ -225,11 +225,14 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b = 36 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 = 134 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(36);
+    // Phase 5 totals: 15 Main + 2 Skills + 7 Inv-sheet + 6 Spells-sheet +
+    // 6 Feats + 6 Bio + 11 Combat + 13 Log + 5 Inv-panel + 11 Spellbook +
+    // 4 empty-states + 5 panel-titles + 5 footer-hints + 2 router = 98 new keys.
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(134);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -246,5 +249,165 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
       expect(typeof row.de, `${key}.de`).toBe('string');
       expect(typeof row.max, `${key}.max`).toBe('number');
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 — i18n-budgets extension (98 new keys per UI-SPEC §5.2-§5.11 + §8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
+  // ─── Count ────────────────────────────────────────────────────────────────
+  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 = 134 total)', () => {
+    // Sentinel spot-check — a few representative keys from each UI-SPEC section.
+    const PHASE_5_SAMPLE_KEYS = [
+      'sheet.ability.str',
+      'sheet.ability.cha',
+      'sheet.section.abilities',
+      'sheet.section.saves',
+      'sheet.vitals.hit_dice',
+      'sheet.vitals.senses',
+      'sheet.skill.prof_legend',
+      'sheet.skill.scroll_hint',
+      'sheet.inv.mastery_flag',
+      'sheet.inv.consumables',
+      'sheet.spell.header_title',
+      'sheet.spell.filter_bar',
+      'sheet.feat.origin_flag',
+      'sheet.feat.scroll_hint',
+      'sheet.bio.personality',
+      'sheet.bio.backstory',
+      'combat.tracker.panel_title',
+      'combat.tracker.you_marker',
+      'combat.tracker.quick_attack',
+      'combat.hp_label',
+      'log.panel_title',
+      'log.result.hit',
+      'log.concentrating',
+      'inv.panel_title',
+      'inv.section.equipped',
+      'spell.panel_title',
+      'spell.activation.action',
+      'combat.empty',
+      'log.empty',
+      'inv.empty',
+      'spell.empty',
+      'panel.title.sheet',
+      'panel.title.spellbook',
+      'footer.hint.sheet',
+      'footer.hint.combat',
+      'panel_router_zero_panels',
+      'panel_cap_denied_template',
+    ];
+    for (const key of PHASE_5_SAMPLE_KEYS) {
+      expect(HUD_WIDTH_BUDGETS, `missing Phase 5 key: ${key}`).toHaveProperty(key);
+    }
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(134);
+  });
+
+  // ─── Sheet Main tab ───────────────────────────────────────────────────────
+  it('IB-P5-SHEET-MAIN: sheet.ability.str = FOR/STR/STR @ max 3', () => {
+    expect(HUD_WIDTH_BUDGETS['sheet.ability.str'].it).toBe('FOR');
+    expect(HUD_WIDTH_BUDGETS['sheet.ability.str'].en).toBe('STR');
+    expect(HUD_WIDTH_BUDGETS['sheet.ability.str'].de).toBe('STR');
+    expect(HUD_WIDTH_BUDGETS['sheet.ability.str'].max).toBe(3);
+    expect(getLabel('sheet.ability.str', 'it')).toBe('FOR');
+  });
+
+  // ─── Sheet Skills tab ─────────────────────────────────────────────────────
+  it('IB-P5-SHEET-SKILLS: sheet.skill.prof_legend IT verbatim @ max 46', () => {
+    expect(HUD_WIDTH_BUDGETS['sheet.skill.prof_legend'].it).toBe(
+      '◉ competente · ★ maestria · ○ non addestrato',
+    );
+    expect(HUD_WIDTH_BUDGETS['sheet.skill.prof_legend'].max).toBe(46);
+    expect(getLabel('sheet.skill.prof_legend', 'it')).toBe(
+      '◉ competente · ★ maestria · ○ non addestrato',
+    );
+  });
+
+  // ─── Sheet Inventory tab ──────────────────────────────────────────────────
+  it('IB-P5-INVENTORY: sheet.inv.mastery_flag = [M] @ max 3', () => {
+    expect(HUD_WIDTH_BUDGETS['sheet.inv.mastery_flag'].it).toBe('[M]');
+    expect(HUD_WIDTH_BUDGETS['sheet.inv.mastery_flag'].max).toBe(3);
+    expect(getLabel('sheet.inv.mastery_flag', 'it')).toBe('[M]');
+  });
+
+  // ─── Spellbook panel ─────────────────────────────────────────────────────
+  it('IB-P5-SPELL: spell.activation.action = azione/action/Aktion @ max 6', () => {
+    expect(HUD_WIDTH_BUDGETS['spell.activation.action'].it).toBe('azione');
+    expect(HUD_WIDTH_BUDGETS['spell.activation.action'].en).toBe('action');
+    expect(HUD_WIDTH_BUDGETS['spell.activation.action'].de).toBe('Aktion');
+    expect(HUD_WIDTH_BUDGETS['spell.activation.action'].max).toBe(6);
+    expect(getLabel('spell.activation.action', 'it')).toBe('azione');
+  });
+
+  // ─── Combat tracker panel ────────────────────────────────────────────────
+  it('IB-P5-COMBAT: combat.tracker.panel_title = COMBAT TRACKER/KAMPF-TRACKER @ max 15', () => {
+    expect(HUD_WIDTH_BUDGETS['combat.tracker.panel_title'].it).toBe('COMBAT TRACKER');
+    expect(HUD_WIDTH_BUDGETS['combat.tracker.panel_title'].de).toBe('KAMPF-TRACKER');
+    expect(HUD_WIDTH_BUDGETS['combat.tracker.panel_title'].max).toBe(15);
+    expect(getLabel('combat.tracker.panel_title', 'it')).toBe('COMBAT TRACKER');
+  });
+
+  // ─── Log panel ────────────────────────────────────────────────────────────
+  it('IB-P5-LOG: log.result.hit = COLPITO/HIT/TREFFER @ max 8', () => {
+    expect(HUD_WIDTH_BUDGETS['log.result.hit'].it).toBe('COLPITO');
+    expect(HUD_WIDTH_BUDGETS['log.result.hit'].en).toBe('HIT');
+    expect(HUD_WIDTH_BUDGETS['log.result.hit'].de).toBe('TREFFER');
+    expect(HUD_WIDTH_BUDGETS['log.result.hit'].max).toBe(8);
+    expect(getLabel('log.result.hit', 'it')).toBe('COLPITO');
+  });
+
+  // ─── Footer hints ─────────────────────────────────────────────────────────
+  it('IB-P5-FOOTER: footer.hint.combat IT verbatim', () => {
+    expect(getLabel('footer.hint.combat', 'it')).toBe('scroll=iniziativa  tap=rapida  long=rapida');
+  });
+
+  // ─── Empty states ─────────────────────────────────────────────────────────
+  it('IB-P5-EMPTY: combat.empty = Nessun combattimento attivo @ max 28', () => {
+    expect(HUD_WIDTH_BUDGETS['combat.empty'].it).toBe('Nessun combattimento attivo');
+    expect(HUD_WIDTH_BUDGETS['combat.empty'].max).toBe(28);
+    expect(getLabel('combat.empty', 'it')).toBe('Nessun combattimento attivo');
+  });
+
+  // ─── Best-effort locale fallback ─────────────────────────────────────────
+  it('IB-P5-FALLBACK-ES: getLabel(key, "es") returns the EN string', () => {
+    expect(getLabel('sheet.ability.str', 'es')).toBe('STR');
+    expect(getLabel('log.result.hit', 'es')).toBe('HIT');
+    expect(getLabel('combat.empty', 'es')).toBe('No active combat');
+  });
+
+  it('IB-P5-FALLBACK-FR: getLabel(key, "fr") returns the EN string', () => {
+    expect(getLabel('combat.tracker.panel_title', 'fr')).toBe('COMBAT TRACKER');
+    expect(getLabel('spell.activation.action', 'fr')).toBe('action');
+  });
+
+  it('IB-P5-FALLBACK-PT-BR: getLabel(key, "pt-br") returns the EN string', () => {
+    expect(getLabel('log.panel_title', 'pt-br')).toBe('EVENT LOG');
+    expect(getLabel('inv.panel_title', 'pt-br')).toBe('INVENTORY');
+  });
+
+  // ─── Canonical DE — not a fallback ───────────────────────────────────────
+  it('IB-P5-CANONICAL-DE: getLabel(key, "de") returns the DE string (not EN fallback)', () => {
+    // DE is a canonical locale — must return DE string, not EN
+    expect(getLabel('sheet.ability.str', 'de')).toBe('STR'); // same as EN for this key
+    expect(getLabel('sheet.ability.dex', 'de')).toBe('GES'); // differs from EN (DEX)
+    expect(getLabel('combat.tracker.panel_title', 'de')).toBe('KAMPF-TRACKER');
+    // This proves DE dispatch is correct, not fallback to EN
+    expect(getLabel('sheet.ability.dex', 'de')).not.toBe(getLabel('sheet.ability.dex', 'en'));
+  });
+
+  // ─── Regression: canonical locales unchanged ──────────────────────────────
+  it('IB-P5-FALLBACK-DOES-NOT-AFFECT-IT-EN-DE: Phase 4a/4b keys return correct locale strings', () => {
+    // Phase 4a key — unchanged
+    expect(getLabel('hp_label', 'it')).toBe('PF');
+    expect(getLabel('hp_label', 'en')).toBe('HP');
+    expect(getLabel('hp_label', 'de')).toBe('TP');
+    // Phase 4b key — unchanged
+    expect(getLabel('death_saves_title', 'it')).toBe('DEATH SAVES');
+    expect(getLabel('conc_modal_n_button', 'de')).toBe('[N] Abbrechen');
+    // Best-effort fallback on Phase 4a key — returns EN
+    expect(getLabel('hp_label', 'es')).toBe('HP');
+    expect(getLabel('hp_label', 'pt-br')).toBe('HP');
   });
 });
