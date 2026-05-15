@@ -16,8 +16,9 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0006](./0006-raster-pipeline-library-stack.md) | Raster Pipeline Library Stack | proposed | Phase 0 closure (Plan 04 fills branch path) |
 | [ADR-0008](./0008-code-quality-configuration.md) | Code Quality Configuration — Biome+TS+Vitest+CI gates | accepted | Phase 1+ every commit |
 | [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | accepted | Phase 4a Plan 05 — boot orchestrator wired the contract across 6 plans (606/606 tests) |
+| [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | accepted | Phase 5 entry |
 
-**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
+**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
 ## Authoring Process
 
