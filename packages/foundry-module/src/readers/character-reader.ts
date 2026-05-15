@@ -85,17 +85,23 @@ function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryI
     const item = raw as Record<string, unknown>;
     const type = mapItemType((item.type as string | undefined) ?? '');
     if (type === null) continue;
-
-    // Skip spells — they live in the `spells` field
-    if (type === ('spell' as string)) continue;
+    // Note: 'spell' is not in INVENTORY_ITEM_TYPES so mapItemType returns null for spells.
+    // The null-guard above already excludes them — no redundant spell check needed.
 
     const system = (item.system as Record<string, unknown>) ?? {};
     const damage = (system.damage as Record<string, unknown>) ?? {};
-    const damageFormula =
-      (((damage.base as Record<string, unknown>)?.formula as string | undefined) ??
-      ((damage as Record<string, unknown>).parts as unknown[] | undefined)?.[0] !== undefined)
-        ? String(((damage as Record<string, unknown>).parts as unknown[])[0])
-        : undefined;
+    // CR-02 fix: use base.formula directly when present (dnd5e 5.x modern field);
+    // fall back to parts[0] only when base.formula is absent.
+    const baseFormula = (damage.base as Record<string, unknown> | undefined)?.formula as
+      | string
+      | undefined;
+    const partsFirst = ((damage as Record<string, unknown>).parts as unknown[] | undefined)?.[0];
+    const damageFormula: string | undefined =
+      baseFormula !== undefined
+        ? baseFormula
+        : partsFirst !== undefined
+          ? String(partsFirst)
+          : undefined;
 
     const quantity = (system.quantity as number | undefined) ?? 1;
     const weight = (system.weight as Record<string, unknown> | undefined)?.value as

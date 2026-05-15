@@ -385,6 +385,101 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.inventory).toHaveLength(0);
   });
 
+  // ── CR-02 regression: damage-formula ternary fix ──────────────────────────
+
+  it('CR-02-BASE-FORMULA: base.formula present → damage field uses base.formula value, not parts[0]', () => {
+    // dnd5e 5.x modern field: damage.base.formula = '1d8+3'; parts = [['1d6','fire']]
+    // Before fix: ternary used parts[0] ('1d6,fire') even when base.formula was set.
+    // After fix: base.formula takes precedence.
+    const sword = {
+      id: 'sword-cr02',
+      name: 'Longsword',
+      type: 'weapon',
+      system: {
+        quantity: 1,
+        weight: undefined,
+        damage: {
+          base: { formula: '1d8+3' },
+          parts: [['1d6', 'fire']], // should be ignored when base.formula present
+        },
+        properties: new Set<string>(),
+      },
+    };
+    const actor = makeActor({ id: 'pc-cr02-1', items: [sword] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-cr02-1');
+    const item = snap?.inventory[0];
+    expect(item).toBeDefined();
+    // Must use base.formula '1d8+3', not parts[0] which would stringify to '1d6,fire'
+    expect(item?.damage).toBe('1d8+3');
+    expect(item?.damage).not.toContain('1d6');
+  });
+
+  it('CR-02-PARTS-FALLBACK: base.formula absent → falls back to parts[0]', () => {
+    // Legacy dnd5e items use parts array; base.formula is undefined.
+    const bow = {
+      id: 'bow-cr02',
+      name: 'Shortbow',
+      type: 'weapon',
+      system: {
+        quantity: 1,
+        weight: undefined,
+        damage: {
+          base: { formula: undefined },
+          parts: [['1d6', 'piercing']],
+        },
+        properties: new Set<string>(),
+      },
+    };
+    const actor = makeActor({ id: 'pc-cr02-2', items: [bow] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-cr02-2');
+    const item = snap?.inventory[0];
+    expect(item).toBeDefined();
+    // parts[0] stringified as '1d6,piercing' (tuple join)
+    expect(item?.damage).toContain('1d6');
+  });
+
+  it('CR-02-NO-DAMAGE: no base.formula and no parts → damage field absent', () => {
+    const shield = {
+      id: 'shield-cr02',
+      name: 'Shield',
+      type: 'armor',
+      system: {
+        quantity: 1,
+        weight: undefined,
+        damage: { base: {}, parts: [] },
+        properties: new Set<string>(),
+      },
+    };
+    const actor = makeActor({ id: 'pc-cr02-3', items: [shield] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-cr02-3');
+    const item = snap?.inventory[0];
+    expect(item).toBeDefined();
+    expect(item?.damage).toBeUndefined();
+  });
+
+  // ── WR-03 regression: dead spell-type guard removed ──────────────────────
+
+  it('WR-03-SPELL-EXCLUSION: spell items excluded via null-guard from mapItemType (not dead code)', () => {
+    // 'spell' is not in INVENTORY_ITEM_TYPES → mapItemType returns null → continue.
+    // The old dead code `if (type === ('spell' as string)) continue` was unreachable.
+    // This test verifies exclusion still works without the dead guard.
+    const spell = makeSpellItem({ id: 'sp-wr03', name: 'Cure Wounds' });
+    const sword = makeItem({ id: 'sw-wr03', name: 'Sword', type: 'weapon' });
+    const actor = makeActor({ id: 'pc-wr03', items: [spell, sword] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-wr03');
+    // Only the weapon appears; spell is excluded
+    expect(snap?.inventory).toHaveLength(1);
+    expect(snap?.inventory[0]?.name).toBe('Sword');
+  });
+
   // ── Phase 5 Plan 05-04: spells extension (CHRD-SPL-1..5) ─────────────────
 
   it('CHRD-SPL-1: actor with no spell items and no slots → empty spellbook', () => {
