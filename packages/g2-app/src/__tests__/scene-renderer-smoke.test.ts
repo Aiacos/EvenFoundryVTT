@@ -354,6 +354,7 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
         level: 5,
         conditions: [],
         exhaustion: 0,
+        death: { success: 0, failure: 0 },
       },
     });
     ws.fireMessage(snapshotEvent);

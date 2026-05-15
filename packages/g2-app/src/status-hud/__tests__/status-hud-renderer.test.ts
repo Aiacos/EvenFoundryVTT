@@ -42,6 +42,7 @@ function makeSnapshot(overrides: Partial<CharacterSnapshot> = {}): CharacterSnap
     level: 5,
     conditions: [],
     exhaustion: 0,
+    death: { success: 0, failure: 0 },
     ...overrides,
   };
 }

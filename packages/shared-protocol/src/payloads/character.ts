@@ -5,6 +5,9 @@
  * - `conditions` is read from `actor.statuses` (Set<string>) — same across editions.
  * - `level` is from `actor.system.details.level` — same across editions.
  * - HP/AC are from `actor.system.attributes.*` — same across editions.
+ * - `death` is from `actor.system.attributes.death.{success,failure}` — same across
+ *   editions per dnd5e 5.x; counters are integers 0..3 (3 successes = stabilized,
+ *   3 failures = dead).
  *
  * This is a full-replacement delta (ADR-0002 §Phase 2): no field-level diff.
  * Phase 5 narrows to field-level deltas when the payload union arms are filled.
@@ -13,8 +16,29 @@
  * @see Specs.md §4 (read pipeline), §3.4 (Foundry compat ≥13.347)
  * @see packages/foundry-module/src/readers/character-reader.ts (producer)
  * @see 02-05-PLAN.md Task 1 (CharacterSnapshotSchema spec)
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q4 (death-saves extension)
  */
 import { z } from 'zod';
+
+/**
+ * Death saving throw progress per dnd5e v5.x `actor.system.attributes.death`.
+ *
+ * Each death save outcome increments the appropriate counter (0..3 each); 3 successes
+ * = stabilized, 3 failures = dead. Counters reset on full rest or HP restoration.
+ *
+ * Required as a sub-field of {@link CharacterSnapshotSchema} — the field is NOT
+ * optional (Phase 4b Pitfall 3 mitigation: atomic commit closes the
+ * .optional() drift window).
+ *
+ * @see Specs.md §3.4 (Foundry dnd5e v5.x compatibility)
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q4 (schema extension rationale + verified field path)
+ */
+export const DeathSavesSchema = z.strictObject({
+  success: z.number().int().min(0).max(3),
+  failure: z.number().int().min(0).max(3),
+});
+
+export type DeathSaves = z.infer<typeof DeathSavesSchema>;
 
 /**
  * Snapshot of a single player character's mutable game state.
@@ -33,6 +57,9 @@ import { z } from 'zod';
  *                  `actor.statuses` (Foundry v13+ Set<string>)
  * - `exhaustion` — Exhaustion level (0–6; 0 = none); PHB 2024 uses a different scale
  *                  but the Foundry dnd5e 5.x system still stores it as a number
+ * - `death`      — Death saving throw counters (`success`/`failure`, each 0..3). REQUIRED.
+ *                  Phase 4b addition for the status-hud death-save pivot trigger
+ *                  (Plan 05 consumes `DeathSavesSchema` for ergonomic narrowing).
  */
 export const CharacterSnapshotSchema = z.strictObject({
   actorId: z.string().min(1),
@@ -44,6 +71,7 @@ export const CharacterSnapshotSchema = z.strictObject({
   level: z.number().int().min(1).max(20),
   conditions: z.array(z.string()),
   exhaustion: z.number().int().min(0).max(6),
+  death: DeathSavesSchema,
 });
 
 export type CharacterSnapshot = z.infer<typeof CharacterSnapshotSchema>;

@@ -39,6 +39,8 @@ export {
   CHARACTER_DELTA_TYPE,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
+  type DeathSaves,
+  DeathSavesSchema,
 } from './payloads/character.js';
 
 export {
@@ -52,6 +54,19 @@ export {
   type CombatTargetsPayload,
   CombatTargetsPayloadSchema,
 } from './payloads/combat.js';
+
+// ─── Phase 4b additions (Plan 06) ─────────────────────────────────────────────
+// Concentration conflict + drop-confirmation envelope schemas + type constants.
+// Plan 05 conc-conflict-dispatcher.ts consumes these at the WS-receive boundary.
+
+export {
+  CONC_CONFLICT_TYPE,
+  CONC_DROP_CONFIRMED_TYPE,
+  type ConcConflictPayload,
+  ConcConflictPayloadSchema,
+  type ConcDropConfirmedPayload,
+  ConcDropConfirmedPayloadSchema,
+} from './payloads/concentration.js';
 export {
   EVENT_LOG_DELTA_TYPE,
   type EventLogEntry,

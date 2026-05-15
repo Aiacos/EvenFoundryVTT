@@ -29,8 +29,16 @@ function makeActor(
     level: number;
     statuses: Set<string>;
     exhaustion: number;
+    // Phase 4b: death-saves field. `undefined` exercises the
+    // nullish-coalesce defensive default in character-reader.ts (CR-DS-3).
+    // To omit it entirely, pass `death: undefined` explicitly.
+    death: { success: number; failure: number } | undefined;
   }> = {},
 ) {
+  const death =
+    'death' in overrides
+      ? overrides.death
+      : ({ success: 0, failure: 0 } as { success: number; failure: number });
   return {
     id: overrides.id ?? 'actor-1',
     name: overrides.name ?? 'Aragorn',
@@ -40,6 +48,7 @@ function makeActor(
         hp: overrides.hp ?? { value: 42, max: 50, temp: 5, tempmax: 0 },
         ac: { value: overrides.acValue ?? 18 },
         exhaustion: overrides.exhaustion ?? 0,
+        death,
       },
       details: {
         level: overrides.level ?? 5,
@@ -148,6 +157,66 @@ describe('getCharacterSnapshot', () => {
 
     const snap = getCharacterSnapshot('actor-1');
     expect(snap?.conditions).toEqual([]);
+  });
+
+  // ── Phase 4b: death-saves extension (CR-DS-1..CR-DS-5) ─────────────────────
+
+  it('CR-DS-1: emits death={success:0,failure:0} for an idle actor', () => {
+    const actor = makeActor({ id: 'pc-1', death: { success: 0, failure: 0 } });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-1');
+    expect(snap?.death).toEqual({ success: 0, failure: 0 });
+  });
+
+  it('CR-DS-2: emits death.failure=2 when actor.system.attributes.death.failure=2', () => {
+    const actor = makeActor({ id: 'pc-2', death: { success: 1, failure: 2 } });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-2');
+    expect(snap?.death.success).toBe(1);
+    expect(snap?.death.failure).toBe(2);
+  });
+
+  it('CR-DS-3: defaults death to {success:0,failure:0} when actor.system.attributes.death is undefined', () => {
+    // Fresh dnd5e actors may have attributes.death undefined until the first
+    // death save is rolled — the reader's nullish-coalesce defends.
+    const actor = makeActor({ id: 'pc-3', death: undefined });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-3');
+    expect(snap?.death).toEqual({ success: 0, failure: 0 });
+  });
+
+  it('CR-DS-4: returned snapshot satisfies CharacterSnapshotSchema (round-trip)', async () => {
+    const actor = makeActor({ id: 'pc-4', death: { success: 2, failure: 1 } });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-4');
+    expect(snap).not.toBeNull();
+    // Round-trip through the canonical schema — proves no missing or extra
+    // fields and that the death values flow through unmodified.
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    const result = CharacterSnapshotSchema.safeParse(snap);
+    expect(result.success).toBe(true);
+  });
+
+  it('CR-DS-5: existing HP/AC/level fields preserved after death-field addition (regression-safe)', () => {
+    const actor = makeActor({
+      id: 'pc-5',
+      hp: { value: 21, max: 30, temp: 4, tempmax: 0 },
+      acValue: 19,
+      level: 6,
+      death: { success: 0, failure: 0 },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-5');
+    expect(snap?.hp).toBe(21);
+    expect(snap?.maxHp).toBe(30);
+    expect(snap?.tempHp).toBe(4);
+    expect(snap?.ac).toBe(19);
+    expect(snap?.level).toBe(6);
   });
 });
 
