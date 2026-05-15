@@ -405,7 +405,10 @@ describe('getCharacterSnapshot', () => {
         properties: new Set<string>(),
       },
     };
-    const actor = makeActor({ id: 'pc-cr02-1', items: [sword] });
+    const actor = makeActor({
+      id: 'pc-cr02-1',
+      items: [sword as unknown as ReturnType<typeof makeItem>],
+    });
     vi.stubGlobal('game', makeGameMock([actor]));
 
     const snap = getCharacterSnapshot('pc-cr02-1');
@@ -432,7 +435,10 @@ describe('getCharacterSnapshot', () => {
         properties: new Set<string>(),
       },
     };
-    const actor = makeActor({ id: 'pc-cr02-2', items: [bow] });
+    const actor = makeActor({
+      id: 'pc-cr02-2',
+      items: [bow as unknown as ReturnType<typeof makeItem>],
+    });
     vi.stubGlobal('game', makeGameMock([actor]));
 
     const snap = getCharacterSnapshot('pc-cr02-2');
@@ -454,7 +460,10 @@ describe('getCharacterSnapshot', () => {
         properties: new Set<string>(),
       },
     };
-    const actor = makeActor({ id: 'pc-cr02-3', items: [shield] });
+    const actor = makeActor({
+      id: 'pc-cr02-3',
+      items: [shield as unknown as ReturnType<typeof makeItem>],
+    });
     vi.stubGlobal('game', makeGameMock([actor]));
 
     const snap = getCharacterSnapshot('pc-cr02-3');
