@@ -238,6 +238,8 @@ describe('buildServer integration', () => {
       exhaustion: 0,
       death: { success: 0, failure: 0 },
       world: { modernRules: false },
+      inventory: [],
+      spells: { slots: [], spells: [] },
     };
 
     it('returns 200 with CharacterSnapshot for valid bearer + actorId', async () => {

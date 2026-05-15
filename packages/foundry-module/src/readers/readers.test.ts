@@ -27,6 +27,59 @@ function makeActiveEffect(name: string, dnd5eConcentrating: boolean, durationLab
   };
 }
 
+/** Minimal mock of a dnd5e item document for inventory testing. */
+function makeItem(
+  overrides: Partial<{
+    id: string;
+    name: string;
+    type: string;
+    damage: string;
+    quantity: number;
+    weight: number;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? 'item-1',
+    name: overrides.name ?? 'Sword',
+    type: overrides.type ?? 'weapon',
+    system: {
+      quantity: overrides.quantity ?? 1,
+      weight: overrides.weight !== undefined ? { value: overrides.weight } : undefined,
+      damage:
+        overrides.damage !== undefined
+          ? { base: { formula: overrides.damage }, parts: [] }
+          : { parts: [] },
+      properties: new Set<string>(),
+    },
+  };
+}
+
+/** Minimal mock of a dnd5e spell item document. */
+function makeSpellItem(
+  overrides: Partial<{
+    id: string;
+    name: string;
+    level: number;
+    activation: string;
+    concentration: boolean;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? 'spell-1',
+    name: overrides.name ?? 'Fireball',
+    type: 'spell',
+    system: {
+      level: overrides.level ?? 3,
+      school: 'evocation',
+      activation: { type: overrides.activation ?? 'action' },
+      range: { value: 150, units: 'ft' },
+      damage: { parts: [['8d6', 'fire']] },
+      components: { concentration: overrides.concentration ?? false },
+      preparation: { mode: 'prepared', prepared: true },
+    },
+  };
+}
+
 function makeActor(
   overrides: Partial<{
     id: string;
@@ -43,12 +96,21 @@ function makeActor(
     death: { success: number; failure: number } | undefined;
     // Phase 5: active effects for concentration detection (CMRD-CONC-*)
     effects: ReturnType<typeof makeActiveEffect>[];
+    // Phase 5 Plan 05-04: items for inventory + spells
+    items: (ReturnType<typeof makeItem> | ReturnType<typeof makeSpellItem>)[];
+    // Phase 5 Plan 05-04: spell slot data
+    spellSlots: Record<string, { value: number; max: number }>;
   }> = {},
 ) {
   const death =
     'death' in overrides
       ? overrides.death
       : ({ success: 0, failure: 0 } as { success: number; failure: number });
+
+  // Build spell slot system shape: spell1..spell9 keys
+  const spellSlotSystem: Record<string, { value: number; max: number }> =
+    overrides.spellSlots ?? {};
+
   return {
     id: overrides.id ?? 'actor-1',
     name: overrides.name ?? 'Aragorn',
@@ -63,9 +125,11 @@ function makeActor(
       details: {
         level: overrides.level ?? 5,
       },
+      spells: spellSlotSystem,
     },
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
+    items: { contents: overrides.items ?? [] },
   };
 }
 
@@ -262,6 +326,126 @@ describe('getCharacterSnapshot', () => {
 
     const snap = getCharacterSnapshot('pc-mr-3');
     expect(snap?.world.modernRules).toBe(false);
+  });
+
+  // ── Phase 5 Plan 05-04: inventory extension (CHRD-INV-1..5) ─────────────
+
+  it('CHRD-INV-1: actor with no items → empty inventory array', () => {
+    const actor = makeActor({ id: 'pc-inv-1', items: [] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-inv-1');
+    expect(snap?.inventory).toEqual([]);
+  });
+
+  it('CHRD-INV-2: actor with a weapon item → inventory has one weapon entry', () => {
+    const sword = makeItem({
+      id: 'sword-1',
+      name: 'Spada lunga',
+      type: 'weapon',
+      damage: '1d8 sl',
+    });
+    const actor = makeActor({ id: 'pc-inv-2', items: [sword] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-inv-2');
+    expect(snap?.inventory).toHaveLength(1);
+    expect(snap?.inventory[0]?.name).toBe('Spada lunga');
+    expect(snap?.inventory[0]?.type).toBe('weapon');
+  });
+
+  it('CHRD-INV-3: actor with mixed items (weapon + consumable) → multiple inventory entries', () => {
+    const sword = makeItem({ id: 'sword-1', name: 'Spada', type: 'weapon' });
+    const potion = makeItem({ id: 'pot-1', name: 'Pozione', type: 'consumable', quantity: 3 });
+    const actor = makeActor({ id: 'pc-inv-3', items: [sword, potion] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-inv-3');
+    expect(snap?.inventory).toHaveLength(2);
+  });
+
+  it('CHRD-INV-4: snapshot round-trips through CharacterSnapshotSchema when inventory is populated', async () => {
+    const sword = makeItem({ id: 'sword-rt', name: 'Spada', type: 'weapon' });
+    const actor = makeActor({ id: 'pc-inv-4', items: [sword] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-inv-4');
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    const result = CharacterSnapshotSchema.safeParse(snap);
+    expect(result.success).toBe(true);
+  });
+
+  it('CHRD-INV-5: actor with a spell item → spell excluded from inventory', () => {
+    const spell = makeSpellItem({ id: 'sp-1', name: 'Fireball' });
+    const actor = makeActor({ id: 'pc-inv-5', items: [spell] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-inv-5');
+    // Spells should NOT appear in inventory
+    expect(snap?.inventory).toHaveLength(0);
+  });
+
+  // ── Phase 5 Plan 05-04: spells extension (CHRD-SPL-1..5) ─────────────────
+
+  it('CHRD-SPL-1: actor with no spell items and no slots → empty spellbook', () => {
+    const actor = makeActor({ id: 'pc-spl-1', items: [], spellSlots: {} });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-1');
+    expect(snap?.spells.slots).toHaveLength(0);
+    expect(snap?.spells.spells).toHaveLength(0);
+  });
+
+  it('CHRD-SPL-2: actor with spell slots → slots populated correctly', () => {
+    const actor = makeActor({
+      id: 'pc-spl-2',
+      spellSlots: {
+        spell1: { value: 2, max: 4 },
+        spell2: { value: 1, max: 3 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-2');
+    expect(snap?.spells.slots.length).toBeGreaterThan(0);
+    const l1 = snap?.spells.slots.find((s) => s.level === 1);
+    expect(l1?.value).toBe(2);
+    expect(l1?.max).toBe(4);
+  });
+
+  it('CHRD-SPL-3: actor with a spell item → spell appears in spellbook', () => {
+    const fireball = makeSpellItem({ id: 'fb-1', name: 'Fireball', level: 3 });
+    const actor = makeActor({ id: 'pc-spl-3', items: [fireball] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-3');
+    expect(snap?.spells.spells).toHaveLength(1);
+    expect(snap?.spells.spells[0]?.name).toBe('Fireball');
+    expect(snap?.spells.spells[0]?.level).toBe(3);
+  });
+
+  it('CHRD-SPL-4: concentration spell carries concentration=true flag (RESEARCH assumption A2)', () => {
+    const conc = makeSpellItem({ id: 'conc-sp', name: 'Bless', concentration: true });
+    const actor = makeActor({ id: 'pc-spl-4', items: [conc] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-4');
+    expect(snap?.spells.spells[0]?.concentration).toBe(true);
+  });
+
+  it('CHRD-SPL-5: snapshot round-trips through CharacterSnapshotSchema when spells populated', async () => {
+    const fireball = makeSpellItem({ id: 'fb-rt', name: 'Fireball', level: 3 });
+    const actor = makeActor({
+      id: 'pc-spl-5',
+      items: [fireball],
+      spellSlots: { spell3: { value: 2, max: 3 } },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-5');
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    const result = CharacterSnapshotSchema.safeParse(snap);
+    expect(result.success).toBe(true);
   });
 });
 

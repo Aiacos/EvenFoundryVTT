@@ -183,10 +183,31 @@ interface Dnd5eDetails {
   level: number;
 }
 
-/** Subset of the dnd5e 5.x actor system schema (attributes + details). */
+/**
+ * Spell slot entry in the dnd5e 5.x actor system.
+ * Keyed by spell level (e.g. 'spell1', 'spell2', …, 'spell9').
+ * May be undefined on non-spellcasting actors or if the level is not used.
+ */
+interface Dnd5eSpellSlotEntry {
+  /** Spell slots currently available. */
+  value: number;
+  /** Maximum spell slots for this level. */
+  max: number;
+}
+
+/** Subset of the dnd5e 5.x actor system schema (attributes + details + spells). */
 interface Dnd5eActorSystem {
   attributes: Dnd5eAttributes;
   details: Dnd5eDetails;
+  /**
+   * Spell slot data keyed by spell level (spell1–spell9).
+   * Character-reader reads value/max for each level.
+   * Each entry may be undefined for non-casters or unused levels.
+   *
+   * @see packages/foundry-module/src/readers/character-reader.ts (extractSpellbook)
+   * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 5
+   */
+  spells?: Record<string, Dnd5eSpellSlotEntry | undefined>;
 }
 
 // ─── Foundry Actor (minimal read shape) ───────────────────────────────────────
@@ -220,6 +241,70 @@ interface FoundryActiveEffect {
   };
 }
 
+/**
+ * Minimal dnd5e 5.x item shape — used by character-reader.ts to build
+ * inventory and spellbook snapshots.
+ *
+ * @see packages/foundry-module/src/readers/character-reader.ts (extractInventory, extractSpellbook)
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 5
+ */
+interface FoundryItem {
+  /** Foundry document ID. */
+  id: string;
+  /** Item display name. */
+  name: string;
+  /**
+   * Item type. dnd5e 5.x types include:
+   * 'weapon', 'equipment', 'consumable', 'tool', 'loot', 'spell', 'feat', 'background', 'class', 'subclass', 'container'.
+   */
+  type: string;
+  /** dnd5e 5.x system data for this item. */
+  system: {
+    /**
+     * Quantity of this item the actor carries.
+     * Undefined for items that have no quantity (e.g. some class features).
+     */
+    quantity?: number;
+    /** Weight of a single item unit. */
+    weight?: number | { value?: number };
+    /** Damage formula (weapons). May be undefined for non-damaging items. */
+    damage?: {
+      base?: { formula?: string };
+      parts?: Array<[string, string]>;
+    };
+    /** Item properties set (weapons: finesse, versatile, light; spells: concentration). */
+    properties?: Set<string>;
+    /** Spell components (used for concentration detection in older dnd5e versions). */
+    components?: {
+      concentration?: boolean;
+    };
+    /**
+     * Activation cost for spells and items.
+     * The `type` field matches SPELL_ACTIVATION_TYPES from shared-protocol.
+     */
+    activation?: {
+      type?: string;
+    };
+    /**
+     * Range data for spells.
+     * Value is in feet; units is the distance unit string.
+     */
+    range?: {
+      value?: number | null;
+      units?: string;
+    };
+    /** Spell level (0 = cantrip, 1-9 = leveled). */
+    level?: number;
+    /** Spell school identifier (e.g. 'evo', 'ill', 'div'). */
+    school?: string;
+    /** Whether the spell is prepared (leveled spells only). */
+    preparation?: {
+      mode?: string;
+      prepared?: boolean;
+    };
+  };
+}
+
 /** Minimal Foundry Actor document shape consumed by character-reader and combat-reader. */
 interface FoundryActor {
   /** Foundry document ID. */
@@ -244,6 +329,17 @@ interface FoundryActor {
    */
   effects: {
     contents: FoundryActiveEffect[];
+  };
+  /**
+   * Actor items collection (Foundry v13+).
+   * Used by character-reader.ts to build inventory and spellbook snapshots.
+   * Items include weapons, equipment, consumables, spells, feats, etc.
+   *
+   * @see packages/foundry-module/src/readers/character-reader.ts (extractInventory, extractSpellbook)
+   * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 5
+   */
+  items?: {
+    contents: FoundryItem[];
   };
 }
 

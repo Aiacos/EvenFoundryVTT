@@ -356,6 +356,8 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
         exhaustion: 0,
         death: { success: 0, failure: 0 },
         world: { modernRules: false },
+        inventory: [],
+        spells: { slots: [], spells: [] },
       },
     });
     ws.fireMessage(snapshotEvent);

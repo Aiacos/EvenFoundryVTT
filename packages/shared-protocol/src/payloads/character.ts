@@ -10,6 +10,10 @@
  *   3 failures = dead).
  * - `world.modernRules` is from `game.settings.get('dnd5e','rulesVersion') === 'modern'`
  *   (Phase 5 Plan 05-01 Wave-0 atomic extension; REQUIRED field per atomic-commit pattern).
+ * - `inventory` is from `actor.items.contents` filtered to player-visible types
+ *   (Phase 5 Plan 05-04 atomic extension; REQUIRED field — see T-05-04-01).
+ * - `spells` is from `actor.system.spells.*` + actor.items filtered to spells
+ *   (Phase 5 Plan 05-04 atomic extension; REQUIRED field — see T-05-04-02).
  *
  * This is a full-replacement delta (ADR-0002 §Phase 2): no field-level diff.
  * Phase 5 narrows to field-level deltas when the payload union arms are filled.
@@ -20,6 +24,7 @@
  * @see 02-05-PLAN.md Task 1 (CharacterSnapshotSchema spec)
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q4 (death-saves extension)
  * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 3 (modernRules mapping)
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-04-PLAN.md Task 1 (inventory + spells atomic extension)
  */
 import { z } from 'zod';
 
@@ -64,6 +69,138 @@ export const WorldStateSchema = z.object({
 export type WorldState = z.infer<typeof WorldStateSchema>;
 
 /**
+ * Item type discriminant — covers all player-visible dnd5e item categories.
+ *
+ * - `weapon`    — melee/ranged weapons (may carry `[M]` mastery flag in 2024 mode)
+ * - `armor`     — worn armour and shields
+ * - `consumable`— potions, scrolls, ammunition, food
+ * - `equipment` — gear, tools, trinkets (miscellaneous)
+ * - `container` — bags, pouches, chests
+ * - `currency`  — coin summaries (rolled up by character-reader)
+ *
+ * T-05-04-01 mitigation: `z.enum` strict gate ensures no unknown item type
+ * reaches the renderer — the reader silently drops unrecognized types.
+ */
+export const INVENTORY_ITEM_TYPES = [
+  'weapon',
+  'armor',
+  'consumable',
+  'equipment',
+  'container',
+  'currency',
+] as const;
+export type InventoryItemType = (typeof INVENTORY_ITEM_TYPES)[number];
+
+/**
+ * Single inventory item carried by the character.
+ *
+ * Optional fields are truly optional at the data level — not all item types
+ * have damage or tags (e.g. a coin purse has weight but no damage).
+ */
+export const InventoryItemSchema = z.object({
+  /** Foundry item document ID (stable). */
+  id: z.string().min(1),
+  /** Display name (localized via Foundry, passed through verbatim). */
+  name: z.string().min(1),
+  /** Item category — determines glyph + section assignment. */
+  type: z.enum(INVENTORY_ITEM_TYPES),
+  /** Damage formula string (e.g. `'1d8 taglio'`) — weapons only. */
+  damage: z.string().optional(),
+  /** Descriptive tags (e.g. `['versatile', '1d10']` for versatile weapons). */
+  tags: z.array(z.string()).optional(),
+  /** Item weight in kg (may be absent for weightless items). */
+  weight: z.number().optional(),
+  /** Stack quantity (e.g. 3 for ×3 potions). Defaults to 1 if absent. */
+  quantity: z.number().int().positive().optional(),
+});
+
+export type InventoryItem = z.infer<typeof InventoryItemSchema>;
+
+/**
+ * Single spell slot level — covers levels 0 (cantrips) through 9 + pact slots.
+ *
+ * `level === 0` = cantrip level (unlimited; `value` and `max` are both 0 and
+ * unused — the slot bar is not rendered for cantrips).
+ * `level === 10` = pact slots (warlock Eldritch Invocation).
+ *
+ * T-05-04-02 mitigation: `min(0).max(10)` clamps the level; reader validates
+ * `actor.system.spells.spell{N}` shape before inclusion.
+ */
+export const SpellSlotSchema = z.object({
+  /** Spell slot level (0=cantrip, 1-9=standard, 10=pact). */
+  level: z.number().int().min(0).max(10),
+  /** Remaining spell slots. */
+  value: z.number().int().nonnegative(),
+  /** Maximum spell slots at this level. */
+  max: z.number().int().nonnegative(),
+});
+
+export type SpellSlot = z.infer<typeof SpellSlotSchema>;
+
+/**
+ * Spell activation time category.
+ *
+ * Maps to the i18n-budgets abbreviations used in the spellbook renderer:
+ * `action → azione/action`, `reaction → reaziN/reactN`, etc.
+ */
+export const SPELL_ACTIVATION_TYPES = ['action', 'reaction', 'bonus', 'ritual'] as const;
+export type SpellActivation = (typeof SPELL_ACTIVATION_TYPES)[number];
+
+/**
+ * Single spell entry in the character's known/prepared list.
+ *
+ * `alwaysPrepared` is a 2024 PHB concept: class features (e.g. Divine Smite
+ * spells for Paladins) are always prepared and show the `≡` glyph.
+ * `concentration` drives the `≀` glyph on the spell row.
+ *
+ * T-05-04-02 mitigation: `level.min(0).max(9)` — reader clamps incoming level;
+ * values from `actor.items.system.level` are integers 0..9 for all standard spells.
+ */
+export const SpellEntrySchema = z.object({
+  /** Foundry item document ID. */
+  id: z.string().min(1),
+  /** Display name (localized via Foundry, passed through). */
+  name: z.string().min(1),
+  /** Spell level (0 = cantrip, 1-9 = standard). */
+  level: z.number().int().min(0).max(9),
+  /** School of magic (e.g. `'evocation'`) — used in future detail rows. */
+  school: z.string(),
+  /** Cast time category for the activation abbreviation column. */
+  activation: z.enum(SPELL_ACTIVATION_TYPES),
+  /** Range string (e.g. `'36m'`, `'self'`). */
+  range: z.string(),
+  /** Effect/damage summary (e.g. `'1d10 fuoco'`, `'blocca incantesimo ≤ 3°'`). */
+  effect: z.string(),
+  /** Whether the spell is currently prepared (shows `◉` glyph). */
+  prepared: z.boolean(),
+  /** PHB 2024 always-prepared flag (shows `≡` glyph instead of `◉`). */
+  alwaysPrepared: z.boolean(),
+  /** Whether the spell requires concentration (shows `≀` glyph). */
+  concentration: z.boolean(),
+});
+
+export type SpellEntry = z.infer<typeof SpellEntrySchema>;
+
+/**
+ * Complete spellbook payload — slots + full spell list.
+ *
+ * `slots` covers all spell levels the character has (levels where max > 0 are
+ * rendered as level sections with a slot bar; levels with max === 0 are skipped
+ * by the renderer). Level 0 (cantrips) always renders without a slot bar.
+ *
+ * Uses `z.object` (not `z.strictObject`) for forward-compat — future phases
+ * may add pact magic fields without breaking existing consumers.
+ */
+export const SpellbookSchema = z.object({
+  /** Spell slot levels (empty array = non-caster). */
+  slots: z.array(SpellSlotSchema),
+  /** Full known/prepared spell list (empty array = non-caster). */
+  spells: z.array(SpellEntrySchema),
+});
+
+export type Spellbook = z.infer<typeof SpellbookSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -104,6 +241,19 @@ export const CharacterSnapshotSchema = z.strictObject({
    * REQUIRED — atomic commit with character-reader closes the drift window.
    */
   world: WorldStateSchema,
+  /**
+   * Character inventory — all player-visible items from `actor.items.contents`.
+   * REQUIRED (Phase 5 Plan 05-04 atomic extension — T-05-04-01 mitigation).
+   * Reader filters to recognized item types; unknown types are silently dropped.
+   * Empty array = character has no items (valid for fresh actors).
+   */
+  inventory: z.array(InventoryItemSchema),
+  /**
+   * Character spellbook — slot levels + full spell list.
+   * REQUIRED (Phase 5 Plan 05-04 atomic extension — T-05-04-02 mitigation).
+   * Non-casters have `{ slots: [], spells: [] }`.
+   */
+  spells: SpellbookSchema,
 });
 
 export type CharacterSnapshot = z.infer<typeof CharacterSnapshotSchema>;

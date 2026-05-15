@@ -354,6 +354,8 @@ describe('CharacterSheetPanel — draw()', () => {
       exhaustion: 0,
       death: { success: 0, failure: 0 },
       world: { modernRules: false },
+      inventory: [],
+      spells: { slots: [], spells: [] },
     };
     panel.onSnapshot(mockSnapshot);
     // Drain the async void draw from onSnapshot
@@ -387,6 +389,8 @@ describe('CharacterSheetPanel — draw()', () => {
       exhaustion: 0,
       death: { success: 0, failure: 0 },
       world: { modernRules: false },
+      inventory: [],
+      spells: { slots: [], spells: [] },
     };
 
     await panel.onMount();

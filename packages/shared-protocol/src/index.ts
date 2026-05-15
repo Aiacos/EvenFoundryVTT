@@ -41,6 +41,20 @@ export {
   CharacterSnapshotSchema,
   type DeathSaves,
   DeathSavesSchema,
+  INVENTORY_ITEM_TYPES,
+  type InventoryItem,
+  InventoryItemSchema,
+  type InventoryItemType,
+  SPELL_ACTIVATION_TYPES,
+  type SpellActivation,
+  type Spellbook,
+  SpellbookSchema,
+  type SpellEntry,
+  SpellEntrySchema,
+  type SpellSlot,
+  SpellSlotSchema,
+  type WorldState,
+  WorldStateSchema,
 } from './payloads/character.js';
 
 export {
@@ -87,6 +101,21 @@ export {
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
+
+// ─── Phase 5 Plan 05-05 — Log payload schema ─────────────────────────────────
+// LogEvent + LogSnapshot + LogEventKind + LOG_DELTA_TYPE for chat log tail.
+
+export {
+  LOG_DELTA_TYPE,
+  type LogEvent,
+  type LogEventKind,
+  LogEventKindSchema,
+  type LogEventResult,
+  LogEventResultSchema,
+  LogEventSchema,
+  type LogSnapshot,
+  LogSnapshotSchema,
+} from './payloads/log.js';
 
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 

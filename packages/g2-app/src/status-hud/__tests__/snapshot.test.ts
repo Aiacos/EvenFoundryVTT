@@ -46,6 +46,8 @@ const IDLE_SNAPSHOT: CharacterSnapshot = {
   exhaustion: 0,
   death: { success: 0, failure: 0 },
   world: { modernRules: false },
+  inventory: [],
+  spells: { slots: [], spells: [] },
 };
 
 /**

@@ -17,7 +17,218 @@
  * @see 02-05-PLAN.md Task 1 (character-reader.ts spec)
  */
 
-import type { CharacterSnapshot } from '@evf/shared-protocol';
+import type {
+  CharacterSnapshot,
+  InventoryItem,
+  InventoryItemType,
+  SpellActivation,
+  Spellbook,
+  SpellEntry,
+  SpellSlot,
+} from '@evf/shared-protocol';
+import { INVENTORY_ITEM_TYPES } from '@evf/shared-protocol';
+
+/**
+ * Map a dnd5e item type string to our InventoryItemType enum.
+ *
+ * T-05-04-01 mitigation: unknown types return null so the reader can filter them.
+ * Only types in `INVENTORY_ITEM_TYPES` pass through to the wire payload.
+ *
+ * @internal
+ */
+function mapItemType(dnd5eType: string): InventoryItemType | null {
+  if ((INVENTORY_ITEM_TYPES as ReadonlyArray<string>).includes(dnd5eType)) {
+    return dnd5eType as InventoryItemType;
+  }
+  return null;
+}
+
+/**
+ * Map a dnd5e item activation type to our SpellActivation enum.
+ *
+ * Foundry dnd5e 5.x uses `item.system.activation.type` with values like
+ * `'action'`, `'reaction'`, `'bonus'`, `'special'`, `'crew'`, etc.
+ * We map to our 4-value enum; unknown types default to `'action'`.
+ *
+ * @internal
+ */
+function mapActivationType(dnd5eActivation: string | undefined): SpellActivation {
+  switch (dnd5eActivation) {
+    case 'reaction':
+      return 'reaction';
+    case 'bonus':
+      return 'bonus';
+    case 'special':
+    case 'ritual':
+      return 'ritual';
+    default:
+      return 'action';
+  }
+}
+
+/**
+ * Extract inventory items from actor.items.contents.
+ *
+ * Filters to player-visible item types (weapon, armor, consumable, equipment,
+ * container, currency). Unknown types are silently dropped (T-05-04-01).
+ * Defensive nullish-coalesce for each field — fresh items may lack certain system fields.
+ *
+ * @internal
+ */
+function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryItem[] {
+  if (actor === undefined) return [];
+
+  const items: InventoryItem[] = [];
+  const contents: unknown[] = actor.items?.contents ?? [];
+
+  for (const raw of contents) {
+    const item = raw as Record<string, unknown>;
+    const type = mapItemType((item.type as string | undefined) ?? '');
+    if (type === null) continue;
+
+    // Skip spells — they live in the `spells` field
+    if (type === ('spell' as string)) continue;
+
+    const system = (item.system as Record<string, unknown>) ?? {};
+    const damage = (system.damage as Record<string, unknown>) ?? {};
+    const damageFormula =
+      (((damage.base as Record<string, unknown>)?.formula as string | undefined) ??
+      ((damage as Record<string, unknown>).parts as unknown[] | undefined)?.[0] !== undefined)
+        ? String(((damage as Record<string, unknown>).parts as unknown[])[0])
+        : undefined;
+
+    const quantity = (system.quantity as number | undefined) ?? 1;
+    const weight = (system.weight as Record<string, unknown> | undefined)?.value as
+      | number
+      | undefined;
+
+    // Build tags from item properties (e.g. versatile, thrown, finesse)
+    const propertiesRaw = (system.properties as Set<string> | string[] | undefined) ?? [];
+    const tags: string[] = Array.isArray(propertiesRaw)
+      ? (propertiesRaw as string[])
+      : propertiesRaw instanceof Set
+        ? Array.from(propertiesRaw as Set<string>)
+        : [];
+
+    const entry: InventoryItem = {
+      id: (item.id as string | undefined) ?? String(Math.random()),
+      name: (item.name as string | undefined) ?? 'Unknown Item',
+      type,
+      ...(damageFormula !== undefined && { damage: damageFormula }),
+      ...(tags.length > 0 && { tags }),
+      ...(weight !== undefined && { weight }),
+      ...(quantity !== 1 && { quantity }),
+    };
+
+    items.push(entry);
+  }
+
+  return items;
+}
+
+/**
+ * Extract spellbook data from actor.system.spells + actor.items spell entries.
+ *
+ * Spell slots: reads `actor.system.spells.spell{1-9}` + `actor.system.spells.pact`
+ * for warlock pact slots. Defensive nullish-coalesce for fresh actors.
+ *
+ * Spell entries: filters actor.items.contents to type==='spell', then builds
+ * SpellEntry objects. Concentration detection uses assumption A2 from RESEARCH.md:
+ * `item.system.components?.concentration === true`.
+ *
+ * @internal
+ */
+function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook {
+  if (actor === undefined) return { slots: [], spells: [] };
+
+  const slotsRaw = (actor.system?.spells as Record<string, unknown>) ?? {};
+
+  // Build slot array for levels 1-9 (standard slots)
+  const slots: SpellSlot[] = [];
+  for (let level = 1; level <= 9; level++) {
+    const slotKey = `spell${level}`;
+    const slotData = (slotsRaw[slotKey] as Record<string, unknown>) ?? {};
+    const max = (slotData.max as number | undefined) ?? 0;
+    if (max > 0) {
+      slots.push({
+        level,
+        value: (slotData.value as number | undefined) ?? 0,
+        max,
+      });
+    }
+  }
+
+  // Extract spell entries from items (type === 'spell')
+  const contents: unknown[] = actor.items?.contents ?? [];
+  const spells: SpellEntry[] = [];
+
+  for (const raw of contents) {
+    const item = raw as Record<string, unknown>;
+    if ((item.type as string | undefined) !== 'spell') continue;
+
+    const system = (item.system as Record<string, unknown>) ?? {};
+    const components = (system.components as Record<string, unknown>) ?? {};
+    const activationRaw = (system.activation as Record<string, unknown>) ?? {};
+    const activationType = (activationRaw.type as string | undefined) ?? 'action';
+
+    const level = Math.max(0, Math.min(9, (system.level as number | undefined) ?? 0));
+    const preparationMode = (system.preparation as Record<string, unknown>)?.mode ?? 'prepared';
+    const isPrepared =
+      (system.preparation as Record<string, unknown>)?.prepared === true ||
+      preparationMode === 'always' ||
+      preparationMode === 'innate' ||
+      level === 0; // cantrips are always prepared
+
+    const isAlwaysPrepared = preparationMode === 'always' || preparationMode === 'innate';
+
+    // Assumption A2: concentration flag lives at item.system.components.concentration
+    const isConcentration = (components.concentration as boolean | undefined) === true;
+
+    // Range extraction
+    const rangeRaw = (system.range as Record<string, unknown>) ?? {};
+    const rangeValue = (rangeRaw.value as number | undefined) ?? '';
+    const rangeUnit = (rangeRaw.units as string | undefined) ?? '';
+    const rangeStr =
+      rangeUnit === 'self' || rangeUnit === 'touch'
+        ? rangeUnit
+        : rangeValue !== ''
+          ? `${rangeValue}m`
+          : '--';
+
+    // Damage/effect summary
+    const damageRaw = (system.damage as Record<string, unknown>) ?? {};
+    const damageParts = (damageRaw.parts as [string, string][] | undefined) ?? [];
+    const damageStr =
+      damageParts.length > 0
+        ? damageParts
+            .slice(0, 1)
+            .map(([formula, type]) => `${formula} ${type}`)
+            .join(', ')
+        : (system.description as Record<string, unknown>)?.value !== undefined
+          ? '' // leave blank — description is HTML, will be stripped later
+          : '';
+
+    const entry: SpellEntry = {
+      id: (item.id as string | undefined) ?? String(Math.random()),
+      name: (item.name as string | undefined) ?? 'Unknown Spell',
+      level,
+      school: (system.school as string) ?? '',
+      activation: mapActivationType(activationType),
+      range: rangeStr,
+      effect: damageStr,
+      prepared: isPrepared,
+      alwaysPrepared: isAlwaysPrepared,
+      concentration: isConcentration,
+    };
+
+    spells.push(entry);
+  }
+
+  // Sort spells by level, then name
+  spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
+  return { slots, spells };
+}
 
 /**
  * Returns a character snapshot for the given actor ID, or null.
@@ -36,6 +247,11 @@ import type { CharacterSnapshot } from '@evf/shared-protocol';
  * and `undefined`) → `false`. Defensive default of `false` (PHB 2014) is consistent
  * with the Phase 4b death-saves pattern. RESEARCH §Pattern 3 assumption A1 verified:
  * dnd5e 5.x uses `'modern'` / `'legacy'` string values for `rulesVersion`.
+ *
+ * Phase 5 Plan 05-04 addition: reads `actor.items.contents` to populate `inventory`
+ * (T-05-04-01 mitigation — InventoryItemSchema gates the wire payload) and
+ * `actor.system.spells` to populate `spells` (T-05-04-02 mitigation).
+ * Defensive empty-array defaults for non-casters and fresh actors.
  *
  * @param actorId - Foundry actor document ID
  * @returns CharacterSnapshot or null
@@ -84,6 +300,8 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     exhaustion: actor.system.attributes.exhaustion,
     death,
     world: { modernRules },
+    inventory: extractInventory(actor),
+    spells: extractSpellbook(actor),
   };
 }
 

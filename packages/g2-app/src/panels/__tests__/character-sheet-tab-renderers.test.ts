@@ -88,6 +88,8 @@ const snapshot2014: CharacterSnapshot = {
   exhaustion: 0,
   death: { success: 0, failure: 0 },
   world: { modernRules: false },
+  inventory: [],
+  spells: { slots: [], spells: [] },
 };
 
 /** Thorin Oakenshield — PHB 2024 (modernRules: true) */
