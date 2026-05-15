@@ -46,24 +46,21 @@ describe('isOverlayPanel — runtime type guard', () => {
   });
 
   it('OP-2a: returns false when onMount is missing', () => {
-    const base = makeOverlayPanelStub() as Partial<OverlayPanel> & Layer;
-    // biome-ignore lint/performance/noDelete: deliberate field removal for the guard test
-    delete (base as { onMount?: unknown }).onMount;
-    expect(isOverlayPanel(base as unknown as Layer)).toBe(false);
+    const full = makeOverlayPanelStub();
+    const { onMount: _drop, ...partial } = full;
+    expect(isOverlayPanel(partial as unknown as Layer)).toBe(false);
   });
 
   it('OP-2b: returns false when onUnmount is missing', () => {
-    const base = makeOverlayPanelStub() as Partial<OverlayPanel> & Layer;
-    // biome-ignore lint/performance/noDelete: deliberate field removal for the guard test
-    delete (base as { onUnmount?: unknown }).onUnmount;
-    expect(isOverlayPanel(base as unknown as Layer)).toBe(false);
+    const full = makeOverlayPanelStub();
+    const { onUnmount: _drop, ...partial } = full;
+    expect(isOverlayPanel(partial as unknown as Layer)).toBe(false);
   });
 
   it('OP-2c: returns false when onEvent is missing', () => {
-    const base = makeOverlayPanelStub() as Partial<OverlayPanel> & Layer;
-    // biome-ignore lint/performance/noDelete: deliberate field removal for the guard test
-    delete (base as { onEvent?: unknown }).onEvent;
-    expect(isOverlayPanel(base as unknown as Layer)).toBe(false);
+    const full = makeOverlayPanelStub();
+    const { onEvent: _drop, ...partial } = full;
+    expect(isOverlayPanel(partial as unknown as Layer)).toBe(false);
   });
 
   it('OP-2d: returns false for a bare Layer with none of the lifecycle methods', () => {
