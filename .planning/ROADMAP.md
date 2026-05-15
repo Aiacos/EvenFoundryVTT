@@ -20,7 +20,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 2: Foundry Module Core + Pairing UI** - `module.json` + versioned `dnd5e@5.x` adapter + readers (character/combat/scene/log) + WS handshake + locale auto-detect + phone-side bootstrap wizard + QR pairing flow *(5/5 plans complete)*
 - [x] **Phase 3: Bridge Service Skeleton** - Fastify + ws + bearer auth + Tool Registry + REST + healthz/readyz/metrics + idempotency keys + seq envelope + replay buffer + Docker Compose *(5/5 plans complete)*
 - [x] **Phase 4a: G2 Engine + Raster + Status HUD** - Layer manager + persistent Status HUD + raster pipeline (image-q + upng-js + xxhash-wasm + OffscreenCanvas) + 6-layer optimization stack + glyph fallback + boot splash + capability handshake *(6/6 plans complete 2026-05-15; hardware-pending SC deferred to `human_needed` per ADR-0005 Branch A; ADR-0009 ACCEPTED)*
-- [ ] **Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI** - Stable layer-manager API for Phase 5 + map mode toggle + toast queue + boot error states + death-saves HUD + concentration-drop modal primitive
+- [x] **Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI** - Stable layer-manager API for Phase 5 + map mode toggle + toast queue + boot error states + death-saves HUD + concentration-drop modal primitive *(6/6 plans complete 2026-05-15; hardware-pending SC deferred to `human_needed` per ADR-0005 Branch A; ADR-0009 Amendment 1 ACCEPTED documenting differential demolish + container budget audit + in-process gesture-bus)*
 - [ ] **Phase 5: Panel Plugin System + Read-Only Panels** - Panel API contract + 6-tab Sheet + Combat tracker + Log + Inventory + Spellbook + i18n width budget + dual-edition support
 - [ ] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
 - [ ] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger
@@ -134,11 +134,12 @@ Plans:
   4. The five boot error states (handshake failed / version mismatch / no character / bridge unreachable / token expired) each render a distinct screen with a recovery hint and a `[X]` close gesture (BOOT-01, research Vector C)
   5. At HP=0 the Status HUD pivots to a 3-strike death-saves visual tracker; on a "cast concentration spell while already concentrated" event the overlay slot opens a confirm modal that requires explicit tap to break the previous concentration (DEATH-01 + CONC-01)
 **Plans**: 5 plans (4 waves)
-- [ ] 04B-01-PLAN.md (wave 0) — Overlay slot machinery + Panel API contract + ZIndex.Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amendment 1 + i18n-budgets 28 keys (MAP-05)
-- [ ] 04B-02-PLAN.md (wave 1) — Map mode toggle + Even Hub setLocalStorage persistence + boot read-back (MAP-05)
-- [ ] 04B-03-PLAN.md (wave 2) — Toast queue z=1.5 + FIFO + [+N] squash badge + 3 INV-1 fixtures (TOAST-01)
-- [ ] 04B-04-PLAN.md (wave 2, parallel with 04B-03) — Boot error UI 5 states + bootErrorFromException dispatch + bootEngineWithErrorUi wrapper + 10 INV-1 fixtures (BOOT-01)
-- [ ] 04B-05-PLAN.md (wave 3) — Death-saves StatusHudRenderer pivot + ConcentrationDropModalPanel + CharacterSnapshotSchema.death atomic schema extension + 04b-integration-smoke + 4 INV-1 fixtures (DEATH-01, CONC-01)
+- [x] 04B-01-PLAN.md (wave 0) — Overlay slot machinery + Panel API contract + ZIndex.Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amendment 1 + i18n-budgets 27 keys (MAP-05)
+- [x] 04B-02-PLAN.md (wave 1) — Map mode toggle + Even Hub setLocalStorage persistence + boot read-back (MAP-05)
+- [x] 04B-03-PLAN.md (wave 2) — Toast queue z=1.5 + FIFO + [+N] squash badge + 3 INV-1 fixtures (TOAST-01)
+- [x] 04B-04-PLAN.md (wave 2, parallel with 04B-03) — Boot error UI 5 states + bootErrorFromException dispatch + bootEngineWithErrorUi wrapper + 10 INV-1 fixtures (BOOT-01)
+- [x] 04B-06-PLAN.md (wave 2, parallel with 04B-03 + 04B-04) — Atomic CharacterSnapshotSchema.death + concentration.ts envelope schemas + character-reader extension + 6-file workspace fan-out in single commit (DEATH-01 schema, CONC-01 schema)
+- [x] 04B-05-PLAN.md (wave 3) — Death-saves StatusHudRenderer pivot + ConcentrationDropModalPanel + conc-conflict-dispatcher (B-4) + 04b-integration-smoke ISM-01..10 + 4 INV-1 fixtures (DEATH-01, CONC-01)
 
 ### Phase 5: Panel Plugin System + Read-Only Panels
 **Goal**: Auto-discovered panel plugins render a 6-tab Foundry-faithful character sheet, a combat tracker, log, inventory, and spellbook — all read-only, all dual-edition aware, all i18n-correct.
@@ -255,7 +256,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 2. Foundry Module Core + Pairing UI | 2/5 | In Progress|  |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
-| 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 0/5  | Planned     | - |
+| 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 0/TBD | Not started | - |
 | 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
 | 7. Foundry Module Write Path | 0/TBD | Not started | - |

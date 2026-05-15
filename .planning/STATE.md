@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: planning
-stopped_at: "Phase 4b planning APPROVED 2026-05-15 — 6 plans across 4 waves (CONTEXT + RESEARCH + UI-SPEC + VALIDATION + 6 PLAN drafts + PLAN-CHECK iter-3 APPROVED via orchestrator inline fix for B-2 fan-out). Ready for execution."
+stopped_at: "Phase 4b CLOSED 2026-05-15 — 6/6 plans executed software-side (812/812 tests; MAP-05 + TOAST-01 + BOOT-01 + DEATH-01 + CONC-01 all closed; ADR-0009 Amendment 1 ACCEPTED). Hardware-pending SC carry forward on `human_needed` gate per ADR-0005 PROVISIONAL Branch A (5 stress cases ST-1..ST-5). Phase 5 ready to start (Panel Plugin System; consumes the OverlayPanel API from Phase 4b Plan 01)."
 last_updated: "2026-05-15T20:00:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 15
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 34
-  completed_plans: 28
-  percent: 33
-resume_hint: "/gsd-execute-phase 4b — 6 plans (4 waves): W0 04B-01 overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amendment 1; W1 04B-02 map mode toggle + Even Hub persistence; W2 04B-03 toast queue + 04B-04 boot error UI + 04B-06 atomic schema (parallel, zero overlap); W3 04B-05 death-saves pivot + ConcDropModalPanel + conc-conflict-dispatcher + integration smoke."
+  completed_plans: 34
+  percent: 40
+resume_hint: "/gsd-plan-phase 5 — Phase 5 Panel Plugin System + Read-Only Panels (6-tab Sheet + Combat tracker + Log + Inventory + Spellbook; SHEET-01..04 + COMB-01 + COMB-03 + I18N-02 + I18N-05). Panel API from Phase 4b 04B-01 is the entry contract; Phase 4b Plan 05 ConcentrationDropModalPanel is the working exemplar."
 ---
 
 # Project State
@@ -26,11 +26,34 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 4b (next — unblocked by Phase 4a closure)
-Plan: not yet drafted — start with `/gsd-discuss-phase 4b` or `/gsd-plan-phase 4b`
-Status: READY — Phase 4a complete; ADR-0009 ACCEPTED binds Phases 4a/4b/5 to the layer-manager contract.
+Phase: 5 (next — unblocked by Phase 4b closure)
+Plan: not yet drafted — start with `/gsd-discuss-phase 5` or `/gsd-plan-phase 5`
+Status: READY — Phase 4b complete; OverlayPanel contract (04B-01) is the entry surface for Phase 5 panels; ConcentrationDropModalPanel (04B-05) is the working exemplar.
 
-Last activity: 2026-05-15 — Phase 4a CLOSED via `defer-hardware-tests`:
+Last activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
+  - Planning (3 iterations): NEEDS_REVISION → APPROVED via orchestrator inline fix for B-2 fan-out (commit c6946a7).
+  - Wave 0 Plan 01: overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amd 1 + 27 i18n keys (+46 tests; merged 41d4741).
+  - Wave 1 Plan 02: map mode toggle + Even Hub setLocalStorage persistence + boot read-back SR-11..13 (+17 tests; merged 3faca33).
+  - Wave 2 Plans 03/04/06 (sequential foreground; zero `files_modified` overlap):
+    - 03 ToastQueueLayer z=1.5 + FIFO + [+N] squash + 3 INV-1 fixtures (+25 tests; merged 774da8f).
+    - 04 BootErrorLayer 5 states + dispatch + bootEngineWithErrorUi RETHROW + 10 INV-1 fixtures + B-1 grep gate (+47 tests; merged 8808142).
+    - 06 ATOMIC schema: CharacterSnapshotSchema.death + concentration.ts + character-reader + 6-file workspace fan-out in single commit + CN-9/10 EnvelopeSchema round-trip (+23 tests; merged 510cde5).
+  - Wave 3 Plan 05: StatusHudRenderer death-saves pivot + ConcentrationDropModalPanel (first real OverlayPanel) + conc-conflict-dispatcher (B-4 closure) + 04b-integration-smoke ISM-01..10 (W-4 closure ISM-05) + 4 INV-1 fixtures (+48 tests; merged 2cb9862).
+  - Phase test totals: 669 → 812 (+143 across 6 plans + ADR-0009 Amendment 1 documented). All gates green: typecheck, biome, B-1/W-4 grep gates, 59/59 test files.
+
+Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
+  Phase 4b adds 5 manual-only stress cases to the ADR-0005 carry:
+  6. Overlay slot z=2 panel renders on real G2 without visual artifacts (MAP-05)
+  7. Toast queue survives overlay open under real BLE latency (TOAST-01 + ADR-0009 Amd 1 Rule 2)
+  8. Boot error UI renders correctly across all 5 states on real G2 (BOOT-01)
+  9. Death-saves pivot triggers on real Foundry HP=0 event (DEATH-01)
+  10. Concentration-drop modal emits canonical bridge event consumed by Phase 7 (CONC-01)
+
+Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
+
+Progress: [████████████░░░] 40% (milestone) / Phase 4b: 6/6 plans complete (hardware tests deferred).
+
+Phase 4a closure detail — preserved here for historical reference:
   - Planning revision (3 iterations): NEEDS_REVISION → APPROVED (commit 8ae2533).
   - Wave 0 Plan 01: scaffolding + type contracts + RasterControllerLike (merged 9f0d5ae).
   - Wave 1 Plan 02: engine modules — LayerManager, capability-handshake, page-lifecycle, boot-splash (+27 tests; merged 1dfc128).
