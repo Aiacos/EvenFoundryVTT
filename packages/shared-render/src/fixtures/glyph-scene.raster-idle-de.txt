@@ -1,0 +1,24 @@
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti · raster        RUNDE 3 · ZUG 2/5          ⌁ R1 92%                     ║
+╠═══════════════════════════════════════════════════════════════════╦══════════════════════════╣
+║                                                                   ║ THORIN  F3/W5            ║
+║   ┌─[ tile 1 · 200×100 ]──────┬─[ tile 2 · 200×100 ]──────┐       ║ ────────────────         ║
+║   │ Foundry canvas — upper L  │ Foundry canvas — upper R  │       ║ TP ████████░░            ║
+║   │ Floyd-Steinberg dither    │ Floyd-Steinberg dither    │       ║    45/68  +10t           ║
+║   │ 4-bit greyscale verde     │ 4-bit greyscale verde     │       ║ RK 18  GES 30            ║
+║   │                           │                           │       ║                          ║
+║   │ texture, lighting, walls  │ texture, lighting, walls  │       ║ Akt ░  Bns ░  R░         ║
+║   │ rendered fedeli a Foundry │ rendered fedeli a Foundry │       ║ Bew 30/30                ║
+║   ├─[ tile 3 · 200×100 ]──────┼─[ tile 4 · 200×100 ]──────┤       ║                          ║
+║   │ Foundry canvas — lower L  │                           │       ║ Slots                    ║
+║   │                           │                           │       ║   1° ▓▓░░ 2/4            ║
+║   │                           │                           │       ║   2° ▓░░  1/3            ║
+║   │                           │                           │       ║   3° ░░   0/2            ║
+║   │                           │                           │       ║                          ║
+║   └───────────────────────────┴───────────────────────────┘       ║ Zustände                 ║
+║   ─── z=0.5 idle infill ──────────────────────────────            ║  ▶ Bless (7r)            ║
+║   ⚔ Thorin → Goblin Brute · hit AC 14 · 15 dmg slashing           ║    Concentr.             ║
+║   raster 400×200 · FS+RLE+delta · BLE 240k · 8 fps · [Q]          ║                          ║
+╠═══════════════════════════════════════════════════════════════════╩══════════════════════════╣
+║ R1: scroll=pan  tap=ping  long=quick   Modus: ▶RASTER (toggle GLYPH)  [blatt] [kampf]        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
