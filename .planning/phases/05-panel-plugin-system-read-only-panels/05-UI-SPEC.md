@@ -396,7 +396,7 @@ Canonical INV-1 fixtures: `combat-tracker.full-window.it.txt`, `combat-tracker.p
 ║ │  18  ▶ GOBLIN ARCHER     PF ████░░░░  5/15  CA 13   30m NE   ✕     │   ║ ──────────────── ║
 ║ │  15  ▶ THORIN  ◀ TU      PF ████████ 45/68  CA 18    --      ★     │   ║ PF ████████░░    ║
 ║ │  13    GOBLIN BRUTO      PF ████████ 11/15  CA 14   40m E    ✕     │   ║    45/68  +10t   ║
-║ │  11    LYRA  (gruppo)    PF █████████ 32/32 CA 14   10m O    ★     │   ║ CA 18  VEL 30    ║
+║ │  11    LYRA  (gruppo)    PF ████████ 32/32  CA 14   10m O    ★     │   ║ CA 18  VEL 30    ║
 ║ │   8    CANE OMBRA        PF ███████░ 18/22  CA 12   55m N    ✕     │   ║                  ║
 ║ │                                                                   │   ║ Az. ░  Bns ░  R░ ║
 ║ │  Effetti attivi:                                                  │   ║ Mov 30/30        ║
@@ -418,6 +418,8 @@ Canonical INV-1 fixtures: `combat-tracker.full-window.it.txt`, `combat-tracker.p
 **Combatant row column layout (positions within the 66-char inner content, 0-indexed from first char after `│ `):**
 
 Derived character-by-character from the mockup rows above. All 5 combatant rows were verified to produce identical column positions for every field.
+
+> **Note (INV-3 cross-reference)**: Specs.md §7.6 canonical mockup contains a 1-char typo in the LYRA row (9-`█` HP bar instead of 8). The UI-SPEC mockup above corrects this to 8 chars consistent with the fixed-width column-table contract. Any Specs.md update for v0.9.13+ should harmonize §7.6 LYRA row to 8 bars.
 
 ```
 Cols 0-3:   Initiative (4 chars, right-aligned: " 18", "  8", " 99")
