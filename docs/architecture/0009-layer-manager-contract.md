@@ -1,6 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-05-15
+last_amended: 2026-05-15
 deciders: aiacos (DM/PO/sole-developer)
 consulted: Claude Code (Opus 4.7, planning agent)
 informed: future contributors
@@ -10,7 +11,47 @@ informed: future contributors
 
 ## Status
 
-**PROPOSED** — 2026-05-15. Will move to ACCEPTED in Phase 4a Plan 05 after layer-manager tests are green (capture-container invariant unit tests + atomic bundle smoke test).
+**ACCEPTED** — 2026-05-15. Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), and Phase 5 (Panel Plugin System).
+
+### Confirmation
+
+Plans 02-06 of Phase 4a produced the following test artifacts that prove the
+contract behavior end-to-end:
+
+- `packages/g2-app/src/engine/__tests__/layer-manager.test.ts` — capture-invariant
+  at 0/1/2 capture counts; capability-gate; atomic single-flush bundle (Plan 02).
+- `packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts` — end-to-end boot
+  flow with atomic 3-layer bundle and zero capture-invariant violations + Plan 06
+  `frame_pixels` WS dispatch (SR-1..SR-10; Plan 05).
+- `packages/shared-render/src/fixtures/*.txt` — 9 INV-1 ASCII fixtures locking
+  character-perfect layout across raster/glyph/loading states (Plan 04).
+- `packages/foundry-module/src/canvas-extractor.test.ts` + `packages/g2-app/src/__tests__/scene-input.test.ts`
+  — Foundry PIXI canvas extraction → WS dispatch → `controller.requestFrame` chain
+  (Plan 06; foundry-module test colocated beside source per existing convention,
+  g2-app test under `__tests__/` per package-local convention).
+
+### PROVISIONAL Hardware Gates (ADR-0005 Branch A)
+
+Five Phase 4a success criteria inherit `human_needed` from [ADR-0005](./0005-phase0-go-no-go.md)
+PROVISIONAL Branch A per `04A-VALIDATION.md` §Manual-Only Verifications. The
+software-side contract is fully verified by the unit + smoke tests above; these
+gates close only when real-G2 grants land via `pnpm --filter @evf/validation-harness validate:all`:
+
+1. Capability handshake on real G2 firmware (DISP-01, DISP-02, NAV-04).
+2. Raster sustains ≥5 fps standard / 15 fps stretch with measured BLE p50 latency
+   (MAP-02, MAP-04).
+3. Branch B/C glyph fallback auto-degrades without operator intervention when
+   BLE bandwidth drops below the PROVISIONAL 100 kbps threshold (MAP-04).
+4. INV-1 layout holds character-perfect on the real G2 phosphor display under
+   IT / EN / DE (DISP-03, I18N-04).
+5. PIXI canvas extract via OffscreenCanvas does NOT block Foundry desktop UI
+   (Specs §11.5.7 pitfall 11) — Plan 06 ships the extractor; perf gate stays
+   `human_needed` until a consenting Foundry world drives it.
+
+### Amendments
+
+- _Amendment 1 (reserved):_ Phase 4b `bundle()` composition rules for
+  modal-on-modal (CONC-01 concentration-drop + DEATH-01 death-saves race).
 
 ## Context and Problem Statement
 
