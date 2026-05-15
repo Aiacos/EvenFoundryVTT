@@ -31,6 +31,7 @@
  * @see packages/g2-app/src/__tests__/04b-integration-smoke.test.ts (Phase 4b exemplar)
  * @see docs/architecture/0010-panel-plugin-registry.md (ADR-0010)
  */
+import { resolve } from 'node:path';
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, type CombatSnapshot, SERVER_CAPS_V1 } from '@evf/shared-protocol';
 import { AsciiGrid, matchAsciiFixture } from '@evf/shared-render';
@@ -105,6 +106,20 @@ class StubIdleLayer implements Layer {
   getContainerCount(): { image: number; text: number } {
     return { image: 0, text: 1 };
   }
+}
+
+// ─── Fixture path helper ─────────────────────────────────────────────────────
+
+/**
+ * Absolute path to the shared-render fixtures directory.
+ *
+ * Mirrors the pattern from `character-sheet-panel.test.ts` — resolves
+ * `../../../../shared-render/src/fixtures` relative to `__dirname`
+ * (packages/g2-app/src/__tests__/ → 4 levels up = workspace root,
+ * then down into packages/shared-render/src/fixtures/).
+ */
+function fixtureDir(): string {
+  return resolve(__dirname, '../../../../shared-render/src/fixtures');
 }
 
 // ─── TestablePanelRouter ─────────────────────────────────────────────────────
@@ -657,7 +672,7 @@ describe('Phase 5 INV-1 fixture round-trip (PSM-FIX-*)', () => {
     const output = renderInventoryStandaloneContent(BASE_CHARACTER_SNAPSHOT, 'es', 0);
     await matchAsciiFixture(
       AsciiGrid.fromString(output.join('\n')),
-      'locale-override.stress-es.it.txt',
+      resolve(fixtureDir(), 'locale-override.stress-es.it.txt'),
     );
   });
 
@@ -666,7 +681,7 @@ describe('Phase 5 INV-1 fixture round-trip (PSM-FIX-*)', () => {
     const output = renderInventoryStandaloneContent(BASE_CHARACTER_SNAPSHOT, 'fr', 0);
     await matchAsciiFixture(
       AsciiGrid.fromString(output.join('\n')),
-      'locale-override.stress-fr.it.txt',
+      resolve(fixtureDir(), 'locale-override.stress-fr.it.txt'),
     );
   });
 
@@ -675,14 +690,17 @@ describe('Phase 5 INV-1 fixture round-trip (PSM-FIX-*)', () => {
     const output = renderInventoryStandaloneContent(BASE_CHARACTER_SNAPSHOT, 'pt-br', 0);
     await matchAsciiFixture(
       AsciiGrid.fromString(output.join('\n')),
-      'locale-override.stress-pt-br.it.txt',
+      resolve(fixtureDir(), 'locale-override.stress-pt-br.it.txt'),
     );
   });
 
   it('PSM-FIX-DE-MAIN: CharacterSheetPanel Main tab with locale "de" matches sheet.main.2014.de.txt', async () => {
     const { renderMainTab } = await import('../panels/character-sheet-tab-renderers.js');
     const output = renderMainTab(BASE_CHARACTER_SNAPSHOT, 'de');
-    await matchAsciiFixture(AsciiGrid.fromString(output.join('\n')), 'sheet.main.2014.de.txt');
+    await matchAsciiFixture(
+      AsciiGrid.fromString(output.join('\n')),
+      resolve(fixtureDir(), 'sheet.main.2014.de.txt'),
+    );
   });
 
   it('PSM-FIX-DE-COMBAT: CombatTrackerPanel with locale "de" matches combat-tracker.full-window.de.txt', async () => {
@@ -690,26 +708,35 @@ describe('Phase 5 INV-1 fixture round-trip (PSM-FIX-*)', () => {
     const output = renderCombatTrackerContent(BASE_COMBAT_SNAPSHOT, 'de', 0, 'actor-thorin');
     await matchAsciiFixture(
       AsciiGrid.fromString(output.join('\n')),
-      'combat-tracker.full-window.de.txt',
+      resolve(fixtureDir(), 'combat-tracker.full-window.de.txt'),
     );
   });
 
   it('PSM-FIX-EN-MAIN: CharacterSheetPanel Main tab with locale "en" matches sheet.main.2014.en.txt', async () => {
     const { renderMainTab } = await import('../panels/character-sheet-tab-renderers.js');
     const output = renderMainTab(BASE_CHARACTER_SNAPSHOT, 'en');
-    await matchAsciiFixture(AsciiGrid.fromString(output.join('\n')), 'sheet.main.2014.en.txt');
+    await matchAsciiFixture(
+      AsciiGrid.fromString(output.join('\n')),
+      resolve(fixtureDir(), 'sheet.main.2014.en.txt'),
+    );
   });
 
   it('PSM-FIX-EN-SKILLS: CharacterSheetPanel Skills tab with locale "en" matches sheet.skills.en.txt', async () => {
     const { renderSkillsTab } = await import('../panels/character-sheet-tab-renderers.js');
     const output = renderSkillsTab(BASE_CHARACTER_SNAPSHOT, 'en', 0);
-    await matchAsciiFixture(AsciiGrid.fromString(output.join('\n')), 'sheet.skills.en.txt');
+    await matchAsciiFixture(
+      AsciiGrid.fromString(output.join('\n')),
+      resolve(fixtureDir(), 'sheet.skills.en.txt'),
+    );
   });
 
   it('PSM-FIX-ES-INV: standalone InventoryPanel with locale "es" matches inventory.2014.es.txt', async () => {
     const { renderInventoryStandaloneContent } = await import('../panels/inventory-panel.js');
     const output = renderInventoryStandaloneContent(BASE_CHARACTER_SNAPSHOT, 'es', 0);
-    await matchAsciiFixture(AsciiGrid.fromString(output.join('\n')), 'inventory.2014.es.txt');
+    await matchAsciiFixture(
+      AsciiGrid.fromString(output.join('\n')),
+      resolve(fixtureDir(), 'inventory.2014.es.txt'),
+    );
   });
 });
 
