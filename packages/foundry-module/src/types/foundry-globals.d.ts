@@ -424,6 +424,23 @@ interface FoundryCollection<T> {
   contents: T[];
 }
 
+/**
+ * Minimal Foundry ChatMessage shape used by log-reader.ts.
+ *
+ * Only the fields accessed by the log reader are declared here.
+ * Typed defensively — all fields that may be absent are optional.
+ *
+ * @see packages/foundry-module/src/readers/log-reader.ts
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Assumption A4
+ */
+interface FoundryChatMessage {
+  id: string;
+  timestamp?: number;
+  speaker?: { alias?: string };
+  flags?: Record<string, unknown>;
+  rolls?: Array<{ total?: number }>;
+}
+
 /** Foundry game singleton — available globally after the "init" hook fires. */
 declare const game: {
   settings: FoundrySettings;
@@ -432,6 +449,8 @@ declare const game: {
   actors: FoundryCollection<FoundryActor>;
   /** Active combat encounter (null when no combat is active). */
   combat: FoundryCombat | null;
+  /** Chat message collection (Phase 5 — log-reader.ts). */
+  messages: FoundryCollection<FoundryChatMessage>;
   /** All scene documents in the active world. */
   scenes: FoundryCollection<FoundryScene> & { active: FoundryScene | null };
   /** The current logged-in user. */

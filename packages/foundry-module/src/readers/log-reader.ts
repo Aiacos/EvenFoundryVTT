@@ -113,23 +113,34 @@ function detectKindAndResult(message: ChatMessageLike): {
       const total = getFirstRollTotal(message);
       // Heuristic: critical hit → hit; otherwise can't know without target CA.
       // Default to 'hit' when total is present, otherwise omit result.
-      const result: LogEventResult | undefined =
+      const attackResult: LogEventResult | undefined =
         total !== undefined ? { kind: 'hit', value: total } : undefined;
-      return { kind: 'attack', result };
+      return {
+        kind: 'attack',
+        ...(attackResult !== undefined ? { result: attackResult } : {}),
+      };
     }
 
     if (rollType === 'damage') {
       const total = getFirstRollTotal(message);
       const damage = total !== undefined ? String(total) : undefined;
-      return { kind: 'damage', result: damage !== undefined ? { kind: 'hit', damage } : undefined };
+      const damageResult: LogEventResult | undefined =
+        damage !== undefined ? { kind: 'hit', damage } : undefined;
+      return {
+        kind: 'damage',
+        ...(damageResult !== undefined ? { result: damageResult } : {}),
+      };
     }
 
     if (rollType === 'save') {
       const total = getFirstRollTotal(message);
       // Without knowing the DC we can't determine pass/fail — default to 'pass'.
-      const result: LogEventResult | undefined =
+      const saveResult: LogEventResult | undefined =
         total !== undefined ? { kind: 'pass', value: total } : undefined;
-      return { kind: 'roll', result };
+      return {
+        kind: 'roll',
+        ...(saveResult !== undefined ? { result: saveResult } : {}),
+      };
     }
 
     if (typeof useType === 'string') {
@@ -157,13 +168,12 @@ function detectKindAndResult(message: ChatMessageLike): {
  * @returns Array of {@link LogEvent} objects, oldest-first.
  */
 export function getLogEventTail(maxCount = 50): LogEvent[] {
-  // Defensive: game.messages may be undefined in test environments.
-  const messages =
-    typeof game !== 'undefined' &&
-    game.messages !== undefined &&
-    game.messages !== null &&
-    'contents' in game.messages
-      ? (game.messages as { contents: ChatMessageLike[] }).contents
+  // Defensive: game is declared as a module-level global but may be undefined
+  // in test environments (vitest stubs game via vi.stubGlobal).
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const messages: ChatMessageLike[] =
+    typeof game !== 'undefined' && game.messages != null
+      ? (game.messages.contents as ChatMessageLike[])
       : [];
 
   const tail = messages.slice(-maxCount);

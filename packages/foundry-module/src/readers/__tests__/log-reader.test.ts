@@ -53,7 +53,7 @@ function makeMessage(
   };
 }
 
-function stubGameMessages(messages: ReturnType<typeof makeMessage>[]) {
+function stubGameMessages(messages: unknown[]) {
   vi.stubGlobal('game', {
     messages: {
       contents: messages,
