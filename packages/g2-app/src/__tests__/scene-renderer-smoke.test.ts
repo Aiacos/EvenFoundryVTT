@@ -47,15 +47,23 @@ import { createMockWorker, type MockWorker } from './test-helpers/worker-mock.js
 
 // ─── Mock EvenAppBridge ───────────────────────────────────────────────────────
 
-function makeMockBridge() {
+/** Options for `makeMockBridge` — Phase 4b Plan 02 adds the kv-store override hooks. */
+interface MockBridgeOptions {
+  /** Override the default getLocalStorage resolver (Phase 4b Plan 02: SR-11..13 override path). */
+  readonly getLocalStorageImpl?: (key: string) => Promise<string>;
+}
+
+function makeMockBridge(opts: MockBridgeOptions = {}) {
   const createStartUpPageContainer = vi.fn().mockResolvedValue(StartUpPageCreateResult.success);
   const rebuildPageContainer = vi.fn().mockResolvedValue(true);
   const textContainerUpgrade = vi.fn().mockResolvedValue(true);
   const updateImageRawData = vi.fn().mockResolvedValue(ImageRawDataUpdateResult.success);
   const shutDownPageContainer = vi.fn().mockResolvedValue(true);
   // hub-polyfill calls these on getInstance(); provide light stubs.
+  // Phase 4b Plan 02: bootEngine step 9b reads view.map.mode via getLocalStorage;
+  // SR-11/12/13 inject a custom resolver to exercise the override path.
   const setLocalStorage = vi.fn().mockResolvedValue(undefined);
-  const getLocalStorage = vi.fn().mockResolvedValue('');
+  const getLocalStorage = vi.fn(opts.getLocalStorageImpl ?? (async () => ''));
   const onDeviceStatusChanged = vi.fn();
   const bridge = {
     createStartUpPageContainer,
@@ -74,6 +82,8 @@ function makeMockBridge() {
     textContainerUpgrade,
     updateImageRawData,
     shutDownPageContainer,
+    setLocalStorage,
+    getLocalStorage,
   };
 }
 
@@ -181,8 +191,11 @@ function validHandshakeServerJSON(): string {
  * Returns the boot handle + the mocks so individual tests can assert call
  * counts. Uses `vi.useFakeTimers()` for debounce / heartbeat determinism.
  */
-async function bootWithMocks(extraDeps: Partial<TestingDependencies> = {}) {
-  const { bridge, ...bridgeSpies } = makeMockBridge();
+async function bootWithMocks(
+  extraDeps: Partial<TestingDependencies> = {},
+  bridgeOpts: MockBridgeOptions = {},
+) {
+  const { bridge, ...bridgeSpies } = makeMockBridge(bridgeOpts);
   const ws = makeMockSocket();
 
   const deps: TestingDependencies = {
@@ -401,6 +414,76 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
     expect(bootEngine).not.toBe(bootEngineForTest);
     expect(typeof bootEngine).toBe('function');
     expect(typeof bootEngineForTest).toBe('function');
+  });
+
+  // ─── Phase 4b Plan 02 — boot-time persisted map mode override (MAP-05 boot read-back)
+  //
+  // SR-11/12/13 exercise the bootEngine step-9b override branch: after the BLE
+  // probe verdict is captured at step 9, bootEngine reads `view.map.mode` from
+  // Even Hub kv store via `loadPersistedMapMode(bridge)`. If the persisted
+  // value is 'raster' or 'glyph', it OVERRIDES the BLE verdict; 'auto' (or
+  // missing key, or read rejection — all defensively coerce to 'auto') lets
+  // the BLE verdict win.
+  //
+  // The synthetic boot path with `probeBleThroughput(0, 0)` returns 'auto'
+  // (Phase 4a behaviour — zero-duration probes yield 'auto'). So:
+  //   - SR-11: persisted 'glyph' → override wins → final mapMode === 'glyph'
+  //   - SR-12: persisted 'auto'  → both are 'auto' → final mapMode === 'auto'
+  //   - SR-13: read rejection    → defensive 'auto' → final mapMode === 'auto'
+
+  it("SR-11: persisted view.map.mode='glyph' overrides BLE 'auto' verdict", async () => {
+    const { handle, bridgeSpies } = await bootWithMocks(
+      {},
+      {
+        getLocalStorageImpl: async (key: string) => {
+          if (key === 'view.map.mode') return 'glyph';
+          return '';
+        },
+      },
+    );
+    // bootEngine read the persisted mode via getLocalStorage('view.map.mode').
+    expect(bridgeSpies.getLocalStorage).toHaveBeenCalledWith('view.map.mode');
+    // The final layerManager mode is 'glyph' (overridden from 'auto').
+    expect(handle.layerManager.getMapMode()).toBe('glyph');
+    // The raster controller's verdict is 'glyph' (called by the override branch
+    // since the persisted value is in the raster|glyph whitelist).
+    expect(handle.rasterController.getBleVerdict()).toBe('glyph');
+    handle.teardown();
+  });
+
+  it("SR-12: persisted view.map.mode='auto' lets BLE verdict win (also 'auto')", async () => {
+    const { handle, bridgeSpies } = await bootWithMocks(
+      {},
+      {
+        getLocalStorageImpl: async (key: string) => {
+          if (key === 'view.map.mode') return 'auto';
+          return '';
+        },
+      },
+    );
+    expect(bridgeSpies.getLocalStorage).toHaveBeenCalledWith('view.map.mode');
+    // Both BLE verdict and persisted value are 'auto' → final mode 'auto'.
+    expect(handle.layerManager.getMapMode()).toBe('auto');
+    // setBleVerdict was NOT called (BLE 'auto' branch skips setBleVerdict per
+    // Phase 4a step 9 contract; the override branch also skips for 'auto').
+    expect(handle.rasterController.getBleVerdict()).toBeNull();
+    handle.teardown();
+  });
+
+  it("SR-13: getLocalStorage rejection → defensive 'auto', BLE verdict wins", async () => {
+    const { handle } = await bootWithMocks(
+      {},
+      {
+        getLocalStorageImpl: async () => {
+          throw new Error('simulated kv read failure');
+        },
+      },
+    );
+    // loadPersistedMapMode caught the rejection and returned 'auto'.
+    // BLE verdict ('auto') wins; final mode is 'auto', verdict is null.
+    expect(handle.layerManager.getMapMode()).toBe('auto');
+    expect(handle.rasterController.getBleVerdict()).toBeNull();
+    handle.teardown();
   });
 });
 
