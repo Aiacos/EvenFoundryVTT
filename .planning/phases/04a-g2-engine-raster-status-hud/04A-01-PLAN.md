@@ -15,14 +15,14 @@ files_modified:
   - docs/architecture/0009-layer-manager-contract.md
   - .changeset/phase-04a-engine-raster.md
 autonomous: true
-requirements: [DISP-02]
+requirements: [DISP-02]  # type-contract precondition only — LayerManagerErrorCode union + RasterControllerLike forward contract; behavioral runtime enforcement is in Plan 02
 user_setup: []
 tags: [g2-app, scaffolding, adr-0009, layer-manager, wave-0]
 must_haves:
   truths:
     - "image-q@4.0.0, upng-js@2.1.0, xxhash-wasm@1.1.0 are installed in packages/g2-app/package.json dependencies"
     - "ADR-0009 file exists at docs/architecture/0009-layer-manager-contract.md with status: proposed and MADR template structure"
-    - "layer-types.ts exports ZIndex enum (Z0_MAP, Z0_5_IDLE_INFILL, Z1_STATUS_HUD, Z2_OVERLAY), Layer interface, LayerOp tagged union, LayerManagerError class with code discriminator"
+    - "layer-types.ts exports ZIndex enum (Z0_MAP, Z0_5_IDLE_INFILL, Z1_STATUS_HUD, Z2_OVERLAY), Layer interface, LayerOp tagged union, LayerManagerError class with code discriminator, RasterControllerLike interface (type-only contract Plan 03 implements), RasterRequest/RasterResponse interfaces"
     - "All three test directories exist (engine/__tests__, raster/__tests__, status-hud/__tests__)"
     - "Worker-mock test helper exposes OffscreenCanvas + postMessage stubs for happy-dom"
     - "pnpm install --frozen-lockfile && pnpm typecheck exit 0"
@@ -31,8 +31,8 @@ must_haves:
       provides: "dependencies for image-q, upng-js, xxhash-wasm at exact pinned versions"
       contains: "\"image-q\": \"4.0.0\""
     - path: "packages/g2-app/src/engine/layer-types.ts"
-      provides: "ZIndex enum + Layer interface + LayerOp + LayerManagerError — interface contracts for downstream plans"
-      exports: ["ZIndex", "Layer", "LayerOp", "LayerManagerError", "LayerManagerErrorCode"]
+      provides: "ZIndex enum + Layer interface + LayerOp + LayerManagerError + RasterControllerLike interface stub + RasterRequest/RasterResponse — interface contracts for downstream plans"
+      exports: ["ZIndex", "Layer", "LayerOp", "LayerManagerError", "LayerManagerErrorCode", "RasterControllerLike", "RasterRequest", "RasterResponse", "RasterFrameInput"]
     - path: "docs/architecture/0009-layer-manager-contract.md"
       provides: "MADR ADR scaffold for Layer Manager contract; status=proposed; ACCEPTED in Plan 05"
       contains: "ADR-0009: Layer Manager Contract"
@@ -71,9 +71,13 @@ threat_model:
 <objective>
 Land all Phase 4a Wave 0 scaffolding so subsequent plans (02–05) can execute against stable contracts.
 
-Purpose: This plan is the interface-first foundation — it produces the type contracts (ZIndex, Layer, LayerOp), ADR-0009 scaffold, npm dependencies, and test directory structure that Plans 02–05 consume without re-discovery. No runtime behavior is added.
+Purpose: This plan is the interface-first foundation — it produces the type contracts (ZIndex, Layer, LayerOp, RasterControllerLike, RasterRequest/Response), ADR-0009 scaffold, npm dependencies, and test directory structure that Plans 02–05 consume without re-discovery. No runtime behavior is added.
 
-Output: 9 files committed; pnpm typecheck green; downstream plans have ZIndex enum, Layer interface, LayerManagerError, ADR-0009 file path, and Worker mock test helper available as imports.
+REVISION 1 (2026-05-15) — per 04A-PLAN-CHECK.md B-1 + B-4:
+- B-1: Reframed DISP-02 coverage. Plan 01 retains DISP-02 in `requirements` but ONLY as a *type-contract precondition* — the LayerManagerErrorCode union (containing the literal `capture_invariant_violated`) and the RasterControllerLike interface are the type-level basis Plan 02 builds its runtime enforcement on. Plan 02 owns the behavioral enforcement (LayerManager.mount/destroy/bundle invariant tests). The B-1 framing fix is the explicit "partial / precondition" note + the adversarial typecheck test in Plan 04 (IB-6) that proves the build-time gate on I18N-04 catches budget-busting strings. Coverage is intentionally overlapping across Plans 01/02/04/05 for DISP-02 (each contributes a different layer of the same invariant).
+- B-4: Added type-only `RasterControllerLike` interface (forward contract that Plan 03 Task 3 implements). Plan 03 Task 2 can now `import type { RasterControllerLike }` from layer-types.ts and avoid the forward import cycle on `RasterController` from raster-controller.ts (which lands in Task 3 of the same plan). Concrete class still ships in Plan 03 Task 3.
+
+Output: 9 files committed; pnpm typecheck green; downstream plans have ZIndex enum, Layer interface, LayerManagerError, RasterControllerLike interface stub, ADR-0009 file path, and Worker mock test helper available as imports.
 </objective>
 
 <execution_context>
@@ -115,6 +119,10 @@ ZIndex values per CONTEXT.md Area 1 + UI-SPEC §Layout Grid (use these literals)
 
 LayerManagerErrorCode union per CONTEXT.md Area 1 + PATTERNS.md layer-types.ts analog:
 - 'capture_invariant_violated' | 'capability_gate_denied' | 'z_already_occupied' | 'z_not_mounted'
+
+RasterControllerLike interface (NEW per B-4) — type-only forward contract Plan 03 Task 3 implements:
+- `interface RasterControllerLike { requestFrame(pixelData, width, height): Promise<RasterResponse>; setBleVerdict(v: 'raster'|'glyph'): void; getBleVerdict(): 'raster'|'glyph'|null; startIdleHeartbeat(getScene: () => Uint8ClampedArray | null): void; stopIdleHeartbeat(): void; terminate(): void }`
+- Used by Plan 03 Task 2 (MapBaseLayer) for type-only `import type { RasterControllerLike }`. Plan 03 Task 3 produces the concrete `class RasterController implements RasterControllerLike`.
 </interfaces>
 </context>
 
@@ -147,7 +155,7 @@ LayerManagerErrorCode union per CONTEXT.md Area 1 + PATTERNS.md layer-types.ts a
 </task>
 
 <task type="auto" tdd="false">
-  <name>Task 2: Create layer-types.ts interface contracts + ADR-0009 scaffold + test directories + worker-mock</name>
+  <name>Task 2: Create layer-types.ts interface contracts (including RasterControllerLike type-only stub per B-4) + ADR-0009 scaffold + test directories + worker-mock</name>
   <read_first>
     - packages/g2-app/src/wizard/state.ts (lines 1-105 — analog for module JSDoc header + enum + interface + Store pattern; PATTERNS.md `layer-types.ts` analog)
     - packages/shared-protocol/src/handshake.ts (lines 56-65 — SERVER_CAPS_V1 + ServerCap export shape)
@@ -156,6 +164,7 @@ LayerManagerErrorCode union per CONTEXT.md Area 1 + PATTERNS.md layer-types.ts a
     - packages/g2-app/vitest.config.ts (current happy-dom environment config)
     - .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §`packages/g2-app/src/engine/layer-types.ts` (exact analog snippet with imports + enum + interface + LayerOp + error class shape)
     - .planning/phases/04a-g2-engine-raster-status-hud/04A-VALIDATION.md §Wave 0 Requirements (the 6-item checklist this task closes)
+    - .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-4 (the forward-import-cycle issue this task resolves by adding type-only RasterControllerLike contract)
   </read_first>
   <files>
     packages/g2-app/src/engine/layer-types.ts,
@@ -175,6 +184,22 @@ LayerManagerErrorCode union per CONTEXT.md Area 1 + PATTERNS.md layer-types.ts a
        - `type LayerOp = { type: 'mount'; z: ZIndex; layer: Layer; requiredCaps?: ReadonlyArray<ServerCap> } | { type: 'destroy'; z: ZIndex }` (note `requiredCaps` to support Plan 02 capability gating)
        - `type LayerManagerErrorCode = 'capture_invariant_violated' | 'capability_gate_denied' | 'z_already_occupied' | 'z_not_mounted'`
        - `class LayerManagerError extends Error { constructor(public readonly code: LayerManagerErrorCode, message: string) { super(message); this.name = 'LayerManagerError' } }`
+       - **NEW per B-4:** Type-only forward contract for the raster controller so Plan 03 Task 2 (MapBaseLayer) can import the contract type without depending on Task 3's implementation file:
+         ```
+         export interface RasterRequest { frameId: number; pixelData: Uint8ClampedArray | ImageData; width: number; height: number; isInitial?: boolean }
+         export interface RasterChangedTile { index: 0 | 1 | 2 | 3; pngBytes: Uint8Array; subTileCount: number }
+         export interface RasterResponse { frameId: number; changedTiles: RasterChangedTile[]; skipped?: boolean; error?: { stage: string; message: string } }
+         export type RasterFrameInput = { pixelData: Uint8ClampedArray; width: number; height: number }
+         export interface RasterControllerLike {
+           requestFrame(pixelData: Uint8ClampedArray | ImageData, width: number, height: number): Promise<RasterResponse>;
+           setBleVerdict(v: 'raster' | 'glyph'): void;
+           getBleVerdict(): 'raster' | 'glyph' | null;
+           startIdleHeartbeat(getCurrentScene: () => Uint8ClampedArray | null): void;
+           stopIdleHeartbeat(): void;
+           terminate(): void;
+         }
+         ```
+         TSDoc must mark `RasterControllerLike` with `@see packages/g2-app/src/raster/raster-controller.ts` (Plan 03 Task 3 produces the concrete `class RasterController implements RasterControllerLike`) and cite ADR-0009 §Confirmation + 04A-PLAN-CHECK.md B-4 as the rationale for type-only forward declaration.
 
        Import `type { ServerCap }` from `@evf/shared-protocol`. No runtime behavior; types only. The file MUST type-check standalone under TS strict + noUncheckedIndexedAccess.
 
@@ -193,10 +218,10 @@ LayerManagerErrorCode union per CONTEXT.md Area 1 + PATTERNS.md layer-types.ts a
     No runtime imports of these files from non-test code yet — Plans 02-04 will import them.
   </action>
   <verify>
-    <automated>test -f packages/g2-app/src/engine/layer-types.ts && test -f docs/architecture/0009-layer-manager-contract.md && test -f packages/g2-app/src/__tests__/test-helpers/worker-mock.ts && test -f packages/g2-app/src/engine/__tests__/.gitkeep && test -f packages/g2-app/src/raster/__tests__/.gitkeep && test -f packages/g2-app/src/status-hud/__tests__/.gitkeep && grep -c 'export enum ZIndex' packages/g2-app/src/engine/layer-types.ts && grep -c 'Z0_5_IDLE_INFILL = 0.5' packages/g2-app/src/engine/layer-types.ts && grep -c 'export interface Layer' packages/g2-app/src/engine/layer-types.ts && grep -c 'capture_invariant_violated' packages/g2-app/src/engine/layer-types.ts && grep -c 'export class LayerManagerError' packages/g2-app/src/engine/layer-types.ts && grep -c '^status: proposed' docs/architecture/0009-layer-manager-contract.md && grep -c 'ADR-0009: Layer Manager Contract' docs/architecture/0009-layer-manager-contract.md && pnpm typecheck</automated>
+    <automated>test -f packages/g2-app/src/engine/layer-types.ts && test -f docs/architecture/0009-layer-manager-contract.md && test -f packages/g2-app/src/__tests__/test-helpers/worker-mock.ts && test -f packages/g2-app/src/engine/__tests__/.gitkeep && test -f packages/g2-app/src/raster/__tests__/.gitkeep && test -f packages/g2-app/src/status-hud/__tests__/.gitkeep && grep -c 'export enum ZIndex' packages/g2-app/src/engine/layer-types.ts && grep -c 'Z0_5_IDLE_INFILL = 0.5' packages/g2-app/src/engine/layer-types.ts && grep -c 'export interface Layer' packages/g2-app/src/engine/layer-types.ts && grep -c 'capture_invariant_violated' packages/g2-app/src/engine/layer-types.ts && grep -c 'export class LayerManagerError' packages/g2-app/src/engine/layer-types.ts && grep -c 'export interface RasterControllerLike' packages/g2-app/src/engine/layer-types.ts && grep -c 'export interface RasterResponse' packages/g2-app/src/engine/layer-types.ts && grep -c '^status: proposed' docs/architecture/0009-layer-manager-contract.md && grep -c 'ADR-0009: Layer Manager Contract' docs/architecture/0009-layer-manager-contract.md && pnpm typecheck</automated>
   </verify>
   <done>
-    All six file existence checks pass; all grep counts >= 1 (proves enum members, error union, ADR status frontmatter, and ADR title are present); `pnpm typecheck` exits 0 against the new types.
+    All six file existence checks pass; all grep counts >= 1 (proves enum members, error union, RasterControllerLike + RasterResponse type contracts present, ADR status frontmatter, and ADR title); `pnpm typecheck` exits 0 against the new types.
   </done>
 </task>
 
@@ -224,6 +249,7 @@ After both tasks complete:
 - `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint:ci` all exit 0
 - `grep -c '"image-q": "4.0.0"' packages/g2-app/package.json` returns 1
 - `grep -c 'export enum ZIndex' packages/g2-app/src/engine/layer-types.ts` returns 1
+- `grep -c 'export interface RasterControllerLike' packages/g2-app/src/engine/layer-types.ts` returns 1 (B-4 mitigation: type-only forward contract for Plan 03 Task 2 to import without depending on Task 3 raster-controller.ts file)
 - ADR-0009 file exists with `status: proposed` frontmatter
 - Three test directories exist with .gitkeep markers
 - Worker-mock helper exports `createMockOffscreenCanvas` and `createMockWorker`
@@ -232,16 +258,18 @@ After both tasks complete:
 <success_criteria>
 Plan 01 closes when:
 - 9 files committed (package.json, lockfile, layer-types.ts, 3× .gitkeep, worker-mock.ts, ADR-0009, changeset)
-- DISP-02 partially addressed (capture-invariant contract codified in LayerManagerErrorCode union; enforcement in Plan 02)
+- DISP-02 partially addressed (type-contract precondition only; LayerManagerErrorCode union + RasterControllerLike forward contract are the type-level basis for Plan 02 runtime enforcement)
 - All 6 items in 04A-VALIDATION.md §Wave 0 Requirements satisfied except fixture files (those land in Plan 04)
 - ADR-0009 scaffolded as `proposed`; transition to `accepted` happens in Plan 05
-- Plans 02-04 can `import type { ZIndex, Layer, LayerOp, LayerManagerError } from '../engine/layer-types.ts'` without ambiguity
+- Plans 02-04 can `import type { ZIndex, Layer, LayerOp, LayerManagerError, RasterControllerLike, RasterRequest, RasterResponse, RasterFrameInput } from '../engine/layer-types.ts'` without ambiguity
+- B-4 forward-import cycle mitigated: Plan 03 Task 2 (MapBaseLayer) imports `RasterControllerLike` from layer-types.ts (type-only), Plan 03 Task 3 implements the concrete class
 </success_criteria>
 
 <output>
 After completion, create `.planning/phases/04a-g2-engine-raster-status-hud/04a-01-SUMMARY.md` capturing:
 - Final pinned versions for image-q, upng-js, xxhash-wasm (confirm match RESEARCH.md)
 - ADR-0009 status (proposed) and the Plan 05 ACCEPT trigger
+- RasterControllerLike interface signature delivered (per B-4 revision) — note that Plan 03 Task 2 imports type-only, Task 3 implements
 - Any deviation from the analog pattern (e.g., if docs/architecture/README.md format required reshaping the ADR row)
 - pnpm typecheck output confirming the new types compile under strict mode
 </output>
