@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: in_progress
-stopped_at: Phase 5 Plan 01 complete (Wave 0 foundation)
-last_updated: "2026-05-15T19:32:08Z"
-last_activity: "2026-05-15 — Phase 5 Plan 01 (Wave 0): PanelRouter + i18n + schema extensions"
+status: IN_PROGRESS — Plan 01 Wave-0 foundation committed; Plans 02-06 unblocked as READ-ONLY consumers.
+stopped_at: Phase 5 Plan 01 complete — 05-01-SUMMARY.md committed
+last_updated: "2026-05-15T19:44:38.825Z"
+last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 35
   completed_plans: 31
-  percent: 41
+  percent: 40
 ---
 
 # Project State
@@ -52,7 +52,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [████████████░░░] 40% (milestone) / Phase 4b: 6/6 plans complete (hardware tests deferred).
+Progress: [█████████░] 89%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -182,9 +182,9 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-15T19:32:08Z
+Last session: 2026-05-15T19:44:38.816Z
 Stopped at: Phase 5 Plan 01 complete — 05-01-SUMMARY.md committed
-Resume file: .planning/phases/05-panel-plugin-system-read-only-panels/05-02-PLAN.md
+Resume file: None
 Resume cmd: /gsd-execute-phase 5 02
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint

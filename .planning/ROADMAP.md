@@ -151,13 +151,13 @@ Plans:
   3. Combat tracker shows current turn, initiative order, effects, and concentration source+duration; quick-action bar `[A][S][I][M]` is visible on Combat overlay (COMB-01 + COMB-03)
   4. Quick Action `[N] Language` overrides locale device-local without touching Foundry world settings; with IT + EN canonical strings all sheet panels render within the width budget; DE/ES/FR/PT-BR best-effort renders without layout break (I18N-02 + I18N-05)
   5. Adding a new mock panel takes ≤5 minutes via `import.meta.glob` auto-discovery without touching core (Panel API contract verified)
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 Plans:
 **Wave 0**
 - [x] 05-01-PLAN.md — PanelRouter + import.meta.glob discovery + PanelMetaSchema + LOCALE_MENU + HUD_WIDTH_BUDGETS Phase 5 extension (~82 keys) + widened HudLocale + per-key EN fallback + CharacterSnapshotSchema.world.modernRules + CombatantSchema.concentration + character/combat reader extensions + ADR-0010 (architecture + atomic foundation)
 
 **Wave 1** *(blocked on Wave 0)*
-- [ ] 05-02-PLAN.md — CharacterSheetPanel skeleton: 6-tab state machine + buildTabStrip + view.sheet.lastTab persistence + 6 INV-1 tab-strip fixtures (SHEET-01, SHEET-04)
+- [x] 05-02-PLAN.md — CharacterSheetPanel skeleton: 6-tab state machine + buildTabStrip + view.sheet.lastTab persistence + 6 INV-1 tab-strip fixtures (SHEET-01, SHEET-04)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 05-03-PLAN.md — CharacterSheet tab renderers: Main/Skills/Feats/Bio per-tab pure functions + dispatcher + dual-edition branches + 6 INV-1 fixtures (SHEET-02, SHEET-03)
@@ -273,7 +273,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
-| 5. Panel Plugin System + Read-Only Panels | 1/6 | In Progress|  |
+| 5. Panel Plugin System + Read-Only Panels | 2/6 | In Progress|  |
 | 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
 | 7. Foundry Module Write Path | 0/TBD | Not started | - |
 | 8. Manual Action UX | 0/TBD | Not started | - |
