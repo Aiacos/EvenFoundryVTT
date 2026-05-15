@@ -265,6 +265,44 @@ describe('LogPanel — gesture bus lifecycle (T-4b-01-03)', () => {
   });
 });
 
+// ─── WR-04 regression: renderLogFilterBar wired into renderLogContent ────────
+
+describe('renderLogContent — WR-04 filter bar wiring', () => {
+  it('WR-04-ALL-FILTER: activeFilter="all" → no filter bar row (fixtures unchanged)', () => {
+    const events: LogEvent[] = [makeEvent({ id: 'e1' })];
+    const snapshot: LogSnapshot = { events };
+    const rows = renderLogContent(snapshot, 'it', 0, FIXED_NOW, 'all');
+    // Row 0 must be the title border ┌─── ...
+    expect(rows[0]).toContain('┌');
+    // Should NOT contain the filter bar format (▶TUTTI)
+    const joined = rows.join('\n');
+    expect(joined).not.toContain('▶TUTTI');
+    expect(rows).toHaveLength(18);
+  });
+
+  it('WR-04-ROLLS-FILTER: activeFilter="rolls" → filter bar row renders after title (no dead code)', () => {
+    const events: LogEvent[] = [makeEvent({ id: 'e1' })];
+    const snapshot: LogSnapshot = { events };
+    const rows = renderLogContent(snapshot, 'it', 0, FIXED_NOW, 'rolls');
+    // renderLogFilterBar must have been called — output should contain filter labels
+    const joined = rows.join('\n');
+    // Filter bar contains 'Tiri' or 'Rolls' (locale-specific label for rolls filter)
+    expect(joined).toContain('REGISTRO EVENTI');
+    expect(rows).toHaveLength(18);
+    // The second row (index 1) should come from renderLogFilterBar (contains '───')
+    expect(rows[1]).toContain('───');
+  });
+
+  it('WR-04-WIDTH-ROWS: all rows exactly 66 code-points when filter active', () => {
+    const events: LogEvent[] = [makeEvent({ id: 'e1' })];
+    const snapshot: LogSnapshot = { events };
+    const rows = renderLogContent(snapshot, 'it', 0, FIXED_NOW, 'damage');
+    for (const [i, row] of rows.entries()) {
+      expect([...row].length, `row ${i} width`).toBe(66);
+    }
+  });
+});
+
 // ─── WR-02 regression: scrollOffset upper-bound clamp in LogPanel ─────────────
 
 describe('LogPanel — WR-02 scrollOffset clamping', () => {

@@ -229,11 +229,12 @@ export function renderLogFilterBar(activeFilter: LogFilter, locale: HudLocale): 
  * Render the full 18-row content area for the LogPanel.
  *
  * Row structure:
- * 1. Title + filter bar (combined first row)
- * 2. Log event rows (1-2 rows each; scrollOffset shifts the visible window)
- * 3. Scroll hint row
- * 4. Bottom border
- * 5. Remaining rows padded with spaces
+ * 1. Title border row (`┌─── REGISTRO EVENTI ... ┐`)
+ * 2. Filter bar row (WR-04: inserted when `activeFilter !== 'all'` — shows active selection)
+ * 3. Log event rows (1-2 rows each; scrollOffset shifts the visible window)
+ * 4. Scroll hint row
+ * 5. Bottom border
+ * 6. Remaining rows padded with spaces
  *
  * Empty state: 18 rows with centered `log.empty` message.
  *
@@ -241,16 +242,24 @@ export function renderLogFilterBar(activeFilter: LogFilter, locale: HudLocale): 
  * @param locale       Active HUD locale.
  * @param scrollOffset Scroll offset applied to the event window.
  * @param nowEpoch     Reference epoch for relative timestamps (ms).
+ * @param activeFilter Active log filter (default 'all' — Phase 5 always 'all').
+ *                     When not 'all', a filter bar row is rendered below the title.
  */
 export function renderLogContent(
   snapshot: LogSnapshot | null,
   locale: HudLocale,
   scrollOffset: number,
   nowEpoch: number,
+  activeFilter: LogFilter = 'all',
 ): string[] {
   const topBorder = `${_pad(`┌─── ${getLabel('log.panel_title', locale)} `, INNER_WIDTH - 1)}┐`;
   const bottomBorder = `└${'─'.repeat(INNER_WIDTH - 2)}┘`;
   const blankRow = ' '.repeat(INNER_WIDTH);
+
+  // WR-04 fix: renderLogFilterBar is now wired here — rendered as the row immediately
+  // after the title when a non-default filter is active. For 'all' (Phase 5 default),
+  // the filter bar is omitted so the fixture output is unchanged.
+  const filterRow = activeFilter !== 'all' ? renderLogFilterBar(activeFilter, locale) : null;
 
   if (snapshot === null || snapshot.events.length === 0) {
     // Empty state — centered `log.empty` message
@@ -259,6 +268,7 @@ export function renderLogContent(
     const centeredRow = _pad(' '.repeat(paddingLeft) + emptyMsg, INNER_WIDTH);
 
     const rows: string[] = [topBorder];
+    if (filterRow !== null) rows.push(filterRow);
     for (let i = 0; i < 7; i++) rows.push(blankRow);
     rows.push(centeredRow);
     for (let i = 0; i < 8; i++) rows.push(blankRow);
@@ -272,9 +282,10 @@ export function renderLogContent(
   const visibleEvents = events.slice(startIdx);
 
   const assembled: string[] = [topBorder];
+  if (filterRow !== null) assembled.push(filterRow);
 
-  // Budget: 18 total - 1 title - 1 scroll hint - 1 bottom border = 15 content rows max
-  const contentBudget = CONTENT_ROWS - 3;
+  // Budget: 18 total - 1 title - (1 filter if active) - 1 scroll hint - 1 bottom = 14 or 15
+  const contentBudget = CONTENT_ROWS - 3 - (filterRow !== null ? 1 : 0);
   let usedRows = 0;
 
   for (const event of visibleEvents) {
@@ -459,7 +470,14 @@ export default class LogPanel implements OverlayPanel {
    * Strategy A: single text container `'overlay-block'`, no image containers.
    */
   async draw(): Promise<void> {
-    const rows = renderLogContent(this.snapshot, this.locale, this.scrollOffset, Date.now());
+    // WR-04: pass activeFilter so renderLogContent can call renderLogFilterBar when needed.
+    const rows = renderLogContent(
+      this.snapshot,
+      this.locale,
+      this.scrollOffset,
+      Date.now(),
+      this.activeFilter,
+    );
 
     const content = rows.join('\n');
     const payload = new TextContainerUpgrade({
