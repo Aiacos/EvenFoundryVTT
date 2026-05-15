@@ -614,7 +614,7 @@ Phase 4a SUMMARYs that informed this plan:
        - Rule 3: z=0 MapBaseLayer retains `isEventCapture=1` when z=2 is mounted; panel input routes via `panel-gesture-bus.ts` in-process (NOT via WS round-trip, NOT via capture transfer).
     4. Document the conc-modal special case (CONC-01 modal on death-saves pivot — different strata, no conflict; Plan 05 ships the integration test).
     5. Document the consistency check vs original ADR-0001 Amendment 1: the differential rule PRESERVES z=0.5 atomic-with-z=2 for the z=2 case (re-converges); only adds the z=1.5 carve-out.
-    6. Add `INV-2 status:` line stating "containerTotalNum: 1-12 re-verified against @evenrealities/even_hub_sdk@0.0.10 index.d.ts line 659-661 on 2026-05-15".
+    6. Add `INV-2 status:` line stating "containerTotalNum: 1-12 re-verified against @evenrealities/even_hub_sdk@0.0.10 index.d.ts lines 638-647 on 2026-05-15".
     7. Add `Why amend instead of new ADR:` justification (additive changes; no architectural inversion).
     8. Cross-reference 04B-RESEARCH.md §Q1 + §Q2 + §Q7 in the See Also block.
 
@@ -622,7 +622,7 @@ Phase 4a SUMMARYs that informed this plan:
 
     Constraints:
     - INV-3 (Specs/README/showcase coherence): this Amendment does NOT change Specs.md §3.1 (container budget remains 4+8) and does NOT change the showcase. NO INV-3 atomic update needed in this plan. If a future planner determines Specs §7.4c needs an amendment noting the differential rule, that lands in a separate documentation commit.
-    - Cite verbatim where possible — INV-2 demands the SDK signature cite is exact (line 659-661 of index.d.ts).
+    - Cite verbatim where possible — INV-2 demands the SDK signature cite is exact (lines 638-647 of index.d.ts).
     - Markdown lint friendly: ATX headings (`###`), fenced code blocks for tables, blank line before/after each heading.
   </action>
   <verify>
@@ -674,7 +674,7 @@ Phase 4a SUMMARYs that informed this plan:
 Plan 01 closes when:
 - MAP-05 overlay-portion partially addressed: OverlayPanel interface ships + LayerManager.bundle() enforces the differential demolish rule + panel-gesture-bus.ts is the routing primitive. The MAP-05 toggle-portion lands in Plan 02; the full MAP-05 success criterion verified end-to-end in Plan 05 integration smoke.
 - ADR-0009 Amendment 1 is filled with the differential demolish rule + container budget audit tables + in-process gesture-bus rationale, dated 2026-05-15.
-- The container budget assertion `_assertContainerBudget` is the single enforcement point for the 4+8 SDK cap (per Specs §3.1 + SDK index.d.ts line 659-661).
+- The container budget assertion `_assertContainerBudget` is the single enforcement point for the 4+8 SDK cap (per Specs §3.1 + SDK index.d.ts lines 638-647).
 - All Wave 0 dependencies for Plans 02-05 are satisfied: Z1_5_TOAST enum value (Plan 03 consumes), OverlayPanel interface (Plan 05 conc-modal implements), PanelGestureBus (Plan 05 conc-modal subscribes), differential demolish rule (Plan 05 integration smoke + Plan 03 toast-survives-overlay stress test rely), HUD_WIDTH_BUDGETS 28 new keys (Plans 03/04/05 read-only consumers — NO downstream-plan modifications to i18n-budgets.ts).
 - Wave-2 plans (03 + 04) and Wave-3 plan (05) have zero files_modified overlap with each other because all i18n-budgets.ts additions were centralised in this Wave 0 plan.
 </success_criteria>

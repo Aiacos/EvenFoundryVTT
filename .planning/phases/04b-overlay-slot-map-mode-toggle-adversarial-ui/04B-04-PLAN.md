@@ -3,7 +3,7 @@ phase: 4b
 plan: 04
 type: execute
 wave: 2
-depends_on: ["04b-01"]
+depends_on: ["04b-01", "04b-02"]
 files_modified:
   - packages/g2-app/src/engine/boot-error-types.ts
   - packages/g2-app/src/engine/boot-error-layer.ts
@@ -39,6 +39,7 @@ must_haves:
     - "boot-engine-error-wrapper.ts (NEW SEPARATE FILE) exports bootEngineWithErrorUi(opts, deps?) — a try/catch wrapper around _bootEngineCore that mounts BootErrorLayer on exception. The wrapper is in a separate file (NOT in boot-engine-core.ts) to avoid Wave-2 file-overlap with Plan 02 which touched boot-engine-core.ts in Wave 1."
     - "BED-01..BED-14 dispatch unit tests cover every exception → state mapping; BOOT-ERR-INT-01..BOOT-ERR-INT-05 wrapper integration tests in boot-engine-error-wrapper.test.ts cover the 5 distinct exception sources end-to-end (handshake parse_failed, handshake timeout, WS error before open, WS close 1006, proto mismatch)"
     - "Close annotation '[X] Close' / '[X] Chiudi' / '[X] Schließen' is a VISUAL ANNOTATION only — Plan 04 ships no gesture handler; Phase 6 wires the actual close gesture to bootEngine.retry() per UI-SPEC §9.3 resolution"
+    - "Canonical type names from boot-engine-core.ts (verified 2026-05-15): `BootEngineOpts` (line 67, NOT `BootEngineOptions`) + `TestingDependencies` (line 86, NOT `BootEngineDeps`) + `BootEngineHandle` (line 100); Plan 04 imports these names VERBATIM"
   artifacts:
     - path: "packages/g2-app/src/engine/boot-error-types.ts"
       provides: "BootErrorState union + BootErrorLocale union + BootErrorContent interface + BOOT_ERROR_CONTENT lookup table (5 states × 3 locales)"
@@ -50,7 +51,7 @@ must_haves:
       provides: "BootErrorLayer class implementing Layer; mounts at z=1; renders title + 2 hint lines + close annotation; getContainerCount returns { image: 0, text: 1 } (single 'boot-error-block' container per UI-SPEC §7)"
       exports: ["BootErrorLayer", "BOOT_ERROR_CONTAINER_NAME"]
     - path: "packages/g2-app/src/engine/boot-engine-error-wrapper.ts"
-      provides: "bootEngineWithErrorUi(opts, deps?) — try/catch wrapper around _bootEngineCore that mounts BootErrorLayer on exception; this is a SEPARATE FILE from boot-engine-core.ts to avoid Wave-2 file-overlap with Plan 02"
+      provides: "bootEngineWithErrorUi(opts, deps?) — try/catch wrapper around _bootEngineCore that mounts BootErrorLayer on exception; this is a SEPARATE FILE from boot-engine-core.ts to avoid Wave-2 file-overlap with Plan 02. Returns a RejectingErrorModeHandle on the error path (see W-3 resolution below)."
       exports: ["bootEngineWithErrorUi"]
     - path: "packages/shared-render/src/fixtures/boot-error.{state}.{it,en}.txt"
       provides: "10 INV-1 fixtures × 5 states × 2 locales — 96×24 page, centered panel rows 9-14"
@@ -65,9 +66,9 @@ must_haves:
       via: "imports BOOT_ERROR_CONTENT[state][locale] for render"
       pattern: "BOOT_ERROR_CONTENT"
     - from: "packages/g2-app/src/engine/boot-engine-error-wrapper.ts"
-      to: "packages/g2-app/src/internal/boot-engine-core.ts (_bootEngineCore)"
-      via: "calls _bootEngineCore in try block; falls through to BootErrorLayer mount on catch"
-      pattern: "_bootEngineCore"
+      to: "packages/g2-app/src/internal/boot-engine-core.ts (_bootEngineCore + BootEngineOpts + TestingDependencies + BootEngineHandle)"
+      via: "calls _bootEngineCore in try block; falls through to BootErrorLayer mount on catch; signature matches the post-Plan-02 boot-engine-core.ts exports verbatim"
+      pattern: "_bootEngineCore|BootEngineOpts|TestingDependencies"
     - from: "packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts"
       to: "packages/g2-app/src/engine/boot-error-dispatch.ts + boot-error-layer.ts"
       via: "BOOT-ERR-INT-01..05: simulate each exception source and verify BootErrorLayer mounts with the correct state"
@@ -78,7 +79,7 @@ threat_model:
     - description: "Foundry i18n catalog → boot error content table — translated strings may contain unicode pathologies; AsciiGrid uniform-width discipline neutralizes"
     - description: "External boot-engine exceptions (HandshakeError, WebSocket errors, LayerManagerError) → bootErrorFromException — must default safely on unknown exception shapes"
     - description: "BootErrorLayer replaces StatusHudLayer in error path — capture invariant must still hold; Plan 04 documents that BootErrorLayer bypasses LayerManager.bundle (renders via bridge.textContainerUpgrade directly)"
-    - description: "bootEngineWithErrorUi wraps _bootEngineCore — best-effort error rendering must not throw beyond the wrapper unless BOTH original cause AND error UI render fail"
+    - description: "bootEngineWithErrorUi wraps _bootEngineCore — best-effort error rendering must not throw beyond the wrapper unless BOTH original cause AND error UI render fail. The wrapper RETHROWS the original cause on the error path (no degenerate BootEngineHandle) — see W-3 resolution."
   threats:
     - id: "T-4b-04-01"
       category: "T"
@@ -112,7 +113,9 @@ Ship the **boot error UI** (`BootErrorLayer` + `bootErrorFromException` dispatch
 
 Purpose: Close BOOT-01 software-side. RESEARCH §Q3 dispatch source map is the contract; this plan implements it line-by-line in `bootErrorFromException`. Each of the 5 SC #4 states ("handshake failed / version mismatch / no character / bridge unreachable / token expired") gets a dedicated fixture proving the boot path's failure-mode UX matches the design contract.
 
-Output: 4 new source modules (boot-error-types.ts + boot-error-layer.ts + boot-error-dispatch.ts + boot-engine-error-wrapper.ts) + 4 new test files + 10 fixture files. Wave-2 parallel-safe with Plan 03: **zero files_modified overlap** (Plan 03 owns toast-* + 3 toast fixtures; Plan 04 owns boot-error-* + 10 boot-error fixtures). i18n-budgets.ts is NOT in files_modified — Plan 01 landed all Phase 4b keys atomically in Wave 0. boot-engine-core.ts is NOT in files_modified — Plan 02 landed the step-9 extension; Plan 04's wrapper is in a separate file.
+Output: 4 new source modules (boot-error-types.ts + boot-error-layer.ts + boot-error-dispatch.ts + boot-engine-error-wrapper.ts) + 4 new test files + 10 fixture files. Wave-2 parallel-safe with Plan 03 + Plan 06: **zero files_modified overlap** (Plan 03 owns toast-* + 3 toast fixtures; Plan 04 owns boot-error-* + 10 boot-error fixtures; Plan 06 owns shared-protocol/character + concentration + foundry-module reader). i18n-budgets.ts is NOT in files_modified — Plan 01 landed all Phase 4b keys atomically in Wave 0. boot-engine-core.ts is NOT in files_modified — Plan 02 landed the step-9 extension; Plan 04's wrapper is in a separate file but depends_on includes `04b-02` so the wave-scheduler honours the post-Plan-02 file state.
+
+**B-3 resolution (depends_on chain):** Plan 04 imports `_bootEngineCore`, `BootEngineOpts`, `TestingDependencies`, and `BootEngineHandle` from `packages/g2-app/src/internal/boot-engine-core.ts`. Plan 02 modifies that file in Wave 1 (step-9b override insertion). Therefore Plan 04 `depends_on: ["04b-01", "04b-02"]` makes the dependency explicit — wave-bracket scheduling already provides the implicit guarantee, but the explicit chain documents the contract for any future dependency-driven scheduler.
 </objective>
 
 <execution_context>
@@ -125,6 +128,7 @@ Output: 4 new source modules (boot-error-types.ts + boot-error-layer.ts + boot-e
 @.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md
 @.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-UI-SPEC.md
 @.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-01-SUMMARY.md
+@.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-02-SUMMARY.md
 @packages/g2-app/src/engine/capability-handshake.ts
 @packages/g2-app/src/engine/layer-types.ts
 @packages/g2-app/src/engine/boot-splash.ts
@@ -149,11 +153,14 @@ From packages/g2-app/src/status-hud/i18n-budgets.ts (post-Plan-01 — READ-ONLY 
 - HUD_WIDTH_BUDGETS.boot_error_hint_{handshake,version,no_char,bridge,token}_{1,2} = { it, en, de, max:50 }
 - HUD_WIDTH_BUDGETS.boot_error_close_label = { it:'[X] Chiudi', en:'[X] Close', de:'[X] Schließen', max:14 }
 
-From packages/g2-app/src/internal/boot-engine-core.ts (post-Plan-02 — Plan 04 IMPORTS, does NOT modify):
-- export async function _bootEngineCore(opts, deps?): Promise<BootEngineHandle>   // the inner core that Plan 04 wraps
-- export interface BootEngineOptions { bridgeUrl, token, locale, ... }
-- export interface BootEngineDeps { bridgeFactory?, wsFactory?, ... }
-- export interface BootEngineHandle { layerManager, rasterController, teardown }
+From packages/g2-app/src/internal/boot-engine-core.ts (post-Plan-02 — Plan 04 IMPORTS, does NOT modify; CANONICAL export names verified 2026-05-15 via grep):
+- export async function _bootEngineCore(opts: BootEngineOpts, deps?: TestingDependencies): Promise<BootEngineHandle>   // line 191 — the inner core that Plan 04 wraps
+- export interface BootEngineOpts { bridgeUrl: string; token: string; locale: BootEngineLocale }                       // line 67 — NOT `BootEngineOptions`
+- export interface TestingDependencies { wsFactory?: (url: string) => WebSocket; bridgeFactory?: () => Promise<EvenAppBridge> }  // line 86 — NOT `BootEngineDeps`
+- export interface BootEngineHandle { layerManager: LayerManager; rasterController: RasterController; teardown: () => void }  // line 100
+- export type BootEngineLocale = 'it' | 'en' | 'de'                                                                    // line 59
+
+**B-1 resolution (canonical type names):** Earlier draft of Plan 04 used invented names `BootEngineOptions` and `BootEngineDeps`. These DO NOT EXIST in the source. The canonical names — `BootEngineOpts` and `TestingDependencies` — are used VERBATIM throughout this plan's code excerpts, imports, and JSDoc. Plan-checker iteration 2 verifies via `grep "BootEngineOptions\|BootEngineDeps" packages/g2-app/src/engine/boot-engine-error-wrapper.ts` returning 0.
 
 NEW types boot-error-types.ts:
 - export type BootErrorState = 'handshake_failed' | 'version_mismatch' | 'no_character' | 'bridge_unreachable' | 'token_expired'
@@ -214,22 +221,36 @@ NEW boot-error-layer.ts class:
   }
 - render contract: 8-row content (including panel frame chars), see implementation pseudocode in Task 2
 
-NEW boot-engine-error-wrapper.ts function:
-- export async function bootEngineWithErrorUi(opts: BootEngineOptions, deps?: BootEngineDeps): Promise<BootEngineHandle>
-  - try { return await _bootEngineCore(opts, deps); }
-  - catch (err) {
-      const state = bootErrorFromException(err);
-      console.warn(`[boot-engine] boot failed with state '${state}'`, err);
-      // best-effort BootErrorLayer mount
-      ...
-    }
+NEW boot-engine-error-wrapper.ts function (W-3 resolution: RETHROW on error path — no degenerate BootEngineHandle):
+
+```
+export async function bootEngineWithErrorUi(
+  opts: BootEngineOpts,
+  deps?: TestingDependencies,
+): Promise<BootEngineHandle>
+  // Try _bootEngineCore.
+  // On any thrown error: render BootErrorLayer best-effort, then RETHROW the
+  // original cause.  Caller's `await bootEngineWithErrorUi(...)` always either
+  // resolves with a valid handle (happy path) OR rejects with the original error
+  // (which the caller observes + handles). No degenerate-handle path exists.
+```
+
+**W-3 resolution (BootEngineHandle workaround):** Earlier draft of Plan 04 offered a degenerate `makeErrorModeHandle(bridge)` that returned a partial `BootEngineHandle` (missing `rasterController`) — which conflicted with the type's required field. The two workarounds offered (modify boot-engine-core.ts; use `@ts-expect-error`) were both unsatisfactory.
+
+**Decision (locked in this plan):** `bootEngineWithErrorUi` RETHROWS the original cause on the error path AFTER rendering the BootErrorLayer best-effort. The function signature returns `Promise<BootEngineHandle>` — the consumer code (Phase 6 retry handler, or top-level boot caller) `await`s this function and observes either a resolved handle (success) or a rejected promise (failure). The rejected promise carries the ORIGINAL exception (HandshakeError / LayerManagerError / etc.) so the caller's catch block can decide whether to retry or surface the error to the user via the already-rendered BootErrorLayer.
+
+This pattern:
+- Avoids the type-mismatch on BootEngineHandle (no degenerate object construction).
+- Preserves the original exception for caller observability (Phase 6 retry can route on `err.code`).
+- Renders the BootErrorLayer best-effort BEFORE rethrowing (the player sees the panel even though the awaiter rejects).
+- Cleanly handles the double-failure case: if BootErrorLayer.draw() rejects, console.error logs the render failure and the original cause is still rethrown.
 
 BOOT-ERR-INT-01..BOOT-ERR-INT-05 wrapper integration tests (in boot-engine-error-wrapper.test.ts — NOT in scene-renderer-smoke.test.ts):
-- BOOT-ERR-INT-01: HandshakeError('transport_error') from performCapabilityHandshake → BootErrorLayer state='bridge_unreachable'
-- BOOT-ERR-INT-02: HandshakeError('parse_failed') → 'handshake_failed'
-- BOOT-ERR-INT-03: HandshakeError('timeout') → 'handshake_failed'
-- BOOT-ERR-INT-04: WS close 1006 mid-handshake → 'bridge_unreachable'
-- BOOT-ERR-INT-05: proto mismatch error (message includes 'proto_chosen=evf-v0') → 'version_mismatch'
+- BOOT-ERR-INT-01: HandshakeError('transport_error') from performCapabilityHandshake → BootErrorLayer state='bridge_unreachable' (verified via bridge.textContainerUpgrade mock), then promise rejects with HandshakeError('transport_error')
+- BOOT-ERR-INT-02: HandshakeError('parse_failed') → 'handshake_failed' + rethrow
+- BOOT-ERR-INT-03: HandshakeError('timeout') → 'handshake_failed' + rethrow
+- BOOT-ERR-INT-04: WS close 1006 mid-handshake → 'bridge_unreachable' + rethrow
+- BOOT-ERR-INT-05: proto mismatch error (message includes 'proto_chosen=evf-v0') → 'version_mismatch' + rethrow
 
 These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts` so Plan 04 does NOT modify `packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts` (Plan 02 already modifies it; Wave 1 + Wave 2 same-file write is fine sequentially but the planner-strict rule says zero overlap regardless of wave). Plan 05 (Wave 3) integration smoke (`04b-integration-smoke.test.ts`) may further exercise the wrapper under combined Phase 4b layer scenarios.
 </interfaces>
@@ -457,9 +478,9 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
 </task>
 
 <task type="auto" tdd="true">
-  <name>Task 3: boot-engine-error-wrapper.ts (new file) + integration tests (5 dispatch scenarios → BootErrorLayer mount)</name>
+  <name>Task 3: boot-engine-error-wrapper.ts (new file) + integration tests (5 dispatch scenarios → BootErrorLayer mount + rethrow)</name>
   <read_first>
-    - packages/g2-app/src/internal/boot-engine-core.ts (post-Plan-02 — exports `_bootEngineCore`, `BootEngineOptions`, `BootEngineDeps`, `BootEngineHandle`; Plan 04 imports but does NOT modify)
+    - packages/g2-app/src/internal/boot-engine-core.ts (post-Plan-02 — CANONICAL exports verified 2026-05-15: `_bootEngineCore` line 191, `BootEngineOpts` line 67, `TestingDependencies` line 86, `BootEngineHandle` line 100. Plan 04 imports these names VERBATIM but does NOT modify the file.)
     - packages/g2-app/src/index.ts (current public surface)
     - packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts (post-Plan-02 — Plan 04 does NOT modify; the existing harness pattern is informative reference only)
     - packages/g2-app/src/engine/capability-handshake.ts (HandshakeError class; which boot step throws each variant)
@@ -470,37 +491,42 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
   </read_first>
   <files>packages/g2-app/src/engine/boot-engine-error-wrapper.ts, packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts</files>
   <behavior>
-    bootEngineWithErrorUi tests (BOOT-ERR-INT-01..05):
-    - Test BOOT-ERR-INT-01: Inject deps with a stubbed `handshakeFn` (or wsFactory + bridgeFactory combination) that throws HandshakeError('transport_error', 'msg') from performCapabilityHandshake → bootEngineWithErrorUi catches → BootErrorLayer with state='bridge_unreachable' mounted (verified by bridge.textContainerUpgrade mock receiving BOOT_ERROR_CONTAINER_NAME content containing 'BRIDGE UNREACHABLE')
-    - Test BOOT-ERR-INT-02: HandshakeError('parse_failed') → 'handshake_failed' state
-    - Test BOOT-ERR-INT-03: HandshakeError('timeout') → 'handshake_failed' state
-    - Test BOOT-ERR-INT-04: WS close event with code 1006 (abnormal) during awaitWsOpen → 'bridge_unreachable'
-    - Test BOOT-ERR-INT-05: Synthesize a thrown error with message 'proto_chosen=evf-v0 mismatch' → 'version_mismatch'
+    bootEngineWithErrorUi tests (BOOT-ERR-INT-01..07):
+    - Test BOOT-ERR-INT-01: Inject deps with a stubbed `handshakeFn` (or wsFactory + bridgeFactory combination) that throws HandshakeError('transport_error', 'msg') from performCapabilityHandshake → bootEngineWithErrorUi mounts BootErrorLayer state='bridge_unreachable' (verified by bridge.textContainerUpgrade mock receiving BOOT_ERROR_CONTAINER_NAME content containing 'BRIDGE UNREACHABLE') AND rejects with HandshakeError('transport_error') (verified via expect(...).rejects.toThrow)
+    - Test BOOT-ERR-INT-02: HandshakeError('parse_failed') → 'handshake_failed' state mounted + rethrow
+    - Test BOOT-ERR-INT-03: HandshakeError('timeout') → 'handshake_failed' state mounted + rethrow
+    - Test BOOT-ERR-INT-04: WS close event with code 1006 (abnormal) during awaitWsOpen → 'bridge_unreachable' state mounted + rethrow
+    - Test BOOT-ERR-INT-05: Synthesize a thrown error with message 'proto_chosen=evf-v0 mismatch' → 'version_mismatch' state mounted + rethrow
 
-    Each test verifies:
-    1. bridge.textContainerUpgrade was called with containerName === BOOT_ERROR_CONTAINER_NAME
+    Each error-path test verifies:
+    1. bridge.textContainerUpgrade was called with containerName === BOOT_ERROR_CONTAINER_NAME (BootErrorLayer mounted)
     2. Content contains the expected title string for (state, opts.locale)
-    3. The exception is NOT re-thrown beyond bootEngineWithErrorUi (no unhandled rejection)
+    3. The promise rejects with the ORIGINAL exception (HandshakeError instance, NOT a wrapper error; checked via `await expect(promise).rejects.toThrow(HandshakeError)`)
     4. console.warn was called once with '[boot-engine] boot failed with state' phrase + state literal
 
-    - Test BOOT-ERR-INT-06: bootEngineWithErrorUi happy path (no exception in _bootEngineCore) → returns the BootEngineHandle from _bootEngineCore unchanged; BootErrorLayer NOT mounted
-    - Test BOOT-ERR-INT-07: Double-failure case — _bootEngineCore throws AND the BootErrorLayer mount also throws (e.g., bridge.textContainerUpgrade rejects) → the ORIGINAL exception is re-thrown (NOT the render error); console.error logged the render error
+    - Test BOOT-ERR-INT-06: bootEngineWithErrorUi happy path (no exception in _bootEngineCore) → returns the BootEngineHandle from _bootEngineCore unchanged; BootErrorLayer NOT mounted; promise resolves
+    - Test BOOT-ERR-INT-07: Double-failure case — _bootEngineCore throws AND the BootErrorLayer mount also throws (e.g., bridge.textContainerUpgrade rejects) → console.error logged the render error; the promise rejects with the ORIGINAL exception (NOT the render error)
   </behavior>
   <action>
     **1. NEW file `packages/g2-app/src/engine/boot-engine-error-wrapper.ts`:**
 
     Module JSDoc cites 04B-RESEARCH.md §Approach 4 + ADR-0009 Amendment 1 + the rationale that Plan 04 puts this wrapper in a SEPARATE file (NOT in boot-engine-core.ts) to avoid Wave-2 file-overlap with Plan 02.
 
-    Imports:
+    Imports (canonical names verified against boot-engine-core.ts on 2026-05-15):
     ```
-    import { _bootEngineCore, type BootEngineOptions, type BootEngineDeps, type BootEngineHandle } from '../internal/boot-engine-core.js';
+    import { _bootEngineCore, type BootEngineOpts, type TestingDependencies, type BootEngineHandle } from '../internal/boot-engine-core.js';
     import { bootErrorFromException } from './boot-error-dispatch.js';
     import { BootErrorLayer } from './boot-error-layer.js';
     ```
 
-    Exports:
+    Note the names: `BootEngineOpts` (NOT `BootEngineOptions`), `TestingDependencies` (NOT `BootEngineDeps`). These are the actual canonical exports — `grep -nE "^export interface (BootEngine|Testing)" packages/g2-app/src/internal/boot-engine-core.ts` returns lines 67 + 86 + 100 confirming.
+
+    Exports (W-3 resolution: RETHROW on error path):
     ```
-    export async function bootEngineWithErrorUi(opts: BootEngineOptions, deps?: BootEngineDeps): Promise<BootEngineHandle> {
+    export async function bootEngineWithErrorUi(
+      opts: BootEngineOpts,
+      deps?: TestingDependencies,
+    ): Promise<BootEngineHandle> {
       try {
         return await _bootEngineCore(opts, deps);
       } catch (err) {
@@ -516,32 +542,37 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
           // Mount BootErrorLayer; bridge.textContainerUpgrade is the direct call (bypasses LayerManager.bundle)
           const layer = new BootErrorLayer(bridge, state, opts.locale);
           await layer.draw();
-          // Return a degenerate handle — caller cannot mount further layers from error mode
-          return makeErrorModeHandle(bridge);
         } catch (renderErr) {
           console.error('[boot-engine] failed to render boot error UI', renderErr);
-          throw err;  // re-throw original cause, not render error
+          // fall through; original cause is rethrown below
         }
+        // W-3 resolution: ALWAYS rethrow the original cause. No degenerate BootEngineHandle is constructed.
+        // The caller observes the rejected promise carrying the original error (HandshakeError / LayerManagerError / etc.)
+        // AND sees the BootErrorLayer already rendered on the device — the UI is the visible side effect; the rejection
+        // is the programmatic signal that the boot did not complete.
+        throw err;
       }
     }
     ```
 
-    Helper `makeErrorModeHandle(bridge)` returns a minimal BootEngineHandle shape. **Implementation note:** BootEngineHandle currently requires `layerManager` + `rasterController`. The error-mode handle returns a fresh LayerManager (effectively no-op) and `null` cast to RasterController (or makes the field optional via Phase 4a interface tweak). RECOMMEND: extend BootEngineHandle in boot-engine-core.ts to make `rasterController?: RasterController | null` IF that change is acceptable. Plan 04 should NOT modify boot-engine-core.ts (Wave-2 overlap with Plan 02 prohibited). Alternative: cast with `// eslint-disable @typescript-eslint/no-non-null-assertion` + a `// @ts-expect-error` justified by JSDoc; the cast is a documented compromise for the error-mode handle.
+    **W-3 resolution (locked):** `bootEngineWithErrorUi` RETHROWS the original cause on the error path. NO degenerate BootEngineHandle is constructed. This:
+    - Avoids the type-mismatch on `BootEngineHandle.rasterController` (no need to make the field optional in boot-engine-core.ts).
+    - Avoids `@ts-expect-error` casts (clean strict-mode compilation).
+    - Preserves the original exception for caller observability — Phase 6 retry handler can `catch (err)` and route on `err instanceof HandshakeError && err.code === 'token_expired'` etc.
+    - Renders the BootErrorLayer best-effort BEFORE rethrowing so the player sees the panel even though the awaiter rejects.
 
-    Document the chosen approach in 04b-04-SUMMARY.md. Either approach must compile under TS strict mode (pnpm typecheck pass).
-
-    INV-4 JSDoc on bootEngineWithErrorUi explaining: (a) it does NOT modify boot-engine-core.ts; (b) the error-mode handle is degenerate (`teardown` is a no-op); (c) double-failure semantics re-throw the original cause.
+    INV-4 JSDoc on bootEngineWithErrorUi explaining: (a) it does NOT modify boot-engine-core.ts; (b) the error path rethrows the original cause AFTER rendering the BootErrorLayer best-effort; (c) double-failure semantics — both the original cause AND the render error are surfaced via console.error + rethrow of the original.
 
     **2. `packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts`:**
 
-    Test pattern (paraphrased — adjust to actual BootEngineDeps shape after reading boot-engine-core.ts):
+    Test pattern (paraphrased — adjust to actual TestingDependencies shape after reading boot-engine-core.ts):
 
     ```
     describe('bootEngineWithErrorUi (BOOT-ERR-INT-*)', () => {
-      it('BOOT-ERR-INT-01: HandshakeError transport_error → bridge_unreachable', async () => {
+      it('BOOT-ERR-INT-01: HandshakeError transport_error → bridge_unreachable, then rethrow', async () => {
         const bridge = makeMockBridge();
         const ws = makeMockWs({ throwOnOpen: false });
-        // Inject a handshakeFn that throws (if BootEngineDeps supports it) OR mock performCapabilityHandshake at the module level via vi.mock
+        // Inject a handshakeFn that throws (if TestingDependencies supports it) OR mock performCapabilityHandshake at the module level via vi.mock
         vi.doMock('../capability-handshake.js', async (origImport) => {
           const orig = await origImport<typeof import('../capability-handshake.js')>();
           return { ...orig, performCapabilityHandshake: vi.fn().mockRejectedValue(new orig.HandshakeError('transport_error', 'simulated')) };
@@ -550,7 +581,9 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
         const { bootEngineWithErrorUi } = await import('../boot-engine-error-wrapper.js');
         const opts = { bridgeUrl: 'wss://localhost', token: 'test', locale: 'en' as const };
         const deps = { bridgeFactory: async () => bridge, wsFactory: () => ws };
-        await bootEngineWithErrorUi(opts, deps);
+        // W-3: promise rejects with original cause
+        await expect(bootEngineWithErrorUi(opts, deps)).rejects.toThrow('simulated');
+        // BootErrorLayer was rendered best-effort
         const calls = (bridge.textContainerUpgrade as Mock).mock.calls;
         const bootErrorCall = calls.find(([payload]) => payload.containerName === 'boot-error-block');
         expect(bootErrorCall).toBeDefined();
@@ -561,23 +594,23 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
     });
     ```
 
-    **Caveat:** module-mocking with `vi.doMock` requires careful import order; alternative is to extend BootEngineDeps to inject `handshakeFn` as a test-only DI surface. If extending BootEngineDeps is needed, Plan 04 may add the optional field IN BOOT-ENGINE-CORE.TS — but that conflicts with Plan 02's modifications. **Resolution:** in Wave 2 (parallel to Plan 03), the executor either (a) uses vi.doMock pattern (which avoids touching boot-engine-core.ts), or (b) the orchestrator serializes Plan 04 after Plan 02 to allow boot-engine-core.ts extension. **Recommendation: (a) vi.doMock pattern.** Document in summary if (b) becomes necessary.
+    **Caveat:** module-mocking with `vi.doMock` requires careful import order; alternative is to extend `TestingDependencies` to inject `handshakeFn` as a test-only DI surface. If extending `TestingDependencies` is needed, Plan 04 may add the optional field IN BOOT-ENGINE-CORE.TS — but that conflicts with Plan 02's modifications. **Resolution: use `vi.doMock` pattern.** No `TestingDependencies` extension; no boot-engine-core.ts modification.
 
-    Implement all 7 BOOT-ERR-INT-* tests. Use `vi.spyOn(console, 'warn')` and `vi.spyOn(console, 'error')` to verify telemetry.
+    Implement all 7 BOOT-ERR-INT-* tests. Use `vi.spyOn(console, 'warn')` and `vi.spyOn(console, 'error')` to verify telemetry. For BOOT-ERR-INT-07, mock bridge.textContainerUpgrade to reject AFTER the first call succeeds (or always reject) to simulate the BootErrorLayer.draw() failure path; then assert `await expect(bootEngineWithErrorUi(...)).rejects.toThrow(<ORIGINAL ERROR>)` — the assertion is the original cause, NOT the render error.
 
     Constraints:
     - Plan 04 MUST NOT modify boot-engine-core.ts. The wrapper is a new file (`boot-engine-error-wrapper.ts`); the inner `_bootEngineCore` is imported.
-    - Test file uses vi.doMock for capability-handshake mocking (Wave-2-safe — no shared file modification).
+    - Test file uses `vi.doMock` for `capability-handshake` mocking (Wave-2-safe — no shared file modification).
     - JSDoc on bootEngineWithErrorUi.
-    - The error-mode BootEngineHandle's teardown is a no-op (documented in JSDoc).
+    - The error path RETHROWS the original cause (W-3 lock); no degenerate BootEngineHandle construction.
     - Test discriminators 'BOOT-ERR-INT-01' through 'BOOT-ERR-INT-07' must appear in test it() names.
     - `pnpm typecheck && pnpm lint:ci` exit 0.
   </action>
   <verify>
-    <automated>pnpm --filter @evf/g2-app test --run -- src/engine/__tests__/boot-engine-error-wrapper.test.ts && grep -c 'export async function bootEngineWithErrorUi' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'bootErrorFromException' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'new BootErrorLayer' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c '_bootEngineCore' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -cE 'BOOT-ERR-INT-0[1-7]' packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts && pnpm typecheck && pnpm lint:ci</automated>
+    <automated>pnpm --filter @evf/g2-app test --run -- src/engine/__tests__/boot-engine-error-wrapper.test.ts && grep -c 'export async function bootEngineWithErrorUi' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'bootErrorFromException' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'new BootErrorLayer' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c '_bootEngineCore' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'BootEngineOpts' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -c 'TestingDependencies' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && ! grep -E 'BootEngineOptions|BootEngineDeps' packages/g2-app/src/engine/boot-engine-error-wrapper.ts && grep -cE 'BOOT-ERR-INT-0[1-7]' packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts && grep -c 'rejects.toThrow' packages/g2-app/src/engine/__tests__/boot-engine-error-wrapper.test.ts && pnpm typecheck && pnpm lint:ci</automated>
   </verify>
   <done>
-    boot-engine-error-wrapper.test.ts green with BOOT-ERR-INT-01..07 (7 tests); boot-engine-error-wrapper.ts exports bootEngineWithErrorUi which imports `_bootEngineCore`; BOOT-ERR-INT-01..07 grep-match; typecheck + lint:ci exit 0; boot-engine-core.ts NOT modified by this plan.
+    boot-engine-error-wrapper.test.ts green with BOOT-ERR-INT-01..07 (7 tests); boot-engine-error-wrapper.ts exports bootEngineWithErrorUi which imports `_bootEngineCore`, `BootEngineOpts`, `TestingDependencies` (CANONICAL names — the grep gate `! grep -E 'BootEngineOptions|BootEngineDeps'` returns success); error path rethrows original cause (verified via `rejects.toThrow`); BOOT-ERR-INT-01..07 grep-match; typecheck + lint:ci exit 0; boot-engine-core.ts NOT modified by this plan.
   </done>
 </task>
 
@@ -591,7 +624,7 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
 | External boot-engine exceptions → bootErrorFromException | Unknown exception shapes must default safely; no rethrow inside dispatch |
 | Foundry i18n translation strings → BOOT_ERROR_CONTENT | Static lookup table compiled at build time; no runtime templating from external strings |
 | BootErrorLayer at z=1 replacing StatusHudLayer in error path | Error UI is a special layout that bypasses LayerManager's main-page capture invariant; documented |
-| bootEngineWithErrorUi wraps _bootEngineCore | Best-effort error rendering must not throw beyond the wrapper unless BOTH the original cause AND the error UI render fail |
+| bootEngineWithErrorUi wraps _bootEngineCore | Best-effort error rendering must not throw beyond the wrapper unless BOTH the original cause AND the error UI render fail. The wrapper RETHROWS the original cause on error paths (W-3 locked decision). |
 
 ## STRIDE Threat Register
 
@@ -602,7 +635,7 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
 | T-4b-04-03 | D | Boot error path leaves stale layers mounted | accept | Wrapper does NOT clean up — it mounts BootErrorLayer over whatever exists. Documented; Phase 6 retry mounts fresh layers. |
 | T-4b-04-04 | T | BootErrorLayer mounted without capture provider | mitigate | Documented as special layout outside LayerManager's main-page contract. BootErrorLayer.draw() calls bridge.textContainerUpgrade directly; does NOT participate in bundle()'s _assertCaptureInvariant. |
 | T-4b-04-05 | I | Boot error UI displays error type info to player | accept | Each state is intentionally informative (recovery hint requires knowing which gate failed). No PII; no secrets in messages. |
-| T-4b-04-06 | D | Double-failure: original exception + BootErrorLayer render both fail | mitigate | Inner try/catch around bridge.textContainerUpgrade catches render errors; console.error logs the render error; original exception is re-thrown (NOT the render error). BOOT-ERR-INT-07 verifies. |
+| T-4b-04-06 | D | Double-failure: original exception + BootErrorLayer render both fail | mitigate | Inner try/catch around bridge.textContainerUpgrade catches render errors; console.error logs the render error; original exception is RETHROWN (W-3 locked) — the awaiter observes the original error, not the render error. BOOT-ERR-INT-07 verifies. |
 </threat_model>
 
 <verification>
@@ -611,11 +644,13 @@ These integration tests live in `packages/g2-app/src/engine/__tests__/boot-engin
 - 10 fixture files exist with uniform 96-char width
 - BootErrorLayer implements Layer; bootErrorFromException maps all known exception classes
 - BOOT_ERROR_CONTENT covers 5 states × 3 locales (DE entries present even though DE fixtures NOT shipped)
-- bootEngineWithErrorUi imports `_bootEngineCore` from boot-engine-core.ts WITHOUT modifying it
+- bootEngineWithErrorUi imports `_bootEngineCore`, `BootEngineOpts`, `TestingDependencies` (CANONICAL names) from boot-engine-core.ts WITHOUT modifying it
+- `! grep -E 'BootEngineOptions|BootEngineDeps' packages/g2-app/src/engine/boot-engine-error-wrapper.ts` returns success (NF-1 regression-class prevention)
+- bootEngineWithErrorUi error path RETHROWS the original cause (W-3 locked) — verified via `rejects.toThrow` in BOOT-ERR-INT-01..05 + BOOT-ERR-INT-07
 - No regressions: Phase 4a tests + Plan 02 tests still pass
-- Plan 04 files_modified contains ZERO entries shared with Plan 03's files_modified (verified via frontmatter diff)
+- Plan 04 files_modified contains ZERO entries shared with Plan 03's files_modified OR Plan 06's files_modified (verified via frontmatter diff)
 - i18n-budgets.ts is UNCHANGED in Plan 04 (Plan 01's domain)
-- boot-engine-core.ts is UNCHANGED in Plan 04 (Plan 02's domain)
+- boot-engine-core.ts is UNCHANGED in Plan 04 (Plan 02's domain — Plan 04 depends_on includes 04b-02)
 </verification>
 
 <success_criteria>
@@ -623,10 +658,11 @@ Plan 04 closes when:
 - BOOT-01 fully addressed software-side: 5 distinct boot error states each render a centered panel with title + recovery hint + [X] close annotation per UI-SPEC §3.3
 - Each of the 5 SC #4 states is provably reachable via bootErrorFromException dispatch (BED-01..BED-14)
 - 10 INV-1 fixtures (5 states × IT/EN) committed; DE fixtures deferred per UI-SPEC §9.5 (best-effort)
-- bootEngineWithErrorUi wraps the existing _bootEngineCore so every reachable exception path now renders error UI instead of throwing — verified by BOOT-ERR-INT-01..07
+- bootEngineWithErrorUi wraps the existing _bootEngineCore so every reachable exception path now renders error UI AND rethrows the original cause for caller observability — verified by BOOT-ERR-INT-01..07
+- Canonical type names used VERBATIM: `BootEngineOpts` + `TestingDependencies` + `BootEngineHandle` (NF-1 regression-class prevention, verified via grep gate)
 - Hardware verification (all 5 states on real G2 with live bridge disconnect simulation) deferred to ADR-0005 Branch A human_needed gate
 - Phase 6 [X] close gesture wiring is a TODO(ADR-0009) hook — Plan 04 ships the visual annotation only
-- Wave-2 parallelism preserved: zero files_modified overlap with Plan 03; no modifications to i18n-budgets.ts or boot-engine-core.ts
+- Wave-2 parallelism preserved: zero files_modified overlap with Plan 03 OR Plan 06; no modifications to i18n-budgets.ts or boot-engine-core.ts
 </success_criteria>
 
 <output>
@@ -635,10 +671,13 @@ After completion, create `.planning/phases/04b-overlay-slot-map-mode-toggle-adve
 - Test counts: 9+ in boot-error-types.test.ts + 8+ in boot-error-layer.test.ts + 14 in boot-error-dispatch.test.ts + 7 in boot-engine-error-wrapper.test.ts
 - 10 fixture file paths
 - Option B confirmed: panel frame included in BootErrorLayer's container content (not in page schema)
-- Whether the error-mode BootEngineHandle returned `null` cast for rasterController OR used a different workaround (rationale)
-- Whether vi.doMock was used for handshake error injection OR another DI pattern (rationale)
+- W-3 confirmation: error path RETHROWS the original cause AFTER best-effort BootErrorLayer.draw(); no degenerate BootEngineHandle constructed (rationale: avoids type-mismatch on rasterController + cleaner caller semantics)
+- B-1 confirmation: canonical type names `BootEngineOpts` + `TestingDependencies` used VERBATIM; grep gate `! grep -E 'BootEngineOptions|BootEngineDeps'` succeeded
+- Whether vi.doMock was used for handshake error injection (locked YES per W-3)
 - The exact bootErrorFromException catch-all default rationale ('handshake_failed' as least-informative-but-always-renderable)
 - Phase 6 wiring hint: `[X] close gesture` is a `// TODO(ADR-0009)` in boot-error-layer.ts
-- Wave-2 parallelism confirmation: zero files_modified overlap with Plan 03; i18n-budgets.ts and boot-engine-core.ts UNMODIFIED in this plan
+- Wave-2 parallelism confirmation: zero files_modified overlap with Plan 03 OR Plan 06; i18n-budgets.ts and boot-engine-core.ts UNMODIFIED in this plan
 - Confirmation that `boot-engine-error-wrapper.ts` lives in `packages/g2-app/src/engine/` (NEW FILE, not in `internal/`) to keep the public surface clean
 </output>
+</content>
+</invoke>

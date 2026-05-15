@@ -25,7 +25,7 @@ must_haves:
     - "STORAGE_KEY constant 'view.map.mode' is exported from map-mode-toggle.ts and matches the format Phase 2 hub-polyfill uses (dot-separated, ASCII alphanumeric) per Q8 key-format constraints"
   artifacts:
     - path: "packages/g2-app/src/engine/map-mode-toggle.ts"
-      provides: "toggleMapMode + loadPersistedMapMode + STORAGE_KEY const + MapMode re-export; best-effort persistence pattern; @internal dev hook documented"
+      provides: "toggleMapMode + loadPersistedMapMode + STORAGE_KEY const + MapMode re-export; best-effort persistence pattern"
       exports: ["toggleMapMode", "loadPersistedMapMode", "STORAGE_KEY"]
     - path: "packages/g2-app/src/engine/__tests__/map-mode-toggle.test.ts"
       provides: "Unit tests covering: in-memory toggle, persistence round-trip, failure-mode fallback ('auto'), key validation, invalid stored value defensive fallback"
@@ -103,9 +103,9 @@ Output: 1 new source module (map-mode-toggle.ts) + 1 new test file (map-mode-tog
 <interfaces>
 <!-- Key types this plan consumes (post-Plan-01) and exposes. -->
 
-From @evenrealities/even_hub_sdk (canonical SDK index.d.ts):
-- EvenAppBridge.setLocalStorage(key: string, value: string): Promise<boolean>  // resolves true on success, false on host rejection; NEVER throws on simulator
-- EvenAppBridge.getLocalStorage(key: string): Promise<string>  // resolves '' (empty string, NOT null) on missing key
+From @evenrealities/even_hub_sdk (canonical SDK index.d.ts, verified @0.0.10 on 2026-05-15):
+- EvenAppBridge.setLocalStorage(key: string, value: string): Promise<boolean>  // line 1144; resolves true on success, false on host rejection; NEVER throws on simulator
+- EvenAppBridge.getLocalStorage(key: string): Promise<string>  // line 1157; resolves '' (empty string, NOT null) on missing key
 
 From packages/g2-app/src/engine/layer-manager.ts:
 - export type MapMode = 'auto' | 'raster' | 'glyph'
@@ -116,12 +116,21 @@ From packages/g2-app/src/raster/raster-controller.ts (RasterControllerLike contr
 - setBleVerdict(v: 'raster' | 'glyph'): void  // accepts ONLY 'raster' or 'glyph' (NOT 'auto')
 - getBleVerdict(): 'raster' | 'glyph' | null
 
-From packages/g2-app/src/internal/boot-engine-core.ts (BEFORE Plan 02):
-- Line ~236: `const verdict = probeBleThroughput(0, 0);`
-- Line ~237-239: `if (verdict !== 'auto') { rasterController.setBleVerdict(verdict); }`
-- Line ~240: `layerManager.setMapMode(verdict === 'auto' ? 'auto' : verdict);`
+From packages/g2-app/src/internal/boot-engine-core.ts (BEFORE Plan 02 — canonical exports verified 2026-05-15):
+- export interface BootEngineOpts { bridgeUrl, token, locale }   // line 67 — NOTE the name is BootEngineOpts (NOT BootEngineOptions)
+- export interface TestingDependencies { wsFactory?, bridgeFactory? }  // line 86 — NOTE the name is TestingDependencies (NOT BootEngineDeps)
+- export interface BootEngineHandle { layerManager, rasterController, teardown }  // line 100
+- export async function _bootEngineCore(opts: BootEngineOpts, deps?: TestingDependencies): Promise<BootEngineHandle>  // line 191
+- Step 9 (line ~232-240 area):
+  ```
+  const verdict = probeBleThroughput(0, 0);
+  if (verdict !== 'auto') {
+    rasterController.setBleVerdict(verdict);
+  }
+  layerManager.setMapMode(verdict === 'auto' ? 'auto' : verdict);
+  ```
 
-Plan 02 inserts BETWEEN line 240 and line 242 (the rasterController construction at line 230 stays; the verdict + setMapMode lines stay; the override is appended):
+Plan 02 inserts AFTER step 9 (the rasterController construction at line 230 stays; the verdict + setMapMode lines stay; the override is appended in a new step 9b):
 ```
 // Phase 4b: persisted map mode override (MAP-05 boot read-back).
 const persistedMode = await loadPersistedMapMode(bridge);
@@ -169,7 +178,7 @@ SR-11 scene-renderer-smoke.test.ts extension pattern (mirrors SR-1..SR-10 existi
     - packages/g2-app/src/engine/layer-manager.ts (full file — MapMode type + setMapMode signature)
     - packages/g2-app/src/raster/raster-controller.ts (setBleVerdict signature; note: does NOT accept 'auto')
     - packages/g2-app/src/hub-polyfill.ts (lines 70-105 — graceful-degradation pattern Phase 2 used; Plan 02 mirrors the spirit but calls bridge directly per Pitfall 1)
-    - @evenrealities/even_hub_sdk type definitions (setLocalStorage / getLocalStorage signatures — Phase 4b research §Q8 cites SDK index.d.ts line 1135-1157; verify before implementing)
+    - @evenrealities/even_hub_sdk type definitions (canonical signatures verified 2026-05-15: `setLocalStorage(key, value): Promise<boolean>` at SDK index.d.ts line 1144; `getLocalStorage(key): Promise<string>` at line 1157)
   </read_first>
   <files>packages/g2-app/src/engine/map-mode-toggle.ts, packages/g2-app/src/engine/__tests__/map-mode-toggle.test.ts</files>
   <behavior>
@@ -249,7 +258,7 @@ SR-11 scene-renderer-smoke.test.ts extension pattern (mirrors SR-1..SR-10 existi
       }
       ```
 
-    No `@internal` dev hook function — the production `toggleMapMode` is the test surface; Phase 4b plan-02 tests invoke it directly with mock bridge + lm + rc. Phase 6 Quick Action [M] wires the same function to its gesture handler.
+    **W-1 resolution (no @internal dev hook):** Plan 02 ships NO `@internal` dev-hook function alongside `toggleMapMode`. The production `toggleMapMode` IS the test surface — Plan 02's unit tests in `map-mode-toggle.test.ts` invoke it directly with mock bridge + lm + rc. Phase 6 Quick Action [M] will wire the same production function to its gesture handler. The plan's frontmatter `must_haves.artifacts` entry for `map-mode-toggle.ts` reflects this (no `@internal dev hook documented` clause).
 
     INV-4 JSDoc on every export. Include `// TODO(ADR-0009): Phase 6 toggleMapMode('auto') re-probe — currently leaves previous verdict in controller. Pitfall 7 documented in 04B-RESEARCH.md` comment near the 'auto' branch.
 
@@ -284,10 +293,10 @@ SR-11 scene-renderer-smoke.test.ts extension pattern (mirrors SR-1..SR-10 existi
 <task type="auto" tdd="true">
   <name>Task 2: boot-engine-core.ts step-9 override read + scene-renderer-smoke.test.ts SR-11 (override-path integration)</name>
   <read_first>
-    - packages/g2-app/src/internal/boot-engine-core.ts (full file — lines 230-265 are the integration point; preserve all existing logic, INSERT the override after line 240)
+    - packages/g2-app/src/internal/boot-engine-core.ts (full file — canonical exports verified 2026-05-15: `BootEngineOpts` line 67, `TestingDependencies` line 86, `BootEngineHandle` line 100, `_bootEngineCore(opts: BootEngineOpts, deps?: TestingDependencies)` line 191; step 9 verdict block is lines 232-240. Preserve ALL existing logic; INSERT the override after line 240)
     - packages/g2-app/src/engine/map-mode-toggle.ts (Task 1 output — loadPersistedMapMode signature)
     - packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts (full file — SR-1..SR-10 pattern; Plan 02 adds SR-11; test harness uses mock bridge + simulated WS)
-    - packages/g2-app/src/index.test-support.ts (test-only DI surface from Phase 4a Plan 05 — Plan 02 uses the same hook for SR-11)
+    - packages/g2-app/src/index.test-support.ts (test-only DI surface from Phase 4a Plan 05 — Plan 02 uses the same hook for SR-11. Re-exports `TestingDependencies` as a type from boot-engine-core.ts.)
     - .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Approach 2 ("Integration points with Phase 4a code" section — boot-engine-core insertion location)
   </read_first>
   <files>packages/g2-app/src/internal/boot-engine-core.ts, packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts</files>
@@ -434,3 +443,5 @@ After completion, create `.planning/phases/04b-overlay-slot-map-mode-toggle-adve
 - Whether the `// TODO(ADR-0009)` comment lands in boot-engine-core.ts or in map-mode-toggle.ts (both acceptable; pick one)
 - Confirmation that SR-1..SR-10 still pass after the boot-engine extension
 </output>
+</content>
+</invoke>
