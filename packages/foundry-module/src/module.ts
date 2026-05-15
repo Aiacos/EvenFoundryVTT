@@ -26,6 +26,7 @@
  * @see 02-CONTEXT.md D-2.01, D-2.12, D-2.18 (pair button, socketlib, locale)
  */
 
+import { registerCanvasExtractor } from './canvas-extractor.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
@@ -149,4 +150,12 @@ Hooks.once('init', () => {
 Hooks.once('ready', () => {
   registerSocketlibHandlers();
   registerHookSubscribers(bridgeDeltaEmitter);
+  // Plan 04a-06 — raster pipeline data-source ingress.
+  // The emit callback dispatches the typed FramePixels payload on the
+  // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
+  // server-side (proto / seq / ts / type / session_id / payload — session_id
+  // is populated from the pair registry). No new auth surface (T-4a-06-04).
+  registerCanvasExtractor({
+    emit: (payload) => bridgeDeltaEmitter('frame_pixels', payload),
+  });
 });
