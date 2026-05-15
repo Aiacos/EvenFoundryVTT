@@ -15,6 +15,7 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0005](./0005-phase0-go-no-go.md) | Phase 0 GO/NO-GO — Branch A/B/C raster vs glyph default | proposed | Phase 0 closure (Plan 04 fills verdict) |
 | [ADR-0006](./0006-raster-pipeline-library-stack.md) | Raster Pipeline Library Stack | proposed | Phase 0 closure (Plan 04 fills branch path) |
 | [ADR-0008](./0008-code-quality-configuration.md) | Code Quality Configuration — Biome+TS+Vitest+CI gates | accepted | Phase 1+ every commit |
+| [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | proposed | Phase 4a entry (Plan 05 transitions to accepted) |
 
 **Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
