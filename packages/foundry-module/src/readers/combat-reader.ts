@@ -19,6 +19,12 @@ import type { Combatant, CombatSnapshot } from '@evf/shared-protocol';
  *
  * Returns null when `game.combat` is null (no active combat).
  *
+ * Phase 5 addition: populates optional `concentration` sub-object for each combatant
+ * that is concentrating on a spell. Source: `c.actor.effects.contents` — finds the
+ * first effect with `flags?.dnd5e?.concentrating === true` (RESEARCH §Pattern 4,
+ * assumption A2 — dnd5e 5.x sets this flag on concentration effects).
+ * `spellName` = effect.name, `duration` = effect.duration?.label ?? ''.
+ *
  * @returns CombatSnapshot or null
  */
 export function getCombatSnapshot(): CombatSnapshot | null {
@@ -33,6 +39,21 @@ export function getCombatSnapshot(): CombatSnapshot | null {
   const combatants: Combatant[] = combat.combatants.contents.map((c) => {
     const hp = c.actor?.system.attributes.hp;
 
+    // Phase 5: Concentration detection via actor effects (RESEARCH §Pattern 4 assumption A2).
+    // Iterate actor.effects.contents; find the first effect with flags.dnd5e.concentrating === true.
+    // Defensive: c.actor may be null (unlinked combatant).
+    const concentrationEffect = c.actor?.effects.contents.find(
+      (e) => e.flags?.dnd5e?.concentrating === true,
+    );
+
+    const concentration =
+      concentrationEffect !== undefined
+        ? {
+            spellName: concentrationEffect.name,
+            duration: concentrationEffect.duration?.label ?? '',
+          }
+        : undefined;
+
     return {
       id: c.id,
       name: c.name,
@@ -41,6 +62,7 @@ export function getCombatSnapshot(): CombatSnapshot | null {
       hp: hp !== undefined ? hp.value : null,
       maxHp: hp !== undefined ? hp.max : null,
       isCurrentTurn: c.id === currentCombatantId,
+      ...(concentration !== undefined ? { concentration } : {}),
     };
   });
 

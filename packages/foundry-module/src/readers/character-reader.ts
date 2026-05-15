@@ -31,6 +31,12 @@ import type { CharacterSnapshot } from '@evf/shared-protocol';
  * each counter to 0 — fresh dnd5e 5.x actors may have `attributes.death`
  * undefined until the first death save is rolled.
  *
+ * Phase 5 addition: reads `game.settings.get('dnd5e', 'rulesVersion')` to populate
+ * `world.modernRules`. Maps `'modern'` → `true`, all other values (including `'legacy'`
+ * and `undefined`) → `false`. Defensive default of `false` (PHB 2014) is consistent
+ * with the Phase 4b death-saves pattern. RESEARCH §Pattern 3 assumption A1 verified:
+ * dnd5e 5.x uses `'modern'` / `'legacy'` string values for `rulesVersion`.
+ *
  * @param actorId - Foundry actor document ID
  * @returns CharacterSnapshot or null
  */
@@ -56,6 +62,13 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     failure: actor.system.attributes.death?.failure ?? 0,
   };
 
+  // World-state: PHB edition detection (Phase 5 Plan 05-01).
+  // `game.settings.get('dnd5e', 'rulesVersion')` returns 'modern' (PHB 2024) or
+  // 'legacy' (PHB 2014). Any non-'modern' value (including undefined on fresh
+  // worlds) defaults to false. RESEARCH §Pattern 3, assumption A1.
+  const rulesVersionRaw = game.settings.get('dnd5e', 'rulesVersion');
+  const modernRules = typeof rulesVersionRaw === 'string' && rulesVersionRaw === 'modern';
+
   // Conditions come from Foundry v13+ actor.statuses (Set<string>)
   const conditions = Array.from(actor.statuses);
 
@@ -70,6 +83,7 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     conditions,
     exhaustion: actor.system.attributes.exhaustion,
     death,
+    world: { modernRules },
   };
 }
 

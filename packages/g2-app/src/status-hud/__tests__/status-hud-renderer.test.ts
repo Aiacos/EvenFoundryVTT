@@ -43,6 +43,7 @@ function makeSnapshot(overrides: Partial<CharacterSnapshot> = {}): CharacterSnap
     conditions: [],
     exhaustion: 0,
     death: { success: 0, failure: 0 },
+    world: { modernRules: false },
     ...overrides,
   };
 }
@@ -287,6 +288,7 @@ describe('Phase 4b death-saves mode (DEATH-01)', () => {
       conditions: [],
       exhaustion: 0,
       death,
+      world: { modernRules: false },
       ...overrides,
     };
   }

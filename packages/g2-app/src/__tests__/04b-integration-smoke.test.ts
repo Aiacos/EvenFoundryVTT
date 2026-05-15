@@ -174,6 +174,7 @@ const BASE_SNAPSHOT: CharacterSnapshot = {
   conditions: [],
   exhaustion: 0,
   death: { success: 0, failure: 0 },
+  world: { modernRules: false },
 };
 
 const DEATH_SAVES_SNAPSHOT: CharacterSnapshot = {

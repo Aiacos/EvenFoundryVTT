@@ -237,6 +237,7 @@ describe('buildServer integration', () => {
       conditions: [],
       exhaustion: 0,
       death: { success: 0, failure: 0 },
+      world: { modernRules: false },
     };
 
     it('returns 200 with CharacterSnapshot for valid bearer + actorId', async () => {

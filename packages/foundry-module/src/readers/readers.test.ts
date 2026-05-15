@@ -19,6 +19,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global mock helpers ──────────────────────────────────────────────
 
+function makeActiveEffect(name: string, dnd5eConcentrating: boolean, durationLabel?: string) {
+  return {
+    name,
+    flags: { dnd5e: { concentrating: dnd5eConcentrating } },
+    duration: durationLabel !== undefined ? { label: durationLabel } : undefined,
+  };
+}
+
 function makeActor(
   overrides: Partial<{
     id: string;
@@ -33,6 +41,8 @@ function makeActor(
     // nullish-coalesce defensive default in character-reader.ts (CR-DS-3).
     // To omit it entirely, pass `death: undefined` explicitly.
     death: { success: number; failure: number } | undefined;
+    // Phase 5: active effects for concentration detection (CMRD-CONC-*)
+    effects: ReturnType<typeof makeActiveEffect>[];
   }> = {},
 ) {
   const death =
@@ -55,6 +65,7 @@ function makeActor(
       },
     },
     statuses: overrides.statuses ?? new Set<string>(),
+    effects: { contents: overrides.effects ?? [] },
   };
 }
 
@@ -136,6 +147,8 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.level).toBe(7);
     expect(snap?.conditions).toEqual(['poisoned']);
     expect(snap?.exhaustion).toBe(1);
+    // Phase 5: world.modernRules defaults to false when rulesVersion is not 'modern'
+    expect(snap?.world.modernRules).toBe(false);
   });
 
   it('includes multiple conditions from statuses Set', () => {
@@ -218,6 +231,38 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.ac).toBe(19);
     expect(snap?.level).toBe(6);
   });
+
+  // ── Phase 5: world.modernRules extension (CHRD-MR-1..3) ──────────────────
+
+  it('CHRD-MR-1: rulesVersion="modern" → world.modernRules === true', () => {
+    const actor = makeActor({ id: 'pc-mr-1' });
+    const gameMock = makeGameMock([actor]);
+    gameMock.settings.get.mockReturnValue('modern');
+    vi.stubGlobal('game', gameMock);
+
+    const snap = getCharacterSnapshot('pc-mr-1');
+    expect(snap?.world.modernRules).toBe(true);
+  });
+
+  it('CHRD-MR-2: rulesVersion="legacy" → world.modernRules === false', () => {
+    const actor = makeActor({ id: 'pc-mr-2' });
+    const gameMock = makeGameMock([actor]);
+    gameMock.settings.get.mockReturnValue('legacy');
+    vi.stubGlobal('game', gameMock);
+
+    const snap = getCharacterSnapshot('pc-mr-2');
+    expect(snap?.world.modernRules).toBe(false);
+  });
+
+  it('CHRD-MR-3: rulesVersion=undefined (fresh world) → world.modernRules === false', () => {
+    const actor = makeActor({ id: 'pc-mr-3' });
+    const gameMock = makeGameMock([actor]);
+    gameMock.settings.get.mockReturnValue(undefined);
+    vi.stubGlobal('game', gameMock);
+
+    const snap = getCharacterSnapshot('pc-mr-3');
+    expect(snap?.world.modernRules).toBe(false);
+  });
 });
 
 // ─── Combat reader tests ───────────────────────────────────────────────────────
@@ -249,6 +294,7 @@ describe('getCombatSnapshot', () => {
       actor,
       initiative: 15,
     };
+    // Sauron: unlinked combatant (actor: null) — no concentration possible
     const combatant2 = {
       id: 'cbt-2',
       name: 'Sauron',
@@ -298,6 +344,114 @@ describe('getCombatSnapshot', () => {
 
     const snap = getCombatSnapshot();
     expect(snap?.currentCombatantId).toBeNull();
+  });
+
+  // ── Phase 5: concentration extension (CMRD-CONC-1..4) ────────────────────
+
+  it('CMRD-CONC-1: combatant with NO concentrating effect → no concentration field', () => {
+    const actor = makeActor({
+      id: 'actor-conc-1',
+      effects: [makeActiveEffect('Bless', false, '1 minute')], // not concentrating
+    });
+    const combatant = {
+      id: 'cbt-conc-1',
+      name: 'Lyra',
+      actorId: 'actor-conc-1',
+      actor,
+      initiative: 14,
+    };
+    const combat = {
+      id: 'combat-conc',
+      round: 1,
+      turn: 0,
+      combatant,
+      combatants: { contents: [combatant] },
+    };
+    vi.stubGlobal('game', makeGameMock([actor], combat));
+
+    const snap = getCombatSnapshot();
+    const lyra = snap?.combatants.find((c) => c.id === 'cbt-conc-1');
+    expect(lyra).toBeDefined();
+    expect(lyra?.concentration).toBeUndefined();
+  });
+
+  it('CMRD-CONC-2: combatant WITH concentrating effect → concentration sub-object present', () => {
+    const actor = makeActor({
+      id: 'actor-conc-2',
+      effects: [makeActiveEffect('Bless', true, '1 minute')],
+    });
+    const combatant = {
+      id: 'cbt-conc-2',
+      name: 'Gandalf',
+      actorId: 'actor-conc-2',
+      actor,
+      initiative: 18,
+    };
+    const combat = {
+      id: 'combat-conc-2',
+      round: 1,
+      turn: 0,
+      combatant,
+      combatants: { contents: [combatant] },
+    };
+    vi.stubGlobal('game', makeGameMock([actor], combat));
+
+    const snap = getCombatSnapshot();
+    const gandalf = snap?.combatants.find((c) => c.id === 'cbt-conc-2');
+    expect(gandalf?.concentration).toEqual({ spellName: 'Bless', duration: '1 minute' });
+  });
+
+  it('CMRD-CONC-3: multiple effects, only one concentrating → correct effect picked', () => {
+    const actor = makeActor({
+      id: 'actor-conc-3',
+      effects: [
+        makeActiveEffect('Poison', false, '1 hour'),
+        makeActiveEffect("Hunter's Mark", true, '1 hour'),
+        makeActiveEffect('Haste', false, '1 minute'),
+      ],
+    });
+    const combatant = {
+      id: 'cbt-conc-3',
+      name: 'Ranger',
+      actorId: 'actor-conc-3',
+      actor,
+      initiative: 12,
+    };
+    const combat = {
+      id: 'combat-conc-3',
+      round: 1,
+      turn: 0,
+      combatant,
+      combatants: { contents: [combatant] },
+    };
+    vi.stubGlobal('game', makeGameMock([actor], combat));
+
+    const snap = getCombatSnapshot();
+    const ranger = snap?.combatants.find((c) => c.id === 'cbt-conc-3');
+    expect(ranger?.concentration?.spellName).toBe("Hunter's Mark");
+  });
+
+  it('CMRD-CONC-4: combatant.actor === null → no concentration field', () => {
+    const combatant = {
+      id: 'cbt-conc-4',
+      name: 'Ghost',
+      actorId: null,
+      actor: null, // unlinked token
+      initiative: 8,
+    };
+    const combat = {
+      id: 'combat-conc-4',
+      round: 1,
+      turn: 0,
+      combatant,
+      combatants: { contents: [combatant] },
+    };
+    vi.stubGlobal('game', makeGameMock([], combat));
+
+    const snap = getCombatSnapshot();
+    const ghost = snap?.combatants.find((c) => c.id === 'cbt-conc-4');
+    expect(ghost).toBeDefined();
+    expect(ghost?.concentration).toBeUndefined();
   });
 });
 

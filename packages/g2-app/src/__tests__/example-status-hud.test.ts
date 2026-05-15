@@ -43,6 +43,7 @@ const IDLE_SNAPSHOT: CharacterSnapshot = {
   conditions: [],
   exhaustion: 0,
   death: { success: 0, failure: 0 },
+  world: { modernRules: false },
 };
 
 describe('Phase 4a Status HUD INV-1 fixture round-trip (Plan 05 example-status-hud)', () => {

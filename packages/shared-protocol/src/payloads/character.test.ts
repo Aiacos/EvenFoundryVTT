@@ -24,10 +24,11 @@ import {
   CharacterSnapshotSchema,
   type DeathSaves,
   DeathSavesSchema,
+  WorldStateSchema,
 } from './character.js';
 
-/** Canonical valid snapshot used as the test base; the `death` field is the
- *  schema-extension under test and is overridden per case. */
+/** Canonical valid snapshot used as the test base; schema-extension fields
+ *  (`death`, `world`) are included with defaults and overridden per case. */
 const VALID_SNAPSHOT: CharacterSnapshot = {
   actorId: 'pc-aiacos',
   name: 'Aiacos',
@@ -39,6 +40,7 @@ const VALID_SNAPSHOT: CharacterSnapshot = {
   conditions: [],
   exhaustion: 0,
   death: { success: 0, failure: 0 },
+  world: { modernRules: false },
 };
 
 describe('CharacterSnapshotSchema — death-saves extension (CS-DS)', () => {
@@ -102,5 +104,65 @@ describe('CharacterSnapshotSchema — death-saves extension (CS-DS)', () => {
     const d: DeathSaves = { success: 1, failure: 2 };
     expect(d.success).toBe(1);
     expect(d.failure).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 — world.modernRules extension (CHAR-MR-1..5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CharacterSnapshotSchema — world.modernRules extension (CHAR-MR)', () => {
+  it('CHAR-MR-1: payload with world.modernRules=true parses successfully', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      world: { modernRules: true },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.world.modernRules).toBe(true);
+    }
+  });
+
+  it('CHAR-MR-2: payload with world.modernRules=false parses successfully', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      world: { modernRules: false },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.world.modernRules).toBe(false);
+    }
+  });
+
+  it('CHAR-MR-3: payload WITHOUT world field FAILS to parse (field is REQUIRED)', () => {
+    const { world: _world, ...snapshotWithoutWorld } = VALID_SNAPSHOT;
+    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutWorld);
+    expect(result.success).toBe(false);
+  });
+
+  it('CHAR-MR-4: payload with extra fields in world PASSES (open z.object, not strictObject)', () => {
+    // WorldStateSchema uses z.object (not z.strictObject) for forward-compat.
+    // Phase 7+ may add currentEdition or other world fields without breaking consumers.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      world: { modernRules: true, extraField: 'future-value' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CHAR-MR-5: payload with world.modernRules="true" (string) FAILS (boolean required)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      world: { modernRules: 'true' }, // wrong type — should be boolean
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CHAR-MR-6: WorldStateSchema exported separately + roundtrips', () => {
+    const result = WorldStateSchema.safeParse({ modernRules: false });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.modernRules).toBe(false);
+    }
   });
 });

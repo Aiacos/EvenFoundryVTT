@@ -191,6 +191,35 @@ interface Dnd5eActorSystem {
 
 // ─── Foundry Actor (minimal read shape) ───────────────────────────────────────
 
+/**
+ * Minimal dnd5e 5.x Active Effect shape — used by combat-reader.ts to detect
+ * concentration via `flags.dnd5e.concentrating === true`.
+ *
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 4
+ */
+interface FoundryActiveEffect {
+  /** Effect display name (e.g. 'Bless', 'Hunter's Mark'). */
+  name: string;
+  /**
+   * Module-namespace flags. The dnd5e module sets
+   * `flags.dnd5e.concentrating: true` on the effect that represents
+   * concentration (RESEARCH assumption A2 — verified at Phase 5 execution time).
+   */
+  flags: {
+    dnd5e?: {
+      concentrating?: boolean;
+    };
+    [key: string]: unknown;
+  };
+  /**
+   * Duration information for the effect.
+   * The `label` property is a human-readable string (e.g. '1 minute', '8 hours').
+   */
+  duration?: {
+    label?: string;
+  };
+}
+
 /** Minimal Foundry Actor document shape consumed by character-reader and combat-reader. */
 interface FoundryActor {
   /** Foundry document ID. */
@@ -206,6 +235,16 @@ interface FoundryActor {
    * Examples: "poisoned", "prone", "blinded".
    */
   statuses: Set<string>;
+  /**
+   * Active effects collection (Foundry v13+).
+   * Used by combat-reader.ts to detect concentration effects.
+   * The collection is iterable.
+   *
+   * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 4
+   */
+  effects: {
+    contents: FoundryActiveEffect[];
+  };
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────

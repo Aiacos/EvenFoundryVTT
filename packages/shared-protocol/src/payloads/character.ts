@@ -8,6 +8,8 @@
  * - `death` is from `actor.system.attributes.death.{success,failure}` — same across
  *   editions per dnd5e 5.x; counters are integers 0..3 (3 successes = stabilized,
  *   3 failures = dead).
+ * - `world.modernRules` is from `game.settings.get('dnd5e','rulesVersion') === 'modern'`
+ *   (Phase 5 Plan 05-01 Wave-0 atomic extension; REQUIRED field per atomic-commit pattern).
  *
  * This is a full-replacement delta (ADR-0002 §Phase 2): no field-level diff.
  * Phase 5 narrows to field-level deltas when the payload union arms are filled.
@@ -17,6 +19,7 @@
  * @see packages/foundry-module/src/readers/character-reader.ts (producer)
  * @see 02-05-PLAN.md Task 1 (CharacterSnapshotSchema spec)
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q4 (death-saves extension)
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 3 (modernRules mapping)
  */
 import { z } from 'zod';
 
@@ -41,6 +44,26 @@ export const DeathSavesSchema = z.strictObject({
 export type DeathSaves = z.infer<typeof DeathSavesSchema>;
 
 /**
+ * World-state sub-object — edition and world-level settings that affect
+ * how the character snapshot is rendered on the G2.
+ *
+ * Uses `z.object` (not `z.strictObject`) for forward-compat: Phase 7+ may
+ * add additional world fields (e.g. `currentEdition`) without breaking
+ * Phase 5 consumers that parse existing payloads.
+ *
+ * `modernRules`: `true` when `game.settings.get('dnd5e','rulesVersion')` is
+ * `'modern'` (PHB 2024), `false` otherwise (PHB 2014 default).
+ *
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 3
+ * @see Specs.md §11.5.1 — dual-edition support (PHB 2014 + PHB 2024)
+ */
+export const WorldStateSchema = z.object({
+  modernRules: z.boolean(),
+});
+
+export type WorldState = z.infer<typeof WorldStateSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -60,6 +83,10 @@ export type DeathSaves = z.infer<typeof DeathSavesSchema>;
  * - `death`      — Death saving throw counters (`success`/`failure`, each 0..3). REQUIRED.
  *                  Phase 4b addition for the status-hud death-save pivot trigger
  *                  (Plan 05 consumes `DeathSavesSchema` for ergonomic narrowing).
+ * - `world`      — World-state sub-object (Phase 5 addition, REQUIRED per atomic-commit
+ *                  pattern — see ADR-0002 Phase 2 drift note). Contains `modernRules`
+ *                  boolean indicating PHB 2024 mode. Uses open `z.object` for forward-compat
+ *                  (Phase 7+ may add more world fields).
  */
 export const CharacterSnapshotSchema = z.strictObject({
   actorId: z.string().min(1),
@@ -72,6 +99,11 @@ export const CharacterSnapshotSchema = z.strictObject({
   conditions: z.array(z.string()),
   exhaustion: z.number().int().min(0).max(6),
   death: DeathSavesSchema,
+  /**
+   * World-state sub-object (Phase 5 Plan 05-01 Wave-0 atomic extension).
+   * REQUIRED — atomic commit with character-reader closes the drift window.
+   */
+  world: WorldStateSchema,
 });
 
 export type CharacterSnapshot = z.infer<typeof CharacterSnapshotSchema>;

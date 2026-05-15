@@ -13,10 +13,34 @@
 import { z } from 'zod';
 
 /**
+ * Concentration sub-object for a combatant who is concentrating on a spell.
+ *
+ * Sourced from `actor.effects` — finds the effect with
+ * `flags?.dnd5e?.concentrating === true` (RESEARCH §Pattern 4 assumption A2).
+ * `spellName` is the effect name (truncated at 12 chars by the renderer, not here).
+ * `duration` is the effect duration label (truncated at 6 chars by the renderer).
+ *
+ * Uses open `z.object` for forward-compat (Phase 7+ may add a spellId field).
+ *
+ * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 4
+ * @see 05-UI-SPEC.md §5.8 — concentration sub-line format
+ */
+export const ConcentrationSchema = z.object({
+  /** Name of the concentration spell (raw, not truncated). */
+  spellName: z.string(),
+  /** Duration label from the effect (e.g. '1m', '8h', 'conc'). */
+  duration: z.string(),
+});
+
+export type Concentration = z.infer<typeof ConcentrationSchema>;
+
+/**
  * A single combatant entry in the combat tracker.
  *
  * `isCurrentTurn` is derived from `combat.turn === index` at snapshot time.
  * `hp` / `maxHp` are read from the linked actor (null if combatant has no actor).
+ * `concentration` is an optional sub-object present when the combatant is actively
+ * concentrating on a spell (Phase 5 Plan 05-01 addition).
  */
 export const CombatantSchema = z.strictObject({
   /** Combatant ID (foundry combatant document ID). */
@@ -33,6 +57,12 @@ export const CombatantSchema = z.strictObject({
   maxHp: z.number().int().nonnegative().nullable(),
   /** Whether it is this combatant's turn right now. */
   isCurrentTurn: z.boolean(),
+  /**
+   * Active concentration spell (Phase 5 Plan 05-01 addition).
+   * Present only when `actor.effects` contains an effect with
+   * `flags.dnd5e.concentrating === true`. Optional — most combatants are not concentrating.
+   */
+  concentration: ConcentrationSchema.optional(),
 });
 
 export type Combatant = z.infer<typeof CombatantSchema>;
