@@ -5,6 +5,8 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-05-15
+revised: 2026-05-15
+revision_reason: INV-1 fix pass — combat tracker column table, spellbook column table, footer budget (3 blocking issues); plus 3 non-blocking flag resolutions.
 ---
 
 # Phase 5 — UI Design Contract
@@ -89,7 +91,7 @@ Row 23:  ║ R1: <gesture-hint>                                       [chips]   
 | Tool | none — bridge text containers only |
 | Preset | not applicable |
 | Component library | none |
-| Icon library | Unicode block/box/arrow/game glyphs (full list §9) |
+| Icon library | Unicode block/box/arrow/game glyphs (full list §6) |
 | Font | G2 firmware monospace — exact glyph width verified at 1 col-cell per code-point |
 | Spacing | character-grid units (1 char = 1 spacing unit) |
 | Color | greyscale 4-bit hardware; severity expressed via prefix glyph only |
@@ -126,7 +128,7 @@ The G2 is monospace-only. All "typography" is expressed as column widths and row
 | Panel inner content (between `│ ` and ` │`) | 66 | varies |
 | Status HUD card | 28 | 21 (rows 2–22) |
 | Header | 94 | 1 (row 1) |
-| Footer | 94 | 1 (row 23) |
+| Footer body (between `║` borders) | 94 | 1 (row 23) |
 
 ### 4.2 Tab Strip Contract (SHEET-04)
 
@@ -149,6 +151,8 @@ Active Main:               [▶MAI ][ SKI ][ INV ][ SPL ][ FEA ][ BIO ]
 
 **INV-1 ck 13 requirement:** a snapshot diff of tab strip across all 6 active states must show exactly zero column shift in adjacent tabs. The `▶`/space swap is the only change.
 
+**Tab label note:** The 3-char tags `MAI / SKI / INV / SPL / FEA / BIO` are locked for all locales (CONTEXT.md §Area 2, DE width-budget safety). These supersede the full-label names (`MAIN / SKILLS / INV / SPELLS / FEATS / BIO`) that appear in Specs.md §7.5.1 mockups; the 3-char form is authoritative for Phase 5 fixtures.
+
 ### 4.3 Header Format (row 1)
 
 ```
@@ -162,13 +166,34 @@ Active Main:               [▶MAI ][ SKI ][ INV ][ SPL ][ FEA ][ BIO ]
 
 ### 4.4 Footer Format (row 23)
 
+**Authoritative model (mockup as source of truth):**
+
 ```
-║ R1: <gesture-hint 40 chars>                [<chip>] [<chip>] …    ║
+║ R1: <hint>   [chip] [chip] …  ║
 ```
 
-- Gesture hint: panel-specific, left-aligned, 40 chars max
-- Chip bar: right-aligned, active chip prefixed with `▶` (`[▶sheet]` vs `[sheet]`)
-- 5 chips max in chip bar: `[sheet] [combat] [log] [spell] [inv]` = 44 chars at right
+The footer body is 94 chars (between the two `║` borders). Structure:
+
+- **Fixed prefix:** ` R1: ` (5 chars, cols 1–5).
+- **Hint content:** left-aligned, starts at col 6, variable width per panel (see per-panel budget table below).
+- **Gap:** spaces fill between hint end and chip bar.
+- **Chip bar:** right-aligned in the remaining space. When all 5 chips fit (hint content ≤ 46 chars), the full chip bar is shown. When the hint is longer (Sheet tab), the chip bar is abbreviated to the first 2 chips + `…` suffix.
+
+**Per-panel hint content budgets (characters, not including the ` R1: ` prefix):**
+
+| Panel | Hint content budget | Chip bar form |
+|-------|-------------------|---------------|
+| CharacterSheet | 61 chars | Abbreviated: `[▶scheda] [combat] …` (20 chars) |
+| CombatTracker | 42 chars | Full: all 5 chips (38 chars) |
+| Log | 41 chars | Full: all 5 chips (38 chars) |
+| Inventory | 36 chars | Full: all 5 chips (38 chars) |
+| SpellBook | 43 chars | Full: all 5 chips (38 chars) |
+
+**Chip bar abbreviation rule:** if hint content ≤ 46 chars, the full chip bar (`[<chip1>] [<chip2>] [<chip3>] [<chip4>] [<chip5>]` = 38 chars) fits within the 94-char footer body with at least 5 chars of gap spacing. If hint content > 46 chars, the chip bar is abbreviated to the first 2 chips + `…` (e.g., `[▶scheda] [combat] …`).
+
+**Active chip indicator:** the active panel's chip is prefixed with `▶` (`[▶scheda]` vs `[scheda]`).
+
+**i18n fallback:** footer hints are single i18n keys per panel (not composite strings). If the active locale's translation of a hint key would exceed the per-panel budget, the renderer falls back to the EN string for that entire key. This is per-key fallback (not full-locale fallback) consistent with I18N-05 best-effort policy. The per-panel budgets declared above are IT-derived (longest canonical locale); EN fits within the same budgets.
 
 ---
 
@@ -390,27 +415,42 @@ Canonical INV-1 fixtures: `combat-tracker.full-window.it.txt`, `combat-tracker.p
 ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-**Combatant row column layout (within 66-char inner content):**
+**Combatant row column layout (positions within the 66-char inner content, 0-indexed from first char after `│ `):**
+
+Derived character-by-character from the mockup rows above. All 5 combatant rows were verified to produce identical column positions for every field.
 
 ```
-Cols 0-2:  Initiative (3 chars, right-aligned: ` 18`, ` 5`, ` 99`)
-Col  3:    space
-Cols 4-5:  Current-turn marker: `▶ ` or `  ` (2 chars)
-Cols 6-21: Combatant name (16 chars, truncate `…`)
-Col  22:   Party marker `◀` or space (◀ = player character)
-Col  23:   space
-Cols 24-25: HP label `PF` (2 chars)
-Col  26:   space
-Cols 27-34: HP bar (8 chars `█░` glyphs)
-Col  35:   space
-Cols 36-40: HP value `NN/NN` (up to 6 chars: `999/999`)  — right-pad to 7
-Cols 43-44: AC label `CA` (2 chars)
-Col  45:   space
-Cols 46-47: AC value (2-3 chars, right-pad to 3)
-Cols 50-55: Distance + direction `NN m NE` or `--    ` (7 chars)
-Col  56:   space
-Col  57:   Faction glyph: `★` = party / `✕` = enemy
+Cols 0-3:   Initiative (4 chars, right-aligned: " 18", "  8", " 99")
+             Example: " 18" at cols 0-2 then space at 3; "  8" at cols 0-2, digit at 3.
+Cols 4-5:   Separator (2 spaces, always present)
+Cols 6-7:   Current-turn marker: "▶ " (active turn) or "  " (not current turn)
+Cols 8-25:  Name + YOU-marker field (18 chars total, fixed):
+             · Without YOU marker: name left-aligned, space-padded to 18 chars.
+               Maximum name width = 18 chars (truncate with "…").
+             · With YOU marker: name (max 12 chars) + "  " (2 spaces) + "◀ TU" (4 chars) = 18 chars.
+               Maximum name width when YOU active = 12 chars (truncate with "…").
+               YOU marker text is the locale-appropriate key (IT: "◀ TU", EN: "◀ YOU", DE: "◀ DU").
+Cols 26-27: HP label (2 chars: "PF" IT / "HP" EN / "TP" DE)
+Col  28:    Space
+Cols 29-36: HP bar (8 chars, fixed width, █░ glyphs — fraction of max HP)
+Col  37:    Space
+Cols 38-42: HP value (5 chars, right-justified within this field):
+             Format "N/M" where N = current HP, M = max HP.
+             Budget = 5 chars — supports up to "99/99". For HP ≥ 100, renderer
+             truncates to fit: e.g., "1…/1…" or "100/…" per renderer policy.
+             Examples: " 5/15" (4 chars right-justified), "45/68" (5 chars).
+Cols 43-44: Gap (2 spaces)
+Cols 45-46: AC label (2 chars: "CA" IT / "AC" EN / "RK" DE)
+Col  47:    Space
+Cols 48-50: AC value (3 chars, right-justified: " 13", " 18", "118")
+Cols 51-52: Gap (2 spaces)
+Cols 53-58: Distance + direction (6 chars, left-aligned, space-padded):
+             Examples: "30m NE" (exact fit), "40m E " (padded), "--    " (no LOS)
+Cols 59-61: Gap (3 spaces)
+Col  62:    Faction glyph: "★" = party / "✕" = enemy
 ```
+
+**YOU-marker budget note:** The name + YOU-marker field is always exactly 18 chars (cols 8–25). When the YOU marker `◀ TU` (4 chars) is active, it is preceded by a mandatory 2-space gap and the name is capped at 12 chars. The total is: name(12) + gap(2) + marker(4) = 18. When the YOU marker is absent, name fills all 18 chars. No layout shift occurs between the two states.
 
 **Concentration sub-line format (appears UNDER combatant row when applicable):**
 ```
@@ -569,7 +609,7 @@ Canonical INV-1 fixtures: `spellbook.caster.it.txt`, `spellbook.half-caster.it.t
 ║ │   ◉ Dardo Incantato     azione  36m    3×1d4+1 forza               │   ║ Mov 30/30        ║
 ║ │                                                                   │   ║ Slot             ║
 ║ │  L2   slot ▓░░   1/3                                               │   ║   1° ▓▓░░ 2/4    ║
-║ │   ◉ Passo Velato        azione bonus 9m   teletrasporto            │   ║   2° ▓░░  1/3    ║
+║ │   ◉ Passo Velato        bonusA  9m     teletrasporto               │   ║   2° ▓░░  1/3    ║
 ║ │                                                                   │   ║   3° ░░   0/2    ║
 ║ │  L3   slot ░░    0/2   ← disponibili                               │   ║                  ║
 ║ │   ▶ Palla di Fuoco      azione  45m    8d6 fuoco  sfera 6m         │   ║ Condizioni       ║
@@ -581,17 +621,33 @@ Canonical INV-1 fixtures: `spellbook.caster.it.txt`, `spellbook.half-caster.it.t
 ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-**Spell row column layout:**
+**Spell row column layout (positions within the 66-char inner content, 0-indexed from first char after `│ `):**
+
+Derived character-by-character from the IT mockup rows above. All rows verified to produce identical column positions.
+
 ```
-Cols 0-1:   Prepared marker `◉ ` or `  ` (2 chars)
-Cols 2-23:  Spell name (22 chars, truncate `…`)
-Cols 24-29: Activation type abbreviation — 6 chars right-pad:
-             `azione` (6) / `reaziN` (6) / `bonusA` (6) / `ritual` (6)
-Col  30:    space
-Cols 31-34: Range (4 chars + unit: `120ft` → `120f`, `30m` → `30m `)
-Col  35:    space
-Cols 36-55: Damage/effect summary (20 chars, truncate `…`)
+Cols 0-2:   Indent (3 spaces, always present)
+Col  3:     Prepared/cursor marker (1 char):
+             "◉" = prepared spell
+             "▶" = cursor-selected (may or may not be prepared)
+             " " = unprepared / no cursor
+Col  4:     Space
+Cols 5-24:  Spell name (20 chars, left-aligned, truncate with "…"):
+             Maximum name width = 20 chars.
+             Example: "Dardo di Fuoco      " (14-char name, 6 trailing spaces)
+             Example: "Contrincantesimo    " (16-char name, 4 trailing spaces)
+Cols 25-30: Activation abbreviation (6 chars, fixed-width, left-aligned):
+             "azione" (action) / "reaziN" (reaction) / "bonusA" (bonus action) / "ritual" (ritual)
+             All abbreviations are exactly 6 chars — no truncation, no variation.
+Cols 31-32: Gap (2 spaces, always present)
+Cols 33-39: Range (7 chars, left-aligned, space-padded):
+             Examples: "36m    " (3+4), "9m     " (2+5), "self   " (4+3), "120m   " (4+3)
+Cols 40-65: Damage/effect summary (26 chars, left-aligned, truncate with "…"):
+             Examples: "1d10 fuoco" (10 chars), "blocca incantesimo ≤ 3°" (23 chars)
+             Maximum = 26 chars (cols 40–65 = end of 66-char inner content).
 ```
+
+**Note on activation abbreviations:** The IT mockup uses `azione/reaziN/bonusA/ritual` (6 chars each). The prior mockup erroneously showed `azione bonus` for Passo Velato (bonus action) — this has been corrected to `bonusA` in the fixture above. All activation abbreviations must be exactly 6 chars.
 
 **2024 modernRules delta on Spellbook:** cantrips always `◉`. 2024 always-prepared spells show `≡` glyph prefix instead of `◉` for at-will/innate. Column positions unchanged.
 
@@ -637,7 +693,7 @@ All glyphs are single Unicode code-points, monospace-width 1 col-cell on G2 firm
 | `▶` | Active selection / current item | Tab active, cursor on item, current-turn marker prefix |
 | `◀` | Player character marker | Combat tracker "YOU" marker |
 | `◉` | Proficient / prepared spell | Skills prof marker, spellbook prepared |
-| `★` | Expertise (skills) / party member (combat) | Dual usage — context distinguishes |
+| `★` | Expertise (Skills tab) / party member (Combat Tracker) | **Dual use** — valid because Skills tab (z=2) and Combat Tracker (z=2) are mutually exclusive: only one panel is mounted at z=2 at a time, so `★` meaning is unambiguous from context. |
 | `○` | Untrained | Skills |
 | `◈` | Proficiency bonus / currency | Sheet vitals and inventory labels |
 | `◆` | Section header decorator | Inventory / Feats section headers |
@@ -752,15 +808,19 @@ Width budget `max` = 11 (longest = `ZAUBERBUCH` DE). Header breadcrumb column re
 
 ### 8.3 CTA Labels (footer gesture hints)
 
-| Panel / State | IT | EN | DE | max |
-|---------------|----|----|----|----|
-| Sheet (any tab) | `tap=prossimo tab  scroll=contenuto  tap×2=chiudi  long=rapida` | `tap=next tab  scroll=content  tap×2=close  long=quick` | `tap=nächster Tab  scroll=Inhalt  tap×2=schließen  long=schnell` | 64 |
-| Combat | `scroll=iniziativa  tap=rapida  long=rapida` | `scroll=initiative  tap=quick  long=quick` | `scroll=Initiative  tap=schnell  long=schnell` | 45 |
-| Log | `scroll=storia  tap=dettaglio  long=rapida` | `scroll=history  tap=detail  long=quick` | `scroll=Verlauf  tap=Detail  long=schnell` | 43 |
-| Inventory | `scroll=oggetto  tap=usa  long=rapida` | `scroll=item  tap=use  long=quick` | `scroll=Gegenstand  tap=nutzen  long=schnell` | 45 |
-| Spellbook | `scroll=incantesimo  tap=lancia  long=rapida` | `scroll=spell  tap=cast  long=quick` | `scroll=Zauber  tap=zaubern  long=schnell` | 46 |
+The values below are the **hint content** strings (not including the fixed ` R1: ` prefix). They are single i18n keys per panel — the full hint key falls back to EN if the active locale's translation would exceed the per-panel budget declared in §4.4.
 
-Footer gesture hint is left-aligned within 40 chars; truncate with `…` if locale exceeds budget. Max budget = 46 chars (Spellbook IT+footer = fits).
+| Panel / State | IT | EN | DE | hint-content budget |
+|---------------|----|----|----|--------------------|
+| Sheet (any tab) | `tap=prossimo tab  scroll=contenuto  tap×2=chiudi  long=rapida` | `tap=next tab  scroll=content  tap×2=close  long=quick` | `tap=nächster Tab  scroll=Inhalt  tap×2=schließen  long=schnell` | 61 chars (abbreviated chip bar) |
+| Combat | `scroll=iniziativa  tap=rapida  long=rapida` | `scroll=initiative  tap=quick  long=quick` | `scroll=Initiative  tap=schnell  long=schnell` | 42 chars (full chip bar) |
+| Log | `scroll=storia  tap=dettaglio  long=rapida` | `scroll=history  tap=detail  long=quick` | `scroll=Verlauf  tap=Detail  long=schnell` | 41 chars (full chip bar) |
+| Inventory | `scroll=oggetto  tap=usa  long=rapida` | `scroll=item  tap=use  long=quick` | `scroll=Gegenstand  tap=nutzen  long=schnell` | 36 chars (full chip bar) |
+| Spellbook | `scroll=incantesimo  tap=lancia  long=rapida` | `scroll=spell  tap=cast  long=quick` | `scroll=Zauber  tap=zaubern  long=schnell` | 43 chars (full chip bar) |
+
+**Chip bar abbreviation:** Sheet's 61-char hint exceeds the 46-char threshold (§4.4), so the chip bar is abbreviated to `[▶scheda] [combat] …`. All other panels show the full 5-chip bar.
+
+**i18n fallback scope:** each row above corresponds to a single i18n key. The locale fallback is per-key (the entire footer hint string falls back to EN if overflow is detected), not per-gesture-segment within the string.
 
 ### 8.4 PanelRouter Boot Error State
 
@@ -794,6 +854,8 @@ All keys must be added to `HUD_WIDTH_BUDGETS` in `packages/g2-app/src/status-hud
 **Total new keys Phase 5: approximately 70** (15 Main + 2 Skills + 8 Inventory-sheet + 7 Spells + 6 Feats + 6 Bio + 12 Combat + 13 Log + 5 Inventory-panel + 11 Spellbook-panel + 5 empty-states + 5 panel-titles + 5 CTAs + 2 PanelRouter + DE/ES/FR per-key additions).
 
 **Best-effort locale rule (I18N-05):** For ES/FR/PT-BR, when any string key's native translation would exceed its `max` budget, the renderer falls back to the EN string for that key only. This is enforced at render time (per-key fallback, not full-locale fallback). The `LOCALE_MENU.budget` field documents each locale's tier.
+
+**Footer hint i18n scope:** Footer hints are single keys (one key per panel per locale). Per-key fallback for footer hints means the entire hint string falls back to EN if the locale translation overflows the per-panel budget declared in §4.4. There is no sub-string / per-gesture-segment fallback within a footer hint.
 
 ---
 
@@ -932,3 +994,4 @@ Character-width budgets (see §4, §5). Not pixel-based.
 | i18n-budgets.ts | `WidthBudgetRow` interface + `HUD_WIDTH_BUDGETS` extension pattern |
 | REQUIREMENTS.md | SHEET-01..04, COMB-01, COMB-03, I18N-02, I18N-05 |
 | User input | None required — all answered by upstream artifacts |
+| gsd-ui-checker revision pass (2026-05-15) | Fixed 3 INV-1 blocking issues: combat tracker column table, spellbook column table, footer budget model |
