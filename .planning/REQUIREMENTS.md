@@ -62,10 +62,10 @@
 ### i18n / Localization
 
 - [ ] **I18N-01**: Locale auto-detected da `game.i18n.lang` al boot (3-layer arch: Foundry SoT → Bridge → G2 runtime)
-- [ ] **I18N-02**: Runtime override via Quick Action `[N] Language` (device-local, non tocca world settings)
+- [x] **I18N-02**: Runtime override via Quick Action `[N] Language` (device-local, non tocca world settings)
 - [ ] **I18N-03**: Catalogi forniti da Foundry (dnd5e + module `evenfoundryvtt`) — G2 ships no strings
 - [ ] **I18N-04**: Width-budget per chiave + fallback EN se eccede (INV-1 i18n stress, ck 14)
-- [ ] **I18N-05**: MVP target IT + EN canonical; best-effort DE / ES / FR / PT-BR
+- [x] **I18N-05**: MVP target IT + EN canonical; best-effort DE / ES / FR / PT-BR
 
 ### Connection Bootstrap (Phone-Side)
 
@@ -168,8 +168,8 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | SHEET-04 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | COMB-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
-| I18N-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
-| I18N-05 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| I18N-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
+| I18N-05 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
 | NAV-02 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
 | NAV-03 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |

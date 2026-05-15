@@ -113,13 +113,17 @@ class StubIdleLayer implements Layer {
 /**
  * Absolute path to the shared-render fixtures directory.
  *
- * Mirrors the pattern from `character-sheet-panel.test.ts` — resolves
- * `../../../../shared-render/src/fixtures` relative to `__dirname`
- * (packages/g2-app/src/__tests__/ → 4 levels up = workspace root,
- * then down into packages/shared-render/src/fixtures/).
+ * This test is at `packages/g2-app/src/__tests__/` (4 levels from workspace root).
+ * `../../../../` = workspace root; then `packages/shared-render/src/fixtures`
+ * reaches the canonical INV-1 fixture directory.
+ *
+ * NOTE: differs from `character-sheet-panel.test.ts` (which is at
+ * `packages/g2-app/src/panels/__tests__/` — 5 levels deep) and uses
+ * `../../../../shared-render/src/fixtures`. Our test is one level shallower,
+ * so we need `../../../../packages/shared-render/src/fixtures`.
  */
 function fixtureDir(): string {
-  return resolve(__dirname, '../../../../shared-render/src/fixtures');
+  return resolve(__dirname, '../../../../packages/shared-render/src/fixtures');
 }
 
 // ─── TestablePanelRouter ─────────────────────────────────────────────────────
