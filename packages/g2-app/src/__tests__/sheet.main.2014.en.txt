@@ -1,0 +1,18 @@
+┌──────────┐  THORIN OAKENSHIELD                                  
+│ portrait │  Lv 8                                                
+│ image    │                                                      
+│ 100×60   │                                                      
+└──────────┘                                                      
+♥ HP    ████████░░░░  45/68                                       
+⛨ AC 18    ⚡ INI —    ⚔ SPD —    PROF +3                          
+                                                                  
+┌── ABILITIES      ─┐  ┌── SAVING THROWS ──┐                      
+│ STR  —  —          │  │ ◉ STR  —    DEX  — │                    
+│ DEX  —  —          │  │ ◉ CON  —    INT  — │                    
+│ CON  —  —          │  │   WIS  —    CHA  — │                    
+│ INT  —  —          │  └──────────────────────────┘              
+│ WIS  —  —          │                                            
+│ CHA  —  —          │  Hit Dice  —                               
+└────────────────────┘                                            
+Senses  —                                                         
+                                                                  

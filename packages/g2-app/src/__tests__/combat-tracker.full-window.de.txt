@@ -1,0 +1,18 @@
+┌─── KAMPF-TRACKER                                               ┐
+  18    GOBLIN ARCHER     TP ███░░░░░  5/15  RK  --  --       ✕   
+  15  ▶ THORIN        ◀ DUTP █████░░░ 45/68  RK  --  --       ✕   
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+  Aktive Effekte:                                                 
+                                                                  
+  Schnell:  [ A ]ngriff  [ S ]zauber  [ I ]tem  [ M ]ew           
+└────────────────────────────────────────────────────────────────┘
+                                                                  
