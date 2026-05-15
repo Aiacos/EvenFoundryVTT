@@ -25,6 +25,10 @@
  *   7. new LayerManager(bridge) + setNegotiatedCaps(handshake.server_caps)
  *   8. new RasterController(bridge)
  *   9. BLE probe → controller.setBleVerdict + lm.setMapMode (CONTEXT.md §Area 4)
+ *   9b. Phase 4b: persisted map mode override read-back (MAP-05) — reads
+ *       `view.map.mode` from Even Hub kv via `loadPersistedMapMode(bridge)`;
+ *       'raster' | 'glyph' overrides the BLE verdict; 'auto' (or missing /
+ *       invalid / read-failure) lets the BLE verdict win.
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1]) — atomic single-flush
@@ -42,6 +46,7 @@ import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
+import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
 import { createBootPage } from '../engine/page-lifecycle.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
@@ -239,9 +244,42 @@ export async function _bootEngineCore(
   }
   layerManager.setMapMode(verdict === 'auto' ? 'auto' : verdict);
 
+  // 9b. Phase 4b — persisted map mode override (MAP-05 boot read-back).
+  //     The persisted value (set by Phase 4b `toggleMapMode` + Phase 6 Quick
+  //     Action [M]) OVERRIDES the BLE verdict when 'raster' or 'glyph'.
+  //     'auto' (or missing key, or invalid stored value, or read failure —
+  //     all coerce to 'auto' via `loadPersistedMapMode`'s defensive fallback)
+  //     lets the BLE verdict win.
+  //
+  //     The original BLE verdict is captured below so a future
+  //     `toggleMapMode('auto')` (Phase 6) can restore it instead of re-running
+  //     the BLE probe. For Phase 4b the captured value is intentionally not
+  //     consumed at runtime (see TODO below); Phase 6 wires the consumer.
+  //
+  //     04b-CONTEXT.md §Area 3 + 04B-RESEARCH.md §Approach 2.
+  const persistedMode = await loadPersistedMapMode(bridge);
+  // TODO(ADR-0009): Phase 6 Quick Action [M] — surface `originalBleVerdict`
+  // through BootEngineHandle so `toggleMapMode('auto')` can restore the BLE
+  // verdict without re-probing (Pitfall 7). For Phase 4b the variable is
+  // intentionally retained but unused at runtime — the `void` discard suppresses
+  // the strict `noUnusedLocals` flag while preserving the captured value for the
+  // Phase 6 wiring boundary.
+  const originalBleVerdict = verdict;
+  void originalBleVerdict;
+  if (persistedMode === 'raster' || persistedMode === 'glyph') {
+    rasterController.setBleVerdict(persistedMode);
+    layerManager.setMapMode(persistedMode);
+  }
+  // Effective verdict for downstream layer construction — honours the override
+  // when present, falls back to the BLE verdict otherwise. `IdleInfillLayer`'s
+  // 'raster' vs 'glyph' render branch reads from this so the override propagates
+  // into the initial layer composition, not just the in-memory state.
+  const effectiveVerdict: 'auto' | 'raster' | 'glyph' =
+    persistedMode === 'raster' || persistedMode === 'glyph' ? persistedMode : verdict;
+
   // 10. Construct the 3 layers.
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
-  const idleInfill = new IdleInfillLayer(bridge, verdict === 'glyph' ? 'glyph' : 'raster');
+  const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
   const statusHud = new StatusHudLayer({
     bridge,
     renderer: new StatusHudRenderer({ locale: opts.locale }),
