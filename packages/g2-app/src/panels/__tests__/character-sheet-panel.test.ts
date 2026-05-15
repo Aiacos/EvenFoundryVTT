@@ -336,15 +336,82 @@ describe('buildTabStrip — pure helper width + content', () => {
   });
 });
 
-// ─── CHSP-DRAW-1 ─────────────────────────────────────────────────────────────
+// ─── CHSP-DRAW-1 / CHSP-DRAW-2 ──────────────────────────────────────────────
 
 describe('CharacterSheetPanel — draw()', () => {
   it('CHSP-DRAW-1: draw issues exactly one textContainerUpgrade with containerName="overlay-block"', async () => {
     const { panel, bridge } = makePanel();
+    // Provide a populated snapshot so the real renderer produces content
+    const mockSnapshot = {
+      actorId: 'thorin-001',
+      name: 'THORIN',
+      hp: 45,
+      maxHp: 68,
+      tempHp: 0,
+      ac: 18,
+      level: 8,
+      conditions: [],
+      exhaustion: 0,
+      death: { success: 0, failure: 0 },
+      world: { modernRules: false },
+    };
+    panel.onSnapshot(mockSnapshot);
+    // Drain the async void draw from onSnapshot
+    await new Promise((r) => setTimeout(r, 0));
+    bridge.textContainerUpgrade.mockClear();
+
     await panel.draw();
+
     expect(bridge.textContainerUpgrade).toHaveBeenCalledTimes(1);
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { containerName: string };
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as {
+      containerName: string;
+      content: string;
+    };
     expect(arg.containerName).toBe('overlay-block');
+    // The content must contain the i18n key sentinel for Main tab CARATTERISTICHE section
+    expect(arg.content).toContain('CARATTERISTICHE');
+  });
+
+  it('CHSP-DRAW-2: tap switches tab; next draw content matches Skills tab output (cross-tab transition)', async () => {
+    const bus = new PanelGestureBus();
+    const { panel, bridge } = makePanel({ bus });
+    const mockSnapshot = {
+      actorId: 'thorin-001',
+      name: 'THORIN',
+      hp: 45,
+      maxHp: 68,
+      tempHp: 0,
+      ac: 18,
+      level: 8,
+      conditions: [],
+      exhaustion: 0,
+      death: { success: 0, failure: 0 },
+      world: { modernRules: false },
+    };
+
+    await panel.onMount();
+    panel.onSnapshot(mockSnapshot);
+    // Drain async draw from onSnapshot
+    await new Promise((r) => setTimeout(r, 0));
+    bridge.textContainerUpgrade.mockClear();
+
+    // Tap → cycle to Skills tab (index 1)
+    bus.publish({ kind: 'tap' });
+    // Drain the async void draw
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(bridge.textContainerUpgrade).toHaveBeenCalledTimes(1);
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as {
+      containerName: string;
+      content: string;
+    };
+    expect(arg.containerName).toBe('overlay-block');
+    // Skills tab content must contain the proficiency legend key sentinel
+    expect(arg.content).toContain('competente');
+    // Tab strip must show Skills as active
+    expect(arg.content).toContain('▶SKI');
+    // Tab strip must NOT show Main as active
+    expect(arg.content).not.toContain('▶MAI');
   });
 });
 

@@ -31,8 +31,9 @@
  * ## Per-tab content
  *
  * Each tab's content area (rows 4–21, 18 content rows × 66 inner columns) is
- * produced by {@link _renderTabContentStub}. This stub is intentionally minimal —
- * Plan 05-03 replaces its body with the real dual-edition per-tab renderers.
+ * produced by {@link renderTabContent} from `character-sheet-tab-renderers.ts`.
+ * Main / Skills / Feats / Bio tabs are fully rendered; Inventory + Spells are
+ * stubbed until Plan 05-04 lands.
  *
  * ## Container strategy (Strategy A — ADR-0009 Amendment 1)
  *
@@ -53,12 +54,13 @@ import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
+import { renderTabContent } from './character-sheet-tab-renderers.js';
 
 // ─── Tab constants ────────────────────────────────────────────────────────────
 
 /**
  * Ordered tab identifiers — stable kebab-case strings used as storage values
- * in `view.sheet.lastTab` and as discriminants in `_renderTabContentStub`.
+ * in `view.sheet.lastTab` and as discriminants in `renderTabContent`.
  *
  * `as const` produces the narrowest literal-tuple type; downstream plans
  * (`05-03`, `05-04`) import this constant for exhaustive switch coverage.
@@ -316,26 +318,30 @@ export default class CharacterSheetPanel implements OverlayPanel {
    * Render the panel via a single `bridge.textContainerUpgrade` call.
    *
    * Content structure:
-   * - Row 0: tab strip row from {@link buildTabStrip}
-   * - Rows 1–18: per-tab content stub from {@link _renderTabContentStub} (18 rows)
+   * - Row 0: tab strip row from {@link buildTabStrip} (70 code-points)
+   * - Rows 1–18: per-tab content from {@link renderTabContent} (18 rows × 66 code-points)
    *
    * Strategy A: single text container `'overlay-block'`, no image containers.
    * One `textContainerUpgrade` call per draw — no intermediate flushes.
+   *
+   * Hot-swap behavior (SHEET-02 / RESEARCH §Pattern 3): when `onSnapshot` delivers
+   * a new snapshot (e.g., GM toggling `core.modernRules`), draw() is called in-place.
+   * NO LayerManager.bundle remount — the panel re-renders its content atomically
+   * without unmounting from the z=2 slot.
    */
   async draw(): Promise<void> {
-    const tabStripRow = buildTabStrip(this.activeTabIndex);
-    const activeTab = TABS[this.activeTabIndex] ?? 'main';
-    const contentRows = this._renderTabContentStub(
-      activeTab,
+    const tabStrip = buildTabStrip(this.activeTabIndex);
+    const bodyRows = renderTabContent(
+      TABS[this.activeTabIndex] ?? 'main',
       this.snapshot,
       this.locale,
       this.scrollOffset,
     );
 
-    const rows = [tabStripRow, ...contentRows];
+    const content = [tabStrip, ...bodyRows].join('\n');
     const payload = new TextContainerUpgrade({
       containerName: 'overlay-block',
-      content: rows.join('\n'),
+      content,
     });
     await this.bridge.textContainerUpgrade(payload);
   }
@@ -400,47 +406,5 @@ export default class CharacterSheetPanel implements OverlayPanel {
       console.warn('[CharacterSheetPanel] getLocalStorage failed for', PERSIST_KEY, err);
       // Defensive: leave activeTabIndex at 0 (Main).
     }
-  }
-
-  /**
-   * Stub per-tab content renderer — placeholder until Plan 05-03 fills in the
-   * real dual-edition content for Main / Skills / Feats / Bio tabs, and Plan
-   * 05-04 fills in Inventory / Spells tabs.
-   *
-   * Returns 18 rows of exactly 66 code-points each (inner content width per
-   * UI-SPEC §4.1 — cols 3–68 of the 70-wide panel border). Content is padded
-   * with spaces; a single line shows the "(content rendered by 05-03)" hint
-   * centred horizontally to aid debugging.
-   *
-   * // STUB: 05-03 replaces this with real per-tab content from character-sheet-tab-renderers.ts
-   *
-   * @param tab         Active tab identifier
-   * @param _snapshot   Character snapshot (unused by stub; real renderer uses it)
-   * @param _locale     Active HUD locale (unused by stub; real renderer uses it)
-   * @param _scrollOffset Scroll position (unused by stub; real renderer uses it)
-   * @returns Array of 18 strings, each exactly 66 code-points wide
-   */
-  private _renderTabContentStub(
-    tab: TabId,
-    _snapshot: CharacterSnapshot | null,
-    _locale: HudLocale,
-    _scrollOffset: number,
-  ): string[] {
-    // STUB: 05-03 replaces this with real per-tab content from character-sheet-tab-renderers.ts
-    const INNER_WIDTH = 66;
-    const ROW_COUNT = 18;
-    const hint = `(content rendered by 05-03) [tab: ${tab}]`;
-    const hintCps = [...hint].length;
-    const padLeft = Math.floor((INNER_WIDTH - hintCps) / 2);
-    const padRight = INNER_WIDTH - hintCps - padLeft;
-    const hintRow = ' '.repeat(padLeft) + hint + ' '.repeat(padRight);
-    const blankRow = ' '.repeat(INNER_WIDTH);
-
-    const rows: string[] = [];
-    const hintRowIdx = Math.floor(ROW_COUNT / 2);
-    for (let i = 0; i < ROW_COUNT; i++) {
-      rows.push(i === hintRowIdx ? hintRow : blankRow);
-    }
-    return rows;
   }
 }
