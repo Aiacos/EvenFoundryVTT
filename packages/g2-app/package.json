@@ -14,6 +14,9 @@
     "@evenrealities/even_hub_sdk": "0.0.10",
     "@evf/shared-protocol": "workspace:*",
     "@evf/shared-render": "workspace:*",
+    "image-q": "4.0.0",
+    "upng-js": "2.1.0",
+    "xxhash-wasm": "1.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
