@@ -62,6 +62,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { isOverlayPanel } from '../../engine/overlay-panel.js';
 import type { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import SpellbookPanel, {
+  renderLevelSection,
   renderSlotBar,
   renderSpellbookStandaloneContent,
   renderSpellRow,
@@ -369,6 +370,50 @@ describe('renderSlotBar', () => {
 
   it('SP-SLOT-BAR-ZERO: 0 max → empty string', () => {
     expect(renderSlotBar(0, 0)).toBe('');
+  });
+});
+
+// ─── SP-CR01-REGRESSION: slot bar inversion fix ───────────────────────────────
+
+describe('renderLevelSection — CR-01 regression (slot bar inversion)', () => {
+  const baseSpellL1 = {
+    id: 'r1',
+    name: 'Test Spell',
+    level: 1,
+    school: 'evocation',
+    activation: 'action' as const,
+    range: '9m',
+    effect: '1d6',
+    prepared: true,
+    alwaysPrepared: false,
+    concentration: false,
+  };
+
+  it('SP-CR01-ALL-AVAILABLE: value===max (all remaining) renders empty bars ░ not filled ▓', () => {
+    // slot.value=4 (remaining), slot.max=4 → spent=0 → bar must be ░░░░
+    const slot = { level: 1, value: 4, max: 4 };
+    const rows = renderLevelSection(1, [baseSpellL1], slot, 'it', false);
+    const header = rows[0] ?? '';
+    // Must show 0 spent (all empty bars), not 4 filled
+    expect(header).toContain('░░░░ 0/4');
+    expect(header).not.toContain('▓▓▓▓ 4/4');
+  });
+
+  it('SP-CR01-PARTIAL: value=2, max=4 (2 remaining → 2 spent) renders ▓▓░░ 2/4', () => {
+    const slot = { level: 1, value: 2, max: 4 };
+    const rows = renderLevelSection(1, [baseSpellL1], slot, 'it', false);
+    const header = rows[0] ?? '';
+    expect(header).toContain('▓▓░░ 2/4');
+  });
+
+  it('SP-CR01-ALL-SPENT: value=0, max=2 (0 remaining → 2 spent) renders ▓▓   2/2', () => {
+    const slot = { level: 1, value: 0, max: 2 };
+    const rows = renderLevelSection(1, [baseSpellL1], slot, 'it', false);
+    const header = rows[0] ?? '';
+    expect(header).toContain('▓▓');
+    expect(header).toContain('2/2');
+    // Must not show empty bar for all-spent
+    expect(header).not.toContain('░░   0/2');
   });
 });
 

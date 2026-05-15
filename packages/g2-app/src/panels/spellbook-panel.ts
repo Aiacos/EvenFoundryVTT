@@ -229,8 +229,11 @@ export function renderLevelSection(
   // The i18n key literal uses 'N' as the level placeholder (pattern: 'L{N}   slot')
   // The actual key value is e.g. 'L{N}   slot' so we replace '{N}' with the level number.
   const levelLabel = getLabel('spell.level_section', locale).replace('{N}', String(level));
-  const slotBar = slot !== undefined && slot.max > 0 ? renderSlotBar(slot.value, slot.max) : '';
-  // Show the "← disponibili" marker when all slots are free (value === max)
+  // CR-01 fix: slot.value is *remaining* slots; renderSlotBar takes *spent* slots as first arg.
+  // spent = max - value (e.g. value=2 remaining out of max=4 → 2 spent → ▓▓░░ 2/4)
+  const slotBar =
+    slot !== undefined && slot.max > 0 ? renderSlotBar(slot.max - slot.value, slot.max) : '';
+  // Show the "← disponibili" marker when all slots are free (value === max → 0 spent)
   const allFree = slot !== undefined && slot.max > 0 && slot.value === slot.max;
   const availableMarker = allFree ? `   ${getLabel('spell.available_marker', locale)}` : '';
   const headerContent = `${levelLabel} ${slotBar}${availableMarker}`.trimEnd();
