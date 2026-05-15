@@ -38,26 +38,46 @@ write lands in Phase 7.
 <decisions>
 ## Implementation Decisions
 
-### Area 1: Overlay Slot (z=2) Composition
+### Area 1: Overlay Slot (z=2) Composition — REVISED 2026-05-15 post-research
 
-- **Mount semantics:** Overlay panel mounts at z=2 **on top of** z=0.5
-  IdleInfillLayer **without demolishing it** (IdleInfillLayer stays mounted
-  but visually covered). This **diverges from ADR-0001 Amendment 1's atomic
-  z=0.5 demolish + z=2 mount** rule. **ADR-0009 Amendment 1 placeholder
-  (reserved in Phase 4a Plan 05) will be filled with this revised composition
-  rule.**
-- **Capture-invariant:** z=0 MapBaseLayer **retains** `isEventCapture=1` when
-  overlay is open. Panel does NOT receive native R1 capture; panel input is
-  routed via bridge WS events (consistent with Phase 6 R1 source provider).
+**Original CONTEXT decision** (smart-discuss round 1): z=2 mounts on top of
+z=0.5 without demolishing it. **REVISED** based on 04B-RESEARCH.md §Q1
+Container Budget Audit which proved the no-demolish rule overflows the
+SDK 12-container cap by 1-3 in raster + overlay + toast scenarios.
+
+**Locked rule — differential demolish:**
+
+- **z=0.5 IdleInfillLayer IS demolished atomically when z=2 mounts.**
+  Returns to ADR-0001 Amendment 1's original atomic-swap rule for the
+  z=0.5 ↔ z=2 transition. When z=2 unmounts, z=0.5 re-mounts in the same
+  `bundle()` flush.
+- **z=1.5 ToastQueueLayer is NOT demolished when z=2 mounts.** Toasts
+  survive overlay open as the SC #3 Fireball + 8 saves stress case requires.
+  ToastQueueLayer uses dedicated container slots that do not conflict with
+  z=2 panel containers (within the 4+8 budget).
+- **Container budget verified (04B-RESEARCH.md §Q1):**
+  - Closed state (no overlay): z=0 (4 img + 1 text) + z=0.5 (3 text) +
+    z=1 (1-3 text) + z=1.5 (1-2 text) = 4 img + 7-9 text ≤ cap 4+8.
+  - Open state (overlay): z=0 (4 img + 1 text) + z=2 (≤6 text panel) +
+    z=1 (1-3 text) + z=1.5 (1-2 text) = 4 img + 9-12 text — within cap as
+    long as panel ≤ 6 text/list containers AND status HUD + toast cap their
+    upper bounds. Fireball + open-modal worst case: tight but feasible.
+- **Capture-invariant:** z=0 MapBaseLayer **retains** `isEventCapture=1`
+  when overlay is open (unchanged from original CONTEXT).
+- **Gesture routing for panel input — REVISED:** Per 04B-RESEARCH.md §Q2,
+  R1 gesture routing is **in-process within g2-app**, NOT a WS round-trip.
+  Phase 4b ships `packages/g2-app/src/engine/panel-gesture-bus.ts` — a
+  minimal in-process publish/subscribe bus that the (future Phase 6) R1
+  source provider publishes synthesized gestures to. Active panels subscribe
+  via their `onMount`. The `r1.gesture` envelope schema is reserved in
+  `packages/shared-protocol/` for Phase 6+ remote/replay scenarios but the
+  Phase 4b runtime hot path stays in-process.
 - **Atomic flush:** Single `rebuildPageContainer` flush per ADR-0001
-  Amendment 1's spirit — `layerManager.bundle([mount z=2])` applies the
-  panel mount in one bridge call.
-- **Container budget verification REQUIRED:** Specs §3.1 caps the page at
-  4 image + 8 text/list containers. When overlay (z=2) is mounted alongside
-  IdleInfillLayer (z=0.5) + MapBaseLayer (z=0) + StatusHudLayer (z=1) +
-  Toast (z=1.5), the planner MUST verify the cumulative container draw
-  stays within budget. If it overflows, the no-demolish decision needs
-  revision OR the panel API restricts panels to ≤N containers.
+  Amendment 1's spirit. `layerManager.bundle([destroy z=0.5, mount z=2])`
+  for opens; `layerManager.bundle([destroy z=2, mount z=0.5])` for closes.
+- **ADR-0009 Amendment 1 (filled by Plan 01):** documents the differential
+  demolish rule, the in-process gesture-bus routing, and the container
+  budget audit (closed + open state tables).
 
 ### Area 2: Panel API Contract
 
@@ -155,10 +175,16 @@ overlap expected, runnable in parallel.
 - **Implementation:** Pivot is a **renderer mode** inside the existing
   `StatusHudRenderer` (Phase 4a Plan 04). Same z=1 layer, same container
   slots — only the render output changes.
-- **Trigger:** `actor.system.attributes.hp.value === 0` AND
-  `actor.system.attributes.death.failure < 3`. Latched ON until HP > 0
-  OR death (3 fail). On latch-off, the renderer returns to the standard
-  HP/AC/conditions layout.
+- **Schema rollout (REVISED 2026-05-15 post-research):** Per
+  04B-RESEARCH.md §Q4, `CharacterSnapshotSchema` from Phase 2 has NO
+  `death` field. Plan 05 Task 1 lands `CharacterSnapshotSchema.death` +
+  `foundry-module/src/readers/character-reader.ts` extension in the
+  **same atomic commit** (no `.optional()` window of drift). dnd5e v5.x
+  field path is `actor.system.attributes.death.{success, failure}`.
+- **Trigger:** `character.delta` event carrying `hp.value === 0` AND
+  `death.failure < 3`. Latched ON until HP > 0 OR death (3 fail). On
+  latch-off, the renderer returns to the standard HP/AC/conditions
+  layout.
 - **Visual:** 3-strike tracker `[ ◯ ◯ ◯ ]` for passes and fails. Filled
   glyph `●` for ticked checkbox, hollow `◯` for unticked.
 - **Test:** New INV-1 fixture
