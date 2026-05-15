@@ -1,0 +1,18 @@
+┌──────────┐  THORIN OAKENSHIELD                                  
+│ portrait │  Lv 8 [M]                                            
+│ image    │                                                      
+│ 100×60   │                                                      
+└──────────┘                                                      
+♥ PF    ████████░░░░  45/68    +10 temp                           
+⛨ CA 18    ⚡ INI —    ⚔ VEL —    COMP +3                          
+                                                                  
+┌── CARATTERISTICHE ─┐  ┌── TIRI SALVEZZA ──┐                     
+│ FOR  —  —          │  │ ◉ FOR  —    DES  — │                    
+│ DES  —  —          │  │ ◉ COS  —    INT  — │                    
+│ COS  —  —          │  │   SAG  —    CAR  — │                    
+│ INT  —  —          │  └──────────────────────────┘              
+│ SAG  —  —          │                                            
+│ CAR  —  —          │  Dadi Vita  —                              
+└────────────────────┘                                            
+Sensi  —                                                          
+                                                                  

@@ -1,0 +1,18 @@
+◉ competente · ★ maestria · ○ non addestrato                      
+                                                                  
+FOR  ◉ Atletica                         +6                        
+DES  ○ Acrobazia                        +2                        
+     ○ Rapidità di mano                 +2                        
+     ○ Furtività                        +2                        
+INT  ○ Arcano                           +0                        
+     ○ Storia                           +0                        
+     ○ Indagare                         +0                        
+     ○ Natura                           +0                        
+     ○ Religione                        +0                        
+SAG  ◉ Addestrare animali               +4                        
+     ○ Intuizione                       +1                        
+     ◉ Medicina                         +4                        
+     ○ Percezione                       +1                        
+     ○ Sopravvivenza                    +1                        
+▼ scroll per altre · scroll-tap = tira abilità                    
+                                                                  
