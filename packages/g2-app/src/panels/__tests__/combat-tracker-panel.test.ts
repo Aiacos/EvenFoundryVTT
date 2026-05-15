@@ -283,6 +283,33 @@ describe('renderCombatantRow — main row + concentration sub-line', () => {
     const rows = renderCombatantRow(c, 'it', '');
     expect(rows).toHaveLength(1);
   });
+
+  // ── CR-03 regression: HP field ellipsis truncation for HP ≥ 100 ──────────
+
+  it('CTP-CR03-HIGH-HP-WIDTH: combatant with 3-digit HP → row still exactly 66 code-points', () => {
+    const highHp = makeCombatant({ hp: 210, maxHp: 220 });
+    const rows = renderCombatantRow(highHp, 'it', '');
+    const mainRow = rows[0] ?? '';
+    // Row must remain 66 code-points even with HP > 99
+    expect([...mainRow].length).toBe(66);
+  });
+
+  it('CTP-CR03-NO-LEFT-SLICE: combatant with HP=210/maxHp=220 → does NOT show "0/220" (left-slice bug)', () => {
+    const highHp = makeCombatant({ hp: 210, maxHp: 220 });
+    const rows = renderCombatantRow(highHp, 'it', '');
+    const mainRow = rows[0] ?? '';
+    // Before fix: _rjust("210/220", 5) = "0/220" (left-slice drops "21")
+    // After fix: _pad("210/220", 5) = "210/…" (ellipsis truncation)
+    expect(mainRow).not.toContain('0/220');
+    expect(mainRow).toContain('210');
+  });
+
+  it('CTP-CR03-SMALL-HP-UNCHANGED: combatant with HP=5/15 → " 5/15" (right-aligned, no ellipsis)', () => {
+    const small = makeCombatant({ hp: 5, maxHp: 15 });
+    const rows = renderCombatantRow(small, 'it', '');
+    const mainRow = rows[0] ?? '';
+    expect(mainRow).toContain(' 5/15');
+  });
 });
 
 // ─── CTP-QUICK-BAR-* ─────────────────────────────────────────────────────────

@@ -141,6 +141,31 @@ function _rjust(value: string, width: number): string {
 }
 
 /**
+ * Format HP as `"hp/maxHp"` right-padded into a field of `width` code-points.
+ *
+ * CR-03 fix: When the full string exceeds `width`, apply ellipsis truncation
+ * (UI-SPEC §5.8) rather than left-slicing with `_rjust`. Left-slicing produced
+ * wrong current-HP values (e.g. "210/220" → "0/220" via `cps.slice(-5)`).
+ *
+ * Truncation strategy: `_pad` truncates to `width-1` chars + `…` when the
+ * string is too long, producing `"210/…"` for a 5-char budget — spec-compliant.
+ *
+ * @param hp    Current HP value
+ * @param maxHp Maximum HP value
+ * @param width Column width in code-points
+ */
+function _formatHpField(hp: number, maxHp: number, width: number): string {
+  const full = `${hp}/${maxHp}`;
+  const cps = [...full];
+  if (cps.length <= width) {
+    // Fits: right-align with leading spaces
+    return `${' '.repeat(width - cps.length)}${full}`;
+  }
+  // Exceeds budget: truncate with ellipsis (not left-slice which drops current-HP digits)
+  return _pad(full, width);
+}
+
+/**
  * Produce an 8-character HP bar using `█` (filled) and `░` (empty).
  *
  * @param hp    Current HP (null → all empty)
@@ -221,8 +246,8 @@ export function renderCombatantRow(
   const bar = _hpBar(c.hp, c.maxHp);
 
   // Col 37: space (between bar and HP value)
-  // Cols 38-42: HP value (5 chars, right-justified)
-  const hpValue = c.hp !== null && c.maxHp !== null ? _rjust(`${c.hp}/${c.maxHp}`, 5) : '  ---';
+  // Cols 38-42: HP value (5 chars, right-justified; ellipsis truncation for HP ≥ 100)
+  const hpValue = c.hp !== null && c.maxHp !== null ? _formatHpField(c.hp, c.maxHp, 5) : '  ---';
 
   // Cols 43-44: gap
   const gap2 = '  ';
