@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: planning
-stopped_at: "Phase 4a plan-check NEEDS_REVISION (4 blockers remain, 1 user-resolved); main-context budget hot — resume in fresh window 2026-05-15"
+status: executing
+stopped_at: "Phase 4a software-side complete (5/6 plans + Plan 05 Task 1+2; 606/606 tests, ADR-0009 ACCEPTED). Plan 05 Task 3 is a human-verify checkpoint blocking phase completion — operator must run validate:all on real G2 OR explicitly defer with `defer-hardware-tests` signal."
 last_updated: "2026-05-15T19:00:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 15
   completed_phases: 4
-  total_plans: 22
-  completed_plans: 17
+  total_plans: 28
+  completed_plans: 22
   percent: 27
-resume_hint: "/clear then /gsd-plan-phase 4a --gaps  — picks up planner revision with PLAN-CHECK.md as input"
+resume_hint: "Phase 4a closure requires operator: 1) run `pnpm --filter @evf/validation-harness validate:all` against real G2 hardware, OR 2) accept the 5 hardware-pending SC as human_needed (see ADR-0009 §PROVISIONAL Hardware Gates + 04A-VALIDATION.md §Manual-Only Verifications) and mark phase complete. Phase 4b unblocks on Phase 4a closure."
 ---
 
 # Project State
@@ -22,16 +22,24 @@ resume_hint: "/clear then /gsd-plan-phase 4a --gaps  — picks up planner revisi
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 4a — g2-engine-raster-status-hud (planning under revision)
+**Current focus:** Phase 4a — g2-engine-raster-status-hud (software-side complete; awaiting human-verify checkpoint)
 
 ## Current Position
 
 Phase: 4a
-Plan: 5 drafted (commit 508e30b), needs revision per 04A-PLAN-CHECK.md
-Status: NEEDS_REVISION — 4 blockers remain after user-resolved B-2
-Last activity: 2026-05-15 — /gsd-autonomous --to 10 run: smart-discuss + UI-SPEC + RESEARCH + VALIDATION + PATTERNS + 5 PLAN drafts + plan-check landed; user paused at NEEDS_REVISION verdict to preserve main-context budget for fresh-window resume
+Plan: 6 plans APPROVED + executed software-side (Plan 06 added via B-5 gap-closure)
+Status: SOFTWARE-COMPLETE — Plans 01-04 + 06 fully merged; Plan 05 Task 1 + Task 2 committed (e862d40 / 54577c6 / cf015ad); Plan 05 Task 3 is a `checkpoint:human-verify` gate blocking phase closure.
+Last activity: 2026-05-15 — /gsd-autonomous --from 4b --to 10 run (rescoped to "Phase 4a only" per user decision):
+  - Planning revision (3 iterations): NEEDS_REVISION → APPROVED. All 5 original blockers + 4 warnings + 4 regressions closed. Commit 8ae2533.
+  - Wave 0 (Plan 01): scaffolding + type contracts + RasterControllerLike. Merged 9f0d5ae.
+  - Wave 1 (Plan 02): engine modules (LayerManager, capability-handshake, page-lifecycle, boot-splash; +27 tests). Merged 1dfc128.
+  - Wave 2 (Plans 03/04/06 sequential foreground): raster pipeline (+34) + status HUD with INV-1 fixtures (+50) + Foundry PIXI extractor + WS frame_pixels protocol + scene-input (+31). Merged a84bc7b / c46d9c8 / 311dc53.
+  - Wave 3 (Plan 05): Task 1 boot orchestrator + Option B W-4 split (e862d40 — recovered from a locked worktree after the executor agent hit the monthly usage limit; 2→32 microtask flush fix to bootWithMocks). Task 2 ADR-0009 ACCEPTED + ROADMAP reconciliation (54577c6). SUMMARY committed (cf015ad).
+  - Phase test totals: 451 → 606 (+155 across the 6 plans). All gates green: typecheck, biome, W-4 grep, 45/45 test files.
 
-Progress: [█████████░░] 85% (milestone) / Phase 4a: artifacts 6/8 landed (CONTEXT/UI-SPEC/RESEARCH/VALIDATION/PATTERNS/PLAN drafts + plan-check), revision + execute + reviews still ahead
+Progress: [██████████] 95% (milestone) / Phase 4a: 5/6 plans complete + Plan 05 software-side complete; only Task 3 human-verify checkpoint remains.
+
+Phases 4b → 10 deferred to a future session per user decision 2026-05-15.
 
 ## Performance Metrics
 
