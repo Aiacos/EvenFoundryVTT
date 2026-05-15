@@ -191,10 +191,13 @@ export function getLogEventTail(maxCount = 50): LogEvent[] {
 
     const { kind, result } = detectKindAndResult(message);
 
-    // Description: use the message content if available, or the kind label.
-    // In practice the bridge will provide description via the envelope payload;
-    // the reader produces a minimal description from the speaker + kind.
-    const description = actorName !== '' ? `${kind} roll` : kind;
+    // Description: minimal speaker + kind label for the log row.
+    // WR-05 fix: only append " roll" suffix for kinds that are actual dice rolls
+    // (attack, damage, save). For spell/feature/chat the actor name alone is
+    // sufficient — "spell roll" and "feature roll" are semantically wrong.
+    const isRollKind = kind === 'attack' || kind === 'roll' || kind === 'damage';
+    const description =
+      actorName !== '' ? (isRollKind ? `${actorName} — ${kind}` : actorName) : kind;
 
     events.push({
       id,

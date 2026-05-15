@@ -165,4 +165,48 @@ describe('getLogEventTail', () => {
     const result = getLogEventTail();
     expect(result[0]?.actorName).toBe('');
   });
+
+  // ── WR-05 regression: description template ────────────────────────────────
+
+  it('WR-05-ATTACK-DESCRIPTION: attack kind + actorName → "actorName — attack" (not "attack roll")', () => {
+    stubGameMessages([makeMessage({ dnd5eRollType: 'attack', alias: 'Thorin', rollTotal: 23 })]);
+    const result = getLogEventTail();
+    expect(result[0]?.description).toBe('Thorin — attack');
+    expect(result[0]?.description).not.toContain('attack roll');
+  });
+
+  it('WR-05-SPELL-DESCRIPTION: spell kind + actorName → actorName only (no "roll" suffix)', () => {
+    stubGameMessages([makeMessage({ dnd5eUseType: 'spell', alias: 'Lyra' })]);
+    const result = getLogEventTail();
+    // Must not produce "spell roll" — actor name alone is sufficient
+    expect(result[0]?.description).toBe('Lyra');
+    expect(result[0]?.description).not.toContain('roll');
+  });
+
+  it('WR-05-FEATURE-DESCRIPTION: feature kind + actorName → actorName only (no "roll" suffix)', () => {
+    stubGameMessages([makeMessage({ dnd5eUseType: 'feat', alias: 'Aragorn' })]);
+    const result = getLogEventTail();
+    expect(result[0]?.description).toBe('Aragorn');
+    expect(result[0]?.description).not.toContain('roll');
+  });
+
+  it('WR-05-DAMAGE-DESCRIPTION: damage kind + actorName → "actorName — damage" (roll suffix correct)', () => {
+    stubGameMessages([makeMessage({ dnd5eRollType: 'damage', alias: 'Gimli', rollTotal: 12 })]);
+    const result = getLogEventTail();
+    expect(result[0]?.description).toBe('Gimli — damage');
+  });
+
+  it('WR-05-CHAT-DESCRIPTION: chat kind + actorName → actorName only', () => {
+    stubGameMessages([makeMessage({ alias: 'DM' })]);
+    const result = getLogEventTail();
+    expect(result[0]?.description).toBe('DM');
+    expect(result[0]?.description).not.toContain('roll');
+  });
+
+  it('WR-05-NO-ACTOR-DESCRIPTION: no actor → falls back to kind string', () => {
+    stubGameMessages([{ id: 'msg-1', timestamp: Date.now(), flags: {}, rolls: [] }]);
+    const result = getLogEventTail();
+    // No actorName → description is just the kind
+    expect(result[0]?.description).toBe('chat');
+  });
 });
