@@ -1,0 +1,18 @@
+LIBRO INCANTESIMI · preparati 4/5
+CANTRIP
+   ◉ Dardo di Fuoco      azione  36m    1d10 fuoco
+   ◉ Mano di Mago        azione  9m     util
+
+L1   slot ▓▓░░ 2/4
+   ◉ Scudo               reaziN  self   +5 CA vs colpo
+   ◉ Dardo Incantato     azione  36m    3×1d4+1 forza
+
+L2   slot ▓░░  1/3
+   ◉ Passo Velato        bonusA  9m     teletrasporto
+
+L3   slot ░░   0/2
+   ◉ Palla di Fuoco      azione  45m    8d6 fuoco  sfera 6m
+     Contrincantesimo    reaziN  18m    blocca incantesimo ≤ 3°
+
+▼ scroll · long-press = lancia
+

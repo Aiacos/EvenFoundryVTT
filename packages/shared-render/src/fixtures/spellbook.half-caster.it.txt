@@ -1,0 +1,13 @@
+LIBRO INCANTESIMI · preparati 2/3
+L1   slot ▓▓▓▓ 4/4   ← disponibili
+   ◉ Cura Ferite         azione  tocco  1d8+3 PF
+     Dardo di Fuoco      azione  36m    2d6 fuoco
+
+L2   slot ▓▓   2/2   ← disponibili
+   ◉ Aiuto               azione  tocco  vantaggio
+
+▼ scroll · long-press = lancia
+
+
+
+

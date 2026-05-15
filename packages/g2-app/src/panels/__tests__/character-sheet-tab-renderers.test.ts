@@ -9,7 +9,7 @@
  *   - CSTR-DISP-FEATS:    renderTabContent('feats', ...) returns 18 rows × 66 code-points
  *   - CSTR-DISP-BIO:      renderTabContent('bio', ...) returns 18 rows × 66 code-points
  *   - CSTR-DISP-INV-REAL: renderTabContent('inventory', ...) returns 18 rows + EQUIPAGGIAMENTO (05-04 real renderer)
- *   - CSTR-DISP-SPL-STUB: renderTabContent('spells', ...) returns 18 rows + placeholder text (05-04 replaces)
+ *   - CSTR-DISP-SPL-REAL: renderTabContent('spells', ...) returns 18 rows + Filtro bar (05-04 real renderer)
  *   - CSTR-DISP-NULL:     renderTabContent('main', null, ...) returns 18 blank rows
  *
  * Main tab edition branches:
@@ -158,14 +158,16 @@ describe('renderTabContent dispatcher', () => {
     expect(joined).toContain('EQUIPAGGIAMENTO');
   });
 
-  it('CSTR-DISP-SPL-STUB: spells returns 18 rows with placeholder text', () => {
+  it('CSTR-DISP-SPL-REAL: spells returns 18 rows × 66 code-points from real renderer (05-04)', () => {
     const rows = renderTabContent('spells', snapshot2014, 'it', 0);
     expect(rows).toHaveLength(ROW_COUNT);
     for (const row of rows) {
       expect(codePointLen(row)).toBe(INNER_WIDTH);
     }
+    // Real renderer outputs filter bar (no stub placeholder)
     const joined = rows.join('\n');
-    expect(joined).toContain('05-04');
+    expect(joined).toContain('Filtro');
+    expect(joined).not.toContain('05-04');
   });
 
   it('CSTR-DISP-NULL: null snapshot returns 18 blank rows for main tab', () => {

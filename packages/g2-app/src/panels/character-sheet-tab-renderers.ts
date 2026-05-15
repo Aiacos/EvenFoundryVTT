@@ -7,8 +7,8 @@
  *   - `renderFeatsTab`  — Origin/general feats + dual-edition annotations (UI-SPEC §5.6)
  *   - `renderBioTab`    — Biography word-wrap + HTML-strip (UI-SPEC §5.7)
  *
- * Inventory and Spells tab renderers are owned by Plan 05-04. The dispatcher
- * stubs those two branches so the switch is exhaustive.
+ * Inventory and Spells tab renderers are imported from `inventory-panel.ts` and
+ * `spellbook-panel.ts` respectively (Plan 05-04). The dispatcher is now complete.
  *
  * ## Dual-edition branching (SHEET-03 / CONTEXT.md §Area 3)
  *
@@ -52,6 +52,7 @@ import type { CharacterSnapshot } from '@evf/shared-protocol';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import type { TabId } from './character-sheet-panel.js';
 import { renderInventoryTabContent } from './inventory-panel.js';
+import { renderSpellsTabContent } from './spellbook-panel.js';
 
 // ─── Width constants ──────────────────────────────────────────────────────────
 
@@ -129,8 +130,8 @@ function padToRowCount(rows: string[]): string[] {
  * (row 3 of the full panel body) is produced separately by `buildTabStrip`
  * and is NOT included in the returned array.
  *
- * Inventory and Spells tab stubs: Plan 05-04 replaces those two case bodies
- * with real renderers from `character-sheet-inv-spl-renderers.ts`.
+ * Inventory tab: delegates to `renderInventoryTabContent` (inventory-panel.ts, Plan 05-04).
+ * Spells tab: delegates to `renderSpellsTabContent` (spellbook-panel.ts, Plan 05-04).
  *
  * @param tab          Active tab identifier (from `TABS` constant)
  * @param snapshot     Current character snapshot (may be `null` before first WS delta)
@@ -152,33 +153,12 @@ export function renderTabContent(
     case 'inventory':
       return renderInventoryTabContent(snapshot, locale, scrollOffset);
     case 'spells':
-      return _renderSpellsStub();
+      return renderSpellsTabContent(snapshot, locale, scrollOffset);
     case 'feats':
       return renderFeatsTab(snapshot, locale, scrollOffset);
     case 'bio':
       return renderBioTab(snapshot, locale, scrollOffset);
   }
-}
-
-// ─── Spells stub (Plan 05-04 replaces this body) ─────────────────────────────
-
-/**
- * Stub placeholder for the Spells tab — Plan 05-04 replaces this body.
- * Returns 18 rows with a centred placeholder row.
- *
- * // STUB: 05-04 replaces this body with the real spells renderer
- */
-function _renderSpellsStub(): string[] {
-  const placeholder = '(spells rendered by 05-04)';
-  const placeholderCps = [...placeholder].length;
-  const padLeft = Math.floor((INNER_WIDTH - placeholderCps) / 2);
-  const placeholderRow = ' '.repeat(padLeft) + placeholder;
-  const rows: string[] = [];
-  const hintIdx = Math.floor(ROW_COUNT / 2);
-  for (let i = 0; i < ROW_COUNT; i++) {
-    rows.push(i === hintIdx ? row66(placeholderRow) : ' '.repeat(INNER_WIDTH));
-  }
-  return rows;
 }
 
 // ─── Main tab ─────────────────────────────────────────────────────────────────
