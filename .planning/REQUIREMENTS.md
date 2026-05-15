@@ -28,8 +28,8 @@
 ### Character Sheet
 
 - [x] **SHEET-01**: 6 tab Foundry-faithful (Main / Skills / Inventory / Spells / Feats / Bio) navigabili via tap-cycle
-- [ ] **SHEET-02**: Data binding live verso `actor.system.*` dnd5e 5.x (tutto via Foundry hooks, no polling)
-- [ ] **SHEET-03**: Dual-edition support (PHB 2014 + PHB 2024 via `core.modernRules` setting)
+- [x] **SHEET-02**: Data binding live verso `actor.system.*` dnd5e 5.x (tutto via Foundry hooks, no polling)
+- [x] **SHEET-03**: Dual-edition support (PHB 2014 + PHB 2024 via `core.modernRules` setting)
 - [x] **SHEET-04**: Tab strip equal-width per INV-1 (`[ XXX ]` ↔ `[▶XXX ]`, swap leading-space ↔ ▶)
 
 ### Combat & Action
@@ -163,8 +163,8 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | BOOT-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
 | CONC-01 | Phase 4b — Overlay Slot + Map Mode Toggle + Adversarial UI | Pending |
 | SHEET-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
-| SHEET-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
-| SHEET-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| SHEET-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
+| SHEET-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | SHEET-04 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | COMB-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
 | COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
