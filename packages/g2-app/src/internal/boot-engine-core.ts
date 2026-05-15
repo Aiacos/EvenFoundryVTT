@@ -29,6 +29,11 @@
  *       `view.map.mode` from Even Hub kv via `loadPersistedMapMode(bridge)`;
  *       'raster' | 'glyph' overrides the BLE verdict; 'auto' (or missing /
  *       invalid / read-failure) lets the BLE verdict win.
+ *   9c. Phase 5 (I18N-02): device-local locale override read-back — reads
+ *       `view.locale.override` from Even Hub kv via `loadLocaleOverride(bridge)`;
+ *       any valid `HudLocale` code overrides `opts.locale`; 'auto' (or missing /
+ *       invalid / read-failure) lets the boot-time auto-detected locale win.
+ *       ES/FR/PT-BR codes are best-effort per I18N-05.
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1]) — atomic single-flush
@@ -49,6 +54,7 @@ import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
 import { createBootPage } from '../engine/page-lifecycle.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
+import { loadLocaleOverride } from '../locale/locale-override.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
@@ -58,10 +64,14 @@ import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 
 /**
- * Locale tag for the boot engine. Mirrors the i18n-budgets `HudLocale` set
- * (`it` / `en` / `de`) — the Status HUD renderer needs the same alphabet.
+ * Locale tag for the boot engine. Mirrors the full `HudLocale` union from
+ * `i18n-budgets.ts` (Phase 5 Plan 06 widening — I18N-02):
+ *   - Canonical locales: `it` / `en` / `de` — full IT/EN/DE strings in HUD_WIDTH_BUDGETS.
+ *   - Best-effort locales: `es` / `fr` / `pt-br` — per-key EN fallback at render
+ *     time via `getLabel()` (I18N-05). TODO(ADR-0010): curate ES/FR/PT-BR translations
+ *     in a future phase if locale-specific width budgets are established.
  */
-export type BootEngineLocale = 'it' | 'en' | 'de';
+export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 
 /**
  * Production boot-engine options.
@@ -74,7 +84,15 @@ export interface BootEngineOpts {
   readonly bridgeUrl: string;
   /** 24h bearer token paired via QR (Specs §11.5.4). */
   readonly token: string;
-  /** Boot-time locale (`it` MVP, `en` canonical fallback, `de` future). */
+  /**
+   * Boot-time locale auto-detected from `game.i18n.lang` (or the caller's
+   * environment). Canonical: `it` (MVP) / `en` (fallback) / `de` (INV-1).
+   * Best-effort: `es` / `fr` / `pt-br` — per-key EN fallback at render time.
+   *
+   * Step 9c (I18N-02) may override this value when `view.locale.override` is
+   * set in Even Hub kv store. The override is device-local and never modifies
+   * Foundry world settings.
+   */
   readonly locale: BootEngineLocale;
 }
 
@@ -101,11 +119,18 @@ export interface TestingDependencies {
  * `teardown` releases every resource the boot acquired (WS, raster Worker,
  * Plan 06 unsubscribe, all three Layer instances) so tests can run multiple
  * boot cycles without leaking timers or sockets.
+ *
+ * `effectiveLocale` is the locale actually used for StatusHudRenderer
+ * construction after step 9c locale override read-back (I18N-02). Test
+ * assertions use this to verify that the override path works end-to-end
+ * without inspecting internal `StatusHudRenderer` state.
  */
 export interface BootEngineHandle {
   readonly layerManager: LayerManager;
   readonly rasterController: RasterController;
   readonly teardown: () => void;
+  /** Step 9c result — opts.locale unless a stored override was applied. */
+  readonly effectiveLocale: BootEngineLocale;
 }
 
 /** UI-SPEC §Screen 1 — the 5 canonical boot-splash labels (locale-resolved by caller). */
@@ -277,12 +302,26 @@ export async function _bootEngineCore(
   const effectiveVerdict: 'auto' | 'raster' | 'glyph' =
     persistedMode === 'raster' || persistedMode === 'glyph' ? persistedMode : verdict;
 
+  // 9c. (Phase 5 / I18N-02) Locale override read-back — device-local override from
+  //     Even Hub `view.locale.override`. 'auto' (or missing/invalid/read-failure —
+  //     all coerce to 'auto' via `loadLocaleOverride`'s defensive fallback) lets the
+  //     boot-time auto-detected locale win; otherwise the stored value overrides.
+  //
+  //     ES/FR/PT-BR are best-effort per I18N-05: `getLabel(field, 'es')` falls back
+  //     to the EN string for each i18n key. Device-local — never modifies Foundry
+  //     world settings (I18N-02 constraint verified by no-`game.settings.set` audit).
+  //
+  //     Phase 5 CONTEXT.md §Area 4 + 05-RESEARCH.md §Pattern 5.
+  const localeOverride = await loadLocaleOverride(bridge);
+  const effectiveLocale: BootEngineLocale =
+    localeOverride === 'auto' ? opts.locale : localeOverride;
+
   // 10. Construct the 3 layers.
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
   const statusHud = new StatusHudLayer({
     bridge,
-    renderer: new StatusHudRenderer({ locale: opts.locale }),
+    renderer: new StatusHudRenderer({ locale: effectiveLocale }),
     wsEvents: createWsEventBus(ws),
   });
 
@@ -302,10 +341,11 @@ export async function _bootEngineCore(
   //     Plan 06 pushes the first frame_pixels envelope).
   await mapBase.draw();
 
-  // 14. Return the handle with teardown closure.
+  // 14. Return the handle with teardown closure + step 9c effective locale.
   return {
     layerManager,
     rasterController,
+    effectiveLocale,
     teardown: (): void => {
       try {
         unsubSceneInput();

@@ -59,6 +59,7 @@ import {
 } from '../internal/boot-engine-core.js';
 import { bootErrorFromException } from './boot-error-dispatch.js';
 import { BootErrorLayer } from './boot-error-layer.js';
+import type { BootErrorLocale } from './boot-error-types.js';
 
 /**
  * Boot the G2 engine with best-effort error-UI rendering on the failure path.
@@ -114,7 +115,12 @@ export async function bootEngineWithErrorUi(
           return sdk.waitForEvenAppBridge();
         });
       const bridge = await bridgeFactory();
-      const layer = new BootErrorLayer(bridge, state, opts.locale);
+      // BootErrorLayer only has IT/EN/DE content (BootErrorLocale). Best-effort
+      // locales (es/fr/pt-br) from the widened BootEngineLocale fall back to 'en'
+      // for error UI rendering (I18N-05 best-effort policy applied to error path).
+      const errorLocale: BootErrorLocale =
+        opts.locale === 'it' || opts.locale === 'de' ? opts.locale : 'en';
+      const layer = new BootErrorLayer(bridge, state, errorLocale);
       await layer.draw();
     } catch (renderErr) {
       // T-4b-04-06 mitigation: double failure — original cause + render
