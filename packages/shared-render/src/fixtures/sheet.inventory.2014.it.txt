@@ -1,0 +1,18 @@
+◆ EQUIPAGGIAMENTO
+   ⚔ Spada lunga        1d8 taglio            versatile
+   ⚔ Ascia a mano       1d6 taglio            scagliata
+   ⛨ Maglia                                   svant. furtività
+   ⛨ Scudo                                    +2 CA
+
+◆ CONSUMABILI
+   ▶ Pozione di Guarig… 2d4+2 PF
+   ▶ Pozione di Arramp… +20m scalata
+   ▶ Acqua Sacra        2d6 radiante
+
+⚖ Portato
+   Zaino con attrezzi
+▼ scroll per altro
+
+
+
+

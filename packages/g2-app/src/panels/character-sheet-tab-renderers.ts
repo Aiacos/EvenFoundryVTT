@@ -51,6 +51,7 @@
 import type { CharacterSnapshot } from '@evf/shared-protocol';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import type { TabId } from './character-sheet-panel.js';
+import { renderInventoryTabContent } from './inventory-panel.js';
 
 // ─── Width constants ──────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ export function renderTabContent(
     case 'skills':
       return renderSkillsTab(snapshot, locale, scrollOffset);
     case 'inventory':
-      return _renderInventoryStub();
+      return renderInventoryTabContent(snapshot, locale, scrollOffset);
     case 'spells':
       return _renderSpellsStub();
     case 'feats':
@@ -157,27 +158,6 @@ export function renderTabContent(
     case 'bio':
       return renderBioTab(snapshot, locale, scrollOffset);
   }
-}
-
-// ─── Inventory stub (Plan 05-04 replaces this body) ──────────────────────────
-
-/**
- * Stub placeholder for the Inventory tab — Plan 05-04 replaces this body.
- * Returns 18 rows with a centred placeholder row.
- *
- * // STUB: 05-04 replaces this body with the real inventory renderer
- */
-function _renderInventoryStub(): string[] {
-  const placeholder = '(inventory rendered by 05-04)';
-  const placeholderCps = [...placeholder].length;
-  const padLeft = Math.floor((INNER_WIDTH - placeholderCps) / 2);
-  const placeholderRow = ' '.repeat(padLeft) + placeholder;
-  const rows: string[] = [];
-  const hintIdx = Math.floor(ROW_COUNT / 2);
-  for (let i = 0; i < ROW_COUNT; i++) {
-    rows.push(i === hintIdx ? row66(placeholderRow) : ' '.repeat(INNER_WIDTH));
-  }
-  return rows;
 }
 
 // ─── Spells stub (Plan 05-04 replaces this body) ─────────────────────────────
