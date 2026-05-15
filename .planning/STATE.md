@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: planning
-stopped_at: "Phase 4a CLOSED 2026-05-15 — operator accepted `defer-hardware-tests` resume signal; 5 hardware-pending SC carry forward on `human_needed` gate per ADR-0005 PROVISIONAL Branch A. Phase 4b ready to start."
-last_updated: "2026-05-15T19:00:00.000Z"
+stopped_at: "Phase 4b planning APPROVED 2026-05-15 — 6 plans across 4 waves (CONTEXT + RESEARCH + UI-SPEC + VALIDATION + 6 PLAN drafts + PLAN-CHECK iter-3 APPROVED via orchestrator inline fix for B-2 fan-out). Ready for execution."
+last_updated: "2026-05-15T20:00:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 15
   completed_phases: 5
-  total_plans: 28
+  total_plans: 34
   completed_plans: 28
   percent: 33
-resume_hint: "/gsd-plan-phase 4b  — Phase 4a complete, Phase 4b (Overlay Slot + Map Mode Toggle + Adversarial UI) is unblocked. ADR-0009 layer-manager contract ACCEPTED; Phase 4b enters with overlay slot composition rules per ADR-0009 Amendment 1 placeholder."
+resume_hint: "/gsd-execute-phase 4b — 6 plans (4 waves): W0 04B-01 overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amendment 1; W1 04B-02 map mode toggle + Even Hub persistence; W2 04B-03 toast queue + 04B-04 boot error UI + 04B-06 atomic schema (parallel, zero overlap); W3 04B-05 death-saves pivot + ConcDropModalPanel + conc-conflict-dispatcher + integration smoke."
 ---
 
 # Project State
