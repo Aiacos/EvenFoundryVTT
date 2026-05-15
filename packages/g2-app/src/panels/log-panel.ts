@@ -416,7 +416,10 @@ export default class LogPanel implements OverlayPanel {
 
       case 'scroll':
         if (gesture.direction === 'down') {
-          this.scrollOffset += 1;
+          // WR-02 fix: clamp scrollOffset to [0, events.length - 1] so the panel
+          // cannot scroll past all content and get permanently "stuck".
+          const maxOffset = Math.max(0, (this.snapshot?.events.length ?? 0) - 1);
+          this.scrollOffset = Math.min(this.scrollOffset + 1, maxOffset);
         } else {
           this.scrollOffset = Math.max(0, this.scrollOffset - 1);
         }

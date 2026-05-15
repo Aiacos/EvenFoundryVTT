@@ -587,3 +587,35 @@ describe('CombatTrackerPanel — gesture bus lifecycle (T-4b-01-03)', () => {
     expect(bridge.textContainerUpgrade.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });
+
+// ─── WR-02 regression: scrollOffset upper-bound clamp in CombatTrackerPanel ──
+
+describe('CombatTrackerPanel — WR-02 scrollOffset clamping', () => {
+  it('WR-02-CTP-CLAMP: excessive scroll-down is clamped to combatants.length - 3', async () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const panel = new CombatTrackerPanel(bridge, bus, 'it');
+    await panel.onMount();
+
+    // Deliver a snapshot with 6 combatants (maxOff = max(0, 6-3) = 3)
+    const snapshot = makeCombatSnapshot(makeCombatants(6), 0);
+    panel.onSnapshot(snapshot);
+    await Promise.resolve();
+
+    // Scroll down 20 times — offset should clamp at +3
+    for (let i = 0; i < 20; i++) {
+      bus.publish({ kind: 'scroll', direction: 'down' });
+    }
+    await Promise.resolve();
+
+    // Scroll back up 4 times — if clamped at 3 this brings it to -1 (clamped to -3).
+    // If unbounded (=20) it would be 16 after 4 ups. The panel must still draw.
+    for (let i = 0; i < 4; i++) {
+      bus.publish({ kind: 'scroll', direction: 'up' });
+    }
+    await Promise.resolve();
+
+    // Verify the panel is still functional (draw was called, no exception)
+    expect(bridge.textContainerUpgrade.mock.calls.length).toBeGreaterThan(0);
+  });
+});

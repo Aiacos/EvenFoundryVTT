@@ -567,10 +567,18 @@ export default class CombatTrackerPanel implements OverlayPanel {
         // Phase 5 no-op — Phase 6 wires the quick-action cycle (COMB-03).
         break;
 
-      case 'scroll':
-        this.scrollOffset += gesture.direction === 'down' ? 1 : -1;
+      case 'scroll': {
+        // WR-02 fix: clamp scrollOffset to [-maxOff, +maxOff] where maxOff is
+        // derived from combatants.length so the window cannot scroll infinitely
+        // past the content and leave the panel permanently stuck.
+        const maxOff = Math.max(0, (this.snapshot?.combatants.length ?? 0) - 3);
+        this.scrollOffset = Math.max(
+          -maxOff,
+          Math.min(this.scrollOffset + (gesture.direction === 'down' ? 1 : -1), maxOff),
+        );
         void this.draw();
         break;
+      }
 
       case 'double-tap':
         // Phase 6 NAV-01 wires close.
