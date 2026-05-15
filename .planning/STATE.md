@@ -2,17 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: planning
-stopped_at: "Phase 4b CLOSED 2026-05-15 — 6/6 plans executed software-side (812/812 tests; MAP-05 + TOAST-01 + BOOT-01 + DEATH-01 + CONC-01 all closed; ADR-0009 Amendment 1 ACCEPTED). Hardware-pending SC carry forward on `human_needed` gate per ADR-0005 PROVISIONAL Branch A (5 stress cases ST-1..ST-5). Phase 5 ready to start (Panel Plugin System; consumes the OverlayPanel API from Phase 4b Plan 01)."
-last_updated: "2026-05-15T20:00:00.000Z"
-last_activity: 2026-05-15
+status: in_progress
+stopped_at: Phase 5 Plan 01 complete (Wave 0 foundation)
+last_updated: "2026-05-15T19:32:08Z"
+last_activity: "2026-05-15 — Phase 5 Plan 01 (Wave 0): PanelRouter + i18n + schema extensions"
 progress:
   total_phases: 15
   completed_phases: 6
-  total_plans: 34
-  completed_plans: 34
-  percent: 40
-resume_hint: "/gsd-plan-phase 5 — Phase 5 Panel Plugin System + Read-Only Panels (6-tab Sheet + Combat tracker + Log + Inventory + Spellbook; SHEET-01..04 + COMB-01 + COMB-03 + I18N-02 + I18N-05). Panel API from Phase 4b 04B-01 is the entry contract; Phase 4b Plan 05 ConcentrationDropModalPanel is the working exemplar."
+  total_plans: 35
+  completed_plans: 31
+  percent: 41
 ---
 
 # Project State
@@ -26,11 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 5 (next — unblocked by Phase 4b closure)
-Plan: not yet drafted — start with `/gsd-discuss-phase 5` or `/gsd-plan-phase 5`
-Status: READY — Phase 4b complete; OverlayPanel contract (04B-01) is the entry surface for Phase 5 panels; ConcentrationDropModalPanel (04B-05) is the working exemplar.
+Phase: 5 (panel-plugin-system-read-only-panels — IN PROGRESS)
+Plan: 05-01 complete — next: 05-02 (Wave 1 SpellbookPanel)
+Status: IN_PROGRESS — Plan 01 Wave-0 foundation committed; Plans 02-06 unblocked as READ-ONLY consumers.
 
 Last activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
+
   - Planning (3 iterations): NEEDS_REVISION → APPROVED via orchestrator inline fix for B-2 fan-out (commit c6946a7).
   - Wave 0 Plan 01: overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amd 1 + 27 i18n keys (+46 tests; merged 41d4741).
   - Wave 1 Plan 02: map mode toggle + Even Hub setLocalStorage persistence + boot read-back SR-11..13 (+17 tests; merged 3faca33).
@@ -43,6 +43,7 @@ Last activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same p
 
 Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
   Phase 4b adds 5 manual-only stress cases to the ADR-0005 carry:
+
   6. Overlay slot z=2 panel renders on real G2 without visual artifacts (MAP-05)
   7. Toast queue survives overlay open under real BLE latency (TOAST-01 + ADR-0009 Amd 1 Rule 2)
   8. Boot error UI renders correctly across all 5 states on real G2 (BOOT-01)
@@ -54,6 +55,7 @@ Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 Progress: [████████████░░░] 40% (milestone) / Phase 4b: 6/6 plans complete (hardware tests deferred).
 
 Phase 4a closure detail — preserved here for historical reference:
+
   - Planning revision (3 iterations): NEEDS_REVISION → APPROVED (commit 8ae2533).
   - Wave 0 Plan 01: scaffolding + type contracts + RasterControllerLike (merged 9f0d5ae).
   - Wave 1 Plan 02: engine modules — LayerManager, capability-handshake, page-lifecycle, boot-splash (+27 tests; merged 1dfc128).
@@ -69,6 +71,7 @@ Phase 4a closure detail — preserved here for historical reference:
   - Phase test totals: 451 → 606 (+155 across the 6 plans). All gates green: typecheck, biome, W-4 grep, 45/45 test files.
 
 Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
+
   1. Capability handshake on real G2 firmware (DISP-01, DISP-02, NAV-04).
   2. Raster sustains ≥5 fps standard / 15 fps stretch with measured BLE p50 latency (MAP-02, MAP-04).
   3. Branch B/C glyph fallback auto-degrades below 100 kbps PROVISIONAL threshold (MAP-04).
@@ -151,6 +154,11 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Phase 1 Plan 03 deviation: Vitest 4 `defineProject` rejects `extends: true` under TS strict (UserProjectConfigExport type does not include the field — only TestProjectInlineConfiguration consumed by ROOT test.projects array does). Dropped from per-package vitest.config.ts; Vitest 4 still merges root coverage/reporters via test.projects glob discovery automatically (Rule 3).
 - [Phase 02-foundry-module-core-pairing-ui]: PairModalData extends Record<string, unknown> to satisfy ApplicationV2 covariant return type
 - [Phase 02-foundry-module-core-pairing-ui]: internalSecret included in QR payload for Plan 05 /internal/delta POST auth (H-1 fix)
+- [Phase 05 Plan 01]: ADR-0010 ACCEPTED — PanelRouter uses import.meta.glob (Option C); filesystem scan (A) and parallel registry (B) rejected. Panels autodiscovered via '../panels/**/*-panel.ts' glob at boot.
+- [Phase 05 Plan 01]: WorldStateSchema.world is REQUIRED on CharacterSnapshotSchema (not optional) — atomic commit closes drift window; Phase 4b precedent. All consumer fixtures back-filled in same commit.
+- [Phase 05 Plan 01]: ConcentrationSchema and WorldStateSchema use z.object (not z.strictObject) — open for Phase 7+ extension (spellId, worldEdition) without breaking Phase 5 consumers.
+- [Phase 05 Plan 01]: HudLocale widened from 3 (it/en/de) to 6 (+ es/fr/pt-br best-effort); per-key EN fallback for best-effort locales per I18N-05 (width budget constraint).
+- [Phase 05 Plan 01]: TestablePanelRouter subclass overrides discoverPanels() with _mockModules injection to test Vite import.meta.glob discovery without Vite runtime.
 
 ### Pending Todos
 
@@ -174,14 +182,15 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-15T19:00:00.000Z
-Stopped at: "/gsd-autonomous --to 10 paused at Phase 4a plan-check NEEDS_REVISION; user resolved B-2 (sub-tile floor=18); main-context budget preserved for fresh-window resume"
-Resume file: .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md
-Resume cmd: /clear then /gsd-plan-phase 4a --gaps  — planner revision applies user B-2 decision + resolves B-1/3/4/5 + W-1..4
+Last session: 2026-05-15T19:32:08Z
+Stopped at: Phase 5 Plan 01 complete — 05-01-SUMMARY.md committed
+Resume file: .planning/phases/05-panel-plugin-system-read-only-panels/05-02-PLAN.md
+Resume cmd: /gsd-execute-phase 5 02
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 
 Commits landed this session (8 total):
+
 - c132929 docs(roadmap): tick checkboxes for Phases 0, 2, 3 (doc drift)
 - 51ab505 docs(04A): smart discuss context for Phase 4a (4 grey areas)
 - 89b4914 docs(04A): UI design contract (6/6 dimensions, FLAG resolved)
@@ -193,6 +202,7 @@ Commits landed this session (8 total):
 - 6523857 docs(04A): plan-check report — NEEDS_REVISION (5 blockers, 4 warnings)
 
 User decisions this session:
+
 - Skip already-complete-on-disk phases 0/2/3; start at 4a (doc-drift fix)
 - Scope: --to 10 (MVP, skip OPZIONALE V2 phases 11-13)
 - All 4 smart-discuss grey areas: Accept Recommended
@@ -200,6 +210,7 @@ User decisions this session:
 - B-2 sub-tile geometry override: KEEP 18 (floor, original CONTEXT.md lock) — planner revision must revert from 28-ceil to 18-floor
 
 Remaining for Phase 4a (resume work):
+
 1. /gsd-plan-phase 4a --gaps  → planner revision applying user decisions (1 iteration max recommended; PLAN-CHECK.md has explicit fix-hints for B-1, B-3, B-4, B-5 + W-1..4)
 2. /gsd-execute-phase 4a  → 5 plans × ~2-3 tasks each, Wave 0..3
 3. /gsd-code-review 4a (+ --fix --auto if findings)
