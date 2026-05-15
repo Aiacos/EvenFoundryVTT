@@ -33,7 +33,14 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
-import { type Layer, LayerManagerError, type LayerOp, type ZIndex } from './layer-types.js';
+import {
+  type Layer,
+  LayerManagerError,
+  type LayerOp,
+  type OverlayPanel,
+  ZIndex,
+} from './layer-types.js';
+import { isOverlayPanel } from './overlay-panel.js';
 
 /** Map-rendering mode controlled via Quick Action `[M] Map mode` (Phase 6 wires it). */
 export type MapMode = 'auto' | 'raster' | 'glyph';
@@ -59,6 +66,18 @@ export class LayerManager {
 
   /** Current map-rendering mode; mutated by `setMapMode()`. */
   private mapMode: MapMode = 'auto';
+
+  /**
+   * Idle infill layer stashed while a z=2 overlay is mounted.
+   *
+   * ADR-0009 Amendment 1 differential demolish rule: when `bundle()` mounts
+   * `Z2_OVERLAY` while `Z0_5_IDLE_INFILL` is currently occupied, we implicitly
+   * destroy z=0.5 in the same flush and stash its instance here. A later
+   * `destroy(Z2_OVERLAY)` re-mounts the stashed instance (same reference) in
+   * the same flush. Null when no overlay is active OR when no z=0.5 was
+   * mounted at the time of overlay open.
+   */
+  private _suspendedZ05: Layer | null = null;
 
   /**
    * Bind the manager to a resolved `EvenAppBridge` singleton.
@@ -131,18 +150,83 @@ export class LayerManager {
    *   - Operations are applied in array order.
    *   - The capability gate is enforced PER mount op (same as `mount()`).
    *   - Transient invariant violations during the loop are tolerated; the
-   *     capture-container assertion runs once at the end of the loop.
-   *   - On invariant success, exactly one `bridge.rebuildPageContainer` call
-   *     is issued (single render flush — ADR-0001 Amendment 1).
+   *     capture-container assertion runs once at the end of the loop, then
+   *     the container-budget assertion runs, then OverlayPanel lifecycle
+   *     hooks are awaited, then exactly one `bridge.rebuildPageContainer`
+   *     call is issued (single render flush — ADR-0001 Amendment 1).
+   *
+   * **Phase 4b — differential demolish rule (ADR-0009 Amendment 1):**
+   * before the explicit ops are applied, the input list is rewritten so that
+   * any `mount(z=Z2_OVERLAY)` op that finds `Z0_5_IDLE_INFILL` currently
+   * occupied is prefixed by an implicit `destroy(z=Z0_5_IDLE_INFILL)`. The
+   * demolished layer instance is stashed in `_suspendedZ05`. A later
+   * `destroy(z=Z2_OVERLAY)` triggers the inverse: an implicit
+   * `mount(z=Z0_5_IDLE_INFILL, _suspendedZ05)` op is appended in the same
+   * bundle. The result is a single atomic flush — no transient frame with
+   * both visible — while the toast queue at z=1.5 is left untouched.
+   *
+   * **Phase 4b — container budget assertion (ADR-0009 Amendment 1):**
+   * after the capture invariant passes, `_assertContainerBudget` sums each
+   * mounted layer's declared `getContainerCount()` (default `{ image: 0,
+   * text: 1 }`) and throws `LayerManagerError('panel_mount_budget_exceeded')`
+   * if the cumulative count exceeds the SDK 4-image / 8-text cap per
+   * `@evenrealities/even_hub_sdk@0.0.10` `index.d.ts` lines 638-640.
+   *
+   * **Phase 4b — OverlayPanel lifecycle:** for every mount op whose layer
+   * satisfies `isOverlayPanel`, `onMount()` is awaited AFTER both invariants
+   * pass and BEFORE `_flushPage()`. For every destroy op whose displaced
+   * layer is an OverlayPanel, `onUnmount()` is awaited in the same window.
+   * Rejection of either hook aborts the bundle BEFORE the bridge call (the
+   * layer remains in the map; caller is responsible for `destroy()` + retry).
    *
    * On capability-gate denial mid-loop, the manager throws immediately with
    * the gate-denied error. Layers map state at the point of throw reflects
    * whatever ops succeeded before — callers should treat the manager state
    * as undefined after such a throw and rebuild from a known-good
    * composition.
+   *
+   * @see ADR-0009 Amendment 1 (differential demolish + container budget rules)
    */
   async bundle(ops: ReadonlyArray<LayerOp>): Promise<void> {
+    // STEP 1 — Compute effective op list with differential demolish rewrites.
+    const effective: LayerOp[] = [];
     for (const op of ops) {
+      if (
+        op.type === 'mount' &&
+        op.z === ZIndex.Z2_OVERLAY &&
+        this.layers.has(ZIndex.Z0_5_IDLE_INFILL)
+      ) {
+        // Stash the idle infill layer instance so we can re-mount it on
+        // the inverse destroy(z=2) bundle later.
+        const stashed = this.layers.get(ZIndex.Z0_5_IDLE_INFILL);
+        if (stashed !== undefined) {
+          this._suspendedZ05 = stashed;
+        }
+        effective.push({ type: 'destroy', z: ZIndex.Z0_5_IDLE_INFILL });
+        effective.push(op);
+      } else if (
+        op.type === 'destroy' &&
+        op.z === ZIndex.Z2_OVERLAY &&
+        this._suspendedZ05 !== null
+      ) {
+        const restored = this._suspendedZ05;
+        this._suspendedZ05 = null;
+        effective.push(op);
+        effective.push({
+          type: 'mount',
+          z: ZIndex.Z0_5_IDLE_INFILL,
+          layer: restored,
+          requiredCaps: [],
+        });
+      } else {
+        effective.push(op);
+      }
+    }
+
+    // STEP 2 — Apply effective ops; collect panels needing lifecycle invocation.
+    const mountedPanels: OverlayPanel[] = [];
+    const unmountedPanels: OverlayPanel[] = [];
+    for (const op of effective) {
       if (op.type === 'mount') {
         const requiredCaps = op.requiredCaps ?? [];
         for (const cap of requiredCaps) {
@@ -153,12 +237,37 @@ export class LayerManager {
             );
           }
         }
+        if (isOverlayPanel(op.layer)) {
+          mountedPanels.push(op.layer);
+        }
         this.layers.set(op.z, op.layer);
       } else {
+        const existing = this.layers.get(op.z);
+        if (existing !== undefined && isOverlayPanel(existing)) {
+          unmountedPanels.push(existing);
+        }
         this.layers.delete(op.z);
       }
     }
+
+    // STEP 3 — Invariants BEFORE bridge call. Capture first so `_assertContainerBudget`
+    // does not mask a more diagnostic capture-violation message.
     this._assertCaptureInvariant();
+    this._assertContainerBudget();
+
+    // STEP 4 — Unmount lifecycle hooks (sequential await for predictable order).
+    for (const p of unmountedPanels) {
+      await p.onUnmount();
+    }
+
+    // STEP 5 — Mount lifecycle hooks. Rejection bubbles up; bridge flush SKIPPED.
+    // The layer stays in the map — caller's responsibility to issue destroy +
+    // retry (T-4b-01-02 mitigation).
+    for (const p of mountedPanels) {
+      await p.onMount();
+    }
+
+    // STEP 6 — Single bridge flush.
     await this._flushPage();
   }
 
@@ -206,6 +315,52 @@ export class LayerManager {
         `expected 1 capture container, found ${count}`,
       );
     }
+  }
+
+  /**
+   * Throw `LayerManagerError('panel_mount_budget_exceeded')` when the cumulative
+   * mounted-layer container footprint would exceed the SDK 4-image / 8-text cap.
+   *
+   * Strategy A (ADR-0009 Amendment 1): each layer self-declares its footprint
+   * via `getContainerCount()`. Missing method ⇒ default `{ image: 0, text: 1 }`
+   * (one text/list slot, no image slots) — matches the most common no-capture
+   * layer (StatusHudLayer, IdleInfillLayer in glyph mode, ToastQueueLayer).
+   *
+   * Cap source: `@evenrealities/even_hub_sdk@0.0.10`
+   * `dist/index.d.ts` lines 638-640 + 674-677 (verbatim
+   * `containerTotalNum: 1~12`, `textObject: 最多 8 项`, `imageObject: 最多 4 项`).
+   * INV-2 re-verified 2026-05-15.
+   *
+   * Runs AFTER `_assertCaptureInvariant` so callers see the more diagnostic
+   * capture-violation message first (LMT-CB-03 pins this ordering).
+   */
+  private _assertContainerBudget(): void {
+    let img = 0;
+    let txt = 0;
+    for (const layer of this.layers.values()) {
+      const cnt = layer.getContainerCount?.() ?? { image: 0, text: 1 };
+      img += cnt.image;
+      txt += cnt.text;
+    }
+    if (img > 4 || txt > 8) {
+      throw new LayerManagerError(
+        'panel_mount_budget_exceeded',
+        `container budget exceeded: ${img} image (max 4) + ${txt} text (max 8); see ADR-0009 Amendment 1`,
+      );
+    }
+  }
+
+  /**
+   * Test-only diagnostic accessor — return the layer at a given z-index.
+   *
+   * Production code MUST NOT depend on layer identity for routing; the manager
+   * is the single source of truth for composition. This getter exists so
+   * `__tests__/layer-manager.test.ts` can assert reference equality after the
+   * differential demolish rule round-trips an `IdleInfillLayer` instance through
+   * the suspend/restore path (LMT-DD-02, LMT-DD-06).
+   */
+  getLayer(z: ZIndex): Layer | undefined {
+    return this.layers.get(z);
   }
 
   /**

@@ -50,8 +50,162 @@ gates close only when real-G2 grants land via `pnpm --filter @evf/validation-har
 
 ### Amendments
 
-- _Amendment 1 (reserved):_ Phase 4b `bundle()` composition rules for
-  modal-on-modal (CONC-01 concentration-drop + DEATH-01 death-saves race).
+- [Amendment 1 (2026-05-15) — Phase 4b composition rules: differential demolish + container budget + in-process gesture-bus](#amendment-1--phase-4b-composition-rules-2026-05-15)
+
+### Amendment 1 — Phase 4b composition rules (2026-05-15)
+
+**Status:** ACCEPTED — extends Option A without overturning it.
+
+**Trigger:** Phase 4b ships the overlay slot machinery (Plan 01 foundation), the
+toast queue (Plan 03), the boot-error overlay (Plan 04), and the conc-modal +
+death-saves pivot (Plan 05). These features required three composition
+clarifications that ADR-0001 Amendment 1's "atomic z=0.5 demolition" rule did
+not cover by itself:
+
+1. The toast queue at a new z=1.5 stratum must SURVIVE z=2 overlay open
+   (otherwise the user loses pending toasts the moment a panel opens — INV-5
+   gesture determinism + Plan 03 stress test ST-2).
+2. Plan 05's conc-modal needs an in-process synchronous gesture pipe to react
+   to `[Y]` / `[N]` taps without a WS round-trip through the bridge (latency
+   would push `tap → close` beyond the 100 ms perceived-immediate threshold).
+3. The cumulative container footprint must stay within the SDK 4-image / 8-text
+   cap in BOTH the closed-overlay state AND the open-overlay state — without
+   the differential demolish rule, the closed state would already hit 9/8 text
+   slots once z=1.5 toast lands (overflow).
+
+**Decision (three composition rules):**
+
+- **Rule 1 — Differential demolish (z=0.5 ↔ z=2 atomic swap, preserved from ADR-0001 Amd 1).**
+  `LayerManager.bundle()` (see `packages/g2-app/src/engine/layer-manager.ts`)
+  detects any `mount(z=Z2_OVERLAY)` op against an occupied `Z0_5_IDLE_INFILL`
+  and prefixes the effective op list with an implicit `destroy(z=Z0_5_IDLE_INFILL)`.
+  The demolished layer instance is stashed in the private `_suspendedZ05` field.
+  The inverse `destroy(z=Z2_OVERLAY)` appends an implicit `mount(z=Z0_5_IDLE_INFILL,
+  _suspendedZ05)` op so the SAME idle infill instance is restored on overlay
+  close — no transient frame with both visible.
+
+- **Rule 2 — z=1.5 toast carve-out.**
+  The differential demolish rule does NOT apply to `Z1_5_TOAST`. A bundle that
+  mounts z=2 leaves z=1.5 untouched; subsequent destroy of z=2 also leaves z=1.5
+  untouched. Verified by `LMT-DD-04` unit test (Plan 01) and ratified by the
+  Plan 03 Fireball + 8-saves stress smoke (toast queue survives a chain of
+  modal opens).
+
+- **Rule 3 — In-process panel-gesture-bus.**
+  R1 gesture routing inside `packages/g2-app` is in-process (NOT a WS
+  round-trip). `packages/g2-app/src/engine/panel-gesture-bus.ts` exports a
+  `PanelGestureBus` class with `publish(gesture)` / `subscribe(fn): unsubscribe` /
+  `size()` methods. Phase 6 R1 source provider translates SDK
+  `CLICK_EVENT` / `DOUBLE_CLICK_EVENT` / `SCROLL_TOP_EVENT` / `SCROLL_BOTTOM_EVENT`
+  to `R1Gesture` literals (`{ kind: 'tap' | 'scroll' | 'long-press' | 'double-tap' }`)
+  and publishes them on the bus; Phase 4b/5 panels subscribe from their
+  `onMount()` and unsubscribe from their `onUnmount()`. Per-subscriber
+  `try`/`catch` isolation keeps a faulty panel from blocking other subscribers
+  (T-4b-01-03 mitigation).
+
+#### Container budget audit
+
+The SDK pins the per-page container cap at `containerTotalNum: 1~12`, with
+`textObject: 最多 8 项` and `imageObject: 最多 4 项` (verbatim from
+`@evenrealities/even_hub_sdk@0.0.10` `dist/index.d.ts` lines 638-640 + 674-677).
+The differential demolish rule keeps the page WITHIN budget in both states:
+
+```
+CLOSED STATE (no overlay):
+  z=0   MapBaseLayer raster      4 image + 1 capture text  =  4i + 1t
+                       glyph     0 image + 2 text          =  0i + 2t
+  z=0.5 IdleInfillLayer raster   0 image + 3 text          =  0i + 3t
+                        glyph    0 image + 2 text          =  0i + 2t
+  z=1   StatusHudLayer           0 image + 1 text          =  0i + 1t
+  z=1.5 ToastQueueLayer (Plan 03) 0 image + 1 text         =  0i + 1t
+  ────────────────────────────────────────────────────────  ───────
+  Page total raster                                         4i + 6t  (cap: 4i + 8t)
+  Page total glyph                                          0i + 6t
+
+OPEN STATE (z=2 overlay mounted, z=0.5 demolished per Rule 1):
+  z=0   MapBaseLayer raster      4 image + 1 capture text  =  4i + 1t
+                       glyph     0 image + 2 text          =  0i + 2t
+  z=1   StatusHudLayer           0 image + 1 text          =  0i + 1t
+  z=1.5 ToastQueueLayer          0 image + 1 text          =  0i + 1t
+  z=2   OverlayPanel (e.g.       0 image + ≤ 3 text/list   =  0i + ≤3t
+        ConcDropModalPanel per UI-SPEC §7)
+  ────────────────────────────────────────────────────────  ───────
+  Page total raster                                         4i + ≤6t (cap: 4i + 8t)
+  Page total glyph                                          0i + ≤7t
+```
+
+**Verdict:** ✓ both states sit strictly under the 4/8 cap with 2 text slots of
+headroom. Enforcement: `LayerManager._assertContainerBudget()` (Plan 01 Task 2)
+sums each mounted layer's declared `getContainerCount()` at every bundle flush
+and throws `LayerManagerError('panel_mount_budget_exceeded')` if the sum
+exceeds the SDK cap.
+
+#### Conc-modal special case (Plan 05)
+
+The conc-modal opens on `dnd5e.preCastSpell` for spells with `requiresConc:
+true` (Plan 05). It is a normal z=2 panel — Rule 1 applies (idle infill
+demolished, restored on dismiss) and Rule 2 applies (toast queue carve-out).
+The death-saves pivot (Plan 05) sits at z=1 (Status HUD stratum), NOT z=2 —
+different stratum, no conflict with the modal slot.
+
+#### Consistency check vs original ADR-0001 Amendment 1
+
+- ✓ Atomic z=0.5 ↔ z=2 demolition rule preserved (re-converges with ADR-0001).
+- ✓ Container budget invariant preserved (4 image + 8 text/list + 1 capture).
+- ✓ Status HUD persistence (z=1) unchanged.
+- ✓ Single capture-container invariant unchanged (z=0.5 + z=1.5 still
+  render-only).
+- ✓ R1 input routing (INV-5) unchanged — top-of-stack `isEventCapture=1` rule
+  applies AND Rule 3 in-process bus is the synchronous dispatch path for the
+  capturing layer's gestures.
+- ✓ Panel Plugin System (Phase 5) contract — extended additively with the
+  `OverlayPanel extends Layer` interface (Plan 01 Task 1) plus the
+  `isOverlayPanel` runtime guard.
+
+#### Why amend instead of new ADR
+
+The three rules are additive refinements over ADR-0001 Amendment 1 + ADR-0009's
+original `bundle()` contract. They do not alter Decision Drivers, Considered
+Options, or Decision Outcome — they extend the bundle semantics with:
+
+- Atomic implicit op rewrites (Rule 1's pre/post fixups).
+- A new pre-flush invariant (`_assertContainerBudget`).
+- A new lifecycle invocation pass (`OverlayPanel.onMount/onUnmount`).
+- A new sibling module for in-process gesture routing
+  (`panel-gesture-bus.ts`).
+
+A separate ADR would duplicate the LayerManager-contract context and obscure
+the dependency between ADR-0001's z=0.5 atomic rule and this Amendment's
+z=1.5 carve-out.
+
+#### INV-2 status
+
+Container budget statement (`containerTotalNum: 1~12`, `textObject: 最多 8 项`,
+`imageObject: 最多 4 项`) re-verified against
+`node_modules/.pnpm/@evenrealities+even_hub_sdk@0.0.10/node_modules/@evenrealities/even_hub_sdk/dist/index.d.ts`
+lines 638-640 (CreateStartUpPageContainer) and lines 674-677
+(RebuildPageContainer) on 2026-05-15 — drift verdict NEUTRO. The SDK is the
+canonical wire-contract source per `Specs.md` §3.1.
+
+#### See Also
+
+- `.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md`
+  §Q1 (container budget audit) + §Q2 (in-process gesture-bus Pattern B) + §Q7
+  (recommended Amendment 1 text)
+- `.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md`
+  §Area 1 (revised differential demolish rule) + §Area 2 (Panel API)
+- `.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-UI-SPEC.md`
+  §3.1 (overlay slot contract) + §7 (container type inventory + cumulative
+  audit)
+- `.planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-01-PLAN.md`
+  (this amendment lands alongside Plan 01 Tasks 1-2 implementation)
+- `docs/architecture/0001-layered-ui-model.md` §Amendment 1 (original z=0.5
+  atomic rule that Rule 1 here re-converges with)
+- `packages/g2-app/src/engine/layer-manager.ts` (bundle() implementation of
+  Rules 1-2 + `_assertContainerBudget`)
+- `packages/g2-app/src/engine/panel-gesture-bus.ts` (Rule 3 implementation)
+- `packages/g2-app/src/engine/layer-types.ts` (Z1_5_TOAST + OverlayPanel +
+  R1Gesture surface)
 
 ## Context and Problem Statement
 
