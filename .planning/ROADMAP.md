@@ -163,7 +163,7 @@ Plans:
 - [x] 05-03-PLAN.md — CharacterSheet tab renderers: Main/Skills/Feats/Bio per-tab pure functions + dispatcher + dual-edition branches + 6 INV-1 fixtures (SHEET-02, SHEET-03)
 
 **Wave 3** *(blocked on Wave 2; Plans 04 + 05 run in parallel — zero files_modified overlap)*
-- [ ] 05-04-PLAN.md — InventoryPanel + SpellbookPanel + sheet-tab renderer dispatcher swap + CharacterSnapshotSchema inventory + spells extensions + 7 INV-1 fixtures (SHEET-01, SHEET-02, SHEET-03)
+- [x] 05-04-PLAN.md — InventoryPanel + SpellbookPanel + sheet-tab renderer dispatcher swap + CharacterSnapshotSchema inventory + spells extensions + 7 INV-1 fixtures (SHEET-01, SHEET-02, SHEET-03)
 - [x] 05-05-PLAN.md — CombatTrackerPanel + LogPanel + 5-row windowing + concentration sub-line + quick-action bar render-only + LogEventSchema + log-reader + 6 INV-1 fixtures (COMB-01, COMB-03)
 
 **Wave 4** *(blocked on Wave 3)*
