@@ -1,0 +1,18 @@
+┌─── REGISTRO EVENTI                                             ┐
+  T-00:30  LYRA        ✧ Bless [slot 1] su Thorin, Lyra           
+             → CONCENTRANDO                                       
+  T-00:12  GOB ARC     ⚔ Arco corto vs Thorin                     
+             →   14 vs  MANCATO                                   
+  T-00:00  THORIN      ✦ Secondo soffio (bns)                     
+  T-00:01  THORIN      ⚔ Spada lunga vs Goblin Arciere            
+             →   23 vs  COLPITO  12 taglio                        
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+  ▼ scroll per i più vecchi                                       
+└────────────────────────────────────────────────────────────────┘
