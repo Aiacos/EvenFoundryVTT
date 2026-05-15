@@ -151,7 +151,7 @@ Plans:
   3. Combat tracker shows current turn, initiative order, effects, and concentration source+duration; quick-action bar `[A][S][I][M]` is visible on Combat overlay (COMB-01 + COMB-03)
   4. Quick Action `[N] Language` overrides locale device-local without touching Foundry world settings; with IT + EN canonical strings all sheet panels render within the width budget; DE/ES/FR/PT-BR best-effort renders without layout break (I18N-02 + I18N-05)
   5. Adding a new mock panel takes ≤5 minutes via `import.meta.glob` auto-discovery without touching core (Panel API contract verified)
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed
 Plans:
 **Wave 0**
 - [x] 05-01-PLAN.md — PanelRouter + import.meta.glob discovery + PanelMetaSchema + LOCALE_MENU + HUD_WIDTH_BUDGETS Phase 5 extension (~82 keys) + widened HudLocale + per-key EN fallback + CharacterSnapshotSchema.world.modernRules + CombatantSchema.concentration + character/combat reader extensions + ADR-0010 (architecture + atomic foundation)
@@ -164,7 +164,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2; Plans 04 + 05 run in parallel — zero files_modified overlap)*
 - [ ] 05-04-PLAN.md — InventoryPanel + SpellbookPanel + sheet-tab renderer dispatcher swap + CharacterSnapshotSchema inventory + spells extensions + 7 INV-1 fixtures (SHEET-01, SHEET-02, SHEET-03)
-- [ ] 05-05-PLAN.md — CombatTrackerPanel + LogPanel + 5-row windowing + concentration sub-line + quick-action bar render-only + LogEventSchema + log-reader + 6 INV-1 fixtures (COMB-01, COMB-03)
+- [x] 05-05-PLAN.md — CombatTrackerPanel + LogPanel + 5-row windowing + concentration sub-line + quick-action bar render-only + LogEventSchema + log-reader + 6 INV-1 fixtures (COMB-01, COMB-03)
 
 **Wave 4** *(blocked on Wave 3)*
 - [ ] 05-06-PLAN.md — Locale override locale-override.ts + boot-engine step 9c read-back + 05-panel-integration-smoke harness + 8 INV-1 stress + canonical fixtures (I18N-02, I18N-05)
@@ -273,7 +273,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
-| 5. Panel Plugin System + Read-Only Panels | 3/6 | In Progress|  |
+| 5. Panel Plugin System + Read-Only Panels | 4/6 | In Progress|  |
 | 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
 | 7. Foundry Module Write Path | 0/TBD | Not started | - |
 | 8. Manual Action UX | 0/TBD | Not started | - |

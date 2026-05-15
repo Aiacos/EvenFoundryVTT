@@ -34,9 +34,9 @@
 
 ### Combat & Action
 
-- [ ] **COMB-01**: Combat tracker con turno corrente, iniziativa, effetti, durate concentrazione
+- [x] **COMB-01**: Combat tracker con turno corrente, iniziativa, effetti, durate concentrazione
 - [ ] **COMB-02**: Action economy widget (action / bonus / reaction / move) con enforcement client-side
-- [ ] **COMB-03**: Quick-action bar `[A][S][I][M]` su Combat overlay
+- [x] **COMB-03**: Quick-action bar `[A][S][I][M]` su Combat overlay
 - [ ] **CONC-01**: Concentration drop confirm modal su cast di spell concentration mentre già concentrato. *Adversarial gap Vector A — currently undefined in spec, 5e core.*
 - [ ] **MULTI-01**: Multi-attack action tracker (`Atk 1/2`, `Atk 2/2`) per Fighter Extra Attack L5+. *Adversarial gap — Specs §12.B q.15 currently flagged open.*
 - [ ] **REACT-01**: Reaction *passive notification toast* (Shield / Counterspell / Opportunity Attack — display-only, no execution). *Adversarial gap Vector A — execution stays V2 ACT-04.*
@@ -166,8 +166,8 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | SHEET-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | SHEET-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | SHEET-04 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
-| COMB-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
-| COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
+| COMB-01 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
+| COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | I18N-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
 | I18N-05 | Phase 5 — Panel Plugin System + Read-Only Panels | Pending |
 | NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |

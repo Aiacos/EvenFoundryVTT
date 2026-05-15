@@ -4,13 +4,13 @@ milestone: v0.9.11
 milestone_name: milestone
 status: IN_PROGRESS — Plan 01 Wave-0 foundation committed; Plans 02-06 unblocked as READ-ONLY consumers.
 stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-05-15T20:05:22.868Z"
+last_updated: "2026-05-15T20:27:51.815Z"
 last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 35
-  completed_plans: 32
+  completed_plans: 33
   percent: 40
 ---
 
@@ -52,7 +52,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 94%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -109,6 +109,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 *Updated after each plan completion.*
 | Phase 02-foundry-module-core-pairing-ui P02 | ~60 min | 2 tasks | 12 files |
 | Phase 05-panel-plugin-system-read-only-panels P03 | 45min | 3 tasks | 10 files |
+| Phase 05-panel-plugin-system-read-only-panels P05 | 120 | 3 tasks | 15 files |
 
 ## Quick Tasks Completed
 
@@ -186,7 +187,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-15T20:05:22.858Z
+Last session: 2026-05-15T20:27:51.806Z
 Stopped at: Completed 05-03-PLAN.md
 Resume file: None
 Resume cmd: /gsd-execute-phase 5 02
