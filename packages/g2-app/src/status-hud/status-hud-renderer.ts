@@ -10,6 +10,16 @@
  *     as `—`. Behaves like a "loaded but empty" frame.
  *   - `render(snapshot)` — populated frame from a parsed CharacterSnapshot.
  *
+ * **Phase 4b DEATH-01 — death-saves pivot (Plan 05 Task 1):** the renderer also
+ * supports a `mode: 'standard' | 'death-saves'` toggle (`setMode(mode)`). When
+ * the StatusHudLayer detects `hp === 0 && death.failure < 3` it calls
+ * `setMode('death-saves')` and subsequent `render(snapshot)` calls produce the
+ * 3-strike tracker card per UI-SPEC §3.4 (`◯`/`●` glyphs, locale-aware
+ * `Riusciti`/`Falliti` labels). `renderLoading()` and `renderMissing()` ignore
+ * the mode flag (they only run before character data is available, where
+ * death-saves is not meaningful). See 04b-CONTEXT.md §Area 7 for the pivot
+ * trigger contract.
+ *
  * The output AsciiGrid is always 28 char wide × 21 row tall. Col 0 and col 27 of
  * every row are `║`; row 21 is the bottom border `╠══...═╣`. Box-drawing chars
  * come from UI-SPEC §Glyph Dictionary verbatim. No DOM is emitted — this is a
@@ -57,12 +67,25 @@ const HP_BAR_GLYPHS = 8;
 /** Map mode determines whether the `[GLY]` badge is visible at row 20. */
 export type StatusHudMapMode = 'raster' | 'glyph';
 
+/**
+ * Rendering mode — `'standard'` is the Phase 4a HP/AC/conditions layout;
+ * `'death-saves'` is the Phase 4b 3-strike tracker pivot (UI-SPEC §3.4,
+ * DEATH-01). Switched via {@link StatusHudRenderer.setMode}.
+ */
+export type StatusHudMode = 'standard' | 'death-saves';
+
 /** Constructor options for the renderer. */
 export interface StatusHudRendererOpts {
   /** Active locale — drives label substitution via i18n-budgets table. */
   readonly locale: HudLocale;
   /** Map mode — when `'glyph'`, render the `[GLY]` badge in row 20. */
   readonly mapMode?: StatusHudMapMode;
+  /**
+   * Initial rendering mode (default `'standard'`). Most callers omit this and
+   * use {@link StatusHudRenderer.setMode} to flip into `'death-saves'` when the
+   * pivot trigger fires (see {@link ../status-hud-layer.ts | StatusHudLayer}).
+   */
+  readonly mode?: StatusHudMode;
 }
 
 /**
@@ -76,10 +99,38 @@ export interface StatusHudRendererOpts {
 export class StatusHudRenderer {
   private readonly locale: HudLocale;
   private readonly mapMode: StatusHudMapMode;
+  /** Current rendering mode (mutable via {@link setMode}). */
+  private mode: StatusHudMode;
 
   constructor(opts: StatusHudRendererOpts) {
     this.locale = opts.locale;
     this.mapMode = opts.mapMode ?? 'raster';
+    this.mode = opts.mode ?? 'standard';
+  }
+
+  /**
+   * Switch the renderer's mode.
+   *
+   * Called by {@link ../status-hud-layer.ts | StatusHudLayer} when the
+   * `hp === 0 && death.failure < 3` pivot trigger fires (DEATH-01) and when
+   * the inverse latch-off transition fires (HP > 0 recovery). The mode is a
+   * stateful flag on the renderer; subsequent calls to {@link render} pick
+   * the dispatched branch.
+   *
+   * Idempotent — calling with the current mode is a no-op.
+   *
+   * @param mode `'standard'` or `'death-saves'`.
+   */
+  setMode(mode: StatusHudMode): void {
+    this.mode = mode;
+  }
+
+  /**
+   * Read the current mode (test-only accessor — production code MUST NOT
+   * gate behaviour on the renderer's mode; the layer owns the latch state).
+   */
+  getMode(): StatusHudMode {
+    return this.mode;
   }
 
   /**
@@ -140,8 +191,25 @@ export class StatusHudRenderer {
    *   - Conditions show up to 3 entries; overflow displayed as `… +{N}`
    *
    * Missing optional fields render as `—` per CONTEXT.md §Area 3.
+   *
+   * **Mode dispatch (Phase 4b DEATH-01):** when {@link mode} is `'death-saves'`
+   * the method delegates to {@link _renderDeathSaves} which produces the
+   * 3-strike tracker card per UI-SPEC §3.4 instead of the standard layout.
    */
   render(snapshot: CharacterSnapshot): AsciiGrid {
+    if (this.mode === 'death-saves') {
+      return this._renderDeathSaves(snapshot);
+    }
+    return this._renderStandard(snapshot);
+  }
+
+  /**
+   * Internal — render the populated standard-mode HP/AC/Conditions card.
+   *
+   * Encapsulates the Phase 4a render logic so {@link render} can dispatch to
+   * `_renderDeathSaves` without duplicating the standard implementation.
+   */
+  private _renderStandard(snapshot: CharacterSnapshot): AsciiGrid {
     // Name (12-char budget per UI-SPEC §Field Width Budgets — truncate to
     // 11 + `…` = 12 chars total).
     const nameDisplay = truncateField(snapshot.name, 12);
@@ -179,6 +247,109 @@ export class StatusHudRenderer {
       conditions: visibleConditions,
       conditionsOverflow,
     });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Phase 4b DEATH-01 — death-saves pivot
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Render the death-saves pivot card per UI-SPEC §3.4.
+   *
+   * Same 28-char × 21-row outer shape as the standard card — only the row
+   * content differs. Header row (name) + divider are preserved; rows 4..10
+   * hold the death-saves title + 3-strike trackers + HP=0 indicator + AC;
+   * rows 11..19 are blank; row 20 carries the `[GLY]` badge (orthogonal to
+   * the death-saves latch, UI-SPEC §9.7); row 21 is the bottom `╠══...═╣`
+   * border.
+   *
+   * Tracker glyphs (UI-SPEC §3.4 glyph palette):
+   *   - `◯` U+25EF empty checkbox slot
+   *   - `●` U+25CF filled checkbox slot
+   *   - Bracket pattern: `[ X X X ]` exactly (9 visible chars)
+   *
+   * @param snapshot Parsed CharacterSnapshot — `death.success` / `death.failure`
+   *                 in `[0..3]` drive the filled-slot counts.
+   */
+  private _renderDeathSaves(snapshot: CharacterSnapshot): AsciiGrid {
+    const rows: string[] = [];
+    const nameDisplay = truncateField(snapshot.name, 12);
+
+    // Row 1: Name (col 2-13) + 8-char class placeholder (preserved from standard mode)
+    rows.push(this._rowFromInner(`${padRight(nameDisplay, 12)}  ${padRight('', 8)}`));
+
+    // Row 2: 16-dash divider + 8 trailing spaces (preserved)
+    rows.push(this._rowFromInner(`${'─'.repeat(16)}        `));
+
+    // Row 3: blank
+    rows.push(this._rowFromInner(''));
+
+    // Row 4: DEATH SAVES title (locale-aware via i18n-budgets `death_saves_title`)
+    const title = getLabel('death_saves_title', this.locale);
+    rows.push(this._rowFromInner(title));
+
+    // Row 5: blank
+    rows.push(this._rowFromInner(''));
+
+    // Row 6: Pass tracker — `Riusciti  [ … ]` (IT) / `Passes    [ … ]` (EN).
+    // Bracket column aligned with row 7 by padding the label to a fixed 10-char
+    // cell. IT 'Riusciti' = 8 chars → 2 trailing spaces; EN 'Passes' = 6 chars
+    // → 4 trailing; DE 'Erfolge' = 7 chars → 3 trailing. Bracket follows
+    // directly (no extra space) so col 12 always carries `[`. 5 trailing spaces
+    // pad the 24-char inner cell (10 + 9 + 5 = 24).
+    const passLabel = getLabel('death_saves_passes_label', this.locale);
+    const passTracker = buildTrackerBracket(snapshot.death.success);
+    rows.push(this._rowFromInner(`${padRight(passLabel, 10)}${passTracker}     `));
+
+    // Row 7: Fail tracker — `Falliti   [ … ]` (IT) / `Fails     [ … ]` (EN).
+    // Same 10-char label column for INV-1 sub-rule 3 column alignment with row 6.
+    const failLabel = getLabel('death_saves_fails_label', this.locale);
+    const failTracker = buildTrackerBracket(snapshot.death.failure);
+    rows.push(this._rowFromInner(`${padRight(failLabel, 10)}${failTracker}     `));
+
+    // Row 8: blank
+    rows.push(this._rowFromInner(''));
+
+    // Row 9: HP=0 indicator — `PF  0/<max>` (IT) / `HP  0/<max>` (EN). The
+    // 2-space gap between label and `0/<max>` keeps the `0` aligned with the
+    // standard mode's HP bar start column.
+    const hpLabel = getLabel('hp_label', this.locale);
+    rows.push(this._rowFromInner(`${hpLabel}  0/${snapshot.maxHp}`));
+
+    // Row 10: AC value — `CA <ac>` (IT) / `AC <ac>` (EN).
+    const acLabel = getLabel('ac_label', this.locale);
+    rows.push(this._rowFromInner(`${acLabel} ${snapshot.ac}`));
+
+    // Rows 11-19: blank (9 rows of empty inner content).
+    for (let r = 0; r < 9; r++) {
+      rows.push(this._rowFromInner(''));
+    }
+
+    // Row 20: [GLY] badge if mapMode==='glyph' (orthogonal to death-saves latch
+    // per UI-SPEC §9.7). Identical encoding to standard mode for INV-1 ck 11
+    // column-alignment when toggling map mode while in death-saves.
+    const badge = this.mapMode === 'glyph' ? '[GLY]' : '';
+    const row20InnerNoBorder = `${' '.repeat(INNER_WIDTH - 1 - 5)}${padRight(badge, 5)}`;
+    rows.push(`║${row20InnerNoBorder} ║`);
+
+    // Row 21: bottom border `╠══...═╣` — 26 × `═`
+    rows.push(`╠${'═'.repeat(INNER_WIDTH)}╣`);
+
+    // Sanity: every row must be exactly HUD_WIDTH chars wide (INV-1 enforcement)
+    const sizedRows: ReadonlyArray<ReadonlyArray<string>> = rows.map((r) => {
+      if ([...r].length !== HUD_WIDTH) {
+        throw new Error(`StatusHudRenderer: row width ${[...r].length} !== ${HUD_WIDTH}: |${r}|`);
+      }
+      return [...r];
+    });
+
+    if (sizedRows.length !== HUD_HEIGHT) {
+      throw new Error(
+        `StatusHudRenderer: produced ${sizedRows.length} rows, expected ${HUD_HEIGHT}`,
+      );
+    }
+
+    return new AsciiGrid(sizedRows);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -389,4 +560,31 @@ function truncateField(value: string, budget: number): string {
     return value;
   }
   return `${codepoints.slice(0, budget - 1).join('')}${ELLIPSIS}`;
+}
+
+/**
+ * Build the 3-strike tracker bracket for death-saves rendering.
+ *
+ * Returns a 9-visible-character string of the form `[ G G G ]` where each
+ * `G` is either `●` (filled, U+25CF) for ticked positions or `◯` (empty,
+ * U+25EF) for unticked positions. `count` is clamped to `[0, 3]`.
+ *
+ * Width contract (UI-SPEC §3.4 + INV-1 sub-rule 4):
+ * - `[` + space + glyph + space + glyph + space + glyph + space + `]` = 9 chars
+ * - Filled glyph (`●`) and empty glyph (`◯`) are both single grapheme columns
+ *   in the G2 monospace font (verified Phase 4a glyph dictionary).
+ *
+ * Pure function — exported only for the renderer's internal use (no public
+ * export from the module to keep the public API surface minimal).
+ *
+ * @param count Number of ticked positions (clamped to 0..3).
+ * @returns 9-char string `[ X X X ]` with X ∈ `{◯, ●}`.
+ */
+function buildTrackerBracket(count: number): string {
+  const ticked = Math.max(0, Math.min(3, count));
+  const slots: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    slots.push(i < ticked ? '●' : '◯');
+  }
+  return `[ ${slots.join(' ')} ]`;
 }

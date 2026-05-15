@@ -258,3 +258,140 @@ describe('StatusHudRenderer — [GLY] badge', () => {
     expect(row20).toBe(`║${' '.repeat(HUD_WIDTH - 2)}║`);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 4b death-saves mode (DEATH-01 — Plan 05 Task 1)
+//
+// SR-DS-1..SR-DS-8 verify the death-saves pivot rendering: 3-strike tracker,
+// `◯`/`●` glyphs, locale-aware labels, and two INV-1 fixtures (initial entry +
+// mid-saves with filled glyphs). Pivot triggering is exercised in
+// status-hud-layer.test.ts (SHL-PIVOT-*).
+//
+// @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-UI-SPEC.md §3.4 + §5.14 + §5.15
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 4b death-saves mode (DEATH-01)', () => {
+  /** Death-saves snapshot factory — HP=0 + death counts. */
+  function makeDeathSnapshot(
+    death: { success: number; failure: number } = { success: 0, failure: 0 },
+    overrides: Partial<CharacterSnapshot> = {},
+  ): CharacterSnapshot {
+    return {
+      actorId: 'actor-1',
+      name: 'Thorin',
+      hp: 0,
+      maxHp: 68,
+      tempHp: 0,
+      ac: 18,
+      level: 5,
+      conditions: [],
+      exhaustion: 0,
+      death,
+      ...overrides,
+    };
+  }
+
+  it('SR-DS-1: setMode("death-saves") + render produces a death-saves grid (not standard)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(makeDeathSnapshot());
+    expect(grid.width).toBe(HUD_WIDTH);
+    expect(grid.height).toBe(HUD_HEIGHT);
+    // The hallmark of death-saves mode: 'DEATH SAVES' literal somewhere in
+    // the grid (standard mode never renders it).
+    const flat = grid.toString();
+    expect(flat).toContain('DEATH SAVES');
+  });
+
+  it('SR-DS-2: renderDeathSaves grid borders + bottom row preserved (28×21 ║/╠/╣)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(makeDeathSnapshot());
+    // Rows 0..19 (1-indexed 1..20) have ║ borders at col 0/27
+    for (let r = 0; r < HUD_HEIGHT - 1; r++) {
+      expect(grid.at(0, r), `row ${r + 1} col 0`).toBe('║');
+      expect(grid.at(27, r), `row ${r + 1} col 27`).toBe('║');
+    }
+    // Last row is the bottom border ╠══...═╣
+    expect(grid.at(0, HUD_HEIGHT - 1)).toBe('╠');
+    expect(grid.at(27, HUD_HEIGHT - 1)).toBe('╣');
+  });
+
+  it('SR-DS-3: locale="it" uses "Riusciti"/"Falliti"; locale="en" uses "Passes"/"Fails"', () => {
+    const rendererIt = new StatusHudRenderer({ locale: 'it' });
+    rendererIt.setMode('death-saves');
+    const gridIt = rendererIt.render(makeDeathSnapshot());
+    const flatIt = gridIt.toString();
+    expect(flatIt).toContain('DEATH SAVES');
+    expect(flatIt).toContain('Riusciti');
+    expect(flatIt).toContain('Falliti');
+
+    const rendererEn = new StatusHudRenderer({ locale: 'en' });
+    rendererEn.setMode('death-saves');
+    const gridEn = rendererEn.render(makeDeathSnapshot());
+    const flatEn = gridEn.toString();
+    expect(flatEn).toContain('Passes');
+    expect(flatEn).toContain('Fails');
+  });
+
+  it('SR-DS-4: death={success:1, failure:2} → trackers show `● ◯ ◯` + `● ● ◯`', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(makeDeathSnapshot({ success: 1, failure: 2 }));
+    // Row 6 (0-indexed 5) = Riusciti tracker
+    const passRow = grid.cells[5]?.join('') ?? '';
+    expect(passRow).toContain('[ ● ◯ ◯ ]');
+    // Row 7 (0-indexed 6) = Falliti tracker
+    const failRow = grid.cells[6]?.join('') ?? '';
+    expect(failRow).toContain('[ ● ● ◯ ]');
+  });
+
+  it('SR-DS-5: death={success:0, failure:0} → both trackers show `◯ ◯ ◯`', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(makeDeathSnapshot({ success: 0, failure: 0 }));
+    const passRow = grid.cells[5]?.join('') ?? '';
+    const failRow = grid.cells[6]?.join('') ?? '';
+    expect(passRow).toContain('[ ◯ ◯ ◯ ]');
+    expect(failRow).toContain('[ ◯ ◯ ◯ ]');
+  });
+
+  it('SR-DS-6: HP row reads `PF  0/<max>` (IT) or `HP  0/<max>` (EN)', () => {
+    const rendererIt = new StatusHudRenderer({ locale: 'it' });
+    rendererIt.setMode('death-saves');
+    const gridIt = rendererIt.render(makeDeathSnapshot({ success: 0, failure: 0 }, { maxHp: 68 }));
+    // Row 9 (0-indexed 8) — HP indicator row
+    const hpRowIt = gridIt.cells[8]?.join('') ?? '';
+    expect(hpRowIt).toContain('PF  0/68');
+
+    const rendererEn = new StatusHudRenderer({ locale: 'en' });
+    rendererEn.setMode('death-saves');
+    const gridEn = rendererEn.render(makeDeathSnapshot({ success: 0, failure: 0 }, { maxHp: 68 }));
+    const hpRowEn = gridEn.cells[8]?.join('') ?? '';
+    expect(hpRowEn).toContain('HP  0/68');
+  });
+
+  it('SR-DS-7: matches status-hud.death-saves-initial.it.txt (INV-1 ck 15)', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(
+      makeDeathSnapshot({ success: 0, failure: 0 }, { name: 'Thorin', maxHp: 68, ac: 18 }),
+    );
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.death-saves-initial.it.txt',
+    );
+  });
+
+  it('SR-DS-8: matches status-hud.death-saves-mid.it.txt (INV-1 ck 15)', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMode('death-saves');
+    const grid = renderer.render(
+      makeDeathSnapshot({ success: 1, failure: 2 }, { name: 'Thorin', maxHp: 68, ac: 18 }),
+    );
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.death-saves-mid.it.txt',
+    );
+  });
+});
