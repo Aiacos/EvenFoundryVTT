@@ -20,18 +20,23 @@ import type { ServerCap } from '@evf/shared-protocol';
 /**
  * Z-index layers for the G2 layered HUD.
  *
- * Values per ADR-0001 + Amendment 1 (z=0.5 Idle Content Infill, Specs §7.4c):
+ * Values per ADR-0001 + Amendment 1 (z=0.5 Idle Content Infill, Specs §7.4c)
+ * and ADR-0009 Amendment 1 (Phase 4b composition rules, z=1.5 toast carve-out):
  * - `Z0_MAP`            — backdrop scene (raster default 4-bit dithered or glyph fallback)
  * - `Z0_5_IDLE_INFILL`  — combat-log strip / label-separator / stats strip, mounted ONLY when z=2 is absent
  * - `Z1_STATUS_HUD`     — always-visible corner card (HP/AC/Speed/Conditions/Concentration)
+ * - `Z1_5_TOAST`        — toast queue between Status HUD and overlay slot — survives z=2 overlay open per ADR-0009 Amendment 1
  * - `Z2_OVERLAY`        — modal/overlay slot (sheet, combat tracker, spellbook tabs)
  *
  * Numeric values are load-bearing for ordered iteration and `Map<ZIndex, Layer>` keys.
+ * Fractional zindices (`Z0_5_IDLE_INFILL = 0.5`, `Z1_5_TOAST = 1.5`) reserve room
+ * for compositional layers without renumbering the integer stratum.
  */
 export enum ZIndex {
   Z0_MAP = 0,
   Z0_5_IDLE_INFILL = 0.5,
   Z1_STATUS_HUD = 1,
+  Z1_5_TOAST = 1.5,
   Z2_OVERLAY = 2,
 }
 
@@ -59,6 +64,99 @@ export interface Layer {
    * omit this method entirely.
    */
   getCaptureContainer?(): string;
+  /**
+   * Report the layer's container footprint toward the SDK 4-image + 8-text cap.
+   *
+   * ADR-0009 Amendment 1 Strategy A: each layer self-declares the number of image
+   * and text/list containers it occupies so `LayerManager._assertContainerBudget`
+   * can sum them at bundle flush time. Omitted method ⇒ default `{ image: 0, text: 1 }`
+   * (one text/list slot, no image slots) — matches the most common no-capture
+   * layer (StatusHudLayer, IdleInfillLayer in glyph mode).
+   *
+   * @returns `{ image, text }` counts; both non-negative integers.
+   * @see ADR-0009 Amendment 1 (container budget audit table)
+   */
+  getContainerCount?(): { image: number; text: number };
+}
+
+/**
+ * R1 ring gesture published by the in-process `PanelGestureBus`.
+ *
+ * Discriminated on `kind`. The variants stub the four gesture inputs Phase 4b
+ * panels need to handle (Plan 05 conc-modal `[Y]`/`[N]` buttons map to `tap` /
+ * `double-tap`; future spellbook scroll maps to `scroll`). Phase 6 wires the
+ * real R1 source provider that translates SDK `CLICK_EVENT` /
+ * `DOUBLE_CLICK_EVENT` / `SCROLL_TOP_EVENT` / `SCROLL_BOTTOM_EVENT` to these
+ * literals and publishes them on the bus.
+ *
+ * Naming: `kind` (not `type`) keeps the discriminator distinct from `LayerOp.type`
+ * and from the SDK's own event-shape `type` field — avoids accidental cross-narrowing.
+ *
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q2 (Phase 6 source channel rationale)
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md §Area 2 (Panel API)
+ */
+// TODO(ADR-0009): Phase 6 long-press source channel — derive from CLICK_EVENT timing
+// or use a separate SDK channel (see 04B-RESEARCH §Q2). `kind: 'long-press'` is
+// stubbed here for forward-compat so panels can pattern-match Phase 5 already.
+export type R1Gesture =
+  | { readonly kind: 'tap' }
+  | { readonly kind: 'scroll'; readonly direction: 'up' | 'down' }
+  | { readonly kind: 'long-press' }
+  | { readonly kind: 'double-tap' };
+
+/**
+ * Overlay-slot panel contract (Phase 5+ implements verbatim).
+ *
+ * Extends `Layer` with the three lifecycle hooks LayerManager invokes around
+ * the bundle flush (ADR-0009 Amendment 1):
+ *   - `onMount()`   — called AFTER `layers.set(z=2, panel)` and BEFORE
+ *                     `rebuildPageContainer`; panels acquire bus subscriptions,
+ *                     timers, and Foundry data fetches here. Rejection aborts
+ *                     the bundle BEFORE the bridge call.
+ *   - `onUnmount()` — called BEFORE `destroy()` and the bridge flush; panels
+ *                     release bus subscriptions + timers here.
+ *   - `onEvent(g)`  — synchronous dispatch from the `PanelGestureBus` (Phase 6
+ *                     R1 source feeds it). Panels MUST be re-entrant: a panel
+ *                     that mutates state during `onEvent` is responsible for
+ *                     scheduling its own re-draw.
+ *
+ * Subscription lifetime contract (T-4b-01-03): the unsubscribe closure returned
+ * by `PanelGestureBus.subscribe` MUST be invoked in `onUnmount` — otherwise the
+ * panel leaks. Plan 05 conc-modal test asserts `bus.size() === 0` post-unmount.
+ *
+ * Phase 5 panels (ConcDropModalPanel, SpellbookPanel, …) implement this interface
+ * directly — no abstract base class. `isOverlayPanel(layer)` (overlay-panel.ts)
+ * is the runtime guard LayerManager uses to detect panels among ordinary Layers.
+ *
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md §Area 2
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Approach 1
+ * @see ADR-0009 Amendment 1
+ */
+export interface OverlayPanel extends Layer {
+  /**
+   * Acquire panel resources (bus subscriptions, timers, fetched data).
+   *
+   * Invoked by LayerManager.bundle() AFTER the layer is registered in `layers`
+   * and BEFORE the single `rebuildPageContainer` flush. Resolving completes the
+   * bundle; rejecting aborts the bundle without calling the bridge — the panel
+   * remains in `layers` and the caller is responsible for issuing a `destroy()`
+   * to recover (T-4b-01-02 threat-model mitigation).
+   */
+  onMount(): Promise<void>;
+  /**
+   * Release panel resources (bus subscriptions, timers).
+   *
+   * Invoked by LayerManager.bundle() BEFORE `destroy()` and the bridge flush
+   * when this panel is the target of a `{ type: 'destroy', z: Z2_OVERLAY }` op.
+   */
+  onUnmount(): Promise<void>;
+  /**
+   * Handle a published R1 gesture.
+   *
+   * Synchronous — return value is ignored. Panels schedule their own re-draws
+   * in response (no return-value-driven side effects).
+   */
+  onEvent(gesture: R1Gesture): void;
 }
 
 /**
@@ -100,12 +198,17 @@ export type LayerOp =
  * - `z_already_occupied` — mount() called for a z-index already populated without a
  *   prior destroy(); use `bundle()` for atomic swaps instead.
  * - `z_not_mounted` — destroy() called for a z-index with no mounted layer.
+ * - `panel_mount_budget_exceeded` — bundle flush would exceed the SDK 4-image /
+ *   8-text container cap (`containerTotalNum: 1~12` per `@evenrealities/even_hub_sdk`
+ *   `index.d.ts` lines 638-640). Asserted by `_assertContainerBudget` AFTER the
+ *   capture-container invariant. See ADR-0009 Amendment 1.
  */
 export type LayerManagerErrorCode =
   | 'capture_invariant_violated'
   | 'capability_gate_denied'
   | 'z_already_occupied'
-  | 'z_not_mounted';
+  | 'z_not_mounted'
+  | 'panel_mount_budget_exceeded';
 
 /**
  * Typed error thrown by the LayerManager.
