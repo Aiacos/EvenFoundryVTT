@@ -44,6 +44,7 @@ const IDLE_SNAPSHOT: CharacterSnapshot = {
   level: 5,
   conditions: [],
   exhaustion: 0,
+  death: { success: 0, failure: 0 },
 };
 
 /**

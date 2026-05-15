@@ -26,6 +26,11 @@ import type { CharacterSnapshot } from '@evf/shared-protocol';
  * - Actor does not exist in `game.actors`
  * - Actor type is not "character" (NPCs, vehicles excluded — Phase 2 is PC-only)
  *
+ * Phase 4b addition: reads `actor.system.attributes.death.{success,failure}` and
+ * emits the `death` field on the snapshot. Defensive nullish-coalesce defaults
+ * each counter to 0 — fresh dnd5e 5.x actors may have `attributes.death`
+ * undefined until the first death save is rolled.
+ *
  * @param actorId - Foundry actor document ID
  * @returns CharacterSnapshot or null
  */
@@ -44,6 +49,13 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
   const hp = actor.system.attributes.hp;
   const ac = actor.system.attributes.ac;
 
+  // Death-save counters (Phase 4b) — defensive defaults for fresh actors where
+  // dnd5e may leave `attributes.death` undefined until the first save is rolled.
+  const death = {
+    success: actor.system.attributes.death?.success ?? 0,
+    failure: actor.system.attributes.death?.failure ?? 0,
+  };
+
   // Conditions come from Foundry v13+ actor.statuses (Set<string>)
   const conditions = Array.from(actor.statuses);
 
@@ -57,6 +69,7 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     level: actor.system.details.level,
     conditions,
     exhaustion: actor.system.attributes.exhaustion,
+    death,
   };
 }
 

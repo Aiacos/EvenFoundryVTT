@@ -167,6 +167,15 @@ interface Dnd5eAttributes {
   };
   ac: { value: number };
   exhaustion: number;
+  /**
+   * Death saving throw progress (Phase 4b). May be undefined on freshly-created
+   * actors that have never rolled a death save — character-reader.ts defends
+   * with nullish-coalesce defaults of 0 per counter.
+   */
+  death?: {
+    success: number;
+    failure: number;
+  };
 }
 
 /** Subset of the dnd5e 5.x actor system details used by character-reader. */
