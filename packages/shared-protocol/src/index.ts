@@ -62,6 +62,12 @@ export {
   EventTypeSchema,
 } from './payloads/event.js';
 export {
+  decodeFramePixels,
+  encodeFramePixels,
+  type FramePixels,
+  FramePixelsSchema,
+} from './payloads/frame.js';
+export {
   SCENE_VIEWPORT_DELTA_TYPE,
   type SceneViewport,
   SceneViewportSchema,
