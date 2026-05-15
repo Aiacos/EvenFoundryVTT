@@ -227,11 +227,14 @@ export function renderCombatantRow(
   // Cols 6-7: current-turn marker
   const marker = c.isCurrentTurn ? '▶ ' : '  ';
 
-  // Cols 8-25: name + YOU-marker (18 chars)
+  // Cols 8-25: name + YOU-marker (18 chars total: name-12 + gap-2 + marker-4)
   const isYou = ownActorId !== '' && c.actorId === ownActorId;
   let nameField: string;
   if (isYou) {
-    const youMarker = getLabel('combat.tracker.you_marker', locale); // e.g. '◀ TU' (4 chars)
+    const youMarkerRaw = getLabel('combat.tracker.you_marker', locale); // e.g. '◀ TU' (IT=4, EN=5)
+    // WR-01 fix: truncate/pad youMarker to exactly 4 code-points so nameField = 12+2+4 = 18.
+    // EN locale '◀ YOU' (5 cp) would otherwise produce a 19-cp nameField (INV-1 violation).
+    const youMarker = _pad(youMarkerRaw, 4);
     const name = _pad(_truncate(c.name, 12), 12);
     nameField = `${name}  ${youMarker}`;
   } else {

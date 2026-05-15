@@ -310,6 +310,25 @@ describe('renderCombatantRow — main row + concentration sub-line', () => {
     const mainRow = rows[0] ?? '';
     expect(mainRow).toContain(' 5/15');
   });
+
+  // ── WR-01 regression: YOU-marker nameField width in EN locale ─────────────
+
+  it('CTP-WR01-YOU-EN-WIDTH: own actor in EN locale → row exactly 66 code-points (INV-1)', () => {
+    // EN locale you_marker '◀ YOU' is 5 cp; must be truncated to 4 cp → '◀ YO…'
+    // so nameField stays 12+2+4 = 18, not 19.
+    const own = makeCombatant({ id: 'own', actorId: 'actor-own', name: 'Aragorn' });
+    const rows = renderCombatantRow(own, 'en', 'actor-own');
+    const mainRow = rows[0] ?? '';
+    expect([...mainRow].length).toBe(66);
+  });
+
+  it('CTP-WR01-YOU-IT-WIDTH: own actor in IT locale → row exactly 66 code-points (4-cp marker ◀ TU)', () => {
+    // IT locale you_marker '◀ TU' is already 4 cp — no truncation needed.
+    const own = makeCombatant({ id: 'own-it', actorId: 'actor-it', name: 'Gandalf' });
+    const rows = renderCombatantRow(own, 'it', 'actor-it');
+    const mainRow = rows[0] ?? '';
+    expect([...mainRow].length).toBe(66);
+  });
 });
 
 // ─── CTP-QUICK-BAR-* ─────────────────────────────────────────────────────────
