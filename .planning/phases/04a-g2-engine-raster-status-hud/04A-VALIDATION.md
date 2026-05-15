@@ -127,3 +127,27 @@ Test files referenced above MATCH the `files_modified` field in each finalized P
 - [x] **NF-4 closure (rev 2):** Plan 06 must_haves SI-7 truth describes prerequisite-only scope (scene-input hands a transferable-capable buffer); end-to-end zero-copy Worker handoff is Plan 03 RC-2's responsibility
 
 **Approval:** Finalized 2026-05-15 — planner revision 1 closed all blockers (B-1..B-5) and warnings (W-1..W-4); revision 2 closes NF-1..NF-4 from 04A-PLAN-CHECK.md iteration 2.
+
+---
+
+## Phase Closure Sign-Off
+
+**Closed:** 2026-05-15 via Plan 05 Task 3 (`checkpoint:human-verify`) — operator
+issued the `defer-hardware-tests` resume signal. The 5 Manual-Only Verifications
+above are formally accepted as **carry-forward** under their `human_needed`
+gate per ADR-0005 PROVISIONAL Branch A.
+
+- Software-side verification status: **PASS** — 606 / 606 tests; typecheck +
+  Biome + W-4 grep gate all green at HEAD.
+- Hardware-side verification status: **deferred** — close via
+  `pnpm --filter @evf/validation-harness validate:all` once real-G2 grants
+  land. Each Manual-Only row's Test Instructions are the closure script.
+- Re-validation triggers (any one re-opens the deferred gates):
+  1. ADR-0005 Branch A downgrade to Branch B or C.
+  2. Even Realities firmware release that changes the container-budget
+     constants (currently 4 image + 8 text/list per page, 1 capture).
+  3. INV-2 cross-validation round that flips a canonical claim used by the
+     Plan 02 capability handshake or Plan 06 PIXI extractor.
+
+**Phase 4a status:** **COMPLETE** (software-side fully delivered;
+hardware-pending SC tracked under `human_needed`).

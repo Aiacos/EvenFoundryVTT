@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 4a software-side complete (5/6 plans + Plan 05 Task 1+2; 606/606 tests, ADR-0009 ACCEPTED). Plan 05 Task 3 is a human-verify checkpoint blocking phase completion — operator must run validate:all on real G2 OR explicitly defer with `defer-hardware-tests` signal."
+status: planning
+stopped_at: "Phase 4a CLOSED 2026-05-15 — operator accepted `defer-hardware-tests` resume signal; 5 hardware-pending SC carry forward on `human_needed` gate per ADR-0005 PROVISIONAL Branch A. Phase 4b ready to start."
 last_updated: "2026-05-15T19:00:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 15
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 28
-  completed_plans: 22
-  percent: 27
-resume_hint: "Phase 4a closure requires operator: 1) run `pnpm --filter @evf/validation-harness validate:all` against real G2 hardware, OR 2) accept the 5 hardware-pending SC as human_needed (see ADR-0009 §PROVISIONAL Hardware Gates + 04A-VALIDATION.md §Manual-Only Verifications) and mark phase complete. Phase 4b unblocks on Phase 4a closure."
+  completed_plans: 28
+  percent: 33
+resume_hint: "/gsd-plan-phase 4b  — Phase 4a complete, Phase 4b (Overlay Slot + Map Mode Toggle + Adversarial UI) is unblocked. ADR-0009 layer-manager contract ACCEPTED; Phase 4b enters with overlay slot composition rules per ADR-0009 Amendment 1 placeholder."
 ---
 
 # Project State
@@ -22,24 +22,37 @@ resume_hint: "Phase 4a closure requires operator: 1) run `pnpm --filter @evf/val
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 4a — g2-engine-raster-status-hud (software-side complete; awaiting human-verify checkpoint)
+**Current focus:** Phase 4b — overlay-slot-map-mode-toggle-adversarial-ui (next phase; unblocked by Phase 4a closure)
 
 ## Current Position
 
-Phase: 4a
-Plan: 6 plans APPROVED + executed software-side (Plan 06 added via B-5 gap-closure)
-Status: SOFTWARE-COMPLETE — Plans 01-04 + 06 fully merged; Plan 05 Task 1 + Task 2 committed (e862d40 / 54577c6 / cf015ad); Plan 05 Task 3 is a `checkpoint:human-verify` gate blocking phase closure.
-Last activity: 2026-05-15 — /gsd-autonomous --from 4b --to 10 run (rescoped to "Phase 4a only" per user decision):
-  - Planning revision (3 iterations): NEEDS_REVISION → APPROVED. All 5 original blockers + 4 warnings + 4 regressions closed. Commit 8ae2533.
-  - Wave 0 (Plan 01): scaffolding + type contracts + RasterControllerLike. Merged 9f0d5ae.
-  - Wave 1 (Plan 02): engine modules (LayerManager, capability-handshake, page-lifecycle, boot-splash; +27 tests). Merged 1dfc128.
-  - Wave 2 (Plans 03/04/06 sequential foreground): raster pipeline (+34) + status HUD with INV-1 fixtures (+50) + Foundry PIXI extractor + WS frame_pixels protocol + scene-input (+31). Merged a84bc7b / c46d9c8 / 311dc53.
-  - Wave 3 (Plan 05): Task 1 boot orchestrator + Option B W-4 split (e862d40 — recovered from a locked worktree after the executor agent hit the monthly usage limit; 2→32 microtask flush fix to bootWithMocks). Task 2 ADR-0009 ACCEPTED + ROADMAP reconciliation (54577c6). SUMMARY committed (cf015ad).
+Phase: 4b (next — unblocked by Phase 4a closure)
+Plan: not yet drafted — start with `/gsd-discuss-phase 4b` or `/gsd-plan-phase 4b`
+Status: READY — Phase 4a complete; ADR-0009 ACCEPTED binds Phases 4a/4b/5 to the layer-manager contract.
+
+Last activity: 2026-05-15 — Phase 4a CLOSED via `defer-hardware-tests`:
+  - Planning revision (3 iterations): NEEDS_REVISION → APPROVED (commit 8ae2533).
+  - Wave 0 Plan 01: scaffolding + type contracts + RasterControllerLike (merged 9f0d5ae).
+  - Wave 1 Plan 02: engine modules — LayerManager, capability-handshake, page-lifecycle, boot-splash (+27 tests; merged 1dfc128).
+  - Wave 2 Plans 03/04/06 (sequential foreground; zero `files_modified` overlap):
+    - 03 raster pipeline + glyph fallback + MapBaseLayer (+34 tests; merged a84bc7b).
+    - 04 status HUD + i18n width budgets + INV-1 ck 11-15 fixtures (+50 tests; merged c46d9c8).
+    - 06 Foundry PIXI extractor + WS `frame_pixels` protocol + scene-input dispatcher (+31 tests; merged 311dc53).
+  - Wave 3 Plan 05:
+    - Task 1 boot orchestrator + Option B W-4 split (commit e862d40 — recovered from a locked worktree after the executor agent hit the monthly usage limit; 2→32 microtask flush fix applied to `bootWithMocks` before commit).
+    - Task 2 ADR-0009 PROPOSED → ACCEPTED + README ADR index + ROADMAP reconciliation (commit 54577c6).
+    - SUMMARY committed (cf015ad).
+    - Task 3 human-verify checkpoint resolved 2026-05-15 via operator-issued `defer-hardware-tests` resume signal.
   - Phase test totals: 451 → 606 (+155 across the 6 plans). All gates green: typecheck, biome, W-4 grep, 45/45 test files.
 
-Progress: [██████████] 95% (milestone) / Phase 4a: 5/6 plans complete + Plan 05 software-side complete; only Task 3 human-verify checkpoint remains.
+Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
+  1. Capability handshake on real G2 firmware (DISP-01, DISP-02, NAV-04).
+  2. Raster sustains ≥5 fps standard / 15 fps stretch with measured BLE p50 latency (MAP-02, MAP-04).
+  3. Branch B/C glyph fallback auto-degrades below 100 kbps PROVISIONAL threshold (MAP-04).
+  4. INV-1 layout holds character-perfect on real G2 phosphor display under IT / EN / DE (DISP-03, I18N-04).
+  5. PIXI canvas extract via OffscreenCanvas does NOT block Foundry desktop UI (Specs §11.5.7 pitfall 11).
 
-Phases 4b → 10 deferred to a future session per user decision 2026-05-15.
+Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans complete (hardware tests deferred).
 
 ## Performance Metrics
 

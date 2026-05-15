@@ -120,7 +120,7 @@ Plans:
 - [x] 04A-06-PLAN.md — Foundry PIXI canvas extraction + WS `frame_pixels` protocol (`shared-protocol/src/payloads/frame.ts` `FramePixelsSchema`) + g2-app `scene-input.ts` dispatcher (B-5 gap-closure plan).
 
 **Wave 3** *(blocked on Wave 2; NOT autonomous — human-verify checkpoint for hardware-pending SC)*
-- [ ] 04A-05-PLAN.md — Integration: production `bootEngine` entry (Option B split — `internal/boot-engine-core.ts` body + thin `index.ts` wrapper + `@internal` `index.test-support.ts` for test-only DI; W-4 grep gate enforced) + end-to-end `scene-renderer-smoke.test.ts` (SR-1..SR-10) + ADR-0009 ACCEPTed + human-verify checkpoint acknowledging 5 hardware-pending SC remain on human_needed gate per ADR-0005 PROVISIONAL Branch A. **Task 1 + Task 2 software-side complete (606/606 tests); Task 3 human-checkpoint pending.**
+- [x] 04A-05-PLAN.md — Integration: production `bootEngine` entry (Option B split — `internal/boot-engine-core.ts` body + thin `index.ts` wrapper + `@internal` `index.test-support.ts` for test-only DI; W-4 grep gate enforced) + end-to-end `scene-renderer-smoke.test.ts` (SR-1..SR-10) + ADR-0009 ACCEPTed + human-verify checkpoint resolved 2026-05-15 via `defer-hardware-tests` resume signal — 5 hardware-pending SC formally acknowledged on `human_needed` gate per ADR-0005 PROVISIONAL Branch A; closure pending real-G2 grant via `pnpm --filter @evf/validation-harness validate:all`.
 
 
 ### Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI
@@ -249,7 +249,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 1. Foundation | 0/3 | Not started | - |
 | 2. Foundry Module Core + Pairing UI | 2/5 | In Progress|  |
 | 3. Bridge Service Skeleton | 0/TBD | Not started | - |
-| 4a. G2 Engine + Raster + Status HUD | 5/6 | In Progress (Plan 05 Task 3 human-verify pending) | - |
+| 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 0/TBD | Not started | - |
 | 5. Panel Plugin System + Read-Only Panels | 0/TBD | Not started | - |
 | 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
