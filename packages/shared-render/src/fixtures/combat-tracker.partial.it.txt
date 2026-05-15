@@ -1,0 +1,18 @@
+┌─── COMBAT TRACKER                                              ┐
+  18  ▶ GOBLIN ARCHER     PF ███░░░░░  5/15  CA  --  --       ✕   
+  15    THORIN            PF █████░░░ 45/68  CA  --  --       ✕   
+  13    GOBLIN BRUTO      PF ██████░░ 11/15  CA  --  --       ✕   
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+                                                                  
+  Effetti attivi:                                                 
+                                                                  
+  Rapida:  [ A ]ttacco  [ S ]pell  [ I ]tem  [ M ]ovi             
+└────────────────────────────────────────────────────────────────┘
+                                                                  
