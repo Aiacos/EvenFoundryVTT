@@ -15,6 +15,9 @@ files_modified:
   - packages/g2-app/src/__tests__/example-status-hud.test.ts
   - packages/g2-app/src/__tests__/scene-renderer-smoke.test.ts
   - packages/g2-app/src/status-hud/__tests__/snapshot.test.ts
+  - packages/g2-app/src/status-hud/__tests__/status-hud-renderer.test.ts
+  - packages/g2-app/src/status-hud/__tests__/status-hud-layer.test.ts
+  - packages/bridge/src/server.test.ts
 autonomous: true
 requirements: [DEATH-01, CONC-01]
 subsystem: shared-protocol
@@ -25,7 +28,7 @@ must_haves:
     - "CharacterSnapshotSchema.death = z.strictObject({ success: z.number().int().min(0).max(3), failure: z.number().int().min(0).max(3) }) — REQUIRED field (not .optional()). Field added via ATOMIC COMMIT alongside character-reader.ts producer extension AND ALL DOWNSTREAM CONSUMER FIXTURES (Pitfall 3 — no window of drift). Phase 2 reader extension reads actor.system.attributes.death.{success,failure} from dnd5e v5.x actor data."
     - "DeathSavesSchema exported separately alongside CharacterSnapshotSchema for ergonomic narrowing in consumers (Plan 05 status-hud-layer pivot trigger imports it)"
     - "shared-protocol/src/payloads/concentration.ts (NEW file) ships ConcConflictPayloadSchema + ConcDropConfirmedPayloadSchema + envelope type constants CONC_CONFLICT_TYPE = 'conc.conflict' + CONC_DROP_CONFIRMED_TYPE = 'conc.drop.confirmed'. Re-exported via shared-protocol/src/index.ts."
-    - "All 3 existing g2-app test fixtures that use CharacterSnapshot literals are updated IN THIS SAME COMMIT to include `death: { success: 0, failure: 0 }`: example-status-hud.test.ts (IDLE_SNAPSHOT line ~35), scene-renderer-smoke.test.ts (SR-8 character.delta payload line ~328), snapshot.test.ts (IDLE_SNAPSHOT line ~37). This closes B-2: pnpm typecheck across workspace passes immediately after the commit (no fixture-update window of drift)."
+    - "All 6 existing test fixtures workspace-wide that use CharacterSnapshot literals are updated IN THIS SAME COMMIT to include `death: { success: 0, failure: 0 }`: g2-app/__tests__/example-status-hud.test.ts (IDLE_SNAPSHOT line ~35), g2-app/__tests__/scene-renderer-smoke.test.ts (SR-8 character.delta payload line ~328), g2-app/status-hud/__tests__/snapshot.test.ts (IDLE_SNAPSHOT line ~37), g2-app/status-hud/__tests__/status-hud-renderer.test.ts (`makeSnapshot()` factory line ~34-46), g2-app/status-hud/__tests__/status-hud-layer.test.ts (`VALID_SNAPSHOT` const line ~66-76), bridge/src/server.test.ts (`mockSnapshot` const line ~228). This closes B-2 (iter-3 expanded to 6 sites — iter-2 listed only 3 because plan-checker iter-1 cited only 3; iter-3 audit found 3 additional via grep): pnpm typecheck + pnpm test across workspace pass immediately after the commit (no fixture-update window of drift; bridge route safeParse returns 404 on schema drift, so bridge test mockSnapshot must align)."
     - "Plan 05 (Wave 3) consumes both schema modules WITHOUT modifying them — Plan 06 is the single mover for shared-protocol/payloads/{character,concentration}.ts in Phase 4b"
     - "The atomic commit constraint (CONTEXT §Area 7 REVISED) is the load-bearing mitigation; no schema field is `.optional()` to bridge the consumer-update window"
   artifacts:
@@ -50,6 +53,15 @@ must_haves:
     - path: "packages/g2-app/src/status-hud/__tests__/snapshot.test.ts"
       provides: "IDLE_SNAPSHOT extended with `death: { success: 0, failure: 0 }` field (B-2 fan-out)"
       contains: "death"
+    - path: "packages/g2-app/src/status-hud/__tests__/status-hud-renderer.test.ts"
+      provides: "`makeSnapshot()` factory return literal extended with `death: { success: 0, failure: 0 }` field (B-2 fan-out iter-3 expansion — grep-found by orchestrator after iter-3 plan-check flagged Plan 06's enumeration as incomplete)"
+      contains: "death.*success.*0.*failure.*0|death: \\{ success: 0, failure: 0 \\}"
+    - path: "packages/g2-app/src/status-hud/__tests__/status-hud-layer.test.ts"
+      provides: "`VALID_SNAPSHOT: CharacterSnapshot` literal extended with `death: { success: 0, failure: 0 }` field (B-2 fan-out iter-3 expansion)"
+      contains: "death.*success.*0.*failure.*0|death: \\{ success: 0, failure: 0 \\}"
+    - path: "packages/bridge/src/server.test.ts"
+      provides: "`mockSnapshot` const for GET /v1/character/:actorId test extended with `death: { success: 0, failure: 0 }` field — required because the bridge route's `CharacterSnapshotSchema.safeParse` would otherwise return 404 on schema drift, breaking the 200-expecting test (iter-3 expansion; not in iter-1/iter-2 plan-check scope but found by orchestrator grep)"
+      contains: "death.*success.*0.*failure.*0|death: \\{ success: 0, failure: 0 \\}"
   key_links:
     - from: "packages/shared-protocol/src/payloads/character.ts (schema extension)"
       to: "packages/foundry-module/src/readers/character-reader.ts (producer extension)"
@@ -94,7 +106,7 @@ Purpose: Decouple the schema-evolution work from Plan 05's StatusHudRenderer piv
 
 Output: `packages/shared-protocol/src/payloads/character.ts` extended with `DeathSavesSchema` + `death` field; NEW `packages/shared-protocol/src/payloads/concentration.ts` with ConcConflict + ConcDropConfirmed schemas + type constants; `packages/shared-protocol/src/index.ts` re-exports updated; `packages/foundry-module/src/readers/character-reader.ts` reads `actor.system.attributes.death`; the existing tests in shared-protocol + foundry-module extended; AND the 3 g2-app consumer test files (example-status-hud, scene-renderer-smoke, snapshot) updated with the new death field in their CharacterSnapshot literals.
 
-**B-2 resolution (workspace-wide fixture fan-out):** Iteration 1 plan-check flagged 3 missing files in Plan 05 Task 1's `files_modified` list. Plan 06 enumerates them explicitly: example-status-hud.test.ts, scene-renderer-smoke.test.ts, snapshot.test.ts (the 4th file mentioned in the iteration-1 report — status-hud-renderer.test.ts — IS in Plan 05's files_modified at Task 3, where the SR-DS-* tests use snapshots WITH the new death field by construction). Plan 06's atomic commit includes ALL fixture updates so `pnpm typecheck` passes immediately after the single commit lands.
+**B-2 resolution (workspace-wide fixture fan-out — iter-3 expanded):** Iteration 1 plan-check flagged "3 missing files"; iteration 2 enumerated them. Iteration 3 plan-check found 2 additional pre-existing Phase 4a literals (`status-hud-renderer.test.ts` `makeSnapshot()` factory and `status-hud-layer.test.ts` `VALID_SNAPSHOT` const) that were grep-discoverable. Orchestrator post-iter-3 audit also surfaced `bridge/src/server.test.ts` `mockSnapshot` (the bridge route returns 404 on `CharacterSnapshotSchema.safeParse` failure, so the 200-expecting test would fail without the death field). Plan 06's atomic commit therefore covers **6 fixture updates total** across g2-app + bridge, alongside the schema + reader + concentration.ts changes — 13 files in one git commit so `pnpm typecheck` and `pnpm test` both pass workspace-wide immediately after the single commit lands.
 </objective>
 
 <execution_context>
@@ -316,7 +328,7 @@ return { hp: hp.value, maxHp: hp.max, tempHp: hp.temp, ..., conditions, ..., dea
 Wave-2 file-overlap check:
 - Plan 03 files_modified: toast-* + i18n NOT touched + 3 toast fixtures. ZERO overlap with Plan 06.
 - Plan 04 files_modified: boot-error-* + boot-engine-error-wrapper + 10 boot-error fixtures. ZERO overlap with Plan 06.
-- Plan 06 files_modified: 7 source/test files in shared-protocol + foundry-module + 3 g2-app consumer fixture files. NO overlap with Plan 03 or Plan 04.
+- Plan 06 files_modified: 7 source/test files in shared-protocol + foundry-module + 5 g2-app consumer fixture files + 1 bridge consumer fixture file (13 total per iter-3 expansion). NO overlap with Plan 03 (Plan 03 creates NEW `toast-snapshot.test.ts`; Plan 06 modifies pre-existing `snapshot.test.ts` — different filenames). NO overlap with Plan 04 (boot-error-* + boot-engine-error-wrapper.ts + 10 boot-error fixtures are all disjoint from Plan 06's set).
 
 The scene-renderer-smoke.test.ts file IS edited by BOTH Plan 02 (Wave 1) and Plan 06 (Wave 2) — but Plan 02 completes BEFORE Wave 2 starts, so Plan 06 is the second mover and merges its edits non-destructively (different line ranges).
 </interfaces>
