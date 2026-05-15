@@ -25,6 +25,14 @@
  *   - destroy() clears both timers + calls the unsubscribe returned by
  *     wsEvents.subscribe — heartbeat timer leak unit-tested
  *
+ * **Phase 4b DEATH-01 — death-saves pivot trigger:** `_onDelta` now inspects
+ * `parsed.data.hp === 0 && parsed.data.death.failure < 3` and flips the
+ * renderer's mode via `renderer.setMode('death-saves' | 'standard')` whenever
+ * the latch state changes. The latch is transition-driven (renderer is only
+ * notified on state changes — no per-delta noise) and stays ON when the PC
+ * dies (`failure === 3`) until a future revive event (Phase 7+). See
+ * 04b-CONTEXT.md §Area 7 + 04B-RESEARCH.md §Q4.
+ *
  * No virtual DOM — render output is a single `bridge.textContainerUpgrade`
  * call (D-2.04, CLAUDE.md).
  *
@@ -33,6 +41,7 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04a-CONTEXT.md §Area 3 (update cadence)
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §status-hud-layer.ts
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-UI-SPEC.md §Status HUD Corner Card
+ * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md §Area 7 (DEATH-01 pivot trigger)
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
@@ -102,6 +111,16 @@ export class StatusHudLayer implements Layer {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Active heartbeat interval timer (null after destroy). */
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Phase 4b DEATH-01 pivot latch.
+   *
+   * `true` while `hp === 0 && death.failure < 3` (renderer is in `'death-saves'`
+   * mode); `false` otherwise (renderer is in `'standard'` mode). The
+   * `renderer.setMode` call only fires when this field's value changes —
+   * see {@link _onDelta} for the transition logic.
+   */
+  private pivotLatched = false;
 
   constructor(opts: StatusHudLayerOpts) {
     this.bridge = opts.bridge;
@@ -173,7 +192,52 @@ export class StatusHudLayer implements Layer {
       return;
     }
     this.snapshot = parsed.data;
+
+    // Phase 4b DEATH-01 — pivot latch.
+    // Trigger condition (verified from dnd5e v5.x `actor.system.attributes.death`):
+    //   - hp === 0 AND death.failure < 3 → ENTER death-saves mode
+    //   - hp > 0                          → EXIT (recovery — return to standard)
+    //   - hp === 0 AND failure === 3     → STAY latched (PC dead; no exit until
+    //                                       Phase 7+ revive event)
+    // Latch is transition-driven: renderer.setMode is only called when the
+    // computed latch value differs from the stored one (SHL-PIVOT-6).
+    const recovering = parsed.data.hp > 0;
+    const entering = parsed.data.hp === 0 && parsed.data.death.failure < 3;
+    // Computed desired latch value:
+    //   - if recovering: false (exit)
+    //   - if entering: true
+    //   - else (HP=0 + failure=3 = dead): preserve existing latch state
+    let nextLatched: boolean;
+    if (recovering) {
+      nextLatched = false;
+    } else if (entering) {
+      nextLatched = true;
+    } else {
+      // hp === 0 && failure === 3 (or any other non-entering, non-recovering
+      // state). Preserve latch — death-saves stays rendered until revive.
+      nextLatched = this.pivotLatched;
+    }
+    if (nextLatched !== this.pivotLatched) {
+      this.pivotLatched = nextLatched;
+      this.renderer.setMode(nextLatched ? 'death-saves' : 'standard');
+    }
+
     this._scheduleDebouncedRender();
+  }
+
+  /**
+   * Test-only accessor — return the current DEATH-01 pivot latch state.
+   *
+   * Production code MUST NOT gate behaviour on this getter — the latch is
+   * an internal side-effect of `_onDelta`, and the renderer mode is the
+   * single source of truth for the rendering branch. Exposed here so
+   * `SHL-PIVOT-1/3/6` can assert latch lifecycle without mocking the
+   * renderer.
+   *
+   * @returns `true` iff the renderer is in death-saves mode.
+   */
+  getPivotLatched(): boolean {
+    return this.pivotLatched;
   }
 
   /**

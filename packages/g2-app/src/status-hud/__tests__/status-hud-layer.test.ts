@@ -274,3 +274,131 @@ describe('StatusHudLayer — destroy', () => {
     expect(bridge.textContainerUpgrade).not.toHaveBeenCalled();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 4b death-saves pivot trigger (DEATH-01 — Plan 05 Task 1)
+//
+// SHL-PIVOT-1..7 verify the `_onDelta` latch behaviour: `hp === 0 &&
+// death.failure < 3` flips renderer.setMode('death-saves'); HP > 0 recovery
+// flips back. Latch is transition-driven (renderer.setMode called only on
+// state change), and dead state (failure === 3) keeps the pivot latched.
+//
+// @see 04b-CONTEXT.md §Area 7 + 04B-RESEARCH.md §Q4 + 04B-05-PLAN.md Task 1
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('StatusHudLayer — Phase 4b death-saves pivot trigger', () => {
+  let activeLayer: StatusHudLayer | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    activeLayer?.destroy();
+    activeLayer = null;
+    vi.useRealTimers();
+  });
+
+  /** Build a layer with a setMode spy on the renderer. */
+  function makeLayerWithModeSpy() {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setModeSpy = vi.spyOn(renderer, 'setMode');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    return { layer, bridge, renderer, setModeSpy, wsEvents };
+  }
+
+  it('SHL-PIVOT-1: initial state — getPivotLatched() === false', () => {
+    const { layer } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    expect(layer.getPivotLatched()).toBe(false);
+  });
+
+  it('SHL-PIVOT-2: HP=0 + failure=2 → setMode("death-saves") called once; latched', async () => {
+    const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 2 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenCalledWith('death-saves');
+    expect(setModeSpy).toHaveBeenCalledTimes(1);
+    expect(layer.getPivotLatched()).toBe(true);
+  });
+
+  it('SHL-PIVOT-3: HP recovery (HP > 0) → setMode("standard") called; latch OFF', async () => {
+    const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    // Enter death-saves
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 2 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenLastCalledWith('death-saves');
+    // Recover — HP > 0
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 5, death: { success: 0, failure: 2 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenLastCalledWith('standard');
+    expect(setModeSpy).toHaveBeenCalledTimes(2);
+    expect(layer.getPivotLatched()).toBe(false);
+  });
+
+  it('SHL-PIVOT-4: failure=3 (PC dead) → pivot stays latched (no setMode("standard"))', async () => {
+    const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    // Enter death-saves at failure=2
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 2 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenCalledWith('death-saves');
+    // Third fail → PC dead (failure === 3). Latch must stay ON; renderer
+    // stays in death-saves mode until a future revive event (Phase 7+).
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 3 } });
+    await vi.advanceTimersByTimeAsync(200);
+    // setMode was called ONCE (the initial transition); the second delta is
+    // a no-op for the latch (already true → still true).
+    expect(setModeSpy).toHaveBeenCalledTimes(1);
+    expect(layer.getPivotLatched()).toBe(true);
+  });
+
+  it('SHL-PIVOT-5: HP=0 with 0p/0f on first delta → pivot triggers immediately', async () => {
+    const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 0 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenCalledWith('death-saves');
+    expect(setModeSpy).toHaveBeenCalledTimes(1);
+    expect(layer.getPivotLatched()).toBe(true);
+  });
+
+  it('SHL-PIVOT-6: two deltas with same pivot state → setMode called only ONCE', async () => {
+    const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+    activeLayer = layer;
+    // Two HP=0 deltas in a row — both `inDeathSaves === true`, but the latch
+    // state is unchanged between them so setMode is only called once.
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 1 } });
+    await vi.advanceTimersByTimeAsync(200);
+    wsEvents.emit({ ...VALID_SNAPSHOT, hp: 0, death: { success: 0, failure: 2 } });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(setModeSpy).toHaveBeenCalledTimes(1);
+    expect(setModeSpy).toHaveBeenCalledWith('death-saves');
+    expect(layer.getPivotLatched()).toBe(true);
+  });
+
+  it('SHL-PIVOT-7: malformed delta (death missing) → safeParse fails; pivot unchanged', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { layer, setModeSpy, wsEvents } = makeLayerWithModeSpy();
+      activeLayer = layer;
+      // Missing `death` field — CharacterSnapshotSchema.safeParse fails.
+      expect(() =>
+        wsEvents.emit({
+          ...VALID_SNAPSHOT,
+          death: undefined as unknown as typeof VALID_SNAPSHOT.death,
+        }),
+      ).not.toThrow();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(setModeSpy).not.toHaveBeenCalled();
+      expect(layer.getPivotLatched()).toBe(false);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
