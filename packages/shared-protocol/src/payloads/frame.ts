@@ -12,8 +12,9 @@
  * This module defines ONLY the typed payload (the inner `payload` of the wire
  * envelope) plus base64 helpers for transport. Plan 06 does NOT define a new
  * envelope schema — the outer wrapper is the existing `EnvelopeSchema` from
- * `./envelope.ts` (NF-1 closure: there is no `WireEnvelopeSchema`; the carrier
- * field is `payload`, not `value`; `session_id: z.string().uuid()` is required).
+ * `./envelope.ts`. The full NF-1 closure contract (real export name, carrier
+ * field name, required `session_id` UUID v4) lives in 04A-PLAN-CHECK.md §NF-1;
+ * the canonical schema definition is in `./envelope.ts`.
  *
  * **Cross-schema contract**
  *

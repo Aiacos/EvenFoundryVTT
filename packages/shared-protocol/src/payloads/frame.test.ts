@@ -13,9 +13,8 @@
  *              package consumption contract)
  *   - FP-10    cross-schema lock: a `FramePixels` payload travels cleanly inside
  *              the real `EnvelopeSchema` (proto/seq/ts/type='frame_pixels'/
- *              session_id/payload). This locks the Plan 06 NF-1 closure — there
- *              is no `WireEnvelopeSchema`; the carrier field is `payload`; and
- *              `session_id` is a required UUID v4.
+ *              session_id/payload). This locks the Plan 06 NF-1 closure — see
+ *              04A-PLAN-CHECK.md §NF-1 for the full forbidden-patterns list.
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 1
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-5 + §NF-1 + §NF-3
