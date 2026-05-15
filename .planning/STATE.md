@@ -3,15 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
 status: planning
-stopped_at: context exhaustion at 75% (2026-05-13)
-last_updated: "2026-05-13T12:57:52.551Z"
-last_activity: 2026-05-13
+stopped_at: "Phase 4a plan-check NEEDS_REVISION (4 blockers remain, 1 user-resolved); main-context budget hot — resume in fresh window 2026-05-15"
+last_updated: "2026-05-15T19:00:00.000Z"
+last_activity: 2026-05-15
 progress:
   total_phases: 15
   completed_phases: 4
-  total_plans: 17
+  total_plans: 22
   completed_plans: 17
   percent: 27
+resume_hint: "/clear then /gsd-plan-phase 4a --gaps  — picks up planner revision with PLAN-CHECK.md as input"
 ---
 
 # Project State
@@ -21,16 +22,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-10)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 03 — bridge-service-skeleton
+**Current focus:** Phase 4a — g2-engine-raster-status-hud (planning under revision)
 
 ## Current Position
 
 Phase: 4a
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-05-13 — Completed quick task 260513-l12: fix ApplicationV2 ReferenceError in foundry-module for Foundry v13+
+Plan: 5 drafted (commit 508e30b), needs revision per 04A-PLAN-CHECK.md
+Status: NEEDS_REVISION — 4 blockers remain after user-resolved B-2
+Last activity: 2026-05-15 — /gsd-autonomous --to 10 run: smart-discuss + UI-SPEC + RESEARCH + VALIDATION + PATTERNS + 5 PLAN drafts + plan-check landed; user paused at NEEDS_REVISION verdict to preserve main-context budget for fresh-window resume
 
-Progress: [█████████░░] 85%
+Progress: [█████████░░] 85% (milestone) / Phase 4a: artifacts 6/8 landed (CONTEXT/UI-SPEC/RESEARCH/VALIDATION/PATTERNS/PLAN drafts + plan-check), revision + execute + reviews still ahead
 
 ## Performance Metrics
 
@@ -129,6 +130,36 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-13T12:57:52.545Z
-Stopped at: context exhaustion at 75% (2026-05-13)
-Resume file: None
+Last session: 2026-05-15T19:00:00.000Z
+Stopped at: "/gsd-autonomous --to 10 paused at Phase 4a plan-check NEEDS_REVISION; user resolved B-2 (sub-tile floor=18); main-context budget preserved for fresh-window resume"
+Resume file: .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md
+Resume cmd: /clear then /gsd-plan-phase 4a --gaps  — planner revision applies user B-2 decision + resolves B-1/3/4/5 + W-1..4
+
+## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
+
+Commits landed this session (8 total):
+- c132929 docs(roadmap): tick checkboxes for Phases 0, 2, 3 (doc drift)
+- 51ab505 docs(04A): smart discuss context for Phase 4a (4 grey areas)
+- 89b4914 docs(04A): UI design contract (6/6 dimensions, FLAG resolved)
+- 038dce3 docs(04A): fix UI-SPEC typo (scroll=pana → scroll=pan)
+- e488df0 docs(04A): RESEARCH.md (Branch A pipeline, 9 INV-1 fixtures, ADR-0009 planned)
+- 303a185 docs(04A): VALIDATION.md (11-task Nyquist scaffold + 5 human_needed hardware entries)
+- (pattern-mapper commit) docs(04A): PATTERNS.md (22 files classified, 20/22 analogs)
+- 508e30b docs(04A): 5 PLAN.md drafts (wave 0..3) + ROADMAP wave annotations
+- 6523857 docs(04A): plan-check report — NEEDS_REVISION (5 blockers, 4 warnings)
+
+User decisions this session:
+- Skip already-complete-on-disk phases 0/2/3; start at 4a (doc-drift fix)
+- Scope: --to 10 (MVP, skip OPZIONALE V2 phases 11-13)
+- All 4 smart-discuss grey areas: Accept Recommended
+- UI-SPEC FLAG (scroll=pana): fix inline
+- B-2 sub-tile geometry override: KEEP 18 (floor, original CONTEXT.md lock) — planner revision must revert from 28-ceil to 18-floor
+
+Remaining for Phase 4a (resume work):
+1. /gsd-plan-phase 4a --gaps  → planner revision applying user decisions (1 iteration max recommended; PLAN-CHECK.md has explicit fix-hints for B-1, B-3, B-4, B-5 + W-1..4)
+2. /gsd-execute-phase 4a  → 5 plans × ~2-3 tasks each, Wave 0..3
+3. /gsd-code-review 4a (+ --fix --auto if findings)
+4. /gsd-ui-review 4a
+5. Phase 4a verification with 5 human_needed entries surfaced for user testing
+
+Then /gsd-autonomous --from 4b --to 10 continues the milestone.

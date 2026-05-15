@@ -3,6 +3,8 @@ phase: 4a
 slug: g2-engine-raster-status-hud
 verdict: NEEDS_REVISION
 blockers: 5
+blockers_resolved: 1
+blockers_remaining: 4
 warnings: 4
 checked: 2026-05-15
 checker: gsd-plan-checker (sonnet)
@@ -12,6 +14,9 @@ plans_reviewed:
   - 04A-03-PLAN.md
   - 04A-04-PLAN.md
   - 04A-05-PLAN.md
+user_decisions:
+  B-2: "Keep 18 sub-tiles per container (6x3 floor) — user-locked CONTEXT.md Area 2 wins; 2026-05-15"
+resume_hint: "/gsd-plan-phase 4a --gaps  (next planner revision applies the user decision on B-2 and resolves B-1/3/4/5 + W-1..4)"
 ---
 
 # Phase 4a — Plan Checker Report
@@ -33,13 +38,13 @@ plans_reviewed:
 - **Issue:** Plan 01 frontmatter claims DISP-02 coverage but only adds a type constant — no behavioral enforcement. I18N-04's `satisfies Record<string, WidthBudgetRow>` gate (Plan 04) is never adversarially tested — no failing-typecheck test proves CI would catch a budget-busting string.
 - **Fix:** Remove DISP-02 from Plan 01 requirements (Plan 02 fully enforces it). Add a test to Plan 04 IB-3 that constructs a budget-violating `satisfies` and confirms `pnpm typecheck` fails.
 
-### B-2: Plan 03 silently overrides locked CONTEXT.md Area 2 decision (USER INPUT NEEDED)
+### B-2: Plan 03 silently overrides locked CONTEXT.md Area 2 decision — RESOLVED 2026-05-15
 - **Plan:** 04A-03, Task 1
 - **Dimension:** context_compliance
 - **User-locked decision (CONTEXT.md Area 2):** `32×32 px sub-tiles within each 200×100 image container (6×3 grid = 18 sub-tiles per container; 4 containers × 18 = 72 sub-tiles per full frame)`
 - **Plan override:** 28 sub-tiles per container (4×7 ceil arithmetic = 112 sub-tiles per full frame), declared as "locked decision for this plan" with a JSDoc comment citing "discrepancy".
-- **Severity:** Blocker — planner cannot unilaterally override a user-locked decision. Either implement the user-decided 18-floor geometry, OR surface the floor-vs-ceil trade-off to the user for re-decision (would amend CONTEXT.md Area 2).
-- **Decision required:** User must accept ceil (28) or stay with floor (18).
+- **USER DECISION 2026-05-15:** **Keep 18 (floor, original lock).** Planner revision must revert to user-locked 18 sub-tiles per container (6×3 floor). Sub-tile size = 32×32 floor; the right-edge 8 px strip and bottom-edge 4 px strip are absorbed into the boundary sub-tiles via padding (not encoded as separate sub-tiles). Honors INV-3 doc coherence — CONTEXT.md remains canonical, not the planner's silent re-interpretation.
+- **Status:** RESOLVED. Next planner revision applies this without re-asking.
 
 ### B-3: VALIDATION.md self-declared nyquist_compliant: false + mismatched test paths
 - **File:** 04A-VALIDATION.md
