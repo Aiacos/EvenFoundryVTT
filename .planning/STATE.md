@@ -4,13 +4,13 @@ milestone: v0.9.11
 milestone_name: milestone
 status: IN_PROGRESS — Plans 01-05 committed; Plan 06 (final) remains.
 stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-05-15T21:12:30.606Z"
+last_updated: "2026-05-16T07:51:26.661Z"
 last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
 progress:
   total_phases: 15
   completed_phases: 7
-  total_plans: 35
-  completed_plans: 35
+  total_plans: 39
+  completed_plans: 36
   percent: 47
 ---
 
@@ -52,7 +52,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -110,6 +110,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 02-foundry-module-core-pairing-ui P02 | ~60 min | 2 tasks | 12 files |
 | Phase 05-panel-plugin-system-read-only-panels P03 | 45min | 3 tasks | 10 files |
 | Phase 05-panel-plugin-system-read-only-panels P05 | 120 | 3 tasks | 15 files |
+| Phase 06 P01 | 65 | 3 tasks | 17 files |
 
 ## Quick Tasks Completed
 
@@ -168,6 +169,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 05 Plan 04]: SpellbookPanel column layout: indent(3)+prepared(1)+conc(1)+name(20)+activation(6)+gap(2)+range(7)+effect(26)=66cp; slot bar MAX_BAR_LENGTH=4 with ▓/░ chars
 - [Phase 05 Plan 04]: sheet.spell.level_section i18n key uses literal 'N' suffix (regex /N$/ replacement); standalone spell.level_section uses '{N}' template — two separate patterns in same i18n table
 - [Phase 05 Plan 04]: Standalone panels omit decorative prefixes (◆/⚖) that the sheet-tab renderer uses; headers are plain-capitalized (EQUIPAGGIAMENTO vs ◆ EQUIPAGGIAMENTO)
+- [Phase ?]: Double trust boundary for R1 events: outer EnvelopeSchema + inner R1GesturePayloadSchema
+- [Phase ?]: LocaleEventEmitter separate from PanelGestureBus — locale.changed is not an R1Gesture variant (RESEARCH Pitfall 7)
+- [Phase ?]: getTopLayer() explicitly sorts Map<ZIndex> entries by z descending (Map insertion-order pitfall, RESEARCH Pitfall 2)
+- [Phase ?]: INV-5 Gesture Determinism ratified in INVARIANTS.md — zero-handler is console.warn no-op, never silent drop
 
 ### Pending Todos
 
@@ -191,7 +196,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-15T21:12:30.597Z
+Last session: 2026-05-16T07:51:26.652Z
 Stopped at: Completed 05-04-PLAN.md
 Resume file: None
 Resume cmd: /gsd-execute-phase 5 06

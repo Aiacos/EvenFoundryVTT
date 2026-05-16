@@ -179,12 +179,12 @@ Plans:
   3. Cross-overlay reachability + closability checklist §7.14.4 ck 1-15 passes: every overlay is reachable from every other overlay in ≤2 gestures, and `[X]` closes from every overlay (NAV-03)
   4. Status HUD footer displays a context chip `R1: tap=cycle scroll=nav long=quick[combat]` that names the menu long-press will open *right now* (INV-5 visible enforcement, research Pitfall 5)
   5. INV-5 "Gesture Determinism" is ratified in `docs/architecture/INVARIANTS.md` and binds for the rest of the project (research recommendation, addresses Pitfall 5)
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 
 **Wave 0**
-- [ ] 06-01-PLAN.md — R1 wire schema + DEFAULT_R1_TIMINGS + attachR1EventSource + LayerManager.getTopLayer + Layer.getR1Hints? + LocaleEventEmitter + INVARIANTS.md (atomic Wave 0)
+- [x] 06-01-PLAN.md — R1 wire schema + DEFAULT_R1_TIMINGS + attachR1EventSource + LayerManager.getTopLayer + Layer.getR1Hints? + LocaleEventEmitter + INVARIANTS.md (atomic Wave 0)
 
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 06-02-PLAN.md — QuickActionMenuPanel + PanelRouter.pushOverlay/popOverlay overlay stack + [N] Language sub-menu wired to persistLocaleOverride + LocaleEventEmitter + 4 INV-1 fixtures + ~20 i18n keys
@@ -288,7 +288,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
-| 6. R1 Integration + Quick Action + INV-5 | 0/TBD | Not started | - |
+| 6. R1 Integration + Quick Action + INV-5 | 1/4 | In Progress|  |
 | 7. Foundry Module Write Path | 0/TBD | Not started | - |
 | 8. Manual Action UX | 0/TBD | Not started | - |
 | 9. Action Economy & Edge Cases | 0/TBD | Not started | - |
