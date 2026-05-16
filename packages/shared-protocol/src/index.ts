@@ -127,6 +127,20 @@ export {
   R1GesturePayloadSchema,
 } from './payloads/r1.js';
 
+// ─── Phase 7 additions (Plan 07-01) ──────────────────────────────────────────
+// Tool invocation envelope + bearer rotation payload schemas.
+// dispatchTool in foundry-module consumes ToolInvocationEnvelopePayloadSchema at
+// the WS-receive trust boundary. BearerRotatedPayloadSchema is used by the bearer
+// rotation scheduler (Plan 07-06) and propagated to g2-app for token refresh.
+
+export {
+  type BearerRotatedPayload,
+  BearerRotatedPayloadSchema,
+  TOOL_ID_SCHEMA,
+  type ToolInvocationEnvelopePayload,
+  ToolInvocationEnvelopePayloadSchema,
+} from './payloads/tool.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {

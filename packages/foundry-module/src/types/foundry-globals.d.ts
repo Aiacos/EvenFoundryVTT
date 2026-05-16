@@ -216,7 +216,12 @@ interface Dnd5eActorSystem {
  * Minimal dnd5e 5.x Active Effect shape — used by combat-reader.ts to detect
  * concentration via `flags.dnd5e.concentrating === true`.
  *
+ * Extended in Phase 7 Plan 01 to include `delete()` for the `drop-concentration`
+ * handler which removes the concentration effect via `effect.delete()`.
+ *
  * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 4
+ * @see packages/foundry-module/src/write-path/handlers/drop-concentration-handler.ts (Phase 07-05)
+ * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
  */
 interface FoundryActiveEffect {
   /** Effect display name (e.g. 'Bless', 'Hunter's Mark'). */
@@ -239,6 +244,16 @@ interface FoundryActiveEffect {
   duration?: {
     label?: string;
   };
+  /**
+   * Deletes this Active Effect document from the actor.
+   *
+   * Used by `drop-concentration` handler (Plan 07-05) to remove the
+   * concentration effect when the player confirms dropping concentration
+   * via the Phase 4b modal.
+   *
+   * @returns Promise resolving when the document deletion is complete
+   */
+  delete(): Promise<unknown>;
 }
 
 /**
@@ -409,11 +424,26 @@ interface FoundryCanvas {
 
 // ─── Foundry User (minimal read shape) ────────────────────────────────────────
 
-/** Minimal Foundry User document. */
+/**
+ * Minimal Foundry User document.
+ *
+ * Extended in Phase 7 Plan 01 to include `isGM` + `active` flags used by
+ * `writeAuditLog` to build the `whisper: gmIds` array for `ChatMessage.create`.
+ *
+ * @see packages/foundry-module/src/write-path/audit-log.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+ */
 interface FoundryUser {
   id: string;
   /** Set of currently targeted tokens for this user. */
   targets: Set<FoundryToken>;
+  /**
+   * Whether this user has the GM role.
+   * Used by writeAuditLog to filter `game.users.contents` for `whisper: gmIds`.
+   */
+  isGM: boolean;
+  /** Whether this user is currently active (connected to the session). */
+  active: boolean;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
@@ -441,6 +471,89 @@ interface FoundryChatMessage {
   rolls?: Array<{ total?: number }>;
 }
 
+/**
+ * Foundry ChatMessage namespace — write-path audit log creation.
+ *
+ * Declared as an ambient namespace to allow `ChatMessage.create(...)` calls
+ * from `writeAuditLog` (Phase 7 Plan 01). The static `create` method issues
+ * a GM-only chat message with `whisper: gmIds` (T-07-04 mitigation).
+ *
+ * `whisper` is an array of user IDs — only those users can see the message.
+ * `flags.evf.audit` stores the structured audit entry for GM-side queries.
+ *
+ * @see packages/foundry-module/src/write-path/audit-log.ts (consumer)
+ * @see Specs.md §5.2 (bridge logging pattern — analogous GM-side audit)
+ * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+ */
+declare namespace ChatMessage {
+  /**
+   * Creates a new Foundry ChatMessage document.
+   *
+   * @param data - Chat message creation data. Key fields for EVF audit log:
+   *   - `whisper` — array of User IDs who can see the message (GM-only for audit)
+   *   - `flags.evf.audit` — structured audit entry (queryable via Foundry chat filter)
+   *   - `speaker` — display alias (e.g. 'EVF Audit')
+   *   - `content` — HTML content of the message
+   * @returns Promise resolving to the created ChatMessage document (typed as unknown —
+   *          callers do not need to inspect the return value for audit purposes)
+   */
+  function create(data: {
+    user?: string;
+    whisper?: string[];
+    speaker?: { alias?: string };
+    content?: string;
+    flags?: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+/**
+ * dnd5e 5.x namespace extensions — write-path AoE template placement.
+ *
+ * Declares the `AbilityTemplate.fromActivity` static method consumed by
+ * the `place-template` handler (Plan 07-04 Wave 2). Declared here per
+ * Phase 7 Wave 0 PLAN requirement so the foundry-globals.d.ts extension
+ * is established before handlers land.
+ *
+ * `fromActivity` is synchronous and returns an array of AbilityTemplate
+ * objects (or null for activities with no template). Templates initialize
+ * at x:0, y:0 — the handler must call `canvas.scene.createEmbeddedDocuments`
+ * with the R1-confirmed coordinates to finalize placement.
+ *
+ * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md §Q2
+ * @see github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/canvas/ability-template.mjs
+ * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+ */
+declare namespace dnd5e {
+  namespace canvas {
+    /**
+     * AbilityTemplate — Foundry MeasuredTemplate for dnd5e AoE spells.
+     *
+     * Constructed via the static `fromActivity` factory. The resulting objects
+     * contain the template document data ready for `createEmbeddedDocuments`.
+     */
+    interface AbilityTemplate {
+      /** Template data for use with canvas.scene.createEmbeddedDocuments. */
+      document?: Record<string, unknown>;
+    }
+
+    namespace AbilityTemplate {
+      /**
+       * Factory method: constructs AbilityTemplate instances from a dnd5e Activity.
+       *
+       * Synchronous. Returns an array (one template per activity target count)
+       * or null if the activity has no AoE template.
+       *
+       * @param activity - The dnd5e 5.x Activity document (cast, weapon, etc.)
+       * @param options  - Optional template options (currently unused by EVF)
+       * @returns Array of AbilityTemplate instances or null
+       *
+       * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md §Q2
+       */
+      function fromActivity(activity: unknown, options?: unknown): AbilityTemplate[] | null;
+    }
+  }
+}
+
 /** Foundry game singleton — available globally after the "init" hook fires. */
 declare const game: {
   settings: FoundrySettings;
@@ -455,6 +568,17 @@ declare const game: {
   scenes: FoundryCollection<FoundryScene> & { active: FoundryScene | null };
   /** The current logged-in user. */
   user: FoundryUser;
+  /**
+   * All user documents in the active world.
+   *
+   * Used by `writeAuditLog` (Phase 7 Plan 01) to build the `whisper: gmIds`
+   * array for `ChatMessage.create`. Filtered via:
+   * `game.users.contents.filter(u => u.isGM).map(u => u.id)`
+   *
+   * @see packages/foundry-module/src/write-path/audit-log.ts
+   * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+   */
+  users: FoundryCollection<FoundryUser>;
 };
 
 /**
