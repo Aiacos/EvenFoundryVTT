@@ -46,6 +46,7 @@ import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import type { ActionOptionsRequest } from './action-options-modal.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
@@ -500,6 +501,20 @@ export default class SpellbookPanel implements OverlayPanel {
    */
   private unsubscribe: (() => void) | null = null;
 
+  /**
+   * Optional long-press handler injected by the boot orchestrator (Plan 08-05).
+   *
+   * When set, `onEvent('long-press')` calls this handler with the currently
+   * highlighted spell's ActionOptionsRequest. When null, long-press is a no-op
+   * (the Phase 6 router-level `quick-action-long-press-dispatcher` still fires
+   * and mounts the QuickActionMenu — preserved backward-compat).
+   *
+   * Plan 08-05 wires this via `panel.setActionOptionsHandler(handler)` after
+   * boot mounts the panel. The setter is preferred over a constructor arg to
+   * avoid breaking the 3-arg PanelConstructor signature used by PanelRouter.
+   */
+  private actionOptionsHandler: ((req: ActionOptionsRequest) => void) | null = null;
+
   // ─── Constructor ───────────────────────────────────────────────────────────
 
   /**
@@ -566,10 +581,51 @@ export default class SpellbookPanel implements OverlayPanel {
       case 'double-tap':
         // Phase 6 NAV-01 stub: close → MAIN_MAP
         break;
-      case 'long-press':
-        // Phase 6 Quick Action stub
+      case 'long-press': {
+        // Phase 8 Plan 08-03: if setActionOptionsHandler was called, dispatch to it.
+        // Otherwise, remain a no-op (Phase 6 router-level quick-action-long-press-dispatcher
+        // still fires and mounts the QuickActionMenu — backward-compat preserved).
+        if (this.actionOptionsHandler === null) {
+          break;
+        }
+        const spells = this.snapshot?.spells?.spells ?? [];
+        const idx = Math.max(0, Math.min(this.scrollOffset, spells.length - 1));
+        const spell = spells[idx];
+        if (this.snapshot === null || spell === undefined) {
+          console.warn('[spellbook-panel] long-press with no spell at scrollOffset — no-op');
+          break;
+        }
+        // requiresTarget heuristic: spells with a real range that are not reactions typically
+        // need a target. Phase 9 refines this with actual server-side range data.
+        const requiresTarget =
+          spell.range !== 'self' && spell.range !== '' && spell.activation !== 'reaction';
+        this.actionOptionsHandler({
+          kind: 'spell',
+          name: spell.name,
+          actorId: this.snapshot.actorId,
+          itemId: spell.id,
+          requiresTarget,
+        });
         break;
+      }
     }
+  }
+
+  /**
+   * Inject the action options handler for long-press dispatch (Plan 08-03 wire point).
+   *
+   * Called by the boot orchestrator (Plan 08-05) after the panel is mounted.
+   * When non-null, `onEvent('long-press')` calls this handler with the currently
+   * highlighted spell's `ActionOptionsRequest`. When null, long-press reverts to
+   * a no-op (Phase 6 router-level dispatcher still fires).
+   *
+   * Pass `null` to remove the handler (useful in tests that verify backward-compat).
+   *
+   * @param handler Callback receiving the request for the highlighted spell,
+   *                or null to disable Phase 8 long-press wiring.
+   */
+  setActionOptionsHandler(handler: ((req: ActionOptionsRequest) => void) | null): void {
+    this.actionOptionsHandler = handler;
   }
 
   /**

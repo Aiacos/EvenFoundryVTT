@@ -46,6 +46,7 @@ import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import type { ActionOptionsRequest } from './action-options-modal.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
@@ -480,6 +481,20 @@ export default class InventoryPanel implements OverlayPanel {
    */
   private unsubscribe: (() => void) | null = null;
 
+  /**
+   * Optional long-press handler injected by the boot orchestrator (Plan 08-03).
+   *
+   * When set, `onEvent('long-press')` calls this handler with the currently
+   * highlighted item's ActionOptionsRequest. When null, long-press is a no-op
+   * (the Phase 6 router-level `quick-action-long-press-dispatcher` still fires
+   * and mounts the QuickActionMenu — preserved backward-compat).
+   *
+   * Plan 08-05 wires this via `panel.setActionOptionsHandler(handler)` after
+   * boot mounts the panel. The setter is preferred over a constructor arg to
+   * avoid breaking the 3-arg PanelConstructor signature used by PanelRouter.
+   */
+  private actionOptionsHandler: ((req: ActionOptionsRequest) => void) | null = null;
+
   // ─── Constructor ───────────────────────────────────────────────────────────
 
   /**
@@ -546,10 +561,50 @@ export default class InventoryPanel implements OverlayPanel {
       case 'double-tap':
         // Phase 6 NAV-01 stub: close → MAIN_MAP
         break;
-      case 'long-press':
-        // Phase 6 Quick Action stub
+      case 'long-press': {
+        // Phase 8 Plan 08-03: if setActionOptionsHandler was called, dispatch to it.
+        // Otherwise, remain a no-op (Phase 6 router-level quick-action-long-press-dispatcher
+        // still fires and mounts the QuickActionMenu — backward-compat preserved).
+        if (this.actionOptionsHandler === null) {
+          break;
+        }
+        const items = this.snapshot?.inventory ?? [];
+        const idx = Math.max(0, Math.min(this.scrollOffset, items.length - 1));
+        const item = items[idx];
+        if (this.snapshot === null || item === undefined) {
+          console.warn('[inventory-panel] long-press with no item at scrollOffset — no-op');
+          break;
+        }
+        // requiresTarget heuristic: consumables self-target by default (potions, etc.).
+        // Everything else (weapons, armor, equipment) needs an explicit target.
+        const requiresTarget = item.type !== 'consumable';
+        this.actionOptionsHandler({
+          kind: 'item',
+          name: item.name,
+          actorId: this.snapshot.actorId,
+          itemId: item.id,
+          requiresTarget,
+        });
         break;
+      }
     }
+  }
+
+  /**
+   * Inject the action options handler for long-press dispatch (Plan 08-03 wire point).
+   *
+   * Called by the boot orchestrator (Plan 08-05) after the panel is mounted.
+   * When non-null, `onEvent('long-press')` calls this handler with the currently
+   * highlighted item's `ActionOptionsRequest`. When null, long-press reverts to
+   * a no-op (Phase 6 router-level dispatcher still fires).
+   *
+   * Pass `null` to remove the handler (useful in tests that verify backward-compat).
+   *
+   * @param handler Callback receiving the request for the highlighted item,
+   *                or null to disable Phase 8 long-press wiring.
+   */
+  setActionOptionsHandler(handler: ((req: ActionOptionsRequest) => void) | null): void {
+    this.actionOptionsHandler = handler;
   }
 
   /**
