@@ -1045,6 +1045,68 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'Vom DM abgelehnt',
     max: 28,
   },
+
+  // ─── Phase 8 Plan 08-02 — target picker labels + hints (5 keys) ───────────
+  // TargetPickerPanel (z=2 overlay) i18n keys for panel title, empty state,
+  // HP/AC column headers, and R1 chip composite hint string.
+  // All IT/EN/DE strings verified ≤ max code-points at authoring time.
+
+  /**
+   * TargetPickerPanel title shown in the top border bracket.
+   * IT: "BERSAGLIO" (9) · EN: "TARGET" (6) · DE: "ZIEL" (4).
+   */
+  target_picker_title: {
+    it: 'BERSAGLIO',
+    en: 'TARGET',
+    de: 'ZIEL',
+    max: 12,
+  },
+
+  /**
+   * Empty-state hint rendered when no valid targets exist.
+   * IT: "Nessun bersaglio" (17) · EN: "No targets" (10) · DE: "Keine Ziele" (11).
+   */
+  target_picker_empty_hint: {
+    it: 'Nessun bersaglio',
+    en: 'No targets',
+    de: 'Keine Ziele',
+    max: 28,
+  },
+
+  /**
+   * HP column header in target row (short, fits alongside name + AC).
+   * IT: "PF" (2) · EN: "HP" (2) · DE: "TP" (2).
+   */
+  target_picker_hp_label: {
+    it: 'PF',
+    en: 'HP',
+    de: 'TP',
+    max: 3,
+  },
+
+  /**
+   * AC column header in target row.
+   * IT: "CA" (2) · EN: "AC" (2) · DE: "RK" (2).
+   */
+  target_picker_ac_label: {
+    it: 'CA',
+    en: 'AC',
+    de: 'RK',
+    max: 3,
+  },
+
+  /**
+   * R1 context chip composite hint for the TargetPickerPanel overlay.
+   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * IT: "conferma|scroll|annulla" (23) · EN: "confirm|scroll|cancel" (21) · DE: "best.|scroll|abbr." (18).
+   * Assembled chip: `tap=conferma scroll=scroll long=annulla` (fits 38-char budget).
+   */
+  hud_r1_target_picker: {
+    it: 'tap=conferma scroll=lista long=annulla',
+    en: 'tap=confirm scroll=list long=cancel',
+    de: 'tap=best. scroll=Liste long=abbr.',
+    max: 38,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

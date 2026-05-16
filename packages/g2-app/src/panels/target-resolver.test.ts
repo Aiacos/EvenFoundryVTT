@@ -14,10 +14,11 @@
  * @see .planning/phases/08-manual-action-ux/08-02-PLAN.md Task 1
  * @see packages/g2-app/src/panels/target-resolver.ts
  */
-import { describe, expect, it } from 'vitest';
+
 import type { CombatSnapshot } from '@evf/shared-protocol';
-import { describeTargetRow, resolveValidTargets } from './target-resolver.js';
+import { describe, expect, it } from 'vitest';
 import type { TargetCandidate } from './target-resolver.js';
+import { describeTargetRow, resolveValidTargets } from './target-resolver.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
