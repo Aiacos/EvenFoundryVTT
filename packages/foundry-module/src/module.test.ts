@@ -14,7 +14,7 @@
  *      TODO (ADR-0003): validate mock shapes against fvtt-types when package
  *      stabilises (Phase 3+).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global mock helpers ────────────────────────────────────────────
 
@@ -720,5 +720,147 @@ describe('bridgeDeltaEmitter — via hook pipeline', () => {
 
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan 07-06: scheduleBearerRotation wiring
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('scheduleBearerRotation wiring (Plan 07-06)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('schedules a bearer rotation setTimeout when an active bearer exists after ready fires', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    const now = Date.now();
+    // Return an active bearer so scheduleBearerRotation will schedule a timer
+    gameMock.settings.get.mockReturnValue({
+      entries: {
+        'token-1': {
+          token: 'token-1',
+          alias: 'Test Device',
+          worldId: 'world-abc',
+          bridgeUrl: 'https://bridge.local:8910',
+          internalSecret: 'secret-abc',
+          createdAt: now,
+          revokedAt: null,
+          expiresAt: now + 86_400_000,
+          lastSeenAt: null,
+        },
+      },
+      version: 1,
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // scheduleBearerRotation should have called setTimeout at least once
+    expect(setTimeoutSpy).toHaveBeenCalled();
+    // The delay should be ~24h (bearer just created)
+    const scheduledDelays = setTimeoutSpy.mock.calls.map((c) => c[1] as number);
+    const hasLongDelay = scheduledDelays.some((d) => d >= 23 * 3600 * 1000);
+    expect(hasLongDelay).toBe(true);
+  });
+
+  it('does NOT schedule a rotation setTimeout when no active bearer exists', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    // No bearer registry → getActiveBearer returns null → no setTimeout
+    gameMock.settings.get.mockReturnValue(undefined);
+
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const priorCallCount = setTimeoutSpy.mock.calls.length;
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // No rotation timer should be scheduled (long-delay setTimeout)
+    const newCalls = setTimeoutSpy.mock.calls.slice(priorCallCount);
+    const hasLongDelay = newCalls.some((c) => (c[1] as number) >= 23 * 3600 * 1000);
+    expect(hasLongDelay).toBe(false);
+  });
+
+  it('registerComplexHandler count stays at 14 after Plan 07-06 wiring', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // Plan 07-06 adds NO new socketlib handlers — count must stay at 14
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 });

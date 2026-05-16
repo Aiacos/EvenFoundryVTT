@@ -372,3 +372,70 @@ describe('listBearers', () => {
     expect(list[0]?.token).toBe(e2.token);
   });
 });
+
+// ─── getActiveBearer ──────────────────────────────────────────────────────────
+
+describe('getActiveBearer', () => {
+  let settingsMock: ReturnType<typeof makeSettingsMock>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+    });
+    vi.stubGlobal('Hooks', makeHooksMock());
+    settingsMock = makeSettingsMock();
+    vi.stubGlobal('game', { settings: settingsMock });
+    vi.stubGlobal('crypto', makeCryptoMock());
+  });
+
+  it('returns null when no entries exist', async () => {
+    const { getActiveBearer } = await import('./bearer-registry.js');
+    expect(getActiveBearer()).toBeNull();
+  });
+
+  it('returns the first non-revoked, non-expired entry (newest first)', async () => {
+    const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
+    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    const active = getActiveBearer();
+    expect(active).not.toBeNull();
+    expect(active?.token).toBe(e1.token);
+  });
+
+  it('returns null when all entries are revoked', async () => {
+    const { generateBearer, revokeBearer, getActiveBearer } = await import('./bearer-registry.js');
+    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    revokeBearer(entry.token);
+    expect(getActiveBearer()).toBeNull();
+  });
+
+  it('returns null when the only entry is expired (expiresAt in past)', async () => {
+    const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
+    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+
+    // Manually expire the entry by patching the registry via game.settings
+    const registry = settingsMock._store.get('evenfoundryvtt.bearerRegistry') as {
+      entries: Record<string, { expiresAt: number }>;
+      version: 1;
+    };
+    if (registry?.entries[entry.token]) {
+      // biome-ignore lint/style/noNonNullAssertion: test setup guarantees presence
+      registry.entries[entry.token]!.expiresAt = Date.now() - 1000; // expired 1s ago
+    }
+
+    expect(getActiveBearer()).toBeNull();
+  });
+
+  it('returns newest entry when multiple non-revoked non-expired entries exist', async () => {
+    const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
+    // e1 created first — will be second in the sorted list
+    await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    await new Promise<void>((r) => setTimeout(r, 5));
+    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world');
+
+    const active = getActiveBearer();
+    // listBearers() sorts descending by createdAt → first = e2 (newer)
+    expect(active?.token).toBe(e2.token);
+  });
+});

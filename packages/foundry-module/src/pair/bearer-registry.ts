@@ -82,11 +82,11 @@ export interface BearerRegistry {
 
 const REGISTRY_KEY = 'bearerRegistry' as const;
 
-/** 24-hour TTL in milliseconds. */
-const TTL_24H_MS = 24 * 3600 * 1000;
+/** 24-hour TTL in milliseconds. Exported for use by bearer-rotation scheduler. */
+export const TTL_24H_MS = 24 * 3600 * 1000;
 
-/** Grace period for old tokens after refresh (D-2.11). */
-const GRACE_60S_MS = 60 * 1000;
+/** Grace period for old tokens after refresh (D-2.11). Exported for use by bearer-rotation scheduler. */
+export const GRACE_60S_MS = 60 * 1000;
 
 /** Maximum alias length (enforced at entry creation). */
 const MAX_ALIAS_LENGTH = 40;
@@ -285,4 +285,20 @@ export function listBearers(): BearerEntry[] {
   return Object.values(registry.entries)
     .filter((entry) => entry.revokedAt === null)
     .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Returns the first non-revoked, non-expired bearer entry (most recently created),
+ * or `null` if no such entry exists.
+ *
+ * Used by `scheduleBearerRotation` (Plan 07-06) to get the bearer to rotate at boot.
+ *
+ * @returns The active BearerEntry (most recent by createdAt) or null
+ */
+export function getActiveBearer(): BearerEntry | null {
+  const entries = listBearers();
+  const first = entries[0];
+  if (first === undefined) return null;
+  if (first.expiresAt <= Date.now()) return null;
+  return first;
 }

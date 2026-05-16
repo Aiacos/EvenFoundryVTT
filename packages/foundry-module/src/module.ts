@@ -27,6 +27,8 @@
  */
 
 import { registerCanvasExtractor } from './canvas-extractor.js';
+// Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
+import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
@@ -174,6 +176,12 @@ Hooks.once('ready', () => {
   // Must be called AFTER registerHookSubscribers + setMultiAttackProgressEmitter
   // to stay consistent with the module.ts ready-hook assembly order.
   registerReactionWatcher((payload) => bridgeDeltaEmitter('r1.reaction.available', payload));
+  // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace, reusing generateBearer(refresh=true)).
+  // Called AFTER registerReactionWatcher per the ready-hook assembly order.
+  // No new socketlib handler registered — count stays at 14.
+  scheduleBearerRotation({
+    emit: (payload) => bridgeDeltaEmitter(BEARER_ROTATED_TYPE, payload),
+  });
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
