@@ -12,9 +12,8 @@
  * @see .planning/phases/09-action-economy-edge-cases/09-01-PLAN.md Task 3
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
-
 import type { ActionEconomyPayload } from '@evf/shared-protocol';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 const VALID_PAYLOAD: ActionEconomyPayload = {
   actorId: 'actor-1',
