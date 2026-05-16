@@ -169,7 +169,11 @@ export class WsReconnectController {
   private _startCountdown(): void {
     this._clearTimers();
 
-    const delayMs = BACKOFF_DELAYS_MS[Math.min(this.attemptIndex, BACKOFF_DELAYS_MS.length - 1)];
+    // noUncheckedIndexedAccess: Math.min clamps index to [0, length-1] so the
+    // element is always defined — but TS still infers `T | undefined` for const arrays.
+    // The nullish fallback is defensive only and can never trigger at runtime.
+    const cappedIndex = Math.min(this.attemptIndex, BACKOFF_DELAYS_MS.length - 1);
+    const delayMs: number = BACKOFF_DELAYS_MS[cappedIndex] ?? 30000;
     const attempt = this.attemptIndex;
     let remainingMs = delayMs;
 

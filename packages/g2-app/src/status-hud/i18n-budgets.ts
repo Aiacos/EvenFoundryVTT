@@ -1448,6 +1448,32 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'tap=best. scroll=Grad long=abbr.',
     max: 42,
   },
+
+  // ─── Phase 10 Plan 10-01 — SYNC LOST chip (2 keys, SC-1 reconnect) ───────
+  // IT canonical per CONTEXT.md §Area 3. EN/DE are canonical; ES/FR/PT-BR fall
+  // back to EN per I18N-05 best-effort. Budget: 38 code-points inner (same as
+  // R1 chip row — the chip REPLACES the R1 chip in the footer when sync is lost).
+  //
+  // Template key: {N} is replaced with the countdown seconds (e.g. "4").
+  // IT: "⚠ SYNC LOST (riconnetto in {N}s)" = 30+len(N) chars — ≤38 up to 30s
+  // EN: "⚠ SYNC LOST (reconnect in {N}s)"  = 28+len(N) chars — ≤38 up to 30s
+  // DE: falls back to EN (best-effort per I18N-05)
+  //
+  // In-flight sentinel (retryInMs===0): different key, no {N} substitution.
+  // IT: "⚠ SYNC LOST (riconnessione…)" = 29 chars ≤38 ✓
+  // EN: "⚠ SYNC LOST (reconnecting…)"  = 27 chars ≤38 ✓
+  hud_sync_lost_chip_template: {
+    it: '⚠ SYNC LOST (riconnetto in {N}s)',
+    en: '⚠ SYNC LOST (reconnect in {N}s)',
+    de: '⚠ SYNC LOST (reconnect in {N}s)',
+    max: 38,
+  },
+  hud_sync_lost_chip_inflight: {
+    it: '⚠ SYNC LOST (riconnessione…)',
+    en: '⚠ SYNC LOST (reconnecting…)',
+    de: '⚠ SYNC LOST (reconnecting…)',
+    max: 38,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

@@ -19,7 +19,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SeqTracker } from '../engine/seq-tracker.js';
-import { WsReconnectController } from '../engine/ws-reconnect.js';
+import { type ChipTickArgs, WsReconnectController } from '../engine/ws-reconnect.js';
 
 // ─── Minimal WebSocket-like mock ─────────────────────────────────────────────
 // Mirrors the browser WebSocket shape used in boot-engine-core (EventTarget-style)
@@ -65,9 +65,9 @@ const FIXED_SESSION_ID = '11111111-1111-4111-8111-111111111111';
 describe('WsReconnectController', () => {
   let seqTracker: SeqTracker;
   let originalWs: MockWebSocket;
-  let onChipTick: ReturnType<typeof vi.fn>;
-  let onChipUnmount: ReturnType<typeof vi.fn>;
-  let onFullRefreshRequired: ReturnType<typeof vi.fn>;
+  let onChipTick: ReturnType<typeof vi.fn> & ((args: ChipTickArgs) => void);
+  let onChipUnmount: ReturnType<typeof vi.fn> & (() => void);
+  let onFullRefreshRequired: ReturnType<typeof vi.fn> & (() => void);
   let newWs: MockWebSocket;
   let wsFactory: ReturnType<typeof vi.fn>;
   let performHandshake: ReturnType<typeof vi.fn>;
@@ -77,9 +77,9 @@ describe('WsReconnectController', () => {
     vi.useFakeTimers();
     seqTracker = new SeqTracker();
     originalWs = new MockWebSocket();
-    onChipTick = vi.fn();
-    onChipUnmount = vi.fn();
-    onFullRefreshRequired = vi.fn();
+    onChipTick = vi.fn() as ReturnType<typeof vi.fn> & ((args: ChipTickArgs) => void);
+    onChipUnmount = vi.fn() as ReturnType<typeof vi.fn> & (() => void);
+    onFullRefreshRequired = vi.fn() as ReturnType<typeof vi.fn> & (() => void);
     newWs = new MockWebSocket();
     wsFactory = vi.fn().mockReturnValue(newWs);
     performHandshake = vi.fn().mockResolvedValue({ session_id: FIXED_SESSION_ID });

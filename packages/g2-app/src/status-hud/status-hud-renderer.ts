@@ -58,6 +58,7 @@
  */
 import type { CharacterSnapshot } from '@evf/shared-protocol';
 import { AsciiGrid } from '@evf/shared-render';
+import { buildSyncLostChip } from '../engine/sync-lost-chip.js';
 import { getLabel, type HudLocale } from './i18n-budgets.js';
 import { parseR1HintString } from './r1-hint-parser.js';
 
@@ -786,10 +787,19 @@ export class StatusHudRenderer {
   /**
    * Produce the R1 context chip string for the status-HUD footer row.
    *
+   * **Phase 10 Plan 10-01 — SYNC LOST override:**
+   * When `opts.syncLost` is non-null, the method returns the SYNC LOST chip
+   * string from `buildSyncLostChip(opts.syncLost.retryInMs, locale)` in place
+   * of the normal R1 hint chip. The `R1:` prefix is NOT added — the sync-lost
+   * chip occupies the full chip row budget (≤38 code-points, same inner width).
+   * When `opts` is omitted or `opts.syncLost` is null, the existing R1 hint
+   * path runs unchanged (back-compat preserved — no behaviour change for all
+   * existing callers that do not pass `opts`).
+   *
    * Pull model (RESEARCH §Q4 Option b): reads `layerManager.getTopLayer()?.getR1Hints?.()`
    * on every call — no push subscription needed, no chip state on the renderer.
    *
-   * **Three cases:**
+   * **Four cases (R1 path, syncLost not active):**
    * 1. `layerManager === null` — no LayerManager wired yet (early boot / test injection).
    *    Returns the `hud_r1_main` pre-authored chip string via {@link DEFAULT_R1_HINTS} values.
    * 2. `layerManager.getTopLayer() === null` — LayerManager present but no overlay active.
@@ -810,13 +820,29 @@ export class StatusHudRenderer {
    *
    * @param layerManager The LayerManager to query, or `null` during early boot.
    * @param locale Active HUD locale — drives `hud_r1_main` label substitution.
-   * @returns `"R1: <chip>"` string, ≤42 code-points total.
+   * @param opts Optional overrides: `syncLost` mounts the SYNC LOST chip in place
+   *   of the R1 hint chip. Pass `{ syncLost: null }` to explicitly clear (same as omitting).
+   * @returns `"R1: <chip>"` string (≤42 code-points) OR `"⚠ SYNC LOST …"` string
+   *   (≤38 code-points) when SYNC LOST is active.
    *
+   * @see packages/g2-app/src/engine/sync-lost-chip.ts (buildSyncLostChip)
    * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2
    * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q4
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism — visible enforcement)
+   * @see .planning/phases/10-polish-field-test-mvp/10-01-PLAN.md Task 3 (SYNC LOST extension)
    */
-  renderContextChip(layerManager: LayerManagerLike | null, locale: HudLocale): string {
+  renderContextChip(
+    layerManager: LayerManagerLike | null,
+    locale: HudLocale,
+    opts?: { syncLost?: { retryInMs: number } | null },
+  ): string {
+    // Phase 10 Plan 10-01 — SYNC LOST override (SLC-05).
+    // When syncLost is non-null, return the sync-lost chip in place of the R1 chip.
+    // The chip string already fits within the 38-code-point budget (SLC-04).
+    if (opts?.syncLost != null) {
+      return buildSyncLostChip(opts.syncLost.retryInMs, locale);
+    }
+
     const top: R1HintProvider | null = layerManager?.getTopLayer() ?? null;
     const hints = top?.getR1Hints?.() ?? null;
 

@@ -45,8 +45,13 @@ describe('SeqTracker', () => {
 
   it('ST-05: observe accepts any object with seq:number (duck-typed, no Zod parse)', () => {
     const tracker = new SeqTracker();
-    // Extra fields are tolerated — duck-typing, not schema validation
-    tracker.observe({ seq: 7, type: 'character.delta', proto: 'evf-v1', extra: true });
+    // Extra fields are tolerated — duck-typing, not schema validation.
+    // Cast to { seq: number } since TS checks object literal extra properties;
+    // at runtime, only seq is read (the whole point of duck-typing).
+    const envelope = { seq: 7, type: 'character.delta', proto: 'evf-v1', extra: true } as {
+      seq: number;
+    };
+    tracker.observe(envelope);
     expect(tracker.getLastConfirmedSeq()).toBe(7);
   });
 
