@@ -257,8 +257,53 @@ interface FoundryActiveEffect {
 }
 
 /**
+ * dnd5e 5.x Activity — represents a single executable action on an item.
+ *
+ * Activities are the dnd5e 5.x replacement for the legacy item roll flow.
+ * Items (spells, weapons, consumables) may have one or more activities
+ * (e.g. a weapon may have an 'attack' activity and a 'damage' activity).
+ *
+ * Added in Phase 7 Plan 02 for the cast-spell, weapon-attack, and use-item handlers.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
+ * @see packages/foundry-module/src/write-path/handlers/weapon-attack.ts
+ * @see packages/foundry-module/src/write-path/handlers/use-item.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
+ */
+interface FoundryActivity {
+  /**
+   * Activity type discriminant (e.g. 'attack', 'spell', 'save', 'utility', 'damage').
+   * Handler for weapon-attack locates the first activity with `type === 'attack'`.
+   */
+  type: string;
+
+  /**
+   * Executes this activity (triggers the dnd5e activity workflow).
+   *
+   * Resolves when the workflow completes (chat card created, rolls resolved).
+   * May reject with a user-facing error string or "No connected GM" signal.
+   *
+   * `configure: false` skips the configuration dialog — required for programmatic
+   * invocation from the bridge (no user-facing dialog in glasses UI).
+   *
+   * @param config - Optional use configuration
+   * @param config.configure - Skip configuration dialog (always false for EVF)
+   * @param config.consume - Optional resource consumption overrides
+   * @returns Resolves with a ChatMessage-like result object (id = chat card ID)
+   *
+   * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md Pattern 1
+   */
+  use(config?: {
+    configure?: boolean;
+    consume?: { action?: boolean };
+  }): Promise<unknown>;
+}
+
+/**
  * Minimal dnd5e 5.x item shape — used by character-reader.ts to build
  * inventory and spellbook snapshots.
+ *
+ * Extended in Phase 7 Plan 02 to include `system.activities` for handler use.
  *
  * @see packages/foundry-module/src/readers/character-reader.ts (extractInventory, extractSpellbook)
  * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 5
@@ -317,7 +362,49 @@ interface FoundryItem {
       mode?: string;
       prepared?: boolean;
     };
+    /**
+     * dnd5e 5.x Activity collection for this item.
+     *
+     * Present on items that have executable actions (spells, weapons, consumables).
+     * May be undefined on passive items (loot, containers) or legacy items.
+     *
+     * Added in Phase 7 Plan 02 for write-path handlers.
+     *
+     * @see FoundryActivity
+     */
+    activities?: {
+      contents: FoundryActivity[];
+    };
   };
+}
+
+/**
+ * Foundry Token document — write-path shape for move-token handler.
+ *
+ * Extends the read-only FoundryToken shape with `update()` for position
+ * mutations. The move-token handler calls `tokenDoc.update({ x, y })`
+ * directly (NOT via activity.use — move is a document update, not an activity).
+ *
+ * Added in Phase 7 Plan 02 for the move-token handler.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/move-token.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
+ */
+interface FoundryTokenDoc {
+  /** Foundry token document ID. */
+  id: string;
+
+  /**
+   * Updates token document fields.
+   *
+   * Used by move-token handler to set position (`{ x, y }`).
+   * Foundry validates canvas bounds on update — handler relies on Foundry
+   * enforcement rather than duplicating coordinate validation.
+   *
+   * @param changes - Partial document changes to apply
+   * @returns Promise resolving when the update is applied to the document
+   */
+  update(changes: { x?: number; y?: number; [k: string]: unknown }): Promise<unknown>;
 }
 
 /** Minimal Foundry Actor document shape consumed by character-reader and combat-reader. */
@@ -407,8 +494,20 @@ interface FoundryCombat {
 interface FoundryScene {
   id: string;
   name: string;
-  /** All token documents in this scene. */
-  tokens: { contents: Array<{ id: string }> };
+  /**
+   * All token documents in this scene.
+   *
+   * Widened from `{ contents: Array<{ id: string }> }` to
+   * `FoundryCollection<FoundryTokenDoc>` in Phase 7 Plan 02 to support
+   * the move-token handler's `scene.tokens.get(token_id)` call.
+   *
+   * `FoundryCollection<T>` exposes both `.get(id)` and `.contents` array,
+   * so existing `.contents` accesses in scene-reader.ts remain valid.
+   *
+   * @see packages/foundry-module/src/write-path/handlers/move-token.ts
+   * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
+   */
+  tokens: FoundryCollection<FoundryTokenDoc>;
 }
 
 // ─── Foundry Canvas (minimal read shape) ──────────────────────────────────────
