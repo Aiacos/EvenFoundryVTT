@@ -187,7 +187,7 @@ Plans:
 - [x] 06-01-PLAN.md — R1 wire schema + DEFAULT_R1_TIMINGS + attachR1EventSource + LayerManager.getTopLayer + Layer.getR1Hints? + LocaleEventEmitter + INVARIANTS.md (atomic Wave 0)
 
 **Wave 1** *(blocked on Wave 0)*
-- [ ] 06-02-PLAN.md — QuickActionMenuPanel + PanelRouter.pushOverlay/popOverlay overlay stack + [N] Language sub-menu wired to persistLocaleOverride + LocaleEventEmitter + 4 INV-1 fixtures + ~20 i18n keys
+- [x] 06-02-PLAN.md — QuickActionMenuPanel + PanelRouter.pushOverlay/popOverlay overlay stack + [N] Language sub-menu wired to persistLocaleOverride + LocaleEventEmitter + 4 INV-1 fixtures + 20 i18n keys (1244 tests; `1d929db` + `6408fd4`)
 
 **Wave 2** *(blocked on Wave 1; files_modified overlap on i18n-budgets.ts gates this wave)*
 - [ ] 06-03-PLAN.md — StatusHudRenderer.renderContextChip + per-panel getR1Hints on 5 Phase 5 panels + parseR1HintString helper + 5 INV-1 chip fixtures + 12 hud_r1_* i18n keys (NAV-01 visible enforcement)

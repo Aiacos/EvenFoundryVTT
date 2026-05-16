@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: IN_PROGRESS — Plans 01-05 committed; Plan 06 (final) remains.
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-05-16T07:51:26.661Z"
-last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
+status: IN_PROGRESS — Phase 6 Plan 02 committed; Plans 03-04 remain.
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-05-16T10:15:00.000Z"
+last_activity: "2026-05-16 — Phase 6 Plan 02 (Wave 1): PanelRouter overlay stack + QuickActionMenuPanel + 4 INV-1 fixtures + 20 i18n keys; 1244 tests passing."
 progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 39
-  completed_plans: 36
+  completed_plans: 37
   percent: 47
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 5 (panel-plugin-system-read-only-panels — IN PROGRESS)
-Plan: 05-04 complete — next: 05-05 (Wave 4 CombatTrackerPanel already done)
-Status: IN_PROGRESS — Plans 01-05 committed; Plan 06 (final) remains.
+Phase: 6 (r1-integration-quick-action-inv-5 — IN PROGRESS)
+Plan: 06-02 complete — next: 06-03 (Wave 2 — R1 routing integration)
+Status: IN_PROGRESS — Phase 6 Plans 01-02 committed; Plans 03-04 remain.
 
 Last activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
 
@@ -111,6 +111,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 05-panel-plugin-system-read-only-panels P03 | 45min | 3 tasks | 10 files |
 | Phase 05-panel-plugin-system-read-only-panels P05 | 120 | 3 tasks | 15 files |
 | Phase 06 P01 | 65 | 3 tasks | 17 files |
+| Phase 06 P02 | 95 | 2 tasks | 10 files |
 
 ## Quick Tasks Completed
 
@@ -173,6 +174,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase ?]: LocaleEventEmitter separate from PanelGestureBus — locale.changed is not an R1Gesture variant (RESEARCH Pitfall 7)
 - [Phase ?]: getTopLayer() explicitly sorts Map<ZIndex> entries by z descending (Map insertion-order pitfall, RESEARCH Pitfall 2)
 - [Phase ?]: INV-5 Gesture Determinism ratified in INVARIANTS.md — zero-handler is console.warn no-op, never silent drop
+- [Phase 06 Plan 02]: PanelMetaSchema.navKey relaxed to z.string().max(1) — empty string marks system overlays (not user-navigable); discoverPanels() filters silently (no console.warn)
+- [Phase 06 Plan 02]: PanelRouter.overlayStack suspension stack — single atomic bundle([destroy z2, mount z2]) eliminates flicker window (RESEARCH Pitfall 3); popOverlay restores suspended panel or destroys and clears activePanel
+- [Phase 06 Plan 02]: QuickActionMenuPanel Strategy A — single 'overlay-block' text container (same as ConcentrationDropModalPanel); long-press in lang sub-menu returns to main (not closes), preserving progressive disclosure
 
 ### Pending Todos
 
@@ -196,10 +200,10 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T07:51:26.652Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-05-16T10:15:00.000Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
-Resume cmd: /gsd-execute-phase 5 06
+Resume cmd: /gsd-execute-phase 6 03
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 
