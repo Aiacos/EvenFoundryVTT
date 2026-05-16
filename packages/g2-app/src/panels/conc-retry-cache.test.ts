@@ -35,7 +35,10 @@ describe('conc-retry-cache', () => {
 
   // CRC-01: unconfirmed entry → consumeRetryEnvelope returns null
   it('CRC-01: cacheRetryEnvelope with status unconfirmed → consumeRetryEnvelope returns null', () => {
-    const envelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-1' } };
+    const envelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-1' },
+    };
     cacheRetryEnvelope('idem-key-1', envelope, 'unconfirmed');
 
     const result = consumeRetryEnvelope('idem-key-1');
@@ -44,7 +47,10 @@ describe('conc-retry-cache', () => {
 
   // CRC-02: markRetryConfirmed then consumeRetryEnvelope → returns once, then null (single-attempt)
   it('CRC-02: mark confirmed then consume → returns envelope ONCE; second consume returns null (T-09-03)', () => {
-    const envelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-2' } };
+    const envelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-2' },
+    };
     cacheRetryEnvelope('idem-key-2', envelope, 'unconfirmed');
     markRetryConfirmed('idem-key-2');
 
@@ -58,7 +64,10 @@ describe('conc-retry-cache', () => {
 
   // CRC-03: TTL eviction — entry unreachable after 30s
   it('CRC-03: TTL eviction — entry not retrievable after 30s (T-09-04)', () => {
-    const envelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-3' } };
+    const envelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-3' },
+    };
     cacheRetryEnvelope('idem-key-3', envelope, 'unconfirmed');
     markRetryConfirmed('idem-key-3');
 
@@ -71,7 +80,10 @@ describe('conc-retry-cache', () => {
 
   // CRC-04: clearRetryCache() empties the map
   it('CRC-04: clearRetryCache() clears all entries (boot teardown hook)', () => {
-    const envelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-4' } };
+    const envelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-4' },
+    };
     cacheRetryEnvelope('idem-key-4', envelope, 'unconfirmed');
     markRetryConfirmed('idem-key-4');
     clearRetryCache();
@@ -88,8 +100,14 @@ describe('conc-retry-cache', () => {
 
   // CRC-06: consumeLatestConfirmed returns most-recent confirmed entry, then clears it
   it('CRC-06: consumeLatestConfirmed returns the most recent confirmed entry then clears it', () => {
-    const envelope1 = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-6a' } };
-    const envelope2 = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-6b' } };
+    const envelope1 = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-6a' },
+    };
+    const envelope2 = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-6b' },
+    };
 
     cacheRetryEnvelope('idem-key-6a', envelope1, 'unconfirmed');
     markRetryConfirmed('idem-key-6a');
@@ -114,8 +132,14 @@ describe('conc-retry-cache', () => {
 
   // Edge: cacheRetryEnvelope overwrites existing entry with same key
   it('cacheRetryEnvelope overwrites existing entry (same key)', () => {
-    const original = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-x' } };
-    const updated = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'idem-x-v2' } };
+    const original = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-x' },
+    };
+    const updated = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'idem-x-v2' },
+    };
 
     cacheRetryEnvelope('idem-key-x', original, 'unconfirmed');
     markRetryConfirmed('idem-key-x');

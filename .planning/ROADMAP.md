@@ -25,7 +25,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
 - [x] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger (6/6 plans complete 2026-05-16; hardware-pending SC-07-01..05 deferred to ADR-0005 Branch A human_needed; ADR-0011 ACCEPTED; registerComplexHandler count = 14)
 - [x] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners (5/5 plans complete 2026-05-16; hardware-pending SC-08-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld)
-- [ ] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow
+- [x] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow (5/5 plans complete 2026-05-16; SC-09-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 29)
 - [ ] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook
 - [ ] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification
 - [ ] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
@@ -250,7 +250,18 @@ Plans:
   3. Multi-attack flow (started in Phase 7) completes: Fighter L5 burns Action once for both attacks; widget reflects single Action consumption
   4. Spell slot consumption auto-suggests the highest available slot for upcast; downcast is selectable via R1 scroll before confirm
   5. Reaction-prompt UI fires when the player becomes a Shield/Counterspell candidate; passive-notification (REACT-01) is the *display* mechanism but reaction-slot accounting in the widget is wired here
-**Plans**: TBD
+**Plans**: 5/5 plans complete
+Plans:
+**Wave 0**
+- [x] 09-01-PLAN.md — ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher (double trust boundary T-09-01) + audit-log attackId dedup + action-result-watcher integration (COMB-02 data model) — complete 2026-05-16
+**Wave 1** *(blocked on Wave 0)*
+- [x] 09-02-PLAN.md — ActionEconomyWidget + 4 INV-1 economy fixtures + ActionOptionsModal client-side preconditioner (T-09-02 blocks second Action in same turn) + AOM-PRE-01..05 tests (COMB-02 display + enforcement) — complete 2026-05-16
+**Wave 2** *(blocked on Wave 1)*
+- [x] 09-03-PLAN.md — conc-retry-cache (30 s TTL + single-attempt T-09-03 + T-09-04 cross-player leak prevention) + ConcentrationDropModalPanel dual-emit tap flow + concentration-detector integration (CONC-01 end-to-end) — complete 2026-05-16
+**Wave 3** *(blocked on Wave 2)*
+- [x] 09-04-PLAN.md — SlotPickerPanel (SPP-01..12 scroll-cycle + tap confirm + T-09-06 zero-slots guard) + ActionOptionsModal requiresSlotPicker branch + cast-spell slot forwarding + 4 INV-1 slot-picker fixtures (COMB-02 slot picker) — complete 2026-05-16
+**Wave 4** *(blocked on Wave 3)*
+- [x] 09-05-PLAN.md — ISM-W9-01..10 g2-app integration smoke (real panels + dispatchers, mock bridge/WS) + FM-ISM-W9-01..10 foundry-module smoke (concentration-detector + combat-action-tracker + action-result-watcher) + Phase 9 closure (COMB-02 full integration) — complete 2026-05-16
 
 ### Phase 10: Polish & Field Test MVP
 **Goal**: Harden recovery paths, profile latency, run a real 4-hour D&D session (extended per research to multi-session for fatigue measurement + microwave RF test + NASA-TLX self-report) with a consenting DM, and ship the docs.
@@ -309,10 +320,10 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
-| 6. R1 Integration + Quick Action + INV-5 | 3/4 | In Progress|  |
+| 6. R1 Integration + Quick Action + INV-5 | 4/4 | Complete | 2026-05-15 |
 | 7. Foundry Module Write Path | 6/6 | Complete   | 2026-05-16 |
-| 8. Manual Action UX | 3/5 | In Progress|  |
-| 9. Action Economy & Edge Cases | 4/5 | In Progress|  |
+| 8. Manual Action UX | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
+| 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 10. Polish & Field Test MVP | 0/TBD | Not started | - |
 | 11. V2 `foundry-mcp` Server | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |

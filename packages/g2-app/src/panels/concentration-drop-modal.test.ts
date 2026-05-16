@@ -23,9 +23,9 @@ import {
   EnvelopeSchema,
   ToolInvocationEnvelopePayloadSchema,
 } from '@evf/shared-protocol';
-import { describe, expect, it, vi, type MockInstance } from 'vitest';
-import type { Toast } from '../status-hud/toast-types.js';
+import { describe, expect, it, type MockInstance, vi } from 'vitest';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
+import type { Toast } from '../status-hud/toast-types.js';
 import {
   ConcentrationDropModalPanel,
   type ConcModalWebSocket,
@@ -39,6 +39,7 @@ vi.mock('./conc-retry-cache.js', () => ({
   consumeLatestConfirmed: vi.fn(() => null),
   clearRetryCache: vi.fn(),
 }));
+
 import { consumeLatestConfirmed } from './conc-retry-cache.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -276,7 +277,10 @@ describe('ConcentrationDropModalPanel — Plan 09-03 (CDM-RETRY + CDM-CANCEL)', 
    */
   it('CDM-RETRY-01: [Y] tap — consumeLatestConfirmed called; re-fire ws.send if envelope buffered', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-cdm-retry-01' });
-    const retryEnvelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'original-cast' } };
+    const retryEnvelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'original-cast' },
+    };
     vi.mocked(consumeLatestConfirmed).mockReturnValueOnce(retryEnvelope);
 
     const ws = makeMockWs();
@@ -322,7 +326,10 @@ describe('ConcentrationDropModalPanel — Plan 09-03 (CDM-RETRY + CDM-CANCEL)', 
    */
   it('CDM-RETRY-03: [Y] tap — dual-emit fires BEFORE retry envelope (T-09-03 ordering)', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-cdm-retry-03' });
-    const retryEnvelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'cast-retry' } };
+    const retryEnvelope = {
+      type: 'tool.invoke',
+      payload: { toolId: 'cast-spell', idempotencyKey: 'cast-retry' },
+    };
     vi.mocked(consumeLatestConfirmed).mockReturnValueOnce(retryEnvelope);
 
     const sendOrder: string[] = [];
@@ -340,9 +347,9 @@ describe('ConcentrationDropModalPanel — Plan 09-03 (CDM-RETRY + CDM-CANCEL)', 
 
     // Dual-emit must come first (drop-concentration tool.invoke + legacy conc.drop.confirmed)
     // then the retry envelope last
-    expect(sendOrder[0]).toBe('tool.invoke');         // drop-concentration
+    expect(sendOrder[0]).toBe('tool.invoke'); // drop-concentration
     expect(sendOrder[1]).toBe('conc.drop.confirmed'); // legacy
-    expect(sendOrder[2]).toBe('tool.invoke');          // retry cast-spell envelope
+    expect(sendOrder[2]).toBe('tool.invoke'); // retry cast-spell envelope
 
     vi.unstubAllGlobals();
     await modal.onUnmount();
@@ -359,7 +366,11 @@ describe('ConcentrationDropModalPanel — Plan 09-03 (CDM-RETRY + CDM-CANCEL)', 
     modal.onEvent({ kind: 'double-tap' });
 
     expect(toastQueue.enqueue).toHaveBeenCalledOnce();
-    const toast = toastQueue.enqueue.mock.calls[0]?.[0] as { severity: string; message: string; id: string };
+    const toast = toastQueue.enqueue.mock.calls[0]?.[0] as {
+      severity: string;
+      message: string;
+      id: string;
+    };
     expect(toast.severity).toBe('error');
     // IT locale: 'Cast annullato (conc.)'
     expect(toast.message).toContain('Cast annullato');

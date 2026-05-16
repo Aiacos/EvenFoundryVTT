@@ -16,8 +16,8 @@
  * @see .planning/phases/08-manual-action-ux/08-04-PLAN.md Task 2
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MovementBudgetPayload } from '@evf/shared-protocol';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global mocks ─────────────────────────────────────────────────────
 
@@ -92,11 +92,7 @@ function makeGameMock(opts?: {
 }
 
 /** Build a minimal TokenDocument stub for updateToken hook tests. */
-function makeTokenDoc(opts?: {
-  actorId?: string;
-  x?: number;
-  y?: number;
-}) {
+function makeTokenDoc(opts?: { actorId?: string; x?: number; y?: number }) {
   return {
     id: 'token-1',
     actorId: opts?.actorId ?? 'actor-player-1',

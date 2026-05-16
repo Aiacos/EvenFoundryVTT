@@ -32,6 +32,7 @@ vi.mock('./conc-retry-cache.js', () => ({
   consumeLatestConfirmed: vi.fn(() => null),
   clearRetryCache: vi.fn(),
 }));
+
 import { markRetryConfirmed } from './conc-retry-cache.js';
 
 // ─── Mock socket ──────────────────────────────────────────────────────────────

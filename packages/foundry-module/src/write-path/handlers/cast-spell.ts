@@ -34,9 +34,9 @@
  * @see .planning/phases/09-action-economy-edge-cases/09-03-PLAN.md Task 1
  */
 
-import { CONC_CONFLICT_TYPE, CastSpellInputSchema } from '@evf/shared-protocol';
-import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { CastSpellInputSchema, CONC_CONFLICT_TYPE } from '@evf/shared-protocol';
 import { detectActiveConcentration } from '../concentration-detector.js';
+import type { ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── Injected emitter ─────────────────────────────────────────────────────────
 

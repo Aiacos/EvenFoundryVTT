@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_8_CLOSED — 5/5 plans committed; CombatTrackerPanel QA-bar + boot-engine steps 11e..11i + ISM-W8-01..10 integration smoke. 1858 tests pass. 14-socketlib-handler invariant upheld.
-stopped_at: Completed 08-05-PLAN.md (Phase 8 CLOSED)
-last_updated: "2026-05-16T21:16:08.157Z"
-last_activity: "2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending."
+status: PHASE_9_CLOSED — 5/5 plans committed; ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher + Action Economy Widget + client preconditioner + concentration drop end-to-end + SlotPickerPanel + 09-ISM-W9-01..10 g2-app + FM-ISM-W9-01..10 foundry-module integration smoke. 14-socketlib-handler invariant upheld.
+stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
+last_updated: "2026-05-16T23:24:00.000Z"
+last_activity: "2026-05-16 — Phase 9 CLOSED — Plan 05 (Wave 4): ISM-W9-01..10 g2-app integration smoke (real action-economy-dispatcher + conc-retry-cache + ActionOptionsModal + ConcentrationDropModalPanel + SlotPickerPanel + mock bridge/WS) + FM-ISM-W9-01..10 foundry-module smoke (concentration-detector + cast-spell slot forwarding + combat-action-tracker + action-result-watcher). 2036 tests pass. 14-socketlib-handler invariant confirmed in ISM-W9-10 + FM-ISM-W9-09. 3 hardware-pending SCs (SC-09-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 29 hardware-pending."
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 55
-  completed_plans: 54
-  percent: 67
+  completed_plans: 59
+  percent: 68
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 8 (manual-action-ux — CLOSED) → Phase 9 next
-Plan: 08-05 complete — Wave 4 CombatTrackerPanel QA-bar + boot-engine steps 11e..11g + ISM-W8-01..10.
-Status: PHASE_8_CLOSED — 5/5 plans committed; CombatTrackerPanel QA-bar + boot-engine steps 11e..11i + ISM-W8-01..10 integration smoke. 1858 tests pass. 14-socketlib-handler invariant upheld.
+Phase: 9 (action-economy-edge-cases — CLOSED) → Phase 10 next
+Plan: 09-05 complete — Wave 4 ISM-W9-01..10 g2-app + FM-ISM-W9-01..10 foundry-module integration smoke + Phase 9 closure.
+Status: PHASE_9_CLOSED — 5/5 plans committed; ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher + Action Economy Widget + client preconditioner + concentration drop end-to-end + SlotPickerPanel + ISM-W9 integration smoke. 2036 tests pass. 14-socketlib-handler invariant upheld.
 
 Last activity: 2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending.
 
@@ -234,6 +234,55 @@ Stopped at: Completed 08-05-PLAN.md (Phase 8 CLOSED)
 Resume file: None
 Resume cmd: /gsd-execute-phase 9 01
 
+## /gsd-autonomous 2026-05-16 run — Phase 9 closure
+
+**PHASE_9_CLOSED** — 5/5 plans committed 2026-05-16.
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 09-01 | (prior) | ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher + audit-log attackId dedup |
+| 09-02 | (prior) | ActionEconomyWidget + 4 INV-1 economy fixtures + ActionOptionsModal client-side preconditioner |
+| 09-03 | (prior) | conc-retry-cache + ConcentrationDropModalPanel dual-emit tap flow + concentration-detector |
+| 09-04 | (prior) | SlotPickerPanel SPP-01..12 + ActionOptionsModal requiresSlotPicker branch + cast-spell slot forwarding + 4 INV-1 fixtures |
+| 09-05 | 1fe7fa2, 2d9f166 | ISM-W9-01..10 g2-app + FM-ISM-W9-01..10 foundry-module integration smoke |
+
+### Test totals
+
+- Phase 9 start (after 08-05): 1858 tests
+- Phase 9 end (after 09-05): 2036 tests
+- Net Phase 9 addition: +178 tests across 5 plans (+20 from Plan 05: ISM-W9-01..10 + FM-ISM-W9-01..10)
+
+### Key invariants confirmed (Phase 9 closure)
+
+- `registerComplexHandler` count = **14** (confirmed in ISM-W9-10 + FM-ISM-W9-09 via readFileSync grep of socketlib-handlers.ts)
+- ADR-0011 single-workflow-origin discipline: `activity.use(` absent from g2-app + bridge (CI Gate 8 green)
+- T-09-01 double trust boundary: outer EnvelopeSchema + inner ActionEconomyPayloadSchema (AED-01..10)
+- T-09-03 single-attempt retry invariant: `consumeLatestConfirmed()` deletes on access; ISM-W9-06 confirms null after [Y]
+- INV-1 Layout integrity: 8 INV-1 fixtures (4 economy + 4 slot-picker) all pass matchAsciiFixture
+- INV-4 Code quality: typecheck + biome ci exit 0; no TODO without issue link
+
+### REQ-ID coverage (Phase 9)
+
+| REQ-ID | Requirement | Plans |
+|--------|-------------|-------|
+| COMB-02 | Action/Bonus/Reaction enforcement widget + slot consumption | 09-01, 09-02, 09-03, 09-04, 09-05 |
+
+### Hardware-pending carry-forward (Phase 9 — 3 new SCs)
+
+SC-09-01: Action Economy Widget renders character-perfect on real G2 display (INV-1 visual on device; slot icons + row layout hold under phosphor green at 576×288)
+SC-09-02: Concentration drop end-to-end on real Foundry world + dnd5e 5.3.3 (Hold Person while concentrating on Bless → modal → [Y] → Bless effect.delete() → Hold Person proceeds)
+SC-09-03: SlotPickerPanel scroll-cycle feels right on real R1 ring (scroll up/down advances selection; tap confirms; 3rd-level default for Fireball; upcast to 4th selectable)
+
+Previous hardware-pending running total (Phases 4a + 4b + 5 + 6 + 7 + 8): 26 SCs
+Phase 9 adds: 3 SCs
+New running total: **29 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### Phase 10 ready signal
+
+Phase 9 CLOSED. Phase 10 (Polish & Field Test MVP) is unblocked. Resume cmd: `/gsd-execute-phase 10 01`
+
 ## /gsd-autonomous 2026-05-16 run — Phase 7 closure
 
 **PHASE_7_CLOSED** — 6/6 plans committed 2026-05-16.
@@ -295,9 +344,19 @@ Previous hardware-pending running total (Phases 4a + 4b + 5 + 6 + 7): 23 SCs
 Phase 8 adds: 3 SCs
 New running total: **26 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
 
-### Phase 9 ready signal
+### Hardware-pending carry-forward (Phase 9 — 3 new SCs)
 
-Phase 8 CLOSED. Phase 9 (Action Economy & Edge Cases) is unblocked. Resume cmd: `/gsd-execute-phase 9 01`
+SC-09-01: Action Economy Widget renders character-perfect on real G2 display (INV-1 visual on device; slot icons + row layout hold under phosphor green at 576×288)
+SC-09-02: Concentration drop end-to-end on real Foundry world + dnd5e 5.3.3 (Hold Person while concentrating on Bless → modal → [Y] → Bless effect.delete() → Hold Person proceeds)
+SC-09-03: SlotPickerPanel scroll-cycle feels right on real R1 ring (scroll up/down advances selection; tap confirms; 3rd-level default for Fireball; upcast to 4th selectable)
+
+Previous hardware-pending running total (Phases 4a + 4b + 5 + 6 + 7 + 8): 26 SCs
+Phase 9 adds: 3 SCs
+New running total: **29 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### Phase 10 ready signal
+
+Phase 9 CLOSED. Phase 10 (Polish & Field Test MVP) is unblocked. Resume cmd: `/gsd-execute-phase 10 01`
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 

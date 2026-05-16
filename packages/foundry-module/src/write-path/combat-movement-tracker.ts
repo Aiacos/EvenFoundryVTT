@@ -186,13 +186,15 @@ export function registerMovementTracker(
       const walkSpeed = actor?.system?.attributes?.movement?.walk ?? 30;
 
       // Get grid metrics from canvas.scene for feet conversion
-      const scene = (canvas as { scene?: { grid?: { size?: number; distance?: number } } } | undefined)?.scene;
+      const scene = (
+        canvas as { scene?: { grid?: { size?: number; distance?: number } } } | undefined
+      )?.scene;
       const gridSize = scene?.grid?.size ?? 100;
       const gridDistance = scene?.grid?.distance ?? 5;
 
       // Compute delta from last known position
-      const currentTokenX = tokenDoc.x as number ?? 0;
-      const currentTokenY = tokenDoc.y as number ?? 0;
+      const currentTokenX = (tokenDoc.x as number) ?? 0;
+      const currentTokenY = (tokenDoc.y as number) ?? 0;
 
       const last = _lastPosition.get(playerActorId);
       let dx = 0;

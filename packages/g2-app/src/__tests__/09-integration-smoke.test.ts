@@ -25,18 +25,19 @@
  * @see .planning/phases/09-action-economy-edge-cases/09-CONTEXT.md (Phase 9 spec)
  * @see packages/g2-app/src/__tests__/08-integration-smoke.test.ts (harness pattern)
  */
-import { readFileSync } from 'node:fs';
+
 import { EventEmitter } from 'node:events';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import {
+  type ActionEconomyPayload,
+  CONC_CONFLICT_TYPE,
+  type ConcConflictPayload,
   EnvelopeSchema,
   R1_ACTION_ECONOMY_TYPE,
-  CONC_CONFLICT_TYPE,
   SERVER_CAPS_V1,
-  type ActionEconomyPayload,
-  type ConcConflictPayload,
 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LayerManager } from '../engine/layer-manager.js';
@@ -51,13 +52,13 @@ import {
 } from '../panels/action-economy-state.js';
 import type { ActionOptionsRequest } from '../panels/action-options-modal.js';
 import { ActionOptionsModal } from '../panels/action-options-modal.js';
-import { ConcentrationDropModalPanel } from '../panels/concentration-drop-modal.js';
 import {
   cacheRetryEnvelope,
   clearRetryCache,
   consumeLatestConfirmed,
   markRetryConfirmed,
 } from '../panels/conc-retry-cache.js';
+import { ConcentrationDropModalPanel } from '../panels/concentration-drop-modal.js';
 import { SlotPickerPanel, type SlotPickerRequest } from '../panels/slot-picker-panel.js';
 import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
@@ -651,7 +652,7 @@ describe('Phase 9 integration smoke (ISM-W9-01..10) — action-economy + concent
     expect(panel._getSelectedIdxForTest()).toBe(0);
 
     // Scroll → advance to index 1 (level 4)
-    panel.onEvent({ kind: 'scroll', direction: 'down', delta: 1 });
+    panel.onEvent({ kind: 'scroll', direction: 'down' });
     expect(panel._getSelectedIdxForTest()).toBe(1);
 
     // Tap → emit with slot_level=4
@@ -735,10 +736,7 @@ describe('Phase 9 integration smoke (ISM-W9-01..10) — action-economy + concent
     // File read: resolve via __dirname-equivalent from import.meta.url.
     // packages/g2-app/src/__tests__/ → packages/foundry-module/src/pair/
     const thisDir = dirname(fileURLToPath(import.meta.url));
-    const handlersPath = join(
-      thisDir,
-      '../../../foundry-module/src/pair/socketlib-handlers.ts',
-    );
+    const handlersPath = join(thisDir, '../../../foundry-module/src/pair/socketlib-handlers.ts');
     const content = readFileSync(handlersPath, 'utf-8');
     const callLines = content
       .split('\n')

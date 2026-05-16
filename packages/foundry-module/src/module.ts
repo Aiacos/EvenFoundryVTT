@@ -58,14 +58,14 @@ import { registerCombatActionTracker } from './write-path/combat-action-tracker.
 // r1.movement.budget envelopes via bridgeDeltaEmitter.
 // NO new socketlib handler — count stays 14 (Phase 7 invariant).
 import { registerMovementTracker } from './write-path/combat-movement-tracker.js';
-// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
-// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
-// NO new socketlib handler registered — emitter count stays 14.
-import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
 // Plan 09-03 — inject the concentration conflict emitter so castSpellHandler can
 // emit conc.conflict envelopes via bridgeDeltaEmitter when concentration is blocked.
 // NO new socketlib handler registered — count stays 14 (ADR-0011 invariant).
 import { setConcConflictEmitter } from './write-path/handlers/cast-spell.js';
+// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
+// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
+// NO new socketlib handler registered — emitter count stays 14.
+import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
 import { registerReactionWatcher } from './write-path/reaction-watcher.js';
 
 /**

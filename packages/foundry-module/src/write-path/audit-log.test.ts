@@ -262,4 +262,58 @@ describe('writeAuditLog', () => {
     await expect(writeAuditLog(entry)).resolves.toBeUndefined();
     expect(chatCreateMock).not.toHaveBeenCalled();
   });
+
+  // ── Plan 09-01: attackId extension ─────────────────────────────────────────
+  // AL-EXT-01: writeAuditLog with attackId in result.data propagates it to
+  // flags.evf.audit.attackId on the ChatMessage.
+  // AL-EXT-02: writeAuditLog without attackId omits the field (undefined, not null).
+
+  it('AL-EXT-01: stores attackId in flags.evf.audit.attackId when result.data.attackId is present', async () => {
+    const entry: AuditEntry = {
+      tool: 'weapon-attack',
+      payload: { actorId: 'actor-wep', weaponId: 'sword-1' },
+      idempotencyKey: '00000000-0000-4000-8000-00000000ff01',
+      actorId: 'actor-wep',
+      result: {
+        success: true,
+        data: {
+          attackId: 'aaaaaaaa-0000-4000-8000-000000000001',
+          attacks: [{ roll: 18, damage: 8 }],
+        },
+      },
+      timestamp: Date.now(),
+      bearer_id: 'aa11bb22',
+      attackId: 'aaaaaaaa-0000-4000-8000-000000000001',
+    };
+    await writeAuditLog(entry);
+
+    const callArgs = chatCreateMock.mock.calls[0]?.[0] as { flags?: Record<string, unknown> };
+    const auditInFlags = (callArgs.flags?.evf as Record<string, unknown>)?.audit as
+      | AuditEntry
+      | undefined;
+    expect(auditInFlags).toBeDefined();
+    expect(auditInFlags?.attackId).toBe('aaaaaaaa-0000-4000-8000-000000000001');
+  });
+
+  it('AL-EXT-02: attackId is undefined (not null) in flags.evf.audit when result.data has no attackId', async () => {
+    const entry: AuditEntry = {
+      tool: 'cast-spell',
+      payload: { actorId: 'actor-mage', spellId: 'fireball' },
+      idempotencyKey: '00000000-0000-4000-8000-00000000ff02',
+      actorId: 'actor-mage',
+      result: { success: true, data: { rolled: true } },
+      timestamp: Date.now(),
+      bearer_id: 'cc33dd44',
+      // No attackId field — must be absent from entry
+    };
+    await writeAuditLog(entry);
+
+    const callArgs = chatCreateMock.mock.calls[0]?.[0] as { flags?: Record<string, unknown> };
+    const auditInFlags = (callArgs.flags?.evf as Record<string, unknown>)?.audit as
+      | AuditEntry
+      | undefined;
+    expect(auditInFlags).toBeDefined();
+    // attackId MUST NOT be present (not null, not '', just absent/undefined)
+    expect(auditInFlags?.attackId).toBeUndefined();
+  });
 });

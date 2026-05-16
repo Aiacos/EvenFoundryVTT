@@ -17,10 +17,11 @@
  * @see packages/foundry-module/src/__tests__/07-write-path-integration-smoke.test.ts (pattern)
  * @see .planning/phases/09-action-economy-edge-cases/09-05-PLAN.md Task 2
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global stubs ────────────────────────────────────────────────────
@@ -366,9 +367,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       off: vi.fn(),
     });
 
-    const { registerCombatActionTracker } = await import(
-      '../write-path/combat-action-tracker.js'
-    );
+    const { registerCombatActionTracker } = await import('../write-path/combat-action-tracker.js');
 
     const emitSpy = vi.fn();
     registerCombatActionTracker(emitSpy);
@@ -423,9 +422,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       off: vi.fn(),
     });
 
-    const { registerCombatActionTracker } = await import(
-      '../write-path/combat-action-tracker.js'
-    );
+    const { registerCombatActionTracker } = await import('../write-path/combat-action-tracker.js');
 
     const emitSpy = vi.fn();
     registerCombatActionTracker(emitSpy);
@@ -489,9 +486,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       off: vi.fn(),
     });
 
-    const { registerCombatActionTracker } = await import(
-      '../write-path/combat-action-tracker.js'
-    );
+    const { registerCombatActionTracker } = await import('../write-path/combat-action-tracker.js');
 
     const emitSpy = vi.fn();
     registerCombatActionTracker(emitSpy);
@@ -557,9 +552,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       off: vi.fn(),
     });
 
-    const { registerCombatActionTracker } = await import(
-      '../write-path/combat-action-tracker.js'
-    );
+    const { registerCombatActionTracker } = await import('../write-path/combat-action-tracker.js');
 
     const emitSpy = vi.fn();
     registerCombatActionTracker(emitSpy);
@@ -593,9 +586,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       off: vi.fn(),
     });
 
-    const { registerActionResultWatcher } = await import(
-      '../write-path/action-result-watcher.js'
-    );
+    const { registerActionResultWatcher } = await import('../write-path/action-result-watcher.js');
 
     const emitSpy = vi.fn();
     registerActionResultWatcher(emitSpy);
@@ -641,10 +632,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
 
   it('FM-ISM-W9-09: 14-socketlib-handler invariant confirmed (grep gate)', () => {
     const thisDir = dirname(fileURLToPath(import.meta.url));
-    const handlersPath = join(
-      thisDir,
-      '../../src/pair/socketlib-handlers.ts',
-    );
+    const handlersPath = join(thisDir, '../../src/pair/socketlib-handlers.ts');
     const content = readFileSync(handlersPath, 'utf-8');
     const callLines = content
       .split('\n')

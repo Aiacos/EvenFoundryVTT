@@ -161,14 +161,22 @@ export function computeDelta(
 ): { dx: number; dy: number } {
   const g = gridSizePixels;
   switch (direction) {
-    case 'N':  return { dx: 0,  dy: -g };
-    case 'NE': return { dx: g,  dy: -g };
-    case 'E':  return { dx: g,  dy: 0  };
-    case 'SE': return { dx: g,  dy: g  };
-    case 'S':  return { dx: 0,  dy: g  };
-    case 'SW': return { dx: -g, dy: g  };
-    case 'W':  return { dx: -g, dy: 0  };
-    case 'NW': return { dx: -g, dy: -g };
+    case 'N':
+      return { dx: 0, dy: -g };
+    case 'NE':
+      return { dx: g, dy: -g };
+    case 'E':
+      return { dx: g, dy: 0 };
+    case 'SE':
+      return { dx: g, dy: g };
+    case 'S':
+      return { dx: 0, dy: g };
+    case 'SW':
+      return { dx: -g, dy: g };
+    case 'W':
+      return { dx: -g, dy: 0 };
+    case 'NW':
+      return { dx: -g, dy: -g };
   }
 }
 
@@ -259,9 +267,13 @@ export class MoveDirectionPicker implements OverlayPanel {
       case 'scroll': {
         const idx = DIRECTION_ORDER.indexOf(this.selectedDirection);
         if (gesture.direction === 'down') {
-          this.selectedDirection = DIRECTION_ORDER[(idx + 1) % DIRECTION_ORDER.length] as MoveDirection;
+          this.selectedDirection = DIRECTION_ORDER[
+            (idx + 1) % DIRECTION_ORDER.length
+          ] as MoveDirection;
         } else {
-          this.selectedDirection = DIRECTION_ORDER[(idx + DIRECTION_ORDER.length - 1) % DIRECTION_ORDER.length] as MoveDirection;
+          this.selectedDirection = DIRECTION_ORDER[
+            (idx + DIRECTION_ORDER.length - 1) % DIRECTION_ORDER.length
+          ] as MoveDirection;
         }
         // Trigger re-draw after direction update
         void this.draw();
@@ -434,8 +446,7 @@ export class MoveDirectionPicker implements OverlayPanel {
     // Normal compass layout.
     // Render each compass direction; selected = prefixed with ▶, others bare.
     const d = this.selectedDirection;
-    const fmt = (dir: MoveDirection): string =>
-      d === dir ? `▶${dir}` : dir;
+    const fmt = (dir: MoveDirection): string => (d === dir ? `▶${dir}` : dir);
 
     const confirmHint = getLabel('move_picker_confirm_hint', this.locale);
     const cancelHint = getLabel('move_picker_cancel_hint', this.locale);

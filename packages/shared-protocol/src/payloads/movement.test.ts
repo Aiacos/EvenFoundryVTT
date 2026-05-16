@@ -63,9 +63,7 @@ describe('MovementBudgetPayloadSchema', () => {
   // MV-03: Strict-object rejection — extra field smuggling attempt rejected
   it('MV-03: rejects extra field "extra" (strict object — field-smuggling defence)', async () => {
     const { MovementBudgetPayloadSchema } = await import('./movement.js');
-    const result = MovementBudgetPayloadSchema.safeParse(
-      makeValidPayload({ extra: 'leak' }),
-    );
+    const result = MovementBudgetPayloadSchema.safeParse(makeValidPayload({ extra: 'leak' }));
     expect(result.success).toBe(false);
   });
 
@@ -83,7 +81,9 @@ describe('MovementBudgetPayloadSchema', () => {
     const negResult = MovementBudgetPayloadSchema.safeParse(makeValidPayload({ walkSpeed: -1 }));
     expect(negResult.success).toBe(false);
 
-    const floatResult = MovementBudgetPayloadSchema.safeParse(makeValidPayload({ walkSpeed: 30.5 }));
+    const floatResult = MovementBudgetPayloadSchema.safeParse(
+      makeValidPayload({ walkSpeed: 30.5 }),
+    );
     expect(floatResult.success).toBe(false);
   });
 

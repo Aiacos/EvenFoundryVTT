@@ -18,11 +18,7 @@ import { detectActiveConcentration } from './concentration-detector.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeSpellItem(opts: {
-  id?: string;
-  name?: string;
-  isConcentration?: boolean;
-}) {
+function makeSpellItem(opts: { id?: string; name?: string; isConcentration?: boolean }) {
   return {
     id: opts.id ?? 'spell-1',
     name: opts.name ?? 'Fireball',
@@ -53,16 +49,12 @@ function makeEffect(opts: {
     id: opts.id ?? 'eff-1',
     name: opts.name ?? 'Hold Person',
     statuses,
-    flags: opts.dnd5eItemName !== undefined
-      ? { dnd5e: { item: { name: opts.dnd5eItemName } } }
-      : {},
+    flags:
+      opts.dnd5eItemName !== undefined ? { dnd5e: { item: { name: opts.dnd5eItemName } } } : {},
   };
 }
 
-function makeActor(opts: {
-  id?: string;
-  effects?: ReturnType<typeof makeEffect>[];
-}) {
+function makeActor(opts: { id?: string; effects?: ReturnType<typeof makeEffect>[] }) {
   return {
     id: opts.id ?? 'actor-1',
     effects: {
@@ -216,7 +208,10 @@ describe('detectActiveConcentration', () => {
     const actor = { id: 'actor-x', effects: {} }; // no contents
     const spell = makeSpellItem({ isConcentration: true });
 
-    const result = detectActiveConcentration(actor as Parameters<typeof detectActiveConcentration>[0], spell as Parameters<typeof detectActiveConcentration>[1]);
+    const result = detectActiveConcentration(
+      actor as Parameters<typeof detectActiveConcentration>[0],
+      spell as Parameters<typeof detectActiveConcentration>[1],
+    );
 
     expect(result).toBeNull();
   });

@@ -50,7 +50,9 @@ describe('ActionResultPayloadSchema', () => {
   // ART-03: idempotencyKey must be a valid UUID v4
   it('ART-03: rejects when idempotencyKey is not a UUID', async () => {
     const { ActionResultPayloadSchema } = await import('./action-result.js');
-    const result = ActionResultPayloadSchema.safeParse(makeValidPayload({ idempotencyKey: NON_UUID }));
+    const result = ActionResultPayloadSchema.safeParse(
+      makeValidPayload({ idempotencyKey: NON_UUID }),
+    );
     expect(result.success).toBe(false);
   });
 
@@ -58,10 +60,14 @@ describe('ActionResultPayloadSchema', () => {
   it('ART-04: accepts "cast-spell" as toolId; rejects "unknown-tool"', async () => {
     const { ActionResultPayloadSchema } = await import('./action-result.js');
 
-    const accepted = ActionResultPayloadSchema.safeParse(makeValidPayload({ toolId: 'cast-spell' }));
+    const accepted = ActionResultPayloadSchema.safeParse(
+      makeValidPayload({ toolId: 'cast-spell' }),
+    );
     expect(accepted.success).toBe(true);
 
-    const rejected = ActionResultPayloadSchema.safeParse(makeValidPayload({ toolId: 'unknown-tool' }));
+    const rejected = ActionResultPayloadSchema.safeParse(
+      makeValidPayload({ toolId: 'unknown-tool' }),
+    );
     expect(rejected.success).toBe(false);
   });
 
@@ -105,14 +111,24 @@ describe('ActionResultPayloadSchema', () => {
     expect(noKind.success).toBe(true);
 
     // Valid enum values accepted
-    const validKinds = ['no-targets', 'out-of-range', 'out-of-resource', 'wrong-turn', 'gm-rejected'];
+    const validKinds = [
+      'no-targets',
+      'out-of-range',
+      'out-of-resource',
+      'wrong-turn',
+      'gm-rejected',
+    ];
     for (const errorKind of validKinds) {
-      const result = ActionResultPayloadSchema.safeParse(makeValidPayload({ status: 'error', errorKind }));
+      const result = ActionResultPayloadSchema.safeParse(
+        makeValidPayload({ status: 'error', errorKind }),
+      );
       expect(result.success, `errorKind=${errorKind} should be valid`).toBe(true);
     }
 
     // Invalid enum rejected
-    const rejected = ActionResultPayloadSchema.safeParse(makeValidPayload({ errorKind: 'unknown-error' }));
+    const rejected = ActionResultPayloadSchema.safeParse(
+      makeValidPayload({ errorKind: 'unknown-error' }),
+    );
     expect(rejected.success).toBe(false);
   });
 
@@ -120,7 +136,9 @@ describe('ActionResultPayloadSchema', () => {
   it('ART-08: accepts string damage; rejects number damage', async () => {
     const { ActionResultPayloadSchema } = await import('./action-result.js');
 
-    const withString = ActionResultPayloadSchema.safeParse(makeValidPayload({ damage: '2d6 = 9 fire' }));
+    const withString = ActionResultPayloadSchema.safeParse(
+      makeValidPayload({ damage: '2d6 = 9 fire' }),
+    );
     expect(withString.success).toBe(true);
 
     const withNumber = ActionResultPayloadSchema.safeParse(makeValidPayload({ damage: 42 }));
@@ -146,9 +164,7 @@ describe('ActionResultPayloadSchema', () => {
   // ART-10: strict object — extra field rejected (T-08-01 belt-and-suspenders)
   it('ART-10: rejects extra field "extra" (strict object — T-08-01 field-smuggling defence)', async () => {
     const { ActionResultPayloadSchema } = await import('./action-result.js');
-    const result = ActionResultPayloadSchema.safeParse(
-      makeValidPayload({ extra: 'leak-attempt' }),
-    );
+    const result = ActionResultPayloadSchema.safeParse(makeValidPayload({ extra: 'leak-attempt' }));
     expect(result.success).toBe(false);
   });
 
