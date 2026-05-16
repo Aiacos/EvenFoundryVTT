@@ -29,6 +29,7 @@
 import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
+import { R1_ACTION_RESULT_TYPE } from '@evf/shared-protocol';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
@@ -45,6 +46,7 @@ import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-atta
 // Emits r1.reaction.available envelopes via bridgeDeltaEmitter when an NPC uses
 // an action that can trigger a player character reaction (shield, counterspell).
 // Display-only in Phase 7; handler NEVER returns false (must not cancel NPC action).
+import { registerActionResultWatcher } from './write-path/action-result-watcher.js';
 import { registerReactionWatcher } from './write-path/reaction-watcher.js';
 
 /**
@@ -182,6 +184,11 @@ Hooks.once('ready', () => {
   scheduleBearerRotation({
     emit: (payload) => bridgeDeltaEmitter(BEARER_ROTATED_TYPE, payload),
   });
+  // Plan 08-01 — register the action-result watcher (ACT-01 telemetry).
+  // Listens on createChatMessage; filters for flags.evf.audit.idempotencyKey;
+  // emits r1.action.result envelopes via bridgeDeltaEmitter for typed toast rendering.
+  // NO new socketlib handler — count stays 14 (Phase 7 invariant).
+  registerActionResultWatcher((payload) => bridgeDeltaEmitter(R1_ACTION_RESULT_TYPE, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`

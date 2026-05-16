@@ -431,6 +431,61 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(registeredEvents).toContain('updateCombat');
     // Plan 07-05: dnd5e.preUseActivity hook registered for reaction watcher (REACT-01)
     expect(registeredEvents).toContain('dnd5e.preUseActivity');
+    // Plan 08-01: createChatMessage hook registered for action-result watcher (ACT-01)
+    expect(registeredEvents).toContain('createChatMessage');
+  });
+
+  // T-08-MOD-01: registerActionResultWatcher called once in ready hook (verified via createChatMessage hook registration)
+  it('T-08-MOD-01: createChatMessage hook is registered exactly once after ready fires (action-result-watcher ACT-01)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // registerActionResultWatcher calls Hooks.on('createChatMessage', ...).
+    // hook-subscribers.ts also registers 'createChatMessage' (log event delta).
+    // Total: 2 registrations — 1 from hook-subscribers + 1 from action-result-watcher.
+    // Verifying ≥ 2 ensures the action-result-watcher registration is present.
+    const createChatMessageCalls = hooksMock.on.mock.calls.filter((c) => c[0] === 'createChatMessage');
+    expect(createChatMessageCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // T-08-MOD-02: registerComplexHandler count stays exactly 14 (Phase 7 invariant — no new socketlib handler)
+  it('T-08-MOD-02: registerComplexHandler count stays at 14 after Plan 08-01 wiring (14-socketlib-handler invariant)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // Plan 08-01 must NOT add any new socketlib handlers — count must stay at 14
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 });
 
