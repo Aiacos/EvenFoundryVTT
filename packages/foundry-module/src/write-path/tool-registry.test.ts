@@ -37,7 +37,7 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
 // ─── ToolId type compile-time tests ──────────────────────────────────────────
 
 describe('ToolId — static type surface', () => {
-  it('TOOL_HANDLER_IDS maps all 6 ToolIds to evf.camelCase handler names', () => {
+  it('TOOL_HANDLER_IDS maps all 7 ToolIds to evf.camelCase handler names', () => {
     const expected: Record<ToolId, string> = {
       'cast-spell': 'evf.castSpell',
       'weapon-attack': 'evf.weaponAttack',
@@ -45,14 +45,17 @@ describe('ToolId — static type surface', () => {
       'move-token': 'evf.moveToken',
       'drop-concentration': 'evf.dropConcentration',
       'place-template': 'evf.placeTemplate',
+      // Plan 07-03 (Wave 2): confirm-template-placement replaces evf.skillCheck stub in-place
+      // (count stays 14; skill-check slot renamed to evf.confirmTemplatePlacement)
+      'confirm-template-placement': 'evf.confirmTemplatePlacement',
     };
     for (const [toolId, handlerId] of Object.entries(expected)) {
       expect(TOOL_HANDLER_IDS[toolId as ToolId]).toBe(handlerId);
     }
   });
 
-  it('TOOL_HANDLER_IDS has exactly 6 entries', () => {
-    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(6);
+  it('TOOL_HANDLER_IDS has exactly 7 entries (Plan 07-03 added confirm-template-placement)', () => {
+    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(7);
   });
 });
 

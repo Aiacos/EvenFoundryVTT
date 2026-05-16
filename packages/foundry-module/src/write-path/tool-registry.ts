@@ -44,6 +44,15 @@ import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache
  * Intentionally closed — new tools require an ADR-0011 amendment and a Plan update.
  *
  * Mapping to socketlib handler IDs: {@link TOOL_HANDLER_IDS}.
+ *
+ * # Plan 07-03 extension: `'confirm-template-placement'`
+ *
+ * Added in Plan 07-03 (Wave 2) — the confirm handler takes the socketlib slot
+ * previously occupied by `evf.skillCheck` (stub renamed in-place; skill-check
+ * moves to Phase 8/9 when ACT-01 ships). Total handler count stays 14.
+ *
+ * @see packages/foundry-module/src/pair/socketlib-handlers.ts (evf.confirmTemplatePlacement)
+ * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
  */
 export type ToolId =
   | 'cast-spell'
@@ -51,7 +60,8 @@ export type ToolId =
   | 'use-item'
   | 'move-token'
   | 'drop-concentration'
-  | 'place-template';
+  | 'place-template'
+  | 'confirm-template-placement';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
 
@@ -179,6 +189,16 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
   'move-token': 'evf.moveToken',
   'drop-concentration': 'evf.dropConcentration',
   'place-template': 'evf.placeTemplate',
+  /**
+   * Plan 07-03: confirm-template-placement maps to `evf.confirmTemplatePlacement`.
+   *
+   * This handler REPLACES the `evf.skillCheck` stub registration in-place
+   * in `socketlib-handlers.ts`. The total `registerComplexHandler` count stays 14.
+   * Skill-check will be re-registered in Phase 8/9 when ACT-01 ships.
+   *
+   * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
+   */
+  'confirm-template-placement': 'evf.confirmTemplatePlacement',
 };
 
 // ─── Module-level singleton IdempotencyStore ─────────────────────────────────

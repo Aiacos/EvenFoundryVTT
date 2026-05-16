@@ -508,17 +508,55 @@ interface FoundryScene {
    * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
    */
   tokens: FoundryCollection<FoundryTokenDoc>;
+  /**
+   * Creates embedded documents of the given type within this scene.
+   *
+   * Used by `confirmTemplatePlacementHandler` (Plan 07-03) to commit
+   * R1-confirmed AoE template positions as MeasuredTemplate documents.
+   * Bypasses `drawPreview()` which is incompatible with the R1 input model
+   * (RESEARCH §Q2 Pitfall 3).
+   *
+   * Foundry validates scene bounds and permissions server-side — the handler
+   * relies on Foundry enforcement rather than duplicating coordinate validation
+   * (T-07-03-03: x/y outside scene bounds → Foundry rejects, no crash).
+   *
+   * @param type  - The embedded document type to create (e.g. `'MeasuredTemplate'`)
+   * @param data  - Array of document creation data objects
+   * @returns Promise resolving to the created document stubs (id is always present)
+   *
+   * @see packages/foundry-module/src/write-path/handlers/place-template.ts
+   * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1
+   * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md §Q2
+   */
+  createEmbeddedDocuments(
+    type: string,
+    data: Array<Record<string, unknown>>,
+  ): Promise<Array<{ id: string }>>;
 }
 
 // ─── Foundry Canvas (minimal read shape) ──────────────────────────────────────
 
-/** Minimal Foundry Canvas object for viewport reads. */
+/** Minimal Foundry Canvas object for viewport reads and write-path operations. */
 interface FoundryCanvas {
   /** The PIXI.js stage, used for viewport position. */
   stage: {
     pivot: { x: number; y: number };
     scale: { x: number };
   };
+  /**
+   * The currently active scene (same reference as `game.scenes.active`).
+   *
+   * Added in Phase 7 Plan 03 — `confirmTemplatePlacementHandler` calls
+   * `canvas.scene.createEmbeddedDocuments('MeasuredTemplate', [...])` to commit
+   * R1-confirmed template positions. Using `canvas.scene` is the idiomatic
+   * Foundry pattern for scene mutations inside module code.
+   *
+   * May be null when no scene is loaded (canvas not yet active).
+   *
+   * @see packages/foundry-module/src/write-path/handlers/place-template.ts
+   * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1
+   */
+  scene: FoundryScene | null;
 }
 
 // ─── Foundry User (minimal read shape) ────────────────────────────────────────
@@ -629,24 +667,79 @@ declare namespace dnd5e {
      *
      * Constructed via the static `fromActivity` factory. The resulting objects
      * contain the template document data ready for `createEmbeddedDocuments`.
+     *
+     * Updated in Phase 7 Plan 03 to include the typed `document` sub-object
+     * with `t`, `distance`, `angle`, and `toObject()` — fields consumed by
+     * `placeTemplateHandler` and `confirmTemplatePlacementHandler`.
+     *
+     * @see packages/foundry-module/src/write-path/handlers/place-template.ts
+     * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1
      */
     interface AbilityTemplate {
-      /** Template data for use with canvas.scene.createEmbeddedDocuments. */
-      document?: Record<string, unknown>;
+      /**
+       * Template document data.
+       *
+       * Contains the MeasuredTemplate fields initialised by `fromActivity`.
+       * `x` and `y` are 0/0 placeholders — the handler must override them
+       * with R1-confirmed coordinates before calling `createEmbeddedDocuments`.
+       *
+       * `toObject()` serialises the document to a plain record suitable for
+       * `createEmbeddedDocuments` (including all hidden fields like `_id`,
+       * `flags`, etc. that Foundry expects).
+       */
+      document: {
+        /** Current X position (placeholder 0 — overridden before commit). */
+        x: number;
+        /** Current Y position (placeholder 0 — overridden before commit). */
+        y: number;
+        /**
+         * Template shape type.
+         * Matches Foundry's MeasuredTemplate `t` field:
+         * - `'circle'` — radius-based (e.g. Fireball)
+         * - `'cone'`   — cone with `distance` length + `angle` width (e.g. Burning Hands)
+         * - `'rect'`   — rectangle (e.g. Wall of Fire)
+         * - `'ray'`    — line/ray (e.g. Lightning Bolt)
+         */
+        t: 'circle' | 'cone' | 'rect' | 'ray';
+        /** Template radius/length in scene units (feet). */
+        distance: number;
+        /** Cone angle in degrees (only present for `t: 'cone'`). */
+        angle?: number;
+        /**
+         * Serialises the template document to a plain object.
+         *
+         * Used by `confirmTemplatePlacementHandler` to build the data array
+         * for `canvas.scene.createEmbeddedDocuments('MeasuredTemplate', [...])`.
+         * The caller then overwrites `x` and `y` with confirmed coordinates
+         * before passing to Foundry.
+         *
+         * @returns Plain record with all MeasuredTemplate fields
+         */
+        toObject(): Record<string, unknown>;
+      };
     }
 
     namespace AbilityTemplate {
       /**
        * Factory method: constructs AbilityTemplate instances from a dnd5e Activity.
        *
-       * Synchronous. Returns an array (one template per activity target count)
-       * or null if the activity has no AoE template.
+       * **CRITICAL: This method is SYNCHRONOUS.** Never `await` the return value.
+       * Per RESEARCH §Q2 and Pitfall 3 — the sync return contract is authoritative.
+       *
+       * Returns one AbilityTemplate per target (e.g., Magic Missile with 3 targets
+       * returns 3 templates). Each template's `document.x` and `document.y` are
+       * initialized to 0 — the handler must position them via R1 input before
+       * committing via `canvas.scene.createEmbeddedDocuments`.
+       *
+       * Returns `null` for activities without AoE templates (melee attacks, utility
+       * spells, etc.). Handler must check for null + empty array.
        *
        * @param activity - The dnd5e 5.x Activity document (cast, weapon, etc.)
        * @param options  - Optional template options (currently unused by EVF)
-       * @returns Array of AbilityTemplate instances or null
+       * @returns Array of AbilityTemplate instances (may be empty) or null
        *
        * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md §Q2
+       * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1 (NO drawPreview)
        */
       function fromActivity(activity: unknown, options?: unknown): AbilityTemplate[] | null;
     }

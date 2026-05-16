@@ -141,6 +141,24 @@ export {
   ToolInvocationEnvelopePayloadSchema,
 } from './payloads/tool.js';
 
+// ─── Phase 7 additions (Plan 07-03) ──────────────────────────────────────────
+// AoE template placement payload schemas (ACT-02).
+// template-placement-dispatcher.ts consumes TemplatePlacementRequestedPayloadSchema
+// at the WS-receive trust boundary. TemplatePlacementConfirm/CancelPayloadSchema
+// ride inside tool.invoke envelopes (g2-app → module).
+
+export {
+  TEMPLATE_PLACEMENT_CANCEL_TYPE,
+  TEMPLATE_PLACEMENT_CONFIRMED_TYPE,
+  TEMPLATE_PLACEMENT_REQUESTED_TYPE,
+  type TemplatePlacementCancelPayload,
+  TemplatePlacementCancelPayloadSchema,
+  type TemplatePlacementConfirmPayload,
+  TemplatePlacementConfirmPayloadSchema,
+  type TemplatePlacementRequestedPayload,
+  TemplatePlacementRequestedPayloadSchema,
+} from './payloads/template.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {
