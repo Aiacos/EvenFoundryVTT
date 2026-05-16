@@ -295,10 +295,12 @@ export class StatusHudLayer implements Layer {
       );
       return;
     }
+    // Zod .min(0).max(1) validates range at runtime but infers `number`;
+    // cast to the literal union here — the schema is the authoritative guard.
     this.renderer.setActionEconomy({
-      actionsUsed: parsed.data.actionsUsed,
-      bonusActionsUsed: parsed.data.bonusActionsUsed,
-      reactionsUsed: parsed.data.reactionsUsed,
+      actionsUsed: parsed.data.actionsUsed as 0 | 1,
+      bonusActionsUsed: parsed.data.bonusActionsUsed as 0 | 1,
+      reactionsUsed: parsed.data.reactionsUsed as 0 | 1,
       multiAttackInProgress: parsed.data.multiAttackInProgress,
     });
     this._scheduleDebouncedRender();

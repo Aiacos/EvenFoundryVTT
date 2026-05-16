@@ -48,6 +48,7 @@ vi.mock('./action-economy-state.js', () => ({
 }));
 
 import { getActionEconomyState } from './action-economy-state.js';
+import type { Toast } from '../status-hud/toast-types.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -93,9 +94,9 @@ function makeItemRequest(overrides: Partial<ActionOptionsRequest> = {}): ActionO
   };
 }
 
-type MockToastQueue = { enqueue: ReturnType<typeof vi.fn> };
+type MockToastQueue = { enqueue: ReturnType<typeof vi.fn<(toast: Toast) => void>> };
 function makeToastQueue(): MockToastQueue {
-  return { enqueue: vi.fn() };
+  return { enqueue: vi.fn<(toast: Toast) => void>() };
 }
 
 function makeModal(

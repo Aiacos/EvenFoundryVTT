@@ -40,6 +40,7 @@
  *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionLongPress(bus, router, lm, makeMenu)
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
+ *  11e+. attachActionEconomyHandler(ws, currentUserId) — Plan 09-02 r1.action.economy → StatusHudLayer + AOM preconditioner
  *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 long-press modal injection
  *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
@@ -66,6 +67,8 @@ import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
+import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.js';
+import { clearActionEconomyState } from '../panels/action-economy-state.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
@@ -479,6 +482,13 @@ export async function _bootEngineCore(
     effectiveLocale,
     currentUserId,
   );
+  // Phase 9 Plan 09-02 — wire action economy dispatcher (BERW-13..16).
+  // Attached AFTER attachActionResultHandler so teardown reverse-order is:
+  //   unsubActionEconomy → unsubActionResult → unsubConcConflict → ...
+  const unsubActionEconomy = attachActionEconomyHandler(
+    ws as unknown as Parameters<typeof attachActionEconomyHandler>[0],
+    currentUserId,
+  );
 
   // 11f. Factory closures for Phase 8 action overlays (Plan 08-03 + Plan 08-04).
   //      These closures are registered via setPanelInstanceHandler so they are injected
@@ -513,6 +523,8 @@ export async function _bootEngineCore(
           () => {
             void panelRouter.popOverlay(layerManager);
           },
+          // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
+          toastQueue,
         );
         void panelRouter.pushOverlay(modal, layerManager);
       });
@@ -535,6 +547,8 @@ export async function _bootEngineCore(
           () => {
             void panelRouter.popOverlay(layerManager);
           },
+          // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
+          toastQueue,
         );
         void panelRouter.pushOverlay(modal, layerManager);
       });
@@ -619,7 +633,19 @@ export async function _bootEngineCore(
     effectiveLocale,
     localeEvents,
     teardown: (): void => {
-      // Tear down Phase 8 dispatcher subscriptions first (reverse of attach order).
+      // Tear down Phase 9 dispatcher subscriptions first (reverse of attach order).
+      // action-economy was attached LAST (after action-result), so tear down FIRST.
+      try {
+        unsubActionEconomy();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubActionEconomy failed', err);
+      }
+      try {
+        clearActionEconomyState();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: clearActionEconomyState failed', err);
+      }
+      // Tear down Phase 8 dispatcher subscriptions (reverse of attach order).
       try {
         unsubActionResult();
       } catch (err) {
