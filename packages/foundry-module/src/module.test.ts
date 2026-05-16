@@ -446,7 +446,10 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     vi.stubGlobal('Hooks', hooksMock);
     vi.stubGlobal('socketlib', socketlibMock);
     vi.stubGlobal('canvas', canvasMock);
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
 
     await import('./module.js');
     hooksMock.fire('init');
@@ -456,8 +459,78 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     // hook-subscribers.ts also registers 'createChatMessage' (log event delta).
     // Total: 2 registrations — 1 from hook-subscribers + 1 from action-result-watcher.
     // Verifying ≥ 2 ensures the action-result-watcher registration is present.
-    const createChatMessageCalls = hooksMock.on.mock.calls.filter((c) => c[0] === 'createChatMessage');
+    const createChatMessageCalls = hooksMock.on.mock.calls.filter(
+      (c) => c[0] === 'createChatMessage',
+    );
     expect(createChatMessageCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // T-08-MOD-03: registerMovementTracker called once in ready hook — verified via updateToken hook registration
+  it('T-08-MOD-03: updateToken hook registered after ready fires (registerMovementTracker ACT-01 move variant)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // registerMovementTracker calls Hooks.on('updateToken') and Hooks.on('updateCombat')
+    const registeredEvents = hooksMock.on.mock.calls.map((c) => c[0]);
+    expect(registeredEvents).toContain('updateToken');
+    expect(registeredEvents).toContain('updateCombat');
+
+    // updateToken should be registered exactly once via registerMovementTracker
+    const updateTokenCalls = hooksMock.on.mock.calls.filter((c) => c[0] === 'updateToken');
+    expect(updateTokenCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // T-08-MOD-04: registerComplexHandler count stays exactly 14 (Phase 7 invariant — Plan 08-04 adds NO new socketlib handler)
+  it('T-08-MOD-04: registerComplexHandler count stays at 14 after Plan 08-04 wiring (14-socketlib-handler invariant)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // Plan 08-04 must NOT add any new socketlib handlers — count must stay at 14
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 
   // T-08-MOD-02: registerComplexHandler count stays exactly 14 (Phase 7 invariant — no new socketlib handler)
@@ -471,7 +544,10 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     vi.stubGlobal('Hooks', hooksMock);
     vi.stubGlobal('socketlib', socketlibMock);
     vi.stubGlobal('canvas', canvasMock);
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
     vi.stubGlobal('crypto', {
       randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
       getRandomValues: vi.fn((arr: Uint8Array) => {

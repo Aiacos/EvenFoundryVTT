@@ -26,10 +26,10 @@
  * @see 02-CONTEXT.md D-2.01, D-2.12, D-2.18 (pair button, socketlib, locale)
  */
 
+import { R1_ACTION_RESULT_TYPE, R1_MOVEMENT_BUDGET_TYPE } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
-import { R1_ACTION_RESULT_TYPE } from '@evf/shared-protocol';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
@@ -38,16 +38,21 @@ import { registerSettings } from './settings.js';
 // when the socketlib handlers are invoked.
 // ADR-0011: single-workflow-origin discipline — all write mutations go through dispatchTool.
 import './write-path/handlers/index.js';
-// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
-// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
-// NO new socketlib handler registered — emitter count stays 14.
-import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
 // Plan 07-05 — register the dnd5e.preUseActivity reaction watcher (REACT-01).
 // Emits r1.reaction.available envelopes via bridgeDeltaEmitter when an NPC uses
 // an action that can trigger a player character reaction (shield, counterspell).
 // Display-only in Phase 7; handler NEVER returns false (must not cancel NPC action).
 import { registerActionResultWatcher } from './write-path/action-result-watcher.js';
+// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
+// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
+// NO new socketlib handler registered — emitter count stays 14.
+import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
 import { registerReactionWatcher } from './write-path/reaction-watcher.js';
+// Plan 08-04 — combat movement tracker (ACT-01 move variant).
+// Subscribes to updateToken + updateCombat; accumulates per-turn movement and emits
+// r1.movement.budget envelopes via bridgeDeltaEmitter.
+// NO new socketlib handler — count stays 14 (Phase 7 invariant).
+import { registerMovementTracker } from './write-path/combat-movement-tracker.js';
 
 /**
  * Canonical Foundry module identifier.
@@ -189,6 +194,11 @@ Hooks.once('ready', () => {
   // emits r1.action.result envelopes via bridgeDeltaEmitter for typed toast rendering.
   // NO new socketlib handler — count stays 14 (Phase 7 invariant).
   registerActionResultWatcher((payload) => bridgeDeltaEmitter(R1_ACTION_RESULT_TYPE, payload));
+  // Plan 08-04 — register the movement tracker (ACT-01 move variant).
+  // Subscribes to updateToken + updateCombat; emits r1.movement.budget on accumulation/reset.
+  // Called AFTER registerActionResultWatcher per the ready-hook assembly order.
+  // NO new socketlib handler — count stays 14 (Phase 7 invariant).
+  registerMovementTracker((payload) => bridgeDeltaEmitter(R1_MOVEMENT_BUDGET_TYPE, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
