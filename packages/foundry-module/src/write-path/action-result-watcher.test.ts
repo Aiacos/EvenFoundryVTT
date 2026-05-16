@@ -41,9 +41,7 @@ function makeHooksMock() {
   };
 }
 
-function makeGameMock(opts?: {
-  users?: Array<{ id: string; character?: { id: string } | null }>;
-}) {
+function makeGameMock(opts?: { users?: Array<{ id: string; character?: { id: string } | null }> }) {
   const users = opts?.users ?? [{ id: 'user-player-1', character: { id: 'actor-1' } }];
   return {
     user: { id: 'user-player-1', isGM: false },
@@ -87,9 +85,7 @@ function makeAuditMsg(opts?: {
         },
       },
     },
-    rolls: opts?.d20 !== undefined
-      ? [{ dice: [{ results: [{ result: opts.d20 }] }] }]
-      : undefined,
+    rolls: opts?.d20 !== undefined ? [{ dice: [{ results: [{ result: opts.d20 }] }] }] : undefined,
     flavor: opts?.flavor,
   };
 }
@@ -299,7 +295,9 @@ describe('registerActionResultWatcher', () => {
       capturedHandler?.(msg, {}, 'user-player-1');
 
       const payload = emit.mock.calls[0]?.[0];
-      expect(payload?.errorKind, `error="${error}" should map to ${expectedKind}`).toBe(expectedKind);
+      expect(payload?.errorKind, `error="${error}" should map to ${expectedKind}`).toBe(
+        expectedKind,
+      );
 
       emit.mockClear();
     }
@@ -333,7 +331,12 @@ describe('registerActionResultWatcher', () => {
 
     const tools = ['cast-spell', 'weapon-attack', 'use-item', 'move-token', 'drop-concentration'];
     const canonicalOutcomes = new Set([
-      'hit', 'miss', 'save_success', 'save_fail', 'damage_dealt', 'no_roll',
+      'hit',
+      'miss',
+      'save_success',
+      'save_fail',
+      'damage_dealt',
+      'no_roll',
     ]);
 
     for (const tool of tools) {
@@ -378,5 +381,27 @@ describe('registerActionResultWatcher', () => {
       expect([...payload.damage].length).toBeLessThanOrEqual(24);
     }
     // Not asserting exact match because flavor regex is implementation-specific
+  });
+
+  // ARW-CONC-01: Plan 09-03 — mapErrorToKind returns 'concentration-required'
+  // when audit.result.error includes 'concentration-required' (BEFORE gm-rejected catch-all)
+  it('ARW-CONC-01: mapErrorToKind returns concentration-required for concentration-required error', async () => {
+    const gameMock = makeGameMock();
+    vi.stubGlobal('game', gameMock);
+
+    const { registerActionResultWatcher } = await import('./action-result-watcher.js');
+    const emit = vi.fn<(payload: ActionResultPayload) => void>();
+    registerActionResultWatcher(emit);
+
+    const msg = makeAuditMsg({
+      resultSuccess: false,
+      resultError: 'concentration-required',
+    });
+    capturedHandler?.(msg, {}, 'user-player-1');
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const payload = emit.mock.calls[0]?.[0];
+    expect(payload?.errorKind).toBe('concentration-required');
+    expect(payload?.status).toBe('failure');
   });
 });

@@ -62,6 +62,10 @@ import { registerMovementTracker } from './write-path/combat-movement-tracker.js
 // emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
 // NO new socketlib handler registered — emitter count stays 14.
 import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
+// Plan 09-03 — inject the concentration conflict emitter so castSpellHandler can
+// emit conc.conflict envelopes via bridgeDeltaEmitter when concentration is blocked.
+// NO new socketlib handler registered — count stays 14 (ADR-0011 invariant).
+import { setConcConflictEmitter } from './write-path/handlers/cast-spell.js';
 import { registerReactionWatcher } from './write-path/reaction-watcher.js';
 
 /**
@@ -215,6 +219,10 @@ Hooks.once('ready', () => {
   // Called AFTER registerMovementTracker per the ready-hook assembly order.
   // NO new socketlib handler — count stays 14 (ADR-0011 invariant).
   registerCombatActionTracker((payload) => bridgeDeltaEmitter(R1_ACTION_ECONOMY_TYPE, payload));
+  // Plan 09-03 — wire the concentration conflict emitter into castSpellHandler.
+  // Called AFTER registerCombatActionTracker per the ready-hook assembly order.
+  // NO new socketlib handler — count stays 14 (ADR-0011 invariant).
+  setConcConflictEmitter((type, payload) => bridgeDeltaEmitter(type, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`

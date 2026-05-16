@@ -72,20 +72,24 @@ export const ActionOutcome = z.enum([
 /**
  * Typed error kind enum.
  *
- * Maps to the 5 error.action.* i18n keys in `i18n-budgets.ts`. The watcher
+ * Maps to the error.action.* i18n keys in `i18n-budgets.ts`. The watcher
  * derives this from `audit.result.error` string via substring matching.
  *
- * - `no-targets`       — No valid targets found (targeting phase filtered empty)
- * - `out-of-range`     — Target is outside weapon/spell range
- * - `out-of-resource`  — No spell slots / charges / uses remaining
- * - `wrong-turn`       — Action attempted outside player's turn
- * - `gm-rejected`      — GM blocked the action; also the catch-all default
+ * - `no-targets`              — No valid targets found (targeting phase filtered empty)
+ * - `out-of-range`            — Target is outside weapon/spell range
+ * - `out-of-resource`         — No spell slots / charges / uses remaining
+ * - `wrong-turn`              — Action attempted outside player's turn
+ * - `concentration-required`  — Casting a concentration spell while already concentrating
+ *                               (Plan 09-03). The dispatcher routes this to the concentration
+ *                               drop modal instead of a toast.
+ * - `gm-rejected`             — GM blocked the action; also the catch-all default
  */
 export const ActionErrorKind = z.enum([
   'no-targets',
   'out-of-range',
   'out-of-resource',
   'wrong-turn',
+  'concentration-required',
   'gm-rejected',
 ]);
 

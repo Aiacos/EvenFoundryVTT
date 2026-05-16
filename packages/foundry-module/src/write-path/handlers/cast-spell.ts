@@ -9,25 +9,61 @@
  * CI Gate 8 prevents `activity.use(` from appearing in g2-app or bridge.
  *
  * # Error codes
- * - `actor_not_found`   — `args.actor_id` not in `game.actors`
- * - `item_not_found`    — `args.spell_id` not in `actor.items.contents`
- * - `no_activity`       — `item.system.activities?.contents[0]` is undefined
- * - `no_gm_connected`   — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
- * - `<message>`         — any other dnd5e error (string from caught Error)
+ * - `actor_not_found`        — `args.actor_id` not in `game.actors`
+ * - `item_not_found`         — `args.spell_id` not in `actor.items.contents`
+ * - `no_activity`            — `item.system.activities?.contents[0]` is undefined
+ * - `concentration-required` — Spell requires concentration and actor already has
+ *                              an active concentration effect (Plan 09-03).
+ *                              `detectActiveConcentration` fires, bridge emits
+ *                              `conc.conflict` envelope, `activity.use()` is NOT called.
+ * - `no_gm_connected`        — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
+ * - `<message>`              — any other dnd5e error (string from caught Error)
  *
  * # Threat model
  * T-07-02-01: actor ownership validated upstream by dispatchTool (bearer-bound
  * idempotency key). Handler validates actor + item exist — returns typed error
  * codes, never game-state info (T-07-02-03 constant-shape errors).
  * T-07-02-02: no token-position mutation in this handler (cast-spell only).
+ * T-09-01: concentration detection is fail-open — on detector throw, null is
+ * returned and the cast proceeds (server-side dnd5e is the authoritative validator).
  *
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)
  * @see packages/foundry-module/src/write-path/tool-registry.ts (ToolHandler<T>)
+ * @see packages/foundry-module/src/write-path/concentration-detector.ts (Plan 09-03)
  * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
+ * @see .planning/phases/09-action-economy-edge-cases/09-03-PLAN.md Task 1
  */
 
-import { CastSpellInputSchema } from '@evf/shared-protocol';
+import { CONC_CONFLICT_TYPE, CastSpellInputSchema } from '@evf/shared-protocol';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { detectActiveConcentration } from '../concentration-detector.js';
+
+// ─── Injected emitter ─────────────────────────────────────────────────────────
+
+/**
+ * Concentration conflict emitter — injected by `module.ts` to avoid a circular
+ * dependency (handler → module). Defaults to a no-op so unit tests do not need
+ * to inject. Pattern mirrors `setMultiAttackProgressEmitter` in weapon-attack.ts.
+ *
+ * When set, called with `(CONC_CONFLICT_TYPE, payload)` before returning the
+ * `concentration-required` typed error. Fire-and-forget: if the emitter throws,
+ * the error is caught and the handler still returns the typed error (CS-CONC-04).
+ */
+let concConflictEmitter: ((type: string, payload: unknown) => void) | null = null;
+
+/**
+ * Inject the concentration conflict emitter from module.ts.
+ *
+ * Called in `Hooks.once('ready', ...)` after `bridgeDeltaEmitter` is available.
+ * Pass `null` to reset to no-op (used in tests to clean up after each case).
+ *
+ * @param emitter - Callback accepting `(type, payload)`, or null to reset.
+ */
+export function setConcConflictEmitter(
+  emitter: ((type: string, payload: unknown) => void) | null,
+): void {
+  concConflictEmitter = emitter;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +132,28 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
     const activity = item.system.activities?.contents[0];
     if (activity === undefined) {
       return { success: false, error: 'no_activity' };
+    }
+
+    // Step 3.5: concentration conflict detection (Plan 09-03).
+    // If the spell requires concentration AND the actor already has an active
+    // concentrating effect, block the cast and emit a `conc.conflict` envelope
+    // so the g2-app can mount the ConcentrationDropModalPanel.
+    //
+    // The detection is fail-open (T-09-01): `detectActiveConcentration` returns
+    // null on any error, allowing the cast to proceed. The server-side dnd5e
+    // Activity API is the authoritative concentration validator.
+    const concConflict = detectActiveConcentration(
+      actor as Parameters<typeof detectActiveConcentration>[0],
+      item as Parameters<typeof detectActiveConcentration>[1],
+    );
+    if (concConflict !== null) {
+      try {
+        concConflictEmitter?.(CONC_CONFLICT_TYPE, concConflict);
+      } catch (emitErr) {
+        // Fire-and-forget: emitter failure must not suppress the typed error (CS-CONC-04).
+        console.warn('[cast-spell] conc.conflict emit failed', emitErr);
+      }
+      return { success: false, error: 'concentration-required' };
     }
 
     // Step 4: invoke activity.use() — wrapped in try/catch for error normalisation

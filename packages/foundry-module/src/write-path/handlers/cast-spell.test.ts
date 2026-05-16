@@ -209,4 +209,247 @@ describe('castSpellHandler', () => {
     });
     expect(parsed.success).toBe(false);
   });
+
+  // ─── Plan 09-03: Concentration conflict integration tests ─────────────────
+
+  /**
+   * CS-CONC-01: concentration spell + active concentration → typed error, no activity.use.
+   */
+  it('CS-CONC-01: returns concentration-required when actor has active concentration and spell requires it', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-1' });
+    // Spell with concentration = true AND system.components.concentration set
+    const item = {
+      id: 'spell-bless',
+      name: 'Bless',
+      type: 'spell',
+      system: {
+        components: { concentration: true },
+        activities: { contents: [activity] },
+      },
+    };
+    const actor = {
+      id: 'actor-a',
+      name: 'Gandalf',
+      type: 'character',
+      items: { contents: [item] },
+      effects: {
+        contents: [
+          {
+            id: 'eff-hold-person',
+            name: 'Hold Person',
+            statuses: new Set(['concentrating']),
+            flags: { dnd5e: { item: { name: 'Hold Person' } } },
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', {
+      actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+      scenes: { active: null },
+      users: { contents: [] },
+      settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+      i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+      combat: null,
+      user: { isGM: false, targets: new Set() },
+      messages: { contents: [], get: vi.fn() },
+    });
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-a',
+      spell_id: 'spell-bless',
+      slot_level: 1,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: false, error: 'concentration-required' });
+    // activity.use must NOT have been called
+    expect(activity.use).not.toHaveBeenCalled();
+  });
+
+  /**
+   * CS-CONC-02: concentration conflict → emitter called with CONC_CONFLICT_TYPE + actorId populated.
+   */
+  it('CS-CONC-02: calls setConcConflictEmitter callback with CONC_CONFLICT_TYPE and actorId populated', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-1' });
+    const item = {
+      id: 'spell-bless',
+      name: 'Bless',
+      type: 'spell',
+      system: {
+        components: { concentration: true },
+        activities: { contents: [activity] },
+      },
+    };
+    const actor = {
+      id: 'actor-b',
+      name: 'Wizard',
+      type: 'character',
+      items: { contents: [item] },
+      effects: {
+        contents: [
+          {
+            id: 'eff-haste',
+            name: 'Haste',
+            statuses: new Set(['concentrating']),
+            flags: { dnd5e: { item: { name: 'Haste' } } },
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', {
+      actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+      scenes: { active: null },
+      users: { contents: [] },
+      settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+      i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+      combat: null,
+      user: { isGM: false, targets: new Set() },
+      messages: { contents: [], get: vi.fn() },
+    });
+
+    const { castSpellHandler, setConcConflictEmitter } = await import('./cast-spell.js');
+
+    const emitterSpy = vi.fn();
+    setConcConflictEmitter(emitterSpy);
+
+    await castSpellHandler.handle({
+      actor_id: 'actor-b',
+      spell_id: 'spell-bless',
+      slot_level: 1,
+      targets: [],
+    });
+
+    expect(emitterSpy).toHaveBeenCalledOnce();
+    const [type, payload] = emitterSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(type).toBe('conc.conflict');
+    expect(payload.actorId).toBe('actor-b');
+    expect(payload.currentConcentrationName).toBe('Haste');
+    expect(payload.newSpellName).toBe('Bless');
+
+    // Reset emitter
+    setConcConflictEmitter(null);
+  });
+
+  /**
+   * CS-CONC-03: no concentration conflict (cantrip / non-conc spell / first conc) → activity.use called.
+   */
+  it('CS-CONC-03: no conflict when spell does not require concentration → activity.use called normally', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-3' });
+    // Cantrip — no concentration component
+    const item = {
+      id: 'spell-firebolt',
+      name: 'Fire Bolt',
+      type: 'spell',
+      system: {
+        components: { concentration: false },
+        activities: { contents: [activity] },
+      },
+    };
+    const actor = {
+      id: 'actor-c',
+      name: 'Wizard',
+      type: 'character',
+      items: { contents: [item] },
+      effects: {
+        contents: [
+          {
+            id: 'eff-hold-person',
+            name: 'Hold Person',
+            statuses: new Set(['concentrating']),
+            flags: {},
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', {
+      actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+      scenes: { active: null },
+      users: { contents: [] },
+      settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+      i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+      combat: null,
+      user: { isGM: false, targets: new Set() },
+      messages: { contents: [], get: vi.fn() },
+    });
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-c',
+      spell_id: 'spell-firebolt',
+      slot_level: 0,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: true, data: { chatCardId: 'cm-3' } });
+    expect(activity.use).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * CS-CONC-04: emitter throws → still returns typed error (fire-and-forget).
+   */
+  it('CS-CONC-04: still returns concentration-required even when emitter throws', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-4' });
+    const item = {
+      id: 'spell-haste',
+      name: 'Haste',
+      type: 'spell',
+      system: {
+        components: { concentration: true },
+        activities: { contents: [activity] },
+      },
+    };
+    const actor = {
+      id: 'actor-d',
+      name: 'Cleric',
+      type: 'character',
+      items: { contents: [item] },
+      effects: {
+        contents: [
+          {
+            id: 'eff-bless',
+            name: 'Bless',
+            statuses: ['concentrating'],
+            flags: {},
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', {
+      actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+      scenes: { active: null },
+      users: { contents: [] },
+      settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+      i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+      combat: null,
+      user: { isGM: false, targets: new Set() },
+      messages: { contents: [], get: vi.fn() },
+    });
+
+    const { castSpellHandler, setConcConflictEmitter } = await import('./cast-spell.js');
+
+    // Emitter that throws — should not propagate
+    setConcConflictEmitter(() => {
+      throw new Error('emitter failed');
+    });
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-d',
+      spell_id: 'spell-haste',
+      slot_level: 3,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: false, error: 'concentration-required' });
+    expect(activity.use).not.toHaveBeenCalled();
+
+    // Reset emitter
+    setConcConflictEmitter(null);
+  });
 });

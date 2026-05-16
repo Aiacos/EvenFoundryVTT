@@ -48,8 +48,20 @@ import type { ActionResultPayload } from '@evf/shared-protocol';
 // Local type aliases — mirror ActionOutcome and ActionErrorKind from shared-protocol/action-result.ts.
 // Defined here as string literal unions to avoid a circular barrel dependency when
 // foundry-module imports from @evf/shared-protocol's barrel re-export chain.
-type ActionOutcomeValue = 'hit' | 'miss' | 'save_success' | 'save_fail' | 'damage_dealt' | 'no_roll';
-type ActionErrorKindValue = 'no-targets' | 'out-of-range' | 'out-of-resource' | 'wrong-turn' | 'gm-rejected';
+type ActionOutcomeValue =
+  | 'hit'
+  | 'miss'
+  | 'save_success'
+  | 'save_fail'
+  | 'damage_dealt'
+  | 'no_roll';
+type ActionErrorKindValue =
+  | 'no-targets'
+  | 'out-of-range'
+  | 'out-of-resource'
+  | 'wrong-turn'
+  | 'concentration-required'
+  | 'gm-rejected';
 
 // ─── Private type aliases ─────────────────────────────────────────────────────
 
@@ -150,6 +162,8 @@ function mapErrorToKind(errorStr: string): ActionErrorKindValue {
     return 'out-of-resource';
   }
   if (errorStr.includes('wrong_turn')) return 'wrong-turn';
+  // Plan 09-03: concentration-required BEFORE gm-rejected catch-all
+  if (errorStr.includes('concentration-required')) return 'concentration-required';
   // 'no_gm_connected' and all other errors → gm-rejected (catch-all)
   return 'gm-rejected';
 }
@@ -202,7 +216,9 @@ function resolveRecipientUserId(msg: unknown, audit: AuditEntry): string {
       return userId;
     }
     // Fallback: find user by character actor ID
-    const users = game.users?.contents as Array<{ id: string; character?: { id: string } | null }> | undefined;
+    const users = game.users?.contents as
+      | Array<{ id: string; character?: { id: string } | null }>
+      | undefined;
     if (Array.isArray(users) && audit.actorId) {
       const match = users.find((u) => u.character?.id === audit.actorId);
       if (match?.id) return match.id;
@@ -267,8 +283,7 @@ export function registerActionResultWatcher(
       const typedAudit: AuditEntry = {
         tool: audit.tool,
         idempotencyKey: audit.idempotencyKey,
-        actorId:
-          typeof audit.actorId === 'string' ? audit.actorId : null,
+        actorId: typeof audit.actorId === 'string' ? audit.actorId : null,
         result: audit.result as { success: boolean; error?: string; data?: unknown },
         payload: audit.payload,
         timestamp: typeof audit.timestamp === 'number' ? audit.timestamp : Date.now(),
