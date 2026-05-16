@@ -38,7 +38,7 @@
 - [ ] **COMB-02**: Action economy widget (action / bonus / reaction / move) con enforcement client-side
 - [x] **COMB-03**: Quick-action bar `[A][S][I][M]` su Combat overlay
 - [ ] **CONC-01**: Concentration drop confirm modal su cast di spell concentration mentre già concentrato. *Adversarial gap Vector A — currently undefined in spec, 5e core.*
-- [ ] **MULTI-01**: Multi-attack action tracker (`Atk 1/2`, `Atk 2/2`) per Fighter Extra Attack L5+. *Adversarial gap — Specs §12.B q.15 currently flagged open.*
+- [x] **MULTI-01**: Multi-attack action tracker (`Atk 1/2`, `Atk 2/2`) per Fighter Extra Attack L5+. *Adversarial gap — Specs §12.B q.15 currently flagged open.*
 - [ ] **REACT-01**: Reaction *passive notification toast* (Shield / Counterspell / Opportunity Attack — display-only, no execution). *Adversarial gap Vector A — execution stays V2 ACT-04.*
 - [ ] **ACT-01**: Manual cast/attack/use via R1 (scroll allo spell/item → tap → confirm target)
 - [ ] **ACT-02**: AoE template placement via `AbilityTemplate.fromActivity()` (array iteration per multi-template)
@@ -176,7 +176,7 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | FOUN-03 | Phase 7 — Foundry Module Write Path | Complete |
 | ACT-02 | Phase 7 — Foundry Module Write Path | Pending |
 | ACT-03 | Phase 7 — Foundry Module Write Path | Complete |
-| MULTI-01 | Phase 7 — Foundry Module Write Path | Pending |
+| MULTI-01 | Phase 7 — Foundry Module Write Path | Complete |
 | REACT-01 | Phase 7 — Foundry Module Write Path | Pending |
 | ACT-01 | Phase 8 — Manual Action UX | Pending |
 | COMB-02 | Phase 9 — Action Economy & Edge Cases | Pending |

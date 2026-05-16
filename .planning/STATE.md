@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03 committed; placeTemplateHandler + confirmTemplatePlacement + TemplatePlacementPanel + dispatcher; 1492 tests pass.
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-05-16T14:25:00.000Z"
-last_activity: "2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). evf.skillCheck → evf.confirmTemplatePlacement (count stays 14). 1492 tests pass."
+status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03/04 committed; 2 remaining plans pending (Wave 2 close).
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-05-16T12:47:00.000Z"
+last_activity: "2026-05-16 — Plan 07-04 complete: MULTI-01 (Path B multi-attack loop + r1.multiattack.progress + [Atk N/M] chip). 1532 tests pass. count stays 14. INV-1 fixture generated."
 progress:
   total_phases: 15
   completed_phases: 8
   total_plans: 45
-  completed_plans: 42
-  percent: 53
+  completed_plans: 43
+  percent: 96
 ---
 
 # Project State
@@ -26,10 +26,12 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 ## Current Position
 
 Phase: 7 (foundry-module-write-path — IN PROGRESS)
-Plan: 07-03 complete — Wave 2 AoE template placement. Next: Plan 07-04 (or equivalent).
-Status: PHASE_7_IN_PROGRESS — Plans 07-01 (Wave 0), 07-02 (Wave 1), 07-03 (Wave 2) committed; 3 remaining plans pending.
+Plan: 07-04 complete — Wave 2 MULTI-01 multi-attack loop + progress chip. Next: Plan 07-05 (or equivalent).
+Status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03/04 committed; 2 remaining plans pending.
 
-Last activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
+Last activity: 2026-05-16 — Plan 07-04 complete: MULTI-01 (Path B client-side loop + r1.multiattack.progress envelope + [Atk N/M] CombatTracker chip + multi-attack-progress-dispatcher double trust boundary). 1532 tests pass. socketlib count stays 14. INV-1 fixture generated. SC-07-04 hardware-pending.
+
+Previous activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
 
 Previous activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
 
@@ -54,7 +56,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [█████████░] 93%
+Progress: [██████████] 96%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -207,7 +209,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T11:59:59.476Z
+Last session: 2026-05-16T12:48:05.791Z
 Stopped at: Completed 06-02-PLAN.md
 Resume file: None
 Resume cmd: /gsd-execute-phase 6 03
