@@ -205,13 +205,13 @@ Plans:
   3. A Fighter L5+ Action shows `Atk 1/2` → `Atk 2/2` tracker; the second attack consumes correctly via the chosen route (`activity.use({count: 2})` or client-side loop — Phase 0 §10.0.10 P2 row resolved) (MULTI-01)
   4. When the player is targeted by a Shield/Counterspell/Opportunity Attack trigger, a passive-notification toast surfaces on G2 (display-only, no execution — execution stays V2 ACT-04) (REACT-01)
   5. Bearer rotation runs every 24 h with a 60 s grace window; every `executeAsGM` handler re-validates permissions; chat-message audit log records each GM-side action (research cross-cutting)
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 Plans:
 **Wave 0**
 - [x] 07-01-PLAN.md — Tool Registry + IdempotencyStore (bearer-bound SHA256 keys) + audit-log writer + foundry-globals.d.ts (game.users + ChatMessage + dnd5e namespace) + ADR-0011 ACCEPTED + CI Gate 8 single-workflow-origin guard
 
 **Wave 1** *(blocked on Wave 0)*
-- [ ] 07-02-PLAN.md — Replace 4 of 7 socketlib stubs in-place: cast-spell + weapon-attack (single attack) + use-item + move-token handlers calling activity.use({configure:false}) via dispatchTool; registerComplexHandler count stays 14 (Pitfall 7 closure) — FOUN-03, ACT-03
+- [x] 07-02-PLAN.md — Replace 4 of 7 socketlib stubs in-place: cast-spell + weapon-attack (single attack) + use-item + move-token handlers calling activity.use({configure:false}) via dispatchTool; registerComplexHandler count stays 14 (Pitfall 7 closure) — FOUN-03, ACT-03
 
 **Wave 2** *(blocked on Wave 1; Plans 03 + 04 run sequentially — both touch shared-protocol/src/index.ts merge surface per RESEARCH §Wave 2 parallelism note)*
 - [ ] 07-03-PLAN.md — AoE template placement: AbilityTemplate.fromActivity (sync, bypasses drawPreview) + per-template R1 confirm flow + TemplatePlacementPanel (z=2 overlay) + createEmbeddedDocuments commit + skillCheck stub renamed → confirmTemplatePlacement in-place (count stays 14) — ACT-02
@@ -305,7 +305,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
 | 6. R1 Integration + Quick Action + INV-5 | 3/4 | In Progress|  |
-| 7. Foundry Module Write Path | 1/6 | In Progress|  |
+| 7. Foundry Module Write Path | 2/6 | In Progress|  |
 | 8. Manual Action UX | 0/TBD | Not started | - |
 | 9. Action Economy & Edge Cases | 0/TBD | Not started | - |
 | 10. Polish & Field Test MVP | 0/TBD | Not started | - |
