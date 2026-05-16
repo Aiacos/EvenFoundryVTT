@@ -51,6 +51,7 @@ import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
 import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
+import { type DispatchToolFn, handleToolInvoke } from './ws/tool-invoke.js';
 
 export interface BuildServerOptions {
   /** Inject a custom Foundry validation function (for testing). */
@@ -93,6 +94,17 @@ export interface BuildServerOptions {
    * @see routes/tools-dispatch.ts
    */
   toolDispatchOverride?: Partial<Record<import('@evf/shared-protocol').ToolName, ToolHandler>>;
+  /**
+   * Inject a custom WS tool dispatch function for test isolation (CR-01).
+   *
+   * In production: pass `undefined` — the default no-op stub is used (Phase 7 stub;
+   * real socketlib wiring lands in Phase 8 once the foundry-module socket is plumbed).
+   * In tests: pass a `vi.fn()` spy to assert `tool.invoke` envelopes are routed
+   * to this function with the correct payload and bearer.
+   *
+   * @see ws/tool-invoke.ts (handleToolInvoke consumer)
+   */
+  wsDispatchToolFn?: DispatchToolFn;
 }
 
 /**
@@ -225,6 +237,17 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // the production wiring that closes the Phase 02 latent gap where deltaEmitter
   // never received any session registrations (#03-01 RESEARCH §1).
   // metrics.wsSessionsActive is instrumented inline: inc on registerSession, dec on close.
+
+  // CR-01: WS tool.invoke dispatch function.
+  // Production default: Phase 7 stub returning 'phase-07-pending' until the Foundry
+  // socketlib socket is plumbed in Phase 8. Tests inject a vi.fn() spy via wsDispatchToolFn.
+  const wsDispatchFn: DispatchToolFn =
+    opts.wsDispatchToolFn ??
+    (async (_payload, _bearer) => ({
+      success: false,
+      error: 'phase-07-stub: real socketlib wiring pending Phase 8',
+    }));
+
   app.get('/ws', { websocket: true }, (socket, req) => {
     const logger = app.log as Logger;
     // handleHandshake is async and returns sessionId | null. Errors are caught
@@ -243,11 +266,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // Instrument: increment WS sessions gauge on successful registration.
         metrics.wsSessionsActive.inc();
 
-        // Resume listener: only client_resume messages are recognised at this
-        // protocol level. Other future message types route through their own
-        // handlers (Phase 04+). handleResume itself is no-op on unrecognised input.
+        // Message router: each handler is responsible for its own envelope type.
+        // handleResume processes 'client_resume'; handleToolInvoke processes 'tool.invoke'.
+        // Both no-op on unrecognised input — ordering does not matter.
         socket.on('message', (rawData) => {
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
+          void handleToolInvoke(socket, sessionId, sessionStore, wsDispatchFn, rawData, logger);
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees
