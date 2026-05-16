@@ -420,7 +420,8 @@ describe('QuickActionMenuPanel — getR1Hints (QAM-13, QAM-14)', () => {
     const hints = panel.getR1Hints?.();
     expect(hints?.tap).toBe('applica');
     expect(hints?.scroll).toBe('lingua');
-    expect(hints?.longPressLabel).toBe('indietro');
+    // WR-01 fix: 'indietro' → 'dietro' so assembled chip ≤ 38 code-points.
+    expect(hints?.longPressLabel).toBe('dietro');
   });
 });
 

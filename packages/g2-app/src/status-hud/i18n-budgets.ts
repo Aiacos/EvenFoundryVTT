@@ -714,8 +714,14 @@ export const HUD_WIDTH_BUDGETS = {
   /** R1 chip long-press label — main menu mode (long-press closes the menu). */
   quick_r1_main_long: { it: 'annulla', en: 'cancel', de: 'Abbruch', max: 22 },
 
-  /** R1 chip tap label — language sub-menu mode (tap applies the selected locale). */
-  quick_r1_lang_tap: { it: 'applica', en: 'apply', de: 'anwenden', max: 22 },
+  /**
+   * R1 chip tap label — language sub-menu mode (tap applies the selected locale).
+   *
+   * WR-01 fix: DE changed from 'anwenden' (8) to 'wählen' (6) so the assembled
+   * chip `tap=wählen scroll=Sprache long=zurück` = 37 chars ≤ 38 renderer budget.
+   * IT 'applica' (7) + DE 'wählen' (6): both fit within budget.
+   */
+  quick_r1_lang_tap: { it: 'applica', en: 'apply', de: 'wählen', max: 22 },
 
   /** R1 chip scroll label — language sub-menu mode. */
   quick_r1_lang_scroll: { it: 'lingua', en: 'language', de: 'Sprache', max: 22 },
@@ -724,8 +730,15 @@ export const HUD_WIDTH_BUDGETS = {
    * R1 chip long-press label — language sub-menu mode (long-press returns to main menu,
    * not close — UI-SPEC §1 footer hint "long-press = annulla" means "back one level"
    * when in sub-menu).
+   *
+   * WR-01 fix: IT changed from 'indietro' (8) to 'dietro' (6) so the assembled
+   * chip `tap=applica scroll=lingua long=dietro` = 37 chars ≤ 38 renderer budget.
+   * Verified all 3 locales post-fix (see WR-01 in 06-REVIEW.md):
+   *   IT: tap=applica(7) + scroll=lingua(6) + long=dietro(6) → 37 chars ✓
+   *   EN: tap=apply(5)   + scroll=language(8) + long=back(4) → 31 chars ✓
+   *   DE: tap=wählen(6)  + scroll=Sprache(7) + long=zurück(6) → 37 chars ✓
    */
-  quick_r1_lang_long: { it: 'indietro', en: 'back', de: 'zurück', max: 22 },
+  quick_r1_lang_long: { it: 'dietro', en: 'back', de: 'zurück', max: 22 },
 
   // ─── Phase 6 Plan 03 — StatusHudRenderer context chip per-state strings ───────
   // 12 pre-composed, pre-truncated chip strings (RESEARCH Pitfall 6 mitigation).
