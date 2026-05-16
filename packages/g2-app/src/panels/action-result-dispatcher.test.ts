@@ -24,6 +24,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Toast } from '../status-hud/toast-types.js';
 import type { ActionResultToastQueue } from './action-result-dispatcher.js';
 
+// Plan 09-03: mock conc-retry-cache so ARD-CONC tests can spy on markRetryConfirmed.
+vi.mock('./conc-retry-cache.js', () => ({
+  cacheRetryEnvelope: vi.fn(),
+  markRetryConfirmed: vi.fn(),
+  consumeRetryEnvelope: vi.fn(() => null),
+  consumeLatestConfirmed: vi.fn(() => null),
+  clearRetryCache: vi.fn(),
+}));
+import { markRetryConfirmed } from './conc-retry-cache.js';
+
 // ─── Mock socket ──────────────────────────────────────────────────────────────
 
 /** Minimal EventEmitter-backed mock socket — matches reaction-toast-dispatcher.test.ts pattern. */
@@ -374,5 +384,57 @@ describe('attachActionResultHandler', () => {
 
     expect(toastQueueMock.enqueue).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  // ─── ARD-CONC: Plan 09-03 concentration-required routing ─────────────────
+
+  /**
+   * ARD-CONC-01: errorKind === 'concentration-required' → markRetryConfirmed called;
+   * toast NOT enqueued (modal mount via conc.conflict envelope is the UX surface).
+   */
+  it('ARD-CONC-01: concentration-required errorKind → markRetryConfirmed called; NO toast', async () => {
+    vi.mocked(markRetryConfirmed).mockClear();
+    const { attachActionResultHandler } = await import('./action-result-dispatcher.js');
+    attachActionResultHandler(socket, toastQueueMock, 'it', CURRENT_USER_ID);
+
+    socket.fireMessage(
+      makeValidEnvelope({
+        status: 'failure',
+        outcome: 'no_roll',
+        d20: null,
+        errorKind: 'concentration-required',
+        damage: undefined,
+      }),
+    );
+
+    // markRetryConfirmed must be called with the idempotencyKey
+    expect(markRetryConfirmed).toHaveBeenCalledOnce();
+    expect(vi.mocked(markRetryConfirmed).mock.calls[0]?.[0]).toBe(VALID_UUID);
+
+    // NO toast enqueued — the conc.conflict envelope triggers the modal instead
+    expect(toastQueueMock.enqueue).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ARD-CONC-02: regular errorKind ('gm-rejected') → normal toast enqueue path;
+   * markRetryConfirmed NOT called.
+   */
+  it('ARD-CONC-02: regular errorKind (gm-rejected) → toast enqueued; markRetryConfirmed NOT called', async () => {
+    vi.mocked(markRetryConfirmed).mockClear();
+    const { attachActionResultHandler } = await import('./action-result-dispatcher.js');
+    attachActionResultHandler(socket, toastQueueMock, 'it', CURRENT_USER_ID);
+
+    socket.fireMessage(
+      makeValidEnvelope({
+        status: 'error',
+        outcome: 'no_roll',
+        d20: null,
+        errorKind: 'gm-rejected',
+        damage: undefined,
+      }),
+    );
+
+    expect(toastQueueMock.enqueue).toHaveBeenCalledOnce();
+    expect(markRetryConfirmed).not.toHaveBeenCalled();
   });
 });

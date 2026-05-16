@@ -1285,6 +1285,79 @@ export const HUD_WIDTH_BUDGETS = {
     de: '{used}/{total}',
     max: 7,
   },
+
+  // ─── Phase 9 Plan 09-02 — Action Economy widget i18n keys (4 new keys) ──────
+  // New keys for the action economy chip in StatusHudRenderer footer row.
+  // act_label ('Az.') + bns_label ('Bns') are REUSED from Phase 4a — no duplicates.
+  // Only 4 new keys: reaction short, multi-attack template, and 2 error toast keys.
+  //
+  // Widget format (IT): `Az. ░ Bns ░ R░  Mov 25/30` (row 19, 24-char inner cell)
+  // Multi-attack override: `Az. ▓ [Atk 1/2]  Mov 0/30` (24-char inner cell)
+
+  /**
+   * Action economy reaction slot short label (single char — matches 1-char column).
+   * IT/EN/DE/all locales: 'R' (language-neutral single letter, same as existing `R` prefix).
+   * Max: 1 char.
+   */
+  'econ.reaction.short': {
+    it: 'R',
+    en: 'R',
+    de: 'R',
+    max: 1,
+  },
+
+  /**
+   * Multi-attack progress template for the action economy widget override mode.
+   * Substituted at render time: {N} = current attack, {M} = total attacks.
+   * The `_template` suffix exempts from IB-3 literal-length check (Phase 4b precedent).
+   * Max: 12 chars covers `[Atk 99/99]` = 12.
+   */
+  'econ.multiattack.template': {
+    it: '[Atk {N}/{M}]',
+    en: '[Atk {N}/{M}]',
+    de: '[Atk {N}/{M}]',
+    max: 12,
+  },
+
+  /**
+   * Client-side preconditioner error toast: Action slot already consumed this turn.
+   * Shown when `actionsUsed >= 1` and `multiAttackInProgress === false`.
+   * Budget: 38 chars (toast row budget per CONTEXT §Area 2).
+   * IT: 'Azione già usata' (16) · EN: 'Action already used' (19) · DE: 'Aktion verwendet' (16).
+   */
+  'error.action.already-used-action': {
+    it: 'Azione già usata',
+    en: 'Action already used',
+    de: 'Aktion verwendet',
+    max: 38,
+  },
+
+  /**
+   * Client-side preconditioner error toast: Bonus Action slot already consumed this turn.
+   * Shown when `bonusActionsUsed >= 1` and `multiAttackInProgress === false`.
+   * Budget: 38 chars (toast row budget per CONTEXT §Area 2).
+   * IT: 'Bonus già usato' (15) · EN: 'Bonus already used' (18) · DE: 'Bonus verwendet' (15).
+   */
+  'error.action.already-used-bonus': {
+    it: 'Bonus già usato',
+    en: 'Bonus already used',
+    de: 'Bonus verwendet',
+    max: 38,
+  },
+
+  /**
+   * Concentration drop cancelled toast: player tapped [N] on the concentration
+   * drop modal (Plan 09-03). Shown via the double-tap path of ConcentrationDropModalPanel.
+   * Budget: 38 chars (toast row budget per CONTEXT §Area 2).
+   * IT: 'Cast annullato (conc.)' (22) · EN: 'Cast cancelled (conc.)' (22) · DE: 'Wirken abgebrochen' (18).
+   * Best-effort locales (es/fr/pt-br) fall back to EN string at render time (I18N-05).
+   */
+  'error.action.concentration-cancelled': {
+    it: 'Cast annullato (conc.)',
+    en: 'Cast cancelled (conc.)',
+    de: 'Wirken abgebrochen',
+    max: 38,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

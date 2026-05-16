@@ -227,7 +227,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 + 5 Phase 8 Plan-01 + 5 Phase 8 Plan-02 + 6 Phase 8 Plan-03 + 8 Phase 8 Plan-04 + 4 Phase 9 Plan-02 = 208 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 + 5 Phase 8 Plan-01 + 5 Phase 8 Plan-02 + 6 Phase 8 Plan-03 + 8 Phase 8 Plan-04 + 4 Phase 9 Plan-02 + 1 Phase 9 Plan-03 = 209 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
@@ -261,7 +261,9 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     //   (econ.reaction.short, econ.multiattack.template,
     //    error.action.already-used-action, error.action.already-used-bonus).
     //   NOTE: econ.action.short and econ.bonus.short reused from Phase 4a (act_label, bns_label).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(208);
+    // Phase 9 Plan 03 totals: 1 concentration-cancelled error toast key
+    //   (error.action.concentration-cancelled).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -287,7 +289,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
 
 describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
   // ─── Count ────────────────────────────────────────────────────────────────
-  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6+20+11 Phase 6 = 171 total; WR-04: -1 dead key; +9 P7 +5+5+6 P8 Plans01-03 +8 P8 Plan04 +4 P9 Plan02 = 208 total)', () => {
+  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6+20+11 Phase 6 = 171 total; WR-04: -1 dead key; +9 P7 +5+5+6 P8 Plans01-03 +8 P8 Plan04 +4 P9 Plan02 +1 P9 Plan03 = 209 total)', () => {
     // Sentinel spot-check — a few representative keys from each UI-SPEC section.
     const PHASE_5_SAMPLE_KEYS = [
       'sheet.ability.str',
@@ -339,7 +341,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 196 after Phase 8 Plan 03 (6 ActionOptionsModal keys).
     // Updated to 204 after Phase 8 Plan 04 (8 MoveDirectionPicker keys).
     // Updated to 208 after Phase 9 Plan 02 (4 action economy widget keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(208);
+    // Updated to 209 after Phase 9 Plan 03 (1 error.action.concentration-cancelled key).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
@@ -510,6 +513,7 @@ describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
     // 204 existing + 4 new (econ.reaction.short, econ.multiattack.template,
     // error.action.already-used-action, error.action.already-used-bonus) = 208.
     // act_label + bns_label are REUSED from Phase 4a (no new duplicate keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(208);
+    // Note: after Plan 09-03, total is 209 (208 + 1 concentration-cancelled key).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
   });
 });

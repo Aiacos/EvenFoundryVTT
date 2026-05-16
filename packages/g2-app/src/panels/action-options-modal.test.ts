@@ -47,7 +47,19 @@ vi.mock('./action-economy-state.js', () => ({
   clearActionEconomyState: vi.fn(),
 }));
 
+// Phase 9 Plan 09-03 — mock conc-retry-cache for AOM-RETRY tests.
+// The modal imports cacheRetryEnvelope from './conc-retry-cache.js' and calls it
+// BEFORE ws.send in the tap requiresTarget=false path.
+vi.mock('./conc-retry-cache.js', () => ({
+  cacheRetryEnvelope: vi.fn(),
+  markRetryConfirmed: vi.fn(),
+  consumeRetryEnvelope: vi.fn(() => null),
+  consumeLatestConfirmed: vi.fn(() => null),
+  clearRetryCache: vi.fn(),
+}));
+
 import { getActionEconomyState } from './action-economy-state.js';
+import { cacheRetryEnvelope } from './conc-retry-cache.js';
 import type { Toast } from '../status-hud/toast-types.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -746,6 +758,90 @@ describe('Phase 9 Plan 09-02 — ActionOptionsModal preconditioner (AOM-PRE-01..
     const toastArg = toastQueue.enqueue.mock.calls[0]?.[0] as { id: string };
     // id must start with the deterministic prefix for dedup
     expect(toastArg.id).toMatch(/^action-precond-actor-123-action-/);
+    await modal.onUnmount();
+  });
+});
+
+// ─── AOM-RETRY-01..02: Plan 09-03 concentration retry cache caching ───────────
+//
+// Tests that ActionOptionsModal calls cacheRetryEnvelope BEFORE ws.send in the
+// tap requiresTarget=false path. This allows action-result-dispatcher to mark
+// the entry confirmed when the cast fails with 'concentration-required', enabling
+// ConcentrationDropModalPanel [Y] tap to re-dispatch via consumeLatestConfirmed().
+//
+// AOM-RETRY-01: tap requiresTarget=false → cacheRetryEnvelope called BEFORE ws.send
+// AOM-RETRY-02: tap with preconditioner BLOCK → cacheRetryEnvelope NOT called (no envelope emitted)
+
+describe('Phase 9 Plan 09-03 — ActionOptionsModal retry cache integration (AOM-RETRY)', () => {
+  afterEach(() => {
+    vi.mocked(getActionEconomyState).mockReset();
+    vi.mocked(getActionEconomyState).mockReturnValue(null);
+    vi.mocked(cacheRetryEnvelope).mockClear();
+  });
+
+  it('AOM-RETRY-01: tap requiresTarget=false → cacheRetryEnvelope called BEFORE ws.send', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-retry-01' });
+    vi.mocked(getActionEconomyState).mockReturnValue(null); // fail-open
+
+    const callOrder: string[] = [];
+    const ws = {
+      send: vi.fn(() => callOrder.push('ws.send')),
+    } as ActionOptionsWebSocket & { send: ReturnType<typeof vi.fn> };
+    vi.mocked(cacheRetryEnvelope).mockImplementation(() => {
+      callOrder.push('cacheRetryEnvelope');
+    });
+
+    const { modal } = makeModal({
+      ws,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    // cacheRetryEnvelope must be called (AOM-RETRY-01)
+    expect(cacheRetryEnvelope).toHaveBeenCalledOnce();
+
+    // Verify order: cache BEFORE send
+    expect(callOrder[0]).toBe('cacheRetryEnvelope');
+    expect(callOrder[1]).toBe('ws.send');
+
+    // cacheRetryEnvelope called with idempotencyKey + envelope + 'unconfirmed'
+    const cacheArgs = vi.mocked(cacheRetryEnvelope).mock.calls[0];
+    expect(cacheArgs?.[0]).toBe('test-uuid-retry-01'); // idemKey
+    expect(cacheArgs?.[2]).toBe('unconfirmed'); // status
+    // Envelope shape: verify idempotencyKey is threaded
+    const envelope = cacheArgs?.[1] as { payload?: { idempotencyKey?: string } };
+    expect(envelope.payload?.idempotencyKey).toBe('test-uuid-retry-01');
+
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  it('AOM-RETRY-02: tap with preconditioner BLOCK → cacheRetryEnvelope NOT called (no envelope emitted)', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+
+    const ws = makeWs();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      toastQueue,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    // Preconditioner blocks: NO ws.send, NO cacheRetryEnvelope
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(cacheRetryEnvelope).not.toHaveBeenCalled();
+    // But toast IS enqueued
+    expect(toastQueue.enqueue).toHaveBeenCalledOnce();
     await modal.onUnmount();
   });
 });

@@ -40,6 +40,7 @@ import {
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
 import { getLabel } from '../status-hud/i18n-budgets.js';
 import type { Toast } from '../status-hud/toast-types.js';
+import { markRetryConfirmed } from './conc-retry-cache.js';
 
 /**
  * Minimal WebSocket shape the dispatcher consumes.
@@ -247,7 +248,17 @@ export function attachActionResultHandler(
 
       const payload = payloadParse.data;
 
-      // Step 7 — enqueue typed toast
+      // Plan 09-03 Step 7a — concentration-required routing (ARD-CONC-01).
+      // When the server rejected a cast because the actor is concentrating, mark
+      // the cached retry envelope as confirmed (so ConcentrationDropModalPanel [Y]
+      // tap can re-dispatch it). Skip the toast — the conc.conflict envelope that
+      // the castSpellHandler emitted separately will mount the modal as the UX surface.
+      if (payload.errorKind === 'concentration-required') {
+        markRetryConfirmed(payload.idempotencyKey);
+        return; // Do NOT enqueue toast — modal is the UX surface
+      }
+
+      // Step 7 — enqueue typed toast (all non-concentration-required results)
       const message = formatActionMessage(payload, locale);
       const severity = formatSeverity(payload.status);
       toastQueue.enqueue({

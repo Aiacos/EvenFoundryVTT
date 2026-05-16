@@ -64,6 +64,7 @@ import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import type { Toast } from '../status-hud/toast-types.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import { getActionEconomyState } from './action-economy-state.js';
+import { cacheRetryEnvelope } from './conc-retry-cache.js';
 
 // WR-03: crypto.randomUUID() is available in the Even Realities App WebView
 // (Safari WKWebView on iOS 15+ / Baseline 2021). The `declare const` ambient
@@ -298,6 +299,7 @@ export class ActionOptionsModal implements OverlayPanel {
           // AOM-05: requiresTarget=false + no preconditioner block → emit tool.invoke + close.
           const toolId = this.request.kind === 'spell' ? 'cast-spell' : 'use-item';
           const argKey = this.request.kind === 'spell' ? 'spell_id' : 'item_id';
+          const idempotencyKey = crypto.randomUUID();
           const envelope = {
             proto: 'evf-v1' as const,
             seq: 0,
@@ -306,7 +308,7 @@ export class ActionOptionsModal implements OverlayPanel {
             session_id: this.sessionId,
             payload: {
               toolId,
-              idempotencyKey: crypto.randomUUID(),
+              idempotencyKey,
               args: {
                 actor_id: this.request.actorId,
                 [argKey]: this.request.itemId,
@@ -314,6 +316,11 @@ export class ActionOptionsModal implements OverlayPanel {
               },
             },
           };
+          // Plan 09-03: cache the outgoing envelope BEFORE sending (AOM-RETRY-01).
+          // The entry is 'unconfirmed' until action-result-dispatcher sees the
+          // concentration-required errorKind (marks confirmed). This ordering ensures
+          // the cache entry exists before the ws response arrives (even in fast tests).
+          cacheRetryEnvelope(idempotencyKey, envelope, 'unconfirmed');
           this.ws.send(JSON.stringify(envelope));
           this.onCloseCb();
         }
