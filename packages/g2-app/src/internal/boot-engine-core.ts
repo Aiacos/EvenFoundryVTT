@@ -36,9 +36,12 @@
  *       ES/FR/PT-BR codes are best-effort per I18N-05.
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
+ *  11b. attachR1EventSource(ws, gestureBus, lm, DEFAULT_R1_TIMINGS) — R1 gesture bridge (Phase 6)
+ *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionLongPress(bus, router, lm, makeMenu)
+ *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1]) — atomic single-flush
  *  13. await mapBase.draw() — first frame
- *  14. return { layerManager, rasterController, teardown }
+ *  14. return { layerManager, rasterController, localeEvents, teardown }
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §W-4 + §NF-2
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-05-PLAN.md Task 1
@@ -53,8 +56,16 @@ import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
 import { createBootPage } from '../engine/page-lifecycle.js';
+import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
+import { PanelRouter } from '../engine/panel-router.js';
+import { attachR1EventSource } from '../engine/r1-event-source.js';
+import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
-import { loadLocaleOverride } from '../locale/locale-override.js';
+import { LocaleEventEmitter } from '../locale/locale-events.js';
+import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
+import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
+import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
+import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
@@ -131,6 +142,19 @@ export interface BootEngineHandle {
   readonly teardown: () => void;
   /** Step 9c result — opts.locale unless a stored override was applied. */
   readonly effectiveLocale: BootEngineLocale;
+  /**
+   * Shared in-process locale event bus (Phase 6 — step 11c).
+   *
+   * Created once per boot and shared between the `makeMenu` factory closure
+   * (which threads it into every `QuickActionMenuPanel` instance) and external
+   * consumers (tests, future hot-reload). Panels subscribe to this emitter on
+   * `onMount` and unsubscribe on `onUnmount`, so `size()` is 0 at boot time
+   * and rises/falls with the panel mount lifecycle.
+   *
+   * Exposed here so tests can verify locale-change fan-out end-to-end (BERW-07)
+   * without needing to reach into internal closure state.
+   */
+  readonly localeEvents: LocaleEventEmitter;
 }
 
 /** UI-SPEC §Screen 1 — the 5 canonical boot-splash labels (locale-resolved by caller). */
@@ -254,7 +278,8 @@ export async function _bootEngineCore(
   // bridge's HandshakeServer producer only emits values from SERVER_CAPS_V1,
   // so the cast through `as ServerCap[]` is sound at runtime — and any future
   // schema drift surfaces immediately at the LayerManager mount gate.
-  layerManager.setNegotiatedCaps(new Set<ServerCap>(handshake.server_caps as ServerCap[]));
+  const negotiatedCaps = new Set<ServerCap>(handshake.server_caps as ServerCap[]);
+  layerManager.setNegotiatedCaps(negotiatedCaps);
 
   // 8. Construct the raster controller (singleton Worker + debounce).
   const rasterController = new RasterController(bridge);
@@ -329,6 +354,86 @@ export async function _bootEngineCore(
   //     canvas extractions route through controller.requestFrame.
   const unsubSceneInput = attachSceneInputToWs(ws, rasterController);
 
+  // 11b. R1 gesture bridge — WS `r1.gesture` envelopes → PanelGestureBus publish.
+  //      Must run AFTER step 7 `setNegotiatedCaps` so LayerManager's negotiated
+  //      caps are consistent before gestures can flow (RESEARCH §Q2 / BERW-08).
+  //      `DEFAULT_R1_TIMINGS` is the Phase 6 default; SC-06-01 hardware-tuning
+  //      closure may adjust `longPressMs` in a future phase.
+  const gestureBus = new PanelGestureBus();
+  const unsubR1 = attachR1EventSource(ws, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
+
+  // 11c. LocaleEventEmitter singleton + QuickActionMenuPanel factory + long-press dispatcher.
+  //      The `makeMenu` factory is a closure that captures boot-time references (bridge,
+  //      bus, locale, localeEvents) and constructs a fresh `QuickActionMenuPanel` on
+  //      each `pushOverlay` call (factory pattern — panel state is ephemeral, not cached).
+  //
+  //      `currentLocaleOverride` threads the step 9c read-back so the menu's language
+  //      sub-menu starts with the correct current override rather than 'auto' (I18N-02).
+  //
+  //      The `makeMenu` callbacks:
+  //        onClose    → `popOverlay(lm)` — suspends/restores the panel below the menu.
+  //        onNavigate → `openPanel(target, deps)` — navigates to a Phase 5 panel.
+  //        onMapModeToggle → Phase 4b map-mode-toggle stub; TODO(ADR-0009): Phase 7.
+  //        onAction   → Phase 7 stub — no-op with console.warn telemetry.
+  const localeEvents = new LocaleEventEmitter();
+
+  const panelRouter = new PanelRouter();
+  await panelRouter.discoverPanels();
+
+  const currentLocaleOverride: LocaleOverride = localeOverride === 'auto' ? 'auto' : localeOverride;
+
+  const makeMenu = (): QuickActionMenuPanel => {
+    return new QuickActionMenuPanel(
+      bridge,
+      gestureBus,
+      effectiveLocale,
+      currentLocaleOverride,
+      localeEvents,
+      {
+        onClose: () => {
+          void panelRouter.popOverlay(layerManager);
+        },
+        onNavigate: (target) => {
+          void panelRouter.openPanel(target, {
+            bridge,
+            layerManager,
+            gestureBus,
+            negotiatedCaps: negotiatedCaps,
+            locale: effectiveLocale,
+          });
+        },
+        onMapModeToggle: () => {
+          // Phase 4b map-mode-toggle stub — Phase 7 wires the full toggle logic
+          // via `persistMapMode` + `layerManager.setMapMode`. For now a no-op.
+          console.warn('[boot-engine-core] onMapModeToggle: Phase 7 stub — no-op');
+        },
+        onAction: () => {
+          // Phase 7 stub — the [A] Action panel is not yet shipped.
+          console.warn('[boot-engine-core] onAction: Phase 7 panel pending (Action panel)');
+        },
+      },
+    );
+  };
+
+  const unsubLongPress = attachQuickActionLongPress(
+    gestureBus,
+    panelRouter,
+    layerManager,
+    makeMenu,
+  );
+
+  // 11d. Conc-conflict dispatcher — closes the Plan 04b-05 deferred wire.
+  //      Subscribes to `conc.conflict` WS envelopes and mounts the concentration-drop
+  //      modal at z=2 when a conflict is detected (CONC-01 flow, CCD-3 / ISM-10).
+  //      The dispatcher uses the double trust boundary pattern (T-06-04-04 mitigation).
+  const unsubConcConflict = attachConcConflictHandler(
+    ws,
+    bridge,
+    gestureBus,
+    layerManager,
+    effectiveLocale,
+  );
+
   // 12. Atomic bundle — exactly one rebuildPageContainer flush per ADR-0001
   //     Amendment 1 / CONTEXT.md §Area 1.
   await layerManager.bundle([
@@ -341,12 +446,29 @@ export async function _bootEngineCore(
   //     Plan 06 pushes the first frame_pixels envelope).
   await mapBase.draw();
 
-  // 14. Return the handle with teardown closure + step 9c effective locale.
+  // 14. Return the handle with teardown closure + step 9c effective locale + localeEvents.
   return {
     layerManager,
     rasterController,
     effectiveLocale,
+    localeEvents,
     teardown: (): void => {
+      // Tear down Phase 6 dispatcher subscriptions first (reverse of attach order).
+      try {
+        unsubConcConflict();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubConcConflict failed', err);
+      }
+      try {
+        unsubLongPress();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubLongPress failed', err);
+      }
+      try {
+        unsubR1();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubR1 failed', err);
+      }
       try {
         unsubSceneInput();
       } catch (err) {

@@ -716,7 +716,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         send: vi.fn(),
-      } as unknown as Parameters<typeof ConcentrationDropModalPanel>[1],
+      } as never,
       h.gestureBus,
       {
         effectId: 'effect-1',
@@ -738,8 +738,8 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     // console.warn must have been called with the conc-modal message
     expect(warnSpy).toHaveBeenCalled();
-    const warnMessages = warnSpy.mock.calls.map((call) => String(call[0]));
-    const concWarn = warnMessages.find((msg) => msg.includes('conc-modal'));
+    const warnMessages = warnSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+    const concWarn = warnMessages.find((msg: string) => msg.includes('conc-modal'));
     expect(concWarn).toBeDefined();
 
     // Menu must now be mounted
