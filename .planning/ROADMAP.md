@@ -22,7 +22,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 4a: G2 Engine + Raster + Status HUD** - Layer manager + persistent Status HUD + raster pipeline (image-q + upng-js + xxhash-wasm + OffscreenCanvas) + 6-layer optimization stack + glyph fallback + boot splash + capability handshake *(6/6 plans complete 2026-05-15; hardware-pending SC deferred to `human_needed` per ADR-0005 Branch A; ADR-0009 ACCEPTED)*
 - [x] **Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI** - Stable layer-manager API for Phase 5 + map mode toggle + toast queue + boot error states + death-saves HUD + concentration-drop modal primitive *(6/6 plans complete 2026-05-15; hardware-pending SC deferred to `human_needed` per ADR-0005 Branch A; ADR-0009 Amendment 1 ACCEPTED documenting differential demolish + container budget audit + in-process gesture-bus)*
 - [x] **Phase 5: Panel Plugin System + Read-Only Panels** - Panel API contract + 6-tab Sheet + Combat tracker + Log + Inventory + Spellbook + i18n width budget + dual-edition support (completed 2026-05-15)
-- [ ] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
+- [x] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
 - [ ] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger
 - [ ] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners
 - [ ] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow
@@ -179,7 +179,7 @@ Plans:
   3. Cross-overlay reachability + closability checklist §7.14.4 ck 1-15 passes: every overlay is reachable from every other overlay in ≤2 gestures, and `[X]` closes from every overlay (NAV-03)
   4. Status HUD footer displays a context chip `R1: tap=cycle scroll=nav long=quick[combat]` that names the menu long-press will open *right now* (INV-5 visible enforcement, research Pitfall 5)
   5. INV-5 "Gesture Determinism" is ratified in `docs/architecture/INVARIANTS.md` and binds for the rest of the project (research recommendation, addresses Pitfall 5)
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed (PHASE CLOSED)
 
 Plans:
 
@@ -193,7 +193,7 @@ Plans:
 - [x] 06-03-PLAN.md — StatusHudRenderer.renderContextChip + per-panel getR1Hints on 5 Phase 5 panels + parseR1HintString helper + 5 INV-1 chip fixtures + 12 hud_r1_* i18n keys (NAV-01 visible enforcement)
 
 **Wave 3** *(blocked on Wave 2; NOT autonomous — Phase 6 closure)*
-- [ ] 06-04-PLAN.md — 06-cross-overlay-reachability COR-01..COR-15 harness (Specs §7.14.4 ck 1-15 1:1) + panel-gesture-bus single-receiver invariant (PGB-SR-01..05) + attachQuickActionLongPress dispatcher + boot-engine R1/long-press/conc-conflict wiring (Phase 6 closure)
+- [x] 06-04-PLAN.md — 06-cross-overlay-reachability COR-01..COR-15 harness (Specs §7.14.4 ck 1-15 1:1) + panel-gesture-bus single-receiver invariant (PGB-SR-01..05) + attachQuickActionLongPress dispatcher + boot-engine R1/long-press/conc-conflict wiring (Phase 6 closure)
 
 ### Phase 7: Foundry Module Write Path
 **Goal**: GM-side `activity.use()` execution via `socketlib.executeAsGM` only (single-workflow-origin option A) wires up cast/attack/use end-to-end; multi-attack tracker and reaction passive-notification join MVP; concentration-drop modal trigger and chat-message audit log close the loop.

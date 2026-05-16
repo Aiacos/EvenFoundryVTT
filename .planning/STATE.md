@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: IN_PROGRESS — Phase 6 Plans 01-03 committed; Plan 04 remains.
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-05-16T08:41:05.764Z"
-last_activity: "2026-05-16 — Phase 6 Plan 03 (Wave 2): renderContextChip + LayerManagerLike + 5 panel getR1Hints() + 12 i18n keys + 5 INV-1 fixtures; NAV-01 closed; 1275 tests passing."
+status: PHASE_6_CLOSED — Plans 01-04 all committed; Phase 7 is next (Phase 8 stretch).
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-05-16T09:07:16Z"
+last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
 progress:
   total_phases: 15
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 39
-  completed_plans: 38
-  percent: 97
+  completed_plans: 39
+  percent: 53
 ---
 
 # Project State
@@ -25,11 +25,13 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 6 (r1-integration-quick-action-inv-5 — IN PROGRESS)
-Plan: 06-03 complete — next: 06-04 (Wave 3 — R1 event source + boot-engine-core wiring)
-Status: IN_PROGRESS — Phase 6 Plans 01-02 committed; Plans 03-04 remain.
+Phase: 6 (r1-integration-quick-action-inv-5 — CLOSED)
+Plan: 06-04 complete — Phase 6 fully closed. Next: Phase 7 (combat tracker + spell casting).
+Status: PHASE_6_CLOSED — All 4 plans committed; NAV-01/02/03 software-closed; 18 hardware-pending SCs carry forward.
 
-Last activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
+Last activity: 2026-05-16 — Phase 6 CLOSED (software-side): Plans 01-04 complete. NAV-01/02/03 closed. 1309 tests pass. 18 hardware-pending SCs carry forward (4a:5 + 4b:5 + 5:5 + 6:3).
+
+Previous activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
 
   - Planning (3 iterations): NEEDS_REVISION → APPROVED via orchestrator inline fix for B-2 fan-out (commit c6946a7).
   - Wave 0 Plan 01: overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amd 1 + 27 i18n keys (+46 tests; merged 41d4741).
