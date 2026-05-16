@@ -42,12 +42,14 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §status-hud-layer.ts
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-UI-SPEC.md §Status HUD Corner Card
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md §Area 7 (DEATH-01 pivot trigger)
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2 (chip design — Plan 06-03)
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-03-PLAN.md Task 2 (LayerManager wiring)
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import type { Layer } from '../engine/layer-types.js';
-import type { StatusHudRenderer } from './status-hud-renderer.js';
+import type { LayerManagerLike, StatusHudRenderer } from './status-hud-renderer.js';
 
 /** Default debounce window per CONTEXT.md §Area 3. */
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -81,6 +83,19 @@ export interface StatusHudLayerOpts {
   readonly debounceMs?: number;
   /** Override the 30 s heartbeat period (rarely needed). */
   readonly heartbeatMs?: number;
+  /**
+   * LayerManager reference for reading `getTopLayer()?.getR1Hints?.()` on
+   * every render to produce the context-aware R1 chip footer row (Phase 6
+   * Plan 03 — NAV-01 closure + INV-5 SC-4 visible enforcement).
+   *
+   * Optional — omit during boot until the LayerManager is available.
+   * Plan 06-04 (`boot-engine-core.ts`) wires the real LayerManager instance
+   * here. Tests inject a lightweight mock satisfying {@link LayerManagerLike}.
+   *
+   * @see packages/g2-app/src/status-hud/status-hud-renderer.ts renderContextChip
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2
+   */
+  readonly layerManager?: LayerManagerLike;
 }
 
 /**
@@ -100,6 +115,14 @@ export class StatusHudLayer implements Layer {
   private readonly containerName: string;
   private readonly debounceMs: number;
   private readonly heartbeatMs: number;
+  /**
+   * Phase 6 Plan 03 — LayerManager reference for chip rendering.
+   *
+   * Stored from constructor opts; passed to `renderer.renderContextChip` on
+   * every `_renderNow()` call so the chip reads the live top layer's R1 hints.
+   * `null` if no LayerManager was provided (early boot / legacy test path).
+   */
+  private readonly layerManager: LayerManagerLike | null;
 
   /** Unsubscribe callback returned by `wsEvents.subscribe`. */
   private readonly unsubscribe: () => void;
@@ -128,6 +151,7 @@ export class StatusHudLayer implements Layer {
     this.containerName = opts.containerName ?? DEFAULT_CONTAINER_NAME;
     this.debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+    this.layerManager = opts.layerManager ?? null;
 
     // Subscribe to character.delta and cache the unsubscribe fn for destroy().
     this.unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
@@ -259,15 +283,25 @@ export class StatusHudLayer implements Layer {
   /**
    * Render the current snapshot via the renderer + push to the bridge.
    *
+   * Produces two lines of content:
+   *   1. The 28×21 corner card (AsciiGrid.toString()) — always-visible status HUD.
+   *   2. The R1 context chip footer row (Phase 6 Plan 03 — NAV-01 + INV-5 visible
+   *      enforcement). The chip reads `layerManager.getTopLayer()?.getR1Hints?.()`
+   *      on every render so it always names the live long-press target.
+   *
+   * Both are concatenated into a single `textContainerUpgrade` payload. The
+   * bridge displays them sequentially as the corner-card content + footer chip.
+   *
    * Never throws — bridge rejections propagate as Promise rejections to the
    * caller (LayerManager handles error logging at the call site).
    */
   private async _renderNow(): Promise<void> {
     const grid =
       this.snapshot !== null ? this.renderer.render(this.snapshot) : this.renderer.renderLoading();
+    const chip = this.renderer.renderContextChip(this.layerManager, this.renderer.locale);
     const payload = new TextContainerUpgrade({
       containerName: this.containerName,
-      content: grid.toString(),
+      content: `${grid.toString()}\n${chip}`,
     });
     await this.bridge.textContainerUpgrade(payload);
   }

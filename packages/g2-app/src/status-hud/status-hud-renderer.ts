@@ -169,7 +169,11 @@ export interface StatusHudRendererOpts {
  * the LayerManager + StatusHudLayer handle debouncing).
  */
 export class StatusHudRenderer {
-  private readonly locale: HudLocale;
+  /**
+   * Active locale — exposed for StatusHudLayer to pass as the `locale`
+   * argument to {@link renderContextChip} without re-storing it separately.
+   */
+  public readonly locale: HudLocale;
   private readonly mapMode: StatusHudMapMode;
   /** Current rendering mode (mutable via {@link setMode}). */
   private mode: StatusHudMode;
