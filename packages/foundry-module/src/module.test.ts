@@ -392,14 +392,16 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(handlers?.has('evf.getSceneViewport')).toBe(true);
     expect(handlers?.has('evf.getEventLog')).toBe(true);
     expect(handlers?.has('evf.listCharacters')).toBe(true);
-    // 7 tool stubs (Phase 03-04 — phase-07-pending placeholders)
+    // 6 real write-path handlers (Plan 07-02 + 07-03 replacements) + 1 remaining stub
     expect(handlers?.has('evf.castSpell')).toBe(true);
     expect(handlers?.has('evf.weaponAttack')).toBe(true);
     expect(handlers?.has('evf.useItem')).toBe(true);
-    expect(handlers?.has('evf.skillCheck')).toBe(true);
+    // Plan 07-03: evf.skillCheck renamed → evf.confirmTemplatePlacement (in-place, count stays 14)
+    expect(handlers?.has('evf.skillCheck')).toBe(false);
+    expect(handlers?.has('evf.confirmTemplatePlacement')).toBe(true);
     expect(handlers?.has('evf.moveToken')).toBe(true);
     expect(handlers?.has('evf.placeTemplate')).toBe(true);
-    expect(handlers?.has('evf.setTargets')).toBe(true);
+    expect(handlers?.has('evf.setTargets')).toBe(true); // remaining stub — Plan 07-05
     expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 

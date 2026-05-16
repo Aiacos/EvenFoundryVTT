@@ -13,13 +13,13 @@
  * - `evf.getSceneViewport`     — returns SceneViewport (Plan 05)
  * - `evf.getEventLog`          — returns EventLogEntry[] paginated by since/limit (Plan 05)
  * - `evf.listCharacters`       — returns all PC actors (Plan 05, wizard Step 3)
- * - `evf.castSpell`            — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.weaponAttack`         — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.useItem`              — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.skillCheck`           — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.moveToken`            — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.placeTemplate`        — Phase 07 stub returning phase-07-pending (Plan 03-04)
- * - `evf.setTargets`           — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.castSpell`                  — Plan 07-02 real handler (castSpellHandler)
+ * - `evf.weaponAttack`               — Plan 07-02 real handler (weaponAttackHandler)
+ * - `evf.useItem`                    — Plan 07-02 real handler (useItemHandler)
+ * - `evf.confirmTemplatePlacement`   — Plan 07-03 real handler (confirmTemplatePlacementHandler)
+ * - `evf.moveToken`                  — Plan 07-02 real handler (moveTokenHandler)
+ * - `evf.placeTemplate`              — Plan 07-03 real handler (placeTemplateHandler)
+ * - `evf.setTargets`                 — Phase 07 stub returning phase-07-pending (Plan 03-04)
  *
  * The single-workflow-origin discipline (Phase 0 D-15 Option A) requires ALL reads
  * from Foundry game state via the bridge to go through `socketlib.executeAsGM`.
@@ -314,11 +314,20 @@ const handleWeaponAttack = makeDispatchAdapter('weapon-attack');
  */
 const handleUseItem = makeDispatchAdapter('use-item');
 
-/** T-03-14: no game state write; Phase 07 dispatches real actor.rollSkill() — this stub returns immediately. */
-function handleSkillCheckStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real actor.rollSkill() call — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * confirmTemplatePlacement socketlib handler — Plan 07-03 replacement of Plan 03-04 evf.skillCheck stub.
+ *
+ * Validates payload shape, calls dispatchTool('confirm-template-placement', payload).
+ * Returns ToolResult from the confirmTemplatePlacementHandler (canvas.scene.createEmbeddedDocuments,
+ * NOT activity.use). Slot renamed from 'evf.skillCheck' → 'evf.confirmTemplatePlacement'
+ * in-place (count stays 14).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/place-template.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1
+ */
+const handleConfirmTemplatePlacement = makeDispatchAdapter('confirm-template-placement');
 
 /**
  * moveToken socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
@@ -333,11 +342,19 @@ function handleSkillCheckStub(_input: unknown): { status: 'phase-07-pending' } {
  */
 const handleMoveToken = makeDispatchAdapter('move-token');
 
-/** T-03-14: no game state write; Phase 07 dispatches real MeasuredTemplate.create() — this stub returns immediately. */
-function handlePlaceTemplateStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real MeasuredTemplate.create() call — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * placeTemplate socketlib handler — Plan 07-03 replacement of Plan 03-04 stub.
+ *
+ * Validates payload shape, calls dispatchTool('place-template', payload).
+ * Returns ToolResult from the placeTemplateHandler (AbilityTemplate.fromActivity +
+ * PLACEMENT_CONTEXTS storage, NOT activity.use / drawPreview).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/place-template.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 1
+ */
+const handlePlaceTemplate = makeDispatchAdapter('place-template');
 
 /** T-03-14: no game state write; Phase 07 dispatches real TokenLayer target update — this stub returns immediately. */
 function handleSetTargetsStub(_input: unknown): { status: 'phase-07-pending' } {
@@ -384,17 +401,21 @@ export function registerSocketlibHandlers(): void {
   socketlib.registerComplexHandler(MODULE_ID, 'evf.getEventLog', handleGetEventLog);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.listCharacters', handleListCharacters);
 
-  // Plan 07-02: 4 real handlers (replaced in-place — no new registrations, count stays 14)
+  // Plan 07-02 + 07-03: 6 real handlers (replaced in-place — no new registrations, count stays 14)
   // Each adapter validates input shape → calls dispatchTool → returns ToolResult.
   // ADR-0011 single-workflow-origin discipline; CI Gate 8: no activity.use() here.
   socketlib.registerComplexHandler(MODULE_ID, 'evf.castSpell', handleCastSpell);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.weaponAttack', handleWeaponAttack);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.useItem', handleUseItem);
-  // skillCheck: still a Plan 03-04 stub — Phase 08/09 will replace with real actor.rollSkill()
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.skillCheck', handleSkillCheckStub);
+  // Plan 07-03: 'evf.skillCheck' stub slot renamed → 'evf.confirmTemplatePlacement' (count stays 14)
+  socketlib.registerComplexHandler(
+    MODULE_ID,
+    'evf.confirmTemplatePlacement',
+    handleConfirmTemplatePlacement,
+  );
   socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveToken);
-  // placeTemplate: still a Plan 03-04 stub — Plan 07-03 (Wave 2) replaces
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplateStub);
+  // Plan 07-03: placeTemplate stub replaced with real handler (placeTemplateHandler)
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplate);
   // setTargets: still a Plan 03-04 stub — Plan 07-05 renames to evf.dropConcentration
   socketlib.registerComplexHandler(MODULE_ID, 'evf.setTargets', handleSetTargetsStub);
 }

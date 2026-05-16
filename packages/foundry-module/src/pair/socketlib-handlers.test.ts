@@ -350,10 +350,12 @@ describe('registerSocketlibHandlers', () => {
     });
   });
 
-  // ─── Plan 07-02: registerComplexHandler count regression guard (Pitfall 7) ────
+  // ─── Plan 07-02 + 07-03: registerComplexHandler count regression guard (Pitfall 7) ──
   //
   // REGRESSION GUARD: total registerComplexHandler count must stay exactly 14.
   // Plan 07-02 replaces 4 stub function bodies in-place — NO new registrations.
+  // Plan 07-03 replaces 2 more stubs in-place AND renames evf.skillCheck →
+  // evf.confirmTemplatePlacement (still in-place, count stays 14).
   // If this test fails, a new handler was accidentally registered.
 
   it('registers exactly 14 handlers total (Pitfall 7 regression guard)', async () => {
@@ -470,23 +472,33 @@ describe('registerSocketlibHandlers', () => {
     });
   });
 
-  // ─── Plan 07-02: verify 3 remaining stubs still return phase-07-pending ───────
+  // ─── Plan 07-03: verify 2 replaced stubs + 1 remaining stub ─────────────────
   //
-  // The skill-check, place-template, and set-targets stubs must remain untouched.
-  // Plans 07-03 / 07-05 replace them later.
+  // Plan 07-03 (Wave 2): evf.skillCheck renamed → evf.confirmTemplatePlacement
+  // (real handler), evf.placeTemplate replaced with real handler.
+  // evf.setTargets remains a stub — Plan 07-05 will rename it to evf.dropConcentration.
 
-  it('evf.skillCheck still returns phase-07-pending (stub untouched)', async () => {
+  it('evf.skillCheck is NOT registered (slot renamed to evf.confirmTemplatePlacement)', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    const result = socketlibMock.callHandler('evf.skillCheck', {});
-    expect(result).toEqual({ status: 'phase-07-pending' });
+    // callHandler throws if the handler id is not registered
+    expect(() => socketlibMock.callHandler('evf.skillCheck', {})).toThrow();
   });
 
-  it('evf.placeTemplate still returns phase-07-pending (stub untouched)', async () => {
+  it('evf.confirmTemplatePlacement is registered and returns invalid_input on empty payload', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    const result = socketlibMock.callHandler('evf.placeTemplate', {});
-    expect(result).toEqual({ status: 'phase-07-pending' });
+    // Empty payload fails validation — confirmTemplatePlacementHandler requires placementId + coords
+    const result = await (socketlibMock.callHandler('evf.confirmTemplatePlacement', {}) as Promise<unknown>);
+    expect(result).toMatchObject({ success: false, error: 'invalid_input' });
+  });
+
+  it('evf.placeTemplate is registered and returns invalid_input on empty payload', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    // Empty payload fails validation — placeTemplateHandler requires actorId + itemId
+    const result = await (socketlibMock.callHandler('evf.placeTemplate', {}) as Promise<unknown>);
+    expect(result).toMatchObject({ success: false, error: 'invalid_input' });
   });
 
   it('evf.setTargets still returns phase-07-pending (stub untouched)', async () => {

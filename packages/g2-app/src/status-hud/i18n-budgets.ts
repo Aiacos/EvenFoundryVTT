@@ -880,6 +880,111 @@ export const HUD_WIDTH_BUDGETS = {
     de: '—',
     max: 4,
   },
+
+  // ─── Phase 7 Plan 07-03 additions — TemplatePlacementPanel (z=2 overlay) ───
+  // ACT-02 AoE template placement panel i18n keys.
+  // All keys fit within their max budgets (IT canonical per CONTEXT §Area 3 rule).
+
+  /**
+   * Template placement panel title (shown in top border bracket).
+   * IT max: "POSIZIONAMENTO" = 14 chars.
+   */
+  tmpl_title: {
+    it: 'POSIZIONAMENTO',
+    en: 'PLACE TEMPLATE',
+    de: 'VORLAGE SETZEN',
+    max: 14,
+  },
+
+  /**
+   * Template placement panel spell label prefix.
+   * IT max: "Incantesimo: " = 13 chars.
+   */
+  tmpl_spell_label: {
+    it: 'Incantesimo:',
+    en: 'Spell:',
+    de: 'Zauber:',
+    max: 12,
+  },
+
+  /**
+   * Template placement panel index indicator template (e.g., "[1/3]").
+   * Constructed at render time with `templateIndex+1` and `total`.
+   * The static label before the number — max 4 chars each side.
+   */
+  tmpl_index_label: {
+    it: 'Template',
+    en: 'Template',
+    de: 'Vorlage',
+    max: 8,
+  },
+
+  /**
+   * Template placement panel position label prefix.
+   * IT max: "Posizione:" = 10 chars.
+   */
+  tmpl_position_label: {
+    it: 'Posizione:',
+    en: 'Position:',
+    de: 'Position:',
+    max: 10,
+  },
+
+  /**
+   * Template placement panel tap-to-confirm hint (footer button label).
+   * IT max: "[R1] Conferma" = 14 chars.
+   */
+  tmpl_tap_hint: {
+    it: '[R1] Conferma',
+    en: '[R1] Confirm',
+    de: '[R1] Bestät.',
+    max: 14,
+  },
+
+  /**
+   * Template placement panel long-press-to-cancel hint (footer button label).
+   * IT max: "[lng] Annulla" = 14 chars.
+   */
+  tmpl_long_hint: {
+    it: '[lng] Annulla',
+    en: '[lng] Cancel',
+    de: '[lng] Abbr.',
+    max: 14,
+  },
+
+  /**
+   * R1 context chip for the TemplatePlacementPanel.
+   * Shown in the status HUD chip when the template panel is mounted.
+   * IT max: "pos" = 3 chars (scroll hint — short).
+   */
+  hud_r1_tmpl_scroll: {
+    it: 'pos',
+    en: 'pos',
+    de: 'pos',
+    max: 3,
+  },
+
+  /**
+   * R1 context chip tap hint for TemplatePlacementPanel.
+   * IT max: "conferma" = 8 chars.
+   */
+  hud_r1_tmpl_tap: {
+    it: 'conferma',
+    en: 'confirm',
+    de: 'bestät.',
+    max: 8,
+  },
+
+  /**
+   * R1 context chip long-press label for TemplatePlacementPanel.
+   * IT max: "annulla" = 7 chars.
+   */
+  hud_r1_tmpl_long: {
+    it: 'annulla',
+    en: 'cancel',
+    de: 'abbr.',
+    max: 7,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**
