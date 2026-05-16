@@ -40,9 +40,7 @@
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)
  */
 
-import {
-  TemplatePlacementConfirmPayloadSchema,
-} from '@evf/shared-protocol';
+import { TemplatePlacementConfirmPayloadSchema } from '@evf/shared-protocol';
 import type { ArgsValidator, ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── PLACEMENT_CONTEXTS — 60s TTL placement state store ──────────────────────
@@ -102,7 +100,9 @@ interface PlaceTemplateArgs {
  * plain object (duck-typing — no zod required in the handler layer).
  */
 const PlaceTemplateArgsSchema: ArgsValidator<PlaceTemplateArgs> = {
-  safeParse(data: unknown): { success: true; data: PlaceTemplateArgs } | { success: false; error: { message: string } } {
+  safeParse(
+    data: unknown,
+  ): { success: true; data: PlaceTemplateArgs } | { success: false; error: { message: string } } {
     if (data === null || typeof data !== 'object') {
       return { success: false, error: { message: 'args must be an object' } };
     }
@@ -149,7 +149,10 @@ function generateUUID(): string {
   // crypto.randomUUID() is available in Node 14.17+ and modern browsers.
   // Test environments may mock crypto.getRandomValues only — handle both.
   const cryptoGlobal = globalThis.crypto;
-  if (cryptoGlobal && typeof (cryptoGlobal as { randomUUID?: () => string }).randomUUID === 'function') {
+  if (
+    cryptoGlobal &&
+    typeof (cryptoGlobal as { randomUUID?: () => string }).randomUUID === 'function'
+  ) {
     return (cryptoGlobal as { randomUUID: () => string }).randomUUID();
   }
   // Fallback: manual UUID v4 via getRandomValues (test environments).

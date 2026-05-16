@@ -31,35 +31,25 @@ function makeActivity(opts: { throws?: Error | string; chatCardId?: string } = {
   };
 }
 
-function makeItem(opts: {
-  id?: string;
-  activity?: ReturnType<typeof makeActivity> | null;
-} = {}) {
+function makeItem(opts: { id?: string; activity?: ReturnType<typeof makeActivity> | null } = {}) {
   return {
     id: opts.id ?? 'item-1',
     name: 'Fireball',
     type: 'spell',
     system: {
       activities:
-        opts.activity === null
-          ? undefined
-          : { contents: [opts.activity ?? makeActivity()] },
+        opts.activity === null ? undefined : { contents: [opts.activity ?? makeActivity()] },
     },
   };
 }
 
-function makeActor(opts: {
-  id?: string;
-  item?: ReturnType<typeof makeItem> | null;
-} = {}) {
+function makeActor(opts: { id?: string; item?: ReturnType<typeof makeItem> | null } = {}) {
   const item = opts.item !== null ? (opts.item ?? makeItem()) : null;
   return {
     id: opts.id ?? 'actor-1',
     name: 'Gandalf',
     type: 'character',
-    items: item !== null
-      ? { contents: [item] }
-      : { contents: [] },
+    items: item !== null ? { contents: [item] } : { contents: [] },
   };
 }
 

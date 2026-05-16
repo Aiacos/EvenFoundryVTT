@@ -20,10 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  MultiAttackProgressPayloadSchema,
-  R1_MULTIATTACK_PROGRESS_TYPE,
-} from './multi-attack.js';
+import { MultiAttackProgressPayloadSchema, R1_MULTIATTACK_PROGRESS_TYPE } from './multi-attack.js';
 
 const VALID_UUID = '123e4567-e89b-12d3-a456-426614174000';
 
@@ -59,7 +56,10 @@ describe('MultiAttackProgressPayloadSchema', () => {
   });
 
   it('MAT-3: missing attackId → failure', () => {
-    const { attackId: _dropped, ...rest } = validPayload() as { attackId: string; [k: string]: unknown };
+    const { attackId: _dropped, ...rest } = validPayload() as {
+      attackId: string;
+      [k: string]: unknown;
+    };
     const result = MultiAttackProgressPayloadSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });
@@ -72,7 +72,10 @@ describe('MultiAttackProgressPayloadSchema', () => {
   });
 
   it('MAT-5: missing current → failure', () => {
-    const { current: _dropped, ...rest } = validPayload() as { current: number; [k: string]: unknown };
+    const { current: _dropped, ...rest } = validPayload() as {
+      current: number;
+      [k: string]: unknown;
+    };
     const result = MultiAttackProgressPayloadSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });
@@ -94,9 +97,7 @@ describe('MultiAttackProgressPayloadSchema', () => {
   });
 
   it('MAT-9: chatCardId null is allowed (attack produced no card)', () => {
-    const result = MultiAttackProgressPayloadSchema.safeParse(
-      validPayload({ chatCardId: null }),
-    );
+    const result = MultiAttackProgressPayloadSchema.safeParse(validPayload({ chatCardId: null }));
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.chatCardId).toBeNull();
@@ -111,7 +112,10 @@ describe('MultiAttackProgressPayloadSchema', () => {
   });
 
   it('MAT-12: missing actorId → failure', () => {
-    const { actorId: _dropped, ...rest } = validPayload() as { actorId: string; [k: string]: unknown };
+    const { actorId: _dropped, ...rest } = validPayload() as {
+      actorId: string;
+      [k: string]: unknown;
+    };
     const result = MultiAttackProgressPayloadSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });

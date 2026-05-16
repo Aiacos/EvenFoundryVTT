@@ -51,6 +51,11 @@ import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 
+// Plan 07-05 (CONC-01 write closure): `crypto.randomUUID()` is available in
+// the Even Realities App WebView (Safari WKWebView on iOS — Baseline 2021).
+// The mock in tests stubs `crypto.randomUUID` via `vi.stubGlobal`.
+declare const crypto: { randomUUID(): string };
+
 /** Stable text-container name for the conc-modal payload (single-container strategy). */
 export const CONC_MODAL_CONTAINER_NAME = 'overlay-block' as const;
 
@@ -236,21 +241,57 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
    * Handle a published R1 gesture.
    *
    * Dispatch table per UI-SPEC §3.5 + 04b-CONTEXT.md §Area 8:
-   *   - `tap`        → emit `conc.drop.confirmed` envelope + close (Y button)
+   *   - `tap`        → dual-emit (Plan 07-05) + close (Y button):
+   *                      1. `tool.invoke` with toolId='drop-concentration' (when actorId present)
+   *                      2. `conc.drop.confirmed` (always — backward-compat W-4 regression guard)
    *   - `double-tap` → close without emission (N button)
    *   - any other    → no-op (panel stays mounted; other panels may handle)
    *
-   * **Envelope construction (W-4 regression guard):** uses the canonical
+   * **Plan 07-05 dual-emit (CONC-01 write closure):**
+   * The `tool.invoke` envelope is emitted FIRST so the bridge can dispatch
+   * the write path (socketlib.executeAsGM → dropConcentrationHandler →
+   * effect.delete()) before the legacy `conc.drop.confirmed` arrives.
+   * When `conflict.actorId` is undefined, only the legacy envelope is emitted
+   * (graceful fallback for Phase 4b payloads that pre-date this field).
+   *
+   * **W-4 regression guard:** the `conc.drop.confirmed` envelope is ALWAYS
+   * emitted (second send), preserving backward-compat with any bridge listener
+   * that subscribed to this event before Plan 07-05.
+   *
+   * **Envelope construction:** uses the canonical
    * {@link @evf/shared-protocol#EnvelopeSchema} shape verbatim:
    * `proto/seq/ts/type/session_id/payload`. The carrier field is `payload`
-   * (NOT `value`), the `session_id` is the threaded UUID, and the inner
-   * payload is the minimal {@link ConcDropConfirmedPayload} (`{effectId}`)
-   * — Phase 7 looks up the spell + GM side via `effectId` only.
+   * (NOT `value`), and `session_id` is threaded from the inbound
+   * `conc.conflict` envelope via the constructor.
    */
   onEvent(gesture: R1Gesture): void {
     if (gesture.kind === 'tap') {
-      // [Y] Drop & cast → confirmed envelope, then close.
-      const envelope = {
+      // Plan 07-05: dual-emit tap path (CONC-01 write closure).
+      const conflictWithActor = this.conflict as ConcConflictPayload & { actorId?: string };
+      const actorId = conflictWithActor.actorId;
+
+      // 1. tool.invoke (only when actorId is present — graceful fallback per 07-05 spec)
+      if (actorId !== undefined && actorId.length > 0) {
+        const toolInvokeEnvelope = {
+          proto: 'evf-v1' as const,
+          seq: 0, // Bridge assigns the monotonic seq on its side.
+          ts: Date.now(),
+          type: 'tool.invoke' as const,
+          session_id: this.sessionId,
+          payload: {
+            toolId: 'drop-concentration' as const,
+            idempotencyKey: crypto.randomUUID(),
+            args: {
+              actor_id: actorId,
+              effect_id: this.conflict.effectId,
+            },
+          },
+        };
+        this.ws.send(JSON.stringify(toolInvokeEnvelope));
+      }
+
+      // 2. Legacy conc.drop.confirmed (always — W-4 backward-compat regression guard)
+      const legacyEnvelope = {
         proto: 'evf-v1' as const,
         seq: 0, // Bridge assigns the monotonic seq on its side.
         ts: Date.now(),
@@ -258,7 +299,8 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
         session_id: this.sessionId,
         payload: { effectId: this.conflict.effectId },
       };
-      this.ws.send(JSON.stringify(envelope));
+      this.ws.send(JSON.stringify(legacyEnvelope));
+
       this.onCloseCb();
     } else if (gesture.kind === 'double-tap') {
       // [N] Cancel — close without emitting.

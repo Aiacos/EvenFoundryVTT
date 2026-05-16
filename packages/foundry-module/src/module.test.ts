@@ -401,7 +401,9 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(handlers?.has('evf.confirmTemplatePlacement')).toBe(true);
     expect(handlers?.has('evf.moveToken')).toBe(true);
     expect(handlers?.has('evf.placeTemplate')).toBe(true);
-    expect(handlers?.has('evf.setTargets')).toBe(true); // remaining stub — Plan 07-05
+    // Plan 07-05: evf.setTargets stub renamed → evf.dropConcentration real handler (count stays 14)
+    expect(handlers?.has('evf.setTargets')).toBe(false);
+    expect(handlers?.has('evf.dropConcentration')).toBe(true);
     expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
   });
 
@@ -427,6 +429,8 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     const registeredEvents = hooksMock.on.mock.calls.map((c) => c[0]);
     expect(registeredEvents).toContain('updateActor');
     expect(registeredEvents).toContain('updateCombat');
+    // Plan 07-05: dnd5e.preUseActivity hook registered for reaction watcher (REACT-01)
+    expect(registeredEvents).toContain('dnd5e.preUseActivity');
   });
 });
 

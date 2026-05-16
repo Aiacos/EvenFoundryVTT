@@ -111,10 +111,7 @@ export function attachTemplatePlacementHandler(
       // Step 3 — outer envelope shape (canonical EnvelopeSchema).
       const envParse = EnvelopeSchema.safeParse(parsedJson);
       if (!envParse.success) {
-        console.warn(
-          '[template-placement-dispatcher] envelope rejected',
-          envParse.error.message,
-        );
+        console.warn('[template-placement-dispatcher] envelope rejected', envParse.error.message);
         return;
       }
 

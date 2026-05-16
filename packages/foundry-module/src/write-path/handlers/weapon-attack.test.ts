@@ -29,11 +29,13 @@ function makeAttackActivity(opts: { throws?: Error | string; chatCardId?: string
   };
 }
 
-function makeWeaponItem(opts: {
-  id?: string;
-  activities?: Array<{ type: string; use: ReturnType<typeof vi.fn> }>;
-  noActivities?: boolean;
-} = {}) {
+function makeWeaponItem(
+  opts: {
+    id?: string;
+    activities?: Array<{ type: string; use: ReturnType<typeof vi.fn> }>;
+    noActivities?: boolean;
+  } = {},
+) {
   return {
     id: opts.id ?? 'weapon-1',
     name: 'Shortsword',
@@ -46,18 +48,13 @@ function makeWeaponItem(opts: {
   };
 }
 
-function makeActor(opts: {
-  id?: string;
-  item?: ReturnType<typeof makeWeaponItem> | null;
-} = {}) {
+function makeActor(opts: { id?: string; item?: ReturnType<typeof makeWeaponItem> | null } = {}) {
   const item = opts.item !== null ? (opts.item ?? makeWeaponItem()) : null;
   return {
     id: opts.id ?? 'actor-1',
     name: 'Aragorn',
     type: 'character',
-    items: item !== null
-      ? { contents: [item] }
-      : { contents: [] },
+    items: item !== null ? { contents: [item] } : { contents: [] },
   };
 }
 
@@ -106,7 +103,10 @@ describe('weaponAttackHandler', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      const data = result.data as { attackId: string; attacks: Array<{ attackIndex: number; chatCardId: string | null }> };
+      const data = result.data as {
+        attackId: string;
+        attacks: Array<{ attackIndex: number; chatCardId: string | null }>;
+      };
       expect(typeof data.attackId).toBe('string');
       expect(data.attacks).toHaveLength(1);
       expect(data.attacks[0]?.chatCardId).toBe('cm-atk-5');
@@ -276,9 +276,15 @@ describe('weaponAttackHandler', () => {
     expect(result.success).toBe(true);
     expect(activity.use).toHaveBeenCalledTimes(2);
     // First call: consume.action = true (action economy deducted once)
-    expect(activity.use).toHaveBeenNthCalledWith(1, { configure: false, consume: { action: true } });
+    expect(activity.use).toHaveBeenNthCalledWith(1, {
+      configure: false,
+      consume: { action: true },
+    });
     // Second call: consume.action = false (Extra Attack — no double action cost)
-    expect(activity.use).toHaveBeenNthCalledWith(2, { configure: false, consume: { action: false } });
+    expect(activity.use).toHaveBeenNthCalledWith(2, {
+      configure: false,
+      consume: { action: false },
+    });
   });
 
   it('WA-MULTI-3: count: 3 calls activity.use three times', async () => {
@@ -321,7 +327,10 @@ describe('weaponAttackHandler', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      const data = result.data as { attackId: string; attacks: Array<{ attackIndex: number; chatCardId: string | null }> };
+      const data = result.data as {
+        attackId: string;
+        attacks: Array<{ attackIndex: number; chatCardId: string | null }>;
+      };
       expect(typeof data.attackId).toBe('string');
       expect(data.attackId.length).toBeGreaterThan(0);
       // Two attacks recorded under same attackId
@@ -339,7 +348,9 @@ describe('weaponAttackHandler', () => {
     vi.stubGlobal('game', makeGameGlobal(actor));
 
     // Spy on progress emitter injection
-    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import('./weapon-attack.js');
+    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import(
+      './weapon-attack.js'
+    );
 
     const progressCalls: unknown[] = [];
     setMultiAttackProgressEmitter((payload) => {
@@ -355,8 +366,18 @@ describe('weaponAttackHandler', () => {
     });
 
     expect(progressCalls).toHaveLength(2);
-    const first = progressCalls[0] as { current: number; total: number; attackId: string; actorId: string };
-    const second = progressCalls[1] as { current: number; total: number; attackId: string; actorId: string };
+    const first = progressCalls[0] as {
+      current: number;
+      total: number;
+      attackId: string;
+      actorId: string;
+    };
+    const second = progressCalls[1] as {
+      current: number;
+      total: number;
+      attackId: string;
+      actorId: string;
+    };
 
     expect(first.current).toBe(1);
     expect(first.total).toBe(2);
@@ -387,7 +408,9 @@ describe('weaponAttackHandler', () => {
 
     vi.stubGlobal('game', makeGameGlobal(actor));
 
-    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import('./weapon-attack.js');
+    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import(
+      './weapon-attack.js'
+    );
 
     const progressCalls: unknown[] = [];
     setMultiAttackProgressEmitter((payload) => {

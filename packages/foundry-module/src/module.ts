@@ -39,6 +39,11 @@ import './write-path/handlers/index.js';
 // emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
 // NO new socketlib handler registered — emitter count stays 14.
 import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
+// Plan 07-05 — register the dnd5e.preUseActivity reaction watcher (REACT-01).
+// Emits r1.reaction.available envelopes via bridgeDeltaEmitter when an NPC uses
+// an action that can trigger a player character reaction (shield, counterspell).
+// Display-only in Phase 7; handler NEVER returns false (must not cancel NPC action).
+import { registerReactionWatcher } from './write-path/reaction-watcher.js';
 
 /**
  * Canonical Foundry module identifier.
@@ -162,7 +167,13 @@ Hooks.once('ready', () => {
   // Plan 07-04 — wire multi-attack progress emitter via bridgeDeltaEmitter.
   // Called AFTER registerHookSubscribers (matching pattern from plan spec).
   // No new socketlib handler; emitter uses the existing bridgeDeltaEmitter channel.
-  setMultiAttackProgressEmitter((payload) => bridgeDeltaEmitter('r1.multiattack.progress', payload));
+  setMultiAttackProgressEmitter((payload) =>
+    bridgeDeltaEmitter('r1.multiattack.progress', payload),
+  );
+  // Plan 07-05 — register the reaction watcher (REACT-01).
+  // Must be called AFTER registerHookSubscribers + setMultiAttackProgressEmitter
+  // to stay consistent with the module.ts ready-hook assembly order.
+  registerReactionWatcher((payload) => bridgeDeltaEmitter('r1.reaction.available', payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`

@@ -401,7 +401,7 @@ export async function _bootEngineCore(
     return new QuickActionMenuPanel(
       bridge,
       gestureBus,
-      currentMenuLocale,  // WR-03: live locale, not boot-time capture
+      currentMenuLocale, // WR-03: live locale, not boot-time capture
       currentMenuOverride, // WR-03: live override, not boot-time capture
       localeEvents,
       {

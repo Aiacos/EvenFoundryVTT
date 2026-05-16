@@ -184,6 +184,15 @@ export {
   ReactionAvailablePayloadSchema,
 } from './payloads/reaction.js';
 
+// ─── Phase 7 additions (Plan 07-05) — drop-concentration internal schema ─────
+// Module-internal schema for the evf.dropConcentration socketlib handler.
+// NOT part of the 7-entry TOOL_REGISTRY served by GET /v1/tools.
+
+export {
+  type DropConcentrationInput,
+  DropConcentrationInputSchema,
+} from './tools/drop-concentration.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {

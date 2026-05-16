@@ -18,34 +18,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeTokenDoc(opts: {
-  id?: string;
-  updateThrows?: Error | string;
-} = {}) {
+function makeTokenDoc(opts: { id?: string; updateThrows?: Error | string } = {}) {
   return {
     id: opts.id ?? 'token-1',
     update: vi.fn().mockImplementation(async () => {
       if (opts.updateThrows !== undefined) {
-        throw opts.updateThrows instanceof Error
-          ? opts.updateThrows
-          : new Error(opts.updateThrows);
+        throw opts.updateThrows instanceof Error ? opts.updateThrows : new Error(opts.updateThrows);
       }
       return {};
     }),
   };
 }
 
-function makeScene(opts: {
-  tokenDoc?: ReturnType<typeof makeTokenDoc> | null;
-} = {}) {
+function makeScene(opts: { tokenDoc?: ReturnType<typeof makeTokenDoc> | null } = {}) {
   const tokenDoc = opts.tokenDoc !== null ? (opts.tokenDoc ?? makeTokenDoc()) : null;
   return {
     id: 'scene-1',
     name: 'Dungeon',
     tokens: {
-      get: vi.fn((id: string) =>
-        tokenDoc?.id === id ? tokenDoc : undefined,
-      ),
+      get: vi.fn((id: string) => (tokenDoc?.id === id ? tokenDoc : undefined)),
       contents: tokenDoc !== null ? [tokenDoc] : [],
     },
   };

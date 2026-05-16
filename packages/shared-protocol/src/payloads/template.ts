@@ -118,9 +118,7 @@ export const TemplatePlacementConfirmPayloadSchema = z.strictObject({
   y: z.number(),
 });
 
-export type TemplatePlacementConfirmPayload = z.infer<
-  typeof TemplatePlacementConfirmPayloadSchema
->;
+export type TemplatePlacementConfirmPayload = z.infer<typeof TemplatePlacementConfirmPayloadSchema>;
 
 /**
  * Wire-protocol discriminant for {@link TemplatePlacementConfirmPayloadSchema}.
@@ -149,9 +147,7 @@ export const TemplatePlacementCancelPayloadSchema = z.strictObject({
   placementId: z.string().uuid(),
 });
 
-export type TemplatePlacementCancelPayload = z.infer<
-  typeof TemplatePlacementCancelPayloadSchema
->;
+export type TemplatePlacementCancelPayload = z.infer<typeof TemplatePlacementCancelPayloadSchema>;
 
 /**
  * Wire-protocol discriminant for {@link TemplatePlacementCancelPayloadSchema}.

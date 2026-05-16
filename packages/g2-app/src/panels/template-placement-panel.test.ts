@@ -15,15 +15,15 @@
  * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { TemplatePlacementRequestedPayload } from '@evf/shared-protocol';
 import {
+  EnvelopeSchema,
   TEMPLATE_PLACEMENT_CANCEL_TYPE,
   TEMPLATE_PLACEMENT_CONFIRMED_TYPE,
-  EnvelopeSchema,
 } from '@evf/shared-protocol';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { TemplatePlacementPanel } from './template-placement-panel.js';
@@ -63,7 +63,9 @@ function makeGestureBus(): PanelGestureBus {
   } as unknown as PanelGestureBus;
 }
 
-function makePayload(overrides: Partial<TemplatePlacementRequestedPayload> = {}): TemplatePlacementRequestedPayload {
+function makePayload(
+  overrides: Partial<TemplatePlacementRequestedPayload> = {},
+): TemplatePlacementRequestedPayload {
   return {
     placementId: '550e8400-e29b-41d4-a716-446655440000',
     spellName: 'Fireball',
@@ -92,28 +94,52 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
 
   it('TP-01: has stable id "template-placement-panel"', () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     expect(panel.id).toBe('template-placement-panel');
   });
 
   it('TP-02: z property is ZIndex.Z2_OVERLAY', () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     expect(panel.z).toBe(ZIndex.Z2_OVERLAY);
   });
 
   it('TP-03: getContainerCount returns {image:0, text:1}', () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     expect(panel.getContainerCount()).toEqual({ image: 0, text: 1 });
   });
 
   it('TP-04: getR1Hints returns an object with tap, scroll, longPressLabel strings', () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     const hints = panel.getR1Hints?.();
     expect(hints).toBeDefined();
@@ -127,7 +153,13 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
 
   it('TP-05: onMount subscribes to gestureBus', async () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     await panel.onMount();
     expect(gestureBus.subscribe).toHaveBeenCalledTimes(1);
@@ -136,22 +168,33 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
 
   it('TP-06: draw() calls bridge.textContainerUpgrade with overlay-block container', async () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     await panel.onMount();
     await panel.draw();
-    expect(bridge.textContainerUpgrade).toHaveBeenCalledWith(
-      expect.any(TextContainerUpgrade)
-    );
+    expect(bridge.textContainerUpgrade).toHaveBeenCalledWith(expect.any(TextContainerUpgrade));
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const callArg = (bridge.textContainerUpgrade as ReturnType<typeof vi.fn>).mock.calls[0]![0] as TextContainerUpgrade;
+    const callArg = (bridge.textContainerUpgrade as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as TextContainerUpgrade;
     // The content should contain spell name
     expect(callArg).toBeDefined();
   });
 
   it('TP-07: onUnmount releases gesture bus subscription (no leak)', async () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     await panel.onMount();
     expect((gestureBus as unknown as { size: () => number }).size()).toBe(1);
@@ -161,7 +204,13 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
 
   it('TP-08: onUnmount is idempotent (second call is safe)', async () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     await panel.onMount();
     await panel.onUnmount();
@@ -188,7 +237,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
   it('TP-09: scroll-up decrements y by GRID (50)', async () => {
     const onClose = vi.fn();
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, onClose
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      onClose,
     );
     await panel.onMount();
 
@@ -201,7 +256,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
   it('TP-10: scroll-down increments y by GRID (50)', async () => {
     const onClose = vi.fn();
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, onClose
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      onClose,
     );
     await panel.onMount();
 
@@ -218,7 +279,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
       templateIndex: 0,
     });
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, payload, locale, SESSION_ID, onClose
+      bridge,
+      ws,
+      gestureBus,
+      payload,
+      locale,
+      SESSION_ID,
+      onClose,
     );
     await panel.onMount();
     panel.onEvent({ kind: 'tap' });
@@ -257,7 +324,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
       placementId: '550e8400-e29b-41d4-a716-446655440004',
     });
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, payload, locale, SESSION_ID, onClose
+      bridge,
+      ws,
+      gestureBus,
+      payload,
+      locale,
+      SESSION_ID,
+      onClose,
     );
     await panel.onMount();
     panel.onEvent({ kind: 'long-press' });
@@ -280,7 +353,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
   it('TP-13: double-tap is ignored (no send, no close)', async () => {
     const onClose = vi.fn();
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, onClose
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      onClose,
     );
     await panel.onMount();
     panel.onEvent({ kind: 'double-tap' });
@@ -296,7 +375,13 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
 
   it('TP-15: tap envelope session_id matches the constructor SESSION_ID', async () => {
     const panel = new TemplatePlacementPanel(
-      bridge, ws, gestureBus, makePayload(), locale, SESSION_ID, vi.fn()
+      bridge,
+      ws,
+      gestureBus,
+      makePayload(),
+      locale,
+      SESSION_ID,
+      vi.fn(),
     );
     await panel.onMount();
     panel.onEvent({ kind: 'tap' });

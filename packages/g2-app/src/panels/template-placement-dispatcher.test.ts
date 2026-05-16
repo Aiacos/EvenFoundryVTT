@@ -14,8 +14,8 @@
  * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerManager } from '../engine/layer-manager.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { attachTemplatePlacementHandler } from './template-placement-dispatcher.js';
@@ -113,7 +113,13 @@ describe('attachTemplatePlacementHandler', () => {
   });
 
   it('TPD-01: returns an unsubscribe function', () => {
-    const unsubscribe = attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
+    const unsubscribe = attachTemplatePlacementHandler(
+      ws,
+      bridge,
+      gestureBus,
+      layerManager,
+      locale,
+    );
     expect(typeof unsubscribe).toBe('function');
     unsubscribe();
   });
@@ -123,12 +129,10 @@ describe('attachTemplatePlacementHandler', () => {
     ws.fireMessage(makeValidEnvelope());
 
     // Allow async bundle to settle
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(layerManager.bundle).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'mount' }),
-      ])
+      expect.arrayContaining([expect.objectContaining({ type: 'mount' })]),
     );
   });
 
@@ -142,14 +146,16 @@ describe('attachTemplatePlacementHandler', () => {
 
   it('TPD-04: wrong envelope type is silently skipped (no warn, no mount)', () => {
     attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
-    ws.fireMessage(JSON.stringify({
-      proto: 'evf-v1',
-      seq: 1,
-      ts: Date.now(),
-      type: 'character.delta', // different type
-      session_id: '550e8400-e29b-41d4-a716-446655440000',
-      payload: {},
-    }));
+    ws.fireMessage(
+      JSON.stringify({
+        proto: 'evf-v1',
+        seq: 1,
+        ts: Date.now(),
+        type: 'character.delta', // different type
+        session_id: '550e8400-e29b-41d4-a716-446655440000',
+        payload: {},
+      }),
+    );
 
     expect(console.warn).not.toHaveBeenCalled();
     expect(layerManager.bundle).not.toHaveBeenCalled();
@@ -157,14 +163,16 @@ describe('attachTemplatePlacementHandler', () => {
 
   it('TPD-05: invalid outer envelope (missing proto) is rejected with console.warn', () => {
     attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
-    ws.fireMessage(JSON.stringify({
-      // missing proto
-      seq: 1,
-      ts: Date.now(),
-      type: 'template.placement.requested',
-      session_id: '550e8400-e29b-41d4-a716-446655440000',
-      payload: {},
-    }));
+    ws.fireMessage(
+      JSON.stringify({
+        // missing proto
+        seq: 1,
+        ts: Date.now(),
+        type: 'template.placement.requested',
+        session_id: '550e8400-e29b-41d4-a716-446655440000',
+        payload: {},
+      }),
+    );
 
     expect(console.warn).toHaveBeenCalled();
     expect(layerManager.bundle).not.toHaveBeenCalled();
@@ -172,32 +180,40 @@ describe('attachTemplatePlacementHandler', () => {
 
   it('TPD-06: invalid inner payload is rejected with console.warn', () => {
     attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
-    ws.fireMessage(JSON.stringify({
-      proto: 'evf-v1',
-      seq: 1,
-      ts: Date.now(),
-      type: 'template.placement.requested',
-      session_id: '550e8400-e29b-41d4-a716-446655440000',
-      payload: {
-        // placementId missing
-        spellName: 'Fireball',
-        templateIndex: 0,
-        total: 1,
-        type: 'circle',
-        distance: 20,
-      },
-    }));
+    ws.fireMessage(
+      JSON.stringify({
+        proto: 'evf-v1',
+        seq: 1,
+        ts: Date.now(),
+        type: 'template.placement.requested',
+        session_id: '550e8400-e29b-41d4-a716-446655440000',
+        payload: {
+          // placementId missing
+          spellName: 'Fireball',
+          templateIndex: 0,
+          total: 1,
+          type: 'circle',
+          distance: 20,
+        },
+      }),
+    );
 
     expect(console.warn).toHaveBeenCalled();
     expect(layerManager.bundle).not.toHaveBeenCalled();
   });
 
   it('TPD-07: unsubscribe removes message listener (subsequent messages ignored)', async () => {
-    const unsubscribe = attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
+    const unsubscribe = attachTemplatePlacementHandler(
+      ws,
+      bridge,
+      gestureBus,
+      layerManager,
+      locale,
+    );
     unsubscribe();
 
     ws.fireMessage(makeValidEnvelope());
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(layerManager.bundle).not.toHaveBeenCalled();
   });
@@ -205,12 +221,10 @@ describe('attachTemplatePlacementHandler', () => {
   it('TPD-08: valid envelope uses session_id from the inbound envelope for the panel', async () => {
     attachTemplatePlacementHandler(ws, bridge, gestureBus, layerManager, locale);
     ws.fireMessage(makeValidEnvelope({ session_id: '770e8400-e29b-41d4-a716-446655440005' }));
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(layerManager.bundle).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'mount' }),
-      ])
+      expect.arrayContaining([expect.objectContaining({ type: 'mount' })]),
     );
   });
 });

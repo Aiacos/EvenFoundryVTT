@@ -298,8 +298,7 @@ export function renderCombatantRow(
   // When `multiAttackState` is active for this combatant's actor, replace these 9 chars
   // with the `[Atk N/M]` chip (exactly 9 chars), preserving INV-1 row width at 66 cp.
   // Context: "slight overflow OK during active multi-attack since dist hidden" (CONTEXT.md §Area 2).
-  const isActiveMultiAttack =
-    multiAttackState !== null && c.actorId === multiAttackState.actorId;
+  const isActiveMultiAttack = multiAttackState !== null && c.actorId === multiAttackState.actorId;
   let distDirGap3: string;
   if (isActiveMultiAttack) {
     // `[Atk N/M]` — fixed 9-char chip replacing dist(6)+gap3(3).

@@ -9,7 +9,7 @@
  * Handler count:
  * - Wave 1 (Plan 07-02): 4 handlers (cast-spell, weapon-attack, use-item, move-token)
  * - Wave 2 (Plan 07-03): 2 handlers (place-template, confirm-template-placement)
- * - Plan 07-05: will add drop-concentration (replacing evf.setTargets stub)
+ * - Wave 3 (Plan 07-05): 1 handler (drop-concentration, replacing evf.setTargets stub)
  *
  * # Single-workflow-origin (ADR-0011)
  * All registrations go through `registerToolHandler` — the canonical write-path
@@ -24,11 +24,9 @@
 
 import { registerToolHandler } from '../tool-registry.js';
 import { castSpellHandler } from './cast-spell.js';
+import { dropConcentrationHandler } from './drop-concentration.js';
 import { moveTokenHandler } from './move-token.js';
-import {
-  confirmTemplatePlacementHandler,
-  placeTemplateHandler,
-} from './place-template.js';
+import { confirmTemplatePlacementHandler, placeTemplateHandler } from './place-template.js';
 import { useItemHandler } from './use-item.js';
 import { weaponAttackHandler } from './weapon-attack.js';
 
@@ -52,3 +50,8 @@ registerToolHandler('move-token', moveTokenHandler);
 // Both bypass drawPreview() (RESEARCH §Q2 Pitfall 3 — incompatible with R1 input).
 registerToolHandler('place-template', placeTemplateHandler);
 registerToolHandler('confirm-template-placement', confirmTemplatePlacementHandler);
+
+// ─── Wave 3 handlers (Plan 07-05) ────────────────────────────────────────────
+// drop-concentration: resolves actor + concentration effect → calls effect.delete()
+// Replaces evf.setTargets stub in socketlib-handlers.ts (slot rename, count stays 14).
+registerToolHandler('drop-concentration', dropConcentrationHandler);

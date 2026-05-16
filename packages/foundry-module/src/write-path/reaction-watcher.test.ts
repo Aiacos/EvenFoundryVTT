@@ -15,8 +15,9 @@
  * @see .planning/phases/07-foundry-module-write-path/07-05-PLAN.md Task 1
  * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md §Q3 (dnd5e.preUseActivity)
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { ReactionAvailablePayload } from '@evf/shared-protocol';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global mocks ─────────────────────────────────────────────────────
 

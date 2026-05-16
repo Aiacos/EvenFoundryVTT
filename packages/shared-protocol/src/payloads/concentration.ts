@@ -47,6 +47,17 @@ export const ConcConflictPayloadSchema = z.strictObject({
   effectId: z.string().min(1),
   currentConcentrationName: z.string().min(1),
   newSpellName: z.string().min(1),
+  /**
+   * Foundry Actor document ID of the concentrating player character.
+   *
+   * Added in Plan 07-05 (CONC-01 write closure) to carry the actor context
+   * needed by the `drop-concentration` socketlib handler. Optional for
+   * backward-compat with Phase 4b envelopes that pre-date this field.
+   * The g2-app `ConcentrationDropModalPanel` dual-emit path uses this value
+   * in the `tool.invoke` args; when absent, only the legacy
+   * `conc.drop.confirmed` envelope is emitted (graceful fallback).
+   */
+  actorId: z.string().min(1).optional(),
 });
 
 export type ConcConflictPayload = z.infer<typeof ConcConflictPayloadSchema>;

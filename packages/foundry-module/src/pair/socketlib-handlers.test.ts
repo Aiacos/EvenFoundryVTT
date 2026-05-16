@@ -376,7 +376,10 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       registerSocketlibHandlers();
 
-      const result = await socketlibMock.callHandler('evf.castSpell', { bearer: 'tok', idempotencyKey: 'key' });
+      const result = await socketlibMock.callHandler('evf.castSpell', {
+        bearer: 'tok',
+        idempotencyKey: 'key',
+      });
       // malformed: no 'args' field
       expect(result).toEqual({ success: false, error: 'invalid_input' });
     });
@@ -472,11 +475,11 @@ describe('registerSocketlibHandlers', () => {
     });
   });
 
-  // ─── Plan 07-03: verify 2 replaced stubs + 1 remaining stub ─────────────────
+  // ─── Plan 07-03 + 07-05: verify replaced stubs ───────────────────────────────
   //
   // Plan 07-03 (Wave 2): evf.skillCheck renamed → evf.confirmTemplatePlacement
   // (real handler), evf.placeTemplate replaced with real handler.
-  // evf.setTargets remains a stub — Plan 07-05 will rename it to evf.dropConcentration.
+  // Plan 07-05 (Wave 3): evf.setTargets renamed → evf.dropConcentration (real handler).
 
   it('evf.skillCheck is NOT registered (slot renamed to evf.confirmTemplatePlacement)', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
@@ -489,7 +492,10 @@ describe('registerSocketlibHandlers', () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
     // Empty payload fails validation — confirmTemplatePlacementHandler requires placementId + coords
-    const result = await (socketlibMock.callHandler('evf.confirmTemplatePlacement', {}) as Promise<unknown>);
+    const result = await (socketlibMock.callHandler(
+      'evf.confirmTemplatePlacement',
+      {},
+    ) as Promise<unknown>);
     expect(result).toMatchObject({ success: false, error: 'invalid_input' });
   });
 
@@ -501,10 +507,21 @@ describe('registerSocketlibHandlers', () => {
     expect(result).toMatchObject({ success: false, error: 'invalid_input' });
   });
 
-  it('evf.setTargets still returns phase-07-pending (stub untouched)', async () => {
+  it('evf.setTargets is NOT registered (slot renamed to evf.dropConcentration in Plan 07-05)', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    const result = socketlibMock.callHandler('evf.setTargets', {});
-    expect(result).toEqual({ status: 'phase-07-pending' });
+    // callHandler throws if the handler id is not registered
+    expect(() => socketlibMock.callHandler('evf.setTargets', {})).toThrow();
+  });
+
+  it('evf.dropConcentration is registered and returns invalid_input on empty payload (Plan 07-05)', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    // Empty payload fails validation — dropConcentrationHandler requires actor_id + effect_id
+    const result = await (socketlibMock.callHandler(
+      'evf.dropConcentration',
+      {},
+    ) as Promise<unknown>);
+    expect(result).toMatchObject({ success: false, error: 'invalid_input' });
   });
 });

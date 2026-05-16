@@ -29,7 +29,11 @@
  * @see .planning/phases/07-foundry-module-write-path/07-05-PLAN.md Task 1
  */
 
-import { EnvelopeSchema, R1_REACTION_AVAILABLE_TYPE, ReactionAvailablePayloadSchema } from '@evf/shared-protocol';
+import {
+  EnvelopeSchema,
+  R1_REACTION_AVAILABLE_TYPE,
+  ReactionAvailablePayloadSchema,
+} from '@evf/shared-protocol';
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
 import type { Toast } from '../status-hud/toast-types.js';
 
@@ -68,11 +72,7 @@ export type ReactionDispatcherUnsubscribe = () => void;
  * @param locale     - Active HUD locale
  * @returns Formatted message string (max 38 chars)
  */
-function formatReactionText(
-  kind: string,
-  sourceName: string,
-  locale: HudLocale,
-): string {
+function formatReactionText(kind: string, sourceName: string, locale: HudLocale): string {
   // Label prefix (locale-specific)
   const prefix = locale === 'it' ? 'REAZ' : 'REACT';
   // Truncate sourceName to keep total ≤ 38 chars

@@ -302,10 +302,7 @@ interface FoundryActivity {
    *
    * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md Pattern 1
    */
-  use(config?: {
-    configure?: boolean;
-    consume?: { action?: boolean };
-  }): Promise<unknown>;
+  use(config?: { configure?: boolean; consume?: { action?: boolean } }): Promise<unknown>;
 }
 
 /**

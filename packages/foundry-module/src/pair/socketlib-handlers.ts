@@ -19,7 +19,7 @@
  * - `evf.confirmTemplatePlacement`   — Plan 07-03 real handler (confirmTemplatePlacementHandler)
  * - `evf.moveToken`                  — Plan 07-02 real handler (moveTokenHandler)
  * - `evf.placeTemplate`              — Plan 07-03 real handler (placeTemplateHandler)
- * - `evf.setTargets`                 — Phase 07 stub returning phase-07-pending (Plan 03-04)
+ * - `evf.dropConcentration`          — Plan 07-05 real handler (dropConcentrationHandler) replacing evf.setTargets stub
  *
  * The single-workflow-origin discipline (Phase 0 D-15 Option A) requires ALL reads
  * from Foundry game state via the bridge to go through `socketlib.executeAsGM`.
@@ -356,11 +356,19 @@ const handleMoveToken = makeDispatchAdapter('move-token');
  */
 const handlePlaceTemplate = makeDispatchAdapter('place-template');
 
-/** T-03-14: no game state write; Phase 07 dispatches real TokenLayer target update — this stub returns immediately. */
-function handleSetTargetsStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real TokenLayer target update — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * dropConcentration socketlib handler — Plan 07-05 replacement of Plan 03-04 evf.setTargets stub.
+ *
+ * Validates payload shape, calls dispatchTool('drop-concentration', payload).
+ * Returns ToolResult from the dropConcentrationHandler (effect.delete(), NOT activity.use).
+ * Slot renamed from 'evf.setTargets' → 'evf.dropConcentration' in-place (count stays 14).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/drop-concentration.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-05-PLAN.md Task 2
+ */
+const handleDropConcentration = makeDispatchAdapter('drop-concentration');
 
 // ─── Registration ─────────────────────────────────────────────────────────────
 
@@ -416,6 +424,6 @@ export function registerSocketlibHandlers(): void {
   socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveToken);
   // Plan 07-03: placeTemplate stub replaced with real handler (placeTemplateHandler)
   socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplate);
-  // setTargets: still a Plan 03-04 stub — Plan 07-05 renames to evf.dropConcentration
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.setTargets', handleSetTargetsStub);
+  // Plan 07-05: 'evf.setTargets' stub renamed → 'evf.dropConcentration' real handler (count stays 14)
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.dropConcentration', handleDropConcentration);
 }

@@ -23,12 +23,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeAbilityTemplate(opts: {
-  t?: 'circle' | 'cone' | 'rect' | 'ray';
-  distance?: number;
-  angle?: number;
-  createThrows?: Error;
-} = {}) {
+function makeAbilityTemplate(
+  opts: {
+    t?: 'circle' | 'cone' | 'rect' | 'ray';
+    distance?: number;
+    angle?: number;
+    createThrows?: Error;
+  } = {},
+) {
   const templateData: Record<string, unknown> = {
     x: 0,
     y: 0,
@@ -51,9 +53,7 @@ function makeAbilityTemplate(opts: {
   };
 }
 
-function makeActivity(opts: {
-  templates?: ReturnType<typeof makeAbilityTemplate>[] | null;
-} = {}) {
+function makeActivity(opts: { templates?: ReturnType<typeof makeAbilityTemplate>[] | null } = {}) {
   return {
     type: 'spell',
     use: vi.fn().mockResolvedValue({ id: 'chat-1' }),
@@ -61,42 +61,29 @@ function makeActivity(opts: {
   };
 }
 
-function makeItem(opts: {
-  id?: string;
-  activity?: ReturnType<typeof makeActivity> | null;
-} = {}) {
+function makeItem(opts: { id?: string; activity?: ReturnType<typeof makeActivity> | null } = {}) {
   return {
     id: opts.id ?? 'item-1',
     name: 'Fireball',
     type: 'spell',
     system: {
       activities:
-        opts.activity === null
-          ? undefined
-          : { contents: [opts.activity ?? makeActivity()] },
+        opts.activity === null ? undefined : { contents: [opts.activity ?? makeActivity()] },
     },
   };
 }
 
-function makeActor(opts: {
-  id?: string;
-  item?: ReturnType<typeof makeItem> | null;
-} = {}) {
+function makeActor(opts: { id?: string; item?: ReturnType<typeof makeItem> | null } = {}) {
   const item = opts.item !== null ? (opts.item ?? makeItem()) : null;
   return {
     id: opts.id ?? 'actor-1',
     name: 'Wizard',
     type: 'character',
-    items: item !== null
-      ? { contents: [item] }
-      : { contents: [] },
+    items: item !== null ? { contents: [item] } : { contents: [] },
   };
 }
 
-function makeSceneGlobal(opts: {
-  createThrows?: Error;
-  createdId?: string;
-} = {}) {
+function makeSceneGlobal(opts: { createThrows?: Error; createdId?: string } = {}) {
   return {
     createEmbeddedDocuments: vi.fn().mockImplementation(async () => {
       if (opts.createThrows) throw opts.createThrows;
@@ -105,7 +92,10 @@ function makeSceneGlobal(opts: {
   };
 }
 
-function makeGameGlobal(actor: ReturnType<typeof makeActor> | null, scene?: ReturnType<typeof makeSceneGlobal> | null) {
+function makeGameGlobal(
+  actor: ReturnType<typeof makeActor> | null,
+  scene?: ReturnType<typeof makeSceneGlobal> | null,
+) {
   return {
     actors: {
       get: vi.fn((id: string) => (actor?.id === id ? actor : undefined)),
@@ -177,7 +167,7 @@ describe('placeTemplateHandler', () => {
       };
       expect(data.total).toBe(1);
       expect(data.placementId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
       );
       expect(data.templates).toHaveLength(1);
       expect(data.templates[0]).toMatchObject({ index: 0, type: 'circle', distance: 20 });
@@ -359,7 +349,8 @@ describe('placeTemplateHandler', () => {
 
     // Confirm should now return placement_expired
     const { confirmTemplatePlacementHandler } = await import('./place-template.js');
-    const placementId = (placeResult.success && (placeResult.data as { placementId: string }).placementId) || 'xxx';
+    const placementId =
+      (placeResult.success && (placeResult.data as { placementId: string }).placementId) || 'xxx';
     const confirmResult = await confirmTemplatePlacementHandler.handle({
       placementId,
       templateIndex: 0,
@@ -388,7 +379,8 @@ describe('placeTemplateHandler', () => {
       },
     });
 
-    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } = await import('./place-template.js');
+    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } =
+      await import('./place-template.js');
     clearPlacementContexts();
 
     const placeResult = await placeTemplateHandler.handle({
@@ -443,7 +435,8 @@ describe('confirmTemplatePlacementHandler', () => {
       },
     });
 
-    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } = await import('./place-template.js');
+    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } =
+      await import('./place-template.js');
     clearPlacementContexts();
 
     // First place the template
@@ -480,9 +473,7 @@ describe('confirmTemplatePlacementHandler', () => {
     // Verify createEmbeddedDocuments was called with overridden x/y
     expect(scene.createEmbeddedDocuments).toHaveBeenCalledWith(
       'MeasuredTemplate',
-      expect.arrayContaining([
-        expect.objectContaining({ x: 150, y: 300 }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ x: 150, y: 300 })]),
     );
   });
 
@@ -493,7 +484,9 @@ describe('confirmTemplatePlacementHandler', () => {
       canvas: { AbilityTemplate: { fromActivity: vi.fn() } },
     });
 
-    const { confirmTemplatePlacementHandler, clearPlacementContexts } = await import('./place-template.js');
+    const { confirmTemplatePlacementHandler, clearPlacementContexts } = await import(
+      './place-template.js'
+    );
     clearPlacementContexts();
 
     const result = await confirmTemplatePlacementHandler.handle({
@@ -523,7 +516,8 @@ describe('confirmTemplatePlacementHandler', () => {
       },
     });
 
-    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } = await import('./place-template.js');
+    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } =
+      await import('./place-template.js');
     clearPlacementContexts();
 
     const placeResult = await placeTemplateHandler.handle({
@@ -561,7 +555,8 @@ describe('confirmTemplatePlacementHandler', () => {
       },
     });
 
-    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } = await import('./place-template.js');
+    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } =
+      await import('./place-template.js');
     clearPlacementContexts();
 
     const placeResult = await placeTemplateHandler.handle({

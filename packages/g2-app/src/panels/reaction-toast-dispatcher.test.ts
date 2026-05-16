@@ -13,8 +13,9 @@
  * @see packages/g2-app/src/panels/reaction-toast-dispatcher.ts
  * @see .planning/phases/07-foundry-module-write-path/07-05-PLAN.md Task 1
  */
-import type { Toast } from '../status-hud/toast-types.js';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Toast } from '../status-hud/toast-types.js';
 import type { ReactionToastQueue } from './reaction-toast-dispatcher.js';
 
 // ─── Mock socket ──────────────────────────────────────────────────────────────
@@ -111,9 +112,7 @@ describe('attachReactionToastHandler', () => {
     const { attachReactionToastHandler } = await import('./reaction-toast-dispatcher.js');
     attachReactionToastHandler(socket, toastQueueMock, 'it');
 
-    socket.fireMessage(
-      makeValidReactionEnvelope({ kind: 'counterspell', sourceName: 'Arcimago' }),
-    );
+    socket.fireMessage(makeValidReactionEnvelope({ kind: 'counterspell', sourceName: 'Arcimago' }));
 
     expect(toastQueueMock.enqueue).toHaveBeenCalledTimes(1);
     const toastArg = toastQueueMock.enqueue.mock.calls[0]?.[0] as {

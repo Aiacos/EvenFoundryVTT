@@ -71,15 +71,17 @@ function makeMockPanel() {
   };
 }
 
-function buildValidProgressEnvelope(overrides: Partial<{
-  type: string;
-  current: number;
-  total: number;
-  attackId: string;
-  chatCardId: string | null;
-  actorId: string;
-  session_id: string;
-}> = {}): string {
+function buildValidProgressEnvelope(
+  overrides: Partial<{
+    type: string;
+    current: number;
+    total: number;
+    attackId: string;
+    chatCardId: string | null;
+    actorId: string;
+    session_id: string;
+  }> = {},
+): string {
   return JSON.stringify({
     proto: 'evf-v1',
     seq: 1,
@@ -148,7 +150,14 @@ describe('multi-attack-progress-dispatcher — happy path', () => {
 
     attachMultiAttackProgressHandler(ws, panelRef);
 
-    ws.fireMessage(buildValidProgressEnvelope({ current: 1, total: 2, attackId: VALID_UUID, actorId: 'actor-aragorn' }));
+    ws.fireMessage(
+      buildValidProgressEnvelope({
+        current: 1,
+        total: 2,
+        attackId: VALID_UUID,
+        actorId: 'actor-aragorn',
+      }),
+    );
 
     expect(panel.setMultiAttackState).toHaveBeenCalledTimes(1);
     const arg = panel.setMultiAttackState.mock.calls[0]![0];
