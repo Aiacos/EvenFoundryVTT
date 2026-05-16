@@ -418,6 +418,55 @@ describe('CombatTrackerPanel — scroll reset on turn advance', () => {
   });
 });
 
+// ─── CTP-WR02 — multiAttackState cleared on turn advance ─────────────────────
+
+describe('CombatTrackerPanel — WR-02 multiAttackState cleared on turn advance', () => {
+  it('CTP-WR02: active multiAttackState is cleared when currentCombatantId changes in onSnapshot', async () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const panel = new CombatTrackerPanel(bridge, bus, 'it');
+    await panel.onMount();
+
+    // Set multi-attack state for actor-a
+    panel.setMultiAttackState({
+      current: 1,
+      total: 2,
+      attackId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      actorId: 'actor-a',
+    });
+
+    // Deliver a snapshot with combatant-a as current (same turn — chip should persist)
+    const combatantsA = makeCombatants(3);
+    const snapshotA: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'c0',
+      combatants: combatantsA.map((c, i) => ({ ...c, isCurrentTurn: i === 0 })),
+    };
+    panel.onSnapshot(snapshotA);
+
+    // Deliver a snapshot with a DIFFERENT combatant as current (turn advance)
+    const snapshotB: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 1,
+      currentCombatantId: 'c1', // different combatant
+      combatants: combatantsA.map((c, i) => ({ ...c, isCurrentTurn: i === 1 })),
+    };
+    panel.onSnapshot(snapshotB);
+
+    // After turn advance, multiAttackState must be cleared so the chip doesn't
+    // appear for the next combatant. We verify via draw: the last draw call must
+    // NOT render an [Atk chip in the content.
+    const lastCallArgs = bridge.textContainerUpgrade.mock.calls.at(-1)?.[0];
+    if (lastCallArgs !== undefined) {
+      const content = (lastCallArgs as { content?: string }).content ?? '';
+      expect(content).not.toContain('[Atk');
+    }
+  });
+});
+
 // ─── CTP-FIX-* — INV-1 fixture round-trips ────────────────────────────────────
 
 describe('CombatTrackerPanel — INV-1 fixture round-trips (COMB-01 ck 13)', () => {

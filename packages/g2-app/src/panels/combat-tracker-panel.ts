@@ -657,6 +657,12 @@ export default class CombatTrackerPanel implements OverlayPanel {
     if (newSnapshot.currentCombatantId !== this.lastCurrentCombatantId) {
       this.scrollOffset = 0;
       this.lastCurrentCombatantId = newSnapshot.currentCombatantId;
+      // WR-02: clear stale multi-attack chip on turn advance.
+      // The JSDoc at multiAttackState declaration states "cleared... on combat-turn-advance
+      // (turn change detected in `onSnapshot`)" but the implementation was missing this.
+      // Without the clear, if a multi-attack sequence is interrupted mid-sequence (e.g.,
+      // reaction moves the turn), the chip persists for the next combatant's turn.
+      this.multiAttackState = null;
     }
     this.snapshot = newSnapshot;
     void this.draw();
