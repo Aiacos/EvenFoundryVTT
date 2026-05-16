@@ -341,6 +341,41 @@ describe('dispatchTool', () => {
     warnSpy.mockRestore();
   });
 
+  it('WR-01 regression: failure results are NOT cached — retry with same idempotencyKey re-executes', async () => {
+    // WR-01: a transient failure (e.g., no_gm_connected) must NOT lock the idempotencyKey.
+    // The handler returns failure on first call and success on second (simulates GM reconnect).
+    const handleFn = vi.fn<() => Promise<ToolResult>>()
+      .mockResolvedValueOnce({ success: false, error: 'no_gm_connected' })
+      .mockResolvedValueOnce({ success: true, data: { droppedAt: 12345 } });
+
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('drop-concentration', handler);
+
+    const iKey = '00000000-0000-4000-8000-00000000000a';
+
+    // First call — handler runs and returns failure
+    const r1 = await dispatchTool('drop-concentration', {
+      args: {},
+      idempotencyKey: iKey,
+      bearer: 'test-bearer-wr01',
+    });
+    expect(r1.success).toBe(false);
+    expect(handleFn).toHaveBeenCalledTimes(1);
+
+    // Second call — same idempotencyKey + same bearer — failure was NOT cached,
+    // so handler runs again (retry succeeds after transient error)
+    const r2 = await dispatchTool('drop-concentration', {
+      args: {},
+      idempotencyKey: iKey,
+      bearer: 'test-bearer-wr01',
+    });
+    expect(r2.success).toBe(true);
+    expect(handleFn).toHaveBeenCalledTimes(2);
+  });
+
   it('T-07-02 regression: same idempotencyKey + different bearer = NO cache hit', async () => {
     const handleFn = vi.fn<() => Promise<ToolResult>>().mockResolvedValue({
       success: true,

@@ -295,8 +295,15 @@ export async function dispatchTool(
     result = { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 
-  // Step 6: cache the result (bearer-bound, 60s TTL)
-  moduleIdempotencyStore.set(cacheKey, { result, cachedAt: Date.now() });
+  // Step 6: cache ONLY successful results (WR-01).
+  // Failure results are intentionally not cached — failures are retryable (e.g.,
+  // `no_gm_connected` when the GM momentarily disconnects). Caching a failure would
+  // lock the idempotencyKey for 60s, preventing legitimate retries after transient
+  // errors. The spec's idempotency intent is "don't re-execute successful writes",
+  // not "don't retry failures".
+  if (result.success) {
+    moduleIdempotencyStore.set(cacheKey, { result, cachedAt: Date.now() });
+  }
 
   // Step 7: audit log (fault-tolerant — failure must NOT propagate)
   const auditEntry: AuditEntry = {
