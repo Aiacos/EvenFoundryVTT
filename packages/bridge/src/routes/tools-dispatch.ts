@@ -7,7 +7,7 @@
  * `socketlib-handlers.ts`.
  *
  * Phase 03 design (Option A — single-workflow-origin discipline, Phase 0 D-15):
- * stubs only; NO `activity.use()` calls; NO MidiQOL contact.
+ * stubs only; NO activity.use calls (ADR-0011 — all mutations via executeAsGM in foundry-module); NO MidiQOL contact.
  *
  * `TOOL_DISPATCH_TABLE` is a plain `Record` rather than a class so tests can
  * override individual entries via `BuildServerOptions.toolDispatchOverride`

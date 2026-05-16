@@ -1,15 +1,16 @@
 ---
-title: "EVF Project Invariants (INV-1..5)"
+title: "EVF Project Invariants (INV-1..6)"
 status: ratified
 date: 2026-05-16
-binds: "Phase 6+ — applies to every commit in the EvenFoundryVTT repository"
+binds: "Phase 7+ — applies to every commit in the EvenFoundryVTT repository"
 ---
 
-# EVF Project Invariants (INV-1..5)
+# EVF Project Invariants (INV-1..6)
 
-This document consolidates the five non-negotiable project invariants for EvenFoundryVTT.
+This document consolidates the six non-negotiable project invariants for EvenFoundryVTT.
 INV-1 through INV-4 were established at project inception and are codified in `CLAUDE.md §Project Invariants`.
 INV-5 (Gesture Determinism) was ratified in Phase 6 Plan 01 (2026-05-16).
+INV-6 (GM Authority Preservation) was ratified in Phase 7 Plan 01 (2026-05-16).
 
 **Cross-cutting note:** Any new invariant in future phases MUST be added here and indexed from `docs/architecture/README.md`. Invariants are permanent; they are not revised unless superseded by a new ADR with explicit rationale.
 
@@ -98,6 +99,42 @@ This chip names the live long-press target by calling `layerManager.getTopLayer(
 - `packages/g2-app/src/engine/__tests__/layer-manager.test.ts` — LMT-TOP-01..04 (getTopLayer correctness including sort-order regression guard).
 - `packages/g2-app/src/__tests__/06-cross-overlay-reachability.test.ts` — 15 cases mapping 1:1 to Specs §7.14.4 ck 1-15 (ships in Plan 06-04).
 - `packages/g2-app/src/engine/__tests__/panel-gesture-bus.test.ts` — PGB-3 (fan-out), PGB-5 (unsubscribe), PGB-7 (zero-subscriber silent drop).
+
+---
+
+## 6. INV-6 — GM Authority Preservation (Phase 7 ratification)
+
+**Ratified:** 2026-05-16 (Phase 7 Plan 01).
+
+> Every Foundry write-path mutation (cast spell, weapon attack, use item, move token, drop concentration, place template) MUST execute on the GM client via `socketlib.executeAsGM`. No code in `packages/g2-app` or `packages/bridge` may call `activity.use()` directly. The player's action request travels: G2 gesture → bridge → WS → module → `socketlib.executeAsGM` → GM-side handler → `activity.use()`. This is the **single-workflow-origin discipline** (Phase 0 D-15).
+
+### Architectural enforcement
+
+**CI Gate 8:** `.github/workflows/ci.yml` — `grep -rE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts"` fails the PR on any hit. Error message cites ADR-0011.
+
+**Runtime authority:** `dispatchTool(toolId, payload)` in `packages/foundry-module/src/write-path/tool-registry.ts` is the sole dispatch entry point. It:
+
+1. Checks the bearer-bound idempotency cache (60s TTL, `SHA256(bearer).slice(0,16) + ':' + idempotencyKey`).
+2. Looks up the handler in `TOOL_REGISTRY[toolId]`.
+3. Validates `payload.args` via `handler.argsSchema.safeParse()`.
+4. Calls `handler.handle(parsedArgs)` on the GM client.
+5. Caches the result and writes a GM-only audit log entry.
+
+**Audit trail:** every `dispatchTool` call writes a hidden `ChatMessage` with `whisper: gmIds` and `flags.evf.audit` for GM-side queryability (T-07-04 + T-07-06 mitigation).
+
+### Verification
+
+- `packages/foundry-module/src/write-path/tool-registry.test.ts` — `dispatchTool` cache hit, cache miss, unknown tool, validation failure, handler throw, audit isolation, T-07-02 cross-bearer regression.
+- `packages/foundry-module/src/write-path/idempotency-cache.test.ts` — TTL eviction, FIFO eviction, cross-bearer isolation.
+- `packages/foundry-module/src/write-path/audit-log.test.ts` — `whisper: gmIds`, `flags.evf.audit`, fault-tolerance.
+- CI Gate 8 (`! grep -rE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts"`) — compile-time invariant.
+
+### Hardware-pending carry-forwards (Phase 7)
+
+- **SC-07-01** — `dispatchTool` end-to-end latency (gesture → GM handler return) ≤ 800ms on LAN homelab (validated via real hardware in Phase 7 integration test).
+- **SC-07-02** — `socketlib.executeAsGM` correctly serializes concurrent actions (no race between two players acting simultaneously on the GM client).
+
+---
 
 ### Hardware-pending carry-forwards (ADR-0005 Branch A)
 

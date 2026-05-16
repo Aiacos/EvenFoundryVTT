@@ -1,22 +1,25 @@
 /**
  * Unit tests for tool-registry.ts — ToolId, ToolHandler, TOOL_REGISTRY,
- * registerToolHandler, TOOL_HANDLER_IDS.
+ * registerToolHandler, TOOL_HANDLER_IDS, dispatchTool.
  *
- * RED phase (TDD): tests written before dispatchTool implementation.
- * dispatchTool tests are added in Task 2 (GREEN phase for the wiring).
+ * TDD structure:
+ * - Task 1 RED/GREEN: ToolId, ToolResult, ToolHandler, TOOL_REGISTRY, registerToolHandler, TOOL_HANDLER_IDS
+ * - Task 2 GREEN: dispatchTool (cache hit, cache miss, unknown tool, validation failure, handler throw, audit isolation, cross-bearer)
  *
  * @see packages/foundry-module/src/write-path/tool-registry.ts
- * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+ * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ArgsValidator,
+  dispatchTool,
+  moduleIdempotencyStore,
+  registerToolHandler,
   TOOL_HANDLER_IDS,
   TOOL_REGISTRY,
   type ToolHandler,
   type ToolId,
   type ToolResult,
-  registerToolHandler,
 } from './tool-registry.js';
 
 // ─── Helper: create a no-op ArgsValidator ────────────────────────────────────
@@ -26,7 +29,7 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
     safeParse: (val: unknown) =>
       passthrough
         ? { success: true as const, data: val as T }
-        : { success: false as const, error: { message: 'invalid' } },
+        : { success: false as const, error: { message: 'invalid args' } },
     parse: (val: unknown) => val as T,
   };
 }
@@ -137,10 +140,12 @@ describe('ToolResult type discrimination', () => {
   });
 
   it('ToolHandler<TArgs> argsSchema lookup succeeds at compile time', () => {
-    // Compile-time verification: if this compiles, argsSchema is typed correctly
     const handler: ToolHandler<{ x: number }> = {
       argsSchema: makeValidator<{ x: number }>(),
-      handle: async (_args: { x: number }): Promise<ToolResult> => ({ success: true, data: _args }),
+      handle: async (_args: { x: number }): Promise<ToolResult> => ({
+        success: true,
+        data: _args,
+      }),
     };
     expect(handler).toBeDefined();
     expect(typeof handler.handle).toBe('function');
@@ -159,5 +164,208 @@ describe('ToolResult type discrimination', () => {
     const result = await TOOL_REGISTRY['use-item']?.handle({});
     expect(handleFn).toHaveBeenCalledOnce();
     expect(result).toEqual({ success: true, data: 'ok' });
+  });
+});
+
+// ─── dispatchTool ─────────────────────────────────────────────────────────────
+
+describe('dispatchTool', () => {
+  // Stub writeAuditLog to prevent test pollution
+  let auditLogMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    // Clear idempotency store between tests
+    moduleIdempotencyStore.clear();
+
+    // Stub globals needed by writeAuditLog and idempotency cache
+    vi.stubGlobal('game', {
+      users: {
+        contents: [{ id: 'gm-001', isGM: true, active: true, targets: new Set() }],
+        get: (_id: string) => undefined,
+      },
+      user: { id: 'gm-001', isGM: true, active: true, targets: new Set() },
+    });
+
+    auditLogMock = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('ChatMessage', { create: auditLogMock });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns unknown_tool error for unregistered tool', async () => {
+    // Remove any registered handler for a tool we can test cleanly
+    delete TOOL_REGISTRY['place-template'];
+    const result = await dispatchTool('place-template', {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-000000000001',
+      bearer: 'test-bearer-dispatch-unknown',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('unknown_tool');
+    }
+  });
+
+  it('returns validation error when argsSchema.safeParse fails', async () => {
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(false), // always fails
+      handle: async (): Promise<ToolResult> => ({ success: true, data: 'should not reach' }),
+    };
+    registerToolHandler('move-token', handler);
+
+    const result = await dispatchTool('move-token', {
+      args: { wrong: 'data' },
+      idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      bearer: 'test-bearer-dispatch-validation',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('invalid');
+    }
+  });
+
+  it('calls handler.handle() and returns result on cache miss', async () => {
+    const handleFn = vi.fn<() => Promise<ToolResult>>().mockResolvedValue({
+      success: true,
+      data: { spell: 'fireball' },
+    });
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('cast-spell', handler);
+
+    const result = await dispatchTool('cast-spell', {
+      args: { actorId: 'actor1' },
+      idempotencyKey: '00000000-0000-4000-8000-000000000003',
+      bearer: 'test-bearer-dispatch-hit',
+    });
+
+    expect(handleFn).toHaveBeenCalledOnce();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ spell: 'fireball' });
+    }
+  });
+
+  it('returns cached result without calling handler on cache hit', async () => {
+    const handleFn = vi.fn<() => Promise<ToolResult>>().mockResolvedValue({
+      success: true,
+      data: { spell: 'ice-storm' },
+    });
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('cast-spell', handler);
+
+    const payload = {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      bearer: 'test-bearer-dispatch-cache-hit',
+    };
+
+    // First call — handler runs
+    const r1 = await dispatchTool('cast-spell', payload);
+    expect(handleFn).toHaveBeenCalledOnce();
+
+    // Second call with same bearer + same idempotencyKey — cache hit
+    const r2 = await dispatchTool('cast-spell', payload);
+    // Handler should NOT be called again
+    expect(handleFn).toHaveBeenCalledOnce();
+    expect(r2).toEqual(r1);
+  });
+
+  it('catches handler throw and returns failure ToolResult', async () => {
+    const throwingHandler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: async (): Promise<ToolResult> => {
+        throw new Error('Foundry exploded');
+      },
+    };
+    registerToolHandler('weapon-attack', throwingHandler);
+
+    const result = await dispatchTool('weapon-attack', {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-000000000005',
+      bearer: 'test-bearer-dispatch-throw',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('Foundry exploded');
+    }
+  });
+
+  it('calls writeAuditLog exactly once per dispatch', async () => {
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: async (): Promise<ToolResult> => ({ success: true, data: null }),
+    };
+    registerToolHandler('drop-concentration', handler);
+
+    await dispatchTool('drop-concentration', {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-000000000006',
+      bearer: 'test-bearer-dispatch-audit',
+    });
+
+    // ChatMessage.create is called by writeAuditLog
+    expect(auditLogMock).toHaveBeenCalledOnce();
+  });
+
+  it('audit failure does NOT propagate up (writeAuditLog is fault-tolerant)', async () => {
+    auditLogMock.mockRejectedValue(new Error('audit socket broken'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: async (): Promise<ToolResult> => ({ success: true, data: 'result' }),
+    };
+    registerToolHandler('use-item', handler);
+
+    await expect(
+      dispatchTool('use-item', {
+        args: {},
+        idempotencyKey: '00000000-0000-4000-8000-000000000007',
+        bearer: 'test-bearer-dispatch-audit-fail',
+      }),
+    ).resolves.toEqual({ success: true, data: 'result' });
+
+    warnSpy.mockRestore();
+  });
+
+  it('T-07-02 regression: same idempotencyKey + different bearer = NO cache hit', async () => {
+    const handleFn = vi.fn<() => Promise<ToolResult>>().mockResolvedValue({
+      success: true,
+      data: 'executed',
+    });
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('cast-spell', handler);
+
+    const iKey = '00000000-0000-4000-8000-000000000008';
+
+    // First dispatch with bearer-one
+    await dispatchTool('cast-spell', {
+      args: {},
+      idempotencyKey: iKey,
+      bearer: 'bearer-one-unique-secret',
+    });
+    expect(handleFn).toHaveBeenCalledTimes(1);
+
+    // Second dispatch with DIFFERENT bearer but SAME idempotencyKey
+    await dispatchTool('cast-spell', {
+      args: {},
+      idempotencyKey: iKey,
+      bearer: 'bearer-two-unique-secret',
+    });
+    // Handler MUST be called again (different bearer = different cache key)
+    expect(handleFn).toHaveBeenCalledTimes(2);
   });
 });

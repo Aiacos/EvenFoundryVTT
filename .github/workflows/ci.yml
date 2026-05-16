@@ -63,6 +63,21 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm changeset:status
 
+      # D-7.01 gate 8: Single-workflow-origin guard (Phase 7 ADR-0011 + Plan 07-01)
+      # The ONLY valid call sites for activity.use() are in:
+      #   packages/foundry-module/src/write-path/handlers/*.ts
+      # Any hit in g2-app or bridge is a client-side write bypass — critical security
+      # violation of the single-workflow-origin discipline (T-07-01 mitigation).
+      # @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
+      - name: Single-workflow-origin guard (ADR-0011)
+        run: |
+          if grep -rE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts" 2>/dev/null; then
+            echo "::error::Client-side activity.use() call detected in packages/g2-app or packages/bridge."
+            echo "::error::All write-path mutations must go through packages/foundry-module/src/write-path/handlers/."
+            echo "::error::See docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)"
+            exit 1
+          fi
+
   commit-lint-pr-title:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

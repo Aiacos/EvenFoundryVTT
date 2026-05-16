@@ -17,8 +17,9 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0008](./0008-code-quality-configuration.md) | Code Quality Configuration — Biome+TS+Vitest+CI gates | accepted | Phase 1+ every commit |
 | [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | accepted | Phase 4a Plan 05 — boot orchestrator wired the contract across 6 plans (606/606 tests) |
 | [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | accepted | Phase 5 entry |
+| [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) | Foundry Write Path — Single-Workflow-Origin Discipline | accepted | Phase 7 entry |
 
-**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
+**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
 ## Authoring Process
 

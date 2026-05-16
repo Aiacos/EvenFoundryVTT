@@ -29,10 +29,11 @@
  * @see packages/foundry-module/src/write-path/audit-log.ts
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md
  */
-// No external imports needed — ToolHandler uses a structural type for argsSchema
-// to avoid requiring zod as a direct dependency of foundry-module.
-// Handlers import their specific ZodSchema types from @evf/shared-protocol.
+// Import the idempotency cache + audit log (both in the same write-path subdir).
+// tool-registry.ts is the assembly point for Task 2: dispatchTool wires these together.
 
+import { type AuditEntry, writeAuditLog } from './audit-log.js';
+import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache.js';
 
 // ─── ToolId union ─────────────────────────────────────────────────────────────
 
@@ -70,9 +71,7 @@ export type ToolId =
  * }
  * ```
  */
-export type ToolResult =
-  | { success: true; data: unknown }
-  | { success: false; error: string };
+export type ToolResult = { success: true; data: unknown } | { success: false; error: string };
 
 // ─── ToolHandler interface ────────────────────────────────────────────────────
 
@@ -105,9 +104,9 @@ export type ToolResult =
  * this contract — which all Zod schemas do.
  */
 export interface ArgsValidator<T> {
-  safeParse(data: unknown):
-    | { success: true; data: T }
-    | { success: false; error: { message: string } };
+  safeParse(
+    data: unknown,
+  ): { success: true; data: T } | { success: false; error: { message: string } };
   parse(data: unknown): T;
 }
 
@@ -181,3 +180,120 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
   'drop-concentration': 'evf.dropConcentration',
   'place-template': 'evf.placeTemplate',
 };
+
+// ─── Module-level singleton IdempotencyStore ─────────────────────────────────
+
+/**
+ * Shared IdempotencyStore instance for all `dispatchTool` calls in this module.
+ *
+ * Exported for test isolation (tests call `moduleIdempotencyStore.clear()` between
+ * test cases). Production code does not call `clear()` directly.
+ *
+ * @see IdempotencyStore in ./idempotency-cache.ts
+ */
+export const moduleIdempotencyStore = new IdempotencyStore();
+
+// ─── extractActorId helper ────────────────────────────────────────────────────
+
+/**
+ * Defensively extracts an actor ID from raw tool args.
+ *
+ * Many tools accept `args.actor_id: string` as a convention. If the shape does not
+ * match (unknown args type, missing field, non-string value), returns `null`.
+ * The audit log entry uses `null` to indicate "actor could not be determined".
+ *
+ * @param args - Raw args object (type unknown until handler.argsSchema validates it)
+ * @returns The actor_id string or null
+ */
+export function extractActorId(args: unknown): string | null {
+  if (
+    args !== null &&
+    typeof args === 'object' &&
+    'actor_id' in args &&
+    typeof (args as Record<string, unknown>).actor_id === 'string'
+  ) {
+    return (args as Record<string, string>).actor_id ?? null;
+  }
+  return null;
+}
+
+// ─── dispatchTool ─────────────────────────────────────────────────────────────
+
+/**
+ * Central dispatch function for all write-path tool invocations.
+ *
+ * Implements the 7-step pipeline per ADR-0011:
+ * 1. Compute bearer-bound cache key (`hashBearer(bearer) + ':' + idempotencyKey`)
+ * 2. Check idempotency cache — return cached result on hit (no re-execution)
+ * 3. Look up handler in TOOL_REGISTRY — return `unknown_tool` error on miss
+ * 4. Validate args via `handler.argsSchema.safeParse` — return parse error on failure
+ * 5. Call `handler.handle(parsedArgs)` wrapped in try/catch — normalise throw to ToolResult
+ * 6. Cache the result (bearer-bound key, 60s TTL)
+ * 7. Write audit log (fault-tolerant — failure does not propagate)
+ *
+ * @param toolId - The ToolId to dispatch
+ * @param payload - Tool invocation payload
+ * @param payload.args - Raw tool arguments (validated by handler.argsSchema)
+ * @param payload.idempotencyKey - UUID v4 for cache deduplication
+ * @param payload.bearer - Raw bearer token (hashed to build the cache key)
+ * @returns Promise<ToolResult> — always resolves, never rejects
+ *
+ * @see dispatchTool pipeline spec in 07-01-PLAN.md Task 2 <behavior>
+ * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
+ */
+export async function dispatchTool(
+  toolId: ToolId,
+  payload: { args: unknown; idempotencyKey: string; bearer: string },
+): Promise<ToolResult> {
+  // Step 1: compute bearer-bound cache key
+  const bearerHash = await hashBearer(payload.bearer);
+  const cacheKey = buildCacheKey(bearerHash, payload.idempotencyKey);
+
+  // Step 2: idempotency cache lookup — return immediately on hit
+  const cached = moduleIdempotencyStore.get(cacheKey);
+  if (cached !== undefined) {
+    return cached.result;
+  }
+
+  // Step 3: handler lookup — return error on unknown tool
+  const handler = TOOL_REGISTRY[toolId];
+  if (handler === undefined) {
+    return { success: false, error: 'unknown_tool' };
+  }
+
+  // Step 4: args validation
+  const parseResult = handler.argsSchema.safeParse(payload.args);
+  if (!parseResult.success) {
+    return { success: false, error: parseResult.error.message };
+  }
+
+  // Step 5: handler invocation (error isolation)
+  let result: ToolResult;
+  try {
+    result = await handler.handle(parseResult.data);
+  } catch (err) {
+    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  // Step 6: cache the result (bearer-bound, 60s TTL)
+  moduleIdempotencyStore.set(cacheKey, { result, cachedAt: Date.now() });
+
+  // Step 7: audit log (fault-tolerant — failure must NOT propagate)
+  const auditEntry: AuditEntry = {
+    tool: toolId,
+    payload: payload.args,
+    idempotencyKey: payload.idempotencyKey,
+    actorId: extractActorId(payload.args),
+    result,
+    timestamp: Date.now(),
+    bearer_id: bearerHash.slice(0, 8), // T-02-01: never the full token
+  };
+  try {
+    await writeAuditLog(auditEntry);
+  } catch {
+    // writeAuditLog already catches internally — this outer catch is a safety net
+    // in case of unexpected synchronous throws from writeAuditLog itself.
+  }
+
+  return result;
+}
