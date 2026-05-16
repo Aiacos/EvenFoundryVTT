@@ -4,13 +4,13 @@ milestone: v0.9.11
 milestone_name: milestone
 status: PHASE_8_CLOSED — 5/5 plans committed; CombatTrackerPanel QA-bar + boot-engine steps 11e..11i + ISM-W8-01..10 integration smoke. 1858 tests pass. 14-socketlib-handler invariant upheld.
 stopped_at: Completed 08-05-PLAN.md (Phase 8 CLOSED)
-last_updated: "2026-05-16T19:53:10.514Z"
+last_updated: "2026-05-16T20:23:45.992Z"
 last_activity: "2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending."
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 55
-  completed_plans: 51
+  completed_plans: 52
   percent: 67
 ---
 
@@ -58,7 +58,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -127,6 +127,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 08-manual-action-ux P03 | 45 | 2 tasks | 10 files |
 | Phase 08-manual-action-ux P04 | 75 | 3 tasks | 24 files |
 | Phase 09-action-economy-edge-cases P01 | 12 | 3 tasks | 12 files |
+| Phase 09-action-economy-edge-cases P02 | 120 | 3 tasks | 13 files |
 
 ## Quick Tasks Completed
 
@@ -226,7 +227,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T19:53:10.504Z
+Last session: 2026-05-16T20:23:45.983Z
 Stopped at: Completed 08-05-PLAN.md (Phase 8 CLOSED)
 Resume file: None
 Resume cmd: /gsd-execute-phase 9 01

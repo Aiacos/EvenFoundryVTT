@@ -312,7 +312,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 6. R1 Integration + Quick Action + INV-5 | 3/4 | In Progress|  |
 | 7. Foundry Module Write Path | 6/6 | Complete   | 2026-05-16 |
 | 8. Manual Action UX | 3/5 | In Progress|  |
-| 9. Action Economy & Edge Cases | 1/5 | In Progress|  |
+| 9. Action Economy & Edge Cases | 2/5 | In Progress|  |
 | 10. Polish & Field Test MVP | 0/TBD | Not started | - |
 | 11. V2 `foundry-mcp` Server | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
