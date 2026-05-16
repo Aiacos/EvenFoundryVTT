@@ -179,7 +179,21 @@ Plans:
   3. Cross-overlay reachability + closability checklist §7.14.4 ck 1-15 passes: every overlay is reachable from every other overlay in ≤2 gestures, and `[X]` closes from every overlay (NAV-03)
   4. Status HUD footer displays a context chip `R1: tap=cycle scroll=nav long=quick[combat]` that names the menu long-press will open *right now* (INV-5 visible enforcement, research Pitfall 5)
   5. INV-5 "Gesture Determinism" is ratified in `docs/architecture/INVARIANTS.md` and binds for the rest of the project (research recommendation, addresses Pitfall 5)
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+
+**Wave 0**
+- [ ] 06-01-PLAN.md — R1 wire schema + DEFAULT_R1_TIMINGS + attachR1EventSource + LayerManager.getTopLayer + Layer.getR1Hints? + LocaleEventEmitter + INVARIANTS.md (atomic Wave 0)
+
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 06-02-PLAN.md — QuickActionMenuPanel + PanelRouter.pushOverlay/popOverlay overlay stack + [N] Language sub-menu wired to persistLocaleOverride + LocaleEventEmitter + 4 INV-1 fixtures + ~20 i18n keys
+
+**Wave 2** *(blocked on Wave 1; files_modified overlap on i18n-budgets.ts gates this wave)*
+- [ ] 06-03-PLAN.md — StatusHudRenderer.renderContextChip + per-panel getR1Hints on 5 Phase 5 panels + parseR1HintString helper + 5 INV-1 chip fixtures + 12 hud_r1_* i18n keys (NAV-01 visible enforcement)
+
+**Wave 3** *(blocked on Wave 2; NOT autonomous — Phase 6 closure)*
+- [ ] 06-04-PLAN.md — 06-cross-overlay-reachability COR-01..COR-15 harness (Specs §7.14.4 ck 1-15 1:1) + panel-gesture-bus single-receiver invariant (PGB-SR-01..05) + attachQuickActionLongPress dispatcher + boot-engine R1/long-press/conc-conflict wiring (Phase 6 closure)
 
 ### Phase 7: Foundry Module Write Path
 **Goal**: GM-side `activity.use()` execution via `socketlib.executeAsGM` only (single-workflow-origin option A) wires up cast/attack/use end-to-end; multi-attack tracker and reaction passive-notification join MVP; concentration-drop modal trigger and chat-message audit log close the loop.
