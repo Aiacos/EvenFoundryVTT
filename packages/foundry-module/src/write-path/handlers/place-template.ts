@@ -313,6 +313,12 @@ export const confirmTemplatePlacementHandler: ToolHandler<ConfirmTemplatePlaceme
         return { success: false, error: 'no_active_scene' };
       }
       const created = await scene.createEmbeddedDocuments('MeasuredTemplate', [templateData]);
+      // CR-04: evict the placement context immediately after a successful commit.
+      // Without this, a second call with the same placementId within the 60s TTL
+      // window bypasses all guards and creates a duplicate MeasuredTemplate document.
+      // The idempotency cache in dispatchTool only protects calls with identical
+      // idempotencyKey — different keys (retried or separate confirm requests) are not.
+      PLACEMENT_CONTEXTS.delete(args.placementId);
       const templateId = created[0]?.id ?? null;
       return {
         success: true,

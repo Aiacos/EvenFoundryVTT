@@ -624,4 +624,58 @@ describe('confirmTemplatePlacementHandler', () => {
 
     expect(drawPreviewSpy).not.toHaveBeenCalled();
   });
+
+  // ── CR-04 regression: double-confirm must return placement_expired ────────────
+
+  it('CR-04: second confirm with same placementId returns placement_expired (context evicted)', async () => {
+    const template = makeAbilityTemplate({ t: 'circle', distance: 20 });
+    const activity = makeActivity({ templates: [template] });
+    const item = makeItem({ id: 'spell-1', activity });
+    const actor = makeActor({ id: 'actor-a', item });
+    const scene = makeSceneGlobal({ createdId: 'tmpl-doc-1' });
+
+    vi.stubGlobal('game', makeGameGlobal(actor, scene));
+    vi.stubGlobal('canvas', makeCanvasGlobal(scene));
+    vi.stubGlobal('dnd5e', {
+      canvas: {
+        AbilityTemplate: {
+          fromActivity: vi.fn().mockReturnValue([template]),
+        },
+      },
+    });
+
+    const { placeTemplateHandler, confirmTemplatePlacementHandler, clearPlacementContexts } =
+      await import('./place-template.js');
+    clearPlacementContexts();
+
+    // Place the template
+    const placeResult = await placeTemplateHandler.handle({
+      actor_id: 'actor-a',
+      spell_id: 'spell-1',
+    });
+    expect(placeResult.success).toBe(true);
+    if (!placeResult.success) throw new Error('Expected success');
+    const placementId = (placeResult.data as { placementId: string }).placementId;
+
+    // First confirm — must succeed
+    const firstConfirm = await confirmTemplatePlacementHandler.handle({
+      placementId,
+      templateIndex: 0,
+      x: 100,
+      y: 200,
+    });
+    expect(firstConfirm.success).toBe(true);
+    expect(scene.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+
+    // Second confirm with same placementId — must return placement_expired (context was evicted)
+    const secondConfirm = await confirmTemplatePlacementHandler.handle({
+      placementId,
+      templateIndex: 0,
+      x: 150,
+      y: 250,
+    });
+    expect(secondConfirm).toEqual({ success: false, error: 'placement_expired' });
+    // createEmbeddedDocuments must NOT have been called a second time
+    expect(scene.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+  });
 });
