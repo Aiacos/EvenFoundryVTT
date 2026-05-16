@@ -156,9 +156,22 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       return { success: false, error: 'concentration-required' };
     }
 
-    // Step 4: invoke activity.use() — wrapped in try/catch for error normalisation
+    // Step 4: invoke activity.use() — wrapped in try/catch for error normalisation.
+    //
+    // Plan 09-04: slot_level forwarding (T-09-04 mitigate — validated integer 0..9).
+    // - slot_level === 0 → cantrip path: omit spell.slot override (cantrips don't consume slots).
+    // - slot_level 1..9 → include spell.slot: 'spell<N>' override (dnd5e 5.3.3 verified API).
+    //   Pact slots (level 10) are Phase 13 stretch — omit for MVP.
+    // Defense-in-depth: slot_level is already validated z.number().int().min(0).max(9) by
+    // CastSpellInputSchema at bridge gate (T-09-04-a). The string template
+    // `spell${args.slot_level}` only receives a validated integer (T-09-04-b).
+    // dnd5e activity.use throws on unknown slot key → caught and normalised below (T-09-04-c).
+    const slotOverride =
+      args.slot_level > 0
+        ? ({ spell: { slot: `spell${args.slot_level}` } } as { spell: { slot: string } })
+        : {};
     try {
-      const result = await activity.use({ configure: false });
+      const result = await activity.use({ configure: false, ...slotOverride });
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {

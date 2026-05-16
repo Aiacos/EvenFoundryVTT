@@ -97,7 +97,11 @@ describe('castSpellHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-42' } });
-    expect(activity.use).toHaveBeenCalledWith({ configure: false });
+    // Plan 09-04: slot_level=3 → spell.slot override included (CS-SLOT-02)
+    expect(activity.use).toHaveBeenCalledWith({
+      configure: false,
+      spell: { slot: 'spell3' },
+    });
   });
 
   it('returns actor_not_found when actor is missing', async () => {
@@ -388,6 +392,138 @@ describe('castSpellHandler', () => {
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-3' } });
     expect(activity.use).toHaveBeenCalledOnce();
+  });
+
+  // ─── Plan 09-04: slot_level forwarding tests (CS-SLOT-01..04) ───────────────
+
+  /**
+   * CS-SLOT-01: cantrip path (slot_level=0) → activity.use called WITHOUT spell.slot override.
+   */
+  it('CS-SLOT-01: slot_level=0 (cantrip) → activity.use called without spell.slot', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-cantrip' });
+    const item = makeItem({ id: 'spell-firebolt', activity });
+    const actor = makeActor({ id: 'actor-cantrip', item });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-cantrip',
+      spell_id: 'spell-firebolt',
+      slot_level: 0,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cantrip' } });
+    // No spell.slot override for cantrips
+    expect(activity.use).toHaveBeenCalledWith({ configure: false });
+  });
+
+  /**
+   * CS-SLOT-02: slot_level=3 → activity.use called with spell.slot: 'spell3'.
+   */
+  it('CS-SLOT-02: slot_level=3 → activity.use called with spell.slot: spell3', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-3rd' });
+    const item = makeItem({ id: 'spell-fireball', activity });
+    const actor = makeActor({ id: 'actor-slot3', item });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-slot3',
+      spell_id: 'spell-fireball',
+      slot_level: 3,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: true, data: { chatCardId: 'cm-3rd' } });
+    expect(activity.use).toHaveBeenCalledWith({
+      configure: false,
+      spell: { slot: 'spell3' },
+    });
+  });
+
+  /**
+   * CS-SLOT-03: slot_level=5 → activity.use called with spell.slot: 'spell5' (upcast).
+   */
+  it('CS-SLOT-03: slot_level=5 → activity.use called with spell.slot: spell5', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-5th' });
+    const item = makeItem({ id: 'spell-fireball', activity });
+    const actor = makeActor({ id: 'actor-slot5', item });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-slot5',
+      spell_id: 'spell-fireball',
+      slot_level: 5,
+      targets: [],
+    });
+
+    expect(result).toEqual({ success: true, data: { chatCardId: 'cm-5th' } });
+    expect(activity.use).toHaveBeenCalledWith({
+      configure: false,
+      spell: { slot: 'spell5' },
+    });
+  });
+
+  /**
+   * CS-SLOT-04: concentration check (Plan 09-03) fires BEFORE slot expansion —
+   * slot_level is irrelevant when blocked by concentration conflict.
+   */
+  it('CS-SLOT-04: concentration check fires before slot expansion — slot_level irrelevant when blocked', async () => {
+    const activity = makeActivity({ chatCardId: 'cm-slot4-blocked' });
+    const item = {
+      id: 'spell-bless-slot4',
+      name: 'Bless',
+      type: 'spell',
+      system: {
+        components: { concentration: true },
+        activities: { contents: [activity] },
+      },
+    };
+    const actor = {
+      id: 'actor-conc-slot',
+      name: 'Cleric',
+      type: 'character',
+      items: { contents: [item] },
+      effects: {
+        contents: [
+          {
+            id: 'eff-existing',
+            name: 'Bless',
+            statuses: new Set(['concentrating']),
+            flags: { dnd5e: { item: { name: 'Bless' } } },
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', {
+      actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+      scenes: { active: null },
+      users: { contents: [] },
+      settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+      i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+      combat: null,
+      user: { isGM: false, targets: new Set() },
+      messages: { contents: [], get: vi.fn() },
+    });
+
+    const { castSpellHandler } = await import('./cast-spell.js');
+
+    const result = await castSpellHandler.handle({
+      actor_id: 'actor-conc-slot',
+      spell_id: 'spell-bless-slot4',
+      slot_level: 4, // upcast attempt — irrelevant, blocked by concentration
+      targets: [],
+    });
+
+    // Concentration check fires first; activity.use never called regardless of slot_level
+    expect(result).toEqual({ success: false, error: 'concentration-required' });
+    expect(activity.use).not.toHaveBeenCalled();
   });
 
   /**

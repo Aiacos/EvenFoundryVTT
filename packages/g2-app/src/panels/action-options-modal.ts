@@ -115,6 +115,25 @@ export interface ActionOptionsRequest {
    * When false: tap emits a tool.invoke envelope with `targets: []`.
    */
   readonly requiresTarget: boolean;
+  /**
+   * Plan 09-04: when true AND `availableSlots.length > 1`, tap closes WITHOUT
+   * emitting. Boot caller intercepts and opens SlotPickerPanel to collect the
+   * slot level before dispatch.
+   * When false (cantrip path OR only 1 slot available): tap emits directly with
+   * `slot_level: defaultSlotLevel`.
+   *
+   * Only meaningful when `kind === 'spell'`. Ignored for `kind === 'item'`.
+   * Defaults to false for backwards-compat (legacy callers that don't pass this field).
+   */
+  readonly requiresSlotPicker?: boolean;
+  /**
+   * Plan 09-04: slot level to use when `requiresSlotPicker === false` or the
+   * slot picker is skipped. 0 = cantrip (no slot consumed). 1-9 = standard slot.
+   *
+   * Only meaningful when `kind === 'spell'`. Ignored for `kind === 'item'`.
+   * Defaults to 0 when not provided (cantrip-safe fallback).
+   */
+  readonly defaultSlotLevel?: number;
 }
 
 /**
@@ -296,10 +315,32 @@ export class ActionOptionsModal implements OverlayPanel {
             }
           }
 
-          // AOM-05: requiresTarget=false + no preconditioner block → emit tool.invoke + close.
+          // Plan 09-04: requiresSlotPicker branch — intercept BEFORE emit when spell
+          // needs a slot level selection (multiple slot levels available).
+          // Only fires for kind === 'spell' with requiresSlotPicker === true.
+          // The boot caller detects this pattern and opens SlotPickerPanel after close.
+          if (this.request.kind === 'spell' && this.request.requiresSlotPicker === true) {
+            // AOM-SLOT-01: close WITHOUT emitting — caller opens SlotPickerPanel.
+            this.onCloseCb();
+            return;
+          }
+
+          // AOM-05: requiresTarget=false + no preconditioner block + no slot picker → emit.
           const toolId = this.request.kind === 'spell' ? 'cast-spell' : 'use-item';
           const argKey = this.request.kind === 'spell' ? 'spell_id' : 'item_id';
           const idempotencyKey = crypto.randomUUID();
+
+          // Build args payload. For spells, include slot_level (Plan 09-04).
+          // For items, no slot_level field (use-item schema has no such field).
+          const baseArgs: Record<string, unknown> = {
+            actor_id: this.request.actorId,
+            [argKey]: this.request.itemId,
+            targets: [] as string[],
+          };
+          if (this.request.kind === 'spell') {
+            baseArgs['slot_level'] = this.request.defaultSlotLevel ?? 0;
+          }
+
           const envelope = {
             proto: 'evf-v1' as const,
             seq: 0,
@@ -309,11 +350,7 @@ export class ActionOptionsModal implements OverlayPanel {
             payload: {
               toolId,
               idempotencyKey,
-              args: {
-                actor_id: this.request.actorId,
-                [argKey]: this.request.itemId,
-                targets: [] as string[],
-              },
+              args: baseArgs,
             },
           };
           // Plan 09-03: cache the outgoing envelope BEFORE sending (AOM-RETRY-01).

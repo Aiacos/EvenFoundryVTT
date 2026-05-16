@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { EnvelopeSchema, ToolInvocationEnvelopePayloadSchema } from '@evf/shared-protocol';
 import { AsciiGrid, matchAsciiFixture } from '@evf/shared-render';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import {
   ActionOptionsModal,
@@ -842,6 +842,155 @@ describe('Phase 9 Plan 09-03 — ActionOptionsModal retry cache integration (AOM
     expect(cacheRetryEnvelope).not.toHaveBeenCalled();
     // But toast IS enqueued
     expect(toastQueue.enqueue).toHaveBeenCalledOnce();
+    await modal.onUnmount();
+  });
+});
+
+// ─── Plan 09-04: requiresSlotPicker + defaultSlotLevel tests ─────────────────
+
+describe('AOM-SLOT: requiresSlotPicker flag + defaultSlotLevel forwarding (Plan 09-04)', () => {
+  beforeEach(() => {
+    vi.mocked(getActionEconomyState).mockReturnValue(null);
+    vi.mocked(cacheRetryEnvelope).mockReset();
+  });
+
+  /**
+   * AOM-SLOT-01: spell + requiresSlotPicker === true + availableSlots.length > 1 →
+   * tap calls onCloseCb WITHOUT emitting (caller intercepts and opens SlotPickerPanel).
+   */
+  it('AOM-SLOT-01: requiresSlotPicker=true → tap closes WITHOUT emitting', async () => {
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      request: makeSpellRequest({
+        requiresTarget: false,
+        requiresSlotPicker: true,
+        defaultSlotLevel: 3,
+      }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await modal.onUnmount();
+  });
+
+  /**
+   * AOM-SLOT-02: spell + requiresSlotPicker === false → tap emits with slot_level
+   * included in args (defaultSlotLevel = 3).
+   */
+  it('AOM-SLOT-02: requiresSlotPicker=false → tap emits with slot_level in args', async () => {
+    vi.stubGlobal('crypto', {
+      randomUUID: () => '55555555-5555-4555-8555-555555555555',
+    });
+    const ws = makeWs();
+    const { modal } = makeModal({
+      ws,
+      request: makeSpellRequest({
+        requiresTarget: false,
+        requiresSlotPicker: false,
+        defaultSlotLevel: 3,
+      }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(ws.send.mock.calls[0]![0] as string) as {
+      payload: { args: { slot_level: number } };
+    };
+    expect(sent.payload.args.slot_level).toBe(3);
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  /**
+   * AOM-SLOT-03: cantrip case (defaultSlotLevel=0, requiresSlotPicker=false) →
+   * tap emits with slot_level: 0.
+   */
+  it('AOM-SLOT-03 (cantrip): requiresSlotPicker=false, defaultSlotLevel=0 → emits slot_level: 0', async () => {
+    vi.stubGlobal('crypto', {
+      randomUUID: () => '66666666-6666-4666-8666-666666666666',
+    });
+    const ws = makeWs();
+    const { modal } = makeModal({
+      ws,
+      request: makeSpellRequest({
+        requiresTarget: false,
+        requiresSlotPicker: false,
+        defaultSlotLevel: 0,
+      }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(ws.send.mock.calls[0]![0] as string) as {
+      payload: { args: { slot_level: number } };
+    };
+    expect(sent.payload.args.slot_level).toBe(0);
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  /**
+   * AOM-SLOT-04: item action — requiresSlotPicker is ignored (no slot_level in args).
+   */
+  it('AOM-SLOT-04: item action — slot_level NOT added (use-item schema has no slot_level)', async () => {
+    vi.stubGlobal('crypto', {
+      randomUUID: () => '77777777-7777-4777-8777-777777777777',
+    });
+    const ws = makeWs();
+    const { modal } = makeModal({
+      ws,
+      request: makeItemRequest({
+        requiresTarget: false,
+      }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(ws.send.mock.calls[0]![0] as string) as {
+      payload: { args: Record<string, unknown> };
+    };
+    expect(sent.payload.args).not.toHaveProperty('slot_level');
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  /**
+   * AOM-SLOT-05: existing preconditioner tests still pass — preconditioner runs
+   * BEFORE the slot-picker branch.
+   */
+  it('AOM-SLOT-05: preconditioner fires BEFORE requiresSlotPicker check', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeSpellRequest({
+        requiresTarget: false,
+        requiresSlotPicker: true, // would open slot picker — but preconditioner fires first
+        defaultSlotLevel: 3,
+      }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+    // Preconditioner fires: toast enqueued, NO ws.send
+    expect(toastQueue.enqueue).toHaveBeenCalledOnce();
+    expect(ws.send).not.toHaveBeenCalled();
+    // onClose IS called (preconditioner path calls onCloseCb)
+    expect(onClose).toHaveBeenCalledTimes(1);
     await modal.onUnmount();
   });
 });
