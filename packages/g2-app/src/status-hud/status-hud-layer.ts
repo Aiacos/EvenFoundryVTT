@@ -172,6 +172,20 @@ export class StatusHudLayer implements Layer {
    */
   private pivotLatched = false;
 
+  /**
+   * Phase 10 Plan 10-01 — SYNC LOST chip state.
+   *
+   * Non-null while the WS is disconnected and `WsReconnectController` is in the
+   * backoff window. The chip replaces the R1 hint chip in the footer row.
+   * Set via {@link setSyncLost}; read by {@link _renderNow} on every render.
+   *
+   * In-memory only — lost on Even App reload (acceptable for MVP per D-Area1).
+   *
+   * @see packages/g2-app/src/engine/ws-reconnect.ts (caller)
+   * @see packages/g2-app/src/internal/boot-engine-core.ts (wiring)
+   */
+  private syncLostState: { retryInMs: number } | null = null;
+
   constructor(opts: StatusHudLayerOpts) {
     this.bridge = opts.bridge;
     this.renderer = opts.renderer;
@@ -230,6 +244,37 @@ export class StatusHudLayer implements Layer {
    */
   getCachedSnapshot(): CharacterSnapshot | null {
     return this.snapshot;
+  }
+
+  /**
+   * Phase 10 Plan 10-01 — mount or unmount the SYNC LOST chip.
+   *
+   * Called by `WsReconnectController` in `boot-engine-core.ts` during the
+   * reconnect backoff window. When non-null, every subsequent `_renderNow` call
+   * passes the state to `renderer.renderContextChip(lm, locale, { syncLost })`
+   * which replaces the R1 hint chip with the countdown string.
+   *
+   * **Transition-driven:** if the new value is structurally equal to the stored
+   * value (both null, or both have the same `retryInMs`), the call is a no-op to
+   * avoid redundant re-renders (mirror of `setMovementBudget` SHR-MV-03 pattern).
+   *
+   * Per D-Area1: SYNC LOST chip state is in-memory only — DO NOT persist to
+   * Even Hub localStorage or any external storage tier.
+   *
+   * @param state `{ retryInMs: number }` to mount/update the chip, or `null` to
+   *   unmount (restore normal R1 hint chip). `retryInMs === 0` signals in-flight
+   *   reconnect attempt (sentinel — buildSyncLostChip handles the 0ms case).
+   */
+  setSyncLost(state: { retryInMs: number } | null): void {
+    // Transition guard — no-op if structurally identical
+    const same =
+      (state === null && this.syncLostState === null) ||
+      (state !== null &&
+        this.syncLostState !== null &&
+        state.retryInMs === this.syncLostState.retryInMs);
+    if (same) return;
+    this.syncLostState = state;
+    this._scheduleDebouncedRender();
   }
 
   /**
@@ -420,7 +465,11 @@ export class StatusHudLayer implements Layer {
   private async _renderNow(): Promise<void> {
     const grid =
       this.snapshot !== null ? this.renderer.render(this.snapshot) : this.renderer.renderLoading();
-    const chip = this.renderer.renderContextChip(this.layerManager, this.renderer.locale);
+    // Phase 10 Plan 10-01 — pass syncLostState to renderContextChip so the SYNC LOST
+    // chip replaces the R1 hint chip when the WS is disconnected (D-Area1, T-10-01).
+    const chip = this.renderer.renderContextChip(this.layerManager, this.renderer.locale, {
+      syncLost: this.syncLostState,
+    });
     const payload = new TextContainerUpgrade({
       containerName: this.containerName,
       content: `${grid.toString()}\n${chip}`,

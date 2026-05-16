@@ -64,6 +64,8 @@ import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { PanelRouter } from '../engine/panel-router.js';
 import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
+import { SeqTracker } from '../engine/seq-tracker.js';
+import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
@@ -188,9 +190,18 @@ function buildBootSteps(): BootStep[] {
  * requested channel to the registered subscriber. Errors are swallowed and
  * logged — malformed payloads are the producer's bug, not the HUD's.
  *
+ * **Phase 10 Plan 10-01 (D-Area1):** when a `SeqTracker` is provided, every
+ * successfully-parsed envelope is passed to `seqTracker.observe()` BEFORE being
+ * forwarded to channel subscribers. The observe call is a pure number compare
+ * (hot path — no Zod parse here; WS parse already happened above). This ensures
+ * `lastConfirmedSeq` is always current for `WsReconnectController.client_resume`.
+ *
  * @internal
  */
-function createWsEventBus(ws: WebSocket): {
+function createWsEventBus(
+  ws: WebSocket,
+  seqTracker?: SeqTracker,
+): {
   subscribe: (channel: string, fn: (raw: unknown) => void) => () => void;
 } {
   return {
@@ -201,7 +212,16 @@ function createWsEventBus(ws: WebSocket): {
             typeof ev.data === 'string'
               ? ev.data
               : new TextDecoder().decode(ev.data as ArrayBuffer);
-          const parsed = JSON.parse(rawText) as { type?: unknown; payload?: unknown };
+          const parsed = JSON.parse(rawText) as {
+            type?: unknown;
+            payload?: unknown;
+            seq?: unknown;
+          };
+          // Phase 10 Plan 10-01 — observe seq BEFORE forwarding (D-Area1 hot-path).
+          // Duck-typed: if the envelope has a numeric seq field, track it.
+          if (seqTracker !== undefined && typeof parsed.seq === 'number') {
+            seqTracker.observe({ seq: parsed.seq });
+          }
           if (parsed.type === channel) {
             fn(parsed.payload);
           }
@@ -351,17 +371,62 @@ export async function _bootEngineCore(
     localeOverride === 'auto' ? opts.locale : localeOverride;
 
   // 10. Construct the 3 layers.
+  //
+  // Phase 10 Plan 10-01 (D-Area1): SeqTracker is constructed once here and shared
+  // with the WS event bus (for observe) and WsReconnectController (for getLastConfirmedSeq).
+  // In-memory only — seq is lost on Even App reload (acceptable for single-tenant MVP).
+  const seqTracker = new SeqTracker();
+
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
   const statusHud = new StatusHudLayer({
     bridge,
     renderer: new StatusHudRenderer({ locale: effectiveLocale }),
-    wsEvents: createWsEventBus(ws),
+    // Phase 10 Plan 10-01: pass seqTracker so every parsed envelope is observed.
+    wsEvents: createWsEventBus(ws, seqTracker),
   });
 
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
   //     canvas extractions route through controller.requestFrame.
   const unsubSceneInput = attachSceneInputToWs(ws, rasterController);
+
+  // 11a. Phase 10 Plan 10-01 — WS reconnect controller (D-Area1 / SC-1 / T-10-01).
+  //
+  //     Attaches a 'close' listener to `ws`. On close:
+  //       1. StatusHudLayer.setSyncLost() mounts the ⚠ SYNC LOST chip (D-Area1).
+  //       2. Exponential backoff [1s,2s,4s,8s,15s,30s] until handshake succeeds.
+  //       3. On success: sends client_resume {last_seq: seqTracker.getLastConfirmedSeq()}.
+  //       4. bridge returns resume_replay → chip unmounts (onChipUnmount).
+  //       5. bridge returns resume_full_snapshot → seqTracker.reset() + onFullRefreshRequired
+  //          (T-10-01 mitigation — stale-seq forced full refresh via REST GET /v1/actor).
+  //
+  //     SYNC LOST chip persistence is in-memory only — DO NOT persist to Even Hub kv store.
+  //     Per D-Area5 T-10-01: full_refresh_required fires BEFORE any further envelope forwarding.
+  const wsReconnect = new WsReconnectController({
+    ws,
+    url: opts.bridgeUrl,
+    sessionId: handshake.session_id,
+    seqTracker,
+    wsFactory: deps?.wsFactory ?? ((u: string) => new WebSocket(u)),
+    performHandshake: (newWs: WebSocket, sid: string) =>
+      performCapabilityHandshake(newWs, opts.token, opts.locale, sid),
+    onChipTick: ({ remainingMs }) => {
+      statusHud.setSyncLost({ retryInMs: remainingMs });
+    },
+    onChipUnmount: () => {
+      statusHud.setSyncLost(null);
+    },
+    onFullRefreshRequired: () => {
+      // TODO(SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
+      // Out of scope for Plan 10-01 (bridge resume protocol is client-side only).
+      // T-10-01 mitigation is in place: seqTracker.reset() was already called in
+      // WsReconnectController._attachResumeListener before this callback fires.
+      console.warn(
+        '[boot-engine-core] onFullRefreshRequired: T-10-01 full refresh needed — ' +
+          'REST GET /v1/actor wiring deferred to Plan 10-04 (D-Area5 SC-10-01).',
+      );
+    },
+  });
 
   // 11b. R1 gesture bridge — WS `r1.gesture` envelopes → PanelGestureBus publish.
   //      Must run AFTER step 7 `setNegotiatedCaps` so LayerManager's negotiated
@@ -746,6 +811,14 @@ export async function _bootEngineCore(
         unsubR1();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubR1 failed', err);
+      }
+      // Phase 10 Plan 10-01 — dispose WsReconnectController BEFORE unsubSceneInput
+      // (reverse-mount order: wsReconnect attached at step 11a, after scene input step 11).
+      // dispose() cancels pending backoff timers and removes the 'close' listener from ws.
+      try {
+        wsReconnect.dispose();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: wsReconnect.dispose failed', err);
       }
       try {
         unsubSceneInput();
