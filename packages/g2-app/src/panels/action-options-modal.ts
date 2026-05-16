@@ -61,7 +61,9 @@ import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hu
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import type { Toast } from '../status-hud/toast-types.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import { getActionEconomyState } from './action-economy-state.js';
 
 // WR-03: crypto.randomUUID() is available in the Even Realities App WebView
 // (Safari WKWebView on iOS 15+ / Baseline 2021). The `declare const` ambient
@@ -128,6 +130,20 @@ export interface ActionOptionsWebSocket {
 /** Invoked when the user confirms (tap) or cancels (double-tap). */
 export type ActionOptionsCloseHandler = () => void;
 
+/**
+ * Minimal toast queue interface for the preconditioner error feedback.
+ *
+ * Accepts the same `Toast` payload as `ToastQueueLayer.enqueue`.
+ * Tests inject a `{ enqueue: vi.fn() }` mock; production passes the real
+ * `ToastQueueLayer` instance threaded from boot-engine-core step 11e.
+ *
+ * @see packages/g2-app/src/status-hud/toast-queue-layer.ts ToastQueueLayer.enqueue
+ * @see packages/g2-app/src/panels/action-result-dispatcher.ts ActionResultToastQueue (pattern ref)
+ */
+export interface ActionOptionsToastQueue {
+  enqueue(toast: Toast): void;
+}
+
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 /**
@@ -149,6 +165,18 @@ export class ActionOptionsModal implements OverlayPanel {
   private readonly locale: HudLocale;
   private readonly sessionId: string;
   private readonly onCloseCb: ActionOptionsCloseHandler;
+  /**
+   * Phase 9 Plan 09-02 — toast queue for preconditioner error feedback.
+   *
+   * Enqueues an error toast (`error.action.already-used-action` / `...bonus`)
+   * when the client-side preconditioner blocks a tap (slot already used).
+   * Fail-open: when `null` (legacy callers not yet updated to pass toastQueue),
+   * the modal skips toast emission and proceeds to the normal emit path.
+   *
+   * @see onEvent case 'tap' (preconditioner branch)
+   * @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 2
+   */
+  private readonly toastQueue: ActionOptionsToastQueue | null;
 
   /**
    * Unsubscribe closure returned by PanelGestureBus.subscribe.
@@ -168,6 +196,9 @@ export class ActionOptionsModal implements OverlayPanel {
    * @param locale      Active HUD locale — drives label lookup via getLabel.
    * @param sessionId   UUID v4 of the active WS session (threaded into envelopes).
    * @param onClose     Invoked after the user confirms (tap) or cancels (double-tap).
+   * @param toastQueue  Phase 9 Plan 09-02 — toast queue for preconditioner error feedback.
+   *                    Pass the `ToastQueueLayer` instance from boot-engine-core step 11e.
+   *                    When `null` (legacy path), the modal skips preconditioner error toasts.
    */
   constructor(
     bridge: EvenAppBridge,
@@ -177,6 +208,7 @@ export class ActionOptionsModal implements OverlayPanel {
     locale: HudLocale,
     sessionId: string,
     onClose: ActionOptionsCloseHandler,
+    toastQueue: ActionOptionsToastQueue | null = null,
   ) {
     this.bridge = bridge;
     this.ws = ws;
@@ -185,6 +217,7 @@ export class ActionOptionsModal implements OverlayPanel {
     this.locale = locale;
     this.sessionId = sessionId;
     this.onCloseCb = onClose;
+    this.toastQueue = toastQueue;
   }
 
   // ─── OverlayPanel lifecycle ────────────────────────────────────────────────
@@ -231,9 +264,38 @@ export class ActionOptionsModal implements OverlayPanel {
         if (this.request.requiresTarget) {
           // AOM-05 + AOM-16: requiresTarget=true → close WITHOUT emitting.
           // Plan 08-05 boot caller detects this case and immediately opens TargetPickerPanel.
+          // Preconditioner does NOT apply here — no slot is consumed (no emission).
           this.onCloseCb();
         } else {
-          // AOM-05: requiresTarget=false → emit tool.invoke + close.
+          // Phase 9 Plan 09-02 — client-side preconditioner (T-09-01 mitigation).
+          // Reads the in-process action economy cache to fast-path obviously blocked actions.
+          // Fail-open: null cache (no envelope seen yet) → allow (server validates).
+          // Only fires when !multiAttackInProgress (multi-attack iterations are always allowed).
+          if (this.toastQueue !== null) {
+            const econ = getActionEconomyState(this.request.actorId);
+            if (econ !== null && !econ.multiAttackInProgress) {
+              // spell → Action slot;  item → Bonus Action slot  (D-CONTEXT §Area 1)
+              const slotKey: 'action' | 'bonus' =
+                this.request.kind === 'spell' ? 'action' : 'bonus';
+              const used = slotKey === 'action' ? econ.actionsUsed : econ.bonusActionsUsed;
+              if (used >= 1) {
+                const errKey =
+                  slotKey === 'action'
+                    ? 'error.action.already-used-action'
+                    : 'error.action.already-used-bonus';
+                this.toastQueue.enqueue({
+                  id: `action-precond-${this.request.actorId}-${slotKey}-${Date.now()}`,
+                  severity: 'error',
+                  message: `❌ ${getLabel(errKey, this.locale)}`,
+                  emittedAt: Date.now(),
+                });
+                this.onCloseCb();
+                return;
+              }
+            }
+          }
+
+          // AOM-05: requiresTarget=false + no preconditioner block → emit tool.invoke + close.
           const toolId = this.request.kind === 'spell' ? 'cast-spell' : 'use-item';
           const argKey = this.request.kind === 'spell' ? 'spell_id' : 'item_id';
           const envelope = {

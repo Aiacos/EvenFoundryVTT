@@ -48,9 +48,11 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import {
+  ActionEconomyPayloadSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   MovementBudgetPayloadSchema,
+  R1_ACTION_ECONOMY_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
 } from '@evf/shared-protocol';
 import type { Layer } from '../engine/layer-types.js';
@@ -143,6 +145,15 @@ export class StatusHudLayer implements Layer {
    */
   private readonly unsubscribeMovement: () => void;
 
+  /**
+   * Phase 9 Plan 09-02 — unsubscribe for r1.action.economy channel.
+   *
+   * Registered in the constructor after the movement subscription.
+   * Drives `renderer.setActionEconomy` on validated payload arrival.
+   * Released in `destroy()` to prevent listener leaks (T-4b-01-03 pattern).
+   */
+  private readonly unsubscribeEconomy: () => void;
+
   /** Latest snapshot seen via WS delta — `null` until first valid payload. */
   private snapshot: CharacterSnapshot | null = null;
 
@@ -177,9 +188,15 @@ export class StatusHudLayer implements Layer {
     // Phase 8 Plan 08-04 — subscribe to r1.movement.budget envelopes.
     // Dispatches MovementBudgetPayloadSchema.safeParse → renderer.setMovementBudget
     // so the Mov chip updates without triggering a full character delta re-render.
-    this.unsubscribeMovement = opts.wsEvents.subscribe(
-      R1_MOVEMENT_BUDGET_TYPE,
-      (raw) => this._onMovementBudget(raw),
+    this.unsubscribeMovement = opts.wsEvents.subscribe(R1_MOVEMENT_BUDGET_TYPE, (raw) =>
+      this._onMovementBudget(raw),
+    );
+
+    // Phase 9 Plan 09-02 — subscribe to r1.action.economy envelopes.
+    // Dispatches ActionEconomyPayloadSchema.safeParse → renderer.setActionEconomy
+    // so the economy widget updates without triggering a full character delta re-render.
+    this.unsubscribeEconomy = opts.wsEvents.subscribe(R1_ACTION_ECONOMY_TYPE, (raw) =>
+      this._onActionEconomy(raw),
     );
 
     // Start the idle heartbeat. Every tick re-renders the cached snapshot
@@ -211,6 +228,7 @@ export class StatusHudLayer implements Layer {
   destroy(): void {
     this.unsubscribe();
     this.unsubscribeMovement();
+    this.unsubscribeEconomy();
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -250,6 +268,39 @@ export class StatusHudLayer implements Layer {
       total: parsed.data.walkSpeed,
     });
     // Schedule a debounced re-render so the chip appears in the HUD
+    this._scheduleDebouncedRender();
+  }
+
+  /**
+   * Phase 9 Plan 09-02 — receive a raw `r1.action.economy` envelope payload.
+   *
+   * Validates via `ActionEconomyPayloadSchema.safeParse` (T-4a-04-01 pattern).
+   * On parse failure: `console.warn` + ignore (no throw, no crash).
+   * On success: calls `renderer.setActionEconomy` with the parsed widget state.
+   * The renderer's transition guard (SHR-EW-04) ensures no redundant re-renders.
+   *
+   * **Multi-attack details:** `multiAttackInProgress` boolean is forwarded;
+   * the `multiAttack: {current, total}` sub-object is NOT set here — multi-attack
+   * progress details remain in the multi-attack-progress dispatcher's domain.
+   * The status-hud-layer only knows about the boolean flag.
+   *
+   * Schedules a debounced re-render so the widget appears in the HUD.
+   */
+  private _onActionEconomy(raw: unknown): void {
+    const parsed = ActionEconomyPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.warn(
+        '[EVF] status-hud-layer: malformed r1.action.economy payload — ignoring.',
+        parsed.error.message,
+      );
+      return;
+    }
+    this.renderer.setActionEconomy({
+      actionsUsed: parsed.data.actionsUsed,
+      bonusActionsUsed: parsed.data.bonusActionsUsed,
+      reactionsUsed: parsed.data.reactionsUsed,
+      multiAttackInProgress: parsed.data.multiAttackInProgress,
+    });
     this._scheduleDebouncedRender();
   }
 

@@ -295,7 +295,8 @@ describe('StatusHudLayer — destroy', () => {
     // The unsubscribe callback returned by subscribe() must have been invoked.
     // Phase 08-04: destroy() calls unsubscribe twice — once for character.delta
     // and once for r1.movement.budget (both share the same mock unsubscribe fn).
-    expect(wsEvents.unsubscribe).toHaveBeenCalledTimes(2);
+    // Phase 09-02: destroy() calls unsubscribe THREE times — economy subscription added.
+    expect(wsEvents.unsubscribe).toHaveBeenCalledTimes(3);
     // After destroy, advancing time should NOT fire the debounced render
     // (debounce timer cleared) NOR the heartbeat (interval cleared).
     await vi.advanceTimersByTimeAsync(60_000);
