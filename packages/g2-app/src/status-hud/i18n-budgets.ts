@@ -985,6 +985,66 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'abbr.',
     max: 7,
   },
+
+  // ─── Phase 8 Plan 08-01 — action result error toasts (5 keys) ─────────────
+  // 5 typed error i18n keys for `error.action.<kind>` toast messages.
+  // Budget: 28 chars (toast row budget per CONTEXT §Area 2 + ARD-11 spec).
+  // All IT/EN/DE strings verified ≤ 28 code-points at authoring time.
+
+  /**
+   * Toast error message: no valid targets found.
+   * IT: "Nessun bersaglio" (17) · EN: "No targets" (10) · DE: "Keine Ziele" (11).
+   */
+  'error.action.no-targets': {
+    it: 'Nessun bersaglio',
+    en: 'No targets',
+    de: 'Keine Ziele',
+    max: 28,
+  },
+
+  /**
+   * Toast error message: target is outside spell/weapon range.
+   * IT: "Fuori portata" (13) · EN: "Out of range" (12) · DE: "Außer Reichweite" (16).
+   */
+  'error.action.out-of-range': {
+    it: 'Fuori portata',
+    en: 'Out of range',
+    de: 'Außer Reichweite',
+    max: 28,
+  },
+
+  /**
+   * Toast error message: insufficient spell slots / charges / uses.
+   * IT: "Risorse esaurite" (16) · EN: "Out of resources" (16) · DE: "Ressourcen leer" (15).
+   */
+  'error.action.out-of-resource': {
+    it: 'Risorse esaurite',
+    en: 'Out of resources',
+    de: 'Ressourcen leer',
+    max: 28,
+  },
+
+  /**
+   * Toast error message: action attempted outside player's turn.
+   * IT: "Non il tuo turno" (16) · EN: "Not your turn" (13) · DE: "Nicht dein Zug" (14).
+   */
+  'error.action.wrong-turn': {
+    it: 'Non il tuo turno',
+    en: 'Not your turn',
+    de: 'Nicht dein Zug',
+    max: 28,
+  },
+
+  /**
+   * Toast error message: GM blocked or rejected the action.
+   * IT: "Rifiutato dal GM" (16) · EN: "GM rejected" (11) · DE: "Vom DM abgelehnt" (16).
+   */
+  'error.action.gm-rejected': {
+    it: 'Rifiutato dal GM',
+    en: 'GM rejected',
+    de: 'Vom DM abgelehnt',
+    max: 28,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

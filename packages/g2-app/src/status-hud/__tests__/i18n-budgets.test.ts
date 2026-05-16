@@ -225,7 +225,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 = 180 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 + 5 Phase 8 Plan-01 = 185 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
@@ -242,7 +242,10 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // Phase 7 Plan 03 totals: 9 TemplatePlacementPanel keys (tmpl_title, tmpl_spell_label,
     //   tmpl_index_label, tmpl_position_label, tmpl_tap_hint, tmpl_long_hint,
     //   hud_r1_tmpl_scroll, hud_r1_tmpl_tap, hud_r1_tmpl_long).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(180);
+    // Phase 8 Plan 01 totals: 5 action result error toast keys
+    //   (error.action.no-targets, error.action.out-of-range, error.action.out-of-resource,
+    //    error.action.wrong-turn, error.action.gm-rejected).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(185);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -268,7 +271,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
 
 describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
   // ─── Count ────────────────────────────────────────────────────────────────
-  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6+20+11 Phase 6 = 171 total; WR-04: -1 dead key)', () => {
+  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6+20+11 Phase 6 = 171 total; WR-04: -1 dead key; +9 P7 +5 P8)', () => {
     // Sentinel spot-check — a few representative keys from each UI-SPEC section.
     const PHASE_5_SAMPLE_KEYS = [
       'sheet.ability.str',
@@ -315,7 +318,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 171 after Phase 6 Plan 03 (12 per-state chip strings) then WR-04
     // deleted the dead hud_r1_lang_submenu entry (172 - 1 = 171).
     // Updated to 180 after Phase 7 Plan 03 (9 TemplatePlacementPanel keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(180);
+    // Updated to 185 after Phase 8 Plan 01 (5 error.action.* toast keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(185);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────

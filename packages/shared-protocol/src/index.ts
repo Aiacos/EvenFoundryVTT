@@ -193,6 +193,19 @@ export {
   DropConcentrationInputSchema,
 } from './tools/drop-concentration.js';
 
+// ─── Phase 8 additions (Plan 08-01) ──────────────────────────────────────────
+// Action result payload schema (ACT-01).
+// action-result-dispatcher.ts consumes this at the WS-receive trust boundary.
+// action-result-watcher.ts in foundry-module emits envelopes of this shape.
+
+export {
+  ActionErrorKind,
+  ActionOutcome,
+  ActionResultPayloadSchema,
+  type ActionResultPayload,
+  R1_ACTION_RESULT_TYPE,
+} from './payloads/action-result.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {
