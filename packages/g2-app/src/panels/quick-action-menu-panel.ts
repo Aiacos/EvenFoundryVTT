@@ -105,11 +105,25 @@ const MAIN_ITEMS = [
  *
  * These are plain function references — not re-exported from PanelRouter or
  * LayerManager to keep the panel module dependency-free from the router.
+ *
+ * **CR-01 contract:** `onNavigate` is responsible for clearing the overlay
+ * suspension stack (via `panelRouter.clearOverlayStack()`) AND opening the
+ * target panel (via `panelRouter.openPanel`). The `'navigate'` dispatch case
+ * MUST NOT additionally call `onClose` — doing so would race `openPanel`'s
+ * `_closeActiveInternal` and destroy the freshly mounted target panel.
  */
 export interface QuickActionMenuCallbacks {
   /** Called to close the menu (typically `panelRouter.popOverlay(lm)`). */
   onClose: () => void;
-  /** Called with the target panel ID when a navigate item is selected. */
+  /**
+   * Called with the target panel ID when a navigate item is selected.
+   *
+   * The implementation in `boot-engine-core.ts` clears the overlay stack
+   * (so `popOverlay` won't erroneously restore a stale suspended panel)
+   * and then calls `openPanel(target, deps)`. It does NOT call `popOverlay`
+   * — `openPanel` closes the current z=2 occupant (the menu) itself via
+   * `_closeActiveInternal`. This is the correct single-entry-point contract.
+   */
   onNavigate: (panelId: string) => void;
   /** Called when the user selects [M] Map mode toggle. */
   onMapModeToggle: () => void;
@@ -348,8 +362,12 @@ export class QuickActionMenuPanel implements OverlayPanel {
 
     switch (item.action) {
       case 'navigate':
+        // CR-01: call ONLY onNavigate — do NOT call onClose.
+        // onNavigate (in boot-engine-core.ts) calls clearOverlayStack() then
+        // openPanel(), which internally destroys the menu via _closeActiveInternal.
+        // Calling onClose concurrently would race openPanel and destroy the
+        // freshly mounted target panel before it could be seen by the user.
         this.callbacks.onNavigate(item.target);
-        this.callbacks.onClose();
         break;
       case 'open-sub-menu': {
         this.mode = 'language';

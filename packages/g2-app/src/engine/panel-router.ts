@@ -434,6 +434,28 @@ export class PanelRouter {
   }
 
   /**
+   * Clear the overlay suspension stack without restoring any suspended panel.
+   *
+   * Called by `onNavigate` in `boot-engine-core.ts` before `openPanel` when the
+   * user selects a navigation item from the Quick Action menu. The menu was pushed
+   * via `pushOverlay`, so the primary panel (if any) lives in `overlayStack`. We
+   * must discard that entry before `openPanel` takes over z=2 — otherwise a
+   * subsequent `popOverlay` call (e.g. from a re-opened menu) would erroneously
+   * restore the pre-menu panel on top of the freshly navigated target.
+   *
+   * This is safe because `openPanel` already calls `_closeActiveInternal` which
+   * destroys the current z=2 occupant (the menu). The suspended panels in
+   * `overlayStack` are simply abandoned — their `onUnmount` was already called
+   * when they were suspended, so no cleanup callback is needed here.
+   *
+   * @see CR-01 fix — Phase 6 REVIEW.md
+   * @see packages/g2-app/src/internal/boot-engine-core.ts onNavigate callback (step 11c)
+   */
+  clearOverlayStack(): void {
+    this.overlayStack.length = 0;
+  }
+
+  /**
    * Test-only diagnostic: is the panel with the given ID currently mounted?
    *
    * Production code MUST NOT gate behavior on panel identity — the LayerManager

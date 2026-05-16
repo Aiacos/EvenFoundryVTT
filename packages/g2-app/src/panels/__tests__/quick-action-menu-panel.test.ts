@@ -13,8 +13,10 @@
  *   - QAM-09:  sub-menu Auto: tap [A] → persistLocaleOverride('auto') + localeEvents.emit('auto')
  *   - QAM-10:  long-press cancel from main mode → calls onClose()
  *   - QAM-11:  long-press from language mode → mode returns to 'main', does NOT call onClose()
- *   - QAM-12:  tap actions: [S]→onNavigate('character-sheet')+onClose, [C]→'combat-tracker',
- *              [L]→'log', [B]→'spellbook', [I]→'inventory', [M]→onMapModeToggle, [A]→onAction, [X]→onClose
+ *   - QAM-12:  tap actions: [S]→onNavigate('character-sheet') ONLY (no onClose — CR-01 fix),
+ *              [C]→'combat-tracker', [L]→'log', [B]→'spellbook', [I]→'inventory',
+ *              [M]→onMapModeToggle+onClose, [A]→onAction+onClose, [X]→onClose
+ *   - QAM-NAV: CR-01 regression — navigate items call onNavigate only, never onClose
  *   - QAM-13:  getR1Hints() in main mode returns locale-aware labels
  *   - QAM-14:  getR1Hints() in language sub-menu mode returns different labels
  *   - QAM-FIX-01..04: INV-1 fixture round-trips for IT main, IT combat-suspended, IT language-submenu, DE stress
@@ -325,44 +327,49 @@ describe('QuickActionMenuPanel — long-press behaviour (QAM-10, QAM-11)', () =>
 });
 
 describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
-  it('QAM-12a: tap [S] → onNavigate("character-sheet") + onClose()', () => {
+  // CR-01 fix: navigate actions call ONLY onNavigate (not onClose).
+  // onNavigate's implementation in boot-engine-core.ts calls clearOverlayStack()
+  // then openPanel(), which destroys the menu itself via _closeActiveInternal.
+  // Calling onClose concurrently would race openPanel and destroy the target.
+
+  it('QAM-12a: tap [S] → onNavigate("character-sheet"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     // Already at [S] (index 0)
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onNavigate).toHaveBeenCalledWith('character-sheet');
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
-  it('QAM-12b: tap [C] → onNavigate("combat-tracker") + onClose()', () => {
+  it('QAM-12b: tap [C] → onNavigate("combat-tracker"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     panel.onEvent({ kind: 'scroll', direction: 'down' }); // to [C]
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onNavigate).toHaveBeenCalledWith('combat-tracker');
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
-  it('QAM-12c: tap [L] → onNavigate("log") + onClose()', () => {
+  it('QAM-12c: tap [L] → onNavigate("log"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     for (let i = 0; i < 2; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onNavigate).toHaveBeenCalledWith('log');
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
-  it('QAM-12d: tap [B] → onNavigate("spellbook") + onClose()', () => {
+  it('QAM-12d: tap [B] → onNavigate("spellbook"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     for (let i = 0; i < 3; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onNavigate).toHaveBeenCalledWith('spellbook');
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
-  it('QAM-12e: tap [I] → onNavigate("inventory") + onClose()', () => {
+  it('QAM-12e: tap [I] → onNavigate("inventory"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     for (let i = 0; i < 4; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onNavigate).toHaveBeenCalledWith('inventory');
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
   it('QAM-12f: tap [A] from main → onAction() + onClose()', () => {
@@ -433,6 +440,51 @@ describe('QuickActionMenuPanel — onMount/onUnmount bus subscription (bus.size)
     await panel.onUnmount();
     await expect(panel.onUnmount()).resolves.toBeUndefined();
     expect(bus.size()).toBe(0);
+  });
+});
+
+// ─── CR-01 Regression Tests (QAM-NAV-*) ─────────────────────────────────────
+//
+// Verifies that Quick Action navigation items call onNavigate exactly once and
+// do NOT call onClose, so the destination panel is never raced to destruction.
+// Also verifies that onNavigate receives the correct panelId for each nav item.
+//
+// These tests lock the CR-01 fix: if the 'navigate' case ever regains an
+// onClose() call, QAM-NAV-01..05 will fail with "onClose called when not expected".
+
+describe('QuickActionMenuPanel — CR-01 navigation race regression (QAM-NAV)', () => {
+  const navItems: Array<{ label: string; scrolls: number; panelId: string }> = [
+    { label: '[S] Sheet', scrolls: 0, panelId: 'character-sheet' },
+    { label: '[C] Combat', scrolls: 1, panelId: 'combat-tracker' },
+    { label: '[L] Log', scrolls: 2, panelId: 'log' },
+    { label: '[B] Spellbook', scrolls: 3, panelId: 'spellbook' },
+    { label: '[I] Inventory', scrolls: 4, panelId: 'inventory' },
+  ];
+
+  for (const { label, scrolls, panelId } of navItems) {
+    it(`QAM-NAV: tap ${label} calls onNavigate("${panelId}") and does NOT call onClose`, () => {
+      const { panel, callbacks } = makeMenu();
+      for (let i = 0; i < scrolls; i++) {
+        panel.onEvent({ kind: 'scroll', direction: 'down' });
+      }
+      panel.onEvent({ kind: 'tap' });
+
+      // onNavigate must fire with the correct target
+      expect(callbacks.onNavigate).toHaveBeenCalledTimes(1);
+      expect(callbacks.onNavigate).toHaveBeenCalledWith(panelId);
+
+      // onClose must NOT fire — firing it races openPanel and destroys the target
+      expect(callbacks.onClose).not.toHaveBeenCalled();
+    });
+  }
+
+  it('QAM-NAV-EXTRA: after navigate, no other callback fires (onMapModeToggle/onAction)', () => {
+    const { panel, callbacks } = makeMenu(); // [S] at index 0
+    panel.onEvent({ kind: 'tap' });
+    expect(callbacks.onNavigate).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+    expect(callbacks.onMapModeToggle).not.toHaveBeenCalled();
+    expect(callbacks.onAction).not.toHaveBeenCalled();
   });
 });
 

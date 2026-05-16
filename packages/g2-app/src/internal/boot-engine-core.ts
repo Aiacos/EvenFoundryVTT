@@ -394,6 +394,15 @@ export async function _bootEngineCore(
           void panelRouter.popOverlay(layerManager);
         },
         onNavigate: (target) => {
+          // CR-01 fix: clear the overlay stack BEFORE calling openPanel.
+          // The menu was mounted via pushOverlay, which may have suspended a
+          // primary panel onto overlayStack. openPanel calls _closeActiveInternal
+          // (destroys the menu at z=2) but does NOT touch overlayStack. Without
+          // clearOverlayStack(), a subsequent popOverlay call would erroneously
+          // restore the pre-menu panel on top of the freshly navigated target.
+          // clearOverlayStack() is safe here: suspended panels had onUnmount
+          // called when they were pushed, so no additional cleanup is needed.
+          panelRouter.clearOverlayStack();
           void panelRouter.openPanel(target, {
             bridge,
             layerManager,
