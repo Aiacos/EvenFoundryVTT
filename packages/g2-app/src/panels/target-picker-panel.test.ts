@@ -30,24 +30,20 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { EnvelopeSchema, ToolInvocationEnvelopePayloadSchema } from '@evf/shared-protocol';
 import { AsciiGrid, matchAsciiFixture } from '@evf/shared-render';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ZIndex } from '../engine/layer-types.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
-import type { TargetCandidate } from './target-resolver.js';
 import {
   type TargetPickerCloseHandler,
   TargetPickerPanel,
   type TargetPickerToolInvocation,
-  type TargetPickerWebSocket,
 } from './target-picker-panel.js';
+import type { TargetCandidate } from './target-resolver.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = path.resolve(
-  __dirname,
-  '../../../../packages/shared-render/src/fixtures',
-);
+const FIXTURES_DIR = path.resolve(__dirname, '../../../../packages/shared-render/src/fixtures');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,9 +55,9 @@ function makeBridge() {
   } as unknown as EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
 }
 
-type MockWs = TargetPickerWebSocket & { send: ReturnType<typeof vi.fn> };
+type MockWs = { send: ReturnType<typeof vi.fn<(data: string) => void>> };
 function makeWs(): MockWs {
-  return { send: vi.fn() };
+  return { send: vi.fn<(data: string) => void>() };
 }
 
 function makeGestureBus(): PanelGestureBus {
@@ -121,16 +117,18 @@ const TOOL_INVOCATION: TargetPickerToolInvocation = {
   callerArgs: { actorId: 'actor-player-001', spellId: 'fireball' },
 };
 
-function makePanel(opts: {
-  candidates?: TargetCandidate[];
-  locale?: 'it' | 'en' | 'de';
-  bridge?: EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
-  ws?: MockWs;
-  bus?: PanelGestureBus;
-  sessionId?: string;
-  toolInvocation?: TargetPickerToolInvocation;
-  onClose?: TargetPickerCloseHandler;
-} = {}) {
+function makePanel(
+  opts: {
+    candidates?: TargetCandidate[];
+    locale?: 'it' | 'en' | 'de';
+    bridge?: EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
+    ws?: MockWs;
+    bus?: PanelGestureBus;
+    sessionId?: string;
+    toolInvocation?: TargetPickerToolInvocation;
+    onClose?: TargetPickerCloseHandler;
+  } = {},
+) {
   const bridge = opts.bridge ?? makeBridge();
   const ws = opts.ws ?? makeWs();
   const bus = opts.bus ?? makeGestureBus();
@@ -406,7 +404,7 @@ describe('TargetPickerPanel — TPP-12: draw() renders BERSAGLIO title', () => {
     const { panel } = makePanel({ bridge, locale: 'it' });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     expect(arg.content).toContain('BERSAGLIO');
   });
 
@@ -415,7 +413,7 @@ describe('TargetPickerPanel — TPP-12: draw() renders BERSAGLIO title', () => {
     const { panel } = makePanel({ bridge });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     expect(arg.content).toContain('GOBLIN ARCHER');
   });
 
@@ -424,7 +422,7 @@ describe('TargetPickerPanel — TPP-12: draw() renders BERSAGLIO title', () => {
     const { panel } = makePanel({ bridge });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     expect(arg.content).toContain('▶');
   });
 });
@@ -438,7 +436,7 @@ describe('TargetPickerPanel — TPP-13: empty state renders hint', () => {
     const { panel } = makePanel({ candidates: [], bridge, locale: 'it' });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     expect(arg.content).toContain('Nessun bersaglio');
     vi.useRealTimers();
   });
@@ -461,7 +459,10 @@ describe('TargetPickerPanel — TPP-14: W-4 envelope round-trip', () => {
     const innerResult = ToolInvocationEnvelopePayloadSchema.safeParse(
       (envelope as { payload: unknown }).payload,
     );
-    expect(innerResult.success, `ToolInvocationEnvelopePayloadSchema: ${JSON.stringify(innerResult)}`).toBe(true);
+    expect(
+      innerResult.success,
+      `ToolInvocationEnvelopePayloadSchema: ${JSON.stringify(innerResult)}`,
+    ).toBe(true);
   });
 
   it('TPP-14b: W-4 grep gate — no "value" field in emitted envelope (canonical "payload" only)', async () => {
@@ -486,12 +487,9 @@ describe('TargetPickerPanel — TPP-15: INV-1 full-list fixture (3 targets, idx=
     // Scroll to select idx=1 (GOBLIN BRUTO)
     panel.onEvent({ kind: 'scroll', direction: 'down' });
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     const grid = AsciiGrid.fromString(arg.content);
-    await matchAsciiFixture(
-      grid,
-      path.join(FIXTURES_DIR, 'target-picker.full-list.it.txt'),
-    );
+    await matchAsciiFixture(grid, path.join(FIXTURES_DIR, 'target-picker.full-list.it.txt'));
   });
 });
 
@@ -500,16 +498,13 @@ describe('TargetPickerPanel — TPP-15: INV-1 full-list fixture (3 targets, idx=
 describe('TargetPickerPanel — TPP-16: INV-1 single-target fixture (1 target, idx=0)', () => {
   it('TPP-16: matches target-picker.single-target.it.txt character-perfect', async () => {
     const bridge = makeBridge();
-    const singleCandidate = [FULL_CANDIDATES[0]!];
+    const singleCandidate = FULL_CANDIDATES.slice(0, 1);
     const { panel } = makePanel({ bridge, candidates: singleCandidate, locale: 'it' });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     const grid = AsciiGrid.fromString(arg.content);
-    await matchAsciiFixture(
-      grid,
-      path.join(FIXTURES_DIR, 'target-picker.single-target.it.txt'),
-    );
+    await matchAsciiFixture(grid, path.join(FIXTURES_DIR, 'target-picker.single-target.it.txt'));
   });
 });
 
@@ -526,12 +521,9 @@ describe('TargetPickerPanel — TPP-17: INV-1 empty fixture (0 targets)', () => 
     const { panel } = makePanel({ bridge, candidates: [], locale: 'it' });
     await panel.onMount();
     await panel.draw();
-    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as TextContainerUpgrade;
+    const arg = bridge.textContainerUpgrade.mock.calls[0]?.[0] as { content: string };
     const grid = AsciiGrid.fromString(arg.content);
-    await matchAsciiFixture(
-      grid,
-      path.join(FIXTURES_DIR, 'target-picker.empty.it.txt'),
-    );
+    await matchAsciiFixture(grid, path.join(FIXTURES_DIR, 'target-picker.empty.it.txt'));
     vi.useRealTimers();
   });
 });
