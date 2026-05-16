@@ -61,6 +61,7 @@ import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import { PanelMetaSchema } from '../../engine/panel-router.js';
 import CombatTrackerPanel, {
   computeWindow,
+  type MultiAttackState,
   renderCombatantRow,
   renderCombatTrackerContent,
   renderQuickActionBar,
@@ -646,5 +647,191 @@ describe('CombatTrackerPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
       expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
     }
+  });
+});
+
+// ─── CTP-MULTI-* — multiAttackState chip (Plan 07-04 MULTI-01) ───────────────
+
+describe('CombatTrackerPanel — multiAttackState chip ([Atk N/M])', () => {
+  const FIXTURE_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  function makeAragonCombatant(): Combatant {
+    return makeCombatant({
+      id: 'aragorn',
+      name: 'ARAGORN',
+      actorId: 'actor-aragorn',
+      initiative: 18,
+      hp: 51,
+      maxHp: 56,
+      isCurrentTurn: true,
+    });
+  }
+
+  it('CTP-MULTI-1: setMultiAttackState(null) → no chip rendered (Phase 5 fixtures unchanged)', () => {
+    const combatant = makeAragonCombatant();
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [combatant],
+    };
+    // Without multi-attack state (null/default)
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '');
+    const joined = rows.join('\n');
+    // Chip should NOT appear
+    expect(joined).not.toContain('[Atk');
+    // Row should still be well-formed (66 chars)
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+  });
+
+  it('CTP-MULTI-2: setMultiAttackState with matching actorId → [Atk 1/2] chip in combatant row', () => {
+    const combatant = makeAragonCombatant();
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [combatant],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 1,
+      total: 2,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    const joined = rows.join('\n');
+    // Chip MUST appear in the combatant row
+    expect(joined).toContain('[Atk 1/2]');
+    // Row width must still be 66 (chip replaces dist+dir+gap3, preserving row width)
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+  });
+
+  it('CTP-MULTI-3: multiAttackState with non-matching actorId → no chip rendered on that combatant', () => {
+    const combatant = makeAragonCombatant();
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [combatant],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 2,
+      total: 3,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-OTHER', // different actor
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    const joined = rows.join('\n');
+    // Chip should NOT appear — wrong actor
+    expect(joined).not.toContain('[Atk');
+  });
+
+  it('CTP-MULTI-4: [Atk 2/2] chip renders correctly (last attack state)', () => {
+    const combatant = makeAragonCombatant();
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [combatant],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 2,
+      total: 2,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    const joined = rows.join('\n');
+    expect(joined).toContain('[Atk 2/2]');
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+  });
+
+  it('CTP-MULTI-5: multiAttackState with actor NOT in visible window → no chip (graceful)', () => {
+    // 6 combatants; actor-aragorn is at index 5 (out of 5-row window showing 0-4)
+    const combatants = [
+      makeAragonCombatant(), // index 0 — currently visible
+      ...makeCombatants(5), // indices 1-5
+    ];
+    // Set current to index 5 (not aragorn) — window shows 1-5, aragorn is at 0 (not visible)
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 5,
+      currentCombatantId: `c4`,
+      combatants: combatants.map((c, i) => ({ ...c, isCurrentTurn: i === 5 })),
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 1,
+      total: 2,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn', // aragorn not in visible window
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    const joined = rows.join('\n');
+    // Chip should not appear since aragorn's row is not rendered
+    expect(joined).not.toContain('[Atk 1/2]');
+  });
+
+  it('CTP-MULTI-6: CombatTrackerPanel.setMultiAttackState triggers re-draw', async () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const panel = new CombatTrackerPanel(bridge, bus, 'it');
+    await panel.onMount();
+
+    const callsBefore = bridge.textContainerUpgrade.mock.calls.length;
+    panel.setMultiAttackState({
+      current: 1,
+      total: 2,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-test',
+    });
+    await Promise.resolve();
+
+    expect(bridge.textContainerUpgrade.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+});
+
+// ─── CTP-FIX-MULTI — INV-1 fixture for multi-attack chip ─────────────────────
+
+describe('CombatTrackerPanel — INV-1 fixture with [Atk 1/2] chip', () => {
+  it('CTP-FIX-MULTI: [Atk 1/2] chip on GOBLIN ARCHER matches combat-tracker.multi-attack.it.txt', async () => {
+    const combatant = makeCombatant({
+      id: 'goblin-1',
+      name: 'GOBLIN ARCHER',
+      actorId: 'actor-goblin',
+      initiative: 18,
+      hp: 5,
+      maxHp: 15,
+      isCurrentTurn: true,
+    });
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 3,
+      turn: 0,
+      currentCombatantId: 'goblin-1',
+      combatants: [combatant],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 1,
+      total: 2,
+      attackId: 'fixture-a-1-1111-1111-1111-111111111111',
+      actorId: 'actor-goblin',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    const grid = AsciiGrid.fromString(rows.join('\n'));
+    await matchAsciiFixture(
+      grid,
+      resolve(__dirname, '../__fixtures__/combat-tracker-multi-attack.txt'),
+    );
   });
 });

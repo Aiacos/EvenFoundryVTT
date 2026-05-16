@@ -56,6 +56,28 @@ import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 
+// ─── MultiAttackState ─────────────────────────────────────────────────────────
+
+/**
+ * Transient state for an in-progress multi-attack sequence (Plan 07-04 MULTI-01).
+ *
+ * Set by {@link CombatTrackerPanel.setMultiAttackState} when the panel receives
+ * an `r1.multiattack.progress` envelope via `multi-attack-progress-dispatcher.ts`.
+ * Cleared when `current === total` (dispatcher calls `setMultiAttackState(null)`)
+ * or on combat-turn-advance (turn change detected in `onSnapshot`).
+ *
+ * @property current  - 1-based iteration index (1 = first attack, N = last).
+ * @property total    - Total attacks planned.
+ * @property attackId - UUID stable across all iterations of one invocation.
+ * @property actorId  - Foundry actor ID — used to match the correct combatant row.
+ */
+export interface MultiAttackState {
+  current: number;
+  total: number;
+  attackId: string;
+  actorId: string;
+}
+
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
 /** Inner content width for a combatant row (66 code-points per UI-SPEC §5.8). */
@@ -207,16 +229,21 @@ function _hpBar(hp: number | null, maxHp: number | null): string {
  * Cols 63-65: 3-space trailing pad
  * ```
  *
- * @param c              Combatant data.
- * @param locale         Active HUD locale for label resolution.
- * @param ownActorId     Actor ID for "YOU" marker detection.
- * @param isParty        True when the combatant is in the player party (renders `★`).
+ * @param c                 Combatant data.
+ * @param locale             Active HUD locale for label resolution.
+ * @param ownActorId         Actor ID for "YOU" marker detection.
+ * @param isParty            True when the combatant is in the player party (renders `★`).
+ * @param multiAttackState   Active multi-attack state, or null/undefined for normal rendering.
+ *                           When non-null AND `c.actorId === multiAttackState.actorId`, the
+ *                           dist+dir (cols 53-58) + gap3 (cols 59-61) fields are replaced
+ *                           with the 9-char `[Atk N/M]` chip, preserving INV-1 row width.
  */
 export function renderCombatantRow(
   c: Combatant,
   locale: HudLocale,
   ownActorId: string,
   isParty: boolean = false,
+  multiAttackState: MultiAttackState | null = null,
 ): string[] {
   // Cols 0-3: initiative (4 chars, right-aligned)
   const initiativeStr =
@@ -267,11 +294,21 @@ export function renderCombatantRow(
   // Cols 51-52: gap
   const gap2b = '  ';
 
-  // Cols 53-58: distance + direction (6 chars, left-aligned)
-  const distDir = _pad('--', 6);
-
-  // Cols 59-61: gap (3 spaces)
-  const gap3 = '   ';
+  // Cols 53-61: distance + direction (6 chars) + gap (3 chars) = 9 chars total.
+  // When `multiAttackState` is active for this combatant's actor, replace these 9 chars
+  // with the `[Atk N/M]` chip (exactly 9 chars), preserving INV-1 row width at 66 cp.
+  // Context: "slight overflow OK during active multi-attack since dist hidden" (CONTEXT.md §Area 2).
+  const isActiveMultiAttack =
+    multiAttackState !== null && c.actorId === multiAttackState.actorId;
+  let distDirGap3: string;
+  if (isActiveMultiAttack) {
+    // `[Atk N/M]` — fixed 9-char chip replacing dist(6)+gap3(3).
+    const chip = `[Atk ${multiAttackState.current}/${multiAttackState.total}]`;
+    distDirGap3 = chip;
+  } else {
+    // Cols 53-58: distance + direction (6 chars, left-aligned); cols 59-61: gap (3 spaces)
+    distDirGap3 = _pad('--', 6) + '   ';
+  }
 
   // Col 62: faction glyph
   const faction = isParty ? '★' : '✕';
@@ -294,8 +331,7 @@ export function renderCombatantRow(
     ' ' +
     acValue +
     gap2b +
-    distDir +
-    gap3 +
+    distDirGap3 +
     faction +
     trail;
 
@@ -361,16 +397,20 @@ export function renderQuickActionBar(locale: HudLocale): string {
  *
  * Total: exactly CONTENT_ROWS (18) rows.
  *
- * @param snapshot     Active combat snapshot, or null (renders empty state).
- * @param locale       Active HUD locale.
- * @param scrollOffset Signed scroll offset applied to windowing.
- * @param ownActorId   Actor ID for YOU-marker detection.
+ * @param snapshot          Active combat snapshot, or null (renders empty state).
+ * @param locale             Active HUD locale.
+ * @param scrollOffset       Signed scroll offset applied to windowing.
+ * @param ownActorId         Actor ID for YOU-marker detection.
+ * @param multiAttackState   Active multi-attack state, or null/undefined (no chip).
+ *                           When non-null, the matching combatant row renders the
+ *                           `[Atk N/M]` chip in place of the dist+dir field.
  */
 export function renderCombatTrackerContent(
   snapshot: CombatSnapshot | null,
   locale: HudLocale,
   scrollOffset: number,
   ownActorId: string,
+  multiAttackState: MultiAttackState | null = null,
 ): string[] {
   const title = getLabel('combat.tracker.panel_title', locale);
   const topBorder = `${_pad(`┌─── ${title} `, INNER_WIDTH - 1)}┐`;
@@ -412,7 +452,7 @@ export function renderCombatTrackerContent(
 
   const combatantRows: string[] = [];
   for (const c of windowSlice) {
-    const rows = renderCombatantRow(c, locale, ownActorId, false);
+    const rows = renderCombatantRow(c, locale, ownActorId, false, multiAttackState);
     combatantRows.push(...rows);
   }
 
@@ -507,6 +547,17 @@ export default class CombatTrackerPanel implements OverlayPanel {
    * Injected at construction time (typically from `game.user.character.id`).
    */
   private readonly ownActorId: string;
+
+  /**
+   * Transient multi-attack state (Plan 07-04 MULTI-01).
+   *
+   * Set by {@link setMultiAttackState} when the dispatcher receives a validated
+   * `r1.multiattack.progress` envelope. Null = no chip rendered.
+   * Auto-cleared by the dispatcher when `current === total`.
+   *
+   * Private — external API is `setMultiAttackState(state)`.
+   */
+  private multiAttackState: MultiAttackState | null = null;
 
   /**
    * Unsubscribe closure returned by {@link PanelGestureBus.subscribe}.
@@ -617,12 +668,30 @@ export default class CombatTrackerPanel implements OverlayPanel {
    * Delegates to {@link renderCombatTrackerContent} for the 18-row body.
    * Strategy A: single text container `'overlay-block'`, no image containers.
    */
+  /**
+   * Set or clear the multi-attack chip state, then trigger an immediate re-render.
+   *
+   * Called by `multi-attack-progress-dispatcher.ts` on each validated
+   * `r1.multiattack.progress` envelope. Call with `null` to clear the chip
+   * (dispatcher does so when `current === total` — final iteration complete).
+   *
+   * Auto-clearing on turn-advance is handled in `onSnapshot` — the dispatcher
+   * may also call this with null if the WS closes mid-sequence.
+   *
+   * @param state - Multi-attack state to display, or null to clear.
+   */
+  public setMultiAttackState(state: MultiAttackState | null): void {
+    this.multiAttackState = state;
+    void this.draw();
+  }
+
   async draw(): Promise<void> {
     const rows = renderCombatTrackerContent(
       this.snapshot,
       this.locale,
       this.scrollOffset,
       this.ownActorId,
+      this.multiAttackState,
     );
 
     const content = rows.join('\n');
