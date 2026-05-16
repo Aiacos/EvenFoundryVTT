@@ -301,9 +301,12 @@ export function renderCombatantRow(
   const isActiveMultiAttack = multiAttackState !== null && c.actorId === multiAttackState.actorId;
   let distDirGap3: string;
   if (isActiveMultiAttack) {
-    // `[Atk N/M]` — fixed 9-char chip replacing dist(6)+gap3(3).
-    const chip = `[Atk ${multiAttackState.current}/${multiAttackState.total}]`;
-    distDirGap3 = chip;
+    // `[Atk N/M]` — clamped to exactly 9 chars replacing dist(6)+gap3(3).
+    // CR-03: [Atk 10/10] is 11 chars → truncate to 9 to preserve INV-1 row width (66 cp).
+    // Worst case `[Atk 10/1` (8) + `…` (1) = 9. In practice counts ≤ 9 (5e max ~4 attacks),
+    // but the guard is load-bearing for any schema that permits count=10.
+    const chipRaw = `[Atk ${multiAttackState.current}/${multiAttackState.total}]`;
+    distDirGap3 = chipRaw.length <= 9 ? chipRaw.padEnd(9) : `${chipRaw.slice(0, 8)}…`;
   } else {
     // Cols 53-58: distance + direction (6 chars, left-aligned); cols 59-61: gap (3 spaces)
     distDirGap3 = _pad('--', 6) + '   ';

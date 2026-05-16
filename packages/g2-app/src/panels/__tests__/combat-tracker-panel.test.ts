@@ -801,6 +801,91 @@ describe('CombatTrackerPanel — multiAttackState chip ([Atk N/M])', () => {
   });
 });
 
+// ─── CTP-CR03 — INV-1 row-width safety for count >= 10 ───────────────────────
+
+describe('CombatTrackerPanel — CR-03 [Atk N/M] chip clamped to 9 chars', () => {
+  const FIXTURE_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  function makeAragonCombatant(): Combatant {
+    return makeCombatant({
+      id: 'aragorn',
+      name: 'ARAGORN',
+      actorId: 'actor-aragorn',
+      initiative: 18,
+      hp: 51,
+      maxHp: 56,
+      isCurrentTurn: true,
+    });
+  }
+
+  it('CTP-CR03-NORMAL: [Atk 2/4] is 9 chars — row width stays at 66', () => {
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [makeAragonCombatant()],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 2,
+      total: 4,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    // [Atk 2/4] is exactly 9 chars — no truncation needed
+    expect(rows.join('\n')).toContain('[Atk 2/4]');
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+  });
+
+  it('CTP-CR03-OVERFLOW: count=10/10 (11 chars raw) → truncated to 9 chars, row width stays 66', () => {
+    // CR-03 regression: [Atk 10/10] = 11 chars overflows INV-1 66-char budget
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [makeAragonCombatant()],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 10,
+      total: 10,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    // Row width must be exactly 66 (INV-1) — not 68 as before the fix
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+    // The chip must be present (truncated)
+    const hasChip = rows.some((r) => r.includes('[Atk 10/'));
+    expect(hasChip).toBe(true);
+  });
+
+  it('CTP-CR03-PARTIAL: count=10/2 (11 chars raw) → truncated, row still 66', () => {
+    const snapshot: CombatSnapshot = {
+      combatId: 'combat-1',
+      round: 1,
+      turn: 0,
+      currentCombatantId: 'aragorn',
+      combatants: [makeAragonCombatant()],
+    };
+    const multiAttackState: MultiAttackState = {
+      current: 10,
+      total: 2,
+      attackId: FIXTURE_UUID,
+      actorId: 'actor-aragorn',
+    };
+    const rows = renderCombatTrackerContent(snapshot, 'it', 0, '', multiAttackState);
+    for (const row of rows) {
+      expect([...row].length).toBe(66);
+    }
+  });
+});
+
 // ─── CTP-FIX-MULTI — INV-1 fixture for multi-attack chip ─────────────────────
 
 describe('CombatTrackerPanel — INV-1 fixture with [Atk 1/2] chip', () => {
