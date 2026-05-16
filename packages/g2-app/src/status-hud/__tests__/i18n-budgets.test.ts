@@ -441,3 +441,68 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     expect(getLabel('hp_label', 'pt-br')).toBe('HP');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)
+//
+// New keys:
+//   - econ.reaction.short  (IT 'R'  / EN 'R'  / DE 'R'  / max 1)
+//   - econ.multiattack.template  (IT '[Atk {N}/{M}]' / max 12)
+//   - error.action.already-used-action  (IT 'Azione già usata' / max 38)
+//   - error.action.already-used-bonus   (IT 'Bonus già usato'  / max 38)
+//
+// NOTE: act_label ('Az.') and bns_label ('Bns') are REUSED from Phase 4a — no
+// duplicate keys added. Only the 4 keys above are new.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
+  it('I18N-09-01a: econ.reaction.short = R/R/R @ max 1', () => {
+    expect(HUD_WIDTH_BUDGETS['econ.reaction.short'].it).toBe('R');
+    expect(HUD_WIDTH_BUDGETS['econ.reaction.short'].en).toBe('R');
+    expect(HUD_WIDTH_BUDGETS['econ.reaction.short'].de).toBe('R');
+    expect(HUD_WIDTH_BUDGETS['econ.reaction.short'].max).toBe(1);
+    expect(getLabel('econ.reaction.short', 'it')).toBe('R');
+  });
+
+  it('I18N-09-01b: econ.multiattack.template contains {N} and {M} placeholders @ max 12', () => {
+    const row = HUD_WIDTH_BUDGETS['econ.multiattack.template'];
+    expect(row.it).toContain('{N}');
+    expect(row.it).toContain('{M}');
+    expect(row.max).toBe(12);
+    // Template itself (before substitution) must fit within max
+    expect(row.it.length).toBeLessThanOrEqual(row.max);
+    expect(row.en.length).toBeLessThanOrEqual(row.max);
+    expect(row.de.length).toBeLessThanOrEqual(row.max);
+  });
+
+  it('I18N-09-01c: error.action.already-used-action IT/EN/DE fit within max 38', () => {
+    const row = HUD_WIDTH_BUDGETS['error.action.already-used-action'];
+    expect(typeof row.it).toBe('string');
+    expect(typeof row.en).toBe('string');
+    expect(typeof row.de).toBe('string');
+    expect(row.max).toBe(38);
+    expect(row.it.length).toBeLessThanOrEqual(38);
+    expect(row.en.length).toBeLessThanOrEqual(38);
+    expect(row.de.length).toBeLessThanOrEqual(38);
+    expect(getLabel('error.action.already-used-action', 'it')).toBeDefined();
+  });
+
+  it('I18N-09-01d: error.action.already-used-bonus IT/EN/DE fit within max 38', () => {
+    const row = HUD_WIDTH_BUDGETS['error.action.already-used-bonus'];
+    expect(typeof row.it).toBe('string');
+    expect(typeof row.en).toBe('string');
+    expect(typeof row.de).toBe('string');
+    expect(row.max).toBe(38);
+    expect(row.it.length).toBeLessThanOrEqual(38);
+    expect(row.en.length).toBeLessThanOrEqual(38);
+    expect(row.de.length).toBeLessThanOrEqual(38);
+    expect(getLabel('error.action.already-used-bonus', 'it')).toBeDefined();
+  });
+
+  it('I18N-09-02: total key count updated to 208 (204 + 4 new Phase 9 Plan 09-02 keys)', () => {
+    // 204 existing + 4 new (econ.reaction.short, econ.multiattack.template,
+    // error.action.already-used-action, error.action.already-used-bonus) = 208.
+    // act_label + bns_label are REUSED from Phase 4a (no new duplicate keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(208);
+  });
+});

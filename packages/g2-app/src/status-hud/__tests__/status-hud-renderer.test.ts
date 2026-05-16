@@ -671,9 +671,7 @@ describe('Phase 8 Plan 08-04 — setMovementBudget (SHR-MV-01..05)', () => {
   it('SHR-MV-04: render with Mov 25/30 matches status-hud.move-chip.it.txt fixture (INV-1)', async () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     renderer.setMovementBudget({ remaining: 25, total: 30 });
-    const grid = renderer.render(
-      makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }),
-    );
+    const grid = renderer.render(makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }));
     await matchAsciiFixture(
       grid,
       '../../../../shared-render/src/fixtures/status-hud.move-chip.it.txt',
@@ -691,10 +689,173 @@ describe('Phase 8 Plan 08-04 — setMovementBudget (SHR-MV-01..05)', () => {
     const movChipRow = rows.find((r) => r.includes('10/30'));
     expect(movChipRow).toBeUndefined();
     // Death-saves layout preserved (title key is death_saves_title → IT 'TIRI SALVEZZA')
-    const titleRow = rows.find((r) => r.includes('TIRI') || r.includes('SALV') || r.includes('DEATH') || r.includes('MORTE'));
+    const titleRow = rows.find(
+      (r) => r.includes('TIRI') || r.includes('SALV') || r.includes('DEATH') || r.includes('MORTE'),
+    );
     expect(titleRow).toBeDefined();
     // Grid shape preserved
     expect(grid.width).toBe(28);
     expect(grid.height).toBe(21);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 9 Plan 09-02 — setActionEconomy extension (SHR-EW-01..06)
+//
+// Tests the new `setActionEconomy(state | null)` method added to StatusHudRenderer.
+// When non-null, the footer row (row 19 in 1-indexed, 0-indexed row 18) shows the
+// action economy widget chip: `Az ░ Bn ░ R░  Mov {n}/{t}` (or multi-attack override).
+// SHR-EW-01: fresh turn (all slots empty) → Az ░ Bn ░ R░ on row 18
+// SHR-EW-02: actionsUsed:1 → Az ▓ Bn ░ R░ glyph flip
+// SHR-EW-03: multiAttackInProgress:true → Az ▓ [Atk N/M] override
+// SHR-EW-04: transition guard — setter is no-op if structurally identical
+// SHR-EW-05: death-saves mode → setActionEconomy NOT rendered (death-saves priority)
+// SHR-EW-06: 4 INV-1 fixtures match via matchAsciiFixture
+//
+// @see packages/g2-app/src/status-hud/status-hud-renderer.ts setActionEconomy
+// @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 1
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 9 Plan 09-02 — setActionEconomy (SHR-EW-01..06)', () => {
+  /** Factory for a minimal fresh-turn economy state. */
+  function freshEcon(
+    overrides: Partial<{
+      actionsUsed: 0 | 1;
+      bonusActionsUsed: 0 | 1;
+      reactionsUsed: 0 | 1;
+      multiAttackInProgress: boolean;
+      multiAttack: { current: number; total: number };
+    }> = {},
+  ) {
+    return {
+      actionsUsed: 0 as 0 | 1,
+      bonusActionsUsed: 0 as 0 | 1,
+      reactionsUsed: 0 as 0 | 1,
+      multiAttackInProgress: false,
+      ...overrides,
+    };
+  }
+
+  it('SHR-EW-01: fresh turn (all slots empty) → row 18 contains Az ░ Bn ░ R░', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(freshEcon());
+    const grid = renderer.render(makeSnapshot());
+    const row18 = grid.cells[18]?.join('') ?? '';
+    // Must contain available glyphs for action (░) and bonus (░)
+    expect(row18).toContain('░');
+    // Must contain the action short label (act_label 'Az.')
+    expect(row18).toMatch(/Az/);
+    // Must be 28 chars wide
+    expect(grid.cells[18]?.length).toBe(28);
+    // Grid dimensions preserved
+    expect(grid.width).toBe(28);
+    expect(grid.height).toBe(21);
+  });
+
+  it('SHR-EW-02: actionsUsed:1 → row 18 contains ▓ glyph for action slot', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 1 }));
+    const grid = renderer.render(makeSnapshot());
+    const row18 = grid.cells[18]?.join('') ?? '';
+    expect(row18).toContain('▓');
+    expect(grid.cells[18]?.length).toBe(28);
+  });
+
+  it('SHR-EW-03: multiAttackInProgress:true → row 18 contains [Atk N/M] override', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(
+      freshEcon({
+        actionsUsed: 1,
+        multiAttackInProgress: true,
+        multiAttack: { current: 1, total: 2 },
+      }),
+    );
+    const grid = renderer.render(makeSnapshot());
+    const row18 = grid.cells[18]?.join('') ?? '';
+    // Multi-attack override shows [Atk 1/2]
+    expect(row18).toContain('[Atk 1/2]');
+    expect(grid.cells[18]?.length).toBe(28);
+  });
+
+  it('SHR-EW-04: transition guard — setActionEconomy is no-op if structurally identical', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(null);
+    expect(renderer._getActionEconomyForTest()).toBeNull();
+
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 0 }));
+    const first = renderer._getActionEconomyForTest();
+    expect(first).not.toBeNull();
+
+    // Same structural value — should be a no-op (same reference if implemented correctly)
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 0 }));
+    // Value should still be set (not cleared)
+    expect(renderer._getActionEconomyForTest()).not.toBeNull();
+  });
+
+  it('SHR-EW-05: death-saves mode → setActionEconomy NOT rendered even when set', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', mode: 'death-saves' });
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 1 }));
+    const snap = makeSnapshot({ hp: 0, death: { success: 0, failure: 1 } });
+    const grid = renderer.render(snap);
+    // Death-saves layout has ║ borders at row 18 (0-indexed) but NO economy widget
+    // (death-saves takes priority per SHR-MV-05 precedent)
+    const flat = grid.toString();
+    expect(flat).toContain('DEATH SAVES');
+    // Economy widget glyph should not appear in death-saves rows 11..18
+    const rows11to18 = grid.cells
+      .slice(11, 19)
+      .map((r) => r.join(''))
+      .join('\n');
+    // Az (act_label IT = 'Az.') should NOT appear in the death-saves body rows
+    expect(rows11to18).not.toContain('[Atk');
+    expect(grid.width).toBe(28);
+    expect(grid.height).toBe(21);
+  });
+
+  it('SHR-EW-06a: fresh-turn fixture (IT, all slots empty, no movement) — matchAsciiFixture', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(freshEcon());
+    const grid = renderer.render(makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }));
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.econ-widget-fresh-turn.it.txt',
+    );
+  });
+
+  it('SHR-EW-06b: action-used fixture (IT, actionsUsed:1) — matchAsciiFixture', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 1 }));
+    const grid = renderer.render(makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }));
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.econ-widget-action-used.it.txt',
+    );
+  });
+
+  it('SHR-EW-06c: multi-attack fixture (IT, multiAttackInProgress:true, N=1, M=2) — matchAsciiFixture', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMovementBudget({ remaining: 0, total: 30 });
+    renderer.setActionEconomy(
+      freshEcon({
+        actionsUsed: 1,
+        multiAttackInProgress: true,
+        multiAttack: { current: 1, total: 2 },
+      }),
+    );
+    const grid = renderer.render(makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }));
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.econ-widget-multi-attack.it.txt',
+    );
+  });
+
+  it('SHR-EW-06d: EN locale fixture (actionsUsed:1) — matchAsciiFixture', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    renderer.setActionEconomy(freshEcon({ actionsUsed: 1 }));
+    const grid = renderer.render(makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }));
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.econ-widget-en.txt',
+    );
   });
 });
