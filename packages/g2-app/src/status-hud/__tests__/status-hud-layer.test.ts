@@ -15,7 +15,7 @@
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { CharacterSnapshot } from '@evf/shared-protocol';
-import { R1_MOVEMENT_BUDGET_TYPE } from '@evf/shared-protocol';
+import { R1_ACTION_ECONOMY_TYPE, R1_MOVEMENT_BUDGET_TYPE } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type CharacterDeltaEvents,
@@ -41,16 +41,20 @@ interface MockWsEvents {
   emit(raw: unknown): void;
   /** Drive the movement budget channel directly (SHL-MV-* tests). */
   emitMovement(raw: unknown): void;
+  /** Drive the action economy channel directly (SHL-AE-* tests). */
+  emitEconomy(raw: unknown): void;
 }
 
 function makeMockWsEvents(): MockWsEvents {
   let stashed: ((raw: unknown) => void) | null = null;
   let movementStashed: ((raw: unknown) => void) | null = null;
+  let economyStashed: ((raw: unknown) => void) | null = null;
   const unsubscribe = vi.fn();
   // Cast to the exact subscribe signature so the wider Mock<...> type does not
   // leak into the consumer (StatusHudLayerOpts.wsEvents must satisfy
   // CharacterDeltaEvents at construction time).
   // Phase 08-04: channel widened to string (movement budget + character delta).
+  // Phase 09-02: economy channel added (action economy widget).
   const subscribe: CharacterDeltaEvents['subscribe'] = (
     channel: string,
     fn: (raw: unknown) => void,
@@ -59,6 +63,8 @@ function makeMockWsEvents(): MockWsEvents {
       stashed = fn;
     } else if (channel === R1_MOVEMENT_BUDGET_TYPE) {
       movementStashed = fn;
+    } else if (channel === R1_ACTION_ECONOMY_TYPE) {
+      economyStashed = fn;
     }
     return unsubscribe;
   };
@@ -72,6 +78,10 @@ function makeMockWsEvents(): MockWsEvents {
     emitMovement: (raw: unknown) => {
       if (movementStashed === null) throw new Error('emitMovement called before subscribe');
       movementStashed(raw);
+    },
+    emitEconomy: (raw: unknown) => {
+      if (economyStashed === null) throw new Error('emitEconomy called before subscribe');
+      economyStashed(raw);
     },
   };
 }
@@ -502,5 +512,116 @@ describe('StatusHudLayer — Phase 8 movement budget subscription (SHL-MV-01..03
     expect(warnSpy).toHaveBeenCalled();
     const warnMsg = warnSpy.mock.calls[0]?.[0] as string;
     expect(warnMsg).toContain('status-hud-layer');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 9 Plan 09-02 — action economy subscription (SHL-AE-01..04)
+//
+// StatusHudLayer subscribes to R1_ACTION_ECONOMY_TYPE channel.
+// _onActionEconomy validates via ActionEconomyPayloadSchema.safeParse and
+// calls renderer.setActionEconomy with the parsed widget state.
+//
+// SHL-AE-01: valid action economy payload → renderer.setActionEconomy called
+// SHL-AE-02: malformed payload → console.warn + setActionEconomy NOT called
+// SHL-AE-03: other envelope types → setActionEconomy NOT called (silent return)
+// SHL-AE-04: multiAttackInProgress=false → standard widget state forwarded
+//
+// @see packages/g2-app/src/status-hud/status-hud-layer.ts _onActionEconomy
+// @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 2
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('StatusHudLayer — Phase 9 action economy subscription (SHL-AE-01..04)', () => {
+  let activeLayer: StatusHudLayer | null = null;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    activeLayer?.destroy();
+    activeLayer = null;
+    vi.useRealTimers();
+    warnSpy.mockRestore();
+  });
+
+  /** Full ActionEconomyPayload fixture (all 6 required fields). */
+  const validEconomyPayload = {
+    actorId: 'actor-test-1',
+    actionsUsed: 1,
+    bonusActionsUsed: 0,
+    reactionsUsed: 0,
+    multiAttackInProgress: false,
+    recipientUserId: 'user-player-1',
+  };
+
+  it('SHL-AE-01: valid r1.action.economy payload → renderer.setActionEconomy called', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setEconomySpy = vi.spyOn(renderer, 'setActionEconomy');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    wsEvents.emitEconomy(validEconomyPayload);
+
+    expect(setEconomySpy).toHaveBeenCalledOnce();
+    // Should be called with actionsUsed:1, bonusActionsUsed:0, reactionsUsed:0, multiAttackInProgress:false
+    const arg = setEconomySpy.mock.calls[0]?.[0];
+    expect(arg).not.toBeNull();
+    expect(arg?.actionsUsed).toBe(1);
+    expect(arg?.bonusActionsUsed).toBe(0);
+    expect(arg?.multiAttackInProgress).toBe(false);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('SHL-AE-02: malformed payload → console.warn + renderer.setActionEconomy NOT called', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setEconomySpy = vi.spyOn(renderer, 'setActionEconomy');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    // Missing required fields — fails ActionEconomyPayloadSchema.safeParse
+    expect(() => wsEvents.emitEconomy({ bogus: true })).not.toThrow();
+
+    expect(setEconomySpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    const warnMsg = warnSpy.mock.calls[0]?.[0] as string;
+    expect(warnMsg).toContain('status-hud-layer');
+  });
+
+  it('SHL-AE-03: character.delta envelope (wrong type) → setActionEconomy NOT called', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setEconomySpy = vi.spyOn(renderer, 'setActionEconomy');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    // Push a valid character snapshot via the character.delta channel — should NOT call setActionEconomy
+    wsEvents.emit(VALID_SNAPSHOT);
+
+    expect(setEconomySpy).not.toHaveBeenCalled();
+  });
+
+  it('SHL-AE-04: multiAttackInProgress=false payload → standard widget state forwarded (no multi-attack)', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setEconomySpy = vi.spyOn(renderer, 'setActionEconomy');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    wsEvents.emitEconomy({ ...validEconomyPayload, actionsUsed: 0, multiAttackInProgress: false });
+
+    expect(setEconomySpy).toHaveBeenCalledOnce();
+    const arg = setEconomySpy.mock.calls[0]?.[0];
+    expect(arg?.multiAttackInProgress).toBe(false);
+    // Standard chip: no multiAttack property expected (multi-attack is progress-dispatcher domain)
+    expect(arg?.actionsUsed).toBe(0);
   });
 });

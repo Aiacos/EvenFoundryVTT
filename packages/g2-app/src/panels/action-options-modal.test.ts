@@ -37,6 +37,18 @@ import {
   type ActionOptionsWebSocket,
 } from './action-options-modal.js';
 
+// Phase 9 Plan 09-02 — mock action-economy-state for AOM-PRE tests.
+// The modal imports getActionEconomyState from './action-economy-state.js' and
+// uses it for the client-side preconditioner. We vi.mock() the module and
+// control the return value per-test via vi.mocked().
+vi.mock('./action-economy-state.js', () => ({
+  getActionEconomyState: vi.fn(() => null),
+  setActionEconomyState: vi.fn(),
+  clearActionEconomyState: vi.fn(),
+}));
+
+import { getActionEconomyState } from './action-economy-state.js';
+
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +93,11 @@ function makeItemRequest(overrides: Partial<ActionOptionsRequest> = {}): ActionO
   };
 }
 
+type MockToastQueue = { enqueue: ReturnType<typeof vi.fn> };
+function makeToastQueue(): MockToastQueue {
+  return { enqueue: vi.fn() };
+}
+
 function makeModal(
   opts: {
     bridge?: EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
@@ -90,6 +107,7 @@ function makeModal(
     locale?: 'it' | 'en' | 'de';
     sessionId?: string;
     onClose?: () => void;
+    toastQueue?: MockToastQueue;
   } = {},
 ) {
   const bridge = opts.bridge ?? makeBridge();
@@ -99,8 +117,19 @@ function makeModal(
   const locale = opts.locale ?? 'it';
   const sessionId = opts.sessionId ?? VALID_SESSION_UUID;
   const onClose = opts.onClose ?? vi.fn();
-  const modal = new ActionOptionsModal(bridge, ws, bus, request, locale, sessionId, onClose);
-  return { modal, bridge, ws, bus, request, locale, sessionId, onClose };
+  // Phase 9 Plan 09-02: toastQueue is the new constructor param for preconditioner error feedback.
+  const toastQueue = opts.toastQueue ?? makeToastQueue();
+  const modal = new ActionOptionsModal(
+    bridge,
+    ws,
+    bus,
+    request,
+    locale,
+    sessionId,
+    onClose,
+    toastQueue,
+  );
+  return { modal, bridge, ws, bus, request, locale, sessionId, onClose, toastQueue };
 }
 
 // ─── AOM-01: id + no static meta ─────────────────────────────────────────────
@@ -521,6 +550,201 @@ describe('AOM-16: tap + requiresTarget=true → no ws.send (Plan 08-05 caller ha
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     expect(onClose).toHaveBeenCalledTimes(1);
+    await modal.onUnmount();
+  });
+});
+
+// ─── AOM-PRE-01..06: Phase 9 Plan 09-02 client-side preconditioner ───────────
+//
+// Tests the new preconditioner inserted BEFORE the requiresTarget / emit branches
+// in onEvent('tap'). The preconditioner reads getActionEconomyState(actorId) from
+// the in-process cache and short-circuits if the required slot is already used.
+//
+// AOM-PRE-01: spell tap, actionsUsed:1 (and !multiAttack) → NO emit; toast enqueued
+// AOM-PRE-02: spell tap, multiAttackInProgress:true → BYPASS check; emit as normal
+// AOM-PRE-03: item tap, bonusActionsUsed:1 (and !multiAttack) → NO emit; toast enqueued
+// AOM-PRE-04: economy state null → fail-open: emit proceeds (T-09-01 fail-open)
+// AOM-PRE-05: requiresTarget=true path unchanged: tap closes + NO error toast
+// AOM-PRE-06: error toast id is deterministic per actorId+kind
+//
+// @see packages/g2-app/src/panels/action-options-modal.ts onEvent('tap')
+// @see packages/g2-app/src/panels/action-economy-state.ts getActionEconomyState
+// @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 2
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 9 Plan 09-02 — ActionOptionsModal preconditioner (AOM-PRE-01..06)', () => {
+  afterEach(() => {
+    vi.mocked(getActionEconomyState).mockReturnValue(null);
+    vi.clearAllMocks();
+  });
+
+  it('AOM-PRE-01: spell tap when actionsUsed:1 (no multi-attack) → NO ws.send; toast enqueued; onCloseCb called', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(toastQueue.enqueue).toHaveBeenCalledOnce();
+    const toastArg = toastQueue.enqueue.mock.calls[0]?.[0] as { severity: string; message: string };
+    expect(toastArg.severity).toBe('error');
+    expect(toastArg.message).toContain('Azione già usata'); // IT locale error message
+    expect(onClose).toHaveBeenCalledOnce();
+    await modal.onUnmount();
+  });
+
+  it('AOM-PRE-02: spell tap with multiAttackInProgress:true → BYPASS preconditioner; emit proceeds normally', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-multi' });
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: true, // multi-attack in progress → bypass
+      recipientUserId: 'user-1',
+    });
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    // Preconditioner bypassed → normal emit
+    expect(ws.send).toHaveBeenCalledOnce();
+    expect(toastQueue.enqueue).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  it('AOM-PRE-03: item tap when bonusActionsUsed:1 (no multi-attack) → NO ws.send; toast for bonus slot', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 0,
+      bonusActionsUsed: 1,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeItemRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(toastQueue.enqueue).toHaveBeenCalledOnce();
+    const toastArg = toastQueue.enqueue.mock.calls[0]?.[0] as { severity: string; message: string };
+    expect(toastArg.severity).toBe('error');
+    expect(toastArg.message).toContain('Bonus già usato'); // IT locale bonus error
+    expect(onClose).toHaveBeenCalledOnce();
+    await modal.onUnmount();
+  });
+
+  it('AOM-PRE-04: getActionEconomyState returns null → fail-open: emit proceeds (T-09-01)', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-null-econ' });
+    // Default mock returns null (no economy state seen yet)
+    vi.mocked(getActionEconomyState).mockReturnValue(null);
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    // Fail-open: no cache → emit as normal
+    expect(ws.send).toHaveBeenCalledOnce();
+    expect(toastQueue.enqueue).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  it('AOM-PRE-05: requiresTarget=true path unchanged — tap closes; NO error toast (target picker takes over)', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+    const ws = makeWs();
+    const onClose = vi.fn();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      toastQueue,
+      request: makeSpellRequest({ requiresTarget: true }), // target picker flow
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    // requiresTarget=true → preconditioner fires BEFORE requiresTarget check
+    // The plan specifies preconditioner runs before both branches
+    // When requiresTarget=true AND actionsUsed=1: preconditioner blocks (no toast in target-picker path?
+    // ACTUALLY per plan: requiresTarget=true means tap closes WITHOUT emitting → preconditioner
+    // short-circuits first, but plan says "requiresTarget=true path unchanged" (AOM-PRE-05).
+    // RESOLUTION: The preconditioner only checks spell/item slots WHEN requiresTarget=false.
+    // When requiresTarget=true the tap closes via onClose() — no emission anyway, so
+    // preconditioner is irrelevant (no slot would be consumed). Test asserts no error toast.
+    expect(toastQueue.enqueue).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    await modal.onUnmount();
+  });
+
+  it('AOM-PRE-06: error toast id is deterministic format action-precond-{actorId}-{kind}', async () => {
+    vi.mocked(getActionEconomyState).mockReturnValue({
+      actorId: 'actor-123',
+      actionsUsed: 1,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'user-1',
+    });
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({
+      toastQueue,
+      request: makeSpellRequest({ actorId: 'actor-123', requiresTarget: false }),
+    });
+    await modal.onMount();
+    modal.onEvent({ kind: 'tap' });
+
+    const toastArg = toastQueue.enqueue.mock.calls[0]?.[0] as { id: string };
+    // id must start with the deterministic prefix for dedup
+    expect(toastArg.id).toMatch(/^action-precond-actor-123-action-/);
     await modal.onUnmount();
   });
 });
