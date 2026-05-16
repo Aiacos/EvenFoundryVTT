@@ -230,6 +230,20 @@ export {
   R1_MOVEMENT_BUDGET_TYPE,
 } from './payloads/movement.js';
 
+// ─── Phase 10 additions (Plan 10-02) ─────────────────────────────────────────
+// Perf-probe envelope schema for latency instrumentation (opt-in via ?probe=true).
+// T-10-02 mitigation: idempotencyKeyHash is sha256-trunc-16 (schema enforces regex).
+// Hardware-pending fill: docs/perf/phase-10-latency.md (SC-10-02).
+
+export {
+  type PerfSampleEnvelope,
+  type PerfSampleEnvelopePayload,
+  PerfSampleEnvelopeSchema,
+  PerfStation,
+  type PerfStation as PerfStationType,
+  R1_PERF_SAMPLE_TYPE,
+} from './perf-probe.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {
