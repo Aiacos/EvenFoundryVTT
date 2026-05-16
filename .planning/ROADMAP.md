@@ -179,7 +179,7 @@ Plans:
   3. Cross-overlay reachability + closability checklist §7.14.4 ck 1-15 passes: every overlay is reachable from every other overlay in ≤2 gestures, and `[X]` closes from every overlay (NAV-03)
   4. Status HUD footer displays a context chip `R1: tap=cycle scroll=nav long=quick[combat]` that names the menu long-press will open *right now* (INV-5 visible enforcement, research Pitfall 5)
   5. INV-5 "Gesture Determinism" is ratified in `docs/architecture/INVARIANTS.md` and binds for the rest of the project (research recommendation, addresses Pitfall 5)
-**Plans:** 1/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 
@@ -190,7 +190,7 @@ Plans:
 - [x] 06-02-PLAN.md — QuickActionMenuPanel + PanelRouter.pushOverlay/popOverlay overlay stack + [N] Language sub-menu wired to persistLocaleOverride + LocaleEventEmitter + 4 INV-1 fixtures + 20 i18n keys (1244 tests; `1d929db` + `6408fd4`)
 
 **Wave 2** *(blocked on Wave 1; files_modified overlap on i18n-budgets.ts gates this wave)*
-- [ ] 06-03-PLAN.md — StatusHudRenderer.renderContextChip + per-panel getR1Hints on 5 Phase 5 panels + parseR1HintString helper + 5 INV-1 chip fixtures + 12 hud_r1_* i18n keys (NAV-01 visible enforcement)
+- [x] 06-03-PLAN.md — StatusHudRenderer.renderContextChip + per-panel getR1Hints on 5 Phase 5 panels + parseR1HintString helper + 5 INV-1 chip fixtures + 12 hud_r1_* i18n keys (NAV-01 visible enforcement)
 
 **Wave 3** *(blocked on Wave 2; NOT autonomous — Phase 6 closure)*
 - [ ] 06-04-PLAN.md — 06-cross-overlay-reachability COR-01..COR-15 harness (Specs §7.14.4 ck 1-15 1:1) + panel-gesture-bus single-receiver invariant (PGB-SR-01..05) + attachQuickActionLongPress dispatcher + boot-engine R1/long-press/conc-conflict wiring (Phase 6 closure)
@@ -288,7 +288,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
-| 6. R1 Integration + Quick Action + INV-5 | 1/4 | In Progress|  |
+| 6. R1 Integration + Quick Action + INV-5 | 3/4 | In Progress|  |
 | 7. Foundry Module Write Path | 0/TBD | Not started | - |
 | 8. Manual Action UX | 0/TBD | Not started | - |
 | 9. Action Economy & Edge Cases | 0/TBD | Not started | - |

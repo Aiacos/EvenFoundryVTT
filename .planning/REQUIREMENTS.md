@@ -46,7 +46,7 @@
 
 ### Navigation & Input
 
-- [ ] **NAV-01**: R1 gesture model: tap = cycle, double-tap = back, scroll = navigate, long-press = Quick Action
+- [x] **NAV-01**: R1 gesture model: tap = cycle, double-tap = back, scroll = navigate, long-press = Quick Action
 - [x] **NAV-02**: Quick Action menu (`[S][C][L][B][I][A][M][N][X]`) — list-modal full-screen, scroll=select, tap=open, long=cancel
 - [ ] **NAV-03**: Cross-overlay reachability + closability (verification checklist 15×, §7.14.4 ck 1–15)
 - [ ] **NAV-04**: Boot splash → handshake → main HUD flow con capability negotiation
@@ -170,7 +170,7 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | COMB-03 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | I18N-02 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
 | I18N-05 | Phase 5 — Panel Plugin System + Read-Only Panels | Complete |
-| NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
+| NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | NAV-02 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | NAV-03 | Phase 6 — R1 Integration + Quick Action + INV-5 | Pending |
 | FOUN-03 | Phase 7 — Foundry Module Write Path | Pending |
