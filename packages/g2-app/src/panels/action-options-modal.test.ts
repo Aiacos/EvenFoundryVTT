@@ -81,15 +81,17 @@ function makeItemRequest(overrides: Partial<ActionOptionsRequest> = {}): ActionO
   };
 }
 
-function makeModal(opts: {
-  bridge?: EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
-  ws?: MockWs;
-  bus?: PanelGestureBus;
-  request?: ActionOptionsRequest;
-  locale?: 'it' | 'en' | 'de';
-  sessionId?: string;
-  onClose?: () => void;
-} = {}) {
+function makeModal(
+  opts: {
+    bridge?: EvenAppBridge & { textContainerUpgrade: ReturnType<typeof vi.fn> };
+    ws?: MockWs;
+    bus?: PanelGestureBus;
+    request?: ActionOptionsRequest;
+    locale?: 'it' | 'en' | 'de';
+    sessionId?: string;
+    onClose?: () => void;
+  } = {},
+) {
   const bridge = opts.bridge ?? makeBridge();
   const ws = opts.ws ?? makeWs();
   const bus = opts.bus ?? new PanelGestureBus();
@@ -110,7 +112,7 @@ describe('AOM-01: panel identity', () => {
   });
 
   it('no static meta property (system overlay — not router-discoverable)', () => {
-    expect((ActionOptionsModal as Record<string, unknown>)['meta']).toBeUndefined();
+    expect((ActionOptionsModal as unknown as Record<string, unknown>)['meta']).toBeUndefined();
   });
 });
 
@@ -181,7 +183,11 @@ describe('AOM-05: tap gesture — requiresTarget=false → tool.invoke emitted',
     vi.stubGlobal('crypto', { randomUUID: () => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
     const ws = makeWs();
     const onClose = vi.fn();
-    const { modal } = makeModal({ ws, onClose, request: makeSpellRequest({ requiresTarget: false }) });
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     expect(ws.send).toHaveBeenCalledTimes(1);
@@ -199,7 +205,11 @@ describe('AOM-05: tap gesture — requiresTarget=false → tool.invoke emitted',
     vi.stubGlobal('crypto', { randomUUID: () => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
     const ws = makeWs();
     const onClose = vi.fn();
-    const { modal } = makeModal({ ws, onClose, request: makeItemRequest({ requiresTarget: false }) });
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      request: makeItemRequest({ requiresTarget: false }),
+    });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     expect(ws.send).toHaveBeenCalledTimes(1);
@@ -214,7 +224,11 @@ describe('AOM-05: tap gesture — requiresTarget=false → tool.invoke emitted',
   it('tap emits envelope with correct actor_id and spell_id', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
     const ws = makeWs();
-    const req = makeSpellRequest({ actorId: 'actor-hero', itemId: 'spell-fireball', requiresTarget: false });
+    const req = makeSpellRequest({
+      actorId: 'actor-hero',
+      itemId: 'spell-fireball',
+      requiresTarget: false,
+    });
     const { modal } = makeModal({ ws, request: req });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
@@ -242,7 +256,11 @@ describe('AOM-05: tap gesture — requiresTarget=false → tool.invoke emitted',
   it('envelope contains session_id', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
     const ws = makeWs();
-    const { modal } = makeModal({ ws, sessionId: VALID_SESSION_UUID, request: makeSpellRequest({ requiresTarget: false }) });
+    const { modal } = makeModal({
+      ws,
+      sessionId: VALID_SESSION_UUID,
+      request: makeSpellRequest({ requiresTarget: false }),
+    });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     const raw = ws.send.mock.calls[0]?.[0];
@@ -481,7 +499,11 @@ describe('AOM-16: tap + requiresTarget=true → no ws.send (Plan 08-05 caller ha
   it('ws.send is NOT called when requiresTarget=true', async () => {
     const ws = makeWs();
     const onClose = vi.fn();
-    const { modal } = makeModal({ ws, onClose, request: makeSpellRequest({ requiresTarget: true }) });
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      request: makeSpellRequest({ requiresTarget: true }),
+    });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     expect(ws.send).not.toHaveBeenCalled();
@@ -491,7 +513,11 @@ describe('AOM-16: tap + requiresTarget=true → no ws.send (Plan 08-05 caller ha
   it('onClose IS called when requiresTarget=true (caller orchestrates TargetPicker handoff)', async () => {
     const ws = makeWs();
     const onClose = vi.fn();
-    const { modal } = makeModal({ ws, onClose, request: makeSpellRequest({ requiresTarget: true }) });
+    const { modal } = makeModal({
+      ws,
+      onClose,
+      request: makeSpellRequest({ requiresTarget: true }),
+    });
     await modal.onMount();
     modal.onEvent({ kind: 'tap' });
     expect(onClose).toHaveBeenCalledTimes(1);

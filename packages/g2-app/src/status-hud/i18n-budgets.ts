@@ -1107,6 +1107,79 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'tap=best. scroll=Liste long=abbr.',
     max: 38,
   },
+
+  // ─── Phase 8 Plan 08-03 — action options modal labels (6 keys) ───────────
+  // ActionOptionsModal (z=2 overlay) i18n keys for panel title, gesture labels,
+  // and R1 chip composite hint string.
+  // All IT/EN/DE strings verified ≤ max code-points at authoring time.
+
+  /**
+   * ActionOptionsModal title shown inside the top border bracket.
+   * IT: "AZIONE" (6) · EN: "ACTION" (6) · DE: "AKTION" (6).
+   */
+  action_options_title: {
+    it: 'AZIONE',
+    en: 'ACTION',
+    de: 'AKTION',
+    max: 10,
+  },
+
+  /**
+   * Tap label for spell variant — instructs user to cast the selected spell.
+   * IT: "Lancia incantesimo" (18) · EN: "Cast spell" (10) · DE: "Zauber wirken" (13).
+   */
+  action_options_tap_label_spell: {
+    it: 'Lancia incantesimo',
+    en: 'Cast spell',
+    de: 'Zauber wirken',
+    max: 24,
+  },
+
+  /**
+   * Tap label for item variant — instructs user to use the selected item.
+   * IT: "Usa oggetto" (11) · EN: "Use item" (8) · DE: "Gegenstand verw." (17).
+   */
+  action_options_tap_label_item: {
+    it: 'Usa oggetto',
+    en: 'Use item',
+    de: 'Gegenstand verw.',
+    max: 24,
+  },
+
+  /**
+   * Long-press label — instructs user to view item/spell details.
+   * IT: "Mostra dettagli" (15) · EN: "Show details" (12) · DE: "Details zeigen" (14).
+   */
+  action_options_long_label: {
+    it: 'Mostra dettagli',
+    en: 'Show details',
+    de: 'Details zeigen',
+    max: 24,
+  },
+
+  /**
+   * Double-tap cancel label.
+   * IT: "Annulla" (7) · EN: "Cancel" (6) · DE: "Abbrechen" (9).
+   */
+  action_options_cancel_label: {
+    it: 'Annulla',
+    en: 'Cancel',
+    de: 'Abbrechen',
+    max: 12,
+  },
+
+  /**
+   * R1 context chip composite hint for the ActionOptionsModal overlay.
+   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * scroll segment is '—' because the modal ignores scroll events (AOM-08).
+   * IT: "tap=conferma scroll=— long=annulla" (36) within max 38.
+   */
+  hud_r1_action_options: {
+    it: 'tap=conferma scroll=— long=annulla',
+    en: 'tap=confirm scroll=— long=cancel',
+    de: 'tap=best. scroll=— long=abbr.',
+    max: 38,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

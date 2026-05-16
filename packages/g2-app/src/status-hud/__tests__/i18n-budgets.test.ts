@@ -225,7 +225,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 + 5 Phase 8 Plan-01 + 5 Phase 8 Plan-02 = 190 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 11 Phase 6 Plan-03 + 9 Phase 7 Plan-03 + 5 Phase 8 Plan-01 + 5 Phase 8 Plan-02 + 6 Phase 8 Plan-03 = 196 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
@@ -248,7 +248,10 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // Phase 8 Plan 02 totals: 5 TargetPickerPanel keys
     //   (target_picker_title, target_picker_empty_hint, target_picker_hp_label,
     //    target_picker_ac_label, hud_r1_target_picker).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(190);
+    // Phase 8 Plan 03 totals: 6 ActionOptionsModal keys
+    //   (action_options_title, action_options_tap_label_spell, action_options_tap_label_item,
+    //    action_options_long_label, action_options_cancel_label, hud_r1_action_options).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(196);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -323,7 +326,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 180 after Phase 7 Plan 03 (9 TemplatePlacementPanel keys).
     // Updated to 185 after Phase 8 Plan 01 (5 error.action.* toast keys).
     // Updated to 190 after Phase 8 Plan 02 (5 TargetPickerPanel keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(190);
+    // Updated to 196 after Phase 8 Plan 03 (6 ActionOptionsModal keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(196);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
