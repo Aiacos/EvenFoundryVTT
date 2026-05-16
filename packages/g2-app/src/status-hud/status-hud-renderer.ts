@@ -161,6 +161,29 @@ export interface StatusHudRendererOpts {
 }
 
 /**
+ * Action economy state stored on the renderer via {@link StatusHudRenderer.setActionEconomy}.
+ *
+ * Mirrors the six typed fields of `ActionEconomyPayload` minus `actorId` /
+ * `recipientUserId` (those are WS-trust-boundary fields, not rendering data).
+ * The `multiAttack` field is optional — only present when `multiAttackInProgress` is `true`.
+ *
+ * @see packages/shared-protocol/src/payloads/action-economy.ts ActionEconomyPayload
+ * @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 1
+ */
+export interface ActionEconomyWidgetState {
+  /** 0 = action slot available; 1 = slot consumed this turn. */
+  readonly actionsUsed: 0 | 1;
+  /** 0 = bonus action slot available; 1 = slot consumed this turn. */
+  readonly bonusActionsUsed: 0 | 1;
+  /** 0 = reaction slot available; 1 = slot consumed this turn. */
+  readonly reactionsUsed: 0 | 1;
+  /** `true` when an Extra Attack action is in progress (multi-attack). */
+  readonly multiAttackInProgress: boolean;
+  /** Present when `multiAttackInProgress` is `true`. */
+  readonly multiAttack?: { readonly current: number; readonly total: number };
+}
+
+/**
  * Stateless renderer for the always-visible z=1 Status HUD corner card.
  *
  * Construct once per layer instance; the locale + mapMode are fixed at
@@ -184,6 +207,16 @@ export class StatusHudRenderer {
    * with a `Mov {remaining}/{total}` chip. When null, row 19 is blank (standard layout).
    */
   private _movementBudget: { remaining: number; total: number } | null = null;
+
+  /**
+   * Phase 9 Plan 09-02 — action economy widget state (mutable via {@link setActionEconomy}).
+   *
+   * When non-null, `_buildGrid` row 19 renders the economy chip combined with
+   * the movement budget (if set): `Az. ░ Bns ░ R░ Mov 25/30`.
+   * Multi-attack override: `Az. ▓ [Atk 1/2] Mov 0/30`.
+   * When null (default), row 19 falls back to movement chip or blank (existing behaviour).
+   */
+  private _actionEconomy: ActionEconomyWidgetState | null = null;
 
   constructor(opts: StatusHudRendererOpts) {
     this.locale = opts.locale;
@@ -250,6 +283,59 @@ export class StatusHudRenderer {
    */
   _getMovementBudgetForTest(): { remaining: number; total: number } | null {
     return this._movementBudget;
+  }
+
+  /**
+   * Phase 9 Plan 09-02 — action economy widget.
+   *
+   * When non-null, `_buildGrid` row 19 renders the combined economy + movement chip.
+   * When null, existing movement-chip / blank row 19 behaviour is preserved.
+   *
+   * **Widget format (IT locale, all slots empty, no movement):**
+   * `Az. ░ Bns ░ R░` (padded to 24-char inner cell)
+   *
+   * **Multi-attack override (with movement):**
+   * `Az. ▓ [Atk 1/2] Mov 0/30` (24-char inner cell)
+   *
+   * **Standard with movement:**
+   * `Az. ░ Bns ░ R░ Mov 25/30` (24-char inner cell)
+   *
+   * **Death-saves priority (SHR-MV-05 precedent):** the economy widget is ONLY
+   * rendered in standard mode. `_renderDeathSaves` is not modified — the widget
+   * is silently suppressed when mode is `'death-saves'`.
+   *
+   * **Transition guard (mirrors setMovementBudget):** this method is a no-op if
+   * the new value is structurally identical to the stored value. Structural
+   * equality checks all 5 fields (actionsUsed, bonusActionsUsed, reactionsUsed,
+   * multiAttackInProgress, and the multiAttack sub-object when present).
+   *
+   * @param state Economy widget data, or `null` to clear (return to movement-chip / blank).
+   */
+  setActionEconomy(state: ActionEconomyWidgetState | null): void {
+    // Transition guard — no-op if structurally identical to stored value
+    if (state === null && this._actionEconomy === null) return;
+    if (state !== null && this._actionEconomy !== null) {
+      const a = this._actionEconomy;
+      const structurallyEqual =
+        a.actionsUsed === state.actionsUsed &&
+        a.bonusActionsUsed === state.bonusActionsUsed &&
+        a.reactionsUsed === state.reactionsUsed &&
+        a.multiAttackInProgress === state.multiAttackInProgress &&
+        a.multiAttack?.current === state.multiAttack?.current &&
+        a.multiAttack?.total === state.multiAttack?.total;
+      if (structurallyEqual) return;
+    }
+    this._actionEconomy = state;
+  }
+
+  /**
+   * Test-only: expose the current `_actionEconomy` field.
+   *
+   * Allows SHR-EW-04 to assert transition-guard behaviour without re-rendering.
+   * Production code MUST NOT gate behaviour on this getter.
+   */
+  _getActionEconomyForTest(): ActionEconomyWidgetState | null {
+    return this._actionEconomy;
   }
 
   /**
@@ -564,8 +650,11 @@ export class StatusHudRenderer {
     }
 
     // Row 19: overflow line `   … +{N}` if more than 3 conditions;
-    // OR movement budget chip `Mov {remaining}/{total}` (Plan 08-04 SHR-MV-02)
-    // when _movementBudget is non-null AND no overflow exists.
+    // OR economy+movement chip (Plan 09-02 SHR-EW-01) when _actionEconomy is non-null
+    // AND no overflow exists;
+    // OR plain movement budget chip `Mov {remaining}/{total}` (Plan 08-04 SHR-MV-02)
+    // when _movementBudget is non-null, no economy state, AND no overflow;
+    // OR blank.
     // Overflow takes priority (both cannot render in the same row — INV-1 row count
     // is inviolable at 21 rows; the overflow line is more critical for gameplay).
     if (fields.conditionsOverflow > 0) {
@@ -574,6 +663,10 @@ export class StatusHudRenderer {
           padRight(`   ${ELLIPSIS} +${fields.conditionsOverflow}`, INNER_WIDTH - 2),
         ),
       );
+    } else if (this._actionEconomy !== null) {
+      // Phase 9 Plan 09-02 — action economy widget footer row (SHR-EW-01..03).
+      // Combined format with movement budget when both are set.
+      rows.push(this._rowFromInner(this._buildEconomyChip()));
     } else if (this._movementBudget !== null) {
       // Phase 8 Plan 08-04 — movement budget chip footer row (SHR-MV-02).
       // Format: `Mov {remaining}/{total}` with locale-aware label.
@@ -613,6 +706,61 @@ export class StatusHudRenderer {
     }
 
     return new AsciiGrid(sizedRows);
+  }
+
+  /**
+   * Build the action economy chip string (24-char inner cell).
+   *
+   * Two formats depending on `_actionEconomy.multiAttackInProgress`:
+   *
+   * **Standard:** `{actLabel} {actGlyph} {bnsLabel} {bnsGlyph} R{reactGlyph}[ Mov {n}/{t}]`
+   *   - Glyphs: `░` (available) / `▓` (used).
+   *   - Movement suffix ` Mov {n}/{t}` appended when `_movementBudget` is set.
+   *   - Example IT no-mov: `Az. ░ Bns ░ R░`
+   *   - Example IT with-mov: `Az. ░ Bns ░ R░ Mov 25/30`
+   *
+   * **Multi-attack:** `{actLabel} ▓ {multiattackStr}[ Mov {n}/{t}]`
+   *   - `multiattackStr` uses `econ.multiattack.template` with {N}/{M} substitution.
+   *   - Example IT: `Az. ▓ [Atk 1/2] Mov 0/30`
+   *
+   * The returned string is passed to `_rowFromInner` which pads/truncates to 24 chars.
+   *
+   * @returns Economy chip content (≤ 24 code-points; may be shorter — `_rowFromInner` pads).
+   */
+  private _buildEconomyChip(): string {
+    // Defensive: called only when _actionEconomy is non-null (assertion)
+    const econ = this._actionEconomy;
+    if (econ === null) return '';
+
+    const actLabel = getLabel('act_label', this.locale);
+    const bnsLabel = getLabel('bns_label', this.locale);
+    const reactShort = getLabel('econ.reaction.short', this.locale);
+
+    // Movement suffix — appended when _movementBudget is set
+    let movSuffix = '';
+    if (this._movementBudget !== null) {
+      const movLabel = getLabel('status_hud_movement_label', this.locale);
+      const chipTemplate = getLabel('status_hud_movement_chip_template', this.locale);
+      const chipValue = chipTemplate
+        .replace('{used}', String(this._movementBudget.remaining))
+        .replace('{total}', String(this._movementBudget.total));
+      movSuffix = ` ${movLabel} ${chipValue}`;
+    }
+
+    if (econ.multiAttackInProgress && econ.multiAttack !== undefined) {
+      // Multi-attack override format: `Az. ▓ [Atk 1/2] Mov 0/30`
+      const template = getLabel('econ.multiattack.template', this.locale);
+      const atkStr = template
+        .replace('{N}', String(econ.multiAttack.current))
+        .replace('{M}', String(econ.multiAttack.total));
+      return `${actLabel} ▓ ${atkStr}${movSuffix}`;
+    }
+
+    // Standard format: `Az. ░ Bns ░ R░[ Mov 25/30]`
+    const actGlyph = econ.actionsUsed >= 1 ? '▓' : '░';
+    const bnsGlyph = econ.bonusActionsUsed >= 1 ? '▓' : '░';
+    const reactGlyph = econ.reactionsUsed >= 1 ? '▓' : '░';
+    return `${actLabel} ${actGlyph} ${bnsLabel} ${bnsGlyph} ${reactShort}${reactGlyph}${movSuffix}`;
   }
 
   /**
