@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_8_IN_PROGRESS — Plans 01-04 committed; MoveDirectionPicker + MovementBudget pipeline complete.
-stopped_at: Completed 08-04-PLAN.md
-last_updated: "2026-05-16T18:00:00.000Z"
-last_activity: "2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld."
+status: PHASE_8_CLOSED — 5/5 plans committed; CombatTrackerPanel QA-bar + boot-engine steps 11e..11i + ISM-W8-01..10 integration smoke. 1858 tests pass. 14-socketlib-handler invariant upheld.
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-05-16T19:20:00.000Z"
+last_activity: "2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending."
 progress:
   total_phases: 15
   completed_phases: 9
   total_plans: 50
-  completed_plans: 49
-  percent: 60
+  completed_plans: 50
+  percent: 62
 ---
 
 # Project State
@@ -25,11 +25,13 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 8 (manual-action-ux — IN PROGRESS)
-Plan: 08-04 complete — Wave 3 MoveDirectionPicker + combat-movement-tracker + StatusHud move-chip + move-token integration.
-Status: PHASE_8_IN_PROGRESS — Plans 01-04 committed; MoveDirectionPicker + MovementBudget pipeline complete.
+Phase: 8 (manual-action-ux — CLOSED) → Phase 9 next
+Plan: 08-05 complete — Wave 4 CombatTrackerPanel QA-bar + boot-engine steps 11e..11g + ISM-W8-01..10.
+Status: PHASE_8_CLOSED — 5/5 plans committed; CombatTrackerPanel QA-bar + boot-engine steps 11e..11i + ISM-W8-01..10 integration smoke. 1858 tests pass. 14-socketlib-handler invariant upheld.
 
-Last activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
+Last activity: 2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending.
+
+Previous activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
 
 Previous activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
 
@@ -196,6 +198,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 08 Plan 04]: CharacterDeltaEvents widened to string channel to support movement budget subscription alongside character.delta without breaking existing mocks
 - [Phase 08 Plan 04]: Row 19 in _buildGrid repurposed for Mov chip — conditionsOverflow takes priority when both conditions overflow AND movement budget exist
 - [Phase 08 Plan 04]: combat-movement-tracker uses _lastPosition map per actorId; first updateToken fire always yields delta=0 (Phase 8 broad heuristic)
+- [Phase 08 Plan 05]: Double-tap-to-fire semantics: _lastTapIdx stores the NEW (post-advance) index; second tap on same index within 600ms fires — cycle taps need >600ms spacing to avoid premature fire
+- [Phase 08 Plan 05]: PanelRouter.setPanelInstanceHandler post-construction injection registry (Map<panelId, callback>) avoids threading handlers through 3-arg constructor signature
+- [Phase 08 Plan 05]: currentUserId stub is '<unknown>' — bearer user_id not yet surfaced in handshake; TODO(ADR-0005); T-08-02 filter still active (unknown !== real recipientUserId → silent drop)
+- [Phase 08 Plan 05]: ToastQueueLayer mounted at z=1.5 in boot sequence (Step 11e) — was missing from prior boot-engine wiring, added as Rule 2 correctness requirement
 
 ### Pending Todos
 
@@ -219,10 +225,10 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T18:00:00.000Z
-Stopped at: Completed 08-04-PLAN.md
+Last session: 2026-05-16T19:20:00.000Z
+Stopped at: Completed 08-05-PLAN.md (Phase 8 CLOSED)
 Resume file: None
-Resume cmd: /gsd-execute-phase 8 05
+Resume cmd: /gsd-execute-phase 9 01
 
 ## /gsd-autonomous 2026-05-16 run — Phase 7 closure
 
@@ -275,9 +281,19 @@ Previous hardware-pending running total (Phases 4a + 4b + 5 + 6): 18 SCs
 Phase 7 adds: 5 SCs
 New running total: **23 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
 
-### Phase 8 ready signal
+### Hardware-pending carry-forward (Phase 8 — 3 new SCs)
 
-Phase 8 (Manual Action UX) is unblocked. Resume cmd: `/gsd-execute-phase 8 01`
+SC-08-01: Real spellbook tap-to-cast round-trip — SpellbookPanel long-press → ActionOptionsModal → tool.invoke → cast-spell handler → real Foundry chat card
+SC-08-02: Real combat tracker QA-bar [A][S][I][M] double-tap fires matching flow on real G2 hardware
+SC-08-03: Action-result toast renders correctly on real G2 display (d20 + outcome + damage ≤ 38 chars, 3s dwell)
+
+Previous hardware-pending running total (Phases 4a + 4b + 5 + 6 + 7): 23 SCs
+Phase 8 adds: 3 SCs
+New running total: **26 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### Phase 9 ready signal
+
+Phase 8 CLOSED. Phase 9 (Action Economy & Edge Cases) is unblocked. Resume cmd: `/gsd-execute-phase 9 01`
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 

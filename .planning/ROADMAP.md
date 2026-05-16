@@ -24,7 +24,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 5: Panel Plugin System + Read-Only Panels** - Panel API contract + 6-tab Sheet + Combat tracker + Log + Inventory + Spellbook + i18n width budget + dual-edition support (completed 2026-05-15)
 - [x] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
 - [x] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger (6/6 plans complete 2026-05-16; hardware-pending SC-07-01..05 deferred to ADR-0005 Branch A human_needed; ADR-0011 ACCEPTED; registerComplexHandler count = 14)
-- [ ] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners
+- [x] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners (5/5 plans complete 2026-05-16; hardware-pending SC-08-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld)
 - [ ] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow
 - [ ] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook
 - [ ] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification
@@ -238,6 +238,7 @@ Plans:
 - [x] 08-02-PLAN.md — ActionOptionsModal + R1 tap dispatch + panel teardown (Wave 2) — complete 2026-05-16
 - [x] 08-03-PLAN.md — ActionOptionsModal long-press wiring + SpellbookPanel/InventoryPanel integration (Wave 2) — complete 2026-05-16
 - [x] 08-04-PLAN.md — MoveDirectionPicker (z=2) + MovementBudgetPayloadSchema + combat-movement-tracker + StatusHud move-chip + 4 INV-1 fixtures (Wave 3) — complete 2026-05-16 (commits 96299ba + 8130153 + cd27600)
+- [x] 08-05-PLAN.md — CombatTrackerPanel QA-bar [A][S][I][M] tap-dispatch + boot-engine steps 11e..11g + ISM-W8-01..10 integration smoke + Phase 8 closure (Wave 4) — complete 2026-05-16 (commits 9901fe8 + 219f3a3 + e8d5f03 + 71ec0c2)
 
 ### Phase 9: Action Economy & Edge Cases
 **Goal**: Action / Bonus / Reaction enforcement is visible and binding; concentration drop, multi-attack, and slot consumption all behave correctly under real combat sequencing.
