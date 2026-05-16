@@ -172,6 +172,18 @@ export {
   R1_MULTIATTACK_PROGRESS_TYPE,
 } from './payloads/multi-attack.js';
 
+// ─── Phase 7 additions (Plan 07-05) ──────────────────────────────────────────
+// Reaction available payload schema (REACT-01).
+// reaction-toast-dispatcher.ts consumes ReactionAvailablePayloadSchema at the
+// WS-receive trust boundary. R1_REACTION_AVAILABLE_TYPE narrows on envelope.type
+// before applying inner payload parse.
+
+export {
+  R1_REACTION_AVAILABLE_TYPE,
+  type ReactionAvailablePayload,
+  ReactionAvailablePayloadSchema,
+} from './payloads/reaction.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {

@@ -224,6 +224,15 @@ interface Dnd5eActorSystem {
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
  */
 interface FoundryActiveEffect {
+  /**
+   * Foundry document ID for this active effect.
+   *
+   * Added Plan 07-05: `drop-concentration` handler resolves the effect via
+   * `actor.effects.contents.find(e => e.id === args.effect_id)`.
+   *
+   * @see packages/foundry-module/src/write-path/handlers/drop-concentration.ts
+   */
+  id: string;
   /** Effect display name (e.g. 'Bless', 'Hunter's Mark'). */
   name: string;
   /**
@@ -567,8 +576,14 @@ interface FoundryCanvas {
  * Extended in Phase 7 Plan 01 to include `isGM` + `active` flags used by
  * `writeAuditLog` to build the `whisper: gmIds` array for `ChatMessage.create`.
  *
+ * Extended in Phase 7 Plan 05 to include `character` — the player's assigned
+ * character. Used by `reaction-watcher.ts` to identify whose character to match
+ * when detecting NPC activities targeting the player.
+ *
  * @see packages/foundry-module/src/write-path/audit-log.ts
+ * @see packages/foundry-module/src/write-path/reaction-watcher.ts
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
+ * @see .planning/phases/07-foundry-module-write-path/07-05-PLAN.md Task 1
  */
 interface FoundryUser {
   id: string;
@@ -581,6 +596,14 @@ interface FoundryUser {
   isGM: boolean;
   /** Whether this user is currently active (connected to the session). */
   active: boolean;
+  /**
+   * The player's assigned character actor, or null if no character is assigned.
+   *
+   * Added Plan 07-05: reaction-watcher reads `game.user?.character?.id` to
+   * identify the player character to match against NPC activities. May be null
+   * for GMs or players who have not yet selected a character.
+   */
+  character?: { id: string } | null;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
