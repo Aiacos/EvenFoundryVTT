@@ -129,6 +129,14 @@ Esplicitamente esclusi. Documentati per prevenire scope creep. Riferimenti a Spe
 | Push notifications for non-game events | Out of game scope |
 | Color-coded UI | G2 monochrome (16 levels green only) — §3.1 |
 | OAuth login | Bearer 24h sufficiente per single-tenant MVP; OAuth è future option — §11.5.4 |
+
+## MVP closure status (Phase 10 closed 2026-05-17)
+
+- 48/48 v1 REQ-IDs software-complete across Phases 0–10 (see traceability above)
+- 32 hardware-pending SCs across Phases 4a/4b/5/6/7/8/9/10 carry to ADR-0005 PROVISIONAL Branch A `human_needed`
+- Close hardware SCs via `pnpm --filter @evf/validation-harness validate:all` once G2 + R1 + consenting DM available
+- Field test template: `docs/field-test-template.md`; latency template: `docs/perf/phase-10-latency.md`
+- V2 requirements (VOICE-01..05, ACT-04, STRETCH-01..08) remain OPZIONALE — tracked above but not in MVP scope
 | Web app (mobile companion app) | The Even Realities App on phone IS the companion; nessun secondo canale |
 
 ## Traceability

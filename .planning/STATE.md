@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_10_IN_PROGRESS — 1/5 plans committed; WsReconnectController (exponential backoff) + SeqTracker + buildSyncLostChip + i18n keys + INV-1 fixtures + StatusHudLayer.setSyncLost. T-10-01 mitigated. 1232 tests pass.
-stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-16T23:49:14.420Z"
-last_activity: "2026-05-17 — Phase 10 Plan 01 complete — WsReconnectController (exponential backoff 1s→30s cap, client_resume, resume_replay/resume_full_snapshot handling) + SeqTracker (monotonic seq tracking, duck-typed observe) + buildSyncLostChip (IT/EN ≤38 code-points INV-1) + StatusHudLayer.setSyncLost + boot-engine wiring at steps 10+11a. T-10-01 mitigation: buffer_gap forces seqTracker.reset() before onFullRefreshRequired (WSR-07). +26 tests (ST-01..07, WSR-01..07+03b, SLC-01..06b). 1232 total. onFullRefreshRequired is console.warn stub — REST /v1/actor wiring deferred to Plan 10-04."
+status: PHASE_10_CLOSED — MVP_SOFTWARE_COMPLETE — 5/5 plans committed; WS reconnect resilience + perf probe + INV-1..5 verification suite + 5 MVP docs + INV-3 atomic coherence. 2097 tests pass. 14-socketlib-handler invariant upheld; CI Gate 8 green. 32 hardware-pending SCs carried to ADR-0005 Branch A human_needed.
+stopped_at: Completed 10-05-PLAN.md (Phase 10 CLOSED — MVP software-complete)
+last_updated: "2026-05-17T02:00:00.000Z"
+last_activity: "2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE."
 progress:
   total_phases: 15
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 60
-  completed_plans: 59
-  percent: 73
+  completed_plans: 60
+  percent: 80
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 10 (polish-field-test-mvp — IN PROGRESS)
-Plan: 10-01 complete — WS reconnect controller + SeqTracker + SYNC LOST chip + boot-engine wiring.
-Status: PHASE_10_IN_PROGRESS — 1/5 plans committed; WsReconnectController (exponential backoff) + SeqTracker + buildSyncLostChip + i18n keys + INV-1 fixtures + StatusHudLayer.setSyncLost. T-10-01 mitigated. 1232 tests pass.
+Phase: 10 (polish-field-test-mvp — CLOSED)
+Plan: 10-05 complete — 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal.
+Status: PHASE_10_CLOSED — MVP_SOFTWARE_COMPLETE — 5/5 plans committed; WS reconnect resilience + perf probe + INV-1..5 verification suite + 5 MVP docs + INV-3 atomic coherence. 2097 tests pass. 14-socketlib-handler invariant upheld; CI Gate 8 green. 32 hardware-pending SCs carried to ADR-0005 Branch A human_needed.
 
-Last activity: 2026-05-17 — Phase 10 Plan 01 complete — WsReconnectController (exponential backoff 1s→30s cap, client_resume, resume_replay/resume_full_snapshot handling) + SeqTracker (monotonic seq tracking, duck-typed observe) + buildSyncLostChip (IT/EN ≤38 code-points INV-1) + StatusHudLayer.setSyncLost + boot-engine wiring at steps 10+11a. T-10-01 mitigation: buffer_gap forces seqTracker.reset() before onFullRefreshRequired (WSR-07). +26 tests (ST-01..07, WSR-01..07+03b, SLC-01..06b). 1232 total. onFullRefreshRequired is console.warn stub — REST /v1/actor wiring deferred to Plan 10-04.
+Last activity: 2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE.
 
 Previous activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
 
@@ -239,6 +239,51 @@ Last session: 2026-05-16T23:49:14.411Z
 Stopped at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
 Resume file: None
 Resume cmd: /gsd-execute-phase 10 01
+
+## /gsd-autonomous 2026-05-17 run — Phase 10 closure
+
+**PHASE_10_CLOSED** — 5/5 plans committed 2026-05-17. **MVP SOFTWARE-COMPLETE.**
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 10-01 | 730145c + acc4776 + a7305f6 + f98f331 | WsReconnectController (exponential backoff 1s→30s) + SeqTracker + buildSyncLostChip (IT/EN ≤38 cp INV-1) + boot-engine wiring |
+| 10-02 | f012e6a + 9ec940f + 6316764 + 397148f + 9e0c745 | PerfProbe (5 stations, T-10-02 SHA-256 hash gate) + PerfSampleEnvelopeSchema + phase-10-latency.md template (TDD) |
+| 10-03 | f6c842a + 98382a0 + 62b86a3 | INV-1..5 verification suite orchestrator + inv:all single-command + path fix (TDD) |
+| 10-04 | bcb4e91 | 5 MVP docs + Specs.md boot-splash INV-3 atomic coherence fix (v0.9.11→v0.9.12) |
+| 10-05 | ee39fb1 + (state commit) | 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS closure flip |
+
+### Test totals
+
+- Phase 10 start (after 09-05): 2036 tests
+- Phase 10 end (after 10-05): 2097 tests
+- Net Phase 10 addition: +61 tests across 5 plans (+26 Plan 01, +15 Plan 02, +22 Plan 03, +0 Plan 04+05)
+
+### Key invariants confirmed (Phase 10 closure)
+
+- `registerComplexHandler` count = **14** (re-grepped at Phase 10-05 closure: `grep -c 'socketlib.registerComplexHandler' packages/foundry-module/src/pair/socketlib-handlers.ts` = 14)
+- ADR-0011 single-workflow-origin discipline: `activity.use(` absent from g2-app + bridge source code (CI Gate 8 green; sole match in slot-picker-panel.ts:29 is a JSDoc comment)
+- INV-1..5 verification suite green (Plan 10-03 `inv:all:skip-inv2`): INV-1 ✓ / INV-2 ⚠ skipped / INV-3 ✓ / INV-4 ✓ / INV-5 ✓
+- INV-3 atomic doc-coherence verified (Plan 10-04 single commit `bcb4e91` per Phase 1 Plan 03 precedent `671a22d`)
+
+### REQ-ID coverage (Phase 10)
+
+Phase 10 lands NO new v1 REQ-IDs — this is a cross-cutting verification + hardening phase. All 48 v1 REQ-IDs software-closed across Phases 0–9 (REQUIREMENTS.md as SoT).
+
+### Hardware-pending carry-forward (Phase 10 — 3 new SCs)
+
+SC-10-01: Multi-session field test (≥2 real D&D sessions, consenting DM, NASA-TLX + Borg CR-10 recorded, mid-session DM-setting broadcast verified)
+SC-10-02: Latency p50 <400 ms end-to-end measured via PerfProbe in real sessions (docs/perf/phase-10-latency.md populated)
+SC-10-03: Microwave / 2.4 GHz worst-case RF test — SYNC LOST chip fires + session-state recovery verified on real hardware
+
+Previous hardware-pending running total (Phases 4a + 4b + 5 + 6 + 7 + 8 + 9): 29 SCs
+Phase 10 adds: 3 SCs
+New running total: **32 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### MVP software-complete signal
+
+Phase 10 CLOSED. **MVP software-complete.** All 11 MVP phases (0, 1, 2, 3, 4a, 4b, 5, 6, 7, 8, 9, 10) have shipped their software deliverables. 32 hardware-pending SCs carry to ADR-0005 PROVISIONAL Branch A human_needed — close via `pnpm --filter @evf/validation-harness validate:all` once G2 + R1 hardware and a consenting DM are available. v0.9.11 milestone audit unblocked. Recommendation: run `/gsd-cleanup 10` to archive phase artifacts, then `/gsd milestone-audit v0.9.11` (or proceed to hardware field test per `docs/field-test-template.md`).
 
 ## /gsd-autonomous 2026-05-16 run — Phase 9 closure
 

@@ -26,7 +26,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger (6/6 plans complete 2026-05-16; hardware-pending SC-07-01..05 deferred to ADR-0005 Branch A human_needed; ADR-0011 ACCEPTED; registerComplexHandler count = 14)
 - [x] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners (5/5 plans complete 2026-05-16; hardware-pending SC-08-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld)
 - [x] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow (5/5 plans complete 2026-05-16; SC-09-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 29)
-- [ ] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook
+- [x] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook *(5/5 plans complete 2026-05-17; software-complete; SC-10-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 32. MVP SOFTWARE-COMPLETE.)*
 - [ ] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification
 - [ ] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
 - [ ] **Phase 13: V2 Stretch** *(OPZIONALE)* - Reaction *execution* (ACT-04) + biometric narrative cues + multi-player sync + dnd5e v6.x adapter + PF2e + Sheet/Token portrait + DSN raster stream + bridge-side headless Foundry + advanced dither
@@ -284,7 +284,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2; NOT autonomous — INV-3 atomic coherence checkpoint)*
 - [x] 10-04-PLAN.md — 5 MVP docs (README + setup + runbook + firmware-compat + field-test-template) + INV-3 atomic coherence commit (SC-5 docs)
 **Wave 4** *(blocked on Wave 3; NOT autonomous — Phase 10 + MVP closure)*
-- [ ] 10-05-PLAN.md — 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS flip + 32 hardware-pending carry + MVP software-complete signal
+- [x] 10-05-PLAN.md — 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS flip + 32 hardware-pending carry + MVP software-complete signal *(complete 2026-05-17)*
 
 
 ### Phase 11: V2 `foundry-mcp` Server (OPZIONALE)
@@ -325,18 +325,18 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Validation Gates | 1/4 | In progress | - |
-| 1. Foundation | 0/3 | Not started | - |
-| 2. Foundry Module Core + Pairing UI | 2/5 | In Progress|  |
-| 3. Bridge Service Skeleton | 0/TBD | Not started | - |
+| 0. Validation Gates | 3/4 | Complete (software; Plan 00-04 hardware-gated — ADR-0005 Branch A human_needed) | 2026-05-14 |
+| 1. Foundation | 3/3 | Complete | 2026-05-11 |
+| 2. Foundry Module Core + Pairing UI | 5/5 | Complete | 2026-05-15 |
+| 3. Bridge Service Skeleton | 5/5 | Complete | 2026-05-15 |
 | 4a. G2 Engine + Raster + Status HUD | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
-| 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
-| 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
+| 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
+| 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete | 2026-05-15 |
 | 6. R1 Integration + Quick Action + INV-5 | 4/4 | Complete | 2026-05-15 |
-| 7. Foundry Module Write Path | 6/6 | Complete   | 2026-05-16 |
+| 7. Foundry Module Write Path | 6/6 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 8. Manual Action UX | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
-| 10. Polish & Field Test MVP | 4/5 | In Progress|  |
+| 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
 | 11. V2 `foundry-mcp` Server | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
