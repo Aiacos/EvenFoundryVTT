@@ -273,7 +273,19 @@ Plans:
   3. **Multi-session field test** completed across ≥2 real D&D sessions with a consenting DM (research extension: not just one 4 h session); NASA-TLX or Borg CR-10 eye-fatigue self-report score recorded; mid-session DM-setting-change broadcast verified (research Pitfall 8)
   4. **Microwave / 2.4 GHz worst-case RF test** completed in-session; G2 either sustains raster or degrades cleanly to glyph (Specs §11.5.8.2) without losing session state (research Pitfall 2)
   5. README, setup guide, video demo, runbook, firmware compatibility matrix (research Pitfall 7) all shipped under `docs/`; INV-1..5 verification suite is green
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+**Wave 0**
+- [ ] 10-01-PLAN.md — WS reconnect module + lastConfirmedSeq tracker + ⚠ SYNC LOST chip + 2 INV-1 fixtures (SC-1, T-10-01)
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 10-02-PLAN.md — Perf probe module + r1.perf.sample envelope + docs/perf/phase-10-latency.md template (SC-2 software; SC-10-02 hardware-pending; T-10-02)
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 10-03-PLAN.md — INV-1..5 verification suite + `pnpm inv:all` single-command + green/red table (SC-5 software)
+**Wave 3** *(blocked on Wave 2; NOT autonomous — INV-3 atomic coherence checkpoint)*
+- [ ] 10-04-PLAN.md — 5 MVP docs (README + setup + runbook + firmware-compat + field-test-template) + INV-3 atomic coherence commit (SC-5 docs)
+**Wave 4** *(blocked on Wave 3; NOT autonomous — Phase 10 + MVP closure)*
+- [ ] 10-05-PLAN.md — 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS flip + 32 hardware-pending carry + MVP software-complete signal
+
 
 ### Phase 11: V2 `foundry-mcp` Server (OPZIONALE)
 **Goal**: V2 enabler — expose the same Tool Registry over MCP so Claude Desktop / any MCP client can drive Foundry actions through natural language. MVP is unaffected; this is plug-and-play.
