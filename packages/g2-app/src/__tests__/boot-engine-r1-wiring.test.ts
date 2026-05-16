@@ -528,8 +528,9 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
     const { handle } = await bootWithWiring();
 
     // PanelRouter exposes getRegisteredHandlerIds() for test assertions (test-only).
-    const router = (handle as unknown as { _panelRouter?: { getRegisteredHandlerIds?: () => string[] } })
-      ._panelRouter;
+    const router = (
+      handle as unknown as { _panelRouter?: { getRegisteredHandlerIds?: () => string[] } }
+    )._panelRouter;
     if (router?.getRegisteredHandlerIds) {
       const ids = router.getRegisteredHandlerIds();
       expect(ids).toContain('spellbook');
@@ -554,8 +555,9 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
   it('BERW-12: boot registers setPanelInstanceHandler for combat-tracker (step 11i)', async () => {
     const { handle } = await bootWithWiring();
 
-    const router = (handle as unknown as { _panelRouter?: { getRegisteredHandlerIds?: () => string[] } })
-      ._panelRouter;
+    const router = (
+      handle as unknown as { _panelRouter?: { getRegisteredHandlerIds?: () => string[] } }
+    )._panelRouter;
     if (router?.getRegisteredHandlerIds) {
       const ids = router.getRegisteredHandlerIds();
       expect(ids).toContain('combat-tracker');

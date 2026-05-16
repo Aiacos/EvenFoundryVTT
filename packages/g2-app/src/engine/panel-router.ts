@@ -295,6 +295,15 @@ export class PanelRouter {
 
     // Step 4 — Construct and mount the new panel.
     const panel = new entry.Cls(deps.bridge, deps.gestureBus, deps.locale);
+
+    // Step 4a — Post-construction injection (Plan 08-05): fire registered handler if any.
+    // This injects setActionOptionsHandler / setQuickActionHandler before onMount runs
+    // (the handler is registered at boot time via setPanelInstanceHandler).
+    const instanceHandler = this._instanceHandlers.get(id);
+    if (instanceHandler !== undefined) {
+      instanceHandler(panel);
+    }
+
     await deps.layerManager.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
 
     // Step 5 — Record active state.
@@ -453,6 +462,50 @@ export class PanelRouter {
    */
   clearOverlayStack(): void {
     this.overlayStack.length = 0;
+  }
+
+  /**
+   * Post-construction injection registry (Plan 08-05 step 11g/11i).
+   *
+   * Maps panel IDs to callbacks invoked immediately after each panel is constructed
+   * in `openPanel()` (before `onMount`). Boot-engine registers handlers here to
+   * inject `setActionOptionsHandler` and `setQuickActionHandler` without threading
+   * them through the 3-arg `PanelConstructor` signature.
+   *
+   * Design: the handler receives the freshly-constructed panel instance typed as
+   * `OverlayPanel`. The caller down-casts to the appropriate panel type.
+   *
+   * @internal Registered at boot time (before first `openPanel` call). Cleared on
+   * teardown by the boot orchestrator discarding the PanelRouter instance.
+   */
+  private readonly _instanceHandlers: Map<string, (panel: OverlayPanel) => void> = new Map();
+
+  /**
+   * Register a post-construction handler for a specific panel ID (Plan 08-05).
+   *
+   * Called at boot time to inject handlers (e.g. `setActionOptionsHandler`,
+   * `setQuickActionHandler`) into panels that are constructed on-demand by
+   * `openPanel()`. The handler fires once per `openPanel(id)` call, immediately
+   * after the panel is constructed and before `onMount` runs.
+   *
+   * Registering a new handler for the same ID replaces the previous one
+   * (last-wins — idempotent for repeated boot in tests).
+   *
+   * @param id       The panel ID to intercept (e.g. `'spellbook'`, `'combat-tracker'`)
+   * @param handler  Callback receiving the freshly-constructed panel instance
+   */
+  setPanelInstanceHandler(id: string, handler: (panel: OverlayPanel) => void): void {
+    this._instanceHandlers.set(id, handler);
+  }
+
+  /**
+   * Test-only diagnostic: IDs for which a `setPanelInstanceHandler` was registered.
+   *
+   * Exposed for BERW-11/12 structural wiring assertions. Production code MUST NOT
+   * gate behavior on this list.
+   */
+  getRegisteredHandlerIds(): string[] {
+    return [...this._instanceHandlers.keys()];
   }
 
   /**

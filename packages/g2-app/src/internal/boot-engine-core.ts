@@ -39,7 +39,10 @@
  *  11b. attachR1EventSource(ws, gestureBus, lm, DEFAULT_R1_TIMINGS) — R1 gesture bridge (Phase 6)
  *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionLongPress(bus, router, lm, makeMenu)
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
- *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1]) — atomic single-flush
+ *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
+ *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 long-press modal injection
+ *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
+ *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
  *  13. await mapBase.draw() — first frame
  *  14. return { layerManager, rasterController, localeEvents, teardown }
  *
@@ -63,6 +66,7 @@ import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
+import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
@@ -73,6 +77,7 @@ import { attachSceneInputToWs } from '../scene-input.js';
 import { IdleInfillLayer } from '../status-hud/idle-infill-layer.js';
 import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
+import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
 
 /**
  * Locale tag for the boot engine. Mirrors the full `HudLocale` union from
@@ -458,12 +463,149 @@ export async function _bootEngineCore(
     effectiveLocale,
   );
 
+  // 11e. Action result dispatcher (Plan 08-01) — listens on `r1.action.result` envelopes
+  //      and enqueues typed toasts via ToastQueueLayer (T-08-01-01 + T-08-02-01 mitigations).
+  //
+  //      `currentUserId` filters cross-player leaks (T-08-02): the bearer user_id is not
+  //      yet surfaced through the handshake schema in Plan 08-05. Plan 09+ will wire the
+  //      real user_id from the bearer registry; for now a '<unknown>' stub ensures the
+  //      dispatcher is correctly wired while ISM-W8-07 verifies the filter with synthetic
+  //      userIds. TODO(ADR-0005): resolve bearer user_id through handshake in Phase 9.
+  const toastQueue = new ToastQueueLayer({ bridge });
+  const currentUserId = '<unknown>';
+  const unsubActionResult = attachActionResultHandler(
+    ws as unknown as Parameters<typeof attachActionResultHandler>[0],
+    toastQueue,
+    effectiveLocale,
+    currentUserId,
+  );
+
+  // 11f. Factory closures for Phase 8 action overlays (Plan 08-03 + Plan 08-04).
+  //      These closures are registered via setPanelInstanceHandler so they are injected
+  //      into the freshly-constructed panel on each openPanel call (post-construction-pre-mount).
+  //
+  //      makeActionOptions: pushes an ActionOptionsModal for the given request.
+  //      makeMovePicker: pushes a MoveDirectionPicker for the given move request.
+  //      Both use popOverlay as the onClose callback so the primary panel is restored.
+  //
+  //      Phase 8 minimal: the `[A]` key dispatches a console.warn stub (Plan 08-05 §NOTE).
+  //      The `[M]` key dispatches a console.warn stub (no snapshot-derived token yet).
+  //      ISM-W8-04/05 verifies the basic dispatch shape; full wiring is Phase 9.
+  //
+  //      The handlers are injected as closures capturing boot-time refs (panelRouter,
+  //      layerManager, gestureBus, bridge, effectiveLocale) — no global state.
+
+  panelRouter.setPanelInstanceHandler('spellbook', (panel) => {
+    const spellbook = panel as unknown as {
+      setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
+    };
+    spellbook.setActionOptionsHandler((req) => {
+      // Push ActionOptionsModal for the highlighted spell.
+      // Dynamically import to avoid circular boot-time dependency.
+      void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
+        const modal = new ActionOptionsModal(
+          bridge,
+          ws as unknown as ConstructorParameters<typeof ActionOptionsModal>[1],
+          gestureBus,
+          req as ConstructorParameters<typeof ActionOptionsModal>[3],
+          effectiveLocale,
+          handshake.session_id,
+          () => {
+            void panelRouter.popOverlay(layerManager);
+          },
+        );
+        void panelRouter.pushOverlay(modal, layerManager);
+      });
+    });
+  });
+
+  panelRouter.setPanelInstanceHandler('inventory', (panel) => {
+    const inventory = panel as unknown as {
+      setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
+    };
+    inventory.setActionOptionsHandler((req) => {
+      void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
+        const modal = new ActionOptionsModal(
+          bridge,
+          ws as unknown as ConstructorParameters<typeof ActionOptionsModal>[1],
+          gestureBus,
+          req as ConstructorParameters<typeof ActionOptionsModal>[3],
+          effectiveLocale,
+          handshake.session_id,
+          () => {
+            void panelRouter.popOverlay(layerManager);
+          },
+        );
+        void panelRouter.pushOverlay(modal, layerManager);
+      });
+    });
+  });
+
+  // 11g. Quick-action handler for combat-tracker panel (Plan 08-05 step 11i).
+  //      Dispatches [A][S][I][M] key presses to the appropriate panel or action.
+  //      The handler is injected via setPanelInstanceHandler so it fires at openPanel time.
+  //
+  //      [A] — Phase 8 minimal stub: console.warn (full weapon-attack wiring is Phase 9).
+  //      [S] — opens SpellbookPanel via openPanel.
+  //      [I] — opens InventoryPanel via openPanel.
+  //      [M] — Phase 8 minimal stub: console.warn (snapshot-derived token wiring is Phase 9).
+  const quickActionHandler = (key: 'A' | 'S' | 'I' | 'M'): void => {
+    switch (key) {
+      case 'A':
+        // Phase 8 stub — Phase 9 wires real weapon-attack dispatch from snapshot.
+        // TODO(ADR-0005): resolve default weapon from CombatTrackerPanel snapshot in Phase 9.
+        console.warn(
+          '[boot-engine-core] quickAction [A] — Phase 8 stub; Phase 9 wires weapon-attack',
+        );
+        break;
+      case 'S':
+        panelRouter.clearOverlayStack();
+        void panelRouter.openPanel('spellbook', {
+          bridge,
+          layerManager,
+          gestureBus,
+          negotiatedCaps,
+          locale: effectiveLocale,
+          toastQueue,
+        });
+        break;
+      case 'I':
+        panelRouter.clearOverlayStack();
+        void panelRouter.openPanel('inventory', {
+          bridge,
+          layerManager,
+          gestureBus,
+          negotiatedCaps,
+          locale: effectiveLocale,
+          toastQueue,
+        });
+        break;
+      case 'M':
+        // Phase 8 stub — Phase 9 wires MoveDirectionPicker with snapshot-derived token.
+        // TODO(ADR-0005): resolve player token + remainingFeet from StatusHudLayer cache in Phase 9.
+        console.warn(
+          '[boot-engine-core] quickAction [M] — Phase 8 stub; Phase 9 wires MoveDirectionPicker',
+        );
+        break;
+    }
+  };
+
+  panelRouter.setPanelInstanceHandler('combat-tracker', (panel) => {
+    const tracker = panel as unknown as {
+      setQuickActionHandler: (h: ((key: 'A' | 'S' | 'I' | 'M') => void) | null) => void;
+    };
+    tracker.setQuickActionHandler(quickActionHandler);
+  });
+
   // 12. Atomic bundle — exactly one rebuildPageContainer flush per ADR-0001
   //     Amendment 1 / CONTEXT.md §Area 1.
+  //     ToastQueueLayer is mounted at z=1.5 (between Status HUD and overlay slot — survives
+  //     z=2 overlay open per ADR-0009 Amendment 1 carve-out rule).
   await layerManager.bundle([
     { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
     { type: 'mount', z: ZIndex.Z0_5_IDLE_INFILL, layer: idleInfill },
     { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
+    { type: 'mount', z: ZIndex.Z1_5_TOAST, layer: toastQueue },
   ]);
 
   // 13. Draw first frame (no scene yet — MapBaseLayer.draw is a no-op until
@@ -477,7 +619,13 @@ export async function _bootEngineCore(
     effectiveLocale,
     localeEvents,
     teardown: (): void => {
-      // Tear down Phase 6 dispatcher subscriptions first (reverse of attach order).
+      // Tear down Phase 8 dispatcher subscriptions first (reverse of attach order).
+      try {
+        unsubActionResult();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubActionResult failed', err);
+      }
+      // Tear down Phase 6 dispatcher subscriptions (reverse of attach order).
       try {
         unsubConcConflict();
       } catch (err) {
@@ -514,6 +662,11 @@ export async function _bootEngineCore(
       // provider (z=0 MapBaseLayer) would fail that assertion mid-teardown.
       // Direct destroy() on each Layer instance is correct for teardown
       // since we're not flushing a new page.
+      try {
+        toastQueue.destroy();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: toastQueue.destroy failed', err);
+      }
       try {
         statusHud.destroy();
       } catch (err) {
