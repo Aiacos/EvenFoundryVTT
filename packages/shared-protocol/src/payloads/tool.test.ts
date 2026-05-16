@@ -25,6 +25,7 @@ describe('ToolInvocationEnvelopePayloadSchema', () => {
   const TEST_UUID_4 = '00000000-0000-4000-8000-000000000004';
   const TEST_UUID_5 = '00000000-0000-4000-8000-000000000005';
   const TEST_UUID_6 = '00000000-0000-4000-8000-000000000006';
+  const TEST_UUID_7 = '00000000-0000-4000-8000-000000000007';
 
   const validCases: Array<{ name: string; input: ToolInvocationEnvelopePayload }> = [
     {
@@ -73,6 +74,15 @@ describe('ToolInvocationEnvelopePayloadSchema', () => {
         toolId: 'place-template',
         idempotencyKey: TEST_UUID_6,
         args: { actorId: 'actor1', spellId: 'fireball', x: 50, y: 50 },
+      },
+    },
+    {
+      // CR-05 regression: confirm-template-placement was missing from TOOL_ID_SCHEMA
+      name: 'confirm-template-placement',
+      input: {
+        toolId: 'confirm-template-placement',
+        idempotencyKey: TEST_UUID_7,
+        args: { placementId: TEST_UUID_1, templateIndex: 0, x: 100, y: 200 },
       },
     },
   ];

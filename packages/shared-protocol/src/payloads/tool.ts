@@ -50,6 +50,7 @@ export const TOOL_ID_SCHEMA = z.enum([
   'move-token',
   'drop-concentration',
   'place-template',
+  'confirm-template-placement', // Plan 07-03 template confirmation flow (CR-05)
 ]);
 
 /**
@@ -81,7 +82,7 @@ export const TOOL_ID_SCHEMA = z.enum([
  */
 export const ToolInvocationEnvelopePayloadSchema = z
   .object({
-    /** Tool to invoke (one of the 6 Phase 7 registered tool IDs). */
+    /** Tool to invoke (one of the 7 Phase 7 registered tool IDs). */
     toolId: TOOL_ID_SCHEMA,
     /** UUID v4 for idempotency deduplication. */
     idempotencyKey: z.string().uuid(),
