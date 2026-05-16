@@ -174,7 +174,7 @@ describe('detectActiveConcentration', () => {
       effects: [
         {
           id: 'eff-2',
-          name: undefined, // missing name
+          name: undefined as unknown as string, // deliberately missing — tests fallback to '<unknown>'
           statuses: new Set(['concentrating']),
           flags: {},
         },

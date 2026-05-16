@@ -785,8 +785,8 @@ describe('Phase 9 Plan 09-03 — ActionOptionsModal retry cache integration (AOM
 
     const callOrder: string[] = [];
     const ws = {
-      send: vi.fn(() => callOrder.push('ws.send')),
-    } as ActionOptionsWebSocket & { send: ReturnType<typeof vi.fn> };
+      send: vi.fn((_data: string) => { callOrder.push('ws.send'); }) as unknown as ReturnType<typeof vi.fn<(data: string) => void>>,
+    } as MockWs;
     vi.mocked(cacheRetryEnvelope).mockImplementation(() => {
       callOrder.push('cacheRetryEnvelope');
     });

@@ -41,6 +41,7 @@ import type { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
+import type { Toast } from '../status-hud/toast-types.js';
 import {
   ConcentrationDropModalPanel,
   type ConcModalWebSocket,
@@ -100,6 +101,8 @@ export type ConcDispatcherUnsubscribe = () => void;
  * @param gestureBus    Shared in-process gesture bus (forwarded to the modal)
  * @param layerManager  LayerManager singleton (Plan 02)
  * @param locale        Active HUD locale — forwarded to the modal for label lookup
+ * @param toastQueue    Optional toast queue for the [N] cancel-toast path (Plan 09-03).
+ *                      Forwarded verbatim to ConcentrationDropModalPanel constructor.
  * @returns Unsubscribe closure
  */
 export function attachConcConflictHandler(
@@ -108,6 +111,7 @@ export function attachConcConflictHandler(
   gestureBus: PanelGestureBus,
   layerManager: LayerManager,
   locale: HudLocale,
+  toastQueue?: { enqueue: (toast: Toast) => void } | null,
 ): ConcDispatcherUnsubscribe {
   const handler = (ev: MessageEvent): void => {
     try {
@@ -154,6 +158,7 @@ export function attachConcConflictHandler(
           // infill re-mounts via LayerManager._suspendedZ05 (Plan 01).
           void layerManager.bundle([{ type: 'destroy', z: ZIndex.Z2_OVERLAY }]);
         },
+        toastQueue, // Plan 09-03: forward optional toastQueue for [N] cancel toast
       );
 
       // Step 7 — mount via bundle (single atomic flush). Fire-and-forget;

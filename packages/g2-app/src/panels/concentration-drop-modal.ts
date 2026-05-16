@@ -50,6 +50,8 @@ import { CONC_DROP_CONFIRMED_TYPE, type ConcConflictPayload } from '@evf/shared-
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import type { Toast } from '../status-hud/toast-types.js';
+import { consumeLatestConfirmed } from './conc-retry-cache.js';
 
 // Plan 07-05 (CONC-01 write closure): `crypto.randomUUID()` is available in
 // the Even Realities App WebView (Safari WKWebView on iOS — Baseline 2021).
@@ -130,6 +132,17 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
   private unsubscribe: (() => void) | null = null;
 
   /**
+   * Optional toast queue injected by the conc-conflict dispatcher (Plan 09-03).
+   *
+   * When the user presses [N] (double-tap), an
+   * `error.action.concentration-cancelled` error toast is enqueued here so
+   * the player sees feedback that the cast was aborted. Nullable: if the
+   * dispatcher is not yet wired (Phase 4b integration smoke tests) or in
+   * legacy environments, the double-tap still closes cleanly without a toast.
+   */
+  private readonly toastQueue: { enqueue: (toast: Toast) => void } | null | undefined;
+
+  /**
    * Construct the modal.
    *
    * @param bridge      Even Hub bridge handle for the single
@@ -147,6 +160,8 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
    * @param onClose     Invoked after the user confirms (tap) or cancels
    *                    (double-tap). The caller is expected to tear down the
    *                    panel via `LayerManager.bundle`.
+   * @param toastQueue  Optional toast queue for the [N] cancel-toast path
+   *                    (Plan 09-03 CDM-CANCEL-01).
    */
   constructor(
     bridge: EvenAppBridge,
@@ -156,6 +171,7 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
     locale: HudLocale,
     sessionId: string,
     onClose: ConcModalCloseHandler,
+    toastQueue?: { enqueue: (toast: Toast) => void } | null,
   ) {
     this.bridge = bridge;
     this.ws = ws;
@@ -164,6 +180,7 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
     this.locale = locale;
     this.sessionId = sessionId;
     this.onCloseCb = onClose;
+    this.toastQueue = toastQueue ?? null;
   }
 
   /**
@@ -301,9 +318,29 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
       };
       this.ws.send(JSON.stringify(legacyEnvelope));
 
+      // Plan 09-03 Step 7b — T-09-03: single-attempt retry of the blocked cast.
+      // After concentration is confirmed dropped, re-dispatch the original
+      // cast-spell envelope that was blocked by the concentration check. Only
+      // fires if the dispatcher previously called markRetryConfirmed() (i.e., the
+      // server returned errorKind='concentration-required' for that envelope).
+      // consumeLatestConfirmed() deletes the entry on access (race prevention).
+      const retry = consumeLatestConfirmed();
+      if (retry !== null) {
+        this.ws.send(JSON.stringify(retry));
+      }
+
       this.onCloseCb();
     } else if (gesture.kind === 'double-tap') {
-      // [N] Cancel — close without emitting.
+      // [N] Cancel — enqueue error toast (Plan 09-03 CDM-CANCEL-01), then close.
+      if (this.toastQueue !== null && this.toastQueue !== undefined) {
+        const cancelMsg = `❌ ${getLabel('error.action.concentration-cancelled', this.locale)}`;
+        this.toastQueue.enqueue({
+          id: `conc-cancelled-${this.sessionId}-${Date.now()}`,
+          severity: 'error',
+          message: cancelMsg.slice(0, 38),
+          emittedAt: Date.now(),
+        });
+      }
       this.onCloseCb();
     }
     // Other gestures (scroll, long-press) ignored — modal stays mounted.

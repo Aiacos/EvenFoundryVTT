@@ -23,12 +23,23 @@ import {
   EnvelopeSchema,
   ToolInvocationEnvelopePayloadSchema,
 } from '@evf/shared-protocol';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type MockInstance } from 'vitest';
+import type { Toast } from '../status-hud/toast-types.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import {
   ConcentrationDropModalPanel,
   type ConcModalWebSocket,
 } from './concentration-drop-modal.js';
+
+// Plan 09-03: mock conc-retry-cache for CDM-RETRY tests.
+vi.mock('./conc-retry-cache.js', () => ({
+  cacheRetryEnvelope: vi.fn(),
+  markRetryConfirmed: vi.fn(),
+  consumeRetryEnvelope: vi.fn(() => null),
+  consumeLatestConfirmed: vi.fn(() => null),
+  clearRetryCache: vi.fn(),
+}));
+import { consumeLatestConfirmed } from './conc-retry-cache.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -57,11 +68,14 @@ function makeConflictWithActorId(actorId?: string): ConcConflictPayload & { acto
   };
 }
 
+type MockToastQueue = { enqueue: MockInstance & ((toast: Toast) => void) };
+
 function makeModal(
   opts: {
     conflict?: ConcConflictPayload & { actorId?: string };
     sessionId?: string;
     ws?: MockModalWs;
+    toastQueue?: MockToastQueue;
   } = {},
 ) {
   const bridge = makeMockBridge();
@@ -76,8 +90,13 @@ function makeModal(
     'it',
     opts.sessionId ?? VALID_SESSION_UUID,
     onClose,
+    opts.toastQueue,
   );
   return { modal, bridge, ws, bus, onClose };
+}
+
+function makeToastQueue(): MockToastQueue {
+  return { enqueue: vi.fn() as unknown as MockInstance & ((toast: Toast) => void) };
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -245,5 +264,152 @@ describe('ConcentrationDropModalPanel — Plan 07-05 dual-emit (CONC-01 write cl
 
     expect(ws.send).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── Plan 09-03 tests: retry cache + cancel toast ─────────────────────────────
+
+describe('ConcentrationDropModalPanel — Plan 09-03 (CDM-RETRY + CDM-CANCEL)', () => {
+  /**
+   * CDM-RETRY-01: [Y] tap calls consumeLatestConfirmed AND, when a buffered envelope
+   * is returned, fires ws.send ONCE more AFTER the existing dual-emit.
+   */
+  it('CDM-RETRY-01: [Y] tap — consumeLatestConfirmed called; re-fire ws.send if envelope buffered', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-cdm-retry-01' });
+    const retryEnvelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'original-cast' } };
+    vi.mocked(consumeLatestConfirmed).mockReturnValueOnce(retryEnvelope);
+
+    const ws = makeMockWs();
+    const { modal } = makeModal({ ws, conflict: makeConflictWithActorId('actor-1') });
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'tap' });
+
+    // consumeLatestConfirmed must be called
+    expect(consumeLatestConfirmed).toHaveBeenCalled();
+
+    // ws.send should have been called 3 times:
+    // 1. tool.invoke (drop-concentration)
+    // 2. legacy conc.drop.confirmed
+    // 3. retry envelope
+    expect(ws.send).toHaveBeenCalledTimes(3);
+
+    // The third send is the retry envelope
+    const thirdCall = ws.send.mock.calls[2]?.[0] as string;
+    const thirdParsed = JSON.parse(thirdCall) as unknown;
+    expect(thirdParsed).toEqual(retryEnvelope);
+
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-RETRY-02: [N] double-tap does NOT consume the retry cache.
+   */
+  it('CDM-RETRY-02: [N] double-tap does NOT call consumeLatestConfirmed', async () => {
+    vi.mocked(consumeLatestConfirmed).mockClear();
+    const { modal } = makeModal();
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'double-tap' });
+
+    expect(consumeLatestConfirmed).not.toHaveBeenCalled();
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-RETRY-03: [Y] tap order — dual-emit fires FIRST, then retry envelope.
+   */
+  it('CDM-RETRY-03: [Y] tap — dual-emit fires BEFORE retry envelope (T-09-03 ordering)', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-cdm-retry-03' });
+    const retryEnvelope = { type: 'tool.invoke', payload: { toolId: 'cast-spell', idempotencyKey: 'cast-retry' } };
+    vi.mocked(consumeLatestConfirmed).mockReturnValueOnce(retryEnvelope);
+
+    const sendOrder: string[] = [];
+    const ws = {
+      send: vi.fn((data: string) => {
+        const parsed = JSON.parse(data) as { type?: string; payload?: { toolId?: string } };
+        sendOrder.push(parsed.type ?? parsed.payload?.toolId ?? 'unknown');
+      }),
+    } as ConcModalWebSocket & { send: ReturnType<typeof vi.fn> };
+
+    const { modal } = makeModal({ ws, conflict: makeConflictWithActorId('actor-1') });
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'tap' });
+
+    // Dual-emit must come first (drop-concentration tool.invoke + legacy conc.drop.confirmed)
+    // then the retry envelope last
+    expect(sendOrder[0]).toBe('tool.invoke');         // drop-concentration
+    expect(sendOrder[1]).toBe('conc.drop.confirmed'); // legacy
+    expect(sendOrder[2]).toBe('tool.invoke');          // retry cast-spell envelope
+
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-CANCEL-01: [N] double-tap enqueues 'error.action.concentration-cancelled' toast.
+   */
+  it('CDM-CANCEL-01: [N] double-tap enqueues concentration-cancelled error toast', async () => {
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({ toastQueue });
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'double-tap' });
+
+    expect(toastQueue.enqueue).toHaveBeenCalledOnce();
+    const toast = toastQueue.enqueue.mock.calls[0]?.[0] as { severity: string; message: string; id: string };
+    expect(toast.severity).toBe('error');
+    // IT locale: 'Cast annullato (conc.)'
+    expect(toast.message).toContain('Cast annullato');
+    expect(toast.id).toContain('conc-cancelled');
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-CANCEL-02: [N] double-tap does NOT call consumeLatestConfirmed (cache not consumed).
+   */
+  it('CDM-CANCEL-02: [N] double-tap does NOT consume the retry cache', async () => {
+    vi.mocked(consumeLatestConfirmed).mockClear();
+    const toastQueue = makeToastQueue();
+    const { modal } = makeModal({ toastQueue });
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'double-tap' });
+
+    expect(consumeLatestConfirmed).not.toHaveBeenCalled();
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-CANCEL-03: [N] double-tap without toastQueue → no crash (toastQueue is optional).
+   */
+  it('CDM-CANCEL-03: [N] double-tap without toastQueue → no crash (toastQueue optional)', async () => {
+    const { modal } = makeModal(); // no toastQueue
+    await modal.onMount();
+
+    expect(() => modal.onEvent({ kind: 'double-tap' })).not.toThrow();
+    await modal.onUnmount();
+  });
+
+  /**
+   * CDM-RETRY no-op: [Y] tap when consumeLatestConfirmed returns null → only 2 ws.send calls.
+   */
+  it('CDM-RETRY: [Y] tap with no cached retry → only 2 sends (dual-emit only)', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-no-retry' });
+    vi.mocked(consumeLatestConfirmed).mockReturnValueOnce(null); // no cached entry
+
+    const ws = makeMockWs();
+    const { modal } = makeModal({ ws, conflict: makeConflictWithActorId('actor-1') });
+    await modal.onMount();
+
+    modal.onEvent({ kind: 'tap' });
+
+    // Only 2 sends: drop-concentration + legacy
+    expect(ws.send).toHaveBeenCalledTimes(2);
+
+    vi.unstubAllGlobals();
+    await modal.onUnmount();
   });
 });

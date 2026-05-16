@@ -71,6 +71,7 @@ import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.
 import { clearActionEconomyState } from '../panels/action-economy-state.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
+import { clearRetryCache } from '../panels/conc-retry-cache.js';
 import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
@@ -458,12 +459,19 @@ export async function _bootEngineCore(
   //      Subscribes to `conc.conflict` WS envelopes and mounts the concentration-drop
   //      modal at z=2 when a conflict is detected (CONC-01 flow, CCD-3 / ISM-10).
   //      The dispatcher uses the double trust boundary pattern (T-06-04-04 mitigation).
+  //
+  //      Plan 09-03: toastQueue is constructed before attaching the dispatcher so the
+  //      modal's [N] cancel path can enqueue the concentration-cancelled error toast
+  //      (CDM-CANCEL-01). toastQueue declaration moved here from step 11e.
+  const toastQueue = new ToastQueueLayer({ bridge });
+
   const unsubConcConflict = attachConcConflictHandler(
     ws,
     bridge,
     gestureBus,
     layerManager,
     effectiveLocale,
+    toastQueue, // Plan 09-03: forward for [N] cancel-toast path (CDM-CANCEL-01)
   );
 
   // 11e. Action result dispatcher (Plan 08-01) — listens on `r1.action.result` envelopes
@@ -474,7 +482,7 @@ export async function _bootEngineCore(
   //      real user_id from the bearer registry; for now a '<unknown>' stub ensures the
   //      dispatcher is correctly wired while ISM-W8-07 verifies the filter with synthetic
   //      userIds. TODO(ADR-0005): resolve bearer user_id through handshake in Phase 9.
-  const toastQueue = new ToastQueueLayer({ bridge });
+  // NOTE: toastQueue is now declared above in step 11d (Plan 09-03 move).
   const currentUserId = '<unknown>';
   const unsubActionResult = attachActionResultHandler(
     ws as unknown as Parameters<typeof attachActionResultHandler>[0],
@@ -644,6 +652,12 @@ export async function _bootEngineCore(
         clearActionEconomyState();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: clearActionEconomyState failed', err);
+      }
+      // Plan 09-03: clear the conc-retry-cache so stale entries don't survive reboot.
+      try {
+        clearRetryCache();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: clearRetryCache failed', err);
       }
       // Tear down Phase 8 dispatcher subscriptions (reverse of attach order).
       try {
