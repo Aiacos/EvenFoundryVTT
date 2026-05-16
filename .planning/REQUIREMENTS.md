@@ -42,7 +42,7 @@
 - [ ] **REACT-01**: Reaction *passive notification toast* (Shield / Counterspell / Opportunity Attack — display-only, no execution). *Adversarial gap Vector A — execution stays V2 ACT-04.*
 - [ ] **ACT-01**: Manual cast/attack/use via R1 (scroll allo spell/item → tap → confirm target)
 - [ ] **ACT-02**: AoE template placement via `AbilityTemplate.fromActivity()` (array iteration per multi-template)
-- [ ] **ACT-03**: GM-side actions forwarded via `socketlib.executeAsGM` (single-workflow-origin discipline option A)
+- [x] **ACT-03**: GM-side actions forwarded via `socketlib.executeAsGM` (single-workflow-origin discipline option A)
 
 ### Navigation & Input
 
@@ -55,7 +55,7 @@
 
 - [ ] **FOUN-01**: Foundry module `evenfoundryvtt` espone read API (`getCharacterState`, `getCombatState`, `getSceneViewport`, `getEventLog`, `subscribeUpdates`)
 - [ ] **FOUN-02**: Bridge service Node.js (Fastify + ws + Docker Compose) come reverse-proxy CORS-friendly + auth bearer 24h
-- [ ] **FOUN-03**: Write path via `activity.use()` + MidiQOL workflow (GM veto power preserved, no nesting)
+- [x] **FOUN-03**: Write path via `activity.use()` + MidiQOL workflow (GM veto power preserved, no nesting)
 - [ ] **FOUN-04**: `TokenLayer.setTargets()` v13 multi-target (singolare `Token`, no `Tokens`)
 - [~] **MIDIQ-01**: MidiQOL config check al boot — verificare `autoFastForward` mode attivo. Senza, manual write stalla su chat-card buttons. Declare MidiQOL **required** in `module.json` `relationships.requires`. *Adversarial gap Vector B — Specs §12.B q.11–12 open.* **Code complete 2026-05-10** (Plan 02: probe + Foundry mini-module + harness, commits 15e9922 + c1c82e5). `relationships.requires.midi-qol` declaration shape proven via probe `module.json`; Phase 2 production module inherits identically. **Evidence emission pending Plan 04 operational step** (researcher executes probe against Foundry test world `phase-0-midiqol-test` → commits resulting `docs/perf/phase-0/midiqol-config-probe-{ISO8601}.json`).
 
@@ -173,9 +173,9 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | NAV-01 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | NAV-02 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | NAV-03 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
-| FOUN-03 | Phase 7 — Foundry Module Write Path | Pending |
+| FOUN-03 | Phase 7 — Foundry Module Write Path | Complete |
 | ACT-02 | Phase 7 — Foundry Module Write Path | Pending |
-| ACT-03 | Phase 7 — Foundry Module Write Path | Pending |
+| ACT-03 | Phase 7 — Foundry Module Write Path | Complete |
 | MULTI-01 | Phase 7 — Foundry Module Write Path | Pending |
 | REACT-01 | Phase 7 — Foundry Module Write Path | Pending |
 | ACT-01 | Phase 8 — Manual Action UX | Pending |

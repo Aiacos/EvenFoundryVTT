@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_6_CLOSED — Plans 01-04 all committed; Phase 7 is next (Phase 8 stretch).
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-05-16T09:07:16Z"
-last_activity: "2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):"
+status: PHASE_6_CLOSED — All 4 plans committed; NAV-01/02/03 software-closed; 18 hardware-pending SCs carry forward.
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-05-16T11:46:59.022Z"
+last_activity: "2026-05-16 — Phase 6 CLOSED (software-side): Plans 01-04 complete. NAV-01/02/03 closed. 1309 tests pass. 18 hardware-pending SCs carry forward (4a:5 + 4b:5 + 5:5 + 6:3)."
 progress:
   total_phases: 15
   completed_phases: 8
-  total_plans: 39
-  completed_plans: 39
+  total_plans: 45
+  completed_plans: 40
   percent: 53
 ---
 
@@ -54,7 +54,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [██████████] 97%
+Progress: [█████████░] 89%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -202,7 +202,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T08:41:05.754Z
+Last session: 2026-05-16T11:46:59.012Z
 Stopped at: Completed 06-02-PLAN.md
 Resume file: None
 Resume cmd: /gsd-execute-phase 6 03
