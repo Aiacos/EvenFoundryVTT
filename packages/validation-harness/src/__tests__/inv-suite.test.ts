@@ -11,8 +11,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { rm, writeFile } from 'node:fs/promises';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,13 +20,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // child_process.spawn mock — factory must be sync, no await inside
 // -------------------------------------------------------------------------------------
 vi.mock('node:child_process', () => {
-  const { EventEmitter: EE } = require('node:events') as typeof import('node:events');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const EE = (require('node:events') as typeof import('node:events')).EventEmitter;
 
   const mockSpawn = vi.fn(
-    (_cmd: string, _args: string[], _opts?: unknown): ReturnType<typeof import('node:child_process').spawn> => {
+    (
+      _cmd: string,
+      _args: readonly string[],
+      _opts?: unknown,
+    ): ReturnType<typeof import('node:child_process').spawn> => {
       const emitter = new EE() as ReturnType<typeof import('node:child_process').spawn>;
-      (emitter as unknown as { stdout: EE; stderr: EE }).stdout = new EE();
-      (emitter as unknown as { stdout: EE; stderr: EE }).stderr = new EE();
+      (
+        emitter as unknown as { stdout: InstanceType<typeof EE>; stderr: InstanceType<typeof EE> }
+      ).stdout = new EE();
+      (
+        emitter as unknown as { stdout: InstanceType<typeof EE>; stderr: InstanceType<typeof EE> }
+      ).stderr = new EE();
       process.nextTick(() => emitter.emit('exit', 0));
       return emitter;
     },
@@ -52,7 +60,11 @@ import { formatTable, runInvSuite } from '../inv-suite.js';
 // -------------------------------------------------------------------------------------
 function setSpawnExitCode(code: number): void {
   vi.mocked(childProcess.spawn).mockImplementation(
-    (_cmd: string, _args: string[], _opts?: unknown): ReturnType<typeof childProcess.spawn> => {
+    (
+      _cmd: string,
+      _args: readonly string[],
+      _opts?: unknown,
+    ): ReturnType<typeof childProcess.spawn> => {
       const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
       (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout =
         new EventEmitter();
@@ -176,7 +188,11 @@ describe('IS-02: INV-1 (layout integrity)', () => {
     // Make INV-1's spawn (first spawn) fail; others succeed
     let callCount = 0;
     vi.mocked(childProcess.spawn).mockImplementation(
-      (_cmd: string, _args: string[], _opts?: unknown): ReturnType<typeof childProcess.spawn> => {
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _opts?: unknown,
+      ): ReturnType<typeof childProcess.spawn> => {
         const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
         (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout =
           new EventEmitter();
@@ -388,7 +404,9 @@ describe('IS-08: formatTable output', () => {
     expect(table).toContain('skipped');
     expect(table).toContain('red');
 
-    // No ANSI color escape codes — CI must stay clean
-    expect(table).not.toMatch(/\x1b\[/);
+    // No ANSI color escape codes -- CI must stay clean
+    // Check for ESC character (codepoint 27) to avoid biome noControlCharactersInRegex lint rule
+    const hasEscapeChar = table.split('').some((c) => c.charCodeAt(0) === 27);
+    expect(hasEscapeChar).toBe(false);
   });
 });
