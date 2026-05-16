@@ -32,6 +32,7 @@ import { AsciiGrid, matchAsciiFixture } from '@evf/shared-render';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import {
+  type ActionOptionsCloseReason,
   ActionOptionsModal,
   type ActionOptionsRequest,
   type ActionOptionsWebSocket,
@@ -58,9 +59,9 @@ vi.mock('./conc-retry-cache.js', () => ({
   clearRetryCache: vi.fn(),
 }));
 
+import type { Toast } from '../status-hud/toast-types.js';
 import { getActionEconomyState } from './action-economy-state.js';
 import { cacheRetryEnvelope } from './conc-retry-cache.js';
-import type { Toast } from '../status-hud/toast-types.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ function makeModal(
     request?: ActionOptionsRequest;
     locale?: 'it' | 'en' | 'de';
     sessionId?: string;
-    onClose?: () => void;
+    onClose?: (reason: ActionOptionsCloseReason) => void;
     toastQueue?: MockToastQueue;
   } = {},
 ) {
@@ -154,7 +155,7 @@ describe('AOM-01: panel identity', () => {
   });
 
   it('no static meta property (system overlay — not router-discoverable)', () => {
-    expect((ActionOptionsModal as unknown as Record<string, unknown>)['meta']).toBeUndefined();
+    expect((ActionOptionsModal as unknown as { meta?: unknown }).meta).toBeUndefined();
   });
 });
 
@@ -785,7 +786,9 @@ describe('Phase 9 Plan 09-03 — ActionOptionsModal retry cache integration (AOM
 
     const callOrder: string[] = [];
     const ws = {
-      send: vi.fn((_data: string) => { callOrder.push('ws.send'); }) as unknown as ReturnType<typeof vi.fn<(data: string) => void>>,
+      send: vi.fn((_data: string) => {
+        callOrder.push('ws.send');
+      }) as unknown as ReturnType<typeof vi.fn<(data: string) => void>>,
     } as MockWs;
     vi.mocked(cacheRetryEnvelope).mockImplementation(() => {
       callOrder.push('cacheRetryEnvelope');
@@ -858,7 +861,7 @@ describe('AOM-SLOT: requiresSlotPicker flag + defaultSlotLevel forwarding (Plan 
    * AOM-SLOT-01: spell + requiresSlotPicker === true + availableSlots.length > 1 →
    * tap calls onCloseCb WITHOUT emitting (caller intercepts and opens SlotPickerPanel).
    */
-  it('AOM-SLOT-01: requiresSlotPicker=true → tap closes WITHOUT emitting', async () => {
+  it('AOM-SLOT-01: requiresSlotPicker=true → tap closes WITHOUT emitting, reason=slot-picker-needed', async () => {
     const ws = makeWs();
     const onClose = vi.fn();
     const { modal } = makeModal({
@@ -874,6 +877,7 @@ describe('AOM-SLOT: requiresSlotPicker flag + defaultSlotLevel forwarding (Plan 
     modal.onEvent({ kind: 'tap' });
     expect(ws.send).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('slot-picker-needed');
     await modal.onUnmount();
   });
 

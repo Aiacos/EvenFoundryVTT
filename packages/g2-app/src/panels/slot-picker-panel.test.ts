@@ -300,9 +300,9 @@ describe('SlotPickerPanel', () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   it('SPP-08: constructing with empty availableSlots throws (T-09-06 precondition)', () => {
-    expect(() =>
-      makePanel({ request: makeFireballRequest({ availableSlots: [] }) }),
-    ).toThrow(/availableSlots must not be empty/);
+    expect(() => makePanel({ request: makeFireballRequest({ availableSlots: [] }) })).toThrow(
+      /availableSlots must not be empty/,
+    );
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -365,10 +365,9 @@ describe('SlotPickerPanel', () => {
     const argsResult = CastSpellInputSchema.safeParse(
       (raw as { payload: { args: unknown } }).payload.args,
     );
-    expect(
-      argsResult.success,
-      `CastSpellInputSchema failed: ${JSON.stringify(argsResult)}`,
-    ).toBe(true);
+    expect(argsResult.success, `CastSpellInputSchema failed: ${JSON.stringify(argsResult)}`).toBe(
+      true,
+    );
 
     await panel.onUnmount();
   });
@@ -417,10 +416,7 @@ describe('SlotPickerPanel', () => {
     const call = (bridge.textContainerUpgrade as ReturnType<typeof vi.fn>).mock.calls[0];
     const content = (call![0] as { content: string }).content;
     const grid = AsciiGrid.fromString(content);
-    await matchAsciiFixture(
-      grid,
-      path.join(FIXTURES_DIR, 'slot-picker.empty-only-base.it.txt'),
-    );
+    await matchAsciiFixture(grid, path.join(FIXTURES_DIR, 'slot-picker.empty-only-base.it.txt'));
   });
 
   it('SPP-12d: EN fixture — fireball 3rd level default selection (EN locale)', async () => {
@@ -487,7 +483,7 @@ describe('SlotPickerPanel', () => {
   });
 
   it('I18N-09-04g: hud_r1_slot_picker composite key exists within max 42', () => {
-    const row = HUD_WIDTH_BUDGETS['hud_r1_slot_picker'];
+    const row = HUD_WIDTH_BUDGETS.hud_r1_slot_picker;
     expect(row).toBeDefined();
     expect(row.max).toBe(42);
     expect([...row.it].length).toBeLessThanOrEqual(row.max);

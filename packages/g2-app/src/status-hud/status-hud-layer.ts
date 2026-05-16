@@ -217,6 +217,22 @@ export class StatusHudLayer implements Layer {
   }
 
   /**
+   * Return the most-recent valid `CharacterSnapshot` seen via WS delta.
+   *
+   * Returns `null` if no valid delta has been received yet (first-boot loading
+   * state). Callers must handle `null` gracefully (e.g. boot-engine-core step 11f
+   * snapshot lookup for SlotPickerPanel enrichment — Plan 09-04 Task 3).
+   *
+   * Bearer-bound: the snapshot is sourced from the bearer-authenticated WS
+   * session; it cannot contain another player's data (T-09-05 mitigation).
+   *
+   * @returns Latest valid snapshot, or `null` if not yet received.
+   */
+  getCachedSnapshot(): CharacterSnapshot | null {
+    return this.snapshot;
+  }
+
+  /**
    * Tear down the layer.
    *
    * - Unsubscribes from `wsEvents`

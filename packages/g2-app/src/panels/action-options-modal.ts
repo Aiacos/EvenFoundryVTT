@@ -61,8 +61,8 @@ import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hu
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
-import type { Toast } from '../status-hud/toast-types.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import type { Toast } from '../status-hud/toast-types.js';
 import { getActionEconomyState } from './action-economy-state.js';
 import { cacheRetryEnvelope } from './conc-retry-cache.js';
 
@@ -147,8 +147,31 @@ export interface ActionOptionsWebSocket {
   send(data: string): void;
 }
 
-/** Invoked when the user confirms (tap) or cancels (double-tap). */
-export type ActionOptionsCloseHandler = () => void;
+/**
+ * Reason passed to `ActionOptionsCloseHandler` so the boot caller can
+ * distinguish between close paths without inspecting modal internals.
+ *
+ * - `'emit'`                — tap emitted a tool.invoke envelope (normal cast path).
+ * - `'slot-picker-needed'`  — tap was intercepted by `requiresSlotPicker`; caller
+ *                             should open SlotPickerPanel.
+ * - `'preconditioner-blocked'` — tap was blocked by the action-economy preconditioner.
+ * - `'cancel'`              — double-tap cancel (no emission).
+ *
+ * @see ActionOptionsCloseHandler
+ */
+export type ActionOptionsCloseReason =
+  | 'emit'
+  | 'slot-picker-needed'
+  | 'preconditioner-blocked'
+  | 'cancel';
+
+/**
+ * Invoked when the user confirms (tap) or cancels (double-tap).
+ *
+ * `reason` distinguishes between close paths so the boot caller can take
+ * appropriate action (e.g. push SlotPickerPanel after `'slot-picker-needed'`).
+ */
+export type ActionOptionsCloseHandler = (reason: ActionOptionsCloseReason) => void;
 
 /**
  * Minimal toast queue interface for the preconditioner error feedback.
@@ -216,6 +239,9 @@ export class ActionOptionsModal implements OverlayPanel {
    * @param locale      Active HUD locale — drives label lookup via getLabel.
    * @param sessionId   UUID v4 of the active WS session (threaded into envelopes).
    * @param onClose     Invoked after the user confirms (tap) or cancels (double-tap).
+   *                    Receives a `reason` discriminant so the boot caller can
+   *                    push SlotPickerPanel on `'slot-picker-needed'` or
+   *                    TargetPickerPanel on `'cancel'` (requiresTarget path).
    * @param toastQueue  Phase 9 Plan 09-02 — toast queue for preconditioner error feedback.
    *                    Pass the `ToastQueueLayer` instance from boot-engine-core step 11e.
    *                    When `null` (legacy path), the modal skips preconditioner error toasts.
@@ -285,7 +311,7 @@ export class ActionOptionsModal implements OverlayPanel {
           // AOM-05 + AOM-16: requiresTarget=true → close WITHOUT emitting.
           // Plan 08-05 boot caller detects this case and immediately opens TargetPickerPanel.
           // Preconditioner does NOT apply here — no slot is consumed (no emission).
-          this.onCloseCb();
+          this.onCloseCb('cancel');
         } else {
           // Phase 9 Plan 09-02 — client-side preconditioner (T-09-01 mitigation).
           // Reads the in-process action economy cache to fast-path obviously blocked actions.
@@ -309,7 +335,7 @@ export class ActionOptionsModal implements OverlayPanel {
                   message: `❌ ${getLabel(errKey, this.locale)}`,
                   emittedAt: Date.now(),
                 });
-                this.onCloseCb();
+                this.onCloseCb('preconditioner-blocked');
                 return;
               }
             }
@@ -320,8 +346,8 @@ export class ActionOptionsModal implements OverlayPanel {
           // Only fires for kind === 'spell' with requiresSlotPicker === true.
           // The boot caller detects this pattern and opens SlotPickerPanel after close.
           if (this.request.kind === 'spell' && this.request.requiresSlotPicker === true) {
-            // AOM-SLOT-01: close WITHOUT emitting — caller opens SlotPickerPanel.
-            this.onCloseCb();
+            // AOM-SLOT-01: close with 'slot-picker-needed' — caller opens SlotPickerPanel.
+            this.onCloseCb('slot-picker-needed');
             return;
           }
 
@@ -338,7 +364,7 @@ export class ActionOptionsModal implements OverlayPanel {
             targets: [] as string[],
           };
           if (this.request.kind === 'spell') {
-            baseArgs['slot_level'] = this.request.defaultSlotLevel ?? 0;
+            baseArgs.slot_level = this.request.defaultSlotLevel ?? 0;
           }
 
           const envelope = {
@@ -359,14 +385,14 @@ export class ActionOptionsModal implements OverlayPanel {
           // the cache entry exists before the ws response arrives (even in fast tests).
           cacheRetryEnvelope(idempotencyKey, envelope, 'unconfirmed');
           this.ws.send(JSON.stringify(envelope));
-          this.onCloseCb();
+          this.onCloseCb('emit');
         }
         break;
       }
 
       case 'double-tap': {
         // AOM-06: cancel — close without emitting.
-        this.onCloseCb();
+        this.onCloseCb('cancel');
         break;
       }
 

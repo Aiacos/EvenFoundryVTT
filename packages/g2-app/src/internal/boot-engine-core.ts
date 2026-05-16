@@ -521,15 +521,74 @@ export async function _bootEngineCore(
       // Push ActionOptionsModal for the highlighted spell.
       // Dynamically import to avoid circular boot-time dependency.
       void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
+        // Phase 9 Plan 09-04: enrich the request with slot picker data.
+        // Reads the cached CharacterSnapshot from StatusHudLayer so the modal
+        // and (if needed) SlotPickerPanel have the correct slot availability.
+        //
+        // Enrichment logic:
+        //   1. Look up the spell entry from the cached snapshot's spellbook.
+        //   2. Compute availableSlots = slots where level >= spell.level AND value > 0.
+        //   3. Cantrip (spell.level === 0): requiresSlotPicker=false, defaultSlotLevel=0.
+        //   4. Non-cantrip, single slot: requiresSlotPicker=false (skip picker, cast directly).
+        //   5. Non-cantrip, multiple slots: requiresSlotPicker=true (mount SlotPickerPanel).
+        //
+        // Fail-open: if snapshot is null (no delta received yet), fall back to
+        // requiresSlotPicker=false + defaultSlotLevel=0 (cantrip-safe path).
+        const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
+        const snapshot = statusHud.getCachedSnapshot();
+        const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
+        const spellLevel = spellEntry?.level ?? 0;
+        const availableSlots =
+          spellLevel === 0
+            ? []
+            : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
+        const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
+        const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+
+        const enrichedReq: ConstructorParameters<typeof ActionOptionsModal>[3] = {
+          ...baseReq,
+          requiresSlotPicker,
+          defaultSlotLevel,
+        };
+
+        const openSlotPicker = (): void => {
+          // Plan 09-04 BERW-19: after ActionOptionsModal closes with
+          // 'slot-picker-needed', push SlotPickerPanel at z=2.
+          void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
+            const slotPicker = new SlotPickerPanel(
+              bridge,
+              ws as unknown as ConstructorParameters<typeof SlotPickerPanel>[1],
+              gestureBus,
+              {
+                actorId: enrichedReq.actorId,
+                spellId: enrichedReq.itemId,
+                spellName: enrichedReq.name,
+                baseLevel: spellLevel,
+                availableSlots,
+              },
+              effectiveLocale,
+              handshake.session_id,
+              () => {
+                void panelRouter.popOverlay(layerManager);
+              },
+            );
+            void panelRouter.pushOverlay(slotPicker, layerManager);
+          });
+        };
+
         const modal = new ActionOptionsModal(
           bridge,
           ws as unknown as ConstructorParameters<typeof ActionOptionsModal>[1],
           gestureBus,
-          req as ConstructorParameters<typeof ActionOptionsModal>[3],
+          enrichedReq,
           effectiveLocale,
           handshake.session_id,
-          () => {
-            void panelRouter.popOverlay(layerManager);
+          (reason) => {
+            if (reason === 'slot-picker-needed') {
+              openSlotPicker();
+            } else {
+              void panelRouter.popOverlay(layerManager);
+            }
           },
           // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
           toastQueue,
@@ -552,7 +611,8 @@ export async function _bootEngineCore(
           req as ConstructorParameters<typeof ActionOptionsModal>[3],
           effectiveLocale,
           handshake.session_id,
-          () => {
+          (_reason) => {
+            // Inventory items never require slot picker — always pop the overlay.
             void panelRouter.popOverlay(layerManager);
           },
           // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
