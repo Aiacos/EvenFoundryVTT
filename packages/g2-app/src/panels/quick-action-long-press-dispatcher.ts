@@ -37,7 +37,10 @@
  * @param gestureBus   Shared in-process gesture bus (Phase 4b/5 panels subscribe)
  * @param panelRouter  PanelRouter singleton — `pushOverlay(menu, lm)` opens the menu
  * @param layerManager LayerManager singleton — passed to `pushOverlay` + used for
- *                     `getTopLayer()` to determine whether to short-circuit
+ *                     `getTopLayer()` to determine whether to short-circuit.
+ *                     Must be the full `LayerManager` (not a narrowed Pick) so
+ *                     that `pushOverlay(menu, layerManager)` type-checks without
+ *                     unsafe casts (WR-02 fix).
  * @param makeMenu     Factory closure that constructs a new `QuickActionMenuPanel`
  *                     with the current locale + callbacks at call time. The factory
  *                     pattern is used because the panel needs boot-time locale and
@@ -77,7 +80,12 @@ import type { PanelRouter } from '../engine/panel-router.js';
 export function attachQuickActionLongPress(
   gestureBus: PanelGestureBus,
   panelRouter: Pick<PanelRouter, 'pushOverlay'>,
-  layerManager: Pick<LayerManager, 'getTopLayer'>,
+  // WR-02 fix: accept full LayerManager (not Pick<…, 'getTopLayer'>) so that
+  // pushOverlay can receive it without a type-unsafe cast. The narrowed Pick
+  // was structurally incompatible with PanelRouter.pushOverlay's LayerManager
+  // parameter, forcing the previous 'as never' double-cast that silently masked
+  // any future LayerManager API additions.
+  layerManager: LayerManager,
   makeMenu: () => OverlayPanel,
 ): () => void {
   const handler = (gesture: R1Gesture): void => {
@@ -105,7 +113,7 @@ export function attachQuickActionLongPress(
 
     // Construct and push the menu overlay.
     const menu = makeMenu();
-    void panelRouter.pushOverlay(menu as never, layerManager as never);
+    void panelRouter.pushOverlay(menu, layerManager);
   };
 
   // Persistent subscription — lives for the full app boot lifetime until teardown.
