@@ -1358,6 +1358,96 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'Wirken abgebrochen',
     max: 38,
   },
+
+  // ─── Phase 9 Plan 09-04 — SlotPickerPanel i18n keys (7 new keys) ──────────
+  // SlotPickerPanel (z=2 overlay) i18n keys for panel title, base-level label,
+  // available-slots template, upcast template, confirm/cancel footer hints, and
+  // R1 chip composite hint string.
+  // All IT/EN/DE strings verified ≤ max code-points at authoring time.
+
+  /**
+   * SlotPickerPanel title shown in the top border bracket.
+   * IT: "INCANTESIMO" (11) · EN: "SPELL" (5) · DE: "ZAUBER" (6). max 14.
+   */
+  'slot_picker.title': {
+    it: 'INCANTESIMO',
+    en: 'SPELL',
+    de: 'ZAUBER',
+    max: 14,
+  },
+
+  /**
+   * Base-level label prefix shown on row 2 of the panel.
+   * IT: "Livello base" (12) · EN: "Base level" (10) · DE: "Grundstufe" (10). max 14.
+   */
+  'slot_picker.base_level': {
+    it: 'Livello base',
+    en: 'Base level',
+    de: 'Grundstufe',
+    max: 14,
+  },
+
+  /**
+   * Available-slots template — shown next to each slot level row.
+   * Placeholders: {N} = remaining slots, {M} = max slots.
+   * The `_template` suffix exempts from IB-3 literal-length check (Phase 4b precedent).
+   * IT: "({N}/{M} disponibili)" (20 expanded) · EN: "({N}/{M} available)" (19) · DE: "({N}/{M} verfügbar)" (19). max 24.
+   */
+  'slot_picker.available_template': {
+    it: '({N}/{M} disponibili)',
+    en: '({N}/{M} available)',
+    de: '({N}/{M} verfügbar)',
+    max: 24,
+  },
+
+  /**
+   * Upcast annotation shown next to each slot level above base level.
+   * Placeholder: {N} = number of extra d6 dice from upcasting.
+   * The `_template` suffix exempts from IB-3 literal-length check (Phase 4b precedent).
+   * IT/EN/DE: "← upcast +{N}d6" (all same, 16 chars). max 20.
+   */
+  'slot_picker.upcast_template': {
+    it: '← upcast +{N}d6',
+    en: '← upcast +{N}d6',
+    de: '← Upcast +{N}d6',
+    max: 20,
+  },
+
+  /**
+   * Tap-to-confirm footer hint in the SlotPickerPanel.
+   * IT: "[tap] conferma" (14) · EN: "[tap] confirm" (13) · DE: "[tap] bestätigen" (17). max 24.
+   */
+  'slot_picker.confirm_hint': {
+    it: '[tap] conferma',
+    en: '[tap] confirm',
+    de: '[tap] bestätigen',
+    max: 24,
+  },
+
+  /**
+   * Long-press-to-cancel footer hint in the SlotPickerPanel.
+   * IT: "[long] annulla" (14) · EN: "[long] cancel" (13) · DE: "[long] abbrechen" (17). max 24.
+   */
+  'slot_picker.cancel_hint': {
+    it: '[long] annulla',
+    en: '[long] cancel',
+    de: '[long] abbrechen',
+    max: 24,
+  },
+
+  /**
+   * R1 context chip composite hint for the SlotPickerPanel overlay.
+   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * scroll cycles slot levels; tap confirms; long-press (at router level) opens QuickAction.
+   * IT: "tap=conferma scroll=livello long=annulla" (40) · EN: (38) · DE: (38). max 42.
+   * Note: DE "tap=best. scroll=Grad long=abbr." = 37 chars ≤ 42.
+   */
+  hud_r1_slot_picker: {
+    it: 'tap=conferma scroll=livello long=annulla',
+    en: 'tap=confirm scroll=level long=cancel',
+    de: 'tap=best. scroll=Grad long=abbr.',
+    max: 42,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

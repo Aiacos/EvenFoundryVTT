@@ -1,0 +1,14 @@
+┌────────────────────────────────────────────────────────────────────┐
+│  INCANTESIMO: Palla di Fuoco                                       │
+│  Livello base 3°                                                   │
+│                                                                    │
+│   3°  (2/4 disponibili)                                            │
+│ ▶ 4°  (3/3 disponibili)  ← upcast +1d6                             │
+│   5°  (1/2 disponibili)  ← upcast +2d6                             │
+│                                                                    │
+│                                                                    │
+│                                                                    │
+│                                                                    │
+│                                                                    │
+│  [tap] conferma  [long] annulla                                    │
+└────────────────────────────────────────────────────────────────────┘

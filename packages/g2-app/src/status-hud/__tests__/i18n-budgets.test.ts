@@ -263,7 +263,11 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     //   NOTE: econ.action.short and econ.bonus.short reused from Phase 4a (act_label, bns_label).
     // Phase 9 Plan 03 totals: 1 concentration-cancelled error toast key
     //   (error.action.concentration-cancelled).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
+    // Phase 9 Plan 04 totals: 7 SlotPickerPanel keys
+    //   (slot_picker.title, slot_picker.base_level, slot_picker.available_template,
+    //    slot_picker.upcast_template, slot_picker.confirm_hint, slot_picker.cancel_hint,
+    //    hud_r1_slot_picker).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(216);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -342,7 +346,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 204 after Phase 8 Plan 04 (8 MoveDirectionPicker keys).
     // Updated to 208 after Phase 9 Plan 02 (4 action economy widget keys).
     // Updated to 209 after Phase 9 Plan 03 (1 error.action.concentration-cancelled key).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
+    // Updated to 216 after Phase 9 Plan 04 (7 SlotPickerPanel keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(216);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
@@ -514,6 +519,7 @@ describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
     // error.action.already-used-action, error.action.already-used-bonus) = 208.
     // act_label + bns_label are REUSED from Phase 4a (no new duplicate keys).
     // Note: after Plan 09-03, total is 209 (208 + 1 concentration-cancelled key).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(209);
+    // Note: after Plan 09-04, total is 216 (209 + 7 SlotPickerPanel keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(216);
   });
 });
