@@ -15,6 +15,7 @@
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { CharacterSnapshot } from '@evf/shared-protocol';
+import { R1_MOVEMENT_BUDGET_TYPE } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type CharacterDeltaEvents,
@@ -38,22 +39,26 @@ interface MockWsEvents {
   unsubscribe: ReturnType<typeof vi.fn>;
   /** Capture the most-recent subscribed callback so tests can drive deltas. */
   emit(raw: unknown): void;
+  /** Drive the movement budget channel directly (SHL-MV-* tests). */
+  emitMovement(raw: unknown): void;
 }
 
 function makeMockWsEvents(): MockWsEvents {
   let stashed: ((raw: unknown) => void) | null = null;
+  let movementStashed: ((raw: unknown) => void) | null = null;
   const unsubscribe = vi.fn();
   // Cast to the exact subscribe signature so the wider Mock<...> type does not
   // leak into the consumer (StatusHudLayerOpts.wsEvents must satisfy
   // CharacterDeltaEvents at construction time).
   // Phase 08-04: channel widened to string (movement budget + character delta).
   const subscribe: CharacterDeltaEvents['subscribe'] = (
-    _channel: string,
+    channel: string,
     fn: (raw: unknown) => void,
   ): (() => void) => {
-    // Only stash the character.delta handler; movement.budget is a no-op in layer tests.
-    if (_channel === 'character.delta') {
+    if (channel === 'character.delta') {
       stashed = fn;
+    } else if (channel === R1_MOVEMENT_BUDGET_TYPE) {
+      movementStashed = fn;
     }
     return unsubscribe;
   };
@@ -63,6 +68,10 @@ function makeMockWsEvents(): MockWsEvents {
     emit: (raw: unknown) => {
       if (stashed === null) throw new Error('emit called before subscribe');
       stashed(raw);
+    },
+    emitMovement: (raw: unknown) => {
+      if (movementStashed === null) throw new Error('emitMovement called before subscribe');
+      movementStashed(raw);
     },
   };
 }
@@ -409,5 +418,89 @@ describe('StatusHudLayer — Phase 4b death-saves pivot trigger', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 8 Plan 08-05 movement budget subscription (SHL-MV-01..03)
+//
+// StatusHudLayer subscribes to R1_MOVEMENT_BUDGET_TYPE channel.
+// _onMovementBudget validates via MovementBudgetPayloadSchema.safeParse and
+// calls renderer.setMovementBudget with { remaining, total }.
+//
+// @see packages/g2-app/src/status-hud/status-hud-layer.ts _onMovementBudget
+// @see .planning/phases/08-manual-action-ux/08-05-PLAN.md Task 1
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('StatusHudLayer — Phase 8 movement budget subscription (SHL-MV-01..03)', () => {
+  let activeLayer: StatusHudLayer | null = null;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    activeLayer?.destroy();
+    activeLayer = null;
+    vi.useRealTimers();
+    warnSpy.mockRestore();
+  });
+
+  /** Full MovementBudgetPayload fixture (all 4 required fields). */
+  const validMovementPayload = {
+    actorId: 'actor-test-1',
+    walkSpeed: 30,
+    usedThisTurn: 5,
+    remainingFeet: 25,
+  };
+
+  it('SHL-MV-01: valid r1.movement.budget payload → renderer.setMovementBudget called immediately', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setMovementBudgetSpy = vi.spyOn(renderer, 'setMovementBudget');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    // Emit a valid movement budget payload — setMovementBudget is synchronous (no debounce)
+    wsEvents.emitMovement(validMovementPayload);
+
+    expect(setMovementBudgetSpy).toHaveBeenCalledWith({ remaining: 25, total: 30 });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('SHL-MV-02: remainingFeet=0 → setMovementBudget called (exhausted state)', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setMovementBudgetSpy = vi.spyOn(renderer, 'setMovementBudget');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    // remainingFeet=0 means movement exhausted — still forwards to renderer (renderer clears chip)
+    wsEvents.emitMovement({ ...validMovementPayload, remainingFeet: 0, usedThisTurn: 30 });
+
+    // Called once synchronously
+    expect(setMovementBudgetSpy).toHaveBeenCalledTimes(1);
+    expect(setMovementBudgetSpy).toHaveBeenCalledWith({ remaining: 0, total: 30 });
+  });
+
+  it('SHL-MV-03: malformed movement budget payload → console.warn + no renderer call', () => {
+    const bridge = makeMockBridge();
+    const renderer = new StatusHudRenderer({ locale: 'en' });
+    const setMovementBudgetSpy = vi.spyOn(renderer, 'setMovementBudget');
+    const wsEvents = makeMockWsEvents();
+    const layer = new StatusHudLayer({ bridge, renderer, wsEvents });
+    activeLayer = layer;
+
+    // Bogus payload missing required actorId/walkSpeed — fails MovementBudgetPayloadSchema.safeParse
+    expect(() => wsEvents.emitMovement({ bogus: true })).not.toThrow();
+
+    expect(setMovementBudgetSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    const warnMsg = warnSpy.mock.calls[0]?.[0] as string;
+    expect(warnMsg).toContain('status-hud-layer');
   });
 });

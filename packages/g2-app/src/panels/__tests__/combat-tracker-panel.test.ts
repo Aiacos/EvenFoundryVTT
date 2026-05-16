@@ -55,7 +55,8 @@ import { resolve } from 'node:path';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { Combatant, CombatSnapshot } from '@evf/shared-protocol';
 import { AsciiGrid, matchAsciiFixture } from '@evf/shared-render';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { R1Gesture } from '../../engine/layer-types.js';
 import { isOverlayPanel } from '../../engine/overlay-panel.js';
 import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import { PanelMetaSchema } from '../../engine/panel-router.js';
@@ -936,6 +937,272 @@ describe('CombatTrackerPanel — CR-03 [Atk N/M] chip clamped to 9 chars', () =>
 });
 
 // ─── CTP-FIX-MULTI — INV-1 fixture for multi-attack chip ─────────────────────
+
+// ─── CTQ: quick-action bar tap-dispatch (Plan 08-05) ─────────────────────────
+
+describe('CombatTrackerPanel — quick-action tap-dispatch (CTQ-01..08)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('CTQ-01: setQuickActionHandler(handler) sets internal handler — idempotent', () => {
+    const { panel } = makePanel();
+    const handler = vi.fn();
+    // Should not throw; can be set multiple times (idempotent)
+    panel.setQuickActionHandler(handler);
+    panel.setQuickActionHandler(handler);
+    panel.setQuickActionHandler(null);
+  });
+
+  it('CTQ-02: initial internal state: qaSelectedIdx=0, _lastTapAt=0, _lastTapIdx=-1', () => {
+    const { panel } = makePanel();
+    // Access through casting — private fields are internal but observable via behavior
+    const p = panel as unknown as {
+      qaSelectedIdx: number;
+      _lastTapAt: number;
+      _lastTapIdx: number;
+      _quickActionHandler: unknown;
+    };
+    expect(p.qaSelectedIdx).toBe(0);
+    expect(p._lastTapAt).toBe(0);
+    expect(p._lastTapIdx).toBe(-1);
+    expect(p._quickActionHandler).toBeNull();
+  });
+
+  it('CTQ-03: onEvent(tap) WITHOUT handler → no-op, does not throw', async () => {
+    const { panel, bridge } = makePanel();
+    await panel.onMount();
+    const drawCallsBefore = (bridge.textContainerUpgrade as ReturnType<typeof vi.fn>).mock.calls
+      .length;
+    // No handler set — tap should be a no-op
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+    await vi.advanceTimersByTimeAsync(0);
+    // No additional draw calls expected from tap alone (handler null → early break)
+    expect((bridge.textContainerUpgrade as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      drawCallsBefore,
+    );
+    // The key assertion: the panel did NOT cycle or fire anything
+    const p = panel as unknown as { qaSelectedIdx: number };
+    expect(p.qaSelectedIdx).toBe(0); // unchanged
+    await panel.onUnmount();
+  });
+
+  it('CTQ-04: first tap WITH handler → cycles qaSelectedIdx; handler NOT called', async () => {
+    const { panel } = makePanel();
+    const handler = vi.fn();
+    panel.setQuickActionHandler(handler);
+    await panel.onMount();
+
+    vi.setSystemTime(1000);
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const p = panel as unknown as {
+      qaSelectedIdx: number;
+      _lastTapIdx: number;
+      _lastTapAt: number;
+    };
+    expect(p.qaSelectedIdx).toBe(1); // advanced from 0 → 1
+    expect(p._lastTapIdx).toBe(1); // new selected index (1) stored for double-tap detection
+    expect(handler).not.toHaveBeenCalled();
+
+    await panel.onUnmount();
+  });
+
+  it('CTQ-05: second tap within 600ms on same index → handler called with QA_KEYS[idx]', async () => {
+    const { panel } = makePanel();
+    const handler = vi.fn();
+    panel.setQuickActionHandler(handler);
+    await panel.onMount();
+
+    // First tap at t=1000 — cycles idx 0→1, _lastTapIdx=0
+    vi.setSystemTime(1000);
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+
+    // Go back to idx=0 by cycling 3 more times (0→1→2→3→0)
+    vi.setSystemTime(1001);
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+    vi.setSystemTime(1002);
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+    vi.setSystemTime(1003);
+    panel.onEvent({ kind: 'tap' } as R1Gesture);
+
+    // Now qaSelectedIdx=0, _lastTapIdx=3 — doesn't match; need to advance to 0 and then fire
+    // Start fresh: get to a known state where _lastTapIdx === qaSelectedIdx
+    // Simplest: set a fresh panel, first tap sets _lastTapIdx=0, qaSelectedIdx=1
+    // Then do a separate test where we manually align
+
+    // Actually: let's test with index 1 (S key)
+    // Fresh panel — tap once at t=2000 → qaSelectedIdx=1, _lastTapIdx=0
+    const { panel: panel2 } = makePanel();
+    panel2.setQuickActionHandler(handler);
+    await panel2.onMount();
+
+    vi.setSystemTime(2000);
+    panel2.onEvent({ kind: 'tap' } as R1Gesture);
+    const p2 = panel2 as unknown as { qaSelectedIdx: number; _lastTapIdx: number };
+    expect(p2.qaSelectedIdx).toBe(1);
+    expect(p2._lastTapIdx).toBe(1); // new selected index stored (1), enabling double-tap fire
+
+    // Second tap within 600ms on SAME index (qaSelectedIdx=1, _lastTapIdx=1 — SAME)
+    // We have sameIdx = true when _lastTapIdx === qaSelectedIdx
+    // After first tap: advance 0→1, _lastTapIdx=1 (new idx), qaSelectedIdx=1
+    // Second tap: sameIdx=(1===1)=true → fires 'S'
+    // So to fire, we just need a second tap within 600ms — panel2 demonstrates this
+    // Then cycle through 0→1 via advancing one more: 1→2, _lastTapIdx=1
+    // Then another: 2→3, _lastTapIdx=2
+    // Then another: 3→0, _lastTapIdx=3
+    // Then another: 0→1, _lastTapIdx=0 — still no match
+    // The MATCH happens when: last tap advanced to idx=X, then within 600ms tap again
+    //   → qaSelectedIdx===_lastTapIdx is the condition: sameIdx = _lastTapIdx === this.qaSelectedIdx
+    // After tap1: qaSelectedIdx=1, _lastTapIdx=0 (NOT same)
+    // After tap2: qaSelectedIdx=2, _lastTapIdx=1 (NOT same)
+    // Hmm, sameIdx = _lastTapIdx === qaSelectedIdx. That can't match on consecutive full-cycle taps.
+    // Re-reading the plan: "sameIdx = this._lastTapIdx === this.qaSelectedIdx"
+    // after tap1: qaSelectedIdx=1, _lastTapIdx=0 → sameIdx checks if 0===1 → NO
+    // Meaning: second tap on the same slot means we tapped AGAIN while displaying slot 0
+    // (the newly selected one) — but we advanced, so we're now at 1, with lastTapIdx=0
+    // The logic: second tap fires when the NEXT tap is STILL on the same qaSelectedIdx
+    // i.e., we need the SAME qaSelectedIdx as _lastTapIdx, which means no advancement happened
+    // This means we reset _lastTapIdx after advancing? Let me re-read the plan spec:
+    //
+    // From plan:
+    // if (sameIdx && withinWindow) { fire }
+    // else { _lastTapIdx = this.qaSelectedIdx; this.qaSelectedIdx = (this.qaSelectedIdx + 1) % 4;
+    //         this._lastTapAt = now; }
+    //
+    // So: first tap: sameIdx=(_lastTapIdx=-1 === qaSelectedIdx=0) → false → advance
+    //   → qaSelectedIdx=1, _lastTapIdx=0, _lastTapAt=T1
+    // second tap: sameIdx=(_lastTapIdx=0 === qaSelectedIdx=1) → false → advance
+    //   → qaSelectedIdx=2, _lastTapIdx=1, _lastTapAt=T2
+    //
+    // Hmm, that NEVER fires? Unless... I re-read: "When a second tap fires WITHIN 600ms
+    // on the SAME index" means: the second tap on the SAME index that was just selected.
+    // After advancing to qaSelectedIdx=1, _lastTapIdx=0. The SAME index here means
+    // tapIdx (where the tap physically falls) stays at the current selection.
+    // Actually I think the intent is:
+    //   _lastTapIdx tracks what qaSelectedIdx WAS before the tap
+    //   after tap1: _lastTapIdx=0 (old), qaSelectedIdx=1 (new)
+    //   second tap: sameIdx = (_lastTapIdx === this.qaSelectedIdx) = (0===1) → NO
+    // That still doesn't work. Let me re-read more carefully:
+    // sameIdx = this._lastTapIdx === this.qaSelectedIdx
+    // For this to be true, _lastTapIdx must EQUAL qaSelectedIdx.
+    // After first tap: _lastTapIdx=0, qaSelectedIdx=1 → not same
+    // The ONLY way sameIdx=true is if the previousTapIdx matches the current idx.
+    // That means: after advancing 3→0, _lastTapIdx=3, qaSelectedIdx=0 — not same.
+    // After 0→1, _lastTapIdx=0 — still not same...
+    //
+    // WAIT. I think I misread the logic. The plan says:
+    //   const sameIdx = this._lastTapIdx === this.qaSelectedIdx
+    // But BEFORE the first tap, _lastTapIdx=-1 and qaSelectedIdx=0, so it's -1===0 → false
+    // After tap1: _lastTapIdx = 0 (old qaSelectedIdx), qaSelectedIdx = 1 (new)
+    // SECOND TAP: sameIdx = _lastTapIdx(0) === qaSelectedIdx(1) → false → advances again
+    //
+    // I think there's a DIFFERENT intended logic. Maybe the "same index" check is whether
+    // the user taps again WITHOUT the qaSelectedIdx having changed since last tap.
+    // The fix: _lastTapIdx should track the CURRENT index AFTER the tap (not before).
+    // i.e., after tap1: _lastTapIdx=1 (new qaSelectedIdx), advance to qaSelectedIdx=1
+    // So: first tap: sameIdx = (-1===0) → false → set _lastTapIdx=0 (CURRENT, not old)
+    //                qaSelectedIdx stays 0 (no advance on first tap???)
+    // OR:
+    // Rethinking: Maybe the design is that the FIRST tap sets the selection (but doesn't advance),
+    // and the SECOND tap on the same idx fires.
+    // After tap1: qaSelectedIdx=0 stays, _lastTapIdx=0, _lastTapAt=T1
+    // After tap2: sameIdx=(0===0) → true; withinWindow → fire A key!
+    //
+    // This makes more sense with the advance happening ONLY to cycle to the NEXT item:
+    // Actually re-reading the plan code:
+    // } else {
+    //   this._lastTapIdx = this.qaSelectedIdx;         ← save current idx as "last tapped"
+    //   this.qaSelectedIdx = (this.qaSelectedIdx + 1) % 4; ← ADVANCE to next
+    //   ...
+    // }
+    // So: first tap saves current (0), advances to 1
+    // _lastTapIdx=0 tracks "where we were when we tapped"
+    // sameIdx = (0===1) → false → would advance again
+    // This design means tapping continuously just cycles. The FIRE happens if:
+    //   _lastTapIdx === qaSelectedIdx → which needs them to be equal.
+    // Only possible if qaSelectedIdx advanced BACK to _lastTapIdx, OR if _lastTapIdx == qaSelectedIdx
+    // from the start (which is only if _lastTapIdx and qaSelectedIdx are both 0 and _lastTapIdx was set
+    // to 0 by a previous tap, then we tap again without changing qaSelectedIdx).
+    //
+    // I believe the REAL intent is: after advancing to idx X (qaSelectedIdx=X), _lastTapIdx should
+    // be X (not X-1). Then: sameIdx = (_lastTapIdx=X === qaSelectedIdx=X) = true on next tap.
+    //
+    // So the else branch should be:
+    //   this.qaSelectedIdx = (this.qaSelectedIdx + 1) % 4; ← advance first
+    //   this._lastTapIdx = this.qaSelectedIdx;              ← save NEW idx
+    // OR: _lastTapIdx tracks the newly selected, not the old.
+    // Given the ambiguity, I'll implement what makes behavioral sense:
+    // Tap-once selects/advances, tap-twice-on-same-slot fires.
+    // "same slot" = the same qaSelectedIdx as when the previous tap fired.
+    // So: first tap: advance 0→1; record _lastTapIdx=1 (newly selected), _lastTapAt=T
+    // Second tap: sameIdx = (_lastTapIdx=1 === qaSelectedIdx=1) → true → FIRE!
+
+    await panel2.onUnmount();
+
+    // CORRECT implementation test: one cycle advances AND records new idx
+    const { panel: panel3 } = makePanel();
+    const handler3 = vi.fn();
+    panel3.setQuickActionHandler(handler3);
+    await panel3.onMount();
+
+    vi.setSystemTime(3000);
+    panel3.onEvent({ kind: 'tap' } as R1Gesture); // first tap → selects idx=1 (S)
+    await vi.advanceTimersByTimeAsync(0);
+
+    vi.setSystemTime(3400); // within 600ms
+    panel3.onEvent({ kind: 'tap' } as R1Gesture); // second tap on idx=1 → FIRES 'S'
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(handler3).toHaveBeenCalledWith('S');
+    expect(handler3).toHaveBeenCalledTimes(1);
+
+    await panel3.onUnmount();
+  });
+
+  it('CTQ-06: tap interval > 600ms → treats as fresh first-tap (no fire)', async () => {
+    const { panel } = makePanel();
+    const handler = vi.fn();
+    panel.setQuickActionHandler(handler);
+    await panel.onMount();
+
+    vi.setSystemTime(5000);
+    panel.onEvent({ kind: 'tap' } as R1Gesture); // first tap → advances to S (idx=1)
+
+    vi.setSystemTime(5700); // > 600ms
+    panel.onEvent({ kind: 'tap' } as R1Gesture); // fresh cycle, NOT fire
+
+    expect(handler).not.toHaveBeenCalled();
+
+    await panel.onUnmount();
+  });
+
+  it('CTQ-07: renderQuickActionBar with selectedIdx=1 highlights second slot [▶S]', () => {
+    const bar = renderQuickActionBar('it', 1);
+    expect(bar).toContain('[▶S]');
+    expect([...bar].length).toBe(66); // INV-1: row must be exactly 66 code-points
+  });
+
+  it('CTQ-08: renderQuickActionBar with selectedIdx=-1 (default) → no highlight marker', () => {
+    const bar = renderQuickActionBar('it', -1);
+    // No highlight marker present
+    expect(bar).not.toContain('[▶');
+    // Standard keys present
+    expect(bar).toContain('[ A ]');
+    expect(bar).toContain('[ S ]');
+    expect(bar).toContain('[ I ]');
+    expect(bar).toContain('[ M ]');
+    expect([...bar].length).toBe(66);
+  });
+});
+
+// ─── INV-1 fixture with [Atk 1/2] chip ───────────────────────────────────────
 
 describe('CombatTrackerPanel — INV-1 fixture with [Atk 1/2] chip', () => {
   it('CTP-FIX-MULTI: [Atk 1/2] chip on GOBLIN ARCHER matches combat-tracker.multi-attack.it.txt', async () => {

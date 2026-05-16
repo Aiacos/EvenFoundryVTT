@@ -309,7 +309,7 @@ export function renderCombatantRow(
     distDirGap3 = chipRaw.length <= 9 ? chipRaw.padEnd(9) : `${chipRaw.slice(0, 8)}…`;
   } else {
     // Cols 53-58: distance + direction (6 chars, left-aligned); cols 59-61: gap (3 spaces)
-    distDirGap3 = _pad('--', 6) + '   ';
+    distDirGap3 = `${_pad('--', 6)}   `;
   }
 
   // Col 62: faction glyph
@@ -360,27 +360,44 @@ export function renderCombatantRow(
   return [mainRow, concLine];
 }
 
+// ─── Quick-action constants ───────────────────────────────────────────────────
+
 /**
- * Render the quick-action bar footer row (COMB-03 — render-only Phase 5).
+ * Keys for the quick-action bar in order (Plan 08-05 CTQ-01..08).
+ *
+ * Index 0=A (Attack), 1=S (Spell), 2=I (Item), 3=M (Move).
+ * Matches the `[A][S][I][M]` visual order in UI-SPEC §5.8.
+ */
+const QA_KEYS: ReadonlyArray<'A' | 'S' | 'I' | 'M'> = ['A', 'S', 'I', 'M'] as const;
+
+/**
+ * Render the quick-action bar footer row (COMB-03).
  *
  * Format per UI-SPEC §5.8:
  * ```
  *   Rapida:  [ A ]ttacco  [ S ]pell  [ I ]tem  [ M ]ovi
  * ```
- * Row is exactly 66 code-points.
+ * When `selectedIdx` is a valid index (0-3), the corresponding slot is
+ * highlighted with `[▶X]` prefix (Plan 08-05 CTQ-07 — tap-cycle visual).
+ * When `selectedIdx === -1` (default), all slots render as `[ X ]` (Phase 5
+ * fixture-compatible, CTQ-08).
  *
- * Phase 6 wires the tap-cycle highlight (active button `[▶A ]` style).
+ * Row is exactly 66 code-points (INV-1).
  *
- * @param locale Active HUD locale.
+ * @param locale      Active HUD locale.
+ * @param selectedIdx Index of the currently-selected key (0-3), or -1 for no highlight.
  */
-export function renderQuickActionBar(locale: HudLocale): string {
+export function renderQuickActionBar(locale: HudLocale, selectedIdx: number = -1): string {
   const label = getLabel('combat.tracker.quick_label', locale);
   const atk = getLabel('combat.tracker.quick_attack', locale);
   const spell = getLabel('combat.tracker.quick_spell', locale);
   const item = getLabel('combat.tracker.quick_item', locale);
   const move = getLabel('combat.tracker.quick_move', locale);
 
-  const row = `  ${label}  [ A ]${atk}  [ S ]${spell}  [ I ]${item}  [ M ]${move}`;
+  // Build key prefixes: highlighted = `[▶X]`, normal = `[ X ]`
+  const keys = QA_KEYS.map((k, i) => (i === selectedIdx ? `[▶${k}]` : `[ ${k} ]`));
+
+  const row = `  ${label}  ${keys[0]}${atk}  ${keys[1]}${spell}  ${keys[2]}${item}  ${keys[3]}${move}`;
   // Pad/truncate to INNER_WIDTH
   return _pad(row, INNER_WIDTH);
 }
@@ -413,6 +430,7 @@ export function renderCombatTrackerContent(
   scrollOffset: number,
   ownActorId: string,
   multiAttackState: MultiAttackState | null = null,
+  qaSelectedIdx: number = -1,
 ): string[] {
   const title = getLabel('combat.tracker.panel_title', locale);
   const topBorder = `${_pad(`┌─── ${title} `, INNER_WIDTH - 1)}┐`;
@@ -462,8 +480,8 @@ export function renderCombatTrackerContent(
   const effectsHeader = `  ${getLabel('combat.tracker.effects_section', locale)}`;
   const effectsHeaderRow = _pad(effectsHeader, INNER_WIDTH);
 
-  // Quick-action bar
-  const quickBar = renderQuickActionBar(locale);
+  // Quick-action bar (qaSelectedIdx passed in — -1 = no highlight)
+  const quickBar = renderQuickActionBar(locale, qaSelectedIdx);
 
   // Assemble: title + combatant rows + blank + effects header + blank + quick bar + bottom
   const assembled: string[] = [topBorder, ...combatantRows];
@@ -561,6 +579,43 @@ export default class CombatTrackerPanel implements OverlayPanel {
    */
   private multiAttackState: MultiAttackState | null = null;
 
+  // ─── Phase 08-05 quick-action bar tap-dispatch state ─────────────────────────
+
+  /**
+   * Index of the currently-selected quick-action key (0=A, 1=S, 2=I, 3=M).
+   *
+   * Cycles on each tap when a handler is set (CTQ-04). Highlights the matching
+   * `[▶X]` slot in `renderQuickActionBar`. Resets implicitly when the handler
+   * is cleared (null).
+   */
+  private qaSelectedIdx = 0;
+
+  /**
+   * Timestamp (ms) of the most recent tap that advanced `qaSelectedIdx`.
+   *
+   * Used to detect the 600ms double-tap window (CTQ-05). `0` = no previous tap.
+   */
+  private _lastTapAt = 0;
+
+  /**
+   * The `qaSelectedIdx` value that was active when the most recent tap advanced it.
+   *
+   * After advancing from X → X+1: `_lastTapIdx = X+1` (the NEW index).
+   * A second tap within 600ms where `_lastTapIdx === qaSelectedIdx` fires the handler.
+   * `-1` = no previous tap (initial sentinel).
+   */
+  private _lastTapIdx = -1;
+
+  /**
+   * Injected quick-action handler (Plan 08-05 — boot-engine-core step 11i).
+   *
+   * Null until `setQuickActionHandler` is called by the boot orchestrator.
+   * When null, tap events pass through without cycling or dispatching (CTQ-03).
+   *
+   * Private — external API is `setQuickActionHandler(handler)`.
+   */
+  private _quickActionHandler: ((key: 'A' | 'S' | 'I' | 'M') => void) | null = null;
+
   /**
    * Unsubscribe closure returned by {@link PanelGestureBus.subscribe}.
    *
@@ -606,10 +661,26 @@ export default class CombatTrackerPanel implements OverlayPanel {
   }
 
   /**
+   * Inject (or clear) the quick-action dispatch handler (Plan 08-05 CTQ-01).
+   *
+   * Called by boot-engine-core.ts step 11i after PanelRouter.discoverPanels.
+   * When set to `null`, tap events fall back to the Phase 5 no-op path (CTQ-03).
+   *
+   * Idempotent: can be called multiple times with the same handler or null.
+   *
+   * @param handler  Callback dispatched when the user double-taps a QA-bar key.
+   *                 Receives the selected key character (`'A'|'S'|'I'|'M'`).
+   *                 Pass `null` to clear the handler.
+   */
+  public setQuickActionHandler(handler: ((key: 'A' | 'S' | 'I' | 'M') => void) | null): void {
+    this._quickActionHandler = handler;
+  }
+
+  /**
    * Handle a published R1 gesture (synchronous — schedules its own re-draw).
    *
    * Dispatch table per CONTEXT.md §Area 4 + UI-SPEC §5.8 gesture row:
-   * - `tap`          → cycle quick-action highlight (Phase 6 stub — no-op Phase 5)
+   * - `tap`          → Phase 8: cycle QA-bar highlight; double-tap fires handler (CTQ-04/05)
    * - `scroll-up`    → shift window up (scrollOffset -= 1); re-draw
    * - `scroll-down`  → shift window down (scrollOffset += 1); re-draw
    * - `double-tap`   → no-op stub (Phase 6 NAV-01 wires close)
@@ -617,9 +688,31 @@ export default class CombatTrackerPanel implements OverlayPanel {
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
-      case 'tap':
-        // Phase 5 no-op — Phase 6 wires the quick-action cycle (COMB-03).
+      case 'tap': {
+        // Phase 8 CTQ-03: no-op when handler is null (preserves Phase 5 behaviour).
+        if (this._quickActionHandler === null) break;
+
+        const now = Date.now();
+        const sameIdx = this._lastTapIdx === this.qaSelectedIdx;
+        const withinWindow = now - this._lastTapAt < 600;
+
+        if (sameIdx && withinWindow) {
+          // Double-tap on the currently-selected key: FIRE the action (CTQ-05).
+          // qaSelectedIdx is always 0-3 (modulo QA_KEYS.length=4), so the key is always defined.
+          const key = QA_KEYS[this.qaSelectedIdx] ?? 'A';
+          // Reset state so next tap starts a fresh cycle.
+          this._lastTapAt = 0;
+          this._lastTapIdx = -1;
+          this._quickActionHandler(key);
+        } else {
+          // First-tap or timeout: advance to next key, record selection (CTQ-04).
+          this.qaSelectedIdx = (this.qaSelectedIdx + 1) % QA_KEYS.length;
+          this._lastTapIdx = this.qaSelectedIdx; // record NEW index as "last tapped"
+          this._lastTapAt = now;
+          void this.draw();
+        }
         break;
+      }
 
       case 'scroll': {
         // WR-02 fix: clamp scrollOffset to [-maxOff, +maxOff] where maxOff is
@@ -671,12 +764,6 @@ export default class CombatTrackerPanel implements OverlayPanel {
   // ─── Layer interface ────────────────────────────────────────────────────────
 
   /**
-   * Render the panel via a single `bridge.textContainerUpgrade` call.
-   *
-   * Delegates to {@link renderCombatTrackerContent} for the 18-row body.
-   * Strategy A: single text container `'overlay-block'`, no image containers.
-   */
-  /**
    * Set or clear the multi-attack chip state, then trigger an immediate re-render.
    *
    * Called by `multi-attack-progress-dispatcher.ts` on each validated
@@ -693,6 +780,14 @@ export default class CombatTrackerPanel implements OverlayPanel {
     void this.draw();
   }
 
+  /**
+   * Render the panel via a single `bridge.textContainerUpgrade` call.
+   *
+   * Delegates to {@link renderCombatTrackerContent} for the 18-row body.
+   * Passes `qaSelectedIdx` only when a quick-action handler is set (CTQ-07/08);
+   * otherwise passes `-1` so the bar renders without any highlight.
+   * Strategy A: single text container `'overlay-block'`, no image containers.
+   */
   async draw(): Promise<void> {
     const rows = renderCombatTrackerContent(
       this.snapshot,
@@ -700,6 +795,7 @@ export default class CombatTrackerPanel implements OverlayPanel {
       this.scrollOffset,
       this.ownActorId,
       this.multiAttackState,
+      this._quickActionHandler !== null ? this.qaSelectedIdx : -1,
     );
 
     const content = rows.join('\n');
