@@ -456,8 +456,10 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
     await panel2.onMount();
     panel2.onEvent({ kind: 'tap' });
 
-    const key1 = (JSON.parse(ws._sent[0]!) as { payload: { idempotencyKey: string } }).payload.idempotencyKey;
-    const key2 = (JSON.parse(ws2._sent[0]!) as { payload: { idempotencyKey: string } }).payload.idempotencyKey;
+    const key1 = (JSON.parse(ws._sent[0]!) as { payload: { idempotencyKey: string } }).payload
+      .idempotencyKey;
+    const key2 = (JSON.parse(ws2._sent[0]!) as { payload: { idempotencyKey: string } }).payload
+      .idempotencyKey;
     // Each tap call generates a fresh UUID via crypto.randomUUID()
     expect(key1).not.toBe(key2);
 

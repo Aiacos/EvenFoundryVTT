@@ -99,10 +99,13 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
   // violating T-07-04 (players must not read audit entries).
   // Skipping is preferable to leaking sensitive data; the action has already committed.
   if (gmIds.length === 0) {
-    console.warn('[EVF] writeAuditLog: no GMs connected — skipping audit write to prevent public exposure', {
-      tool: entry.tool,
-      idempotencyKey: entry.idempotencyKey,
-    });
+    console.warn(
+      '[EVF] writeAuditLog: no GMs connected — skipping audit write to prevent public exposure',
+      {
+        tool: entry.tool,
+        idempotencyKey: entry.idempotencyKey,
+      },
+    );
     return;
   }
 

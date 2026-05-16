@@ -29,7 +29,7 @@ import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocket } from 'ws';
 import { SessionStore } from './session-store.js';
-import { type DispatchToolFn, type ToolInvokeResult, handleToolInvoke } from './tool-invoke.js';
+import { type DispatchToolFn, handleToolInvoke, type ToolInvokeResult } from './tool-invoke.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,9 @@ function makeMockLogger(): Logger {
   } as unknown as Logger;
 }
 
-function makeDispatchFn(result: ToolInvokeResult = { success: true, data: { ok: true } }): DispatchToolFn {
+function makeDispatchFn(
+  result: ToolInvokeResult = { success: true, data: { ok: true } },
+): DispatchToolFn {
   return vi.fn().mockResolvedValue(result) as DispatchToolFn;
 }
 

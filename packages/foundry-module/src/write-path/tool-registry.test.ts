@@ -344,7 +344,8 @@ describe('dispatchTool', () => {
   it('WR-01 regression: failure results are NOT cached — retry with same idempotencyKey re-executes', async () => {
     // WR-01: a transient failure (e.g., no_gm_connected) must NOT lock the idempotencyKey.
     // The handler returns failure on first call and success on second (simulates GM reconnect).
-    const handleFn = vi.fn<() => Promise<ToolResult>>()
+    const handleFn = vi
+      .fn<() => Promise<ToolResult>>()
       .mockResolvedValueOnce({ success: false, error: 'no_gm_connected' })
       .mockResolvedValueOnce({ success: true, data: { droppedAt: 12345 } });
 
