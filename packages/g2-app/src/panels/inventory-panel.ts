@@ -45,6 +45,7 @@ import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
@@ -593,5 +594,18 @@ export default class InventoryPanel implements OverlayPanel {
    */
   getContainerCount(): { image: number; text: number } {
     return { image: 0, text: 1 };
+  }
+
+  /**
+   * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
+   *
+   * Returns the parsed hint object from the pre-composed `hud_r1_inv` i18n
+   * string — e.g. IT: `{ tap: 'usa', scroll: 'oggetto', longPressLabel: 'q[inv]' }`.
+   *
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
+   * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_inv key
+   */
+  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+    return parseR1HintString(getLabel('hud_r1_inv', this.locale));
   }
 }

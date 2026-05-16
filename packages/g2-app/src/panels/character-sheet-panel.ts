@@ -53,7 +53,8 @@ import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
-import type { HudLocale } from '../status-hud/i18n-budgets.js';
+import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import { renderTabContent } from './character-sheet-tab-renderers.js';
 
 // ─── Tab constants ────────────────────────────────────────────────────────────
@@ -365,6 +366,24 @@ export default class CharacterSheetPanel implements OverlayPanel {
    */
   getContainerCount(): { image: 0; text: 1 } {
     return { image: 0, text: 1 };
+  }
+
+  /**
+   * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
+   *
+   * Returns the parsed hint object from the pre-composed `hud_r1_sheet` i18n
+   * string — e.g. IT: `{ tap: 'cambia-tab', scroll: 'cont', longPressLabel: 'q[sheet]' }`.
+   *
+   * The `longPressLabel` always contains `q[sheet]` across all locales — the
+   * renderer strips this to verify INV-5 SC-4 (visible enforcement: chip names
+   * the live long-press target per overlay-id bracket).
+   *
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
+   * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_sheet key
+   * @see packages/g2-app/src/status-hud/r1-hint-parser.ts parseR1HintString
+   */
+  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+    return parseR1HintString(getLabel('hud_r1_sheet', this.locale));
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

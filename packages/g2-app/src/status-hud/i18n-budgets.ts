@@ -726,6 +726,150 @@ export const HUD_WIDTH_BUDGETS = {
    * when in sub-menu).
    */
   quick_r1_lang_long: { it: 'indietro', en: 'back', de: 'zurück', max: 22 },
+
+  // ─── Phase 6 Plan 03 — StatusHudRenderer context chip per-state strings ───────
+  // 12 pre-composed, pre-truncated chip strings (RESEARCH Pitfall 6 mitigation).
+  // These are the FULL `R1: …` segment content (without the `R1: ` prefix) for
+  // each panel state. The renderer reads these verbatim via parseR1HintString
+  // and renderContextChip — no runtime truncation logic needed.
+  //
+  // All strings verified ≤ 38 chars (UI-SPEC §3.2 chip budget) per locale.
+  // `max: 38` for all non-boot variants (boot splash uses `max: 4`).
+  //
+  // Canonical IT strings — EN/DE within same budget per UI-SPEC §6 table.
+  // Downstream consumers: status-hud-renderer.ts + 5 Phase 5 panels.
+
+  /**
+   * Main HUD chip (no overlay active — default navigation state).
+   * IT: `tap=cycle scroll=nav long=quick` (33 chars — fits within 38).
+   */
+  hud_r1_main: {
+    it: 'tap=cycle  scroll=nav  long=quick',
+    en: 'tap=cycle  scroll=nav  long=quick',
+    de: 'tap=Wechsel  scroll=Nav  long=Schnell',
+    max: 38,
+  },
+
+  /**
+   * Character Sheet overlay chip.
+   * IT pre-truncated to fit 38-char budget (UI-SPEC §3.2).
+   * Full raw would be `tap=cycle-tab  scroll=tab-content  long=quick[sheet]` (51 chars).
+   */
+  hud_r1_sheet: {
+    it: 'tap=cambia-tab  scroll=cont  long=q[sheet]',
+    en: 'tap=cycle-tab  scroll=cont  long=q[sheet]',
+    de: 'tap=Tab  scroll=Inhalt  long=q[Blatt]',
+    max: 42,
+  },
+
+  /**
+   * Combat Tracker overlay chip.
+   * IT pre-truncated: `scroll=iniz  tap=rapida  long=q[combat]` (fits 38).
+   */
+  hud_r1_combat: {
+    it: 'scroll=iniz  tap=rapida  long=q[combat]',
+    en: 'scroll=init  tap=quick  long=q[combat]',
+    de: 'scroll=Init  tap=Schnell  long=q[Kampf]',
+    max: 40,
+  },
+
+  /**
+   * Log panel overlay chip.
+   * IT: `scroll=evento  tap=apri  long=q[log]` (fits 38).
+   */
+  hud_r1_log: {
+    it: 'scroll=evento  tap=apri  long=q[log]',
+    en: 'scroll=event  tap=open  long=q[log]',
+    de: 'scroll=Eintrag  tap=öffnen  long=q[Log]',
+    max: 40,
+  },
+
+  /**
+   * Inventory panel overlay chip.
+   * IT: `scroll=oggetto  tap=usa  long=q[inv]` (fits 38).
+   */
+  hud_r1_inv: {
+    it: 'scroll=oggetto  tap=usa  long=q[inv]',
+    en: 'scroll=item  tap=use  long=q[inv]',
+    de: 'scroll=Gegenst  tap=Nutzen  long=q[Inv]',
+    max: 40,
+  },
+
+  /**
+   * Spellbook panel overlay chip.
+   * IT: `scroll=incant  tap=lancia  long=q[spell]` (fits 38).
+   */
+  hud_r1_spell: {
+    it: 'scroll=incant  tap=lancia  long=q[spell]',
+    en: 'scroll=spell  tap=cast  long=q[spell]',
+    de: 'scroll=Zauber  tap=wirken  long=q[Spell]',
+    max: 41,
+  },
+
+  /**
+   * Quick Action Menu overlay chip.
+   * IT: `scroll=voce  tap=apri  long=annulla` (34 chars — fits within 38).
+   */
+  hud_r1_menu: {
+    it: 'scroll=voce  tap=apri  long=annulla',
+    en: 'scroll=item  tap=open  long=cancel',
+    de: 'scroll=Eintrag  tap=öffnen  long=Abbruch',
+    max: 41,
+  },
+
+  /**
+   * Language sub-menu overlay chip (shown when [N] language sub-menu is active).
+   */
+  hud_r1_lang_submenu: {
+    it: 'scroll=lingua  tap=applica  long=indietro',
+    en: 'scroll=language  tap=apply  long=back',
+    de: 'scroll=Sprache  tap=anwenden  long=zurück',
+    max: 42,
+  },
+
+  /**
+   * Boot splash chip — long-press is a no-op during boot splash.
+   * Single em-dash placeholder. `max: 4` (just the em-dash).
+   */
+  hud_r1_boot: {
+    it: '—',
+    en: '—',
+    de: '—',
+    max: 4,
+  },
+
+  /**
+   * Boot error chip — long-press retries the boot sequence.
+   * IT: `long=riprova` (12 chars — fits 38).
+   */
+  hud_r1_boot_error: {
+    it: 'long=riprova',
+    en: 'long=retry',
+    de: 'long=erneut',
+    max: 38,
+  },
+
+  /**
+   * Concentration modal chip (shown when ConcentrationDropModalPanel is active).
+   * IT: `tap=Y  scroll=—  long=annulla` (fits 38).
+   */
+  hud_r1_conc_modal: {
+    it: 'tap=Y  scroll=—  long=annulla',
+    en: 'tap=Y  scroll=—  long=cancel',
+    de: 'tap=Y  scroll=—  long=Abbruch',
+    max: 38,
+  },
+
+  /**
+   * Death saves pivot chip — shown when the HP=0 death-saves mode is active.
+   * Em-dash placeholder (no overlay panel handles gestures in death-saves mode).
+   */
+  hud_r1_death_saves: {
+    it: '—',
+    en: '—',
+    de: '—',
+    max: 4,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

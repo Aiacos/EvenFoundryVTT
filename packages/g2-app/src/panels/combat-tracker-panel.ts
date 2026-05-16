@@ -54,6 +54,7 @@ import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
@@ -646,5 +647,21 @@ export default class CombatTrackerPanel implements OverlayPanel {
    */
   getContainerCount(): { image: 0; text: 1 } {
     return { image: 0, text: 1 };
+  }
+
+  /**
+   * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
+   *
+   * Returns the parsed hint object from the pre-composed `hud_r1_combat` i18n
+   * string — e.g. IT: `{ tap: 'rapida', scroll: 'iniz', longPressLabel: 'q[combat]' }`.
+   *
+   * The `longPressLabel` always contains `q[combat]` across all locales — INV-5 SC-4
+   * visible enforcement (chip names the live long-press target per overlay-id bracket).
+   *
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
+   * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_combat key
+   */
+  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+    return parseR1HintString(getLabel('hud_r1_combat', this.locale));
   }
 }

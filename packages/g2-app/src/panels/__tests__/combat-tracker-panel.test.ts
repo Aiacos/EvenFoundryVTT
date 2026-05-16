@@ -619,3 +619,32 @@ describe('CombatTrackerPanel — WR-02 scrollOffset clamping', () => {
     expect(bridge.textContainerUpgrade.mock.calls.length).toBeGreaterThan(0);
   });
 });
+
+// ─── CTP-R1HINTS-* (Phase 6 Plan 03) ─────────────────────────────────────────
+
+describe('CombatTrackerPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
+  it('CTP-R1HINTS-IT: returns getR1Hints with q[combat] longPressLabel (IT locale)', () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const panel = new CombatTrackerPanel(bridge, bus, 'it');
+    const hints = panel.getR1Hints();
+    expect(hints.longPressLabel).toMatch(/q\[combat\]/);
+    expect(typeof hints.tap).toBe('string');
+    expect(typeof hints.scroll).toBe('string');
+    expect(hints.tap.length).toBeGreaterThan(0);
+    expect(hints.scroll.length).toBeGreaterThan(0);
+  });
+
+  it('CTP-R1HINTS-BUDGET: chip hint fields fit 38-char budget across IT/EN/DE locales', () => {
+    const locales = ['it', 'en', 'de'] as const;
+    for (const locale of locales) {
+      const bridge = makeMockBridge();
+      const bus = new PanelGestureBus();
+      const panel = new CombatTrackerPanel(bridge, bus, locale);
+      const hints = panel.getR1Hints();
+      expect([...hints.tap].length).toBeLessThanOrEqual(38);
+      expect([...hints.scroll].length).toBeLessThanOrEqual(38);
+      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+    }
+  });
+});

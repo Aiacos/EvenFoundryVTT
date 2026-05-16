@@ -225,7 +225,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 = 160 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 + 12 Phase 6 Plan-03 = 172 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
@@ -234,7 +234,10 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // 4 empty-states + 5 panel-titles + 5 footer-hints + 2 router = 98 new keys.
     // Phase 6 Plan 01 totals: 6 R1 chip vocabulary keys.
     // Phase 6 Plan 02 totals: 20 QuickActionMenuPanel keys (2 titles + 9 items + 3 hints + 6 R1 chip).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(160);
+    // Phase 6 Plan 03 totals: 12 per-state chip strings (hud_r1_main, hud_r1_sheet,
+    //   hud_r1_combat, hud_r1_log, hud_r1_inv, hud_r1_spell, hud_r1_menu,
+    //   hud_r1_lang_submenu, hud_r1_boot, hud_r1_boot_error, hud_r1_conc_modal, hud_r1_death_saves).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(172);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -260,7 +263,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
 
 describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
   // ─── Count ────────────────────────────────────────────────────────────────
-  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6 Phase 6 = 140 total)', () => {
+  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6+20+12 Phase 6 = 172 total)', () => {
     // Sentinel spot-check — a few representative keys from each UI-SPEC section.
     const PHASE_5_SAMPLE_KEYS = [
       'sheet.ability.str',
@@ -304,8 +307,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     for (const key of PHASE_5_SAMPLE_KEYS) {
       expect(HUD_WIDTH_BUDGETS, `missing Phase 5 key: ${key}`).toHaveProperty(key);
     }
-    // Updated to 160 after Phase 6 Plan 02 added 20 QuickActionMenuPanel keys.
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(160);
+    // Updated to 172 after Phase 6 Plan 03 added 12 per-state chip strings.
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(172);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────

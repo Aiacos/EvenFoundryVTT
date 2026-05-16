@@ -488,3 +488,33 @@ describe('buildTabStrip — INV-1 fixture round-trips (SHEET-04 ck 13)', () => {
     await matchAsciiFixture(grid, resolve(fixtureDir(), 'sheet.tab-strip.bio-active.it.txt'));
   });
 });
+
+// ─── CHSP-R1HINTS-* (Phase 6 Plan 03) ────────────────────────────────────────
+
+describe('CharacterSheetPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
+  it('CHSP-R1HINTS-IT: returns getR1Hints with q[sheet] longPressLabel (IT locale)', () => {
+    const { panel } = makePanel();
+    const hints = panel.getR1Hints();
+    expect(hints.longPressLabel).toMatch(/q\[sheet\]/);
+    expect(typeof hints.tap).toBe('string');
+    expect(typeof hints.scroll).toBe('string');
+    expect(hints.tap.length).toBeGreaterThan(0);
+    expect(hints.scroll.length).toBeGreaterThan(0);
+  });
+
+  it('CHSP-R1HINTS-BUDGET: chip hint fields fit 38-char budget across IT/EN/DE locales', () => {
+    const locales = ['it', 'en', 'de'] as const;
+    for (const locale of locales) {
+      const bridge = makeMockBridge();
+      const bus = new PanelGestureBus();
+      // Panel reads locale from constructor — reinstantiate per locale.
+      const panel = new CharacterSheetPanel(bridge, bus, locale);
+      const hints = panel.getR1Hints();
+      // Verify individual fields fit reasonable per-field budget (not the full chip string).
+      // The composed chip string budget (38 chars for the R1: segment) is enforced by the renderer.
+      expect([...hints.tap].length).toBeLessThanOrEqual(38);
+      expect([...hints.scroll].length).toBeLessThanOrEqual(38);
+      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+    }
+  });
+});
