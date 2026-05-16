@@ -74,26 +74,24 @@ interface MockAuditFlags {
   recipientUserId?: string;
 }
 
-function makeChatMsg(opts?: {
-  audit?: MockAuditFlags;
-  userId?: string;
-}) {
+function makeChatMsg(opts?: { audit?: MockAuditFlags; userId?: string }) {
   return {
     user: opts?.userId ?? 'user-player-1',
-    flags: opts?.audit !== undefined
-      ? {
-          evf: {
-            audit: {
-              toolId: opts.audit.toolId,
-              actorId: opts.audit.actorId ?? 'actor-default',
-              ...(opts.audit.attackId !== undefined ? { attackId: opts.audit.attackId } : {}),
-              ...(opts.audit.recipientUserId !== undefined
-                ? { recipientUserId: opts.audit.recipientUserId }
-                : {}),
+    flags:
+      opts?.audit !== undefined
+        ? {
+            evf: {
+              audit: {
+                toolId: opts.audit.toolId,
+                actorId: opts.audit.actorId ?? 'actor-default',
+                ...(opts.audit.attackId !== undefined ? { attackId: opts.audit.attackId } : {}),
+                ...(opts.audit.recipientUserId !== undefined
+                  ? { recipientUserId: opts.audit.recipientUserId }
+                  : {}),
+              },
             },
-          },
-        }
-      : {},
+          }
+        : {},
   };
 }
 
@@ -255,7 +253,7 @@ describe('registerCombatActionTracker', () => {
     const emit = vi.fn();
     registerCombatActionTracker(emit);
 
-    fireCreateChatMessage(makeChatMsg({ audit: undefined }));
+    fireCreateChatMessage(makeChatMsg());
 
     expect(emit).not.toHaveBeenCalled();
   });
@@ -296,7 +294,9 @@ describe('registerCombatActionTracker', () => {
 
     // First, track an actor by firing a cast-spell
     fireCreateChatMessage(
-      makeChatMsg({ audit: { toolId: 'cast-spell', actorId: 'actor-mage', recipientUserId: 'user-player-1' } }),
+      makeChatMsg({
+        audit: { toolId: 'cast-spell', actorId: 'actor-mage', recipientUserId: 'user-player-1' },
+      }),
     );
     expect(emit).toHaveBeenCalledTimes(1);
     emit.mockClear();
@@ -326,7 +326,9 @@ describe('registerCombatActionTracker', () => {
 
     // Track an actor
     fireCreateChatMessage(
-      makeChatMsg({ audit: { toolId: 'cast-spell', actorId: 'actor-a', recipientUserId: 'user-1' } }),
+      makeChatMsg({
+        audit: { toolId: 'cast-spell', actorId: 'actor-a', recipientUserId: 'user-1' },
+      }),
     );
     emit.mockClear();
 
@@ -364,12 +366,16 @@ describe('registerCombatActionTracker', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
-    const emit = vi.fn(() => { throw new Error('emit failure'); });
+    const emit = vi.fn(() => {
+      throw new Error('emit failure');
+    });
     registerCombatActionTracker(emit);
 
     expect(() => {
       fireCreateChatMessage(
-        makeChatMsg({ audit: { toolId: 'cast-spell', actorId: 'actor-1', recipientUserId: 'user-1' } }),
+        makeChatMsg({
+          audit: { toolId: 'cast-spell', actorId: 'actor-1', recipientUserId: 'user-1' },
+        }),
       );
     }).not.toThrow();
 
@@ -463,14 +469,24 @@ describe('registerCombatActionTracker', () => {
     // Actor A uses this attackId
     fireCreateChatMessage(
       makeChatMsg({
-        audit: { toolId: 'weapon-attack', actorId: 'actor-A', attackId: SHARED_ATTACK_ID, recipientUserId: 'user-1' },
+        audit: {
+          toolId: 'weapon-attack',
+          actorId: 'actor-A',
+          attackId: SHARED_ATTACK_ID,
+          recipientUserId: 'user-1',
+        },
       }),
     );
 
     // Actor B also uses this attackId (should count as THEIR separate action)
     fireCreateChatMessage(
       makeChatMsg({
-        audit: { toolId: 'weapon-attack', actorId: 'actor-B', attackId: SHARED_ATTACK_ID, recipientUserId: 'user-2' },
+        audit: {
+          toolId: 'weapon-attack',
+          actorId: 'actor-B',
+          attackId: SHARED_ATTACK_ID,
+          recipientUserId: 'user-2',
+        },
       }),
     );
 

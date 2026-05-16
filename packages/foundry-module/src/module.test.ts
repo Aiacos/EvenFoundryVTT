@@ -502,6 +502,42 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(updateTokenCalls.length).toBeGreaterThanOrEqual(1);
   });
 
+  // MOD-CAT-01: registerCombatActionTracker wired; registerComplexHandler count stays 14 (Plan 09-01)
+  it('MOD-CAT-01: createChatMessage registered for action-tracker after ready fires; socketlib count stays 14', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+      getRandomValues: vi.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = (i * 37) % 256;
+        return arr;
+      }),
+    });
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // registerCombatActionTracker registers createChatMessage (in addition to action-result-watcher)
+    const createChatCalls = hooksMock.on.mock.calls.filter((c) => c[0] === 'createChatMessage');
+    // At least 3: hook-subscribers + action-result-watcher + combat-action-tracker
+    expect(createChatCalls.length).toBeGreaterThanOrEqual(3);
+
+    // 14-socketlib-handler invariant: Plan 09-01 adds NO new socketlib handler
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+  });
+
   // T-08-MOD-04: registerComplexHandler count stays exactly 14 (Phase 7 invariant — Plan 08-04 adds NO new socketlib handler)
   it('T-08-MOD-04: registerComplexHandler count stays at 14 after Plan 08-04 wiring (14-socketlib-handler invariant)', async () => {
     const gameMock = makeGameMock('en');

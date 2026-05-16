@@ -26,7 +26,11 @@
  * @see 02-CONTEXT.md D-2.01, D-2.12, D-2.18 (pair button, socketlib, locale)
  */
 
-import { R1_ACTION_RESULT_TYPE, R1_MOVEMENT_BUDGET_TYPE } from '@evf/shared-protocol';
+import {
+  R1_ACTION_ECONOMY_TYPE,
+  R1_ACTION_RESULT_TYPE,
+  R1_MOVEMENT_BUDGET_TYPE,
+} from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
@@ -43,16 +47,22 @@ import './write-path/handlers/index.js';
 // an action that can trigger a player character reaction (shield, counterspell).
 // Display-only in Phase 7; handler NEVER returns false (must not cancel NPC action).
 import { registerActionResultWatcher } from './write-path/action-result-watcher.js';
-// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
-// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
-// NO new socketlib handler registered — emitter count stays 14.
-import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
-import { registerReactionWatcher } from './write-path/reaction-watcher.js';
+// Plan 09-01 — combat action tracker (COMB-02 Wave 0 telemetry).
+// Subscribes to createChatMessage + updateCombat; derives per-combatant
+// action/bonus/reaction counters from flags.evf.audit entries; emits
+// r1.action.economy envelopes via bridgeDeltaEmitter on each state change.
+// NO new socketlib handler — count stays 14 (14-socketlib-handler invariant / ADR-0011).
+import { registerCombatActionTracker } from './write-path/combat-action-tracker.js';
 // Plan 08-04 — combat movement tracker (ACT-01 move variant).
 // Subscribes to updateToken + updateCombat; accumulates per-turn movement and emits
 // r1.movement.budget envelopes via bridgeDeltaEmitter.
 // NO new socketlib handler — count stays 14 (Phase 7 invariant).
 import { registerMovementTracker } from './write-path/combat-movement-tracker.js';
+// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
+// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
+// NO new socketlib handler registered — emitter count stays 14.
+import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
+import { registerReactionWatcher } from './write-path/reaction-watcher.js';
 
 /**
  * Canonical Foundry module identifier.
@@ -199,6 +209,12 @@ Hooks.once('ready', () => {
   // Called AFTER registerActionResultWatcher per the ready-hook assembly order.
   // NO new socketlib handler — count stays 14 (Phase 7 invariant).
   registerMovementTracker((payload) => bridgeDeltaEmitter(R1_MOVEMENT_BUDGET_TYPE, payload));
+  // Plan 09-01 — register the combat action tracker (COMB-02 Wave 0 telemetry).
+  // Listens on createChatMessage (flags.evf.audit toolId filter) + updateCombat
+  // (turn/round reset); emits r1.action.economy envelopes via bridgeDeltaEmitter.
+  // Called AFTER registerMovementTracker per the ready-hook assembly order.
+  // NO new socketlib handler — count stays 14 (ADR-0011 invariant).
+  registerCombatActionTracker((payload) => bridgeDeltaEmitter(R1_ACTION_ECONOMY_TYPE, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
