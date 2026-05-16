@@ -828,15 +828,14 @@ export const HUD_WIDTH_BUDGETS = {
     max: 38,
   },
 
-  /**
-   * Language sub-menu overlay chip (shown when [N] language sub-menu is active).
-   */
-  hud_r1_lang_submenu: {
-    it: 'scroll=lingua tap=applica long=indietro',
-    en: 'scroll=language tap=apply long=back',
-    de: 'scroll=Sprache tap=anwenden long=zurück',
-    max: 39,
-  },
+  // WR-04 fix: hud_r1_lang_submenu deleted — dead code (INV-4 zero dead code).
+  // The language sub-menu chip is assembled dynamically by renderContextChip from
+  // separate quick_r1_lang_tap + quick_r1_lang_scroll + quick_r1_lang_long keys.
+  // This composite entry was never consumed by any production code path; it only
+  // appeared in a test-file comment. Additionally its max: 39 exceeded the 38
+  // code-point renderer budget enforced by renderContextChip (line 628 of
+  // status-hud-renderer.ts), making it inconsistent even as documentation.
+  // Post-WR-01 fix the actual assembled chips are 37 chars for IT and DE.
 
   /**
    * Boot splash chip — long-press is a no-op during boot splash.
