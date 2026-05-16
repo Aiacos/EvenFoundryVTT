@@ -59,6 +59,22 @@ export interface AuditEntry {
    * exposing the full token (T-02-01 carry-forward from Phase 3 threat model).
    */
   bearer_id: string;
+  /**
+   * Optional attack ID for multi-attack weapon-attack sequences (Plan 09-01).
+   *
+   * Present only when the handler result carries `data.attackId` (i.e., the
+   * `weapon-attack` handler's Path B loop return value). Omitted (undefined, not
+   * null) for all other tools — absence is intentional, not an error.
+   *
+   * Used by `combat-action-tracker.ts` (Plan 09-01 Task 2) to dedupe multi-attack
+   * chat-cards: multiple cards with the same `attackId + actorId` composite count
+   * as ONE Action consumption (T-09-02 mitigation, T-09-04 repudiation fix).
+   *
+   * @see T-09-04 — repudiation: audit entry must include attackId so tracker can dedup.
+   * @see packages/foundry-module/src/write-path/handlers/weapon-attack.ts (attackId source)
+   * @see packages/foundry-module/src/write-path/combat-action-tracker.ts (consumer)
+   */
+  attackId?: string;
 }
 
 // ─── writeAuditLog ────────────────────────────────────────────────────────────

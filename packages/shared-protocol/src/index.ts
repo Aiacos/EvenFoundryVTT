@@ -193,6 +193,18 @@ export {
   DropConcentrationInputSchema,
 } from './tools/drop-concentration.js';
 
+// ─── Phase 9 additions (Plan 09-01) ──────────────────────────────────────────
+// Action economy payload schema (COMB-02 telemetry).
+// combat-action-tracker.ts in foundry-module emits envelopes of this shape.
+// action-economy-dispatcher.ts in g2-app consumes them via double trust boundary.
+// action-economy-state.ts in g2-app caches the latest per-actor state for Plan 09-02.
+
+export {
+  type ActionEconomyPayload,
+  ActionEconomyPayloadSchema,
+  R1_ACTION_ECONOMY_TYPE,
+} from './payloads/action-economy.js';
+
 // ─── Phase 8 additions (Plan 08-01) ──────────────────────────────────────────
 // Action result payload schema (ACT-01).
 // action-result-dispatcher.ts consumes this at the WS-receive trust boundary.

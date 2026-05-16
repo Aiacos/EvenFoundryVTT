@@ -306,6 +306,23 @@ export async function dispatchTool(
   }
 
   // Step 7: audit log (fault-tolerant — failure must NOT propagate)
+  // Plan 09-01 T-09-04: propagate attackId from handler result when present.
+  // weapon-attack handler returns { success: true, data: { attackId, attacks } }.
+  // Extracting attackId here (at the dispatchTool boundary) avoids changing the
+  // weapon-attack handler and keeps the audit-log as the single authoritative
+  // source for chat-card deduplication (combat-action-tracker reads it via
+  // flags.evf.audit.attackId).
+  const resultAttackId: string | undefined =
+    result.success &&
+    result.data !== null &&
+    result.data !== undefined &&
+    typeof result.data === 'object' &&
+    'attackId' in result.data &&
+    typeof (result.data as Record<string, unknown>).attackId === 'string' &&
+    ((result.data as Record<string, unknown>).attackId as string).length > 0
+      ? ((result.data as Record<string, unknown>).attackId as string)
+      : undefined;
+
   const auditEntry: AuditEntry = {
     tool: toolId,
     payload: payload.args,
@@ -314,6 +331,7 @@ export async function dispatchTool(
     result,
     timestamp: Date.now(),
     bearer_id: bearerHash.slice(0, 8), // T-02-01: never the full token
+    ...(resultAttackId !== undefined ? { attackId: resultAttackId } : {}),
   };
   try {
     await writeAuditLog(auditEntry);
