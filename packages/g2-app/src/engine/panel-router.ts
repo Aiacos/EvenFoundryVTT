@@ -37,6 +37,7 @@ import type { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
 import type { LayerManager } from './layer-manager.js';
 import type { OverlayPanel } from './layer-types.js';
 import { ZIndex } from './layer-types.js';
+import { isOverlayPanel } from './overlay-panel.js';
 import type { PanelGestureBus } from './panel-gesture-bus.js';
 
 // ─── PanelMeta contract ───────────────────────────────────────────────────────
@@ -50,7 +51,11 @@ import type { PanelGestureBus } from './panel-gesture-bus.js';
  * Field constraints:
  *   - `id`           — stable kebab-case identifier used for routing; min 1 char.
  *   - `title`        — localised panel title (IT + EN required; DE optional).
- *   - `navKey`       — single-character Quick Action menu key (e.g. `'S'` for Sheet).
+ *   - `navKey`       — Single-character Quick Action menu key (e.g. `'S'` for Sheet).
+ *                      Empty string `''` is reserved for system overlays opened directly
+ *                      via `pushOverlay()` (e.g. QuickActionMenuPanel) — these are filtered
+ *                      out of `discoverPanels()` registry so they never appear in the
+ *                      user-navigable nav set. `max(1)` accepts both single-char and empty.
  *   - `requiredCaps` — server capability names checked against negotiated caps;
  *                      absent = no caps required (all Phase 5 panels use `[]`).
  *   - `defaultTab`   — optional initial tab for tabbed panels.
@@ -62,7 +67,7 @@ export const PanelMetaSchema = z.object({
     en: z.string(),
     de: z.string().optional(),
   }),
-  navKey: z.string().length(1),
+  navKey: z.string().max(1),
   requiredCaps: z.array(z.string()).optional(),
   defaultTab: z.string().optional(),
 });
@@ -165,6 +170,25 @@ export class PanelRouter {
   private _cachedLayerManager: LayerManager | null = null;
 
   /**
+   * Overlay suspension stack for `pushOverlay` / `popOverlay`.
+   *
+   * When a z=2 panel is already mounted and `pushOverlay` is called, the existing
+   * panel is suspended (its instance reference pushed here) and the new panel
+   * atomically replaces it via a single `bundle([destroy, mount])` call.
+   * `popOverlay` pops the stack and restores the suspended panel in a single
+   * atomic bundle — JS reference semantics mean the panel's state fields survive
+   * the `onUnmount → onMount` round-trip.
+   *
+   * Invariant: `overlayStack.length === 0` when no overlay is currently pushed
+   * on top of a "primary" z=2 panel. The stack grows when menus are nested
+   * (Phase 6+ does not nest menus in MVP, so max depth is 1).
+   *
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q3 (suspension semantics)
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 3 (single atomic bundle)
+   */
+  private readonly overlayStack: OverlayPanel[] = [];
+
+  /**
    * Discover and register all `*-panel.ts` modules in `../panels/**`.
    *
    * Uses Vite's `import.meta.glob` with `{ eager: false }` for lazy loading
@@ -202,6 +226,14 @@ export class PanelRouter {
         }
 
         const meta = parseResult.data;
+
+        // Filter out system overlays (empty navKey) — they are opened directly via
+        // `pushOverlay()` and must NOT appear in the user-navigable nav set.
+        // Silent skip — no console.warn; this is expected exclusion, not malformed input.
+        if (meta.navKey === '') {
+          continue;
+        }
+
         this.registry.set(meta.id, { meta, Cls });
       } catch (err) {
         console.warn(`[PanelRouter] panel ${path} excluded: load error`, err);
@@ -307,6 +339,98 @@ export class PanelRouter {
     await layerManager.bundle([{ type: 'destroy', z: ZIndex.Z2_OVERLAY }]);
     this.activePanel = null;
     this.activeId = null;
+  }
+
+  /**
+   * Push an overlay panel on top of whatever is currently mounted at z=2.
+   *
+   * **Suspension semantics (RESEARCH §Q3):** if a panel is currently at z=2, its
+   * instance is pushed onto `overlayStack` (JS reference — GC will NOT reclaim it).
+   * The instance's in-memory state (activeIndex, mode, etc.) is fully preserved
+   * through the `onUnmount → onMount` round-trip when `popOverlay` restores it.
+   *
+   * **Single atomic bundle (RESEARCH Pitfall 3):** both the destroy of the current
+   * panel AND the mount of `panel` are batched into ONE `layerManager.bundle()` call.
+   * This eliminates the intermediate frame where z=2 is empty (visible flicker).
+   *
+   * If no panel is currently at z=2, a single-op `[{type:'mount', z:2, layer:panel}]`
+   * bundle is issued — nothing to suspend, nothing to destroy.
+   *
+   * @param panel        The overlay panel to mount at z=2 (typically QuickActionMenuPanel)
+   * @param layerManager LayerManager singleton — also cached as `_cachedLayerManager`
+   *
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q3
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 3
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
+   */
+  async pushOverlay(panel: OverlayPanel, layerManager: LayerManager): Promise<void> {
+    this._cachedLayerManager = layerManager;
+
+    const current = layerManager.getLayer(ZIndex.Z2_OVERLAY);
+
+    if (current !== undefined && isOverlayPanel(current)) {
+      // Suspend the current panel — preserve its instance on the stack.
+      this.overlayStack.push(current as OverlayPanel);
+      // Single atomic bundle: destroy current + mount new (RESEARCH Pitfall 3).
+      await layerManager.bundle([
+        { type: 'destroy', z: ZIndex.Z2_OVERLAY },
+        { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel },
+      ]);
+    } else {
+      // Nothing at z=2 — simple single-op mount.
+      await layerManager.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
+    }
+
+    this.activePanel = panel;
+    this.activeId = panel.id;
+  }
+
+  /**
+   * Pop the top overlay panel, restoring the previously suspended panel if any.
+   *
+   * **Defensive guard (RESEARCH Pitfall 4):** if no panel is currently mounted at
+   * z=2, the call is a no-op with a `console.warn` telemetry entry. The guard
+   * prevents double-pops from corrupting the stack.
+   *
+   * **Restore path:** if `overlayStack` is non-empty, the suspended panel is popped
+   * and remounted in a single atomic `[destroy, mount]` bundle. Its in-memory state
+   * is fully preserved (JS reference semantics per RESEARCH §Q3).
+   *
+   * **Empty-stack path:** if `overlayStack` is empty, only a `[destroy]` bundle is
+   * issued. The LayerManager's differential demolish rule (ADR-0009 Amendment 1)
+   * automatically reinstates the z=0.5 `IdleInfillLayer` in the same flush.
+   *
+   * @param layerManager LayerManager singleton
+   *
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 4 (empty-stack guard)
+   * @see docs/architecture/0009-layer-manager-contract.md Amendment 1 (differential demolish)
+   */
+  async popOverlay(layerManager: LayerManager): Promise<void> {
+    const current = layerManager.getLayer(ZIndex.Z2_OVERLAY);
+
+    if (current === undefined) {
+      // Defensive guard — nothing at z=2, so pop is a no-op.
+      console.warn('[PanelRouter] popOverlay: no z=2 mounted — idempotent no-op');
+      return;
+    }
+
+    const restored = this.overlayStack.pop(); // undefined on empty stack
+
+    if (restored !== undefined) {
+      // Restore the suspended panel atomically (RESEARCH §Q3 + Pitfall 3).
+      await layerManager.bundle([
+        { type: 'destroy', z: ZIndex.Z2_OVERLAY },
+        { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: restored },
+      ]);
+      this.activePanel = restored;
+      this.activeId = restored.id;
+    } else {
+      // Empty stack — destroy only; differential demolish auto-restores z=0.5
+      // (ADR-0009 Amendment 1).
+      await layerManager.bundle([{ type: 'destroy', z: ZIndex.Z2_OVERLAY }]);
+      this.activePanel = null;
+      this.activeId = null;
+    }
   }
 
   /**

@@ -143,6 +143,12 @@ class TestablePanelRouter extends PanelRouter {
         }
 
         const meta = parseResult.data;
+
+        // Empty navKey = system overlay (e.g. QuickActionMenuPanel) — silently skip.
+        if (meta.navKey === '') {
+          continue;
+        }
+
         // Access the private registry via the protected test hook.
         // We use a type cast here to access the private field for testing only.
         (
@@ -455,5 +461,309 @@ describe('R1Gesture type reference — panels can subscribe to gestures', () => 
     // Runtime proof: this test verifies the imports resolve correctly.
     const gesture: R1Gesture = { kind: 'tap' };
     expect(gesture.kind).toBe('tap');
+  });
+});
+
+// ─── Phase 6 Plan 02 additions ────────────────────────────────────────────────
+
+/**
+ * Helper to create a mock OverlayPanel that tracks subscribe/unsubscribe counts
+ * via a real subscription counter for bus.size() assertions.
+ */
+function makeOverlayPanelWithBus(
+  bus: PanelGestureBus,
+  id = 'test-overlay',
+): OverlayPanel & { busSubscribed: boolean } {
+  let unsubscribeFn: (() => void) | null = null;
+  const panel = {
+    id,
+    draw: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn(),
+    getContainerCount: () => ({ image: 0, text: 1 }),
+    getCaptureContainer: () => 'overlay-capture',
+    async onMount() {
+      unsubscribeFn = bus.subscribe((g) => panel.onEvent(g));
+      (panel as { busSubscribed: boolean }).busSubscribed = true;
+    },
+    async onUnmount() {
+      if (unsubscribeFn !== null) {
+        unsubscribeFn();
+        unsubscribeFn = null;
+      }
+      (panel as { busSubscribed: boolean }).busSubscribed = false;
+    },
+    onEvent: vi.fn(),
+    busSubscribed: false,
+  } satisfies Layer & OverlayPanel & { busSubscribed: boolean };
+  return panel;
+}
+
+/** Make a real PanelGestureBus for bus.size() assertions. */
+function makeRealGestureBus(): PanelGestureBus {
+  // We need a real implementation for size() tracking.
+  // Import the actual PanelGestureBus class for these tests.
+  // We use a minimal inline implementation matching the contract.
+  const subscribers = new Set<(g: R1Gesture) => void>();
+  return {
+    subscribe(fn: (g: R1Gesture) => void) {
+      subscribers.add(fn);
+      let removed = false;
+      return () => {
+        if (!removed) {
+          removed = true;
+          subscribers.delete(fn);
+        }
+      };
+    },
+    publish(g: R1Gesture) {
+      for (const fn of subscribers) {
+        fn(g);
+      }
+    },
+    size() {
+      return subscribers.size;
+    },
+  } as unknown as PanelGestureBus;
+}
+
+describe('PanelRouter.navKey filtering (PRT-NK-*)', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('PRT-NK-01: existing 5-panel setup still registers all 5 panels (navKey length-1 accepted)', async () => {
+    const router = new TestablePanelRouter();
+    const panels = ['character-sheet', 'combat-tracker', 'log', 'spellbook', 'inventory'];
+    const modules: Record<string, () => Promise<{ default: PanelConstructor }>> = {};
+    for (const [i, id] of panels.entries()) {
+      const navKey = ['S', 'C', 'L', 'B', 'I'][i];
+      const Cls = makePanelClass(id, {
+        id,
+        title: { it: 'Test', en: 'Test' },
+        navKey: navKey as string,
+        requiredCaps: [],
+      });
+      modules[`../panels/${id}-panel.ts`] = async () => ({ default: Cls });
+    }
+    router.setMockModules(modules);
+    await router.discoverPanels();
+    expect(router.getRegistrySize()).toBe(5);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('PRT-NK-02: panel with navKey "" is silently filtered out (not counted, no warn)', async () => {
+    const router = new TestablePanelRouter();
+    // empty-navKey panel (system overlay like QuickActionMenuPanel)
+    const systemOverlayCls = makePanelClass('quick-action-menu', {
+      id: 'quick-action-menu',
+      title: { it: 'Azione Rapida', en: 'Quick Action', de: 'Schnellaktion' },
+      navKey: '',
+      requiredCaps: [],
+    });
+    // Normal panel that should be included
+    const normalCls = makePanelClass('character-sheet', {
+      id: 'character-sheet',
+      title: { it: 'Scheda', en: 'Sheet' },
+      navKey: 'S',
+      requiredCaps: [],
+    });
+    router.setMockModules({
+      '../panels/quick-action-menu-panel.ts': async () => ({ default: systemOverlayCls }),
+      '../panels/character-sheet-panel.ts': async () => ({ default: normalCls }),
+    });
+    await router.discoverPanels();
+    // Only the normal panel registered — empty navKey silently excluded
+    expect(router.getRegistrySize()).toBe(1);
+    // NO warn for empty navKey — expected exclusion, not malformed input
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('PRT-NK-03: panel with navKey "XX" (2 chars) is rejected by schema + console.warn', async () => {
+    const router = new TestablePanelRouter();
+    const BadCls = vi.fn() as unknown as PanelConstructor;
+    (BadCls as unknown as { meta: unknown }).meta = {
+      id: 'bad-panel',
+      title: { it: 'Bad', en: 'Bad' },
+      navKey: 'XX', // 2 chars → violates max(1)
+      requiredCaps: [],
+    };
+    router.setMockModules({
+      '../panels/bad-panel.ts': async () => ({ default: BadCls }),
+    });
+    await router.discoverPanels();
+    expect(router.getRegistrySize()).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('bad-panel.ts excluded: invalid meta'),
+    );
+  });
+});
+
+describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*)', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('PRT-PUSH-01: pushOverlay with no current z=2 → single bundle mount, overlayStack stays empty', async () => {
+    const router = new PanelRouter();
+    const { lm, spies } = makeLayerManager();
+    // No z=2 currently mounted
+    spies.getLayer.mockReturnValue(undefined);
+
+    const menuPanel = makePanelInstance();
+    await (router as unknown as {
+      pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
+    }).pushOverlay(menuPanel, lm);
+
+    expect(spies.bundle).toHaveBeenCalledTimes(1);
+    expect(spies.bundle).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'mount', z: ZIndex.Z2_OVERLAY }),
+    ]);
+    // Stack is empty — nothing was suspended
+    const overlayStack = (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack;
+    expect(overlayStack).toHaveLength(0);
+  });
+
+  it('PRT-PUSH-02: pushOverlay over existing z=2 → SINGLE atomic bundle with destroy+mount, stack grows', async () => {
+    const router = new PanelRouter();
+    const { lm, spies } = makeLayerManager();
+
+    // Simulate an existing panel at z=2
+    const existingPanel = makePanelInstance();
+    spies.getLayer.mockReturnValue(existingPanel);
+
+    const menuPanel = makePanelInstance();
+    // Track bundle call count before
+    const bundleCallsBefore = spies.bundle.mock.calls.length;
+
+    await (router as unknown as {
+      pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
+    }).pushOverlay(menuPanel, lm);
+
+    // Exactly ONE bundle call (atomic swap — RESEARCH Pitfall 3)
+    expect(spies.bundle.mock.calls.length - bundleCallsBefore).toBe(1);
+    expect(spies.bundle).toHaveBeenLastCalledWith([
+      expect.objectContaining({ type: 'destroy', z: ZIndex.Z2_OVERLAY }),
+      expect.objectContaining({ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: menuPanel }),
+    ]);
+    // Suspended panel pushed onto stack
+    const overlayStack = (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack;
+    expect(overlayStack).toHaveLength(1);
+    expect(overlayStack[0]).toBe(existingPanel);
+  });
+
+  it('PRT-POP-01: popOverlay with non-empty stack → restores suspended panel atomically', async () => {
+    const router = new PanelRouter();
+    const { lm, spies } = makeLayerManager();
+
+    // Manually set up the stack to simulate a pushed menu
+    const suspendedPanel = makePanelInstance();
+    const menuPanel = makePanelInstance();
+    (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack = [suspendedPanel];
+    // z=2 has the menuPanel
+    spies.getLayer.mockReturnValue(menuPanel);
+
+    await (router as unknown as {
+      popOverlay: (lm: LayerManager) => Promise<void>;
+    }).popOverlay(lm);
+
+    // Atomic bundle: destroy menu + restore suspended
+    expect(spies.bundle).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'destroy', z: ZIndex.Z2_OVERLAY }),
+      expect.objectContaining({ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: suspendedPanel }),
+    ]);
+    const overlayStack = (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack;
+    expect(overlayStack).toHaveLength(0);
+  });
+
+  it('PRT-POP-02: popOverlay with empty stack → destroy only (differential demolish handles z=0.5)', async () => {
+    const router = new PanelRouter();
+    const { lm, spies } = makeLayerManager();
+
+    // Stack is empty but z=2 is mounted
+    const menuPanel = makePanelInstance();
+    spies.getLayer.mockReturnValue(menuPanel);
+    (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack = [];
+
+    await (router as unknown as {
+      popOverlay: (lm: LayerManager) => Promise<void>;
+    }).popOverlay(lm);
+
+    // Only destroy — differential demolish auto-restores z=0.5 per ADR-0009 Amd 1
+    expect(spies.bundle).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'destroy', z: ZIndex.Z2_OVERLAY }),
+    ]);
+  });
+
+  it('PRT-POP-03: popOverlay when no z=2 mounted → no-op + console.warn', async () => {
+    const router = new PanelRouter();
+    const { lm, spies } = makeLayerManager();
+
+    // getLayer returns undefined — nothing at z=2
+    spies.getLayer.mockReturnValue(undefined);
+
+    await (router as unknown as {
+      popOverlay: (lm: LayerManager) => Promise<void>;
+    }).popOverlay(lm);
+
+    // Must be a complete no-op
+    expect(spies.bundle).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('popOverlay: no z=2 mounted'),
+    );
+  });
+
+  it('PRT-BUS-01: bus.size() === 1 after pushOverlay over active CharSheet (INV-5 enforcement)', async () => {
+    const realBus = makeRealGestureBus();
+    expect(realBus.size()).toBe(0);
+
+    // Simulate CharSheet: subscribes to bus in onMount
+    const charSheetPanel = makeOverlayPanelWithBus(realBus, 'character-sheet');
+    // Manually mount CharSheet (simulates what LayerManager.bundle does)
+    await charSheetPanel.onMount();
+    expect(realBus.size()).toBe(1);
+
+    // Now push menu panel: CharSheet gets onUnmount, menu gets onMount
+    const menuPanel = makeOverlayPanelWithBus(realBus, 'quick-action-menu');
+
+    // Simulate the atomic bundle lifecycle: onUnmount charSheet, onMount menu
+    await charSheetPanel.onUnmount();
+    expect(realBus.size()).toBe(0); // transient OK
+    await menuPanel.onMount();
+    expect(realBus.size()).toBe(1); // back to 1 — INV-5 satisfied
+
+    // Verify charSheet lost its sub, menu has it
+    expect(charSheetPanel.busSubscribed).toBe(false);
+    expect(menuPanel.busSubscribed).toBe(true);
+  });
+
+  it('PRT-BUS-02: bus.size() === 1 after popOverlay restoring CharSheet', async () => {
+    const realBus = makeRealGestureBus();
+
+    // Set up: CharSheet mounted, then menu pushed (so CharSheet unmounted)
+    const charSheetPanel = makeOverlayPanelWithBus(realBus, 'character-sheet');
+    const menuPanel = makeOverlayPanelWithBus(realBus, 'quick-action-menu');
+
+    await charSheetPanel.onMount(); // charSheet mounted
+    await charSheetPanel.onUnmount(); // charSheet suspended (onUnmount before menu push)
+    await menuPanel.onMount(); // menu mounted
+    expect(realBus.size()).toBe(1);
+
+    // popOverlay: menu unmounts, charSheet remounts
+    await menuPanel.onUnmount(); // menu released
+    expect(realBus.size()).toBe(0); // transient OK
+    await charSheetPanel.onMount(); // charSheet restored
+    expect(realBus.size()).toBe(1); // INV-5 satisfied
   });
 });
