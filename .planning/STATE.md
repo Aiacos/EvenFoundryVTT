@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_9_CLOSED — 5/5 plans committed; ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher + Action Economy Widget + client preconditioner + concentration drop end-to-end + SlotPickerPanel + ISM-W9 integration smoke. 2036 tests pass. 14-socketlib-handler invariant upheld.
-stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-16T23:35:00.000Z"
-last_activity: "2026-05-16 — Phase 9 CLOSED — Plan 05 (Wave 4): ISM-W9-01..10 g2-app integration smoke (real action-economy-dispatcher + conc-retry-cache + ActionOptionsModal + ConcentrationDropModalPanel + SlotPickerPanel + mock bridge/WS) + FM-ISM-W9-01..10 foundry-module smoke (concentration-detector + cast-spell slot forwarding + combat-action-tracker + action-result-watcher). 2036 tests pass. 14-socketlib-handler invariant confirmed in ISM-W9-10 + FM-ISM-W9-09. 3 hardware-pending SCs (SC-09-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 29 hardware-pending."
+status: PHASE_10_IN_PROGRESS — 1/5 plans committed; WsReconnectController + SeqTracker + SYNC LOST chip + boot-engine wiring. 1232 tests pass. T-10-01 stale-seq mitigation implemented.
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-05-17T00:00:00.000Z"
+last_activity: "2026-05-17 — Phase 10 Plan 01 complete — WsReconnectController (exponential backoff 1s→30s cap) + SeqTracker (monotonic seq tracking) + buildSyncLostChip + StatusHudLayer.setSyncLost + boot-engine wiring. T-10-01 mitigation: resume_full_snapshot forces seqTracker.reset() before onFullRefreshRequired. 1232 tests pass (+26 new: ST-01..07, WSR-01..07+03b, SLC-01..06b)."
 progress:
   total_phases: 15
-  completed_phases: 10
-  total_plans: 55
-  completed_plans: 59
-  percent: 68
+  completed_phases: 11
+  total_plans: 60
+  completed_plans: 57
+  percent: 95
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 9 (action-economy-edge-cases — CLOSED) → Phase 10 next
-Plan: 09-05 complete — Wave 4 ISM-W9-01..10 g2-app + FM-ISM-W9-01..10 foundry-module integration smoke + Phase 9 closure.
-Status: PHASE_9_CLOSED — 5/5 plans committed; ActionEconomyPayloadSchema + combat-action-tracker + action-economy-dispatcher + Action Economy Widget + client preconditioner + concentration drop end-to-end + SlotPickerPanel + ISM-W9 integration smoke. 2036 tests pass. 14-socketlib-handler invariant upheld.
+Phase: 10 (polish-field-test-mvp — IN PROGRESS)
+Plan: 10-01 complete — WS reconnect controller + SeqTracker + SYNC LOST chip + boot-engine wiring.
+Status: PHASE_10_IN_PROGRESS — 1/5 plans committed; WsReconnectController (exponential backoff) + SeqTracker + buildSyncLostChip + i18n keys + INV-1 fixtures + StatusHudLayer.setSyncLost. T-10-01 mitigated. 1232 tests pass.
 
-Last activity: 2026-05-16 — Phase 8 CLOSED — Plan 05 (Wave 4): CombatTrackerPanel double-tap QA-bar [A][S][I][M] + boot-engine steps 11e..11g (attachActionResultHandler, ToastQueueLayer mount, setPanelInstanceHandler factory closures for spellbook/inventory/combat-tracker) + ISM-W8-01..10 integration smoke (real dispatchers + mock bridge/WS). 1858 tests pass. 14-socketlib-handler invariant confirmed in ISM-W8-10. 3 hardware-pending SCs (SC-08-01..03) deferred to ADR-0005 Branch A human_needed. Running total: 26 hardware-pending.
+Last activity: 2026-05-17 — Phase 10 Plan 01 complete — WsReconnectController (exponential backoff 1s→30s cap, client_resume, resume_replay/resume_full_snapshot handling) + SeqTracker (monotonic seq tracking, duck-typed observe) + buildSyncLostChip (IT/EN ≤38 code-points INV-1) + StatusHudLayer.setSyncLost + boot-engine wiring at steps 10+11a. T-10-01 mitigation: buffer_gap forces seqTracker.reset() before onFullRefreshRequired (WSR-07). +26 tests (ST-01..07, WSR-01..07+03b, SLC-01..06b). 1232 total. onFullRefreshRequired is console.warn stub — REST /v1/actor wiring deferred to Plan 10-04.
 
 Previous activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
 
@@ -58,7 +58,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [██████████] 98%
+Progress: [█████████░] 93%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -130,6 +130,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 09-action-economy-edge-cases P02 | 120 | 3 tasks | 13 files |
 | Phase 09-action-economy-edge-cases P03 | 16 | 3 tasks | 18 files |
 | Phase 09-action-economy-edge-cases P04 | 16m | 3 tasks | 15 files |
+| Phase 10-polish-field-test-mvp P01 | 17m | 4 tasks | 13 files |
 
 ## Quick Tasks Completed
 
@@ -206,6 +207,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 08 Plan 05]: PanelRouter.setPanelInstanceHandler post-construction injection registry (Map<panelId, callback>) avoids threading handlers through 3-arg constructor signature
 - [Phase 08 Plan 05]: currentUserId stub is '<unknown>' — bearer user_id not yet surfaced in handshake; TODO(ADR-0005); T-08-02 filter still active (unknown !== real recipientUserId → silent drop)
 - [Phase 08 Plan 05]: ToastQueueLayer mounted at z=1.5 in boot sequence (Step 11e) — was missing from prior boot-engine wiring, added as Rule 2 correctness requirement
+- [Phase 10 Plan 01]: Recursive setTimeout for countdown ticks instead of setInterval — avoids vitest runAllTimersAsync infinite-loop on chained retries (pragmatic test-compatibility choice; production behavior identical)
+- [Phase 10 Plan 01]: SeqTracker.observe is duck-typed {seq:number} — no Zod parse on hot path (WS envelope already validated upstream by EnvelopeSchema)
+- [Phase 10 Plan 01]: onFullRefreshRequired is a console.warn stub in boot-engine-core — REST GET /v1/actor wiring deferred to Plan 10-04 per SC-10-01 (hardware-pending, no actor REST endpoint shipped yet)
 
 ### Pending Todos
 
@@ -229,7 +233,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T23:35:00.000Z
+Last session: 2026-05-16T23:15:04.824Z
 Stopped at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
 Resume file: None
 Resume cmd: /gsd-execute-phase 10 01

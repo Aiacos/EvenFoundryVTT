@@ -273,10 +273,10 @@ Plans:
   3. **Multi-session field test** completed across ≥2 real D&D sessions with a consenting DM (research extension: not just one 4 h session); NASA-TLX or Borg CR-10 eye-fatigue self-report score recorded; mid-session DM-setting-change broadcast verified (research Pitfall 8)
   4. **Microwave / 2.4 GHz worst-case RF test** completed in-session; G2 either sustains raster or degrades cleanly to glyph (Specs §11.5.8.2) without losing session state (research Pitfall 2)
   5. README, setup guide, video demo, runbook, firmware compatibility matrix (research Pitfall 7) all shipped under `docs/`; INV-1..5 verification suite is green
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 Plans:
 **Wave 0**
-- [ ] 10-01-PLAN.md — WS reconnect module + lastConfirmedSeq tracker + ⚠ SYNC LOST chip + 2 INV-1 fixtures (SC-1, T-10-01)
+- [x] 10-01-PLAN.md — WS reconnect module + lastConfirmedSeq tracker + ⚠ SYNC LOST chip + 2 INV-1 fixtures (SC-1, T-10-01)
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 10-02-PLAN.md — Perf probe module + r1.perf.sample envelope + docs/perf/phase-10-latency.md template (SC-2 software; SC-10-02 hardware-pending; T-10-02)
 **Wave 2** *(blocked on Wave 1)*
@@ -336,7 +336,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 7. Foundry Module Write Path | 6/6 | Complete   | 2026-05-16 |
 | 8. Manual Action UX | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
-| 10. Polish & Field Test MVP | 0/TBD | Not started | - |
+| 10. Polish & Field Test MVP | 1/5 | In Progress|  |
 | 11. V2 `foundry-mcp` Server | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
