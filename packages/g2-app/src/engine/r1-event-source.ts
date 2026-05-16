@@ -54,7 +54,7 @@
 import { EnvelopeSchema, R1_GESTURE_TYPE, R1GesturePayloadSchema } from '@evf/shared-protocol';
 import type { LayerManager } from './layer-manager.js';
 import type { PanelGestureBus } from './panel-gesture-bus.js';
-import { type R1Gesture } from './layer-types.js';
+import type { R1Gesture } from './layer-types.js';
 import { DEFAULT_R1_TIMINGS, type R1Timings } from './r1-timings.js';
 
 /**

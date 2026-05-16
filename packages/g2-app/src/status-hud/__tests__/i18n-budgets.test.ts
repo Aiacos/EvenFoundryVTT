@@ -225,14 +225,15 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 = 134 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 = 140 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
     // Phase 5 totals: 15 Main + 2 Skills + 7 Inv-sheet + 6 Spells-sheet +
     // 6 Feats + 6 Bio + 11 Combat + 13 Log + 5 Inv-panel + 11 Spellbook +
     // 4 empty-states + 5 panel-titles + 5 footer-hints + 2 router = 98 new keys.
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(134);
+    // Phase 6 totals (Plan 06-01 Wave-0): 6 R1 chip vocabulary keys.
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(140);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -258,7 +259,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
 
 describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
   // ─── Count ────────────────────────────────────────────────────────────────
-  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 = 134 total)', () => {
+  it('IB-P5-COUNT: 98 Phase 5 keys added (36 existing + 98 + 6 Phase 6 = 140 total)', () => {
     // Sentinel spot-check — a few representative keys from each UI-SPEC section.
     const PHASE_5_SAMPLE_KEYS = [
       'sheet.ability.str',
@@ -302,7 +303,7 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     for (const key of PHASE_5_SAMPLE_KEYS) {
       expect(HUD_WIDTH_BUDGETS, `missing Phase 5 key: ${key}`).toHaveProperty(key);
     }
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(134);
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(140);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────

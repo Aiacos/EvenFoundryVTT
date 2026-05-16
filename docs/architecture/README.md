@@ -38,4 +38,5 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 ## See also
 
 - [Specs.md §0.1](../../Specs.md) — INV-1/2/3/4 binding rules
+- [INVARIANTS.md](./INVARIANTS.md) — consolidated INV-1..5 ratification (INV-5 Gesture Determinism added Phase 6)
 - [.planning/ROADMAP.md](../../.planning/ROADMAP.md) — phase plan

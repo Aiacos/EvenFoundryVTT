@@ -605,6 +605,39 @@ export const HUD_WIDTH_BUDGETS = {
     de: '<panel> erfordert <cap> — nicht verfügbar',
     max: 42,
   },
+
+  // ─── Phase 6 — R1 context chip vocabulary (Plan 06-01 Wave-0 centralisation) ─
+  // 6 keys for the status-HUD footer chip (Plan 06-03 consumer) and the
+  // boot-state chip variants. All within budget. `inv5_chip_tooltip` is reserved
+  // vocabulary for a future tooltip overlay — NOT rendered in Phase 6 chip.
+
+  /** Default `tap=` label shown when no overlay is active (main HUD state). */
+  hud_r1_default_tap: { it: 'cicla', en: 'cycle', de: 'Wechsel', max: 22 },
+
+  /** Default `scroll=` label shown when no overlay is active. */
+  hud_r1_default_scroll: { it: 'nav', en: 'nav', de: 'Nav', max: 22 },
+
+  /** Default long-press label shown when no overlay is active. */
+  hud_r1_default_long: { it: 'quick', en: 'quick', de: 'Schnell', max: 22 },
+
+  /** Boot-splash chip placeholder — long-press is a no-op during splash. */
+  hud_r1_boot_label: { it: '—', en: '—', de: '—', max: 4 },
+
+  /** Boot-error long-press label — long-press retries the boot sequence. */
+  hud_r1_boot_error_label: { it: 'riprova', en: 'retry', de: 'erneut', max: 22 },
+
+  /**
+   * INV-5 tooltip vocabulary — centralises the Gesture Determinism chip label.
+   * NOT rendered as a chip in Phase 6; reserved for a future tooltip overlay.
+   * The `_tooltip` suffix exempts it from IB-3 literal-length check (same as
+   * `_template` suffix exemption, Phase 4b Plan 01 Deviation #2 precedent).
+   */
+  inv5_chip_tooltip: {
+    it: 'INV-5: long-press apre il menu del livello attivo',
+    en: 'INV-5: long-press opens active layer menu',
+    de: 'INV-5: Halten öffnet Menü der aktiven Ebene',
+    max: 60,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

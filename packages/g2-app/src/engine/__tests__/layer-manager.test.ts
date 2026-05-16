@@ -653,7 +653,7 @@ function makeTopLayerOverlayPanel(id: string): OverlayPanel {
     id,
     draw: vi.fn().mockResolvedValue(undefined),
     destroy: vi.fn(),
-    getCaptureContainer: () => id + '-capture',
+    getCaptureContainer: () => `${id}-capture`,
     getContainerCount: () => ({ image: 0, text: 1 }),
     onMount: vi.fn().mockResolvedValue(undefined),
     onUnmount: vi.fn().mockResolvedValue(undefined),
@@ -667,7 +667,7 @@ function makeTopLayerPlainLayer(id: string): Layer {
     id,
     draw: vi.fn().mockResolvedValue(undefined),
     destroy: vi.fn(),
-    getCaptureContainer: () => id + '-capture',
+    getCaptureContainer: () => `${id}-capture`,
     getContainerCount: () => ({ image: 0, text: 1 }),
   };
 }

@@ -80,7 +80,7 @@ function makeOverlayPanelStub(id: string): OverlayPanel {
     id,
     draw: vi.fn().mockResolvedValue(undefined),
     destroy: vi.fn(),
-    getCaptureContainer: () => id + '-capture',
+    getCaptureContainer: () => `${id}-capture`,
     onMount: vi.fn().mockResolvedValue(undefined),
     onUnmount: vi.fn().mockResolvedValue(undefined),
     onEvent: vi.fn(),
