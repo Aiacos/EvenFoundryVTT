@@ -23,7 +23,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 4b: Overlay Slot + Map Mode Toggle + Adversarial UI** - Stable layer-manager API for Phase 5 + map mode toggle + toast queue + boot error states + death-saves HUD + concentration-drop modal primitive *(6/6 plans complete 2026-05-15; hardware-pending SC deferred to `human_needed` per ADR-0005 Branch A; ADR-0009 Amendment 1 ACCEPTED documenting differential demolish + container budget audit + in-process gesture-bus)*
 - [x] **Phase 5: Panel Plugin System + Read-Only Panels** - Panel API contract + 6-tab Sheet + Combat tracker + Log + Inventory + Spellbook + i18n width budget + dual-edition support (completed 2026-05-15)
 - [x] **Phase 6: R1 Integration + Quick Action + INV-5** - R1 event source provider + event routing to top layer + Quick Action menu on long-press + cross-overlay reachability verification + ratify INV-5 Gesture Determinism
-- [ ] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger
+- [x] **Phase 7: Foundry Module Write Path** - `activity.use()` wrapper + targets + AoE templates + socketlib executeAsGM (single-workflow-origin option A) + MidiQOL workflow + multi-attack tracker + reaction passive-notification toast + concentration-drop trigger (6/6 plans complete 2026-05-16; hardware-pending SC-07-01..05 deferred to ADR-0005 Branch A human_needed; ADR-0011 ACCEPTED; registerComplexHandler count = 14)
 - [ ] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners
 - [ ] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow
 - [ ] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook
@@ -205,7 +205,7 @@ Plans:
   3. A Fighter L5+ Action shows `Atk 1/2` → `Atk 2/2` tracker; the second attack consumes correctly via the chosen route (`activity.use({count: 2})` or client-side loop — Phase 0 §10.0.10 P2 row resolved) (MULTI-01)
   4. When the player is targeted by a Shield/Counterspell/Opportunity Attack trigger, a passive-notification toast surfaces on G2 (display-only, no execution — execution stays V2 ACT-04) (REACT-01)
   5. Bearer rotation runs every 24 h with a 60 s grace window; every `executeAsGM` handler re-validates permissions; chat-message audit log records each GM-side action (research cross-cutting)
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 Plans:
 **Wave 0**
 - [x] 07-01-PLAN.md — Tool Registry + IdempotencyStore (bearer-bound SHA256 keys) + audit-log writer + foundry-globals.d.ts (game.users + ChatMessage + dnd5e namespace) + ADR-0011 ACCEPTED + CI Gate 8 single-workflow-origin guard
@@ -220,8 +220,8 @@ Plans:
 **Wave 3** *(blocked on Wave 2)*
 - [x] 07-05-PLAN.md — Reaction watcher (dnd5e.preUseActivity — CORRECT hook name per RESEARCH §Q3, NOT preActivityUse) + r1.reaction.available envelope + reaction-toast-dispatcher into Phase 4b toast queue + drop-concentration handler (effect.delete via executeAsGM) + ConcentrationDropModalPanel dual-emit (tool.invoke + legacy conc.drop.confirmed) + setTargets stub renamed → dropConcentration in-place (count stays 14) — REACT-01, CONC-01 closure
 
-**Wave 4** *(blocked on Wave 3; NOT autonomous — Phase 7 closure with hardware-pending SC carry)*
-- [ ] 07-06-PLAN.md — Bearer rotation scheduleBearerRotation() reusing generateBearer(refresh=true) infra (RESEARCH §Q6) + bearer.rotated envelope + 07-write-path-integration-smoke ISM-W7-01..08 + STATE.md PHASE_7_CLOSED + ROADMAP flip + INV-3 atomic commit
+**Wave 4** *(blocked on Wave 3)*
+- [x] 07-06-PLAN.md — Bearer rotation scheduleBearerRotation() reusing generateBearer(refresh=true) infra (RESEARCH §Q6) + bearer.rotated envelope + 07-write-path-integration-smoke ISM-W7-01..08 + STATE.md PHASE_7_CLOSED + ROADMAP flip + INV-3 atomic commit
 
 ### Phase 8: Manual Action UX
 **Goal**: Player can cast a spell, use an item, attack, or move entirely via R1 from the G2 overlays; every action surfaces a result toast.
@@ -305,7 +305,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 4b. Overlay Slot + Map Mode Toggle + Adversarial UI | 6/6  | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-15 |
 | 5. Panel Plugin System + Read-Only Panels | 6/6 | Complete   | 2026-05-15 |
 | 6. R1 Integration + Quick Action + INV-5 | 3/4 | In Progress|  |
-| 7. Foundry Module Write Path | 5/6 | In Progress|  |
+| 7. Foundry Module Write Path | 6/6 | Complete   | 2026-05-16 |
 | 8. Manual Action UX | 0/TBD | Not started | - |
 | 9. Action Economy & Edge Cases | 0/TBD | Not started | - |
 | 10. Polish & Field Test MVP | 0/TBD | Not started | - |

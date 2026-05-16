@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03/04 committed; 2 remaining plans pending.
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-05-16T13:13:07.029Z"
-last_activity: "2026-05-16 — Plan 07-04 complete: MULTI-01 (Path B client-side loop + r1.multiattack.progress envelope + [Atk N/M] CombatTracker chip + multi-attack-progress-dispatcher double trust boundary). 1532 tests pass. socketlib count stays 14. INV-1 fixture generated. SC-07-04 hardware-pending."
+status: PHASE_7_CLOSED — Plans 01-06 all committed; hardware-pending SC-07-01..05 carried to ADR-0005 Branch A.
+stopped_at: Completed 07-06-PLAN.md
+last_updated: "2026-05-16T13:32:28.187Z"
+last_activity: "2026-05-16 — Phase 7 CLOSED: Plan 07-06 complete — bearer rotation scheduler (TTL_24H_MS+GRACE_60S_MS exports + getActiveBearer + scheduleBearerRotation + BEARER_ROTATED_TYPE) + ISM-W7-01..08 integration smoke harness (10 tests). 328 tests pass. socketlib count stays 14. 5 hardware-pending SC carried to ADR-0005 Branch A. ADR-0011 ACCEPTED. Phase 8 unblocked."
 progress:
   total_phases: 15
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 45
-  completed_plans: 44
-  percent: 53
+  completed_plans: 45
+  percent: 60
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 7 (foundry-module-write-path — IN PROGRESS)
-Plan: 07-04 complete — Wave 2 MULTI-01 multi-attack loop + progress chip. Next: Plan 07-05 (or equivalent).
-Status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03/04 committed; 2 remaining plans pending.
+Phase: 7 (foundry-module-write-path — CLOSED 2026-05-16)
+Plan: 07-06 complete — Wave 4 bearer rotation + ISM-W7 integration smoke. Phase 8 (Manual Action UX) is next.
+Status: PHASE_7_CLOSED — Plans 01-06 all committed; hardware-pending SC-07-01..05 carried to ADR-0005 Branch A.
 
-Last activity: 2026-05-16 — Plan 07-04 complete: MULTI-01 (Path B client-side loop + r1.multiattack.progress envelope + [Atk N/M] CombatTracker chip + multi-attack-progress-dispatcher double trust boundary). 1532 tests pass. socketlib count stays 14. INV-1 fixture generated. SC-07-04 hardware-pending.
+Last activity: 2026-05-16 — Phase 7 CLOSED: Plan 07-06 complete — bearer rotation scheduler (TTL_24H_MS+GRACE_60S_MS exports + getActiveBearer + scheduleBearerRotation + BEARER_ROTATED_TYPE) + ISM-W7-01..08 integration smoke harness (10 tests). 328 tests pass. socketlib count stays 14. 5 hardware-pending SC carried to ADR-0005 Branch A. ADR-0011 ACCEPTED. Phase 8 unblocked.
 
 Previous activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
 
@@ -56,7 +56,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -119,6 +119,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 07-foundry-module-write-path P02 | 10 minutes | 2 tasks | 14 files |
 | Phase 07-foundry-module-write-path P03 | 25 minutes | 2 tasks | 18 files |
 | Phase 07 P05 | 762 | 2 tasks | 19 files |
+| Phase 07-foundry-module-write-path P06 | 634 | 4 tasks | 9 files |
 
 ## Quick Tasks Completed
 
@@ -210,10 +211,65 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T13:13:07.019Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-05-16T13:32:28.178Z
+Stopped at: Completed 07-06-PLAN.md
 Resume file: None
-Resume cmd: /gsd-execute-phase 6 03
+Resume cmd: /gsd-execute-phase 8 01
+
+## /gsd-autonomous 2026-05-16 run — Phase 7 closure
+
+**PHASE_7_CLOSED** — 6/6 plans committed 2026-05-16.
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 07-01 | (prior) | Tool Registry + IdempotencyStore + audit-log + foundry-globals.d.ts + ADR-0011 ACCEPTED + CI Gate 8 |
+| 07-02 | (prior) | 4 Wave 1 handlers: cast-spell + weapon-attack (single) + use-item + move-token |
+| 07-03 | (prior) | AoE template placement: placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel |
+| 07-04 | (prior) | Multi-attack Path B: count loop + r1.multiattack.progress + [Atk N/M] chip + INV-1 fixture |
+| 07-05 | (prior) | Reaction watcher (dnd5e.preUseActivity) + drop-concentration handler + ConcentrationDropModalPanel |
+| 07-06 | e3fe4de, ceb95e9 | Bearer rotation scheduler + ISM-W7-01..08 integration smoke |
+
+### Test totals
+
+- Phase 7 start (after 07-01): ~300 tests
+- Phase 7 end (after 07-06): 328 tests (foundry-module only)
+- Net Phase 7 addition: ~28 tests across 6 plans (300 baseline + 28 new)
+
+### Key invariants confirmed (Phase 7 closure)
+
+- `registerComplexHandler` count = **14** (never exceeded; 7 renames happened in-place across Plans 01/03/05)
+- ADR-0011 single-workflow-origin discipline: `activity.use(` absent from g2-app + bridge (CI Gate 8 green)
+- `generateBearer(refresh=true)` infra reused for bearer rotation — NO changes to `validateBearer()` (RESEARCH §Q6)
+- TDD: RED→GREEN on all bearer-rotation tests + ISM-W7 integration smoke
+
+### REQ-ID coverage (Phase 7)
+
+| REQ-ID | Requirement | Plan |
+|--------|-------------|------|
+| FOUN-03 | GM-side executeAsGM write path | 07-01, 07-02 |
+| ACT-02 | AoE template placement | 07-03 |
+| ACT-03 | activity.use() wrapper | 07-02 |
+| MULTI-01 | Multi-attack path B client-side loop | 07-04 |
+| REACT-01 | Reaction passive-notification toast | 07-05 |
+| CONC-01 | Concentration drop trigger | 07-05 (closure) |
+
+### Hardware-pending carry-forward (Phase 7 — 5 new SCs)
+
+SC-07-01: Real `executeAsGM` round-trip — cast-spell produces real chat card in Foundry test world
+SC-07-02: Real Magic Missile (target.count=3) lands 3 MeasuredTemplate documents with correct x/y placement via R1 taps
+SC-07-03: Fighter L5+ Extra Attack with MidiQOL autoFastForward produces 2 chat cards + chip ticks [Atk 1/2] → [Atk 2/2] on G2
+SC-07-04: Phase 4b conc-drop modal tap → tool.invoke → effect.delete removes concentration in real Foundry world
+SC-07-05: Real NPC attack fires dnd5e.preUseActivity → r1.reaction.available envelope → toast visible on G2 ~3s dwell
+
+Previous hardware-pending running total (Phases 4a + 4b + 5 + 6): 18 SCs
+Phase 7 adds: 5 SCs
+New running total: **23 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### Phase 8 ready signal
+
+Phase 8 (Manual Action UX) is unblocked. Resume cmd: `/gsd-execute-phase 8 01`
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 

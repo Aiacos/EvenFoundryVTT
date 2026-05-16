@@ -41,7 +41,7 @@
 - [x] **MULTI-01**: Multi-attack action tracker (`Atk 1/2`, `Atk 2/2`) per Fighter Extra Attack L5+. *Adversarial gap — Specs §12.B q.15 currently flagged open.*
 - [x] **REACT-01**: Reaction *passive notification toast* (Shield / Counterspell / Opportunity Attack — display-only, no execution). *Adversarial gap Vector A — execution stays V2 ACT-04.*
 - [ ] **ACT-01**: Manual cast/attack/use via R1 (scroll allo spell/item → tap → confirm target)
-- [ ] **ACT-02**: AoE template placement via `AbilityTemplate.fromActivity()` (array iteration per multi-template)
+- [x] **ACT-02**: AoE template placement via `AbilityTemplate.fromActivity()` (array iteration per multi-template)
 - [x] **ACT-03**: GM-side actions forwarded via `socketlib.executeAsGM` (single-workflow-origin discipline option A)
 
 ### Navigation & Input
@@ -174,7 +174,7 @@ Mapped 2026-05-10 by roadmapper. Every v1 REQ-ID lands in exactly one phase. No 
 | NAV-02 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | NAV-03 | Phase 6 — R1 Integration + Quick Action + INV-5 | Complete |
 | FOUN-03 | Phase 7 — Foundry Module Write Path | Complete |
-| ACT-02 | Phase 7 — Foundry Module Write Path | Pending |
+| ACT-02 | Phase 7 — Foundry Module Write Path | Complete |
 | ACT-03 | Phase 7 — Foundry Module Write Path | Complete |
 | MULTI-01 | Phase 7 — Foundry Module Write Path | Complete |
 | REACT-01 | Phase 7 — Foundry Module Write Path | Complete |
