@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_6_CLOSED — All 4 plans committed; NAV-01/02/03 software-closed; 18 hardware-pending SCs carry forward.
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-05-16T11:59:59.486Z"
-last_activity: "2026-05-16 — Phase 6 CLOSED (software-side): Plans 01-04 complete. NAV-01/02/03 closed. 1309 tests pass. 18 hardware-pending SCs carry forward (4a:5 + 4b:5 + 5:5 + 6:3)."
+status: PHASE_7_IN_PROGRESS — Plans 07-01/02/03 committed; placeTemplateHandler + confirmTemplatePlacement + TemplatePlacementPanel + dispatcher; 1492 tests pass.
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-05-16T14:25:00.000Z"
+last_activity: "2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). evf.skillCheck → evf.confirmTemplatePlacement (count stays 14). 1492 tests pass."
 progress:
   total_phases: 15
   completed_phases: 8
   total_plans: 45
-  completed_plans: 41
+  completed_plans: 42
   percent: 53
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 6 (r1-integration-quick-action-inv-5 — CLOSED)
-Plan: 06-04 complete — Phase 6 fully closed. Next: Phase 7 (combat tracker + spell casting).
-Status: PHASE_6_CLOSED — All 4 plans committed; NAV-01/02/03 software-closed; 18 hardware-pending SCs carry forward.
+Phase: 7 (foundry-module-write-path — IN PROGRESS)
+Plan: 07-03 complete — Wave 2 AoE template placement. Next: Plan 07-04 (or equivalent).
+Status: PHASE_7_IN_PROGRESS — Plans 07-01 (Wave 0), 07-02 (Wave 1), 07-03 (Wave 2) committed; 3 remaining plans pending.
 
-Last activity: 2026-05-16 — Phase 6 CLOSED (software-side): Plans 01-04 complete. NAV-01/02/03 closed. 1309 tests pass. 18 hardware-pending SCs carry forward (4a:5 + 4b:5 + 5:5 + 6:3).
+Last activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
 
 Previous activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
 
@@ -54,7 +54,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 93%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -115,6 +115,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 06 P01 | 65 | 3 tasks | 17 files |
 | Phase 06 P02 | 95 | 2 tasks | 10 files |
 | Phase 07-foundry-module-write-path P02 | 10 minutes | 2 tasks | 14 files |
+| Phase 07-foundry-module-write-path P03 | 25 minutes | 2 tasks | 18 files |
 
 ## Quick Tasks Completed
 
@@ -180,6 +181,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 06 Plan 02]: PanelMetaSchema.navKey relaxed to z.string().max(1) — empty string marks system overlays (not user-navigable); discoverPanels() filters silently (no console.warn)
 - [Phase 06 Plan 02]: PanelRouter.overlayStack suspension stack — single atomic bundle([destroy z2, mount z2]) eliminates flicker window (RESEARCH Pitfall 3); popOverlay restores suspended panel or destroys and clears activePanel
 - [Phase 06 Plan 02]: QuickActionMenuPanel Strategy A — single 'overlay-block' text container (same as ConcentrationDropModalPanel); long-press in lang sub-menu returns to main (not closes), preserving progressive disclosure
+- [Phase 07 Plan 03]: AbilityTemplate.fromActivity() called synchronously (never awaited); drawPreview() never called — confirmed incompatible with R1 input model per RESEARCH §Q2
+- [Phase 07 Plan 03]: PLACEMENT_CONTEXTS Map module-scoped singleton with 60s TTL; eviction is lazy (on confirmTemplatePlacement access), not proactive — acceptable for MVP single-tenant
+- [Phase 07 Plan 03]: evf.skillCheck stub slot renamed in-place to evf.confirmTemplatePlacement — socketlib count stays at exactly 14
 
 ### Pending Todos
 

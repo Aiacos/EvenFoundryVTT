@@ -205,7 +205,7 @@ Plans:
   3. A Fighter L5+ Action shows `Atk 1/2` → `Atk 2/2` tracker; the second attack consumes correctly via the chosen route (`activity.use({count: 2})` or client-side loop — Phase 0 §10.0.10 P2 row resolved) (MULTI-01)
   4. When the player is targeted by a Shield/Counterspell/Opportunity Attack trigger, a passive-notification toast surfaces on G2 (display-only, no execution — execution stays V2 ACT-04) (REACT-01)
   5. Bearer rotation runs every 24 h with a 60 s grace window; every `executeAsGM` handler re-validates permissions; chat-message audit log records each GM-side action (research cross-cutting)
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 Plans:
 **Wave 0**
 - [x] 07-01-PLAN.md — Tool Registry + IdempotencyStore (bearer-bound SHA256 keys) + audit-log writer + foundry-globals.d.ts (game.users + ChatMessage + dnd5e namespace) + ADR-0011 ACCEPTED + CI Gate 8 single-workflow-origin guard
@@ -214,7 +214,7 @@ Plans:
 - [x] 07-02-PLAN.md — Replace 4 of 7 socketlib stubs in-place: cast-spell + weapon-attack (single attack) + use-item + move-token handlers calling activity.use({configure:false}) via dispatchTool; registerComplexHandler count stays 14 (Pitfall 7 closure) — FOUN-03, ACT-03
 
 **Wave 2** *(blocked on Wave 1; Plans 03 + 04 run sequentially — both touch shared-protocol/src/index.ts merge surface per RESEARCH §Wave 2 parallelism note)*
-- [ ] 07-03-PLAN.md — AoE template placement: AbilityTemplate.fromActivity (sync, bypasses drawPreview) + per-template R1 confirm flow + TemplatePlacementPanel (z=2 overlay) + createEmbeddedDocuments commit + skillCheck stub renamed → confirmTemplatePlacement in-place (count stays 14) — ACT-02
+- [x] 07-03-PLAN.md — AoE template placement: AbilityTemplate.fromActivity (sync, bypasses drawPreview) + per-template R1 confirm flow + TemplatePlacementPanel (z=2 overlay) + createEmbeddedDocuments commit + skillCheck stub renamed → confirmTemplatePlacement in-place (count stays 14) — ACT-02
 - [ ] 07-04-PLAN.md — Multi-attack Path B (RESEARCH §Q1 — count NOT supported by dnd5e 5.3.3 ActivityUseConfiguration): client-side loop in weapon-attack handler with count arg + r1.multiattack.progress envelope via bridgeDeltaEmitter + CombatTrackerPanel [Atk N/M] chip extension + INV-1 fixture — MULTI-01
 
 **Wave 3** *(blocked on Wave 2)*
