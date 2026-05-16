@@ -117,6 +117,16 @@ export {
   LogSnapshotSchema,
 } from './payloads/log.js';
 
+// ─── Phase 6 additions (Plan 06-01) ───────────────────────────────────────────
+// R1 gesture wire-payload schema + type constant.
+// r1-event-source.ts consumes these at the WS-receive trust boundary.
+
+export {
+  R1_GESTURE_TYPE,
+  type R1GesturePayload,
+  R1GesturePayloadSchema,
+} from './payloads/r1.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {
