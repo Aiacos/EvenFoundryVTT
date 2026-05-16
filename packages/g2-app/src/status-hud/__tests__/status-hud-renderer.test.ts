@@ -602,3 +602,99 @@ describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CH
     );
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 8 Plan 08-04 — setMovementBudget extension (SHR-MV-01..05)
+//
+// Tests the new `setMovementBudget(budget)` method added to StatusHudRenderer.
+// The method toggles a footer chip showing `Mov 25/30` when non-null.
+// SHR-MV-01: method is callable and returns void.
+// SHR-MV-02: when non-null, _renderStandard inserts Mov chip row.
+// SHR-MV-03: transition guard — setMovementBudget only triggers on state change.
+// SHR-MV-04: INV-1 fixture round-trip (status-hud.move-chip.it.txt).
+// SHR-MV-05: death-saves mode → chip NOT rendered (death-saves takes priority).
+//
+// @see packages/g2-app/src/status-hud/status-hud-renderer.ts setMovementBudget
+// @see .planning/phases/08-manual-action-ux/08-04-PLAN.md Task 3
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 8 Plan 08-04 — setMovementBudget (SHR-MV-01..05)', () => {
+  it('SHR-MV-01: setMovementBudget method exists and is callable', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    expect(typeof renderer.setMovementBudget).toBe('function');
+    expect(() => renderer.setMovementBudget({ remaining: 25, total: 30 })).not.toThrow();
+    expect(() => renderer.setMovementBudget(null)).not.toThrow();
+  });
+
+  it('SHR-MV-02: render with _movementBudget non-null → row contains Mov chip', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMovementBudget({ remaining: 25, total: 30 });
+    const grid = renderer.render(makeSnapshot());
+    // The Mov chip replaces one of the blank rows (row 19, 0-indexed 18)
+    const rows = grid.cells.map((r) => r.join(''));
+    const movRow = rows.find((r) => r.includes('25/30'));
+    expect(movRow).toBeDefined();
+    expect(movRow).toContain('Mov');
+    // Grid must still be 28 wide × 21 rows (INV-1 shape invariant)
+    expect(grid.width).toBe(28);
+    expect(grid.height).toBe(21);
+  });
+
+  it('SHR-MV-02b: render with _movementBudget null → no Mov chip (standard layout)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMovementBudget(null);
+    const grid = renderer.render(makeSnapshot());
+    const rows = grid.cells.map((r) => r.join(''));
+    // Verify row 19 (0-indexed 18) is blank (no movement chip substitution)
+    // NOTE: row 8 (0-indexed 7) always contains "Mov —/—" for the movement tracker —
+    // we're specifically checking that row 19 does NOT have the budget chip.
+    const row19 = rows[18] ?? '';
+    expect(row19).toBe(`║${' '.repeat(26)}║`);
+    // Grid shape preserved
+    expect(grid.width).toBe(28);
+    expect(grid.height).toBe(21);
+  });
+
+  it('SHR-MV-03: setMovementBudget is transition-driven (same value = no state change)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // Set to null first (already null) — getMovementBudgetForTest should stay null
+    renderer.setMovementBudget(null);
+    expect(renderer._getMovementBudgetForTest()).toBeNull();
+    // Set a real value
+    renderer.setMovementBudget({ remaining: 20, total: 30 });
+    expect(renderer._getMovementBudgetForTest()).toEqual({ remaining: 20, total: 30 });
+    // Same value again — should not change object reference (same = no-op)
+    renderer.setMovementBudget({ remaining: 20, total: 30 });
+    expect(renderer._getMovementBudgetForTest()).toEqual({ remaining: 20, total: 30 });
+  });
+
+  it('SHR-MV-04: render with Mov 25/30 matches status-hud.move-chip.it.txt fixture (INV-1)', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    renderer.setMovementBudget({ remaining: 25, total: 30 });
+    const grid = renderer.render(
+      makeSnapshot({ name: 'Thorin', hp: 45, maxHp: 68, ac: 18 }),
+    );
+    await matchAsciiFixture(
+      grid,
+      '../../../../shared-render/src/fixtures/status-hud.move-chip.it.txt',
+    );
+  });
+
+  it('SHR-MV-05: death-saves mode → move chip NOT rendered even if setMovementBudget called', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', mode: 'death-saves' });
+    renderer.setMovementBudget({ remaining: 10, total: 30 });
+    // Use a snapshot with hp=0 for death-saves
+    const snap = makeSnapshot({ hp: 0, death: { success: 1, failure: 0 } });
+    const grid = renderer.render(snap);
+    const rows = grid.cells.map((r) => r.join(''));
+    // Chip value (10/30) should NOT appear in death-saves layout
+    const movChipRow = rows.find((r) => r.includes('10/30'));
+    expect(movChipRow).toBeUndefined();
+    // Death-saves layout preserved (title key is death_saves_title → IT 'TIRI SALVEZZA')
+    const titleRow = rows.find((r) => r.includes('TIRI') || r.includes('SALV') || r.includes('DEATH') || r.includes('MORTE'));
+    expect(titleRow).toBeDefined();
+    // Grid shape preserved
+    expect(grid.width).toBe(28);
+    expect(grid.height).toBe(21);
+  });
+});

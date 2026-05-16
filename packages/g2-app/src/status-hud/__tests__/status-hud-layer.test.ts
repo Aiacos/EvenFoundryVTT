@@ -46,11 +46,15 @@ function makeMockWsEvents(): MockWsEvents {
   // Cast to the exact subscribe signature so the wider Mock<...> type does not
   // leak into the consumer (StatusHudLayerOpts.wsEvents must satisfy
   // CharacterDeltaEvents at construction time).
+  // Phase 08-04: channel widened to string (movement budget + character delta).
   const subscribe: CharacterDeltaEvents['subscribe'] = (
-    _channel: 'character.delta',
+    _channel: string,
     fn: (raw: unknown) => void,
   ): (() => void) => {
-    stashed = fn;
+    // Only stash the character.delta handler; movement.budget is a no-op in layer tests.
+    if (_channel === 'character.delta') {
+      stashed = fn;
+    }
     return unsubscribe;
   };
   return {
@@ -270,7 +274,9 @@ describe('StatusHudLayer — destroy', () => {
     wsEvents.emit(VALID_SNAPSHOT);
     layer.destroy();
     // The unsubscribe callback returned by subscribe() must have been invoked.
-    expect(wsEvents.unsubscribe).toHaveBeenCalledTimes(1);
+    // Phase 08-04: destroy() calls unsubscribe twice — once for character.delta
+    // and once for r1.movement.budget (both share the same mock unsubscribe fn).
+    expect(wsEvents.unsubscribe).toHaveBeenCalledTimes(2);
     // After destroy, advancing time should NOT fire the debounced render
     // (debounce timer cleared) NOR the heartbeat (interval cleared).
     await vi.advanceTimersByTimeAsync(60_000);

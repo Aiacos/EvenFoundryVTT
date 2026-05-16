@@ -177,6 +177,13 @@ export class StatusHudRenderer {
   private readonly mapMode: StatusHudMapMode;
   /** Current rendering mode (mutable via {@link setMode}). */
   private mode: StatusHudMode;
+  /**
+   * Phase 8 Plan 08-04 — per-turn movement budget chip (mutable via {@link setMovementBudget}).
+   *
+   * When non-null, `_buildGrid` replaces row 19 (the blank conditions-overflow slot)
+   * with a `Mov {remaining}/{total}` chip. When null, row 19 is blank (standard layout).
+   */
+  private _movementBudget: { remaining: number; total: number } | null = null;
 
   constructor(opts: StatusHudRendererOpts) {
     this.locale = opts.locale;
@@ -199,6 +206,50 @@ export class StatusHudRenderer {
    */
   setMode(mode: StatusHudMode): void {
     this.mode = mode;
+  }
+
+  /**
+   * Phase 8 Plan 08-04 — movement budget chip.
+   *
+   * When non-null, `_renderStandard` inserts a `Mov {remaining}/{total}` footer
+   * row (row 19, replacing the blank conditions-overflow slot when no overflow
+   * is present). When null, the row is omitted entirely (existing standard
+   * layout preserved — all fixtures stay green).
+   *
+   * **Transition-driven (SHR-MV-03):** this method is a no-op if the new value
+   * is structurally equal to the stored value (same pattern as `setMode`).
+   * This prevents redundant re-renders triggered by the StatusHudLayer.
+   *
+   * **Death-saves priority (SHR-MV-05):** `_renderDeathSaves` is not modified —
+   * the movement chip is ONLY rendered in standard mode. Calling setMovementBudget
+   * while mode is 'death-saves' stores the value but the chip is not rendered
+   * until the mode returns to 'standard'.
+   *
+   * Driven by the StatusHudLayer dispatch on `R1_MOVEMENT_BUDGET_TYPE` envelopes
+   * (Plan 08-04 extends `_onDelta` to narrow on the movement budget type).
+   *
+   * @param budget `{ remaining: number; total: number }` or `null` to clear.
+   */
+  setMovementBudget(budget: { remaining: number; total: number } | null): void {
+    // Transition guard — no-op if structurally identical to stored value
+    const same =
+      (budget === null && this._movementBudget === null) ||
+      (budget !== null &&
+        this._movementBudget !== null &&
+        budget.remaining === this._movementBudget.remaining &&
+        budget.total === this._movementBudget.total);
+    if (same) return;
+    this._movementBudget = budget;
+  }
+
+  /**
+   * Test-only: expose the current `_movementBudget` field.
+   *
+   * Allows SHR-MV-03 to assert transition-guard behaviour without re-rendering.
+   * Production code MUST NOT gate behaviour on this getter.
+   */
+  _getMovementBudgetForTest(): { remaining: number; total: number } | null {
+    return this._movementBudget;
   }
 
   /**
@@ -512,13 +563,27 @@ export class StatusHudRenderer {
       }
     }
 
-    // Row 19: overflow line `   … +{N}` if more than 3 conditions
+    // Row 19: overflow line `   … +{N}` if more than 3 conditions;
+    // OR movement budget chip `Mov {remaining}/{total}` (Plan 08-04 SHR-MV-02)
+    // when _movementBudget is non-null AND no overflow exists.
+    // Overflow takes priority (both cannot render in the same row — INV-1 row count
+    // is inviolable at 21 rows; the overflow line is more critical for gameplay).
     if (fields.conditionsOverflow > 0) {
       rows.push(
         this._rowFromInner(
           padRight(`   ${ELLIPSIS} +${fields.conditionsOverflow}`, INNER_WIDTH - 2),
         ),
       );
+    } else if (this._movementBudget !== null) {
+      // Phase 8 Plan 08-04 — movement budget chip footer row (SHR-MV-02).
+      // Format: `Mov {remaining}/{total}` with locale-aware label.
+      // Label: IT/EN/DE `Mov`/`Mov`/`Bew` (status_hud_movement_label, max 4).
+      const movLabel = getLabel('status_hud_movement_label', this.locale);
+      const chipTemplate = getLabel('status_hud_movement_chip_template', this.locale);
+      const chipValue = chipTemplate
+        .replace('{used}', String(this._movementBudget.remaining))
+        .replace('{total}', String(this._movementBudget.total));
+      rows.push(this._rowFromInner(padRight(`${movLabel} ${chipValue}`, INNER_WIDTH - 2)));
     } else {
       rows.push(this._rowFromInner(''));
     }

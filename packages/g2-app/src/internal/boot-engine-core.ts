@@ -182,7 +182,7 @@ function buildBootSteps(): BootStep[] {
  * @internal
  */
 function createWsEventBus(ws: WebSocket): {
-  subscribe: (channel: 'character.delta', fn: (raw: unknown) => void) => () => void;
+  subscribe: (channel: string, fn: (raw: unknown) => void) => () => void;
 } {
   return {
     subscribe(channel, fn) {

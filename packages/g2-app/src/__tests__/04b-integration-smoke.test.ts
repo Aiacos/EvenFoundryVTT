@@ -152,8 +152,12 @@ interface MockCharacterEvents extends CharacterDeltaEvents {
 function makeCharacterEvents(): MockCharacterEvents {
   let stashed: ((raw: unknown) => void) | null = null;
   return {
-    subscribe(_channel: 'character.delta', fn) {
-      stashed = fn;
+    subscribe(_channel: string, fn) {
+      // Only stash handler for character.delta; movement.budget subscriptions
+      // are no-ops in this smoke test (Plan 08-04 extension — widened to string).
+      if (_channel === 'character.delta') {
+        stashed = fn;
+      }
       return () => {};
     },
     emit(raw: unknown): void {

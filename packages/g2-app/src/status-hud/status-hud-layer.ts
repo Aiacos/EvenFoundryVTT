@@ -47,7 +47,12 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
-import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
+import {
+  type CharacterSnapshot,
+  CharacterSnapshotSchema,
+  MovementBudgetPayloadSchema,
+  R1_MOVEMENT_BUDGET_TYPE,
+} from '@evf/shared-protocol';
 import type { Layer } from '../engine/layer-types.js';
 import type { LayerManagerLike, StatusHudRenderer } from './status-hud-renderer.js';
 
@@ -67,9 +72,13 @@ const CHARACTER_DELTA_CHANNEL = 'character.delta';
  * forwards `character.delta` envelopes. Tests inject a `vi.fn()` mock. The
  * subscribe call must return an unsubscribe function the layer calls in
  * `destroy()`.
+ *
+ * Phase 8 Plan 08-04 widens the channel parameter to `string` so the same
+ * interface covers both `character.delta` and `r1.movement.budget` subscriptions
+ * without requiring test mocks to implement separate overloads.
  */
 export interface CharacterDeltaEvents {
-  subscribe(channel: typeof CHARACTER_DELTA_CHANNEL, fn: (raw: unknown) => void): () => void;
+  subscribe(channel: string, fn: (raw: unknown) => void): () => void;
 }
 
 /** Constructor options for StatusHudLayer. */
@@ -124,8 +133,15 @@ export class StatusHudLayer implements Layer {
    */
   private readonly layerManager: LayerManagerLike | null;
 
-  /** Unsubscribe callback returned by `wsEvents.subscribe`. */
+  /** Unsubscribe callback returned by `wsEvents.subscribe` (character.delta). */
   private readonly unsubscribe: () => void;
+  /**
+   * Phase 8 Plan 08-04 — unsubscribe for r1.movement.budget channel.
+   *
+   * Registered in the constructor alongside the character.delta subscription.
+   * Released in `destroy()` to prevent listener leaks (T-4b-01-03 pattern).
+   */
+  private readonly unsubscribeMovement: () => void;
 
   /** Latest snapshot seen via WS delta — `null` until first valid payload. */
   private snapshot: CharacterSnapshot | null = null;
@@ -158,6 +174,14 @@ export class StatusHudLayer implements Layer {
       this._onDelta(raw),
     );
 
+    // Phase 8 Plan 08-04 — subscribe to r1.movement.budget envelopes.
+    // Dispatches MovementBudgetPayloadSchema.safeParse → renderer.setMovementBudget
+    // so the Mov chip updates without triggering a full character delta re-render.
+    this.unsubscribeMovement = opts.wsEvents.subscribe(
+      R1_MOVEMENT_BUDGET_TYPE,
+      (raw) => this._onMovementBudget(raw),
+    );
+
     // Start the idle heartbeat. Every tick re-renders the cached snapshot
     // (or the loading state if none has arrived) so the HUD never drifts.
     this.heartbeatTimer = setInterval(() => {
@@ -186,6 +210,7 @@ export class StatusHudLayer implements Layer {
    */
   destroy(): void {
     this.unsubscribe();
+    this.unsubscribeMovement();
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -199,6 +224,34 @@ export class StatusHudLayer implements Layer {
   // ──────────────────────────────────────────────────────────────────────────
   // Internal — delta receive + debounced render
   // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Phase 8 Plan 08-04 — receive a raw `r1.movement.budget` envelope payload.
+   *
+   * Validates via `MovementBudgetPayloadSchema.safeParse` (T-4a-04-01 pattern).
+   * On parse failure: `console.warn` + ignore (no throw, no crash).
+   * On success: calls `renderer.setMovementBudget` with the budget — the renderer's
+   * transition guard (SHR-MV-03) ensures no redundant re-renders.
+   *
+   * Does NOT schedule a debounced re-render (the movement chip update is
+   * lightweight and driven by the movement tracker emitting per-token-move).
+   */
+  private _onMovementBudget(raw: unknown): void {
+    const parsed = MovementBudgetPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.warn(
+        '[EVF] status-hud-layer: malformed r1.movement.budget payload — ignoring.',
+        parsed.error.message,
+      );
+      return;
+    }
+    this.renderer.setMovementBudget({
+      remaining: parsed.data.remainingFeet,
+      total: parsed.data.walkSpeed,
+    });
+    // Schedule a debounced re-render so the chip appears in the HUD
+    this._scheduleDebouncedRender();
+  }
 
   /**
    * Receive a raw WS payload and validate via CharacterSnapshotSchema.
