@@ -203,4 +203,63 @@ describe('writeAuditLog', () => {
     const callArgs = chatCreateMock.mock.calls[0]?.[0] as { whisper?: string[] };
     expect(callArgs.whisper).toHaveLength(2);
   });
+
+  // ── CR-02 regression: no GM online — must NOT create a public ChatMessage ───
+
+  it('CR-02: does NOT call ChatMessage.create when no GMs are online (prevents public audit exposure)', async () => {
+    // Override global: zero GMs, only a player connected
+    vi.stubGlobal('game', {
+      users: {
+        contents: [{ id: 'player-999', isGM: false, active: true }],
+        get: (_id: string) => undefined,
+      },
+      user: { id: 'player-999', isGM: false, active: true },
+    });
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const entry: AuditEntry = {
+      tool: 'cast-spell',
+      payload: { secret: 'sensitive' },
+      idempotencyKey: '00000000-0000-4000-8000-000000000009',
+      actorId: 'actor-rogue',
+      result: { success: true, data: null },
+      timestamp: Date.now(),
+      bearer_id: 'deadbeef',
+    };
+
+    await writeAuditLog(entry);
+
+    // T-07-04: players must not read audit entries — no public message must be created
+    expect(chatCreateMock).not.toHaveBeenCalled();
+    // A warn must be emitted so the GM can diagnose missed audit entries post-reconnect
+    expect(consoleSpy).toHaveBeenCalledOnce();
+    expect(consoleSpy.mock.calls[0]![0]).toContain('no GMs connected');
+
+    consoleSpy.mockRestore();
+  });
+
+  it('CR-02: resolves without throwing when no GMs are online', async () => {
+    vi.stubGlobal('game', {
+      users: {
+        contents: [],
+        get: (_id: string) => undefined,
+      },
+      user: null,
+    });
+
+    const entry: AuditEntry = {
+      tool: 'drop-concentration',
+      payload: {},
+      idempotencyKey: '00000000-0000-4000-8000-000000000010',
+      actorId: null,
+      result: { success: true, data: null },
+      timestamp: Date.now(),
+      bearer_id: '00000000',
+    };
+
+    // Must not throw even when no GMs are online
+    await expect(writeAuditLog(entry)).resolves.toBeUndefined();
+    expect(chatCreateMock).not.toHaveBeenCalled();
+  });
 });

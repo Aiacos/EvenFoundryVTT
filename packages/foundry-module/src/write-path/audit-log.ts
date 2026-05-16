@@ -92,6 +92,20 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
   // game.users.contents is iterable (FoundryCollection<FoundryUser> per foundry-globals.d.ts).
   const gmIds = game.users.contents.filter((u) => u.isGM).map((u) => u.id);
 
+  // CR-02: If no GMs are online, skip the write entirely.
+  // `ChatMessage.create({ whisper: [] })` is PUBLIC in Foundry — an empty whisper array
+  // means "not whispered", i.e., every connected player can read it. This would expose
+  // `idempotencyKey`, `actorId`, `bearer_id`, and the full `payload` to all players,
+  // violating T-07-04 (players must not read audit entries).
+  // Skipping is preferable to leaking sensitive data; the action has already committed.
+  if (gmIds.length === 0) {
+    console.warn('[EVF] writeAuditLog: no GMs connected — skipping audit write to prevent public exposure', {
+      tool: entry.tool,
+      idempotencyKey: entry.idempotencyKey,
+    });
+    return;
+  }
+
   try {
     await ChatMessage.create({
       user: game.user?.id ?? '',
