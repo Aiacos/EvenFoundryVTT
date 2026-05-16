@@ -77,6 +77,26 @@ export interface Layer {
    * @see ADR-0009 Amendment 1 (container budget audit table)
    */
   getContainerCount?(): { image: number; text: number };
+  /**
+   * Optional R1 hint metadata for the status-HUD context chip (Phase 6 Plan 03).
+   *
+   * Overlay-aware layers (OverlayPanel implementations) may expose hints so the
+   * StatusHudRenderer can render a contextual `R1: tap=<tap>  scroll=<scroll>
+   * long=quick[<id>]` footer row. Layers that omit this method (z=0 map,
+   * z=1 status HUD, z=1.5 toast queue, z=0.5 idle infill) inherit the
+   * StatusHudRenderer default:
+   * `{ tap: 'cycle', scroll: 'nav', longPressLabel: 'quick' }`.
+   *
+   * INV-5 visible enforcement (SC-4 per Phase 6 ROADMAP success criteria): the
+   * chip names the live long-press target, making the routing invariant auditable
+   * at a glance by the player. Plan 06-03 wires the chip; this field is the
+   * interface contract that makes it pluggable per overlay type.
+   *
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2 (chip design)
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 5 (separation decision)
+   */
+  getR1Hints?(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string };
 }
 
 /**

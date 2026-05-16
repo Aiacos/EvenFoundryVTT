@@ -351,6 +351,42 @@ export class LayerManager {
   }
 
   /**
+   * Return the highest-z mounted `OverlayPanel` layer, or `null` if none.
+   *
+   * INV-5 Gesture Determinism: this is the runtime authority that determines
+   * which panel receives every published R1 gesture. The `attachR1EventSource`
+   * provider calls this on every incoming gesture event; the top panel is the
+   * sole receiver.
+   *
+   * **Sort requirement (RESEARCH Pitfall 2):** `this.layers` is a `Map<ZIndex, Layer>`
+   * whose iteration order is insertion order — NOT numeric z-order. If layers are
+   * mounted out of z-order (common in tests and in the differential-demolish
+   * rewrite logic), a naive `Map.values()` scan would return the wrong "top" layer.
+   * This method explicitly sorts `[...entries()].sort(([a],[b]) => b-a)` before
+   * iterating so the highest numeric z is always checked first.
+   *
+   * Zero-handler edge case: returns `null` when no `OverlayPanel` is mounted
+   * (boot splash active, boot error active, or no overlay has been pushed yet).
+   * Callers (`attachR1EventSource`) treat `null` as an explicit INV-5 no-op with
+   * a `console.warn` telemetry log entry — never a silent drop.
+   *
+   * @returns Highest-z `OverlayPanel` (where `isOverlayPanel(layer) === true`), or `null`
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 2 (insertion-order pitfall)
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-01-PLAN.md Task 2
+   */
+  getTopLayer(): Layer | null {
+    // Sort by z DESCENDING — Map iteration is insertion order, NOT numeric order
+    // (RESEARCH Pitfall 2). We must sort explicitly to guarantee correctness when
+    // layers were mounted in any order (e.g., z=2 mounted before z=1 in a bundle).
+    const sorted = [...this.layers.entries()].sort(([a], [b]) => b - a);
+    for (const [, layer] of sorted) {
+      if (isOverlayPanel(layer)) return layer;
+    }
+    return null;
+  }
+
+  /**
    * Test-only diagnostic accessor — return the layer at a given z-index.
    *
    * Production code MUST NOT depend on layer identity for routing; the manager

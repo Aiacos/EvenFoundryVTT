@@ -641,3 +641,133 @@ describe('Phase 4b differential demolish + container budget + OverlayPanel lifec
     expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// LayerManager.getTopLayer (LMT-TOP-01..04)
+// Phase 6 Plan 01 Task 2 — top-of-stack routing accessor for INV-5 enforcement
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Helper: create an OverlayPanel stub for getTopLayer tests. */
+function makeTopLayerOverlayPanel(id: string): OverlayPanel {
+  return {
+    id,
+    draw: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn(),
+    getCaptureContainer: () => id + '-capture',
+    getContainerCount: () => ({ image: 0, text: 1 }),
+    onMount: vi.fn().mockResolvedValue(undefined),
+    onUnmount: vi.fn().mockResolvedValue(undefined),
+    onEvent: vi.fn(),
+  };
+}
+
+/** Helper: create a plain non-overlay Layer for getTopLayer tests. */
+function makeTopLayerPlainLayer(id: string): Layer {
+  return {
+    id,
+    draw: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn(),
+    getCaptureContainer: () => id + '-capture',
+    getContainerCount: () => ({ image: 0, text: 1 }),
+  };
+}
+
+/** Helper: non-capture plain layer (HUD, toast etc.). */
+function makeTopLayerNonCaptureLayer(id: string): Layer {
+  return {
+    id,
+    draw: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn(),
+    getContainerCount: () => ({ image: 0, text: 1 }),
+  };
+}
+
+describe('LayerManager.getTopLayer (LMT-TOP-01..04)', () => {
+  let bridge: ReturnType<typeof makeMockBridge>;
+  let lm: LayerManager;
+
+  beforeEach(() => {
+    bridge = makeMockBridge();
+    lm = new LayerManager(bridge as unknown as EvenAppBridge);
+  });
+
+  it('LMT-TOP-01: returns null when no OverlayPanel is mounted (empty stack or non-overlay layers only)', () => {
+    // Empty stack — no layers at all
+    expect(lm.getTopLayer()).toBeNull();
+
+    // Add only non-overlay layers (map + status HUD)
+    const mapLayer = makeTopLayerPlainLayer('map');
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    // Status HUD and other non-overlay layers do NOT satisfy isOverlayPanel
+    const hudLayer = makeTopLayerNonCaptureLayer('hud');
+    // Capture invariant: z=0 already has a capture provider, so z=1 is non-capture
+    // mount without checking invariant by using _private_no_cap layer:
+    (lm as unknown as { layers: Map<ZIndex, Layer> }).layers.set(
+      ZIndex.Z1_STATUS_HUD,
+      hudLayer,
+    );
+    expect(lm.getTopLayer()).toBeNull();
+  });
+
+  it('LMT-TOP-02: with a single OverlayPanel mounted at z=2, getTopLayer() returns that panel', () => {
+    // Prime the map layer (capture provider) via internal set (no invariant check needed for this test)
+    const mapLayer = makeTopLayerPlainLayer('map');
+    (lm as unknown as { layers: Map<ZIndex, Layer> }).layers.set(ZIndex.Z0_MAP, mapLayer);
+
+    const panel = makeTopLayerOverlayPanel('overlay-panel');
+    // Mount panel directly (bypass bundle lifecycle for unit test simplicity)
+    (lm as unknown as { layers: Map<ZIndex, Layer> }).layers.set(ZIndex.Z2_OVERLAY, panel);
+
+    const top = lm.getTopLayer();
+    expect(top).not.toBeNull();
+    expect(top?.id).toBe('overlay-panel');
+  });
+
+  it('LMT-TOP-03: insertion-order regression guard — mount z=2 FIRST, then z=1 StatusHudLayer; getTopLayer() still returns z=2 panel (sort-by-z, not insertion order)', () => {
+    // RESEARCH Pitfall 2: Map iteration is insertion-order, NOT numeric-order.
+    // If getTopLayer() used Map iteration without sorting, inserting z=2 FIRST
+    // would yield z=2 on the first iteration — but that would be coincidentally
+    // correct. This test inserts z=2 FIRST so a naive Map.entries() scan would
+    // accidentally "work" — the real test is that inserting z=1 FIRST ALSO works.
+    const panel = makeTopLayerOverlayPanel('panel-z2');
+    const nonCapHud = makeTopLayerNonCaptureLayer('hud-z1');
+
+    // Insert z=2 first (insertion order: z=2, then z=1)
+    const layers = (lm as unknown as { layers: Map<ZIndex, Layer> }).layers;
+    layers.set(ZIndex.Z2_OVERLAY, panel);
+    layers.set(ZIndex.Z1_STATUS_HUD, nonCapHud);
+    // Also set a map capture layer at z=0
+    layers.set(ZIndex.Z0_MAP, makeTopLayerPlainLayer('map'));
+
+    // getTopLayer must still return z=2 panel
+    expect(lm.getTopLayer()?.id).toBe('panel-z2');
+
+    // Now the more challenging case: clear and insert z=1 FIRST, then z=2
+    layers.clear();
+    layers.set(ZIndex.Z1_STATUS_HUD, nonCapHud);
+    layers.set(ZIndex.Z2_OVERLAY, panel);
+    layers.set(ZIndex.Z0_MAP, makeTopLayerPlainLayer('map'));
+
+    expect(lm.getTopLayer()?.id).toBe('panel-z2');
+  });
+
+  it('LMT-TOP-04: non-OverlayPanel layers at any z are skipped — only layers with onMount+onUnmount+onEvent qualify', () => {
+    // Only non-overlay layers (plain map + status)
+    const mapLayer = makeTopLayerPlainLayer('map');
+    const hudLayer = makeTopLayerNonCaptureLayer('hud');
+    const toastLayer = makeTopLayerNonCaptureLayer('toast');
+
+    const layers = (lm as unknown as { layers: Map<ZIndex, Layer> }).layers;
+    layers.set(ZIndex.Z0_MAP, mapLayer);
+    layers.set(ZIndex.Z1_STATUS_HUD, hudLayer);
+    layers.set(ZIndex.Z1_5_TOAST, toastLayer);
+
+    // None of these have onMount/onUnmount/onEvent
+    expect(lm.getTopLayer()).toBeNull();
+
+    // Add an OverlayPanel at z=2 — now it should be returned
+    const panel = makeTopLayerOverlayPanel('real-panel');
+    layers.set(ZIndex.Z2_OVERLAY, panel);
+    expect(lm.getTopLayer()?.id).toBe('real-panel');
+  });
+});
