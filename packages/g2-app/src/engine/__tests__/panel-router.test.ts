@@ -622,9 +622,11 @@ describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*
     spies.getLayer.mockReturnValue(undefined);
 
     const menuPanel = makePanelInstance();
-    await (router as unknown as {
-      pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
-    }).pushOverlay(menuPanel, lm);
+    await (
+      router as unknown as {
+        pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
+      }
+    ).pushOverlay(menuPanel, lm);
 
     expect(spies.bundle).toHaveBeenCalledTimes(1);
     expect(spies.bundle).toHaveBeenCalledWith([
@@ -647,9 +649,11 @@ describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*
     // Track bundle call count before
     const bundleCallsBefore = spies.bundle.mock.calls.length;
 
-    await (router as unknown as {
-      pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
-    }).pushOverlay(menuPanel, lm);
+    await (
+      router as unknown as {
+        pushOverlay: (p: OverlayPanel, lm: LayerManager) => Promise<void>;
+      }
+    ).pushOverlay(menuPanel, lm);
 
     // Exactly ONE bundle call (atomic swap — RESEARCH Pitfall 3)
     expect(spies.bundle.mock.calls.length - bundleCallsBefore).toBe(1);
@@ -674,9 +678,11 @@ describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*
     // z=2 has the menuPanel
     spies.getLayer.mockReturnValue(menuPanel);
 
-    await (router as unknown as {
-      popOverlay: (lm: LayerManager) => Promise<void>;
-    }).popOverlay(lm);
+    await (
+      router as unknown as {
+        popOverlay: (lm: LayerManager) => Promise<void>;
+      }
+    ).popOverlay(lm);
 
     // Atomic bundle: destroy menu + restore suspended
     expect(spies.bundle).toHaveBeenCalledWith([
@@ -696,9 +702,11 @@ describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*
     spies.getLayer.mockReturnValue(menuPanel);
     (router as unknown as { overlayStack: OverlayPanel[] }).overlayStack = [];
 
-    await (router as unknown as {
-      popOverlay: (lm: LayerManager) => Promise<void>;
-    }).popOverlay(lm);
+    await (
+      router as unknown as {
+        popOverlay: (lm: LayerManager) => Promise<void>;
+      }
+    ).popOverlay(lm);
 
     // Only destroy — differential demolish auto-restores z=0.5 per ADR-0009 Amd 1
     expect(spies.bundle).toHaveBeenCalledWith([
@@ -713,15 +721,15 @@ describe('PanelRouter.pushOverlay/popOverlay (PRT-PUSH-* / PRT-POP-* / PRT-BUS-*
     // getLayer returns undefined — nothing at z=2
     spies.getLayer.mockReturnValue(undefined);
 
-    await (router as unknown as {
-      popOverlay: (lm: LayerManager) => Promise<void>;
-    }).popOverlay(lm);
+    await (
+      router as unknown as {
+        popOverlay: (lm: LayerManager) => Promise<void>;
+      }
+    ).popOverlay(lm);
 
     // Must be a complete no-op
     expect(spies.bundle).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('popOverlay: no z=2 mounted'),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('popOverlay: no z=2 mounted'));
   });
 
   it('PRT-BUS-01: bus.size() === 1 after pushOverlay over active CharSheet (INV-5 enforcement)', async () => {

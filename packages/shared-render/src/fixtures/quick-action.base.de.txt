@@ -1,0 +1,15 @@
+┌─[ SCHNELLAKTION ]──────────────────────────────────────────────────┐
+│                                                                    │
+│ ▶ [S] Blatt                                                        │
+│   [C] Kampf                                                        │
+│   [L] Log                                                          │
+│   [B] Buch                                                         │
+│   [I] Inventar                                                     │
+│   [A] Aktion                                                       │
+│   [M] Karte                                                        │
+│   [N] Sprache                                                      │
+│   [X] Schließen                                                    │
+└────────────────────────────────────────────────────────────────────┘
+  scroll = Eintrag wählen                                             
+  tap = öffnen                                                        
+  long-press = abbrechen                                              

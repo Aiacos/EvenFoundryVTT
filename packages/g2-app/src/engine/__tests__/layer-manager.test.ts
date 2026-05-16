@@ -702,10 +702,7 @@ describe('LayerManager.getTopLayer (LMT-TOP-01..04)', () => {
     const hudLayer = makeTopLayerNonCaptureLayer('hud');
     // Capture invariant: z=0 already has a capture provider, so z=1 is non-capture
     // mount without checking invariant by using _private_no_cap layer:
-    (lm as unknown as { layers: Map<ZIndex, Layer> }).layers.set(
-      ZIndex.Z1_STATUS_HUD,
-      hudLayer,
-    );
+    (lm as unknown as { layers: Map<ZIndex, Layer> }).layers.set(ZIndex.Z1_STATUS_HUD, hudLayer);
     expect(lm.getTopLayer()).toBeNull();
   });
 

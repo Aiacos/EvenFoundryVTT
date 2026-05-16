@@ -225,15 +225,16 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
   });
 
   // ─── Aggregate shape ──────────────────────────────────────────────────────
-  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 = 140 keys', () => {
+  it('IB-ALL-1: HUD_WIDTH_BUDGETS contains 9 Phase 4a + 27 Phase 4b + 98 Phase 5 + 6 Phase 6 Plan-01 + 20 Phase 6 Plan-02 = 160 keys', () => {
     // Phase 4b totals: 3 death-saves + 2 toast + 16 boot-error + 6 conc-modal
     // = 27 new keys. Plan summary text said 28 (assumed 17 boot-error keys)
     // but UI-SPEC §4.3 enumerates 16 — see SUMMARY Deviations §Rule-1.
     // Phase 5 totals: 15 Main + 2 Skills + 7 Inv-sheet + 6 Spells-sheet +
     // 6 Feats + 6 Bio + 11 Combat + 13 Log + 5 Inv-panel + 11 Spellbook +
     // 4 empty-states + 5 panel-titles + 5 footer-hints + 2 router = 98 new keys.
-    // Phase 6 totals (Plan 06-01 Wave-0): 6 R1 chip vocabulary keys.
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(140);
+    // Phase 6 Plan 01 totals: 6 R1 chip vocabulary keys.
+    // Phase 6 Plan 02 totals: 20 QuickActionMenuPanel keys (2 titles + 9 items + 3 hints + 6 R1 chip).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(160);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -303,7 +304,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     for (const key of PHASE_5_SAMPLE_KEYS) {
       expect(HUD_WIDTH_BUDGETS, `missing Phase 5 key: ${key}`).toHaveProperty(key);
     }
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(140);
+    // Updated to 160 after Phase 6 Plan 02 added 20 QuickActionMenuPanel keys.
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(160);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────

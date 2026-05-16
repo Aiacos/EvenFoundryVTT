@@ -21,9 +21,8 @@
  */
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { R1Gesture } from '../layer-types.js';
 import type { LayerManager } from '../layer-manager.js';
-import type { OverlayPanel } from '../layer-types.js';
+import type { OverlayPanel, R1Gesture } from '../layer-types.js';
 import { PanelGestureBus } from '../panel-gesture-bus.js';
 import { attachR1EventSource } from '../r1-event-source.js';
 

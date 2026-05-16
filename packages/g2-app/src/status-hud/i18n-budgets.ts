@@ -638,6 +638,94 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'INV-5: Halten öffnet Menü der aktiven Ebene',
     max: 60,
   },
+
+  // ─── Phase 6 Plan 02 — QuickActionMenuPanel i18n keys (Wave 1 centralisation) ─
+  // 20 keys for the Quick Action menu title, 9 item labels, 3 footer hints,
+  // and 6 R1 hint chip labels (main mode + language sub-menu mode).
+  // All strings verified within their `max` budgets per UI-SPEC §1.3 + §6.
+  // Downstream consumer: packages/g2-app/src/panels/quick-action-menu-panel.ts
+
+  /** Title row for the Quick Action main menu (Strategy A overlay-block container). */
+  quick_menu_title: { it: 'AZIONE RAPIDA', en: 'QUICK ACTION', de: 'SCHNELLAKTION', max: 22 },
+
+  /** Title row for the Language sub-menu mode (shown when [N] is tapped). */
+  quick_lang_submenu_title: { it: 'LINGUA', en: 'LANGUAGE', de: 'SPRACHE', max: 22 },
+
+  /** [S] Character Sheet menu item label. */
+  quick_item_sheet: { it: 'Scheda', en: 'Sheet', de: 'Blatt', max: 22 },
+
+  /** [C] Combat Tracker menu item label. */
+  quick_item_combat: { it: 'Combatt', en: 'Combat', de: 'Kampf', max: 22 },
+
+  /** [L] Log panel menu item label. */
+  quick_item_log: { it: 'Log', en: 'Log', de: 'Log', max: 22 },
+
+  /** [B] Spellbook menu item label. */
+  quick_item_book: { it: 'Libro', en: 'Book', de: 'Buch', max: 22 },
+
+  /** [I] Inventory panel menu item label. */
+  quick_item_inventory: { it: 'Inventario', en: 'Inventory', de: 'Inventar', max: 22 },
+
+  /** [A] Action stub menu item label (Phase 7 wires the real [A] panel). */
+  quick_item_action: { it: 'Azione', en: 'Action', de: 'Aktion', max: 22 },
+
+  /** [M] Map mode toggle menu item label. */
+  quick_item_map: { it: 'Mappa', en: 'Map mode', de: 'Karte', max: 22 },
+
+  /** [N] Language picker menu item label. */
+  quick_item_language: { it: 'Lingua', en: 'Language', de: 'Sprache', max: 22 },
+
+  /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
+  quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
+
+  /**
+   * Footer hint — scroll action description (line 1 of 3 footer rows below border).
+   * Budget 66 = full inner-width of the 70-char overlay-block container.
+   */
+  quick_hint_scroll: {
+    it: 'scroll = cambia voce attiva',
+    en: 'scroll = change selected item',
+    de: 'scroll = Eintrag wählen',
+    max: 66,
+  },
+
+  /** Footer hint — tap action description (line 2 of 3 footer rows). */
+  quick_hint_tap: {
+    it: 'tap = apri voce',
+    en: 'tap = open item',
+    de: 'tap = öffnen',
+    max: 66,
+  },
+
+  /** Footer hint — long-press action description (line 3 of 3 footer rows). */
+  quick_hint_long: {
+    it: 'long-press = annulla',
+    en: 'long-press = cancel',
+    de: 'long-press = abbrechen',
+    max: 66,
+  },
+
+  /** R1 chip tap label — main menu mode (shown in StatusHudRenderer footer chip). */
+  quick_r1_main_tap: { it: 'apri', en: 'open', de: 'öffnen', max: 22 },
+
+  /** R1 chip scroll label — main menu mode. */
+  quick_r1_main_scroll: { it: 'voce', en: 'item', de: 'Eintrag', max: 22 },
+
+  /** R1 chip long-press label — main menu mode (long-press closes the menu). */
+  quick_r1_main_long: { it: 'annulla', en: 'cancel', de: 'Abbruch', max: 22 },
+
+  /** R1 chip tap label — language sub-menu mode (tap applies the selected locale). */
+  quick_r1_lang_tap: { it: 'applica', en: 'apply', de: 'anwenden', max: 22 },
+
+  /** R1 chip scroll label — language sub-menu mode. */
+  quick_r1_lang_scroll: { it: 'lingua', en: 'language', de: 'Sprache', max: 22 },
+
+  /**
+   * R1 chip long-press label — language sub-menu mode (long-press returns to main menu,
+   * not close — UI-SPEC §1 footer hint "long-press = annulla" means "back one level"
+   * when in sub-menu).
+   */
+  quick_r1_lang_long: { it: 'indietro', en: 'back', de: 'zurück', max: 22 },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

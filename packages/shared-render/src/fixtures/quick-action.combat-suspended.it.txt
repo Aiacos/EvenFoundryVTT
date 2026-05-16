@@ -1,0 +1,15 @@
+┌─[ AZIONE RAPIDA ]──────────────────────────────────────────────────┐
+│                                                                    │
+│ ▶ [S] Scheda                                                       │
+│   [C] Combatt                                                      │
+│   [L] Log                                                          │
+│   [B] Libro                                                        │
+│   [I] Inventario                                                   │
+│   [A] Azione                                                       │
+│   [M] Mappa                                                        │
+│   [N] Lingua                                                       │
+│   [X] Chiudi                                                       │
+└────────────────────────────────────────────────────────────────────┘
+  scroll = cambia voce attiva                                         
+  tap = apri voce                                                     
+  long-press = annulla                                                

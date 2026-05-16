@@ -1,0 +1,13 @@
+┌─[ LINGUA ]─────────────────────────────────────────────────────────┐
+│                                                                    │
+│ ▶ [A] Auto                                                         │
+│   [I] Italiano                                                     │
+│   [E] English                                                      │
+│   [D] Deutsch                                                      │
+│   [S] Español                                                      │
+│   [F] Français                                                     │
+│   [P] Português                                                    │
+└────────────────────────────────────────────────────────────────────┘
+  scroll = cambia voce attiva                                         
+  tap = apri voce                                                     
+  long-press = annulla                                                
