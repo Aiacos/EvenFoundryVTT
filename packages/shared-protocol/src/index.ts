@@ -159,6 +159,19 @@ export {
   TemplatePlacementRequestedPayloadSchema,
 } from './payloads/template.js';
 
+// ─── Phase 7 additions (Plan 07-04) ──────────────────────────────────────────
+// Multi-attack progress payload schema (MULTI-01).
+// multi-attack-progress-dispatcher.ts consumes MultiAttackProgressPayloadSchema
+// at the WS-receive trust boundary. R1_MULTIATTACK_PROGRESS_TYPE narrows on
+// envelope.type before applying inner payload parse.
+// Separate file from template.ts (Plan 07-03) to minimise merge conflicts.
+
+export {
+  type MultiAttackProgressPayload,
+  MultiAttackProgressPayloadSchema,
+  R1_MULTIATTACK_PROGRESS_TYPE,
+} from './payloads/multi-attack.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {

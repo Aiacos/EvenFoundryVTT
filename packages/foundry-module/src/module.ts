@@ -35,6 +35,10 @@ import { registerSettings } from './settings.js';
 // when the socketlib handlers are invoked.
 // ADR-0011: single-workflow-origin discipline — all write mutations go through dispatchTool.
 import './write-path/handlers/index.js';
+// Plan 07-04 — inject the multi-attack progress emitter so weaponAttackHandler can
+// emit r1.multiattack.progress envelopes via bridgeDeltaEmitter on each iteration.
+// NO new socketlib handler registered — emitter count stays 14.
+import { setMultiAttackProgressEmitter } from './write-path/handlers/weapon-attack.js';
 
 /**
  * Canonical Foundry module identifier.
@@ -155,6 +159,10 @@ Hooks.once('init', () => {
 Hooks.once('ready', () => {
   registerSocketlibHandlers();
   registerHookSubscribers(bridgeDeltaEmitter);
+  // Plan 07-04 — wire multi-attack progress emitter via bridgeDeltaEmitter.
+  // Called AFTER registerHookSubscribers (matching pattern from plan spec).
+  // No new socketlib handler; emitter uses the existing bridgeDeltaEmitter channel.
+  setMultiAttackProgressEmitter((payload) => bridgeDeltaEmitter('r1.multiattack.progress', payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`

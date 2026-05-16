@@ -89,6 +89,73 @@ describe('WeaponAttackInputSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // ── Plan 07-04: count field (MULTI-01) ──────────────────────────────────────
+
+  it('WAIS-COUNT-1: count: 2 is valid', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+      count: 2,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(2);
+    }
+  });
+
+  it('WAIS-COUNT-2: count omitted → defaults to 1 (backward-compat)', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(1);
+    }
+  });
+
+  it('WAIS-COUNT-3: count: 11 → rejected (max is 10, T-07-04-01 DoS limit)', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+      count: 11,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('WAIS-COUNT-4: count: 0 → rejected (min is 1)', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+      count: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('WAIS-COUNT-5: count: -1 → rejected (min is 1)', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+      count: -1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('WAIS-COUNT-6: count: 10 → valid (max boundary)', () => {
+    const result = WeaponAttackInputSchema.safeParse({
+      actor_id: 'actor-1',
+      item_id: 'item-sword',
+      targets: [],
+      count: 10,
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('UseItemInputSchema', () => {

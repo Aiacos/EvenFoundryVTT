@@ -88,7 +88,7 @@ describe('weaponAttackHandler', () => {
     vi.resetModules();
   });
 
-  it('returns success with chatCardId on happy path', async () => {
+  it('returns success with attackId + attacks array on happy path (Plan 07-04 shape)', async () => {
     const activity = makeAttackActivity({ chatCardId: 'cm-atk-5' });
     const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
     const actor = makeActor({ id: 'actor-a', item });
@@ -104,8 +104,16 @@ describe('weaponAttackHandler', () => {
       advantage: 'normal',
     });
 
-    expect(result).toEqual({ success: true, data: { chatCardId: 'cm-atk-5' } });
-    expect(activity.use).toHaveBeenCalledWith({ configure: false });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const data = result.data as { attackId: string; attacks: Array<{ attackIndex: number; chatCardId: string | null }> };
+      expect(typeof data.attackId).toBe('string');
+      expect(data.attacks).toHaveLength(1);
+      expect(data.attacks[0]?.chatCardId).toBe('cm-atk-5');
+      expect(data.attacks[0]?.attackIndex).toBe(1);
+    }
+    // Plan 07-04: first (and only) iteration uses consume.action: true
+    expect(activity.use).toHaveBeenCalledWith({ configure: false, consume: { action: true } });
   });
 
   it('returns actor_not_found when actor is missing', async () => {
@@ -223,5 +231,182 @@ describe('weaponAttackHandler', () => {
       advantage: 'advantage',
     });
     expect(parsed.success).toBe(true);
+  });
+
+  // ── Plan 07-04: Path B multi-attack loop (MULTI-01) ──────────────────────────
+
+  it('WA-MULTI-1: count: 1 (default) calls activity.use exactly once (backward-compat)', async () => {
+    const activity = makeAttackActivity({ chatCardId: 'cm-atk-1' });
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { weaponAttackHandler } = await import('./weapon-attack.js');
+
+    const result = await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 1,
+    });
+
+    expect(result.success).toBe(true);
+    expect(activity.use).toHaveBeenCalledTimes(1);
+  });
+
+  it('WA-MULTI-2: count: 2 calls activity.use twice with correct consume.action flags', async () => {
+    const activity = makeAttackActivity({ chatCardId: 'cm-atk-multi' });
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { weaponAttackHandler } = await import('./weapon-attack.js');
+
+    const result = await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 2,
+    });
+
+    expect(result.success).toBe(true);
+    expect(activity.use).toHaveBeenCalledTimes(2);
+    // First call: consume.action = true (action economy deducted once)
+    expect(activity.use).toHaveBeenNthCalledWith(1, { configure: false, consume: { action: true } });
+    // Second call: consume.action = false (Extra Attack — no double action cost)
+    expect(activity.use).toHaveBeenNthCalledWith(2, { configure: false, consume: { action: false } });
+  });
+
+  it('WA-MULTI-3: count: 3 calls activity.use three times', async () => {
+    const activity = makeAttackActivity({ chatCardId: 'cm-atk-3' });
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { weaponAttackHandler } = await import('./weapon-attack.js');
+
+    const result = await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 3,
+    });
+
+    expect(result.success).toBe(true);
+    expect(activity.use).toHaveBeenCalledTimes(3);
+  });
+
+  it('WA-MULTI-4: attackId is stable across all iterations (same UUID per invocation)', async () => {
+    const activity = makeAttackActivity({ chatCardId: 'cm-atk-stable' });
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { weaponAttackHandler } = await import('./weapon-attack.js');
+
+    const result = await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 2,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const data = result.data as { attackId: string; attacks: Array<{ attackIndex: number; chatCardId: string | null }> };
+      expect(typeof data.attackId).toBe('string');
+      expect(data.attackId.length).toBeGreaterThan(0);
+      // Two attacks recorded under same attackId
+      expect(data.attacks).toHaveLength(2);
+      expect(data.attacks[0]?.attackIndex).toBe(1);
+      expect(data.attacks[1]?.attackIndex).toBe(2);
+    }
+  });
+
+  it('WA-MULTI-5: progress emitter is called once per iteration with correct fields', async () => {
+    const activity = makeAttackActivity({ chatCardId: 'cm-atk-progress' });
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    // Spy on progress emitter injection
+    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import('./weapon-attack.js');
+
+    const progressCalls: unknown[] = [];
+    setMultiAttackProgressEmitter((payload) => {
+      progressCalls.push(payload);
+    });
+
+    await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 2,
+    });
+
+    expect(progressCalls).toHaveLength(2);
+    const first = progressCalls[0] as { current: number; total: number; attackId: string; actorId: string };
+    const second = progressCalls[1] as { current: number; total: number; attackId: string; actorId: string };
+
+    expect(first.current).toBe(1);
+    expect(first.total).toBe(2);
+    expect(first.actorId).toBe('actor-a');
+    expect(second.current).toBe(2);
+    expect(second.total).toBe(2);
+    // attackId is stable across iterations
+    expect(first.attackId).toBe(second.attackId);
+
+    // Clean up injected emitter
+    setMultiAttackProgressEmitter(null);
+  });
+
+  it('WA-MULTI-6: activity.use throws on iteration 2 → returns failure; emitter NOT called for i=2', async () => {
+    let callCount = 0;
+    const activity = {
+      type: 'attack',
+      use: vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount === 2) {
+          throw new Error('attack-failed-on-second');
+        }
+        return { id: `cm-atk-${callCount}` };
+      }),
+    };
+    const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+    const actor = makeActor({ id: 'actor-a', item });
+
+    vi.stubGlobal('game', makeGameGlobal(actor));
+
+    const { weaponAttackHandler, setMultiAttackProgressEmitter } = await import('./weapon-attack.js');
+
+    const progressCalls: unknown[] = [];
+    setMultiAttackProgressEmitter((payload) => {
+      progressCalls.push(payload);
+    });
+
+    const result = await weaponAttackHandler.handle({
+      actor_id: 'actor-a',
+      item_id: 'sword-1',
+      targets: [],
+      advantage: 'normal',
+      count: 3,
+    });
+
+    // Handler should fail on iteration 2
+    expect(result.success).toBe(false);
+    // Emitter called only once (for successful i=0)
+    expect(progressCalls).toHaveLength(1);
+
+    setMultiAttackProgressEmitter(null);
   });
 });
