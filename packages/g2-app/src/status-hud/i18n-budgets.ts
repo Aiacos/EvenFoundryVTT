@@ -1180,6 +1180,111 @@ export const HUD_WIDTH_BUDGETS = {
     de: 'tap=best. scroll=— long=abbr.',
     max: 38,
   },
+
+  // ─── Phase 8 Plan 08-04 — move direction picker + status-hud movement chip ─
+  // 8 new keys for MoveDirectionPicker (z=2 overlay) panel title, remaining hint
+  // template, exhausted state hint, confirm/cancel footer hints, status-hud move
+  // chip label, R1 chip composite hint, and chip numeric template.
+  // All IT/EN/DE strings verified ≤ max code-points at authoring time.
+  // Compass direction letters (N/NE/E/SE/S/SW/W/NW) are language-neutral per
+  // Phase 4b Plan 03 Pitfall 6 precedent — they are NOT localised.
+
+  /**
+   * MoveDirectionPicker panel title shown in the top border.
+   * IT: "MOVIMENTO" (9) · EN: "MOVEMENT" (8) · DE: "BEWEGUNG" (8).
+   */
+  move_picker_title: {
+    it: 'MOVIMENTO',
+    en: 'MOVEMENT',
+    de: 'BEWEGUNG',
+    max: 12,
+  },
+
+  /**
+   * MoveDirectionPicker remaining movement template (with {n} placeholder).
+   * IT: "rimangono {n} ft" (template, up to 22 expanded) · EN similar.
+   * The `_template` suffix exempts from IB-3 literal-length check (Phase 4b precedent).
+   */
+  move_picker_remaining_template: {
+    it: 'rimangono {n} ft',
+    en: '{n} ft remaining',
+    de: '{n} ft übrig',
+    max: 22,
+  },
+
+  /**
+   * MoveDirectionPicker exhausted state hint (remainingFeet ≤ 0).
+   * IT: "Movimento esaurito" (18) · EN: "Movement exhausted" (18) · DE: "Bewegung erschöpft" (18).
+   */
+  move_picker_exhausted_hint: {
+    it: 'Movimento esaurito',
+    en: 'Movement exhausted',
+    de: 'Bewegung erschöpft',
+    max: 28,
+  },
+
+  /**
+   * MoveDirectionPicker tap-to-confirm footer label.
+   * IT: "commit" (6) · EN: "commit" (6) · DE: "bestätigen" (10).
+   */
+  move_picker_confirm_hint: {
+    it: 'commit',
+    en: 'commit',
+    de: 'bestätigen',
+    max: 12,
+  },
+
+  /**
+   * MoveDirectionPicker double-tap / long-press cancel footer label.
+   * IT: "annulla" (7) · EN: "cancel" (6) · DE: "abbrechen" (9).
+   */
+  move_picker_cancel_hint: {
+    it: 'annulla',
+    en: 'cancel',
+    de: 'abbrechen',
+    max: 12,
+  },
+
+  /**
+   * StatusHudRenderer movement chip label prefix (shown as "Mov 25/30").
+   * IT: "Mov" (3) · EN: "Mov" (3) · DE: "Bew" (3).
+   * Language-neutral abbreviation (same as move_label in Phase 4a HUD).
+   */
+  status_hud_movement_label: {
+    it: 'Mov',
+    en: 'Mov',
+    de: 'Bew',
+    max: 4,
+  },
+
+  /**
+   * R1 context chip composite hint for the MoveDirectionPicker overlay.
+   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * IT: "commit|direzione|annulla" (24) · EN: "commit|direction|cancel" (23) · DE: 19.
+   * Assembled chip fits within 38-char budget:
+   *   IT: tap=commit scroll=direzione long=annulla = 37 chars ✓
+   *   EN: tap=commit scroll=direction long=cancel = 36 chars ✓
+   *   DE: tap=bestätigen scroll=Richtung long=abbr. = 38 chars ✓ (exact limit)
+   */
+  hud_r1_move_picker: {
+    it: 'tap=commit scroll=direzione long=annulla',
+    en: 'tap=commit scroll=direction long=cancel',
+    de: 'tap=bestätigen scroll=Richtung long=abbr.',
+    max: 42,
+  },
+
+  /**
+   * StatusHudRenderer movement chip numeric format template.
+   * Language-neutral: `{used}/{total}` — always numeric, no localisation needed.
+   * The `_template` suffix exempts from IB-3 literal-length check (Phase 4b precedent).
+   * Max: 7 chars covers "999/999".
+   */
+  status_hud_movement_chip_template: {
+    it: '{used}/{total}',
+    en: '{used}/{total}',
+    de: '{used}/{total}',
+    max: 7,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

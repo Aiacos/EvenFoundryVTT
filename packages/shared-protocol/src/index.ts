@@ -201,10 +201,22 @@ export {
 export {
   ActionErrorKind,
   ActionOutcome,
-  ActionResultPayloadSchema,
   type ActionResultPayload,
+  ActionResultPayloadSchema,
   R1_ACTION_RESULT_TYPE,
 } from './payloads/action-result.js';
+
+// ─── Phase 8 additions (Plan 08-04) ──────────────────────────────────────────
+// Movement budget payload schema (ACT-01 move variant).
+// combat-movement-tracker.ts in foundry-module emits envelopes of this shape.
+// status-hud-layer.ts in g2-app consumes them via _onDelta narrowing on
+// R1_MOVEMENT_BUDGET_TYPE. renderer.setMovementBudget toggles the Mov 25/30 chip.
+
+export {
+  type MovementBudgetPayload,
+  MovementBudgetPayloadSchema,
+  R1_MOVEMENT_BUDGET_TYPE,
+} from './payloads/movement.js';
 
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
