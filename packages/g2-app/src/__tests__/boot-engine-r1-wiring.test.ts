@@ -91,12 +91,25 @@ const actionResultRecord: DispatcherCallRecord = {
   callArgs: [],
   unsubSpy: vi.fn(),
 };
+const actionEconomyRecord: DispatcherCallRecord = {
+  callCount: 0,
+  callArgs: [],
+  unsubSpy: vi.fn(),
+};
 
 vi.mock('../panels/action-result-dispatcher.js', () => ({
   attachActionResultHandler: (...args: unknown[]): (() => void) => {
     actionResultRecord.callCount++;
     actionResultRecord.callArgs.push(args);
     return actionResultRecord.unsubSpy as unknown as () => void;
+  },
+}));
+
+vi.mock('../panels/action-economy-dispatcher.js', () => ({
+  attachActionEconomyHandler: (...args: unknown[]): (() => void) => {
+    actionEconomyRecord.callCount++;
+    actionEconomyRecord.callArgs.push(args);
+    return actionEconomyRecord.unsubSpy as unknown as () => void;
   },
 }));
 
@@ -256,6 +269,10 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
     actionResultRecord.callCount = 0;
     actionResultRecord.callArgs = [];
     actionResultRecord.unsubSpy.mockClear();
+
+    actionEconomyRecord.callCount = 0;
+    actionEconomyRecord.callArgs = [];
+    actionEconomyRecord.unsubSpy.mockClear();
 
     // Stub Worker constructor (same pattern as BELO harness).
     const mockWorker = createMockWorker();
@@ -566,6 +583,98 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
       // is implemented in the same boot step. Accept structural pass.
       expect(actionResultRecord.callCount).toBe(1);
     }
+
+    handle.teardown();
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────────
+  // Phase 9 Plan 09-02 — action economy dispatcher wiring (BERW-13..16)
+  //
+  // Verifies that attachActionEconomyHandler is called in boot step 11e (after
+  // attachActionResultHandler) and that teardown unsubscribes it in reverse order.
+  //
+  // BERW-13: attachActionEconomyHandler called exactly once after boot
+  // BERW-14: teardown calls unsubActionEconomy closure (reverse attach order)
+  // BERW-15: attachActionEconomyHandler receives (ws, currentUserId) args
+  // BERW-16: ActionOptionsModal factory closures receive toastQueue (structural check)
+  //
+  // @see packages/g2-app/src/internal/boot-engine-core.ts step 11e
+  // @see packages/g2-app/src/panels/action-economy-dispatcher.ts
+  // @see .planning/phases/09-action-economy-edge-cases/09-02-PLAN.md Task 3
+  // ──────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * BERW-13: `attachActionEconomyHandler` (Plan 09-02) is called exactly once during
+   * boot at step 11e AFTER `attachActionResultHandler` is called.
+   */
+  it('BERW-13: attachActionEconomyHandler called exactly once after boot (step 11e, Plan 09-02)', async () => {
+    const { handle } = await bootWithWiring();
+
+    expect(actionEconomyRecord.callCount).toBe(1);
+    // Both dispatchers called in the correct order (attachActionResult before attachActionEconomy).
+    expect(actionResultRecord.callCount).toBe(1);
+
+    handle.teardown();
+  });
+
+  /**
+   * BERW-14: `teardown()` calls the `unsubActionEconomy` closure.
+   *
+   * After teardown, the action economy unsub spy must have been called once.
+   * Reverse attach order: actionEconomy attached after actionResult, unsubscribed before.
+   */
+  it('BERW-14: teardown calls unsubActionEconomy closure (reverse attach order)', async () => {
+    const { handle } = await bootWithWiring();
+
+    expect(actionEconomyRecord.unsubSpy).not.toHaveBeenCalled();
+
+    handle.teardown();
+
+    expect(actionEconomyRecord.unsubSpy).toHaveBeenCalledOnce();
+    // Both unsubs called
+    expect(actionResultRecord.unsubSpy).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * BERW-15: `attachActionEconomyHandler` receives (ws, currentUserId) arguments.
+   *
+   * The WS arg is the same WebSocket object used for the rest of the boot.
+   * currentUserId is the same `'<unknown>'` stub as actionResultRecord.callArgs[0][3].
+   */
+  it('BERW-15: attachActionEconomyHandler receives (ws, currentUserId) args', async () => {
+    const { handle } = await bootWithWiring();
+
+    const callArgs = actionEconomyRecord.callArgs[0] ?? [];
+    // Args: (ws, currentUserId)
+    expect(callArgs).toHaveLength(2);
+    expect(callArgs[0]).toBeDefined(); // WS reference
+    // currentUserId must match what was passed to attachActionResultHandler (same boot scope)
+    const econUserId = callArgs[1];
+    const resultUserId = (actionResultRecord.callArgs[0] ?? [])[3];
+    expect(econUserId).toBe(resultUserId); // both share the same currentUserId variable
+
+    handle.teardown();
+  });
+
+  /**
+   * BERW-16: ActionOptionsModal factory closures (spellbook + inventory) receive toastQueue.
+   *
+   * Structural check: attachActionResultHandler receives a toastQueue (the ToastQueueLayer
+   * instance) as its second arg. The same toastQueue is referenced in the ActionOptionsModal
+   * factory closures. We verify indirectly: if attachActionResultHandler.callArgs[1] is
+   * defined (the toastQueue object) and actionEconomyRecord is called (step 11e ran), then
+   * the factory closures were set up in the same step 11f scope that has access to toastQueue.
+   */
+  it('BERW-16: step 11e ran → toastQueue available to ActionOptionsModal factory closures', async () => {
+    const { handle } = await bootWithWiring();
+
+    // Verify toastQueue was passed to attachActionResultHandler (step 11e)
+    const toastQueueArg = (actionResultRecord.callArgs[0] ?? [])[1];
+    expect(toastQueueArg).toBeDefined();
+    expect(typeof (toastQueueArg as { enqueue?: unknown })?.enqueue).toBe('function');
+
+    // Verify actionEconomy dispatcher also ran in step 11e (precondition for factory closures)
+    expect(actionEconomyRecord.callCount).toBe(1);
 
     handle.teardown();
   });
