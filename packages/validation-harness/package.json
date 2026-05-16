@@ -7,6 +7,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest --run --project @evf/validation-harness --root ../..",
+    "inv:all": "tsx scripts/inv-all.ts",
+    "inv:all:skip-inv2": "tsx scripts/inv-all.ts --skip-inv2",
     "validate:all": "tsx scripts/run-all.ts",
     "validate:all:skip-hardware": "tsx scripts/run-all.ts --skip-hardware",
     "validate:r1-timing": "tsx scripts/10-0-1-r1-timing.ts",

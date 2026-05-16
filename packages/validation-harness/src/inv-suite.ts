@@ -22,7 +22,7 @@
  * Resolution order for repoRoot:
  *   1. opts.repoRoot parameter (unit tests / CLI override)
  *   2. process.env.EVF_REPO_ROOT (CI / sandbox)
- *   3. path.resolve(import.meta.dirname, '../../../..') — 4 levels up from src/
+ *   3. path.resolve(import.meta.dirname, '../../..') — 3 levels up from src/ to monorepo root
  */
 
 import { readFile } from 'node:fs/promises';
@@ -87,10 +87,12 @@ function resolveRepoRoot(opts: RunInvSuiteOpts): string {
   if (opts.repoRoot) return opts.repoRoot;
   const envRoot = process.env.EVF_REPO_ROOT;
   if (envRoot) return envRoot;
-  // src/inv-suite.ts → packages/validation-harness/src → 3 levels up to monorepo root
+  // src/inv-suite.ts lives at packages/validation-harness/src/inv-suite.ts
+  // __dirname = packages/validation-harness/src
+  // 1 up = packages/validation-harness, 2 up = packages, 3 up = monorepo root
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  return path.resolve(__dirname, '..', '..', '..', '..');
+  return path.resolve(__dirname, '..', '..', '..');
 }
 
 // -------------------------------------------------------------------------------------
