@@ -47,6 +47,12 @@ import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 
+// WR-03: crypto.randomUUID() is available in the Even Realities App WebView (WKWebView, iOS 15+)
+// and in Node 24 test environments. The `declare const` ambient declaration satisfies TypeScript
+// without importing from Node built-ins, matching the pattern in concentration-drop-modal.ts:57.
+// Tests stub crypto.randomUUID via vi.stubGlobal('crypto', { randomUUID: () => '<uuid>' }).
+declare const crypto: { randomUUID(): string };
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Stable container name (Strategy A — single overlay-block container per ADR-0009 Amd 1). */
@@ -180,6 +186,8 @@ export class TemplatePlacementPanel implements OverlayPanel {
 
       case 'tap': {
         // Emit confirm envelope → module commits via createEmbeddedDocuments
+        // WR-03: include idempotencyKey (UUID v4) required by ToolInvocationEnvelopePayloadSchema.
+        // Without it, bridge-side validation rejects the envelope after CR-01 fix lands.
         const confirmEnvelope = {
           proto: 'evf-v1' as const,
           seq: 0,
@@ -188,6 +196,7 @@ export class TemplatePlacementPanel implements OverlayPanel {
           session_id: this.sessionId,
           payload: {
             toolId: 'confirm-template-placement',
+            idempotencyKey: crypto.randomUUID(), // WR-03: required by ToolInvocationEnvelopePayloadSchema
             args: {
               placementId: this.payload.placementId,
               templateIndex: this.payload.templateIndex,
