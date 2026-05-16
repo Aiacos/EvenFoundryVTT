@@ -370,6 +370,11 @@ export async function _bootEngineCore(
   //      `currentLocaleOverride` threads the step 9c read-back so the menu's language
   //      sub-menu starts with the correct current override rather than 'auto' (I18N-02).
   //
+  //      WR-03 fix: `makeMenu` must read the CURRENT effective locale at call time, not
+  //      the boot-time value captured by the outer closure. Two mutable refs are
+  //      maintained here and updated by a localeEvents listener so every subsequent
+  //      long-press produces a menu in the user's live locale, not the boot locale.
+  //
   //      The `makeMenu` callbacks:
   //        onClose    → `popOverlay(lm)` — suspends/restores the panel below the menu.
   //        onNavigate → `openPanel(target, deps)` — navigates to a Phase 5 panel.
@@ -380,14 +385,24 @@ export async function _bootEngineCore(
   const panelRouter = new PanelRouter();
   await panelRouter.discoverPanels();
 
-  const currentLocaleOverride: LocaleOverride = localeOverride === 'auto' ? 'auto' : localeOverride;
+  // WR-03: mutable refs updated by localeEvents so makeMenu always uses the live locale.
+  // Initialised from step 9c values (post-override read-back).
+  let currentMenuLocale: BootEngineLocale = effectiveLocale;
+  let currentMenuOverride: LocaleOverride = localeOverride === 'auto' ? 'auto' : localeOverride;
+
+  const unsubMenuLocale = localeEvents.on('changed', (code) => {
+    // 'auto' means revert to the boot-detected locale (opts.locale). Any specific
+    // locale code takes effect directly as both the render locale and the stored override.
+    currentMenuLocale = code === 'auto' ? opts.locale : (code as BootEngineLocale);
+    currentMenuOverride = code;
+  });
 
   const makeMenu = (): QuickActionMenuPanel => {
     return new QuickActionMenuPanel(
       bridge,
       gestureBus,
-      effectiveLocale,
-      currentLocaleOverride,
+      currentMenuLocale,  // WR-03: live locale, not boot-time capture
+      currentMenuOverride, // WR-03: live override, not boot-time capture
       localeEvents,
       {
         onClose: () => {
@@ -472,6 +487,12 @@ export async function _bootEngineCore(
         unsubLongPress();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubLongPress failed', err);
+      }
+      // WR-03: tear down the localeEvents listener that keeps makeMenu locale refs live.
+      try {
+        unsubMenuLocale();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubMenuLocale failed', err);
       }
       try {
         unsubR1();

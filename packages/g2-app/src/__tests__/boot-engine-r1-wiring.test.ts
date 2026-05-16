@@ -296,21 +296,30 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
   });
 
   /**
-   * BERW-03: `handle.localeEvents` is a `LocaleEventEmitter` with `size() === 0`
-   * immediately after boot (no permanent subscribers from the boot sequence itself).
+   * BERW-03: `handle.localeEvents` is a `LocaleEventEmitter` with `size() === 1`
+   * immediately after boot. The single permanent subscriber is the WR-03 locale-
+   * tracking listener in boot-engine-core.ts step 11c — it keeps the `makeMenu`
+   * factory's `currentMenuLocale` / `currentMenuOverride` mutable refs live so
+   * every subsequent long-press produces a menu in the user's current locale, not
+   * the boot-time locale.
    *
-   * Panel subscribers (QuickActionMenuPanel etc.) subscribe on `onMount`, not at
-   * boot time, so the emitter starts empty. This prevents subscriber leaks across
-   * boot cycles.
+   * Panel subscribers (QuickActionMenuPanel etc.) subscribe on `onMount`; this
+   * boot-level subscriber is distinct. It is removed in `teardown()` via
+   * `unsubMenuLocale()` — after teardown, size() drops back to 0.
+   *
+   * @see WR-03 fix — Phase 6 REVIEW.md
    */
-  it('BERW-03: handle.localeEvents exposed + size() === 0 after boot (no permanent subscribers)', async () => {
+  it('BERW-03: handle.localeEvents exposed + size() === 1 after boot (WR-03 locale-tracking subscriber)', async () => {
     const { handle } = await bootWithWiring();
 
     // Verify the field exists and is a LocaleEventEmitter instance.
     expect(handle.localeEvents).toBeInstanceOf(LocaleEventEmitter);
-    expect(handle.localeEvents.size()).toBe(0);
+    // WR-03: one permanent subscriber (the makeMenu locale-tracking listener).
+    expect(handle.localeEvents.size()).toBe(1);
 
     handle.teardown();
+    // After teardown, the locale listener is removed.
+    expect(handle.localeEvents.size()).toBe(0);
   });
 
   /**
