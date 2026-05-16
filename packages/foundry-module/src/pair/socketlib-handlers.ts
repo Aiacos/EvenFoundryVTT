@@ -43,6 +43,8 @@ import { getCharacterSnapshot, listPlayerCharacters } from '../readers/character
 import { getCombatSnapshot } from '../readers/combat-reader.js';
 import { getEventLog } from '../readers/event-log-reader.js';
 import { getSceneViewport } from '../readers/scene-reader.js';
+import type { ToolId, ToolResult } from '../write-path/tool-registry.js';
+import { dispatchTool } from '../write-path/tool-registry.js';
 import { revokeBearer, validateBearer } from './bearer-registry.js';
 
 // ─── Handler implementations ─────────────────────────────────────────────────
@@ -192,34 +194,125 @@ function handleListCharacters(
   return listPlayerCharacters();
 }
 
-// ─── Plan 03-04: 7 ADR-0003 Tool Registry stub handlers ──────────────────────
+// ─── Plan 07-02: tool dispatch input shape guard ──────────────────────────────
+
+/**
+ * Validates that the handler input has the expected shape for a tool invocation.
+ *
+ * All 4 replaced tool handlers (castSpell, weaponAttack, useItem, moveToken) accept
+ * a payload object with `{ args: unknown, idempotencyKey: string, bearer: string }`.
+ * If the input does not match this shape, the handler returns `invalid_input` without
+ * touching any game state (T-07-02-01: input shape guard before dispatchTool).
+ *
+ * @param input - Raw input from socketlib (untrusted)
+ * @returns Typed payload on success, null on shape mismatch
+ *
+ * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2 (T-07-02-01)
+ */
+function validateToolPayload(
+  input: unknown,
+): { args: unknown; idempotencyKey: string; bearer: string } | null {
+  if (input === null || typeof input !== 'object') {
+    return null;
+  }
+  const obj = input as Record<string, unknown>;
+  if (
+    !('args' in obj) ||
+    typeof obj.idempotencyKey !== 'string' ||
+    typeof obj.bearer !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    args: obj.args,
+    idempotencyKey: obj.idempotencyKey,
+    bearer: obj.bearer,
+  };
+}
+
+/**
+ * Creates a thin dispatchTool adapter for a given ToolId.
+ *
+ * Each of the 4 replaced handlers uses this factory to:
+ * 1. Validate the raw socketlib input shape (invalid_input guard)
+ * 2. Call dispatchTool with the correct ToolId and payload
+ * 3. Return the ToolResult (passed through to socketlib caller)
+ *
+ * The adapter is `async` because dispatchTool is async (idempotency cache + audit log).
+ *
+ * @param toolId - The ToolId to dispatch (passed as literal by each handler below)
+ * @returns Async socketlib handler function
+ *
+ * @see packages/foundry-module/src/write-path/tool-registry.ts (dispatchTool)
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
+ */
+function makeDispatchAdapter(
+  toolId: ToolId,
+): (input: unknown) => Promise<ToolResult | { success: false; error: 'invalid_input' }> {
+  return async (
+    input: unknown,
+  ): Promise<ToolResult | { success: false; error: 'invalid_input' }> => {
+    const payload = validateToolPayload(input);
+    if (payload === null) {
+      return { success: false, error: 'invalid_input' };
+    }
+    return dispatchTool(toolId, payload);
+  };
+}
+
+// ─── Plan 07-02: 4 replaced socketlib handlers (in-place stub replacement) ────
 //
-// T-03-14 boundary: these stubs MUST NOT call any write API.
-// They return { status: 'phase-07-pending' } only.
-// Phase 07 will replace each stub with a real activity.use() call
-// (or MidiQOL.completeActivityUse when present).
+// The 4 stubs from Plan 03-04 are REPLACED IN-PLACE here.
+// Registration call sites below remain identical — ONLY the handler function
+// bodies change. The total registerComplexHandler count stays 14.
 //
-// NB: Phase 03 bridge does NOT call these handlers via executeAsGM —
-// the bridge's TOOL_DISPATCH_TABLE stubs return phase-07-pending directly.
-// These registrations exist so Phase 07 wiring is trivial (registration scaffolding only).
+// ADR-0011 single-workflow-origin discipline: each handler calls dispatchTool
+// which routes to the appropriate ToolHandler registered in TOOL_REGISTRY
+// (populated by the side-effect import in module.ts).
+//
+// Pitfall 5 (no_gm_connected): dispatchTool catches errors and normalises
+// them — the adapter propagates the ToolResult as-is.
+// Pitfall 7 (handler count): no NEW registrations below — count stays 14.
 
-/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
-function handleCastSpellStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * castSpell socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
+ *
+ * Validates payload shape, calls dispatchTool('cast-spell', payload).
+ * Returns ToolResult from the castSpellHandler (registered in handlers/index.ts).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
+ */
+const handleCastSpell = makeDispatchAdapter('cast-spell');
 
-/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
-function handleWeaponAttackStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * weaponAttack socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
+ *
+ * Validates payload shape, calls dispatchTool('weapon-attack', payload).
+ * Returns ToolResult from the weaponAttackHandler (single attack path; multi-attack in 07-04).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/weapon-attack.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
+ */
+const handleWeaponAttack = makeDispatchAdapter('weapon-attack');
 
-/** T-03-14: no game state write; Phase 07 dispatches real activity.use() via MidiQOL.completeActivityUse. */
-function handleUseItemStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real activity.use() via MidiQOL.completeActivityUse — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * useItem socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
+ *
+ * Validates payload shape, calls dispatchTool('use-item', payload).
+ * Returns ToolResult from the useItemHandler.
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/use-item.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
+ */
+const handleUseItem = makeDispatchAdapter('use-item');
 
 /** T-03-14: no game state write; Phase 07 dispatches real actor.rollSkill() — this stub returns immediately. */
 function handleSkillCheckStub(_input: unknown): { status: 'phase-07-pending' } {
@@ -227,11 +320,18 @@ function handleSkillCheckStub(_input: unknown): { status: 'phase-07-pending' } {
   return { status: 'phase-07-pending' };
 }
 
-/** T-03-14: no game state write; Phase 07 dispatches real Token.update() — this stub returns immediately. */
-function handleMoveTokenStub(_input: unknown): { status: 'phase-07-pending' } {
-  // Phase 07 will dispatch the real Token.update() call — this stub returns immediately.
-  return { status: 'phase-07-pending' };
-}
+/**
+ * moveToken socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
+ *
+ * Validates payload shape, calls dispatchTool('move-token', payload).
+ * Returns ToolResult from the moveTokenHandler (tokenDoc.update, NOT activity.use).
+ *
+ * ADR-0011: single-workflow-origin; CI Gate 8: no activity.use() in this file.
+ *
+ * @see packages/foundry-module/src/write-path/handlers/move-token.ts
+ * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
+ */
+const handleMoveToken = makeDispatchAdapter('move-token');
 
 /** T-03-14: no game state write; Phase 07 dispatches real MeasuredTemplate.create() — this stub returns immediately. */
 function handlePlaceTemplateStub(_input: unknown): { status: 'phase-07-pending' } {
@@ -284,13 +384,17 @@ export function registerSocketlibHandlers(): void {
   socketlib.registerComplexHandler(MODULE_ID, 'evf.getEventLog', handleGetEventLog);
   socketlib.registerComplexHandler(MODULE_ID, 'evf.listCharacters', handleListCharacters);
 
-  // Plan 03-04: 7 Tool Registry stub handlers (Phase 07 replaces with real activity.use())
-  // T-03-14: each handler returns { status: 'phase-07-pending' } ONLY — no write API calls.
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.castSpell', handleCastSpellStub);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.weaponAttack', handleWeaponAttackStub);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.useItem', handleUseItemStub);
+  // Plan 07-02: 4 real handlers (replaced in-place — no new registrations, count stays 14)
+  // Each adapter validates input shape → calls dispatchTool → returns ToolResult.
+  // ADR-0011 single-workflow-origin discipline; CI Gate 8: no activity.use() here.
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.castSpell', handleCastSpell);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.weaponAttack', handleWeaponAttack);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.useItem', handleUseItem);
+  // skillCheck: still a Plan 03-04 stub — Phase 08/09 will replace with real actor.rollSkill()
   socketlib.registerComplexHandler(MODULE_ID, 'evf.skillCheck', handleSkillCheckStub);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveTokenStub);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveToken);
+  // placeTemplate: still a Plan 03-04 stub — Plan 07-03 (Wave 2) replaces
   socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplateStub);
+  // setTargets: still a Plan 03-04 stub — Plan 07-05 renames to evf.dropConcentration
   socketlib.registerComplexHandler(MODULE_ID, 'evf.setTargets', handleSetTargetsStub);
 }

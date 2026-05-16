@@ -30,6 +30,11 @@ import { registerCanvasExtractor } from './canvas-extractor.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
+// Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
+// before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
+// when the socketlib handlers are invoked.
+// ADR-0011: single-workflow-origin discipline — all write mutations go through dispatchTool.
+import './write-path/handlers/index.js';
 
 /**
  * Canonical Foundry module identifier.

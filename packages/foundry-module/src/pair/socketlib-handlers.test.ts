@@ -349,4 +349,150 @@ describe('registerSocketlibHandlers', () => {
       expect(Array.isArray(result)).toBe(true);
     });
   });
+
+  // ─── Plan 07-02: registerComplexHandler count regression guard (Pitfall 7) ────
+  //
+  // REGRESSION GUARD: total registerComplexHandler count must stay exactly 14.
+  // Plan 07-02 replaces 4 stub function bodies in-place — NO new registrations.
+  // If this test fails, a new handler was accidentally registered.
+
+  it('registers exactly 14 handlers total (Pitfall 7 regression guard)', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+  });
+
+  // ─── Plan 07-02: 4 replaced socketlib stubs — dispatchTool adapter tests ──────
+  //
+  // Each of the 4 replaced handlers must:
+  // (a) return { success: false, error: 'invalid_input' } on malformed payload
+  // (b) call dispatchTool with the correct toolId + payload (mocked)
+  // (c) return the ToolResult from dispatchTool
+
+  describe('evf.castSpell handler (Plan 07-02 replacement)', () => {
+    it('returns invalid_input for malformed payload (missing args)', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.castSpell', { bearer: 'tok', idempotencyKey: 'key' });
+      // malformed: no 'args' field
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    it('returns invalid_input for non-object payload', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.castSpell', 'not-an-object');
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    it('returns invalid_input when bearer is missing', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.castSpell', {
+        args: { actor_id: 'a', spell_id: 's', slot_level: 1, targets: [] },
+        idempotencyKey: 'key-1',
+        // missing bearer
+      });
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    // Note: the dispatchTool integration test (asserting correct toolId forwarding
+    // and ToolResult pass-through) lives in socketlib-handlers-dispatch.test.ts —
+    // that file can use top-level vi.mock for tool-registry without affecting these tests.
+  });
+
+  describe('evf.weaponAttack handler (Plan 07-02 replacement)', () => {
+    it('returns invalid_input for malformed payload', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.weaponAttack', null);
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    it('returns invalid_input when idempotencyKey is missing', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.weaponAttack', {
+        args: { actor_id: 'a', item_id: 'i', targets: [], advantage: 'normal' },
+        bearer: 'tok',
+        // missing idempotencyKey
+      });
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+  });
+
+  describe('evf.useItem handler (Plan 07-02 replacement)', () => {
+    it('returns invalid_input for malformed payload', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.useItem', undefined);
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    it('returns invalid_input when bearer is not a string', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.useItem', {
+        args: { actor_id: 'a', item_id: 'i', targets: [] },
+        idempotencyKey: 'key-1',
+        bearer: 42, // wrong type
+      });
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+  });
+
+  describe('evf.moveToken handler (Plan 07-02 replacement)', () => {
+    it('returns invalid_input for malformed payload', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.moveToken', 'not-an-object');
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+
+    it('returns invalid_input when args is missing', async () => {
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      registerSocketlibHandlers();
+
+      const result = await socketlibMock.callHandler('evf.moveToken', {
+        idempotencyKey: 'key-1',
+        bearer: 'tok',
+        // missing args
+      });
+      expect(result).toEqual({ success: false, error: 'invalid_input' });
+    });
+  });
+
+  // ─── Plan 07-02: verify 3 remaining stubs still return phase-07-pending ───────
+  //
+  // The skill-check, place-template, and set-targets stubs must remain untouched.
+  // Plans 07-03 / 07-05 replace them later.
+
+  it('evf.skillCheck still returns phase-07-pending (stub untouched)', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    const result = socketlibMock.callHandler('evf.skillCheck', {});
+    expect(result).toEqual({ status: 'phase-07-pending' });
+  });
+
+  it('evf.placeTemplate still returns phase-07-pending (stub untouched)', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    const result = socketlibMock.callHandler('evf.placeTemplate', {});
+    expect(result).toEqual({ status: 'phase-07-pending' });
+  });
+
+  it('evf.setTargets still returns phase-07-pending (stub untouched)', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    const result = socketlibMock.callHandler('evf.setTargets', {});
+    expect(result).toEqual({ status: 'phase-07-pending' });
+  });
 });
