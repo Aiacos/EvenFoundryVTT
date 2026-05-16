@@ -233,7 +233,11 @@ Plans:
   3. Combat overlay quick actions `[A]ttack [S]pell [I]tem [M]ove` each launch the matching flow with target selection (ACT-01 attack variant)
   4. Every completed action shows a result toast (§7.10 State 3 reused without voice) — d20 + outcome + damage; failures show an error toast that names the cause
   5. Target picker handles the empty-target edge case gracefully (no crash, "no targets" hint)
-**Plans**: TBD
+**Plans**:
+- [x] 08-01-PLAN.md — i18n keys + CombatOverlayPanel scaffolding + R1 gesture wiring (Wave 1) — complete 2026-05-16
+- [x] 08-02-PLAN.md — ActionOptionsModal + R1 tap dispatch + panel teardown (Wave 2) — complete 2026-05-16
+- [x] 08-03-PLAN.md — ActionOptionsModal long-press wiring + SpellbookPanel/InventoryPanel integration (Wave 2) — complete 2026-05-16
+- [x] 08-04-PLAN.md — MoveDirectionPicker (z=2) + MovementBudgetPayloadSchema + combat-movement-tracker + StatusHud move-chip + 4 INV-1 fixtures (Wave 3) — complete 2026-05-16 (commits 96299ba + 8130153 + cd27600)
 
 ### Phase 9: Action Economy & Edge Cases
 **Goal**: Action / Bonus / Reaction enforcement is visible and binding; concentration drop, multi-attack, and slot consumption all behave correctly under real combat sequencing.

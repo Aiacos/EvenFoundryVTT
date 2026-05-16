@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_7_CLOSED — Plans 01-06 all committed; hardware-pending SC-07-01..05 carried to ADR-0005 Branch A.
-stopped_at: Completed 07-06-PLAN.md
-last_updated: "2026-05-16T16:08:09.564Z"
-last_activity: "2026-05-16 — Phase 7 CLOSED: Plan 07-06 complete — bearer rotation scheduler (TTL_24H_MS+GRACE_60S_MS exports + getActiveBearer + scheduleBearerRotation + BEARER_ROTATED_TYPE) + ISM-W7-01..08 integration smoke harness (10 tests). 328 tests pass. socketlib count stays 14. 5 hardware-pending SC carried to ADR-0005 Branch A. ADR-0011 ACCEPTED. Phase 8 unblocked."
+status: PHASE_8_IN_PROGRESS — Plans 01-04 committed; MoveDirectionPicker + MovementBudget pipeline complete.
+stopped_at: Completed 08-04-PLAN.md
+last_updated: "2026-05-16T18:00:00.000Z"
+last_activity: "2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld."
 progress:
   total_phases: 15
   completed_phases: 9
   total_plans: 50
-  completed_plans: 48
+  completed_plans: 49
   percent: 60
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-10)
 
 ## Current Position
 
-Phase: 7 (foundry-module-write-path — CLOSED 2026-05-16)
-Plan: 07-06 complete — Wave 4 bearer rotation + ISM-W7 integration smoke. Phase 8 (Manual Action UX) is next.
-Status: PHASE_7_CLOSED — Plans 01-06 all committed; hardware-pending SC-07-01..05 carried to ADR-0005 Branch A.
+Phase: 8 (manual-action-ux — IN PROGRESS)
+Plan: 08-04 complete — Wave 3 MoveDirectionPicker + combat-movement-tracker + StatusHud move-chip + move-token integration.
+Status: PHASE_8_IN_PROGRESS — Plans 01-04 committed; MoveDirectionPicker + MovementBudget pipeline complete.
 
-Last activity: 2026-05-16 — Phase 7 CLOSED: Plan 07-06 complete — bearer rotation scheduler (TTL_24H_MS+GRACE_60S_MS exports + getActiveBearer + scheduleBearerRotation + BEARER_ROTATED_TYPE) + ISM-W7-01..08 integration smoke harness (10 tests). 328 tests pass. socketlib count stays 14. 5 hardware-pending SC carried to ADR-0005 Branch A. ADR-0011 ACCEPTED. Phase 8 unblocked.
+Last activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
 
 Previous activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
 
@@ -123,6 +123,7 @@ Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans
 | Phase 08 P01 | 90 | 3 tasks | 11 files |
 | Phase 08-manual-action-ux P02 | 50m | 2 tasks | 9 files |
 | Phase 08-manual-action-ux P03 | 45 | 2 tasks | 10 files |
+| Phase 08-manual-action-ux P04 | 75 | 3 tasks | 24 files |
 
 ## Quick Tasks Completed
 
@@ -191,6 +192,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 07 Plan 03]: AbilityTemplate.fromActivity() called synchronously (never awaited); drawPreview() never called — confirmed incompatible with R1 input model per RESEARCH §Q2
 - [Phase 07 Plan 03]: PLACEMENT_CONTEXTS Map module-scoped singleton with 60s TTL; eviction is lazy (on confirmTemplatePlacement access), not proactive — acceptable for MVP single-tenant
 - [Phase 07 Plan 03]: evf.skillCheck stub slot renamed in-place to evf.confirmTemplatePlacement — socketlib count stays at exactly 14
+- [Phase 08 Plan 04]: MoveDirectionPicker uses gridSizePixels (canvas pixels per square) — computeDelta maps 8 compass directions to absolute canvas delta {dx, dy}
+- [Phase 08 Plan 04]: CharacterDeltaEvents widened to string channel to support movement budget subscription alongside character.delta without breaking existing mocks
+- [Phase 08 Plan 04]: Row 19 in _buildGrid repurposed for Mov chip — conditionsOverflow takes priority when both conditions overflow AND movement budget exist
+- [Phase 08 Plan 04]: combat-movement-tracker uses _lastPosition map per actorId; first updateToken fire always yields delta=0 (Phase 8 broad heuristic)
 
 ### Pending Todos
 
@@ -214,10 +219,10 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-16T16:08:09.554Z
-Stopped at: Completed 07-06-PLAN.md
+Last session: 2026-05-16T18:00:00.000Z
+Stopped at: Completed 08-04-PLAN.md
 Resume file: None
-Resume cmd: /gsd-execute-phase 8 01
+Resume cmd: /gsd-execute-phase 8 05
 
 ## /gsd-autonomous 2026-05-16 run — Phase 7 closure
 
