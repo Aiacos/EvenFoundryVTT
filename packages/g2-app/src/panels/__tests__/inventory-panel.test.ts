@@ -52,7 +52,8 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { isOverlayPanel } from '../../engine/overlay-panel.js';
-import type { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
+import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
+import type { ActionOptionsRequest } from '../action-options-modal.js';
 import InventoryPanel, {
   renderEquippedSection,
   renderInventoryRow,
@@ -465,5 +466,123 @@ describe('InventoryPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
       expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
     }
+  });
+});
+
+// ─── INV-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + long-press wiring
+
+/**
+ * Snapshot with weapon item at index 0 for INV-LP-* tests.
+ * Weapon type → requiresTarget heuristic = true (type !== 'consumable').
+ */
+const snapshotWithWeapon: CharacterSnapshot = {
+  ...snapshot2014,
+  inventory: [
+    {
+      id: 'item-sword',
+      name: 'Spada lunga',
+      type: 'weapon',
+      damage: '1d8 taglio',
+      tags: ['versatile'],
+    },
+  ],
+};
+
+/**
+ * Snapshot with consumable item at index 0 for INV-LP-* tests.
+ * Consumable type → requiresTarget heuristic = false (type === 'consumable').
+ */
+const snapshotWithPotion: CharacterSnapshot = {
+  ...snapshot2014,
+  inventory: [
+    {
+      id: 'item-potion-healing',
+      name: 'Pozione di Guarigione',
+      type: 'consumable',
+      damage: '2d4+2 PF',
+      quantity: 1,
+    },
+  ],
+};
+
+describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
+  it('INV-LP-01: setActionOptionsHandler method exists on panel instance', () => {
+    const panel = new InventoryPanel(makeMockBridge(), new PanelGestureBus(), 'it');
+    expect(typeof panel.setActionOptionsHandler).toBe('function');
+  });
+
+  it('INV-LP-02: long-press with handler set + valid snapshot (weapon) calls handler', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithWeapon);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const req = spy.mock.calls[0]?.[0];
+    expect(req).toBeDefined();
+    expect(req?.kind).toBe('item');
+    expect(req?.name).toBe('Spada lunga');
+    expect(req?.actorId).toBe('thorin-oakenshield-001');
+    expect(req?.itemId).toBe('item-sword');
+    expect(req?.requiresTarget).toBe(true); // weapon → requiresTarget=true
+
+    await panel.onUnmount();
+  });
+
+  it('INV-LP-02b: requiresTarget heuristic — consumable → false', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithPotion);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    const req = spy.mock.calls[0]?.[0];
+    expect(req?.requiresTarget).toBe(false);
+    expect(req?.name).toBe('Pozione di Guarigione');
+
+    await panel.onUnmount();
+  });
+
+  it('INV-LP-03: long-press with handler NOT set → no-op (backward-compat)', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithWeapon);
+    await panel.onMount();
+
+    // No setActionOptionsHandler call — should be a no-op
+    bus.publish({ kind: 'long-press' });
+
+    // Panel stays alive — no crash
+    await panel.onUnmount();
+  });
+
+  it('INV-LP-04: long-press with handler set but snapshot=null → no-op + console.warn', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    // No onSnapshot call → snapshot is null
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const msg = warnSpy.mock.calls[0]?.[0];
+    expect(String(msg)).toContain('inventory-panel');
+
+    warnSpy.mockRestore();
+    await panel.onUnmount();
   });
 });

@@ -60,7 +60,8 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { isOverlayPanel } from '../../engine/overlay-panel.js';
-import type { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
+import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
+import type { ActionOptionsRequest } from '../action-options-modal.js';
 import SpellbookPanel, {
   renderLevelSection,
   renderSlotBar,
@@ -622,5 +623,161 @@ describe('SpellbookPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
       expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
     }
+  });
+});
+
+// ─── SBP-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + long-press wiring
+
+/**
+ * Minimal CharacterSnapshot with one spell for SBP-LP-* tests.
+ * Spell range='45m' + activation='action' → requiresTarget heuristic = true
+ * (range !== 'self' && range !== '' && activation !== 'reaction').
+ */
+const snapshotWithSpell: CharacterSnapshot = {
+  actorId: 'hero-001',
+  name: 'HERO',
+  hp: 30,
+  maxHp: 30,
+  tempHp: 0,
+  ac: 15,
+  level: 5,
+  conditions: [],
+  exhaustion: 0,
+  death: { success: 0, failure: 0 },
+  world: { modernRules: false },
+  inventory: [],
+  spells: {
+    slots: [{ level: 3, value: 2, max: 2 }],
+    spells: [
+      {
+        id: 'spell-fireball',
+        name: 'Palla di Fuoco',
+        level: 3,
+        school: 'evocation',
+        activation: 'action',
+        range: '45m',
+        effect: '8d6 fuoco',
+        prepared: true,
+        alwaysPrepared: false,
+        concentration: false,
+      },
+    ],
+  },
+};
+
+describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
+  it('SBP-LP-01: setActionOptionsHandler method exists on panel instance', () => {
+    const panel = new SpellbookPanel(makeMockBridge(), new PanelGestureBus(), 'it');
+    expect(typeof panel.setActionOptionsHandler).toBe('function');
+  });
+
+  it('SBP-LP-02: long-press with handler set + valid snapshot calls handler with ActionOptionsRequest', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithSpell);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const req = spy.mock.calls[0]?.[0];
+    expect(req).toBeDefined();
+    expect(req?.kind).toBe('spell');
+    expect(req?.name).toBe('Palla di Fuoco');
+    expect(req?.actorId).toBe('hero-001');
+    expect(req?.itemId).toBe('spell-fireball');
+
+    await panel.onUnmount();
+  });
+
+  it('SBP-LP-02b: requiresTarget heuristic — range=45m + action → true', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithSpell);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    const req = spy.mock.calls[0]?.[0];
+    expect(req?.requiresTarget).toBe(true);
+
+    await panel.onUnmount();
+  });
+
+  it('SBP-LP-02c: requiresTarget heuristic — range=self → false', async () => {
+    const bus = new PanelGestureBus();
+    const selfRangeSnapshot: CharacterSnapshot = {
+      ...snapshotWithSpell,
+      spells: {
+        slots: [],
+        spells: [
+          {
+            id: 'spell-shield',
+            name: 'Scudo',
+            level: 1,
+            school: 'abjuration',
+            activation: 'action',
+            range: 'self',
+            effect: '+5 CA',
+            prepared: true,
+            alwaysPrepared: false,
+            concentration: false,
+          },
+        ],
+      },
+    };
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(selfRangeSnapshot);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    const req = spy.mock.calls[0]?.[0];
+    expect(req?.requiresTarget).toBe(false);
+
+    await panel.onUnmount();
+  });
+
+  it('SBP-LP-03: long-press with handler NOT set → handler not called (backward-compat)', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithSpell);
+    await panel.onMount();
+
+    // No setActionOptionsHandler call — should be a no-op
+    bus.publish({ kind: 'long-press' });
+
+    // Panel stays alive — no crash, no call to any handler
+    await panel.onUnmount();
+  });
+
+  it('SBP-LP-04: long-press with handler set but snapshot=null → no-op + console.warn', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    // No onSnapshot call → snapshot is null
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    bus.publish({ kind: 'long-press' });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const msg = warnSpy.mock.calls[0]?.[0];
+    expect(String(msg)).toContain('spellbook-panel');
+
+    warnSpy.mockRestore();
+    await panel.onUnmount();
   });
 });
