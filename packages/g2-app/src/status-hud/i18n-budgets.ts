@@ -744,87 +744,85 @@ export const HUD_WIDTH_BUDGETS = {
    * IT: `tap=cycle scroll=nav long=quick` (33 chars — fits within 38).
    */
   hud_r1_main: {
-    it: 'tap=cycle  scroll=nav  long=quick',
-    en: 'tap=cycle  scroll=nav  long=quick',
-    de: 'tap=Wechsel  scroll=Nav  long=Schnell',
-    max: 38,
+    it: 'tap=cycle scroll=nav long=quick',
+    en: 'tap=cycle scroll=nav long=quick',
+    de: 'tap=Wechsel scroll=Nav long=Schnell',
+    max: 35,
   },
 
   /**
    * Character Sheet overlay chip.
    * IT pre-truncated to fit 38-char budget (UI-SPEC §3.2).
-   * Full raw would be `tap=cycle-tab  scroll=tab-content  long=quick[sheet]` (51 chars).
+   * Single-space separators — pre-authored abbreviations replace the full raw form
+   * (`tap=cycle-tab  scroll=tab-content  long=quick[sheet]` = 51 chars).
+   * Token values returned by `CharacterSheetPanel.getR1Hints()` match these abbreviations.
    */
   hud_r1_sheet: {
-    it: 'tap=cambia-tab  scroll=cont  long=q[sheet]',
-    en: 'tap=cycle-tab  scroll=cont  long=q[sheet]',
-    de: 'tap=Tab  scroll=Inhalt  long=q[Blatt]',
-    max: 42,
+    it: 'tap=tab scroll=cont long=q[sheet]',
+    en: 'tap=tab scroll=cont long=q[sheet]',
+    de: 'tap=Tab scroll=Inhalt long=q[Blatt]',
+    max: 36,
   },
 
   /**
    * Combat Tracker overlay chip.
-   * IT pre-truncated: `scroll=iniz  tap=rapida  long=q[combat]` (fits 38).
+   * IT pre-truncated: single-space format fits within 38-char budget (UI-SPEC §3.2).
    */
   hud_r1_combat: {
-    it: 'scroll=iniz  tap=rapida  long=q[combat]',
-    en: 'scroll=init  tap=quick  long=q[combat]',
-    de: 'scroll=Init  tap=Schnell  long=q[Kampf]',
-    max: 40,
+    it: 'scroll=iniz tap=rapida long=q[combat]',
+    en: 'scroll=init tap=quick long=q[combat]',
+    de: 'scroll=Init tap=Schnell long=q[Kampf]',
+    max: 38,
   },
 
   /**
-   * Log panel overlay chip.
-   * IT: `scroll=evento  tap=apri  long=q[log]` (fits 38).
+   * Log panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_log: {
-    it: 'scroll=evento  tap=apri  long=q[log]',
-    en: 'scroll=event  tap=open  long=q[log]',
-    de: 'scroll=Eintrag  tap=öffnen  long=q[Log]',
-    max: 40,
+    it: 'scroll=evento tap=apri long=q[log]',
+    en: 'scroll=event tap=open long=q[log]',
+    de: 'scroll=Eintrag tap=öffnen long=q[Log]',
+    max: 38,
   },
 
   /**
-   * Inventory panel overlay chip.
-   * IT: `scroll=oggetto  tap=usa  long=q[inv]` (fits 38).
+   * Inventory panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_inv: {
-    it: 'scroll=oggetto  tap=usa  long=q[inv]',
-    en: 'scroll=item  tap=use  long=q[inv]',
-    de: 'scroll=Gegenst  tap=Nutzen  long=q[Inv]',
-    max: 40,
+    it: 'scroll=oggetto tap=usa long=q[inv]',
+    en: 'scroll=item tap=use long=q[inv]',
+    de: 'scroll=Gegenst tap=Nutzen long=q[Inv]',
+    max: 38,
   },
 
   /**
-   * Spellbook panel overlay chip.
-   * IT: `scroll=incant  tap=lancia  long=q[spell]` (fits 38).
+   * Spellbook panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_spell: {
-    it: 'scroll=incant  tap=lancia  long=q[spell]',
-    en: 'scroll=spell  tap=cast  long=q[spell]',
-    de: 'scroll=Zauber  tap=wirken  long=q[Spell]',
-    max: 41,
+    it: 'scroll=incant tap=lancia long=q[spell]',
+    en: 'scroll=spell tap=cast long=q[spell]',
+    de: 'scroll=Zauber tap=wirken long=q[Spell]',
+    max: 38,
   },
 
   /**
-   * Quick Action Menu overlay chip.
-   * IT: `scroll=voce  tap=apri  long=annulla` (34 chars — fits within 38).
+   * Quick Action Menu overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_menu: {
-    it: 'scroll=voce  tap=apri  long=annulla',
-    en: 'scroll=item  tap=open  long=cancel',
-    de: 'scroll=Eintrag  tap=öffnen  long=Abbruch',
-    max: 41,
+    it: 'scroll=voce tap=apri long=annulla',
+    en: 'scroll=item tap=open long=cancel',
+    de: 'scroll=Eintrag tap=öffnen long=Abbruch',
+    max: 38,
   },
 
   /**
    * Language sub-menu overlay chip (shown when [N] language sub-menu is active).
    */
   hud_r1_lang_submenu: {
-    it: 'scroll=lingua  tap=applica  long=indietro',
-    en: 'scroll=language  tap=apply  long=back',
-    de: 'scroll=Sprache  tap=anwenden  long=zurück',
-    max: 42,
+    it: 'scroll=lingua tap=applica long=indietro',
+    en: 'scroll=language tap=apply long=back',
+    de: 'scroll=Sprache tap=anwenden long=zurück',
+    max: 39,
   },
 
   /**

@@ -20,6 +20,14 @@
  * death-saves is not meaningful). See 04b-CONTEXT.md §Area 7 for the pivot
  * trigger contract.
  *
+ * **Phase 6 Plan 03 — context chip:** the renderer also provides
+ * {@link renderContextChip} which produces the R1 context chip for the status
+ * HUD footer row. The chip reads `LayerManager.getTopLayer()?.getR1Hints?.()`
+ * on every call and falls back to {@link DEFAULT_R1_HINTS} when no overlay layer
+ * provides hints. See CONTEXT.md §Area 2 + RESEARCH §Q4 Option b (planner-locked
+ * pull model) + RESEARCH Pitfall 5 (non-overlay layer fallback) + RESEARCH Pitfall 6
+ * (width budget via pre-authored i18n strings) + INVARIANTS.md §5 INV-5 visible enforcement.
+ *
  * The output AsciiGrid is always 28 char wide × 21 row tall. Col 0 and col 27 of
  * every row are `║`; row 21 is the bottom border `╠══...═╣`. Box-drawing chars
  * come from UI-SPEC §Glyph Dictionary verbatim. No DOM is emitted — this is a
@@ -44,10 +52,74 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §status-hud-renderer.ts
  * @see packages/g2-app/src/status-hud/i18n-budgets.ts (HUD_WIDTH_BUDGETS)
  * @see packages/shared-render/src/fixtures/status-hud.*.txt (INV-1 fixtures)
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2 (chip design)
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q4 (pull-from-layerManager design)
+ * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism — visible enforcement)
  */
 import type { CharacterSnapshot } from '@evf/shared-protocol';
 import { AsciiGrid } from '@evf/shared-render';
 import { getLabel, type HudLocale } from './i18n-budgets.js';
+import { parseR1HintString } from './r1-hint-parser.js';
+
+/**
+ * Default R1 hint values used when no overlay layer provides `getR1Hints()`.
+ *
+ * These are the planner-locked Q3 fallback strings (RESEARCH §Q3 decision table):
+ * the main-chip state represents the top-level navigation gesture set that is
+ * always valid when no overlay panel is active. Exported for tests that verify
+ * the fallback path without constructing a full LayerManager.
+ *
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q3
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2
+ */
+export const DEFAULT_R1_HINTS = Object.freeze({
+  tap: 'cycle',
+  scroll: 'nav',
+  longPressLabel: 'quick',
+} as const);
+
+/**
+ * Minimal layer shape consumed by {@link StatusHudRenderer.renderContextChip}.
+ *
+ * The renderer only reads `getR1Hints?()` from the top layer — it never calls
+ * `draw()`, `destroy()`, or inspects `id`. Exposing this minimal type keeps
+ * the interface test-injectable without requiring test mocks to implement the
+ * full `Layer` interface contract (`id`, `draw`, `destroy`).
+ *
+ * @see packages/g2-app/src/engine/layer-types.ts Layer (full interface)
+ */
+export interface R1HintProvider {
+  /** Optional R1 hint data per Phase 6 Plan 03 contract (same shape as `Layer.getR1Hints`). */
+  getR1Hints?(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string };
+}
+
+/**
+ * Narrow LayerManager interface for StatusHudRenderer dependency injection.
+ *
+ * Mirrors the structural shape needed by {@link StatusHudRenderer.renderContextChip}
+ * without importing the concrete `LayerManager` class — same pattern as
+ * `WebSocketLike` in the bridge package (structural typing, test-injectable).
+ * The real `LayerManager` satisfies this interface because it already exposes
+ * `getTopLayer()` returning `Layer | null` (Phase 6 Plan 01), and `Layer`
+ * structurally satisfies `R1HintProvider` (it declares `getR1Hints?()` with
+ * the same shape).
+ *
+ * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q4 (pull-model rationale)
+ * @see packages/g2-app/src/engine/layer-types.ts (Layer interface — `getR1Hints?()`)
+ */
+export interface LayerManagerLike {
+  /**
+   * Return the highest-z mounted layer, or `null` when only the z=1 status HUD
+   * and/or z=0 map layers are mounted (no overlay active).
+   *
+   * Returns the narrower {@link R1HintProvider} instead of the full `Layer`
+   * interface — `renderContextChip` only reads hint data, never the full layer
+   * lifecycle. The real `LayerManager` satisfies this because every `Layer`
+   * structurally satisfies `R1HintProvider` (both declare the same optional
+   * `getR1Hints?()` signature).
+   */
+  getTopLayer(): R1HintProvider | null;
+}
 
 /** Total width of the Status HUD card in characters. */
 const HUD_WIDTH = 28;
@@ -488,6 +560,69 @@ export class StatusHudRenderer {
         ? innerArr.slice(0, 24).join('')
         : `${inner}${' '.repeat(24 - innerArr.length)}`;
     return `║ ${padded} ║`;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Phase 6 Plan 03 — R1 context chip
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Produce the R1 context chip string for the status-HUD footer row.
+   *
+   * Pull model (RESEARCH §Q4 Option b): reads `layerManager.getTopLayer()?.getR1Hints?.()`
+   * on every call — no push subscription needed, no chip state on the renderer.
+   *
+   * **Three cases:**
+   * 1. `layerManager === null` — no LayerManager wired yet (early boot / test injection).
+   *    Returns the `hud_r1_main` pre-authored chip string via {@link DEFAULT_R1_HINTS} values.
+   * 2. `layerManager.getTopLayer() === null` — LayerManager present but no overlay active.
+   *    Returns the `hud_r1_main` chip (locale-aware via `getLabel('hud_r1_main', locale)`).
+   * 3. Top layer has no `getR1Hints` method — a layer type that predates Plan 06-03.
+   *    Falls back to {@link DEFAULT_R1_HINTS} (RESEARCH Pitfall 5 mitigation).
+   * 4. Top layer provides `getR1Hints()` — compose chip from its values.
+   *
+   * **Width budget (RESEARCH Pitfall 6):** the chip content is capped at 38 code-points
+   * (the INV-1 §3.2 budget for the R1 segment). If longer (only possible when a layer
+   * returns dynamic strings beyond the pre-authored budget), the content is truncated
+   * to 37 + `…`. The final string is `R1: <content>` (4-char prefix + ≤38 content = ≤42
+   * total code-points — SR-CHIP-07 budget).
+   *
+   * **Cases 1+2+3 share the same output** to keep test assertions symmetrical:
+   * all three return `R1: tap=cycle  scroll=nav  long=quick` for the `'it'` locale
+   * (the `hud_r1_main` canonical string parses to the same values as DEFAULT_R1_HINTS).
+   *
+   * @param layerManager The LayerManager to query, or `null` during early boot.
+   * @param locale Active HUD locale — drives `hud_r1_main` label substitution.
+   * @returns `"R1: <chip>"` string, ≤42 code-points total.
+   *
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2
+   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q4
+   * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism — visible enforcement)
+   */
+  renderContextChip(layerManager: LayerManagerLike | null, locale: HudLocale): string {
+    const top: R1HintProvider | null = layerManager?.getTopLayer() ?? null;
+    const hints = top?.getR1Hints?.() ?? null;
+
+    let chipContent: string;
+    if (hints !== null) {
+      // Case 4: top layer provides hints — compose with single-space separators.
+      // Pre-authored i18n strings already fit within 38 chars; dynamic values from
+      // test mocks or future panels may still be truncated by the defensive check below.
+      chipContent = `tap=${hints.tap} scroll=${hints.scroll} long=${hints.longPressLabel}`;
+    } else if (top === null) {
+      // Cases 1+2: no LayerManager or no overlay — use hud_r1_main pre-authored string
+      const raw = getLabel('hud_r1_main', locale);
+      const parsed = parseR1HintString(raw);
+      chipContent = `tap=${parsed.tap} scroll=${parsed.scroll} long=${parsed.longPressLabel}`;
+    } else {
+      // Case 3: top layer exists but predates getR1Hints — hard DEFAULT_R1_HINTS fallback
+      chipContent = `tap=${DEFAULT_R1_HINTS.tap} scroll=${DEFAULT_R1_HINTS.scroll} long=${DEFAULT_R1_HINTS.longPressLabel}`;
+    }
+
+    // Defensive truncation to 38 code-points (INV-1 §3.2 R1 segment budget)
+    const cps = [...chipContent];
+    const truncated = cps.length > 38 ? `${cps.slice(0, 37).join('')}…` : chipContent;
+    return `R1: ${truncated}`;
   }
 }
 

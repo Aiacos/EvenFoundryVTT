@@ -1,0 +1,1 @@
+R1: tap=rapida scroll=iniz long=q[combat]

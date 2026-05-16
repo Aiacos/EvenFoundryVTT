@@ -401,3 +401,204 @@ describe('Phase 4b death-saves mode (DEATH-01)', () => {
     );
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SR-CHIP-*: renderContextChip (Phase 6 Plan 03 — NAV-01 + INV-5 chip)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lightweight LayerManager-like mock — mirrors the LayerManagerLike narrow interface
+ * that StatusHudRenderer will accept (narrower than the full LayerManager class).
+ */
+function makeLm(
+  topLayer: { getR1Hints?(): { tap: string; scroll: string; longPressLabel: string } } | null,
+): {
+  getTopLayer(): typeof topLayer;
+} {
+  return { getTopLayer: () => topLayer };
+}
+
+describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', () => {
+  it('SR-CHIP-01: null layerManager → returns chip containing tap=cycle, scroll=nav, long=quick (fallback)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const chip = renderer.renderContextChip(null, 'it');
+    expect(chip).toContain('tap=cycle');
+    expect(chip).toContain('scroll=nav');
+    expect(chip).toContain('long=quick');
+  });
+
+  it('SR-CHIP-02: layerManager.getTopLayer() === null (no overlay) → uses hud_r1_main chip', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const lm = makeLm(null);
+    const chip = renderer.renderContextChip(lm, 'it');
+    // Main chip has: tap=cycle scroll=nav long=quick
+    expect(chip).toContain('tap=cycle');
+    expect(chip).toContain('scroll=nav');
+    expect(chip).toContain('long=quick');
+  });
+
+  it('SR-CHIP-03: top layer has no getR1Hints → falls back to DEFAULT_R1_HINTS', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // A layer without getR1Hints method (plain object with no hints)
+    const lm = makeLm({
+      /* no getR1Hints */
+    });
+    const chip = renderer.renderContextChip(lm, 'it');
+    expect(chip).toContain('tap=cycle');
+    expect(chip).toContain('scroll=nav');
+    expect(chip).toContain('long=quick');
+  });
+
+  it('SR-CHIP-04: top layer is CharacterSheetPanel → chip contains q[sheet]', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // Abbreviated token values matching hud_r1_sheet IT pre-authored string
+    // (tap=tab scroll=cont long=q[sheet] = 33 chars — fits 38-char budget)
+    const fakeSheet = {
+      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', longPressLabel: 'q[sheet]' }),
+    };
+    const lm = makeLm(fakeSheet);
+    const chip = renderer.renderContextChip(lm, 'it');
+    expect(chip).toContain('q[sheet]');
+  });
+
+  it('SR-CHIP-05: top layer is CombatTrackerPanel → chip contains q[combat]', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const fakeCombat = {
+      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', longPressLabel: 'q[combat]' }),
+    };
+    const lm = makeLm(fakeCombat);
+    const chip = renderer.renderContextChip(lm, 'it');
+    expect(chip).toContain('q[combat]');
+  });
+
+  it('SR-CHIP-06: top layer is QuickActionMenuPanel (main mode) → chip contains scroll=voce and annulla', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const fakeMenu = {
+      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', longPressLabel: 'annulla' }),
+    };
+    const lm = makeLm(fakeMenu);
+    const chip = renderer.renderContextChip(lm, 'it');
+    expect(chip).toContain('voce');
+    expect(chip).toContain('annulla');
+  });
+
+  it('SR-CHIP-07: chip length ≤ 38 + 4 ("R1: " prefix) = 42 chars total (budget enforcement)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // Worst-case: sheet hints (pre-composed chip might be longer than 38 raw, renderer truncates)
+    const fakeSheet = {
+      getR1Hints: () => ({
+        tap: 'cycle-tab',
+        scroll: 'tab-content',
+        longPressLabel: 'quick[sheet]',
+      }),
+    };
+    const lm = makeLm(fakeSheet);
+    const chip = renderer.renderContextChip(lm, 'it');
+    // chip starts with "R1: " (4 chars) + up to 38 chars of content = ≤ 42 total
+    expect([...chip].length).toBeLessThanOrEqual(42);
+  });
+
+  it('SR-CHIP-08 (DE stress): chip fits budget with DE locale labels', () => {
+    const renderer = new StatusHudRenderer({ locale: 'de' });
+    // Main state — DE string is "tap=Wechsel  scroll=Nav  long=Schnell" (37 chars)
+    const chip = renderer.renderContextChip(makeLm(null), 'de');
+    // The full chip starts with "R1: " then the content; total ≤ 42.
+    expect([...chip].length).toBeLessThanOrEqual(42);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SR-FIX-CHIP-*: INV-1 fixture snapshots for 5 chip states
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CHIP-*)', () => {
+  it('SR-FIX-CHIP-01: main chip (no overlay) matches status-hud.chip.main.it.txt', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const chip = renderer.renderContextChip(makeLm(null), 'it');
+    await matchAsciiFixture(
+      {
+        toString: () => chip,
+        width: [...chip].length,
+        height: 1,
+        cells: [[...chip]],
+        at: (_c: number, _r: number) => [...chip][_c] ?? '',
+      } as import('@evf/shared-render').AsciiGrid,
+      '../../../../shared-render/src/fixtures/status-hud.chip.main.it.txt',
+    );
+  });
+
+  it('SR-FIX-CHIP-02: sheet chip matches status-hud.chip.sheet.it.txt', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // Abbreviated token values matching hud_r1_sheet IT (tap=tab scroll=cont long=q[sheet])
+    const fakeSheet = {
+      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', longPressLabel: 'q[sheet]' }),
+    };
+    const chip = renderer.renderContextChip(makeLm(fakeSheet), 'it');
+    await matchAsciiFixture(
+      {
+        toString: () => chip,
+        width: [...chip].length,
+        height: 1,
+        cells: [[...chip]],
+        at: (_c: number, _r: number) => [...chip][_c] ?? '',
+      } as import('@evf/shared-render').AsciiGrid,
+      '../../../../shared-render/src/fixtures/status-hud.chip.sheet.it.txt',
+    );
+  });
+
+  it('SR-FIX-CHIP-03: combat chip matches status-hud.chip.combat.it.txt', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const fakeCombat = {
+      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', longPressLabel: 'q[combat]' }),
+    };
+    const chip = renderer.renderContextChip(makeLm(fakeCombat), 'it');
+    await matchAsciiFixture(
+      {
+        toString: () => chip,
+        width: [...chip].length,
+        height: 1,
+        cells: [[...chip]],
+        at: (_c: number, _r: number) => [...chip][_c] ?? '',
+      } as import('@evf/shared-render').AsciiGrid,
+      '../../../../shared-render/src/fixtures/status-hud.chip.combat.it.txt',
+    );
+  });
+
+  it('SR-FIX-CHIP-04: menu chip matches status-hud.chip.menu.it.txt', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const fakeMenu = {
+      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', longPressLabel: 'annulla' }),
+    };
+    const chip = renderer.renderContextChip(makeLm(fakeMenu), 'it');
+    await matchAsciiFixture(
+      {
+        toString: () => chip,
+        width: [...chip].length,
+        height: 1,
+        cells: [[...chip]],
+        at: (_c: number, _r: number) => [...chip][_c] ?? '',
+      } as import('@evf/shared-render').AsciiGrid,
+      '../../../../shared-render/src/fixtures/status-hud.chip.menu.it.txt',
+    );
+  });
+
+  it('SR-FIX-CHIP-05: boot-error chip matches status-hud.chip.boot-error.it.txt', async () => {
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    // Boot-error state: no overlay, but renderer produces boot-error chip when asked
+    // directly. We test the chip using the hud_r1_boot_error key directly.
+    const fakeBootError = {
+      getR1Hints: () => ({ tap: '', scroll: '', longPressLabel: 'riprova' }),
+    };
+    const chip = renderer.renderContextChip(makeLm(fakeBootError), 'it');
+    await matchAsciiFixture(
+      {
+        toString: () => chip,
+        width: [...chip].length,
+        height: 1,
+        cells: [[...chip]],
+        at: (_c: number, _r: number) => [...chip][_c] ?? '',
+      } as import('@evf/shared-render').AsciiGrid,
+      '../../../../shared-render/src/fixtures/status-hud.chip.boot-error.it.txt',
+    );
+  });
+});
