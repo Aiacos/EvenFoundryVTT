@@ -17,6 +17,7 @@
  *    /v1/events, /v1/characters
  * 8. Internal route: POST /internal/delta (module → bridge delta push)
  * 9. WS route: /ws (handshake)
+ * 10. Voice audio stream route: /v1/audio/stream (Phase 12 Deepgram STT)
  *
  * @see Specs.md §5.2 (Bridge stack)
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.12
@@ -46,6 +47,8 @@ import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
+import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
+import { createDeepgramStt } from './voice/deepgram-stt.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
@@ -120,14 +123,21 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       // T-02-01: bearer tokens + internal secrets must NEVER appear in logs.
       // T-03-07: idempotency-key must also be redacted to prevent accidental
       //   logging of client-supplied intent identifiers.
+      // T-12-02 (Plan 12-03): Deepgram API key must never appear in logs.
+      //   4 field paths cover the expected log call shapes: deepgramKey, apiKey,
+      //   *.deepgramKey (nested objects), *.apiKey (nested objects).
       redact: [
-        'token',
+        'apiKey',
         'bearer',
+        'deepgramKey',
+        'EVF_INTERNAL_SECRET',
         'headers.authorization',
         'headers.idempotency-key',
-        '*.token',
+        'token',
+        '*.apiKey',
         '*.bearer',
-        'EVF_INTERNAL_SECRET',
+        '*.deepgramKey',
+        '*.token',
       ],
     },
   });
@@ -289,6 +299,31 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // Defensive log to surface any unhandled rejection during development.
         logger.error({ err }, 'WS handshake: unexpected promise rejection');
       });
+  });
+
+  // --- 10. Voice audio stream route (Phase 12 Plan 12-03) ---
+  // Mounts /v1/audio/stream — bearer-validated WS endpoint that pipes G2 PCM
+  // frames to Deepgram Nova-3 Multilingual and fans VoiceTranscript envelopes
+  // via the existing DeltaEmitter. Soft-fail: if DEEPGRAM_API_KEY is not set,
+  // the adapter is disabled and the route closes incoming WS with 1011.
+  //
+  // urlOverride: EVF_DEEPGRAM_URL_OVERRIDE is injected so integration tests can
+  // point the adapter at a local mock Deepgram server without hitting api.deepgram.com.
+  const deepgramSttOpts: Parameters<typeof createDeepgramStt>[0] = {
+    apiKey: process.env['DEEPGRAM_API_KEY'],
+    logger: app.log as Logger,
+  };
+  const deepgramUrlOverride = process.env['EVF_DEEPGRAM_URL_OVERRIDE'];
+  if (deepgramUrlOverride !== undefined) {
+    deepgramSttOpts.urlOverride = deepgramUrlOverride;
+  }
+  const deepgramStt = createDeepgramStt(deepgramSttOpts);
+  await registerAudioStreamRoute({
+    app,
+    deltaEmitter,
+    deepgramStt,
+    tokenCache,
+    logger: app.log as Logger,
   });
 
   return app;
