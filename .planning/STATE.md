@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9.12
 milestone_name: Quick Wins
-status: planning
-last_updated: "2026-05-17T17:00:00.000Z"
+status: complete
+last_updated: "2026-05-17T19:00:00.000Z"
 last_activity: 2026-05-17
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 14 closed; awaiting first `/gsd-plan-phase 15`.
+**Current focus:** v0.9.12 Quick Wins ✅ SHIPPED — Phase 14 + Phase 15 both closed; awaiting next milestone decision via `/gsd-new-milestone`.
 
 ## Current Position
 
-Phase: 14 — Raster z=0.5 Idle Content Infill (✅ closed)
-Plan: 14-01..03 (all complete)
-Status: Phase 14 closed 2026-05-17 — 3 plans shipped (01 fixtures + cross-state invariants, 02 LMT-DD-07 race coverage, 03 INV-3 atomic ratification). Phase 15 (Deepgram Keyterm) next.
-Last activity: 2026-05-17 — Phase 14 INV-3 atomic ratification commit (INFILL-01..05 closed)
+Phase: 15 — Deepgram Keyterm Prompting + Entity-Pack Integration (✅ closed)
+Plan: 15-01..05 (all complete)
+Status: v0.9.12 Quick Wins milestone ✅ SHIPPED 2026-05-17 — Phase 14 (INFILL-01..05) + Phase 15 (VOICE-06..09) both software-complete; 9/9 v1 REQ-IDs resolved; 8/8 plans landed; 0 new hardware-pending SCs (35 carry-forward unchanged under ADR-0005 Branch A); CI Gate 8 socketlib handler count = 17 preserved end-to-end; workspace test suite 2624/2624 green.
+Last activity: 2026-05-17 — Phase 15 INV-3 atomic closure commit (VOICE-06..09 closed via plan 15-05)
 
 ## Performance Metrics
 
@@ -48,6 +48,12 @@ Last activity: 2026-05-17 — Phase 14 INV-3 atomic ratification commit (INFILL-
 
 **Recent Trend:**
 
+- 2026-05-17 — Phase 15 Plan 05 (Wave 5 — INV-3 atomic doc-coherence closure, autonomous orchestrator chained Waves 1-5 sequential on main): Specs.md §3.6 + §5.2 + changelog stanza · README.md (Voice pillar + spec-bump paragraph) · docs/showcase/index.html (footer + closing paragraph + stat strip note) · .planning/STATE.md (frontmatter complete + Current Position + Recent Trend + Decisions) · .planning/ROADMAP.md (Phase 15 ✅ + 5-plan list + v0.9.12 Shipped) · .planning/REQUIREMENTS.md (VOICE-06..09 → Resolved · coverage 9/9) · 15-VERIFICATION.md (5/5 SC + 4/4 REQ + ADR-0005 Branch A carry-forward documented). Checkpoint disposition: auto-approved per autonomous orchestrator + Phase 14 precedent 3a0c5cf. CLAUDE.md INV-3 atomic single-commit gate green; CI Gate 8 socketlib handler count = 17 preserved. Workspace test suite 2624/2624 final.
+- 2026-05-17 — Phase 15 Plan 04 (Wave 4 — failure modes + end-to-end integration): `keyterm-sanitizer.ts` + 6 SAN tests · empty-cache one-shot warn (DGEC-01..03) · keyterm-reject retry-then-fallback chain (DGFM-01..06: codes 1007/1008/4xxx → retry-with-sanitized → fallback-to-baseline) · `keyterm-integration.test.ts` INT-01..03 end-to-end (cache push → debounce → connect URL contains new keyterm). 18 new tests. Per-session ephemeral retry state (no global flag). Bridge 282 → 300; workspace 2606 → 2624.
+- 2026-05-17 — Phase 15 Plan 03 (Wave 3 — hot-update plumbing): `EntityPackCache.onChange/removeListener` (EPC-BASIC-01..03 + EPC-SUB-01..05) · `KeytermRefresher` with DEBOUNCE_MS=250 + drain-then-restart mutex (KRF-01..07) · `DeepgramAdapter.refreshKeyterm()` invalidation signal (DGRF-01..05; lazy provider re-eval, NOT WS reconfig — Deepgram protocol does NOT support mid-stream hot-swap). 21 new tests. server.ts step 10b wiring. Bridge 261 → 282; workspace 2585 → 2606.
+- 2026-05-17 — Phase 15 Plan 02 (Wave 2 — Deepgram adapter wiring + URL builder + server.ts step 10): `createDeepgramStt` keytermProvider callback (lazy on each connect; defensive try/catch — T-15-07 mitigate) · `buildDeepgramUrl` URL helper (encodeURIComponent + one keyterm= per element; baseline byte-for-byte preserved DGKT-04) · server.ts step 10 closure over EntityPackCache. 6 new DGKT tests. Bridge 255 → 261; workspace 2579 → 2585. VOICE-06 closed software-side.
+- 2026-05-17 — Phase 15 Plan 01 (Wave 1 — static+dynamic vocab merger): `SPELL_KEYTERMS` 70 frozen IT+EN tuples in `@evf/shared-protocol` (drift-proof via test-only relative-import 1:1 mapping to foundry-mcp SPELL_LOOKUP — SKT-02 gate) · `buildKeytermList()` pure function in `@evf/bridge` (union + dedupe by lower-cased-trimmed key + static-wins + cap-drops-dynamic-first; DEEPGRAM_KEYTERM_LIMIT=100). 20 new tests across shared-protocol (SKT-01..05) + bridge (KM-01..12 + default-path guards). Bridge 255 → unchanged; workspace 2559 → 2579 (shared-protocol +5; bridge +15). Tsconfig single-file `exclude` escape hatch documented (mirrors g2-app fixture pattern; Rule 3 auto-fix).
+- 2026-05-17 — Phase 14 Plan 03 (Wave 2 — INV-3 atomic ratification): ADR-0001 Amendment 1 RATIFIED + Specs.md changelog entry + README + showcase + STATE.md + ROADMAP.md + UI-SPEC §12 sign-off flip — all in single commit `3a0c5cf` per CLAUDE.md INV-3 (9 files; +50/-24). No spec version bump (v0.9.12 stays at 2026-05-14 baseline). Workspace 2559/2559 green. Set Phase 14 precedent for autonomous-mode checkpoint auto-approval.
 - 2026-05-11 — Phase 1 Plan 03 (Wave 2 — ADRs + snapshot framework + CI + INV-3 atomic closure): ~12 min, 13 files created + 5 modified, 5 commits (d68d7fe / fcb17ef / 5e13149 / 938c6f2 / 671a22d INV-3 atomic), all 5 WAVE-2-G1..G5 gates green + INV-3 verified (CLAUDE.md + STACK.md in single commit HEAD). TDD on AsciiGrid (11 unit tests RED-then-GREEN). 5 MADR ADRs ACCEPTED (0001-0004 + 0008). GHA workflow with 7 quality gates + T-01-03/T-01-04 hardening. Deviations: Vitest 4 defineProject rejects extends:true (Rule 3 — TS strict catches it; dropped from per-package config; Vitest 4 merges root via test.projects glob automatically); AsciiGrid runtime guard for row===undefined (Rule 3 — noUncheckedIndexedAccess); Biome auto-format on test files (cosmetic).
 - 2026-05-11 — Phase 1 Plan 02 (Wave 1 packages + validation-harness fold-in): ~10 min, 25 files created + 11 modified + 16 moved via git mv + 6 deleted, 3 commits (e5641cc / 0fa1364 / b67a029), all 5 WAVE-1-G1..G5 gates green; tests/phase-0/ entirely removed; Pitfall 8 path-resolution fix (fileURLToPath + EVF_REPO_ROOT) with 4-test smoke suite. Deviations: shared-render vitest devDep added for workspace visibility (Rule 3); package test script delegates to root vitest with --project filter (Pitfall 3 — Rule 3); Biome auto-formatted 15 Phase 0 files post-fold-in (cosmetic).
 - 2026-05-11 — Phase 1 Plan 01 (Wave 0 tooling foundation): ~8 min, 16 files, 3 commits (5096129 / e448e0d / 06819bf), all 6 WAVE-0-G1..G6 gates green; vitest test.projects deviation documented (Wave 1 re-enables); Biome `useBiomeIgnoreFolder` rule + design-asset exclusions auto-fixed (Rule 3).
@@ -160,6 +166,20 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 10 Plan 01]: Recursive setTimeout for countdown ticks instead of setInterval — avoids vitest runAllTimersAsync infinite-loop on chained retries (pragmatic test-compatibility choice; production behavior identical)
 - [Phase 10 Plan 01]: SeqTracker.observe is duck-typed {seq:number} — no Zod parse on hot path (WS envelope already validated upstream by EnvelopeSchema)
 - [Phase 10 Plan 01]: onFullRefreshRequired is a console.warn stub in boot-engine-core — REST GET /v1/actor wiring deferred to Plan 10-04 per SC-10-01 (hardware-pending, no actor REST endpoint shipped yet)
+- [Phase 15]: SPELL_KEYTERMS data lives in `@evf/shared-protocol`, NOT in `@evf/foundry-mcp` — bridge consumes the SRD subset without taking a production dep on foundry-mcp; vocab is data, not logic
+- [Phase 15]: Drift-proof 1:1 mapping enforced via test-only relative import (`../../../foundry-mcp/src/voice/spell-lookup.js`) + tsconfig single-file `exclude` escape hatch — keeps Vitest typecheck while avoiding circular dep intent in production graph (mirrors g2-app fixture pattern)
+- [Phase 15]: Static-wins + cap-drops-dynamic-first fall out of iteration order (no explicit conflict-resolution code path) — algorithm trivially auditable; CONTEXT D-01 + D-04 emerge naturally
+- [Phase 15]: `DEEPGRAM_KEYTERM_LIMIT = 100` (Deepgram-documented cap; RESEARCH.md §2 Option C citing Deepgram learn article — +625% entity-recall lift on esoteric vocab)
+- [Phase 15]: `keytermProvider` is a callback, not a static array — lazy evaluation on every `connect()` is the foundation for hot-update without adapter re-instantiation; same contract used by plan 15-03 KeytermRefresher
+- [Phase 15]: Defensive try/catch around `keytermProvider()` invocation (T-15-07 mitigate) — throwing provider degrades to baseline rather than fail-closing voice path
+- [Phase 15]: Phase 12 baseline byte-for-byte preserved when `keytermProvider` is omitted OR returns `[]` (DGKT-04 + DGKT-06 byte-for-byte URL `.toBe(DEEPGRAM_URL)`) — strongest regression contract for the 255 existing bridge tests
+- [Phase 15]: Drain-then-restart mutex via `_inFlight` flag (vs Promise-queue) — refresher's semantic is "next connect picks up the latest state", not "every event must be acknowledged"; drops mid-flight events to avoid wasted work (KRF-05 verifies)
+- [Phase 15]: `DEBOUNCE_MS = 250` (CONTEXT D-07 locked) — exceeds the ~200ms Foundry `updateCompendium` burst observed during quick-task 260517-k2g; well under VOICE-09 ≤ 5 min SLA
+- [Phase 15]: `refreshKeyterm()` is an INVALIDATION SIGNAL, not a wire-level Deepgram reconfig — Deepgram WS does NOT support mid-stream keyterm hot-swap (RESEARCH.md §2 Option C); next connect() picks up fresh list via lazy provider, structured `event=keyterm.refreshed` log is observable telemetry
+- [Phase 15]: `KEYTERM_REJECT_CODES = [1007, 1008]` + RFC 6455 application range `4000-4999` — Deepgram-used codes + forward-compatibility for new reject codes (codes outside this set preserve Phase 12 close behaviour byte-for-byte)
+- [Phase 15]: Per-session ephemeral retry state (no global "keyterms-are-bad" flag) — each new `connect()` starts optimistically with full keyterm list; a transient backend hiccup affecting one session does not systemically degrade the +625% recall lift for the entire bridge lifecycle
+- [Phase 15]: Sanitizer scope: ASCII control chars only (`[\x00-\x1F\x7F]`) — Unicode letters preserved (è, ô, ñ, ä) since IT/EN spell names ship with them; stripping more aggressively would damage recall lift
+- [Phase 15]: One-shot empty-cache warn driven by closure-local `_emptyCacheWarned` flag, reset on transition to present — one warn per empty-streak, never spammed (DGEC-02 verifies)
 
 ### Pending Todos
 
@@ -208,10 +228,10 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-05-17T09:12:10.947Z
-Stopped at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
+Last session: 2026-05-17T19:00:00.000Z
+Stopped at: Completed 15-05-PLAN.md (Phase 15 CLOSED — v0.9.12 Quick Wins ✅ SHIPPED)
 Resume file: None
-Resume cmd: /gsd-execute-phase 10 01
+Resume cmd: /gsd-new-milestone (start the next milestone)
 
 ## /gsd-autonomous 2026-05-17 run — Phase 10 closure
 

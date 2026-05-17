@@ -27,10 +27,10 @@ z=0.5 Idle Content Infill — nuovo layer tra mappa raster (z=0) e Status HUD (z
 
 Deepgram Keyterm Prompting integration in Phase 12 voice pipeline. Boost +625% entity-recall su nomi esotici (Bigby's Hand, Counterspell, etc.) via vocabolario keyterm dinamico Foundry-derived.
 
-- [ ] **VOICE-06**: Deepgram Keyterm Prompting parameter integrazione in `deepgram-stt.ts` — Phase 12 enhancement (Nova-3 Multilingual supporta `keyterm` parameter)
-- [ ] **VOICE-07**: Keyterm vocabulary fed from BOTH static spell-lookup (70 SRD entries) AND dynamic entity-pack (Foundry-derived items/weapons/armor/NPCs/monsters; from quick-task 260517-k2g)
-- [ ] **VOICE-08**: Locale-aware keyterm — IT + EN both included for cross-lingual STT robustness (player può code-switch "fireball" / "palla di fuoco" intra-frase)
-- [ ] **VOICE-09**: Keyterm hot-update via WS delta — quando entity-pack o spell-pack changes, keyterm list refreshes nello STT client (same `/internal/delta` channel; no socketlib handler add)
+- [x] **VOICE-06**: Deepgram Keyterm Prompting parameter integrazione in `deepgram-stt.ts` — Phase 12 enhancement (Nova-3 Multilingual supporta `keyterm` parameter) — ✅ Resolved 2026-05-17 (Plan 15-02 wired `keytermProvider` callback + URL builder; DGKT-01..06 + INT-01 verify)
+- [x] **VOICE-07**: Keyterm vocabulary fed from BOTH static spell-lookup (70 SRD entries) AND dynamic entity-pack (Foundry-derived items/weapons/armor/NPCs/monsters; from quick-task 260517-k2g) — ✅ Resolved 2026-05-17 (Plan 15-01 `buildKeytermList()` union + dedupe + KM-01..12; Plan 15-04 INT-01 + INT-03 end-to-end)
+- [x] **VOICE-08**: Locale-aware keyterm — IT + EN both included for cross-lingual STT robustness (player può code-switch "fireball" / "palla di fuoco" intra-frase) — ✅ Resolved 2026-05-17 (Plan 15-01 SPELL_KEYTERMS emits both `.it` and `.en`; KM-02 verifies; DGKT-02 verifies encodeURIComponent on `palla di fuoco`)
+- [x] **VOICE-09**: Keyterm hot-update via WS delta — quando entity-pack o spell-pack changes, keyterm list refreshes nello STT client (same `/internal/delta` channel; no socketlib handler add) — ✅ Resolved 2026-05-17 (Plan 15-03 `EntityPackCache.onChange` + `KeytermRefresher` debounce 250ms + drain-then-restart mutex + `DeepgramAdapter.refreshKeyterm()`; EPC-SUB + KRF + INT-01 verify ≤ DEBOUNCE_MS + 1 connect latency)
 
 ## v2 Requirements
 
@@ -49,7 +49,7 @@ Deepgram Keyterm Prompting integration in Phase 12 voice pipeline. Boost +625% e
 
 ## Milestone status
 
-Milestone v0.9.12 Quick Wins — **ROADMAP defined** (Phases 14–15, 9 v1 REQ-IDs mapped); awaiting first `/gsd-plan-phase 14`.
+Milestone v0.9.12 Quick Wins — **✅ SHIPPED 2026-05-17** (Phases 14–15 both closed; 9 / 9 v1 REQ-IDs Resolved; 8 / 8 plans landed; 0 new hardware-pending SCs added; 35 carry-forward `human_needed` SCs from v0.9.11 unchanged under ADR-0005 Branch A; CI Gate 8 socketlib `registerComplexHandler` count = 17 preserved end-to-end; workspace test suite 2624 / 2624 green; INV-3 atomic doc-coherence verified on each phase-close commit).
 
 ## Traceability
 
@@ -57,23 +57,24 @@ Mapped 2026-05-17 by `gsd-roadmapper` agent. All 9 v1 REQ-IDs assigned 1:1 to ph
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFILL-01 | Phase 14 | Active |
-| INFILL-02 | Phase 14 | Active |
-| INFILL-03 | Phase 14 | Active |
-| INFILL-04 | Phase 14 | Active |
-| INFILL-05 | Phase 14 | Active |
-| VOICE-06 | Phase 15 | Active |
-| VOICE-07 | Phase 15 | Active |
-| VOICE-08 | Phase 15 | Active |
-| VOICE-09 | Phase 15 | Active |
+| INFILL-01 | Phase 14 | Resolved (2026-05-17) |
+| INFILL-02 | Phase 14 | Resolved (2026-05-17) |
+| INFILL-03 | Phase 14 | Resolved (2026-05-17) |
+| INFILL-04 | Phase 14 | Resolved (2026-05-17) |
+| INFILL-05 | Phase 14 | Resolved (2026-05-17) |
+| VOICE-06 | Phase 15 | Resolved (2026-05-17) |
+| VOICE-07 | Phase 15 | Resolved (2026-05-17) |
+| VOICE-08 | Phase 15 | Resolved (2026-05-17) |
+| VOICE-09 | Phase 15 | Resolved (2026-05-17) |
 
 **Coverage:**
 - v1 requirements: **9** total (Raster 5 · Voice 4)
 - Mapped to phases: **9 / 9 (100%)** ✓ — Phase 14 = 5 REQ-IDs, Phase 15 = 4 REQ-IDs
+- **Resolved: 9 / 9 (100%)** ✓ — milestone v0.9.12 Quick Wins SHIPPED 2026-05-17
 - V2 OPZIONALE: carry from v0.9.11 unchanged
 
 ---
 
 *Requirements defined: 2026-05-17 — derived from quick-task PLAN.md (raster) + voice-intent-research RESEARCH.md (Deepgram Keyterm)*
 *Traceability mapped: 2026-05-17 by `gsd-roadmapper` agent — Phase 14 (INFILL-*) + Phase 15 (VOICE-*); 9/9 (100%) coverage*
-*Last updated: 2026-05-17 at milestone v0.9.12 Quick Wins ROADMAP write*
+*Last updated: 2026-05-17 at milestone v0.9.12 Quick Wins ✅ SHIPPED (all 9 v1 REQ-IDs Resolved · 8/8 plans landed · 0 new hardware-pending SCs · CI Gate 8 = 17 preserved)*

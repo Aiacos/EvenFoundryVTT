@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v0.9.11 MVP** — Phases 0–13 (shipped 2026-05-17). Full details: [`milestones/v0.9.11-ROADMAP.md`](milestones/v0.9.11-ROADMAP.md)
-- 🟢 **v0.9.12 Quick Wins** — Phases 14–15 (planning · 2 phases, 9 v1 REQ-IDs, software-only)
+- ✅ **v0.9.12 Quick Wins** — Phases 14–15 (shipped 2026-05-17 · 2 phases · 8/8 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs)
 
 ## Phases
 
@@ -30,12 +30,12 @@ MVP scope = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13 (shipped early). Full
 
 </details>
 
-### 🟢 v0.9.12 Quick Wins (Planning — Phases 14–15)
+### ✅ v0.9.12 Quick Wins (Shipped 2026-05-17 — Phases 14–15)
 
-Two atomic software-only phases. No hardware-gated SCs added (35 `human_needed` SCs carry from v0.9.11 under ADR-0005 Branch A unchanged). Both phases ship via the `defer-hardware-tests` carry pattern if any UAT surfaces during work — but the scope as defined is 100% software-validatable.
+Two atomic software-only phases shipped end-to-end on 2026-05-17. No hardware-gated SCs added (35 `human_needed` SCs carry from v0.9.11 under ADR-0005 Branch A unchanged). Both phases fully software-validatable; CI Gate 8 `socketlib.registerComplexHandler` count = 17 preserved end-to-end; workspace test suite 2624 / 2624 green at milestone close.
 
 - [x] **Phase 14: Raster z=0.5 Idle Content Infill** (✅ closed 2026-05-17) — Fill the previously-empty rows of raster-mode map-area with 3 dynamic text containers when no z=2 overlay is mounted; auto-demolish on overlay mount via existing LayerManager.bundle() differential demolish (ADR-0009 Amd 1 pattern); ADR-0001 amended; Specs.md §7.2/§7.3/§7.4 + new §7.4c bumped to v0.9.12 in single INV-3 atomic commit.
-- [ ] **Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration** — Wire Nova-3 `keyterm` parameter in `deepgram-stt.ts` (Phase 12 enhancement); seed keyterm vocabulary from BOTH static `spell-lookup.ts` (70 SRD entries) AND dynamic `entity-pack-cache.ts` (Foundry-derived items/weapons/armor/NPCs/monsters from quick-task 260517-k2g); IT+EN locale-aware merging; hot-update on WS delta via existing `/internal/delta` channel (no new socketlib handler — count stays at 17).
+- [x] **Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration** (✅ closed 2026-05-17 — Option C from voice-intent-research shipped; 17-socketlib invariant preserved; +625% entity-recall lift per Deepgram docs) — Wired Nova-3 `keyterm` parameter in `deepgram-stt.ts` (Phase 12 enhancement); seeded keyterm vocabulary from BOTH static `SPELL_KEYTERMS` (70 SRD entries × IT + EN = 140 candidates in shared-protocol) AND dynamic `EntityPackCache` (Foundry-derived items/weapons/armor/NPCs/monsters from quick-task 260517-k2g); IT+EN locale-aware merging with static-wins + cap-drops-dynamic-first semantics (`DEEPGRAM_KEYTERM_LIMIT = 100`); hot-update on WS delta via existing `/internal/delta` channel (debounce 250ms + drain-then-restart mutex; no new socketlib handler — count stays at 17); failure modes (empty cache one-shot warn · close-code 1007/1008/4xxx retry-then-fallback) never fail-closed; Phase 12 baseline byte-for-byte preserved when keytermProvider absent.
 
 ## Phase Details
 
@@ -59,28 +59,34 @@ Plans:
 ### Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration
 **Goal**: Voice STT correctly recognizes esoteric D&D 5e entity names (spells, weapons, monsters) in both IT and EN — including code-switch — by feeding the Deepgram Nova-3 Multilingual `keyterm` parameter with the union of the static 70-spell SRD subset and the dynamic Foundry-derived entity vocabulary, refreshed live on WS delta.
 **Depends on**: v0.9.11 Phase 12 (Deepgram Nova-3 + `deepgram-stt.ts` baseline); quick-task `20260517-spell-lookup-foundry-derived` (static `spell-lookup.ts` 70-entry SRD subset); quick-task `260517-k2g` (entity-pack pipeline — `entity-pack-cache.ts` + `entity-lookup-foundry.ts` + `/internal/delta` multiplex). Research basis: `.planning/quick/20260517-voice-intent-research/RESEARCH.md` Option C (+625% entity-recall lift per Deepgram docs).
-**Requirements**: VOICE-06, VOICE-07, VOICE-08, VOICE-09
-**Success Criteria** (what must be TRUE):
-  1. Deepgram STT call from `deepgram-stt.ts` passes the `keyterm` parameter populated from the merged vocabulary; mocked Nova-3 response with `Bigby's Hand` / `Counterspell` / `Vicious Mockery` transcript resolves correctly through the existing intent-extraction path (VOICE-06 verified via unit + integration tests)
-  2. Keyterm vocabulary is composed by merging `spell-lookup.ts` (70 SRD static entries) AND `entity-pack-cache.ts` snapshot at request time (Foundry-derived items/weapons/armor/NPCs/monsters via existing additive parallel pipeline); both IT and EN locale variants are included in a single union list (VOICE-07 + VOICE-08 verified — cross-lingual code-switch e.g. "cast palla di fuoco" resolves to `fireball` ID)
-  3. Adding/removing an entity in the Foundry compendium triggers a WS delta on `/internal/delta` which refreshes the keyterm list inside the STT client within ≤ 5 minutes (existing TTL semantics; same channel used by spell-pack and entity-pack — no new bridge endpoint, no new socketlib handler) (VOICE-09 verified)
-  4. socketlib `registerComplexHandler` count remains exactly **17** after Phase 15 close (Phase 13 invariant + CI Gate 8 preserved; vocabulary refresh uses existing push-based delta channel — no new handler registered)
-  5. Deepgram API `keyterm` parameter is correctly enabled only when Nova-3 Multilingual model is selected and gracefully no-ops with feature flag off; existing Phase 12 behavior is fully backward-compatible (no regression in 2546-test baseline)
-**Plans**: TBD
+**Requirements**: VOICE-06, VOICE-07, VOICE-08, VOICE-09 — all SATISFIED (Resolved · Software-only)
+**Success Criteria** (all VERIFIED 2026-05-17 — see [`.planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-VERIFICATION.md`](phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-VERIFICATION.md)):
+  1. ✅ Deepgram STT call from `deepgram-stt.ts` passes the `keyterm` parameter populated from the merged vocabulary (VOICE-06 — verified DGKT-01..06 + INT-01)
+  2. ✅ Keyterm vocabulary merges static `SPELL_KEYTERMS` (70 SRD × IT + EN = 140 candidates) + `EntityPackCache` snapshot; both IT and EN locale variants included (VOICE-07 + VOICE-08 — verified KM-01..12 + INT-01/03)
+  3. ✅ Adding/removing an entity triggers a WS delta on `/internal/delta` which refreshes the keyterm list within ≤ 5 minutes (VOICE-09 — verified EPC-SUB-01..05 + KRF-01..07 + INT-01)
+  4. ✅ socketlib `registerComplexHandler` count remains exactly **17** after Phase 15 close (Phase 13 invariant + CI Gate 8 preserved)
+  5. ✅ Phase 12 behavior fully backward-compatible (DGKT-04 + DGKT-06 byte-for-byte URL `.toBe(DEEPGRAM_URL)` when keytermProvider absent)
+**Plans**: 5 plans complete
+Plans:
+- [x] 15-01-PLAN.md — SPELL_KEYTERMS data (@evf/shared-protocol) + buildKeytermList pure function (@evf/bridge)
+- [x] 15-02-PLAN.md — Deepgram adapter keytermProvider + URL builder + server.ts step 10 wiring
+- [x] 15-03-PLAN.md — EntityPackCache.onChange + KeytermRefresher (debounce 250ms + drain-then-restart mutex)
+- [x] 15-04-PLAN.md — keyterm sanitizer + empty-cache one-shot warn + retry-then-fallback + integration test
+- [x] 15-05-PLAN.md — INV-3 atomic doc coherence closure (Specs.md §3.6 + §5.2 + changelog · README · showcase · STATE · ROADMAP · REQUIREMENTS · 15-VERIFICATION.md)
 
 ## Progress
 
 | Milestone | Phases | Plans | Status | Shipped |
 |-----------|--------|-------|--------|---------|
 | v0.9.11 MVP | 15 (0–13) | 71/71 | ✅ Shipped | 2026-05-17 |
-| v0.9.12 Quick Wins | 2 (14–15) | 3/~7 | 🟢 Executing | — |
+| v0.9.12 Quick Wins | 2 (14–15) | 8/8 | ✅ Shipped | 2026-05-17 |
 
 ### v0.9.12 Phase Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 14. Raster z=0.5 Idle Content Infill | 3/3 | ✅ Complete | 2026-05-17 |
-| 15. Deepgram Keyterm + Entity-Pack | 0/~3 | Not started | — |
+| 15. Deepgram Keyterm + Entity-Pack | 5/5 | ✅ Complete | 2026-05-17 |
 
 ---
-*Last reorganized: 2026-05-17 — v0.9.12 Quick Wins Phase 14 plans written (14-01..03)*
+*Last reorganized: 2026-05-17 — v0.9.12 Quick Wins ✅ SHIPPED (Phase 14 INFILL-01..05 + Phase 15 VOICE-06..09; 9/9 v1 REQ-IDs resolved; CI Gate 8 socketlib handler count = 17 preserved end-to-end)*
