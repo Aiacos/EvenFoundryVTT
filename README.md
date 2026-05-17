@@ -53,7 +53,7 @@ Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*).
 | Pillar | What it gives you |
 |---|---|
 | **Map base layer** | Live Foundry canvas, rasterized + Floyd-Steinberg dithered into 4-bit green, 400×200 px effective (hardware max — 4 image containers × 200×100). Glyph fallback (text grid) when bandwidth is thin. |
-| **Idle Content Infill (z=0.5)** | **NEW v0.9.12** — text strips that fill the otherwise-empty rows below the raster tiles when no overlay is active (combat log mini · z=0.5 label · stats: mode / fps / BLE). Auto-demolished when an overlay opens, auto-reborn when it closes. INV-1 layout-preserving. See [§7.4c](Specs.md). |
+| **Idle Content Infill (z=0.5)** | **NEW v0.9.12** — text strips that fill the otherwise-empty rows below the raster tiles when no overlay is active (combat log mini · z=0.5 label · stats: mode / fps / BLE). Auto-demolished when an overlay opens, auto-reborn when it closes. INV-1 layout-preserving. See [§7.4c](Specs.md). Ratified Phase 14 (2026-05-17). |
 | **Persistent Status HUD** | HP / AC / action economy / spell slots / conditions, always in the corner — never hidden by overlays. |
 | **Overlay panels** | Sheet (6 tabs: Main / Skills / Inventory / Spells / Feats / Bio), Combat tracker, Event log, Spellbook, Inventory — all stacked over the map like Foundry desktop windows. |
 | **R1 gesture control** | tap = cycle • double-tap = back to map • scroll = navigate • long-press = Quick Action menu. |
@@ -95,7 +95,7 @@ Four rules govern every PR, every audit, every release. They are constraints, no
 
 ## Status
 
-**Phase 1-3 implemented; Phase 4+ pending hardware access.** The current artifact is the **~4380-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) plus a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint re-verified, drift NEUTRO), with four **non-negotiable Project Invariants** ratified in §0.1 and a new `z=0.5` Idle Content Infill layer (§7.4c) that fills previously-empty raster-mode rows without violating the 4-image hardware budget.
+**Phase 1-3 implemented; Phase 4+ pending hardware access.** The current artifact is the **~4380-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) plus a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint re-verified, drift NEUTRO), with four **non-negotiable Project Invariants** ratified in §0.1 and a new `z=0.5` Idle Content Infill layer (§7.4c) that fills previously-empty raster-mode rows without violating the 4-image hardware budget. (Phase 14 ratified end-to-end 2026-05-17 — INV-1 fixtures + cross-state column equality + LMT-DD-07 race coverage.)
 
 The spec covers requirements, hardware constraints (Even Hub display + networking + audio + native AI limits + R1 product page), Foundry/dnd5e API surface (with `game.i18n` Localization API), data models, full UI/UX with ASCII mockups, layout integrity rules (§7.1a), i18n architecture with on-glasses language toggle (§7.16), G2 audio surface (§3.5), plugin execution model and 3-hop server-hosted distribution (§3.7), Even Realities App phone-side configuration UI for connection bootstrap (§3.8 / §7.14.7), the 6-layer raster pipeline, the optional MCP voice module, a 13-week MVP roadmap with Phase 0 validation protocol, risk register, library stack research, and failure modes.
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.9.12
 milestone_name: Quick Wins
 status: planning
-last_updated: "2026-05-17T14:00:00.000Z"
+last_updated: "2026-05-17T17:00:00.000Z"
 last_activity: 2026-05-17
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 43
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** v0.9.12 Quick Wins — ROADMAP defined (Phases 14–15); awaiting first `/gsd-plan-phase 14`.
+**Current focus:** Phase 14 closed; awaiting first `/gsd-plan-phase 15`.
 
 ## Current Position
 
-Phase: 14 — Raster z=0.5 Idle Content Infill (not started)
-Plan: —
-Status: ROADMAP defined; awaiting plan-phase 14 invocation
-Last activity: 2026-05-17 — v0.9.12 ROADMAP written (Phases 14–15, 9 v1 REQ-IDs mapped)
+Phase: 14 — Raster z=0.5 Idle Content Infill (✅ closed)
+Plan: 14-01..03 (all complete)
+Status: Phase 14 closed 2026-05-17 — 3 plans shipped (01 fixtures + cross-state invariants, 02 LMT-DD-07 race coverage, 03 INV-3 atomic ratification). Phase 15 (Deepgram Keyterm) next.
+Last activity: 2026-05-17 — Phase 14 INV-3 atomic ratification commit (INFILL-01..05 closed)
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Last activity: 2026-05-17 — v0.9.12 ROADMAP written (Phases 14–15, 9 v1 REQ-
 | 2026-05-17 | `20260517-voice-intent-research` | _research-only_ | **EvenAI native NON apribile ai dev — confermato INV-2 fresh su 6 fonti canoniche Even Realities (hub.evenrealities.com/docs/* + GitHub even-realities/* + support.evenrealities.com). Specs.md §3.6 regge.** Phase 12 (Deepgram Nova-3 + Claude Desktop MCP) è l'unica architettura praticabile con SDK pubblico — la pipeline GIÀ usa AI per identificare le azioni (esterna, non on-glass). **Quick win disponibile senza cambi architetturali:** Deepgram Keyterm Prompting con i 70 incantesimi di `spell-lookup.ts` (+625% entity-recall lift su nomi esotici). **Ottimizzazione condizionale post SC-12-01:** Picovoice Rhino edge-classifier solo se hardware test misura p50 > 800ms. Nessuna migrazione architettonica necessaria. Re-verified ✓ 2026-05-17 da annotare nel prossimo bump Specs.md. Artefatti: `RESEARCH.md` + `SUMMARY.md` in `.planning/quick/20260517-voice-intent-research/`. |
 | 2026-05-17 | `20260517-spell-lookup-foundry-derived` | `856991b` | Push-based Foundry compendium → bridge SpellPackCache → foundry-mcp dynamic resolver. 3 tasks: (1) SpellPackEntrySchema + AvailableSpellsPayloadSchema + readAvailableSpells() + registerSpellPackReader() + module wiring; (2) SpellPackCache + handleSpellPackEnvelope + GET /v1/spells/available + DeltaInterceptFn hook; (3) fetchAvailableSpells (5-min TTL) + lookupSpellIdFromBridge + lookupInDynamic (6-step Levenshtein) + staticLookup offline fallback. socketlib registerComplexHandler count stays 17 (emission via existing /internal/delta channel). T-SP-02: Zod validation before every cache write. 53 new tests; 2476/2476 pass. |
 | 2026-05-17 | `260517-k2g-il-riconoscimento-degli-incantesimi-deve` | `401c5ca` | **Generalize entity recognition** — extends spell-pack pipeline to any Foundry/dnd5e entity (items, weapons, armor, NPCs, monsters). Additive parallel pipeline (no spell-pack refactor — regression-proof). 3 tasks: (1) `EntityPackEntrySchema` + `AvailableEntitiesPayloadSchema` + `entity-pack-reader.ts` (filters Item subtypes {weapon, equipment, consumable, tool, loot, container, feat} + Actor subtypes {npc, vehicle}; explicit `entry.type !== 'spell'` guard so no spell leak); (2) `EntityPackCache` + `entity-pack-handler.ts` + `routes/entities.ts` + `server.ts` onDelta multiplex; (3) `entity-lookup-foundry.ts` (5-min TTL, no static fallback — non-spells have no SRD canonical list, returns null on bridge fail). Stricter ambiguity policy than spell-pack: ambiguous Levenshtein matches return `found:false` (physical-table consequence safety). **Invariants preserved**: socketlib registerComplexHandler count = 17 (push-based via existing `/internal/delta`); CI Gate 8 zero matches. 69 new tests (19 schema + 16 reader + 14 bridge + 20 mcp; ~3× plan target +25); 2546/2546 workspace tests pass. Merge: `9df157d` (worktree). |
+| 2026-05-17 | `phase-14-z0.5-ratification` | _pending_ | **Phase 14 INV-3 atomic ratification commit** — z=0.5 Idle Content Infill layer closed end-to-end (INFILL-01..05). Wave 1 plans 14-01 (3 INV-1 fixtures + Z05-INV-01..04 cross-state column equality tests; commits `65cc5f5` + `ec9b703` + `fd35c99`) + 14-02 (LMT-DD-07 race coverage; commits `bf0d627` + `2dfbde3`). Wave 2 plan 14-03 INV-3 atomic commit covers: ADR-0001 Amendment 1 ratification stanza + Specs.md changelog entry + README + showcase + STATE.md + ROADMAP.md + UI-SPEC §12 sign-off flip (3 dimensions + Approval) — all in a single commit per CLAUDE.md INV-3. No spec version bump (v0.9.12 stays at 2026-05-14 baseline). |
 
 ## Accumulated Context
 

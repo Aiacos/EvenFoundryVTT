@@ -165,7 +165,9 @@ export function readAvailableSpells(): AvailableSpellsPayload {
  * @returns Unsubscribe closure — calls `Hooks.off(updateCompendiumHookId)`.
  *          Discarded by module.ts for MVP (lifecycle is for-the-session).
  */
-export function registerSpellPackReader(emit: (type: string, payload: unknown) => void): () => void {
+export function registerSpellPackReader(
+  emit: (type: string, payload: unknown) => void,
+): () => void {
   // Emit at init (called synchronously by the init hook)
   function emitVocab(): void {
     try {

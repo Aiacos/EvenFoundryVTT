@@ -38,3 +38,23 @@
 - (c) `grep -c "^  it(" .../z05-state-machine-fixtures.test.ts` → 7 (matches expected).
 
 The workspace-wide `pnpm lint:ci` failure is the same pre-existing concern documented above for Plan 14-02. Plan 14-01 deliverable is met; the broader CI lint:ci gate remains blocked on the prior concerns.
+
+## Pre-existing branch coverage gap (out of scope for Plan 14-03)
+
+**Discovered during:** Phase 14 Plan 03 Task 3 (INV-3 atomic commit CI gates).
+
+**Status:** Confirmed pre-existing (verified by stashing Plan 14-03 changes and re-running `pnpm test:coverage` — identical 77.84% branch coverage before and after Plan 14-03 edits).
+
+**Issue:** `pnpm test:coverage` exits 1 because branch coverage is 77.84% (2751/3534) which is below the global 80% threshold in `vitest.config.ts`. Statements 87.45%, Functions 86.26%, Lines 88.32% — only branches falls short.
+
+**Why deferred:** Plan 14-03 is a documentation-only ratification plan. The only code change is a 1-line auto-format on `packages/foundry-module/src/readers/spell-pack-reader.ts:168` (multi-line function signature, semantic-neutral). Plan 14-03 introduces NO new branches and removes NONE. The coverage gap predates Wave 1 of Phase 14 and cannot be remedied by a doc-coherence commit. Per executor scope-boundary rule.
+
+**Test suite health (orthogonal to coverage):** `pnpm test --run` exits 0 with **2554/2554 tests passing across 176 test files**. No test failures, no regressions.
+
+**Suggested resolution:** future quick task `chore: backfill branch coverage to 80% threshold` — identify the top files with branch coverage below threshold (raster-worker.ts at 0% covers ~250 uncovered lines alone), add test cases. Should be a self-contained PR.
+
+## Folded into Plan 14-03 INV-3 atomic commit (RESOLVED)
+
+**Action:** `packages/foundry-module/src/readers/spell-pack-reader.ts:168` reformatted via `pnpm exec biome format --write` — single-line `export function registerSpellPackReader(emit: ...): () => void {` broken to multi-line per Biome `lineWidth: 100`. Semantic-neutral; no behavior change.
+
+**Result:** `pnpm lint:ci` now exits 0 (the single ERROR is gone). The 255 noConsole + noNonNullAssertion + useLiteralKeys WARNINGS remain — they are not blocking (warnings don't fail CI) and fall under separate pre-existing concerns above.

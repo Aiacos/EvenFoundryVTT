@@ -10,7 +10,7 @@ informed: future contributors
 
 ## Status
 
-**ACCEPTED** — 2026-05-11. **AMENDED** — 2026-05-14 (z=0.5 Idle Content Infill layer extension; see §Amendments). Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), Phase 5 (Panel Plugin System).
+**ACCEPTED** — 2026-05-11. **AMENDED** — 2026-05-14 (added z=0.5 extension) + **RATIFIED** — 2026-05-17 (Phase 14 — INFILL-01..05 closed). Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), Phase 5 (Panel Plugin System).
 
 ## Context and Problem Statement
 
@@ -107,3 +107,5 @@ The single-capture-container migration on overlay open/close gives unambiguous R
 **Why amend instead of new ADR:** the change is additive — it does not alter any of the original Decision Drivers, Considered Options, or Decision Outcome. The single-capture-container premise, the layered z-stack, and the container-budget reasoning all hold verbatim. A separate ADR-0009 would duplicate the context. Amendment keeps the architectural narrative coherent for future readers.
 
 **INV-2 status:** Container budget statement (`max 4 image + 8 text/list + 1 capture per page`) re-verified against `hub.evenrealities.com/docs/guides/device-apis` 2026-05-14 — drift verdict NEUTRO. Broader canonical constraint *"no arbitrary pixel drawing, no audio output, no camera"* confirmed verbatim. Specific 200×100 per-image-container dimension not directly visible on the canonical primary fetch snapshot 2026-05-14 — flagged as INV-2 follow-up (non-blocker for this amendment). Full evidence: `.planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md`.
+
+**Phase 14 ratification (2026-05-17):** Phase 14 (commit hash TBD — set by the commit step) ratifies the z=0.5 contract end-to-end: INV-1 fixtures locked (3 added — `raster-overlay-open.it.txt`, `raster-overlay-open.en.txt`, `glyph-scene.glyph-idle-z05.it.txt`); cross-state column-equality invariants verified (Z05-INV-01..04 in `packages/g2-app/src/status-hud/__tests__/z05-state-machine-fixtures.test.ts`); race coverage locked (LMT-DD-07 in `packages/g2-app/src/engine/__tests__/layer-manager.test.ts`). Full UI contract: `.planning/phases/EVF-14-raster-z-0-5-idle-content-infill/14-UI-SPEC.md` (Approval flipped to APPROVED Phase 14).

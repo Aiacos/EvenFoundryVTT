@@ -34,7 +34,7 @@ MVP scope = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13 (shipped early). Full
 
 Two atomic software-only phases. No hardware-gated SCs added (35 `human_needed` SCs carry from v0.9.11 under ADR-0005 Branch A unchanged). Both phases ship via the `defer-hardware-tests` carry pattern if any UAT surfaces during work — but the scope as defined is 100% software-validatable.
 
-- [ ] **Phase 14: Raster z=0.5 Idle Content Infill** — Fill the previously-empty rows of raster-mode map-area with 3 dynamic text containers when no z=2 overlay is mounted; auto-demolish on overlay mount via existing LayerManager.bundle() differential demolish (ADR-0009 Amd 1 pattern); ADR-0001 amended; Specs.md §7.2/§7.3/§7.4 + new §7.4c bumped to v0.9.12 in single INV-3 atomic commit.
+- [x] **Phase 14: Raster z=0.5 Idle Content Infill** (✅ closed 2026-05-17) — Fill the previously-empty rows of raster-mode map-area with 3 dynamic text containers when no z=2 overlay is mounted; auto-demolish on overlay mount via existing LayerManager.bundle() differential demolish (ADR-0009 Amd 1 pattern); ADR-0001 amended; Specs.md §7.2/§7.3/§7.4 + new §7.4c bumped to v0.9.12 in single INV-3 atomic commit.
 - [ ] **Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration** — Wire Nova-3 `keyterm` parameter in `deepgram-stt.ts` (Phase 12 enhancement); seed keyterm vocabulary from BOTH static `spell-lookup.ts` (70 SRD entries) AND dynamic `entity-pack-cache.ts` (Foundry-derived items/weapons/armor/NPCs/monsters from quick-task 260517-k2g); IT+EN locale-aware merging; hot-update on WS delta via existing `/internal/delta` channel (no new socketlib handler — count stays at 17).
 
 ## Phase Details
@@ -49,11 +49,11 @@ Two atomic software-only phases. No hardware-gated SCs added (35 `human_needed` 
   3. Closing the overlay re-mounts z=0.5 infill atomically (round-trip state machine verified)
   4. INV-1 ASCII snapshot fixtures pass for: (a) idle-fill state (z=0+z=0.5+z=1), (b) overlay-open state (z=0+z=1+z=2 with z=0.5 absent), (c) glyph-mode idle-fill state — all char-precision, same column boundaries (INFILL-05 verified)
   5. Specs.md §7.2 + §7.3 + §7.4 + new §7.4c + README.md + showcase + ADR-0001 amendment all bumped to v0.9.12 in a single INV-3 atomic commit; CI Gate INV-3 atomic doc coherence remains green (INFILL-01 + INFILL-04 verified)
-**Plans**: 3 plans
+**Plans**: 3 plans complete · `14-01-PLAN.md` (3 INV-1 fixtures + Z05-INV-01..04 cross-state invariants) · `14-02-PLAN.md` (LMT-DD-07 race coverage) · `14-03-PLAN.md` (INV-3 atomic ratification — this commit)
 Plans:
-- [ ] 14-01-PLAN.md — 3 INV-1 fixtures (raster-overlay-open.it/en + glyph-idle-z05.it) + Z05-INV-01..04 cross-state column-equality test
-- [ ] 14-02-PLAN.md — LMT-DD-07 race-coverage unit test in layer-manager.test.ts (single bundle flush atomicity under z=0.5 → z=2 transition)
-- [ ] 14-03-PLAN.md — INV-3 atomic ratification commit: ADR-0001 Amendment 1 status flip + Specs.md changelog entry + README + showcase + STATE.md + ROADMAP.md (7-file atomic)
+- [x] 14-01-PLAN.md — 3 INV-1 fixtures (raster-overlay-open.it/en + glyph-idle-z05.it) + Z05-INV-01..04 cross-state column-equality test
+- [x] 14-02-PLAN.md — LMT-DD-07 race-coverage unit test in layer-manager.test.ts (single bundle flush atomicity under z=0.5 → z=2 transition)
+- [x] 14-03-PLAN.md — INV-3 atomic ratification commit: ADR-0001 Amendment 1 status flip + Specs.md changelog entry + README + showcase + STATE.md + ROADMAP.md (7-file atomic)
 **UI hint**: yes
 
 ### Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration
@@ -73,13 +73,13 @@ Plans:
 | Milestone | Phases | Plans | Status | Shipped |
 |-----------|--------|-------|--------|---------|
 | v0.9.11 MVP | 15 (0–13) | 71/71 | ✅ Shipped | 2026-05-17 |
-| v0.9.12 Quick Wins | 2 (14–15) | 0/~7 | 🟢 Planning | — |
+| v0.9.12 Quick Wins | 2 (14–15) | 3/~7 | 🟢 Executing | — |
 
 ### v0.9.12 Phase Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 14. Raster z=0.5 Idle Content Infill | 0/3 | 🟡 Planned (3 plans) | — |
+| 14. Raster z=0.5 Idle Content Infill | 3/3 | ✅ Complete | 2026-05-17 |
 | 15. Deepgram Keyterm + Entity-Pack | 0/~3 | Not started | — |
 
 ---

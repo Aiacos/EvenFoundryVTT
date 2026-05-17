@@ -354,13 +354,13 @@ No new dependencies are introduced by Phase 14. The polyfill + SDK are already o
 Standard 6 dimensions adapted to hardware-AR context:
 
 - [ ] **Dimension 1 Copywriting:** 7 strings + 3 missing-field tokens declared; combat-log + stats strip width budgets locked; label-separator is constant non-localized literal. → **PASS** (Phase 14 freeze)
-- [ ] **Dimension 2 Visuals:** 3 canonical ASCII mockups + 1 race-behavior assertion locked. Phase 14 deliverable adds 3 new fixtures, freezes 5 existing. → **pending fixture commit**
+- [x] **Dimension 2 Visuals:** 3 canonical ASCII mockups + 1 race-behavior assertion locked. Phase 14 deliverable adds 3 new fixtures, freezes 5 existing. → **PASS** — 3 fixtures added in Plan 01 (raster-overlay-open.it.txt + raster-overlay-open.en.txt + glyph-scene.glyph-idle-z05.it.txt); cross-state invariants Z05-INV-01..04 green; LMT-DD-07 race coverage green; ratified Phase 14 (commit hash TBD).
 - [ ] **Dimension 3 Color:** N/A in CSS sense — 4-bit phosphor green palette declared; accent reserved-for list = 3 specific glyphs (`⚔`, `─── z=0.5 idle infill ───`, `[Q] Quick`). → **PASS**
 - [ ] **Dimension 4 Typography:** N/A in CSS sense — character semantics declared per row; 2 character classes (body, symbol). → **PASS**
 - [ ] **Dimension 5 Spacing:** N/A in CSS sense — char-cell grid declared; content-width 66 cells, left-margin 3 chars, right-stop col 70. → **PASS**
 - [ ] **Dimension 6 Registry Safety:** N/A — no shadcn, no third-party blocks. Hardware SDK pre-vetted. → **PASS**
 
-**Approval:** pending (Phase 14 plan-phase + execute-phase must commit fixtures and validate INV-1 cross-state column equality assertions before this flips to approved).
+**Approval:** APPROVED — Phase 14 (2026-05-17, commit hash TBD).
 
 ---
 
