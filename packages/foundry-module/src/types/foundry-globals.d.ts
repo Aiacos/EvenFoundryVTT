@@ -781,6 +781,100 @@ declare namespace dnd5e {
   }
 }
 
+// ─── Compendium Collection (minimal read shape) ────────────────────────────────
+
+/**
+ * A single entry in a CompendiumCollection index.
+ *
+ * The index is a lightweight listing of all documents in the pack without
+ * loading the full document data. Used by spell-pack-reader.ts to enumerate
+ * available spells without expensive full-document fetches.
+ *
+ * @see packages/foundry-module/src/readers/spell-pack-reader.ts
+ * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
+ */
+interface CompendiumIndexEntry {
+  /** Foundry document ID (unique within the pack; globally unique within a world). */
+  _id: string;
+  /** Document display name (canonical English for dnd5e SRD packs). */
+  name: string;
+  /**
+   * Document type discriminant.
+   * For Item-type packs: 'spell', 'weapon', 'feat', 'equipment', 'consumable', etc.
+   * spell-pack-reader filters for `entry.type === 'spell'`.
+   */
+  type: string;
+  /** Document icon path (not used by spell-pack-reader; included for completeness). */
+  img?: string;
+}
+
+/**
+ * Compendium pack metadata fields consumed by spell-pack-reader.ts.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
+ */
+interface CompendiumMetadata {
+  /**
+   * Document type of entries in this pack.
+   * spell-pack-reader filters for `metadata.type === 'Item'`.
+   */
+  type: string;
+  /**
+   * Game system this pack belongs to (e.g. 'dnd5e', 'pf2e').
+   * spell-pack-reader filters for `metadata.system === 'dnd5e'`.
+   */
+  system: string;
+  /** Human-readable pack name. */
+  label?: string;
+}
+
+/**
+ * Minimal CompendiumCollection shape consumed by spell-pack-reader.ts.
+ *
+ * The full Foundry CompendiumCollection has many more methods; only the
+ * fields accessed by the reader are declared here (INV-4 minimal surface).
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
+ * @see packages/foundry-module/src/readers/spell-pack-reader.ts
+ */
+interface CompendiumCollection {
+  /** Pack identifier (e.g. 'dnd5e.spells', 'dnd5e.tashas'). */
+  collection: string;
+  /** Pack metadata — type, system, label. */
+  metadata: CompendiumMetadata;
+  /**
+   * Index of all entries in this pack (loaded lazily by Foundry at init).
+   *
+   * The index is a Collection of lightweight entry stubs — much faster than
+   * loading full documents. spell-pack-reader reads `.index.contents` directly.
+   *
+   * Note: `.index` may be an empty Collection before the pack is fully indexed.
+   * The reader defends against this with `?? []` in the spread pattern.
+   */
+  index: {
+    contents: CompendiumIndexEntry[];
+    size: number;
+  };
+}
+
+/**
+ * WorldCollection<CompendiumCollection> — `game.packs` global.
+ *
+ * Provides `get(packId)` for direct lookup and `contents` for iteration.
+ * `game.packs.get('dnd5e.spells')` returns the SRD spells pack OR undefined
+ * (e.g. when the system is not loaded or the pack is not installed).
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.WorldCollection.html
+ */
+interface FoundryWorldPacks {
+  /** Get a compendium pack by its full pack ID (e.g. 'dnd5e.spells'). */
+  get(packId: string): CompendiumCollection | undefined;
+  /** All registered compendium packs. */
+  contents: CompendiumCollection[];
+  /** Number of packs registered. */
+  size: number;
+}
+
 /** Foundry game singleton — available globally after the "init" hook fires. */
 declare const game: {
   settings: FoundrySettings;
@@ -791,6 +885,17 @@ declare const game: {
   combat: FoundryCombat | null;
   /** Chat message collection (Phase 5 — log-reader.ts). */
   messages: FoundryCollection<FoundryChatMessage>;
+  /**
+   * All registered compendium packs (WorldCollection<CompendiumCollection>).
+   *
+   * Added in Quick Task 20260517: spell-pack-reader.ts iterates this to build
+   * the dynamic spell vocabulary. Filters for `metadata.type === 'Item'` +
+   * `metadata.system === 'dnd5e'` to extract dnd5e spell packs only.
+   *
+   * @see packages/foundry-module/src/readers/spell-pack-reader.ts
+   * @see https://foundryvtt.com/api/v13/classes/foundry.WorldCollection.html
+   */
+  packs: FoundryWorldPacks;
   /** All scene documents in the active world. */
   scenes: FoundryCollection<FoundryScene> & { active: FoundryScene | null };
   /** The current logged-in user. */

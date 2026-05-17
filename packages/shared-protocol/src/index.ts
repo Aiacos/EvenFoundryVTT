@@ -255,6 +255,19 @@ export {
   VoiceTranscriptPayloadSchema,
 } from './payloads/voice.js';
 
+// ─── Quick Task 20260517 — spell-pack vocabulary push schema ─────────────────
+// AvailableSpellsPayloadSchema pushed by foundry-module spell-pack-reader.ts.
+// Bridge caches via spell-pack-cache.ts + serves GET /v1/spells/available.
+// foundry-mcp spell-lookup-foundry.ts fetches with 5-min TTL + Levenshtein fuzzy.
+
+export {
+  type AvailableSpellsPayload,
+  AvailableSpellsPayloadSchema,
+  R1_SPELLS_AVAILABLE_TYPE,
+  type SpellPackEntry,
+  SpellPackEntrySchema,
+} from './payloads/spell-pack.js';
+
 // ─── Phase 13 additions (Plan 13-03 — portrait ready schema) ─────────────────
 // Portrait ready payload schema for STRETCH-06 Bio tab portrait feature.
 // Bridge emits r1.portrait.ready envelope on cache-miss render path.

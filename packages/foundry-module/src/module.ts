@@ -32,6 +32,11 @@ import {
   R1_MOVEMENT_BUDGET_TYPE,
 } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
+// Quick Task 20260517 — spell-pack vocabulary push (push-based, no new socketlib handler).
+// Emits r1.spells.available envelopes via bridgeDeltaEmitter on init + updateCompendium.
+// Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
+// socketlib count stays 17 (Phase 13 invariant preserved).
+import { registerSpellPackReader } from './readers/spell-pack-reader.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
@@ -174,10 +179,16 @@ function bridgeDeltaEmitter(type: string, payload: unknown): void {
   })();
 }
 
-// Bootstrap: register settings when Foundry's init hook fires.
+// Bootstrap: register settings + spell-pack vocabulary reader when Foundry's init hook fires.
 // `init` is the earliest safe point to call game.settings.registerMenu.
+// The spell-pack reader is registered here (not in 'ready') so the vocabulary push reaches
+// the bridge cache before any MCP tool call could need it.
+// NO new socketlib handler — count stays 17 (Phase 13 invariant).
 Hooks.once('init', () => {
   registerSettings();
+  // Quick Task 20260517: emit initial spell vocabulary + subscribe to updateCompendium.
+  // Wired to bridgeDeltaEmitter so envelopes reach the bridge cache via /internal/delta.
+  registerSpellPackReader((type, payload) => bridgeDeltaEmitter(type, payload));
 });
 
 // Register socketlib GM-side handlers + hook subscribers on "ready".
