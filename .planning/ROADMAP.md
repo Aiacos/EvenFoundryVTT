@@ -29,7 +29,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook *(5/5 plans complete 2026-05-17; software-complete; SC-10-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 32. MVP SOFTWARE-COMPLETE.)*
 - [x] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification *(4/4 plans complete 2026-05-17; software-complete; pure software phase; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld)*
 - [x] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
-- [ ] **Phase 13: V2 Stretch** *(OPZIONALE)* - Reaction *execution* (ACT-04) + biometric narrative cues + multi-player sync + dnd5e v6.x adapter + PF2e + Sheet/Token portrait + DSN raster stream + bridge-side headless Foundry + advanced dither
+- [x] **Phase 13: V2 Stretch** *(OPZIONALE)* - Reaction *execution* (ACT-04) + Sheet/Token portrait (STRETCH-06) software-complete; 7 other STRETCH items deferred to post-v0.9.11 *(4/4 plans complete 2026-05-17; software-complete; SC-13-01..02 deferred to ADR-0005 Branch A `human_needed`; socketlib count FLIPPED 14 → 17; running hardware-pending: 35. v0.9.11 MILESTONE-COMPLETE.)*
 
 ## Phase Details
 
@@ -332,7 +332,7 @@ Plans:
   1. Reaction *execution* flow (Shield consume reaction slot; Counterspell ability check; Opportunity Attack via Ready Action) — promoted from REACT-01 passive notification (ACT-04)
   2. STRETCH-06 Sheet portrait ships behind `view.features.portrait` Even Hub feature flag (default off) — 100×60 4-bit dithered image on Bio tab
   3. socketlib registerComplexHandler count FLIPS from 14 to 17 (3 new reaction handlers); container budget remains within SDK 4-image / 8-text cap via MapBaseLayer slot reassignment
-**Plans:** 3/4 plans executed
+**Plans:** 4 plans
 Plans:
 **Wave 1**
 - [x] 13-01-PLAN.md — 3 reaction handlers (cast-shield + cast-counterspell + opportunity-attack) + shared-protocol input schemas + tool-registry extension + socketlib registrations 14 → 17 + module.test invariant flip (ACT-04 handlers)
@@ -340,8 +340,8 @@ Plans:
 - [x] 13-02-PLAN.md — ReactionPromptPanel (z=2) + reaction-prompt-dispatcher (500ms debounce + 5s timeout + concurrent-drop) + combat-action-tracker reaction slot accounting + 3 INV-1 fixtures (ACT-04 UX)
 **Wave 3** *(blocked on 13-01 + 13-02)*
 - [x] 13-03-PLAN.md — character-reader portrait.url extension + bridge image-proxy (URL validation + SSRF deny-list + cache by SHA-256 + image-q/upng-js dither pipeline) + r1.portrait.ready envelope schema (STRETCH-06 server)
-**Wave 4** *(blocked on 13-01 + 13-02 + 13-03; NOT autonomous — Phase 13 + v0.9.11 milestone closure)*
-- [ ] 13-04-PLAN.md — CharacterSheetPanel Bio portrait wiring + MapBaseLayer.setPortraitOverride slot reassignment + view.features.portrait feature flag + boot-engine wiring + 13-integration-smoke ISM-13-01..10 + 13-VERIFICATION.md + STATE/ROADMAP atomic INV-3 + v0.9.11 milestone-complete signal
+**Wave 4**
+- [x] 13-04-PLAN.md — CharacterSheetPanel Bio portrait wiring + MapBaseLayer.setPortraitOverride slot reassignment + view.features.portrait feature flag + boot-engine wiring + 13-integration-smoke ISM-13-01..10 + 13-VERIFICATION.md + STATE/ROADMAP atomic INV-3 + v0.9.11 milestone-complete signal
 
 ## Progress
 
@@ -364,11 +364,13 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
 | 11. V2 `foundry-mcp` Server | 4/4 | Complete (pure software; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld) | 2026-05-17 |
 | 12. V2 Voice UX Tuning | 3/3 | Complete (software-complete; SC-12-01 deferred to ADR-0005 Branch A `human_needed` — running total 33 hardware-pending SCs) | 2026-05-17 |
-| 13. V2 Stretch | 3/4 | In Progress|  |
+| 13. V2 Stretch | 4/4 | Complete (software-complete; SC-13-01..02 deferred to ADR-0005 Branch A `human_needed`; 7 STRETCH items deferred to post-v0.9.11; socketlib 14→17; running hardware-pending: 35) **v0.9.11 MILESTONE-COMPLETE** | 2026-05-17 |
 
 ## Coverage Summary
 
 **v1 requirements mapped:** 48 / 48 ✓ (zero orphans, zero duplicates)
+
+**v2 REQ-IDs landed in Phase 13:** ACT-04 (reaction execution — 3 handlers, ACT-04 CLOSED software) + STRETCH-06 (sheet portrait behind feature flag, STRETCH-06 CLOSED software). 7 remaining STRETCH items (STRETCH-01..05, 07, 08) deferred to post-v0.9.11 milestones.
 
 | Category | Count | Phase distribution |
 |----------|-------|--------------------|

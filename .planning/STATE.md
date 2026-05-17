@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-17T08:40:31.790Z"
-last_activity: "2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE."
+status: PHASE_13_CLOSED — V2 Stretch complete; 4/4 plans committed; ACT-04 reactions software-shipped; STRETCH-06 sheet portrait software-shipped; socketlib count FLIPPED 14 → 17; 7 STRETCH items deferred; v0.9.11 MILESTONE-COMPLETE
+stopped_at: "Completed 13-04-PLAN.md (Phase 13 CLOSED — v0.9.11 MILESTONE-COMPLETE)"
+last_updated: "2026-05-17"
+last_activity: "2026-05-17 — Phase 13 CLOSED. Plan 13-01: 3 reaction handlers + socketlib 14→17. Plan 13-02: ReactionPromptPanel + reaction-prompt-dispatcher. Plan 13-03: portrait pipeline (bridge). Plan 13-04: MapBaseLayer.setPortraitOverride + CharacterSheetPanel portrait wiring + boot-engine wiring + ISM-13-01..10 + 13-VERIFICATION.md + INV-3 atomic closure. Total: 2423 tests passing. v0.9.11 MILESTONE-COMPLETE."
 progress:
   total_phases: 15
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 71
-  completed_plans: 70
-  percent: 93
+  completed_plans: 71
+  percent: 100
 ---
 
 # Project State
@@ -409,6 +409,61 @@ New running total: **29 hardware-pending SCs** carried to ADR-0005 Branch A huma
 ### Phase 10 ready signal
 
 Phase 9 CLOSED. Phase 10 (Polish & Field Test MVP) is unblocked. Resume cmd: `/gsd-execute-phase 10 01`
+
+## /gsd-autonomous 2026-05-17 run — Phase 13 closure
+
+**PHASE_13_CLOSED** — 4/4 plans committed 2026-05-17. V2 Stretch complete. **v0.9.11 MILESTONE-COMPLETE.**
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 13-01 | (see SUMMARY) | 3 reaction handlers (cast-shield + cast-counterspell + opportunity-attack) + shared-protocol input schemas + socketlib registrations 14 → 17 + module.test invariant flip |
+| 13-02 | (see SUMMARY) | ReactionPromptPanel (z=2) + reaction-prompt-dispatcher (500ms debounce + 5s timeout + concurrent-drop) + combat-action-tracker reaction slot accounting + 3 INV-1 fixtures |
+| 13-03 | (see SUMMARY) | character-reader portrait.url + bridge GET /v1/portrait/:actorId (SSRF deny-list + SHA-256 cache + image-q/upng-js dither pipeline) + r1.portrait.ready envelope schema |
+| 13-04 | 5e4ece7 + 1109bdb + cb9339a + (docs) | portrait-state cache + portrait-dispatcher + MapBaseLayer.setPortraitOverride + CharacterSheetPanel Bio portrait wiring + boot-engine wiring + ISM-13-01..10 + 13-VERIFICATION.md + INV-3 atomic closure |
+
+### Test totals
+
+- Phase 13 start (after 12-03): ~1263 g2-app + other packages = ~2097 workspace
+- Phase 13 end (after 13-04): **2423 tests** (167 test files, all pass)
+- Net Phase 13 addition: +326 tests across 4 plans
+
+### Key invariants confirmed (Phase 13 closure)
+
+- `registerComplexHandler` count = **17** (FLIPPED from 14 in Plan 13-01; re-grepped at Phase 13-04 closure: `grep -c 'socketlib.registerComplexHandler' packages/foundry-module/src/pair/socketlib-handlers.ts` = 17)
+- ADR-0011 single-workflow-origin discipline: `activity.use(` absent from g2-app + bridge source code (CI Gate 8 green — sole match in slot-picker-panel.ts:29 is JSDoc comment)
+- T-13-03 double trust boundary: portrait-dispatcher outer EnvelopeSchema + inner PortraitReadyPayloadSchema; PD-01..06 GREEN
+- T-13-04 reaction handler bearer integrity: all 3 handlers via dispatchTool (bearer + idempotency); RH-SHIELD/CS/OA-01..06 GREEN
+- Container budget SDK cap (4 image / 8 text) not exceeded: portrait occupies MapBaseLayer image SLOT (no new container); CharacterSheetPanel.getContainerCount stays {image:0, text:1} — D-13-08 final decision
+- INV-1 Layout integrity: 5 new INV-1 fixtures (3 reaction prompt + 2 Bio tab portrait states) all pass matchAsciiFixture
+- INV-3 atomic doc-coherence: 13-VERIFICATION.md + STATE.md + ROADMAP.md committed in single atomic commit per Phase 10 precedent (ee39fb1) + Phase 12 precedent (4106286)
+
+### REQ-ID coverage (Phase 13)
+
+| REQ-ID | Requirement | Plans |
+|--------|-------------|-------|
+| ACT-04 | Reaction execution (Shield + Counterspell + OA) | 13-01, 13-02, 13-04 |
+| STRETCH-06 | Sheet portrait behind view.features.portrait flag | 13-03, 13-04 |
+
+7 deferred (STRETCH-01..05, 07, 08): explicitly out of v0.9.11 scope per 13-CONTEXT.md.
+
+### Hardware-pending carry-forward (Phase 13 — 2 new SCs)
+
+| SC | Description | Target |
+|----|-------------|--------|
+| SC-13-01 | Real Foundry world + R1 reaction UAT (Shield / Counterspell / OA) | ACT-04 end-to-end on hardware |
+| SC-13-02 | Real G2 portrait fidelity (100×60 4-bit phosphor greyscale) | STRETCH-06 visual on device |
+
+Previous running total: 33 hardware-pending SCs (Phase 12 closure)
+Phase 13 adds: 2 SCs (SC-13-01 + SC-13-02)
+New running total: **35 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### v0.9.11 MILESTONE-COMPLETE signal
+
+v0.9.11 MILESTONE-COMPLETE — All 15 phases (0,1,2,3,4a,4b,5,6,7,8,9,10,11,12,13) software-complete. 35 hardware-pending SCs carried to ADR-0005 Branch A human_needed. Close via `pnpm --filter @evf/validation-harness validate:all` once G2 + R1 + Deepgram key + consenting DM + multi-session field test are available. Recommendation: run `/gsd-cleanup 13` to archive phase artifacts, then `/gsd milestone-audit v0.9.11`.
+
+---
 
 ## /gsd-autonomous 2026-05-15 run — Phase 4a checkpoint
 
