@@ -48,6 +48,23 @@ export interface CreateDeepgramSttOpts {
   urlOverride?: string | undefined;
   logger: Logger;
   /**
+   * Optional callback returning the current Deepgram Keyterm Prompting vocabulary
+   * for the next session. Called lazily on every {@link DeepgramAdapter.connect}
+   * invocation (DGKT-05) — supports the hot-update model where plan 15-03's
+   * entity-pack cache may have changed between sessions. Return `[]` (or omit
+   * the callback entirely; DGKT-06) to disable keyterm prompting and preserve
+   * the Phase 12 baseline URL byte-for-byte (DGKT-04).
+   *
+   * Each returned string is URL-encoded via {@link encodeURIComponent} (RFC 3986)
+   * before being appended to the Deepgram WS URL as a `keyterm=<encoded>` query
+   * parameter — one occurrence per entry per Deepgram wire format.
+   *
+   * @see ./keyterm-merger.ts (production producer: buildKeytermList)
+   * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-02-PLAN.md
+   * @see .planning/quick/20260517-voice-intent-research/RESEARCH.md §2 Option C
+   */
+  keytermProvider?: () => string[];
+  /**
    * @internal Test-only: inject a custom WebSocket factory.
    * Production always uses the `ws` package's WebSocket constructor.
    */
@@ -91,6 +108,36 @@ export interface DeepgramAdapter {
  */
 const DEEPGRAM_URL =
   'wss://api.deepgram.com/v1/listen?model=nova-3&language=multi&punctuate=true&encoding=linear16&sample_rate=16000&channels=1';
+
+// ─── Keyterm URL builder (Phase 15 Plan 02) ──────────────────────────────────
+
+/**
+ * Append Deepgram Keyterm Prompting query params to a base Deepgram WS URL.
+ *
+ * Each keyterm is appended as a separate `keyterm=<encoded>` query parameter —
+ * the canonical Deepgram wire format (per RESEARCH.md §2 Option C, verified
+ * 2026-05-17 against Deepgram learn article). Encoding follows RFC 3986 via
+ * {@link encodeURIComponent}: spaces become `%20` (NOT `+` form-style), and
+ * `&` / `=` / accented UTF-8 bytes are percent-escaped — the T-15-05 URL-
+ * injection mitigation surfaces here.
+ *
+ * When `keyterms` is empty the base URL is returned unchanged byte-for-byte
+ * (DGKT-04 contract — preserves Phase 12 baseline for users without entity
+ * pack push).
+ *
+ * @param baseUrl - The canonical Deepgram URL (or test override). MUST already
+ *   contain at least one query parameter — keyterms are joined with `&`.
+ * @param keyterms - List of keyterm strings (in `buildKeytermList` output order).
+ * @returns The base URL with one `&keyterm=<encoded>` appended per entry.
+ *
+ * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-02-PLAN.md DGKT-01..06
+ * @see .planning/quick/20260517-voice-intent-research/RESEARCH.md §2 Option C
+ */
+function buildDeepgramUrl(baseUrl: string, keyterms: string[]): string {
+  if (keyterms.length === 0) return baseUrl;
+  const encoded = keyterms.map((k) => `keyterm=${encodeURIComponent(k)}`).join('&');
+  return `${baseUrl}&${encoded}`;
+}
 
 // ─── Shape guard for Results frames ──────────────────────────────────────────
 
@@ -204,15 +251,35 @@ function createLiveStream(
 /**
  * Create a Deepgram STT adapter.
  *
+ * # Phase 15 Plan 02 — Keyterm Prompting wiring (VOICE-06)
+ *
+ * When `opts.keytermProvider` is supplied, the adapter invokes it lazily on
+ * every {@link DeepgramAdapter.connect} call (DGKT-05) and appends one
+ * `keyterm=<URL-encoded>` query parameter per returned entry to the Deepgram
+ * WS URL. The keyterm vocabulary is the merger output of static SRD spells
+ * + dynamic Foundry-derived entity-pack (plan 15-01's `buildKeytermList`).
+ *
+ * Both IT and EN locale variants of each spell/entity reach Deepgram in a
+ * single Nova-3 Multilingual session — CONTEXT D-02 — because the existing
+ * `language=multi` URL param is preserved and the merger interleaves both
+ * locales into a single keyterm list. Nova-3 handles intra-phrase code-
+ * switch like `"casta fireball"` natively.
+ *
+ * When `keytermProvider` returns `[]` (cold entity cache) OR is omitted
+ * entirely, the URL byte-for-byte matches the Phase 12 baseline (DGKT-04 /
+ * DGKT-06) — voice STT continues to function as in Phase 12, just without
+ * the +625% entity-recall lift.
+ *
  * @param opts.apiKey - `process.env.DEEPGRAM_API_KEY`; `undefined` or `''` → disabled mode.
  * @param opts.urlOverride - Override Deepgram URL for testing (injects mock server URL).
  * @param opts.logger - pino Logger instance from the Fastify app.
+ * @param opts.keytermProvider - @see {@link CreateDeepgramSttOpts.keytermProvider}.
  * @param opts._wsFactory - @internal Test-only WS factory injection.
  *
  * @returns DeepgramAdapter — `isEnabled()` + `connect(sessionId)`.
  */
 export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter {
-  const { apiKey, urlOverride, logger } = opts;
+  const { apiKey, urlOverride, logger, keytermProvider } = opts;
   const enabled = apiKey !== undefined && apiKey !== '';
 
   if (!enabled) {
@@ -239,9 +306,29 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
         );
         return createNoOpStream();
       }
-      logger.info({ sessionId }, 'deepgram-stt: connecting to Deepgram');
+      // Resolve keyterms lazily per connect() (DGKT-05). T-15-07 mitigation:
+      // wrap the provider invocation in try/catch — if the merger throws (e.g.
+      // unexpected entity-cache state), we degrade to baseline (no keyterms)
+      // rather than fail-closed the entire voice path.
+      let keyterms: string[] = [];
+      if (keytermProvider !== undefined) {
+        try {
+          keyterms = keytermProvider();
+        } catch (err) {
+          logger.warn(
+            { err, sessionId },
+            'deepgram-stt: keytermProvider threw — proceeding with no keyterms (Phase 12 baseline)',
+          );
+          keyterms = [];
+        }
+      }
+      const sessionUrl = buildDeepgramUrl(deepgramUrl, keyterms);
+      logger.info(
+        { sessionId, keytermCount: keyterms.length },
+        'deepgram-stt: connecting to Deepgram',
+      );
       // apiKey is non-empty here (enabled === true)
-      return createLiveStream(deepgramUrl, apiKey as string, logger, wsFactory);
+      return createLiveStream(sessionUrl, apiKey as string, logger, wsFactory);
     },
   };
 }
