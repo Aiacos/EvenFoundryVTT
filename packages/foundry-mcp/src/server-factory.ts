@@ -5,8 +5,9 @@
  * (stdio: src/index.ts, Streamable HTTP: src/http.ts). Dependency-injected so
  * tests can pass a silent logger without touching process.env.
  *
- * Phase 11-02 state: BridgeClient is constructed here, ready promise awaited,
- * and all 6 EVF tools are registered via `registerEvfTools`.
+ * Phase 11-03 state: ResourceCache + WS subscription + 4 MCP resources wired in
+ * addition to the 6 tools from Phase 11-02. Cache and subscription are lifecycle-
+ * managed here so the entrypoints don't need to know about them.
  *
  * Security:
  * - The bearer is accepted as a constructor parameter and forwarded to BridgeClient.
@@ -19,12 +20,15 @@
  * @see packages/foundry-mcp/src/http.ts (Streamable HTTP entry)
  * @see packages/foundry-mcp/src/tools/bridge-client.ts (WS proxy)
  * @see packages/foundry-mcp/src/tools/register-tools.ts (6 tool registrations)
+ * @see packages/foundry-mcp/src/resources/index.ts (4 resource registrations)
  * @see .planning/phases/11-v2-foundry-mcp-server/11-01-PLAN.md Task 2
  * @see .planning/phases/11-v2-foundry-mcp-server/11-02-PLAN.md Task 2
+ * @see .planning/phases/11-v2-foundry-mcp-server/11-03-PLAN.md Task 2
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Logger } from 'pino';
+import { ResourceCache, registerEvfResources, subscribeToBridgeDeltas } from './resources/index.js';
 import { BridgeClient, type BridgeClientOptions } from './tools/bridge-client.js';
 import { registerEvfTools } from './tools/register-tools.js';
 
@@ -83,7 +87,7 @@ export function buildMcpServer(opts: BuildMcpServerOptions): McpServer {
   // Log the boot event with bridgeUrl only — bearer is intentionally absent.
   logger.info(
     { bridgeUrl },
-    'MCP server initialising — connecting BridgeClient and registering tools',
+    'MCP server initialising — connecting BridgeClient and registering tools + resources',
   );
 
   // Construct BridgeClient (real or injected stub for tests).
@@ -92,6 +96,11 @@ export function buildMcpServer(opts: BuildMcpServerOptions): McpServer {
 
   // Register all 6 EVF tools — uses .shape extraction from Phase 7 Zod schemas.
   registerEvfTools(server, bridgeClient, logger);
+
+  // Phase 11-03: wire resource cache + WS delta subscription + 4 MCP resources.
+  const cache = new ResourceCache();
+  subscribeToBridgeDeltas(bridgeClient, cache, logger);
+  registerEvfResources(server, cache, bridgeClient, logger);
 
   return server;
 }

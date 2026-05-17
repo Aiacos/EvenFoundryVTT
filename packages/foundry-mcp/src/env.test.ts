@@ -24,7 +24,17 @@ describe('parseMcpEnv', () => {
       bridgeUrl: 'http://localhost:8910',
       httpPort: 8911,
       logLevel: 'info',
+      actorId: '',
     });
+  });
+
+  it('case 1b: EVF_ACTOR_ID present → actorId populated', () => {
+    const result = parseMcpEnv({
+      EVF_BEARER: 'abc',
+      EVF_BRIDGE_URL: 'http://localhost:8910',
+      EVF_ACTOR_ID: 'actor-uuid-123',
+    });
+    expect(result.actorId).toBe('actor-uuid-123');
   });
 
   it('case 2: throws BootError when EVF_BEARER is empty string', () => {

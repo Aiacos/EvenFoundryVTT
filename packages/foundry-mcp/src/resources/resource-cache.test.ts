@@ -13,14 +13,14 @@
  * 6. cache.clear() → all entries gone; subscribers preserved
  */
 
-import { describe, expect, it, vi } from 'vitest';
-import { ResourceCache } from './resource-cache.js';
 import type {
   CharacterSnapshot,
   CombatSnapshot,
   EventLogEntry,
   SceneViewport,
 } from '@evf/shared-protocol';
+import { describe, expect, it, vi } from 'vitest';
+import { ResourceCache } from './resource-cache.js';
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 

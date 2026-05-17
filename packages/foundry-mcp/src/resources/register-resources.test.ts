@@ -14,19 +14,19 @@
  * 7. After cache.set('actor://current', x), server.sendResourceUpdated called once
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import pino from 'pino';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   CharacterSnapshot,
   CombatSnapshot,
   EventLogEntry,
   SceneViewport,
 } from '@evf/shared-protocol';
-import { ResourceCache } from './resource-cache.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import pino from 'pino';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EVF_MCP_RESOURCE_URIS, registerEvfResources } from './register-resources.js';
+import { ResourceCache } from './resource-cache.js';
 
 // ─── Mock BridgeClient ────────────────────────────────────────────────────────
 
@@ -134,9 +134,9 @@ describe('registerEvfResources', () => {
     try {
       const result = await client.readResource({ uri: 'actor://current' });
       expect(result.contents).toHaveLength(1);
-      const content = result.contents[0]!;
+      const content = result.contents[0]! as { uri: string; mimeType?: string; text: string };
       expect(content.mimeType).toBe('application/json');
-      expect(JSON.parse(content.text as string)).toEqual(snapshot);
+      expect(JSON.parse(content.text)).toEqual(snapshot);
     } finally {
       await cleanup();
     }
@@ -153,8 +153,8 @@ describe('registerEvfResources', () => {
     try {
       const result = await client.readResource({ uri: 'actor://current' });
       expect(getCharacterSnapshot).toHaveBeenCalledTimes(1);
-      const content = result.contents[0]!;
-      expect(JSON.parse(content.text as string)).toEqual(snapshot);
+      const content = result.contents[0]! as { uri: string; mimeType?: string; text: string };
+      expect(JSON.parse(content.text)).toEqual(snapshot);
     } finally {
       await cleanup();
     }
@@ -170,7 +170,7 @@ describe('registerEvfResources', () => {
     try {
       const result = await client.readResource({ uri: 'combat://current' });
       expect(getCombatSnapshot).toHaveBeenCalledTimes(1);
-      const content = result.contents[0]!;
+      const content = result.contents[0]! as { uri: string; mimeType?: string; text: string };
       expect(content.text).toBe('null');
     } finally {
       await cleanup();
@@ -187,8 +187,8 @@ describe('registerEvfResources', () => {
     const { client, cleanup } = await buildConnected(server);
     try {
       const result = await client.readResource({ uri: 'log://recent' });
-      const content = result.contents[0]!;
-      const entries = JSON.parse(content.text as string) as EventLogEntry[];
+      const content = result.contents[0]! as { uri: string; mimeType?: string; text: string };
+      const entries = JSON.parse(content.text) as EventLogEntry[];
       expect(entries).toHaveLength(2);
       expect(entries[0]!.seq).toBe(1);
       expect(entries[1]!.seq).toBe(2);
@@ -207,12 +207,12 @@ describe('registerEvfResources', () => {
     expect(Array.isArray(EVF_MCP_RESOURCE_URIS)).toBe(true);
   });
 
-  it('case 7: after cache.set actor://current, server.sendResourceUpdated called once', async () => {
+  it('case 7: after cache.set actor://current, server.server.sendResourceUpdated called once', async () => {
     const bridgeClient = createMockBridgeClient();
     registerEvfResources(server, cache, bridgeClient as never, logger);
 
-    // Spy on sendResourceUpdated BEFORE connecting transport
-    const sendSpy = vi.spyOn(server, 'sendResourceUpdated').mockResolvedValue(undefined);
+    // Spy on sendResourceUpdated on the underlying Server instance
+    const sendSpy = vi.spyOn(server.server, 'sendResourceUpdated').mockResolvedValue(undefined);
 
     // Now set a value in cache — should trigger the notification
     cache.set('actor://current', makeSnapshot(15));

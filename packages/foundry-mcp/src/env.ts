@@ -27,6 +27,12 @@ export interface McpEnv {
   httpPort: number;
   /** pino log level string (default: 'info'). */
   logLevel: string;
+  /**
+   * Optional Foundry actor ID for `actor://current` resource.
+   * When empty or absent, the MCP server auto-detects the first owned actor
+   * via `GET /v1/characters` (Phase 2 character list).
+   */
+  actorId: string;
 }
 
 /**
@@ -99,5 +105,10 @@ export function parseMcpEnv(env: Record<string, string | undefined> = process.en
   // ── LOG_LEVEL (optional, default 'info') ─────────────────────────────────────
   const logLevel = env.LOG_LEVEL ?? 'info';
 
-  return { bearer, bridgeUrl, httpPort, logLevel };
+  // ── EVF_ACTOR_ID (optional, empty string = auto-detect) ───────────────────────
+  // When set, used by register-resources.ts to request the specific actor snapshot.
+  // When empty/absent, the REST fallback calls GET /v1/characters and picks first owned.
+  const actorId = env.EVF_ACTOR_ID ?? '';
+
+  return { bearer, bridgeUrl, httpPort, logLevel, actorId };
 }

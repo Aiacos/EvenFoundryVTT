@@ -31,15 +31,22 @@ import type {
 
 // ─── URI type ─────────────────────────────────────────────────────────────────
 
-export type ResourceUri = 'actor://current' | 'combat://current' | 'scene://current' | 'log://recent';
+export type ResourceUri =
+  | 'actor://current'
+  | 'combat://current'
+  | 'scene://current'
+  | 'log://recent';
 
 /** Conditional value type for each URI. */
-export type ResourceValueOf<U extends ResourceUri> =
-  U extends 'actor://current' ? CharacterSnapshot
-  : U extends 'combat://current' ? CombatSnapshot
-  : U extends 'scene://current' ? SceneViewport
-  : U extends 'log://recent' ? EventLogEntry[]
-  : never;
+export type ResourceValueOf<U extends ResourceUri> = U extends 'actor://current'
+  ? CharacterSnapshot
+  : U extends 'combat://current'
+    ? CombatSnapshot
+    : U extends 'scene://current'
+      ? SceneViewport
+      : U extends 'log://recent'
+        ? EventLogEntry[]
+        : never;
 
 // ─── Local LogRing ────────────────────────────────────────────────────────────
 
@@ -114,10 +121,7 @@ export class ResourceCache {
    *
    * Overwrites the previous value and notifies subscribers.
    */
-  set<U extends Exclude<ResourceUri, 'log://recent'>>(
-    uri: U,
-    value: ResourceValueOf<U>,
-  ): void {
+  set<U extends Exclude<ResourceUri, 'log://recent'>>(uri: U, value: ResourceValueOf<U>): void {
     this.store.set(uri, value);
     this._notify(uri);
   }

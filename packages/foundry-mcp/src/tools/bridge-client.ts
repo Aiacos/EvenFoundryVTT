@@ -137,6 +137,7 @@ export class BridgeClient {
 
   private readonly _logger: Logger;
   private readonly _bearer: string;
+  private readonly _bridgeUrl: string;
   private _ws: WebSocket | null = null;
   private _connected = false;
   private _sessionId: string | null = null;
@@ -162,6 +163,7 @@ export class BridgeClient {
   constructor(opts: BridgeClientOptions) {
     this._logger = opts.logger;
     this._bearer = opts.bearer;
+    this._bridgeUrl = opts.bridgeUrl;
 
     this.ready = this._connect(opts);
   }
@@ -405,6 +407,124 @@ export class BridgeClient {
     return () => {
       this._messageListeners.delete(cb);
     };
+  }
+
+  // ─── REST fallback methods (Plan 11-03) ────────────────────────────────────
+
+  /**
+   * REST GET /v1/character/:actorId → CharacterSnapshot | null.
+   *
+   * Used by register-resources.ts as a cold-start fallback when the WS cache
+   * has not yet received a `character.delta` envelope.
+   *
+   * @param actorId - Optional Foundry actor ID. When absent, falls back to
+   *   GET /v1/characters (list) and returns the first result.
+   * @returns The character snapshot, or `null` on 404 / network error / no actors.
+   * @throws {BridgeAuthExpiredError} When the bridge returns 401.
+   */
+  async getCharacterSnapshot(
+    actorId?: string,
+  ): Promise<import('@evf/shared-protocol').CharacterSnapshot | null> {
+    if (!actorId) {
+      // Auto-detect: fetch character list and return the first one.
+      return this._restGet<import('@evf/shared-protocol').CharacterSnapshot | null>(
+        `${this._bridgeUrl}/v1/characters`,
+        async (res) => {
+          if (res.status === 204 || res.status === 404) return null;
+          const data = (await res.json()) as unknown;
+          if (Array.isArray(data) && data.length > 0)
+            return data[0] as import('@evf/shared-protocol').CharacterSnapshot;
+          return null;
+        },
+      );
+    }
+    return this._restGet<import('@evf/shared-protocol').CharacterSnapshot | null>(
+      `${this._bridgeUrl}/v1/character/${encodeURIComponent(actorId)}`,
+      async (res) => {
+        if (res.status === 404) return null;
+        return res.json() as Promise<import('@evf/shared-protocol').CharacterSnapshot>;
+      },
+    );
+  }
+
+  /**
+   * REST GET /v1/combat/current → CombatSnapshot | null.
+   *
+   * Returns `null` on HTTP 204 (no active combat).
+   */
+  async getCombatSnapshot(): Promise<import('@evf/shared-protocol').CombatSnapshot | null> {
+    return this._restGet<import('@evf/shared-protocol').CombatSnapshot | null>(
+      `${this._bridgeUrl}/v1/combat/current`,
+      async (res) => {
+        if (res.status === 204 || res.status === 404) return null;
+        return res.json() as Promise<import('@evf/shared-protocol').CombatSnapshot>;
+      },
+    );
+  }
+
+  /**
+   * REST GET /v1/scene/viewport → SceneViewport | null.
+   */
+  async getSceneViewport(): Promise<import('@evf/shared-protocol').SceneViewport | null> {
+    return this._restGet<import('@evf/shared-protocol').SceneViewport | null>(
+      `${this._bridgeUrl}/v1/scene/viewport`,
+      async (res) => {
+        if (res.status === 404) return null;
+        return res.json() as Promise<import('@evf/shared-protocol').SceneViewport>;
+      },
+    );
+  }
+
+  /**
+   * REST GET /v1/events?limit=N → EventLogEntry[].
+   *
+   * @param limit - Maximum number of entries to return (default 50).
+   */
+  async getEventLog(limit: number): Promise<import('@evf/shared-protocol').EventLogEntry[]> {
+    return this._restGet<import('@evf/shared-protocol').EventLogEntry[]>(
+      `${this._bridgeUrl}/v1/events?limit=${limit}`,
+      async (res) => {
+        if (res.status === 404) return [];
+        const data = (await res.json()) as
+          | { entries?: import('@evf/shared-protocol').EventLogEntry[] }
+          | import('@evf/shared-protocol').EventLogEntry[];
+        if (Array.isArray(data)) return data;
+        return (data as { entries?: import('@evf/shared-protocol').EventLogEntry[] }).entries ?? [];
+      },
+    );
+  }
+
+  /**
+   * Generic REST GET helper.
+   *
+   * Handles common concerns: bearer auth, 401 → BridgeAuthExpiredError,
+   * network error → return default (null / []).
+   */
+  private async _restGet<T>(
+    url: string,
+    handler: (res: Response) => Promise<T>,
+    defaultValue?: T,
+  ): Promise<T> {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this._bearer}`,
+          Accept: 'application/json',
+        },
+      });
+      if (res.status === 401) {
+        throw new BridgeAuthExpiredError();
+      }
+      return await handler(res);
+    } catch (err) {
+      if (err instanceof BridgeAuthExpiredError) throw err;
+      this._logger.warn(
+        { url, err: String(err) },
+        'BridgeClient: REST GET failed — returning default',
+      );
+      return defaultValue as T;
+    }
   }
 
   /**

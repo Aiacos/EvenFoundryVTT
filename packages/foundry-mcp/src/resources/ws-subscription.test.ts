@@ -17,14 +17,14 @@
  * 8. Tool.result envelope does NOT update cache; coexistence with character.delta
  */
 
-import pino from 'pino';
-import { describe, expect, it, vi } from 'vitest';
 import {
   CHARACTER_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
   EVENT_LOG_DELTA_TYPE,
   SCENE_VIEWPORT_DELTA_TYPE,
 } from '@evf/shared-protocol';
+import pino from 'pino';
+import { describe, expect, it, vi } from 'vitest';
 import { ResourceCache } from './resource-cache.js';
 import { subscribeToBridgeDeltas } from './ws-subscription.js';
 

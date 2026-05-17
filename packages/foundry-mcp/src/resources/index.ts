@@ -12,8 +12,8 @@
  * @see packages/foundry-mcp/src/resources/register-resources.ts
  */
 
-export { ResourceCache } from './resource-cache.js';
-export type { ResourceUri, ResourceValueOf } from './resource-cache.js';
-export { subscribeToBridgeDeltas } from './ws-subscription.js';
-export { EVF_MCP_RESOURCE_URIS, registerEvfResources } from './register-resources.js';
 export type { EvfMcpResourceUri } from './register-resources.js';
+export { EVF_MCP_RESOURCE_URIS, registerEvfResources } from './register-resources.js';
+export type { ResourceUri, ResourceValueOf } from './resource-cache.js';
+export { ResourceCache } from './resource-cache.js';
+export { subscribeToBridgeDeltas } from './ws-subscription.js';
