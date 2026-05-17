@@ -64,6 +64,7 @@ import { createDeepgramStt } from './voice/deepgram-stt.js';
 // Phase 15 Plan 02 — Deepgram Keyterm Prompting (VOICE-06): bridge feeds the merger
 // output (SPELL_KEYTERMS ∪ EntityPackCache snapshot) as Deepgram session keyterms.
 import { buildKeytermList } from './voice/keyterm-merger.js';
+import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
@@ -435,6 +436,34 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     tokenCache,
     logger: app.log as Logger,
   });
+
+  // --- 10b. Phase 15 Plan 03 — VOICE-09 hot-update wiring ---
+  //
+  // KeytermRefresher subscribes to entityCache.onChange (Task 1 API) and
+  // debounces multi-event bursts (DEBOUNCE_MS=250, CONTEXT D-07) before
+  // invoking deepgramStt.refreshKeyterm() (Task 2 invalidation signal) under
+  // a drain-then-restart mutex. The refresh path uses the EXISTING
+  // /internal/delta multiplex via handleEntityPackEnvelope at step 8 above —
+  // NO new socketlib handler is registered. CI Gate 8 — socketlib
+  // registerComplexHandler count = 17 — is unaffected by this plan.
+  //
+  // The Deepgram WS protocol does NOT support mid-stream keyterm hot-swap;
+  // refreshKeyterm() is an INVALIDATION SIGNAL, and the next connect() picks
+  // up the fresh keyterm list via the lazy keytermProvider contract
+  // (deepgram-stt.ts DGKT-05). VOICE-09's "≤ 5 minutes" SLA is naturally
+  // satisfied because Deepgram sessions are short-lived (per-utterance
+  // reconnects); a fresh connection within 5 minutes is the norm.
+  //
+  // The local reference is preserved so that future graceful-shutdown hooks
+  // can call _keytermRefresher.dispose(). For now the bridge does not exit
+  // gracefully — Docker SIGTERM is the only teardown path — so dispose()
+  // is exercised only by Vitest tests.
+  const _keytermRefresher = new KeytermRefresher({
+    cache: entityCache,
+    adapter: deepgramStt,
+    logger: app.log as Logger,
+  });
+  void _keytermRefresher;
 
   return app;
 }
