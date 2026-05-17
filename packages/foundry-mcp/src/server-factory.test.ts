@@ -13,6 +13,7 @@
  * remain skeleton-level (no tools registered).
  */
 
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import pino from 'pino';
@@ -26,55 +27,51 @@ describe('buildMcpServer', () => {
 
   it('case 1: returns an McpServer instance', () => {
     const logger = pino({ level: 'silent' });
-    const server = buildMcpServer({ logger, bridgeUrl: 'http://localhost:8910', bearer: 'test-token' });
+    const server = buildMcpServer({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+    });
     expect(server).toBeInstanceOf(McpServer);
   });
 
   it('case 2: server has correct name and version in server info', async () => {
     const logger = pino({ level: 'silent' });
-    const server = buildMcpServer({ logger, bridgeUrl: 'http://localhost:8910', bearer: 'test-token' });
+    const server = buildMcpServer({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+    });
 
-    // Verify via in-memory transport: send initialize request and check serverInfo
+    // Verify via in-memory transport: connect client and read serverVersion.
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
 
-    // Send initialize request manually
-    let receivedMessage: unknown = null;
-    clientTransport.onmessage = (msg) => { receivedMessage = msg; };
-    await clientTransport.start();
+    const client = new Client({ name: 'test-client', version: '0.0.1' }, { capabilities: {} });
+    await client.connect(clientTransport);
 
-    await clientTransport.send({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-03-26',
-        capabilities: {},
-        clientInfo: { name: 'test-client', version: '0.0.1' },
-      },
-    });
+    // After connect(), the client has the server's info from the initialize handshake.
+    const serverVersion = client.getServerVersion();
+    expect(serverVersion?.name).toBe('evf-foundry-mcp');
+    expect(serverVersion?.version).toBe('0.1.0-alpha.0');
 
-    // Give it a moment to respond
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    expect(receivedMessage).toBeDefined();
-    // @ts-expect-error — dynamic JSON-RPC result
-    const result = (receivedMessage as { result: { serverInfo: { name: string; version: string } } }).result;
-    expect(result.serverInfo.name).toBe('evf-foundry-mcp');
-    expect(result.serverInfo.version).toBe('0.1.0-alpha.0');
-
-    await clientTransport.close();
+    await client.close();
   });
 
   it('case 3: boot log includes bridgeUrl but NOT the bearer value (T-11-01)', () => {
     const logMessages: Array<Record<string, unknown>> = [];
-    const logger = pino({ level: 'info' }, {
-      write(chunk: string) {
-        try {
-          logMessages.push(JSON.parse(chunk) as Record<string, unknown>);
-        } catch { /* ignore */ }
+    const logger = pino(
+      { level: 'info' },
+      {
+        write(chunk: string) {
+          try {
+            logMessages.push(JSON.parse(chunk) as Record<string, unknown>);
+          } catch {
+            /* ignore */
+          }
+        },
       },
-    });
+    );
 
     const secret = 'super-secret-bearer-xyz';
     buildMcpServer({ logger, bridgeUrl: 'http://localhost:8910', bearer: secret });
@@ -88,53 +85,33 @@ describe('buildMcpServer', () => {
     expect(raw).not.toContain(secret);
   });
 
-  it('case 4: server with no tools registers cleanly; tools/list returns empty array', async () => {
+  it('case 4: server with no tools registers cleanly; connect succeeds and server responds to initialize', async () => {
+    // NOTE: McpServer only registers the tools/list handler after the first registerTool()
+    // call (setToolRequestHandlers() is lazy). With zero tools, tools/list returns -32601
+    // Method not found. This is the SDK's documented behavior for skeleton servers.
+    // Plan 11-02 adds tools; the tools/list test lives in register-tools.test.ts.
+    // This test only verifies: server constructs + transport connect completes cleanly.
     const logger = pino({ level: 'silent' });
-    const server = buildMcpServer({ logger, bridgeUrl: 'http://localhost:8910', bearer: 'test-token' });
+    const server = buildMcpServer({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+    });
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
 
-    const responses: unknown[] = [];
-    clientTransport.onmessage = (msg) => { responses.push(msg); };
-    await clientTransport.start();
+    // Use the high-level MCP Client for proper protocol handshake.
+    const client = new Client({ name: 'test-client', version: '0.0.1' }, { capabilities: {} });
+    // connect() completes the initialize handshake — if the server doesn't respond
+    // correctly, this throws. A successful connect proves the skeleton is functional.
+    await client.connect(clientTransport);
 
-    // First: initialize
-    await clientTransport.send({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-03-26',
-        capabilities: {},
-        clientInfo: { name: 'test-client', version: '0.0.1' },
-      },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Server info is available after successful connect.
+    const serverVersion = client.getServerVersion();
+    expect(serverVersion).toBeDefined();
+    expect(serverVersion?.name).toBe('evf-foundry-mcp');
 
-    // Send initialized notification
-    await clientTransport.send({
-      jsonrpc: '2.0',
-      method: 'notifications/initialized',
-    });
-
-    // Then: tools/list
-    await clientTransport.send({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/list',
-      params: {},
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    const toolsListResponse = responses.find(
-      // @ts-expect-error — dynamic JSON-RPC lookup
-      (r) => (r as { id?: number }).id === 2,
-    ) as { result: { tools: unknown[] } } | undefined;
-
-    expect(toolsListResponse).toBeDefined();
-    expect(toolsListResponse?.result.tools).toEqual([]);
-
-    await clientTransport.close();
+    await client.close();
   });
 });
