@@ -17,11 +17,11 @@
 
 z=0.5 Idle Content Infill — nuovo layer tra mappa raster (z=0) e Status HUD (z=1). Riempie le righe vuote del map-area in raster mode quando nessun overlay z=2 è montato. Auto-demolisce su mount di overlay.
 
-- [ ] **INFILL-01**: z=0.5 Idle Content Infill layer formalizzato nel layered model (Specs.md §7.2 amendment) — nuovo layer enumerato + state machine
-- [ ] **INFILL-02**: 3 dynamic text containers (combat-log mini · z=0.5 label · stats strip) popolano le righe vuote del map-area in raster mode quando no overlay z=2 mounted
-- [ ] **INFILL-03**: Auto-demolish on z=2 overlay mount (no race condition; differential demolish via existing LayerManager.bundle() — Phase 4b Wave-0 pattern)
-- [ ] **INFILL-04**: ADR-0001 amendment formalizing z=0.5 layer (consistent with single-capture-container premise; no semantic change to z=0/1/2 — additive only)
-- [ ] **INFILL-05**: INV-1 fixtures for idle-fill states + overlay-mount transitions (snapshot-test discipline §7.14.4 ck 11–15)
+- [x] **INFILL-01**: z=0.5 Idle Content Infill layer formalizzato nel layered model (Specs.md §7.2 amendment) — nuovo layer enumerato + state machine — ✅ Resolved 2026-05-17 (Plan 14-03 INV-3 atomic ratification commit 3a0c5cf; ADR-0001 Amendment 1 RATIFIED)
+- [x] **INFILL-02**: 3 dynamic text containers (combat-log mini · z=0.5 label · stats strip) popolano le righe vuote del map-area in raster mode quando no overlay z=2 mounted — ✅ Resolved 2026-05-17 (Plan 14-01 fixtures + Z05-FX-01..03 verify; idle-infill-layer.ts behavior locked)
+- [x] **INFILL-03**: Auto-demolish on z=2 overlay mount (no race condition; differential demolish via existing LayerManager.bundle() — Phase 4b Wave-0 pattern) — ✅ Resolved 2026-05-17 (Plan 14-02 LMT-DD-07 race-coverage 4 sub-assertions)
+- [x] **INFILL-04**: ADR-0001 amendment formalizing z=0.5 layer (consistent with single-capture-container premise; no semantic change to z=0/1/2 — additive only) — ✅ Resolved 2026-05-17 (Plan 14-03 ADR-0001 Amendment 1 status flip; INV-3 atomic commit 3a0c5cf)
+- [x] **INFILL-05**: INV-1 fixtures for idle-fill states + overlay-mount transitions (snapshot-test discipline §7.14.4 ck 11–15) — ✅ Resolved 2026-05-17 (Plan 14-01 Z05-INV-01a/01b/02 IT+EN/03/04 cross-state column-equality tests; WR-01/02/03 fixes extend coverage)
 
 ### Voice Recognition Quality
 
