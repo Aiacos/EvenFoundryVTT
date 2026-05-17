@@ -49,24 +49,31 @@ Deepgram Keyterm Prompting integration in Phase 12 voice pipeline. Boost +625% e
 
 ## Milestone status
 
-Milestone v0.9.12 Quick Wins — **planning** (REQUIREMENTS defined; ROADMAP pending roadmapper).
+Milestone v0.9.12 Quick Wins — **ROADMAP defined** (Phases 14–15, 9 v1 REQ-IDs mapped); awaiting first `/gsd-plan-phase 14`.
 
 ## Traceability
 
-To be populated by `gsd-roadmapper` agent. Expected: 9 v1 REQ-IDs mapped 1:1 to phases (INFILL-* → Phase 14 candidate; VOICE-* → Phase 15 candidate).
+Mapped 2026-05-17 by `gsd-roadmapper` agent. All 9 v1 REQ-IDs assigned 1:1 to phases — no orphans, no duplicates.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFILL-01..05 | (pending roadmap) | Active |
-| VOICE-06..09 | (pending roadmap) | Active |
+| INFILL-01 | Phase 14 | Active |
+| INFILL-02 | Phase 14 | Active |
+| INFILL-03 | Phase 14 | Active |
+| INFILL-04 | Phase 14 | Active |
+| INFILL-05 | Phase 14 | Active |
+| VOICE-06 | Phase 15 | Active |
+| VOICE-07 | Phase 15 | Active |
+| VOICE-08 | Phase 15 | Active |
+| VOICE-09 | Phase 15 | Active |
 
 **Coverage:**
 - v1 requirements: **9** total (Raster 5 · Voice 4)
-- Mapped to phases: pending
+- Mapped to phases: **9 / 9 (100%)** ✓ — Phase 14 = 5 REQ-IDs, Phase 15 = 4 REQ-IDs
 - V2 OPZIONALE: carry from v0.9.11 unchanged
 
 ---
 
 *Requirements defined: 2026-05-17 — derived from quick-task PLAN.md (raster) + voice-intent-research RESEARCH.md (Deepgram Keyterm)*
-*Traceability mapped: pending roadmapper*
-*Last updated: 2026-05-17 at milestone v0.9.12 Quick Wins planning start*
+*Traceability mapped: 2026-05-17 by `gsd-roadmapper` agent — Phase 14 (INFILL-*) + Phase 15 (VOICE-*); 9/9 (100%) coverage*
+*Last updated: 2026-05-17 at milestone v0.9.12 Quick Wins ROADMAP write*

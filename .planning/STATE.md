@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.9.12
 milestone_name: Quick Wins
 status: planning
-last_updated: "2026-05-17T13:22:11.841Z"
+last_updated: "2026-05-17T14:00:00.000Z"
 last_activity: 2026-05-17
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Planning next milestone v0.9.12 (via `/gsd-new-milestone`)
+**Current focus:** v0.9.12 Quick Wins — ROADMAP defined (Phases 14–15); awaiting first `/gsd-plan-phase 14`.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 14 — Raster z=0.5 Idle Content Infill (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-17 — Milestone v0.9.12 started
+Status: ROADMAP defined; awaiting plan-phase 14 invocation
+Last activity: 2026-05-17 — v0.9.12 ROADMAP written (Phases 14–15, 9 v1 REQ-IDs mapped)
 
 ## Performance Metrics
 
