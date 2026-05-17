@@ -31,9 +31,9 @@ describe('parseMcpEnv', () => {
     expect(() => parseMcpEnv({ EVF_BEARER: '', EVF_BRIDGE_URL: 'http://localhost:8910' })).toThrow(
       BootError,
     );
-    expect(() =>
-      parseMcpEnv({ EVF_BEARER: '', EVF_BRIDGE_URL: 'http://localhost:8910' }),
-    ).toThrow('EVF_BEARER required');
+    expect(() => parseMcpEnv({ EVF_BEARER: '', EVF_BRIDGE_URL: 'http://localhost:8910' })).toThrow(
+      'EVF_BEARER required',
+    );
   });
 
   it('case 3: throws BootError when EVF_BEARER is missing', () => {
