@@ -460,7 +460,7 @@ describe('Phase 4b differential demolish + container budget + OverlayPanel lifec
   });
 
   /**
-   * LMT-DD-07 — race-coverage assertion for the z=0.5 → z=2 differential demolish
+   * LMT-DD-07 — race-coverage assertions for the z=0.5 → z=2 differential demolish
    * transition (UI-SPEC §6.4 State D Mid-mount transition + §8.1 Atomicity guarantee +
    * Specs.md §11.5.8.6 failure-mode mitigation).
    *
@@ -469,87 +469,116 @@ describe('Phase 4b differential demolish + container budget + OverlayPanel lifec
    * MUST produce EXACTLY ONE `bridge.rebuildPageContainer` call — no transient frame
    * in which both z=0.5 AND z=2 are visible can leak through the bridge boundary.
    *
-   * Four assertions:
-   *   1. Atomicity — exactly 1 flush per bundle even with 3 op-effects (implicit
-   *      destroy z=0.5 + explicit destroy z=0 + explicit mount z=2).
-   *   2. No transient state — post-condition `getLayer(z=0.5)` undefined AND
-   *      `getLayer(z=2) === panel`; the bundle is atomic from the caller's
-   *      perspective (no awaitable intermediate state exposes both keys).
-   *   3. `_suspendedZ05` round-trip — inverse bundle restores the ORIGINAL idle
-   *      instance via reference equality; flush count remains exactly 2 across
-   *      both bundles (no spurious flushes).
-   *   4. Toast carve-out under race — re-affirms LMT-DD-04 carve-out (UI-SPEC §6.4
-   *      row 1): a toast at z=1.5 mounted alongside z=0.5 must SURVIVE the same
-   *      overlay-mount bundle while still flushing exactly once.
+   * Split into four sibling `it` blocks (Phase 14 review WR-04) so a failing
+   * assertion pinpoints WHICH contract broke without cascading masking:
+   *
+   *   - LMT-DD-07a: single-bundle atomicity (one flush per bundle).
+   *   - LMT-DD-07b: no-transient-state post-condition exclusivity.
+   *   - LMT-DD-07c: `_suspendedZ05` reference-equality round-trip on inverse bundle.
+   *   - LMT-DD-07d: toast carve-out under overlay-mount race (fresh lm/bridge).
+   *
+   * Each sub-test is self-contained via the surrounding `beforeEach` (fresh `bridge`
+   * + `lm`), so flush counts are absolute (not cumulative) — replaces the prior
+   * fragile `toBe(2)` cross-assertion sum.
    */
-  it('LMT-DD-07: race coverage — bundle with z=0.5 mounted issues exactly one bridge flush; no transient frame with both visible', async () => {
-    // ─── Pre-arrange ──────────────────────────────────────────────────────
+  it('LMT-DD-07a: atomicity — bundle(destroy z=0, mount z=2) with z=0.5 mounted triggers EXACTLY ONE bridge flush', async () => {
+    // Pre-arrange: z=0 holds capture, z=0.5 mounted.
     const mapLayer = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
     const idle = makeCountedLayer('idle-infill', { image: 0, text: 3 });
     lm.mount(ZIndex.Z0_MAP, mapLayer);
     lm.mount(ZIndex.Z0_5_IDLE_INFILL, idle);
-    expect(lm.getCaptureContainerCount()).toBe(1);
-    expect(lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBe(idle);
     bridge.rebuildPageContainer.mockClear();
     expect(bridge.rebuildPageContainer.mock.calls.length).toBe(0);
 
-    // ─── Action — single bundle that simultaneously destroys z=0 + mounts z=2 ─
     // The differential-demolish rule (layer-manager.ts:191-224) MUST also
     // implicitly destroy z=0.5 before the bridge flush — i.e. the effective op
     // list becomes [destroy z=0.5, destroy z=0, mount z=2] AND collapses into
-    // a single `rebuildPageContainer` call.
+    // a SINGLE `rebuildPageContainer` call.
     const panel = makeOverlayPanelStub('overlay', { image: 0, text: 3 }, 'overlay-capture');
     await lm.bundle([
       { type: 'destroy', z: ZIndex.Z0_MAP },
       { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel },
     ]);
 
-    // ─── Assertion 1 — Atomicity: exactly ONE flush per bundle ───────────
+    // Absolute count (this `lm` started with 0 flushes after mockClear).
     expect(bridge.rebuildPageContainer.mock.calls.length).toBe(1);
+  });
 
-    // ─── Assertion 2 — No transient state: post-condition exclusivity ────
+  it('LMT-DD-07b: no transient state — post-condition exposes z=2 exclusively (z=0.5 undefined, panel mounted, capture invariant intact)', async () => {
+    // Pre-arrange identical to 07a.
+    const mapLayer = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
+    const idle = makeCountedLayer('idle-infill', { image: 0, text: 3 });
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    lm.mount(ZIndex.Z0_5_IDLE_INFILL, idle);
+    expect(lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBe(idle);
+
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 3 }, 'overlay-capture');
+    await lm.bundle([
+      { type: 'destroy', z: ZIndex.Z0_MAP },
+      { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel },
+    ]);
+
+    // The bundle is atomic from the caller's perspective: no awaitable intermediate
+    // state exposes both z=0.5 AND z=2 simultaneously.
     expect(lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
     expect(lm.getLayer(ZIndex.Z2_OVERLAY)).toBe(panel);
-    // Capture invariant still satisfied (panel carries 'overlay-capture').
+    // Capture invariant satisfied (panel carries 'overlay-capture').
     expect(lm.getCaptureContainerCount()).toBe(1);
+  });
 
-    // ─── Assertion 3 — `_suspendedZ05` round-trip on inverse bundle ──────
-    // Bring back a map (capture provider) + destroy the overlay in a single
-    // bundle; the differential-restore rule (layer-manager.ts:207-220) must
-    // re-mount the ORIGINAL `idle` instance (reference-equality round-trip).
+  it('LMT-DD-07c: _suspendedZ05 round-trip — inverse bundle restores the ORIGINAL idle instance via reference equality, with exactly one flush per bundle', async () => {
+    // Pre-arrange + forward bundle (same as 07a) to suspend z=0.5.
+    const mapLayer = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
+    const idle = makeCountedLayer('idle-infill', { image: 0, text: 3 });
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    lm.mount(ZIndex.Z0_5_IDLE_INFILL, idle);
+
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 3 }, 'overlay-capture');
+    await lm.bundle([
+      { type: 'destroy', z: ZIndex.Z0_MAP },
+      { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel },
+    ]);
+    // Reset spy so the second bundle's flush count is asserted in isolation —
+    // no cumulative magic-number trap (Phase 14 review WR-04).
+    bridge.rebuildPageContainer.mockClear();
+
+    // Inverse bundle: re-mount map (capture provider) + destroy the overlay in
+    // a single bundle; the differential-restore rule (layer-manager.ts:207-220)
+    // must re-mount the ORIGINAL `idle` instance (reference-equality round-trip).
     const map2 = makeCountedLayer('map2', { image: 4, text: 1 }, 'map-capture');
     await lm.bundle([
       { type: 'mount', z: ZIndex.Z0_MAP, layer: map2 },
       { type: 'destroy', z: ZIndex.Z2_OVERLAY },
     ]);
-    // Reference equality — silent instance-swap would fail this (T-14-02-01).
-    expect(lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBe(idle);
-    // Cumulative flush count across both bundles = exactly 2; no extras.
-    expect(bridge.rebuildPageContainer.mock.calls.length).toBe(2);
 
-    // ─── Assertion 4 — Toast carve-out under race (UI-SPEC §6.4 row 1) ───
-    // Fresh LayerManager + bridge scoped to this assertion: mount map + idle +
-    // toast, then bundle the overlay mount. Toast must SURVIVE (carve-out per
-    // LMT-DD-04) AND the bundle must still flush exactly once.
+    // Reference equality — a silent instance-swap would fail this (T-14-02-01).
+    expect(lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBe(idle);
+    // Inverse bundle = exactly one flush (no spurious extras post-mockClear).
+    expect(bridge.rebuildPageContainer.mock.calls.length).toBe(1);
+  });
+
+  it('LMT-DD-07d: toast carve-out under race — toast at z=1.5 SURVIVES the overlay-mount bundle alongside z=0.5 demolish, single flush', async () => {
+    // Fresh LayerManager + bridge scoped to this assertion (UI-SPEC §6.4 row 1
+    // carve-out, re-affirming LMT-DD-04 under the race window).
     const bridge2 = makeMockBridge();
     const lm2 = new LayerManager(bridge2 as unknown as EvenAppBridge);
-    const map3 = makeCountedLayer('map3', { image: 4, text: 1 }, 'map-capture');
-    const idle2 = makeCountedLayer('idle-infill-2', { image: 0, text: 3 });
+    const map = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
+    const idle = makeCountedLayer('idle-infill', { image: 0, text: 3 });
     const toast = makeCountedLayer('toast', { image: 0, text: 1 });
-    lm2.mount(ZIndex.Z0_MAP, map3);
-    lm2.mount(ZIndex.Z0_5_IDLE_INFILL, idle2);
+    lm2.mount(ZIndex.Z0_MAP, map);
+    lm2.mount(ZIndex.Z0_5_IDLE_INFILL, idle);
     lm2.mount(ZIndex.Z1_5_TOAST, toast);
     expect(bridge2.rebuildPageContainer.mock.calls.length).toBe(0);
 
-    const panel2 = makeOverlayPanelStub('overlay-2', { image: 0, text: 3 }, undefined);
-    await lm2.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel2 }]);
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 3 }, undefined);
+    await lm2.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
 
     // Toast still mounted (carve-out holds under the race-window bundle).
     expect(lm2.getLayer(ZIndex.Z1_5_TOAST)).toBe(toast);
     // z=0.5 demolished (differential rule fired).
     expect(lm2.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
     // z=2 mounted as the same panel reference.
-    expect(lm2.getLayer(ZIndex.Z2_OVERLAY)).toBe(panel2);
+    expect(lm2.getLayer(ZIndex.Z2_OVERLAY)).toBe(panel);
     // Exactly one flush — toast carve-out does NOT cost an extra bridge call.
     expect(bridge2.rebuildPageContainer.mock.calls.length).toBe(1);
   });
