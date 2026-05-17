@@ -32,17 +32,20 @@ import type { Logger } from 'pino';
 import type { Registry } from 'prom-client';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
+// Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
+// pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
+// so r1.spells.available and r1.entities.available envelopes are routed to their caches.
+import { EntityPackCache } from './cache/entity-pack-cache.js';
+import { SpellPackCache } from './cache/spell-pack-cache.js';
 import { createMetricsRegistry } from './metrics/registry.js';
 import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
 import { PortraitCache } from './portrait/portrait-cache.js';
 import { createPortraitRenderer } from './portrait/portrait-renderer.js';
 import type { FoundrySnapshotFn } from './routes/character.js';
 import { registerCharacterRoute } from './routes/character.js';
-import { registerSpellsRoute } from './routes/spells.js';
-import { SpellPackCache } from './cache/spell-pack-cache.js';
-import { handleSpellPackEnvelope } from './ws/spell-pack-handler.js';
 import { registerCharactersListRoute } from './routes/characters-list.js';
 import { registerCombatRoute } from './routes/combat.js';
+import { registerEntitiesRoute } from './routes/entities.js';
 import { registerEventsRoute } from './routes/events.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerHealthzRoute } from './routes/healthz.js';
@@ -52,15 +55,18 @@ import { registerMetricsRoute } from './routes/metrics.js';
 import { registerPortraitRoute } from './routes/portrait.js';
 import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
+import { registerSpellsRoute } from './routes/spells.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
 import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
 import { createDeepgramStt } from './voice/deepgram-stt.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
+import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
 import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
+import { handleSpellPackEnvelope } from './ws/spell-pack-handler.js';
 import { type DispatchToolFn, handleToolInvoke } from './ws/tool-invoke.js';
 
 export interface BuildServerOptions {
@@ -126,6 +132,20 @@ export interface BuildServerOptions {
    * @see routes/spells.ts
    */
   spellCache?: SpellPackCache;
+  /**
+   * Inject a custom EntityPackCache for test isolation (Quick Task 260517-k2g).
+   *
+   * In production: a fresh `EntityPackCache` is created per `buildServer()` call.
+   * In tests: pass an existing cache to pre-populate it or observe its state
+   * after entity-pack envelope processing.
+   *
+   * Parallel additive to `spellCache` — both caches are populated by the same
+   * `/internal/delta` push channel via multiplexed handlers.
+   *
+   * @see cache/entity-pack-cache.ts
+   * @see routes/entities.ts
+   */
+  entityCache?: EntityPackCache;
 }
 
 /**
@@ -285,10 +305,21 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const spellCache = opts.spellCache ?? new SpellPackCache();
   await registerSpellsRoute(app, tokenCache, spellCache);
 
+  // --- 7c. Entity vocabulary route (Quick Task 260517-k2g) ---
+  // GET /v1/entities/available — returns cached AvailableEntitiesPayload or cold-cache sentinel.
+  // Parallel additive to /v1/spells/available; covers non-spell Items + Actors (npc/vehicle).
+  // Cache is populated by handleEntityPackEnvelope (wired to /internal/delta onDelta hook below).
+  // Bearer auth same pattern as Phase 7 tool endpoints + /v1/spells/available.
+  const entityCache = opts.entityCache ?? new EntityPackCache();
+  await registerEntitiesRoute(app, tokenCache, entityCache);
+
   // --- 8. Internal delta route (module → bridge push) ---
-  // onDelta hook: intercept r1.spells.available envelopes to update spellCache BEFORE fan-out.
+  // onDelta hook: multiplexed dispatch — intercept r1.spells.available AND r1.entities.available
+  // envelopes to update their respective caches BEFORE fan-out. Each handler returns false when
+  // its type does not match, so calling both in sequence is safe and order-independent.
   await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
     handleSpellPackEnvelope(type, payload, spellCache);
+    handleEntityPackEnvelope(type, payload, entityCache);
   });
 
   // --- 9. WS handshake route ---
