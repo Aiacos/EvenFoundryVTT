@@ -49,7 +49,11 @@ Two atomic software-only phases. No hardware-gated SCs added (35 `human_needed` 
   3. Closing the overlay re-mounts z=0.5 infill atomically (round-trip state machine verified)
   4. INV-1 ASCII snapshot fixtures pass for: (a) idle-fill state (z=0+z=0.5+z=1), (b) overlay-open state (z=0+z=1+z=2 with z=0.5 absent), (c) glyph-mode idle-fill state — all char-precision, same column boundaries (INFILL-05 verified)
   5. Specs.md §7.2 + §7.3 + §7.4 + new §7.4c + README.md + showcase + ADR-0001 amendment all bumped to v0.9.12 in a single INV-3 atomic commit; CI Gate INV-3 atomic doc coherence remains green (INFILL-01 + INFILL-04 verified)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 14-01-PLAN.md — 3 INV-1 fixtures (raster-overlay-open.it/en + glyph-idle-z05.it) + Z05-INV-01..04 cross-state column-equality test
+- [ ] 14-02-PLAN.md — LMT-DD-07 race-coverage unit test in layer-manager.test.ts (single bundle flush atomicity under z=0.5 → z=2 transition)
+- [ ] 14-03-PLAN.md — INV-3 atomic ratification commit: ADR-0001 Amendment 1 status flip + Specs.md changelog entry + README + showcase + STATE.md + ROADMAP.md (7-file atomic)
 **UI hint**: yes
 
 ### Phase 15: Deepgram Keyterm Prompting + Entity-Pack Integration
@@ -75,8 +79,8 @@ Two atomic software-only phases. No hardware-gated SCs added (35 `human_needed` 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 14. Raster z=0.5 Idle Content Infill | 0/~4 | Not started | — |
+| 14. Raster z=0.5 Idle Content Infill | 0/3 | 🟡 Planned (3 plans) | — |
 | 15. Deepgram Keyterm + Entity-Pack | 0/~3 | Not started | — |
 
 ---
-*Last reorganized: 2026-05-17 — v0.9.12 Quick Wins planning (Phases 14–15) appended after v0.9.11 MVP archive*
+*Last reorganized: 2026-05-17 — v0.9.12 Quick Wins Phase 14 plans written (14-01..03)*
