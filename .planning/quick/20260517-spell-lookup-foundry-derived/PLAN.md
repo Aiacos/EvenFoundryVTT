@@ -3,6 +3,9 @@ type: implementation
 date: 2026-05-17
 slug: spell-lookup-foundry-derived
 related-phase: 12
+status: complete
+completed: 2026-05-17
+shipped-via: Phase 15 SPELL_KEYTERMS consumes this output
 ---
 
 # Quick Task: Spell lookup Foundry-derived

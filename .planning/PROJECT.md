@@ -8,31 +8,31 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 **v0.9.11 MVP shipped (software-complete) 2026-05-17.** V2 optional surface (foundry-mcp + voice UX + ACT-04 partial + STRETCH-06 flag-gated) inclusa nello stesso ciclo. Hardware-pending verification (35 SC) parcheggiata sotto ADR-0005 Branch A.
 
+**v0.9.12 Quick Wins shipped 2026-05-17** — 2 phases, 8/8 plans, 9/9 v1 REQ-IDs Resolved. Phase 14 (z=0.5 idle infill) ratified; Phase 15 (Deepgram Keyterm) integrated. Workspace tests 2626/2626, CI Gate 8 socketlib count = 17 preserved, zero new hardware-pending SCs added.
+
 ## Core Value
 
 **Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.** Tutto il resto (fps, raster vs glyph, voice V2, multi-player) è subordinato a questo principio: se una decisione di design forza il giocatore a guardare il telefono o un laptop, è sbagliata.
 
 ## Current State
 
-- **Software**: v0.9.11 MVP shipped 2026-05-17 — 15 phases, 71 plans, 2,097 tests passing, ~99,642 LOC TypeScript across monorepo workspace (`packages/g2-app`, `packages/bridge`, `packages/foundry-module`, `packages/foundry-mcp`, `packages/shared-protocol`, `packages/shared-render`, `packages/validation-harness`).
-- **Hardware verification**: deferred — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 marked `human_needed` under ADR-0005 PROVISIONAL Branch A. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + consenting DM available.
-- **Spec**: `Specs.md` v0.9.11 (~4250 righe). Boot-splash mockup §7.12 already bumped to v0.9.12 in Phase 10 Plan 04 (INV-3 atomic, commit `bcb4e91`); full Specs.md bump v0.9.11→v0.9.12 will happen during the v0.9.12 milestone (probable carry from quick-task `20260514-raster-dynamic-infill`).
-- **Carry to v0.9.12**: 1 genuinely pending quick task (z=0.5 idle infill layer spec bump). Will become a v0.9.12 requirement during `/gsd-new-milestone`.
-- **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, 14-socketlib-handler invariant, INV-3 atomic doc coherence).
+- **Software**: v0.9.11 MVP + v0.9.12 Quick Wins both shipped 2026-05-17 — 17 phases (0–15), 79 plans, **2626 workspace tests passing** across monorepo (`packages/g2-app`, `packages/bridge`, `packages/foundry-module`, `packages/foundry-mcp`, `packages/shared-protocol`, `packages/shared-render`, `packages/validation-harness`). v0.9.12 added Deepgram Keyterm Prompting (Phase 15) + z=0.5 idle content infill ratification (Phase 14).
+- **Hardware verification**: deferred — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 marked `human_needed` under ADR-0005 PROVISIONAL Branch A. v0.9.12 added zero new SCs. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + consenting DM available.
+- **Spec**: `Specs.md` v0.9.12 (~4250+ righe; §7.4c z=0.5 layer ratified; §3.6 EvenAI re-verification 2026-05-17). ADR-0001 Amendment 1 RATIFIED; INV-3 atomic commits `3a0c5cf` (Phase 14) + `dc161d6` (Phase 15).
+- **Carry to next milestone**: minor tech debt — Phase-14.1 standalone quick task (3 UI-SPEC spec-prose drifts: §2 col 71→68, §10 width budgets, IT locale leak in glyph-idle-z05 fixture). Real implementation defects are zero; this is doc-coherence cleanup.
+- **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.12), INV-3 atomic doc coherence).
 
-## Current Milestone: v0.9.12 Quick Wins
+## Next Milestone Goals
 
-**Goal:** Land two high-value software-only improvements that build on v0.9.11 MVP — without requiring Even Hub hardware access.
+Next milestone TBD via `/gsd-new-milestone`. Likely candidates (in rough priority order, subject to user decision):
 
-**Target features:**
-- **Raster z=0.5 idle content infill layer** — carry-forward from quick-task `20260514-raster-dynamic-infill` (PLAN already scoped as v0.9.11→v0.9.12 spec bump). Fills previously-empty raster-mode map-area rows when no z=2 overlay is mounted; auto-demolishes on overlay mount. ADR-0001 amendment, INV-1 fixture coverage for transition states.
-- **Deepgram Keyterm Prompting integration** — voice STT quality boost (+625% entity recall per research). Seeds keyterm vocabulary from BOTH the 70-spell SRD subset (static) AND the newly-shipped entity-pack Foundry vocabulary (dynamic — items/weapons/armor/NPCs/monsters). Locale-aware IT+EN feed for cross-lingual STT robustness.
+1. **Phase-14.1 quick task** (~20 min effort) — close 3 UI-SPEC spec-prose drifts via single INV-3 atomic commit (UI-SPEC §2 col 67/64; UI-SPEC §10 width budgets; IT locale leak in glyph-scene.glyph-idle-z05.it.txt row 1/17).
+2. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
+3. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
+4. **Picovoice Rhino edge classifier** — conditional on SC-12-01 hardware test measuring Claude Desktop intent-identification latency p50 > 800ms. Not measurable without hardware.
+5. **Cloud rewrite / multi-tenancy** — stretch (would unlock multi-DM, multi-world, hosted SaaS). Phase 13 deferred topics.
 
-**Key context:**
-- Scope explicitly excludes hardware validation (no Even Hub access this cycle) — 35 SC `human_needed` from v0.9.11 carry forward under ADR-0005 PROVISIONAL Branch A unchanged.
-- Research phase skipped — both features have pre-existing research artifacts (`raster-dynamic-infill` quick-task PLAN with INV-2 cross-check; `20260517-voice-intent-research` RESEARCH.md).
-- Phase numbering continues from v0.9.11 (last phase = 13 → v0.9.12 starts at Phase 14).
-- Synergy: the entity-pack pipeline shipped 2026-05-17 (quick-task `260517-k2g`) becomes a dynamic vocabulary source for the Deepgram Keyterm work — value > sum of parts.
+No active milestone. Backlog management via `/gsd-review-backlog` or fresh start via `/gsd-new-milestone`.
 
 ## Requirements
 

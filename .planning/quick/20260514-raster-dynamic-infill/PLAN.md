@@ -3,7 +3,9 @@ slug: raster-dynamic-infill
 date: 2026-05-14
 type: quick-task
 flags: --research (inline INV-2)
-status: in-progress
+status: complete
+completed: 2026-05-17
+shipped-via: Phase 14 INV-3 atomic commit 3a0c5cf
 ---
 
 # Quick Task — Raster Dynamic Content Infill (z=0.5 layer)

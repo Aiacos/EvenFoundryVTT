@@ -2,9 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.9.12
 milestone_name: Quick Wins
-status: complete
-last_updated: "2026-05-17T19:00:00.000Z"
+status: shipped
+last_updated: "2026-05-17T21:50:00.000Z"
 last_activity: 2026-05-17
+shipped: 2026-05-17
 progress:
   total_phases: 2
   completed_phases: 2
@@ -587,6 +588,19 @@ New running total: **33 hardware-pending SCs** carried to ADR-0005 Branch A huma
 ### V2 closure signal
 
 Phase 12 CLOSED. V2 OPZIONALE voice path is software-complete. SC-12-01 deferred to ADR-0005 Branch A human_needed (requires G2 + R1 hardware + Deepgram key). Phase 13 (V2 Stretch) is unblocked when hardware access becomes available for SC-12-01 verification. Resume cmd: `/gsd-plan-phase 13`.
+
+### Items acknowledged at v0.9.12 milestone close (2026-05-17)
+
+Source: `gsd-sdk query audit-open` (4 items). Acknowledged via `/gsd-complete-milestone` decision *Acknowledge tutto — quick-task work already shipped via Phase 14/15*.
+
+| Category | Item | Status | Resolution path |
+|----------|------|--------|-----------------|
+| quick_task | raster-dynamic-infill (20260514) | shipped via Phase 14 INV-3 atomic 3a0c5cf | Already implemented; frontmatter updated `status: complete` |
+| quick_task | spell-lookup-foundry-derived (20260517) | shipped — consumed by Phase 15 SPELL_KEYTERMS | Already implemented; frontmatter updated `status: complete` |
+| quick_task | 260513-l12-fix-applicationv2-referenceerror | shipped — completed 2026-05-13 | Already implemented; frontmatter updated `status: complete` |
+| quick_task | 260517-k2g (entity recognition pipeline) | shipped — consumed by Phase 15 EntityPackCache | Already implemented; frontmatter updated `status: complete` |
+
+All 4 items represent real shipped work; the audit-open detector uses signals beyond `status: complete` frontmatter (likely a SUMMARY.md convention or completion marker). Tracked but non-blocking for milestone close.
 
 ## Operator Next Steps
 
