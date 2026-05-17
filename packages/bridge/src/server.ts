@@ -417,12 +417,29 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // # Hot-update freshness model
   //
   // The keyterm callback is invoked lazily on each connect() — there is NO caching
-  // at the adapter layer. The entityCache itself is the cache. This plan covers
-  // connect-time freshness only; mid-session refresh is plan 15-03's scope.
+  // at the adapter layer. The entityCache itself is the cache. Plan 15-02 covers
+  // connect-time freshness; mid-session refresh is plan 15-03's KeytermRefresher
+  // (instantiated at step 10b below).
+  //
+  // # Phase 15 Plan 04 — richer return shape (CONTEXT D-05)
+  //
+  // The provider returns the `{ keyterms, entityCachePresent }` object form so
+  // the adapter can drive the one-shot empty-cache warning (D-05). When the
+  // Foundry module has not yet pushed an entity-pack (`entityCache.get()` is
+  // `null`), `entityCachePresent: false` triggers a single logger.warn with
+  // `event: 'keyterm.empty-entity-cache'` per empty-streak. Subsequent connects
+  // with the cache still empty do NOT re-emit. The flag resets after the cache
+  // transitions to present, so a later return to empty fires the warn again.
   const deepgramSttOpts: Parameters<typeof createDeepgramStt>[0] = {
     apiKey: process.env['DEEPGRAM_API_KEY'],
     logger: app.log as Logger,
-    keytermProvider: () => buildKeytermList(SPELL_KEYTERMS, entityCache.get()),
+    keytermProvider: () => {
+      const snapshot = entityCache.get();
+      return {
+        keyterms: buildKeytermList(SPELL_KEYTERMS, snapshot),
+        entityCachePresent: snapshot !== null,
+      };
+    },
   };
   const deepgramUrlOverride = process.env['EVF_DEEPGRAM_URL_OVERRIDE'];
   if (deepgramUrlOverride !== undefined) {
