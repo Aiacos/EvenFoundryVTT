@@ -59,8 +59,7 @@ export function levenshteinDistance(a: string, b: string): number {
       // noUncheckedIndexedAccess guard — bounds are guaranteed by array size.
       const deleteCost = (curr[j] ?? 0) + 1;
       const insertCost = (prev[j + 1] ?? 0) + 1;
-      const substituteCost =
-        (prev[j] ?? 0) + (aPoints[i] === bPoints[j] ? 0 : 1);
+      const substituteCost = (prev[j] ?? 0) + (aPoints[i] === bPoints[j] ? 0 : 1);
       curr.push(Math.min(deleteCost, insertCost, substituteCost));
     }
 
@@ -89,10 +88,5 @@ export function levenshteinDistance(a: string, b: string): number {
  * @returns Normalised string suitable for exact-match or Levenshtein comparison.
  */
 export function normaliseForFuzzyMatch(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ');
+  return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim().replace(/\s+/g, ' ');
 }

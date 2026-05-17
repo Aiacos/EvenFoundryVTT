@@ -140,6 +140,10 @@ See `docs/mcp-verification.md` for the complete step-by-step verification proced
 - Automated CI verification
 - HTTP+SSE deprecation invariant grep
 
+## Voice (Phase 12)
+
+The `src/voice/` subdirectory ships the deterministic resolver layer for the Phase 12 V2 voice path. It contains an IT↔EN spell-name lookup table (70 SRD entries), a Levenshtein fuzzy-match engine with accent-insensitive normalisation, a clarify-detector heuristic that prevents hallucinated spell IDs from reaching the bridge, and the GM-Agent system prompt with 3 worked examples. The Deepgram STT adapter and audio-capture module live in `packages/bridge/src/voice/` and `packages/g2-app/src/engine/` respectively (Phase 12 Plan 03).
+
 ## Architecture References
 
 - [ADR-0004: Voice via MCP, not internal](../../docs/architecture/0004-voice-via-mcp-not-internal.md)

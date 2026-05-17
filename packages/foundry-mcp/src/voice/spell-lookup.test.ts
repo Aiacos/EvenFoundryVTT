@@ -6,7 +6,7 @@
  * @see spell-lookup.ts
  */
 import { describe, expect, it } from 'vitest';
-import { SPELL_LOOKUP, lookupSpellId } from './spell-lookup.js';
+import { lookupSpellId, SPELL_LOOKUP } from './spell-lookup.js';
 
 // ─── Table shape invariants ──────────────────────────────────────────────────
 
@@ -33,13 +33,25 @@ describe('SPELL_LOOKUP table invariants', () => {
   });
 
   it('includes 5 canonical reactions: shield, counterspell, absorb-elements, hellish-rebuke, feather-fall', () => {
-    const reactionIds = new Set(['shield', 'counterspell', 'absorb-elements', 'hellish-rebuke', 'feather-fall']);
+    const reactionIds = new Set([
+      'shield',
+      'counterspell',
+      'absorb-elements',
+      'hellish-rebuke',
+      'feather-fall',
+    ]);
     const found = SPELL_LOOKUP.filter((e) => reactionIds.has(e.dnd5eId));
     expect(found.length).toBe(5);
   });
 
   it('includes fireball, cure-wounds, mass-cure-wounds, magic-missile, healing-word', () => {
-    const required = new Set(['fireball', 'cure-wounds', 'mass-cure-wounds', 'magic-missile', 'healing-word']);
+    const required = new Set([
+      'fireball',
+      'cure-wounds',
+      'mass-cure-wounds',
+      'magic-missile',
+      'healing-word',
+    ]);
     const found = SPELL_LOOKUP.filter((e) => required.has(e.dnd5eId));
     expect(found.length).toBe(5);
   });
@@ -114,8 +126,16 @@ describe('T-12-03 mitigation: no hallucinated IDs', () => {
     const ids = new Set(SPELL_LOOKUP.map((e) => e.dnd5eId));
     // Sample several lookups
     const inputs = [
-      'fireball', 'palla di fuoco', 'cure wounds', 'magic missile',
-      'shield', 'invisibility', 'xyzzy', '', 'haste', 'firball',
+      'fireball',
+      'palla di fuoco',
+      'cure wounds',
+      'magic missile',
+      'shield',
+      'invisibility',
+      'xyzzy',
+      '',
+      'haste',
+      'firball',
     ];
     for (const input of inputs) {
       const result = lookupSpellId(input);
