@@ -332,7 +332,7 @@ Plans:
   1. Reaction *execution* flow (Shield consume reaction slot; Counterspell ability check; Opportunity Attack via Ready Action) — promoted from REACT-01 passive notification (ACT-04)
   2. STRETCH-06 Sheet portrait ships behind `view.features.portrait` Even Hub feature flag (default off) — 100×60 4-bit dithered image on Bio tab
   3. socketlib registerComplexHandler count FLIPS from 14 to 17 (3 new reaction handlers); container budget remains within SDK 4-image / 8-text cap via MapBaseLayer slot reassignment
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 - [x] 13-01-PLAN.md — 3 reaction handlers (cast-shield + cast-counterspell + opportunity-attack) + shared-protocol input schemas + tool-registry extension + socketlib registrations 14 → 17 + module.test invariant flip (ACT-04 handlers)
