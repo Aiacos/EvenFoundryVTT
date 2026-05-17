@@ -61,7 +61,11 @@ export type ToolId =
   | 'move-token'
   | 'drop-concentration'
   | 'place-template'
-  | 'confirm-template-placement';
+  | 'confirm-template-placement'
+  // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPS 14 → 17)
+  | 'cast-shield'
+  | 'cast-counterspell'
+  | 'opportunity-attack';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
 
@@ -199,6 +203,10 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
    * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
    */
   'confirm-template-placement': 'evf.confirmTemplatePlacement',
+  // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPPED 14 → 17)
+  'cast-shield': 'evf.castShield',
+  'cast-counterspell': 'evf.castCounterspell',
+  'opportunity-attack': 'evf.opportunityAttack',
 };
 
 // ─── Module-level singleton IdempotencyStore ─────────────────────────────────

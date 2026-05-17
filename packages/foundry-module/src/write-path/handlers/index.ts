@@ -10,6 +10,8 @@
  * - Wave 1 (Plan 07-02): 4 handlers (cast-spell, weapon-attack, use-item, move-token)
  * - Wave 2 (Plan 07-03): 2 handlers (place-template, confirm-template-placement)
  * - Wave 3 (Plan 07-05): 1 handler (drop-concentration, replacing evf.setTargets stub)
+ * - Phase 13 (Plan 13-01): 3 handlers (cast-shield, cast-counterspell, opportunity-attack)
+ *   → socketlib registerComplexHandler count FLIPS 14 → 17 (Phase 13 INVARIANT)
  *
  * # Single-workflow-origin (ADR-0011)
  * All registrations go through `registerToolHandler` — the canonical write-path
@@ -23,9 +25,12 @@
  */
 
 import { registerToolHandler } from '../tool-registry.js';
+import { castCounterspellHandler } from './cast-counterspell.js';
+import { castShieldHandler } from './cast-shield.js';
 import { castSpellHandler } from './cast-spell.js';
 import { dropConcentrationHandler } from './drop-concentration.js';
 import { moveTokenHandler } from './move-token.js';
+import { opportunityAttackHandler } from './opportunity-attack.js';
 import { confirmTemplatePlacementHandler, placeTemplateHandler } from './place-template.js';
 import { useItemHandler } from './use-item.js';
 import { weaponAttackHandler } from './weapon-attack.js';
@@ -55,3 +60,12 @@ registerToolHandler('confirm-template-placement', confirmTemplatePlacementHandle
 // drop-concentration: resolves actor + concentration effect → calls effect.delete()
 // Replaces evf.setTargets stub in socketlib-handlers.ts (slot rename, count stays 14).
 registerToolHandler('drop-concentration', dropConcentrationHandler);
+
+// ─── Phase 13 ACT-04 reaction handlers (Plan 13-01) ─────────────────────────
+// These 3 new handlers FLIP the socketlib count from 14 → 17.
+// cast-shield: level-1 Shield spell reaction (D-13-01)
+// cast-counterspell: level-3+ Counterspell reaction with upcast (D-13-02)
+// opportunity-attack: melee weapon attack triggered by OA Reaction (D-13-03)
+registerToolHandler('cast-shield', castShieldHandler);
+registerToolHandler('cast-counterspell', castCounterspellHandler);
+registerToolHandler('opportunity-attack', opportunityAttackHandler);

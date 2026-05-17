@@ -4,8 +4,9 @@
  * Registers the two original handlers (Plan 02) PLUS five new snapshot-read handlers
  * (Plan 05 — M-1 gap fix) that bridge REST routes call via socketlib.executeAsGM.
  * Also registers 7 write-path stub handlers (Plan 03-04 — ADR-0003 Tool Registry).
+ * Phase 13 ACT-04 adds 3 reaction handlers (count = 17).
  *
- * All handlers:
+ * All handlers (17 total — Phase 13 INVARIANT FLIP: 14 → 17):
  * - `evf.validateToken`      — validates a bearer token (Plan 02)
  * - `evf.revokeToken`        — revokes a bearer token (Plan 02)
  * - `evf.getCharacterSnapshot` — returns CharacterSnapshot | null (Plan 05)
@@ -20,6 +21,9 @@
  * - `evf.moveToken`                  — Plan 07-02 real handler (moveTokenHandler)
  * - `evf.placeTemplate`              — Plan 07-03 real handler (placeTemplateHandler)
  * - `evf.dropConcentration`          — Plan 07-05 real handler (dropConcentrationHandler) replacing evf.setTargets stub
+ * - `evf.castShield`                 — Plan 13-01 ACT-04 reaction (castShieldHandler)
+ * - `evf.castCounterspell`           — Plan 13-01 ACT-04 reaction (castCounterspellHandler)
+ * - `evf.opportunityAttack`          — Plan 13-01 ACT-04 reaction (opportunityAttackHandler)
  *
  * The single-workflow-origin discipline (Phase 0 D-15 Option A) requires ALL reads
  * from Foundry game state via the bridge to go through `socketlib.executeAsGM`.
@@ -370,6 +374,46 @@ const handlePlaceTemplate = makeDispatchAdapter('place-template');
  */
 const handleDropConcentration = makeDispatchAdapter('drop-concentration');
 
+// ─── Phase 13 ACT-04: 3 new reaction handlers (count FLIPS 14 → 17) ──────────
+//
+// Plan 13-01 ADDS three new handlers. These are NOT replacements — they are
+// genuinely new registrations that increase the total count from 14 to 17.
+// Phase 13 INVARIANT: registerComplexHandler count = 17.
+//
+// ADR-0011 single-workflow-origin discipline; CI Gate 8: no activity.use() here.
+// T-13-04 mitigation: all three route through dispatchTool (bearer + audit log).
+
+/**
+ * castShield socketlib handler — Plan 13-01 ACT-04 reaction (new, count 15 of 17).
+ *
+ * Validates payload shape, calls dispatchTool('cast-shield', payload).
+ * Returns ToolResult from the castShieldHandler (Shield spell, D-13-01).
+ *
+ * @see packages/foundry-module/src/write-path/handlers/cast-shield.ts
+ * @see .planning/phases/13-v2-stretch/13-01-PLAN.md Task 3
+ */
+const handleCastShield = makeDispatchAdapter('cast-shield');
+
+/**
+ * castCounterspell socketlib handler — Plan 13-01 ACT-04 reaction (new, count 16 of 17).
+ *
+ * Validates payload shape, calls dispatchTool('cast-counterspell', payload).
+ * Returns ToolResult from the castCounterspellHandler (Counterspell, D-13-02).
+ *
+ * @see packages/foundry-module/src/write-path/handlers/cast-counterspell.ts
+ */
+const handleCastCounterspell = makeDispatchAdapter('cast-counterspell');
+
+/**
+ * opportunityAttack socketlib handler — Plan 13-01 ACT-04 reaction (new, count 17 of 17).
+ *
+ * Validates payload shape, calls dispatchTool('opportunity-attack', payload).
+ * Returns ToolResult from the opportunityAttackHandler (melee OA, D-13-03).
+ *
+ * @see packages/foundry-module/src/write-path/handlers/opportunity-attack.ts
+ */
+const handleOpportunityAttack = makeDispatchAdapter('opportunity-attack');
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 /**
@@ -424,6 +468,11 @@ export function registerSocketlibHandlers(): void {
   socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveToken);
   // Plan 07-03: placeTemplate stub replaced with real handler (placeTemplateHandler)
   socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplate);
-  // Plan 07-05: 'evf.setTargets' stub renamed → 'evf.dropConcentration' real handler (count stays 14)
+  // Plan 07-05: 'evf.setTargets' stub renamed → 'evf.dropConcentration' real handler (count was 14)
   socketlib.registerComplexHandler(MODULE_ID, 'evf.dropConcentration', handleDropConcentration);
+
+  // Phase 13 ACT-04: 3 new reaction handlers — count FLIPS to 17 (Plan 13-01 INVARIANT)
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.castShield', handleCastShield);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.castCounterspell', handleCastCounterspell);
+  socketlib.registerComplexHandler(MODULE_ID, 'evf.opportunityAttack', handleOpportunityAttack);
 }

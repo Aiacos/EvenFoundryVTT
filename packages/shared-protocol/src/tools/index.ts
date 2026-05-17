@@ -29,8 +29,11 @@ import { SkillCheckInputSchema } from './skill-check.js';
 import { UseItemInputSchema } from './use-item.js';
 import { WeaponAttackInputSchema } from './weapon-attack.js';
 
+export { type CastCounterspellInput, CastCounterspellInputSchema } from './cast-counterspell.js';
+export { type CastShieldInput, CastShieldInputSchema } from './cast-shield.js';
 export { type CastSpellInput, CastSpellInputSchema } from './cast-spell.js';
 export { type MoveTokenInput, MoveTokenInputSchema } from './move-token.js';
+export { type OpportunityAttackInput, OpportunityAttackInputSchema } from './opportunity-attack.js';
 export { type PlaceTemplateInput, PlaceTemplateInputSchema } from './place-template.js';
 export { type SetTargetsInput, SetTargetsInputSchema } from './set-targets.js';
 export { type SkillCheckInput, SkillCheckInputSchema } from './skill-check.js';

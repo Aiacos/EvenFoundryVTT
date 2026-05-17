@@ -368,7 +368,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(() => hooksMock.fire('ready')).not.toThrow();
   });
 
-  it('registers all 14 socketlib handlers on ready (7 read + 7 tool stubs)', async () => {
+  it('registers all 17 socketlib handlers on ready (7 read + 7 tool + 3 ACT-04 reaction)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -404,7 +404,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     // Plan 07-05: evf.setTargets stub renamed → evf.dropConcentration real handler (count stays 14)
     expect(handlers?.has('evf.setTargets')).toBe(false);
     expect(handlers?.has('evf.dropConcentration')).toBe(true);
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
   });
 
   it('hook subscribers are registered (updateActor, updateCombat, etc.) on ready', async () => {
@@ -502,8 +502,8 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(updateTokenCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  // MOD-CAT-01: registerCombatActionTracker wired; registerComplexHandler count stays 14 (Plan 09-01)
-  it('MOD-CAT-01: createChatMessage registered for action-tracker after ready fires; socketlib count stays 14', async () => {
+  // MOD-CAT-01: registerCombatActionTracker wired; registerComplexHandler count is 17 (Phase 13 FLIP)
+  it('MOD-CAT-01: createChatMessage registered for action-tracker after ready fires; socketlib count is 17', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -535,11 +535,11 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     expect(createChatCalls.length).toBeGreaterThanOrEqual(3);
 
     // 14-socketlib-handler invariant: Plan 09-01 adds NO new socketlib handler
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
   });
 
-  // T-08-MOD-04: registerComplexHandler count stays exactly 14 (Phase 7 invariant — Plan 08-04 adds NO new socketlib handler)
-  it('T-08-MOD-04: registerComplexHandler count stays at 14 after Plan 08-04 wiring (14-socketlib-handler invariant)', async () => {
+  // T-08-MOD-04: registerComplexHandler count is 17 (Phase 13 FLIP — Plan 08-04 adds NO new socketlib handler)
+  it('T-08-MOD-04: registerComplexHandler count is 17 after Plan 08-04 wiring (17-socketlib-handler invariant from Phase 13)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -566,11 +566,11 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     hooksMock.fire('ready');
 
     // Plan 08-04 must NOT add any new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
   });
 
-  // T-08-MOD-02: registerComplexHandler count stays exactly 14 (Phase 7 invariant — no new socketlib handler)
-  it('T-08-MOD-02: registerComplexHandler count stays at 14 after Plan 08-01 wiring (14-socketlib-handler invariant)', async () => {
+  // T-08-MOD-02: registerComplexHandler count is 17 (Phase 13 FLIP — Plan 08-01 adds NO new socketlib handler)
+  it('T-08-MOD-02: registerComplexHandler count is 17 after Plan 08-01 wiring (17-socketlib-handler invariant from Phase 13)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -597,7 +597,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     hooksMock.fire('ready');
 
     // Plan 08-01 must NOT add any new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
   });
 });
 
@@ -1001,7 +1001,7 @@ describe('scheduleBearerRotation wiring (Plan 07-06)', () => {
     expect(hasLongDelay).toBe(false);
   });
 
-  it('registerComplexHandler count stays at 14 after Plan 07-06 wiring', async () => {
+  it('registerComplexHandler count is 17 after Plan 07-06 wiring (Phase 13 FLIP invariant)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -1028,6 +1028,6 @@ describe('scheduleBearerRotation wiring (Plan 07-06)', () => {
     hooksMock.fire('ready');
 
     // Plan 07-06 adds NO new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
   });
 });

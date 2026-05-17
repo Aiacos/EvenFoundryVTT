@@ -628,7 +628,9 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
     expect(resultPayload.errorKind).toBe('concentration-required');
   });
 
-  // ── FM-ISM-W9-09: 14-socketlib-handler invariant (file-content read) ──────
+  // ── FM-ISM-W9-09: 17-socketlib-handler invariant (file-content read) ──────
+  // Phase 13 Plan 13-01 FLIPPED the count from 14 → 17 (ACT-04 reaction handlers).
+  // The invariant is now 17 for all phases ≥ 13.
 
   it('FM-ISM-W9-09: 14-socketlib-handler invariant confirmed (grep gate)', () => {
     const thisDir = dirname(fileURLToPath(import.meta.url));
@@ -637,7 +639,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
     const callLines = content
       .split('\n')
       .filter((line) => line.includes('socketlib.registerComplexHandler'));
-    expect(callLines.length).toBe(14);
+    expect(callLines.length).toBe(17);
   });
 
   // ── FM-ISM-W9-10: audit-log includes attackId when handler result carries one ──

@@ -255,6 +255,20 @@ export {
   VoiceTranscriptPayloadSchema,
 } from './payloads/voice.js';
 
+// ─── Phase 13 additions (Plan 13-01 — ACT-04 reaction schemas) ───────────────
+// Three new ACT-04 reaction handler input schemas.
+// Socketlib handler count flips from 14 → 17 with Plan 13-01.
+
+export {
+  type CastCounterspellInput,
+  CastCounterspellInputSchema,
+} from './tools/cast-counterspell.js';
+export { type CastShieldInput, CastShieldInputSchema } from './tools/cast-shield.js';
+export {
+  type OpportunityAttackInput,
+  OpportunityAttackInputSchema,
+} from './tools/opportunity-attack.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {

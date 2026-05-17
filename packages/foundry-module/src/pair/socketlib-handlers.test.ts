@@ -350,18 +350,51 @@ describe('registerSocketlibHandlers', () => {
     });
   });
 
-  // ─── Plan 07-02 + 07-03: registerComplexHandler count regression guard (Pitfall 7) ──
+  // ─── Phase 13 Plan 13-01: registerComplexHandler count FLIP 14 → 17 ────────────
   //
-  // REGRESSION GUARD: total registerComplexHandler count must stay exactly 14.
-  // Plan 07-02 replaces 4 stub function bodies in-place — NO new registrations.
-  // Plan 07-03 replaces 2 more stubs in-place AND renames evf.skillCheck →
-  // evf.confirmTemplatePlacement (still in-place, count stays 14).
-  // If this test fails, a new handler was accidentally registered.
+  // PHASE 13 INVARIANT: total registerComplexHandler count = 17.
+  // Plan 07-02 replaced 4 stub function bodies in-place — NO new registrations.
+  // Plan 07-03 replaced 2 more stubs in-place AND renamed evf.skillCheck →
+  // evf.confirmTemplatePlacement (still in-place, count was 14).
+  // Plan 13-01 ADDS 3 new reaction handlers: castShield + castCounterspell + opportunityAttack.
+  // Phase 13 INVARIANT FLIP: count = 17. Future phases must NOT change this count
+  // unless explicitly adding new socketlib handlers with a plan amendment.
 
-  it('registers exactly 14 handlers total (Pitfall 7 regression guard)', async () => {
+  it('registers exactly 17 handlers total (Phase 13 invariant FLIP — 14 → 17)', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(14);
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+  });
+
+  // Positive assertions for the 3 new ACT-04 handlers
+  it('registers evf.castShield with a dispatch adapter', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
+      expect.any(String),
+      'evf.castShield',
+      expect.any(Function),
+    );
+  });
+
+  it('registers evf.castCounterspell with a dispatch adapter', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
+      expect.any(String),
+      'evf.castCounterspell',
+      expect.any(Function),
+    );
+  });
+
+  it('registers evf.opportunityAttack with a dispatch adapter', async () => {
+    const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+    registerSocketlibHandlers();
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
+      expect.any(String),
+      'evf.opportunityAttack',
+      expect.any(Function),
+    );
   });
 
   // ─── Plan 07-02: 4 replaced socketlib stubs — dispatchTool adapter tests ──────
