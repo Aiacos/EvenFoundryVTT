@@ -78,6 +78,35 @@ jobs:
             exit 1
           fi
 
+      # Phase 15 gate: SKT-02 drift-gate import path probe (WR-07 hardening)
+      # The shared-protocol SKT-02 test imports SPELL_LOOKUP from foundry-mcp via a
+      # hard-coded relative path (cross-package test-only import). If foundry-mcp is
+      # restructured (src/ moved to source/, spell-lookup.ts moved into a subdir),
+      # the test fails with a confusing 'Cannot resolve module' rather than an
+      # explicit 'drift gate broken' signal. This probe fails loudly BEFORE the
+      # Vitest run with a precise error pointing both sides at the contract.
+      - name: SKT-02 drift gate import-path probe (Phase 15 WR-07)
+        run: |
+          src=packages/foundry-mcp/src/voice/spell-lookup.ts
+          test=packages/shared-protocol/src/voice/spell-keyterms.test.ts
+          rel='../../../foundry-mcp/src/voice/spell-lookup.js'
+          if ! test -f "$src"; then
+            echo "::error file=$test::SKT-02 drift gate broken: $src missing."
+            echo "::error::The cross-package test-only import in spell-keyterms.test.ts hard-codes"
+            echo "::error::$rel — moving spell-lookup.ts requires updating that path."
+            exit 1
+          fi
+          if ! grep -q '^export const SPELL_LOOKUP' "$src"; then
+            echo "::error file=$src::SKT-02 drift gate broken: SPELL_LOOKUP export missing or renamed."
+            echo "::error::spell-keyterms.test.ts imports it by name — rename in lock-step."
+            exit 1
+          fi
+          if ! grep -qF "$rel" "$test"; then
+            echo "::error file=$test::SKT-02 drift gate broken: relative import path $rel no longer present in test."
+            echo "::error::Update this CI gate alongside the test if the contract intentionally changed."
+            exit 1
+          fi
+
   commit-lint-pr-title:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
