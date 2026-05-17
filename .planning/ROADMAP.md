@@ -296,12 +296,12 @@ Plans:
   2. MCP tools mirror Tool Registry §5.3 with full JSON Schema; resources `actor://current`, `scene://current`, `combat://current`, `log://recent` are exposed
   3. Claude Desktop drives "cast Fireball at the goblins" end-to-end through the same bridge bearer auth as MVP
   4. MCP Inspector returns clean tool listing; npm publish + Docker container for Streamable HTTP remote works
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 Plans:
 **Wave 1**
-- [ ] 11-01-PLAN.md — Workspace package scaffold + env-loader + pino logger + McpServer factory + stdio + Streamable HTTP entrypoints (no tools yet)
+- [x] 11-01-PLAN.md — Workspace package scaffold + env-loader + pino logger + McpServer factory + stdio + Streamable HTTP entrypoints (no tools yet)
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 11-02-PLAN.md — BridgeClient WS proxy (tool.invoke envelope) + 6 MCP tools registered via Phase 7 Zod schema `.shape` (cast-spell, weapon-attack, use-item, move-token, place-template, drop-concentration)
+- [x] 11-02-PLAN.md — BridgeClient WS proxy (tool.invoke envelope) + 6 MCP tools registered via Phase 7 Zod schema `.shape` (cast-spell, weapon-attack, use-item, move-token, place-template, drop-concentration)
 **Wave 3** *(blocked on Wave 2)*
 - [ ] 11-03-PLAN.md — ResourceCache + WS delta subscription + 4 MCP resources (actor://current, scene://current, combat://current, log://recent) + REST fallback + sendResourceUpdated
 **Wave 4** *(blocked on Wave 3; Phase 11 closure)*
@@ -346,7 +346,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 8. Manual Action UX | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
-| 11. V2 `foundry-mcp` Server | 0/4 | Planned (V2 OPZIONALE — ready for execute) | - |
+| 11. V2 `foundry-mcp` Server | 2/4 | In Progress|  |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
 
