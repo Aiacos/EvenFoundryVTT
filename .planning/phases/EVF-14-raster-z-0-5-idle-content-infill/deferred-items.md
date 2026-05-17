@@ -14,3 +14,27 @@
 **Suggested fix:** quick task `chore: format spell-pack-reader.ts (Biome line-width)` — single `pnpm format` run on the file resolves it (1-line diff). Could be folded into Phase 14 Plan 03 (the v0.9.12 INV-3 atomic commit) if the planner wants to keep the milestone lint-clean.
 
 **Impact on Plan 14-02 success criteria:** the four CI gates listed in Task 2 are partially passing — typecheck, test suite, and grep gates are green; lint:ci fails due to this pre-existing issue, NOT due to Plan 14-02 changes. The LMT-DD-07 test itself is green and the layer-manager file is lint-clean. Plan 14-02 deliverable is met; the broader CI lint:ci gate is blocked on a separate concern.
+
+## Pre-existing lint errors across ~36 files (out of scope for Plan 14-01)
+
+**Discovered during:** Phase 14 Plan 01 Task 3 (CI quality gates)
+**Files:** ~36 files across `packages/bridge`, `packages/foundry-mcp`, `packages/foundry-module`, `packages/g2-app/src/{engine,internal,panels}`, `packages/validation-harness` (see full list via `pnpm lint:ci`).
+**Errors:** mix of `lint/suspicious/noConsole` and Biome formatter `lineWidth` mismatches.
+**Severity:** 1 error + 255 warnings (blocks `pnpm lint:ci`).
+
+**Root cause (provenance):** all entries pre-date Plan 14-01. `spell-pack-reader.ts` (commit `fbaac3c`), validation-harness scripts (commits `0fa1364`, `2044df0`), and various g2-app + bridge files predate the v0.9.12 milestone open. None of them are touched by Plan 14-01 changes.
+
+**Why deferred:** Plan 14-01 `<files_modified>` lists ONLY 3 new fixture files (`raster-overlay-open.{it,en}.txt` + `glyph-scene.glyph-idle-z05.it.txt`) and 1 new test file (`packages/g2-app/src/status-hud/__tests__/z05-state-machine-fixtures.test.ts`). Per the executor scope-boundary rule, only issues DIRECTLY caused by the current task's changes get auto-fixed. The new fixtures + new test file are themselves lint-clean (`pnpm exec biome ci` on each = OK).
+
+**Verification of Plan 14-01 cleanliness:**
+- `pnpm exec biome ci packages/g2-app/src/status-hud/__tests__/z05-state-machine-fixtures.test.ts` → 1 file checked, no errors.
+- `.txt` fixtures are ignored by Biome configuration (intentional — fixtures are not code).
+
+**Suggested fix:** quick task `chore: workspace-wide biome auto-fix + console allowlist for validation-harness scripts` — would resolve all 36+ files in one batch via `pnpm format` + scoped Biome config exceptions for validation-harness scripts. Could be folded into Phase 14 Plan 03 (the v0.9.12 INV-3 atomic commit).
+
+**Impact on Plan 14-01 success criteria:** the 3 task-level CI gates that bind Plan 14-01 are GREEN:
+- (a) `pnpm --filter @evf/g2-app exec vitest run src/status-hud/__tests__/z05-state-machine-fixtures.test.ts` → 7/7 pass.
+- (b) `pnpm exec biome ci packages/g2-app/src/status-hud/__tests__/z05-state-machine-fixtures.test.ts` → clean.
+- (c) `grep -c "^  it(" .../z05-state-machine-fixtures.test.ts` → 7 (matches expected).
+
+The workspace-wide `pnpm lint:ci` failure is the same pre-existing concern documented above for Plan 14-02. Plan 14-01 deliverable is met; the broader CI lint:ci gate remains blocked on the prior concerns.
