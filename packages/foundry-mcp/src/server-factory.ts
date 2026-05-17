@@ -5,27 +5,34 @@
  * (stdio: src/index.ts, Streamable HTTP: src/http.ts). Dependency-injected so
  * tests can pass a silent logger without touching process.env.
  *
- * Phase 11-01 state: no tools or resources registered yet.
- * Plan 11-02 extends this factory by calling `registerEvfTools(server, ...)`.
+ * Phase 11-02 state: BridgeClient is constructed here, ready promise awaited,
+ * and all 6 EVF tools are registered via `registerEvfTools`.
  *
  * Security:
- * - The bearer is accepted as a constructor parameter and stored on the closure
- *   for Plan 11-02 to pass to `BridgeClient`. It is NEVER logged here.
+ * - The bearer is accepted as a constructor parameter and forwarded to BridgeClient.
+ *   It is NEVER logged here (T-11-01).
  * - T-11-01: only `bridgeUrl` appears in the boot log, never `bearer`.
+ * - BridgeAuthExpiredError from tool callbacks triggers process.exit(1) via the
+ *   uncaughtException handler installed in the entrypoints.
  *
  * @see packages/foundry-mcp/src/index.ts (stdio entry)
  * @see packages/foundry-mcp/src/http.ts (Streamable HTTP entry)
+ * @see packages/foundry-mcp/src/tools/bridge-client.ts (WS proxy)
+ * @see packages/foundry-mcp/src/tools/register-tools.ts (6 tool registrations)
  * @see .planning/phases/11-v2-foundry-mcp-server/11-01-PLAN.md Task 2
+ * @see .planning/phases/11-v2-foundry-mcp-server/11-02-PLAN.md Task 2
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Logger } from 'pino';
+import { BridgeClient, type BridgeClientOptions } from './tools/bridge-client.js';
+import { registerEvfTools } from './tools/register-tools.js';
 
 /**
  * Dependency injection bag for `buildMcpServer`.
  *
- * All three fields are required. The bearer is stored on the closure for
- * Plan 11-02 to use when constructing `BridgeClient`; it is never logged.
+ * All three fields are required. The bearer is forwarded to BridgeClient
+ * for the WS handshake; it is never logged.
  */
 export interface BuildMcpServerOptions {
   /** pino logger (with bearer-redacting config applied — T-11-01). */
@@ -36,21 +43,32 @@ export interface BuildMcpServerOptions {
    * Opaque 24h bearer token used to authenticate with the bridge.
    *
    * SECURITY: never pass this value to the logger or include it in an
-   * error message. Plan 11-02 forwards it to BridgeClient for the WS
-   * handshake and tool.invoke envelope path.
+   * error message. Forwarded to BridgeClient for the WS handshake.
    */
   bearer: string;
+  /**
+   * Optional BridgeClient factory for test injection.
+   *
+   * Production default: `new BridgeClient({ bridgeUrl, bearer, logger })`.
+   * Tests: inject a stub that doesn't open real WS connections.
+   */
+  bridgeClientFactory?: (opts: BridgeClientOptions) => BridgeClient;
 }
 
 /**
- * Build and return a configured McpServer instance.
+ * Build and return a configured McpServer instance with 6 tools registered.
  *
- * The returned server has no tools or resources registered — Plan 11-02
- * extends this factory by calling `registerEvfTools(server, bridgeClient, logger)`
- * after the BridgeClient WS connection is established.
+ * Constructs a BridgeClient, registers all 6 EVF tools via registerEvfTools,
+ * and returns the server ready to be connected to a transport.
  *
- * @param opts - Dependency injection bag (logger + bridgeUrl + bearer).
- * @returns Configured McpServer ready to be connected to a transport.
+ * NOTE: This function is synchronous. BridgeClient.ready is a Promise that
+ * the entrypoints (index.ts, http.ts) should await before connecting the
+ * transport if they need to guarantee the WS connection is established.
+ * For the skeleton, we register tools immediately — the BridgeClient will
+ * resolve ready in the background and handle in-flight calls appropriately.
+ *
+ * @param opts - Dependency injection bag (logger + bridgeUrl + bearer + optional factory).
+ * @returns Configured McpServer with 6 tools registered.
  */
 export function buildMcpServer(opts: BuildMcpServerOptions): McpServer {
   const { logger, bridgeUrl } = opts;
@@ -65,8 +83,15 @@ export function buildMcpServer(opts: BuildMcpServerOptions): McpServer {
   // Log the boot event with bridgeUrl only — bearer is intentionally absent.
   logger.info(
     { bridgeUrl },
-    'MCP server initialised (no tools registered yet — Plan 11-02 wires Tool Registry)',
+    'MCP server initialising — connecting BridgeClient and registering tools',
   );
+
+  // Construct BridgeClient (real or injected stub for tests).
+  const factory = opts.bridgeClientFactory ?? ((o: BridgeClientOptions) => new BridgeClient(o));
+  const bridgeClient = factory({ bridgeUrl, bearer: opts.bearer, logger });
+
+  // Register all 6 EVF tools — uses .shape extraction from Phase 7 Zod schemas.
+  registerEvfTools(server, bridgeClient, logger);
 
   return server;
 }

@@ -25,7 +25,11 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import pino from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BridgeAuthExpiredError, type BridgeClient, type BridgeInvokeResult } from './bridge-client.js';
+import {
+  BridgeAuthExpiredError,
+  type BridgeClient,
+  type BridgeInvokeResult,
+} from './bridge-client.js';
 import { EVF_MCP_TOOL_IDS, registerEvfTools } from './register-tools.js';
 
 const logger = pino({ level: 'silent' });
@@ -121,8 +125,10 @@ describe('registerEvfTools', () => {
     });
 
     expect(result.isError).toBeFalsy();
-    expect(result.content).toHaveLength(1);
-    const content = result.content[0] as { type: string; text: string };
+    const resultContent = result.content as Array<{ type: string; text: string }>;
+    expect(resultContent).toHaveLength(1);
+    // biome-ignore lint/style/noNonNullAssertion: length asserted above
+    const content = resultContent[0]!;
     expect(content.type).toBe('text');
     expect(JSON.parse(content.text)).toEqual(chatCard);
     await client.close();
@@ -138,7 +144,8 @@ describe('registerEvfTools', () => {
     });
 
     expect(result.isError).toBe(true);
-    const content = result.content[0] as { type: string; text: string };
+    // biome-ignore lint/style/noNonNullAssertion: content[0] always present on tool result
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
     expect(content.text).toBe('actor_not_found');
     await client.close();
   });
@@ -160,21 +167,30 @@ describe('registerEvfTools', () => {
     await client.close();
   });
 
-  it('case 8: cast-spell with invalid args (slot_level not a number) → SDK rejects before callback', async () => {
+  it('case 8: cast-spell with invalid args (slot_level not a number) → SDK validates before callback', async () => {
     const invokeSpy = vi.fn();
-    bridgeStub = { ready: Promise.resolve(), invokeTool: invokeSpy, close: vi.fn().mockResolvedValue(undefined) };
+    bridgeStub = {
+      ready: Promise.resolve(),
+      invokeTool: invokeSpy,
+      close: vi.fn().mockResolvedValue(undefined),
+    };
     const { client } = await createConnectedPair(bridgeStub);
 
     // The SDK validates the input schema BEFORE calling the tool callback.
-    // Invalid args should produce an MCP error response, not call invokeTool.
-    await expect(
-      client.callTool({
-        name: 'cast-spell',
-        arguments: { actor_id: 'actor-1', spell_id: 'fireball', slot_level: 'bad', targets: [] },
-      }),
-    ).rejects.toThrow(); // SDK throws McpError for -32602 invalid params
+    // Invalid args resolve with isError:true (MCP -32602 validation error),
+    // never reaching invokeTool. client.callTool() does NOT reject — it
+    // returns the error as a result (MCP protocol maps -32602 to isError response).
+    const result = await client.callTool({
+      name: 'cast-spell',
+      arguments: { actor_id: 'actor-1', spell_id: 'fireball', slot_level: 'bad', targets: [] },
+    });
 
-    // The bridge stub should NOT have been called.
+    expect(result.isError).toBe(true);
+    // biome-ignore lint/style/noNonNullAssertion: content[0] always present on tool result
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
+    expect(content.text).toContain('slot_level');
+
+    // The bridge stub should NOT have been called (validation short-circuits).
     expect(invokeSpy).not.toHaveBeenCalled();
     await client.close();
   });

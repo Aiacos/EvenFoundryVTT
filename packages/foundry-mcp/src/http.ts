@@ -86,9 +86,9 @@ const MCP_METHODS = new Set(['POST', 'GET', 'DELETE']);
     // NOTE: With exactOptionalPropertyTypes, passing `undefined` explicitly would be
     // a type error — we omit the property to get stateless behaviour.
     const transport = new StreamableHTTPServerTransport({});
-    // biome-ignore lint/suspicious/noExplicitAny: StreamableHTTPServerTransport.onclose is typed as
-    // `(() => void) | undefined` but Transport interface expects `() => void`. This is an upstream
-    // SDK type inconsistency with exactOptionalPropertyTypes; cast is safe at runtime.
+    // Cast: StreamableHTTPServerTransport.onclose is typed as `(() => void) | undefined`
+    // but Transport interface expects `() => void`. This is an upstream SDK type inconsistency
+    // with exactOptionalPropertyTypes; the cast is safe at runtime.
     await server.connect(
       transport as unknown as import('@modelcontextprotocol/sdk/shared/transport.js').Transport,
     );

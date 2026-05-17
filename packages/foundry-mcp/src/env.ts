@@ -88,7 +88,7 @@ export function parseMcpEnv(env: Record<string, string | undefined> = process.en
   const rawPort = env.MCP_HTTP_PORT;
   if (rawPort !== undefined && rawPort !== '') {
     const parsed = parseInt(rawPort, 10);
-    if (isNaN(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    if (Number.isNaN(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
       throw new BootError(
         `MCP_HTTP_PORT must be integer in [1..65535]; got: ${JSON.stringify(rawPort)}`,
       );

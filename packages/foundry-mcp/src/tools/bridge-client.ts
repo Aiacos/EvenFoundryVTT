@@ -160,13 +160,13 @@ export class BridgeClient {
    */
   private _connect(opts: BridgeClientOptions): Promise<void> {
     return new Promise<void>((resolve) => {
-      const wsUrl = opts.bridgeUrl.replace(/^http/, 'ws') + '/ws';
+      const wsUrl = `${opts.bridgeUrl.replace(/^http/, 'ws')}/ws`;
       const factory = opts.wsFactory ?? ((url: string) => new WebSocket(url));
 
       let ws: WebSocket;
       try {
         ws = factory(wsUrl);
-      } catch (err) {
+      } catch {
         this._logger.warn(
           { bridgeUrl: opts.bridgeUrl },
           'BridgeClient: wsFactory threw — bridge unreachable',
@@ -360,7 +360,7 @@ export class BridgeClient {
 
     try {
       ws.send(JSON.stringify(envelope));
-    } catch (err) {
+    } catch {
       this._pending = null;
       clearTimeout(timer);
       resolve({ success: false, error: 'bridge_unreachable' });
