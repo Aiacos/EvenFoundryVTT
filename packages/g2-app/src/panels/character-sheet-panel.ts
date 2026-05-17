@@ -55,7 +55,16 @@ import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import { getPortraitBytes } from './portrait-state.js';
 import { renderTabContent } from './character-sheet-tab-renderers.js';
+
+/**
+ * Minimal MapBaseLayer surface used by CharacterSheetPanel for portrait override (D-13-08).
+ * Structural interface for testability — MapBaseLayer satisfies it at runtime.
+ */
+export interface MapBaseLayerLike {
+  setPortraitOverride(slot: number, bytes: Uint8Array | null): void;
+}
 
 // ─── Tab constants ────────────────────────────────────────────────────────────
 
@@ -216,12 +225,39 @@ export default class CharacterSheetPanel implements OverlayPanel {
    */
   private unsubscribe: (() => void) | null = null;
 
+  /**
+   * Whether the portrait overlay is enabled (D-13-09 — view.features.portrait Hub key).
+   *
+   * Read from Even Hub `view.features.portrait` on {@link onMount}. Default `false`.
+   * `'on'` → `true`; anything else (including absent key `''`) → `false`.
+   */
+  private portraitEnabled = false;
+
+  /**
+   * Portrait override slot index (D-13-08 — slot 3 = bottom-right raster tile by convention).
+   *
+   * Configurable here for future Quick Action override; MVP keeps it at 3.
+   */
+  private readonly portraitSlot = 3;
+
   // ─── Constructor ────────────────────────────────────────────────────────────
 
   constructor(
     private readonly bridge: EvenAppBridge,
     private readonly gestureBus: PanelGestureBus,
     private readonly locale: HudLocale,
+    /**
+     * Optional MapBaseLayer instance for portrait slot override (Plan 13-04 — STRETCH-06).
+     *
+     * When non-null and `portraitEnabled` is true and portrait bytes are cached for the
+     * current actor, `_applyPortraitOverride()` calls `mapBaseLayer.setPortraitOverride`
+     * with the decoded portrait bytes. When null (default / test fixture), portrait wiring
+     * is silently skipped — no crash.
+     *
+     * Typed as `MapBaseLayerLike` (structural) for testability (avoids importing the
+     * concrete `MapBaseLayer` class here — prevents circular imports via raster/).
+     */
+    private readonly mapBaseLayer: MapBaseLayerLike | null = null,
   ) {}
 
   // ─── OverlayPanel lifecycle ─────────────────────────────────────────────────
@@ -240,6 +276,12 @@ export default class CharacterSheetPanel implements OverlayPanel {
   async onMount(): Promise<void> {
     this.unsubscribe = this.gestureBus.subscribe((gesture) => this.onEvent(gesture));
     await this._restoreLastTab();
+    // D-13-09: read portrait feature flag from Even Hub kv store.
+    await this._readPortraitFlag();
+    // Apply portrait override if on Bio tab with portrait enabled + bytes cached.
+    if (TABS[this.activeTabIndex] === 'bio') {
+      this._applyPortraitOverride();
+    }
     await this.draw();
   }
 
@@ -255,6 +297,8 @@ export default class CharacterSheetPanel implements OverlayPanel {
       this.unsubscribe();
       this.unsubscribe = null;
     }
+    // Always clear portrait override on unmount (idempotent — null-safe).
+    this.mapBaseLayer?.setPortraitOverride(this.portraitSlot, null);
   }
 
   /**
@@ -387,6 +431,63 @@ export default class CharacterSheetPanel implements OverlayPanel {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Read the `view.features.portrait` Even Hub key and set {@link portraitEnabled}.
+   *
+   * `'on'` → enabled. Any other value (including absent `''`) → disabled (default off).
+   * Non-fatal: a getLocalStorage failure leaves `portraitEnabled = false`.
+   *
+   * D-13-09: the flag is BOOLEAN-shaped (`'on' | 'off'`); other values fall back to off.
+   */
+  private async _readPortraitFlag(): Promise<void> {
+    try {
+      const stored = await this.bridge.getLocalStorage('view.features.portrait');
+      this.portraitEnabled = stored === 'on';
+    } catch {
+      // Non-fatal — portrait stays disabled on storage error.
+      this.portraitEnabled = false;
+    }
+  }
+
+  /**
+   * Apply portrait override to MapBaseLayer's reserved image slot (D-13-08 design).
+   *
+   * Only acts when:
+   *   - `portraitEnabled === true` (flag 'on')
+   *   - `mapBaseLayer !== null` (injected at construction)
+   *   - Portrait bytes are in the `portrait-state` cache for `this.snapshot?.actorId`
+   *
+   * Decodes the base64 PNG bytes from the cache and calls
+   * `mapBaseLayer.setPortraitOverride(portraitSlot, decodedBytes)`.
+   *
+   * When any condition fails, silently skips (graceful degradation — no portrait shown).
+   */
+  private _applyPortraitOverride(): void {
+    if (!this.portraitEnabled || this.mapBaseLayer === null) {
+      return;
+    }
+    const actorId = this.snapshot?.actorId;
+    if (actorId === undefined || actorId.length === 0) {
+      return;
+    }
+    const cached = getPortraitBytes(actorId);
+    if (cached === null) {
+      return;
+    }
+    // Decode base64 PNG bytes into a Uint8Array for updateImageRawData.
+    // atob is available in browser (Even Realities App WebView) and Node ≥24 globalThis.
+    try {
+      const binaryString = atob(cached.pngBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      this.mapBaseLayer.setPortraitOverride(this.portraitSlot, bytes);
+    } catch {
+      // Non-fatal — base64 decode failure silently skips portrait.
+    }
+  }
 
   /**
    * Persist the current active tab to Even Hub storage.

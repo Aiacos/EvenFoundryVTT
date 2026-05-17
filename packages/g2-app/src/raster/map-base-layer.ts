@@ -93,6 +93,19 @@ export class MapBaseLayer implements Layer {
   /** Latest scene pushed via `setScene()` — drained on every `draw()`. */
   private currentScene: MapSceneInput | null = null;
 
+  /**
+   * Portrait override state (Plan 13-04 — STRETCH-06).
+   *
+   * When non-null, `draw()` issues an additional `bridge.updateImageRawData`
+   * call for the override slot AFTER the raster pipeline call. The portrait
+   * bytes are rendered as a 100×60 4-bit greyscale overlay replacing the
+   * corresponding raster tile (slot 3 = bottom-right by convention, D-13-08).
+   *
+   * CharacterSheetPanel.onMount/_applyPortraitOverride sets this;
+   * CharacterSheetPanel.onUnmount clears it via setPortraitOverride(slot, null).
+   */
+  private _portraitOverride: { slot: number; bytes: Uint8Array } | null = null;
+
   constructor(
     private readonly bridge: EvenAppBridge,
     private readonly controller: RasterControllerLike,
@@ -106,6 +119,53 @@ export class MapBaseLayer implements Layer {
    */
   getCaptureContainer(): string {
     return 'map-capture';
+  }
+
+  /**
+   * Container footprint declaration (Plan 13-04 — explicit correction of D-13-08 latent bug).
+   *
+   * The raster pipeline uses 4 image containers (2×2 sub-tile grid per Phase 4a page schema).
+   * Without this explicit declaration, LayerManager defaults to `{image:0, text:1}` which
+   * is WRONG — the page schema at boot declares 4 image slots used by MapBaseLayer.
+   *
+   * Mode resolution: same `resolveAutoMode` logic as `draw()`. Glyph mode uses 0 image
+   * containers (no `updateImageRawData` calls in glyph path).
+   *
+   * Container budget per D-13-08 (raster + portrait + sheet bio steady state):
+   *   z=0 MapBaseLayer: image=4, text=1
+   *   z=1 StatusHudLayer: image=0, text=1
+   *   z=2 CharacterSheetPanel: image=0, text=1  (portrait goes into MapBaseLayer slot 3)
+   *   Total: 4 image (≤4 cap) + 3 text (≤8 cap) → BUDGET PASSES
+   */
+  getContainerCount(): { image: number; text: number } {
+    const declared = this.layerManager.getMapMode();
+    const mode = resolveAutoMode(declared, this.controller.getBleVerdict());
+    return mode === 'glyph' ? { image: 0, text: 1 } : { image: 4, text: 1 };
+  }
+
+  /**
+   * Set or clear a portrait override for a raster image slot (Plan 13-04 — STRETCH-06).
+   *
+   * When `bytes` is non-null, the next `draw()` call will issue an additional
+   * `bridge.updateImageRawData` for `slot` with the given bytes, REPLACING the
+   * corresponding raster tile in the final frame.
+   *
+   * When `bytes` is null, the override is cleared — subsequent `draw()` calls
+   * render all 4 raster tiles normally (no portrait overlay).
+   *
+   * Called by:
+   * - `CharacterSheetPanel._applyPortraitOverride()` — sets bytes when Bio tab opens.
+   * - `CharacterSheetPanel.onUnmount()` / tab-change-away-from-bio — clears with null.
+   *
+   * @param slot  - Image container slot index (0–3). Convention: slot 3 = bottom-right tile.
+   * @param bytes - Raw portrait bytes (100×60 4-bit PNG decoded to RGBA or similar), or null to clear.
+   */
+  setPortraitOverride(slot: number, bytes: Uint8Array | null): void {
+    if (bytes === null) {
+      this._portraitOverride = null;
+    } else {
+      this._portraitOverride = { slot, bytes };
+    }
   }
 
   /**
@@ -159,6 +219,26 @@ export class MapBaseLayer implements Layer {
       this.currentScene.width,
       this.currentScene.height,
     );
+
+    // Portrait override — issue additional updateImageRawData for the reserved slot
+    // AFTER the raster pipeline call (D-13-08 simpler design: overlay piggybacks on
+    // a raster tile slot; no new container allocated; budget stays at 4 image, 1 text).
+    if (this._portraitOverride !== null) {
+      const { slot, bytes } = this._portraitOverride;
+      await (
+        this.bridge as unknown as {
+          updateImageRawData: (opts: {
+            containerName: string;
+            index: number;
+            imageData: Uint8Array;
+          }) => Promise<boolean>;
+        }
+      ).updateImageRawData({
+        containerName: 'map-capture',
+        index: slot,
+        imageData: bytes,
+      });
+    }
   }
 
   /**

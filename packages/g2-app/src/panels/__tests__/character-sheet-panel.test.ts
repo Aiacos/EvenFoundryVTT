@@ -518,3 +518,121 @@ describe('CharacterSheetPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => 
     }
   });
 });
+
+// ─── CHSP-PORT-* (Plan 13-04 — STRETCH-06 portrait wiring) ───────────────────
+
+describe('CharacterSheetPanel — portrait wiring (Plan 13-04)', () => {
+  /**
+   * Build a minimal mock MapBaseLayer with a spy on setPortraitOverride.
+   */
+  function makeMockMapBase() {
+    return {
+      setPortraitOverride: vi.fn(),
+    };
+  }
+
+  /**
+   * Build a bridge that returns 'on' or 'off' for 'view.features.portrait' key.
+   */
+  function makeBridgeWithPortraitFlag(flag: 'on' | 'off' | 'missing' = 'off') {
+    return makeMockBridge({
+      getLocalStorageImpl: async (key: string) => {
+        if (key === 'view.features.portrait') {
+          return flag === 'missing' ? '' : flag;
+        }
+        return ''; // all other keys absent
+      },
+    });
+  }
+
+  /**
+   * Instantiate CharacterSheetPanel with portrait wiring.
+   * Accepts an optional mapBase mock to test override calls.
+   */
+  function makePanelWithPortrait(
+    flag: 'on' | 'off' | 'missing' = 'off',
+    mapBase: ReturnType<typeof makeMockMapBase> | null = null,
+  ) {
+    const bridge = makeBridgeWithPortraitFlag(flag);
+    const bus = new PanelGestureBus();
+    const panel = new CharacterSheetPanel(bridge, bus, 'it', mapBase);
+    return { panel, bridge, bus, mapBase };
+  }
+
+  // CHSP-PORT-01: portrait 'off' flag — setPortraitOverride NOT called on mount
+  it('CHSP-PORT-01: portrait flag off — setPortraitOverride not called on mount (Bio tab)', async () => {
+    const mapBase = makeMockMapBase();
+    const { panel } = makePanelWithPortrait('off', mapBase);
+    // Force Bio tab (index 5)
+    for (let i = 0; i < 5; i++) {
+      panel.onEvent({ kind: 'tap' });
+    }
+    await panel.onMount();
+    expect(mapBase.setPortraitOverride).not.toHaveBeenCalledWith(3, expect.any(Uint8Array));
+  });
+
+  // CHSP-PORT-02: mapBase null — no crash when portrait flag is 'on' but mapBase not injected
+  it('CHSP-PORT-02: mapBase=null — no crash even when portraitEnabled=on', async () => {
+    const { panel } = makePanelWithPortrait('on', null);
+    await expect(panel.onMount()).resolves.not.toThrow();
+  });
+
+  // CHSP-PORT-03: portrait 'on', bytes NOT in cache — setPortraitOverride not called (no bytes yet)
+  it('CHSP-PORT-03: portrait on, bytes not cached — setPortraitOverride not called', async () => {
+    // portrait-state cache is empty (no setPortraitBytes called)
+    const mapBase = makeMockMapBase();
+    const { panel } = makePanelWithPortrait('on', mapBase);
+    // Navigate to Bio tab
+    for (let i = 0; i < 5; i++) {
+      panel.onEvent({ kind: 'tap' });
+    }
+    await panel.onMount();
+    // No bytes in cache → override should NOT be called with bytes
+    expect(mapBase.setPortraitOverride).not.toHaveBeenCalledWith(3, expect.any(Uint8Array));
+  });
+
+  // CHSP-PORT-04: onUnmount always clears portrait override (idempotent)
+  it('CHSP-PORT-04: onUnmount calls setPortraitOverride(3, null) to clear the override', async () => {
+    const mapBase = makeMockMapBase();
+    const { panel } = makePanelWithPortrait('on', mapBase);
+    await panel.onMount();
+    await panel.onUnmount();
+    expect(mapBase.setPortraitOverride).toHaveBeenCalledWith(3, null);
+  });
+});
+
+// ─── CHSP-FIX-PORT-* (INV-1 fixture tests — Plan 13-04) ─────────────────────
+
+describe('CharacterSheetPanel — INV-1 Bio fixtures (Plan 13-04)', () => {
+  const bioSnapshot = {
+    actorId: 'thorin-001',
+    name: 'THORIN',
+    hp: 45,
+    maxHp: 68,
+    tempHp: 0,
+    ac: 18,
+    level: 8,
+    conditions: [],
+    exhaustion: 0,
+    death: { success: 0, failure: 0 },
+    world: { modernRules: false },
+    inventory: [],
+    spells: { slots: [], spells: [] },
+  };
+
+  it('CHSP-FIX-PORT-01: sheet-bio-without-portrait.it.txt matches Bio tab text content', async () => {
+    const { renderTabContent } = await import('../character-sheet-tab-renderers.js');
+    const rows = renderTabContent('bio', bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot, 'it', 0);
+    const grid = AsciiGrid.fromString(rows.join('\n'));
+    await matchAsciiFixture(grid, resolve(fixtureDir(), 'sheet-bio-without-portrait.it.txt'));
+  });
+
+  it('CHSP-FIX-PORT-02: sheet-bio-with-portrait.it.txt matches Bio tab text content (text unchanged by portrait overlay)', async () => {
+    const { renderTabContent } = await import('../character-sheet-tab-renderers.js');
+    const rows = renderTabContent('bio', bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot, 'it', 0);
+    const grid = AsciiGrid.fromString(rows.join('\n'));
+    // When portrait is active, the TEXT container content is IDENTICAL — the portrait
+    // goes into MapBaseLayer's image slot, not the text container (D-13-08 design).
+    await matchAsciiFixture(grid, resolve(fixtureDir(), 'sheet-bio-with-portrait.it.txt'));
+  });
+});
