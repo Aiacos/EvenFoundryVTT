@@ -15,6 +15,7 @@
  * 6. HTTP routes: /v1/health, /v1/i18n/:lang, /v1/tools
  * 7. Reader REST routes: /v1/character/:actorId, /v1/combat/current, /v1/scene/viewport,
  *    /v1/events, /v1/characters
+ * 7a. Portrait proxy route: GET /v1/portrait/:actorId (Plan 13-03 — STRETCH-06)
  * 8. Internal route: POST /internal/delta (module → bridge delta push)
  * 9. WS route: /ws (handshake)
  * 10. Voice audio stream route: /v1/audio/stream (Phase 12 Deepgram STT)
@@ -47,6 +48,9 @@ import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
+import { PortraitCache } from './portrait/portrait-cache.js';
+import { createPortraitRenderer } from './portrait/portrait-renderer.js';
+import { registerPortraitRoute } from './routes/portrait.js';
 import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
 import { createDeepgramStt } from './voice/deepgram-stt.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
@@ -238,6 +242,27 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await registerSceneRoute(app, tokenCache, foundryFn);
   await registerEventsRoute(app, tokenCache, foundryFn);
   await registerCharactersListRoute(app, tokenCache, foundryFn);
+
+  // --- 7a. Portrait proxy route (Plan 13-03 — STRETCH-06) ---
+  // GET /v1/portrait/:actorId — fetches, dithers (Floyd-Steinberg 16-step greyscale),
+  // and caches a 100×60 4-bit PNG for the player's actor portrait.
+  // T-13-02: URL validation + SSRF deny-list + allowedHosts enforcement.
+  // T-13-03: SHA-256(resolvedURL) as cache key; actor ownership checked via foundrySnapshotFn.
+  // D-13-07: emits r1.portrait.ready WS push via deltaEmitter on cache miss.
+  const portraitCache = new PortraitCache({ maxEntries: 32, ttlMs: 60 * 60 * 1000 });
+  const portraitRenderer = createPortraitRenderer({ logger: app.log as Logger });
+  const portraitAllowedHosts = process.env['EVF_FOUNDRY_ORIGIN_HOST']
+    ? [process.env['EVF_FOUNDRY_ORIGIN_HOST']]
+    : [];
+  await registerPortraitRoute({
+    app,
+    tokenCache,
+    foundrySnapshotFn: foundryFn,
+    portraitCache,
+    portraitRenderer,
+    allowedHosts: portraitAllowedHosts,
+    deltaEmitter,
+  });
 
   // --- 8. Internal delta route (module → bridge push) ---
   await registerInternalDeltaRoute(app, deltaEmitter);
