@@ -19,11 +19,12 @@
  * or `updateCombat` cancels the Foundry hook chain. TypeScript `void` return type
  * enforces this contract.
  *
- * ## 14-socketlib-handler invariant
+ * ## 17-socketlib-handler invariant
  *
- * This module registers NO new socketlib handlers. The total count remains 14.
- * Emission is via the existing `bridgeDeltaEmitter` channel (fire-and-forget
- * POST to bridge). Per ADR-0011 single-workflow-origin discipline.
+ * This module registers NO new socketlib handlers. The total count remains 17
+ * (updated in Plan 13-01). Emission is via the existing `bridgeDeltaEmitter`
+ * channel (fire-and-forget POST to bridge). Per ADR-0011 single-workflow-origin
+ * discipline.
  *
  * ## Threat model
  *
@@ -88,13 +89,19 @@ const _attackIdSeen = new Map<string, Set<string>>();
  * - `'use-item'` → Bonus Action (Phase 9 heuristic — all use-item calls are
  *   treated as Bonus Action, which is correct for healing potions, bonus-action
  *   spells, etc.)
+ * - `'cast-shield'` → Reaction (Plan 13-02 — ACT-04 reaction execution)
+ * - `'cast-counterspell'` → Reaction (Plan 13-02 — ACT-04 reaction execution)
+ * - `'opportunity-attack'` → Reaction (Plan 13-02 — ACT-04 reaction execution)
  */
-type EconomySlot = 'action' | 'bonus';
+type EconomySlot = 'action' | 'bonus' | 'reaction';
 
 const TOOL_SLOT_MAP: Readonly<Record<string, EconomySlot>> = {
   'cast-spell': 'action',
   'weapon-attack': 'action',
   'use-item': 'bonus',
+  'cast-shield': 'reaction',
+  'cast-counterspell': 'reaction',
+  'opportunity-attack': 'reaction',
 } as const;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -233,6 +240,11 @@ export function registerCombatActionTracker(
           current.actionsUsed = 1;
           // multiAttackInProgress stays as-is (no multi-attack group active)
         }
+      } else if (slot === 'reaction') {
+        // Reaction slot — cast-shield, cast-counterspell, opportunity-attack (Plan 13-02)
+        // Standard 5e: one reaction per round; cap at 1 (no dedup needed, reaction tools
+        // are single-use per-turn by game rule).
+        current.reactionsUsed = 1;
       } else {
         // Bonus action slot (use-item)
         current.bonusActionsUsed = 1;
