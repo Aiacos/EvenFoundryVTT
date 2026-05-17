@@ -1,0 +1,411 @@
+/**
+ * BridgeClient — WebSocket proxy to the EVF bridge's tool.invoke envelope path.
+ *
+ * Sends tool invocations via the WS `tool.invoke` envelope protocol (NOT REST
+ * `/v1/tools/:name` which still returns `phase-07-pending` stubs). This is the
+ * same protocol path that g2-app uses for Phase 7 tool dispatch.
+ *
+ * Design decisions:
+ * - WS-only for ALL 6 MCP tools — including drop_concentration which has no
+ *   REST route at all (not in TOOL_NAMES / Phase 3 REST surface).
+ * - FIFO request queue: one in-flight tool call at a time. The bridge does NOT
+ *   echo `idempotencyKey` in `tool.result` responses, so we cannot correlate
+ *   multiple concurrent calls. MCP tool calls are user-driven (one per LLM turn)
+ *   so throughput impact is negligible.
+ * - Monotonic `seq` counter per connection instance (per EVF envelope protocol).
+ * - `wsFactory` injection for test isolation (production default: `new WebSocket(url)`).
+ * - `ready: Promise<void>` resolves after successful handshake; rejects on failure
+ *   (buildMcpServer can await it to surface connection failures at boot).
+ *
+ * Security:
+ * - T-11-01: bearer never logged (only bridgeUrl appears in log output).
+ * - Bearer is sent ONLY in the client_hello handshake envelope (WS auth).
+ * - BridgeAuthExpiredError thrown on WS close code 4001 or tool.result with
+ *   error='invalid_token' — operator must restart with refreshed bearer.
+ *
+ * @see packages/bridge/src/ws/tool-invoke.ts (bridge consumer)
+ * @see packages/bridge/src/ws/handshake.ts (handshake protocol)
+ * @see packages/shared-protocol/src/payloads/tool.ts (ToolInvocationEnvelopePayloadSchema)
+ * @see .planning/phases/11-v2-foundry-mcp-server/11-02-PLAN.md Task 1
+ */
+
+import type { Logger } from 'pino';
+
+// ─── Public types ─────────────────────────────────────────────────────────────
+
+/**
+ * Result shape returned by `BridgeClient.invokeTool`.
+ *
+ * Mirrors the `ToolInvokeResult` from `packages/bridge/src/ws/tool-invoke.ts`
+ * without importing across packages.
+ */
+export interface BridgeInvokeResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/**
+ * Thrown when the bridge signals bearer expiry.
+ *
+ * Trigger conditions:
+ * - WS close with code 4001 (`invalid_token` close reason).
+ * - tool.result envelope with `payload.error === 'invalid_token'`.
+ *
+ * Per D-11-01-AUTH: the operator must restart the MCP server with a
+ * refreshed bearer token. No automatic retry.
+ */
+export class BridgeAuthExpiredError extends Error {
+  override readonly name = 'BridgeAuthExpiredError';
+
+  constructor(message = 'Bridge bearer expired — restart MCP server with refreshed EVF_BEARER') {
+    super(message);
+    Object.setPrototypeOf(this, BridgeAuthExpiredError.prototype);
+  }
+}
+
+// ─── Constructor options ──────────────────────────────────────────────────────
+
+/**
+ * Constructor options for {@link BridgeClient}.
+ */
+export interface BridgeClientOptions {
+  /** Bridge HTTP URL (converted to `ws://` or `wss://` for WS connection). */
+  bridgeUrl: string;
+  /** Opaque bearer token — sent in handshake ONLY, never logged (T-11-01). */
+  bearer: string;
+  /** pino logger (with bearer-redact config applied by buildLogger). */
+  logger: Logger;
+  /**
+   * Optional WebSocket factory for test injection.
+   *
+   * Production default: `() => new WebSocket(wsUrl)` (Node 24 built-in WS).
+   * Tests: inject a mock WebSocket class that exposes `simulateOpen`,
+   * `simulateMessage`, `simulateClose` helpers.
+   *
+   * @param url - The resolved WS URL to connect to.
+   */
+  wsFactory?: (url: string) => WebSocket;
+}
+
+// ─── FIFO queue entry ─────────────────────────────────────────────────────────
+
+interface PendingCall {
+  resolve: (result: BridgeInvokeResult) => void;
+  reject: (err: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+// ─── Snake→kebab mapping ──────────────────────────────────────────────────────
+
+/**
+ * Convert snake_case MCP tool name to kebab-case ToolId used by the bridge.
+ *
+ * The bridge's `ToolInvocationEnvelopePayloadSchema.toolId` uses kebab-case IDs
+ * (e.g. 'cast-spell') matching `TOOL_ID_SCHEMA` in `packages/shared-protocol`.
+ * MCP callers pass snake_case names (e.g. 'cast_spell') matching `TOOL_NAMES`.
+ */
+function snakeToKebab(snakeName: string): string {
+  return snakeName.replace(/_/g, '-');
+}
+
+// ─── BridgeClient ─────────────────────────────────────────────────────────────
+
+/**
+ * WebSocket client that wraps the EVF bridge's `tool.invoke` envelope path.
+ *
+ * Opens a WS connection at construction time, performs the Phase 2 handshake
+ * (client_hello → server_hello), and then provides `invokeTool` for sending
+ * `tool.invoke` envelopes and awaiting `tool.result` responses.
+ *
+ * Only ONE tool call may be in-flight at a time (FIFO queue). This is sufficient
+ * for MCP usage where an LLM issues one tool call per turn.
+ */
+export class BridgeClient {
+  /** Resolves after successful WS handshake; rejects on connection failure. */
+  readonly ready: Promise<void>;
+
+  private readonly _logger: Logger;
+  private readonly _bearer: string;
+  private _ws: WebSocket | null = null;
+  private _connected = false;
+  private _sessionId: string | null = null;
+  private _seq = 0;
+
+  /** FIFO: the single in-flight tool call (if any). */
+  private _pending: PendingCall | null = null;
+
+  /** Queue of tool calls waiting to be dispatched (after the in-flight completes). */
+  private readonly _queue: Array<{
+    toolId: string;
+    args: object;
+    resolve: (result: BridgeInvokeResult) => void;
+    reject: (err: unknown) => void;
+  }> = [];
+
+  constructor(opts: BridgeClientOptions) {
+    this._logger = opts.logger;
+    this._bearer = opts.bearer;
+
+    this.ready = this._connect(opts);
+  }
+
+  /**
+   * Open WS connection and perform the EVF handshake.
+   *
+   * Returns a Promise that resolves on successful server_hello, or resolves
+   * with failed state (not reject) when wsFactory throws — so the caller can
+   * always safely await ready and then call invokeTool (which returns an error
+   * result instead of throwing).
+   */
+  private _connect(opts: BridgeClientOptions): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const wsUrl = opts.bridgeUrl.replace(/^http/, 'ws') + '/ws';
+      const factory = opts.wsFactory ?? ((url: string) => new WebSocket(url));
+
+      let ws: WebSocket;
+      try {
+        ws = factory(wsUrl);
+      } catch (err) {
+        this._logger.warn(
+          { bridgeUrl: opts.bridgeUrl },
+          'BridgeClient: wsFactory threw — bridge unreachable',
+        );
+        this._connected = false;
+        resolve(); // Resolve (not reject) so awaiting ready is always safe.
+        return;
+      }
+
+      this._ws = ws;
+
+      ws.onopen = () => {
+        // Send client_hello handshake envelope.
+        const hello = {
+          proto: 'evf-v1',
+          token: this._bearer,
+          locale: 'en',
+          capabilities: [],
+        };
+        // NOTE: bearer IS sent here in the handshake token field — that's the WS auth protocol.
+        // The logger's redact list covers 'token' so it will NOT appear in pino output.
+        ws.send(JSON.stringify(hello));
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        const raw = typeof event.data === 'string' ? event.data : String(event.data);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          return;
+        }
+
+        // ── Handshake: server_hello ────────────────────────────────────────────
+        if (!this._connected) {
+          // First message after open is the server_hello.
+          const hello = parsed as Record<string, unknown>;
+          if (typeof hello.session_id === 'string') {
+            this._sessionId = hello.session_id;
+            this._connected = true;
+            this._logger.info(
+              { bridgeUrl: opts.bridgeUrl, sessionId: this._sessionId },
+              'BridgeClient: connected to bridge WS',
+            );
+            resolve();
+          } else {
+            this._logger.warn(
+              { bridgeUrl: opts.bridgeUrl },
+              'BridgeClient: unexpected handshake response',
+            );
+            // Still resolve — invokeTool will return bridge_unreachable.
+            resolve();
+          }
+          return;
+        }
+
+        // ── Post-handshake messages: tool.result + bearer.rotated ──────────────
+        const envelope = parsed as Record<string, unknown>;
+
+        if (envelope.type === 'bearer.rotated') {
+          const p = envelope.payload as Record<string, unknown> | undefined;
+          const graceUntil = p?.graceUntil;
+          this._logger.warn(
+            { graceUntil },
+            'BridgeClient: bearer.rotated received — env-var bearer will expire; restart MCP server with refreshed bearer to maintain availability',
+          );
+          return;
+        }
+
+        if (envelope.type !== 'tool.result') {
+          return;
+        }
+
+        const payload = envelope.payload as BridgeInvokeResult | undefined;
+        if (!payload) return;
+
+        // Check for auth expiry signal in tool.result payload.
+        if (payload.error === 'invalid_token') {
+          this._rejectPendingWithAuthError();
+          return;
+        }
+
+        this._resolvePending(payload);
+      };
+
+      ws.onclose = (event: CloseEvent) => {
+        this._connected = false;
+        if (!this._sessionId) {
+          // Closed before handshake completed — resolve ready anyway.
+          resolve();
+        }
+        if (event.code === 4001) {
+          // Bearer expired — reject pending and drain queue.
+          this._rejectPendingWithAuthError();
+          this._drainQueueWithAuthError();
+        } else {
+          // Other close — reject pending with bridge_unreachable.
+          this._resolvePending({ success: false, error: 'bridge_unreachable' });
+          this._drainQueueUnreachable();
+        }
+      };
+
+      ws.onerror = (_event: Event) => {
+        if (!this._connected) {
+          this._connected = false;
+          resolve(); // Let ready resolve; invokeTool will return bridge_unreachable.
+        }
+      };
+    });
+  }
+
+  private _nextSeq(): number {
+    this._seq += 1;
+    return this._seq;
+  }
+
+  private _resolvePending(result: BridgeInvokeResult): void {
+    const pending = this._pending;
+    if (!pending) return;
+    this._pending = null;
+    clearTimeout(pending.timer);
+    pending.resolve(result);
+    // Process next queued call.
+    this._dequeueNext();
+  }
+
+  private _rejectPendingWithAuthError(): void {
+    const pending = this._pending;
+    if (!pending) return;
+    this._pending = null;
+    clearTimeout(pending.timer);
+    pending.reject(new BridgeAuthExpiredError());
+  }
+
+  private _drainQueueWithAuthError(): void {
+    while (this._queue.length > 0) {
+      const next = this._queue.shift();
+      next?.reject(new BridgeAuthExpiredError());
+    }
+  }
+
+  private _drainQueueUnreachable(): void {
+    while (this._queue.length > 0) {
+      const next = this._queue.shift();
+      next?.resolve({ success: false, error: 'bridge_unreachable' });
+    }
+  }
+
+  private _dequeueNext(): void {
+    if (this._queue.length === 0 || this._pending) return;
+    const next = this._queue.shift();
+    if (!next) return;
+    this._dispatchTool(next.toolId, next.args, next.resolve, next.reject);
+  }
+
+  private _dispatchTool(
+    toolId: string,
+    args: object,
+    resolve: (r: BridgeInvokeResult) => void,
+    reject: (e: unknown) => void,
+  ): void {
+    const ws = this._ws;
+    if (!ws || !this._connected) {
+      resolve({ success: false, error: 'bridge_unreachable' });
+      return;
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const envelope = {
+      proto: 'evf-v1',
+      seq: this._nextSeq(),
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: this._sessionId,
+      payload: {
+        toolId, // kebab-case (already converted)
+        idempotencyKey,
+        args,
+      },
+    };
+
+    const timer = setTimeout(() => {
+      if (this._pending?.timer === timer) {
+        this._pending = null;
+        resolve({ success: false, error: 'bridge_timeout' });
+        this._dequeueNext();
+      }
+    }, 30_000);
+
+    this._pending = { resolve, reject, timer };
+
+    try {
+      ws.send(JSON.stringify(envelope));
+    } catch (err) {
+      this._pending = null;
+      clearTimeout(timer);
+      resolve({ success: false, error: 'bridge_unreachable' });
+    }
+  }
+
+  /**
+   * Invoke a tool via the bridge WS `tool.invoke` envelope path.
+   *
+   * @param snakeName - Snake_case bridge tool name (e.g. 'cast_spell').
+   * @param args      - Tool-specific argument payload.
+   * @returns Promise resolving to {@link BridgeInvokeResult}.
+   *          Never rejects — errors are encoded as `{ success: false, error }`.
+   *          Only throws `BridgeAuthExpiredError` when the bearer expires.
+   */
+  async invokeTool(snakeName: string, args: object): Promise<BridgeInvokeResult> {
+    // Convert snake_case → kebab-case for the bridge toolId field.
+    const toolId = snakeToKebab(snakeName);
+
+    if (!this._connected || !this._ws) {
+      return { success: false, error: 'bridge_unreachable' };
+    }
+
+    return new Promise<BridgeInvokeResult>((resolve, reject) => {
+      if (this._pending) {
+        // FIFO: queue this call for after the in-flight completes.
+        this._queue.push({ toolId, args, resolve, reject });
+        return;
+      }
+      this._dispatchTool(toolId, args, resolve, reject);
+    });
+  }
+
+  /**
+   * Close the WS connection cleanly.
+   */
+  async close(): Promise<void> {
+    if (this._ws) {
+      try {
+        this._ws.close(1000, 'mcp_server_shutdown');
+      } catch {
+        /* ignore */
+      }
+      this._ws = null;
+    }
+    this._connected = false;
+  }
+}

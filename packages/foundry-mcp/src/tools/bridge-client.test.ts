@@ -29,11 +29,7 @@
 
 import pino from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  BridgeAuthExpiredError,
-  BridgeClient,
-  type BridgeInvokeResult,
-} from './bridge-client.js';
+import { BridgeAuthExpiredError, BridgeClient, type BridgeInvokeResult } from './bridge-client.js';
 
 // ─── Mock WebSocket ────────────────────────────────────────────────────────────
 
@@ -130,7 +126,9 @@ describe('BridgeClient', () => {
   afterEach(async () => {
     try {
       await client?.close();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     vi.restoreAllMocks();
   });
 
@@ -164,9 +162,17 @@ describe('BridgeClient', () => {
     client = await connectClient();
     const invokePromise = client.invokeTool('cast_spell', {});
     await new Promise((resolve) => setTimeout(resolve, 0));
-    mockWs.simulateMessage(makeToolResult({ success: true, data: { status: 'phase-07-pending', tool: 'cast_spell', accepted_at: 123 } }));
+    mockWs.simulateMessage(
+      makeToolResult({
+        success: true,
+        data: { status: 'phase-07-pending', tool: 'cast_spell', accepted_at: 123 },
+      }),
+    );
     const result = await invokePromise;
-    expect(result).toEqual({ success: true, data: { status: 'phase-07-pending', tool: 'cast_spell', accepted_at: 123 } });
+    expect(result).toEqual({
+      success: true,
+      data: { status: 'phase-07-pending', tool: 'cast_spell', accepted_at: 123 },
+    });
   });
 
   it('case 3: bridge success with chatCardId shape → data passes through', async () => {
@@ -218,7 +224,9 @@ describe('BridgeClient', () => {
       bridgeUrl: 'http://localhost:8910',
       bearer: 'test-bearer',
       logger,
-      wsFactory: () => { throw new Error('ECONNREFUSED'); },
+      wsFactory: () => {
+        throw new Error('ECONNREFUSED');
+      },
     });
 
     // ready should resolve (with failed state, not throw)
