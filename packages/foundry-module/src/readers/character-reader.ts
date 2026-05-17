@@ -294,6 +294,13 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
   // Conditions come from Foundry v13+ actor.statuses (Set<string>)
   const conditions = Array.from(actor.statuses);
 
+  // Portrait URL passthrough (Plan 13-03 — STRETCH-06): emit portrait.url when
+  // actor.img is a non-empty string. Bridge validates URL safety (T-13-02 SSRF).
+  // Per D-13-05: placeholder ('icons/svg/mystery-man.svg') is passed through
+  // unchanged — bridge decides whether to render or skip.
+  const img = actor.img;
+  const portraitField = typeof img === 'string' && img.length > 0 ? { portrait: { url: img } } : {};
+
   return {
     actorId: actor.id,
     name: actor.name,
@@ -308,6 +315,7 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     world: { modernRules },
     inventory: extractInventory(actor),
     spells: extractSpellbook(actor),
+    ...portraitField,
   };
 }
 

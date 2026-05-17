@@ -449,6 +449,21 @@ interface FoundryActor {
   items?: {
     contents: FoundryItem[];
   };
+  /**
+   * Actor portrait image path (Plan 13-03 — STRETCH-06 Bio tab portrait).
+   *
+   * Canonical Foundry `actor.img` field — the portrait URL for the character.
+   * Common shapes: relative path ('worlds/{world}/portraits/hero.webp'),
+   * absolute external URL ('https://cdn.example.com/hero.png'), or Foundry
+   * default placeholder ('icons/svg/mystery-man.svg').
+   *
+   * character-reader.ts passes this through as `snapshot.portrait.url` when present
+   * and non-empty. Bridge validates URL safety (T-13-02 SSRF mitigation).
+   *
+   * @see packages/foundry-module/src/readers/character-reader.ts
+   * @see .planning/phases/13-v2-stretch/13-03-PLAN.md (D-13-05)
+   */
+  img?: string;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────

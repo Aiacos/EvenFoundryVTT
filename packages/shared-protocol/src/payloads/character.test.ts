@@ -345,3 +345,44 @@ describe('CharacterSnapshotSchema — spells extension (CHAR-SPL)', () => {
     expect(result.success).toBe(true);
   });
 });
+
+// ─── Plan 13-03: CharacterSnapshot optional portrait field ────────────────────
+
+describe('CharacterSnapshotSchema — portrait extension (CS-PORT)', () => {
+  // CS-PORT-01: portrait present → accepted with url
+  it('CS-PORT-01: portrait with url is accepted when actor.img is present', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      portrait: { url: 'worlds/my-world/portraits/thorin.webp' },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.portrait?.url).toBe('worlds/my-world/portraits/thorin.webp');
+  });
+
+  // CS-PORT-02: portrait absent → snapshot still valid (optional field, no breaking change)
+  it('CS-PORT-02: portrait absent → snapshot still valid (backward compatible)', () => {
+    const result = CharacterSnapshotSchema.safeParse(VALID_SNAPSHOT);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.portrait).toBeUndefined();
+  });
+
+  // CS-PORT-03: portrait with absolute external URL → accepted (bridge validates, not schema)
+  it('CS-PORT-03: portrait with absolute HTTPS URL is accepted by schema', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      portrait: { url: 'https://cdn.example.com/portraits/hero.png' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // CS-PORT-04: portrait with empty url → rejected (min(1))
+  it('CS-PORT-04: portrait with empty url is rejected', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      portrait: { url: '' },
+    });
+    expect(result.success).toBe(false);
+  });
+});

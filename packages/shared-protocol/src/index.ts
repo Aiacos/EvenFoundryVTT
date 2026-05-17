@@ -255,6 +255,17 @@ export {
   VoiceTranscriptPayloadSchema,
 } from './payloads/voice.js';
 
+// ─── Phase 13 additions (Plan 13-03 — portrait ready schema) ─────────────────
+// Portrait ready payload schema for STRETCH-06 Bio tab portrait feature.
+// Bridge emits r1.portrait.ready envelope on cache-miss render path.
+// Plan 13-04 portrait-dispatcher consumes this at the WS-receive boundary.
+
+export {
+  type PortraitReadyPayload,
+  PortraitReadyPayloadSchema,
+  R1_PORTRAIT_READY_TYPE,
+} from './payloads/portrait.js';
+
 // ─── Phase 13 additions (Plan 13-01 — ACT-04 reaction schemas) ───────────────
 // Three new ACT-04 reaction handler input schemas.
 // Socketlib handler count flips from 14 → 17 with Plan 13-01.

@@ -100,6 +100,8 @@ function makeActor(
     items: (ReturnType<typeof makeItem> | ReturnType<typeof makeSpellItem>)[];
     // Phase 5 Plan 05-04: spell slot data
     spellSlots: Record<string, { value: number; max: number }>;
+    // Plan 13-03: actor portrait URL (actor.img)
+    img: string | undefined;
   }> = {},
 ) {
   const death =
@@ -130,6 +132,8 @@ function makeActor(
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
     items: { contents: overrides.items ?? [] },
+    // img is optional — omit key entirely if undefined to exercise the absence guard
+    ...('img' in overrides && overrides.img !== undefined ? { img: overrides.img } : {}),
   };
 }
 
@@ -550,6 +554,38 @@ describe('getCharacterSnapshot', () => {
     const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
     const result = CharacterSnapshotSchema.safeParse(snap);
     expect(result.success).toBe(true);
+  });
+
+  // ── CR-PORT: Plan 13-03 portrait passthrough tests ────────────────────────
+
+  it('CR-PORT-01: actor with img → portrait.url surfaced in snapshot', async () => {
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-port-1', img: 'worlds/my-world/portraits/thorin.webp' })]),
+    );
+
+    const snap = getCharacterSnapshot('pc-port-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.portrait?.url).toBe('worlds/my-world/portraits/thorin.webp');
+  });
+
+  it('CR-PORT-02: actor with empty-string img → portrait field omitted', async () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-port-2', img: '' })]));
+
+    const snap = getCharacterSnapshot('pc-port-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.portrait).toBeUndefined();
+  });
+
+  it('CR-PORT-03: actor with no img field → portrait field omitted', async () => {
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-port-3' })]), // no img override
+    );
+
+    const snap = getCharacterSnapshot('pc-port-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.portrait).toBeUndefined();
   });
 });
 

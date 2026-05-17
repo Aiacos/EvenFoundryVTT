@@ -254,6 +254,15 @@ export const CharacterSnapshotSchema = z.strictObject({
    * Non-casters have `{ slots: [], spells: [] }`.
    */
   spells: SpellbookSchema,
+  /**
+   * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
+   *
+   * Optional — omitted entirely for actors where `actor.img` is absent or an empty string.
+   * The bridge validates and resolves the URL against the Foundry world origin (T-13-02).
+   * NOTE: z.string().min(1) accepts any non-empty string (including relative paths like
+   * `worlds/foo/p.webp`) — URL validation is the bridge's responsibility, not the schema's.
+   */
+  portrait: z.object({ url: z.string().min(1) }).optional(),
 });
 
 export type CharacterSnapshot = z.infer<typeof CharacterSnapshotSchema>;
