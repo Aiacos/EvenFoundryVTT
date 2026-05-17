@@ -475,11 +475,24 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // can call _keytermRefresher.dispose(). For now the bridge does not exit
   // gracefully — Docker SIGTERM is the only teardown path — so dispose()
   // is exercised only by Vitest tests.
-  const _keytermRefresher = new KeytermRefresher({
-    cache: entityCache,
-    adapter: deepgramStt,
-    logger: app.log as Logger,
-  });
+  //
+  // # WR-03 — guard behind adapter.isEnabled()
+  //
+  // When DEEPGRAM_API_KEY is unset the Deepgram adapter is in disabled mode
+  // and refreshKeyterm() is a logger.info call with no user-visible effect.
+  // Instantiating KeytermRefresher in that state still subscribes to every
+  // entityCache.onChange — i.e., every Foundry updateCompendium burst writes
+  // a meaningless `keyterm.refreshed` info line for a feature that isn't
+  // running. Skip instantiation entirely when the adapter is disabled so
+  // ops dashboards reflect reality.
+  let _keytermRefresher: KeytermRefresher | null = null;
+  if (deepgramStt.isEnabled()) {
+    _keytermRefresher = new KeytermRefresher({
+      cache: entityCache,
+      adapter: deepgramStt,
+      logger: app.log as Logger,
+    });
+  }
   void _keytermRefresher;
 
   return app;
