@@ -37,6 +37,8 @@ interface TestDeepgramAdapter {
   connect: (sessionId: string) => DeepgramStream;
   /** Spy handle for assertions — same function as connect, but typed for vitest .toHaveBeenCalledTimes */
   connectSpy: ReturnType<typeof vi.fn>;
+  /** Phase 15 Plan 03 — VOICE-09 invalidation API; no-op stub for audio-stream-route tests. */
+  refreshKeyterm: () => void;
 }
 
 function buildEnabledDeepgramAdapter(): TestDeepgramAdapter {
@@ -65,6 +67,7 @@ function buildEnabledDeepgramAdapter(): TestDeepgramAdapter {
     connect: connectSpy as (sessionId: string) => DeepgramStream,
     connectSpy,
     lastStream,
+    refreshKeyterm: vi.fn(),
   };
 }
 
@@ -72,6 +75,7 @@ function buildDisabledDeepgramAdapter(): DeepgramAdapter {
   return {
     isEnabled: () => false,
     connect: vi.fn(),
+    refreshKeyterm: vi.fn(),
   };
 }
 

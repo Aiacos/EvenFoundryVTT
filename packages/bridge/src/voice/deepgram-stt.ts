@@ -91,6 +91,31 @@ export interface DeepgramAdapter {
   isEnabled(): boolean;
   /** Create a new DeepgramStream for an inbound audio session. */
   connect(sessionId: string): DeepgramStream;
+  /**
+   * Phase 15 Plan 03 — invalidation signal for the keyterm list (VOICE-09).
+   *
+   * Re-invokes the {@link CreateDeepgramSttOpts.keytermProvider} (so the log
+   * payload reflects the latest count) and emits a structured
+   * `event: 'keyterm.refreshed'` pino logger.info call. **Does NOT touch any
+   * active Deepgram WS** — the Deepgram streaming protocol does not support
+   * mid-stream keyterm hot-swap, so the realistic refresh model is "next
+   * connect() picks up the new keyterm list" (already true thanks to the
+   * lazy `keytermProvider` contract — DGKT-05).
+   *
+   * The Phase 15 KeytermRefresher orchestrator calls this method after each
+   * debounced + mutex-serialised entity-pack-cache change. Sessions in
+   * progress when refreshKeyterm() fires continue with their original
+   * keyterm list until next reconnect — acceptable per CONTEXT D-07
+   * (Deepgram sessions are short-lived; "≤ 5 min SLA" from VOICE-09 is
+   * naturally satisfied by per-utterance reconnects).
+   *
+   * T-15-11 disposition (accept): the emitted log payload contains ONLY
+   * `keytermCount: number` + `fromCache: boolean` — **never the keyterm
+   * values themselves**. DGRF-02 enforces this.
+   *
+   * @see ../../../planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-03-PLAN.md DGRF-01..DGRF-05
+   */
+  refreshKeyterm(): void;
 }
 
 // ─── Deepgram URL ─────────────────────────────────────────────────────────────
@@ -296,6 +321,41 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
   return {
     isEnabled(): boolean {
       return enabled;
+    },
+
+    refreshKeyterm(): void {
+      // Phase 15 Plan 03 — VOICE-09 invalidation signal.
+      // The Deepgram WS protocol does NOT support mid-stream keyterm hot-swap.
+      // The realistic refresh model is "next connect() picks up the new
+      // keyterm list" (already true thanks to lazy keytermProvider — DGKT-05).
+      // We re-invoke the provider only to populate the log payload count; the
+      // returned array is otherwise discarded. T-15-11 disposition (accept):
+      // log MUST NOT include keyterm values, ONLY the count + fromCache flag.
+      let keytermCount = 0;
+      if (keytermProvider !== undefined) {
+        try {
+          keytermCount = keytermProvider().length;
+        } catch (err) {
+          // Same defensive try/catch pattern as in connect() — a throwing
+          // provider degrades to baseline (count=0) rather than crash the
+          // refresh path. The KeytermRefresher orchestrator's drain-then-
+          // restart mutex remains safe because this method always returns
+          // void synchronously.
+          logger.warn(
+            { err },
+            'deepgram-stt: keytermProvider threw during refreshKeyterm — log count defaults to 0',
+          );
+          keytermCount = 0;
+        }
+      }
+      logger.info(
+        {
+          event: 'keyterm.refreshed',
+          keytermCount,
+          fromCache: keytermProvider !== undefined,
+        },
+        'deepgram-stt: keyterm list invalidated; next connect() will use updated values',
+      );
     },
 
     connect(sessionId: string): DeepgramStream {
