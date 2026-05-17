@@ -325,14 +325,23 @@ Plans:
 - [x] 12-03-PLAN.md — Deepgram Nova-3 streaming-STT adapter (bridge) + audio-capture (g2-app via EvenAppBridge.audioControl) + ISM-12-01..06 integration smoke + DEEPGRAM_API_KEY pino redact + Phase 12 closure (12-VERIFICATION human_needed for SC-12-01; STATE/ROADMAP atomic) (VOICE-01, VOICE-04, VOICE-05) — 2026-05-17
 
 ### Phase 13: V2 Stretch (OPZIONALE)
-**Goal**: Whatever survives the V2 cull becomes Phase 13. Reaction execution, biometric narrative, multi-player, dnd5e v6.x, PF2e, portraits, DSN raster, headless Foundry, advanced dither.
+**Goal**: Promote REACT-01 passive notification → ACT-04 reaction execution (Shield + Counterspell + Opportunity Attack) AND ship STRETCH-06 Sheet portrait behind a feature flag. 7 other STRETCH items (STRETCH-01..05, 07, 08) explicitly deferred to post-v0.9.11 milestones.
 **Depends on**: Phase 12
-**Requirements**: ACT-04, STRETCH-01..STRETCH-08 *(v2 — tracked in REQUIREMENTS.md v2 section, not in MVP coverage)*
+**Requirements**: ACT-04, STRETCH-06 *(v2 — tracked in REQUIREMENTS.md v2 section; STRETCH-01..05/07/08 deferred per 13-CONTEXT.md)*
 **Success Criteria** (what must be TRUE):
-  1. Reaction *execution* flow (Shield consume reaction slot + +5 AC; Counterspell ability check; Opportunity Attack via Ready Action) — promoted from REACT-01 passive notification (ACT-04)
-  2. At least one stretch ships behind a feature flag (e.g., Sheet portrait via §7.5 100×60 dithered image, or DSN raster stream §7.15.3 Approach B)
-  3. Multi-player sync (4× G2 on one world) reaches a prototype gate with measured BLE coexistence
-**Plans**: TBD
+  1. Reaction *execution* flow (Shield consume reaction slot; Counterspell ability check; Opportunity Attack via Ready Action) — promoted from REACT-01 passive notification (ACT-04)
+  2. STRETCH-06 Sheet portrait ships behind `view.features.portrait` Even Hub feature flag (default off) — 100×60 4-bit dithered image on Bio tab
+  3. socketlib registerComplexHandler count FLIPS from 14 to 17 (3 new reaction handlers); container budget remains within SDK 4-image / 8-text cap via MapBaseLayer slot reassignment
+**Plans:** 4 plans
+Plans:
+**Wave 1**
+- [ ] 13-01-PLAN.md — 3 reaction handlers (cast-shield + cast-counterspell + opportunity-attack) + shared-protocol input schemas + tool-registry extension + socketlib registrations 14 → 17 + module.test invariant flip (ACT-04 handlers)
+**Wave 2** *(blocked on 13-01)*
+- [ ] 13-02-PLAN.md — ReactionPromptPanel (z=2) + reaction-prompt-dispatcher (500ms debounce + 5s timeout + concurrent-drop) + combat-action-tracker reaction slot accounting + 3 INV-1 fixtures (ACT-04 UX)
+**Wave 3** *(blocked on 13-01 + 13-02)*
+- [ ] 13-03-PLAN.md — character-reader portrait.url extension + bridge image-proxy (URL validation + SSRF deny-list + cache by SHA-256 + image-q/upng-js dither pipeline) + r1.portrait.ready envelope schema (STRETCH-06 server)
+**Wave 4** *(blocked on 13-01 + 13-02 + 13-03; NOT autonomous — Phase 13 + v0.9.11 milestone closure)*
+- [ ] 13-04-PLAN.md — CharacterSheetPanel Bio portrait wiring + MapBaseLayer.setPortraitOverride slot reassignment + view.features.portrait feature flag + boot-engine wiring + 13-integration-smoke ISM-13-01..10 + 13-VERIFICATION.md + STATE/ROADMAP atomic INV-3 + v0.9.11 milestone-complete signal
 
 ## Progress
 
@@ -355,7 +364,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
 | 11. V2 `foundry-mcp` Server | 4/4 | Complete (pure software; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld) | 2026-05-17 |
 | 12. V2 Voice UX Tuning | 3/3 | Complete (software-complete; SC-12-01 deferred to ADR-0005 Branch A `human_needed` — running total 33 hardware-pending SCs) | 2026-05-17 |
-| 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
+| 13. V2 Stretch | 0/4 | Planning complete (4 PLAN.md committed 2026-05-17; ACT-04 + STRETCH-06 minimal scope; 7 STRETCH deferred) | - |
 
 ## Coverage Summary
 
