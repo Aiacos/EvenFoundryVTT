@@ -97,9 +97,13 @@ describe('buildKeytermList — union basics', () => {
       { name: 'Lord Brankor', nameLocalized: 'Lord Brankor' },
     ]);
     const result = buildKeytermList(SPELL_KEYTERMS, snap, { limitOverride: 1000 });
-    expect(result).toContain('longsword');
-    expect(result).toContain('spada lunga');
-    expect(result).toContain('lord brankor'); // single occurrence — see KM-04
+    // Entity-pack candidates preserve original casing (no static-collision here).
+    expect(result).toContain('Longsword');
+    expect(result).toContain('Spada Lunga');
+    expect(result).toContain('Lord Brankor'); // single occurrence — see KM-04
+    // Dedupe by lower-cased trimmed key — the duplicate Lord Brankor / Lord Brankor
+    // pair within the same entry collapses to a single entry in `out`.
+    expect(result.filter((s) => s.toLowerCase().trim() === 'lord brankor')).toHaveLength(1);
   });
 });
 
