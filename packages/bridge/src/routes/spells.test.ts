@@ -18,13 +18,13 @@
  * @see .planning/quick/20260517-spell-lookup-foundry-derived/PLAN.md Task 2
  */
 
-import { type FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildServer } from '../server.js';
-import { SpellPackCache } from '../cache/spell-pack-cache.js';
-import { handleSpellPackEnvelope } from '../ws/spell-pack-handler.js';
 import type { AvailableSpellsPayload } from '@evf/shared-protocol';
 import { R1_SPELLS_AVAILABLE_TYPE } from '@evf/shared-protocol';
+import type { FastifyInstance } from 'fastify';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SpellPackCache } from '../cache/spell-pack-cache.js';
+import { buildServer } from '../server.js';
+import { handleSpellPackEnvelope } from '../ws/spell-pack-handler.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -141,8 +141,13 @@ describe('GET /v1/spells/available', () => {
     // Use a mock foundryValidateFn that accepts bearer 'test-token'
     app = await buildServer({
       foundryValidateFn: async (bearer: string) => {
-        if (bearer === 'test-token') return { valid: true as const, userId: 'user-1' };
-        return { valid: false as const, reason: 'invalid_token' as const };
+        if (bearer === 'test-token') {
+          return {
+            valid: true,
+            entry: { alias: 'Test', expiresAt: Date.now() + 86400000, worldId: 'test-world' },
+          };
+        }
+        return { valid: false, reason: 'unknown_token' as const };
       },
       spellCache,
     });

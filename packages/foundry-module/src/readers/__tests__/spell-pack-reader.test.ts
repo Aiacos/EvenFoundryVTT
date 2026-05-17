@@ -17,8 +17,8 @@
  * @see .planning/quick/20260517-spell-lookup-foundry-derived/PLAN.md Task 1
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { R1_SPELLS_AVAILABLE_TYPE } from '@evf/shared-protocol';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readAvailableSpells, registerSpellPackReader } from '../spell-pack-reader.js';
 
 // ─── Mock factories ────────────────────────────────────────────────────────────
@@ -59,7 +59,8 @@ function makeHooksMock() {
     once: vi.fn(),
     on: vi.fn().mockImplementation((event: string, fn: (...args: unknown[]) => unknown) => {
       if (!hookHandlers.has(event)) hookHandlers.set(event, []);
-      hookHandlers.get(event)!.push(fn);
+      const handlers = hookHandlers.get(event);
+      if (handlers !== undefined) handlers.push(fn);
       return hookIdCounter++;
     }),
     off: vi.fn().mockImplementation((id: number) => {
@@ -82,7 +83,7 @@ describe('readAvailableSpells', () => {
       makeItemEntry('item-001', 'Longsword', 'weapon'), // should be skipped
     ]);
     const tashasSpells = makePack('dnd5e.tashas', 'dnd5e', 'Item', [
-      makeSpellEntry('spell-003', 'Tasha\'s Hideous Laughter'),
+      makeSpellEntry('spell-003', "Tasha's Hideous Laughter"),
       makeSpellEntry('spell-004', 'Booming Blade'),
     ]);
     const homebrewSpells = makePack('world.homebrew', 'dnd5e', 'Item', [
@@ -282,9 +283,7 @@ describe('registerSpellPackReader', () => {
   it('emits immediately when called', () => {
     vi.stubGlobal('game', {
       packs: {
-        contents: [
-          makePack('dnd5e.spells', 'dnd5e', 'Item', [makeSpellEntry('s1', 'Fireball')]),
-        ],
+        contents: [makePack('dnd5e.spells', 'dnd5e', 'Item', [makeSpellEntry('s1', 'Fireball')])],
         size: 1,
         get: vi.fn(),
       },
@@ -307,9 +306,7 @@ describe('registerSpellPackReader', () => {
 
     vi.stubGlobal('game', {
       packs: {
-        contents: [
-          makePack('dnd5e.spells', 'dnd5e', 'Item', [makeSpellEntry('s1', 'Fireball')]),
-        ],
+        contents: [makePack('dnd5e.spells', 'dnd5e', 'Item', [makeSpellEntry('s1', 'Fireball')])],
         size: 1,
         get: vi.fn(),
       },
