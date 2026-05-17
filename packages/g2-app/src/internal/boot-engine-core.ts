@@ -54,6 +54,7 @@
  */
 import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
+import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { LayerManager } from '../engine/layer-manager.js';
@@ -875,6 +876,37 @@ export async function _bootEngineCore(
     { type: 'mount', z: ZIndex.Z1_5_TOAST, layer: toastQueue },
   ]);
 
+  // 12b. Phase 12 Plan 12-03 — voice audio capture (zero-cost when voice cap absent).
+  //
+  //      When the capability handshake returns `'voice'` in server_caps, the bridge
+  //      advertises that /v1/audio/stream is available and DEEPGRAM_API_KEY is set.
+  //      We create an AudioCaptureHandle and attach its stop() to the teardown chain.
+  //
+  //      When 'voice' is absent (standard MVP), no AudioCaptureHandle is created
+  //      and no bridge.audioControl call is ever made — zero overhead.
+  //
+  //      NOTE: 'voice' is not yet in SERVER_CAPS_V1 (Phase 12 V2 optional). The cast
+  //      through `as ServerCap` is intentional — the wire shape is `string[]`, and the
+  //      bridge emits 'voice' when configured. This follows the same pattern used
+  //      for negotiatedCaps in step 7.
+  // biome-ignore lint/suspicious/noExplicitAny: AudioCaptureHandle type is opaque here; full import is in audio-capture.ts
+  let audioCaptureHandle: ReturnType<typeof startAudioCapture> | null = null;
+
+  if (negotiatedCaps.has('voice' as ServerCap)) {
+    audioCaptureHandle = startAudioCapture({
+      bridgeUrl: opts.bridgeUrl,
+      bearer: opts.token,
+    });
+    try {
+      await audioCaptureHandle.start();
+    } catch (err) {
+      // Non-fatal: voice path start failure should not prevent the engine from
+      // booting. Log and continue — the visual HUD still works without voice.
+      console.warn('[boot-engine-core] audio capture start failed (voice path disabled):', err);
+      audioCaptureHandle = null;
+    }
+  }
+
   // 13. Draw first frame (no scene yet — MapBaseLayer.draw is a no-op until
   //     Plan 06 pushes the first frame_pixels envelope).
   await mapBase.draw();
@@ -886,6 +918,13 @@ export async function _bootEngineCore(
     effectiveLocale,
     localeEvents,
     teardown: (): void => {
+      // Phase 12 — stop audio capture first (before WS teardown, so mic-off is issued).
+      if (audioCaptureHandle !== null) {
+        void audioCaptureHandle.stop().catch((err) => {
+          console.warn('[boot-engine-core] teardown: audioCaptureHandle.stop failed', err);
+        });
+      }
+
       // Tear down Phase 9 dispatcher subscriptions first (reverse of attach order).
       // action-economy was attached LAST (after action-result), so tear down FIRST.
       try {
