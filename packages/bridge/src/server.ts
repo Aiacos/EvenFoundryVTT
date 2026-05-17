@@ -24,6 +24,10 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.12
  */
 
+// Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
+// pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
+// so r1.spells.available and r1.entities.available envelopes are routed to their caches.
+import { SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
@@ -32,9 +36,6 @@ import type { Logger } from 'pino';
 import type { Registry } from 'prom-client';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
-// Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
-// pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
-// so r1.spells.available and r1.entities.available envelopes are routed to their caches.
 import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
 import { createMetricsRegistry } from './metrics/registry.js';
@@ -60,6 +61,9 @@ import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
 import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
 import { createDeepgramStt } from './voice/deepgram-stt.js';
+// Phase 15 Plan 02 — Deepgram Keyterm Prompting (VOICE-06): bridge feeds the merger
+// output (SPELL_KEYTERMS ∪ EntityPackCache snapshot) as Deepgram session keyterms.
+import { buildKeytermList } from './voice/keyterm-merger.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
@@ -381,7 +385,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       });
   });
 
-  // --- 10. Voice audio stream route (Phase 12 Plan 12-03) ---
+  // --- 10. Voice audio stream route (Phase 12 Plan 12-03 + Phase 15 Plan 15-02) ---
   // Mounts /v1/audio/stream — bearer-validated WS endpoint that pipes G2 PCM
   // frames to Deepgram Nova-3 Multilingual and fans VoiceTranscript envelopes
   // via the existing DeltaEmitter. Soft-fail: if DEEPGRAM_API_KEY is not set,
@@ -389,9 +393,35 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   //
   // urlOverride: EVF_DEEPGRAM_URL_OVERRIDE is injected so integration tests can
   // point the adapter at a local mock Deepgram server without hitting api.deepgram.com.
+  //
+  // # VOICE-06 / VOICE-07 / VOICE-08 wiring (Phase 15 Plan 15-02)
+  //
+  // keytermProvider is a closure capturing the entityCache reference from step 7c
+  // above (Quick Task 260517-k2g). It calls buildKeytermList(SPELL_KEYTERMS, snapshot)
+  // lazily on every Deepgram connect() — the merger returns the deduped union of
+  // 70 SRD spells (static, IT+EN) plus the dynamic entity-pack snapshot (items /
+  // weapons / armor / NPCs / monsters, name + nameLocalized), capped at 100.
+  //
+  // VOICE-06: keyterm= URL param wired (deepgram-stt.ts URL builder).
+  // VOICE-07: static spells ∪ dynamic entity-pack (merger).
+  // VOICE-08: both IT and EN locales in a single Nova-3 Multilingual session
+  //           (existing language=multi URL param unchanged).
+  //
+  // # CONTEXT D-09 — invariant preserved
+  //
+  // NO new socketlib handler is registered. The entityCache is fed by the existing
+  // /internal/delta multiplex handler at step 8 above (handleEntityPackEnvelope).
+  // CI Gate 8 — socketlib registerComplexHandler count = 17 — is unaffected.
+  //
+  // # Hot-update freshness model
+  //
+  // The keyterm callback is invoked lazily on each connect() — there is NO caching
+  // at the adapter layer. The entityCache itself is the cache. This plan covers
+  // connect-time freshness only; mid-session refresh is plan 15-03's scope.
   const deepgramSttOpts: Parameters<typeof createDeepgramStt>[0] = {
     apiKey: process.env['DEEPGRAM_API_KEY'],
     logger: app.log as Logger,
+    keytermProvider: () => buildKeytermList(SPELL_KEYTERMS, entityCache.get()),
   };
   const deepgramUrlOverride = process.env['EVF_DEEPGRAM_URL_OVERRIDE'];
   if (deepgramUrlOverride !== undefined) {
