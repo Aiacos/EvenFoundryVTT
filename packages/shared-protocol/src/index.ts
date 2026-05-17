@@ -244,6 +244,17 @@ export {
   R1_PERF_SAMPLE_TYPE,
 } from './perf-probe.js';
 
+// ─── Phase 12 additions (Plan 12-02 Task 1) ──────────────────────────────────
+// Voice transcript wire-payload schema + type constant.
+// foundry-mcp deepgram-stt.ts (Plan 12-03) produces envelopes of this shape.
+// The MCP server validates them at the WS-receive trust boundary (T-12-WIRE-01).
+
+export {
+  R1_VOICE_TRANSCRIPT_TYPE,
+  type VoiceTranscriptPayload,
+  VoiceTranscriptPayloadSchema,
+} from './payloads/voice.js';
+
 // ─── Tool Registry (Phase 3 Plan 04 — ADR-0003) ───────────────────────────────
 
 export {
