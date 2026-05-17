@@ -12,7 +12,8 @@
     "start:http": "node dist/http.js",
     "typecheck": "tsc --noEmit",
     "lint:ci": "biome ci .",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "test:smoke": "pnpm build && vitest run src/__tests__/mcp-inspector-smoke.test.ts"
   },
   "dependencies": {
     "@evf/shared-protocol": "workspace:*",
