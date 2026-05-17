@@ -107,9 +107,33 @@ describe('Z05-FX — Phase 14 new INV-1 fixtures round-trip', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
-  it('Z05-INV-01 (UI-SPEC §8.2 invariant 1): frame chars at cols {0, 68, 95} on rows {0, 2, 21, 23} are byte-identical across State A, State B, State C', () => {
+  it('Z05-INV-01a (UI-SPEC §8.2 invariant 1, EN pair): frame chars at cols {0, 68, 95} on rows {0, 2, 21, 23} are byte-identical between State A EN-canonical and State B EN', () => {
+    // EN-locale coherent pair: canonical baseline (raster-idle.txt, EN) ↔ State B EN.
+    // Per UI-SPEC §8.2 inv.1, frame chars must occupy the same column in every state.
+    // Splitting Z05-INV-01 by locale (vs the prior mixed EN+IT triplet) makes a future
+    // regression in EN State B fail with EN-only context, not a heterogeneous diff.
     const gridA = loadSceneFixture('glyph-scene.raster-idle.txt');
     const gridB = loadSceneFixture('raster-overlay-open.en.txt');
+
+    for (const row of FRAME_ROWS) {
+      for (const col of FRAME_COLS) {
+        const a = gridA.at(col, row);
+        const b = gridB.at(col, row);
+        expect(
+          a,
+          `UI-SPEC §8.2 inv.1 (EN): State A col ${col} row ${row} must equal State B (got A=${JSON.stringify(a)} B=${JSON.stringify(b)})`,
+        ).toBe(b);
+      }
+    }
+  });
+
+  it('Z05-INV-01b (UI-SPEC §8.2 invariant 1, IT pair): frame chars at cols {0, 68, 95} on rows {0, 2, 21, 23} are byte-identical across State A IT, State B IT, State C IT', () => {
+    // IT-locale coherent triplet: raster-idle-it ↔ raster-overlay-open.it ↔ glyph-idle-z05.it.
+    // The only locale where we currently own ALL THREE state fixtures is IT, so the
+    // strongest cross-state frame-equality contract lives here. EN gets covered by
+    // Z05-INV-01a (A↔B only, since `glyph-scene.glyph-idle-z05.en.txt` doesn't exist).
+    const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
+    const gridB = loadSceneFixture('raster-overlay-open.it.txt');
     const gridC = loadSceneFixture('glyph-scene.glyph-idle-z05.it.txt');
 
     for (const row of FRAME_ROWS) {
@@ -119,11 +143,11 @@ describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
         const c = gridC.at(col, row);
         expect(
           a,
-          `UI-SPEC §8.2 inv.1: State A col ${col} row ${row} must equal State B (got A=${JSON.stringify(a)} B=${JSON.stringify(b)})`,
+          `UI-SPEC §8.2 inv.1 (IT): State A col ${col} row ${row} must equal State B (got A=${JSON.stringify(a)} B=${JSON.stringify(b)})`,
         ).toBe(b);
         expect(
           a,
-          `UI-SPEC §8.2 inv.1: State A col ${col} row ${row} must equal State C (got A=${JSON.stringify(a)} C=${JSON.stringify(c)})`,
+          `UI-SPEC §8.2 inv.1 (IT): State A col ${col} row ${row} must equal State C (got A=${JSON.stringify(a)} C=${JSON.stringify(c)})`,
         ).toBe(c);
       }
     }
