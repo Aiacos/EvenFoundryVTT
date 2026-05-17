@@ -96,6 +96,16 @@ interface PendingCall {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// ─── Message listener type ────────────────────────────────────────────────────
+
+/**
+ * Callback type for `BridgeClient.addMessageListener`.
+ *
+ * Called with the raw parsed envelope object for every WS message EXCEPT
+ * `tool.result` (which is consumed exclusively by the FIFO dispatch path).
+ */
+export type BridgeMessageListener = (envelope: Record<string, unknown>) => void;
+
 // ─── Snake→kebab mapping ──────────────────────────────────────────────────────
 
 /**
@@ -134,6 +144,12 @@ export class BridgeClient {
 
   /** FIFO: the single in-flight tool call (if any). */
   private _pending: PendingCall | null = null;
+
+  /**
+   * Registered message listeners for non-tool.result envelopes.
+   * Used by `subscribeToBridgeDeltas` to route delta envelopes to the resource cache.
+   */
+  private readonly _messageListeners = new Set<BridgeMessageListener>();
 
   /** Queue of tool calls waiting to be dispatched (after the in-flight completes). */
   private readonly _queue: Array<{
@@ -237,6 +253,11 @@ export class BridgeClient {
         }
 
         if (envelope.type !== 'tool.result') {
+          // Fan out to registered message listeners (e.g. subscribeToBridgeDeltas).
+          // tool.result is consumed exclusively by the FIFO dispatch path above.
+          for (const listener of this._messageListeners) {
+            listener(envelope);
+          }
           return;
         }
 
@@ -365,6 +386,25 @@ export class BridgeClient {
       clearTimeout(timer);
       resolve({ success: false, error: 'bridge_unreachable' });
     }
+  }
+
+  /**
+   * Register a listener for non-tool.result WS messages (delta envelopes etc.).
+   *
+   * Called by `subscribeToBridgeDeltas` in Plan 11-03 to route delta envelopes
+   * into the ResourceCache. The listener receives the raw parsed envelope object.
+   *
+   * NOTE: `tool.result` envelopes are consumed exclusively by the FIFO dispatch
+   * path and are NEVER forwarded to message listeners.
+   *
+   * @param cb - Callback invoked with the raw parsed envelope for each qualifying message.
+   * @returns Unsubscribe function — call to remove the listener.
+   */
+  addMessageListener(cb: BridgeMessageListener): () => void {
+    this._messageListeners.add(cb);
+    return () => {
+      this._messageListeners.delete(cb);
+    };
   }
 
   /**
