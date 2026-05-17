@@ -544,12 +544,20 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
             return;
           }
           // Keyterm-reject branch. Decide between retry and fallback.
+          // WR-01 mitigation: clear `liveWs` BEFORE invoking the next attempt
+          // so that any in-flight `sendAudio(frame)` during the retry window
+          // becomes a no-op (via `liveWs?.send` short-circuit) rather than a
+          // send-on-closed throw. The old WS is already closed by Deepgram
+          // (we are inside its close handler), so no explicit `.close()` is
+          // needed — only the reference must be detached. `_attemptConnect`
+          // will reassign `liveWs` to the fresh handle.
           if (attempt === 'initial') {
             const sanitizedUrl = buildDeepgramUrl(deepgramUrl, sanitizeKeyterms(keyterms));
             logger.warn(
               { event: 'keyterm.retry-with-sanitized', code, sessionId },
               'deepgram-stt: Deepgram rejected keyterm list — retrying with sanitized form (D-06)',
             );
+            liveWs = null;
             _attemptConnect(sanitizedUrl, 'retry');
             return;
           }
@@ -559,6 +567,7 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
               { event: 'keyterm.fallback-to-baseline', code, sessionId },
               'deepgram-stt: sanitized retry also rejected — falling back to no-keyterm baseline (D-06)',
             );
+            liveWs = null;
             _attemptConnect(baselineUrl, 'fallback');
             return;
           }
