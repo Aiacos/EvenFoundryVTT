@@ -27,7 +27,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 8: Manual Action UX** - Spellbook tap-to-cast + inventory tap-to-use + combat overlay quick actions [A][S][I][M] + action-result toast banners (5/5 plans complete 2026-05-16; hardware-pending SC-08-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld)
 - [x] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow (5/5 plans complete 2026-05-16; SC-09-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 29)
 - [x] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook *(5/5 plans complete 2026-05-17; software-complete; SC-10-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 32. MVP SOFTWARE-COMPLETE.)*
-- [ ] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification
+- [x] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification *(4/4 plans complete 2026-05-17; software-complete; pure software phase; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld)*
 - [ ] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
 - [ ] **Phase 13: V2 Stretch** *(OPZIONALE)* - Reaction *execution* (ACT-04) + biometric narrative cues + multi-player sync + dnd5e v6.x adapter + PF2e + Sheet/Token portrait + DSN raster stream + bridge-side headless Foundry + advanced dither
 
@@ -296,16 +296,16 @@ Plans:
   2. MCP tools mirror Tool Registry §5.3 with full JSON Schema; resources `actor://current`, `scene://current`, `combat://current`, `log://recent` are exposed
   3. Claude Desktop drives "cast Fireball at the goblins" end-to-end through the same bridge bearer auth as MVP
   4. MCP Inspector returns clean tool listing; npm publish + Docker container for Streamable HTTP remote works
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 - [x] 11-01-PLAN.md — Workspace package scaffold + env-loader + pino logger + McpServer factory + stdio + Streamable HTTP entrypoints (no tools yet)
 **Wave 2** *(blocked on Wave 1)*
 - [x] 11-02-PLAN.md — BridgeClient WS proxy (tool.invoke envelope) + 6 MCP tools registered via Phase 7 Zod schema `.shape` (cast-spell, weapon-attack, use-item, move-token, place-template, drop-concentration)
 **Wave 3** *(blocked on Wave 2)*
-- [x] 11-03-PLAN.md — ResourceCache + WS delta subscription + 4 MCP resources (actor://current, scene://current, combat://current, log://recent) + REST fallback + sendResourceUpdated
+- [x] 11-03-PLAN.md — ResourceCache + WS delta subscription + 4 MCP resources (actor://current, scene://current, combat://current, log://recent) + REST fallback + sendResourceUpdated (52 tests; VOICE-02+VOICE-03 closed)
 **Wave 4** *(blocked on Wave 3; Phase 11 closure)*
-- [ ] 11-04-PLAN.md — Docker image + docker-compose service + docs/mcp-verification.md + Claude Desktop config snippet + Inspector smoke test + no-sse-import grep gate + bridge-soft-fail refinement + Phase 11 closure (STATE/ROADMAP/VERIFICATION)
+- [x] 11-04-PLAN.md — Docker image + docker-compose service + docs/mcp-verification.md + Claude Desktop config snippet + Inspector smoke test + no-sse-import grep gate + bridge-soft-fail refinement + /healthz + Phase 11 closure (STATE/ROADMAP/VERIFICATION) — 2026-05-17
 
 ### Phase 12: V2 Voice UX Tuning (OPZIONALE)
 **Goal**: Tune the voice path: GM-Agent system prompt + 3 worked examples + IT↔EN STT spell-name lookup robust against accent and code-switching.
@@ -346,7 +346,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 8. Manual Action UX | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
-| 11. V2 `foundry-mcp` Server | 3/4 | In Progress|  |
+| 11. V2 `foundry-mcp` Server | 4/4 | Complete (pure software; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld) | 2026-05-17 |
 | 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
 | 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
 

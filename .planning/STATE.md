@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-17T05:48:25.157Z"
-last_activity: "2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE."
+status: PHASE_11_CLOSED — V2 MCP server complete; 4/4 plans committed; HTTP+SSE deprecation upheld; 14-socketlib-handler invariant unchanged.
+stopped_at: Completed 11-04-PLAN.md (Phase 11 CLOSED — V2 OPZIONALE MCP server shipped)
+last_updated: "2026-05-17T08:00:00.000Z"
+last_activity: "2026-05-17 — Phase 11 CLOSED. Plan 11-01: foundry-mcp workspace scaffold + env + pino + McpServer factory + stdio + Streamable HTTP. Plan 11-02: BridgeClient WS proxy + 6 MCP tools (Phase 7 Zod .shape). Plan 11-03: ResourceCache + WS delta subscription + 4 MCP resources + REST fallback + sendResourceUpdated (52 tests). Plan 11-04: bridge-soft-fail + /healthz + smoke test + no-SSE grep gate + Docker image + docs/mcp-verification.md + Claude Desktop config + Phase 11 closure. 56 foundry-mcp tests pass. MVP SOFTWARE-COMPLETE signal unchanged."
 progress:
   total_phases: 15
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 64
-  completed_plans: 63
-  percent: 80
+  completed_plans: 64
+  percent: 98
 ---
 
 # Project State
@@ -440,3 +440,43 @@ Remaining for Phase 4a (resume work):
 5. Phase 4a verification with 5 human_needed entries surfaced for user testing
 
 Then /gsd-autonomous --from 4b --to 10 continues the milestone.
+
+---
+
+## Phase 11 closure — 2026-05-17
+
+**PHASE_11_CLOSED** — 4/4 plans committed 2026-05-17. V2 MCP server complete.
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 11-01 | 038700f | Workspace package scaffold + env-loader + pino logger + McpServer factory + stdio + Streamable HTTP entrypoints |
+| 11-02 | d89ce59 | BridgeClient WS proxy + FIFO queue + BridgeAuthExpiredError + 6 MCP tools using Phase 7 Zod .shape schemas |
+| 11-03 | 0a19081 | ResourceCache + WS delta subscription + 4 MCP resources + REST fallback + sendResourceUpdated (52 tests) |
+| 11-04 | see below | Docker image + docs/mcp-verification.md + Claude Desktop config snippet + smoke test + no-sse-import gate + Phase 11 closure |
+
+11-04 commits: b4d5260 (bridge-soft-fail + /healthz), cc41b6d (smoke test + no-sse-import), 6e21a2a (Docker + compose), fb9b016 (docs)
+
+### Key invariants confirmed (Phase 11 closure)
+
+- `registerComplexHandler` count = 14 (re-grep `packages/foundry-module/src/pair/socketlib-handlers.ts` — Phase 11 touches NOTHING in foundry-module)
+- HTTP+SSE deprecation upheld: 0 real imports of `server/sse` or `SSEServerTransport` in packages/foundry-mcp/src/ (Task 2 no-sse-import test GREEN)
+- ADR-0004 (voice-via-mcp-not-internal) ratified via shipping foundry-mcp package
+- No new auth surface: env-var bearer reuses Phase 7 24h bearer
+- 56/56 foundry-mcp tests pass (unit + no-sse-import gate + Inspector smoke test)
+
+### REQ-ID coverage (Phase 11)
+
+| REQ-ID | Requirement | Plans |
+|--------|-------------|-------|
+| VOICE-02 | MCP tools mirror Tool Registry §5.3 | 11-01, 11-02, 11-04 |
+| VOICE-03 | Resources exposed (actor/scene/combat/log) | 11-01, 11-03, 11-04 |
+
+### Hardware-pending carry-forward (Phase 11 — 0 new SCs)
+
+Phase 11 is pure software/Node-side. No G2 hardware involvement. Running hardware-pending total stays at 32 (Phase 10 closure carry).
+
+### V2 readiness signal
+
+Phase 11 CLOSED. Phase 12 (V2 Voice UX Tuning) is unblocked. Resume cmd: `/gsd-plan-phase 12`.
