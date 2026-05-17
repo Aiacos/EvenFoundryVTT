@@ -21,13 +21,18 @@
  *
  *   1. Strip ASCII control chars (0x00-0x1F + 0x7F DEL). These are the
  *      "obvious garbage" surface — terminals, file-byte boundaries, accidental
- *      NUL terminators from C-bridge encodings. We do NOT strip the full
- *      Unicode control plane because IT/EN spell names use legitimate
- *      Unicode letters (è, ô, etc.) that Deepgram accepts natively.
+ *      NUL terminators from C-bridge encodings. Note: this range already
+ *      covers TAB (0x09), LF (0x0A), and CR (0x0D), so those are removed
+ *      *before* the whitespace collapse step ever sees them. We do NOT strip
+ *      the full Unicode control plane because IT/EN spell names use
+ *      legitimate Unicode letters (è, ô, etc.) that Deepgram accepts natively.
  *   2. Collapse runs of internal whitespace (`/\s+/g`) into a single space.
- *      This handles tabs, newlines, no-break spaces (U+00A0), and other
- *      Unicode whitespace categories — Deepgram's tokeniser tends to choke
- *      on multi-space sequences but tolerates a single internal space.
+ *      After Step 1 the only whitespace surfaces this step still sees are
+ *      (a) ordinary ASCII spaces (0x20, *not* in the 0x00-0x1F control range)
+ *      and (b) non-control Unicode whitespace — no-break space (U+00A0),
+ *      em-space (U+2003), figure-space (U+2007), ideographic space (U+3000),
+ *      etc. Deepgram's tokeniser tends to choke on multi-space sequences but
+ *      tolerates a single internal space.
  *   3. Trim leading/trailing whitespace.
  *   4. Drop terms shorter than 2 characters after normalisation. Single-char
  *      terms have near-zero keyterm value — they're either real transcription
