@@ -116,10 +116,12 @@ export function detectClarify(transcript: string): ClarifyResult {
       // id is non-null when confidence is 'exact' or 'fuzzy' by construction;
       // the TypeScript type allows null but the implementation guarantees it here.
       // Use nullish coalescing to avoid non-null assertion while preserving intent.
-      const id = lookup.dnd5eId ?? undefined;
+      // id is non-null for 'exact'/'fuzzy' confidence by construction.
+      // Use conditional spread to satisfy exactOptionalPropertyTypes (avoid assigning `undefined`
+      // to an optional property — TS 5.8 strict mode requirement).
       return {
         needsClarify: false,
-        resolvedSpellId: id,
+        ...(lookup.dnd5eId != null ? { resolvedSpellId: lookup.dnd5eId } : {}),
       };
     }
   }
