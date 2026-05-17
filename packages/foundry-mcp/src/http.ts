@@ -95,6 +95,14 @@ const MCP_METHODS = new Set(['POST', 'GET', 'DELETE']);
 
     const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
       try {
+        // ── Health check endpoint (no auth required) ──────────────────────────────
+        // Used by Docker Compose healthcheck: wget -qO- http://localhost:8911/healthz
+        if (req.method === 'GET' && req.url === '/healthz') {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('ok');
+          return;
+        }
+
         // ── Bearer auth check (T-11-02) ──────────────────────────────────────────
         const authHeader = req.headers.authorization ?? '';
         const providedBearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';

@@ -391,6 +391,28 @@ export class BridgeClient {
   }
 
   /**
+   * Return true when the WS connection is open AND the Phase 2 handshake
+   * has successfully completed.
+   *
+   * Used by the smoke test and bridge-soft-fail check to probe liveness without
+   * performing a full tool invocation.
+   */
+  isConnected(): boolean {
+    return this._connected;
+  }
+
+  /**
+   * Mark the bridge as unreachable without closing the WS.
+   *
+   * Called internally on connection failure paths so that subsequent invokeTool
+   * calls short-circuit immediately with bridge_unreachable rather than waiting
+   * for the 30s timeout. Also used in tests to simulate a lost connection.
+   */
+  markUnreachable(): void {
+    this._connected = false;
+  }
+
+  /**
    * Register a listener for non-tool.result WS messages (delta envelopes etc.).
    *
    * Called by `subscribeToBridgeDeltas` in Plan 11-03 to route delta envelopes
@@ -491,6 +513,7 @@ export class BridgeClient {
         if (Array.isArray(data)) return data;
         return (data as { entries?: import('@evf/shared-protocol').EventLogEntry[] }).entries ?? [];
       },
+      [],
     );
   }
 
