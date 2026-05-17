@@ -64,7 +64,22 @@ function sliceCells(grid: AsciiGrid, row: number, col: number, len: number): str
 
 // Effective frame-char column positions (drift from PLAN per file-header note).
 const FRAME_COLS = [0, 68, 95] as const;
-const FRAME_ROWS = [0, 2, 21, 23] as const;
+// Per-column "rows that hold a frame glyph at this column". The outer columns
+// (0 and 95) hold a frame char on EVERY row — `║` on body rows, corner / `╠`
+// / `╚` etc. on separator rows. The central divider column 68 is frame-bearing
+// only on the corner rows + body rows 3..20 (`║`); rows 1 (header text) and 22
+// (footer text) at col 68 hold CONTENT (e.g. `R` from `R1`), not frame chars,
+// so they are excluded from cross-state frame equality.
+//
+// Original Phase 14 review WR-03: the prior {0, 2, 21, 23} sample (12 cells)
+// missed regressions on rows 4..20. We now sweep the full set of frame-bearing
+// rows per column — 24 cells on col 0, 24 cells on col 95, 22 cells on col 68
+// — for a total of 70 cells per cross-state pair (vs the original 12).
+const FRAME_ROWS_BY_COL: Readonly<Record<number, readonly number[]>> = {
+  0: Array.from({ length: 24 }, (_, i) => i),
+  68: [0, 2, ...Array.from({ length: 18 }, (_, i) => i + 3), 21, 23],
+  95: Array.from({ length: 24 }, (_, i) => i),
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Z05-FX-* — snapshot round-trip for the 3 NEW fixtures
@@ -107,16 +122,19 @@ describe('Z05-FX — Phase 14 new INV-1 fixtures round-trip', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
-  it('Z05-INV-01a (UI-SPEC §8.2 invariant 1, EN pair): frame chars at cols {0, 68, 95} on rows {0, 2, 21, 23} are byte-identical between State A EN-canonical and State B EN', () => {
+  it('Z05-INV-01a (UI-SPEC §8.2 invariant 1, EN pair): frame chars at cols {0, 68, 95} on every frame-bearing row are byte-identical between State A EN-canonical and State B EN', () => {
     // EN-locale coherent pair: canonical baseline (raster-idle.txt, EN) ↔ State B EN.
     // Per UI-SPEC §8.2 inv.1, frame chars must occupy the same column in every state.
-    // Splitting Z05-INV-01 by locale (vs the prior mixed EN+IT triplet) makes a future
-    // regression in EN State B fail with EN-only context, not a heterogeneous diff.
+    // Iterates each column's frame-bearing rows (24 each for cols 0/95, 22 for col 68
+    // — rows 1 and 22 at col 68 are CONTENT, not frame; see FRAME_ROWS_BY_COL).
+    // An internal-row regression shifting `║` at col 68 on rows 3..20 — e.g., a frame
+    // redraw bug pulling col 68 → col 67 — is now caught (Phase 14 review WR-03,
+    // expanded from the original 12-cell corner sample).
     const gridA = loadSceneFixture('glyph-scene.raster-idle.txt');
     const gridB = loadSceneFixture('raster-overlay-open.en.txt');
 
-    for (const row of FRAME_ROWS) {
-      for (const col of FRAME_COLS) {
+    for (const col of FRAME_COLS) {
+      for (const row of FRAME_ROWS_BY_COL[col] ?? []) {
         const a = gridA.at(col, row);
         const b = gridB.at(col, row);
         expect(
@@ -127,17 +145,18 @@ describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
     }
   });
 
-  it('Z05-INV-01b (UI-SPEC §8.2 invariant 1, IT pair): frame chars at cols {0, 68, 95} on rows {0, 2, 21, 23} are byte-identical across State A IT, State B IT, State C IT', () => {
+  it('Z05-INV-01b (UI-SPEC §8.2 invariant 1, IT pair): frame chars at cols {0, 68, 95} on every frame-bearing row are byte-identical across State A IT, State B IT, State C IT', () => {
     // IT-locale coherent triplet: raster-idle-it ↔ raster-overlay-open.it ↔ glyph-idle-z05.it.
     // The only locale where we currently own ALL THREE state fixtures is IT, so the
     // strongest cross-state frame-equality contract lives here. EN gets covered by
     // Z05-INV-01a (A↔B only, since `glyph-scene.glyph-idle-z05.en.txt` doesn't exist).
+    // Full frame-bearing-row sweep per WR-03 — see FRAME_ROWS_BY_COL for per-col rows.
     const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
     const gridB = loadSceneFixture('raster-overlay-open.it.txt');
     const gridC = loadSceneFixture('glyph-scene.glyph-idle-z05.it.txt');
 
-    for (const row of FRAME_ROWS) {
-      for (const col of FRAME_COLS) {
+    for (const col of FRAME_COLS) {
+      for (const row of FRAME_ROWS_BY_COL[col] ?? []) {
         const a = gridA.at(col, row);
         const b = gridB.at(col, row);
         const c = gridC.at(col, row);
@@ -190,12 +209,14 @@ describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
     }
   });
 
-  it('Z05-INV-03 (UI-SPEC §8.2 invariant 4): frame columns {0, 68, 95} on rows {0, 2, 21, 23} match between State A IT and State B IT', () => {
+  it('Z05-INV-03 (UI-SPEC §8.2 invariant 4): frame columns {0, 68, 95} on every frame-bearing row match between State A IT and State B IT', () => {
+    // Full frame-bearing-row sweep per WR-03 (matches Z05-INV-01a/01b coverage)
+    // so an internal-row frame regression on the IT pair fails loudly here.
     const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
     const gridB = loadSceneFixture('raster-overlay-open.it.txt');
 
-    for (const row of FRAME_ROWS) {
-      for (const col of FRAME_COLS) {
+    for (const col of FRAME_COLS) {
+      for (const row of FRAME_ROWS_BY_COL[col] ?? []) {
         const a = gridA.at(col, row);
         const b = gridB.at(col, row);
         expect(
