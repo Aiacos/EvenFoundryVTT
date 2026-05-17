@@ -425,3 +425,137 @@ describe('createDeepgramStt — keyterm wiring (DGKT-01..DGKT-06)', () => {
     expect(url).toBe(PHASE_12_BASELINE_URL);
   });
 });
+
+// ─── Phase 15 Plan 03 — refreshKeyterm() invalidation API (DGRF-01..DGRF-05) ──
+//
+// VOICE-09 hot-update: DeepgramAdapter exposes refreshKeyterm() as an
+// invalidation signal. The Deepgram WS protocol does NOT support mid-stream
+// keyterm hot-swap; the realistic refresh model is "next connect() picks up
+// the new keyterm list" (already true thanks to lazy keytermProvider — DGKT-05).
+//
+// refreshKeyterm() therefore:
+//   1. Re-invokes the keytermProvider (so the log payload reflects the
+//      latest count — useful for ops/debug telemetry).
+//   2. Emits a structured `event: 'keyterm.refreshed'` pino logger.info call.
+//   3. Returns void. Does NOT touch any active WS — the next connect() uses
+//      the fresh list lazily.
+//
+// The Phase 15 Plan 03 KeytermRefresher orchestrator calls this method after
+// each debounced + mutex-serialised cache change.
+
+describe('createDeepgramStt — refreshKeyterm (DGRF-01..DGRF-05)', () => {
+  // Fresh logger per test so we can inspect logger.info call args without
+  // bleed-over between tests in this describe block.
+  function freshLogger() {
+    return {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+    } as unknown as Parameters<typeof createDeepgramStt>[0]['logger'];
+  }
+
+  it('DGRF-01: adapter.refreshKeyterm is a function returning void', () => {
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ['fireball'],
+    });
+    expect(typeof adapter.refreshKeyterm).toBe('function');
+    expect(adapter.refreshKeyterm()).toBeUndefined();
+  });
+
+  it("DGRF-02: refreshKeyterm() emits logger.info with { event: 'keyterm.refreshed', keytermCount, fromCache }", () => {
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ['x', 'y'],
+    });
+    adapter.refreshKeyterm();
+    // The log payload object is the first arg to logger.info.
+    const info = logger.info as unknown as ReturnType<typeof vi.fn>;
+    const matchingCalls = info.mock.calls.filter((call: unknown[]) => {
+      const first = call[0] as { event?: string } | undefined;
+      return first?.event === 'keyterm.refreshed';
+    });
+    expect(matchingCalls.length).toBe(1);
+    const payload = matchingCalls[0]![0] as {
+      event: string;
+      keytermCount: number;
+      fromCache: boolean;
+    };
+    expect(payload).toMatchObject({
+      event: 'keyterm.refreshed',
+      keytermCount: 2,
+      fromCache: true,
+    });
+    // T-15-11 disposition (accept): the log MUST NOT include keyterm values themselves.
+    // Only the count. Verify by string-searching the full call payload + message.
+    const fullCall = matchingCalls[0]!.map((a) => JSON.stringify(a)).join(' ');
+    expect(fullCall).not.toContain('"x"');
+    expect(fullCall).not.toContain('"y"');
+  });
+
+  it('DGRF-03: refreshKeyterm() invokes keytermProvider exactly once to populate the log count', () => {
+    const logger = freshLogger();
+    const provider = vi.fn(() => ['a', 'b', 'c']);
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: provider,
+    });
+    adapter.refreshKeyterm();
+    expect(provider).toHaveBeenCalledTimes(1);
+    const info = logger.info as unknown as ReturnType<typeof vi.fn>;
+    const matching = info.mock.calls.find((call: unknown[]) => {
+      const first = call[0] as { event?: string } | undefined;
+      return first?.event === 'keyterm.refreshed';
+    });
+    expect(matching).toBeDefined();
+    expect((matching![0] as { keytermCount: number }).keytermCount).toBe(3);
+  });
+
+  it('DGRF-04: refreshKeyterm() with undefined keytermProvider emits keytermCount=0, fromCache=false', () => {
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      // keytermProvider deliberately omitted
+    });
+    adapter.refreshKeyterm();
+    const info = logger.info as unknown as ReturnType<typeof vi.fn>;
+    const matching = info.mock.calls.find((call: unknown[]) => {
+      const first = call[0] as { event?: string } | undefined;
+      return first?.event === 'keyterm.refreshed';
+    });
+    expect(matching).toBeDefined();
+    const payload = matching![0] as { keytermCount: number; fromCache: boolean };
+    expect(payload.keytermCount).toBe(0);
+    expect(payload.fromCache).toBe(false);
+  });
+
+  it('DGRF-05: After refreshKeyterm(), next connect() URL contains the FRESH keyterm (lazy semantics preserved)', () => {
+    const { factory, instances } = createMockWsFactory();
+    let current: string[] = ['old'];
+    const provider = vi.fn(() => current);
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: provider,
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    // Simulate an entity-pack change: swap the keyterm list, then signal refresh.
+    current = ['x'];
+    adapter.refreshKeyterm();
+    // After refresh, the NEXT connect() must use the fresh list — that is the
+    // DGKT-05 lazy contract under the DGRF method's presence.
+    adapter.connect('session-dgrf-5');
+    const url = instances[0]!.url;
+    expect(url).toContain('keyterm=x');
+    expect(url).not.toContain('keyterm=old');
+  });
+});
