@@ -559,3 +559,273 @@ describe('createDeepgramStt — refreshKeyterm (DGRF-01..DGRF-05)', () => {
     expect(url).not.toContain('keyterm=old');
   });
 });
+
+// ─── Phase 15 Plan 04 — Empty-cache one-shot warn (DGEC-01..03) ───────────────
+//
+// CONTEXT D-05: when EntityPackCache.get() returns null (Foundry not yet
+// pushed an entity-pack), buildKeytermList returns spells-only (140 entries
+// capped at 100). This plan adds a one-shot logger.warn on the FIRST
+// observation of the empty-cache state per "empty streak" — subsequent
+// connect() calls with the cache still empty do NOT re-emit. After the cache
+// transitions to non-empty and back to empty, the warn fires again.
+//
+// The richer keytermProvider signature now optionally returns
+// `{ keyterms, entityCachePresent }`. The adapter normalises bare `string[]`
+// returns to `entityCachePresent: undefined` and skips the warning entirely
+// in that case (DGEC-03) — the warning is specifically about the entity-pack
+// cache, not about empty keyterms generally.
+
+describe('createDeepgramStt — empty-cache warning (DGEC-01..03)', () => {
+  function freshLogger() {
+    return {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+    } as unknown as Parameters<typeof createDeepgramStt>[0]['logger'];
+  }
+
+  function countEmptyCacheWarns(logger: Parameters<typeof createDeepgramStt>[0]['logger']): number {
+    const warn = logger.warn as unknown as ReturnType<typeof vi.fn>;
+    return warn.mock.calls.filter((call: unknown[]) => {
+      const first = call[0] as { event?: string } | undefined;
+      return first?.event === 'keyterm.empty-entity-cache';
+    }).length;
+  }
+
+  it('DGEC-01: first observation of empty-cache emits exactly one keyterm.empty-entity-cache warn across multiple connects', () => {
+    const { factory } = createMockWsFactory();
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ({
+        keyterms: ['fireball', 'shield'],
+        entityCachePresent: false,
+      }),
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgec-1a');
+    adapter.connect('session-dgec-1b');
+    adapter.connect('session-dgec-1c');
+    expect(countEmptyCacheWarns(logger)).toBe(1);
+  });
+
+  it('DGEC-02: cache empty → present → empty re-emits the warn (one per empty-streak)', () => {
+    const { factory } = createMockWsFactory();
+    const logger = freshLogger();
+    let cachePresent = false;
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ({
+        keyterms: ['fireball'],
+        entityCachePresent: cachePresent,
+      }),
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    // Streak 1 — empty
+    adapter.connect('session-dgec-2a');
+    adapter.connect('session-dgec-2b');
+    expect(countEmptyCacheWarns(logger)).toBe(1);
+    // Transition to present — flag resets
+    cachePresent = true;
+    adapter.connect('session-dgec-2c');
+    adapter.connect('session-dgec-2d');
+    expect(countEmptyCacheWarns(logger)).toBe(1); // unchanged — cache is present
+    // Streak 2 — empty again, warn re-fires once
+    cachePresent = false;
+    adapter.connect('session-dgec-2e');
+    adapter.connect('session-dgec-2f');
+    expect(countEmptyCacheWarns(logger)).toBe(2);
+  });
+
+  it('DGEC-03: bare-string-array keytermProvider never emits the empty-cache warn', () => {
+    const { factory } = createMockWsFactory();
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      // Bare string[] return — adapter must treat entityCachePresent as undefined
+      // and skip the empty-cache warning entirely (the warn is about the cache,
+      // not about empty keyterms in general).
+      keytermProvider: () => [],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgec-3a');
+    adapter.connect('session-dgec-3b');
+    expect(countEmptyCacheWarns(logger)).toBe(0);
+  });
+});
+
+// ─── Phase 15 Plan 04 — Retry-then-fallback (DGFM-01..06) ─────────────────────
+//
+// CONTEXT D-06: when Deepgram closes a streaming session with a close code
+// indicating an invalid request (1007 invalid-payload-data, 1008
+// policy-violation, or any code in the application range 4000-4999), the
+// adapter retries ONCE with a sanitized keyterm list. If the retry also
+// fails, the adapter falls back to a no-keyterm baseline URL (Phase 12
+// preserved). Never fail-closed.
+//
+// The retry budget is per-session ephemeral — each new connect() call starts
+// optimistically with the full keyterm list. There is no global
+// "keyterms-are-bad" flag (DGFM-06).
+//
+// Mock factory: scripted close events are achieved by calling
+// `instance.emit('close', code, Buffer.from(''))` from within the test body
+// AFTER the adapter has registered its close handler in connect().
+
+describe('createDeepgramStt — retry-then-fallback (DGFM-01..06)', () => {
+  function freshLogger() {
+    return {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+    } as unknown as Parameters<typeof createDeepgramStt>[0]['logger'];
+  }
+
+  function findWarnEvent(
+    logger: Parameters<typeof createDeepgramStt>[0]['logger'],
+    event: string,
+  ): unknown[] | undefined {
+    const warn = logger.warn as unknown as ReturnType<typeof vi.fn>;
+    return warn.mock.calls.find((call: unknown[]) => {
+      const first = call[0] as { event?: string } | undefined;
+      return first?.event === event;
+    });
+  }
+
+  it('DGFM-01: close with code 1008 before any Results frame triggers a sanitized retry (second WS instance)', () => {
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      // Include a control-char so sanitize visibly differs from the original.
+      keytermProvider: () => ['fire\x00ball', 'shield'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-1');
+    expect(instances).toHaveLength(1);
+    // First instance includes the un-sanitized control char (URL-encoded).
+    expect(instances[0]!.url).toContain('keyterm=fire%00ball');
+    // Deepgram closes with 1008 (policy-violation) — keyterm-reject code.
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    // Adapter must have created a second WS with the SANITIZED keyterm URL.
+    expect(instances).toHaveLength(2);
+    // Sanitized 'fire\x00ball' → 'fireball' (no control char in URL).
+    expect(instances[1]!.url).toContain('keyterm=fireball');
+    expect(instances[1]!.url).not.toContain('keyterm=fire%00ball');
+    expect(instances[1]!.url).toContain('keyterm=shield');
+  });
+
+  it('DGFM-02: when retry also closes with keyterm-reject, fallback to baseline URL (third WS instance)', () => {
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball', 'shield'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-2');
+    expect(instances).toHaveLength(1);
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    expect(instances).toHaveLength(2);
+    // Second instance also closes with a keyterm-reject code (4xxx application range).
+    instances[1]!.emit('close', 4001, Buffer.from(''));
+    expect(instances).toHaveLength(3);
+    // Third instance is the baseline (no-keyterm) URL — Phase 12 preserved.
+    expect(instances[2]!.url).not.toContain('keyterm=');
+  });
+
+  it('DGFM-03: when retry succeeds (no early close), no third instance is created', () => {
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-3');
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    // Second instance does NOT emit a close — it stays open.
+    expect(instances).toHaveLength(2);
+    // No third instance created.
+    expect(instances).toHaveLength(2);
+  });
+
+  it('DGFM-04: close with code 1011 (server error) does NOT trigger a retry', () => {
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-4');
+    // 1011 (server error) and 1006 (abnormal closure) are NOT keyterm-reject codes.
+    instances[0]!.emit('close', 1011, Buffer.from(''));
+    expect(instances).toHaveLength(1);
+    // 1000 (normal) also no-op.
+    const adapter2 = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter2.connect('session-dgfm-4b');
+    instances[1]!.emit('close', 1000, Buffer.from(''));
+    expect(instances).toHaveLength(2);
+  });
+
+  it('DGFM-05: each branch emits a distinct structured log event (keyterm.retry-with-sanitized + keyterm.fallback-to-baseline)', () => {
+    const { factory, instances } = createMockWsFactory();
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ['fireball', 'shield'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-5');
+    // First reject → retry-with-sanitized log
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    const retryLog = findWarnEvent(logger, 'keyterm.retry-with-sanitized');
+    expect(retryLog).toBeDefined();
+    const retryPayload = (retryLog as unknown[])[0] as { event: string; code: number };
+    expect(retryPayload.code).toBe(1008);
+    // Second reject → fallback-to-baseline log
+    instances[1]!.emit('close', 4002, Buffer.from(''));
+    const fallbackLog = findWarnEvent(logger, 'keyterm.fallback-to-baseline');
+    expect(fallbackLog).toBeDefined();
+    const fallbackPayload = (fallbackLog as unknown[])[0] as { event: string; code: number };
+    expect(fallbackPayload.code).toBe(4002);
+  });
+
+  it('DGFM-06: retry budget is per-session — two independent connect() calls each start with the full keyterm list', () => {
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    // First session: full → retry → 2 instances
+    adapter.connect('session-dgfm-6a');
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    expect(instances).toHaveLength(2);
+    // First instance: full URL (un-sanitized) — proves no persistent "bad keyterm" state.
+    expect(instances[0]!.url).toContain('keyterm=fireball');
+    // Second session: starts again with full keyterm list (no global flag).
+    adapter.connect('session-dgfm-6b');
+    expect(instances).toHaveLength(3);
+    // Third instance (first WS of second session): also starts optimistically with full keyterms.
+    expect(instances[2]!.url).toContain('keyterm=fireball');
+    instances[2]!.emit('close', 1008, Buffer.from(''));
+    expect(instances).toHaveLength(4);
+  });
+});
