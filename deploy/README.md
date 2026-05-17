@@ -92,6 +92,68 @@ The script builds, boots, runs curl assertions against all 4 endpoints, then tea
 `smoke.sh` is committed as the operational contract for manual/CD use.
 It is NOT wired to GitHub Actions CI (which would require Docker-in-Docker setup).
 
+## Phase 11 MCP server (V2 optional)
+
+The `foundry-mcp` service is the Phase 11 V2 MCP server. It exposes EVF's Tool Registry
+and reader pipeline over the MCP protocol (stdio + Streamable HTTP), enabling Claude Desktop
+and other MCP clients to cast spells, move tokens, and read the current combat/actor state.
+
+### When to use stdio mode (Claude Desktop, local)
+
+For Claude Desktop integration, run the stdio entrypoint directly — no Docker needed:
+
+```bash
+# Build the package first
+pnpm --filter @evf/foundry-mcp build
+
+# Point Claude Desktop at the built entrypoint:
+# In ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or equivalent:
+# See docs/claude-desktop-config.example.json for the full config snippet.
+node /absolute/path/to/EvenFoundryVTT/packages/foundry-mcp/dist/index.js
+```
+
+Environment variables are supplied via Claude Desktop's `"env"` field in the config —
+see `docs/claude-desktop-config.example.json`.
+
+### When to use HTTP mode (remote homelab, Docker)
+
+For remote homelab access, bring up the `foundry-mcp` service alongside the bridge:
+
+```bash
+cd deploy/
+# Add EVF_BEARER + EVF_BRIDGE_URL to your .env (see .env.example Phase 11 section)
+docker compose up -d --build foundry-mcp
+```
+
+The `foundry-mcp` service depends on `bridge` with `condition: service_healthy` — the bridge
+must be healthy before the MCP server starts.
+
+Verify the MCP server is running:
+
+```bash
+curl http://localhost:8911/healthz
+# → 200 ok
+```
+
+### Env-var contract (foundry-mcp)
+
+See `deploy/.env.example` (Phase 11 section) for the 4 MCP-specific variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EVF_BEARER` | Yes | 24h bearer from Phase 2 QR-pairing flow |
+| `EVF_BRIDGE_URL` | Yes | Bridge HTTP URL (default: `http://bridge:8910` in Compose) |
+| `EVF_ACTOR_ID` | No | Specific Foundry actor ID; blank = auto-detect |
+| `MCP_HTTP_PORT` | No | HTTP port for Streamable HTTP transport (default 8911) |
+
+### Verification
+
+See `docs/mcp-verification.md` for the complete step-by-step verification procedure
+covering stdio (MCP Inspector) and HTTP (curl) modes.
+
+**HTTP+SSE is NOT supported** (deprecated 2025-03-26, MCP spec rev 2025-06-18). Only
+Streamable HTTP (port 8911) and stdio are available.
+
 ## Troubleshooting
 
 **Bridge exits immediately at startup:**

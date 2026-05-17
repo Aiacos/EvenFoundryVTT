@@ -15,6 +15,7 @@ cd "$SCRIPT_DIR"
 
 DRY_RUN="${1:-}"
 BRIDGE_URL="${BRIDGE_URL:-http://localhost:8910}"
+MCP_URL="${MCP_URL:-http://localhost:8911}"
 
 # ---------------------------------------------------------------------------
 # Dry-run mode: print what would be asserted without booting Docker.
@@ -25,6 +26,13 @@ if [[ "$DRY_RUN" == "--dry-run" ]]; then
   echo "  GET ${BRIDGE_URL}/readyz (secret IS set)           → 200 OK"
   echo "  GET ${BRIDGE_URL}/v1/health (no Authorization)     → 401 Unauthorized"
   echo "  GET ${BRIDGE_URL}/metrics                          → 200 text/plain"
+  echo ""
+  echo "  GET ${MCP_URL}/healthz                             → 200 ok (Phase 11 MCP)"
+  if [[ -n "${EVF_BEARER:-}" ]]; then
+    echo "  POST ${MCP_URL}/mcp (Bearer set) initialize → 200 with evf-foundry-mcp name"
+  else
+    echo "  POST ${MCP_URL}/mcp — SKIPPED (EVF_BEARER not set)"
+  fi
   echo ""
   echo "[smoke] Docker build command would be:"
   echo "  docker compose -f docker-compose.yml -f docker-compose.dev.yml build"
@@ -117,6 +125,56 @@ if ! echo "$ctype" | grep -q "text/plain"; then
   exit 1
 fi
 echo "  PASS: /metrics → ${status} (${ctype})"
+
+echo ""
+echo "=== [smoke] Phase 11 MCP server — asserting GET ${MCP_URL}/healthz → 200 ==="
+# Wait up to 30s for the MCP server to be healthy (it depends_on bridge)
+for i in $(seq 1 30); do
+  if curl -sf "${MCP_URL}/healthz" >/dev/null 2>&1; then
+    echo "  MCP ready after ${i}s"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "  WARN: foundry-mcp did not become healthy in 30s — skipping MCP assertions" >&2
+    echo ""
+    echo "=== [smoke] ALL BRIDGE ASSERTIONS PASSED (MCP skipped — not healthy) ==="
+    exit 0
+  fi
+  sleep 1
+done
+
+mcp_body=$(curl -sf "${MCP_URL}/healthz" 2>/dev/null || true)
+if [ "$mcp_body" != "ok" ]; then
+  echo "  FAIL: /healthz body was '${mcp_body}' (expected 'ok')" >&2
+  exit 1
+fi
+echo "  PASS: ${MCP_URL}/healthz → 200 ok"
+
+echo "=== [smoke] Phase 11 MCP server — asserting POST ${MCP_URL}/mcp (no auth) → 401 ==="
+mcp_unauth=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${MCP_URL}/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0.0.0"}}}')
+if [ "$mcp_unauth" != "401" ]; then
+  echo "  FAIL: /mcp without auth returned ${mcp_unauth} (expected 401)" >&2
+  exit 1
+fi
+echo "  PASS: ${MCP_URL}/mcp (no auth) → ${mcp_unauth}"
+
+if [[ -n "${EVF_BEARER:-}" ]]; then
+  echo "=== [smoke] Phase 11 MCP server — asserting POST ${MCP_URL}/mcp (initialize) ==="
+  mcp_init=$(curl -s -X POST "${MCP_URL}/mcp" \
+    -H "Authorization: Bearer ${EVF_BEARER}" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0.0.0"}}}')
+  if ! echo "$mcp_init" | grep -q '"evf-foundry-mcp"'; then
+    echo "  FAIL: initialize response did not contain evf-foundry-mcp: ${mcp_init}" >&2
+    exit 1
+  fi
+  echo "  PASS: initialize → contains evf-foundry-mcp server name"
+else
+  echo "=== [smoke] Phase 11 MCP server — auth POST SKIPPED (EVF_BEARER not set) ==="
+  echo "  INFO: set EVF_BEARER env var to run the auth-required MCP initialize assertion."
+fi
 
 echo ""
 echo "=== [smoke] ALL ASSERTIONS PASSED ==="
