@@ -331,3 +331,14 @@ export {
   type WeaponAttackInput,
   WeaponAttackInputSchema,
 } from './tools/index.js';
+
+// ─── Voice (Phase 15 Plan 01 — Deepgram Keyterm Prompting) ───────────────────
+// SPELL_KEYTERMS: 70-entry SRD spell vocabulary subset (it,en) consumed by the
+// bridge `keyterm-merger.ts` to feed Deepgram Nova-3 Multilingual's `keyterm`
+// param. Lives in shared-protocol so the bridge does NOT depend on foundry-mcp.
+// Drift-proofed against foundry-mcp's SPELL_LOOKUP via the SKT-02 test gate.
+
+export {
+  SPELL_KEYTERMS,
+  type SpellKeytermEntry,
+} from './voice/spell-keyterms.js';
