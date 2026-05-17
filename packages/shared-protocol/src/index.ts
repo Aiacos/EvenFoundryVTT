@@ -268,6 +268,21 @@ export {
   SpellPackEntrySchema,
 } from './payloads/spell-pack.js';
 
+// ─── Quick Task 260517-k2g — entity-pack vocabulary push schema ───────────────
+// AvailableEntitiesPayloadSchema pushed by foundry-module entity-pack-reader.ts.
+// Parallel additive pipeline to spell-pack: covers non-spell Items + Actors
+// (npc/vehicle). Bridge caches via entity-pack-cache.ts + serves
+// GET /v1/entities/available. foundry-mcp entity-lookup-foundry.ts fetches
+// with 5-min TTL + Levenshtein fuzzy. NO offline fallback (returns null).
+
+export {
+  type AvailableEntitiesPayload,
+  AvailableEntitiesPayloadSchema,
+  type EntityPackEntry,
+  EntityPackEntrySchema,
+  R1_ENTITIES_AVAILABLE_TYPE,
+} from './payloads/entity-pack.js';
+
 // ─── Phase 13 additions (Plan 13-03 — portrait ready schema) ─────────────────
 // Portrait ready payload schema for STRETCH-06 Bio tab portrait feature.
 // Bridge emits r1.portrait.ready envelope on cache-miss render path.

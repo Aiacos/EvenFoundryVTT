@@ -32,15 +32,20 @@ import {
   R1_MOVEMENT_BUDGET_TYPE,
 } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
+// Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
+import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
+import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
+// Quick Task 260517-k2g — entity-pack vocabulary push (parallel additive pipeline, NO new socketlib handler).
+// Emits r1.entities.available envelopes via bridgeDeltaEmitter for non-spell Items + Actors (npc/vehicle).
+// Registered alongside spell-pack so weapon/armor/monster recognition is available at init time too.
+// socketlib count stays 17 (Phase 13 invariant preserved).
+import { registerEntityPackReader } from './readers/entity-pack-reader.js';
+import { registerHookSubscribers } from './readers/hook-subscribers.js';
 // Quick Task 20260517 — spell-pack vocabulary push (push-based, no new socketlib handler).
 // Emits r1.spells.available envelopes via bridgeDeltaEmitter on init + updateCompendium.
 // Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
 // socketlib count stays 17 (Phase 13 invariant preserved).
 import { registerSpellPackReader } from './readers/spell-pack-reader.js';
-// Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
-import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
-import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
-import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
@@ -189,6 +194,11 @@ Hooks.once('init', () => {
   // Quick Task 20260517: emit initial spell vocabulary + subscribe to updateCompendium.
   // Wired to bridgeDeltaEmitter so envelopes reach the bridge cache via /internal/delta.
   registerSpellPackReader((type, payload) => bridgeDeltaEmitter(type, payload));
+  // Quick Task 260517-k2g: emit initial entity vocabulary (non-spell Items + Actors)
+  // via the same bridgeDeltaEmitter channel. Parallel additive pipeline; NO refactor
+  // of registerSpellPackReader above. Bridge multiplexes both r1.spells.available and
+  // r1.entities.available envelopes in its /internal/delta onDelta callback.
+  registerEntityPackReader((type, payload) => bridgeDeltaEmitter(type, payload));
 });
 
 // Register socketlib GM-side handlers + hook subscribers on "ready".
