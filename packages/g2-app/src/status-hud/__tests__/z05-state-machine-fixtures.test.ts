@@ -145,6 +145,27 @@ describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
     }
   });
 
+  it('Z05-INV-02b (UI-SPEC §8.2 invariant 2, IT locale): right Status HUD column (cols 69..95) is byte-identical between State A IT and State B IT for rows 3..20', () => {
+    // IT is the project's primary locale per CLAUDE.md — UI-SPEC §8.2 invariant 2
+    // ("byte-identical in A and B") is a per-locale property, so it must be locked
+    // for IT independently from the EN pair (Z05-INV-02 above). A future regression
+    // mutating IT-locale Status HUD on overlay mount would silently pass CI if this
+    // assertion were absent. Empirically verified 0 mismatches at INV-1 freeze.
+    const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
+    const gridB = loadSceneFixture('raster-overlay-open.it.txt');
+
+    for (let row = 3; row <= 20; row++) {
+      for (let col = 69; col <= 95; col++) {
+        const a = gridA.at(col, row);
+        const b = gridB.at(col, row);
+        expect(
+          a,
+          `UI-SPEC §8.2 inv.2 (IT): Status HUD col ${col} row ${row} must be byte-identical A↔B (got A=${JSON.stringify(a)} B=${JSON.stringify(b)})`,
+        ).toBe(b);
+      }
+    }
+  });
+
   it('Z05-INV-03 (UI-SPEC §8.2 invariant 4): frame columns {0, 68, 95} on rows {0, 2, 21, 23} match between State A IT and State B IT', () => {
     const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
     const gridB = loadSceneFixture('raster-overlay-open.it.txt');
