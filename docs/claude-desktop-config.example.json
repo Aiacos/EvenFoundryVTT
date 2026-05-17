@@ -1,0 +1,14 @@
+{
+  "_doc": "EVF foundry-mcp Claude Desktop configuration example. Copy the mcpServers object into your Claude Desktop config file. Replace /absolute/path/to/EvenFoundryVTT with the real path to your repo. NEVER commit real bearer tokens — this file uses a placeholder. See docs/mcp-verification.md for full setup instructions.",
+  "mcpServers": {
+    "evf-foundry-mcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/EvenFoundryVTT/packages/foundry-mcp/dist/index.js"],
+      "env": {
+        "EVF_BEARER": "REPLACE_WITH_24H_BEARER_FROM_QR_PAIRING",
+        "EVF_BRIDGE_URL": "http://localhost:8910",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
