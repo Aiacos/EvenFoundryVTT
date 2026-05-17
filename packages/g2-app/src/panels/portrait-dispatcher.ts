@@ -73,9 +73,7 @@ export function attachPortraitHandler(ws: PortraitDispatcherSocket): PortraitDis
     try {
       // Step 1 — decode raw bytes / string
       const rawText =
-        typeof ev.data === 'string'
-          ? ev.data
-          : new TextDecoder().decode(ev.data as ArrayBuffer);
+        typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer);
 
       // Step 2 — JSON.parse (throw caught by outer try/catch)
       const parsedJson = JSON.parse(rawText) as unknown;

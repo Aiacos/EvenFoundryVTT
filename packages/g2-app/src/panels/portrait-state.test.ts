@@ -11,11 +11,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  clearPortraitBytes,
-  getPortraitBytes,
-  setPortraitBytes,
-} from './portrait-state.js';
+import { clearPortraitBytes, getPortraitBytes, setPortraitBytes } from './portrait-state.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -23,8 +19,10 @@ const ACTOR_A = 'actor-aaaaa';
 const ACTOR_B = 'actor-bbbbb';
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
-const B64_A = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-const B64_B = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=';
+const B64_A =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const B64_B =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=';
 
 describe('portrait-state', () => {
   afterEach(() => {

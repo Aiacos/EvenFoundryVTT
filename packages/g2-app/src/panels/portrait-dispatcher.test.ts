@@ -13,10 +13,10 @@
  * @see .planning/phases/13-v2-stretch/13-04-PLAN.md Task 1
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { R1_PORTRAIT_READY_TYPE } from '@evf/shared-protocol';
-import { clearPortraitBytes, getPortraitBytes } from './portrait-state.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachPortraitHandler } from './portrait-dispatcher.js';
+import { clearPortraitBytes, getPortraitBytes } from './portrait-state.js';
 
 // ─── MockSocket ───────────────────────────────────────────────────────────────
 
@@ -56,7 +56,8 @@ class MockSocket {
 
 const ACTOR_ID = 'actor-thorin';
 const VALID_HASH = 'a'.repeat(64);
-const VALID_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const VALID_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 function makePortraitEnvelope(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -115,14 +116,16 @@ describe('attachPortraitHandler', () => {
   // PD-03: wrong envelope type silently ignored
   it('PD-03: envelope with wrong type is silently ignored (no cache write, no warn)', () => {
     const unsub = attachPortraitHandler(ws);
-    ws.fireMessage(JSON.stringify({
-      proto: 'evf-v1',
-      seq: 1,
-      ts: Date.now(),
-      type: 'r1.some.other.type',
-      session_id: '12345678-1234-4abc-8abc-123456789012',
-      payload: {},
-    }));
+    ws.fireMessage(
+      JSON.stringify({
+        proto: 'evf-v1',
+        seq: 1,
+        ts: Date.now(),
+        type: 'r1.some.other.type',
+        session_id: '12345678-1234-4abc-8abc-123456789012',
+        payload: {},
+      }),
+    );
     expect(consoleWarnSpy).not.toHaveBeenCalled();
     expect(getPortraitBytes(ACTOR_ID)).toBeNull();
     unsub();

@@ -11,11 +11,11 @@
  * @see .planning/phases/13-v2-stretch/13-04-PLAN.md Task 2
  */
 
-import { describe, expect, it, vi } from 'vitest';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
-import { MapBaseLayer } from './map-base-layer.js';
+import { describe, expect, it, vi } from 'vitest';
 import type { LayerManager } from '../engine/layer-manager.js';
 import type { RasterControllerLike } from '../engine/layer-types.js';
+import { MapBaseLayer } from './map-base-layer.js';
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -27,7 +27,9 @@ function makeMockBridge(overrides: Partial<EvenAppBridge> = {}): EvenAppBridge {
   } as unknown as EvenAppBridge;
 }
 
-function makeMockController(bleVerdict: 'raster' | 'glyph' | null = 'raster'): RasterControllerLike {
+function makeMockController(
+  bleVerdict: 'raster' | 'glyph' | null = 'raster',
+): RasterControllerLike {
   return {
     requestFrame: vi.fn().mockResolvedValue(undefined),
     setBleVerdict: vi.fn(),

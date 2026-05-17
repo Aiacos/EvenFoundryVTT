@@ -34,14 +34,14 @@
 
 import { PortraitReadyPayloadSchema, R1_PORTRAIT_READY_TYPE } from '@evf/shared-protocol';
 import type { FastifyInstance } from 'fastify';
+import type { TokenCache } from '../auth/token-cache.js';
 import type { PortraitCache } from '../portrait/portrait-cache.js';
 import {
   PortraitDecodeError,
   PortraitFetchError,
-  PortraitTooLargeError,
   type PortraitRenderer,
+  PortraitTooLargeError,
 } from '../portrait/portrait-renderer.js';
-import type { TokenCache } from '../auth/token-cache.js';
 import type { FoundrySnapshotFn } from './character.js';
 /** Minimal DeltaEmitter surface used by the portrait route (D-13-07). Structural interface for testability. */
 export interface DeltaEmitterLike {
@@ -55,7 +55,7 @@ export interface DeltaEmitterLike {
  * Covers cloud metadata endpoints + loopback + 0.0.0.0 (T-13-02).
  */
 const SSRF_DENY_LIST = new Set([
-  '169.254.169.254',       // AWS/Azure EC2 metadata
+  '169.254.169.254', // AWS/Azure EC2 metadata
   'metadata.google.internal',
   'metadata.azure.com',
   'localhost',
@@ -184,9 +184,7 @@ export async function registerPortraitRoute(opts: RegisterPortraitRouteOpts): Pr
       : 'http://localhost:30000');
 
   const effectiveAllowedHosts =
-    allowedHosts.length > 0
-      ? allowedHosts
-      : [process.env.EVF_FOUNDRY_ORIGIN_HOST ?? ''];
+    allowedHosts.length > 0 ? allowedHosts : [process.env.EVF_FOUNDRY_ORIGIN_HOST ?? ''];
 
   app.get<{ Params: { actorId: string } }>('/v1/portrait/:actorId', async (request, reply) => {
     // Step 1 — Bearer auth
@@ -267,7 +265,10 @@ export async function registerPortraitRoute(opts: RegisterPortraitRouteOpts): Pr
       }
     } catch (err) {
       if (err instanceof PortraitFetchError) {
-        app.log.warn({ actorId, url: resolvedUrl, status: err.status }, '[portrait-route] fetch failed');
+        app.log.warn(
+          { actorId, url: resolvedUrl, status: err.status },
+          '[portrait-route] fetch failed',
+        );
         return reply.status(502).send({ error: 'portrait_fetch_failed' });
       }
       if (err instanceof PortraitTooLargeError) {

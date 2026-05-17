@@ -76,8 +76,11 @@ import { clearActionEconomyState } from '../panels/action-economy-state.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
+import { attachPortraitHandler } from '../panels/portrait-dispatcher.js';
+import { clearPortraitBytes } from '../panels/portrait-state.js';
 import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
+import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
@@ -660,6 +663,39 @@ export async function _bootEngineCore(
     toastQueue, // Plan 09-03: forward for [N] cancel-toast path (CDM-CANCEL-01)
   );
 
+  // 11d-i. Phase 13 Plan 13-04 — reaction-prompt dispatcher (ACT-04).
+  //        Listens for `r1.reaction.available` envelopes; mounts ReactionPromptPanel
+  //        at z=2 after a 500ms debounce; 5s auto-timeout on inactivity.
+  //        `getPlayerActorId` + `getPlayerWeaponId` stub null for MVP — Phase 9
+  //        TODO(ADR-0005): resolve actor + weapon IDs from StatusHudLayer snapshot cache.
+  const detachReactionPrompt = attachReactionPromptHandler({
+    ws: ws as unknown as Parameters<typeof attachReactionPromptHandler>[0]['ws'],
+    layerManager,
+    bridge,
+    gestureBus,
+    locale: effectiveLocale,
+    sessionId: handshake.session_id,
+    getPlayerActorId: () => null,
+    getPlayerWeaponId: () => null,
+  });
+
+  // 11d-ii. Phase 13 Plan 13-04 — portrait-state dispatcher (STRETCH-06).
+  //         Listens for `r1.portrait.ready` envelopes; populates portrait-state cache
+  //         used by CharacterSheetPanel Bio tab override (D-13-09).
+  const detachPortrait = attachPortraitHandler(
+    ws as unknown as Parameters<typeof attachPortraitHandler>[0],
+  );
+
+  // 11d-iii. Phase 13 Plan 13-04 — character-sheet mapBase injection.
+  //          Injects the boot-time MapBaseLayer singleton into CharacterSheetPanel
+  //          post-construction via setPanelInstanceHandler (Plan 08-05 pattern).
+  //          This allows CharacterSheetPanel.onMount to call setPortraitOverride
+  //          when the Bio tab is opened with portrait enabled (D-13-08 slot override).
+  panelRouter.setPanelInstanceHandler('character-sheet', (panel) => {
+    const sheet = panel as unknown as { setMapBaseLayer: (m: typeof mapBase) => void };
+    sheet.setMapBaseLayer(mapBase);
+  });
+
   // 11e. Action result dispatcher (Plan 08-01) — listens on `r1.action.result` envelopes
   //      and enqueues typed toasts via ToastQueueLayer (T-08-01-01 + T-08-02-01 mitigations).
   //
@@ -954,6 +990,23 @@ export async function _bootEngineCore(
         unsubConcConflict();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubConcConflict failed', err);
+      }
+      // Tear down Phase 13 dispatcher subscriptions (reverse of attach order).
+      // detachPortrait attached last (11d-ii), so tear down before detachReactionPrompt.
+      try {
+        detachPortrait();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: detachPortrait failed', err);
+      }
+      try {
+        clearPortraitBytes();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: clearPortraitBytes failed', err);
+      }
+      try {
+        detachReactionPrompt();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: detachReactionPrompt failed', err);
       }
       try {
         unsubLongPress();

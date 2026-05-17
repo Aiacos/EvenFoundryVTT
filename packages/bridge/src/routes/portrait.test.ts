@@ -63,7 +63,9 @@ function makeSnapshotWithoutPortrait() {
   return { actorId: ACTOR_ID, name: 'Thorin' };
 }
 
-function makeRenderer(pngBytes: Uint8Array = PNG_BYTES): PortraitRenderer & { renderPortrait: ReturnType<typeof vi.fn> } {
+function makeRenderer(
+  pngBytes: Uint8Array = PNG_BYTES,
+): PortraitRenderer & { renderPortrait: ReturnType<typeof vi.fn> } {
   return {
     renderPortrait: vi.fn().mockResolvedValue({
       pngBytes,
@@ -183,7 +185,8 @@ describe('GET /v1/portrait/:actorId', () => {
     const { app } = await buildTestServer({
       // 'http://' (missing host) causes new URL() to throw — truly malformed absolute URL.
       // Note: ':::bad:::' resolves to a valid path under the Foundry base, so it is NOT malformed.
-      snapshotFn: () => Promise.resolve({ actorId: ACTOR_ID, name: 'T', portrait: { url: 'http://' } }),
+      snapshotFn: () =>
+        Promise.resolve({ actorId: ACTOR_ID, name: 'T', portrait: { url: 'http://' } }),
     });
     const res = await app.inject({
       method: 'GET',

@@ -55,8 +55,8 @@ import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
-import { getPortraitBytes } from './portrait-state.js';
 import { renderTabContent } from './character-sheet-tab-renderers.js';
+import { getPortraitBytes } from './portrait-state.js';
 
 /**
  * Minimal MapBaseLayer surface used by CharacterSheetPanel for portrait override (D-13-08).
@@ -257,8 +257,25 @@ export default class CharacterSheetPanel implements OverlayPanel {
      * Typed as `MapBaseLayerLike` (structural) for testability (avoids importing the
      * concrete `MapBaseLayer` class here — prevents circular imports via raster/).
      */
-    private readonly mapBaseLayer: MapBaseLayerLike | null = null,
+    private mapBaseLayer: MapBaseLayerLike | null = null,
   ) {}
+
+  /**
+   * Inject the MapBaseLayer dependency post-construction.
+   *
+   * Called by boot-engine-core via `panelRouter.setPanelInstanceHandler('character-sheet', ...)`
+   * BEFORE `onMount` runs — the same injection point used by spellbook/inventory panels for
+   * their `setActionOptionsHandler` / `setQuickActionHandler` methods (Plan 08-05 pattern).
+   *
+   * Allows `PanelRouter.openPanel` to construct CharacterSheetPanel with its 3-arg public
+   * constructor signature (bridge, gestureBus, locale) while still threading the boot-time
+   * `mapBase` reference that arrives after `discoverPanels()`.
+   *
+   * @param mapBase - Boot-time MapBaseLayer singleton, or null to clear (tests only).
+   */
+  setMapBaseLayer(mapBase: MapBaseLayerLike | null): void {
+    this.mapBaseLayer = mapBase;
+  }
 
   // ─── OverlayPanel lifecycle ─────────────────────────────────────────────────
 

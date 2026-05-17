@@ -622,14 +622,24 @@ describe('CharacterSheetPanel — INV-1 Bio fixtures (Plan 13-04)', () => {
 
   it('CHSP-FIX-PORT-01: sheet-bio-without-portrait.it.txt matches Bio tab text content', async () => {
     const { renderTabContent } = await import('../character-sheet-tab-renderers.js');
-    const rows = renderTabContent('bio', bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot, 'it', 0);
+    const rows = renderTabContent(
+      'bio',
+      bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot,
+      'it',
+      0,
+    );
     const grid = AsciiGrid.fromString(rows.join('\n'));
     await matchAsciiFixture(grid, resolve(fixtureDir(), 'sheet-bio-without-portrait.it.txt'));
   });
 
   it('CHSP-FIX-PORT-02: sheet-bio-with-portrait.it.txt matches Bio tab text content (text unchanged by portrait overlay)', async () => {
     const { renderTabContent } = await import('../character-sheet-tab-renderers.js');
-    const rows = renderTabContent('bio', bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot, 'it', 0);
+    const rows = renderTabContent(
+      'bio',
+      bioSnapshot as import('@evf/shared-protocol').CharacterSnapshot,
+      'it',
+      0,
+    );
     const grid = AsciiGrid.fromString(rows.join('\n'));
     // When portrait is active, the TEXT container content is IDENTICAL — the portrait
     // goes into MapBaseLayer's image slot, not the text container (D-13-08 design).

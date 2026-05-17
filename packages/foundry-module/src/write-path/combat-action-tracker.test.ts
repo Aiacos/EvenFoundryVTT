@@ -561,7 +561,11 @@ describe('registerCombatActionTracker', () => {
 
     fireCreateChatMessage(
       makeChatMsg({
-        audit: { toolId: 'opportunity-attack', actorId: 'actor-fighter', recipientUserId: 'user-fighter' },
+        audit: {
+          toolId: 'opportunity-attack',
+          actorId: 'actor-fighter',
+          recipientUserId: 'user-fighter',
+        },
       }),
     );
 
