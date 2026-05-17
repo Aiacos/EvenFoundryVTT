@@ -1,0 +1,24 @@
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║ MAP · Sala Banchetti · raster        ROUND 3 · TURN 2/5         ⌁ R1 92%                     ║
+╠═══════════════════════════════════════════════════════════════════╦══════════════════════════╣
+║                                                                   ║ THORIN  F3/W5            ║
+║   ┌─[ tile 1 · 200×100 ]──────┬─[ tile 2 · 200×100 ]──────┐       ║ ────────────────         ║
+║   │ Foundry canvas — upper L  │ Foundry canvas — upper R  │       ║ HP ████████░░            ║
+║   │ Floyd-Steinberg dither    │ Floyd-Steinberg dither    │       ║    45/68  +10t           ║
+║   │ 4-bit greyscale verde     │ 4-bit greyscale verde     │       ║ AC 18  SPD 30            ║
+║   │                           │                           │       ║                          ║
+║   │ texture, lighting, walls  │ texture, lighting, walls  │       ║ Act ░  Bns ░  R░         ║
+║   │ rendered fedeli a Foundry │ rendered fedeli a Foundry │       ║ Mov 30/30                ║
+║   ├─[ tile 3 · 200×100 ]──────┼─[ tile 4 · 200×100 ]──────┤       ║                          ║
+║   │ Foundry canvas — lower L  │                           │       ║ Slots                    ║
+║   │                           │                           │       ║   1° ▓▓░░ 2/4            ║
+║   │                           │                           │       ║   2° ▓░░  1/3            ║
+║   │                           │                           │       ║   3° ░░   0/2            ║
+║   │                           │                           │       ║                          ║
+║   └───────────────────────────┴───────────────────────────┘       ║ Conditions               ║
+║   ┌─[ SHEET · BIO ]──────────────────────────────────────┐        ║  ▶ Bless (7r)            ║
+║   │ Thorin Stonebeard · F3/W5 · LG dwarf folk hero       │        ║    Concentr.             ║
+║   │ Background: Folk Hero · Alignment: Lawful Good       │        ║                          ║
+╠═══════════════════════════════════════════════════════════════════╩══════════════════════════╣
+║ R1: scroll=navigate  tap=action  long=close   ▶SHEET active                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
