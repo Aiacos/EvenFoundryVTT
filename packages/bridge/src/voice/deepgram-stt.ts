@@ -1,5 +1,7 @@
 /**
- * Deepgram Nova-3 Multilingual streaming STT adapter — Plan 12-03 Task 1.
+ * Deepgram Nova-3 Multilingual streaming STT adapter — Plan 12-03 Task 1 +
+ * Plan 15-02 (keyterm wiring) + Plan 15-03 (refreshKeyterm invalidation) +
+ * Plan 15-04 (empty-cache one-shot warn + keyterm-reject retry-then-fallback).
  *
  * Creates a `DeepgramAdapter` that wraps the Deepgram streaming WebSocket API
  * (`wss://api.deepgram.com/v1/listen`). The adapter is disabled when
@@ -30,16 +32,60 @@
  * list in server.ts covers 'deepgramKey', 'apiKey', '*.deepgramKey', '*.apiKey').
  * Zero secret patterns in this file — asserted by T-12-LEAK-01 grep gate.
  *
+ * # Phase 15 Plan 04 — Failure modes (CONTEXT D-05 + D-06)
+ *
+ * - **Empty entity-pack cache** (D-05): when the keytermProvider reports
+ *   `entityCachePresent: false`, the adapter emits a single `logger.warn`
+ *   with `{ event: 'keyterm.empty-entity-cache' }` on the FIRST observation
+ *   per empty-streak. Subsequent connects with the cache still empty do NOT
+ *   re-emit. When the cache transitions to present, the flag resets so a
+ *   later return-to-empty fires the warn again. The warn is **never**
+ *   emitted when the provider returns a bare `string[]` — that signals
+ *   "no entity-cache awareness" and is opt-out of the diagnostic.
+ *
+ * - **Keyterm-reject retry-then-fallback** (D-06): when Deepgram closes a
+ *   session BEFORE any Results frame arrives, with a close code in the
+ *   keyterm-reject set (1007 invalid-payload-data, 1008 policy-violation,
+ *   or any code in the application range 4000-4999), the adapter:
+ *     1. Retries ONCE with a {@link sanitizeKeyterms}-normalised URL.
+ *     2. If the retry also fails with a keyterm-reject code, falls back to
+ *        a no-keyterm baseline URL (Phase 12 behaviour preserved).
+ *   Retries are per-session ephemeral — each new `connect()` starts again
+ *   with the optimistic full keyterm list. There is no global "keyterms
+ *   are bad" state. Voice is NEVER fail-closed when Deepgram is reachable.
+ *
  * @see ./audio-stream-route.ts (consumer)
  * @see ../server.ts (pino redact list + route registration at step 10)
+ * @see ./keyterm-sanitizer.ts (retry-path sanitiser — Plan 15-04 Task 1)
  * @see packages/shared-protocol/src/payloads/voice.ts (VoiceTranscriptPayloadSchema)
  * @see .planning/phases/12-v2-voice-ux-tuning/12-03-PLAN.md Task 1
+ * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-04-PLAN.md
  */
 
 import type { Logger } from 'pino';
 import { WebSocket as NodeWebSocket } from 'ws';
+import { sanitizeKeyterms } from './keyterm-sanitizer.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 15 Plan 04 — richer return shape for the keytermProvider callback.
+ *
+ * Returning the bare `string[]` form keeps Phase 15 Plan 02 backward
+ * compatibility — the adapter normalises it internally and skips the
+ * empty-cache warning entirely (no entity-cache awareness signalled).
+ *
+ * Returning the object form `{ keyterms, entityCachePresent }` opts into the
+ * D-05 one-shot empty-cache warning: when `entityCachePresent === false`,
+ * the FIRST observation per empty-streak emits a single `logger.warn` with
+ * `{ event: 'keyterm.empty-entity-cache' }`.
+ */
+export interface KeytermProviderResult {
+  /** The keyterm list to forward to Deepgram (already deduped/capped by the merger). */
+  keyterms: string[];
+  /** True when the entity-pack cache had a non-null snapshot at compute time. */
+  entityCachePresent: boolean;
+}
 
 export interface CreateDeepgramSttOpts {
   /** DEEPGRAM_API_KEY from env; when undefined or '', the adapter operates in disabled mode. */
@@ -59,11 +105,21 @@ export interface CreateDeepgramSttOpts {
    * before being appended to the Deepgram WS URL as a `keyterm=<encoded>` query
    * parameter — one occurrence per entry per Deepgram wire format.
    *
+   * # Phase 15 Plan 04 — richer return shape
+   *
+   * The provider may optionally return the object form
+   * {@link KeytermProviderResult}, where `entityCachePresent` drives the
+   * one-shot empty-cache warning (CONTEXT D-05). The bare `string[]` form
+   * remains supported for Phase 15 Plan 02 backward compatibility; under
+   * that form the empty-cache warn path is disabled (the warn is opt-in
+   * via the richer shape, not a generic "empty keyterms" diagnostic).
+   *
    * @see ./keyterm-merger.ts (production producer: buildKeytermList)
    * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-02-PLAN.md
+   * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-04-PLAN.md
    * @see .planning/quick/20260517-voice-intent-research/RESEARCH.md §2 Option C
    */
-  keytermProvider?: () => string[];
+  keytermProvider?: () => string[] | KeytermProviderResult;
   /**
    * @internal Test-only: inject a custom WebSocket factory.
    * Production always uses the `ws` package's WebSocket constructor.
@@ -164,6 +220,36 @@ function buildDeepgramUrl(baseUrl: string, keyterms: string[]): string {
   return `${baseUrl}&${encoded}`;
 }
 
+// ─── Phase 15 Plan 04 — Keyterm-reject close codes ────────────────────────────
+
+/**
+ * WS close codes that signal a Deepgram-side rejection of the keyterm list.
+ *
+ * - **1007** (RFC 6455 invalid-payload-data) — Deepgram occasionally maps
+ *   malformed UTF-8 / control-char-laden keyterm strings to this code.
+ * - **1008** (RFC 6455 policy-violation) — generic "request violates server
+ *   policy"; Deepgram's WS layer uses it for keyterm-list validation failures.
+ *
+ * In addition to these RFC 6455 codes, any application close code in the
+ * range `4000-4999` is treated as keyterm-suspect (Deepgram reserves the
+ * application range for its own service-specific signals).
+ *
+ * Codes OUTSIDE these (1000 normal, 1006 abnormal, 1011 server error, etc.)
+ * are NOT keyterm-related and do not trigger retry. Phase 12 close behaviour
+ * is preserved for those codes (DGFM-04).
+ *
+ * @see .planning/phases/EVF-15-deepgram-keyterm-prompting-entity-pack-integration/15-CONTEXT.md D-06
+ * @see https://datatracker.ietf.org/doc/html/rfc6455#section-7.4.1 (WS close codes)
+ */
+const KEYTERM_REJECT_CODES = [1007, 1008] as const;
+
+/** True when `code` is in {@link KEYTERM_REJECT_CODES} or the 4000-4999 application range. */
+function isKeytermRejectCode(code: number): boolean {
+  if (KEYTERM_REJECT_CODES.includes(code as 1007 | 1008)) return true;
+  if (code >= 4000 && code <= 4999) return true;
+  return false;
+}
+
 // ─── Shape guard for Results frames ──────────────────────────────────────────
 
 /**
@@ -201,75 +287,22 @@ function createNoOpStream(): DeepgramStream {
   };
 }
 
-// ─── Live stream ──────────────────────────────────────────────────────────────
+// ─── Internal types for the retry chain (Phase 15 Plan 04) ────────────────────
 
-function createLiveStream(
-  url: string,
-  apiKey: string,
-  logger: Logger,
-  wsFactory: (url: string, opts: { headers: Record<string, string> }) => unknown,
-): DeepgramStream {
-  // Construct the WS with the canonical Deepgram auth header.
-  // Deepgram uses `Authorization: Token <KEY>` (NOT `Bearer`) — DG-06.
-  const ws = wsFactory(url, {
-    headers: {
-      Authorization: `Token ${apiKey}`,
-    },
-  }) as {
-    on: (event: string, handler: (...args: unknown[]) => void) => unknown;
-    send: (data: Uint8Array) => void;
-    close: () => void;
-  };
-
-  const transcriptCallbacks: ((frame: DeepgramResultsFrame) => void)[] = [];
-
-  ws.on('message', (data: unknown) => {
-    try {
-      const text = data instanceof Buffer ? data.toString('utf-8') : String(data);
-      const parsed: unknown = JSON.parse(text);
-      if (isValidResultsFrame(parsed)) {
-        for (const cb of transcriptCallbacks) {
-          cb(parsed);
-        }
-      } else {
-        logger.debug(
-          { type: (parsed as Record<string, unknown>)?.['type'] },
-          'deepgram-stt: dropped non-Results frame',
-        );
-      }
-    } catch {
-      logger.debug('deepgram-stt: dropped malformed JSON frame');
-    }
-  });
-
-  ws.on('close', () => {
-    logger.debug('deepgram-stt: Deepgram WS closed');
-  });
-
-  ws.on('error', (err: unknown) => {
-    logger.warn({ err }, 'deepgram-stt: Deepgram WS error');
-  });
-
-  return {
-    sendAudio(frame: Uint8Array) {
-      try {
-        ws.send(frame);
-      } catch (err) {
-        logger.warn({ err }, 'deepgram-stt: sendAudio failed');
-      }
-    },
-    onTranscript(cb) {
-      transcriptCallbacks.push(cb);
-    },
-    close() {
-      try {
-        ws.close();
-      } catch (err) {
-        logger.warn({ err }, 'deepgram-stt: close failed');
-      }
-    },
-  };
+/**
+ * Minimal WS-instance shape consumed by the adapter. Production injects a
+ * `ws` package WebSocket; tests inject a mock with `emit('close', code, …)`
+ * support. The factory return is `unknown` so we cast to this shape at the
+ * single attach point.
+ */
+interface LiveWsHandle {
+  on: (event: string, handler: (...args: unknown[]) => void) => unknown;
+  send: (data: Uint8Array) => void;
+  close: () => void;
 }
+
+/** Discriminator for the retry chain — drives the close-handler decision tree. */
+type AttemptKind = 'initial' | 'retry' | 'fallback';
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
@@ -295,13 +328,19 @@ function createLiveStream(
  * DGKT-06) — voice STT continues to function as in Phase 12, just without
  * the +625% entity-recall lift.
  *
+ * # Phase 15 Plan 04 — Failure modes (CONTEXT D-05 + D-06)
+ *
+ * See module-level JSDoc for the empty-cache one-shot warn and keyterm-reject
+ * retry-then-fallback semantics. Voice path NEVER fails closed when Deepgram
+ * is reachable.
+ *
  * @param opts.apiKey - `process.env.DEEPGRAM_API_KEY`; `undefined` or `''` → disabled mode.
  * @param opts.urlOverride - Override Deepgram URL for testing (injects mock server URL).
  * @param opts.logger - pino Logger instance from the Fastify app.
  * @param opts.keytermProvider - @see {@link CreateDeepgramSttOpts.keytermProvider}.
  * @param opts._wsFactory - @internal Test-only WS factory injection.
  *
- * @returns DeepgramAdapter — `isEnabled()` + `connect(sessionId)`.
+ * @returns DeepgramAdapter — `isEnabled()` + `connect(sessionId)` + `refreshKeyterm()`.
  */
 export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter {
   const { apiKey, urlOverride, logger, keytermProvider } = opts;
@@ -318,6 +357,64 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
 
   const deepgramUrl = urlOverride ?? DEEPGRAM_URL;
 
+  /**
+   * Phase 15 Plan 04 — one-shot empty-cache warn flag (CONTEXT D-05).
+   *
+   * Closure-local, per-adapter-instance. The flag is set on the first
+   * observation of an empty entity-pack cache (`entityCachePresent === false`
+   * from the richer keytermProvider return shape). Subsequent empty-cache
+   * observations during the same "empty streak" are absorbed silently.
+   * Transitioning to `entityCachePresent === true` resets the flag — so a
+   * later return to empty fires the warn again (one per empty-streak).
+   */
+  let _emptyCacheWarned = false;
+
+  /**
+   * Phase 15 Plan 04 — normalise the keytermProvider return shape and emit
+   * the one-shot empty-cache warn (D-05) when appropriate.
+   *
+   * Accepts both the bare `string[]` form (Plan 15-02 backward compat) and
+   * the richer `{ keyterms, entityCachePresent }` form (Plan 15-04). The
+   * D-05 warning ONLY fires for the richer object form — the bare-array
+   * form signals "no entity-cache awareness" and skips the diagnostic
+   * entirely (DGEC-03).
+   */
+  function resolveKeyterms(): string[] {
+    if (keytermProvider === undefined) return [];
+    let raw: string[] | KeytermProviderResult;
+    try {
+      raw = keytermProvider();
+    } catch (err) {
+      // T-15-07 mitigation: throwing provider → baseline (no keyterms),
+      // never fail-closed. Reset the empty-cache flag so a subsequent
+      // recovery can re-fire the diagnostic if needed.
+      logger.warn(
+        { err },
+        'deepgram-stt: keytermProvider threw — proceeding with no keyterms (Phase 12 baseline)',
+      );
+      return [];
+    }
+    // Bare string[] form — Phase 15 Plan 02 contract. No D-05 path.
+    if (Array.isArray(raw)) {
+      return raw;
+    }
+    // Richer object form — Phase 15 Plan 04 contract. Drives D-05.
+    const { keyterms, entityCachePresent } = raw;
+    if (entityCachePresent === false) {
+      if (!_emptyCacheWarned) {
+        logger.warn(
+          { event: 'keyterm.empty-entity-cache', keytermCount: keyterms.length },
+          'deepgram-stt: entity-pack cache empty — using spells-only keyterm list (D-05)',
+        );
+        _emptyCacheWarned = true;
+      }
+    } else {
+      // entityCachePresent === true → reset for next empty-streak.
+      _emptyCacheWarned = false;
+    }
+    return keyterms;
+  }
+
   return {
     isEnabled(): boolean {
       return enabled;
@@ -331,10 +428,17 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
       // We re-invoke the provider only to populate the log payload count; the
       // returned array is otherwise discarded. T-15-11 disposition (accept):
       // log MUST NOT include keyterm values, ONLY the count + fromCache flag.
+      //
+      // Note: refreshKeyterm does NOT go through resolveKeyterms() — the
+      // empty-cache warn is a per-CONNECT diagnostic (drives session URL
+      // construction), not a per-REFRESH telemetry signal. Mixing them
+      // would risk firing the D-05 warn from a hot-update path that has
+      // no user-visible session impact.
       let keytermCount = 0;
       if (keytermProvider !== undefined) {
         try {
-          keytermCount = keytermProvider().length;
+          const raw = keytermProvider();
+          keytermCount = Array.isArray(raw) ? raw.length : raw.keyterms.length;
         } catch (err) {
           // Same defensive try/catch pattern as in connect() — a throwing
           // provider degrades to baseline (count=0) rather than crash the
@@ -366,29 +470,127 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
         );
         return createNoOpStream();
       }
-      // Resolve keyterms lazily per connect() (DGKT-05). T-15-07 mitigation:
-      // wrap the provider invocation in try/catch — if the merger throws (e.g.
-      // unexpected entity-cache state), we degrade to baseline (no keyterms)
-      // rather than fail-closed the entire voice path.
-      let keyterms: string[] = [];
-      if (keytermProvider !== undefined) {
-        try {
-          keyterms = keytermProvider();
-        } catch (err) {
-          logger.warn(
-            { err, sessionId },
-            'deepgram-stt: keytermProvider threw — proceeding with no keyterms (Phase 12 baseline)',
-          );
-          keyterms = [];
-        }
-      }
-      const sessionUrl = buildDeepgramUrl(deepgramUrl, keyterms);
+
+      // Resolve keyterms lazily per connect() (DGKT-05). T-15-07 mitigation
+      // is bundled into resolveKeyterms (throwing provider → []).
+      const keyterms = resolveKeyterms();
+      const initialUrl = buildDeepgramUrl(deepgramUrl, keyterms);
+
       logger.info(
         { sessionId, keytermCount: keyterms.length },
         'deepgram-stt: connecting to Deepgram',
       );
-      // apiKey is non-empty here (enabled === true)
-      return createLiveStream(sessionUrl, apiKey as string, logger, wsFactory);
+
+      // Phase 15 Plan 04 — retry-then-fallback state machine.
+      //
+      // The returned DeepgramStream routes sendAudio/close/onTranscript
+      // through whichever WS instance is currently "live" (mutable
+      // `liveWs` reference reassigned on each attempt). Each WS instance
+      // installs its own message/error/close handlers; once a Results frame
+      // is observed, any later close is treated as a normal session end
+      // (no retry — the keyterm list was clearly accepted).
+      //
+      // `apiKey` is non-empty here (enabled === true).
+      const transcriptCallbacks: ((frame: DeepgramResultsFrame) => void)[] = [];
+      let liveWs: LiveWsHandle | null = null;
+      let closedByCaller = false;
+
+      const _attemptConnect = (url: string, attempt: AttemptKind): void => {
+        const ws = wsFactory(url, {
+          headers: { Authorization: `Token ${apiKey as string}` },
+        }) as LiveWsHandle;
+        liveWs = ws;
+        // Whether a valid Results frame has been observed for THIS attempt.
+        // Once true, close events are normal session ends — no retry.
+        let hasReceivedResultsFrame = false;
+
+        ws.on('message', (data: unknown) => {
+          try {
+            const text = data instanceof Buffer ? data.toString('utf-8') : String(data);
+            const parsed: unknown = JSON.parse(text);
+            if (isValidResultsFrame(parsed)) {
+              hasReceivedResultsFrame = true;
+              for (const cb of transcriptCallbacks) {
+                cb(parsed);
+              }
+            } else {
+              logger.debug(
+                { type: (parsed as Record<string, unknown>)?.['type'] },
+                'deepgram-stt: dropped non-Results frame',
+              );
+            }
+          } catch {
+            logger.debug('deepgram-stt: dropped malformed JSON frame');
+          }
+        });
+
+        ws.on('error', (err: unknown) => {
+          logger.warn({ err, sessionId, attempt }, 'deepgram-stt: Deepgram WS error');
+        });
+
+        ws.on('close', (...args: unknown[]) => {
+          const code = typeof args[0] === 'number' ? (args[0] as number) : 1000;
+          // If the caller already requested close, this is a normal teardown.
+          // If we already received a Results frame, the keyterm list was
+          // clearly accepted — any later close is unrelated to keyterms.
+          if (closedByCaller || hasReceivedResultsFrame) {
+            logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
+            return;
+          }
+          if (!isKeytermRejectCode(code)) {
+            // Phase 12 baseline behaviour: standard close (server error,
+            // normal, abnormal, etc.). No retry — DGFM-04.
+            logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
+            return;
+          }
+          // Keyterm-reject branch. Decide between retry and fallback.
+          if (attempt === 'initial') {
+            const sanitizedUrl = buildDeepgramUrl(deepgramUrl, sanitizeKeyterms(keyterms));
+            logger.warn(
+              { event: 'keyterm.retry-with-sanitized', code, sessionId },
+              'deepgram-stt: Deepgram rejected keyterm list — retrying with sanitized form (D-06)',
+            );
+            _attemptConnect(sanitizedUrl, 'retry');
+            return;
+          }
+          if (attempt === 'retry') {
+            const baselineUrl = buildDeepgramUrl(deepgramUrl, []);
+            logger.warn(
+              { event: 'keyterm.fallback-to-baseline', code, sessionId },
+              'deepgram-stt: sanitized retry also rejected — falling back to no-keyterm baseline (D-06)',
+            );
+            _attemptConnect(baselineUrl, 'fallback');
+            return;
+          }
+          // attempt === 'fallback' → no further retries. Phase 12 baseline
+          // also failed, meaning Deepgram has a real outage. Surface as
+          // standard close — voice path degrades gracefully.
+          logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
+        });
+      };
+
+      _attemptConnect(initialUrl, 'initial');
+
+      return {
+        sendAudio(frame: Uint8Array) {
+          try {
+            liveWs?.send(frame);
+          } catch (err) {
+            logger.warn({ err }, 'deepgram-stt: sendAudio failed');
+          }
+        },
+        onTranscript(cb) {
+          transcriptCallbacks.push(cb);
+        },
+        close() {
+          closedByCaller = true;
+          try {
+            liveWs?.close();
+          } catch (err) {
+            logger.warn({ err }, 'deepgram-stt: close failed');
+          }
+        },
+      };
     },
   };
 }
