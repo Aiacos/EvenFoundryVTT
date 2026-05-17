@@ -1474,6 +1474,63 @@ export const HUD_WIDTH_BUDGETS = {
     de: '⚠ SYNC LOST (reconnecting…)',
     max: 38,
   },
+
+  // ─── Phase 13 Plan 13-02 — Reaction Prompt Panel (8 keys, ACT-04) ────────────
+  // IT canonical per CONTEXT.md §Area 3. EN/DE canonical; best-effort locales
+  // fall back to EN per I18N-05. Panel width = 60 cp (same as conc modal).
+  // Subject lines target ≤40 cp; Y button rows target ≤30 cp.
+  //
+  // Note: subject lines use `{actor}` placeholder replaced at render time with
+  // `payload.sourceName` (truncated to 30 cp budget). The bracket/template is
+  // kept short to stay within the 60 cp inner budget.
+  reaction_prompt_title: {
+    it: 'REAZIONE',
+    en: 'REACTION',
+    de: 'REAKTION',
+    max: 10,
+  },
+  reaction_prompt_subject_shield: {
+    it: '{actor} attacca! Usa Shield?',
+    en: '{actor} attacks! Use Shield?',
+    de: '{actor} greift an! Shield?',
+    max: 40,
+  },
+  reaction_prompt_subject_counterspell: {
+    it: '{actor} lancia un incantesimo.',
+    en: '{actor} casts a spell.',
+    de: '{actor} wirkt einen Zauber.',
+    max: 40,
+  },
+  reaction_prompt_subject_opp_attack: {
+    it: '{actor} fugge dalla tua mischia.',
+    en: '{actor} flees your melee reach.',
+    de: '{actor} flieht deiner Reichweite.',
+    max: 40,
+  },
+  reaction_prompt_y_shield: {
+    it: '[Y] Lancia Shield (-1 reaz)',
+    en: '[Y] Cast Shield (-1 react)',
+    de: '[Y] Shield wirken (-1 Reakt)',
+    max: 30,
+  },
+  reaction_prompt_y_counterspell: {
+    it: '[Y] Lancia Contromagia (-1 reaz)',
+    en: '[Y] Cast Counterspell (-1 react)',
+    de: '[Y] Gegenzauber (-1 Reakt)',
+    max: 34,
+  },
+  reaction_prompt_y_opp_attack: {
+    it: '[Y] Attacca opportunità (-1 reaz)',
+    en: '[Y] Opportunity Attack (-1 react)',
+    de: '[Y] Gelegenheitsangriff (-1 Rkt)',
+    max: 35,
+  },
+  reaction_prompt_n_cancel: {
+    it: '[N] Annulla',
+    en: '[N] Cancel',
+    de: '[N] Abbrechen',
+    max: 14,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**

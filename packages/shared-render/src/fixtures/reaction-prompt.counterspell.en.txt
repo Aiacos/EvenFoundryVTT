@@ -1,0 +1,12 @@
+┌─[ REACTION: Counterspell ]───────────────────────────────┐
+│                                                          │
+│   Enemy Mage casts a spell.                              │
+│                                                          │
+│   [Y] Cast Counterspell (-1 react)                       │
+│   [N] Cancel                                             │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘

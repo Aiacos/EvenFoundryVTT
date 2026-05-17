@@ -269,7 +269,10 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     //    hud_r1_slot_picker).
     // Phase 10 Plan 01 totals: 2 SYNC LOST chip keys
     //   (hud_sync_lost_chip_template, hud_sync_lost_chip_inflight).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(218);
+    // Phase 13 Plan 02 totals: 8 Reaction Prompt Panel keys
+    //   (reaction_prompt_title, _subject_shield, _subject_counterspell, _subject_opp_attack,
+    //    _y_shield, _y_counterspell, _y_opp_attack, _n_cancel).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -350,7 +353,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 209 after Phase 9 Plan 03 (1 error.action.concentration-cancelled key).
     // Updated to 216 after Phase 9 Plan 04 (7 SlotPickerPanel keys).
     // Updated to 218 after Phase 10 Plan 01 (2 SYNC LOST chip keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(218);
+    // Updated to 226 after Phase 13 Plan 02 (8 Reaction Prompt Panel keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
@@ -524,6 +528,7 @@ describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
     // Note: after Plan 09-03, total is 209 (208 + 1 concentration-cancelled key).
     // Note: after Plan 09-04, total is 216 (209 + 7 SlotPickerPanel keys).
     // Note: after Plan 10-01, total is 218 (216 + 2 SYNC LOST chip keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(218);
+    // Note: after Plan 13-02, total is 226 (218 + 8 Reaction Prompt Panel keys).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
   });
 });

@@ -1,0 +1,12 @@
+┌─[ REAZIONE: Att. Opportunità ]───────────────────────────┐
+│                                                          │
+│   Fleeing Orc fugge dalla tua mischia.                   │
+│                                                          │
+│   [Y] Attacca opportunità (-1 reaz)                      │
+│   [N] Annulla                                            │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
