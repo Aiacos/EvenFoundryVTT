@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: verifying
+status: Awaiting next milestone
 stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-17T09:12:10.957Z"
-last_activity: "2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE."
+last_updated: "2026-05-17T11:57:39.851Z"
+last_activity: 2026-05-17 — Milestone v0.9.11 completed and archived
 progress:
   total_phases: 15
   completed_phases: 15
@@ -18,73 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-10)
+See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 4b — overlay-slot-map-mode-toggle-adversarial-ui (next phase; unblocked by Phase 4a closure)
+**Current focus:** Planning next milestone v0.9.12 (via `/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: 10 (polish-field-test-mvp — CLOSED)
-Plan: 10-05 complete — 10-VERIFICATION.md + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal.
-Status: PHASE_10_CLOSED — MVP_SOFTWARE_COMPLETE — 5/5 plans committed; WS reconnect resilience + perf probe + INV-1..5 verification suite + 5 MVP docs + INV-3 atomic coherence. 2097 tests pass. 14-socketlib-handler invariant upheld; CI Gate 8 green. 32 hardware-pending SCs carried to ADR-0005 Branch A human_needed.
-
-Last activity: 2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE.
-
-Previous activity: 2026-05-16 — Phase 8 Plan 04 complete — MoveDirectionPicker (z=2 overlay, 8 compass directions, computeDelta) + MovementBudgetPayloadSchema + combat-movement-tracker (Foundry Hooks updateToken/updateCombat) + StatusHudRenderer move-chip (row 19 repurpose) + module.ts wiring + 4 INV-1 fixtures. 1833 tests pass. socketlib count stays 14. ADR-0011 upheld.
-
-Previous activity: 2026-05-16 — Plan 07-03 complete: AoE template placement (ACT-02). placeTemplateHandler + confirmTemplatePlacementHandler + TemplatePlacementPanel + template-placement-dispatcher. 1492 tests pass. evf.skillCheck slot renamed → evf.confirmTemplatePlacement (socketlib count stays 14).
-
-Previous activity: 2026-05-15 — Phase 4b CLOSED via `defer-hardware-tests` (same pattern as Phase 4a):
-
-  - Planning (3 iterations): NEEDS_REVISION → APPROVED via orchestrator inline fix for B-2 fan-out (commit c6946a7).
-  - Wave 0 Plan 01: overlay slot machinery + Panel API + Z1_5_TOAST + panel-gesture-bus + ADR-0009 Amd 1 + 27 i18n keys (+46 tests; merged 41d4741).
-  - Wave 1 Plan 02: map mode toggle + Even Hub setLocalStorage persistence + boot read-back SR-11..13 (+17 tests; merged 3faca33).
-  - Wave 2 Plans 03/04/06 (sequential foreground; zero `files_modified` overlap):
-    - 03 ToastQueueLayer z=1.5 + FIFO + [+N] squash + 3 INV-1 fixtures (+25 tests; merged 774da8f).
-    - 04 BootErrorLayer 5 states + dispatch + bootEngineWithErrorUi RETHROW + 10 INV-1 fixtures + B-1 grep gate (+47 tests; merged 8808142).
-    - 06 ATOMIC schema: CharacterSnapshotSchema.death + concentration.ts + character-reader + 6-file workspace fan-out in single commit + CN-9/10 EnvelopeSchema round-trip (+23 tests; merged 510cde5).
-  - Wave 3 Plan 05: StatusHudRenderer death-saves pivot + ConcentrationDropModalPanel (first real OverlayPanel) + conc-conflict-dispatcher (B-4 closure) + 04b-integration-smoke ISM-01..10 (W-4 closure ISM-05) + 4 INV-1 fixtures (+48 tests; merged 2cb9862).
-  - Phase test totals: 669 → 812 (+143 across 6 plans + ADR-0009 Amendment 1 documented). All gates green: typecheck, biome, B-1/W-4 grep gates, 59/59 test files.
-
-Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
-  Phase 4b adds 5 manual-only stress cases to the ADR-0005 carry:
-
-  6. Overlay slot z=2 panel renders on real G2 without visual artifacts (MAP-05)
-  7. Toast queue survives overlay open under real BLE latency (TOAST-01 + ADR-0009 Amd 1 Rule 2)
-  8. Boot error UI renders correctly across all 5 states on real G2 (BOOT-01)
-  9. Death-saves pivot triggers on real Foundry HP=0 event (DEATH-01)
-  10. Concentration-drop modal emits canonical bridge event consumed by Phase 7 (CONC-01)
-
-Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
-
-Progress: [██████████] 100%
-
-Phase 4a closure detail — preserved here for historical reference:
-
-  - Planning revision (3 iterations): NEEDS_REVISION → APPROVED (commit 8ae2533).
-  - Wave 0 Plan 01: scaffolding + type contracts + RasterControllerLike (merged 9f0d5ae).
-  - Wave 1 Plan 02: engine modules — LayerManager, capability-handshake, page-lifecycle, boot-splash (+27 tests; merged 1dfc128).
-  - Wave 2 Plans 03/04/06 (sequential foreground; zero `files_modified` overlap):
-    - 03 raster pipeline + glyph fallback + MapBaseLayer (+34 tests; merged a84bc7b).
-    - 04 status HUD + i18n width budgets + INV-1 ck 11-15 fixtures (+50 tests; merged c46d9c8).
-    - 06 Foundry PIXI extractor + WS `frame_pixels` protocol + scene-input dispatcher (+31 tests; merged 311dc53).
-  - Wave 3 Plan 05:
-    - Task 1 boot orchestrator + Option B W-4 split (commit e862d40 — recovered from a locked worktree after the executor agent hit the monthly usage limit; 2→32 microtask flush fix applied to `bootWithMocks` before commit).
-    - Task 2 ADR-0009 PROPOSED → ACCEPTED + README ADR index + ROADMAP reconciliation (commit 54577c6).
-    - SUMMARY committed (cf015ad).
-    - Task 3 human-verify checkpoint resolved 2026-05-15 via operator-issued `defer-hardware-tests` resume signal.
-  - Phase test totals: 451 → 606 (+155 across the 6 plans). All gates green: typecheck, biome, W-4 grep, 45/45 test files.
-
-Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A — close via `pnpm --filter @evf/validation-harness validate:all`):
-
-  1. Capability handshake on real G2 firmware (DISP-01, DISP-02, NAV-04).
-  2. Raster sustains ≥5 fps standard / 15 fps stretch with measured BLE p50 latency (MAP-02, MAP-04).
-  3. Branch B/C glyph fallback auto-degrades below 100 kbps PROVISIONAL threshold (MAP-04).
-  4. INV-1 layout holds character-perfect on real G2 phosphor display under IT / EN / DE (DISP-03, I18N-04).
-  5. PIXI canvas extract via OffscreenCanvas does NOT block Foundry desktop UI (Specs §11.5.7 pitfall 11).
-
-Progress: [██████████] 95% (milestone) / Phase 4a: 6/6 plans complete (hardware tests deferred).
+Phase: Milestone v0.9.11 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-17 — Milestone v0.9.11 completed and archived
 
 ## Performance Metrics
 
@@ -235,6 +179,31 @@ Items acknowledged and carried forward from project init:
 | V2 | VOICE-01..05 (voice/AI via MCP) | Phase 11-12 | Init 2026-05-10 |
 | V2 | ACT-04 (reaction execution) | Phase 13 | Init 2026-05-10 |
 | V2 stretch | STRETCH-01..08 (multi-player, headless Foundry, DSN raster, dnd5e v6, PF2e, portraits, biometrics, cloud SaaS) | Phase 13 | Init 2026-05-10 |
+
+### Items acknowledged at v0.9.11 milestone close (2026-05-17)
+
+Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-milestone` decision *Acknowledge tutto + carry raster a v0.9.12*.
+
+| Category | Item | Status | Resolution path |
+|----------|------|--------|-----------------|
+| verification_gap | Phase 00 00-VERIFICATION.md | human_needed | ADR-0005 Branch A — `pnpm --filter @evf/validation-harness validate:all` (Even Hub access required) |
+| verification_gap | Phase 02 02-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 03 03-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 05 05-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 06 06-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 08 08-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 09 09-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 10 10-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 12 12-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| verification_gap | Phase 13 13-VERIFICATION.md | human_needed | ADR-0005 Branch A |
+| uat_gap | Phase 00 00-HUMAN-UAT.md (8 scenarios) | partial | ADR-0005 Branch A — hardware-pending UAT |
+| uat_gap | Phase 02 02-HUMAN-UAT.md (6 scenarios) | partial | ADR-0005 Branch A |
+| uat_gap | Phase 03 03-HUMAN-UAT.md (0 scenarios) | resolved | False positive in audit list — all scenarios closed |
+| quick_task | 20260517-spell-lookup-foundry-derived | unknown (SDK quirk) | SUMMARY present — task complete; SDK status field unreliable for quick tasks |
+| quick_task | 260513-l12-fix-applicationv2-referenceerror-in-foun | missing (SDK quirk) | SUMMARY present — task complete; SDK status field unreliable |
+| quick_task | 20260514-raster-dynamic-infill | in-progress | **Carry to v0.9.12** — PLAN already scoped as v0.9.11→v0.9.12 spec bump (z=0.5 idle infill layer). Will become a v0.9.12 requirement during /gsd-new-milestone. |
+
+**Total:** 16 items deferred. 13 hardware-pending (ADR-0005 Branch A), 2 SDK false positives, 1 genuine carry → v0.9.12.
 
 ## Session Continuity
 
@@ -597,3 +566,7 @@ New running total: **33 hardware-pending SCs** carried to ADR-0005 Branch A huma
 ### V2 closure signal
 
 Phase 12 CLOSED. V2 OPZIONALE voice path is software-complete. SC-12-01 deferred to ADR-0005 Branch A human_needed (requires G2 + R1 hardware + Deepgram key). Phase 13 (V2 Stretch) is unblocked when hardware access becomes available for SC-12-01 verification. Resume cmd: `/gsd-plan-phase 13`.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
