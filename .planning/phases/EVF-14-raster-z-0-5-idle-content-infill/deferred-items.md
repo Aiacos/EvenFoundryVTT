@@ -58,3 +58,13 @@ The workspace-wide `pnpm lint:ci` failure is the same pre-existing concern docum
 **Action:** `packages/foundry-module/src/readers/spell-pack-reader.ts:168` reformatted via `pnpm exec biome format --write` — single-line `export function registerSpellPackReader(emit: ...): () => void {` broken to multi-line per Biome `lineWidth: 100`. Semantic-neutral; no behavior change.
 
 **Result:** `pnpm lint:ci` now exits 0 (the single ERROR is gone). The 255 noConsole + noNonNullAssertion + useLiteralKeys WARNINGS remain — they are not blocking (warnings don't fail CI) and fall under separate pre-existing concerns above.
+
+## UI-REVIEW Deferred Items (advisory, non-blocking) — 2026-05-17
+
+From `14-UI-REVIEW.md` audit (overall 19/24, 0 blockers):
+
+1. **UI-SPEC §10 width-budget drift** — `label=40 cells` dichiarato, fixture A_en/A_it ne hanno 52; `stats=60 cells` dichiarato, fixture ne hanno 54. Riconciliare §3+§10 con `idle-infill-layer.ts` o ripaddare le fixture.
+2. **UI-SPEC §2 colonne sbagliate per divider** — §2 dice `║` a col 71, `right-stop col 70`, `content-width 66`; reality col 68. Patch `right-stop col 67`, `content-width 64`. (Già flagged dal Plan 14-01 reconciliation.)
+3. **Locale leak in `glyph-scene.glyph-idle-z05.it.txt`** — row 17 has `Conditions` (EN) invece di `Condizioni`; row 1 has `ROUND 3 · TURN 2/5` (EN) invece di `TURNO 2/5`. Estendere Z05-INV-02b a triade IT (A_it↔B_it↔C_it). Real implementation defect.
+
+Suggested resolution: standalone quick task Phase-14.1 (3 file: UI-SPEC + Specs.md §7.4 line 1392 + fixture). Single INV-3 atomic commit. Estimated effort: ~20 min.
