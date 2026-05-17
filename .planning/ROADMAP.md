@@ -28,7 +28,7 @@ MVP = Phase 0 → 10. V2 OPZIONALE = Phase 11 → 13.
 - [x] **Phase 9: Action Economy & Edge Cases** - Action/Bonus/Reaction enforcement widget + spell slot consumption + concentration drop handling end-to-end + multi-attack flow (5/5 plans complete 2026-05-16; SC-09-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 29)
 - [x] **Phase 10: Polish & Field Test MVP** - Error recovery (bridge disconnect/Foundry restart/network blip) + offline mode + latency profiling (<400 ms p50) + **multi-session field test** with fatigue measurement + microwave RF test + NASA-TLX score + docs + runbook *(5/5 plans complete 2026-05-17; software-complete; SC-10-01..03 deferred to ADR-0005 Branch A human_needed; 14-socketlib-handler invariant upheld; running hardware-pending: 32. MVP SOFTWARE-COMPLETE.)*
 - [x] **Phase 11: V2 `foundry-mcp` Server** *(OPZIONALE)* - MCP TS SDK 1.29.0 + tools mirror of Tool Registry + resources + stdio + Streamable HTTP + Claude Desktop verification *(4/4 plans complete 2026-05-17; software-complete; pure software phase; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld)*
-- [ ] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
+- [x] **Phase 12: V2 Voice UX Tuning** *(OPZIONALE)* - System prompt + worked examples A/B/C end-to-end + IT↔EN STT spell-name lookup
 - [ ] **Phase 13: V2 Stretch** *(OPZIONALE)* - Reaction *execution* (ACT-04) + biometric narrative cues + multi-player sync + dnd5e v6.x adapter + PF2e + Sheet/Token portrait + DSN raster stream + bridge-side headless Foundry + advanced dither
 
 ## Phase Details
@@ -315,7 +315,14 @@ Plans:
   1. Examples A (Fireball gruppo), B (dual-wield Action+Bonus), C (clarify ambiguity) each pass end-to-end through Claude Desktop
   2. Italian "palla di fuoco" maps to `spell.fireball` via the fuzzy lookup table; EN slang "scorch 'em" surfaces a clarify prompt instead of executing
   3. PCM 16 kHz s16le mono capture via `bridge.audioControl()` flows to external STT (Deepgram Nova-3 / AssemblyAI / self-hosted Whisper); G2 has zero audio output (visual toast only)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+**Wave 1**
+- [x] 12-01-PLAN.md — 70-entry IT↔EN spell lookup + Levenshtein fuzzy match + clarify-detector + voice-no-secret-leak grep gate (VOICE-04) — 2026-05-17
+**Wave 2** *(blocked on 12-01)*
+- [x] 12-02-PLAN.md — GM-Agent system prompt + 3 worked examples (A: Fireball gruppo / B: dual-wield / C: clarify) + VoiceTranscriptPayloadSchema + R1_VOICE_TRANSCRIPT_TYPE in shared-protocol (VOICE-04) — 2026-05-17
+**Wave 3** *(blocked on 12-02; checkpoint:human-verify auto-approved via defer-hardware-tests precedent)*
+- [x] 12-03-PLAN.md — Deepgram Nova-3 streaming-STT adapter (bridge) + audio-capture (g2-app via EvenAppBridge.audioControl) + ISM-12-01..06 integration smoke + DEEPGRAM_API_KEY pino redact + Phase 12 closure (12-VERIFICATION human_needed for SC-12-01; STATE/ROADMAP atomic) (VOICE-01, VOICE-04, VOICE-05) — 2026-05-17
 
 ### Phase 13: V2 Stretch (OPZIONALE)
 **Goal**: Whatever survives the V2 cull becomes Phase 13. Reaction execution, biometric narrative, multi-player, dnd5e v6.x, PF2e, portraits, DSN raster, headless Foundry, advanced dither.
@@ -347,7 +354,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 �
 | 9. Action Economy & Edge Cases | 5/5 | Complete (hardware tests deferred — ADR-0005 Branch A `human_needed` carry) | 2026-05-16 |
 | 10. Polish & Field Test MVP | 5/5 | Complete (software-complete; hardware tests deferred — ADR-0005 Branch A human_needed carry) **MVP SOFTWARE-COMPLETE** | 2026-05-17 |
 | 11. V2 `foundry-mcp` Server | 4/4 | Complete (pure software; 0 new hardware-pending SCs; HTTP+SSE deprecation upheld) | 2026-05-17 |
-| 12. V2 Voice UX Tuning | 0/TBD | Deferred (V2 OPZIONALE) | - |
+| 12. V2 Voice UX Tuning | 3/3 | Complete (software-complete; SC-12-01 deferred to ADR-0005 Branch A `human_needed` — running total 33 hardware-pending SCs) | 2026-05-17 |
 | 13. V2 Stretch | 0/TBD | Deferred (V2 OPZIONALE) | - |
 
 ## Coverage Summary

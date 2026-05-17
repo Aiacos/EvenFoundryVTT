@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_11_CLOSED — V2 MCP server complete; 4/4 plans committed; HTTP+SSE deprecation upheld; 14-socketlib-handler invariant unchanged.
-stopped_at: Completed 11-04-PLAN.md (Phase 11 CLOSED — V2 OPZIONALE MCP server shipped)
-last_updated: "2026-05-17T08:00:00.000Z"
-last_activity: "2026-05-17 — Phase 11 CLOSED. Plan 11-01: foundry-mcp workspace scaffold + env + pino + McpServer factory + stdio + Streamable HTTP. Plan 11-02: BridgeClient WS proxy + 6 MCP tools (Phase 7 Zod .shape). Plan 11-03: ResourceCache + WS delta subscription + 4 MCP resources + REST fallback + sendResourceUpdated (52 tests). Plan 11-04: bridge-soft-fail + /healthz + smoke test + no-SSE grep gate + Docker image + docs/mcp-verification.md + Claude Desktop config + Phase 11 closure. 56 foundry-mcp tests pass. MVP SOFTWARE-COMPLETE signal unchanged."
+status: PHASE_12_CLOSED — V2 Voice UX Tuning complete; 3/3 plans committed; Deepgram Nova-3 adapter shipped; 14-socketlib-handler invariant unchanged; SC-12-01 deferred to ADR-0005 Branch A human_needed (hardware-pending total 32 → 33).
+stopped_at: Completed 12-03-PLAN.md (Phase 12 CLOSED — V2 OPZIONALE voice path shipped software-complete)
+last_updated: "2026-05-17T09:30:00.000Z"
+last_activity: "2026-05-17 — Phase 12 CLOSED. Plan 12-01: 70-entry IT↔EN spell lookup + Levenshtein + clarify-detector + voice-no-secret-leak grep gate (VOICE-04). Plan 12-02: VoiceTranscriptPayloadSchema + R1_VOICE_TRANSCRIPT_TYPE + GM-Agent system prompt (6 directives) + 3 worked examples A/B/C. Plan 12-03: Deepgram Nova-3 streaming adapter (bridge) + /v1/audio/stream WS route + audio-capture.ts (g2-app) + boot-engine voice-cap gate + ISM-12-01..06 + pino DEEPGRAM_API_KEY redact + docs/voice-verification.md + 12-VERIFICATION.md (status: human_needed). V2 voice path software-complete; SC-12-01 deferred to ADR-0005 Branch A (running total 32 → 33 hardware-pending SCs)."
 progress:
   total_phases: 15
-  completed_phases: 13
-  total_plans: 64
-  completed_plans: 64
-  percent: 98
+  completed_phases: 14
+  total_plans: 67
+  completed_plans: 67
+  percent: 99
 ---
 
 # Project State
@@ -480,3 +480,62 @@ Phase 11 is pure software/Node-side. No G2 hardware involvement. Running hardwar
 ### V2 readiness signal
 
 Phase 11 CLOSED. Phase 12 (V2 Voice UX Tuning) is unblocked. Resume cmd: `/gsd-plan-phase 12`.
+
+---
+
+## Phase 12 closure — 2026-05-17
+
+**PHASE_12_CLOSED** — 3/3 plans committed 2026-05-17. V2 Voice UX Tuning complete (software-complete; SC-12-01 hardware-pending).
+
+### Commits per plan
+
+| Plan | Commit | Description |
+|------|--------|-------------|
+| 12-01 | c7e5a9e | Levenshtein + NFD normalisation (levenshtein.ts) |
+| 12-01 | 541f8a7 | 70-entry SPELL_LOOKUP table + lookupSpellId (spell-lookup.ts) |
+| 12-01 | a2847a3 | SLANG_VERBS + detectClarify + voice-no-secret-leak grep gate (clarify-detector.ts) |
+| 12-02 | 8f7c158 | VoiceTranscriptPayloadSchema + R1_VOICE_TRANSCRIPT_TYPE (shared-protocol) |
+| 12-02 | afb24bb | WORKED_EXAMPLES A/B/C (worked-examples.ts) |
+| 12-02 | c6da916 | GM_AGENT_SYSTEM_PROMPT + buildGmAgentPrompt (gm-agent-prompt.ts) |
+| 12-03 | e489cca | Deepgram adapter + /v1/audio/stream route + server.ts wiring + pino redact + deploy/.env.example (Task 1) |
+| 12-03 | 38c7763 | audio-capture.ts + boot-engine voice-cap gate + ISM-12-01/06 (Task 2) |
+
+### Key invariants confirmed (Phase 12 closure)
+
+- `registerComplexHandler` count = **14** (re-grep `packages/foundry-module/src/pair/socketlib-handlers.ts` — Phase 12 touches NOTHING in foundry-module)
+- `DEEPGRAM_API_KEY` confined to `packages/bridge/src/voice/` and `deploy/.env.example` only (grep confirms 0 runtime occurrences in g2-app/src/, foundry-mcp/src/, shared-protocol/src/)
+- Deepgram auth scheme: `Authorization: Token <KEY>` (NOT Bearer) — enforced by DG-06 test
+- pino redact extended with 4 new field paths: `apiKey`, `deepgramKey`, `*.apiKey`, `*.deepgramKey` — enforced by VSR-01..05
+- T-12-09 mic-state hygiene: defensive audioControl(false) on unexpected WS close — enforced by AC-10
+- VOICE-05 (no TTS surface): GP-14 asserts prompt contains no TTS directives
+
+### Test totals (Phase 12)
+
+| Package | Tests before | Tests after | Delta |
+|---------|-------------|-------------|-------|
+| foundry-mcp | 56 | 56 + 43 = 99 | +43 (Plan 12-01: 24 + Plan 12-02: 19) |
+| shared-protocol | (pre-existing) | +7 VP-01..07 | +7 |
+| bridge | (pre-existing) | +13 DG-01..13 + 8 ASR-01..08 + 5 VSR-01..05 = +26 | +26 |
+| g2-app | 1249 | 1249 + 14 AC-01..14 = 1263 | +14 |
+
+### REQ-ID coverage (Phase 12)
+
+| REQ-ID | Requirement | Plans |
+|--------|-------------|-------|
+| VOICE-01 | Audio capture via bridge.audioControl() | 12-03 T2 |
+| VOICE-04 | External STT — Deepgram Nova-3 + IT↔EN lookup | 12-01, 12-02, 12-03 T1 |
+| VOICE-05 | Visual-only output — no TTS | 12-02, 12-03 T1 |
+
+### Hardware-pending carry-forward (Phase 12 — 1 new SC)
+
+| SC | Description | Target |
+|----|-------------|--------|
+| SC-12-01 | End-to-end voice flow on real G2 + R1 + Deepgram | p50 latency ≤ 800 ms speech-end → toast |
+
+Previous running total: 32 hardware-pending SCs (Phase 10 closure)
+Phase 12 adds: 1 SC (SC-12-01)
+New running total: **33 hardware-pending SCs** carried to ADR-0005 Branch A human_needed
+
+### V2 closure signal
+
+Phase 12 CLOSED. V2 OPZIONALE voice path is software-complete. SC-12-01 deferred to ADR-0005 Branch A human_needed (requires G2 + R1 hardware + Deepgram key). Phase 13 (V2 Stretch) is unblocked when hardware access becomes available for SC-12-01 verification. Resume cmd: `/gsd-plan-phase 13`.
