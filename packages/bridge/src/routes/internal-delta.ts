@@ -52,14 +52,28 @@ function secretsEqual(a: string, b: string): boolean {
 }
 
 /**
+ * Optional callback invoked with each validated delta (type + payload) BEFORE
+ * fan-out via DeltaEmitter.
+ *
+ * Allows typed delta processors (e.g. spell-pack-handler) to intercept specific
+ * envelope types and update internal caches without modifying the route itself.
+ *
+ * @param type    - Envelope type discriminant (e.g. `'r1.spells.available'`)
+ * @param payload - Validated (but not schema-checked per-type) payload
+ */
+export type DeltaInterceptFn = (type: string, payload: unknown) => void;
+
+/**
  * Register the POST /internal/delta route.
  *
- * @param app          - Fastify instance
+ * @param app           - Fastify instance
  * @param deltaEmitter  - Shared DeltaEmitter instance (created in server.ts)
+ * @param onDelta       - Optional callback for delta interception (e.g. spell-pack-cache update)
  */
 export async function registerInternalDeltaRoute(
   app: FastifyInstance,
   deltaEmitter: DeltaEmitter,
+  onDelta?: DeltaInterceptFn,
 ): Promise<void> {
   app.post('/internal/delta', async (request, reply) => {
     // --- Auth: EVF_INTERNAL_SECRET header check ---
@@ -87,6 +101,10 @@ export async function registerInternalDeltaRoute(
     }
 
     const { type, payload } = parsed.data;
+
+    // --- Typed delta interception (e.g. spell-pack-cache update) ---
+    // Called BEFORE fan-out so caches are warm when WS clients receive the delta.
+    onDelta?.(type, payload);
 
     // --- Fan out to all subscribed WS sessions ---
     deltaEmitter.emitDelta(type, payload);

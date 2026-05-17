@@ -38,6 +38,9 @@ import { PortraitCache } from './portrait/portrait-cache.js';
 import { createPortraitRenderer } from './portrait/portrait-renderer.js';
 import type { FoundrySnapshotFn } from './routes/character.js';
 import { registerCharacterRoute } from './routes/character.js';
+import { registerSpellsRoute } from './routes/spells.js';
+import { SpellPackCache } from './cache/spell-pack-cache.js';
+import { handleSpellPackEnvelope } from './ws/spell-pack-handler.js';
 import { registerCharactersListRoute } from './routes/characters-list.js';
 import { registerCombatRoute } from './routes/combat.js';
 import { registerEventsRoute } from './routes/events.js';
@@ -112,6 +115,17 @@ export interface BuildServerOptions {
    * @see ws/tool-invoke.ts (handleToolInvoke consumer)
    */
   wsDispatchToolFn?: DispatchToolFn;
+  /**
+   * Inject a custom SpellPackCache for test isolation (Quick Task 20260517).
+   *
+   * In production: a fresh `SpellPackCache` is created per `buildServer()` call.
+   * In tests: pass an existing cache to pre-populate it or observe its state
+   * after spell-pack envelope processing.
+   *
+   * @see cache/spell-pack-cache.ts
+   * @see routes/spells.ts
+   */
+  spellCache?: SpellPackCache;
 }
 
 /**
@@ -264,8 +278,18 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     deltaEmitter,
   });
 
+  // --- 7b. Spell vocabulary route (Quick Task 20260517) ---
+  // GET /v1/spells/available — returns cached AvailableSpellsPayload or cold-cache sentinel.
+  // Cache is populated by handleSpellPackEnvelope (wired to /internal/delta onDelta hook below).
+  // Bearer auth same pattern as Phase 7 tool endpoints.
+  const spellCache = opts.spellCache ?? new SpellPackCache();
+  await registerSpellsRoute(app, tokenCache, spellCache);
+
   // --- 8. Internal delta route (module → bridge push) ---
-  await registerInternalDeltaRoute(app, deltaEmitter);
+  // onDelta hook: intercept r1.spells.available envelopes to update spellCache BEFORE fan-out.
+  await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
+    handleSpellPackEnvelope(type, payload, spellCache);
+  });
 
   // --- 9. WS handshake route ---
   // Wires handshake → registerSession → message-loop → close-cleanup. This is
