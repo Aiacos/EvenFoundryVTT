@@ -20,9 +20,19 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 - **Carry to v0.9.12**: 1 genuinely pending quick task (z=0.5 idle infill layer spec bump). Will become a v0.9.12 requirement during `/gsd-new-milestone`.
 - **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, 14-socketlib-handler invariant, INV-3 atomic doc coherence).
 
-## Next Milestone Goals
+## Current Milestone: v0.9.12 Quick Wins
 
-(Defined during `/gsd-new-milestone v0.9.12` — see `.planning/REQUIREMENTS.md` once created.)
+**Goal:** Land two high-value software-only improvements that build on v0.9.11 MVP — without requiring Even Hub hardware access.
+
+**Target features:**
+- **Raster z=0.5 idle content infill layer** — carry-forward from quick-task `20260514-raster-dynamic-infill` (PLAN already scoped as v0.9.11→v0.9.12 spec bump). Fills previously-empty raster-mode map-area rows when no z=2 overlay is mounted; auto-demolishes on overlay mount. ADR-0001 amendment, INV-1 fixture coverage for transition states.
+- **Deepgram Keyterm Prompting integration** — voice STT quality boost (+625% entity recall per research). Seeds keyterm vocabulary from BOTH the 70-spell SRD subset (static) AND the newly-shipped entity-pack Foundry vocabulary (dynamic — items/weapons/armor/NPCs/monsters). Locale-aware IT+EN feed for cross-lingual STT robustness.
+
+**Key context:**
+- Scope explicitly excludes hardware validation (no Even Hub access this cycle) — 35 SC `human_needed` from v0.9.11 carry forward under ADR-0005 PROVISIONAL Branch A unchanged.
+- Research phase skipped — both features have pre-existing research artifacts (`raster-dynamic-infill` quick-task PLAN with INV-2 cross-check; `20260517-voice-intent-research` RESEARCH.md).
+- Phase numbering continues from v0.9.11 (last phase = 13 → v0.9.12 starts at Phase 14).
+- Synergy: the entity-pack pipeline shipped 2026-05-17 (quick-task `260517-k2g`) becomes a dynamic vocabulary source for the Deepgram Keyterm work — value > sum of parts.
 
 ## Requirements
 
@@ -76,7 +86,18 @@ All 48 v1 REQ-IDs software-complete. Full traceability and final outcomes archiv
 
 ### Active (v0.9.12)
 
-(To be defined during `/gsd-new-milestone v0.9.12`.)
+#### Raster Pipeline Extension
+- [ ] **INFILL-01**: z=0.5 Idle Content Infill layer formalized in layered model (Specs.md §7.2 amendment)
+- [ ] **INFILL-02**: 3 dynamic text containers (combat-log mini · z=0.5 label · stats strip) populating empty raster-mode rows when no overlay
+- [ ] **INFILL-03**: Auto-demolish on z=2 overlay mount (no race condition; differential demolish via existing LayerManager.bundle())
+- [ ] **INFILL-04**: ADR-0001 amendment formalizing z=0.5 layer (consistent with single-capture-container premise; no semantic change to z=0/1/2)
+- [ ] **INFILL-05**: INV-1 fixtures for idle-fill states + overlay-mount transitions
+
+#### Voice Recognition Quality
+- [ ] **VOICE-06**: Deepgram Keyterm Prompting integration in `deepgram-stt.ts` (Phase 12 enhancement)
+- [ ] **VOICE-07**: Keyterm vocabulary fed from static spell list (70 SRD) + dynamic entity-pack (Foundry-derived items/weapons/armor/NPCs/monsters)
+- [ ] **VOICE-08**: Locale-aware keyterm (IT + EN both included; cross-lingual STT robustness)
+- [ ] **VOICE-09**: Keyterm hot-update via WS delta (when entity-pack or spell-pack changes, keyterm list refreshes; same `/internal/delta` channel)
 
 ### Out of Scope
 
@@ -156,4 +177,4 @@ This document evolves at phase transitions and milestone boundaries.
 **Specs.md drift policy** (project-specific): se PROJECT.md e Specs.md divergono su un claim tecnico, **Specs.md vince** (è la fonte canonica). Aggiornare PROJECT.md per riallinearsi e committare insieme (INV-3).
 
 ---
-*Last updated: 2026-05-17 after v0.9.11 MVP milestone shipped*
+*Last updated: 2026-05-17 after v0.9.12 Quick Wins milestone started (raster z=0.5 + Deepgram Keyterm scope)*

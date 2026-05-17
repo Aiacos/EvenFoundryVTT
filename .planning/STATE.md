@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.11
-milestone_name: milestone
-status: Awaiting next milestone
-stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
-last_updated: "2026-05-17T12:33:00.000Z"
-last_activity: 2026-05-17 — Completed quick task 260517-k2g (generalize entity recognition to all Foundry types — items, weapons, armor, NPCs, monsters; +69 tests, 2546 total)
+milestone: v0.9.12
+milestone_name: Quick Wins
+status: planning
+last_updated: "2026-05-17T13:22:11.841Z"
+last_activity: 2026-05-17
 progress:
-  total_phases: 15
-  completed_phases: 15
-  total_plans: 71
-  completed_plans: 71
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shippe
 
 ## Current Position
 
-Phase: Milestone v0.9.11 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-17 — Milestone v0.9.11 completed and archived
+Status: Defining requirements
+Last activity: 2026-05-17 — Milestone v0.9.12 started
 
 ## Performance Metrics
 
