@@ -25,6 +25,9 @@
 
 export type { ClarifyReason, ClarifyResult } from './clarify-detector.js';
 export { detectClarify } from './clarify-detector.js';
+export { buildGmAgentPrompt, GM_AGENT_SYSTEM_PROMPT } from './gm-agent-prompt.js';
 export { levenshteinDistance, normaliseForFuzzyMatch } from './levenshtein.js';
 export type { SpellLookupConfidence, SpellLookupEntry, SpellLookupResult } from './spell-lookup.js';
 export { lookupSpellId, SPELL_LOOKUP } from './spell-lookup.js';
+export type { WorkedExample, WorkedExampleId } from './worked-examples.js';
+export { WORKED_EXAMPLES } from './worked-examples.js';
