@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.11
 milestone_name: milestone
-status: PHASE_12_CLOSED — V2 Voice UX Tuning complete; 3/3 plans committed; Deepgram Nova-3 adapter shipped; 14-socketlib-handler invariant unchanged; SC-12-01 deferred to ADR-0005 Branch A human_needed (hardware-pending total 32 → 33).
-stopped_at: Completed 12-03-PLAN.md (Phase 12 CLOSED — V2 OPZIONALE voice path shipped software-complete)
-last_updated: "2026-05-17T09:30:00.000Z"
-last_activity: "2026-05-17 — Phase 12 CLOSED. Plan 12-01: 70-entry IT↔EN spell lookup + Levenshtein + clarify-detector + voice-no-secret-leak grep gate (VOICE-04). Plan 12-02: VoiceTranscriptPayloadSchema + R1_VOICE_TRANSCRIPT_TYPE + GM-Agent system prompt (6 directives) + 3 worked examples A/B/C. Plan 12-03: Deepgram Nova-3 streaming adapter (bridge) + /v1/audio/stream WS route + audio-capture.ts (g2-app) + boot-engine voice-cap gate + ISM-12-01..06 + pino DEEPGRAM_API_KEY redact + docs/voice-verification.md + 12-VERIFICATION.md (status: human_needed). V2 voice path software-complete; SC-12-01 deferred to ADR-0005 Branch A (running total 32 → 33 hardware-pending SCs)."
+status: verifying
+stopped_at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
+last_updated: "2026-05-17T08:20:05.264Z"
+last_activity: "2026-05-17 — Phase 10 CLOSED. Plan 10-01: WsReconnectController + SeqTracker + buildSyncLostChip + INV-1 fixtures + boot-engine wiring (+26 tests, 1232 total). Plan 10-02: PerfProbe + PerfSampleEnvelopeSchema + docs/perf/phase-10-latency.md template (+15 tests, 1249 total). Plan 10-03: INV-1..5 verification suite + inv:all single-command orchestrator (TDD, 22 tests). Plan 10-04: 5 MVP docs + INV-3 atomic coherence commit bcb4e91 (Specs.md boot-splash v0.9.11→v0.9.12). Plan 10-05: 10-VERIFICATION.md goal-backward audit + STATE/ROADMAP/REQUIREMENTS closure flip + MVP software-complete signal. Total: 2097 tests passing. MVP SOFTWARE-COMPLETE."
 progress:
   total_phases: 15
   completed_phases: 14
-  total_plans: 67
-  completed_plans: 67
-  percent: 99
+  total_plans: 71
+  completed_plans: 69
+  percent: 93
 ---
 
 # Project State
@@ -58,7 +58,7 @@ Hardware-pending carry-forward (`human_needed` per ADR-0005 PROVISIONAL Branch A
 
 Phase 4a carry (5 items) + Phase 4b carry (5 items) = 10 hardware-pending SC.
 
-Progress: [██████████] 98%
+Progress: [██████████] 97%
 
 Phase 4a closure detail — preserved here for historical reference:
 
@@ -235,7 +235,7 @@ Items acknowledged and carried forward from project init:
 
 ## Session Continuity
 
-Last session: 2026-05-17T05:48:25.146Z
+Last session: 2026-05-17T08:20:05.254Z
 Stopped at: Completed 09-05-PLAN.md (Phase 9 CLOSED)
 Resume file: None
 Resume cmd: /gsd-execute-phase 10 01
