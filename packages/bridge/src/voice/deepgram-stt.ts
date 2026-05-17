@@ -370,6 +370,39 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
   let _emptyCacheWarned = false;
 
   /**
+   * Phase 15 Plan 04 — pure discriminated-union normaliser (WR-05).
+   *
+   * Extracts the `keyterms` list from either the bare `string[]` form
+   * (Plan 15-02 backward compat) or the richer `{ keyterms, entityCachePresent }`
+   * form (Plan 15-04). No side effects, no logging — `resolveKeyterms()`
+   * and `refreshKeyterm()` add their own per-path side effects on top.
+   *
+   * This deduplicates the shape-discrimination logic that previously lived
+   * inline in both `resolveKeyterms()` and `refreshKeyterm()`. A future
+   * change to the {@link KeytermProviderResult} shape (e.g. renaming
+   * `entityCachePresent` or adding a `partial: boolean` field) now needs
+   * to be updated in exactly one place.
+   *
+   * @returns A discriminated tuple: `richer === true` indicates the
+   *   provider opted into the D-05 empty-cache signal; `richer === false`
+   *   indicates the bare-array contract (no D-05 path).
+   */
+  function extractKeytermsFromRaw(
+    raw: string[] | KeytermProviderResult,
+  ):
+    | { keyterms: string[]; richer: false }
+    | { keyterms: string[]; richer: true; entityCachePresent: boolean } {
+    if (Array.isArray(raw)) {
+      return { keyterms: raw, richer: false };
+    }
+    return {
+      keyterms: raw.keyterms,
+      richer: true,
+      entityCachePresent: raw.entityCachePresent,
+    };
+  }
+
+  /**
    * Phase 15 Plan 04 — normalise the keytermProvider return shape and emit
    * the one-shot empty-cache warn (D-05) when appropriate.
    *
@@ -394,16 +427,16 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
       );
       return [];
     }
-    // Bare string[] form — Phase 15 Plan 02 contract. No D-05 path.
-    if (Array.isArray(raw)) {
-      return raw;
+    const normalised = extractKeytermsFromRaw(raw);
+    if (!normalised.richer) {
+      // Bare string[] form — Phase 15 Plan 02 contract. No D-05 path.
+      return normalised.keyterms;
     }
     // Richer object form — Phase 15 Plan 04 contract. Drives D-05.
-    const { keyterms, entityCachePresent } = raw;
-    if (entityCachePresent === false) {
+    if (!normalised.entityCachePresent) {
       if (!_emptyCacheWarned) {
         logger.warn(
-          { event: 'keyterm.empty-entity-cache', keytermCount: keyterms.length },
+          { event: 'keyterm.empty-entity-cache', keytermCount: normalised.keyterms.length },
           'deepgram-stt: entity-pack cache empty — using spells-only keyterm list (D-05)',
         );
         _emptyCacheWarned = true;
@@ -412,7 +445,7 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
       // entityCachePresent === true → reset for next empty-streak.
       _emptyCacheWarned = false;
     }
-    return keyterms;
+    return normalised.keyterms;
   }
 
   return {
@@ -437,8 +470,10 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
       let keytermCount = 0;
       if (keytermProvider !== undefined) {
         try {
-          const raw = keytermProvider();
-          keytermCount = Array.isArray(raw) ? raw.length : raw.keyterms.length;
+          // WR-05: route through extractKeytermsFromRaw so the shape
+          // discrimination lives in exactly one place.
+          const normalised = extractKeytermsFromRaw(keytermProvider());
+          keytermCount = normalised.keyterms.length;
         } catch (err) {
           // Same defensive try/catch pattern as in connect() — a throwing
           // provider degrades to baseline (count=0) rather than crash the
