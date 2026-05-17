@@ -104,10 +104,7 @@ export class ReactionPromptPanel implements OverlayPanel {
   private readonly playerWeaponId: string | null;
   private readonly onCloseCb: ReactionPanelCloseHandler;
   /** Optional toast queue for error / timeout notifications. */
-  private readonly onTimeoutToast:
-    | ((toast: Toast) => void)
-    | null
-    | undefined;
+  private readonly onTimeoutToast: ((toast: Toast) => void) | null | undefined;
 
   /** Unsubscribe closure from PanelGestureBus.subscribe; set in onMount, cleared in onUnmount. */
   private unsubscribe: (() => void) | null = null;

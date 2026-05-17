@@ -67,14 +67,21 @@ function makeOppAttackPayload(): ReactionAvailablePayload {
   };
 }
 
-function makePanel(opts: {
-  payload?: ReactionAvailablePayload;
-  locale?: 'it' | 'en' | 'de';
-  playerActorId?: string | null;
-  playerWeaponId?: string | null;
-  onClose?: () => void;
-  onTimeoutToast?: (toast: { id: string; severity: string; message: string; emittedAt: number }) => void;
-} = {}) {
+function makePanel(
+  opts: {
+    payload?: ReactionAvailablePayload;
+    locale?: 'it' | 'en' | 'de';
+    playerActorId?: string | null;
+    playerWeaponId?: string | null;
+    onClose?: () => void;
+    onTimeoutToast?: (toast: {
+      id: string;
+      severity: string;
+      message: string;
+      emittedAt: number;
+    }) => void;
+  } = {},
+) {
   const bridge = makeBridge();
   const ws = makeWs();
   const gestureBus = new PanelGestureBus();
@@ -125,7 +132,11 @@ describe('ReactionPromptPanel', () => {
   // RPP-03: tap (Shield) → cast-shield args + onClose
   it('RPP-03: tap for Shield kind sends cast-shield tool.invoke and calls onClose', async () => {
     const onClose = vi.fn();
-    const { panel, ws, gestureBus } = makePanel({ payload: makeShieldPayload(), playerActorId: 'actor-thorin', onClose });
+    const { panel, ws, gestureBus } = makePanel({
+      payload: makeShieldPayload(),
+      playerActorId: 'actor-thorin',
+      onClose,
+    });
     await panel.onMount();
     gestureBus.publish({ kind: 'tap' });
     expect(ws.send).toHaveBeenCalledTimes(1);
@@ -146,7 +157,10 @@ describe('ReactionPromptPanel', () => {
 
   // RPP-04: tap (Counterspell) → cast-counterspell with sourceName as target_caster_id
   it('RPP-04: tap for Counterspell sends cast-counterspell with target_caster_id=sourceName', async () => {
-    const { panel, ws, gestureBus } = makePanel({ payload: makeCounterspellPayload(), playerActorId: 'actor-wiz' });
+    const { panel, ws, gestureBus } = makePanel({
+      payload: makeCounterspellPayload(),
+      playerActorId: 'actor-wiz',
+    });
     await panel.onMount();
     gestureBus.publish({ kind: 'tap' });
     expect(ws.send).toHaveBeenCalledTimes(1);
@@ -168,7 +182,11 @@ describe('ReactionPromptPanel', () => {
 
   // RPP-05: tap (Opportunity Attack) → opportunity-attack with playerWeaponId
   it('RPP-05: tap for Opportunity Attack sends opportunity-attack with playerWeaponId as item_id', async () => {
-    const { panel, ws, gestureBus } = makePanel({ payload: makeOppAttackPayload(), playerActorId: 'actor-fighter', playerWeaponId: 'item-axe' });
+    const { panel, ws, gestureBus } = makePanel({
+      payload: makeOppAttackPayload(),
+      playerActorId: 'actor-fighter',
+      playerWeaponId: 'item-axe',
+    });
     await panel.onMount();
     gestureBus.publish({ kind: 'tap' });
     expect(ws.send).toHaveBeenCalledTimes(1);
@@ -264,7 +282,11 @@ describe('ReactionPromptPanel', () => {
 
   // RPP-12: EnvelopeSchema round-trip on emitted tool.invoke envelope (W-13 regression guard)
   it('RPP-12: emitted tool.invoke envelope passes EnvelopeSchema round-trip for all 3 kinds', async () => {
-    const kinds: Array<ReactionAvailablePayload['kind']> = ['shield', 'counterspell', 'opportunity-attack'];
+    const kinds: Array<ReactionAvailablePayload['kind']> = [
+      'shield',
+      'counterspell',
+      'opportunity-attack',
+    ];
     const payloads: Record<string, ReactionAvailablePayload> = {
       shield: makeShieldPayload(),
       counterspell: makeCounterspellPayload(),
@@ -273,7 +295,11 @@ describe('ReactionPromptPanel', () => {
     for (const kind of kinds) {
       const kindPayload = payloads[kind];
       expect(kindPayload).toBeDefined();
-      const { panel, ws, gestureBus } = makePanel({ payload: kindPayload!, playerActorId: 'actor-x', playerWeaponId: 'item-sword' });
+      const { panel, ws, gestureBus } = makePanel({
+        payload: kindPayload!,
+        playerActorId: 'actor-x',
+        playerWeaponId: 'item-sword',
+      });
       await panel.onMount();
       gestureBus.publish({ kind: 'tap' });
       const sentStr = ws.send.mock.calls[0]?.[0] as string | undefined;
