@@ -498,4 +498,104 @@ describe('registerCombatActionTracker', () => {
     expect(payloadB?.actorId).toBe('actor-B');
     expect(payloadB?.actionsUsed).toBe(1);
   });
+
+  // ── CAT-REACT-01..04: Plan 13-02 reaction slot accounting ──────────────────
+  // Tests written in RED phase before widening EconomySlot + TOOL_SLOT_MAP.
+  // cast-shield / cast-counterspell / opportunity-attack must all consume
+  // the 'reaction' slot (reactionsUsed 0→1) and leave action/bonus untouched.
+
+  it('CAT-REACT-01: cast-shield sets reactionsUsed=1, actionsUsed stays 0', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'cast-shield', actorId: 'actor-mage', recipientUserId: 'user-mage' },
+      }),
+    );
+
+    expect(emit).toHaveBeenCalledOnce();
+    const payload = emit.mock.calls[0]?.[0];
+    expect(payload?.actorId).toBe('actor-mage');
+    expect(payload?.reactionsUsed).toBe(1);
+    expect(payload?.actionsUsed).toBe(0);
+    expect(payload?.bonusActionsUsed).toBe(0);
+  });
+
+  it('CAT-REACT-02: cast-counterspell sets reactionsUsed=1, actionsUsed stays 0', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'cast-counterspell', actorId: 'actor-wiz', recipientUserId: 'user-wiz' },
+      }),
+    );
+
+    expect(emit).toHaveBeenCalledOnce();
+    const payload = emit.mock.calls[0]?.[0];
+    expect(payload?.actorId).toBe('actor-wiz');
+    expect(payload?.reactionsUsed).toBe(1);
+    expect(payload?.actionsUsed).toBe(0);
+    expect(payload?.bonusActionsUsed).toBe(0);
+  });
+
+  it('CAT-REACT-03: opportunity-attack sets reactionsUsed=1, actionsUsed stays 0', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'opportunity-attack', actorId: 'actor-fighter', recipientUserId: 'user-fighter' },
+      }),
+    );
+
+    expect(emit).toHaveBeenCalledOnce();
+    const payload = emit.mock.calls[0]?.[0];
+    expect(payload?.actorId).toBe('actor-fighter');
+    expect(payload?.reactionsUsed).toBe(1);
+    expect(payload?.actionsUsed).toBe(0);
+    expect(payload?.bonusActionsUsed).toBe(0);
+  });
+
+  it('CAT-REACT-04: reaction slot resets to 0 on turn advance (updateCombat)', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    // Use a reaction
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'cast-shield', actorId: 'actor-pal', recipientUserId: 'user-pal' },
+      }),
+    );
+    expect(emit.mock.calls[0]?.[0]?.reactionsUsed).toBe(1);
+
+    // Advance the turn — reactionsUsed must reset to 0
+    fireUpdateCombat({ turn: 2 });
+
+    const resetPayload = emit.mock.calls[1]?.[0];
+    expect(resetPayload?.actorId).toBe('actor-pal');
+    expect(resetPayload?.reactionsUsed).toBe(0);
+    expect(resetPayload?.actionsUsed).toBe(0);
+  });
 });
