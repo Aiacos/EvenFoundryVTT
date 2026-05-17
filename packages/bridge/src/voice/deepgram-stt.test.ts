@@ -828,4 +828,56 @@ describe('createDeepgramStt — retry-then-fallback (DGFM-01..06)', () => {
     instances[2]!.emit('close', 1008, Buffer.from(''));
     expect(instances).toHaveLength(4);
   });
+
+  it("DGFM-07: 'error' event without 'close' still triggers the retry ladder (WR-02 mitigation)", () => {
+    // Some WS failure modes (TLS handshake failure, abortive socket-level
+    // errors) emit a bare 'error' event with no subsequent 'close' frame.
+    // Without this mitigation, the voice path would wedge silently. The
+    // adapter must treat 'error' as session-end-equivalent and drive the
+    // retry/fallback ladder with synthetic code 1006 (abnormal closure).
+    const { factory, instances } = createMockWsFactory();
+    const logger = freshLogger();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger,
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-7');
+    expect(instances).toHaveLength(1);
+    // Simulate a TLS handshake failure: only 'error' arrives, no 'close'.
+    instances[0]!.emit('error', new Error('ETLSHANDSHAKE'));
+    // A second WS instance must be created with the sanitized URL — the
+    // ladder must NOT wedge waiting for a missing 'close'.
+    expect(instances).toHaveLength(2);
+    expect(instances[1]!.url).toContain('keyterm=fireball');
+    // Log payload includes reason: 'error' to distinguish from close-driven retries.
+    const retryLog = findWarnEvent(logger, 'keyterm.retry-with-sanitized');
+    expect(retryLog).toBeDefined();
+    const payload = (retryLog as unknown[])[0] as { reason: string; code: number };
+    expect(payload.reason).toBe('error');
+    expect(payload.code).toBe(1006);
+  });
+
+  it("DGFM-08: 'error' followed by 'close' does NOT double-trigger the retry ladder", () => {
+    // Most production WS impls emit 'close' AFTER 'error'. The
+    // `terminationHandled` dedupe flag must absorb the second event so the
+    // ladder only fires once.
+    const { factory, instances } = createMockWsFactory();
+    const adapter = createDeepgramStt({
+      apiKey: 'sk-real',
+      logger: freshLogger(),
+      keytermProvider: () => ['fireball'],
+      _wsFactory: factory as unknown as (url: string, opts: unknown) => unknown,
+    });
+    adapter.connect('session-dgfm-8');
+    expect(instances).toHaveLength(1);
+    instances[0]!.emit('error', new Error('network died'));
+    // First retry created.
+    expect(instances).toHaveLength(2);
+    // 'close' with a keyterm-reject code arrives AFTER 'error' — must be absorbed.
+    instances[0]!.emit('close', 1008, Buffer.from(''));
+    // Still 2 — no second retry.
+    expect(instances).toHaveLength(2);
+  });
 });

@@ -503,6 +503,78 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
         // Whether a valid Results frame has been observed for THIS attempt.
         // Once true, close events are normal session ends — no retry.
         let hasReceivedResultsFrame = false;
+        // WR-02 mitigation: production WS implementations USUALLY emit 'close'
+        // after every 'error', but this is not guaranteed by RFC 6455 — TLS
+        // handshake failures or abortive socket-level errors may surface as a
+        // bare 'error' event with no paired 'close'. To avoid wedging the voice
+        // path silently, the error handler triggers the SAME retry/fallback
+        // ladder as a keyterm-reject close (code 1006, abnormal closure, is
+        // the canonical synthetic close code for "connection died abruptly").
+        // `terminationHandled` is the dedupe flag so close-after-error does
+        // not re-trigger the ladder a second time.
+        let terminationHandled = false;
+
+        /**
+         * Resolve a session-termination event into one of the four branches:
+         *   1. caller-requested close / Results-received → no-op debug log
+         *   2. non-keyterm-reject code → no-op debug log (Phase 12 baseline)
+         *   3. attempt 'initial' rejected → retry with sanitized URL
+         *   4. attempt 'retry' rejected → fallback to baseline URL
+         *   5. attempt 'fallback' rejected → no further retries
+         *
+         * Called from both the 'close' handler (with the real close code) and
+         * the 'error' handler (with synthetic code 1006 to force the retry
+         * ladder even when no 'close' arrives — WR-02).
+         */
+        const _handleSessionEnd = (code: number, reason: 'close' | 'error'): void => {
+          if (terminationHandled) return;
+          terminationHandled = true;
+          if (closedByCaller || hasReceivedResultsFrame) {
+            logger.debug({ code, sessionId, attempt, reason }, 'deepgram-stt: Deepgram WS closed');
+            return;
+          }
+          // For 'error' reason we always force the retry ladder (the connection
+          // died unexpectedly before any Results — treat as keyterm-suspect).
+          // For 'close' reason we honour the original keyterm-reject code set.
+          if (reason === 'close' && !isKeytermRejectCode(code)) {
+            // Phase 12 baseline behaviour: standard close (server error,
+            // normal, abnormal, etc.). No retry — DGFM-04.
+            logger.debug({ code, sessionId, attempt, reason }, 'deepgram-stt: Deepgram WS closed');
+            return;
+          }
+          // Retry-then-fallback branch.
+          // WR-01 mitigation: clear `liveWs` BEFORE invoking the next attempt
+          // so that any in-flight `sendAudio(frame)` during the retry window
+          // becomes a no-op (via `liveWs?.send` short-circuit) rather than a
+          // send-on-closed throw. The old WS is already closed (or errored
+          // out) so no explicit `.close()` is needed — only the reference
+          // must be detached. `_attemptConnect` will reassign `liveWs` to
+          // the fresh handle.
+          if (attempt === 'initial') {
+            const sanitizedUrl = buildDeepgramUrl(deepgramUrl, sanitizeKeyterms(keyterms));
+            logger.warn(
+              { event: 'keyterm.retry-with-sanitized', code, sessionId, reason },
+              'deepgram-stt: Deepgram rejected keyterm list — retrying with sanitized form (D-06)',
+            );
+            liveWs = null;
+            _attemptConnect(sanitizedUrl, 'retry');
+            return;
+          }
+          if (attempt === 'retry') {
+            const baselineUrl = buildDeepgramUrl(deepgramUrl, []);
+            logger.warn(
+              { event: 'keyterm.fallback-to-baseline', code, sessionId, reason },
+              'deepgram-stt: sanitized retry also rejected — falling back to no-keyterm baseline (D-06)',
+            );
+            liveWs = null;
+            _attemptConnect(baselineUrl, 'fallback');
+            return;
+          }
+          // attempt === 'fallback' → no further retries. Phase 12 baseline
+          // also failed, meaning Deepgram has a real outage. Surface as
+          // standard close — voice path degrades gracefully.
+          logger.debug({ code, sessionId, attempt, reason }, 'deepgram-stt: Deepgram WS closed');
+        };
 
         ws.on('message', (data: unknown) => {
           try {
@@ -526,55 +598,24 @@ export function createDeepgramStt(opts: CreateDeepgramSttOpts): DeepgramAdapter 
 
         ws.on('error', (err: unknown) => {
           logger.warn({ err, sessionId, attempt }, 'deepgram-stt: Deepgram WS error');
+          // WR-02: treat 'error' as session-end equivalent. Best-effort close
+          // the underlying socket (idempotent on most WS impls; swallow throw
+          // if it's already torn down) so libraries that DO emit 'close' after
+          // 'error' still see a clean teardown sequence. Then drive the
+          // retry/fallback ladder with synthetic code 1006 (RFC 6455 abnormal
+          // closure). If a 'close' event subsequently arrives, the
+          // `terminationHandled` dedupe flag in _handleSessionEnd absorbs it.
+          try {
+            ws.close();
+          } catch {
+            /* already torn down */
+          }
+          _handleSessionEnd(1006, 'error');
         });
 
         ws.on('close', (...args: unknown[]) => {
           const code = typeof args[0] === 'number' ? (args[0] as number) : 1000;
-          // If the caller already requested close, this is a normal teardown.
-          // If we already received a Results frame, the keyterm list was
-          // clearly accepted — any later close is unrelated to keyterms.
-          if (closedByCaller || hasReceivedResultsFrame) {
-            logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
-            return;
-          }
-          if (!isKeytermRejectCode(code)) {
-            // Phase 12 baseline behaviour: standard close (server error,
-            // normal, abnormal, etc.). No retry — DGFM-04.
-            logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
-            return;
-          }
-          // Keyterm-reject branch. Decide between retry and fallback.
-          // WR-01 mitigation: clear `liveWs` BEFORE invoking the next attempt
-          // so that any in-flight `sendAudio(frame)` during the retry window
-          // becomes a no-op (via `liveWs?.send` short-circuit) rather than a
-          // send-on-closed throw. The old WS is already closed by Deepgram
-          // (we are inside its close handler), so no explicit `.close()` is
-          // needed — only the reference must be detached. `_attemptConnect`
-          // will reassign `liveWs` to the fresh handle.
-          if (attempt === 'initial') {
-            const sanitizedUrl = buildDeepgramUrl(deepgramUrl, sanitizeKeyterms(keyterms));
-            logger.warn(
-              { event: 'keyterm.retry-with-sanitized', code, sessionId },
-              'deepgram-stt: Deepgram rejected keyterm list — retrying with sanitized form (D-06)',
-            );
-            liveWs = null;
-            _attemptConnect(sanitizedUrl, 'retry');
-            return;
-          }
-          if (attempt === 'retry') {
-            const baselineUrl = buildDeepgramUrl(deepgramUrl, []);
-            logger.warn(
-              { event: 'keyterm.fallback-to-baseline', code, sessionId },
-              'deepgram-stt: sanitized retry also rejected — falling back to no-keyterm baseline (D-06)',
-            );
-            liveWs = null;
-            _attemptConnect(baselineUrl, 'fallback');
-            return;
-          }
-          // attempt === 'fallback' → no further retries. Phase 12 baseline
-          // also failed, meaning Deepgram has a real outage. Surface as
-          // standard close — voice path degrades gracefully.
-          logger.debug({ code, sessionId, attempt }, 'deepgram-stt: Deepgram WS closed');
+          _handleSessionEnd(code, 'close');
         });
       };
 
