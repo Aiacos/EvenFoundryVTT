@@ -2,7 +2,7 @@
 
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
-[![status: v0.9.12 shipped](https://img.shields.io/badge/status-v0.9.12%20shipped%20(17%2F17%20phases%20software--complete)-brightgreen)](#status)
+[![status: v0.9.12 shipped · v0.9.13 in planning](https://img.shields.io/badge/status-v0.9.12%20shipped%20·%20v0.9.13%20in%20planning-brightgreen)](#status)
 [![spec: v0.9.12](https://img.shields.io/badge/spec-v0.9.12-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
@@ -45,11 +45,17 @@ Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*).
 - ✓ **Voice (V2 OPTIONAL shipped)** — `foundry-mcp` Streamable HTTP server, Deepgram Nova-3 Multilingual STT with Keyterm Prompting (+625% recall on esoteric names like Bigby's Hand, Counterspell), vocabulary union of static SRD (70 × IT + EN = 140) + dynamic Foundry-derived entity-pack, hot-updated via WS delta (250 ms debounce + drain-then-restart mutex).
 - ✓ **Quality** — **2626 workspace tests** green, coverage ≥80% in the critical packages, TypeScript strict, Biome lint clean, 7 CI gates green on every PR, INV-1..5 verification suite (`inv:all`) + INV-3 atomic doc-coherence enforced.
 
-### What's NOT done yet
+### What's next (v0.9.13 in planning — started 2026-05-18)
+
+- 🟡 **Phase 16 — Sheet Ability Scores** — extend `CharacterSnapshotSchema.abilities` (6 × `{value, mod, save, proficient, dc}`), wire `character-reader.ts` to read `actor.system.abilities.*` from dnd5e (canonical schema INV-2 verified on `github.com/foundryvtt/dnd5e@release-5.3.3`), replace `—` placeholders in `renderMainTab()` with real values + proficiency `◉`/`○` markers on saving throws.
+- 🟡 **Phase 17 — Sheet Skills Tab** — extend schema with `skills` map (18 keys), wire reader (`actor.system.skills.*`), render skill modifiers `+N` and proficiency glyphs (`○`/`◉`/`◈`) per skill in `renderSkillsTab()` + passive Perception/Insight/Investigation in Main tab senses line.
+- 🟡 **Phase 18 — Phase-14.1 spec-drift polish** (~20 min, single INV-3 atomic commit) — UI-SPEC §2 col 71→68, §10 width budgets, IT locale leak in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 (real defect is only the locale leak; rest is spec-prose drift).
+
+### What's NOT done yet (deferred beyond v0.9.13)
 
 - ✗ **Hardware UAT** — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 flagged `human_needed` under ADR-0005 PROVISIONAL Branch A. Software-complete; they need **Even Hub developer access + G2 + R1 + a consenting DM** for end-to-end on-device verification. Closure path: `pnpm --filter @evf/validation-harness validate:all`.
 - ✗ **Picovoice Rhino edge classifier** — conditional on SC-12-01 (Claude Desktop latency p50 > 800 ms). Not measurable without hardware.
-- ✗ **Phase-14.1 spec-drift cleanup** (~20 min) — UI-SPEC §2 col 71→68, §10 width budgets, locale leak in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17. The only real implementation defect is the locale leak; the rest is spec-prose drift.
+- ✗ **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Phase 11 follow-up; deferred.
 
 ---
 
@@ -130,6 +136,10 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 | **— v0.9.12 Quick Wins —** | | |
 | 14 | ✅ v0.9.12 | Raster z=0.5 Idle Content Infill (INV-1 fixtures + ADR-0001 Amd 1 RATIFIED + INV-3 atomic 3a0c5cf) |
 | 15 | ✅ v0.9.12 | Deepgram Keyterm Prompting + Entity-Pack Integration (Nova-3 keyterm wired + static/dynamic union + hot-update; INV-3 atomic dc161d6) |
+| **— v0.9.13 Sheet Data Completion + Polish (in planning) —** | | |
+| 16 | 🟡 v0.9.13 | Sheet Ability Scores (CharacterSnapshotSchema.abilities + character-reader.ts wiring + renderMainTab data binding) |
+| 17 | 🟡 v0.9.13 | Sheet Skills Tab (CharacterSnapshotSchema.skills + character-reader.ts wiring + renderSkillsTab modifiers + proficiency glyphs) |
+| 18 | 🟡 v0.9.13 | Phase-14.1 spec-drift polish (UI-SPEC §2/§10 reconcile + IT locale leak fix + Z05-INV-02b triade extension; single INV-3 atomic commit) |
 
 ## Hardware
 
