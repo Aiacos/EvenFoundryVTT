@@ -99,6 +99,45 @@ type AbilityMockShape = {
   dc?: number;
 };
 
+/**
+ * Phase 17 Plan 17-02: dnd5e 5.x per-skill sub-object mock shape.
+ *
+ * Mirrors `actor.system.skills.<k>` canonical shape verified by INV-2
+ * cross-check (github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/
+ * templates/common.mjs + dnd5e wiki Roll-Formulas, 2026-05-18). `total` is
+ * a BARE NUMBER (NOT `{value: number}` — different from Phase 16 `save`).
+ * `proficient` is `0 | 0.5 | 1 | 2` (none/half/full/expertise); the reader
+ * passes through verbatim (NOT coerced to boolean — Skills tab needs the
+ * full glyph spectrum per UI-SPEC §3, unlike Phase 16's Main tab boolean).
+ */
+type SkillMockShape = {
+  total?: number;
+  ability?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+  proficient?: 0 | 0.5 | 1 | 2;
+  passive?: number;
+};
+
+/** 18-key dnd5e canonical skill code (Phase 17 Plan 17-02). */
+type SkillMockKey =
+  | 'acr'
+  | 'ani'
+  | 'arc'
+  | 'ath'
+  | 'dec'
+  | 'his'
+  | 'ins'
+  | 'itm'
+  | 'inv'
+  | 'med'
+  | 'nat'
+  | 'prc'
+  | 'prf'
+  | 'per'
+  | 'rel'
+  | 'slt'
+  | 'ste'
+  | 'sur';
+
 function makeActor(
   overrides: Partial<{
     id: string;
@@ -129,6 +168,13 @@ function makeActor(
     abilities:
       | Partial<Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', AbilityMockShape>>
       | undefined;
+    // Phase 17 Plan 17-02: per-skill mock overrides. Explicit `undefined` is
+    // permitted (under `exactOptionalPropertyTypes`) so CR-SK-2 may pass
+    // `skills: undefined` to exercise the truly-missing defensive-default
+    // branch. When the `skills` key is absent from `overrides`,
+    // `system.skills` is omitted entirely (per-field defaults still apply
+    // when a partial subset is provided).
+    skills: Partial<Record<SkillMockKey, SkillMockShape>> | undefined;
   }> = {},
 ) {
   const death =
@@ -147,6 +193,13 @@ function makeActor(
   // `overrides` at all, system.abilities is omitted entirely.
   const abilitiesField = 'abilities' in overrides ? { abilities: overrides.abilities } : {};
 
+  // Phase 17 Plan 17-02: pass `skills` through verbatim — the reader is the
+  // contract owner for defensive defaults. When `overrides.skills` is
+  // present-but-undefined, system.skills is set to undefined so CR-SK-2
+  // exercises the missing-field branch. When `skills` is not in `overrides`
+  // at all, system.skills is omitted entirely.
+  const skillsField = 'skills' in overrides ? { skills: overrides.skills } : {};
+
   return {
     id: overrides.id ?? 'actor-1',
     name: overrides.name ?? 'Aragorn',
@@ -163,6 +216,7 @@ function makeActor(
       },
       spells: spellSlotSystem,
       ...abilitiesField,
+      ...skillsField,
     },
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
@@ -721,6 +775,218 @@ describe('getCharacterSnapshot', () => {
     vi.stubGlobal('game', makeGameMock([actor]));
 
     const snap = getCharacterSnapshot('pc-ab-5');
+    expect(snap).not.toBeNull();
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    const result = CharacterSnapshotSchema.safeParse(snap);
+    expect(result.success).toBe(true);
+  });
+
+  // ── Phase 17 Plan 17-02: skills extension (CR-SK-1..6) ──────────────────
+  //
+  // Producer-half of SHEET-09. The reader emits `snapshot.skills` as a
+  // REQUIRED 18-key container with per-skill `{total, ability, proficient, passive}`.
+  // dnd5e canonical shape verified by INV-2 cross-check 2026-05-18: `total`
+  // is a BARE NUMBER (NOT `{value: number}` — different from Phase 16 `save`);
+  // `proficient` is `0|0.5|1|2` and the reader passes through verbatim (NOT
+  // coerced to boolean — Skills tab needs the full glyph spectrum ○/◉/★ per
+  // UI-SPEC §3, unlike Phase 16's Main tab boolean). `passive` is the dnd5e
+  // prep-time computed value read directly (NOT recomputed as 10 + total —
+  // Observant feat / magic items may diverge). Defensive defaults for fresh
+  // actors lacking `system.skills` emit 18× `{total:0, ability:<canonical
+  // default per SKILL_DEFAULT_ABILITY>, proficient:0, passive:10}` mirroring
+  // the Phase 4b death-saves / Phase 16 abilities pattern.
+
+  /**
+   * Canonical Thorin Oakenshield skills spread (Specs.md §7.5.3 + existing
+   * DEFAULT_SKILLS renderer). Lv 8 fighter — Athletics +6 (prof, STR),
+   * Insight +1 (WIS), Investigation total 0 / passive 14 (INT 18 → 10+4),
+   * Perception/Insight passive 11 (Wis 12 +1 → 10+1).
+   */
+  function thorinSkills(): Partial<Record<SkillMockKey, SkillMockShape>> {
+    return {
+      acr: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+      ani: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+      arc: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+      ath: { total: 6, ability: 'str', proficient: 1, passive: 16 },
+      dec: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+      his: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+      ins: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+      itm: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+      inv: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+      med: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+      nat: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+      prc: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+      prf: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+      per: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+      rel: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+      slt: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+      ste: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+      sur: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+    };
+  }
+
+  it('CR-SK-1: canonical dnd5e skills (Thorin spread) → snapshot.skills populated correctly', () => {
+    // Thorin Oakenshield Lv8 fighter — Specs.md §7.5.3 canonical spread.
+    // Athletics +6 proficient, Investigation passive 14 (INT 18 driver),
+    // Perception/Insight passive 11 (WIS 12 +1 = 10+1).
+    const actor = makeActor({
+      id: 'pc-sk-1',
+      skills: thorinSkills(),
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-1');
+    expect(snap).not.toBeNull();
+    // Athletics — proficient STR-based, total +6, passive 16
+    expect(snap?.skills.ath).toEqual({
+      total: 6,
+      ability: 'str',
+      proficient: 1,
+      passive: 16,
+    });
+    // Investigation — total 0 but passive 14 (the divergence Main tab surfaces)
+    expect(snap?.skills.inv.total).toBe(0);
+    expect(snap?.skills.inv.passive).toBe(14);
+    expect(snap?.skills.inv.ability).toBe('int');
+    // Perception — wisdom-based, passive 11 (10 + WIS mod 1)
+    expect(snap?.skills.prc.passive).toBe(11);
+    expect(snap?.skills.prc.ability).toBe('wis');
+    // Insight — wisdom-based, passive 11 (Main tab senses line)
+    expect(snap?.skills.ins.passive).toBe(11);
+    // Animal Handling — proficient WIS-based, total +4
+    expect(snap?.skills.ani.proficient).toBe(1);
+    expect(snap?.skills.ani.total).toBe(4);
+  });
+
+  it('CR-SK-2: missing actor.system.skills → 18 defensive zero-defaults with SKILL_DEFAULT_ABILITY map', () => {
+    // Fresh dnd5e actor — prep not yet run; system.skills may be undefined.
+    // Reader emits 18 zero-default skills with canonical default ability per
+    // SKILL_DEFAULT_ABILITY (acr→dex, ath→str, prc→wis, etc.) instead of throwing.
+    const actor = makeActor({ id: 'pc-sk-2', skills: undefined });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-2');
+    expect(snap).not.toBeNull();
+    // SKILL_DEFAULT_ABILITY mapping correctness — gate for the static map.
+    expect(snap?.skills.acr.ability).toBe('dex'); // Acrobatics
+    expect(snap?.skills.ath.ability).toBe('str'); // Athletics
+    expect(snap?.skills.prc.ability).toBe('wis'); // Perception
+    expect(snap?.skills.arc.ability).toBe('int'); // Arcana
+    expect(snap?.skills.dec.ability).toBe('cha'); // Deception
+    expect(snap?.skills.ste.ability).toBe('dex'); // Stealth
+    expect(snap?.skills.sur.ability).toBe('wis'); // Survival
+    // Defensive default values — all 18 entries present with zero defaults
+    const zeroAcr = { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 };
+    expect(snap?.skills.acr).toEqual(zeroAcr);
+    // Verify all 18 keys present (no missing key — closed enum at schema layer)
+    const expectedKeys = [
+      'acr',
+      'ani',
+      'arc',
+      'ath',
+      'dec',
+      'his',
+      'ins',
+      'itm',
+      'inv',
+      'med',
+      'nat',
+      'prc',
+      'prf',
+      'per',
+      'rel',
+      'slt',
+      'ste',
+      'sur',
+    ] as const;
+    for (const key of expectedKeys) {
+      expect(snap?.skills[key]).toBeDefined();
+      expect(snap?.skills[key]?.total).toBe(0);
+      expect(snap?.skills[key]?.proficient).toBe(0);
+      expect(snap?.skills[key]?.passive).toBe(10);
+    }
+  });
+
+  it('CR-SK-3: proficient=0.5 (half-prof) → preserved verbatim (NO boolean coercion)', () => {
+    // Bard Jack of All Trades / racial half-prof feature. Phase 17 Skills tab
+    // needs the full glyph spectrum (○/◉/★) per UI-SPEC §3 — the renderer is
+    // responsible for half-prof glyph round-up at render time, the reader
+    // passes the raw enum through verbatim.
+    const actor = makeActor({
+      id: 'pc-sk-3',
+      skills: {
+        acr: { total: 3, ability: 'dex', proficient: 0.5, passive: 13 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-3');
+    expect(snap).not.toBeNull();
+    // Verbatim pass-through — must NOT be boolean true/false, must be 0.5.
+    expect(snap?.skills.acr.proficient).toBe(0.5);
+    expect(snap?.skills.acr.total).toBe(3);
+    expect(snap?.skills.acr.ability).toBe('dex');
+    expect(snap?.skills.acr.passive).toBe(13);
+  });
+
+  it('CR-SK-4: proficient=2 (expertise) → preserved verbatim (★ glyph at render time)', () => {
+    // Rogue/Bard Expertise. Phase 17 distinguishes expertise (★) from full
+    // proficiency (◉) at render time — the reader emits the raw enum.
+    const actor = makeActor({
+      id: 'pc-sk-4',
+      skills: {
+        ath: { total: 8, ability: 'str', proficient: 2, passive: 18 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-4');
+    expect(snap).not.toBeNull();
+    // Verbatim pass-through — expertise = 2, not coerced to 1 or true.
+    expect(snap?.skills.ath.proficient).toBe(2);
+    expect(snap?.skills.ath.total).toBe(8);
+  });
+
+  it('CR-SK-5: passive read-through (NOT recomputed from 10 + total)', () => {
+    // Observant feat / magic item bonuses make dnd5e's prep-time `passive`
+    // diverge from the naive `10 + total` formula. The reader must read
+    // `passive` directly, never recompute it. CONTEXT §Area 2: "Read passive
+    // directly".
+    const actor = makeActor({
+      id: 'pc-sk-5',
+      skills: {
+        prc: { total: 1, ability: 'wis', proficient: 0, passive: 18 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-5');
+    expect(snap).not.toBeNull();
+    // passive=18 even though total=1 (Observant +5 would give 10+1+5 = 16;
+    // here we test 18 to assert the reader doesn't recompute via 10+total).
+    expect(snap?.skills.prc.passive).toBe(18);
+    expect(snap?.skills.prc.total).toBe(1);
+  });
+
+  it('CR-SK-6: full snapshot with skills round-trips through CharacterSnapshotSchema (Wave-1→Wave-2 atomic close)', async () => {
+    // Closes the Plan 17-01 → Plan 17-02 atomic loop: Plan 17-01 made `skills`
+    // REQUIRED on the schema; Plan 17-02 makes the reader emit it. Together
+    // they guarantee every snapshot round-trips clean.
+    const actor = makeActor({
+      id: 'pc-sk-6',
+      abilities: {
+        str: { value: 16, mod: 3, save: { value: 5 }, proficient: 1, dc: 8 },
+        dex: { value: 14, mod: 2, save: { value: 2 }, proficient: 0, dc: 8 },
+        con: { value: 14, mod: 2, save: { value: 5 }, proficient: 1, dc: 8 },
+        int: { value: 18, mod: 4, save: { value: 4 }, proficient: 0, dc: 8 },
+        wis: { value: 12, mod: 1, save: { value: 1 }, proficient: 0, dc: 8 },
+        cha: { value: 8, mod: -1, save: { value: -1 }, proficient: 0, dc: 8 },
+      },
+      skills: thorinSkills(),
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-sk-6');
     expect(snap).not.toBeNull();
     const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
     const result = CharacterSnapshotSchema.safeParse(snap);

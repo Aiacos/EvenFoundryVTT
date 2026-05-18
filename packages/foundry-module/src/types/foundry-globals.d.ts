@@ -227,7 +227,46 @@ interface Dnd5eAbilityRaw {
   dc?: number;
 }
 
-/** Subset of the dnd5e 5.x actor system schema (attributes + details + spells + abilities). */
+/**
+ * Per-skill sub-object in the dnd5e 5.x actor system schema (Phase 17 Plan 17-02).
+ *
+ * Keyed by canonical 3-char dnd5e skill codes
+ * (acr/ani/arc/ath/dec/his/ins/itm/inv/med/nat/prc/prf/per/rel/slt/ste/sur)
+ * on {@link Dnd5eActorSystem}. Fresh actors lacking dnd5e prep may have
+ * `skills` undefined entirely — character-reader's `extractSkills` helper
+ * emits zero-defaults for that case (CR-SK-2).
+ *
+ * Field shapes (INV-2 cross-checked 2026-05-18 against github.com/foundryvtt/
+ * dnd5e release-5.3.3 module/data/actor/templates/common.mjs + dnd5e wiki
+ * Roll-Formulas):
+ * - `total`     — Final skill modifier (number, dnd5e prep-time computed).
+ * - `ability`   — 3-char ability code driving this skill (e.g. 'dex' for acr).
+ * - `proficient`— 0 (none) | 0.5 (half) | 1 (full) | 2 (expertise).
+ * - `passive`   — Passive skill score (number, dnd5e prep-time computed,
+ *                 typically 10 + total but magic-item / Observant bonuses
+ *                 may diverge).
+ *
+ * All fields are declared optional because dnd5e may leave any of them
+ * absent on fresh / partially-prepped actors; the reader applies per-field
+ * defensive nullish-coalesce.
+ *
+ * Unlike `Dnd5eAbilityRaw.proficient` (which the reader coerces to boolean
+ * for Main tab), `Dnd5eSkillRaw.proficient` is preserved verbatim through
+ * the wire — Phase 17 Skills tab uses the full 0|0.5|1|2 spectrum for
+ * ○/◉/★ glyph mapping per UI-SPEC §3.
+ */
+interface Dnd5eSkillRaw {
+  /** Final skill modifier (dnd5e prep-time computed; includes ability + prof + bonuses). */
+  total?: number;
+  /** 3-char ability code driving this skill (e.g. 'dex' for acrobatics). */
+  ability?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+  /** Skill proficiency tier: 0=none, 0.5=half, 1=full, 2=expertise. */
+  proficient?: 0 | 0.5 | 1 | 2;
+  /** Passive skill score (dnd5e prep-time computed; ≥ 0). */
+  passive?: number;
+}
+
+/** Subset of the dnd5e 5.x actor system schema (attributes + details + spells + abilities + skills). */
 interface Dnd5eActorSystem {
   attributes: Dnd5eAttributes;
   details: Dnd5eDetails;
@@ -250,6 +289,43 @@ interface Dnd5eActorSystem {
    * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 2
    */
   abilities?: Partial<Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', Dnd5eAbilityRaw>>;
+  /**
+   * Skill data keyed by 3-char dnd5e short code (Phase 17 Plan 17-02).
+   * Optional at the type level because dnd5e may leave `skills` undefined
+   * on fresh actors prior to first prep — the reader's `extractSkills`
+   * emits zero-defaults for that case.
+   *
+   * The 18-key list is duplicated as a string-literal union here (not imported
+   * from `@evf/shared-protocol`'s `SKILL_KEYS`) because `foundry-globals.d.ts`
+   * is a pure ambient declaration file — module imports in `.d.ts` ambient files
+   * conflict with global typings. Mirrors the Phase 16 `abilities?` pattern.
+   *
+   * @see packages/foundry-module/src/readers/character-reader.ts (extractSkills)
+   * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 2
+   */
+  skills?: Partial<
+    Record<
+      | 'acr'
+      | 'ani'
+      | 'arc'
+      | 'ath'
+      | 'dec'
+      | 'his'
+      | 'ins'
+      | 'itm'
+      | 'inv'
+      | 'med'
+      | 'nat'
+      | 'prc'
+      | 'prf'
+      | 'per'
+      | 'rel'
+      | 'slt'
+      | 'ste'
+      | 'sur',
+      Dnd5eSkillRaw
+    >
+  >;
 }
 
 // ─── Foundry Actor (minimal read shape) ───────────────────────────────────────
