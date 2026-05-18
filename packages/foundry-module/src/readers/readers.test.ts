@@ -80,6 +80,25 @@ function makeSpellItem(
   };
 }
 
+/**
+ * Phase 16 Plan 16-02: dnd5e 5.x per-ability sub-object mock shape.
+ *
+ * Mirrors `actor.system.abilities.<k>` canonical shape verified by INV-2
+ * cross-check (github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/
+ * templates/common.mjs + dnd5e wiki Roll-Formulas, 2026-05-18). `save` is an
+ * OBJECT `{value: number}` (NOT a bare number) — the reader must read
+ * `save.value`. `proficient` is `0 | 0.5 | 1 | 2` (none/half/full/expertise);
+ * the reader coerces 0|0.5 → false, 1|2 → true for Main tab consumption per
+ * CONTEXT D-Area-2.
+ */
+type AbilityMockShape = {
+  value?: number;
+  mod?: number;
+  save?: { value: number };
+  proficient?: 0 | 0.5 | 1 | 2;
+  dc?: number;
+};
+
 function makeActor(
   overrides: Partial<{
     id: string;
@@ -102,6 +121,14 @@ function makeActor(
     spellSlots: Record<string, { value: number; max: number }>;
     // Plan 13-03: actor portrait URL (actor.img)
     img: string | undefined;
+    // Phase 16 Plan 16-02: per-ability mock overrides. Explicit `undefined`
+    // is permitted (under `exactOptionalPropertyTypes`) so CR-AB-2 may pass
+    // `abilities: undefined` to exercise the truly-missing defensive-default
+    // branch in the reader. When the `abilities` key is absent from
+    // `overrides`, `system.abilities` is omitted entirely.
+    abilities:
+      | Partial<Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', AbilityMockShape>>
+      | undefined;
   }> = {},
 ) {
   const death =
@@ -112,6 +139,13 @@ function makeActor(
   // Build spell slot system shape: spell1..spell9 keys
   const spellSlotSystem: Record<string, { value: number; max: number }> =
     overrides.spellSlots ?? {};
+
+  // Phase 16 Plan 16-02: pass `abilities` through verbatim — the reader is
+  // the contract owner for defensive defaults. When `overrides.abilities` is
+  // present-but-undefined, system.abilities is set to undefined so CR-AB-2
+  // exercises the missing-field branch. When `abilities` is not in
+  // `overrides` at all, system.abilities is omitted entirely.
+  const abilitiesField = 'abilities' in overrides ? { abilities: overrides.abilities } : {};
 
   return {
     id: overrides.id ?? 'actor-1',
@@ -128,6 +162,7 @@ function makeActor(
         level: overrides.level ?? 5,
       },
       spells: spellSlotSystem,
+      ...abilitiesField,
     },
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
@@ -551,6 +586,142 @@ describe('getCharacterSnapshot', () => {
     vi.stubGlobal('game', makeGameMock([actor]));
 
     const snap = getCharacterSnapshot('pc-spl-5');
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    const result = CharacterSnapshotSchema.safeParse(snap);
+    expect(result.success).toBe(true);
+  });
+
+  // ── Phase 16 Plan 16-02: abilities extension (CR-AB-1..5) ─────────────────
+  //
+  // Producer-half of SHEET-06. The reader emits `snapshot.abilities` as a
+  // REQUIRED 6-key container with per-ability `{value, mod, save, proficient, dc}`.
+  // dnd5e canonical shape verified by INV-2 cross-check 2026-05-18: `save` is
+  // `{value: number}` (read `.value`), `proficient` is `0|0.5|1|2` (coerce
+  // 0|0.5 → false, 1|2 → true per CONTEXT D-Area-2). Defensive defaults for
+  // fresh actors lacking `system.abilities` emit 6× `{value:10, mod:0, save:0,
+  // proficient:false, dc:10}` mirroring the Phase 4b death-saves pattern.
+
+  it('CR-AB-1: canonical dnd5e abilities (Thorin spread) → snapshot.abilities populated correctly', () => {
+    // Thorin Oakenshield Lv5 fighter — Specs.md §7.5.2 canonical character.
+    // STR 16/+3/+5 PROF, DEX 14/+2/+2, CON 14/+2/+5 PROF, INT 18/+4/+4,
+    // WIS 12/+1/+1, CHA 8/-1/-1.
+    const actor = makeActor({
+      id: 'pc-ab-1',
+      abilities: {
+        str: { value: 16, mod: 3, save: { value: 5 }, proficient: 1, dc: 8 },
+        dex: { value: 14, mod: 2, save: { value: 2 }, proficient: 0, dc: 8 },
+        con: { value: 14, mod: 2, save: { value: 5 }, proficient: 1, dc: 8 },
+        int: { value: 18, mod: 4, save: { value: 4 }, proficient: 0, dc: 8 },
+        wis: { value: 12, mod: 1, save: { value: 1 }, proficient: 0, dc: 8 },
+        cha: { value: 8, mod: -1, save: { value: -1 }, proficient: 0, dc: 8 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-ab-1');
+    expect(snap).not.toBeNull();
+    // STR row — prof bonus applies, save = mod + prof
+    expect(snap?.abilities.str).toEqual({
+      value: 16,
+      mod: 3,
+      save: 5,
+      proficient: true,
+      dc: 8,
+    });
+    // CHA row — negative mod and save
+    expect(snap?.abilities.cha.value).toBe(8);
+    expect(snap?.abilities.cha.mod).toBe(-1);
+    expect(snap?.abilities.cha.save).toBe(-1);
+    expect(snap?.abilities.cha.proficient).toBe(false);
+    // CON row — second proficient save
+    expect(snap?.abilities.con.proficient).toBe(true);
+    expect(snap?.abilities.con.save).toBe(5);
+    // DEX row — not prof
+    expect(snap?.abilities.dex.proficient).toBe(false);
+  });
+
+  it('CR-AB-2: missing actor.system.abilities → defensive zero-defaults (6 × {10,0,0,false,10})', () => {
+    // Fresh dnd5e actor — prep not yet run; system.abilities may be undefined.
+    // Reader emits 6 zero-default ability scores instead of throwing.
+    const actor = makeActor({ id: 'pc-ab-2', abilities: undefined });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-ab-2');
+    expect(snap).not.toBeNull();
+    const zero = { value: 10, mod: 0, save: 0, proficient: false, dc: 10 };
+    expect(snap?.abilities.str).toEqual(zero);
+    expect(snap?.abilities.dex).toEqual(zero);
+    expect(snap?.abilities.con).toEqual(zero);
+    expect(snap?.abilities.int).toEqual(zero);
+    expect(snap?.abilities.wis).toEqual(zero);
+    expect(snap?.abilities.cha).toEqual(zero);
+  });
+
+  it('CR-AB-3: proficient=0.5 (half-prof) → coerced to false on Main tab', () => {
+    // dnd5e Jack of All Trades / Bard Expertise half-step. CONTEXT
+    // §domain "Explicitly out of scope" — Main tab uses boolean; Phase 17
+    // Skills tab will introduce the full glyph spectrum (○/◉/◈).
+    const actor = makeActor({
+      id: 'pc-ab-3',
+      abilities: {
+        str: { value: 14, mod: 2, save: { value: 3 }, proficient: 0.5, dc: 10 },
+        dex: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        con: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        int: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        wis: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        cha: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-ab-3');
+    expect(snap?.abilities.str.proficient).toBe(false);
+    expect(snap?.abilities.str.value).toBe(14);
+    expect(snap?.abilities.str.mod).toBe(2);
+  });
+
+  it('CR-AB-4: proficient=2 (expertise) → coerced to true on Main tab', () => {
+    // dnd5e Rogue/Bard Expertise. CONTEXT D-Area-2: `proficient` strict
+    // equality with `1 || 2` → true; `0 || 0.5` → false. Phase 17 will
+    // distinguish expertise (◉ vs ◈) on the Skills tab.
+    const actor = makeActor({
+      id: 'pc-ab-4',
+      abilities: {
+        str: { value: 18, mod: 4, save: { value: 7 }, proficient: 2, dc: 12 },
+        dex: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        con: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        int: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        wis: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+        cha: { value: 10, mod: 0, save: { value: 0 }, proficient: 0, dc: 10 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-ab-4');
+    expect(snap?.abilities.str.proficient).toBe(true);
+    expect(snap?.abilities.str.value).toBe(18);
+    expect(snap?.abilities.str.save).toBe(7);
+  });
+
+  it('CR-AB-5: full snapshot round-trips through CharacterSnapshotSchema (Wave-1→Wave-2 atomic close)', async () => {
+    // Closes the atomic-extension loop: Plan 16-01 made `abilities` REQUIRED
+    // on the schema; Plan 16-02 makes the reader emit it. Together they
+    // guarantee every snapshot round-trips clean.
+    const actor = makeActor({
+      id: 'pc-ab-5',
+      abilities: {
+        str: { value: 16, mod: 3, save: { value: 5 }, proficient: 1, dc: 8 },
+        dex: { value: 14, mod: 2, save: { value: 2 }, proficient: 0, dc: 8 },
+        con: { value: 14, mod: 2, save: { value: 5 }, proficient: 1, dc: 8 },
+        int: { value: 18, mod: 4, save: { value: 4 }, proficient: 0, dc: 8 },
+        wis: { value: 12, mod: 1, save: { value: 1 }, proficient: 0, dc: 8 },
+        cha: { value: 8, mod: -1, save: { value: -1 }, proficient: 0, dc: 8 },
+      },
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-ab-5');
+    expect(snap).not.toBeNull();
     const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
     const result = CharacterSnapshotSchema.safeParse(snap);
     expect(result.success).toBe(true);
