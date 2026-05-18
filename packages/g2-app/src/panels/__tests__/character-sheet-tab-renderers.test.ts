@@ -26,6 +26,16 @@
  *   - CSTR-SKILLS-TRUNC:    skill name > 30 chars → truncated with '…'
  *   - CSTR-SKILLS-SCROLL:   scrollOffset=5 shifts visible skills
  *
+ * Phase 17 Skills tab data binding (CSTR-SKILLS-DATA-*):
+ *   - CSTR-SKILLS-DATA-1: snapshot drives skill modifiers; sheet.skills.it.txt byte-identical
+ *   - CSTR-SKILLS-DATA-2: proficient=2 → ★ glyph (expertise / mastery)
+ *   - CSTR-SKILLS-DATA-3: proficient=0.5 → ◉ glyph (half-prof round-up; UI-SPEC §3)
+ *   - CSTR-SKILLS-DATA-4: ability grouping preserved — DES label on first DEX skill only
+ *   - CSTR-SKILLS-DATA-5: renderMainTab row 17 senses line emits PP/PI/IND passives
+ *
+ * Phase 17 INV-1 round-trip:
+ *   - CSTR-FIX-SKILLS-EN: renderSkillsTab EN locale → sheet.skills.en.txt (NEW fixture)
+ *
  * Feats tab edition branches:
  *   - CSTR-FEATS-2014:    modernRules=false → no [Origine] annotation
  *   - CSTR-FEATS-2024:    modernRules=true  → [Origine] in output (IT locale)
@@ -108,6 +118,40 @@ const snapshot2014: CharacterSnapshot = {
     int: { value: 18, mod: 4, save: 4, proficient: false, dc: 8 },
     wis: { value: 12, mod: 1, save: 1, proficient: false, dc: 8 },
     cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 8 },
+  },
+  /**
+   * Thorin canonical skills spread (Phase 17 Plan 17-03 — SHEET-10).
+   *
+   * Values match the existing `DEFAULT_SKILLS` Thorin hardcoded array
+   * verbatim so the `sheet.skills.it.txt` fixture round-trips byte-identically
+   * after the renderer swaps to dynamic `SKILL_KEYS.map` lookup. Passive
+   * Perception/Insight = 11 (WIS 12 → +1, then 10 + 1 = 11); Passive
+   * Investigation = 14 (INT 18 → +4, then 10 + 4 = 14). Other passives are
+   * 10 + total. Athletics +6 = STR +3 + prof +3 (Lv 8 → prof bonus +3).
+   * Animal Handling +4 = WIS +1 + prof +3. Medicine +4 = WIS +1 + prof +3.
+   *
+   * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Specifics
+   * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-UI-SPEC.md §4
+   */
+  skills: {
+    acr: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+    ani: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+    arc: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+    ath: { total: 6, ability: 'str', proficient: 1, passive: 16 },
+    dec: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+    his: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+    ins: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+    itm: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+    inv: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+    med: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+    nat: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+    prc: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+    prf: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+    per: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+    rel: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+    slt: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+    ste: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+    sur: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
   },
 };
 
@@ -528,5 +572,121 @@ describe('renderMainTab — abilities data binding (CSTR-MAIN-AB)', () => {
     expect(joined).toContain('STR 16 +3');
     expect(joined).toContain('◉ STR  +5');
     expect(joined).toContain('CHA  8 -1');
+  });
+});
+
+// ─── CSTR-SKILLS-DATA-* skills data binding tests (Phase 17) ─────────────────
+
+describe('renderSkillsTab — skills data binding (CSTR-SKILLS-DATA)', () => {
+  it('CSTR-SKILLS-DATA-1: snapshot2014 renders → matches sheet.skills.it.txt (byte-identical)', () => {
+    // The renderer dynamic-lookup swap MUST preserve byte-identical fixture
+    // output: snapshot2014 carries the Thorin canonical skills spread (same
+    // values as the pre-Phase-17 hardcoded DEFAULT_SKILLS), so the existing
+    // sheet.skills.it.txt fixture should still round-trip unchanged.
+    const rows = renderSkillsTab(snapshot2014, 'it', 0);
+    const expected = readFileSync(resolve(fixtureDir(), 'sheet.skills.it.txt'), 'utf-8')
+      .split('\n')
+      .map((r) => r.trimEnd())
+      .join('\n')
+      .trimEnd();
+    const actual = rows
+      .join('\n')
+      .split('\n')
+      .map((r) => r.trimEnd())
+      .join('\n')
+      .trimEnd();
+    expect(actual).toBe(expected);
+  });
+
+  it('CSTR-SKILLS-DATA-2: proficient=2 (Expertise) on Athletics → ★ glyph in rendered row', () => {
+    const snapshotExpert: CharacterSnapshot = {
+      ...snapshot2014,
+      skills: {
+        ...snapshot2014.skills,
+        ath: { ...snapshot2014.skills.ath, proficient: 2, total: 7 },
+      },
+    };
+    const rows = renderSkillsTab(snapshotExpert, 'it', 0);
+    const joined = rows.join('\n');
+    expect(joined).toContain('★ Atletica');
+    // Must NOT contain ◉ Atletica (was the prof=1 glyph)
+    expect(joined).not.toContain('◉ Atletica');
+  });
+
+  it('CSTR-SKILLS-DATA-3: proficient=0.5 (Jack of All Trades half-prof) on Acrobazia → ◉ glyph (round-up)', () => {
+    const snapshotHalfProf: CharacterSnapshot = {
+      ...snapshot2014,
+      skills: {
+        ...snapshot2014.skills,
+        acr: { ...snapshot2014.skills.acr, proficient: 0.5 },
+      },
+    };
+    const rows = renderSkillsTab(snapshotHalfProf, 'it', 0);
+    const joined = rows.join('\n');
+    // Half-prof rounds UP to ◉ per UI-SPEC §3 (NOT a 4th glyph)
+    expect(joined).toContain('◉ Acrobazia');
+    // No half-glyph introduced
+    expect(joined).not.toContain('◐ Acrobazia');
+    expect(joined).not.toContain('◑ Acrobazia');
+  });
+
+  it('CSTR-SKILLS-DATA-4: ability grouping preserved — DES label only on first DEX skill row', () => {
+    const rows = renderSkillsTab(snapshot2014, 'it', 0);
+    // Row 3 (0-indexed) = first DEX skill (Acrobazia) — starts with `DES `
+    // Row 4 (0-indexed) = second DEX skill (Rapidità di mano) — starts with `    ` (4 spaces, no label)
+    // Row 5 (0-indexed) = third DEX skill (Furtività) — starts with `    `
+    const row3 = rows[3];
+    const row4 = rows[4];
+    const row5 = rows[5];
+    expect(row3).toBeTruthy();
+    expect(row4).toBeTruthy();
+    expect(row5).toBeTruthy();
+    // First DEX row carries `DES ` label
+    expect(row3?.slice(0, 4)).toBe('DES ');
+    // Subsequent DEX rows have 4-space pad (no ability label repeated)
+    expect(row4?.slice(0, 4)).toBe('    ');
+    expect(row5?.slice(0, 4)).toBe('    ');
+  });
+
+  it('CSTR-SKILLS-DATA-5: renderMainTab senses line emits passive Perception/Insight/Investigation', () => {
+    // IT locale: `Sensi  PP 11 · PI 11 · IND 14` (Thorin: prc=11, ins=11, inv=14)
+    const rowsIt = renderMainTab(snapshot2014, 'it');
+    const joinedIt = rowsIt.join('\n');
+    expect(joinedIt).toContain('Sensi  PP 11 · PI 11 · IND 14');
+    expect(joinedIt).not.toContain('Sensi  —');
+
+    // Width invariant: senses row stays 66 code-points
+    const sensesRowIt = rowsIt.find((r) => r.includes('Sensi'));
+    expect(sensesRowIt).toBeTruthy();
+    expect(codePointLen(sensesRowIt ?? '')).toBe(INNER_WIDTH);
+
+    // EN locale: `Senses  PP 11 · INS 11 · INV 14`
+    const rowsEn = renderMainTab(snapshot2014, 'en');
+    const joinedEn = rowsEn.join('\n');
+    expect(joinedEn).toContain('Senses  PP 11 · INS 11 · INV 14');
+
+    // DE locale: `Sinne  WN 11 · EIN 11 · NCH 14` (NCH = Nachforschung)
+    const rowsDe = renderMainTab(snapshot2014, 'de');
+    const joinedDe = rowsDe.join('\n');
+    expect(joinedDe).toContain('Sinne  WN 11 · EIN 11 · NCH 14');
+  });
+});
+
+// ─── CSTR-FIX-SKILLS-EN (Phase 17 — NEW INV-1 fixture) ────────────────────────
+
+describe('INV-1 round-trip — sheet.skills.en.txt (Phase 17)', () => {
+  function normaliseRows(content: string): string {
+    return content
+      .split('\n')
+      .map((row) => row.trimEnd())
+      .join('\n')
+      .trimEnd();
+  }
+
+  it('CSTR-FIX-SKILLS-EN: renderSkillsTab(snapshot2014, "en") matches sheet.skills.en.txt', () => {
+    const rows = renderSkillsTab(snapshot2014, 'en', 0);
+    const expected = normaliseRows(loadFixture('sheet.skills.en.txt'));
+    const actual = normaliseRows(rows.join('\n'));
+    expect(actual).toBe(expected);
   });
 });

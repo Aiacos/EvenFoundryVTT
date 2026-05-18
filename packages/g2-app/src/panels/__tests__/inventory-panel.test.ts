@@ -171,6 +171,26 @@ const snapshot2014: CharacterSnapshot = {
     wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
     cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
   },
+  skills: {
+    acr: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ani: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
+    arc: { total: 0, ability: 'int' as const, proficient: 0 as const, passive: 10 },
+    ath: { total: 0, ability: 'str' as const, proficient: 0 as const, passive: 10 },
+    dec: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    his: { total: 0, ability: 'int' as const, proficient: 0 as const, passive: 10 },
+    ins: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
+    itm: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    inv: { total: 0, ability: 'int' as const, proficient: 0 as const, passive: 10 },
+    med: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
+    nat: { total: 0, ability: 'int' as const, proficient: 0 as const, passive: 10 },
+    prc: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
+    prf: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    per: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    rel: { total: 0, ability: 'int' as const, proficient: 0 as const, passive: 10 },
+    slt: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
+  },
 };
 
 /** Thorin Oakenshield — PHB 2024, same inventory (with [M] mastery flag on weapons). */
