@@ -195,7 +195,39 @@ interface Dnd5eSpellSlotEntry {
   max: number;
 }
 
-/** Subset of the dnd5e 5.x actor system schema (attributes + details + spells). */
+/**
+ * Per-ability sub-object in the dnd5e 5.x actor system schema (Phase 16 Plan 16-02).
+ *
+ * Keyed by canonical ability codes (str/dex/con/int/wis/cha) on
+ * {@link Dnd5eActorSystem}. Fresh actors lacking dnd5e prep may have
+ * `abilities` undefined entirely — character-reader's `extractAbilities`
+ * helper emits zero-defaults for that case (CR-AB-2).
+ *
+ * `save` is canonically `{value: number}` (dnd5e prep-time computed total —
+ * INV-2 cross-checked 2026-05-18 against github.com/foundryvtt/dnd5e
+ * release-5.3.3 module/data/actor/templates/common.mjs). All fields are
+ * declared optional here because dnd5e may leave any of them absent on
+ * fresh / partially-prepped actors; the reader applies per-field defensive
+ * nullish-coalesce.
+ *
+ * `proficient` carries dnd5e's raw `0 | 0.5 | 1 | 2` (none/half/full/expertise);
+ * the reader coerces to strict boolean for the Main tab wire payload
+ * (Phase 17 Skills tab will introduce the full glyph spectrum).
+ */
+interface Dnd5eAbilityRaw {
+  /** Raw ability score (0..30 — divine cap). */
+  value?: number;
+  /** Ability modifier — floor((value-10)/2); negative allowed. */
+  mod?: number;
+  /** Saving throw — dnd5e prep-time computed total wrapped in `{value}`. */
+  save?: { value?: number };
+  /** Save proficiency tier: 0=none, 0.5=half, 1=full, 2=expertise. */
+  proficient?: 0 | 0.5 | 1 | 2;
+  /** Spell save DC for this ability (≥ 0). */
+  dc?: number;
+}
+
+/** Subset of the dnd5e 5.x actor system schema (attributes + details + spells + abilities). */
 interface Dnd5eActorSystem {
   attributes: Dnd5eAttributes;
   details: Dnd5eDetails;
@@ -208,6 +240,16 @@ interface Dnd5eActorSystem {
    * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-RESEARCH.md §Pattern 5
    */
   spells?: Record<string, Dnd5eSpellSlotEntry | undefined>;
+  /**
+   * Ability scores keyed by `str | dex | con | int | wis | cha` (Phase 16 Plan 16-02).
+   * Optional at the type level because dnd5e may leave `abilities` undefined on
+   * fresh actors prior to first prep — the reader's `extractAbilities` emits
+   * zero-defaults for that case.
+   *
+   * @see packages/foundry-module/src/readers/character-reader.ts (extractAbilities)
+   * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 2
+   */
+  abilities?: Partial<Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', Dnd5eAbilityRaw>>;
 }
 
 // ─── Foundry Actor (minimal read shape) ───────────────────────────────────────

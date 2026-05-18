@@ -12,12 +12,25 @@
  *   undefined guards — no `!` non-null assertions.
  * - `exactOptionalPropertyTypes`: all optional fields checked before access.
  *
+ * Phase 16 addition (Plan 16-02): reads `actor.system.abilities.{str,dex,con,int,wis,cha}`
+ * to populate the REQUIRED `abilities` field (REQ SHEET-06). Defensive defaults for
+ * fresh actors lacking `system.abilities` mirror the Phase 4b death-saves nullish-coalesce
+ * pattern. `proficient: 0|0.5` → false; `proficient: 1|2` → true (Main tab boolean;
+ * Phase 17 Skills tab introduces the full glyph spectrum ○/◉/◈). `save` is read
+ * directly from `actor.system.abilities.<k>.save.value` (dnd5e prep-time computed
+ * total — NOT recomputed from base+prof) per CONTEXT D-Area-2.
+ *
  * @see Specs.md §4 (read pipeline), FOUN-01 (getCharacterState reader contract)
+ * @see Specs.md §7.5.2 (Main tab ability-score mockup)
  * @see packages/foundry-module/src/types/foundry-globals.d.ts (actor shape declarations)
  * @see 02-05-PLAN.md Task 1 (character-reader.ts spec)
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 2
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-02-PLAN.md Task 2
  */
 
 import type {
+  Abilities,
+  AbilityScore,
   CharacterSnapshot,
   InventoryItem,
   InventoryItemType,
@@ -236,6 +249,91 @@ function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook 
   return { slots, spells };
 }
 
+/** Canonical ability key list (closed enum — D&D 5e core rules). */
+const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+type AbilityKey = (typeof ABILITY_KEYS)[number];
+
+/**
+ * Build a 6-keyed zero-default `Abilities` payload for fresh actors lacking
+ * `system.abilities`. Each ability emits `{value:10, mod:0, save:0,
+ * proficient:false, dc:10}` — the dnd5e baseline (mod = 0 at score 10, no
+ * save bonus, non-proficient, baseline DC 10). Mirrors the Phase 4b
+ * death-saves defensive-default pattern (CR-DS-3) — never throws, never
+ * returns null for the field.
+ *
+ * @internal
+ */
+function zeroAbilities(): Abilities {
+  const zero: AbilityScore = { value: 10, mod: 0, save: 0, proficient: false, dc: 10 };
+  return {
+    str: { ...zero },
+    dex: { ...zero },
+    con: { ...zero },
+    int: { ...zero },
+    wis: { ...zero },
+    cha: { ...zero },
+  };
+}
+
+/**
+ * Extract a single dnd5e ability sub-object into our wire-payload AbilityScore.
+ *
+ * Reads `value`, `mod`, `save.value`, `proficient`, `dc` with defensive
+ * nullish-coalesce per field. `save` shape is dnd5e canonical `{value: number}`
+ * (INV-2 cross-checked 2026-05-18 against github.com/foundryvtt/dnd5e
+ * release-5.3.3 module/data/actor/templates/common.mjs). `proficient` is
+ * dnd5e's raw `0 | 0.5 | 1 | 2` (none/half/full/expertise) — Main tab uses
+ * strict boolean: 0|0.5 → false, 1|2 → true (CONTEXT D-Area-2). Phase 17
+ * Skills tab will introduce the full glyph spectrum (○/◉/◈).
+ *
+ * @internal
+ */
+function readAbility(raw: Dnd5eAbilityRaw | undefined): AbilityScore {
+  const value = raw?.value ?? 10;
+  const mod = raw?.mod ?? 0;
+
+  // dnd5e canonical: save is { value: number }. Defensive fallback to 0
+  // when `save` itself is undefined or `save.value` is undefined.
+  const save = raw?.save?.value ?? 0;
+
+  // CONTEXT D-Area-2: strict `=== 1 || === 2` coercion. dnd5e raw values are
+  // 0 (none) | 0.5 (half-prof) | 1 (full) | 2 (expertise); we render Main
+  // tab as boolean so both 0 and 0.5 → false, both 1 and 2 → true.
+  // Phase 17 Skills tab will introduce the full numeric/glyph spectrum.
+  const proficientRaw = raw?.proficient;
+  const proficient = proficientRaw === 1 || proficientRaw === 2;
+
+  const dc = raw?.dc ?? 10;
+
+  return { value, mod, save, proficient, dc };
+}
+
+/**
+ * Extract all 6 D&D 5e ability scores from `actor.system.abilities`.
+ *
+ * Returns a complete 6-keyed Abilities object on every call — defensive
+ * defaults for fresh actors (zeroAbilities) when `system.abilities` is
+ * `undefined`. Per-field defaults (per readAbility) defend against partial
+ * shapes (e.g. `system.abilities.str` exists but `proficient` missing).
+ *
+ * Read order: value → mod → save.value → proficient → dc. Iteration is
+ * bounded to the 6 canonical keys (T-16-02-D — no recursion, constant-time).
+ *
+ * @internal
+ */
+function extractAbilities(actor: ReturnType<typeof game.actors.get>): Abilities {
+  if (actor === undefined) return zeroAbilities();
+
+  const abilitiesRaw = actor.system?.abilities;
+  if (abilitiesRaw === undefined) return zeroAbilities();
+
+  const out = zeroAbilities();
+  for (const key of ABILITY_KEYS) {
+    out[key as AbilityKey] = readAbility(abilitiesRaw[key]);
+  }
+  return out;
+}
+
 /**
  * Returns a character snapshot for the given actor ID, or null.
  *
@@ -315,6 +413,7 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     world: { modernRules },
     inventory: extractInventory(actor),
     spells: extractSpellbook(actor),
+    abilities: extractAbilities(actor),
     ...portraitField,
   };
 }
