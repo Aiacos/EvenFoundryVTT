@@ -15,11 +15,25 @@
  *   - CS-DS-7  DeathSavesSchema exported separately + roundtrips
  *   - CS-DS-8  type inference: `const d: DeathSaves = {...}` compiles cleanly
  *
+ * Phase 16 Plan 16-01 — `abilities` atomic schema extension (CS-AB-1..7):
+ *
+ *   - CS-AB-1  happy-path: 6-keyed `abilities` object parses
+ *   - CS-AB-2  REQUIRED (not .optional()): missing `abilities` field rejected
+ *   - CS-AB-3  negative mod/save: CHA 8 → mod=-1, save=-1 parses
+ *   - CS-AB-4  range gates: dc=-1 rejected, dc=23 accepted, value=31 rejected
+ *   - CS-AB-5  proficient strict-boolean: numeric 1 rejected (reader coerces, not schema)
+ *   - CS-AB-6  z.object forward-compat: extra sibling on per-ability object accepted
+ *   - CS-AB-7  type inference: `const a: Abilities = {...}` compiles + roundtrips
+ *
  * @see ./character.ts (schema definitions)
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-06-PLAN.md Task 1
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-01-PLAN.md
  */
 import { describe, expect, it } from 'vitest';
 import {
+  type Abilities,
+  AbilitiesSchema,
+  AbilityScoreSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
@@ -31,9 +45,23 @@ import {
   WorldStateSchema,
 } from './character.js';
 
+/** Canonical Thorin Oakenshield ability spread (Specs.md §7.5.2; CONTEXT §Area 4).
+ *  Used both standalone and woven into VALID_SNAPSHOT so every pre-existing
+ *  CS-DS/CHAR-MR/CHAR-INV/CHAR-SPL/CS-PORT test picks up the new field via spread.
+ *  Uniform `dc: 10` baseline — Plan 16-02 computes real per-caster DCs at the
+ *  reader; the canonical sample uses the non-spellcaster baseline. */
+const VALID_ABILITIES: Abilities = {
+  str: { value: 16, mod: 3, save: 5, proficient: true, dc: 10 },
+  dex: { value: 14, mod: 2, save: 2, proficient: false, dc: 10 },
+  con: { value: 14, mod: 2, save: 5, proficient: true, dc: 10 },
+  int: { value: 18, mod: 4, save: 4, proficient: false, dc: 10 },
+  wis: { value: 12, mod: 1, save: 1, proficient: false, dc: 10 },
+  cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 10 },
+};
+
 /** Canonical valid snapshot used as the test base; schema-extension fields
- *  (`death`, `world`, `inventory`, `spells`) are included with defaults
- *  and overridden per case. */
+ *  (`death`, `world`, `inventory`, `spells`, `abilities`) are included with
+ *  defaults and overridden per case. */
 const VALID_SNAPSHOT: CharacterSnapshot = {
   actorId: 'pc-aiacos',
   name: 'Aiacos',
@@ -48,6 +76,7 @@ const VALID_SNAPSHOT: CharacterSnapshot = {
   world: { modernRules: false },
   inventory: [],
   spells: { slots: [], spells: [] },
+  abilities: VALID_ABILITIES,
 };
 
 describe('CharacterSnapshotSchema — death-saves extension (CS-DS)', () => {
@@ -383,6 +412,152 @@ describe('CharacterSnapshotSchema — portrait extension (CS-PORT)', () => {
       ...VALID_SNAPSHOT,
       portrait: { url: '' },
     });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 16 Plan 16-01 — abilities atomic extension (CS-AB-1..7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CharacterSnapshotSchema — abilities extension (CS-AB)', () => {
+  it('CS-AB-1: parses a snapshot carrying all 6 ability sub-objects (happy path)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: VALID_ABILITIES,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.abilities.str.value).toBe(16);
+      expect(result.data.abilities.str.mod).toBe(3);
+      expect(result.data.abilities.str.save).toBe(5);
+      expect(result.data.abilities.str.proficient).toBe(true);
+      expect(result.data.abilities.cha.mod).toBe(-1);
+    }
+  });
+
+  it('CS-AB-2: REQUIRED field — snapshot without `abilities` is rejected (NOT .optional())', () => {
+    const { abilities: _abilities, ...snapshotWithoutAbilities } = VALID_SNAPSHOT;
+    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutAbilities);
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-AB-3: negative mod/save parse (CHA 8 → mod=-1, save=-1)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 10 },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.abilities.cha.mod).toBe(-1);
+      expect(result.data.abilities.cha.save).toBe(-1);
+    }
+  });
+
+  it('CS-AB-4: range gates — dc=-1 rejected, dc=23 accepted, value=31 rejected, value=30 accepted', () => {
+    // dc=-1 must be rejected (min 0)
+    const negDc = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        str: { value: 16, mod: 3, save: 5, proficient: true, dc: -1 },
+      },
+    });
+    expect(negDc.success).toBe(false);
+
+    // dc=23 (legendary caster) must be accepted
+    const highDc = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        int: { value: 18, mod: 4, save: 4, proficient: false, dc: 23 },
+      },
+    });
+    expect(highDc.success).toBe(true);
+
+    // value=31 must be rejected (max 30 — divine score cap)
+    const overValue = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        str: { value: 31, mod: 10, save: 10, proficient: true, dc: 10 },
+      },
+    });
+    expect(overValue.success).toBe(false);
+
+    // value=30 (cap) must be accepted
+    const capValue = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        str: { value: 30, mod: 10, save: 10, proficient: true, dc: 10 },
+      },
+    });
+    expect(capValue.success).toBe(true);
+  });
+
+  it('CS-AB-5: proficient is strict-boolean — numeric 1 rejected (reader coerces, not schema)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        // dnd5e raw `proficient: 1` — schema MUST reject; reader coerces 0|0.5|1|2 → boolean.
+        str: { value: 16, mod: 3, save: 5, proficient: 1 as unknown as boolean, dc: 10 },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-AB-6: AbilityScoreSchema is z.object (forward-compat) — extra sibling field accepted', () => {
+    // Phase 17 may add half-prof / expertise fields. AbilityScoreSchema uses z.object
+    // (not z.strictObject), so extra siblings on a per-ability sub-object must NOT reject.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      abilities: {
+        ...VALID_ABILITIES,
+        str: {
+          value: 16,
+          mod: 3,
+          save: 5,
+          proficient: true,
+          dc: 10,
+          // future Phase 17 field — must be accepted by z.object forward-compat
+          expertise: true,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CS-AB-7: AbilitiesSchema + AbilityScoreSchema export + roundtrip + type inference', () => {
+    // Belt-and-suspenders: compile-time type check + runtime parse roundtrip.
+    const a: Abilities = VALID_ABILITIES;
+    const result = AbilitiesSchema.safeParse(a);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.str.value).toBe(16);
+      expect(result.data.cha.mod).toBe(-1);
+    }
+
+    // AbilityScoreSchema standalone roundtrip
+    const singleResult = AbilityScoreSchema.safeParse({
+      value: 14,
+      mod: 2,
+      save: 2,
+      proficient: false,
+      dc: 10,
+    });
+    expect(singleResult.success).toBe(true);
+  });
+
+  it('CS-AB-7b: AbilitiesSchema rejects missing ability key (closed 6-key enum)', () => {
+    // AbilitiesSchema is z.strictObject — the 6 D&D ability codes are frozen.
+    // Missing any key must reject (no defaults; reader's job to emit them).
+    const { cha: _cha, ...incomplete } = VALID_ABILITIES;
+    const result = AbilitiesSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 });
