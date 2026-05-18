@@ -10,6 +10,21 @@
  * Inventory and Spells tab renderers are imported from `inventory-panel.ts` and
  * `spellbook-panel.ts` respectively (Plan 05-04). The dispatcher is now complete.
  *
+ * ## Phase 16 — Ability scores data binding (SHEET-07)
+ *
+ * `renderMainTab` consumes the new `snapshot.abilities.<k>.{value, mod, save,
+ * proficient}` field (Plan 16-01 schema, Plan 16-02 reader). The 14 cells in
+ * the abilities + saves boxes that previously showed `—` placeholders now bind
+ * to computed values via `formatAbilityValue` (right-aligned 2-cell value) and
+ * `formatAbilityMod` (always-signed 2-cell modifier). The save-row proficiency
+ * glyph (`◉` / `○`) is now data-driven from `proficient: boolean` — was
+ * hardcoded to STR-prof + CON-prof + WIS-not-prof in Phase 5. Vitals row INI/
+ * VEL/Hit Dice and Senses line keep their `—` placeholders per CONTEXT
+ * §domain (out of scope this phase).
+ *
+ * @see 16-CONTEXT.md §Area 3 (in-place dash→data swap, no row shift)
+ * @see 16-UI-SPEC.md §3 (format helpers), §4 (glyph dictionary)
+ *
  * ## Dual-edition branching (SHEET-03 / CONTEXT.md §Area 3)
  *
  * All edition-conditional rendering branches on `snapshot.world.modernRules`:
@@ -90,6 +105,46 @@ export function truncateUnicode(value: string, budget: number): string {
     return value;
   }
   return `${codePoints.slice(0, budget - 1).join('')}…`;
+}
+
+/**
+ * Right-align an ability value in a 2-cell field.
+ *
+ * 8 → ' 8', 16 → '16', 21 → '21'. Asserts 0 ≤ n ≤ 99 defensively; the schema
+ * upstream (AbilityScoreSchema, Phase 16 Plan 16-01) clamps `value` to 0..30,
+ * so values outside that range are unreachable in practice. The helper still
+ * degrades gracefully to `'??'` for unexpected inputs (T-16-03-T mitigation
+ * per 16-03-PLAN.md threat_model).
+ *
+ * @param n integer ability value (typically 0..30 per D&D 5e rules)
+ * @returns 2-cell string suitable for INV-1 width-budgeted layout
+ * @see 16-UI-SPEC.md §3 (format helpers)
+ */
+export function formatAbilityValue(n: number): string {
+  if (n < 0 || n > 99 || !Number.isFinite(n)) return '??';
+  return n < 10 ? ` ${n}` : String(n);
+}
+
+/**
+ * Always-signed 2-cell modifier string for ability mods and saves.
+ *
+ * +3 → '+3', -1 → '-1', 0 → '+0'. For D&D 5e standard value range 0..30, the
+ * mod is bounded by -5..+10. The +10 case requires 3 cells; this overflow is
+ * documented in 16-UI-SPEC.md §3 and treated as an acceptable rare edge case
+ * (value=30 is the divine cap). Range -9..+9 fits the 2-cell budget guaranteed.
+ *
+ * Uses ASCII hyphen-minus (U+002D) for negatives to match the dash convention
+ * elsewhere in the renderer and avoid Unicode-rendering ambiguity on the G2
+ * VFD-style display surface.
+ *
+ * @param n signed integer modifier (typically -5..+10)
+ * @returns signed 2-cell string e.g. '+3', '-1', '+0'
+ * @see 16-UI-SPEC.md §3 (format helpers)
+ */
+export function formatAbilityMod(n: number): string {
+  if (!Number.isFinite(n)) return '??';
+  if (n >= 0) return `+${n}`;
+  return `${n}`; // ASCII '-' is part of the number literal e.g. '-1'
 }
 
 /**
@@ -224,12 +279,15 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   const hpBar = `${'█'.repeat(hpFull)}${'░'.repeat(12 - hpFull)}`;
   const tempStr = tempHp > 0 ? `+${tempHp} temp` : '';
 
-  // Ability scores (stat 10 = +0 modifier, standard D&D 5e formula)
-  // Since CharacterSnapshot doesn't carry ability scores directly in Phase 5
-  // (only HP/AC/conditions are in the Phase 2 schema), we render placeholder
-  // dashes for individual ability scores with the level serving as context.
-  // The renderer is data-honest: renders what the snapshot actually contains.
+  // Ability scores — Phase 16 data binding (snapshot.abilities.<k>).
+  // Phase 5 emitted `—` placeholders here; Plan 16-01 + 16-02 + 16-03 land the
+  // full read pipeline (schema → reader → renderer). The em-dash glyph is kept
+  // for the vitals row (INI/VEL) and Senses line per CONTEXT D-Area-3 (out of
+  // scope this phase — those come from `attributes.init.total` /
+  // `attributes.movement.walk` / `skills.<k>.passive`, not the abilities tree).
   const dash = '—';
+  const abilities = snapshot.abilities;
+  const profGlyph = (proficient: boolean): string => (proficient ? '◉' : '○');
 
   // Proficiency bonus (standard 5e progression: 1-4=+2, 5-8=+3, 9-12=+4, 13-16=+5, 17-20=+6)
   const profBonus = Math.ceil(level / 4) + 1;
@@ -272,29 +330,52 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
     `┌── ${padRightUnicode(abilitiesSection, 14)} ─┐  ┌── ${padRightUnicode(savesSection, 12)} ──┐`,
   );
 
-  // Row 9: STR / STR save
+  // Rows 9-14 abilities box + rows 9-11 saves box — Phase 16 data binding.
+  //
+  // Width budget per 16-UI-SPEC.md §2 column anchors:
+  //   - Abilities cell: `│ LBL VV +M          │` = 1+1+3+1+2+1+2+10+1 = 22 cells
+  //   - Saves cell:     `│ ◉ LBL  +M  LBR  +N │` = 1+1+1+1+3+2+2+2+3+2+2+1+1 = 22 cells
+  //
+  // The 4-space inter-column separator in the saves box (Phase 5 era, between
+  // the em-dash and the right-side label) shrinks to 2-space here because
+  // each `—` 1-cell placeholder grows to a 2-cell `+N`/`-N` value (net +2 per
+  // row, absorbed by the inter-column gap).
+  //
+  // The proficient glyph (col 3 of each save row) is now data-driven from
+  // `abilities.<k>.proficient` — pre-Phase-16 had hardcoded `◉` on STR + CON
+  // saves and blank on WIS. With Thorin's Fighter prof spread the glyphs land
+  // exactly as Phase 5 had them, but for any other character with different
+  // prof choices the renderer now reflects reality (CSTR-MAIN-AB-4a covers).
+  //
+  // Row 9: STR ability  +  STR / DEX save
   rows.push(
-    `│ ${strLabel}  ${dash}  ${dash}          │  │ ◉ ${strLabel}  ${dash}    ${dexLabel}  ${dash} │`,
+    `│ ${strLabel} ${formatAbilityValue(abilities.str.value)} ${formatAbilityMod(abilities.str.mod)}          │  │ ${profGlyph(abilities.str.proficient)} ${strLabel}  ${formatAbilityMod(abilities.str.save)}  ${dexLabel}  ${formatAbilityMod(abilities.dex.save)} │`,
   );
 
-  // Row 10: DEX / CON save
+  // Row 10: DEX ability  +  CON / INT save
   rows.push(
-    `│ ${dexLabel}  ${dash}  ${dash}          │  │ ◉ ${conLabel}  ${dash}    ${intLabel}  ${dash} │`,
+    `│ ${dexLabel} ${formatAbilityValue(abilities.dex.value)} ${formatAbilityMod(abilities.dex.mod)}          │  │ ${profGlyph(abilities.con.proficient)} ${conLabel}  ${formatAbilityMod(abilities.con.save)}  ${intLabel}  ${formatAbilityMod(abilities.int.save)} │`,
   );
 
-  // Row 11: CON
+  // Row 11: CON ability  +  WIS / CHA save
   rows.push(
-    `│ ${conLabel}  ${dash}  ${dash}          │  │   ${wisLabel}  ${dash}    ${chaLabel}  ${dash} │`,
+    `│ ${conLabel} ${formatAbilityValue(abilities.con.value)} ${formatAbilityMod(abilities.con.mod)}          │  │ ${profGlyph(abilities.wis.proficient)} ${wisLabel}  ${formatAbilityMod(abilities.wis.save)}  ${chaLabel}  ${formatAbilityMod(abilities.cha.save)} │`,
   );
 
-  // Row 12: INT / close saves
-  rows.push(`│ ${intLabel}  ${dash}  ${dash}          │  └${'─'.repeat(26)}┘`);
+  // Row 12: INT ability  +  close saves box
+  rows.push(
+    `│ ${intLabel} ${formatAbilityValue(abilities.int.value)} ${formatAbilityMod(abilities.int.mod)}          │  └${'─'.repeat(26)}┘`,
+  );
 
-  // Row 13: WIS
-  rows.push(`│ ${wisLabel}  ${dash}  ${dash}          │`);
+  // Row 13: WIS ability  +  blank to right
+  rows.push(
+    `│ ${wisLabel} ${formatAbilityValue(abilities.wis.value)} ${formatAbilityMod(abilities.wis.mod)}          │`,
+  );
 
-  // Row 14: CHA + close abilities
-  rows.push(`│ ${chaLabel}  ${dash}  ${dash}          │  ${hitDiceLabel}  ${dash}`);
+  // Row 14: CHA ability  +  Hit Dice (still placeholder per CONTEXT D-Area-3)
+  rows.push(
+    `│ ${chaLabel} ${formatAbilityValue(abilities.cha.value)} ${formatAbilityMod(abilities.cha.mod)}          │  ${hitDiceLabel}  ${dash}`,
+  );
 
   // Row 15: close abilities box
   rows.push(`└${'─'.repeat(20)}┘`);

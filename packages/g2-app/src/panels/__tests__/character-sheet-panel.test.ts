@@ -356,6 +356,14 @@ describe('CharacterSheetPanel — draw()', () => {
       world: { modernRules: false },
       inventory: [],
       spells: { slots: [], spells: [] },
+      abilities: {
+        str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      },
     };
     panel.onSnapshot(mockSnapshot);
     // Drain the async void draw from onSnapshot
@@ -391,6 +399,14 @@ describe('CharacterSheetPanel — draw()', () => {
       world: { modernRules: false },
       inventory: [],
       spells: { slots: [], spells: [] },
+      abilities: {
+        str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+        cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      },
     };
 
     await panel.onMount();
@@ -618,6 +634,14 @@ describe('CharacterSheetPanel — INV-1 Bio fixtures (Plan 13-04)', () => {
     world: { modernRules: false },
     inventory: [],
     spells: { slots: [], spells: [] },
+    abilities: {
+      str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    },
   };
 
   it('CHSP-FIX-PORT-01: sheet-bio-without-portrait.it.txt matches Bio tab text content', async () => {
