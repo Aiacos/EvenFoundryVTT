@@ -83,20 +83,34 @@ All 48 v1 REQ-IDs software-complete. Full traceability and final outcomes archiv
 
 - **STRETCH-01..05, 07, 08**: Multi-player sync · headless Foundry · biometric narrative · dnd5e v6 adapter · PF2e adapter · DSN raster stream · Multi-tenant cloud SaaS — all explicitly deferred to post-v0.9.11 milestones per Phase 13 minimal scope decision.
 
-### Active (v0.9.12)
+### Validated (v0.9.12 Quick Wins — shipped 2026-05-17)
+
+Full traceability and final outcomes archived to [`milestones/v0.9.12-REQUIREMENTS.md`](milestones/v0.9.12-REQUIREMENTS.md).
 
 #### Raster Pipeline Extension
-- [ ] **INFILL-01**: z=0.5 Idle Content Infill layer formalized in layered model (Specs.md §7.2 amendment)
-- [ ] **INFILL-02**: 3 dynamic text containers (combat-log mini · z=0.5 label · stats strip) populating empty raster-mode rows when no overlay
-- [ ] **INFILL-03**: Auto-demolish on z=2 overlay mount (no race condition; differential demolish via existing LayerManager.bundle())
-- [ ] **INFILL-04**: ADR-0001 amendment formalizing z=0.5 layer (consistent with single-capture-container premise; no semantic change to z=0/1/2)
-- [ ] **INFILL-05**: INV-1 fixtures for idle-fill states + overlay-mount transitions
+- ✓ **INFILL-01..05** — z=0.9.5 idle content infill: layer formalized in §7.4c + ADR-0001 Amendment 1 + 3 dynamic text containers + differential demolish on overlay mount + INV-1 fixtures — v0.9.12 (Phase 14, commit `3a0c5cf`)
 
 #### Voice Recognition Quality
-- [ ] **VOICE-06**: Deepgram Keyterm Prompting integration in `deepgram-stt.ts` (Phase 12 enhancement)
-- [ ] **VOICE-07**: Keyterm vocabulary fed from static spell list (70 SRD) + dynamic entity-pack (Foundry-derived items/weapons/armor/NPCs/monsters)
-- [ ] **VOICE-08**: Locale-aware keyterm (IT + EN both included; cross-lingual STT robustness)
-- [ ] **VOICE-09**: Keyterm hot-update via WS delta (when entity-pack or spell-pack changes, keyterm list refreshes; same `/internal/delta` channel)
+- ✓ **VOICE-06..09** — Deepgram Keyterm Prompting + Entity-Pack Integration: Nova-3 `keyterm` parameter wired; static `SPELL_KEYTERMS` (70 SRD × IT/EN) + dynamic `EntityPackCache` union; locale-aware cross-lingual; debounce 250ms + drain-then-restart mutex hot-update via `/internal/delta` — v0.9.12 (Phase 15, commit `dc161d6`)
+
+### Validated (v0.9.13 Sheet Data Completion + Polish — shipped 2026-05-18)
+
+Full traceability and final outcomes archived to [`milestones/v0.9.13-REQUIREMENTS.md`](milestones/v0.9.13-REQUIREMENTS.md).
+
+#### Character Sheet — Data Binding
+- ✓ **SHEET-05..07** — Sheet Main tab abilities end-to-end: `CharacterSnapshotSchema.abilities` 6 sub-objects × `{value, mod, save, proficient, dc}` + `extractAbilities` reader + `renderMainTab` data binding + `formatAbilityValue`/`formatAbilityMod` helpers + 4 INV-1 fixtures byte-updated — v0.9.13 (Phase 16, commit `d68d7f2`)
+- ✓ **SHEET-08..10** — Sheet Skills tab + Main tab senses passives: `CharacterSnapshotSchema.skills` 18 keys × `{total, ability, proficient, passive}` + `extractSkills` reader + `SKILL_DEFAULT_ABILITY` map + dynamic `renderSkillsTab` (replacing hardcoded `DEFAULT_SKILLS`) + `SKILL_NAMES` 3-locale i18n + Main tab senses line PP/PI/IND surfacing + 5 INV-1 fixtures — v0.9.13 (Phase 17, commit `c208d24`)
+
+#### Doc-Coherence Polish
+- ✓ **INFILL-14.1-A..C** — Phase-14.1 spec-drift polish: archived 14-UI-SPEC §2 col-anchors reconciled (col 70 → col 67, content-width 66 → 64) + §10 width-budget re-derived from runtime literals + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/5/7/9/12/17 + Z05-INV-02b-triade test extension — v0.9.13 (Phase 18, commit `df4ea02`)
+
+### Active
+
+(No active milestone — v0.9.13 closed cleanly 2026-05-18. Next milestone opens via `/gsd-new-milestone`.)
+
+**Likely candidates for v0.9.14** (not committed; user-confirmed scope pending):
+- **Skill Check + Saving Throw write path** — mirror of Phase 8 (manual action UX) for skill/save rolls. `skill_check` in `bridge/src/routes/tools-dispatch.ts:80` is still a stub; `evf.rollSkill` + `evf.rollAbilitySave` socketlib handlers absent (would bump CI Gate 8 17 → 18 or 19). Gesture wiring (scroll-tap "tira abilità" hint in Skills tab fixture) currently disconnected from backend. Toast result feedback missing.
+- **Spells tab DC binding** — primed by Phase 16 `abilities.<k>.dc` field; Spells tab itself not yet data-bound.
 
 ### Out of Scope
 
@@ -113,7 +127,7 @@ All 48 v1 REQ-IDs software-complete. Full traceability and final outcomes archiv
 
 ## Context
 
-- **Stato**: software-complete MVP. Codebase live (~99,642 LOC TS), monorepo pnpm workspace, 7 packages, CI green su 7 quality gates, 2,097 test passanti, INV-1..5 verification suite implementata e operativa via `inv:all` orchestrator. Cross-validazione upstream completata in **6 round** INV-2 (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11).
+- **Stato**: software-complete MVP + 2 atomic milestones (v0.9.12 Quick Wins + v0.9.13 Sheet Data Completion). Codebase live, monorepo pnpm workspace, 7 packages, CI green su 7 quality gates, **2668 test passanti** (post-v0.9.13), INV-1..5 verification suite implementata e operativa via `inv:all` orchestrator. Cross-validazione upstream: **5 round** INV-2 originali (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) **+ 3 INV-2 re-checks** (2026-05-14 image-API · 2026-05-17 EvenAI native API + Deepgram keyterm · 2026-05-18 dnd5e 5.3.3 abilities + skills schema).
 - **Ecosistema target**: FoundryVTT v13.347+ (verified v14), dnd5e 5.3.x mandatory (Activity system). v12 NON supportato.
 - **Hardware verificato**: Even G2 (576×288 4-bit, 4-mic array, no speaker, plugin gira nel WebView dell'Even Realities App sul telefono — codice servito da server HTTP separato), Even R1 (BLE, gestures tap/scroll/long-press, biometrics, ~4 days battery, IP68).
 - **Architettura 4-boundary** ratificata e implementata: G2 (display+sensori) ↔ Even Realities App phone (WebView host) ↔ Bridge service (Node.js Fastify + ws) ↔ Foundry VTT + dnd5e ↔ V2: MCP client.
@@ -121,7 +135,7 @@ All 48 v1 REQ-IDs software-complete. Full traceability and final outcomes archiv
 - **Linguaggi sviluppo**: TypeScript strict, Vitest, Biome (lint+format), pnpm workspaces, Docker Compose. Repo monorepo.
 - **Stack raster pipeline implementato**: `image-q` v4.0.0 (FS/Atkinson/Bayer dither) + `upng-js` v2.1.0 (4-bit indexed PNG) + `xxhash-wasm` v1.x (delta hash) + custom RLE 4-bit. Bundle ~90 KB gzipped, validated against software performance targets.
 - **MCP transport** (V2): stdio + Streamable HTTP implementati, no-SSE grep gate verifica via CI.
-- **Foundry write architecture**: single-workflow-origin per ADR-0011 (`socketlib.executeAsGM` ONLY, no parallel paths). 14-socketlib-handler invariant verified via CI Gate 8.
+- **Foundry write architecture**: single-workflow-origin per ADR-0011 (`socketlib.executeAsGM` ONLY, no parallel paths). **17**-socketlib-handler invariant verified via CI Gate 8 (Phase 13 bump 14 → 17 for ACT-04 reactions; preserved through v0.9.12 + v0.9.13 because both Quick Wins + Sheet Data milestones are pure read-path or doc-coherence extensions).
 
 ## Constraints
 
@@ -150,7 +164,7 @@ All 48 v1 REQ-IDs software-complete. Full traceability and final outcomes archiv
 | Plugin code server-hosted (3-hop deployment) | Verbatim simulator: code on server, WebView fetcha. Implica CDN-friendly + 2 origin in whitelist | ✓ Architettura operativa |
 | Library stack `image-q` + `upng-js` + `xxhash-wasm` | 30-50% compute reduction vs custom; 90 KB gz; worker-safe | ✓ Ratified in ADR-0006; hardware perf TBD |
 | Trunk-based development + Changesets | Single-developer MVP, no long-lived branches; semver per package | ✓ Phase 1 + Changesets operative |
-| **ADR-0011 single-workflow-origin** | Tutto via `socketlib.executeAsGM` — no parallel write paths, no nesting | ✓ Ratified Phase 7; 14-socketlib-handler invariant on CI |
+| **ADR-0011 single-workflow-origin** | Tutto via `socketlib.executeAsGM` — no parallel write paths, no nesting | ✓ Ratified Phase 7 (14 handlers); Phase 13 bump 14 → 17 (ACT-04 reactions); preserved through v0.9.12 + v0.9.13 via read-path-only milestones — CI Gate 8 invariant |
 | **ADR-0005 PROVISIONAL Branch A — `human_needed` carry pattern** | Hardware-pending verification non blocca workflow software; documentation-first esplicita | ✓ Established as project-wide convention; 35 SC parcheggiati |
 | **ADR-0009 Amendment 1 — differential demolish rule** | Toast queue (z=1.5) + overlay panel (z=2) cohabitation senza race condition su mount | ✓ Phase 4b Wave-0 |
 | **Defer-hardware-tests carry pattern** | Phases 4a/4b/5/6/7/8/9/10/12/13 all closed via `human_needed` carry; never block autonomous on hardware UAT | ✓ Established convention |
@@ -176,4 +190,4 @@ This document evolves at phase transitions and milestone boundaries.
 **Specs.md drift policy** (project-specific): se PROJECT.md e Specs.md divergono su un claim tecnico, **Specs.md vince** (è la fonte canonica). Aggiornare PROJECT.md per riallinearsi e committare insieme (INV-3).
 
 ---
-*Last updated: 2026-05-17 after v0.9.12 Quick Wins milestone started (raster z=0.5 + Deepgram Keyterm scope)*
+*Last updated: 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived (Phase 16 abilities · Phase 17 skills · Phase 18 spec-drift polish + Specs.md v0.9.13 INV-3 atomic milestone close `df4ea02`).*

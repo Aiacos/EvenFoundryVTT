@@ -47,7 +47,7 @@ Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*).
 
 ### Milestones shipped
 
-- **v0.9.11 MVP (2026-05-17).** Phases 0–13. Full MVP end-to-end software-complete, 32 hardware-pending SCs under ADR-0005 Branch A.
+- **v0.9.11 MVP (2026-05-17).** Phases 0–13. Full MVP end-to-end software-complete, 35 hardware-pending SCs under ADR-0005 Branch A.
 - **v0.9.12 Quick Wins (2026-05-17).** Phases 14–15. Raster z=0.5 idle content infill + Deepgram Keyterm Prompting / Entity-Pack Integration. 2 phases, 8/8 plans, 9/9 v1 REQ-IDs Resolved. Software-only.
 - **v0.9.13 (2026-05-18) — Sheet Data Completion + Polish.** Character sheet Main + Skills tabs fully data-bound; Phase-14.1 spec-drift polish closes 3 advisory UI-REVIEW findings. Workspace tests **2668/2668** green. 3 phases (16–18), 7 plans, 9/9 v1 REQ-IDs closed. Software-only — zero new hardware-pending SCs.
 

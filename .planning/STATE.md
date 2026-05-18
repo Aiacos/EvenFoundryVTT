@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.9.13
 milestone_name: Sheet Data Completion + Polish
-status: complete
-stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 ✅ SHIPPED)
-last_updated: "2026-05-18T15:30:00.000Z"
-last_activity: 2026-05-18 -- v0.9.13 milestone shipped via INV-3 atomic close
+status: archived
+last_updated: "2026-05-18T16:00:00.000Z"
+last_activity: 2026-05-18 -- v0.9.13 milestone shipped, audited, completed, cleaned up; awaiting new milestone
 progress:
   total_phases: 3
   completed_phases: 3
@@ -18,16 +17,16 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
+See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** v0.9.13 ✅ SHIPPED — next: `audit-milestone → complete-milestone → cleanup`
+**Current focus:** No active milestone — v0.9.13 closed cleanly (audit ✅ → complete ✅ → cleanup ✅ → tag `v0.9.13` pushed). Next step: `/gsd-new-milestone` to open v0.9.14 (likely candidate: Skill Check + Saving Throw write path — CI Gate 8 17 → 18 socketlib handler).
 
 ## Current Position
 
-Phase: 18 ✅ CLOSED (v0.9.13 Sheet Data Completion + Polish SHIPPED)
+Phase: — (no active milestone)
 Plan: —
-Status: Milestone v0.9.13 SHIPPED — `/gsd-audit-milestone` next
+Status: v0.9.13 ARCHIVED — phase dirs under `.planning/milestones/v0.9.13-phases/`; REQUIREMENTS.md removed (fresh for next milestone); tag `v0.9.13` pushed; PROJECT.md + ROADMAP.md reflect archived state
 Last activity: 2026-05-18 -- v0.9.13 milestone shipped via INV-3 atomic close
 
 ## Performance Metrics
