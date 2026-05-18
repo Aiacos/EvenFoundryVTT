@@ -25,31 +25,31 @@ Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*).
 
 ---
 
-## In una frase
+## In one sentence
 
-**EvenFoundryVTT è un ponte tra Foundry VTT e gli occhiali AR Even Realities G2.** Il giocatore di D&D 5e indossa gli occhiali, controlla i pannelli con l'anello R1, e vede la sua scheda PG / combat tracker / mappa / log direttamente nel campo visivo — senza mai distogliere lo sguardo dal tavolo, dal master, dagli altri giocatori. Il modulo gira sul lato Foundry (legge stato e lo manda agli occhiali); un bridge Node.js fa da reverse-proxy con auth bearer e idempotency; un'app companion sul telefono gestisce il pairing.
+**EvenFoundryVTT is a bridge between FoundryVTT and the Even Realities G2 AR glasses.** The D&D 5e player wears the glasses, drives the panels with the R1 ring, and sees their character sheet / combat tracker / map / log right in their field of view — without ever looking away from the table, the DM, the other players. The Foundry-side module reads game state and pushes it to the glasses; a Node.js bridge handles reverse-proxy duties with bearer auth and idempotency; a companion app on the phone owns the pairing.
 
-### Cosa fa oggi (v0.9.12 shipped — 17/17 phases software-complete)
+### What's done today (v0.9.12 shipped — 17/17 phases software-complete)
 
-- ✓ **MVP completo end-to-end** — Phase 0 → 13 (v0.9.11 MVP) + Phase 14 (z=0.5 idle infill) + Phase 15 (Deepgram Keyterm) shipped 2026-05-17. 9/9 v1 REQ-IDs della milestone v0.9.12 Resolved (5 INFILL + 4 VOICE).
-- ✓ **Pairing G2 ↔ Foundry** via QR code dalle impostazioni master, bearer 24h, internal_secret per coppia, timing-safe-equal su tutti i confronti segreti.
-- ✓ **Lettura stato Foundry** (PG, combat, scena, eventi log, entity-pack di items/weapons/armor/NPCs/monsters) con push real-time via WebSocket `/internal/delta` multiplex.
-- ✓ **Bridge production-ready** — Fastify + Docker Compose + `/healthz`/`/readyz`/`/metrics` Prometheus + idempotency-key middleware RFC-compliant + Tool Registry MVP completo.
-- ✓ **Wizard di setup** vanilla TS sul telefono (3-step: bridge URL → token → PG) + Even Realities App per-plugin settings.
-- ✓ **Rendering layered UI completo** — raster 4-bit greyscale + glyph fallback + z=0.5 idle content infill (NEW v0.9.12) + Status HUD persistente + overlay panels (Sheet 6 tab, Combat tracker, Inventory, Spellbook, Log).
-- ✓ **Foundry write path** — `activity.use()` via socketlib `executeAsGM` (single-workflow-origin, ADR-0011), 17 socketlib handler registered (CI Gate 8 invariant preservato attraverso v0.9.12), `MidiQOL.completeActivityUse` quando presente.
+- ✓ **Full MVP end-to-end** — Phase 0 → 13 (v0.9.11 MVP) + Phase 14 (z=0.5 idle infill) + Phase 15 (Deepgram Keyterm) all shipped 2026-05-17. 9/9 v1 REQ-IDs from the v0.9.12 milestone Resolved (5 INFILL + 4 VOICE).
+- ✓ **G2 ↔ Foundry pairing** via QR code from the GM settings, bearer 24h, per-pair internal_secret, timing-safe-equal on every secret comparison.
+- ✓ **Foundry state reads** (PC, combat, scene, event log, entity-pack of items/weapons/armor/NPCs/monsters) with real-time push via the `/internal/delta` WebSocket multiplex.
+- ✓ **Production-ready bridge** — Fastify + Docker Compose + `/healthz` / `/readyz` / `/metrics` Prometheus + RFC-compliant idempotency-key middleware + full Tool Registry MVP.
+- ✓ **Setup wizard** in vanilla TS on the phone (3-step: bridge URL → token → PC) + Even Realities App per-plugin settings.
+- ✓ **Full layered UI rendering** — 4-bit greyscale raster + glyph fallback + z=0.5 idle content infill (NEW v0.9.12) + persistent Status HUD + overlay panels (6-tab Sheet, Combat tracker, Inventory, Spellbook, Log).
+- ✓ **Foundry write path** — `activity.use()` via socketlib `executeAsGM` (single-workflow-origin, ADR-0011), 17 socketlib handlers registered (CI Gate 8 invariant preserved across v0.9.12), `MidiQOL.completeActivityUse` when present.
 - ✓ **Action economy enforcement** — Action / Bonus / Reaction, spell slot consumption, concentration handling, multi-attack tracker, reaction passive notifications, death saves, AoE templates.
 - ✓ **Manual action UX** — tap-to-cast / attack / use, Quick Action menu, action-result toast queue (FIFO + squash).
-- ✓ **i18n** — IT + EN catalogs + on-glasses language override (Quick Action `[N] Language`); width-budget validation a build-time (INV-1).
-- ✓ **R1 integration** — gesture routing (tap / scroll / long-press / double-tap), INV-5 Gesture Determinism ratificato.
-- ✓ **Voice (V2 OPZIONALE shipped)** — `foundry-mcp` Streamable HTTP server, Deepgram Nova-3 Multilingual STT con Keyterm Prompting (+625% recall su nomi esotici come Bigby's Hand, Counterspell), vocabolario static SRD (70 × IT + EN = 140) + dynamic entity-pack Foundry-derived con hot-update WS delta (debounce 250ms + drain-then-restart mutex).
-- ✓ **Quality** — **2626 test workspace** verdi, coverage ≥80% nei pacchetti critici, TypeScript strict, Biome lint clean, 7 CI gates green su ogni PR, INV-1..5 verification suite (`inv:all`) + INV-3 atomic doc-coherence enforced.
+- ✓ **i18n** — IT + EN catalogs + on-glasses language override (Quick Action `[N] Language`); build-time width-budget validation (INV-1).
+- ✓ **R1 integration** — gesture routing (tap / scroll / long-press / double-tap), INV-5 Gesture Determinism ratified.
+- ✓ **Voice (V2 OPTIONAL shipped)** — `foundry-mcp` Streamable HTTP server, Deepgram Nova-3 Multilingual STT with Keyterm Prompting (+625% recall on esoteric names like Bigby's Hand, Counterspell), vocabulary union of static SRD (70 × IT + EN = 140) + dynamic Foundry-derived entity-pack, hot-updated via WS delta (250 ms debounce + drain-then-restart mutex).
+- ✓ **Quality** — **2626 workspace tests** green, coverage ≥80% in the critical packages, TypeScript strict, Biome lint clean, 7 CI gates green on every PR, INV-1..5 verification suite (`inv:all`) + INV-3 atomic doc-coherence enforced.
 
-### Cosa NON fa ancora
+### What's NOT done yet
 
-- ✗ **Hardware UAT** — 35 success criteria attraverso le Phase 4a/4b/5/6/7/8/9/10/12/13 marcati `human_needed` sotto ADR-0005 PROVISIONAL Branch A. Software-complete; richiedono **accesso Even Hub developer + G2 + R1 + DM consenziente** per la verifica end-to-end on-device. Closure path: `pnpm --filter @evf/validation-harness validate:all`.
-- ✗ **Picovoice Rhino edge classifier** — condizionale su SC-12-01 (latenza Claude Desktop p50 > 800ms). Non misurabile senza hardware.
-- ✗ **Phase-14.1 spec-drift cleanup** (~20 min) — UI-SPEC §2 col 71→68, §10 width budgets, locale leak in `glyph-scene.glyph-idle-z05.it.txt` row 1/17. Real defect è solo il locale leak; il resto è spec-prose drift.
+- ✗ **Hardware UAT** — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 flagged `human_needed` under ADR-0005 PROVISIONAL Branch A. Software-complete; they need **Even Hub developer access + G2 + R1 + a consenting DM** for end-to-end on-device verification. Closure path: `pnpm --filter @evf/validation-harness validate:all`.
+- ✗ **Picovoice Rhino edge classifier** — conditional on SC-12-01 (Claude Desktop latency p50 > 800 ms). Not measurable without hardware.
+- ✗ **Phase-14.1 spec-drift cleanup** (~20 min) — UI-SPEC §2 col 71→68, §10 width budgets, locale leak in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17. The only real implementation defect is the locale leak; the rest is spec-prose drift.
 
 ---
 
