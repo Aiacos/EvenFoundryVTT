@@ -14,5 +14,5 @@
 │ WIS 10 +0          │                                            
 │ CHA 10 +0          │  Hit Dice  —                               
 └────────────────────┘                                            
-Senses  —                                                         
+Senses  PP 10 · INS 10 · INV 10                                   
                                                                   

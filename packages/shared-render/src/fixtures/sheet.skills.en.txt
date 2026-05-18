@@ -1,18 +1,18 @@
 ◉ proficient · ★ expertise · ○ untrained                          
                                                                   
-STR  ◉ Athletics                        +6                        
-DEX  ○ Acrobatics                       +2                        
-     ○ Sleight of Hand                  +2                        
-     ○ Stealth                          +2                        
+STR  ○ Athletics                        +0                        
+DEX  ○ Acrobatics                       +0                        
+     ○ Sleight of Hand                  +0                        
+     ○ Stealth                          +0                        
 INT  ○ Arcana                           +0                        
      ○ History                          +0                        
      ○ Investigation                    +0                        
      ○ Nature                           +0                        
      ○ Religion                         +0                        
-WIS  ◉ Animal Handling                  +4                        
-     ○ Insight                          +1                        
-     ◉ Medicine                         +4                        
-     ○ Perception                       +1                        
-     ○ Survival                         +1                        
+WIS  ○ Animal Handling                  +0                        
+     ○ Insight                          +0                        
+     ○ Medicine                         +0                        
+     ○ Perception                       +0                        
+     ○ Survival                         +0                        
 ▼ scroll for more · R1 scroll-tap = roll skill                    
                                                                   

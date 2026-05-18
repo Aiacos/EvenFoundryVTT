@@ -14,5 +14,5 @@
 │ WEI 10 +0          │                                            
 │ CHA 10 +0          │  Trefferwürfel  —                          
 └────────────────────┘                                            
-Sinne  —                                                          
+Sinne  WN 10 · EIN 10 · NCH 10                                    
                                                                   
