@@ -46,7 +46,7 @@ Two atomic software-only phases shipped end-to-end. Zero new hardware-gated SCs 
 Three software-only phases to complete the Character Sheet panel's data wiring (Main + Skills tabs) and close the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closes with a single INV-3 atomic commit (Specs.md + README + showcase + ADR-amendment-if-any + STATE.md + ROADMAP.md + VERIFICATION.md). Phase 14/15 patterns are the canonical examples.
 
 - [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` extension (16-01) + `extractAbilities()` reader helper (16-02) + `renderMainTab()` data binding + `formatAbilityValue`/`formatAbilityMod` helpers + 4 INV-1 fixtures byte-updated (16-03) — closed via single INV-3 atomic ratification commit per Phase 14/15 precedent. Workspace tests 2559 → 2648 (+89). CI Gate 8 socketlib count = 17 preserved.
-- [ ] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (~3 plans) — `CharacterSnapshotSchema.skills` extension (18 keys × `{total, ability, proficient, passive}`) + `character-reader.ts` skill read + `renderSkillsTab()` data binding with proficiency glyphs (○/◉/◈); INV-1 fixtures updated; INV-3 atomic ratification commit
+- [ ] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (3 plans planned) — `CharacterSnapshotSchema.skills` extension (17-01) + `extractSkills()` reader helper + SKILL_DEFAULT_ABILITY map (17-02) + `renderSkillsTab()` dynamic lookup replacing `DEFAULT_SKILLS` hardcoded array + Main tab senses line passive PP/PI/IND surfacing + 5 INV-1 fixtures (existing `sheet.skills.it.txt` byte-identical + new `sheet.skills.en.txt` + 4 `sheet.main.*` row-16 byte-updates) + INV-3 atomic ratification commit (17-03)
 - [ ] **Phase 18: Phase-14.1 Spec-Drift Polish** (~1–2 plans) — UI-SPEC §2 col-anchor reconciliation (col 71 → col 68) + §10 width-budget table aligned to fixture bytes + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 + Z05-INV-02b triade IT extension; single INV-3 atomic commit
 
 ## Phase Details
@@ -83,7 +83,10 @@ Three software-only phases to complete the Character Sheet panel's data wiring (
   4. `CharacterSnapshotSchema` extended with `skills` field (18 sub-objects keyed by dnd5e short code); reader validates and emits the new field; all existing snapshot tests remain green
   5. INV-1 fixtures updated for Skills tab state (IT + EN locales) with real skill data; width-budget preserved (3-char modifier column + 1-char glyph + skill name); UI-SPEC §5.3 cross-reference unchanged
 
-**Plans:** TBD (estimated 3 — shared-protocol schema + tests · character-reader read + tests · renderSkillsTab binding + INV-1 fixtures + INV-3 atomic ratification commit)
+**Plans:** 3 plans
+- [ ] 17-01-PLAN.md — shared-protocol schema extension: SkillSchema + SkillsSchema (18-key z.strictObject) + SKILL_KEYS canonical tuple + AbilityKey/AbilityKeySchema/ABILITY_KEYS factoring + CharacterSnapshot.skills REQUIRED + CS-SK-1..7 schema tests
+- [ ] 17-02-PLAN.md — foundry-module reader: extractSkills + SKILL_DEFAULT_ABILITY map + readSkill (verbatim proficient pass-through, NOT boolean coerced) + zeroSkills defensive defaults + Dnd5eSkillRaw + Dnd5eActorSystem.skills? type addition + CR-SK-1..5 reader tests
+- [ ] 17-03-PLAN.md — g2-app renderer dynamic lookup replacing DEFAULT_SKILLS + SKILL_NAMES static i18n + PASSIVE_ABBR (PP/PI/IND etc.) + renderMainTab row 16 senses line data binding + sheet.skills.it.txt byte-identical + new sheet.skills.en.txt fixture + 4 sheet.main.* row-16 byte-updates + 17+ downstream snapshot literal extensions + CSTR-SKILLS-DATA-1..5 tests + INV-3 atomic ratification commit closing Phase 17 per Phase 14/15/16 precedent
 
 ### Phase 18: Phase-14.1 Spec-Drift Polish (single INV-3 atomic)
 
@@ -111,4 +114,4 @@ Three software-only phases to complete the Character Sheet panel's data wiring (
 | v0.9.13 Sheet Data Completion + Polish | 3 (16–18) | 3/~7 | 🚧 In progress | — |
 
 ---
-*Last reorganized: 2026-05-18 — Phase 16 (Sheet Ability Scores) closed via INV-3 atomic single commit per Phase 14/15 precedent; v0.9.13 progress 3/~7 plans. v0.9.13 milestone opened initial 2026-05-18 (3 phases 16–18, ~7 plans estimate, 9/9 v1 REQ-IDs scoped, software-only). v0.9.11 + v0.9.12 archives preserved under collapsed details blocks.*
+*Last reorganized: 2026-05-18 — Phase 17 (Sheet Skills Tab) plans drafted (3 plans: 17-01 schema · 17-02 reader · 17-03 renderer + fixtures + INV-3 atomic close); Phase 16 (Sheet Ability Scores) closed via INV-3 atomic single commit per Phase 14/15 precedent; v0.9.13 progress 3/~7 plans (Phase 16 closed). v0.9.11 + v0.9.12 archives preserved under collapsed details blocks.*
