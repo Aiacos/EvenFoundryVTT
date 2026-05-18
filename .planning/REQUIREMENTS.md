@@ -34,9 +34,9 @@ Skill modifiers + proficiency markers nella Skills tab. Mockup §7.5.3 prevede `
 
 Cleanup di 3 spec-prose drift identificati dall'UI-REVIEW di Phase 14, in un commit INV-3 atomico (UI-SPEC + Specs.md + showcase coherence). Uno è un real defect (locale leak); gli altri due sono drift puramente prose.
 
-- [ ] **INFILL-14.1-A**: UI-SPEC §2 column anchors riconciliati alla realtà delle fixture (`right-stop col 67`, `content-width 64`; divider `║` at col 68 anziché col 71); UI-REVIEW WR-UI-02
-- [ ] **INFILL-14.1-B**: UI-SPEC §10 width-budget table allineata alle fixture bytes effettive (label container width-budget aggiornato a 52 cells dalla spec 40; stats container 54 cells dalla spec 60); UI-REVIEW WR-UI-01
-- [ ] **INFILL-14.1-C**: Locale leak in `packages/shared-render/src/fixtures/glyph-scene.glyph-idle-z05.it.txt` rows 1/17 — riga 1 `ROUND 3 · TURN 2/5` (EN) → `TURNO 2/5` (IT); riga 17 `Conditions` (EN) → `Condizioni` (IT); estendere Z05-INV-02b al triade IT (A_it↔B_it↔C_it) per catturare regressioni future; UI-REVIEW WR-UI-03 (real defect)
+- [x] **INFILL-14.1-A**: UI-SPEC §2 column anchors riconciliati alla realtà delle fixture (`right-stop col 67`, `content-width 64`; divider `║` at col 68 anziché col 71); UI-REVIEW WR-UI-02 *(Resolved Phase 18 commit `a84f6a9` — archived 14-UI-SPEC.md §2 corrected + frame-corner enumeration {0,71,95} → {0,68,95} + central-divider note added; 14-UI-REVIEW.md WR-UI-02 cross-reference annotated)*
+- [x] **INFILL-14.1-B**: UI-SPEC §10 width-budget table allineata alle fixture bytes effettive (label container width-budget aggiornato a 52 cells dalla spec 40; stats container 54 cells dalla spec 60); UI-REVIEW WR-UI-01 *(Resolved Phase 18 commit `a84f6a9` — archived 14-UI-SPEC.md §10 re-derived from `idle-infill-layer.ts` runtime literals via Option (a) doc-fix; label 40 → 52 raster / 40 glyph; stats 60 → 54 raster / 51 glyph; 14-UI-REVIEW.md WR-UI-01 cross-reference annotated)*
+- [x] **INFILL-14.1-C**: Locale leak in `packages/shared-render/src/fixtures/glyph-scene.glyph-idle-z05.it.txt` rows 1/17 — riga 1 `ROUND 3 · TURN 2/5` (EN) → `TURNO 2/5` (IT); riga 17 `Conditions` (EN) → `Condizioni` (IT); estendere Z05-INV-02b al triade IT (A_it↔B_it↔C_it) per catturare regressioni future; UI-REVIEW WR-UI-03 (real defect) *(Resolved Phase 18 commits `e064168` RED + `fe4d81f` GREEN — Z05-INV-02b-triade test added BEFORE fixture fix (TDD discipline) exposed 4 additional IT-locale leaks beyond plan-acknowledged rows 1+17: rows 5/7/9/12 — PF vs HP, CA 18 VEL 30 vs AC 18 SPD 30, Az. vs Act, Slot vs Slots — all fixed atomically per deviation Rule 2 broader-scope auto-fix; row 20 cols 89..93 `[GLY]` glyph-mode marker exempted per UI-SPEC §6.3; 96-col INV-1 width invariant preserved; 14-UI-REVIEW.md WR-UI-03 cross-reference annotated)*
 
 ## v2 Requirements
 
@@ -57,7 +57,7 @@ Cleanup di 3 spec-prose drift identificati dall'UI-REVIEW di Phase 14, in un com
 
 ## Milestone status
 
-Milestone v0.9.13 Sheet Data Completion + Polish — **REQUIREMENTS defined** (3 categories, 8 v1 REQ-IDs); awaiting roadmap creation via `gsd-roadmapper`.
+Milestone v0.9.13 Sheet Data Completion + Polish — **SHIPPED 2026-05-18**. Coverage: **9/9 v1 REQ-IDs Resolved** (3 SHEET ability + 3 SHEET skills + 3 INFILL-14.1 sub-items). Single INV-3 atomic milestone-close commit per Phase 14/15/16/17 precedent. Workspace tests 2668/2668; CI Gate 8 socketlib count = 17 preserved; software-only (0 new hardware-pending SCs).
 
 ## Traceability
 
@@ -71,9 +71,9 @@ Mapped 2026-05-18 by manual scoping (will be re-checked by `gsd-roadmapper`). RE
 | SHEET-08 | Phase 17 (Skills) | Resolved |
 | SHEET-09 | Phase 17 | Resolved |
 | SHEET-10 | Phase 17 | Resolved |
-| INFILL-14.1-A | Phase 18 (Polish) | Defined |
-| INFILL-14.1-B | Phase 18 | Defined |
-| INFILL-14.1-C | Phase 18 | Defined |
+| INFILL-14.1-A | Phase 18 (Polish) | Resolved |
+| INFILL-14.1-B | Phase 18 | Resolved |
+| INFILL-14.1-C | Phase 18 | Resolved |
 
 **Coverage:**
 - v1 requirements: **8** total (Ability 3 · Skills 3 · Polish 3 = 9 sub-items across 3 INFILL-14.1-* but only 1 REQ each counts; final = 9 REQ-IDs)

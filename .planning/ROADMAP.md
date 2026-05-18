@@ -4,7 +4,7 @@
 
 - ✅ **v0.9.11 MVP** — Phases 0–13 (shipped 2026-05-17). Full details: [`milestones/v0.9.11-ROADMAP.md`](milestones/v0.9.11-ROADMAP.md)
 - ✅ **v0.9.12 Quick Wins** — Phases 14–15 (shipped 2026-05-17 · 2 phases · 8/8 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs). Full details: [`milestones/v0.9.12-ROADMAP.md`](milestones/v0.9.12-ROADMAP.md)
-- 🚧 **v0.9.13 Sheet Data Completion + Polish** — Phases 16–18 (in planning · 3 phases · ~7 plans estimate · 9/9 v1 REQ-IDs scoped · software-only · 0 new hardware-pending SCs)
+- ✅ **v0.9.13 Sheet Data Completion + Polish** — Phases 16–18 (shipped 2026-05-18 · 3 phases · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs).
 
 ## Phases
 
@@ -41,13 +41,17 @@ Two atomic software-only phases shipped end-to-end. Zero new hardware-gated SCs 
 
 </details>
 
-### v0.9.13 Sheet Data Completion + Polish (active)
+<details>
+<summary>✅ v0.9.13 Sheet Data Completion + Polish (Phases 16–18) — SHIPPED 2026-05-18 · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 2668 workspace tests</summary>
 
-Three software-only phases to complete the Character Sheet panel's data wiring (Main + Skills tabs) and close the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closes with a single INV-3 atomic commit (Specs.md + README + showcase + ADR-amendment-if-any + STATE.md + ROADMAP.md + VERIFICATION.md). Phase 14/15 patterns are the canonical examples.
+Three software-only phases completed the Character Sheet panel's data wiring (Main + Skills tabs) and closed the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closed with a single INV-3 atomic commit (Specs.md + README + showcase + STATE.md + ROADMAP.md + VERIFICATION.md). Phase 14/15 patterns are the canonical examples.
 
-- [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` extension (16-01) + `extractAbilities()` reader helper (16-02) + `renderMainTab()` data binding + `formatAbilityValue`/`formatAbilityMod` helpers + 4 INV-1 fixtures byte-updated (16-03) — closed via single INV-3 atomic ratification commit per Phase 14/15 precedent. Workspace tests 2559 → 2648 (+89). CI Gate 8 socketlib count = 17 preserved.
-- [x] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.skills` extension (17-01 `79564d9`) + `extractSkills()` reader helper + SKILL_DEFAULT_ABILITY map + verbatim `proficient: 0|0.5|1|2` pass-through (17-02 `54e577e`) + `renderSkillsTab()` dynamic `SKILL_KEYS.map` lookup replacing `DEFAULT_SKILLS` hardcoded array + SKILL_NAMES 3-locale i18n + PASSIVE_ABBR const + Main tab senses line `PP/PI/IND` surfacing (half-prof 0.5 → ◉ round-up per UI-SPEC §3) + 5 INV-1 fixtures (`sheet.skills.it.txt` byte-identical + `sheet.skills.en.txt` regenerated from BASE per Phase 16 D-3 + 4 `sheet.main.*` row-17 byte-updates) + 5 CSTR-SKILLS-DATA-* tests + 23 downstream snapshot literals extended (17-03) — closed via single INV-3 atomic ratification commit per Phase 14/15/16 precedent. Workspace tests 2645 → 2667 (+22). CI Gate 8 socketlib count = 17 preserved.
-- [ ] **Phase 18: Phase-14.1 Spec-Drift Polish** (~1–2 plans) — UI-SPEC §2 col-anchor reconciliation (col 71 → col 68) + §10 width-budget table aligned to fixture bytes + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 + Z05-INV-02b triade IT extension; single INV-3 atomic commit
+- [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` extension (16-01) + `extractAbilities()` reader helper (16-02) + `renderMainTab()` data binding + `formatAbilityValue`/`formatAbilityMod` helpers + 4 INV-1 fixtures byte-updated (16-03) — closed via single INV-3 atomic ratification commit `d68d7f2` per Phase 14/15 precedent. Workspace tests 2559 → 2648 (+89). CI Gate 8 socketlib count = 17 preserved.
+- [x] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.skills` extension (17-01 `79564d9`) + `extractSkills()` reader helper + SKILL_DEFAULT_ABILITY map + verbatim `proficient: 0|0.5|1|2` pass-through (17-02 `54e577e`) + `renderSkillsTab()` dynamic `SKILL_KEYS.map` lookup replacing `DEFAULT_SKILLS` hardcoded array + SKILL_NAMES 3-locale i18n + PASSIVE_ABBR const + Main tab senses line `PP/PI/IND` surfacing (half-prof 0.5 → ◉ round-up per UI-SPEC §3) + 5 INV-1 fixtures (`sheet.skills.it.txt` byte-identical + `sheet.skills.en.txt` regenerated from BASE per Phase 16 D-3 + 4 `sheet.main.*` row-17 byte-updates) + 5 CSTR-SKILLS-DATA-* tests + 23 downstream snapshot literals extended (17-03) — closed via single INV-3 atomic ratification commit `c208d24` per Phase 14/15/16 precedent. Workspace tests 2645 → 2667 (+22). CI Gate 8 socketlib count = 17 preserved.
+- [x] **Phase 18: Phase-14.1 Spec-Drift Polish** (1/1 plan, 4 commits) — RED `e064168` (Z05-INV-02b-triade test extension) + GREEN `fe4d81f` (IT fixture rows 1/5/7/9/12/17 locale-leak fix — plan acknowledged 2 leaks, triade test exposed 4 additional per Rule 2 broader-scope auto-fix; `[GLY]` row 20 cols 89..93 exempted per UI-SPEC §6.3) + DOC `a84f6a9` (archived 14-UI-SPEC.md §2/§10 reconciled + 14-UI-REVIEW.md WR-UI-01/02/03 resolutions cross-referenced) + CLOSE INV-3 atomic milestone-close commit covering Specs.md v0.9.13 bump + changelog stanza + README + showcase + STATE/ROADMAP/REQUIREMENTS + 18-VERIFICATION.md. Workspace tests 2667 → 2668 (+1 triade). CI Gate 8 socketlib count = 17 preserved.
+
+</details>
+
 
 ## Phase Details
 
@@ -111,7 +115,7 @@ Three software-only phases to complete the Character Sheet panel's data wiring (
 |-----------|--------|-------|--------|---------|
 | v0.9.11 MVP | 15 (0–13) | 71/71 | ✅ Shipped | 2026-05-17 |
 | v0.9.12 Quick Wins | 2 (14–15) | 8/8 | ✅ Shipped | 2026-05-17 |
-| v0.9.13 Sheet Data Completion + Polish | 3 (16–18) | 6/~7 | 🚧 In progress | — |
+| v0.9.13 Sheet Data Completion + Polish | 3 (16–18) | 7/7 | ✅ Shipped | 2026-05-18 |
 
 ---
-*Last reorganized: 2026-05-18 — Phase 17 (Sheet Skills Tab) closed via INV-3 atomic single commit per Phase 14/15/16 precedent: skills schema (17-01) + extractSkills reader (17-02) + dynamic renderSkillsTab + Main tab senses line + 5 INV-1 fixtures + 23 downstream snapshot literal extensions + STATE/ROADMAP/REQUIREMENTS/17-VERIFICATION all in single commit. v0.9.13 progress 6/~7 plans (Phase 16 + Phase 17 closed; Phase 18 next — Phase-14.1 Spec-Drift Polish + milestone close). v0.9.11 + v0.9.12 archives preserved under collapsed details blocks.*
+*Last reorganized: 2026-05-18 — **v0.9.13 SHIPPED** via Phase 18 INV-3 atomic milestone-close commit (single commit covers Specs.md v0.9.12 → v0.9.13 bump + changelog stanza summarizing Phases 16+17+18 + README badge + showcase version stat + STATE.md frontmatter complete + ROADMAP Phase 18 ✅ + REQUIREMENTS INFILL-14.1-A/B/C → Resolved + 18-VERIFICATION.md). Phase 18 execution: 4 commits (RED + GREEN + DOC + CLOSE) — triade test exposed 6 IT-locale leaks (4 broader than plan acknowledged); §10 width-budget Option (a) doc-fix re-derived from runtime literals; `[GLY]` row 20 surgically exempted per UI-SPEC §6.3. Workspace tests 2667 → 2668 (+1 triade). CI Gate 8 socketlib count = **17** preserved end-to-end across the milestone. 9/9 v1 REQ-IDs Resolved (3 SHEET ability + 3 SHEET skills + 3 INFILL-14.1 sub-items). Software-only. Next: `/gsd-audit-milestone` → `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern.*

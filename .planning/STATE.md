@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.13
 milestone_name: Sheet Data Completion + Polish
-status: executing
-stopped_at: Completed 17-03-PLAN.md (Phase 17 CLOSED — Sheet Skills Tab + Main tab senses line ✓)
-last_updated: "2026-05-18T15:05:00.000Z"
-last_activity: 2026-05-18 -- Phase 17 closed via INV-3 atomic single commit
+status: complete
+stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 ✅ SHIPPED)
+last_updated: "2026-05-18T15:30:00.000Z"
+last_activity: 2026-05-18 -- v0.9.13 milestone shipped via INV-3 atomic close
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
-  percent: 67
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 18 — Phase-14.1 Spec-Drift Polish (milestone-close artifact, next)
+**Current focus:** v0.9.13 ✅ SHIPPED — next: `audit-milestone → complete-milestone → cleanup`
 
 ## Current Position
 
-Phase: Phase 17 ✓ closed (Sheet Skills Tab (Skills tab data wiring))
+Phase: 18 ✅ CLOSED (v0.9.13 Sheet Data Completion + Polish SHIPPED)
 Plan: —
-Status: Phase 18 (Phase-14.1 Spec-Drift Polish + v0.9.13 milestone close) next
-Last activity: 2026-05-18 -- Phase 17 closed via INV-3 atomic single commit
+Status: Milestone v0.9.13 SHIPPED — `/gsd-audit-milestone` next
+Last activity: 2026-05-18 -- v0.9.13 milestone shipped via INV-3 atomic close
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Last activity: 2026-05-18 -- Phase 17 closed via INV-3 atomic single commit
 
 **Recent Trend:**
 
+- 2026-05-18 — **v0.9.13 SHIPPED via Phase 18 INV-3 atomic milestone-close commit** (single commit covers Specs.md v0.9.12 → v0.9.13 bump with full changelog stanza + README badge + showcase version stat + STATE.md frontmatter complete + ROADMAP Phase 18 ✅ + REQUIREMENTS INFILL-14.1-A/B/C → Resolved + 18-VERIFICATION.md). Phase 18 execution: 4 tasks → 4 commits (RED `e064168` + GREEN `fe4d81f` + DOC `a84f6a9` + CLOSE `<hash>`). **REQ INFILL-14.1-A** archived `14-UI-SPEC.md` §2 col-anchors corrected (col 70 → 67, content-width 66 → 64 cells, frame-corner enumeration {0,71,95} → {0,68,95}, divider-at-col-68 note added). **REQ INFILL-14.1-B** archived `14-UI-SPEC.md` §10 width-budget table re-derived from `idle-infill-layer.ts` runtime literals (Option (a) doc-fix per UI-REVIEW Priority Fix 1, lower-risk than re-padding fixtures): label 40 → 52 (raster) / 40 (glyph); stats 60 → 54 (raster) / 51 (glyph). **REQ INFILL-14.1-C** IT locale leak fixed in `glyph-scene.glyph-idle-z05.it.txt` Status HUD column — plan acknowledged rows 1+17 leaks (TURNO 2/5 vs ROUND 3 · TURN 2/5; Condizioni vs Conditions), Z05-INV-02b-triade test exposed 4 ADDITIONAL IT-locale leaks (rows 5/7/9/12: PF vs HP; CA 18 VEL 30 vs AC 18 SPD 30; Az. vs Act; Slot vs Slots) — all fixed atomically per deviation Rule 2 (auto-add missing critical functionality). Triade test (A_it ↔ B_it ↔ C_it byte-identity cols 69..95 rows 3..20) exempts row 20 cols 89..93 `[GLY]` glyph-mode marker per UI-SPEC §6.3 (legitimate C-state-only indicator, NOT a locale leak — surgical cell-skip preserves regression detection on the rest of row 20). 14-UI-REVIEW.md WR-UI-01/02/03 cross-reference annotations added with Phase 18 resolution pointers. **Quality gates:** Workspace tests **2667 → 2668** (+1 Z05-INV-02b-triade); CI Gate 8 socketlib count = **17** preserved (no socketlib changes); INV-1 96×24 width invariant preserved across all fixture mutations; `pnpm test` + `pnpm typecheck` + `pnpm lint:ci` all green at exit. **INV-3 atomic** ratification per Phase 14 `3a0c5cf` / Phase 15 `dc161d6` / Phase 16 `d68d7f2` / Phase 17 `c208d24` precedent. **Hardware verification:** 35 SCs from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new hardware-pending SCs across v0.9.13). REQ-IDs INFILL-14.1-A/B/C → Resolved. **Specs.md bumped v0.9.12 → v0.9.13** with full changelog stanza summarizing Phases 16+17+18 + INV-2 cross-check ✓ 2026-05-18 (dnd5e 5.3.3 abilities + skills schema). **Coverage 9/9 v1 REQ-IDs Resolved**. Next: `/gsd-audit-milestone` → `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern.
 - 2026-05-18 — Phase 17 (all 3 plans, INV-3 atomic close): `CharacterSnapshotSchema.skills` REQUIRED extension (18 keys × `{total, ability, proficient, passive}` with `proficient: 0|0.5|1|2` closed enum) (Plan 17-01 `79564d9`) + `extractSkills` reader helper + `SKILL_DEFAULT_ABILITY` 18-key map + verbatim proficient pass-through preserving the full 0|0.5|1|2 spectrum (explicit difference from Phase 16's boolean coercion for Main tab) + `getCharacterSnapshot` wiring (Plan 17-02 `54e577e`) + `renderSkillsTab` dynamic `SKILL_KEYS.map`-driven lookup replacing the 60-LOC `DEFAULT_SKILLS` hardcoded array + `SKILL_NAMES` static i18n map (18 keys × 3 locales) + `PASSIVE_ABBR` const (it/en/de) + `toProfLevel` half-prof round-up helper (0.5 → ◉ per UI-SPEC §3) + `renderMainTab` row 17 senses line passives surfacing `PP/PI/IND` (IT) / `PP/INS/INV` (EN) / `WN/EIN/NCH` (DE) replacing the `Sensi  —` placeholder + 5 INV-1 fixtures (`sheet.skills.it.txt` byte-identical post-swap + `sheet.skills.en.txt` regenerated from BASE per Phase 16 D-3 + 4 `sheet.main.*` row-17 byte-updates) + 5 new CSTR-SKILLS-DATA-* tests + 23 downstream CharacterSnapshot literals extended across g2-app/bridge/foundry-mcp tests with `ability: '<key>' as const, proficient: 0 as const` literal-narrowing (Plan 17-03 `0810167` + `3a14397` + `df05081`). CI Gate 8 socketlib count = **17** preserved (read-path-only extension). Workspace test suite 2645 → 2667 (+22 tests). Specs.md NOT bumped (Phase 18 milestone-close artifact). Single INV-3 atomic ratification commit per Phase 14 `3a0c5cf` + Phase 15 `dc161d6` + Phase 16 `d68d7f2` precedent. Hardware-pending SCs: 35 from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new in Phase 17). REQ-IDs SHEET-08/09/10 → Resolved.
 - 2026-05-18 — Phase 16 (all 3 plans, INV-3 atomic close): CharacterSnapshotSchema.abilities REQUIRED extension (Plan 16-01 `e13136b`) + extractAbilities reader helper + getCharacterSnapshot wiring (Plan 16-02 `c4fd451`) + renderMainTab data binding + formatAbilityValue/formatAbilityMod helpers + 4 INV-1 fixtures byte-updated + 9 new CSTR-MAIN-AB tests + 11 downstream CharacterSnapshot literals extended across g2-app/bridge/foundry-mcp tests (Plan 16-03 `0265d22` + `170bdc4` + `e8e7da0`). CI Gate 8 socketlib count = **17** preserved (read-path-only extension). Workspace test suite 2559 → 2648 (+89 tests). Specs.md NOT bumped (Phase 18 milestone-close artifact). Single INV-3 atomic ratification commit per Phase 14 `3a0c5cf` + Phase 15 `dc161d6` precedent. Hardware-pending SCs: 35 from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new in Phase 16). REQ-IDs SHEET-05/06/07 → Resolved.
 - 2026-05-17 — Phase 15 Plan 05 (Wave 5 — INV-3 atomic doc-coherence closure, autonomous orchestrator chained Waves 1-5 sequential on main): Specs.md §3.6 + §5.2 + changelog stanza · README.md (Voice pillar + spec-bump paragraph) · docs/showcase/index.html (footer + closing paragraph + stat strip note) · .planning/STATE.md (frontmatter complete + Current Position + Recent Trend + Decisions) · .planning/ROADMAP.md (Phase 15 ✅ + 5-plan list + v0.9.12 Shipped) · .planning/REQUIREMENTS.md (VOICE-06..09 → Resolved · coverage 9/9) · 15-VERIFICATION.md (5/5 SC + 4/4 REQ + ADR-0005 Branch A carry-forward documented). Checkpoint disposition: auto-approved per autonomous orchestrator + Phase 14 precedent 3a0c5cf. CLAUDE.md INV-3 atomic single-commit gate green; CI Gate 8 socketlib handler count = 17 preserved. Workspace test suite 2624/2624 final.
@@ -195,6 +196,11 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 17 D-Area-4]: Consumer-snapshot identity for INV-1 fixtures inherits Phase 16 D-3 pattern with one refinement. **IT fixtures** (`sheet.main.2014.it.txt` + `sheet.main.2024.it.txt` + `sheet.skills.it.txt`) consume `snapshot2014/snapshot2024` from `character-sheet-tab-renderers.test.ts` (Thorin canonical: Atletica +6 prof, Animal Handling +4 prof, Medicine +4 prof, ... + prc/ins/inv passives 11/11/14). **EN/DE main fixtures** (`sheet.main.2014.en.txt` + `sheet.main.2014.de.txt`) consume `BASE_CHARACTER_SNAPSHOT` from `05-panel-integration-smoke.test.ts` (zero-default abilities + zero-default skills, tempHp:0). **`sheet.skills.en.txt`** regenerated from BASE consumer (zero-default; was Thorin-shaped pre-Phase-17 because renderSkillsTab ignored its input). The plan-anticipated new `CSTR-FIX-SKILLS-EN` test was DEFERRED — the existing `PSM-FIX-EN-SKILLS` round-trip already covers EN-skills coverage with BASE consumer. INV-1 width invariant: every row × 66 code-points verified across all 6 fixtures.
 - [Phase 17]: 17 downstream test files extended with `skills` field (16 files + character-sheet-tab-renderers.test.ts; 23 literals total). Inline `ability: '<key>' as const, proficient: 0 as const` narrowing applied via one-shot script to satisfy the closed-enum schema without runtime cost. No shared test-utility helper introduced per Phase 16 D-3 precedent (each literal stays self-contained). The 3 foundry-mcp test files flagged in the plan (server-factory, mcp-inspector-smoke, register-tools) needed no extension — they use `capabilities: {}` (MCP client), not `abilities: {` (CharacterSnapshot).
 - [Phase 17]: 5 INV-1 fixtures regenerated via one-shot tsx script (Phase 5 / Phase 16 precedent — fixtures byte-generated from real renderers, never hand-authored). Script kept under `/tmp`, not committed. `sheet.skills.it.txt` byte-identical post-swap (zero diff vs HEAD~3) — proves the dynamic-lookup contract preserves the IT fixture verbatim.
+- [Phase 18 D-1]: **Option (a) doc-fix for §10 width-budget reconciliation** chosen per `14-UI-REVIEW.md` Priority Fix 1 ("Option (a) is lower risk — doc-only INV-3 atomic commit"). Option (b) re-padding the 3 z=0.5 strips in State A fixtures + glyph stats strip to the spec'd widths (40/53/60) was rejected as higher-risk (would invalidate Z05-FX-01..03 round-trip snapshots requiring regeneration + downstream consumer test refreshes). The numbers are now re-derived from `packages/g2-app/src/status-hud/idle-infill-layer.ts` runtime literals — 52 cells (raster label) / 40 cells (glyph label) / 54 cells (raster stats) / 51 cells (glyph stats).
+- [Phase 18 D-2]: **TDD discipline for the test extension** — RED commit `e064168` (test added BEFORE fixture fix; verified failing on row 5 col 70 `P` vs `H`); GREEN commit `fe4d81f` (fixture fix applied; test passes). This proves the test catches the regression rather than tautologically passing, and locks the contract for future C_it modifications.
+- [Phase 18 D-3]: **Triade test scope broader than plan** — the new `Z05-INV-02b-triade` test (A_it ↔ B_it ↔ C_it byte-identity for cols 69..95 rows 3..20) surfaced 4 additional IT-locale leaks beyond the rows 1 + 17 acknowledged in 18-PLAN.md Task 2 (rows 5: PF vs HP; row 7: CA 18 VEL 30 vs AC 18 SPD 30; row 9: Az. vs Act; row 12: Slot vs Slots). All 6 leaks (rows 1/5/7/9/12/17) fixed atomically per deviation Rule 2 (auto-add missing critical functionality) — broader scope than plan called out, but all genuine IT-locale leaks against the IT raster baseline.
+- [Phase 18 D-4]: **`[GLY]` state-marker exemption** — C_it row 20 cols 89..93 carry `[GLY]` (legitimate glyph-mode indicator per UI-SPEC §6.3); A_it has these cols as spaces. Surgical 5-cell skip (`if (row === 20 && col >= 89 && col <= 93) continue;`) instead of dropping row 20 from the sweep — preserves regression detection on the rest of row 20 cols 69..88, 94..95 against any future drift around the marker. Choice preserves both UI-SPEC §6.3 visual contract and the triade test's tight regression net.
+- [Phase 18 D-5]: **INV-3 atomic close** — single commit ratifies Specs.md v0.9.12 → v0.9.13 bump + changelog stanza + README badge + showcase version stat + STATE.md frontmatter complete + ROADMAP Phase 18 ✅ + REQUIREMENTS INFILL-14.1-A/B/C → Resolved + 18-VERIFICATION.md. Pattern continues the Phase 14 (`3a0c5cf`) / Phase 15 (`dc161d6`) / Phase 16 (`d68d7f2`) / Phase 17 (`c208d24`) precedent. No quick task fall-out — Phase 18 is the milestone-close phase, not a follow-up.
 
 ### Pending Todos
 
@@ -243,10 +249,10 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-05-17T19:00:00.000Z
-Stopped at: Completed 15-05-PLAN.md (Phase 15 CLOSED — v0.9.12 Quick Wins ✅ SHIPPED)
+Last session: 2026-05-18T15:30:00.000Z
+Stopped at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
 Resume file: None
-Resume cmd: /gsd-new-milestone (start the next milestone)
+Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
 
 ## /gsd-autonomous 2026-05-17 run — Phase 10 closure
 
