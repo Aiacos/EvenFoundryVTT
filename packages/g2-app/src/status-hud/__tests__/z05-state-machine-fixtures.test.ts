@@ -212,12 +212,20 @@ describe('Z05-INV — cross-state INV-1 invariants (UI-SPEC §8.2)', () => {
   it('Z05-INV-02b-triade (UI-SPEC §8.2 invariant 2 + WR-UI-03): right Status HUD column (cols 69..95) is byte-identical across triade A_it ↔ B_it ↔ C_it for rows 3..20', () => {
     // Closes WR-UI-03 regression-detection gap: original Z05-INV-02b only asserted
     // A_it ↔ B_it. C_it (glyph-scene.glyph-idle-z05.it.txt) was NOT in the byte-identity
-    // chain, allowing the EN-baseline copy-paste leak (Conditions vs Condizioni, row 1
-    // ROUND vs TURNO) to pass CI. Triade extension closes the gap.
+    // chain, allowing the EN-baseline copy-paste leak (Conditions vs Condizioni, row 17
+    // + ROUND vs TURNO row 1 + PF/HP, CA/AC, VEL/SPD, Az./Act, Slot/Slots locale leaks
+    // on rows 5/7/9/12) to pass CI. Triade extension closes the gap.
+    //
+    // Exception (UI-SPEC §6.3): C-state-only `[GLY]` glyph-mode marker at row 20
+    // cols 89..93 is legitimate visual contract (NOT a locale leak) — exempted via
+    // a precise cell-skip rather than dropping row 20 from the sweep so any future
+    // accidental drift on the rest of row 20 cols 69..88, 94..95 is still caught.
     const gridA = loadSceneFixture('glyph-scene.raster-idle-it.txt');
     const gridC = loadSceneFixture('glyph-scene.glyph-idle-z05.it.txt');
     for (let row = 3; row <= 20; row++) {
       for (let col = 69; col <= 95; col++) {
+        // Skip the C-state-only [GLY] glyph-mode marker (UI-SPEC §6.3).
+        if (row === 20 && col >= 89 && col <= 93) continue;
         const a = gridA.at(col, row);
         const c = gridC.at(col, row);
         expect(
