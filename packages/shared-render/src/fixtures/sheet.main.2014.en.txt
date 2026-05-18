@@ -7,12 +7,12 @@
 ⛨ AC 18    ⚡ INI —    ⚔ SPD —    PROF +3                          
                                                                   
 ┌── ABILITIES      ─┐  ┌── SAVING THROWS ──┐                      
-│ STR  —  —          │  │ ◉ STR  —    DEX  — │                    
-│ DEX  —  —          │  │ ◉ CON  —    INT  — │                    
-│ CON  —  —          │  │   WIS  —    CHA  — │                    
-│ INT  —  —          │  └──────────────────────────┘              
-│ WIS  —  —          │                                            
-│ CHA  —  —          │  Hit Dice  —                               
+│ STR 10 +0          │  │ ○ STR  +0  DEX  +0 │                    
+│ DEX 10 +0          │  │ ○ CON  +0  INT  +0 │                    
+│ CON 10 +0          │  │ ○ WIS  +0  CHA  +0 │                    
+│ INT 10 +0          │  └──────────────────────────┘              
+│ WIS 10 +0          │                                            
+│ CHA 10 +0          │  Hit Dice  —                               
 └────────────────────┘                                            
 Senses  —                                                         
                                                                   

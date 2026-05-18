@@ -7,12 +7,12 @@
 ⛨ RK 18    ⚡ INI —    ⚔ GES —    PROF +3                          
                                                                   
 ┌── ATTRIBUTE      ─┐  ┌── RETTUNGSWÜRFE ──┐                      
-│ STR  —  —          │  │ ◉ STR  —    GES  — │                    
-│ GES  —  —          │  │ ◉ KON  —    INT  — │                    
-│ KON  —  —          │  │   WEI  —    CHA  — │                    
-│ INT  —  —          │  └──────────────────────────┘              
-│ WEI  —  —          │                                            
-│ CHA  —  —          │  Trefferwürfel  —                          
+│ STR 10 +0          │  │ ○ STR  +0  GES  +0 │                    
+│ GES 10 +0          │  │ ○ KON  +0  INT  +0 │                    
+│ KON 10 +0          │  │ ○ WEI  +0  CHA  +0 │                    
+│ INT 10 +0          │  └──────────────────────────┘              
+│ WEI 10 +0          │                                            
+│ CHA 10 +0          │  Trefferwürfel  —                          
 └────────────────────┘                                            
 Sinne  —                                                          
                                                                   

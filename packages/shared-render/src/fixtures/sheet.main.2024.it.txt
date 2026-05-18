@@ -7,12 +7,12 @@
 ⛨ CA 18    ⚡ INI —    ⚔ VEL —    COMP +3                          
                                                                   
 ┌── CARATTERISTICHE ─┐  ┌── TIRI SALVEZZA ──┐                     
-│ FOR  —  —          │  │ ◉ FOR  —    DES  — │                    
-│ DES  —  —          │  │ ◉ COS  —    INT  — │                    
-│ COS  —  —          │  │   SAG  —    CAR  — │                    
-│ INT  —  —          │  └──────────────────────────┘              
-│ SAG  —  —          │                                            
-│ CAR  —  —          │  Dadi Vita  —                              
+│ FOR 16 +3          │  │ ◉ FOR  +5  DES  +2 │                    
+│ DES 14 +2          │  │ ◉ COS  +5  INT  +4 │                    
+│ COS 14 +2          │  │ ○ SAG  +1  CAR  -1 │                    
+│ INT 18 +4          │  └──────────────────────────┘              
+│ SAG 12 +1          │                                            
+│ CAR  8 -1          │  Dadi Vita  —                              
 └────────────────────┘                                            
 Sensi  —                                                          
                                                                   
