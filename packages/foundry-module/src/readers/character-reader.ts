@@ -20,26 +20,41 @@
  * directly from `actor.system.abilities.<k>.save.value` (dnd5e prep-time computed
  * total — NOT recomputed from base+prof) per CONTEXT D-Area-2.
  *
+ * Phase 17 addition (Plan 17-02): reads `actor.system.skills.{acr,ani,...,sur}` (18
+ * dnd5e short codes) to populate the REQUIRED `skills` field (REQ SHEET-09). Defensive
+ * defaults via `zeroSkills()` + `SKILL_DEFAULT_ABILITY` map (no CON-based skills in
+ * canonical 5e). `proficient: 0|0.5|1|2` preserved verbatim (Skills tab full glyph
+ * spectrum, unlike Phase 16's boolean coercion for Main tab). `passive` read verbatim
+ * from dnd5e prep-time (NOT recomputed from `10 + total` — Observant feat + magic
+ * items may diverge).
+ *
  * @see Specs.md §4 (read pipeline), FOUN-01 (getCharacterState reader contract)
  * @see Specs.md §7.5.2 (Main tab ability-score mockup)
+ * @see Specs.md §7.5.3 (Skills tab mockup)
  * @see packages/foundry-module/src/types/foundry-globals.d.ts (actor shape declarations)
  * @see 02-05-PLAN.md Task 1 (character-reader.ts spec)
  * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 2
  * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-02-PLAN.md Task 2
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 2
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-02-PLAN.md Task 2
  */
 
 import type {
   Abilities,
+  AbilityKey,
   AbilityScore,
   CharacterSnapshot,
   InventoryItem,
   InventoryItemType,
+  Skill,
+  SkillKey,
+  Skills,
   SpellActivation,
   Spellbook,
   SpellEntry,
   SpellSlot,
 } from '@evf/shared-protocol';
-import { INVENTORY_ITEM_TYPES } from '@evf/shared-protocol';
+import { INVENTORY_ITEM_TYPES, SKILL_KEYS } from '@evf/shared-protocol';
 
 /**
  * Map a dnd5e item type string to our InventoryItemType enum.
@@ -249,9 +264,16 @@ function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook 
   return { slots, spells };
 }
 
-/** Canonical ability key list (closed enum — D&D 5e core rules). */
+/**
+ * Canonical ability key list (closed enum — D&D 5e core rules).
+ *
+ * Note: Phase 17 Plan 17-02 added `AbilityKey` as a re-exported type from
+ * `@evf/shared-protocol` (single source of truth — Plan 17-01 GREEN gate).
+ * We keep this local `ABILITY_KEYS` runtime tuple to avoid a redundant
+ * import; the imported type and the local tuple's `[number]` are
+ * structurally identical (both `'str'|'dex'|'con'|'int'|'wis'|'cha'`).
+ */
 const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
-type AbilityKey = (typeof ABILITY_KEYS)[number];
 
 /**
  * Build a 6-keyed zero-default `Abilities` payload for fresh actors lacking
@@ -330,6 +352,152 @@ function extractAbilities(actor: ReturnType<typeof game.actors.get>): Abilities 
   const out = zeroAbilities();
   for (const key of ABILITY_KEYS) {
     out[key as AbilityKey] = readAbility(abilitiesRaw[key]);
+  }
+  return out;
+}
+
+/**
+ * Canonical D&D 5e default ability driving each skill (Phase 17 Plan 17-02).
+ *
+ * Used as the fallback `ability` field when `actor.system.skills.<k>.ability`
+ * is missing (fresh actor / un-prepped). No CON-based skills exist in
+ * canonical D&D 5e (verified via dnd5e wiki Roll-Formulas 2026-05-18 + dnd5e
+ * 5.3.3 module/data/actor/templates/common.mjs). Mapping:
+ *
+ *   acr/ste/slt → dex (Acrobatics, Stealth, Sleight of Hand)
+ *   ath         → str (Athletics — the only STR-based skill)
+ *   arc/his/inv/nat/rel → int (knowledge-style skills)
+ *   ani/ins/med/prc/sur → wis (wisdom-based perception/insight family)
+ *   dec/itm/prf/per     → cha (social skills)
+ *
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Specifics
+ * @internal
+ */
+const SKILL_DEFAULT_ABILITY: Record<SkillKey, AbilityKey> = {
+  acr: 'dex',
+  ani: 'wis',
+  arc: 'int',
+  ath: 'str',
+  dec: 'cha',
+  his: 'int',
+  ins: 'wis',
+  itm: 'cha',
+  inv: 'int',
+  med: 'wis',
+  nat: 'int',
+  prc: 'wis',
+  prf: 'cha',
+  per: 'cha',
+  rel: 'int',
+  slt: 'dex',
+  ste: 'dex',
+  sur: 'wis',
+};
+
+/**
+ * Defensive default for fresh / un-prepped actors lacking `actor.system.skills`
+ * (Phase 17 Plan 17-02).
+ *
+ * Returns an 18-keyed object where each skill carries `total: 0`, the
+ * canonical default ability per {@link SKILL_DEFAULT_ABILITY}, `proficient: 0`,
+ * and `passive: 10` (D&D 5e passive floor for a level-1 character with ability
+ * mod +0 — `10 + 0 = 10`). Mirrors Phase 16 zeroAbilities() defensive-default
+ * pattern; never throws, never returns null for the field.
+ *
+ * @internal
+ */
+function zeroSkills(): Skills {
+  const out = {} as Skills;
+  for (const k of SKILL_KEYS) {
+    out[k] = {
+      total: 0,
+      ability: SKILL_DEFAULT_ABILITY[k],
+      proficient: 0,
+      passive: 10,
+    };
+  }
+  return out;
+}
+
+/**
+ * Extract a single dnd5e skill sub-object into our wire-payload Skill
+ * (Phase 17 Plan 17-02).
+ *
+ * Reads `total`, `ability`, `proficient`, `passive` with defensive
+ * nullish-coalesce per field. Unlike Phase 16's readAbility which coerces
+ * `proficient: 0|0.5|1|2 → boolean` for Main tab, this helper preserves the
+ * raw 0|0.5|1|2 enum verbatim — Skills tab uses the full glyph spectrum
+ * (○/◉/★) per UI-SPEC §3, with half-prof rounded up to ◉ at render time
+ * (renderer's job, not reader's).
+ *
+ * `ability` falls back to `SKILL_DEFAULT_ABILITY[key]` when dnd5e leaves the
+ * field absent. The `ability` value is also validated against the 6-key
+ * AbilityKey enum and clamped to the canonical default if a homebrew system
+ * writes a non-canonical value (T-17-02-T mitigation — schema would reject
+ * otherwise). `proficient` is clamped to the valid 4-value enum (0|0.5|1|2);
+ * any malformed value defaults to 0. `passive` reads dnd5e's prep-time
+ * computed value verbatim (NOT recomputed from `10 + total` — magic-item
+ * bonuses, Observant feat, half-prof bonus may diverge) and is clamped
+ * non-negative (T-17-02-T mitigation).
+ *
+ * @internal
+ */
+function readSkill(raw: Dnd5eSkillRaw | undefined, key: SkillKey): Skill {
+  const total = raw?.total ?? 0;
+
+  // Validate ability against the 6-key set; fallback to canonical default
+  // when dnd5e omits the field OR when a homebrew system writes a value
+  // outside the 6-key AbilityKey enum (T-17-02-T mitigation).
+  const abilityRaw = raw?.ability ?? SKILL_DEFAULT_ABILITY[key];
+  const ability: AbilityKey =
+    abilityRaw === 'str' ||
+    abilityRaw === 'dex' ||
+    abilityRaw === 'con' ||
+    abilityRaw === 'int' ||
+    abilityRaw === 'wis' ||
+    abilityRaw === 'cha'
+      ? abilityRaw
+      : SKILL_DEFAULT_ABILITY[key];
+
+  // Clamp proficient to the closed 0|0.5|1|2 enum (T-17-02-T mitigation).
+  // CONTEXT D-Area-2: NO boolean coercion (explicit difference from Phase 16
+  // readAbility) — Skills tab UI-SPEC §3 needs the full glyph spectrum.
+  const proficientRaw = raw?.proficient ?? 0;
+  const proficient: 0 | 0.5 | 1 | 2 =
+    proficientRaw === 0 || proficientRaw === 0.5 || proficientRaw === 1 || proficientRaw === 2
+      ? proficientRaw
+      : 0;
+
+  // passive read-through (NOT recomputed). Clamp non-negative per schema
+  // (z.number().int().nonnegative() from Plan 17-01).
+  const passiveRaw = raw?.passive ?? 10;
+  const passive = passiveRaw < 0 ? 0 : passiveRaw;
+
+  return { total, ability, proficient, passive };
+}
+
+/**
+ * Extract all 18 D&D 5e skills from `actor.system.skills` (Phase 17 Plan 17-02).
+ *
+ * Returns a complete 18-keyed Skills object on every call — defensive defaults
+ * for fresh actors ({@link zeroSkills}) when `system.skills` is `undefined`.
+ * Per-field defaults (per {@link readSkill}) defend against partial shapes
+ * (e.g. `system.skills.acr` exists but `ability` missing).
+ *
+ * Read order per skill: total → ability → proficient → passive. Iteration is
+ * bounded to the 18 canonical keys (T-17-02-D — no recursion, constant-time).
+ *
+ * @internal
+ */
+function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
+  if (actor === undefined) return zeroSkills();
+
+  const skillsRaw = actor.system?.skills;
+  if (skillsRaw === undefined) return zeroSkills();
+
+  const out = {} as Skills;
+  for (const key of SKILL_KEYS) {
+    out[key] = readSkill(skillsRaw[key], key);
   }
   return out;
 }
@@ -414,6 +582,7 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     inventory: extractInventory(actor),
     spells: extractSpellbook(actor),
     abilities: extractAbilities(actor),
+    skills: extractSkills(actor),
     ...portraitField,
   };
 }
