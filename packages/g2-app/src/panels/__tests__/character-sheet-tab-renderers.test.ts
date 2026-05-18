@@ -34,7 +34,9 @@
  *   - CSTR-SKILLS-DATA-5: renderMainTab row 17 senses line emits PP/PI/IND passives
  *
  * Phase 17 INV-1 round-trip:
- *   - CSTR-FIX-SKILLS-EN: renderSkillsTab EN locale → sheet.skills.en.txt (NEW fixture)
+ *   - sheet.skills.en.txt regenerated from BASE consumer per Phase 16 D-3
+ *     precedent — round-trip gate continues via PSM-FIX-EN-SKILLS (in
+ *     05-panel-integration-smoke.test.ts), not duplicated here.
  *
  * Feats tab edition branches:
  *   - CSTR-FEATS-2014:    modernRules=false → no [Origine] annotation
@@ -672,21 +674,13 @@ describe('renderSkillsTab — skills data binding (CSTR-SKILLS-DATA)', () => {
   });
 });
 
-// ─── CSTR-FIX-SKILLS-EN (Phase 17 — NEW INV-1 fixture) ────────────────────────
-
-describe('INV-1 round-trip — sheet.skills.en.txt (Phase 17)', () => {
-  function normaliseRows(content: string): string {
-    return content
-      .split('\n')
-      .map((row) => row.trimEnd())
-      .join('\n')
-      .trimEnd();
-  }
-
-  it('CSTR-FIX-SKILLS-EN: renderSkillsTab(snapshot2014, "en") matches sheet.skills.en.txt', () => {
-    const rows = renderSkillsTab(snapshot2014, 'en', 0);
-    const expected = normaliseRows(loadFixture('sheet.skills.en.txt'));
-    const actual = normaliseRows(rows.join('\n'));
-    expect(actual).toBe(expected);
-  });
-});
+// ─── CSTR-FIX-SKILLS-EN (Phase 17) ────────────────────────────────────────────
+//
+// NOTE: The pre-Phase-17 EN skills fixture `sheet.skills.en.txt` was generated
+// from `BASE_CHARACTER_SNAPSHOT` (zero-default skills) in
+// `05-panel-integration-smoke.test.ts` via `PSM-FIX-EN-SKILLS`. Phase 17 Plan
+// 17-03 Task 3 regenerates that fixture with the new dynamic renderer output
+// (still BASE consumer) to preserve consumer-snapshot identity per Phase 16
+// Plan 16-03 Deviation 3 precedent. The duplicate CSTR-FIX-SKILLS-EN test was
+// removed in favour of letting PSM-FIX-EN-SKILLS continue to be the canonical
+// EN-skills fixture round-trip gate. See 17-03-SUMMARY.md §Deviations.

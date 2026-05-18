@@ -25,6 +25,27 @@
  * @see 16-CONTEXT.md §Area 3 (in-place dash→data swap, no row shift)
  * @see 16-UI-SPEC.md §3 (format helpers), §4 (glyph dictionary)
  *
+ * ## Phase 17 — Skills tab data binding (SHEET-10) + Main tab senses line
+ *
+ * `renderSkillsTab` consumes the new `snapshot.skills.<k>.{total, ability,
+ * proficient, passive}` field (Plan 17-01 schema, Plan 17-02 reader). The
+ * 60-LOC hardcoded `DEFAULT_SKILLS` array is REMOVED — skill rows now built
+ * dynamically from `SKILL_KEYS.map(k => ...)` indexed against `snapshot.skills`,
+ * with a static `SKILL_NAMES` map providing the 3-locale skill name catalog
+ * (mechanically extracted from the pre-Phase-17 DEFAULT_SKILLS strings — no
+ * translation invention; same EN/IT/DE coverage). Half-proficient (0.5) rounds
+ * UP to ◉ per UI-SPEC §3 (rationale: half-prof still adds the proficiency
+ * bonus → "proficient-ish" is more honest than "untrained" for the glyph;
+ * the modifier value already reflects the bonus).
+ *
+ * `renderMainTab` row 16 (0-indexed; the senses line) now emits
+ * `Sensi  PP {prc.passive} · PI {ins.passive} · IND {inv.passive}` (IT) /
+ * `Senses  PP {prc} · INS {ins} · INV {inv}` (EN) / `Sinne  WN/EIN/NCH …` (DE),
+ * replacing the `Sensi  —` placeholder shipped since Phase 5.
+ *
+ * @see 17-CONTEXT.md §Area 3 (renderer wiring), §Area 4 (fixture deltas)
+ * @see 17-UI-SPEC.md §3 (glyph dictionary), §4 (senses line), §5 (renderer logic)
+ *
  * ## Dual-edition branching (SHEET-03 / CONTEXT.md §Area 3)
  *
  * All edition-conditional rendering branches on `snapshot.world.modernRules`:
@@ -63,7 +84,7 @@
  * @see packages/shared-protocol/src/payloads/character.ts (CharacterSnapshotSchema)
  */
 
-import type { CharacterSnapshot } from '@evf/shared-protocol';
+import { type CharacterSnapshot, SKILL_KEYS, type SkillKey } from '@evf/shared-protocol';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import type { TabId } from './character-sheet-panel.js';
 import { renderInventoryTabContent } from './inventory-panel.js';
@@ -380,8 +401,19 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   // Row 15: close abilities box
   rows.push(`└${'─'.repeat(20)}┘`);
 
-  // Row 16: senses
-  rows.push(`${sensesLabel}  ${dash}`);
+  // Row 16: senses — Phase 17 data binding (UI-SPEC §4)
+  // Source: snapshot.skills.{prc, ins, inv}.passive — dnd5e prep-time computed
+  // passive scores (NOT recomputed from 10+mod; Observant feat / magic items
+  // can introduce static bonuses that don't flow through the base mod).
+  // Locale-specific abbreviations via PASSIVE_ABBR (renderer-side const map;
+  // not promoted to the i18n-budgets catalog because no other consumer needs
+  // these tokens — see PASSIVE_ABBR JSDoc).
+  const passivePrc = snapshot.skills.prc.passive;
+  const passiveIns = snapshot.skills.ins.passive;
+  const passiveInv = snapshot.skills.inv.passive;
+  const abbr = PASSIVE_ABBR[locale] ?? PASSIVE_ABBR.en;
+  const sensesContent = `${abbr.prc} ${passivePrc} · ${abbr.ins} ${passiveIns} · ${abbr.inv} ${passiveInv}`;
+  rows.push(`${sensesLabel}  ${sensesContent}`);
 
   // Row 17: blank
   rows.push('');
@@ -395,15 +427,32 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
  * Skill proficiency level indicator glyph.
  *
  * 0 = not proficient, 1 = proficient, 2 = expertise/mastery.
+ *
+ * Half-proficient (0.5 — Jack of All Trades, Bard) is NOT a separate `ProfLevel`
+ * — it rounds UP to 1 (◉) per UI-SPEC §3. See `toProfLevel` for the mapping.
  */
 type ProfLevel = 0 | 1 | 2;
 
-/** D&D 5e skill definition. */
+/**
+ * Map raw dnd5e `proficient` value (0|0.5|1|2 — closed enum per
+ * SkillSchema) to the renderer's 3-glyph spectrum.
+ *
+ * Half-prof (0.5) rounds UP to 1 (◉) per UI-SPEC §3 rationale: half-prof
+ * still adds the proficiency bonus to the modifier, so "proficient-ish" is
+ * more honest than "untrained" for the glyph. The actual modifier total
+ * already reflects the half-prof bonus — this mapping only chooses the
+ * visual indicator.
+ */
+function toProfLevel(proficient: 0 | 0.5 | 1 | 2): ProfLevel {
+  if (proficient === 2) return 2;
+  if (proficient === 0) return 0;
+  return 1; // 1 (full) AND 0.5 (half, round-up) both render as ◉
+}
+
+/** D&D 5e skill row, pre-localised, ready for emission. */
 interface SkillDef {
-  readonly abilityLabel: string; // 3-char ability abbreviation key e.g. 'FOR'
-  readonly nameIt: string; // Italian skill name from dnd5e localization
-  readonly nameEn: string; // English skill name
-  readonly nameDe: string; // German skill name
+  readonly abilityLabel: string; // i18n key e.g. 'sheet.ability.dex'
+  readonly name: string; // localised skill name (from SKILL_NAMES)
   readonly profLevel: ProfLevel; // 0 = untrained, 1 = proficient, 2 = expertise
   readonly modifier: number; // total modifier value (e.g. +6, -1)
 }
@@ -416,165 +465,75 @@ const PROF_GLYPHS: Record<ProfLevel, string> = {
 } as const;
 
 /**
- * Default D&D 5e skill list for Thorin Oakenshield (Lv 8 Fighter 3/Wizard 5).
+ * Per-skill name catalog keyed by SkillKey, with 3-locale coverage
+ * (it/en/de). Phase 17 Plan 17-03 — UI-SPEC §5.
  *
- * Used when snapshot is non-null but doesn't carry skill detail (Phase 5 uses
- * the Phase 2 schema which only has HP/AC/conditions). The list is consistent
- * with the UI-SPEC §5.3 fixture character.
+ * Renderer-side static map: plugin-side has no Foundry runtime, so we cannot
+ * resolve dnd5e localization keys at render time. Strings are extracted
+ * mechanically from the pre-Phase-17 `DEFAULT_SKILLS` hardcoded array (no
+ * translation invention — same byte-for-byte EN/IT/DE coverage).
  *
- * Ability key abbreviations resolve via getLabel(key, locale) at render time.
+ * The DE collision `nat/sur → 'Naturkunde'` (Nature and Survival both
+ * rendered as "Naturkunde" in DE) was present in the pre-Phase-17 array and
+ * is preserved verbatim. Correcting it is a separate Phase 18 milestone-close
+ * polish task if surface demands; out of scope here.
+ *
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-UI-SPEC.md §5
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 3
  */
-const DEFAULT_SKILLS: ReadonlyArray<SkillDef> = [
-  // STR
-  {
-    abilityLabel: 'sheet.ability.str',
-    nameIt: 'Atletica',
-    nameEn: 'Athletics',
-    nameDe: 'Athletik',
-    profLevel: 1,
-    modifier: 6,
-  },
-  // DEX
-  {
-    abilityLabel: 'sheet.ability.dex',
-    nameIt: 'Acrobazia',
-    nameEn: 'Acrobatics',
-    nameDe: 'Akrobatik',
-    profLevel: 0,
-    modifier: 2,
-  },
-  {
-    abilityLabel: 'sheet.ability.dex',
-    nameIt: 'Rapidità di mano',
-    nameEn: 'Sleight of Hand',
-    nameDe: 'Fingerfertigkeit',
-    profLevel: 0,
-    modifier: 2,
-  },
-  {
-    abilityLabel: 'sheet.ability.dex',
-    nameIt: 'Furtività',
-    nameEn: 'Stealth',
-    nameDe: 'Heimlichkeit',
-    profLevel: 0,
-    modifier: 2,
-  },
-  // INT
-  {
-    abilityLabel: 'sheet.ability.int',
-    nameIt: 'Arcano',
-    nameEn: 'Arcana',
-    nameDe: 'Arkane Kunde',
-    profLevel: 0,
-    modifier: 0,
-  },
-  {
-    abilityLabel: 'sheet.ability.int',
-    nameIt: 'Storia',
-    nameEn: 'History',
-    nameDe: 'Geschichte',
-    profLevel: 0,
-    modifier: 0,
-  },
-  {
-    abilityLabel: 'sheet.ability.int',
-    nameIt: 'Indagare',
-    nameEn: 'Investigation',
-    nameDe: 'Nachforschung',
-    profLevel: 0,
-    modifier: 0,
-  },
-  {
-    abilityLabel: 'sheet.ability.int',
-    nameIt: 'Natura',
-    nameEn: 'Nature',
-    nameDe: 'Naturkunde',
-    profLevel: 0,
-    modifier: 0,
-  },
-  {
-    abilityLabel: 'sheet.ability.int',
-    nameIt: 'Religione',
-    nameEn: 'Religion',
-    nameDe: 'Religion',
-    profLevel: 0,
-    modifier: 0,
-  },
-  // WIS
-  {
-    abilityLabel: 'sheet.ability.wis',
-    nameIt: 'Addestrare animali',
-    nameEn: 'Animal Handling',
-    nameDe: 'Tierführung',
-    profLevel: 1,
-    modifier: 4,
-  },
-  {
-    abilityLabel: 'sheet.ability.wis',
-    nameIt: 'Intuizione',
-    nameEn: 'Insight',
-    nameDe: 'Einblick',
-    profLevel: 0,
-    modifier: 1,
-  },
-  {
-    abilityLabel: 'sheet.ability.wis',
-    nameIt: 'Medicina',
-    nameEn: 'Medicine',
-    nameDe: 'Heilkunde',
-    profLevel: 1,
-    modifier: 4,
-  },
-  {
-    abilityLabel: 'sheet.ability.wis',
-    nameIt: 'Percezione',
-    nameEn: 'Perception',
-    nameDe: 'Wahrnehmung',
-    profLevel: 0,
-    modifier: 1,
-  },
-  {
-    abilityLabel: 'sheet.ability.wis',
-    nameIt: 'Sopravvivenza',
-    nameEn: 'Survival',
-    nameDe: 'Naturkunde',
-    profLevel: 0,
-    modifier: 1,
-  },
-  // CHA
-  {
-    abilityLabel: 'sheet.ability.cha',
-    nameIt: 'Inganno',
-    nameEn: 'Deception',
-    nameDe: 'Täuschung',
-    profLevel: 0,
-    modifier: 1,
-  },
-  {
-    abilityLabel: 'sheet.ability.cha',
-    nameIt: 'Intimidazione',
-    nameEn: 'Intimidation',
-    nameDe: 'Einschüchterung',
-    profLevel: 0,
-    modifier: 1,
-  },
-  {
-    abilityLabel: 'sheet.ability.cha',
-    nameIt: 'Intrattenimento',
-    nameEn: 'Performance',
-    nameDe: 'Vorführung',
-    profLevel: 0,
-    modifier: 1,
-  },
-  {
-    abilityLabel: 'sheet.ability.cha',
-    nameIt: 'Persuasione',
-    nameEn: 'Persuasion',
-    nameDe: 'Überzeugung',
-    profLevel: 0,
-    modifier: 1,
-  },
-];
+const SKILL_NAMES: Record<
+  SkillKey,
+  { readonly it: string; readonly en: string; readonly de: string }
+> = {
+  acr: { it: 'Acrobazia', en: 'Acrobatics', de: 'Akrobatik' },
+  ani: { it: 'Addestrare animali', en: 'Animal Handling', de: 'Tierführung' },
+  arc: { it: 'Arcano', en: 'Arcana', de: 'Arkane Kunde' },
+  ath: { it: 'Atletica', en: 'Athletics', de: 'Athletik' },
+  dec: { it: 'Inganno', en: 'Deception', de: 'Täuschung' },
+  his: { it: 'Storia', en: 'History', de: 'Geschichte' },
+  ins: { it: 'Intuizione', en: 'Insight', de: 'Einblick' },
+  itm: { it: 'Intimidazione', en: 'Intimidation', de: 'Einschüchterung' },
+  inv: { it: 'Indagare', en: 'Investigation', de: 'Nachforschung' },
+  med: { it: 'Medicina', en: 'Medicine', de: 'Heilkunde' },
+  nat: { it: 'Natura', en: 'Nature', de: 'Naturkunde' },
+  prc: { it: 'Percezione', en: 'Perception', de: 'Wahrnehmung' },
+  prf: { it: 'Intrattenimento', en: 'Performance', de: 'Vorführung' },
+  per: { it: 'Persuasione', en: 'Persuasion', de: 'Überzeugung' },
+  rel: { it: 'Religione', en: 'Religion', de: 'Religion' },
+  slt: { it: 'Rapidità di mano', en: 'Sleight of Hand', de: 'Fingerfertigkeit' },
+  ste: { it: 'Furtività', en: 'Stealth', de: 'Heimlichkeit' },
+  sur: { it: 'Sopravvivenza', en: 'Survival', de: 'Naturkunde' },
+} as const;
+
+/**
+ * Per-locale abbreviations for the Main tab senses-line passives
+ * (Phase 17 Plan 17-03 — UI-SPEC §4).
+ *
+ * Renderer-side static map — these tokens are NOT promoted to the
+ * i18n-budgets catalog because no other consumer needs them. If Phase 18
+ * milestone-close demands broader use, promote at that time.
+ *
+ * IT: PP (Percezione Passiva), PI (Passiva Intuizione), IND (INDagare)
+ * EN: PP (Passive Perception), INS (Passive Insight), INV (Passive Investigation)
+ * DE: WN (Wahrnehmung passiv), EIN (Einblick passiv), NCH (NaChforschung)
+ *
+ * DE choice rationale: SKILL_NAMES.inv.de is "Nachforschung" — the
+ * abbreviation MUST match that name (NCH); UI-SPEC §4's draft `UNT 14` was
+ * illustrative and gets overridden here per UI-SPEC §4 executor-discretion
+ * clause + UI-SPEC §3 SKILL_NAMES.inv.de alignment.
+ */
+const PASSIVE_ABBR: Record<
+  HudLocale,
+  { readonly prc: string; readonly ins: string; readonly inv: string }
+> = {
+  it: { prc: 'PP', ins: 'PI', inv: 'IND' },
+  en: { prc: 'PP', ins: 'INS', inv: 'INV' },
+  de: { prc: 'WN', ins: 'EIN', inv: 'NCH' },
+  // best-effort locales fall back to EN below; entries here keep the type total
+  es: { prc: 'PP', ins: 'INS', inv: 'INV' },
+  fr: { prc: 'PP', ins: 'INS', inv: 'INV' },
+  'pt-br': { prc: 'PP', ins: 'INS', inv: 'INV' },
+} as const;
 
 /**
  * Render the Skills tab content per UI-SPEC §5.3.
@@ -617,8 +576,37 @@ export function renderSkillsTab(
   rows.push('');
 
   // Content rows 2-15: visible skill window (14 rows of skills)
+  //
+  // Phase 17 — dynamic snapshot-driven lookup (REPLACES the pre-Plan-17-03
+  // hardcoded DEFAULT_SKILLS array). Iterate SKILL_KEYS in canonical dnd5e
+  // order, then sort by ability column (STR / DEX / CON / INT / WIS / CHA)
+  // to match the pre-Phase-17 visual grouping in `sheet.skills.it.txt`.
+  //
+  // The sort within each ability bucket preserves SKILL_KEYS order, which
+  // matches the pre-Plan-17-03 DEFAULT_SKILLS hardcoded ordering exactly
+  // (verified row-by-row against the fixture: STR:ath; DEX:acr,slt,ste;
+  // INT:arc,his,inv,nat,rel; WIS:ani,ins,med,prc,sur; CHA:dec,itm,prf,per).
+  // This is the byte-identity round-trip contract for CSTR-FIX-SKILLS +
+  // CSTR-FIX-SKILLS-EN per UI-SPEC §7.
   const VISIBLE_ROWS = 14;
-  const skills = DEFAULT_SKILLS;
+  const ABILITY_ORDER = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+  const skills: ReadonlyArray<SkillDef> = ABILITY_ORDER.flatMap((ab) =>
+    SKILL_KEYS.filter((k) => snapshot.skills[k].ability === ab).map((k) => {
+      const sk = snapshot.skills[k];
+      const name =
+        locale === 'it'
+          ? SKILL_NAMES[k].it
+          : locale === 'de'
+            ? SKILL_NAMES[k].de
+            : SKILL_NAMES[k].en;
+      return {
+        abilityLabel: `sheet.ability.${sk.ability}`,
+        name,
+        profLevel: toProfLevel(sk.proficient),
+        modifier: sk.total,
+      };
+    }),
+  );
   const clampedOffset = Math.max(
     0,
     Math.min(scrollOffset, Math.max(0, skills.length - VISIBLE_ROWS)),
@@ -644,10 +632,8 @@ export function renderSkillsTab(
     }
     const abilityCell = showAbility ? padRightUnicode(abilityLabel, 4) : '    ';
 
-    // Skill name localized
-    const skillName =
-      locale === 'it' ? skill.nameIt : locale === 'de' ? skill.nameDe : skill.nameEn;
-    const skillNameCell = padRightUnicode(truncateUnicode(skillName, 30), 30);
+    // Skill name already locale-resolved during the SKILL_KEYS.map projection above
+    const skillNameCell = padRightUnicode(truncateUnicode(skill.name, 30), 30);
 
     // Modifier: right-aligned in 4-char field (e.g. `  +6`, ` +10`, `  -1`)
     const modStr = skill.modifier >= 0 ? `+${skill.modifier}` : `${skill.modifier}`;
