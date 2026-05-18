@@ -22,17 +22,30 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 - **Carry to next milestone**: minor tech debt — Phase-14.1 standalone quick task (3 UI-SPEC spec-prose drifts: §2 col 71→68, §10 width budgets, IT locale leak in glyph-idle-z05 fixture). Real implementation defects are zero; this is doc-coherence cleanup.
 - **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.12), INV-3 atomic doc coherence).
 
-## Next Milestone Goals
+## Current Milestone: v0.9.13 Sheet Data Completion + Polish
 
-Next milestone TBD via `/gsd-new-milestone`. Likely candidates (in rough priority order, subject to user decision):
+**Goal:** Complete the Character Sheet panel's data wiring for Main + Skills tabs (ability scores end-to-end + skill modifiers + proficiency markers) and close the Phase-14.1 spec-prose drift carry-forward — all software-only, INV-3 atomic per phase.
 
-1. **Phase-14.1 quick task** (~20 min effort) — close 3 UI-SPEC spec-prose drifts via single INV-3 atomic commit (UI-SPEC §2 col 67/64; UI-SPEC §10 width budgets; IT locale leak in glyph-scene.glyph-idle-z05.it.txt row 1/17).
-2. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
-3. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
-4. **Picovoice Rhino edge classifier** — conditional on SC-12-01 hardware test measuring Claude Desktop intent-identification latency p50 > 800ms. Not measurable without hardware.
-5. **Cloud rewrite / multi-tenancy** — stretch (would unlock multi-DM, multi-world, hosted SaaS). Phase 13 deferred topics.
+**Target features:**
+- **Ability scores read end-to-end** — extend `CharacterSnapshotSchema` with `abilities` (6 × `{value, mod, save, proficient, dc}`), wire `character-reader.ts` to read `actor.system.abilities.*`, replace `dash` placeholders in `renderMainTab()` with real values + proficiency `◉`/`○` markers.
+- **Skills tab modifiers** — extend schema with `skills` map, wire reader (`actor.system.skills.*`), render `+N` modifiers and `◉`/`○` proficiency per skill in `renderSkillsTab()`.
+- **Phase-14.1 spec-drift cleanup** (polish wave) — UI-SPEC §2 col 71→68, §10 width budgets, IT locale leak in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 → INV-3 atomic single commit.
 
-No active milestone. Backlog management via `/gsd-review-backlog` or fresh start via `/gsd-new-milestone`.
+**Key context:**
+- Phase numbering continues from v0.9.12 (next = Phase 16).
+- 100% software-only — zero new hardware-pending SCs (35 from v0.9.11 carry under ADR-0005 Branch A unchanged).
+- INV-2 cross-checked: `actor.system.abilities.<k>.{value, mod, save.value, proficient, dc}` confirmed on github.com/foundryvtt/dnd5e release-5.3.3 (`common.mjs`) + dnd5e wiki Roll-Formulas (2026-05-18).
+- Dual-edition (PHB 2014 + PHB 2024): same ability shape, no `modernRules` branch needed.
+- CI Gate 8 invariant: socketlib handler count remains 17 (no new handlers — read-only data extension).
+
+## Next Milestone Goals (post-v0.9.13)
+
+After v0.9.13 ships, likely candidates:
+
+1. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
+2. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
+3. **Picovoice Rhino edge classifier** — conditional on SC-12-01 hardware test measuring Claude Desktop intent-identification latency p50 > 800ms. Not measurable without hardware.
+4. **Cloud rewrite / multi-tenancy** — stretch (would unlock multi-DM, multi-world, hosted SaaS). Phase 13 deferred topics.
 
 ## Requirements
 
