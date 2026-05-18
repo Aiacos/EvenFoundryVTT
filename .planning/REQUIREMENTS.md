@@ -26,9 +26,9 @@ Ability scores end-to-end nel Main tab del Character Sheet panel. Spec §7.5.2 p
 
 Skill modifiers + proficiency markers nella Skills tab. Mockup §7.5.3 prevede `◉ Acrobatics +5 / ○ Animal Handling +1 / …`. Dipendenza diretta da SHEET-05 (gli skill modifier sono `abilities.<base>.mod + prof × skill.proficient`). Schema dnd5e: `actor.system.skills.<key>.{value, total, ability, proficient, bonuses, mod, passive}`.
 
-- [ ] **SHEET-08**: Extend `CharacterSnapshotSchema` with `skills` field — 18 sub-objects keyed by dnd5e short code (acr/ani/arc/ath/dec/his/ins/itm/inv/med/nat/prc/prf/per/rel/slt/ste/sur) each `{total: number, ability: AbilityKey, proficient: 0 | 0.5 | 1 | 2, passive: number}` (proficient is 0/0.5/1/2 for none/half/proficient/expert per dnd5e canonical)
-- [ ] **SHEET-09**: Extend `character-reader.ts` to read `actor.system.skills.*` and emit the new `skills` snapshot field
-- [ ] **SHEET-10**: Update `renderSkillsTab()` in `character-sheet-tab-renderers.ts` — replace mockup placeholders with `snapshot.skills.<k>.total` (3-char column with sign) + proficiency glyph (`○` for none, `◉` for proficient, `◈` for expert; `◉` with half-tone for half-proficient if achievable; INV-1 width-budget preserved)
+- [x] **SHEET-08**: Extend `CharacterSnapshotSchema` with `skills` field — 18 sub-objects keyed by dnd5e short code (acr/ani/arc/ath/dec/his/ins/itm/inv/med/nat/prc/prf/per/rel/slt/ste/sur) each `{total: number, ability: AbilityKey, proficient: 0 | 0.5 | 1 | 2, passive: number}` (proficient is 0/0.5/1/2 for none/half/proficient/expert per dnd5e canonical) *(Resolved Phase 17 Plan 17-01 `79564d9`)*
+- [x] **SHEET-09**: Extend `character-reader.ts` to read `actor.system.skills.*` and emit the new `skills` snapshot field *(Resolved Phase 17 Plan 17-02 `54e577e` — SKILL_DEFAULT_ABILITY map + verbatim `proficient: 0|0.5|1|2` pass-through; reader does NOT recompute `passive` from `10 + total`)*
+- [x] **SHEET-10**: Update `renderSkillsTab()` in `character-sheet-tab-renderers.ts` — replace mockup placeholders with `snapshot.skills.<k>.total` (3-char column with sign) + proficiency glyph (`○` for none, `◉` for proficient, `★` for expert per shipped contract — REQ note `◈` deferred to UI-SPEC §3 alignment with the shipped `PROF_GLYPHS` map; `◉` for half-prof 0.5 round-up per UI-SPEC §3; INV-1 width-budget preserved) *(Resolved Phase 17 Plan 17-03 `3a14397` + `df05081` — DEFAULT_SKILLS removed; SKILL_NAMES + PASSIVE_ABBR consts; Main tab row 17 senses line passives surfacing `Sensi  PP 11 · PI 11 · IND 14` IT / `Senses  PP 10 · INS 10 · INV 10` EN BASE / `Sinne  WN 10 · EIN 10 · NCH 10` DE BASE)*
 
 ### Polish — Phase-14.1 Carry-Forward
 
@@ -68,9 +68,9 @@ Mapped 2026-05-18 by manual scoping (will be re-checked by `gsd-roadmapper`). RE
 | SHEET-05 | Phase 16 (Ability Scores) | Resolved |
 | SHEET-06 | Phase 16 | Resolved |
 | SHEET-07 | Phase 16 | Resolved |
-| SHEET-08 | Phase 17 (Skills) | Defined |
-| SHEET-09 | Phase 17 | Defined |
-| SHEET-10 | Phase 17 | Defined |
+| SHEET-08 | Phase 17 (Skills) | Resolved |
+| SHEET-09 | Phase 17 | Resolved |
+| SHEET-10 | Phase 17 | Resolved |
 | INFILL-14.1-A | Phase 18 (Polish) | Defined |
 | INFILL-14.1-B | Phase 18 | Defined |
 | INFILL-14.1-C | Phase 18 | Defined |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.9.13
 milestone_name: Sheet Data Completion + Polish
 status: executing
-stopped_at: Completed 16-03-PLAN.md (Phase 16 CLOSED — Sheet Ability Scores wired end-to-end)
-last_updated: "2026-05-18T13:25:00.000Z"
-last_activity: 2026-05-18 -- Phase 16 closed; Phase 17 (Skills Tab) is next
+stopped_at: Completed 17-03-PLAN.md (Phase 17 CLOSED — Sheet Skills Tab + Main tab senses line ✓)
+last_updated: "2026-05-18T15:05:00.000Z"
+last_activity: 2026-05-18 -- Phase 17 closed via INV-3 atomic single commit
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 33
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 17 — Sheet Skills Tab (Skills tab data wiring) — next plannable; Phase 16 closed.
+**Current focus:** Phase 18 — Phase-14.1 Spec-Drift Polish (milestone-close artifact, next)
 
 ## Current Position
 
-Phase: Phase 16 ✓ closed
+Phase: Phase 17 ✓ closed (Sheet Skills Tab (Skills tab data wiring))
 Plan: —
-Status: Phase 17 next (Skills tab — abilities snapshot now available as input for skills.<k> derivation; passive Perception/Insight/Investigation closes remaining `—` placeholders on Main tab Senses line)
-Last activity: 2026-05-18 -- Phase 16 closed via INV-3 atomic single-commit ratification (Phase 14/15 precedent)
+Status: Phase 18 (Phase-14.1 Spec-Drift Polish + v0.9.13 milestone close) next
+Last activity: 2026-05-18 -- Phase 17 closed via INV-3 atomic single commit
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Last activity: 2026-05-18 -- Phase 16 closed via INV-3 atomic single-commit rati
 
 **Recent Trend:**
 
+- 2026-05-18 — Phase 17 (all 3 plans, INV-3 atomic close): `CharacterSnapshotSchema.skills` REQUIRED extension (18 keys × `{total, ability, proficient, passive}` with `proficient: 0|0.5|1|2` closed enum) (Plan 17-01 `79564d9`) + `extractSkills` reader helper + `SKILL_DEFAULT_ABILITY` 18-key map + verbatim proficient pass-through preserving the full 0|0.5|1|2 spectrum (explicit difference from Phase 16's boolean coercion for Main tab) + `getCharacterSnapshot` wiring (Plan 17-02 `54e577e`) + `renderSkillsTab` dynamic `SKILL_KEYS.map`-driven lookup replacing the 60-LOC `DEFAULT_SKILLS` hardcoded array + `SKILL_NAMES` static i18n map (18 keys × 3 locales) + `PASSIVE_ABBR` const (it/en/de) + `toProfLevel` half-prof round-up helper (0.5 → ◉ per UI-SPEC §3) + `renderMainTab` row 17 senses line passives surfacing `PP/PI/IND` (IT) / `PP/INS/INV` (EN) / `WN/EIN/NCH` (DE) replacing the `Sensi  —` placeholder + 5 INV-1 fixtures (`sheet.skills.it.txt` byte-identical post-swap + `sheet.skills.en.txt` regenerated from BASE per Phase 16 D-3 + 4 `sheet.main.*` row-17 byte-updates) + 5 new CSTR-SKILLS-DATA-* tests + 23 downstream CharacterSnapshot literals extended across g2-app/bridge/foundry-mcp tests with `ability: '<key>' as const, proficient: 0 as const` literal-narrowing (Plan 17-03 `0810167` + `3a14397` + `df05081`). CI Gate 8 socketlib count = **17** preserved (read-path-only extension). Workspace test suite 2645 → 2667 (+22 tests). Specs.md NOT bumped (Phase 18 milestone-close artifact). Single INV-3 atomic ratification commit per Phase 14 `3a0c5cf` + Phase 15 `dc161d6` + Phase 16 `d68d7f2` precedent. Hardware-pending SCs: 35 from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new in Phase 17). REQ-IDs SHEET-08/09/10 → Resolved.
 - 2026-05-18 — Phase 16 (all 3 plans, INV-3 atomic close): CharacterSnapshotSchema.abilities REQUIRED extension (Plan 16-01 `e13136b`) + extractAbilities reader helper + getCharacterSnapshot wiring (Plan 16-02 `c4fd451`) + renderMainTab data binding + formatAbilityValue/formatAbilityMod helpers + 4 INV-1 fixtures byte-updated + 9 new CSTR-MAIN-AB tests + 11 downstream CharacterSnapshot literals extended across g2-app/bridge/foundry-mcp tests (Plan 16-03 `0265d22` + `170bdc4` + `e8e7da0`). CI Gate 8 socketlib count = **17** preserved (read-path-only extension). Workspace test suite 2559 → 2648 (+89 tests). Specs.md NOT bumped (Phase 18 milestone-close artifact). Single INV-3 atomic ratification commit per Phase 14 `3a0c5cf` + Phase 15 `dc161d6` precedent. Hardware-pending SCs: 35 from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new in Phase 16). REQ-IDs SHEET-05/06/07 → Resolved.
 - 2026-05-17 — Phase 15 Plan 05 (Wave 5 — INV-3 atomic doc-coherence closure, autonomous orchestrator chained Waves 1-5 sequential on main): Specs.md §3.6 + §5.2 + changelog stanza · README.md (Voice pillar + spec-bump paragraph) · docs/showcase/index.html (footer + closing paragraph + stat strip note) · .planning/STATE.md (frontmatter complete + Current Position + Recent Trend + Decisions) · .planning/ROADMAP.md (Phase 15 ✅ + 5-plan list + v0.9.12 Shipped) · .planning/REQUIREMENTS.md (VOICE-06..09 → Resolved · coverage 9/9) · 15-VERIFICATION.md (5/5 SC + 4/4 REQ + ADR-0005 Branch A carry-forward documented). Checkpoint disposition: auto-approved per autonomous orchestrator + Phase 14 precedent 3a0c5cf. CLAUDE.md INV-3 atomic single-commit gate green; CI Gate 8 socketlib handler count = 17 preserved. Workspace test suite 2624/2624 final.
 - 2026-05-17 — Phase 15 Plan 04 (Wave 4 — failure modes + end-to-end integration): `keyterm-sanitizer.ts` + 6 SAN tests · empty-cache one-shot warn (DGEC-01..03) · keyterm-reject retry-then-fallback chain (DGFM-01..06: codes 1007/1008/4xxx → retry-with-sanitized → fallback-to-baseline) · `keyterm-integration.test.ts` INT-01..03 end-to-end (cache push → debounce → connect URL contains new keyterm). 18 new tests. Per-session ephemeral retry state (no global flag). Bridge 282 → 300; workspace 2606 → 2624.
@@ -188,6 +189,12 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 16 D-Area-4]: Test fixtures keyed by consumer-snapshot identity — IT fixtures (`sheet.main.2014.it.txt` + `sheet.main.2024.it.txt`) consume `snapshot2014/snapshot2024` from `character-sheet-tab-renderers.test.ts` (Thorin canonical: STR 16/+3/+5 prof, DEX 14/+2/+2, CON 14/+2/+5 prof, INT 18/+4/+4, WIS 12/+1/+1, CHA 8/-1/-1; tempHp:10). EN/DE fixtures (`sheet.main.2014.en.txt` + `sheet.main.2014.de.txt`) consume `BASE_CHARACTER_SNAPSHOT` from `05-panel-integration-smoke.test.ts` (zero-default abilities, tempHp:0) — this preserves pre-Phase-16 row-6 HP-bar byte-identity (no `+10 temp` suffix). Test markers: CS-AB-* (schema) + CR-AB-* (reader) + CSTR-MAIN-AB-* (renderer).
 - [Phase 16]: Renderer proficient glyph is now data-driven (`profGlyph(prof)` returns `◉` or `○`); pre-Phase-16 hardcoded `◉ STR ◉ CON   WIS` (third one blank) is replaced with snapshot-driven values. With Thorin's Fighter prof spread the rendered glyphs land identical to Phase 5 hardcoded values, but for any other character profile the renderer now reflects reality (CSTR-MAIN-AB-4a covers WIS not-prof → `○` was visually blank pre-Phase-16).
 - [Phase 16]: 4 INV-1 fixtures generated by running the actual renderer via tsx one-shot script (Phase 5 Plan 05-04 precedent — never hand-author fixture rows; byte alignment must come from the renderer that consumes them). Script deleted post-generation; no developer-utility code shipped.
+- [Phase 17 D-Area-1]: `SkillsSchema` uses `z.strictObject` (18 dnd5e skill keys frozen by canonical rules — any unknown key on the wire is drift / malformed payload and MUST reject); inner `SkillSchema` uses `z.object` (forward-compat for sibling fields like `bonus`/`expertise` without breaking Phase 17 consumers). `proficient: 0|0.5|1|2` modelled as `z.union([z.literal(0), z.literal(0.5), z.literal(1), z.literal(2)])` (closed enum — NOT boolean; renderer needs full spectrum for ○/◉/★ glyph mapping). REQUIRED end-to-end (no `.optional()` drift window — Phase 4b Pitfall 3 + Phase 16 D-Area-1 precedent). `AbilityKeySchema` extracted from Phase 16's `AbilityScoreSchema` and re-used for the `ability` field via shared `AbilityKey` type export.
+- [Phase 17 D-Area-2]: Reader `extractSkills(actor)` mirrors `extractAbilities` (Phase 16) / `extractInventory` (Phase 5) style — explicit defensive short-circuits at `actor === undefined` and `system.skills === undefined`, then a bounded 18-key iteration via `SKILL_KEYS`. **Reads `total` directly** (dnd5e prep-time computed, includes ability + prof + bonuses) NOT recomputed. **`proficient` PRESERVED VERBATIM** as `0|0.5|1|2` (NO boolean coercion — explicit difference from Phase 16's `readAbility`; Skills tab needs the full glyph spectrum, Main tab is binary). **`passive` read directly** from dnd5e prep-time (NOT recomputed via `10 + total` — Observant feat / magic items / half-prof / tool-proficiency interactions may diverge from the naive formula). `SKILL_DEFAULT_ABILITY` static map encodes the canonical D&D 5e default ability driver per skill (acr/ste/slt → dex, ath → str, arc/his/inv/nat/rel → int, ani/ins/med/prc/sur → wis, dec/itm/prf/per → cha — no CON-based skills exist in canonical 5e).
+- [Phase 17 D-Area-3]: Renderer `renderSkillsTab` swaps the 60-LOC `DEFAULT_SKILLS` hardcoded array for a dynamic `SKILL_KEYS.map`-driven lookup, sorted by ability column order `[str, dex, con, int, wis, cha]` then within each by SKILL_KEYS canonical order (verified row-by-row identical to pre-Phase-17 fixture ordering for byte-identical IT round-trip). `SKILL_NAMES` static const provides 18-key × 3-locale (it/en/de) name catalog — strings mechanically extracted from the pre-Phase-17 DEFAULT_SKILLS array (no translation invention; known `nat/sur → 'Naturkunde'` DE collision preserved). `PASSIVE_ABBR` static const provides per-locale 2-3-char abbreviations for senses-line passives — `PP/PI/IND` (IT), `PP/INS/INV` (EN), `WN/EIN/NCH` (DE; NCH matches SKILL_NAMES.inv.de 'Nachforschung' per UI-SPEC §4 executor-discretion clause). **Half-prof (0.5) rounds UP to ◉** per UI-SPEC §3 (rationale: half-prof still adds the proficiency bonus to the modifier total, so "proficient-ish" is more honest than "untrained" for the glyph; the modifier value already reflects the bonus).
+- [Phase 17 D-Area-4]: Consumer-snapshot identity for INV-1 fixtures inherits Phase 16 D-3 pattern with one refinement. **IT fixtures** (`sheet.main.2014.it.txt` + `sheet.main.2024.it.txt` + `sheet.skills.it.txt`) consume `snapshot2014/snapshot2024` from `character-sheet-tab-renderers.test.ts` (Thorin canonical: Atletica +6 prof, Animal Handling +4 prof, Medicine +4 prof, ... + prc/ins/inv passives 11/11/14). **EN/DE main fixtures** (`sheet.main.2014.en.txt` + `sheet.main.2014.de.txt`) consume `BASE_CHARACTER_SNAPSHOT` from `05-panel-integration-smoke.test.ts` (zero-default abilities + zero-default skills, tempHp:0). **`sheet.skills.en.txt`** regenerated from BASE consumer (zero-default; was Thorin-shaped pre-Phase-17 because renderSkillsTab ignored its input). The plan-anticipated new `CSTR-FIX-SKILLS-EN` test was DEFERRED — the existing `PSM-FIX-EN-SKILLS` round-trip already covers EN-skills coverage with BASE consumer. INV-1 width invariant: every row × 66 code-points verified across all 6 fixtures.
+- [Phase 17]: 17 downstream test files extended with `skills` field (16 files + character-sheet-tab-renderers.test.ts; 23 literals total). Inline `ability: '<key>' as const, proficient: 0 as const` narrowing applied via one-shot script to satisfy the closed-enum schema without runtime cost. No shared test-utility helper introduced per Phase 16 D-3 precedent (each literal stays self-contained). The 3 foundry-mcp test files flagged in the plan (server-factory, mcp-inspector-smoke, register-tools) needed no extension — they use `capabilities: {}` (MCP client), not `abilities: {` (CharacterSnapshot).
+- [Phase 17]: 5 INV-1 fixtures regenerated via one-shot tsx script (Phase 5 / Phase 16 precedent — fixtures byte-generated from real renderers, never hand-authored). Script kept under `/tmp`, not committed. `sheet.skills.it.txt` byte-identical post-swap (zero diff vs HEAD~3) — proves the dynamic-lookup contract preserves the IT fixture verbatim.
 
 ### Pending Todos
 
