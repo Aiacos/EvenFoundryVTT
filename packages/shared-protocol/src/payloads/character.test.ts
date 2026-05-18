@@ -25,20 +25,41 @@
  *   - CS-AB-6  z.object forward-compat: extra sibling on per-ability object accepted
  *   - CS-AB-7  type inference: `const a: Abilities = {...}` compiles + roundtrips
  *
+ * Phase 17 Plan 17-01 — `skills` atomic schema extension (CS-SK-1..8):
+ *
+ *   - CS-SK-1  happy-path: 18-keyed `skills` object parses with Thorin canonical spread
+ *   - CS-SK-2  REQUIRED (not .optional()): missing `skills` field rejected (mirrors CS-AB-2 / CS-DS-6)
+ *   - CS-SK-3  invalid ability enum: `acr.ability = 'xyz'` rejected (closed AbilityKey enum)
+ *   - CS-SK-4  invalid proficient value: `acr.proficient = 1.5` rejected (closed 0|0.5|1|2 enum)
+ *   - CS-SK-5  passive boundary: passive=0 accepted; passive=-1 rejected
+ *   - CS-SK-6  z.object forward-compat: extra sibling on per-skill object accepted
+ *   - CS-SK-7  type inference: `Skills` / `SkillKey` types compile + roundtrip
+ *   - CS-SK-8  closed 18-key enum: missing a skill key (e.g. `sur`) rejected (SkillsSchema strictObject)
+ *
  * @see ./character.ts (schema definitions)
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-06-PLAN.md Task 1
  * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-01-PLAN.md
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-01-PLAN.md
  */
 import { describe, expect, it } from 'vitest';
 import {
+  ABILITY_KEYS,
   type Abilities,
   AbilitiesSchema,
+  type AbilityKey,
+  AbilityKeySchema,
   AbilityScoreSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
   DeathSavesSchema,
   InventoryItemSchema,
+  SKILL_KEYS,
+  type Skill,
+  type SkillKey,
+  SkillSchema,
+  type Skills,
+  SkillsSchema,
   SpellbookSchema,
   SpellEntrySchema,
   SpellSlotSchema,
@@ -59,9 +80,42 @@ const VALID_ABILITIES: Abilities = {
   cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 10 },
 };
 
+/** Canonical Thorin Oakenshield 18-skill spread (Specs.md §7.5.3;
+ *  CONTEXT §Specifics; 17-01-PLAN.md `<interfaces>` block).
+ *
+ *  Mirrors the renderer's existing DEFAULT_SKILLS hardcoded values byte-for-byte
+ *  so Plan 17-03's `DEFAULT_SKILLS → snapshot.skills` swap preserves
+ *  `sheet.skills.it.txt` byte-identity (INV-1 invariant).
+ *
+ *  Passive Investigation = 14 is intentional even though Indagare `total` = +0
+ *  (Thorin INT 18 = +4 mod; the DEFAULT_SKILLS array ships `inv.total=0` un-prof
+ *  while passive=14 reflects independent dnd5e prep-time computation). The
+ *  schema does NOT cross-validate `total` vs `passive` — they are independent
+ *  integer slots; reader passes both verbatim. */
+const VALID_SKILLS: Skills = {
+  acr: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+  ani: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+  arc: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+  ath: { total: 6, ability: 'str', proficient: 1, passive: 16 },
+  dec: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+  his: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+  ins: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+  itm: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+  inv: { total: 0, ability: 'int', proficient: 0, passive: 14 },
+  med: { total: 4, ability: 'wis', proficient: 1, passive: 14 },
+  nat: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+  prc: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+  prf: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+  per: { total: 1, ability: 'cha', proficient: 0, passive: 11 },
+  rel: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+  slt: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+  ste: { total: 2, ability: 'dex', proficient: 0, passive: 12 },
+  sur: { total: 1, ability: 'wis', proficient: 0, passive: 11 },
+};
+
 /** Canonical valid snapshot used as the test base; schema-extension fields
- *  (`death`, `world`, `inventory`, `spells`, `abilities`) are included with
- *  defaults and overridden per case. */
+ *  (`death`, `world`, `inventory`, `spells`, `abilities`, `skills`) are
+ *  included with defaults and overridden per case. */
 const VALID_SNAPSHOT: CharacterSnapshot = {
   actorId: 'pc-aiacos',
   name: 'Aiacos',
@@ -77,6 +131,7 @@ const VALID_SNAPSHOT: CharacterSnapshot = {
   inventory: [],
   spells: { slots: [], spells: [] },
   abilities: VALID_ABILITIES,
+  skills: VALID_SKILLS,
 };
 
 describe('CharacterSnapshotSchema — death-saves extension (CS-DS)', () => {
@@ -558,6 +613,170 @@ describe('CharacterSnapshotSchema — abilities extension (CS-AB)', () => {
     // Missing any key must reject (no defaults; reader's job to emit them).
     const { cha: _cha, ...incomplete } = VALID_ABILITIES;
     const result = AbilitiesSchema.safeParse(incomplete);
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 17 Plan 17-01 — skills atomic extension (CS-SK-1..8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CharacterSnapshotSchema — skills extension (CS-SK)', () => {
+  it('CS-SK-1: parses a snapshot carrying all 18 skill sub-objects (happy path)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: VALID_SKILLS,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Spot-check the Thorin canonical: Atletica STR-based, proficient, +6
+      expect(result.data.skills.ath.total).toBe(6);
+      expect(result.data.skills.ath.ability).toBe('str');
+      expect(result.data.skills.ath.proficient).toBe(1);
+      expect(result.data.skills.ath.passive).toBe(16);
+      // Spot-check passive divergence from total: Indagare total=0, passive=14
+      expect(result.data.skills.inv.total).toBe(0);
+      expect(result.data.skills.inv.passive).toBe(14);
+      // Spot-check senses-line trio: Percezione passive=11, Intuizione passive=11
+      expect(result.data.skills.prc.passive).toBe(11);
+      expect(result.data.skills.ins.passive).toBe(11);
+    }
+  });
+
+  it('CS-SK-2: REQUIRED field — snapshot without `skills` is rejected (NOT .optional())', () => {
+    // Pitfall 3 mirror of CS-AB-2 / CS-DS-6: no .optional() drift window;
+    // the field lands required end-to-end in this atomic phase.
+    const { skills: _skills, ...snapshotWithoutSkills } = VALID_SNAPSHOT;
+    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutSkills);
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-SK-3: invalid ability enum — `acr.ability="xyz"` rejected', () => {
+    // AbilityKey is a closed enum re-using the 6 dnd5e ability codes from
+    // AbilitiesSchema. Renderer (Plan 17-03) groups skills by ability column
+    // and indexes a 6-row map; any non-canonical ability key MUST reject.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: {
+        ...VALID_SKILLS,
+        acr: {
+          total: 2,
+          ability: 'xyz' as unknown as AbilityKey,
+          proficient: 0,
+          passive: 12,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-SK-4: invalid proficient value — `acr.proficient=1.5` rejected (closed 0|0.5|1|2 enum)', () => {
+    // proficient is a closed numeric enum 0|0.5|1|2 (NOT z.number() with refine,
+    // NOT boolean — Skills tab needs the full glyph spectrum ○/◉/★).
+    // Any other numeric (including 1.5, 3, 0.25) MUST reject.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: {
+        ...VALID_SKILLS,
+        acr: {
+          total: 2,
+          ability: 'dex',
+          // dnd5e never emits 1.5; this catches malformed payloads / drift.
+          proficient: 1.5 as unknown as 0 | 0.5 | 1 | 2,
+          passive: 12,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-SK-5: passive boundary — passive=0 accepted; passive=-1 rejected', () => {
+    // Passive score is z.number().int().nonnegative(). dnd5e passive floor in
+    // canonical play is 10 + min mod (rarely below 5), but the schema accepts
+    // 0 to avoid rejecting heavily debuffed actors (e.g. blinded + frightened
+    // edge cases). Negatives still reject — that's data corruption.
+
+    const zeroPassive = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: {
+        ...VALID_SKILLS,
+        acr: { total: 2, ability: 'dex', proficient: 0, passive: 0 },
+      },
+    });
+    expect(zeroPassive.success).toBe(true);
+
+    const negativePassive = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: {
+        ...VALID_SKILLS,
+        acr: { total: 2, ability: 'dex', proficient: 0, passive: -1 },
+      },
+    });
+    expect(negativePassive.success).toBe(false);
+  });
+
+  it('CS-SK-6: SkillSchema is z.object (forward-compat) — extra sibling field accepted', () => {
+    // Per-skill sub-objects use z.object (NOT z.strictObject) so future phases
+    // may add `bonus` / `expertise` / `advantage` siblings without breaking
+    // Phase 17 consumers. Counterpart to CS-AB-6.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      skills: {
+        ...VALID_SKILLS,
+        acr: {
+          total: 2,
+          ability: 'dex',
+          proficient: 0,
+          passive: 12,
+          // future Phase field — must be accepted by z.object forward-compat
+          bonus: 2,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CS-SK-7: SkillsSchema + SkillSchema export + roundtrip + type inference (incl. SkillKey)', () => {
+    // Belt-and-suspenders: compile-time + runtime sanity for the new public API.
+    const s: Skills = VALID_SKILLS;
+    const result = SkillsSchema.safeParse(s);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ath.total).toBe(6);
+      expect(result.data.inv.passive).toBe(14);
+    }
+
+    // SkillSchema standalone roundtrip
+    const single: Skill = { total: 1, ability: 'wis', proficient: 0, passive: 11 };
+    const singleResult = SkillSchema.safeParse(single);
+    expect(singleResult.success).toBe(true);
+
+    // SkillKey compile-time check — must accept all 18 canonical codes
+    const k: SkillKey = 'acr';
+    expect(k).toBe('acr');
+
+    // SKILL_KEYS tuple — exactly 18 elements in canonical order
+    expect(SKILL_KEYS).toHaveLength(18);
+    expect(SKILL_KEYS[0]).toBe('acr');
+    expect(SKILL_KEYS[SKILL_KEYS.length - 1]).toBe('sur');
+
+    // ABILITY_KEYS tuple — exactly 6 elements; AbilityKey type re-exported
+    expect(ABILITY_KEYS).toEqual(['str', 'dex', 'con', 'int', 'wis', 'cha']);
+    const a: AbilityKey = 'str';
+    expect(a).toBe('str');
+
+    // AbilityKeySchema standalone
+    expect(AbilityKeySchema.safeParse('str').success).toBe(true);
+    expect(AbilityKeySchema.safeParse('xyz').success).toBe(false);
+  });
+
+  it('CS-SK-8: SkillsSchema rejects missing skill key (closed 18-key enum)', () => {
+    // SkillsSchema is z.strictObject — the 18 dnd5e skill codes are frozen.
+    // Missing any key must reject (no defaults at schema level; reader is
+    // responsible for emitting defensive defaults for fresh actors).
+    // Counterpart to CS-AB-7b.
+    const { sur: _sur, ...incomplete } = VALID_SKILLS;
+    const result = SkillsSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 });
