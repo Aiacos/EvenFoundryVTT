@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0a0f0a" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Major+Mono+Display&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Major+Mono+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
 :root {
   --p0: #050a05;        /* deepest */
@@ -27,19 +27,25 @@
   --bezel-grad: linear-gradient(180deg, var(--p2), var(--p1));
   --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
   --display: 'Major Mono Display', var(--mono);
+  --body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   background: var(--p1);
-  color: var(--g3);
-  font-family: var(--mono);
-  font-size: 15px;
-  line-height: 1.55;
+  color: var(--g4);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
   scroll-behavior: smooth;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+p { color: var(--g4); }
 
 /* CRT scanline overlay */
 body::before {
@@ -52,7 +58,7 @@ body::before {
     180deg,
     rgba(0,0,0,0.0) 0px,
     rgba(0,0,0,0.0) 2px,
-    rgba(0,0,0,0.18) 3px,
+    rgba(0,0,0,0.08) 3px,
     rgba(0,0,0,0.0) 4px
   );
   mix-blend-mode: multiply;
@@ -81,10 +87,11 @@ a:hover { color: var(--g4); border-color: var(--g3); text-shadow: 0 0 8px var(--
   position: relative;
 }
 
-h1, h2, h3, h4 { font-family: var(--display); font-weight: 400; letter-spacing: 0.04em; color: var(--g3); text-shadow: 0 0 12px rgba(109,213,109,0.4); }
+h1, h2 { font-family: var(--display); font-weight: 400; letter-spacing: 0.04em; color: var(--g3); text-shadow: 0 0 12px rgba(109,213,109,0.4); }
+h3, h4 { font-family: var(--mono); font-weight: 500; letter-spacing: 0.04em; color: var(--g3); text-shadow: 0 0 8px rgba(109,213,109,0.25); }
 h2 { font-size: 1.75rem; margin: 0 0 1rem; }
-h3 { font-size: 1.15rem; margin: 0 0 .75rem; color: var(--g2); }
-h4 { font-size: 0.95rem; color: var(--g1); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .12em; }
+h3 { font-size: 1.15rem; margin: 0 0 .75rem; color: var(--g3); }
+h4 { font-size: 0.95rem; color: var(--g2); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .12em; }
 
 p { margin-bottom: 0.85rem; color: var(--g4); }
 
@@ -131,9 +138,9 @@ nav.topnav {
   overflow-x: auto;
   letter-spacing: 0;
 }
-.hero .tagline { font-size: 1.15rem; color: var(--g4); margin-bottom: 0.5rem; min-height: 2em; }
+.hero .tagline { font-family: var(--mono); font-size: 1.15rem; color: var(--g4); margin-bottom: 0.5rem; min-height: 2em; }
 .hero .tagline .typed::after { content: '_'; animation: blink 1s infinite; color: var(--g2); margin-left: 2px; }
-.hero .subtagline { color: var(--g1); font-size: 0.95rem; margin-bottom: 2rem; max-width: 720px; }
+.hero .subtagline { color: var(--g4); font-size: 1.02rem; line-height: 1.6; margin-bottom: 2rem; max-width: 720px; }
 .hero .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin: 2rem 0; }
 .hero .stats .stat {
   border: 1px solid var(--g0);
@@ -142,8 +149,8 @@ nav.topnav {
   position: relative;
   overflow: hidden;
 }
-.hero .stats .stat .num { font-size: 1.45rem; color: var(--g3); display: block; text-shadow: 0 0 8px var(--g2); }
-.hero .stats .stat .lab { font-size: 0.72rem; color: var(--g1); text-transform: uppercase; letter-spacing: .12em; }
+.hero .stats .stat .num { font-family: var(--mono); font-size: 1.45rem; color: var(--g3); display: block; text-shadow: 0 0 8px var(--g2); }
+.hero .stats .stat .lab { font-family: var(--mono); font-size: 0.72rem; color: var(--g2); text-transform: uppercase; letter-spacing: .12em; }
 .hero .stats .stat::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--g2), transparent); animation: scan 4s linear infinite; }
 @keyframes scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(60px); opacity: 0; } }
 
@@ -194,7 +201,7 @@ section.show .section-tag {
 .pillars .pillar:hover { border-color: var(--g2); transform: translateY(-3px); box-shadow: var(--shadow-glow); }
 .pillars .pillar .icon { font-family: var(--mono); color: var(--g2); font-size: 1.6rem; margin-bottom: .5rem; }
 .pillars .pillar h3 { font-size: 1rem; margin-bottom: .6rem; }
-.pillars .pillar p { font-size: 0.85rem; color: var(--g1); margin: 0; }
+.pillars .pillar p { font-size: 0.92rem; color: var(--g4); margin: 0; line-height: 1.55; }
 
 /* Hardware grid */
 .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem; }
@@ -202,12 +209,12 @@ section.show .section-tag {
 .hw-card { border: 1px solid var(--g0); background: var(--p2); padding: 1.5rem; }
 .hw-card .device { display: flex; justify-content: center; padding: 1rem 0 1.5rem; min-height: 220px; align-items: center; }
 .hw-card .device svg { max-width: 100%; height: auto; }
-.hw-card table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.hw-card table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .hw-card table tr { border-bottom: 1px dotted var(--g0); }
 .hw-card table tr:last-child { border-bottom: 0; }
-.hw-card table th { text-align: left; color: var(--g1); padding: .5rem 0; font-weight: 500; width: 40%; vertical-align: top; }
-.hw-card table td { color: var(--g3); padding: .5rem 0; }
-.hw-card .verified { font-size: 0.72rem; color: var(--g2); margin-top: 1rem; }
+.hw-card table th { font-family: var(--mono); text-align: left; color: var(--g2); padding: .55rem 0; font-weight: 500; width: 40%; vertical-align: top; }
+.hw-card table td { color: var(--g4); padding: .55rem 0; }
+.hw-card .verified { font-family: var(--mono); font-size: 0.78rem; color: var(--g2); margin-top: 1rem; }
 
 /* HUD simulator */
 .hud-sim {
@@ -292,9 +299,9 @@ section.show .section-tag {
   transition: all .3s;
 }
 .pipe-step:hover { border-color: var(--g2); transform: translateY(-2px); box-shadow: var(--shadow-glow); }
-.pipe-step .num { color: var(--g0); font-family: var(--display); font-size: 0.95rem; }
-.pipe-step .nm { color: var(--g3); display: block; margin: .35rem 0 .25rem; font-weight: 500; }
-.pipe-step .det { color: var(--g1); font-size: 0.7rem; }
+.pipe-step .num { color: var(--g1); font-family: var(--display); font-size: 0.95rem; }
+.pipe-step .nm { font-family: var(--mono); color: var(--g3); display: block; margin: .35rem 0 .25rem; font-weight: 500; }
+.pipe-step .det { color: var(--g2); font-size: 0.78rem; line-height: 1.45; }
 
 /* Layers chart */
 .fps-chart { background: var(--p2); border: 1px solid var(--g0); padding: 1.5rem; margin-top: 1.5rem; }
@@ -306,8 +313,8 @@ section.show .section-tag {
 .fps-chart .layer-row { display: grid; grid-template-columns: 1fr 80px; gap: 1rem; align-items: center; margin-bottom: 1rem; }
 .fps-chart .layer-row .info { display: grid; grid-template-columns: 60px 1fr; gap: .8rem; align-items: center; }
 .fps-chart .layer-row .info .lbl { color: var(--g2); font-weight: 700; font-size: 0.85rem; text-align: center; }
-.fps-chart .layer-row .info .desc strong { color: var(--g4); font-size: 0.85rem; }
-.fps-chart .layer-row .info .desc small { color: var(--g1); font-size: 0.72rem; display: block; }
+.fps-chart .layer-row .info .desc strong { color: var(--g4); font-size: 0.92rem; }
+.fps-chart .layer-row .info .desc small { color: var(--g2); font-size: 0.78rem; display: block; line-height: 1.45; }
 .fps-chart .layer-row .bar-track { background: var(--p1); height: 26px; border: 1px solid var(--g0); position: relative; overflow: hidden; }
 .fps-chart .layer-row .bar-fill {
   height: 100%;
@@ -344,11 +351,11 @@ section.show .section-tag {
 .timeline .phase.mvp::before { border-color: var(--g2); box-shadow: 0 0 8px var(--g2); }
 .timeline .phase.v2::before { border-color: var(--g0); border-style: dashed; }
 .timeline .phase .head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
-.timeline .phase .head .ph { font-family: var(--display); color: var(--g2); font-size: 1.15rem; }
-.timeline .phase .head .wks { font-size: 0.75rem; color: var(--g1); }
-.timeline .phase .head .v2tag { font-size: 0.7rem; color: var(--warn); border: 1px solid var(--warn); padding: 1px 6px; }
-.timeline .phase .ttl { color: var(--g4); font-size: 0.95rem; margin: .25rem 0; }
-.timeline .phase .det { color: var(--g1); font-size: 0.82rem; }
+.timeline .phase .head .ph { font-family: var(--mono); color: var(--g2); font-size: 1.05rem; font-weight: 600; letter-spacing: 0.04em; }
+.timeline .phase .head .wks { font-family: var(--mono); font-size: 0.8rem; color: var(--g2); }
+.timeline .phase .head .v2tag { font-family: var(--mono); font-size: 0.72rem; color: var(--warn); border: 1px solid var(--warn); padding: 1px 6px; letter-spacing: 0.06em; }
+.timeline .phase .ttl { color: var(--g4); font-size: 1rem; margin: .25rem 0; font-weight: 500; }
+.timeline .phase .det { color: var(--g4); font-size: 0.9rem; line-height: 1.5; }
 .timeline .divider {
   border-top: 1px dashed var(--g0);
   margin: 1.2rem 0 1.5rem -1.5rem;
@@ -369,17 +376,18 @@ section.show .section-tag {
   position: relative;
   font-size: 0.82rem;
 }
-.voice-flow .vstep .num { color: var(--g1); font-family: var(--display); font-size: 0.85rem; letter-spacing: .14em; }
-.voice-flow .vstep .what { color: var(--g3); margin: .3rem 0; font-weight: 500; }
-.voice-flow .vstep .lat { font-size: 0.7rem; color: var(--g1); }
+.voice-flow .vstep .num { color: var(--g2); font-family: var(--mono); font-size: 0.85rem; letter-spacing: .14em; font-weight: 600; }
+.voice-flow .vstep .what { font-family: var(--mono); color: var(--g4); margin: .3rem 0; font-weight: 500; line-height: 1.5; }
+.voice-flow .vstep .lat { font-family: var(--mono); font-size: 0.75rem; color: var(--g2); }
 .voice-flow .vstep code { font-size: 0.72rem; }
 
 /* Tech stack chips */
 .tech-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
 .tech-chips .chip {
+  font-family: var(--mono);
   border: 1px solid var(--g0);
   padding: .35rem .85rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--g3);
   background: var(--p2);
   transition: all .15s;
@@ -391,9 +399,11 @@ footer.show {
   border-top: 1px solid var(--g0);
   padding: 3rem 0;
   text-align: center;
-  font-size: 0.85rem;
-  color: var(--g1);
+  font-size: 0.92rem;
+  color: var(--g4);
+  line-height: 1.6;
 }
+footer.show p { color: var(--g4); }
 footer.show .ascii-foot {
   font-family: var(--mono);
   white-space: pre;
@@ -1037,7 +1047,7 @@ footer.show a { color: var(--g2); border: none; }
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.6rem;font-size:0.72rem;color:var(--g0);">All 17 phases (0 → 15) software-complete (v0.9.11 MVP + v0.9.12 Quick Wins both shipped 2026-05-17); hardware UAT pending Even Hub developer access. Five rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing, plus a v0.9.12 INV-2 spot-check (2026-05-14) re-verifying the image-API hardware constraint (drift NEUTRO) and a v0.9.12 Phase 15 INV-2 re-check (2026-05-17) re-verifying the EvenAI native API closure and the Deepgram <code>keyterm</code> capability across 6 canonical Even Realities domains (status quo confirmed). Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Plugin code is server-hosted; the Even Realities App loads it in a phone WebView and exposes a per-plugin settings UI for Foundry connection bootstrap (URL + QR-paired token). New z=0.5 Idle Content Infill layer (§7.4c) fills previously-empty raster-mode rows without violating the 4-image hardware budget. Phase 14 ratified the z=0.5 contract end-to-end on 2026-05-17 (INV-1 fixtures · cross-state column equality · LMT-DD-07 race coverage). Phase 15 closed end-to-end on 2026-05-17 with Deepgram Keyterm Prompting + Entity-Pack Integration: Nova-3 Multilingual session URL now ships <code>keyterm=</code> params from the union of 70 static SRD spells (× IT + EN) and the live Foundry-derived entity-pack (items / weapons / armor / NPCs / monsters), documented +625% entity-recall lift on esoteric D&amp;D terms (Bigby's Hand, Counterspell, Vrock), cap <code>DEEPGRAM_KEYTERM_LIMIT = 100</code> with entity-pack truncated first on overflow, hot-update via existing <code>/internal/delta</code> channel (debounce 250ms + drain-then-restart mutex). VOICE-06..09 software-complete; socketlib <code>registerComplexHandler</code> count stays exactly 17 (CI Gate 8 preserved); Phase 12 baseline byte-for-byte when <code>keytermProvider</code> absent; workspace test suite 2626 / 2626 green (+2 net post-close from WR-02 DGFM-07/08 race-coverage hardening).</p>
+    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;">All 17 phases (0 → 15) software-complete (v0.9.11 MVP + v0.9.12 Quick Wins both shipped 2026-05-17); hardware UAT pending Even Hub developer access. Five rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing, plus a v0.9.12 INV-2 spot-check (2026-05-14) re-verifying the image-API hardware constraint (drift NEUTRO) and a v0.9.12 Phase 15 INV-2 re-check (2026-05-17) re-verifying the EvenAI native API closure and the Deepgram <code>keyterm</code> capability across 6 canonical Even Realities domains (status quo confirmed). Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Plugin code is server-hosted; the Even Realities App loads it in a phone WebView and exposes a per-plugin settings UI for Foundry connection bootstrap (URL + QR-paired token). New z=0.5 Idle Content Infill layer (§7.4c) fills previously-empty raster-mode rows without violating the 4-image hardware budget. Phase 14 ratified the z=0.5 contract end-to-end on 2026-05-17 (INV-1 fixtures · cross-state column equality · LMT-DD-07 race coverage). Phase 15 closed end-to-end on 2026-05-17 with Deepgram Keyterm Prompting + Entity-Pack Integration: Nova-3 Multilingual session URL now ships <code>keyterm=</code> params from the union of 70 static SRD spells (× IT + EN) and the live Foundry-derived entity-pack (items / weapons / armor / NPCs / monsters), documented +625% entity-recall lift on esoteric D&amp;D terms (Bigby's Hand, Counterspell, Vrock), cap <code>DEEPGRAM_KEYTERM_LIMIT = 100</code> with entity-pack truncated first on overflow, hot-update via existing <code>/internal/delta</code> channel (debounce 250ms + drain-then-restart mutex). VOICE-06..09 software-complete; socketlib <code>registerComplexHandler</code> count stays exactly 17 (CI Gate 8 preserved); Phase 12 baseline byte-for-byte when <code>keytermProvider</code> absent; workspace test suite 2626 / 2626 green (+2 net post-close from WR-02 DGFM-07/08 race-coverage hardening).</p>
   </footer>
 
 </div><!-- /bezel -->
