@@ -36,6 +36,10 @@ export {
 // ─── Payload schemas (Phase 2 Plan 05 — reader API) ───────────────────────────
 
 export {
+  type Abilities,
+  AbilitiesSchema,
+  type AbilityScore,
+  AbilityScoreSchema,
   CHARACTER_DELTA_TYPE,
   type CharacterSnapshot,
   CharacterSnapshotSchema,

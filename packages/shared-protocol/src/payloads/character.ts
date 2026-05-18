@@ -201,6 +201,93 @@ export const SpellbookSchema = z.object({
 export type Spellbook = z.infer<typeof SpellbookSchema>;
 
 /**
+ * Per-ability sub-object — dnd5e 5.x `actor.system.abilities.<k>` prep-time
+ * computed projection (Phase 16 Plan 16-01 atomic extension; REQ SHEET-05).
+ *
+ * Fields are all plain integers (the reader passes through dnd5e's computed
+ * totals; we never re-derive `mod` from `value` ourselves so that custom
+ * modifiers from feats/race/items are preserved).
+ *
+ * - `value`      — Raw ability score, 0..30 (standard human 8..18; magical
+ *                  enhancements may push to 22+; divine score cap 30).
+ * - `mod`        — Ability modifier (`floor((value-10)/2)`); accepts negative
+ *                  values (CHA 8 → mod -1; CHA 6 → mod -2).
+ * - `save`       — Saving throw modifier (dnd5e prep-time computed total from
+ *                  `actor.system.abilities.<k>.save.value`); equals `mod` +
+ *                  prof bonus when `proficient === true`, else `mod` alone.
+ *                  Negative allowed (CHA 8 not-prof → save -1).
+ * - `proficient` — Strict boolean. dnd5e raw value is `0 | 0.5 | 1 | 2` (none/
+ *                  half/full/expertise); reader (Plan 16-02) coerces to boolean
+ *                  for Main tab consumption. Phase 17 will introduce the full
+ *                  numeric for Skills tab glyph spectrum (○/◉/◈).
+ * - `dc`         — Spell save DC for this ability (e.g. WIS-based caster DC).
+ *                  Primes Spells tab DC binding without a follow-up schema bump.
+ *                  Non-spellcaster baseline emits `dc: 10`; the reader computes
+ *                  `8 + prof + mod` for caster abilities.
+ *
+ * Uses `z.object` (NOT `z.strictObject`) for forward-compat per CONTEXT
+ * D-Area-1: Phase 17 may add half-prof / expertise fields without breaking
+ * Phase 16 consumers that parse existing payloads.
+ *
+ * Required as a sub-field of {@link AbilitiesSchema} — Pitfall 3 mitigation
+ * (Phase 4b atomic-commit pattern): no `.optional()` drift window.
+ *
+ * @see Specs.md §7.5.2 (Main tab mockup — ability scores + saves)
+ * @see https://github.com/foundryvtt/dnd5e — `actor.system.abilities.<k>`
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 1
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-01-PLAN.md Task 2
+ */
+export const AbilityScoreSchema = z.object({
+  /** Raw ability score (0..30 — 0 = incapacitated, 30 = divine cap). */
+  value: z.number().int().min(0).max(30),
+  /** Ability modifier `floor((value-10)/2)` — negative allowed (low scores). */
+  mod: z.number().int(),
+  /** Saving throw modifier (dnd5e prep-time computed total) — negative allowed. */
+  save: z.number().int(),
+  /** Whether the actor is proficient on this ability's save (strict boolean —
+   *  reader (Plan 16-02) coerces dnd5e `0|0.5|1|2` numeric → boolean). */
+  proficient: z.boolean(),
+  /** Spell save DC for this ability (≥ 0; non-caster baseline = 10). */
+  dc: z.number().int().min(0),
+});
+
+export type AbilityScore = z.infer<typeof AbilityScoreSchema>;
+
+/**
+ * Container for all 6 D&D ability scores (Phase 16 Plan 16-01).
+ *
+ * Keyed by canonical ability codes (`str/dex/con/int/wis/cha`); the 6 keys are
+ * frozen by D&D 5e rules — no other ability codes exist in canonical play.
+ * Future homebrew/setting extensions (e.g. "Sanity") are non-canonical and
+ * out of scope for this schema.
+ *
+ * Uses `z.strictObject` (not `z.object`) because the 6 keys are a closed
+ * enumeration: any unknown ability key on the wire indicates either drift or
+ * a malformed payload and MUST reject.
+ *
+ * Per-ability sub-objects use `z.object` for forward-compat — see
+ * {@link AbilityScoreSchema} JSDoc.
+ *
+ * @see .planning/phases/EVF-16-sheet-ability-scores-main-tab-data-wiring/16-CONTEXT.md §Area 1
+ */
+export const AbilitiesSchema = z.strictObject({
+  /** Strength — physical might, melee attacks, athletics, carrying capacity. */
+  str: AbilityScoreSchema,
+  /** Dexterity — agility, ranged attacks, AC (light/medium), initiative. */
+  dex: AbilityScoreSchema,
+  /** Constitution — endurance, HP per level, concentration saves. */
+  con: AbilityScoreSchema,
+  /** Intelligence — reasoning, lore, Wizard spellcasting. */
+  int: AbilityScoreSchema,
+  /** Wisdom — perception, intuition, Cleric/Druid/Ranger spellcasting. */
+  wis: AbilityScoreSchema,
+  /** Charisma — force of personality, social, Bard/Sorcerer/Warlock/Paladin casting. */
+  cha: AbilityScoreSchema,
+});
+
+export type Abilities = z.infer<typeof AbilitiesSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -254,6 +341,17 @@ export const CharacterSnapshotSchema = z.strictObject({
    * Non-casters have `{ slots: [], spells: [] }`.
    */
   spells: SpellbookSchema,
+  /**
+   * Character ability scores (Phase 16 Plan 16-01 atomic extension; REQ SHEET-05).
+   * REQUIRED — atomic commit closes the .optional() drift window (Pitfall 3,
+   * Phase 4b precedent). 6-key container `{str,dex,con,int,wis,cha}` each
+   * carrying `{value, mod, save, proficient, dc}` per {@link AbilityScoreSchema}.
+   *
+   * Reader (Plan 16-02) emits defensive defaults for fresh actors lacking
+   * `system.abilities`. Renderer (Plan 16-03) replaces `dash` placeholders on
+   * the Main tab with formatted values per UI-SPEC §3.
+   */
+  abilities: AbilitiesSchema,
   /**
    * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
    *
