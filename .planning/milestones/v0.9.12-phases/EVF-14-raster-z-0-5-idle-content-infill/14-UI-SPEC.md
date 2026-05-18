@@ -50,10 +50,12 @@ The G2 has no CSS pixel spacing model. The "spacing scale" is **character cells*
 | row-gap | 0 cells | layered text containers stack with no inter-row blank — empty rows are explicit cells of `' '` |
 | frame | 1 char | box-drawing border on every side (left/right `║`, top/bottom `═`) |
 | left-margin (z=0.5) | 3 chars | `║   ` — left frame + 3 spaces, matching z=0 raster-tiles indent (Specs.md §7.4 row 5 `║   ┌─[ tile 1 …`) |
-| right-stop (z=0.5) | col 70 | the right edge of all z=0.5 content; col 71 is the central frame `║` separating map-area from Status HUD |
-| content-width (z=0.5 strip) | **66 cells** (col 4 → col 69 inclusive) | the usable interior of one z=0.5 strip after frame + left-margin + right-stop |
+| right-stop (z=0.5) | col 67 | the right edge of all z=0.5 content; col 68 is the central frame `║` separating map-area from Status HUD |
+| content-width (z=0.5 strip) | **64 cells** (col 4 → col 67 inclusive) | the usable interior of one z=0.5 strip after frame + left-margin + right-stop |
 
-**Spacing exceptions:** none. Every char position is load-bearing per INV-1 (Specs.md §7.1a sub-rules 1-8). Frame corners at col 0, col 71, col 95 must align across all states (raster-idle / overlay-open / glyph-idle).
+> **Note (Phase 18, 2026-05-18):** Central divider `║` sits at col 68 (not col 71 as some older mockups show). Frame col 68 is the right edge of the z=0.5 content window; Status HUD owns cols 69..94 with frame col 95. Reconciled from fixture bytes (`packages/shared-render/src/fixtures/glyph-scene.raster-idle*.txt`) and the `z05-state-machine-fixtures.test.ts:21-26` header comment that documents the same correction.
+
+**Spacing exceptions:** none. Every char position is load-bearing per INV-1 (Specs.md §7.1a sub-rules 1-8). Frame corners at col 0, col 68, col 95 must align across all states (raster-idle / overlay-open / glyph-idle).
 
 ---
 
@@ -327,11 +329,13 @@ Per §7.16 width-budget table, Phase 14 locks:
 
 | String | IT width | EN width | DE width (stress) | Budget cap | Pass? |
 |--------|----------|----------|-------------------|-----------|-------|
-| Combat-log canonical sample | 53 cells | 53 cells | 56 cells (est.) | ≤ 66 | ✓ |
-| Label-separator (constant) | 40 cells | 40 cells | 40 cells | = 40 | ✓ |
-| Stats strip canonical sample | 60 cells | 60 cells | 60 cells (ASCII keywords) | = 60 | ✓ |
-| Stats strip with `—` missing fields | varies | varies | varies | = 60 (padded) | ✓ — `_formatStatsStrip()` pads to STATS_STRIP_WIDTH |
-| `─── z=0.5 idle infill ───` (literal — non-localized) | 40 | 40 | 40 | = 40 | ✓ — literal in code |
+| Combat-log canonical sample | 53 cells | 53 cells | 56 cells (est.) | ≤ 64 | ✓ |
+| Label-separator (literal) | **52 cells (raster State A); 40 cells (glyph State C)** | 52 / 40 | 52 / 40 | runtime literal | ✓ — `LABEL_SEPARATOR_CONTENT` in `packages/g2-app/src/status-hud/idle-infill-layer.ts` |
+| Stats strip canonical sample | **54 cells (raster State A); 51 cells (glyph State C)** | 54 / 51 | 54 / 51 (ASCII keywords) | runtime literal | ✓ — runtime literal emitted by `_formatStatsStrip()` / `STATS_STRIP_WIDTH` |
+| Stats strip with `—` missing fields | varies | varies | varies | runtime literal (padded) | ✓ — `_formatStatsStrip()` pads to STATS_STRIP_WIDTH |
+| `─── z=0.5 idle infill ───` (literal — non-localized) | 40 (glyph) / 52 (raster) | 40 / 52 | 40 / 52 | runtime literal | ✓ — literal in code |
+
+> **Note (Phase 18, 2026-05-18):** The spec width-budget reflects what `idle-infill-layer.ts` constants emit; the 40/60 figures cited in earlier drafts were aspirational rounding and never matched the shipped fixtures. This row re-derived from runtime literals 2026-05-18 (option (a) doc-fix per `14-UI-REVIEW.md` Priority Fix 1; option (b) re-padding the State A fixtures was rejected as higher-risk). Per Phase 14 UI-REVIEW Pillar 6: A_en/A_it ship label-separator at 52 cells (28 trailing dashes vs spec's aspirational 16) and stats strip at 54 cells (`raster 400×200 · FS+RLE+delta · BLE 240k · 8 fps · [Q]` — 54 chars without the previously-cited ` Quick` suffix). State C glyph fixture ships label 40 + stats 51.
 
 **The keyword `idle infill` is intentionally EN even in IT locale** — it surfaces the layer's z-band identifier for debug + acceptance testing and avoids translating a code term. This is a Phase 14 decision; document in Specs.md changelog if challenged.
 
