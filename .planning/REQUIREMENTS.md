@@ -18,9 +18,9 @@
 
 Ability scores end-to-end nel Main tab del Character Sheet panel. Spec §7.5.2 prevede `STR 16 +3 / DEX 14 +2 / …` con marcatori `◉`/`○` di proficienza sui tiri salvezza; il codice attuale popola tutto come `—` perché `CharacterSnapshotSchema` non ha il campo `abilities`. Schema dnd5e canonical: `actor.system.abilities.<key>.{value, mod, save.value, proficient, dc}` per ciascuna delle 6 abilità.
 
-- [ ] **SHEET-05**: Extend `CharacterSnapshotSchema` in `@evf/shared-protocol` with `abilities` field — 6 sub-objects (str/dex/con/int/wis/cha) ciascuno con `{value: number, mod: number, save: number, proficient: boolean, dc: number}`
-- [ ] **SHEET-06**: Extend `character-reader.ts` in `@evf/foundry-module` to read `actor.system.abilities.*` for each key and emit the new `abilities` snapshot field (mapping `proficient === 1` → `true`, leaving `mod` / `save.value` / `dc` as-read from dnd5e prep-time computation)
-- [ ] **SHEET-07**: Update `renderMainTab()` in `character-sheet-tab-renderers.ts` — replace 6× `dash` placeholders for ability values with `snapshot.abilities.<k>.value` (2-char column), `mod` formatted as `+N`/`-N` (3-char column), `save` formatted as `+N`/`-N` with `◉`/`○` proficiency marker
+- [x] **SHEET-05**: Extend `CharacterSnapshotSchema` in `@evf/shared-protocol` with `abilities` field — 6 sub-objects (str/dex/con/int/wis/cha) ciascuno con `{value: number, mod: number, save: number, proficient: boolean, dc: number}` *(Resolved Phase 16 Plan 16-01 e13136b)*
+- [x] **SHEET-06**: Extend `character-reader.ts` in `@evf/foundry-module` to read `actor.system.abilities.*` for each key and emit the new `abilities` snapshot field (mapping `proficient === 1` → `true`, leaving `mod` / `save.value` / `dc` as-read from dnd5e prep-time computation) *(Resolved Phase 16 Plan 16-02 c4fd451)*
+- [x] **SHEET-07**: Update `renderMainTab()` in `character-sheet-tab-renderers.ts` — replace 6× `dash` placeholders for ability values with `snapshot.abilities.<k>.value` (2-char column), `mod` formatted as `+N`/`-N` (3-char column), `save` formatted as `+N`/`-N` with `◉`/`○` proficiency marker *(Resolved Phase 16 Plan 16-03 170bdc4 + e8e7da0)*
 
 ### Sheet — Skills Tab
 
@@ -65,9 +65,9 @@ Mapped 2026-05-18 by manual scoping (will be re-checked by `gsd-roadmapper`). RE
 
 | Requirement | Provisional Phase | Status |
 |-------------|-------------------|--------|
-| SHEET-05 | Phase 16 (Ability Scores) | Defined |
-| SHEET-06 | Phase 16 | Defined |
-| SHEET-07 | Phase 16 | Defined |
+| SHEET-05 | Phase 16 (Ability Scores) | Resolved |
+| SHEET-06 | Phase 16 | Resolved |
+| SHEET-07 | Phase 16 | Resolved |
 | SHEET-08 | Phase 17 (Skills) | Defined |
 | SHEET-09 | Phase 17 | Defined |
 | SHEET-10 | Phase 17 | Defined |

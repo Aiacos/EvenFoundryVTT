@@ -45,7 +45,7 @@ Two atomic software-only phases shipped end-to-end. Zero new hardware-gated SCs 
 
 Three software-only phases to complete the Character Sheet panel's data wiring (Main + Skills tabs) and close the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closes with a single INV-3 atomic commit (Specs.md + README + showcase + ADR-amendment-if-any + STATE.md + ROADMAP.md + VERIFICATION.md). Phase 14/15 patterns are the canonical examples.
 
-- [ ] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (~3 plans) — `CharacterSnapshotSchema.abilities` extension + `character-reader.ts` ability read + `renderMainTab()` data binding replacing `dash` placeholders; INV-1 fixtures updated; INV-3 atomic ratification commit
+- [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` extension (16-01) + `extractAbilities()` reader helper (16-02) + `renderMainTab()` data binding + `formatAbilityValue`/`formatAbilityMod` helpers + 4 INV-1 fixtures byte-updated (16-03) — closed via single INV-3 atomic ratification commit per Phase 14/15 precedent. Workspace tests 2559 → 2648 (+89). CI Gate 8 socketlib count = 17 preserved.
 - [ ] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (~3 plans) — `CharacterSnapshotSchema.skills` extension (18 keys × `{total, ability, proficient, passive}`) + `character-reader.ts` skill read + `renderSkillsTab()` data binding with proficiency glyphs (○/◉/◈); INV-1 fixtures updated; INV-3 atomic ratification commit
 - [ ] **Phase 18: Phase-14.1 Spec-Drift Polish** (~1–2 plans) — UI-SPEC §2 col-anchor reconciliation (col 71 → col 68) + §10 width-budget table aligned to fixture bytes + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 + Z05-INV-02b triade IT extension; single INV-3 atomic commit
 
@@ -108,7 +108,7 @@ Three software-only phases to complete the Character Sheet panel's data wiring (
 |-----------|--------|-------|--------|---------|
 | v0.9.11 MVP | 15 (0–13) | 71/71 | ✅ Shipped | 2026-05-17 |
 | v0.9.12 Quick Wins | 2 (14–15) | 8/8 | ✅ Shipped | 2026-05-17 |
-| v0.9.13 Sheet Data Completion + Polish | 3 (16–18) | 0/~7 | 🚧 In planning | — |
+| v0.9.13 Sheet Data Completion + Polish | 3 (16–18) | 3/~7 | 🚧 In progress | — |
 
 ---
-*Last reorganized: 2026-05-18 — v0.9.13 Sheet Data Completion + Polish opened (3 phases 16–18, ~7 plans estimate, 9/9 v1 REQ-IDs scoped, software-only). v0.9.11 + v0.9.12 archives preserved under collapsed details blocks.*
+*Last reorganized: 2026-05-18 — Phase 16 (Sheet Ability Scores) closed via INV-3 atomic single commit per Phase 14/15 precedent; v0.9.13 progress 3/~7 plans. v0.9.13 milestone opened initial 2026-05-18 (3 phases 16–18, ~7 plans estimate, 9/9 v1 REQ-IDs scoped, software-only). v0.9.11 + v0.9.12 archives preserved under collapsed details blocks.*

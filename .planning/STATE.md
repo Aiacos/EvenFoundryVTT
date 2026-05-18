@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.9.13
 milestone_name: Sheet Data Completion + Polish
-status: planning
-last_updated: "2026-05-18T09:56:47.127Z"
-last_activity: 2026-05-18
+status: executing
+stopped_at: Completed 16-03-PLAN.md (Phase 16 CLOSED — Sheet Ability Scores wired end-to-end)
+last_updated: "2026-05-18T13:25:00.000Z"
+last_activity: 2026-05-18 -- Phase 16 closed; Phase 17 (Skills Tab) is next
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-17 after v0.9.11 MVP milestone shipped)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** v0.9.12 Quick Wins ✅ SHIPPED — Phase 14 + Phase 15 both closed; awaiting next milestone decision via `/gsd-new-milestone`.
+**Current focus:** Phase 17 — Sheet Skills Tab (Skills tab data wiring) — next plannable; Phase 16 closed.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 16 ✓ closed
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-18 — Milestone v0.9.13 started
+Status: Phase 17 next (Skills tab — abilities snapshot now available as input for skills.<k> derivation; passive Perception/Insight/Investigation closes remaining `—` placeholders on Main tab Senses line)
+Last activity: 2026-05-18 -- Phase 16 closed via INV-3 atomic single-commit ratification (Phase 14/15 precedent)
 
 ## Performance Metrics
 
@@ -48,6 +49,7 @@ Last activity: 2026-05-18 — Milestone v0.9.13 started
 
 **Recent Trend:**
 
+- 2026-05-18 — Phase 16 (all 3 plans, INV-3 atomic close): CharacterSnapshotSchema.abilities REQUIRED extension (Plan 16-01 `e13136b`) + extractAbilities reader helper + getCharacterSnapshot wiring (Plan 16-02 `c4fd451`) + renderMainTab data binding + formatAbilityValue/formatAbilityMod helpers + 4 INV-1 fixtures byte-updated + 9 new CSTR-MAIN-AB tests + 11 downstream CharacterSnapshot literals extended across g2-app/bridge/foundry-mcp tests (Plan 16-03 `0265d22` + `170bdc4` + `e8e7da0`). CI Gate 8 socketlib count = **17** preserved (read-path-only extension). Workspace test suite 2559 → 2648 (+89 tests). Specs.md NOT bumped (Phase 18 milestone-close artifact). Single INV-3 atomic ratification commit per Phase 14 `3a0c5cf` + Phase 15 `dc161d6` precedent. Hardware-pending SCs: 35 from v0.9.11 carry under ADR-0005 Branch A unchanged (0 new in Phase 16). REQ-IDs SHEET-05/06/07 → Resolved.
 - 2026-05-17 — Phase 15 Plan 05 (Wave 5 — INV-3 atomic doc-coherence closure, autonomous orchestrator chained Waves 1-5 sequential on main): Specs.md §3.6 + §5.2 + changelog stanza · README.md (Voice pillar + spec-bump paragraph) · docs/showcase/index.html (footer + closing paragraph + stat strip note) · .planning/STATE.md (frontmatter complete + Current Position + Recent Trend + Decisions) · .planning/ROADMAP.md (Phase 15 ✅ + 5-plan list + v0.9.12 Shipped) · .planning/REQUIREMENTS.md (VOICE-06..09 → Resolved · coverage 9/9) · 15-VERIFICATION.md (5/5 SC + 4/4 REQ + ADR-0005 Branch A carry-forward documented). Checkpoint disposition: auto-approved per autonomous orchestrator + Phase 14 precedent 3a0c5cf. CLAUDE.md INV-3 atomic single-commit gate green; CI Gate 8 socketlib handler count = 17 preserved. Workspace test suite 2624/2624 final.
 - 2026-05-17 — Phase 15 Plan 04 (Wave 4 — failure modes + end-to-end integration): `keyterm-sanitizer.ts` + 6 SAN tests · empty-cache one-shot warn (DGEC-01..03) · keyterm-reject retry-then-fallback chain (DGFM-01..06: codes 1007/1008/4xxx → retry-with-sanitized → fallback-to-baseline) · `keyterm-integration.test.ts` INT-01..03 end-to-end (cache push → debounce → connect URL contains new keyterm). 18 new tests. Per-session ephemeral retry state (no global flag). Bridge 282 → 300; workspace 2606 → 2624.
 - 2026-05-17 — Phase 15 Plan 03 (Wave 3 — hot-update plumbing): `EntityPackCache.onChange/removeListener` (EPC-BASIC-01..03 + EPC-SUB-01..05) · `KeytermRefresher` with DEBOUNCE_MS=250 + drain-then-restart mutex (KRF-01..07) · `DeepgramAdapter.refreshKeyterm()` invalidation signal (DGRF-01..05; lazy provider re-eval, NOT WS reconfig — Deepgram protocol does NOT support mid-stream hot-swap). 21 new tests. server.ts step 10b wiring. Bridge 261 → 282; workspace 2585 → 2606.
@@ -180,6 +182,12 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 15]: Per-session ephemeral retry state (no global "keyterms-are-bad" flag) — each new `connect()` starts optimistically with full keyterm list; a transient backend hiccup affecting one session does not systemically degrade the +625% recall lift for the entire bridge lifecycle
 - [Phase 15]: Sanitizer scope: ASCII control chars only (`[\x00-\x1F\x7F]`) — Unicode letters preserved (è, ô, ñ, ä) since IT/EN spell names ship with them; stripping more aggressively would damage recall lift
 - [Phase 15]: One-shot empty-cache warn driven by closure-local `_emptyCacheWarned` flag, reset on transition to present — one warn per empty-streak, never spammed (DGEC-02 verifies)
+- [Phase 16 D-Area-1]: `AbilitiesSchema` uses `z.strictObject` (6 ability codes frozen by canonical D&D 5e rules — any unknown key is drift or malformed payload, MUST reject); inner per-ability `AbilityScoreSchema` uses `z.object` (forward-compat for Phase 17 half-prof / expertise siblings without re-bumping the top-level CharacterSnapshotSchema strict gate). `dc` included per REQ-05 spec to prime Spells tab DC binding without a follow-up schema bump. REQUIRED end-to-end (no `.optional()` drift window — Phase 4b Pitfall 3 precedent).
+- [Phase 16 D-Area-2]: Reader reads `save.value` (dnd5e prep-time computed total) NOT recomputed from `mod + prof` — magic items granting save bonuses, racial save bonuses, and feats would diverge under recomputation. Reader coerces dnd5e raw `proficient: 0|0.5|1|2` to strict boolean (`proficientRaw === 1 || proficientRaw === 2`) — half-prof (0.5) → false (Main tab boolean), expertise (2) → true. Phase 17 will introduce the full numeric for Skills tab glyph spectrum (○/◉/◈ for none/proficient/expert). Defensive defaults on fresh actor: `{value:10, mod:0, save:0, proficient:false, dc:10}` (zeroAbilities() helper; Phase 4b death-saves defensive pattern mirrored).
+- [Phase 16 D-Area-3]: In-place dash→data swap in renderMainTab — existing 22-cell abilities box budgets `LBL  —  —          ` and 22-cell saves box budgets `◉ LBL  —    LBR  —`; replacement is byte-identical width via 1-cell label-value gap and 2-cell (vs 4-cell) inter-column saves gap. Vitals row INI/VEL/Hit Dice + Senses line keep `—` placeholders — they source from `attributes.init.total` / `attributes.movement.walk` / `attributes.hd.value` / `skills.<k>.passive`, NOT the abilities tree (out of scope for SHEET-05/06/07; passives close in Phase 17 via SHEET-10).
+- [Phase 16 D-Area-4]: Test fixtures keyed by consumer-snapshot identity — IT fixtures (`sheet.main.2014.it.txt` + `sheet.main.2024.it.txt`) consume `snapshot2014/snapshot2024` from `character-sheet-tab-renderers.test.ts` (Thorin canonical: STR 16/+3/+5 prof, DEX 14/+2/+2, CON 14/+2/+5 prof, INT 18/+4/+4, WIS 12/+1/+1, CHA 8/-1/-1; tempHp:10). EN/DE fixtures (`sheet.main.2014.en.txt` + `sheet.main.2014.de.txt`) consume `BASE_CHARACTER_SNAPSHOT` from `05-panel-integration-smoke.test.ts` (zero-default abilities, tempHp:0) — this preserves pre-Phase-16 row-6 HP-bar byte-identity (no `+10 temp` suffix). Test markers: CS-AB-* (schema) + CR-AB-* (reader) + CSTR-MAIN-AB-* (renderer).
+- [Phase 16]: Renderer proficient glyph is now data-driven (`profGlyph(prof)` returns `◉` or `○`); pre-Phase-16 hardcoded `◉ STR ◉ CON   WIS` (third one blank) is replaced with snapshot-driven values. With Thorin's Fighter prof spread the rendered glyphs land identical to Phase 5 hardcoded values, but for any other character profile the renderer now reflects reality (CSTR-MAIN-AB-4a covers WIS not-prof → `○` was visually blank pre-Phase-16).
+- [Phase 16]: 4 INV-1 fixtures generated by running the actual renderer via tsx one-shot script (Phase 5 Plan 05-04 precedent — never hand-author fixture rows; byte alignment must come from the renderer that consumes them). Script deleted post-generation; no developer-utility code shipped.
 
 ### Pending Todos
 
