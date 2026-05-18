@@ -201,6 +201,25 @@ export const SpellbookSchema = z.object({
 export type Spellbook = z.infer<typeof SpellbookSchema>;
 
 /**
+ * Canonical 6 dnd5e ability codes in fixed order.
+ *
+ * Frozen by D&D 5e rules. The list is shared between {@link AbilitiesSchema}
+ * (the 6-key container) and {@link SkillSchema}.ability (which references
+ * one ability per skill row, e.g. acr → dex). Phase 16 inlined the list
+ * verbatim in `AbilitiesSchema`; Phase 17 factors it into a named tuple to
+ * enable cross-file reuse without re-litigating the closed set.
+ *
+ * `AbilitiesSchema` itself is NOT refactored — its verbatim runtime shape
+ * is preserved byte-identical (Phase 16 wire contract). This tuple is an
+ * additive export only.
+ *
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-01-PLAN.md
+ */
+export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+export type AbilityKey = (typeof ABILITY_KEYS)[number];
+export const AbilityKeySchema = z.enum(ABILITY_KEYS);
+
+/**
  * Per-ability sub-object — dnd5e 5.x `actor.system.abilities.<k>` prep-time
  * computed projection (Phase 16 Plan 16-01 atomic extension; REQ SHEET-05).
  *
@@ -288,6 +307,160 @@ export const AbilitiesSchema = z.strictObject({
 export type Abilities = z.infer<typeof AbilitiesSchema>;
 
 /**
+ * Canonical 18 D&D 5e skill codes in fixed order.
+ *
+ * Frozen by D&D 5e rules — no other skill codes exist in canonical play.
+ * Homebrew/setting skills (e.g. Sanity) are out of scope.
+ *
+ * Order is the dnd5e-system canonical sort (alphabetical by short code),
+ * matching the order used by the dnd5e Foundry system at runtime and
+ * preserved in the renderer's static `SKILL_NAMES` table.
+ *
+ * Mapping: acr=Acrobatics, ani=Animal Handling, arc=Arcana, ath=Athletics,
+ * dec=Deception, his=History, ins=Insight, itm=Intimidation,
+ * inv=Investigation, med=Medicine, nat=Nature, prc=Perception,
+ * prf=Performance, per=Persuasion, rel=Religion, slt=Sleight of Hand,
+ * ste=Stealth, sur=Survival.
+ *
+ * @see Specs.md §7.5.3 (Skills tab mockup)
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Specifics
+ */
+export const SKILL_KEYS = [
+  'acr',
+  'ani',
+  'arc',
+  'ath',
+  'dec',
+  'his',
+  'ins',
+  'itm',
+  'inv',
+  'med',
+  'nat',
+  'prc',
+  'prf',
+  'per',
+  'rel',
+  'slt',
+  'ste',
+  'sur',
+] as const;
+export type SkillKey = (typeof SKILL_KEYS)[number];
+
+/**
+ * Per-skill sub-object — dnd5e 5.x `actor.system.skills.<k>` prep-time
+ * computed projection (Phase 17 Plan 17-01 atomic extension; REQ SHEET-08).
+ *
+ * Fields:
+ * - `total`     — Final skill modifier (ability mod + proficiency bonus +
+ *                 item bonuses + feat bonuses + magic). Integer, may be
+ *                 negative (CHA-8 character → Persuasione -1).
+ * - `ability`   — The ability that drives this skill (e.g. acr → dex,
+ *                 arc → int, prc → wis). Closed {@link AbilityKey} enum
+ *                 re-using the 6-code set from {@link AbilitiesSchema}.
+ * - `proficient`— dnd5e raw proficiency tier: 0 (none) | 0.5 (half) | 1 (full) |
+ *                 2 (expertise). Phase 17 renderer uses the full 4-level
+ *                 spectrum for ○/◉/★ glyph mapping per UI-SPEC §3
+ *                 (half-prof rounds up to ◉). Stored verbatim — reader does
+ *                 NOT coerce to boolean (unlike {@link AbilityScoreSchema}
+ *                 `.proficient` which IS boolean for Main tab simplicity).
+ * - `passive`   — Passive skill score (10 + total under standard 5e rules;
+ *                 magic items + Observant feat may add static bonuses, so
+ *                 this is read verbatim from dnd5e prep-time, NOT recomputed
+ *                 by the reader). Main tab senses line surfaces
+ *                 `skills.{prc,ins,inv}.passive` per UI-SPEC §4. Integer
+ *                 ≥ 0 (clamped non-negative; D&D passive floor in practice
+ *                 is 10 + min mod-5 = 5 but the schema accepts 0 to avoid
+ *                 edge-case rejection on heavily debuffed actors).
+ *
+ * Uses `z.object` (NOT `z.strictObject`) for forward-compat per CONTEXT
+ * D-Area-1 atomic-extension precedent: future phases may add `bonus` /
+ * `expertise` / `advantage` sibling fields without breaking Phase 17
+ * consumers.
+ *
+ * The schema does NOT cross-validate `passive` against `total` — they are
+ * independent integer slots. Real Foundry actors may have magic-item or
+ * Observant-feat bonuses on `passive` that don't appear in `total`.
+ *
+ * Required as a sub-field of {@link SkillsSchema} — Pitfall 3 mitigation
+ * (Phase 4b/16 atomic-commit pattern): no `.optional()` drift window.
+ *
+ * @see Specs.md §7.5.3 (Skills tab mockup)
+ * @see https://github.com/foundryvtt/dnd5e — `actor.system.skills.<k>` canonical (INV-2 cross-checked 2026-05-18)
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 1
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-01-PLAN.md
+ */
+export const SkillSchema = z.object({
+  /** Final skill modifier (dnd5e prep-time computed total). Integer; negative allowed. */
+  total: z.number().int(),
+  /** Ability driving this skill (closed AbilityKey enum). */
+  ability: AbilityKeySchema,
+  /** dnd5e raw proficiency tier 0|0.5|1|2 (closed enum — NOT boolean; renderer
+   *  uses full spectrum for ○/◉/★ glyph mapping; half-prof rounds up to ◉). */
+  proficient: z.union([z.literal(0), z.literal(0.5), z.literal(1), z.literal(2)]),
+  /** Passive skill score (dnd5e prep-time computed; ≥ 0). */
+  passive: z.number().int().nonnegative(),
+});
+
+export type Skill = z.infer<typeof SkillSchema>;
+
+/**
+ * Container for all 18 D&D 5e skills (Phase 17 Plan 17-01).
+ *
+ * Keyed by canonical dnd5e short codes in {@link SKILL_KEYS} order. The 18
+ * keys are FROZEN by D&D 5e rules. Homebrew skills are out of scope.
+ *
+ * Uses `z.strictObject` (not `z.object`) because the 18 keys are a closed
+ * enumeration: any unknown skill key on the wire indicates either drift or
+ * a malformed payload and MUST reject.
+ *
+ * Per-skill sub-objects use `z.object` for forward-compat — see
+ * {@link SkillSchema} JSDoc.
+ *
+ * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 1
+ */
+export const SkillsSchema = z.strictObject({
+  /** Acrobatics — DEX-based; balance, tumbling. */
+  acr: SkillSchema,
+  /** Animal Handling — WIS-based; calming/training animals. */
+  ani: SkillSchema,
+  /** Arcana — INT-based; arcane lore. */
+  arc: SkillSchema,
+  /** Athletics — STR-based; climbing, jumping, swimming. */
+  ath: SkillSchema,
+  /** Deception — CHA-based; lies, misdirection. */
+  dec: SkillSchema,
+  /** History — INT-based; historical lore. */
+  his: SkillSchema,
+  /** Insight — WIS-based; reading intentions; passive surfaced on Main tab. */
+  ins: SkillSchema,
+  /** Intimidation — CHA-based; threats, coercion. */
+  itm: SkillSchema,
+  /** Investigation — INT-based; clues, deduction; passive surfaced on Main tab. */
+  inv: SkillSchema,
+  /** Medicine — WIS-based; first aid, diagnosis. */
+  med: SkillSchema,
+  /** Nature — INT-based; natural lore. */
+  nat: SkillSchema,
+  /** Perception — WIS-based; awareness; passive surfaced on Main tab. */
+  prc: SkillSchema,
+  /** Performance — CHA-based; entertainment. */
+  prf: SkillSchema,
+  /** Persuasion — CHA-based; influence by reason. */
+  per: SkillSchema,
+  /** Religion — INT-based; religious lore. */
+  rel: SkillSchema,
+  /** Sleight of Hand — DEX-based; pickpocket, palming. */
+  slt: SkillSchema,
+  /** Stealth — DEX-based; sneaking. */
+  ste: SkillSchema,
+  /** Survival — WIS-based; tracking, foraging. */
+  sur: SkillSchema,
+});
+
+export type Skills = z.infer<typeof SkillsSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -352,6 +525,22 @@ export const CharacterSnapshotSchema = z.strictObject({
    * the Main tab with formatted values per UI-SPEC §3.
    */
   abilities: AbilitiesSchema,
+  /**
+   * Character skills (Phase 17 Plan 17-01 atomic extension; REQ SHEET-08).
+   * REQUIRED — atomic commit closes the .optional() drift window (Pitfall 3,
+   * Phase 4b/16 precedent). 18-key container indexed by dnd5e short codes,
+   * each carrying `{total, ability, proficient, passive}` per
+   * {@link SkillSchema}.
+   *
+   * Reader (Plan 17-02) emits defensive defaults for fresh actors lacking
+   * `system.skills`. Renderer (Plan 17-03) replaces the hardcoded
+   * DEFAULT_SKILLS array with snapshot-driven lookup AND surfaces
+   * `skills.{prc,ins,inv}.passive` on the Main tab senses line per
+   * UI-SPEC §4. Proficient is preserved as raw 0|0.5|1|2 (NOT coerced to
+   * boolean) because the Skills tab uses the full glyph spectrum ○/◉/★;
+   * half-prof rounds up to ◉ per UI-SPEC §3.
+   */
+  skills: SkillsSchema,
   /**
    * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
    *

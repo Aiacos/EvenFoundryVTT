@@ -36,8 +36,11 @@ export {
 // ─── Payload schemas (Phase 2 Plan 05 — reader API) ───────────────────────────
 
 export {
+  ABILITY_KEYS,
   type Abilities,
   AbilitiesSchema,
+  type AbilityKey,
+  AbilityKeySchema,
   type AbilityScore,
   AbilityScoreSchema,
   CHARACTER_DELTA_TYPE,
@@ -49,6 +52,12 @@ export {
   type InventoryItem,
   InventoryItemSchema,
   type InventoryItemType,
+  SKILL_KEYS,
+  type Skill,
+  type SkillKey,
+  SkillSchema,
+  type Skills,
+  SkillsSchema,
   SPELL_ACTIVATION_TYPES,
   type SpellActivation,
   type Spellbook,
