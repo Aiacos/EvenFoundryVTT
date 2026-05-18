@@ -181,6 +181,14 @@ const BASE_SNAPSHOT: CharacterSnapshot = {
   world: { modernRules: false },
   inventory: [],
   spells: { slots: [], spells: [] },
+  abilities: {
+    str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+  },
 };
 
 const DEATH_SAVES_SNAPSHOT: CharacterSnapshot = {

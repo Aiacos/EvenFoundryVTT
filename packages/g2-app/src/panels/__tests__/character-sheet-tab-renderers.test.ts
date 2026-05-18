@@ -56,6 +56,8 @@ import { resolve } from 'node:path';
 import type { CharacterSnapshot } from '@evf/shared-protocol';
 import { describe, expect, it } from 'vitest';
 import {
+  formatAbilityMod,
+  formatAbilityValue,
   renderBioTab,
   renderFeatsTab,
   renderMainTab,
@@ -75,7 +77,16 @@ function loadFixture(name: string): string {
 
 // ─── Mock snapshots ───────────────────────────────────────────────────────────
 
-/** Thorin Oakenshield — PHB 2014 (modernRules: false) */
+/** Thorin Oakenshield — PHB 2014 (modernRules: false)
+ *
+ * Ability spread per Specs.md §7.5.2 + CONTEXT D-Area-4 (Phase 16):
+ *   STR 16 mod +3 save +5 PROF (Fighter)
+ *   DEX 14 mod +2 save +2
+ *   CON 14 mod +2 save +5 PROF (Fighter)
+ *   INT 18 mod +4 save +4
+ *   WIS 12 mod +1 save +1
+ *   CHA  8 mod -1 save -1
+ */
 const snapshot2014: CharacterSnapshot = {
   actorId: 'thorin-oakenshield-001',
   name: 'THORIN OAKENSHIELD',
@@ -90,6 +101,14 @@ const snapshot2014: CharacterSnapshot = {
   world: { modernRules: false },
   inventory: [],
   spells: { slots: [], spells: [] },
+  abilities: {
+    str: { value: 16, mod: 3, save: 5, proficient: true, dc: 8 },
+    dex: { value: 14, mod: 2, save: 2, proficient: false, dc: 8 },
+    con: { value: 14, mod: 2, save: 5, proficient: true, dc: 8 },
+    int: { value: 18, mod: 4, save: 4, proficient: false, dc: 8 },
+    wis: { value: 12, mod: 1, save: 1, proficient: false, dc: 8 },
+    cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 8 },
+  },
 };
 
 /** Thorin Oakenshield — PHB 2024 (modernRules: true) */
@@ -438,5 +457,76 @@ describe('INV-1 round-trip fixtures', () => {
     const expected = normaliseRows(loadFixture('sheet.bio.it.txt'));
     const actual = normaliseRows(rows.join('\n'));
     expect(actual).toBe(expected);
+  });
+});
+
+// ─── CSTR-MAIN-AB-* abilities data binding tests (Phase 16) ──────────────────
+
+describe('renderMainTab — abilities data binding (CSTR-MAIN-AB)', () => {
+  it('CSTR-MAIN-AB-1a: formatAbilityValue right-aligns single digit with leading space', () => {
+    expect(formatAbilityValue(8)).toBe(' 8');
+    expect(formatAbilityValue(0)).toBe(' 0');
+    expect(formatAbilityValue(9)).toBe(' 9');
+  });
+
+  it('CSTR-MAIN-AB-1b: formatAbilityValue emits 2-cell decimal for two-digit values', () => {
+    expect(formatAbilityValue(10)).toBe('10');
+    expect(formatAbilityValue(16)).toBe('16');
+    expect(formatAbilityValue(21)).toBe('21');
+    expect(formatAbilityValue(30)).toBe('30');
+  });
+
+  it('CSTR-MAIN-AB-1c: formatAbilityMod always signs positive/zero with leading +', () => {
+    expect(formatAbilityMod(0)).toBe('+0');
+    expect(formatAbilityMod(3)).toBe('+3');
+    expect(formatAbilityMod(9)).toBe('+9');
+  });
+
+  it('CSTR-MAIN-AB-1d: formatAbilityMod uses ASCII hyphen-minus for negatives', () => {
+    expect(formatAbilityMod(-1)).toBe('-1');
+    expect(formatAbilityMod(-5)).toBe('-5');
+    // Verify the character is ASCII U+002D, not Unicode U+2212
+    expect(formatAbilityMod(-1).charCodeAt(0)).toBe(0x2d);
+  });
+
+  it('CSTR-MAIN-AB-2: STR row binds value 16 + mod +3 (IT locale)', () => {
+    const rows = renderMainTab(snapshot2014, 'it');
+    const joined = rows.join('\n');
+    expect(joined).toContain('FOR 16 +3');
+    // Save column: ◉ FOR  +5 (STR is proficient)
+    expect(joined).toContain('◉ FOR  +5');
+    // The em-dash em-dash placeholder must NOT exist for the STR ability row
+    expect(joined).not.toContain('FOR  —  —');
+  });
+
+  it('CSTR-MAIN-AB-3: CHA row binds negative mod -1 and negative save -1 (IT locale)', () => {
+    const rows = renderMainTab(snapshot2014, 'it');
+    const joined = rows.join('\n');
+    expect(joined).toContain('CAR  8 -1');
+    expect(joined).toContain('CAR  -1');
+  });
+
+  it('CSTR-MAIN-AB-4a: WIS save row emits data-driven ○ glyph (was hardcoded blank pre-Phase-16)', () => {
+    const rows = renderMainTab(snapshot2014, 'it');
+    const joined = rows.join('\n');
+    // WIS is NOT proficient on Thorin → ○, not blank
+    expect(joined).toContain('○ SAG  +1');
+    // CHA also not proficient → ○ on same row
+    expect(joined).toContain('CAR  -1');
+  });
+
+  it('CSTR-MAIN-AB-4b: DEX (not-proficient) on STR/DEX save row uses spaceless ◉/DES layout', () => {
+    const rows = renderMainTab(snapshot2014, 'it');
+    const joined = rows.join('\n');
+    // The right-side DEX save +2 must appear adjacent to the STR-prof ◉ marker row
+    expect(joined).toContain('DES  +2');
+  });
+
+  it('CSTR-MAIN-AB-5: EN locale binds STR row with English label', () => {
+    const rows = renderMainTab(snapshot2014, 'en');
+    const joined = rows.join('\n');
+    expect(joined).toContain('STR 16 +3');
+    expect(joined).toContain('◉ STR  +5');
+    expect(joined).toContain('CHA  8 -1');
   });
 });

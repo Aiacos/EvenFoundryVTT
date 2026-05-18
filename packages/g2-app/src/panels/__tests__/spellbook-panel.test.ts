@@ -211,6 +211,14 @@ const snapshotCaster: CharacterSnapshot = {
       },
     ],
   },
+  abilities: {
+    str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+  },
 };
 
 /** Paladin 5 — half caster with L1 and L2 slots. */
@@ -270,6 +278,14 @@ const snapshotHalfCaster: CharacterSnapshot = {
         concentration: false,
       },
     ],
+  },
+  abilities: {
+    str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
   },
 };
 
@@ -662,6 +678,14 @@ const snapshotWithSpell: CharacterSnapshot = {
         concentration: false,
       },
     ],
+  },
+  abilities: {
+    str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
   },
 };
 
