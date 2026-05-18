@@ -4,7 +4,7 @@
 
 - ✅ **v0.9.11 MVP** — Phases 0–13 (shipped 2026-05-17). Full details: [`milestones/v0.9.11-ROADMAP.md`](milestones/v0.9.11-ROADMAP.md)
 - ✅ **v0.9.12 Quick Wins** — Phases 14–15 (shipped 2026-05-17 · 2 phases · 8/8 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs). Full details: [`milestones/v0.9.12-ROADMAP.md`](milestones/v0.9.12-ROADMAP.md)
-- ✅ **v0.9.13 Sheet Data Completion + Polish** — Phases 16–18 (shipped 2026-05-18 · 3 phases · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs).
+- ✅ **v0.9.13 Sheet Data Completion + Polish** — Phases 16–18 (shipped 2026-05-18 · 3 phases · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs). Full details: [`milestones/v0.9.13-ROADMAP.md`](milestones/v0.9.13-ROADMAP.md)
 
 ## Phases
 
@@ -55,59 +55,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 
 ## Phase Details
 
-### Phase 16: Sheet Ability Scores (Main tab data wiring)
-
-**Goal:** Player opens Sheet → Main tab and sees real ability scores (STR 16 +3, DEX 14 +2, …) with proficiency markers (◉ / ○) on saving throws, instead of `—` placeholders. Spec §7.5.2 mockup honored end-to-end via Foundry read pipeline.
-
-**Depends on:** v0.9.11 Phase 5 (6-tab Sheet panel + `character-sheet-tab-renderers.ts` + `CharacterSnapshotSchema` baseline operational); dnd5e 5.3.x canonical `actor.system.abilities.<k>.{value, mod, save.value, proficient, dc}` schema (INV-2 cross-checked 2026-05-18 via `github.com/foundryvtt/dnd5e` release-5.3.3 `module/data/actor/templates/common.mjs` + dnd5e wiki Roll-Formulas)
-
-**Requirements:** SHEET-05, SHEET-06, SHEET-07
-
-**Success Criteria** (what must be TRUE):
-  1. Player Sheet → Main tab shows 6 real ability values (STR/DEX/CON/INT/WIS/CHA) sourced from `actor.system.abilities.<k>.value` instead of `—` placeholders
-  2. Each ability row shows its modifier formatted `+N` / `-N` from `actor.system.abilities.<k>.mod`
-  3. Each ability row shows its saving throw modifier formatted `+N` / `-N` from `actor.system.abilities.<k>.save` with `◉` proficiency marker when `proficient === 1` and `○` otherwise
-  4. `CharacterSnapshotSchema` extended with `abilities` field (6 sub-objects each `{value, mod, save, proficient, dc}`); reader validates and emits the new field; all existing 6-tab snapshot tests remain green
-  5. INV-1 fixtures updated for Main tab character-sheet state (IT + EN locales) with real ability numbers replacing placeholders; UI-SPEC §5.2 cross-reference unchanged
-
-**Plans:** TBD (estimated 3 — shared-protocol schema + tests · character-reader read + tests · renderMainTab binding + INV-1 fixture + INV-3 atomic ratification commit)
-
-### Phase 17: Sheet Skills Tab (Skills tab data wiring)
-
-**Goal:** Player opens Sheet → Skills tab and sees real skill modifiers (◉ Acrobatics +5, ○ Animal Handling +1, …) with proficiency glyphs (○ / ◉ / ◈ for none / proficient / expert), instead of mockup placeholders. Spec §7.5.3 mockup honored end-to-end. Passive Perception/Insight/Investigation values surface on the Main tab senses line as a side-benefit.
-
-**Depends on:** Phase 16 (abilities snapshot field already present — the skills snapshot extends the schema as a sibling field; skill modifier computation visibility depends on abilities being correctly wired); dnd5e 5.3.x canonical `actor.system.skills.<k>.{total, ability, proficient, passive}` schema (INV-2 cross-checked 2026-05-18)
-
-**Requirements:** SHEET-08, SHEET-09, SHEET-10
-
-**Success Criteria** (what must be TRUE):
-  1. Player Sheet → Skills tab shows 18 real skill modifiers sourced from `actor.system.skills.<k>.total` formatted with sign (`+N` / `-N`) instead of mockup placeholders
-  2. Each skill row carries the correct proficiency glyph: `○` for `proficient === 0`, `◉` for `proficient === 1`, `◈` for `proficient === 2` (expert); half-proficient (`0.5`) rendered per UI-SPEC width-budget (deferred to plan if narrative glyph not achievable within INV-1)
-  3. Main tab senses line surfaces passive Perception / Insight / Investigation from `actor.system.skills.{prc,ins,inv}.passive` (side-benefit of skills snapshot — replaces remaining `—` placeholder on senses line)
-  4. `CharacterSnapshotSchema` extended with `skills` field (18 sub-objects keyed by dnd5e short code); reader validates and emits the new field; all existing snapshot tests remain green
-  5. INV-1 fixtures updated for Skills tab state (IT + EN locales) with real skill data; width-budget preserved (3-char modifier column + 1-char glyph + skill name); UI-SPEC §5.3 cross-reference unchanged
-
-**Plans:** 3 plans (all ✓)
-- [x] 17-01-PLAN.md — shared-protocol schema extension: SkillSchema + SkillsSchema (18-key z.strictObject) + SKILL_KEYS canonical tuple + AbilityKey/AbilityKeySchema/ABILITY_KEYS factoring + CharacterSnapshot.skills REQUIRED + CS-SK-1..8 schema tests *(closed `79564d9`)*
-- [x] 17-02-PLAN.md — foundry-module reader: extractSkills + SKILL_DEFAULT_ABILITY map + readSkill (verbatim proficient pass-through, NOT boolean coerced) + zeroSkills defensive defaults + Dnd5eSkillRaw + Dnd5eActorSystem.skills? type addition + CR-SK-1..6 reader tests *(closed `54e577e`)*
-- [x] 17-03-PLAN.md — g2-app renderer dynamic lookup replacing DEFAULT_SKILLS + SKILL_NAMES static i18n + PASSIVE_ABBR (PP/PI/IND etc.) + renderMainTab row 17 senses line data binding + sheet.skills.it.txt byte-identical + sheet.skills.en.txt regenerated from BASE consumer + 4 sheet.main.* row-17 byte-updates + 23 downstream snapshot literal extensions across 17 test files + CSTR-SKILLS-DATA-1..5 tests + INV-3 atomic ratification commit closing Phase 17 per Phase 14/15/16 precedent *(closed `3a14397` + `df05081` + INV-3 atomic)*
-
-### Phase 18: Phase-14.1 Spec-Drift Polish (single INV-3 atomic)
-
-**Goal:** Close 3 UI-REVIEW WR-UI findings from Phase 14 (col-anchors drift, width-budget drift, IT locale leak in glyph-idle-z05 fixture) in a single INV-3 atomic commit. Mostly doc + 1 fixture edit + 1 test extension; zero implementation defects to fix. Brings UI-SPEC numeric tables back into byte-identity with the actual fixtures shipped in Phase 14.
-
-**Depends on:** Phase 14 (UI-SPEC §2/§10 + `glyph-scene.glyph-idle-z05.it.txt` fixture + Z05-INV-02b test already shipped via 3a0c5cf); 14-UI-REVIEW findings WR-UI-01/02/03 (advisory non-blocking, deferred at close). Parallelizable with Phase 16/17 in principle, but conventionally sequenced last for cleaner milestone close.
-
-**Requirements:** INFILL-14.1-A, INFILL-14.1-B, INFILL-14.1-C
-
-**Success Criteria** (what must be TRUE):
-  1. UI-SPEC §2 spacing token table cites `right-stop (z=0.5) = col 67` and `content-width (z=0.5 strip) = 64 cells (col 4 → col 67 inclusive)` with one-line note explaining central divider `║` lands at col 68 (matches actual fixture bytes)
-  2. UI-SPEC §10 width-budget table re-derived from `idle-infill-layer.ts` constants — label container width-budget aligns to fixture bytes (~52 cells), stats container width-budget aligns to fixture bytes (~54 cells); spec table no longer drifts from runtime literals
-  3. `packages/shared-render/src/fixtures/glyph-scene.glyph-idle-z05.it.txt` row 1 reads `TURNO 2/5` (IT) and row 17 reads `Condizioni` (IT) — both with width-budget preserved to 96-col fixture invariant
-  4. Z05-INV-02b extended to triade A_it ↔ B_it ↔ C_it byte-identity check on rows 3..20 cols 69..95 (closes the regression-detection gap that allowed WR-UI-03 to pass CI)
-  5. All changes land in a single INV-3 atomic commit (UI-SPEC + Specs.md cross-ref if needed + fixture + test + STATE.md + ROADMAP.md + VERIFICATION.md); workspace suite green at exit; CI Gate 8 socketlib count = 17 preserved
-
-**Plans:** TBD (estimated 1–2 — UI-SPEC §2/§10 correction + IT locale leak fix + Z05-INV-02b triade IT extension all in INV-3 atomic commit; optional second verification commit)
+(v0.9.13 phases archived to [`milestones/v0.9.13-ROADMAP.md`](milestones/v0.9.13-ROADMAP.md). Live phase details will populate here as the next milestone opens.)
 
 ## Progress
 

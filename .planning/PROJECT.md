@@ -1,6 +1,6 @@
 # EvenFoundryVTT (EVF)
 
-> **Single Source of Truth**: questo PROJECT.md è una proiezione GSD-friendly di [`Specs.md`](../Specs.md) (v0.9.11, ~4250 righe). La spec resta canonica per ogni claim tecnico, hardware, API, mockup, decision; PROJECT.md riassume il contesto operativo per il workflow GSD. Per disciplina **INV-3 (doc coherence)**, ogni cambio cross-cutting tocca PROJECT.md, Specs.md, README.md, showcase nello stesso commit.
+> **Single Source of Truth**: questo PROJECT.md è una proiezione GSD-friendly di [`Specs.md`](../Specs.md) (v0.9.13, ~4250+ righe). La spec resta canonica per ogni claim tecnico, hardware, API, mockup, decision; PROJECT.md riassume il contesto operativo per il workflow GSD. Per disciplina **INV-3 (doc coherence)**, ogni cambio cross-cutting tocca PROJECT.md, Specs.md, README.md, showcase nello stesso commit.
 
 ## What This Is
 
@@ -10,37 +10,23 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 **v0.9.12 Quick Wins shipped 2026-05-17** — 2 phases, 8/8 plans, 9/9 v1 REQ-IDs Resolved. Phase 14 (z=0.5 idle infill) ratified; Phase 15 (Deepgram Keyterm) integrated. Workspace tests 2626/2626, CI Gate 8 socketlib count = 17 preserved, zero new hardware-pending SCs added.
 
+**v0.9.13 Sheet Data Completion + Polish shipped 2026-05-18** — 3 phases, 7/7 plans, 9/9 v1 REQ-IDs Resolved. Phase 16 (Sheet Main tab abilities end-to-end), Phase 17 (Sheet Skills tab + Main tab senses passives), Phase 18 (Phase-14.1 spec-drift polish + Specs.md v0.9.13 INV-3 atomic milestone close). Workspace tests 2668/2668 (+122 across milestone), CI Gate 8 socketlib count = 17 preserved end-to-end, zero new hardware-pending SCs added.
+
 ## Core Value
 
 **Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.** Tutto il resto (fps, raster vs glyph, voice V2, multi-player) è subordinato a questo principio: se una decisione di design forza il giocatore a guardare il telefono o un laptop, è sbagliata.
 
 ## Current State
 
-- **Software**: v0.9.11 MVP + v0.9.12 Quick Wins both shipped 2026-05-17 — 17 phases (0–15), 79 plans, **2626 workspace tests passing** across monorepo (`packages/g2-app`, `packages/bridge`, `packages/foundry-module`, `packages/foundry-mcp`, `packages/shared-protocol`, `packages/shared-render`, `packages/validation-harness`). v0.9.12 added Deepgram Keyterm Prompting (Phase 15) + z=0.5 idle content infill ratification (Phase 14).
-- **Hardware verification**: deferred — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 marked `human_needed` under ADR-0005 PROVISIONAL Branch A. v0.9.12 added zero new SCs. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + consenting DM available.
-- **Spec**: `Specs.md` v0.9.12 (~4250+ righe; §7.4c z=0.5 layer ratified; §3.6 EvenAI re-verification 2026-05-17). ADR-0001 Amendment 1 RATIFIED; INV-3 atomic commits `3a0c5cf` (Phase 14) + `dc161d6` (Phase 15).
-- **Carry to next milestone**: minor tech debt — Phase-14.1 standalone quick task (3 UI-SPEC spec-prose drifts: §2 col 71→68, §10 width budgets, IT locale leak in glyph-idle-z05 fixture). Real implementation defects are zero; this is doc-coherence cleanup.
-- **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.12), INV-3 atomic doc coherence).
-
-## Current Milestone: v0.9.13 Sheet Data Completion + Polish
-
-**Goal:** Complete the Character Sheet panel's data wiring for Main + Skills tabs (ability scores end-to-end + skill modifiers + proficiency markers) and close the Phase-14.1 spec-prose drift carry-forward — all software-only, INV-3 atomic per phase.
-
-**Target features:**
-- **Ability scores read end-to-end** — extend `CharacterSnapshotSchema` with `abilities` (6 × `{value, mod, save, proficient, dc}`), wire `character-reader.ts` to read `actor.system.abilities.*`, replace `dash` placeholders in `renderMainTab()` with real values + proficiency `◉`/`○` markers.
-- **Skills tab modifiers** — extend schema with `skills` map, wire reader (`actor.system.skills.*`), render `+N` modifiers and `◉`/`○` proficiency per skill in `renderSkillsTab()`.
-- **Phase-14.1 spec-drift cleanup** (polish wave) — UI-SPEC §2 col 71→68, §10 width budgets, IT locale leak in `glyph-scene.glyph-idle-z05.it.txt` rows 1/17 → INV-3 atomic single commit.
-
-**Key context:**
-- Phase numbering continues from v0.9.12 (next = Phase 16).
-- 100% software-only — zero new hardware-pending SCs (35 from v0.9.11 carry under ADR-0005 Branch A unchanged).
-- INV-2 cross-checked: `actor.system.abilities.<k>.{value, mod, save.value, proficient, dc}` confirmed on github.com/foundryvtt/dnd5e release-5.3.3 (`common.mjs`) + dnd5e wiki Roll-Formulas (2026-05-18).
-- Dual-edition (PHB 2014 + PHB 2024): same ability shape, no `modernRules` branch needed.
-- CI Gate 8 invariant: socketlib handler count remains 17 (no new handlers — read-only data extension).
+- **Software**: v0.9.11 MVP + v0.9.12 Quick Wins + v0.9.13 Sheet Data Completion all shipped — 20 phases (0–18), 86 plans, **2668 workspace tests passing** across monorepo (`packages/g2-app`, `packages/bridge`, `packages/foundry-module`, `packages/foundry-mcp`, `packages/shared-protocol`, `packages/shared-render`, `packages/validation-harness`). v0.9.13 closed Sheet Main + Skills tab data wiring (Phase 16 abilities + Phase 17 skills) and Phase-14.1 spec-drift polish (Phase 18).
+- **Hardware verification**: deferred — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 marked `human_needed` under ADR-0005 PROVISIONAL Branch A. v0.9.12 + v0.9.13 added zero new SCs. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + consenting DM available.
+- **Spec**: `Specs.md` v0.9.13 (~4250+ righe; §7.4c z=0.5 layer + §3.6 EvenAI + Sheet Main/Skills data binding all ratified). ADR-0001 Amendment 1 RATIFIED; INV-3 atomic commits `3a0c5cf` (Phase 14) + `dc161d6` (Phase 15) + `d68d7f2` (Phase 16) + `c208d24` (Phase 17) + `df4ea02` (Phase 18 + milestone close).
+- **Carry to next milestone**: minimal — Spells tab DC binding (primed by `abilities.<k>.dc` field) deferred to future Sheet polish cycle; Inventory/Bio/Feats tab data-binding polish out of scope; half-prof narrative glyph (`◐` half-tone) deferred per INV-1 width budget.
+- **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.13), INV-3 atomic doc coherence).
 
 ## Next Milestone Goals (post-v0.9.13)
 
-After v0.9.13 ships, likely candidates:
+After v0.9.13 shipped, likely candidates:
 
 1. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
 2. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
