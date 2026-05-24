@@ -1,275 +1,152 @@
 # Technology Stack
 
-**Analysis Date:** 2026-05-14
+**Analysis Date:** 2026-05-24
 
 ## Languages
 
 **Primary:**
-- **TypeScript** 5.8.3 - Core authoring language for all packages (strict mode mandatory per INV-4 §0.1 with `noUnusedLocals`, `noUnusedParameters`, plus 4 additional strict flags)
-  - TS version note: Research pinned 5.8.5; actual repo pins **5.8.3** (5.8.5 does not exist on npm registry per 2026-05-11 verification). Concrete pin in `package.json` devDependencies.
+- TypeScript 5.8.3 - All package sources (strict mode enabled per INV-4)
 
 **Secondary:**
-- JavaScript (via TypeScript transpilation) - Output target ES2023 for all packages
-- JSON/JSONC - Configuration and data formats
+- JavaScript - Generated output from TypeScript compilation via tsup/Vite
 
 ## Runtime
 
 **Environment:**
-- **Node.js** 24 LTS ("Krypton") - Backend service runtime (bridge, foundry-mcp v2), active LTS as of 2026-05
-  - Pinned via `.nvmrc=24` and `package.json` `engines: { "node": ">=24.0.0" }`
-  - Alternative: 22 LTS ("Jod", Maintenance) acceptable but Phase 1 targets 24 Active
-  - Native features: WebSocket client (since 22), `--watch`, test runner support
-
-**Browser Runtime:**
-- **Safari WKWebView** - g2-app target, iOS/Android WebView in Even Realities App phone
-  - ES2023 target ensures modern feature compatibility (native fetch, WebSocket, OffscreenCanvas, Web Worker)
+- Node.js 24.x LTS (pinned in `.nvmrc`) - Bridge, foundry-mcp, build scripts
+- Browser (WebView) - g2-app plugin host runs in Even Realities App WebView (Safari WKWebView)
 
 **Package Manager:**
-- **pnpm** 10.33.4 - Monorepo workspace manager, strict by default (`shamefully-hoist=false`)
-  - Repository lockfile: `pnpm-lock.yaml` (committed)
-  - Workspace protocol: `workspace:*` for inter-package dependencies (`@evf/shared-protocol` → `@evf/bridge`, etc.)
-  - Core config: `.npmrc` enforces strict hoisting, disables auto-install peer deps, enables workspace linking
+- pnpm 10.33.4 - Workspace manager with strict hoisting (shamefully-hoist=false per INV-4)
+- Lockfile: pnpm-lock.yaml (present, frozen-lockfile enforced in CI and Docker builds)
 
 ## Frameworks
 
-**Core Backend:**
-- **Fastify** 5.8.5 - HTTP/REST service framework (bridge package)
-  - Plugins: `@fastify/websocket` 11.2.0, `@fastify/cors` 11.2.0, `@fastify/rate-limit` 10.3.0
-  - Schema validation via `@fastify/type-provider-zod` (integrates Zod)
-  - WS via native `ws@8.20.0` client underneath `@fastify/websocket`
+**Core:**
+- Fastify 5.8.5 - HTTP/REST framework for bridge service (`packages/bridge`)
+- Vite 8.0.11 - Dev server + production bundler for g2-app plugin (`packages/g2-app`)
 
-**Frontend Build:**
-- **Vite** 8.0.11 - Dev server + production bundler for g2-app (browser plugin host)
-  - Multi-entry support via rollupOptions (Phase 4a G2 plugin + Phase 2 wizard)
-  - Target: `es2023`, output static ESM bundle (CDN-friendly, zero state)
-  - Config: `packages/g2-app/vite.config.ts`
+**WebSocket:**
+- @fastify/websocket 11.2.0 - WebSocket plugin for Fastify
+- ws 8.20.0 - Raw WebSocket client (bridge → Foundry module connections)
 
-**Bundler (Backend):**
-- **tsup** 8.5.1 - Fast esbuild-based bundler for bridge and foundry-mcp
-  - Produces single-file ESM dist for Docker deployment
-  - Used in `@evf/bridge` and `@evf/foundry-module` build scripts
+**MCP (Phase 11+):**
+- @modelcontextprotocol/sdk 1.29.0 - Official Model Context Protocol TypeScript SDK
 
-## Testing
+**Testing:**
+- Vitest 4.1.5 - Unit/integration test runner (workspace-wide via test.projects)
+- @vitest/coverage-v8 4.1.5 - Coverage provider (v8, 80% threshold)
+- happy-dom 20.9.0 - Test environment for browser-shaped code
+- @playwright/test 1.59.1 - E2E testing (Phase 4+)
 
-**Test Framework:**
-- **Vitest** 4.1.5 - Unit + integration test runner, workspace-aware
-  - Config: `vitest.config.ts` at root with `test.projects: ['packages/*']`
-  - Coverage provider: **v8** (not istanbul) via `@vitest/coverage-v8@4.1.5`
-  - Coverage thresholds: 80% lines/branches/functions (root-level gate)
-  - Test environment: `happy-dom@20.9.0` (faster than jsdom for non-DOM code)
-  - Run commands: `pnpm test` (all), `pnpm test:watch`, `pnpm test:coverage`
-  - Snapshot tests critical for INV-1 layout integrity verification
+**Build/Dev:**
+- tsup 8.5.1 - Bundle bridge and foundry-mcp to single-file ESM
+- tsx 4.21.0 - TypeScript loader for dev scripts (Node native)
 
-**E2E / Browser Testing:**
-- **Playwright** 1.59.1 (`@playwright/test`) - Reserved for Phase 4a+ visual snapshots (not Phase 1)
-  - Drives headless Chromium equivalent to WKWebView plugin host
+**Code Quality:**
+- Biome 2.4.15 - Lint + format (replaces ESLint + Prettier; CI gate: biome ci .)
+- commitlint 19.x + husky 9.x - Conventional Commits enforcement (pre-commit + commit-msg hooks)
 
-**Test-Only Dependencies:**
-- `happy-dom@20.9.0` - Lightweight DOM mock for g2-app, bridge unit tests
-- `@vitest/coverage-v8@4.1.5` - V8 coverage provider (co-pinned with Vitest)
-
-## Code Quality & Linting
-
-**Formatter + Linter:**
-- **Biome** 2.4.15 - Single unified tool replacing ESLint + Prettier
-  - Config: `biome.jsonc` (replaces `.eslintrc` and `.prettierrc`)
-  - Rules: `recommended: true` + strict overrides (`noExplicitAny: warn`, `noConsole: warn with allow: [error, warn]`)
-  - Lint commands: `pnpm lint` (check & fix), `pnpm lint:ci` (read-only for CI)
-  - Format command: `pnpm format` (writes fixes)
-  - Line width: 100, spaces: 2, trailing commas: all, quotes: single, semicolons: always
-
-**Type Checking:**
-- **TypeScript** 5.8.3 compiler - `tsc --noEmit` for workspace-wide type validation
-  - Root config: `tsconfig.base.json` (strict mode, no emit)
-  - Per-package: each has its own `tsconfig.json` extending base
-  - Command: `pnpm typecheck` (root check + per-package checks via `pnpm -r exec tsc --noEmit`)
-  - Strict flags: `strict: true` + `noUnusedLocals` + `noUnusedParameters` + `noImplicitOverride` + `noFallthroughCasesInSwitch` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes`
+**Versioning:**
+- @changesets/cli 2.31.0 - Per-package semver with independent pre-1.0 no-publish strategy
 
 ## Key Dependencies
 
-### @evf/shared-protocol (Zod schemas, shared types)
+**Raster Pipeline (g2-app + bridge):**
+- image-q 4.0.0 - Floyd-Steinberg/Atkinson/Bayer dithering + custom 16-step greyscale palette for 4-bit quantization
+- upng-js 2.1.0 - 4-bit indexed-palette PNG encoder (G2 wire format compatible, Specs.md §11.5.7)
+- xxhash-wasm 1.1.0 - Sub-tile hashing for delta encoding (WASM, ~1 GB/s throughput, critical for 15 fps stretch target)
 
-**Critical:**
-- **Zod** 4.4.3 - TypeScript-first schema validation & runtime parsing
-  - Single source of truth for all protocol schemas (bridge API, MCP tools, settings)
-  - Used by: bridge (route validation), g2-app (API responses), foundry-module (pairing), foundry-mcp (tool schemas)
+**Even Realities Integration (g2-app):**
+- @evenrealities/even_hub_sdk 0.0.10 - Official SDK for Even Hub device APIs (EvenAppBridge envelope dispatch, display ops, audio capture)
 
-### @evf/g2-app (Browser plugin host)
+**Validation & Types:**
+- zod 4.4.3 - Runtime schema validation (single source of truth shared across bridge, g2-app, foundry-mcp, shared-protocol)
 
-**Image Processing Pipeline:**
-- **image-q** 4.0.0 - Floyd-Steinberg / Atkinson / Bayer dither + custom 16-step greyscale palette
-  - Why this lib: only npm option supporting FS+Atkinson+Bayer **and** custom palette; ~60 KB gz tree-shaken
-  - Dither algorithms: FS (default precision), Atkinson (performance), Bayer 8×8 (structured pattern)
-  - No browser DOM dependency, worker-safe (INV-1 raster pipeline §11.5.7)
+**Infrastructure (bridge):**
+- Fastify CORS 11.2.0 - CORS plugin with origin whitelist (env var EVF_PLUGIN_HOST_URL, no wildcards per Even Hub constraint)
+- Fastify Rate-Limit 10.3.0 - Per-bearer-token rate limiting (100 req/min, falls back to IP)
+- pino 10.3.1 - Structured JSON logging with security redact list (deepgramKey, apiKey patterns)
+- prom-client 15.1.3 - Prometheus metrics (registry + histogram hooks for HTTP route duration)
+- sharp 0.34.0 - Server-side image processing fallback (Specs.md §11.5.7 Option B — not used in MVP raster path)
 
-- **upng-js** 2.1.0 - 4-bit indexed-palette PNG encode/decode
-  - Only mature npm encoder supporting `depth: 4` indexed-palette matching G2 wire format (§3.1)
-  - Photopea-maintained, ~25 KB gz
-  - No browser DOM dependency, worker-safe
+**Voice STT (Phase 12+):**
+- Deepgram Nova-3 Multilingual via WebSocket - External STT service (DEEPGRAM_API_KEY env var, soft-fail when missing)
 
-- **xxhash-wasm** 1.1.0 - WASM xxHash for sub-tile delta encoding
-  - ~1 GB/s throughput → 5-10× faster than hand-rolled JS murmur/FNV
-  - Critical for Layer 1 + Layer 2 delta hashing (15 fps stretch target, §11.5.7.1)
-  - 1.3 KB gz, zero-dependency WASM
-
-**Networking:**
-- Native `fetch` + `WebSocket` (no external library; browser baseline)
-
-**State & Schema:**
-- **Zod** 4.4.3 (workspace inter-package)
-
-### @evf/bridge (Node.js service)
-
-**HTTP/WS Server:**
-- **Fastify** 5.8.5 - Core framework
-- **@fastify/websocket** 11.2.0 - WebSocket plugin
-- **@fastify/cors** 11.2.0 - CORS handling (plugin-host origin whitelist)
-- **@fastify/rate-limit** 10.3.0 - Per-token rate limiting (10 req/s per bearer, audio 30s max)
-- **ws** 8.20.0 - WebSocket client (originate connection toward Foundry module socket)
-
-**Logging & Observability:**
-- **pino** 10.3.1 - Structured logging, JSON-line output
-  - In dev: piped to `pino-pretty` (human-readable)
-  - In prod: ship to Loki/CloudWatch
-
-- **prom-client** 15.1.3 - Prometheus metrics exposition (`/metrics` endpoint per Phase 3)
+**Foundry Integration (foundry-module):**
+- qrcode 1.5.4 - QR code generation for pairing flow (SVG output, Specs.md §11.5.4, §7.14.7.3)
 
 **Utilities:**
-- **Zod** 4.4.3 (workspace, route/tool schema validation)
+- csv-stringify 6.5.2 - CSV output for validation harness reports
 
-### @evf/foundry-module (Foundry module `evenfoundryvtt`)
-
-**Foundry Integration:**
-- No npm dependencies on Foundry/dnd5e (they're globals in the Foundry runtime)
-- **socketlib** (NOT on npm) - Foundry module dependency declared in `module.json` `relationships.requires`
-  - Enables GM-side execution: `socket.executeAsGM(handler, ...args)` pattern
-  - Sourced from `github.com/farling42/foundryvtt-socketlib`
-
-- **midi-qol** (NOT on npm) - Optional Foundry module dependency (also in `relationships.requires`)
-  - Full-flow wrapper: attack → damage → save → effect
-  - Sourced from `gitlab.com/tposney/midi-qol`
-
-- **dnd5e** system (NOT on npm) - Required system, declared in `relationships.systems`
-  - Minimum: 5.3.3 (Activity system mandatory, v12 not supported)
-  - Sourced from `github.com/foundryvtt/dnd5e` (verified via live `system.json` as of 2026-05-10)
-
-**QR Code:**
-- **qrcode** 1.5.4 - Generate pairing QR (bearer token + metadata, SVG output)
-
-**Types:**
-- `@types/qrcode` 1.5.5 - TypeScript definitions
-- Community `fvtt-types` (if needed, Phase 2 migration) - Foundry v13/v14 types
-
-### @evf/shared-render (ASCII grid + snapshot matcher)
-
-**Testing & Rendering:**
-- **Vitest** 4.1.5 (peer dependency, used for snapshot fixture comparison)
-  - INV-1 snapshot tests verify layout integrity (frame alignment, column consistency, content overflow handling)
-
-### @evf/validation-harness (Phase 0+ hardware tests)
-
-**CSV Output:**
-- **csv-stringify** 6.5.2 - Performance test result serialization (timing, throughput measurements)
-
-**Image Utilities:**
-- **upng-js** 2.1.0 (workspace, for image format validation tests §10.0.2)
-
-**Schema:**
-- **Zod** 4.4.3 (workspace, for test payload validation)
+**Type Definitions:**
+- @types/node 25.6.2 - Node.js runtime types
+- @types/qrcode 1.5.5 - QRCode library types
+- @types/ws 8.5.14 - WebSocket types
 
 ## Configuration
 
 **Environment:**
-- Settings bootstrap via Foundry module `game.settings.register*` calls
-- Bearer registry stored in `evenfoundryvtt` settings (per-pair, 24h TTL)
-- Bridge URL + auth token configured in Even Realities App per-plugin settings UI (phone-side persistence, §3.8)
-- Locale override stored device-local in G2 plugin state (never modifies world setting, §7.16)
+- `.env` template: `deploy/.env.example` (gitignored, never committed)
+- Key env vars (bridge):
+  - `EVF_INTERNAL_SECRET` (required) - 32-byte random bearer secret for module → bridge auth (Specs.md §11.5.4)
+  - `EVF_PLUGIN_HOST_URL` (required) - CORS allow-list origin (no wildcards)
+  - `NODE_ENV` - "production" in Docker, "development" in dev
+  - `LOG_LEVEL` - pino log level (info, debug, etc.)
+  - `PORT` - HTTP listen port (default 8910)
+  - `DEEPGRAM_API_KEY` (optional Phase 12+) - STT integration; missing = soft-fail voice-disabled
 
-**Build Configuration:**
-- `package.json` - Workspace manifest, script definitions, Node 24 engine requirement
-- `pnpm-workspace.yaml` - Packages glob (`packages/*`)
-- `tsconfig.base.json` - Root-level TS strict config (root files only, packages have own configs)
-- `tsconfig.json` - Per-package: each extends base, adds DOM/WebWorker libs as needed
-- `biome.jsonc` - Unified linter + formatter config (root level, applies to all packages except documented exclusions)
-- `vitest.config.ts` - Root Vitest workspace config + coverage thresholds
-- `.changeset/config.json` - Semantic versioning per-package, independent bumps, pre-1.0 no-publish
-- `.nvmrc` - Node version pinned to 24
-- `.npmrc` - pnpm strict mode settings
-- `.editorconfig` - Editor neutral formatting hints
-- `.husky/` - Git hook scripts for `commitlint` (Conventional Commits enforcement)
+**TypeScript:**
+- `tsconfig.base.json` - Root strict mode config (ES2023 target, ESNext module, bundler resolution)
+  - Strict flags: `strict: true`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
+  - Each package extends this base with its own `tsconfig.json`
 
-**CI/CD:**
-- `.github/workflows/ci.yml` - GitHub Actions D-1.10 7-gate pipeline (lint, typecheck, test coverage, changesets)
+**Linting & Format:**
+- `biome.jsonc` - Single configuration for lint + format
+  - Format: 2-space indent, 100 char line width, single quotes, trailing commas, always semicolons
+  - Lint: recommended rules + strict suspicious/correctness overrides
+  - CI gate: `biome ci .` (read-only, fails on any warning)
+
+**Test:**
+- `vitest.config.ts` - Workspace-wide test projects + v8 coverage (80% threshold)
+  - Projects: `packages/*` (passWithNoTests: true for Phase 2+ stubs)
+  - Excluded from coverage: placeholder index.ts, test files, dist/, validation-harness/src/lib/ (hardware tests)
+
+**Workspace:**
+- `pnpm-workspace.yaml` - `packages/*` glob
+- `.npmrc` - shamefully-hoist=false, auto-install-peers=false, ignore-scripts=true
+- `.editorconfig` - UTF-8, LF line endings, 2-space indent
+
+**Build:**
+- `Dockerfile`s (two stages):
+  - `deploy/bridge.Dockerfile` - Node 24-alpine builder + runner (pnpm install --frozen-lockfile, tsup build, pnpm deploy --legacy)
+  - `deploy/foundry-mcp.Dockerfile` - Same pattern for foundry-mcp service
 
 ## Platform Requirements
 
 **Development:**
-- **Node.js 24+** (pinned `.nvmrc=24`)
-- **pnpm 10.33.4** (managed via corepack in CI for reproducibility)
-- Foundry VTT v13.347+ (for module development/testing via symlink or manifest install)
-- dnd5e system 5.3.3+ (dependency for module features)
-- socketlib module (Foundry dependency, auto-prompted by module.json)
-- Even Hub SDK access (Phase 0+ hardware tests, gated on Even Realities account)
+- Node.js ≥24.0.0 (engines field in root package.json)
+- pnpm ≥10 (packageManager field enforces via corepack)
+- Commands:
+  - `pnpm install` - Install workspace deps
+  - `pnpm typecheck` - Full workspace type-check (tsc --noEmit per package)
+  - `pnpm lint` - Biome check (writes fixes)
+  - `pnpm lint:ci` - Biome ci (read-only for CI)
+  - `pnpm test` - Vitest --run (all projects)
+  - `pnpm test:watch` - Vitest watch mode
+  - `pnpm test:coverage` - Vitest with v8 coverage report
+  - `pnpm changeset` - Add changeset for PR versioning
 
-**Production (Bridge Service):**
-- **Node.js 24 LTS** runtime container (`node:24-alpine` base image)
-- **Docker** (Compose for MVP homelab single-tenant)
-- **HTTPS** mandatory (Let's Encrypt or self-signed in dev)
-- Network whitelist compliance: Bridge + Plugin Host URLs both in Even Hub `app.json` origin list (no wildcards, Specs.md §3.3)
-
-**Production (G2 Plugin Host):**
-- Static HTTP(S) server (`nginx:alpine` or Caddy)
-- CDN-friendly (zero state, cacheable forever via content-hash in filename)
-- HTTPS mandatory in prod
-- CORS headers optional (server-to-browser, no API calls from host itself)
-
-**Production (Plugin WebView):**
-- **Even Realities App** on iOS/Android smartphone
-- **Safari WKWebView** (iOS) or Chromium-based WebView (Android)
-- Even R1 ring pairing via BLE
-
-## Deployment Architecture
-
-**Three-hop deployment** (Specs.md §3.7):
-
-```
-[ G2 firmware (display + input) ]
-       ↓ BLE LC3 audio + display ops
-[ Even Realities App (phone WebView) ]
-       ↓ HTTPS GET (load plugin)
-[ Plugin Host (static nginx/Caddy) ]
-       ↓ HTTPS/WSS (game state)
-[ Bridge (Node.js Fastify service) ]
-       ↓ socket.io / ws / REST
-[ Foundry VTT + dnd5e module ]
-```
-
-**MVP Compose stack (homelab):**
-- `bridge` service: `node:24-alpine` + tsup bundle, port 8910 internal (exposed via reverse proxy)
-- `plugin-host` service: `nginx:alpine` serving `packages/g2-app/dist/`, port 80/443
-- `foundry` service: (user's existing homelab installation, no changes)
-- Optional `caddy` service: auto-HTTPS reverse proxy, Let's Encrypt integration
-
-**V2 MCP Addon (Phase 11+, optional):**
-- `foundry-mcp` service: `node:24-alpine`, Streamable HTTP transport + stdio for local clients
-- Auth: same bearer token as bridge (no new surface)
-
-## Version Pinning & Drift Corrections
-
-**Drift from research (per CLAUDE.md §Technology Stack):**
-
-1. **TypeScript** - Research noted `5.8.5`; actual pinned **5.8.3**
-   - Root cause: 5.8.5 does not exist on npm registry (latest 5-series is 5.8.3)
-   - Pin location: `package.json` devDependencies
-   - Status: CRITICAL — corrected 2026-05-11, verified live npm registry
-
-2. **pnpm** - Research noted `10.3.1`; actual pinned **10.33.4**
-   - Root cause: 10.3.1 does not exist; current `latest-10` dist-tag is 10.33.4
-   - Pin location: `package.json` `packageManager` field + `pnpm-lock.yaml` lockfile version
-   - Status: CRITICAL — corrected 2026-05-11, verified live npm registry
-
-All other version pins verified as current-latest as of 2026-05-10 (see CLAUDE.md §10 Sources for full WebFetch audit trail).
+**Production:**
+- Deployment target: Docker Compose homelab (Phase 13+ may upgrade to cloud)
+- Services:
+  - `bridge` - Node 24-alpine, port 8910, healthz endpoint `/healthz`
+  - `foundry-mcp` - Node 24-alpine (Phase 11+), port 8911, healthz endpoint `/healthz`
+  - Plugin host - Static HTTPS server (Caddy/nginx) for g2-app build output
+  - Foundry VTT ≥13.347 (verified on v14) - Not shipped by EVF; module is a **plugin for** existing Foundry
+- Reverse proxy: Caddy/Traefik with Let's Encrypt (TLS required by Even Hub in prod)
+- Network: All domains in app.json whitelist (origin-complete URLs only, no wildcards per §3.3)
 
 ---
 
-*Stack analysis: 2026-05-14*
+*Stack analysis: 2026-05-24*

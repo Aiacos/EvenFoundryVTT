@@ -1,291 +1,348 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-05-14
+**Analysis Date:** 2026-05-24
 
 ## Directory Layout
 
 ```
 EvenFoundryVTT/
 ├── .changeset/              # Changesets for semantic versioning (per-package)
-├── .claude/                 # Claude Code project skills & guidelines (if present)
-├── .github/                 # GitHub Actions CI/CD (.github/workflows/ci.yml)
+├── .claude/                 # Claude Code project context
+├── .github/                 # GitHub Actions CI/CD workflows
 ├── .husky/                  # Git hooks (pre-commit, commit-msg via commitlint)
-├── .planning/               # GSD workflow artifacts & research
-│   ├── codebase/            # ← Generated codebase maps (ARCHITECTURE.md, STRUCTURE.md, etc.)
-│   ├── phases/              # Phase-level planning documents & logs
-│   ├── research/            # Research memos, STACK.md, INTEGRATIONS.md, etc.
-│   └── *.md                 # PROJECT, REQUIREMENTS, ROADMAP, STATE
-├── deploy/                  # Docker Compose & Dockerfile(s) for bridge + plugin host
-├── docs/                    # Architecture Decision Records (ADRs) + showcase
-│   ├── architecture/        # 0001-0008.md (accepted ADRs) + 0005-0006 proposed
-│   ├── perf/                # Phase 0 performance calibration methodology
-│   ├── release/             # Release notes template (foundry-module.md)
-│   ├── showcase/            # GitHub Pages static HTML showcase
-│   └── wiki/                # Placeholder for wiki-style docs
-├── packages/                # pnpm monorepo packages
-│   ├── g2-app/              # Even Realities App WebView bundle (Vite, Phase 4a placeholder)
-│   ├── bridge/              # Node.js Fastify service (Phase 3 real, Phase 2 placeholder)
-│   ├── foundry-module/      # Foundry VTT module `evenfoundryvtt` (Phase 2 real)
-│   ├── shared-protocol/     # Zod schemas + TypeScript types (shared across all packages)
-│   ├── shared-render/       # ASCII grid model + INV-1 snapshot matcher
-│   └── validation-harness/  # Phase 0 hardware validation tests
-├── .editorconfig            # EditorConfig (tabs, line length, etc.)
-├── .gitignore               # Git ignore rules (node_modules, coverage, dist, .env*)
-├── .gitattributes           # Git attributes (eol, binary handling)
-├── .npmrc                    # npm/pnpm config (registry, audit settings)
+├── .planning/               # GSD workflow artifacts
+│   ├── codebase/            # ← GSD-generated codebase maps (ARCHITECTURE.md, STRUCTURE.md, etc.)
+│   ├── phases/              # Phase-level planning documents
+│   ├── research/            # Research memos (STACK.md, INTEGRATIONS.md)
+│   └── *.md                 # PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md
+├── deploy/                  # Docker Compose + Dockerfile(s)
+├── docs/                    # Architecture Decision Records + showcase
+│   ├── architecture/        # 0001-0011.md (ADRs)
+│   ├── perf/                # Performance calibration methodology
+│   ├── release/             # Release notes template
+│   ├── showcase/            # GitHub Pages static HTML
+│   └── wiki/                # Wiki-style documentation
+├── packages/                # pnpm monorepo (workspaces)
+│   ├── g2-app/              # Even Realities App bundle (Vite)
+│   │   ├── src/
+│   │   │   ├── engine/              # Boot, layer manager, r1 events, capability handshake
+│   │   │   ├── panels/              # Character, combat, log, spellbook, inventory, modals
+│   │   │   ├── raster/              # Map rendering, delta encoding, Web Worker
+│   │   │   ├── status-hud/          # Status bar, toast queue, action economy
+│   │   │   ├── locale/              # Locale override, menu, events
+│   │   │   ├── wizard/              # Pairing wizard (3 steps + auto-connect)
+│   │   │   ├── internal/            # Boot core (W-4 closure, internal detail)
+│   │   │   ├── types/               # TypeScript .d.ts stubs (even-hub, upng-js)
+│   │   │   ├── __tests__/           # Integration tests (boot, panel, raster)
+│   │   │   ├── index.ts             # Production entry point
+│   │   │   └── index.test-support.ts # Test DI surface (NOT in production)
+│   │   ├── dist/                    # Build output (Vite bundle)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── vitest.config.ts
+│   │
+│   ├── bridge/              # Fastify service (Node 24)
+│   │   ├── src/
+│   │   │   ├── routes/              # HTTP routes (character, combat, scene, tools, health, etc.)
+│   │   │   ├── ws/                  # WebSocket handlers (handshake, delta, tool-invoke, resume)
+│   │   │   ├── cache/               # Tier 1 in-memory (token, portrait, spell-pack, entity-pack)
+│   │   │   ├── voice/               # Deepgram STT, keyterm merger, audio-stream
+│   │   │   ├── auth/                # Bearer token validation + cache
+│   │   │   ├── portrait/            # Portrait rendering + caching
+│   │   │   ├── middleware/          # Idempotency store, rate limiting
+│   │   │   ├── metrics/             # Prometheus registry
+│   │   │   ├── types/               # TypeScript .d.ts stubs
+│   │   │   ├── __tests__/           # Integration tests (voice redact, etc.)
+│   │   │   ├── index.ts             # Startup guard + server boot
+│   │   │   └── server.ts            # Fastify factory + plugin registration
+│   │   ├── dist/                    # Build output (tsup bundle)
+│   │   ├── coverage/                # Test coverage reports
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── vitest.config.ts
+│   │
+│   ├── foundry-module/      # Foundry VTT module (evenfoundryvtt)
+│   │   ├── src/
+│   │   │   ├── pair/                # Bearer generation, rotation, QR modal, socketlib dispatch
+│   │   │   ├── readers/             # Hook subscribers, character/combat/scene/log/entity/spell extraction
+│   │   │   ├── write-path/          # 17 socketlib handlers, action trackers, concentration detector
+│   │   │   │   ├── handlers/        # Individual action handlers (cast-spell, weapon-attack, etc.)
+│   │   │   │   └── *.ts             # Watchers, trackers, audit log, idempotency cache
+│   │   │   ├── types/               # Foundry globals stubs
+│   │   │   ├── __tests__/           # Integration tests (read/write path)
+│   │   │   ├── module.ts            # Foundry entry point (Hooks registration)
+│   │   │   ├── settings.ts          # Settings panel + bridge config
+│   │   │   ├── canvas-extractor.ts  # Scene viewport + token extractor
+│   │   │   └── module.json          # Foundry manifest (esmodules, manifest+ 5.x, compatibility)
+│   │   ├── dist/                    # Build output (compiled JS + manifest)
+│   │   ├── lang/                    # i18n JSON (en.json, it.json)
+│   │   ├── templates/               # Pair modal HTML template(s)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── vitest.config.ts
+│   │
+│   ├── shared-protocol/     # Zod schemas + TypeScript types
+│   │   ├── src/
+│   │   │   ├── payloads/            # Character, combat, scene, log, frame, portal, voice, spell-pack, entity-pack schemas
+│   │   │   ├── tools/               # Tool input schemas (cast-spell, weapon-attack, move-token, etc.)
+│   │   │   ├── voice/               # Voice keyterms (spell vocabulary for Deepgram)
+│   │   │   ├── envelope.ts          # Top-level WS envelope schema + types
+│   │   │   ├── handshake.ts         # Handshake + SERVER_CAPS_V1 schema
+│   │   │   ├── perf-probe.ts        # Performance probe envelope schema
+│   │   │   ├── index.ts             # Re-exports (single source of truth)
+│   │   │   └── __tests__/           # Schema validation tests
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   ├── shared-render/       # ASCII grid + snapshot matcher
+│   │   ├── src/
+│   │   │   ├── fixtures/            # Fixture templates (boot splash, panels, status HUD)
+│   │   │   ├── grid.ts              # ASCII grid builder + cell model
+│   │   │   ├── matcher.ts           # Vitest snapshot assertion helper
+│   │   │   └── index.ts             # Re-exports
+│   │   ├── tests/                   # Snapshot test fixtures
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   └── validation-harness/  # Phase 0 hardware validation
+│       ├── src/
+│       │   ├── scripts/              # Individual validation scripts (10-0-1, 10-0-2, etc.)
+│       │   ├── tests/                # Software-only probe tests
+│       │   └── foundry-modules/      # Test double modules (mock socketlib, etc.)
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── coverage/                # Aggregate coverage reports (root + bridge)
+├── node_modules/            # Workspace node_modules (pnpm)
+├── .editorconfig            # EditorConfig settings
+├── .gitignore               # Git ignore rules
+├── .gitattributes           # Git attributes (eol, binary)
+├── .npmrc                    # npm/pnpm config
 ├── .nvmrc                    # Node.js version pin (24)
-├── biome.jsonc              # Biome linter + formatter config (v2.4.15)
+├── biome.jsonc              # Biome linter + formatter config
 ├── commitlint.config.js     # Conventional Commits enforcement
-├── CLAUDE.md                # Project guidelines for Claude (this repo's canonical instructions)
+├── CLAUDE.md                # Project guidelines (this repo's instructions for Claude)
 ├── CONTRIBUTING.md          # Contribution guidelines
 ├── LICENSE                  # MIT
-├── package.json             # Root workspace config (pnpm 10.33.4, devDeps, scripts)
-├── pnpm-lock.yaml           # Lock file (commit this)
-├── pnpm-workspace.yaml      # Workspace glob (packages/*)
-├── README.md                # GitHub projection (coherent with Specs.md + showcase)
-├── Specs.md                 # Canonical spec v0.9.11 (~4040 lines, source of truth)
-├── tsconfig.base.json       # Shared TypeScript config (strict + 6 flags, excludes packages)
-└── vitest.config.ts         # Vitest workspace config (test.projects: ['packages/*'], coverage gates)
+├── package.json             # Root workspace config
+├── pnpm-lock.yaml           # Dependency lock file
+├── pnpm-workspace.yaml      # Workspace glob
+├── README.md                # GitHub projection
+├── Specs.md                 # Canonical spec (source of truth, ~4000 lines)
+├── tsconfig.base.json       # Shared TypeScript strict config
+└── vitest.config.ts         # Workspace test config
 ```
 
 ## Directory Purposes
 
-**`.planning/codebase/`:**
-- Purpose: GSD-generated codebase maps (ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md, STACK.md, INTEGRATIONS.md)
-- Contains: Analysis snapshots written by `/gsd-map-codebase` and read by `/gsd-plan-phase` / `/gsd-execute-phase`
-- Key files: Each map is an independent Markdown document; no subdirs
+**`packages/g2-app/src/`:**
+- **engine/:** Core boot sequence, layer orchestration, R1 event wiring, capability handshake, page lifecycle, WS reconnect.
+- **panels/:** State machines for character sheet, combat tracker, inventory, spellbook, log, reaction prompts, action options, target picker, template placement.
+- **raster/:** Map base layer, delta encoding, tile hashing, RLE compression, Web Worker interface, glyph fallback.
+- **status-hud/:** Status bar rendering, toast queue, action economy display, idle infill, i18n budgets, R1 hint parsing.
+- **locale/:** Locale override menu, events, i18n string replacement.
+- **wizard/:** Pairing flow (profile → token scan → character select), auto-connect, Tier 3 storage interface.
+- **internal/:** Boot engine core (W-4 closure, NOT exposed to production).
+- **types/:** TypeScript declaration stubs (.d.ts) for Even Hub SDK and upng-js.
+- **__tests__/:** Integration smoke tests, boot wiring tests, scene renderer tests.
 
-**`.planning/phases/`:**
-- Purpose: Per-phase planning (context, research, plan, summary, discussion logs)
-- Contains: `NN-CONTEXT.md` (phase setup), `NN-RESEARCH.md` (investigation), `NN-01-PLAN.md` through `NN-04-PLAN.md` (execution plans), `NN-01-SUMMARY.md` (completion)
-- Naming: `DD-DESIGNATION/` directories (e.g., `01-foundation/`, `02-foundry-module-core-pairing-ui/`, `03-bridge-service-skeleton/`)
-- Key files: Each phase has its own subdir with CONTEXT.md (required reading before planning), RESEARCH.md (findings), PLANs (per-day breakdowns), SUMMARY (completion state)
+**`packages/bridge/src/`:**
+- **routes/:** HTTP route handlers (character snapshot, combat turn, scene viewport, i18n, spells, entities, portrait proxy, events, health checks).
+- **ws/:** WebSocket handlers (handshake negotiation, delta emitter, tool invocation dispatch, session resumption, replay buffer).
+- **cache/:** Tier 1 in-memory caches (TokenCache, PortraitCache, SpellPackCache, EntityPackCache).
+- **voice/:** Deepgram STT integration, audio stream route, keyterm merger for voice recognition.
+- **auth/:** Bearer token validation, token cache with TTL.
+- **portrait/:** Portrait rendering + caching (stretch STRETCH-06).
+- **middleware/:** Idempotency store (with 24h TTL) + pre/post hooks; rate limiting.
+- **metrics/:** Prometheus metrics registry + endpoint handler.
+- **types/:** TypeScript stubs for Fastify extensions, upng-js.
+- **__tests__/:** Voice secret redaction tests.
 
-**`.planning/research/`:**
-- Purpose: Long-lived research memos (not phase-specific)
-- Contains: STACK.md (technology stack snapshot), INTEGRATIONS.md (external APIs), ARCHITECTURE.md (high-level design overview, updated during research phases), FEATURES.md, PITFALLS.md, SUMMARY.md
-- Key files: STACK.md is refreshed during pre-bump verification (INV-2 upstream validation round)
+**`packages/foundry-module/src/`:**
+- **pair/:** Bearer token generation, 24h rotation scheduler, QR pairing modal, bearer registry, socketlib handler dispatch registration.
+- **readers/:** Hook subscribers (updateToken, updateActor, updateCombat, createChatMessage), character/combat/scene/log/entity/spell pack extractors.
+- **write-path/:** 17 socketlib action handlers (cast-spell, weapon-attack, move-token, use-item, place-template, opportunity-attack, cast-shield, cast-counterspell, drop-concentration, skill-check), action result watcher, action economy tracker, concentration detector, movement tracker, audit log, idempotency cache, reaction watcher.
+- **types/:** Foundry globals stubs (.d.ts).
+- **__tests__/:** Integration tests (reader extraction, write path handlers, socketlib dispatch).
+
+**`packages/shared-protocol/src/`:**
+- **payloads/:** Schema definitions for every WS envelope payload (character, combat, scene, log, frame, action-economy, movement, portrait, voice, spell-pack, entity-pack, action-result, reaction, concentration, template, multi-attack, etc.).
+- **tools/:** Input schemas for all tool invocations (cast-spell, weapon-attack, move-token, use-item, place-template, skill-check, opportunity-attack, cast-shield, cast-counterspell, drop-concentration, set-targets).
+- **voice/:** Spell keyterms vocabulary for Deepgram voice recognition.
+- **envelope.ts:** Top-level `Envelope` schema + `DeltaEnvelope`, validation wrapper.
+- **handshake.ts:** Handshake client/server schemas + `SERVER_CAPS_V1` capability set.
+- **perf-probe.ts:** Performance probe envelope for latency instrumentation.
+
+**`packages/shared-render/src/`:**
+- **fixtures/:** ASCII mockup templates (boot splash checklist, status HUD corner card, panel layouts) for snapshot tests.
+- **grid.ts:** ASCII grid builder (fixed-width, column-justified cells) + cell model for character-perfect layout validation (INV-1).
+- **matcher.ts:** Vitest snapshot assertion helper (`expectAsciiMatch(actual, fixture)`).
+
+**`packages/validation-harness/src/`:**
+- **scripts/:** Individual Phase 0 hardware validation probes (R1 timing, image format, BLE bandwidth, audio chunk size, etc.) + CSV output formatters.
+- **tests/:** Software-only validation (no Even Hub access required).
+- **foundry-modules/:** Mock Foundry modules for test harness (socketlib double, item/actor fixtures).
 
 **`docs/architecture/`:**
-- Purpose: Accepted Architecture Decision Records (MADR format)
-- Contains: 0001.md through 0008.md (7 accepted, 1 reserved for RTL v2); 0005, 0006 are proposed stubs
-- Naming: `NNNN-kebab-case-title.md` with frontmatter (status, date, deciders, consulted, informed)
-- Key references: ADR-0001 (layered UI model), ADR-0002 (protocol versioning + resumption), ADR-0003 (tool registry), ADR-0004 (voice via MCP), ADR-0008 (code quality config)
+- **0001-layered-ui-model.md:** ADR-0001 (z-stack atomicity, single rebuildPageContainer per frame, ADR-0001 Amendment 1).
+- **0002-protocol-versioning.md:** ADR-0002 (Zod validation at every boundary, idempotency via uuid + timestamp, resumption via replay buffer).
+- **0003-tool-registry-pattern.md:** ADR-0003 (tool input schemas, handler registration, ADR-0011 single-workflow-origin).
+- **0004-voice-via-mcp-not-internal.md:** ADR-0004 (V2 voice via MCP server, not internal EvenAI API).
+- **0005-phase0-go-no-go.md:** Hardware validation methodology + go/no-go decision criteria.
+- **0006-raster-pipeline-library-stack.md:** Technology choices (image-q, upng-js, xxhash-wasm, OffscreenCanvas).
+- **0008-code-quality-configuration.md:** Biome + TypeScript strict + Vitest coverage (INV-4).
+- **0009-layer-manager-contract.md:** LayerManager atomicity contract, differential demolish rule (ADR-0009).
+- **0010-panel-plugin-registry.md:** Panel plugin architecture + ADR-0010.
+- **0011-foundry-write-path-single-workflow-origin.md:** ADR-0011 (all mutations route through dispatchTool).
+- **INVARIANTS.md:** INV-1 through INV-4 + ADR-0011 overview + CI Gate 8 checklist.
+- **README.md:** ADR index.
 
 **`deploy/`:**
-- Purpose: Docker Compose and Dockerfile(s) for bridge + optional plugin host reverse proxy
-- Contains: `bridge.Dockerfile` (multi-stage Node.js build), `docker-compose.yml` (bridge + nginx/caddy + optional foundry-mcp v2), `.env.example`
-- Key files: `docker-compose.yml` (MVP single-tenant homelab), `bridge.Dockerfile` (build bridge from tsup bundle)
-
-**`packages/g2-app/`:**
-- Purpose: Even Realities App WebView plugin bundle (TypeScript + Vite)
-- Contains: Wizard (pairing flow), HUD state machine (Phase 4a placeholder), auto-reconnect logic, i18n, Tier 3 storage (Even Hub kv)
-- Key structure:
-  - `src/index.ts` — stub (Phase 4a fills implementation)
-  - `src/wizard/` — pairing wizard (step1-profile, step2-token, step3-character, completion)
-  - `src/wizard/wizard.ts` — state machine + flow controller
-  - `src/wizard/auto-connect.ts` — WebSocket reconnect + exponential backoff
-  - `src/__tests__/` — snapshot & integration tests
-  - `vite.config.ts` — Vite dev server + production build (outputs to dist/)
-  - `vitest.config.ts` — test config (happy-dom environment)
-
-**`packages/bridge/`:**
-- Purpose: Node.js Fastify service (core business logic bridge)
-- Contains: HTTP/WebSocket server, session management, replay buffer, token cache, reader REST routes, tool dispatch
-- Key structure:
-  - `src/index.ts` — production entry point (boot Fastify, listen on PORT 8910)
-  - `src/server.ts` — `buildServer()` factory (plugin registration order, test injection points)
-  - `src/auth/token-cache.ts` — LRU token cache with TTL, bearer validation
-  - `src/ws/handshake.ts` — WS client connection, protocol negotiation, session_id assignment
-  - `src/ws/replay-buffer.ts` — 60-second envelope buffer, gap detection (ADR-0002)
-  - `src/ws/session-store.ts` — in-memory Map<session_id, session_state> with TTL
-  - `src/ws/delta-emitter.ts` — broadcast envelope to all connected clients
-  - `src/ws/resume.ts` — handle `client_resume` message, respond with replay or full snapshot
-  - `src/routes/` — HTTP endpoints: `/v1/health`, `/v1/character/:actorId`, `/v1/combat/current`, `/v1/scene/viewport`, `/v1/events`, `/v1/i18n/:lang`, `/v1/tools/:tool`, `/internal/delta`, `/metrics`, `/healthz`, `/readyz`
-  - `src/routes/tools-dispatch.ts` — TOOL_DISPATCH_TABLE[toolName] → handler function
-  - `src/middleware/idempotency.ts` — dedup POST requests by idempotency-key (ADR-0002)
-  - `src/metrics/registry.ts` — prom-client Prometheus metrics registry
-  - `tsup.config.ts` — bundle to single `dist/index.js` for Docker
-
-**`packages/foundry-module/`:**
-- Purpose: Foundry VTT module (`evenfoundryvtt`, esmodules entry point)
-- Contains: Module init, settings panel, pairing modal, socketlib handlers, Foundry hook readers
-- Key structure:
-  - `src/module.ts` — entry point, exports MODULE_ID, registers Hooks.once('init') + Hooks.once('ready')
-  - `src/settings.ts` — register settings panel (pairing UI, internal secret storage, bearer registry)
-  - `src/pair/` — pairing flow (modal, socketlib handlers, bearer registry CRUD)
-    - `PairModal.ts` — application class, QR code gen, accept/cancel buttons
-    - `socketlib-handlers.ts` — GM-side RPC handlers for tool invocations (cast_spell, weapon_attack, etc.)
-    - `bearer-registry.ts` — manage active bearer entries (add, revoke, check expiry)
-  - `src/readers/` — Foundry state extraction (character, combat, scene, event-log)
-    - `character-reader.ts` — CharacterReader.snapshot(actor) → CharacterSnapshot (via dnd5e Activity API)
-    - `combat-reader.ts` — CombatReader.snapshot(combat) → CombatSnapshot
-    - `scene-reader.ts` — SceneReader.snapshot(scene) → SceneViewport (active token + camera)
-    - `event-log-reader.ts` — EventLogReader.snapshot(world) → recent chat entries
-    - `hook-subscribers.ts` — registerHookSubscribers(bridgeDeltaEmitter) — Hooks.on('updateActor'), etc.
-    - `ring-buffer.ts` — RingBuffer<T> utility for event-log retention
-  - `src/types/foundry-globals.d.ts` — ambient type declarations for Foundry globals (game, Hooks, etc.)
-  - `module.json` — Foundry module manifest (id: evenfoundryvtt, esmodules, languages, relationships)
-  - `tsup.config.ts` — bundle TypeScript sources to `dist/module.js` + `dist/module.d.ts`
-
-**`packages/shared-protocol/`:**
-- Purpose: Zod schemas + TypeScript types (single source of truth)
-- Contains: Wire protocol contracts (envelope, handshake, resume, payloads, tool inputs)
-- Key structure:
-  - `src/index.ts` — re-exports all schemas (barrel file)
-  - `src/envelope.ts` — `EnvelopeSchema`, `DeltaEnvelopeSchema`, resume schemas (ClientResumeSchema, ResumeReplaySchema, ResumeFullSnapshotSchema) per ADR-0002
-  - `src/handshake.ts` — `HandshakeClientSchema`, `HandshakeServerSchema`, protocol cap negotiation
-  - `src/payloads/character.ts` — `CharacterSnapshotSchema`, CHARACTER_DELTA_TYPE constant
-  - `src/payloads/combat.ts` — `CombatSnapshotSchema`, `CombatantSchema`, COMBAT_STATE/TURN/TARGETS_DELTA_TYPE
-  - `src/payloads/scene.ts` — `SceneViewportSchema`, SCENE_VIEWPORT_DELTA_TYPE
-  - `src/payloads/event.ts` — `EventLogEntrySchema`, `EventTypeSchema`, EVENT_LOG_DELTA_TYPE
-  - `src/tools/index.ts` — `TOOL_REGISTRY`, `TOOL_NAMES`, `TOOL_INPUT_SCHEMAS` discriminated union
-  - `src/tools/cast-spell.ts`, `weapon-attack.ts`, `move-token.ts`, `place-template.ts`, `set-targets.ts`, `skill-check.ts`, `use-item.ts` — per-tool schemas (CastSpellInputSchema, etc.)
-
-**`packages/shared-render/`:**
-- Purpose: ASCII grid model + INV-1 snapshot matcher for layout integrity testing
-- Contains: Character grid representation, snapshot fixture matcher (per Specs §7.14.4 ck 11–15)
-- Key structure:
-  - `src/ascii-grid.ts` — AsciiGrid class (rows, columns, set cell, get cell, toString())
-  - `src/snapshot.ts` — `matchAsciiFixture(actual: Grid, expected: string)` for Vitest snapshot assertions
-  - `src/fixtures/` — `.txt` ASCII fixture files (HUD layouts per z=0/z=1/z=2 state)
-
-**`packages/validation-harness/`:**
-- Purpose: Phase 0 hardware/SDK validation tests (gated on Even Hub access)
-- Contains: R1 timing, image format, BLE bandwidth, DLE sustained, queue depth, palette calibration, MidiQOL probe
-- Key structure:
-  - `scripts/run-all.ts` — orchestrator (run all validation scripts in sequence, report pass/fail)
-  - `scripts/10-0-1-r1-timing.ts` — validate R1 gesture latency (Specs §10.0.1)
-  - `scripts/10-0-2-image-format.ts` — validate G2 image API (4-bit indexed, 576×288 max)
-  - `scripts/10-0-3-ble-multi-env.ts` — BLE bandwidth under different network conditions
-  - `scripts/10-0-7-dle-sustained.ts` — DLE sustained throughput (Phase 0 gate §10.0.7)
-  - `scripts/10-0-8-queue-depth.ts` — command queue depth for raster + status updates
-  - `scripts/10-0-9-palette-calibration.ts` — verify 16-step greyscale palette rendering
-  - `scripts/midiqol-config-probe.ts` — probe MidiQOL system config (Phase 7 planning)
-  - `src/lib/` — helper utilities (HTTP client, Even Hub SDK wrapper, test data fixtures)
+- **bridge.Dockerfile:** Multi-stage Node.js 24 build (FROM node:24-alpine → compile → runtime).
+- **docker-compose.yml:** MVP single-tenant homelab (bridge service + nginx static host + optional foundry-mcp).
+- **docker-compose.dev.yml:** Development variant (optional, for local testing with Foundry VTT).
+- **.env.example:** Template for required env vars (EVF_INTERNAL_SECRET, BRIDGE_URL, etc.).
 
 ## Key File Locations
 
 **Entry Points:**
-- `packages/g2-app/src/index.ts` — g2-app stub (Phase 4a fills real wizard + HUD)
-- `packages/bridge/src/index.ts` — bridge production entry (boot, listen, accept connections)
-- `packages/foundry-module/src/module.ts` — Foundry module entry (hooks, settings, pairing)
-- `packages/validation-harness/scripts/run-all.ts` — hardware validation orchestrator
+- `packages/g2-app/src/index.ts` — Production boot (`bootEngine`)
+- `packages/bridge/src/index.ts` — Bridge startup + server boot
+- `packages/foundry-module/src/module.ts` — Foundry module init hook
 
 **Configuration:**
-- `package.json` — root workspace (pnpm 10.33.4, Node 24, devDeps, scripts)
-- `pnpm-workspace.yaml` — workspace glob (packages/*)
-- `tsconfig.base.json` — shared TS config (strict + 6 flags)
-- `vitest.config.ts` — Vitest workspace config (projects, coverage thresholds)
-- `biome.jsonc` — Biome lint + format (v2.4.15, recommended + 4 strict)
-- `packages/*/package.json` — per-package config (name @evf/*, scripts, deps)
-- `packages/*/tsconfig.json` — per-package TS config (extends base)
+- `package.json` — Root workspace + scripts (lint, test, typecheck, changeset)
+- `tsconfig.base.json` — Shared TypeScript strict config (ES2023, no emit)
+- `biome.jsonc` — Linter + formatter (Biome 2.4.15, 5 strict rules)
+- `vitest.config.ts` — Workspace test config (test.projects, coverage gates)
+- `.changeset/config.json` — Changesets per-package, pre-1.0 no-publish
 
 **Core Logic:**
-- `packages/shared-protocol/src/envelope.ts` — wire protocol envelope schemas (single source of truth)
-- `packages/bridge/src/server.ts` — Fastify server factory + plugin registration order
-- `packages/bridge/src/ws/handshake.ts` — WS client connection logic
-- `packages/bridge/src/ws/replay-buffer.ts` — 60-second envelope buffer (ADR-0002)
-- `packages/bridge/src/routes/tools-dispatch.ts` — tool invocation routing table
-- `packages/foundry-module/src/module.ts` — Foundry hook bootstrap + pairing modal setup
-- `packages/foundry-module/src/readers/character-reader.ts` — character state extraction
-- `packages/foundry-module/src/pair/socketlib-handlers.ts` — GM-side RPC for tool invocations
+- **g2-app layers:** `packages/g2-app/src/engine/layer-manager.ts`, `layer-types.ts`
+- **bridge routes:** `packages/bridge/src/routes/`, `packages/bridge/src/ws/`
+- **foundry-module handlers:** `packages/foundry-module/src/write-path/handlers/`
+- **shared protocol:** `packages/shared-protocol/src/envelope.ts`, `handshake.ts`, `payloads/`, `tools/`
 
 **Testing:**
-- `vitest.config.ts` — workspace config (projects, coverage gates)
-- `packages/*/vitest.config.ts` — per-package overrides
-- `packages/*/src/**/*.test.ts` — unit tests (co-located with source)
-- `packages/g2-app/src/__tests__/` — integration tests (wizard, auto-connect, example HUD)
-- `packages/shared-render/src/fixtures/` — ASCII layout fixtures (for snapshot matching)
-- `packages/validation-harness/scripts/` — Phase 0 hardware tests
+- Vitest config: Each package has `vitest.config.ts` with project-specific setup
+- Test files: Co-located with source (`.test.ts` suffix) or in `__tests__/` subdirs
+- Coverage gate: 80% target (v8 provider)
+- Snapshots: `__tests__/__snapshots__/` for status HUD, panel layouts
 
 ## Naming Conventions
 
 **Files:**
-- `kebab-case.ts` — TypeScript source files (modules)
-- `PascalCase.ts` — TypeScript classes / application definitions (e.g., `PairModal.ts`, `AsciiGrid.ts`)
-- `*-reader.ts` — Foundry state extraction modules (character-reader.ts, combat-reader.ts)
-- `*.test.ts` — unit tests (co-located with source)
-- `*.d.ts` — TypeScript ambient type declarations (foundry-globals.d.ts, even-hub.d.ts)
-- `NN-kebab-title.md` — ADR files (0001-layered-ui-model.md, etc.)
-- `NN-DESIGNATION/NN-CONTEXT.md` — phase planning docs (e.g., `02-foundry-module-core-pairing-ui/02-CONTEXT.md`)
+- TypeScript source: `camelCase.ts`
+- Tests: `camelCase.test.ts` (co-located) or `__tests__/camelCase.test.ts`
+- Type definitions: `camelCase.d.ts`
+- Config files: `lower-kebab-case.config.ts` or `lower.jsonc`
+- ADRs: `NNNN-kebab-case-title.md`
 
 **Directories:**
-- `kebab-case/` — directory names (src/, packages/, docs/, .planning/, etc.)
-- `@evf/*` — npm package names (monorepo scope)
-- `PascalCase/` — none used in this codebase (lowercase preferred)
+- Feature modules: `kebab-case/` (e.g., `status-hud/`, `write-path/`)
+- Test directories: `__tests__/` (Vitest convention)
+- Snapshot fixtures: `__snapshots__/` or `fixtures/`
+- Internal details: `internal/` (e.g., `packages/g2-app/src/internal/boot-engine-core.ts`)
 
-**Imports & Exports:**
-- `workspace:*` — pnpm monorepo protocol (inter-package deps in package.json)
-- `./relative/path.js` — relative imports (always explicit .js extension, ESM)
-- `import type { Foo }` — type-only imports (T-safe, no runtime cost)
+**Functions & Classes:**
+- Public functions: `camelCase` (e.g., `bootEngine`, `LayerManager`)
+- Private/internal functions: `_camelCase` prefix (e.g., `_bootEngineCore`, `_flushPage`)
+- Handler functions: `verbNounHandler` (e.g., `castSpellHandler`, `weaponAttackHandler`)
+- Types: `PascalCase` (e.g., `LayerManager`, `DeltaEnvelope`, `ToolHandler`)
+
+**Constants:**
+- Enum values / type tags: `UPPER_SNAKE_CASE` (e.g., `R1_ACTION_ECONOMY_TYPE`, `Z0_MAP_LAYER`)
+- Immutable collections: `UPPER_SNAKE_CASE` (e.g., `SERVER_CAPS_V1`, `SPELL_KEYTERMS`)
 
 ## Where to Add New Code
 
-**New Feature (e.g., concentration checks):**
-- Primary code: `packages/foundry-module/src/readers/` (reader for concentration state) + `packages/shared-protocol/src/payloads/` (add ConcentrationDeltaSchema) + `packages/bridge/src/routes/concentration.ts` (REST endpoint) + `packages/g2-app/src/` (render widget, Phase 4a)
-- Tests: `packages/*/src/**/*.test.ts` (co-located, same dir structure as source)
-- Specs update: `Specs.md` §7 (UI mockup) + `README.md` (coherence check) + `docs/showcase/index.html` (projection)
+**New Feature (e.g., "add new panel type"):**
+- Implementation: `packages/g2-app/src/panels/{feature}-panel.ts` + state machine in `{feature}-state.ts` + dispatcher in `{feature}-dispatcher.ts`
+- Tests: `packages/g2-app/src/panels/__tests__/{feature}-panel.test.ts`
+- Protocol schema: `packages/shared-protocol/src/payloads/{feature}.ts` (if envelope)
+- Bridge route (if required): `packages/bridge/src/routes/{feature}.ts`
+- Example: Character sheet panel (`character-sheet-panel.ts`, `character-sheet-tab-renderers.ts`, snapshot tests)
 
-**New Component/Module:**
-- Implementation: Create `packages/shared-protocol/src/types/my-feature.ts` (types) + `packages/shared-protocol/src/payloads/my-feature.ts` (Zod schema) + `packages/bridge/src/routes/my-feature.ts` (HTTP handler) + `packages/foundry-module/src/readers/my-feature-reader.ts` (reader)
-- Integration: Update `packages/shared-protocol/src/index.ts` (re-export), `packages/bridge/src/server.ts` (register route), `packages/foundry-module/src/module.ts` (register hook)
-- Tests: Add `packages/*/src/**/*.test.ts` per package
+**New Socketlib Handler (e.g., "add new action"):**
+- Implementation: `packages/foundry-module/src/write-path/handlers/{action}-handler.ts`
+- Register: Add side-effect import to `packages/foundry-module/src/write-path/handlers/index.ts`
+- Input schema: Add to `packages/shared-protocol/src/tools/{action}.ts`
+- Register in TOOL_REGISTRY: `packages/shared-protocol/src/tools/index.ts`
+- Tests: `packages/foundry-module/src/write-path/handlers/{action}.test.ts`
+- Important: Socketlib count must remain at 17 (Phase 13 invariant per ADR-0011)
 
-**Utilities/Helpers:**
-- Shared helpers: `packages/shared-protocol/src/` (types that cross boundaries), or create new `packages/shared-utils/` for multi-package utilities
-- Bridge-only: `packages/bridge/src/lib/` (auth, metrics, etc.)
-- Foundry-module-only: `packages/foundry-module/src/lib/` (Foundry-specific helpers)
-- g2-app-only: `packages/g2-app/src/lib/` (UI/rendering helpers, Phase 4a)
+**New Payload Type (WS envelope):**
+- Schema: `packages/shared-protocol/src/payloads/{topic}.ts` (define payload type + Zod schema + type constant `{TOPIC}_TYPE`)
+- Re-export: Add to `packages/shared-protocol/src/index.ts`
+- Bridge handler: `packages/bridge/src/ws/{topic}-handler.ts` (if upstream from module)
+- g2-app consumer: `packages/g2-app/src/panels/{topic}-dispatcher.ts` + state machine
 
-**Tests:**
-- Unit tests: `packages/*/src/**/*.test.ts` (co-located with source, same file structure)
-- Integration tests: `packages/*/src/__tests__/` (for multi-file integration flows)
-- Fixtures: `packages/shared-render/src/fixtures/` (ASCII grid snapshots) or per-package `src/__fixtures__/` (test data)
-- Hardware validation: `packages/validation-harness/scripts/NN-NNN-*.ts` (Phase 0 gates)
+**New Utility/Helper:**
+- Shared (3+ packages): `packages/shared-protocol/src/utils/` (create new directory)
+- g2-app only: `packages/g2-app/src/internal/` (internal utilities stay internal)
+- Bridge only: `packages/bridge/src/util/` or appropriate subdirectory
+- foundry-module only: `packages/foundry-module/src/util/`
 
-**Configuration:**
-- Workspace-wide: root `package.json`, `tsconfig.base.json`, `vitest.config.ts`, `biome.jsonc`, `.husky/`
-- Per-package: `packages/*/package.json`, `packages/*/tsconfig.json`, `packages/*/vitest.config.ts` (overrides)
-- Docker: `deploy/Dockerfile`, `docker-compose.yml`, `.env.example`
-- Git hooks: `.husky/{pre-commit,commit-msg}` (executed by scripts in root `package.json`)
+**New Test Fixtures:**
+- ASCII snapshots: `packages/shared-render/src/fixtures/`
+- Mock Foundry data: `packages/validation-harness/src/foundry-modules/`
+- Schema fixtures: `packages/shared-protocol/src/__tests__/fixtures/`
 
 ## Special Directories
 
-**`coverage/`:**
-- Purpose: Vitest v8 coverage reports (HTML + LCOV)
-- Generated: Yes (via `pnpm test:coverage`)
-- Committed: No (.gitignore excludes `coverage/`)
-- Note: Reports are generated per CI run; local builds also create coverage/ (not checked in)
-
-**`dist/` (per-package):**
-- Purpose: Compiled output (ESM JavaScript + TypeScript declarations)
-- Generated: Yes (via `pnpm build` or package build script)
-- Committed: No (.gitignore excludes `dist/`)
-- Structure:
-  - `packages/bridge/dist/index.js` — tsup bundle (single file, all deps inlined for Docker)
-  - `packages/foundry-module/dist/module.js` — tsup bundle (loaded by Foundry)
-  - `packages/g2-app/dist/` — Vite output (HTML + JS chunks + assets)
-  - Others are library packages (no dist/ needed; imports use src/index.ts via workspace:* + package.json exports field)
-
-**`node_modules/`:**
-- Purpose: Installed dependencies
-- Generated: Yes (via `pnpm install`)
-- Committed: No (.gitignore excludes `node_modules/`)
-- Lock file: `pnpm-lock.yaml` (commit this; pnpm uses it for deterministic installs)
-
-**`.changeset/`:**
-- Purpose: Changesets for semantic versioning (per-package)
-- Generated: Yes (via `pnpm changeset`)
-- Committed: Yes (PR-level changeset files declare bumps)
-- Note: CI publishes versions from main branch changesets; each package is independent per `.changeset/config.json`
+**`.planning/codebase/`:**
+- Purpose: GSD-generated architecture + structure maps
+- Generated by: `/gsd-map-codebase --focus arch` (this sweep)
+- Consumed by: `/gsd-plan-phase` (reads ARCHITECTURE.md + STRUCTURE.md), `/gsd-execute-phase`
+- Committed: Yes, checked into git
+- Frequency: Re-scanned during architecture changes or phase hand-offs
 
 **`.planning/phases/NN-*/`:**
-- Purpose: Phase-level planning (context, research, plans, summary)
-- Generated: Yes (via `/gsd-plan-phase` + `/gsd-execute-phase`)
-- Committed: Yes (planning artifacts are part of PR history)
-- Example: `.planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md`, `02-RESEARCH.md`, `02-01-PLAN.md` through `02-04-PLAN.md`, `02-SUMMARY.md`
+- Purpose: Phase-level planning (per-phase context, research, day plans, summaries)
+- Structure: `NN-CONTEXT.md` (required reading), `NN-RESEARCH.md`, `NN-01-PLAN.md` through `NN-04-PLAN.md`, `NN-SUMMARY.md`
+- Committed: Yes, archived after phase completion
+
+**`docs/architecture/`:**
+- Purpose: Accepted ADRs (decision log, reference)
+- Naming: `NNNN-kebab-title.md` with frontmatter
+- Committed: Yes, canonical; updates only on major architecture changes
+
+**`node_modules/` + `packages/*/node_modules/`:**
+- Purpose: Dependency trees
+- Generated by: `pnpm install`
+- Committed: NO (gitignore)
+- Size: ~600 MB total (pnpm hoists common deps to root)
+
+**`dist/` directories:**
+- Purpose: Build artifacts (Vite bundles, tsup output, compiled JS)
+- Generated by: `pnpm build` (per-package build scripts)
+- Committed: NO (gitignore)
+- Cleanup: `pnpm clean` (if implemented) or manual `rm -rf packages/*/dist`
+
+**`coverage/`:**
+- Purpose: Test coverage reports (LCOV, HTML)
+- Generated by: `pnpm test:coverage` (Vitest v8 provider)
+- Committed: NO (gitignore)
+- Viewed: `coverage/index.html` in browser
+
+## Build & Output
+
+**Vite (g2-app):**
+- Entry: `packages/g2-app/src/index.ts`
+- Output: `packages/g2-app/dist/index.html` + JS chunks
+- Served by: Static HTTP host (even-plugin-host HTTPS reverse proxy)
+- Size goal: <500 KB gzipped (target: 15 fps on 200 kbps BLE, per Specs.md §11.5.7)
+
+**tsup (bridge + foundry-module):**
+- Entry: `packages/bridge/src/index.ts`, `packages/foundry-module/src/module.ts`
+- Output: `packages/bridge/dist/index.js`, `packages/foundry-module/dist/module.js`
+- Executed by: Node.js (bridge), Foundry VM (module)
+- No tree-shaking for module (Foundry requires full ES modules); tree-shaking enabled for bridge
+
+**TypeScript (all packages):**
+- Checked by: `pnpm typecheck` (tsc --noEmit, strict + 6 flags)
+- No emit (JavaScript generated by Vite/tsup, not tsc)
 
 ---
 
-*Structure analysis: 2026-05-14*
+*Structure analysis: 2026-05-24*

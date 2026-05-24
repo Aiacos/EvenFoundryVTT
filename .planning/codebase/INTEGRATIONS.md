@@ -1,276 +1,194 @@
 # External Integrations
 
-**Analysis Date:** 2026-05-14
+**Analysis Date:** 2026-05-24
 
 ## APIs & External Services
 
-### Even Realities Ecosystem
+**Even Realities:**
+- Even Hub SDK (`@evenrealities/even_hub_sdk@0.0.10`)
+  - What it's used for: Device API envelopes (display update ops, audio capture, touch events, device status)
+  - Location: `packages/g2-app/src/hub-polyfill.ts` (main SDK dispatch wrapper)
+  - Events: `EvenAppBridge.subscribe()` listeners for `buttonTap`, `scroll`, `longPress`, `audioEvent`, `statusEvent`
+  - Display ops: `EvenAppBridge.createTextContainer()`, `EvenAppBridge.updateImageRawData()`, `EvenAppBridge.setLocalStorage()`
+  - Auth: None; SDK is pre-authenticated via Even Realities App WebView context
 
-**Even Hub SDK (G2 Display & Input):**
-- Service: Even Realities Hub — Display ops, event capture, audio input, networking whitelist
-- Used by: `@evf/g2-app` (browser plugin host)
-- SDK/Client: Declarative API via `bridge.*` globals injected by Even Realities App WebView runtime
-  - `bridge.createTextContainer`, `bridge.updateText`, `bridge.createImageContainer`, `bridge.updateImageRawData`
-  - `bridge.createListContainer`, `bridge.updateList`
-  - `bridge.audioControl(true|false)`, event listener `event.audioEvent.audioPcm` (PCM 16 kHz s16le mono)
-  - `onPageLoad`, `onPageUnload` lifecycle hooks
-  - Event capture: container with `isEventCapture: 1` receives `onTap`, `onScroll`, `onLongPress` events
-- Auth: Bearer token (player-scoped, 24h TTL) provided by bridge service at pairing
-- Constraints: 4-bit greyscale 576×288 display, max 4 image containers + 8 text/list per page, 1 event-capture container, no localStorage, no audio output (G2 has no speaker)
-- Documentation: `hub.evenrealities.com/docs/*` (verified Specs.md §3.1, §3.5)
+**Deepgram Nova-3 Multilingual STT (Phase 12+):**
+- Deepgram WebSocket API (`wss://api.deepgram.com/v1/listen`)
+  - What it's used for: Speech-to-text streaming transcription (optional V2 voice feature)
+  - Location: `packages/bridge/src/voice/deepgram-stt.ts`
+  - Auth: `Authorization: Token <DEEPGRAM_API_KEY>` header (verified DG-06)
+  - Format: PCM 16 kHz s16le mono (passthrough from Even Hub SDK `audioEvent.audioPcm`)
+  - Soft-fail: Missing DEEPGRAM_API_KEY env var → bridge boots normally, `/v1/audio/stream` closes 1011 'voice-disabled'
+  - Keyterm integration: Phase 15 Plan 02 feeds entity-pack snapshots as Deepgram session keyterms for entity-aware STT
 
-**Even R1 Ring (Gesture Input):**
-- Service: Even Realities smart ring via BLE → Even App → WebView event stream
-- Used by: `@evf/g2-app` gesture handler (R1-to-panel navigation)
-- SDK/Client: Event objects `{ r1.tap | r1.scroll | r1.longPress | r1.biometrics }`
-  - Tap: `{ count: 1|2, timestamp }`
-  - Scroll: `{ direction: "up"|"down"|"left"|"right", magnitude }`
-  - Long-press: `{ phase: "start"|"end", duration_ms }`
-  - Biometrics: `{ hr, hrv, spo2, ts }` (low-frequency push)
-- Auth: None (hardware-level, user bound by BLE pairing)
-- Constraints: No audio output from ring; gesture mapping is tap/scroll/long-press only (Specs.md §3.2)
-- Documentation: `evenrealities.com/smart-ring` + `support.evenrealities.com/specs` (product page verified)
+**FoundryVTT:**
+- D&D 5e system API (dnd5e ≥5.3.3)
+  - What it's used for: Actor/item/scene data models, Activity system, advancement tracking
+  - Location: `packages/foundry-module/` (module-level socket integration)
+  - Compatibility: Foundry ≥13.347 (verified on v14), dnd5e ≥5.3.3
+  - Module dependency: `socketlib` (farling42/foundryvtt-socketlib) — **NOT on npm**, installed as Foundry module via manifest.json `relationships.requires`
+  - Optional: MidiQOL (gitlab.com/tposney/midi-qol) for full attack→damage→save flow; fallback to vanilla `activity.use()`
 
-**Even Realities App Configuration UI (Phone WebView):**
-- Service: Per-plugin settings panel exposed in Even Realities App on phone
-- Used by: `@evf/g2-app` wizard and pairing flow (bridge URL, auth token, character selection)
-- Interface: Native phone UI, not G2-rendered; settings persisted in Even App storage
-- Fields: Bridge URL, auth token (paste or QR scan), player/character enum, world identifier (optional), connection profile, auto-connect toggle
-- Auth: None (user-local device configuration)
-- Documentation: Verified `support.evenrealities.com` ("configure each widget individually through the Even App"), Specs.md §3.8
-
-**Even Hub Network Constraints:**
-- Whitelist enforcement: Every origin (plugin-host URL + bridge URL) must be in `app.json` `network.whitelist` (origin-complete strings, no wildcards)
-- HTTPS mandatory in production, HTTP allowed in local dev
-- Payload size: Not documented; assume best-effort, compress
-- Documentation: `hub.evenrealities.com/docs/guides/networking` (verified Specs.md §3.3)
-
-### FoundryVTT & dnd5e System
-
-**Foundry VTT Core:**
-- Service: FoundryVTT game platform (user's homelab installation or The Forge)
-- Used by: `@evf/foundry-module` (reads actor, combat, scene, token state; writes activity execution, targets, templates)
-- SDK/Client: Global `game.*` objects + Hooks API
-  - `game.actors` (collection), `game.combats`, `game.scenes`, `game.messages`, `game.settings`
-  - `game.i18n` (Localization instance with `lang`, `localize()`, `format()`)
-  - `Hooks.once()`, `Hooks.on()` for init, ready, updateActor, etc.
-- Compatibility: **Minimum v13.347** (required by dnd5e 5.x), **verified on v14**
-- Auth: Module runs with Foundry system user permissions (GM for socket handlers, player for module API reads)
-- Constraints: Single world, no multiplayer sync cross-world
-- Documentation: `foundryvtt.com/api/*` (verified Specs.md §3.4)
-
-**dnd5e System (≥5.3.3):**
-- Service: Official D&D 5e system for Foundry
-- Used by: `@evf/foundry-module` for activity system, spell/weapon/item execution, roll flows
-- SDK/Client: 
-  - `actor.system.activities` (Collection of Activity pseudodocuments, each with `activity.use(usage, dialog, message)`)
-  - `AbilityTemplate.fromActivity(activity)` → `AbilityTemplate[] | null` (array for multi-template AoE)
-  - Hooks: `dnd5e.preUseActivity`, `dnd5e.postUseActivity`, `dnd5e.preRollAttackV2`, `dnd5e.rollAttackV2`, `dnd5e.postRollAttackV2`, `dnd5e.preRollDamageV2`, `dnd5e.rollDamageV2`, `dnd5e.preCreateActivityTemplate`
-  - Targeting: `Token#setTarget()` no longer accepts `user` param (v13+); use `TokenLayer#setTargets(tokens)` for multi-target
-- Compatibility: **≥5.3.3** (v5.3.0 changed advancement data structure from array → object), v12 explicitly not supported
-- Auth: Integrated with Foundry user model; player can execute activity only on possessed actor
-- Constraints: Dual-edition support (PHB 2014 + 2024 via `core.modernRules` setting)
-- Documentation: `github.com/foundryvtt/dnd5e` (live `system.json` verified 2026-05-10, Specs.md §3.4)
-
-**Foundry Localization API:**
-- Service: i18n/localization system
-- Used by: `@evf/foundry-module` for locale detection and runtime override
-- SDK/Client: `game.i18n` instance
-  - `game.i18n.lang` (current BCP-47 code, e.g., "it", "en")
-  - `game.i18n.localize(key)`, `game.i18n.format(key, data)`
-  - `game.i18n.has(key)`
-  - `game.settings.get('core', 'language')` (core setting for Foundry default)
-- Architecture: Foundry modules register language catalogs via `manifest.languages: [{lang, name, path}]`
-- Constraint: Module override stored device-local, never modifies world setting (Specs.md §7.16)
-- Documentation: `foundryvtt.com/api/classes/foundry.helpers.Localization.html`
-
-### FoundryVTT Module Dependencies
-
-**socketlib (`github.com/farling42/foundryvtt-socketlib`):**
-- Service: GM-side code execution dispatcher for Foundry modules
-- Used by: `@evf/foundry-module` for bearer registry writes, socketlib-handlers (Phase 2 D-2.12)
-- SDK/Client: Registration pattern `socketlib.registerModule("evenfoundryvtt")` → socket instance
-  - `socket.register(handlerName, fn)` → register handler
-  - `await socket.executeAsGM(handlerName, ...args)` → invoke handler as GM
-  - Also: `executeAsUser`, `executeForAllGMs`, `executeForOtherGMs`, `executeForEveryone`, `executeForOthers`, `executeForUsers`
-- Dependency declaration: `module.json` `relationships.requires` (Foundry auto-prompts install)
-- Authentication: Foundry-internal permission model (socket guarantees handler runs as specified user/role)
-- NOT on npm — sourced from `github.com/farling42/foundryvtt-socketlib`, installed as Foundry module
-- Documentation: Project README on GitHub (verified Specs.md §4.8)
-
-**MidiQOL (`gitlab.com/tposney/midi-qol`):**
-- Service: Full-flow attack→damage→save→effect workflow wrapper for dnd5e activities
-- Used by: `@evf/foundry-module` (optional, detected via capability handshake §5.6.3)
-- SDK/Client: When present, bridge calls `MidiQOL.completeActivityUse({ asUser, ...opts })` instead of raw `activity.use()`
-- Dependency declaration: `module.json` `relationships.requires` (optional but recommended)
-- Fallback: If absent, bridge executes `activity.use()` directly (deterministic core MVP not blocked)
-- NOT on npm — sourced from `gitlab.com/tposney/midi-qol`, installed as Foundry module
-- Documentation: GitLab project wiki (verified Specs.md §4.8)
+**Model Context Protocol (Phase 11+):**
+- MCP stdio transport (local): Claude Desktop integration
+- MCP Streamable HTTP transport (remote): HTTP+SSE variant for remote homelab MCP clients
+  - Location: `packages/foundry-mcp/`
+  - Spec: modelcontextprotocol.io/specification/2025-06-18
+  - Tool registry: Exposed as MCP Tools (cast_spell, weapon_attack, et al.) with Zod schema validation
+  - Auth: Bearer token (same 24h opaque as bridge)
 
 ## Data Storage
 
 **Databases:**
-- Not applicable for MVP (Phase 1). In-memory Map<sessionId, state> with TTL sufficient for single-tenant homelab.
-
-**State Persistence (Foundry Module Settings):**
-- Bearer registry: `game.settings.register(MODULE_ID, 'bearerRegistry', {...})`
-  - Structure: `{ entries: Record<tokenId, { bridgeUrl, internalSecret, expiresAt, revokedAt }> }`
-  - Used by: Foundry module to authenticate delta POSTs to bridge `/internal/delta`
-  - Scope: GM-only (write protected); module reads for auth
-- Locale override: Stored device-local in G2 plugin state (not in Foundry world)
+- Not detected - MVP uses in-memory state only
+- Tier 1 (MVP): In-memory `Map<sessionId, State>` with TTL in bridge (see SessionStore)
+- Tier 2 (Phase 13+): Redis (planned for multi-tenant/cloud scaling)
 
 **File Storage:**
-- Bridge service: No persistent file storage (in-memory only, MVP)
-- G2 plugin: Persisted settings via Even Realities App phone-side key-value (user-controlled, not in code)
-- Foundry module: Uses Foundry's `game.settings` for bearer registry + metadata
-- Plugin host: Stateless, zero storage
+- Local filesystem only (homelab Docker volume mounts)
+- Portrait cache: `packages/bridge/src/portrait/portrait-cache.ts` - LRU in-memory cache for actor portrait blobs
+- No cloud storage integration (Phase 13+ stretch)
 
-**Caching:**
-- Bridge: In-memory LRU cache per session (actor state, combat state, event log snapshots)
-- Phase 13 stretch: Promote to Redis Tier 2 (not MVP)
+**Even Realities Key-Value Store (Tier 4):**
+- Even Hub SDK provides `setLocalStorage()` / `getLocalStorage()` for persistent app state
+- Used for: G2 device-local settings (e.g., Quick Action overrides per `packages/g2-app/src/engine/map-mode-toggle.ts`)
+- Scope: Per-device, never synced to world settings (INV-2 verified §7.16)
+
+**Entity Pack Cache:**
+- `packages/bridge/src/cache/entity-pack-cache.ts` - In-memory snapshot of Foundry actor/item entities
+- Refreshed via `/internal/delta` webhook from foundry-module
+- Consumed by: Phase 15 voice keyterm integration + reader REST routes
+
+**Spell Pack Cache:**
+- `packages/bridge/src/cache/spell-pack-cache.ts` - In-memory snapshot of available spells (SPELL_KEYTERMS)
+- Refreshed via `/internal/delta` webhook
+- Consumed by: Voice keyterm integration + `/v1/spells` REST route
+
+## Caching
+
+**Caching Strategy:**
+- Tier 1: In-memory LRU (portrait, entity-pack, spell-pack, session state)
+- Tier 1.5: Replay buffer (WS handshake recovery, `packages/bridge/src/ws/replay-buffer.ts`)
+- Idempotency store: Request deduplication via Idempotency-Key header (ADR-0002, Plan 03-02)
+- No Redis (MVP only)
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- Custom bearer token system per Specs.md §11.5.4
-  - Generation: `evenfoundryvtt` Foundry module generates opaque 24h tokens at pairing time
-  - Storage: Encoded in QR code + stored in bearer registry on GM account
-  - Transport: HTTPS/WSS Bearer header `Authorization: Bearer <token>`
-  - Validation: Bridge verifies token against internal registry, timing-safe comparison (`crypto.timingSafeEqual`)
-  - Scope: Per-player (token tied to Foundry user ID), not global
+- Custom bearer token system (not external SSO)
+  - Implementation: QR-pairing flow in Foundry module (Specs.md §11.5.4, §7.14.7.3)
+  - Token: 24-hour opaque bearer (generated server-side, scanned via QR code by paired device)
+  - Location: `packages/foundry-module/src/pairing-ui.ts` + `packages/bridge/src/auth/token-cache.ts`
+  - Validation: TokenCache validates incoming WS handshakes against module-stored 24h window
 
-**Auth Flow:**
-1. GM initiates pairing: clicks "Generate Pairing QR" in Foundry module settings (Phase 2 UI)
-2. Module creates bearer entry: 24h TTL, unique internal_secret, QR payload (Specs.md §7.14.7.3)
-3. Player scans QR on Even App phone: wizard loads bridge URL + pastes token
-4. Handshake: `GET /v1/actor` authenticated with bearer → bridge validates → returns character list
-5. Player selects character → settings persisted on phone (Even Realities App storage)
-6. G2 connects: auto-authenticate with stored token on WebView load
+**API Token Scopes:**
+- All bearer tokens have same scope (no granular permissions in MVP)
+- Rate limit: 100 req/min per token (via Fastify rate-limit plugin)
+- Internal secret: `EVF_INTERNAL_SECRET` env var — used for module → bridge `/internal/delta` POST auth (separate from user bearer)
 
-**No OAuth/External Identity:**
-- Foundry user model is the source of truth; no external IdP
-- Token scope: single player, single world instance
+**Foundry Module Auth:**
+- socketlib `executeAsGM` wrapper (Phase 3+) — GM-only actions (Specs.md §4.8)
+- Reader routes (Phase 5+) — permissioned snapshot queries (visibility checks per actor ownership)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- Not deployed in MVP (Phase 1)
-- Future: Sentry or equivalent for bridge service (Phase 3+ stretch)
+- Not detected — no Sentry/DataDog integration in MVP
+- Bridge logging: pino structured JSON with security redact list (`deepgramKey`, `apiKey` patterns)
+- Deepgram error frames: Malformed JSON silently dropped at debug log level (no crash)
 
 **Logs:**
-- Bridge: **pino** structured logging (JSON-line format)
-  - In dev: piped to `pino-pretty` for human-readable output
-  - In prod: ship to centralized logging (Loki, CloudWatch, etc.)
-  - Includes: request/response timing, bearer auth events, delta emit success/failure
-- Foundry module: Uses Foundry's `console.warn/error` (allowed by Biome linter per noConsole allow list)
-- G2 plugin: Errors logged to bridge via heartbeat/failure channel (Phase 4a implementation)
+- Framework: pino 10.3.1 (JSON line output in prod)
+- Security: Redact list in `packages/bridge/src/server.ts` (lines T-02-01 + T-03-07)
+  - Patterns: `'deepgramKey'`, `'*.deepgramKey'`, `'apiKey'`, `'*.apiKey'`, `'EVF_INTERNAL_SECRET'`
+- Dev output: `pino-pretty` (human-readable, Phase 2+ when integrated)
 
 **Metrics:**
-- Bridge: **prom-client** Prometheus metrics exposition
-  - Endpoint: `/metrics` (per Phase 3 §10)
-  - Metrics: HTTP request duration, WS connection count, bearer token validity distribution, delta emit latency, activity execution duration
-  - Scrape target: Prometheus (optional, Phase 13 cloud)
-
-**Observability Constraints:**
-- No external observability in MVP; metrics internal only
-- Structured logging sufficient for debugging homelab deployments
+- Framework: prom-client 15.1.3
+- Prometheus registry: `packages/bridge/src/metrics/registry.ts`
+- Histogram: HTTP route duration + response status (onRequest + onResponse hooks)
+- Endpoint: `/metrics` (Prometheus scrape format)
+- Health checks: `/healthz` (liveness), `/readyz` (readiness per Specs.md)
 
 ## CI/CD & Deployment
 
-**Hosting (MVP):**
-- **Plugin Host:** Static HTTP(S) via nginx/Caddy serving `packages/g2-app/dist/` (zero state, CDN-friendly)
-  - Deployment: Docker Compose `nginx:alpine` service
-  - Caching: Aggressive (content-hash in filename, cache-busting on build)
-  - Origin for whitelist: `https://evenfoundryvtt.example/g2/` (or user's domain)
+**Hosting:**
+- Docker Compose (homelab single-tenant, Phase 13+ may add Fly.io/Railway)
+- Image base: node:24-alpine (bridge + foundry-mcp)
+- Multi-stage builds: Minimize final image size (~80 MB bridge + ~60 MB mcp)
 
-- **Bridge Service:** Node.js Fastify service on `node:24-alpine`
-  - Deployment: Docker Compose, port 8910 (exposed via reverse proxy)
-  - Health checks: `/healthz` (liveness), `/readyz` (readiness)
-  - Compose networks: shared with Foundry (if co-located)
-  - Origin for whitelist: `https://homelab.lan:8910` (dev) or tunnel URL (prod)
+**CI Pipeline:**
+- GitHub Actions (`.github/workflows/ci.yml`)
+- Gates: Lint (Biome), typecheck, test, coverage (80%), changeset status, no TODO without issue-link
+- On PR: all gates must pass before merge
 
-- **Foundry Module:** Installed via manifest URL (GitHub Release) or symlinked in dev
-  - Release artifact: `evenfoundryvtt.zip` containing `dist/module.js` + lang files
-  - Manifest URL: `https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json`
-  - Auto-dependencies: socketlib, midi-qol, dnd5e ≥5.3.3 (declared in module.json)
-
-**CI Pipeline (GitHub Actions):**
-- Workflow: `.github/workflows/ci.yml` enforces D-1.10 seven-gate pipeline on every PR
-  - Gates: lint (Biome), typecheck (TS), test (Vitest coverage ≥80%), changeset present, no secrets
-  - Triggers: push to main, PR from any branch
-  - No external API calls in CI (Phase 0 hardware tests are manual, gated on Even Hub access)
-
-**Release Process:**
-- Changesets: `@changesets/cli` per-package independent versioning
-  - Each PR includes `.changeset/*.md` file (auto-generated by `pnpm changeset`)
-  - Pre-1.0 no-publish (can bump versions without publishing to npm)
-  - Foundry module releases: GitHub Release with module.json + zip artifact
-
-**V2 MCP Deployment (Phase 11+):**
-- Transport: **Streamable HTTP** (MCP spec 2025-06-18+) for remote clients, **stdio** for local (Claude Desktop)
-- Service: `node:24-alpine` container, same bearer token auth as bridge
-- Origin for whitelist: same bridge origin (both on homelab or tunneled)
+**Build Commands (Phase 1+):**
+```bash
+pnpm install --frozen-lockfile --ignore-scripts  # Docker builder stage
+pnpm -r build                                     # tsup bridge + mcp
+pnpm --filter @evf/bridge --prod deploy --legacy /app/bridge  # Runtime image
+```
 
 ## Environment Configuration
 
-**Required env vars (Bridge service):**
-- None hardcoded; all via Foundry settings or Even App configuration
-- Future: PORT, LOG_LEVEL, PROM_PORT (Phase 3 stretch)
+**Required env vars:**
+- `EVF_INTERNAL_SECRET` - 32-byte random (generate: `openssl rand -base64 32`)
+- `EVF_PLUGIN_HOST_URL` - CORS origin (e.g., `https://g2app.yourdomain.com`)
+
+**Optional env vars:**
+- `DEEPGRAM_API_KEY` - STT integration (Phase 12+; missing = soft-fail)
+- `EVF_BEARER` - MCP server bridge auth (Phase 11+)
+- `EVF_BRIDGE_URL` - MCP server bridge endpoint (default `http://bridge:8910`)
+- `EVF_ACTOR_ID` - MCP server actor override (blank = auto-detect)
+- `MCP_HTTP_PORT` - MCP Streamable HTTP port (default 8911)
+- `NODE_ENV` - "production" or "development"
+- `LOG_LEVEL` - pino log level (info, debug, error)
+- `PORT` - Bridge HTTP port (default 8910)
 
 **Secrets location:**
-- Bearer registry: Stored in Foundry module settings (GM account, encrypted by Foundry)
-- Internal secret: Generated per-pair, included in QR payload, stored on phone Even App
-- No .env files checked in (per `.gitignore` and security best practice)
-
-**Configuration sources:**
-1. Foundry module settings UI (GM pairing interface)
-2. Even Realities App per-plugin settings (player phone configuration)
-3. G2 plugin state (device-local overrides, e.g., locale)
-4. Docker Compose env for bridge service (optional, future)
+- Development: `.env` (gitignored, copy from `.env.example`)
+- Docker: `deploy/.env` (gitignored, mounted as env_file in compose)
+- Never commit: `DEEPGRAM_API_KEY`, `EVF_INTERNAL_SECRET`, `.env`
 
 ## Webhooks & Callbacks
 
-**Incoming (to Bridge):**
-- REST API endpoints: `POST /v1/action/use-activity`, `POST /v1/action/set-targets`, etc. (Phase 7 fills implementation)
-- WebSocket endpoint: `WS /v1/stream` (push delta updates, real-time HUD sync)
-- Health check: `GET /healthz`, `GET /readyz` (Kubernetes-style, liveness/readiness)
-- Metrics: `GET /metrics` (Prometheus scrape target, Phase 3+)
+**Incoming Webhooks:**
+- `POST /internal/delta` - Foundry module → bridge entity/spell-pack updates
+  - Auth: `Authorization: Bearer <EVF_INTERNAL_SECRET>` header
+  - Payload: Entity pack snapshot + spell pack deltas
+  - Handler: `packages/bridge/src/routes/internal-delta.ts`
+  - Triggers: Module-side onCreateItem/onDeleteItem/onUpdateItem hooks
 
-**Outgoing (from Bridge to Foundry):**
-- WebSocket client toward Foundry module socket: handshake + heartbeat + bearer write commands (Phase 2+)
-- HTTP POST toward plugin WebView (future): for push notifications or async event stream (not MVP)
+**Outgoing Webhooks:**
+- None detected (all communication is request-response or WebSocket subscriptions)
 
-**Outgoing (from Foundry Module):**
-- HTTP POST to Bridge `/internal/delta` (fire-and-forget delta emitter, Phase 3 Plan 05)
-  - Headers: `Authorization: Bearer <internal_secret>`
-  - Body: `{ type: "character.delta" | "combat.delta" | ..., payload: {...} }`
-  - No retry on failure (warning logged, session continues)
+**WebSocket Subscriptions:**
+- `WS /ws` (handshake at `packages/bridge/src/ws/handshake.ts`)
+  - Client → Bridge: `subscribe`, `toolInvoke`, `updateKeytermCache` envelopes
+  - Bridge → Client: `delta`, `entityPack`, `spellPack`, `toolResult` envelopes
+  - Payload schema: Zod-validated (shared-protocol types)
 
-## Third-Party Service Integrations
+**REST Endpoints (Bridge):**
+- Reader routes (no auth required if public, bearer token if private per Phase 5):
+  - `GET /v1/character/:actorId` - Actor snapshot + sheet data
+  - `GET /v1/characters` - List owned actors
+  - `GET /v1/combat/current` - Active combat state
+  - `GET /v1/scene/viewport` - Map raster + tokens
+  - `GET /v1/events` - Event log (SSE stream, Phase 5+)
+  - `GET /v1/spells` - Spell catalog
+  - `GET /v1/entities` - Entity pack snapshot
 
-**STT (Speech-to-Text) — V2 Optional:**
-- Default cloud: **AssemblyAI Universal-Streaming** ($0.0025/min, ~250–310 ms p50)
-- Alternative: **Deepgram Nova-3** ($0.0048/min monolingual / $0.0058/min multilingual streaming, PAYG or Growth tier discounts)
-- Self-hosted: **faster-whisper** (distil-whisper-large-v3 via GPU, ~300–600 ms)
-- Integration point: Bridge service (Phase 11 foundry-mcp) or MCP client (Claude Desktop voice mode)
-- Phase: V2 optional, not MVP
-- Documentation: Verified direct on `assemblyai.com/pricing` and `deepgram.com/pricing` (live 2026-05-10)
+- Admin routes (GM only via foundry-module socketlib):
+  - `POST /internal/delta` - Module-originated state push
 
-**LLM (Voice Agent) — V2 Optional:**
-- Integrated via **Model Context Protocol (MCP)** — any MCP-compatible client (Claude Desktop, Claude Code, future apps)
-- Vendor independence: No hard dependency on specific LLM; schema contract via Zod → JSON Schema
-- Phase: V2 optional, not MVP
-- Documentation: `modelcontextprotocol.io/specification/2025-06-18` (current spec, Streamable HTTP approved)
+- Voice routes (Phase 12+):
+  - `WS /v1/audio/stream` - Audio PCM stream + transcript results
 
-**MCP Server (foundry-mcp) — V2 Optional:**
-- Transport: **Streamable HTTP** (primary) + **stdio** (for local clients like Claude Desktop)
-- Deprecated: HTTP+SSE (deprecated since MCP spec 2024-11-05, replaced by Streamable HTTP 2025-03-26)
-- Auth: Same bearer token as bridge (no new identity surface)
-- Tools exposed: `cast_spell`, `weapon_attack`, `use_item`, `skill_check`, `move_token`, `place_template`, `set_targets`, `clarify`
-- Resources exposed: `actor://{id}`, `scene://current`, `combat://current`, `log://recent`
-- Phase: V2 optional, Phase 11 implementation
-- Documentation: `modelcontextprotocol.io/` (verified 2026-05-10)
+- Ops routes (no auth):
+  - `GET /healthz` - Liveness probe (returns `ok`)
+  - `GET /readyz` - Readiness probe (Foundry socket connected, cache warm)
+  - `GET /metrics` - Prometheus metrics
 
 ---
 
-*Integration audit: 2026-05-14*
+*Integration audit: 2026-05-24*

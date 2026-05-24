@@ -1,12 +1,12 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-05-14
+**Analysis Date:** 2026-05-24
 
 ## TypeScript Strict Mode
 
-**Enforcement:** Mandatory via `tsconfig.base.json` + CI gate (D-1.10 gate 3)
+**Enforcement:** Mandatory via `tsconfig.base.json` + CI gate
 
-**Compiler flags:**
+**Compiler flags (`tsconfig.base.json`):**
 - `strict: true` — All strictness checks enabled
 - `noUnusedLocals: true` — Every declared variable must be used or prefixed with `_`
 - `noUnusedParameters: true` — Function parameters must be used or prefixed with `_`
@@ -14,16 +14,19 @@
 - `noFallthroughCasesInSwitch: true` — Switch cases must explicitly break/return/throw
 - `noUncheckedIndexedAccess: true` — Array/object index access returns `T | undefined`
 - `exactOptionalPropertyTypes: true` — Optional properties cannot be assigned `undefined` directly
-- `esModuleInterop: true` — CJS/ESM interop (required for Node 24 compatibility)
-- `isolatedModules: true` — Each file is compiled independently (safe for bundlers like tsup)
-- `forceConsistentCasingInFileNames: true` — File paths match case exactly (enforces Unix conventions on case-insensitive filesystems)
+- `esModuleInterop: true` — CJS/ESM interop for Node 24 compatibility
+- `isolatedModules: true` — Each file is compiled independently (safe for bundlers)
+- `forceConsistentCasingInFileNames: true` — File paths match case exactly
 
-**Per-package extends:** All packages extend `tsconfig.base.json` and add environment-specific libs. Example from `packages/foundry-module/tsconfig.json`:
+**Per-package config inheritance:** All packages in `packages/*/tsconfig.json` extend `tsconfig.base.json` and add environment-specific libs (e.g., `foundry-module` adds `DOM` lib).
+
+**Example package config (`packages/bridge/tsconfig.json`):**
 ```json
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2023"],
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": "src"
   },
@@ -32,301 +35,277 @@
 }
 ```
 
-**CI enforcement:** `pnpm typecheck` runs `tsc --noEmit -p tsconfig.base.json && pnpm -r exec tsc --noEmit` (root check + per-package), failing on any TS error.
+**CI enforcement:** `pnpm typecheck` runs `tsc --noEmit -p tsconfig.base.json && pnpm -r exec tsc --noEmit` (root + per-package check), failing on any type error.
 
 ## Code Formatting & Linting
 
-**Tool:** Biome 2.4.15 (replaces ESLint + Prettier — single binary, ~10× faster)
+**Tool:** Biome 2.4.15 (single binary, ~10× faster than ESLint + Prettier combined)
 
-**Format rules** (`biome.jsonc`):
-- `indentStyle: "space"`, `indentWidth: 2` — 2-space indent
-- `lineWidth: 100` — Soft line length target
-- `lineEnding: "lf"` — Unix newlines only
-- `quoteStyle: "single"` — Single quotes for string literals
-- `trailingCommas: "all"` — Trailing commas in multi-line structures
+**Config file:** `biome.jsonc`
+
+**Formatter rules:**
+- `indentStyle: "space"`, `indentWidth: 2` — 2-space indent throughout
+- `lineWidth: 100` — Soft line-length target (not hard limit)
+- `lineEnding: "lf"` — Unix line endings only
+- `quoteStyle: "single"` — Single quotes for all string literals (` 'string' `, not `"string"`)
+- `trailingCommas: "all"` — Trailing commas in multi-line arrays/objects/parameters
 - `semicolons: "always"` — Semicolons required after statements
-- `arrowParentheses: "always"` — Arrow functions always have parentheses: `(x) => x` not `x => x`
+- `arrowParentheses: "always"` — Arrow function parameters always parenthesized: `(x) => x`, not `x => x`
 
-**Linting rules:**
-- `recommended: true` — All Biome-recommended rules enabled
-- `noExplicitAny: warn` — Avoid `any` (warning, allows in narrow cases)
-- `noConsole: { level: "warn", options: { allow: ["error", "warn"] } }` — console.warn/error allowed (per INV-4 comment pattern), console.log forbidden
-  - **Override:** Test files (`packages/*/tests/**`, `packages/*/**/__tests__/**`) set `noConsole: "off"` for debug logging
-- `noUnusedImports: error` — All imports must be used (enforced at lint time)
-- `noUnusedVariables: error` — All local variables must be used or prefixed with `_`
+**Linting rules (`biome.jsonc` §linter):**
+- `recommended: true` — All recommended rules enabled
+- `noUnusedImports: "error"` — Unused imports cause failure
+- `noUnusedVariables: "error"` — Unused variables cause failure
+- `noExplicitAny: "warn"` — `any` types warned (not error) per Specs.md D-1.04
+- `noConsole: { level: "warn", allow: ["error", "warn"] }` — `console.log` warned; `console.error` and `console.warn` allowed
+- Test file override: `packages/*/tests/**` and `packages/*/**/__tests__/**` allow `noConsole: "off"` (test output acceptable)
+- Fixture override: `packages/shared-render/src/fixtures/**/*.txt` has `formatter: { enabled: false }` (ASCII grid files exempt)
 
-**Special file handling:**
-- `packages/shared-render/src/fixtures/**/*.txt` — Formatter disabled (fixture files, must preserve exact whitespace)
-
-**Pre-commit hook:** `.husky/pre-commit` runs `pnpm biome check --staged --no-errors-on-unmatched` (Biome checks only staged files, passes unmatched patterns silently)
-
-**CI enforcement:** `pnpm lint:ci` runs `biome ci .` (read-only mode, fails on any warning)
+**CI enforcement:** `pnpm lint:ci` runs `biome ci .` (read-only check, no auto-fixes). `pnpm lint` runs `biome check .` with writes enabled (for local dev).
 
 ## Import Organization
 
-**Pattern:** ESM-only (no CommonJS require)
+**Order in source files:**
+1. Node.js builtins (`import { readFileSync } from 'node:fs'`)
+2. Third-party packages (`import Fastify from 'fastify'`, `import { z } from 'zod'`)
+3. Relative imports from same package (`import { TokenCache } from '../auth/token-cache.js'`)
+4. Cross-package imports (`import { HandshakeClientSchema } from '@evf/shared-protocol'`)
 
-**Order observed in real code:**
-1. Node builtin imports (`import { resolve } from 'node:path'`)
-2. Third-party packages (`import { z } from 'zod'`)
-3. Type imports when needed (`import type { FastifyInstance } from 'fastify'`)
-4. Local absolute imports (workspace `@evf/*` packages via `tsconfig` path aliases)
-5. Local relative imports (`./**` from same package)
+**Path aliases (via `tsconfig.base.json` `moduleResolution: "Bundler"`):**
+- `@evf/bridge` → `packages/bridge/src/**`
+- `@evf/g2-app` → `packages/g2-app/src/**`
+- `@evf/foundry-module` → `packages/foundry-module/src/**`
+- `@evf/foundry-mcp` → `packages/foundry-mcp/src/**`
+- `@evf/shared-protocol` → `packages/shared-protocol/src/**`
+- `@evf/shared-render` → `packages/shared-render/src/**`
+- `@evf/validation-harness` → `packages/validation-harness/src/**`
 
-**Example from `packages/foundry-module/src/module.ts`:**
+**Example import structure:**
 ```typescript
-import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
-import { registerHookSubscribers } from './readers/hook-subscribers.js';
-import { registerSettings } from './settings.js';
+import { readFileSync } from 'node:path';
+import { z } from 'zod';
+import type { FastifyInstance } from 'fastify';
+
+import { TokenCache } from '../auth/token-cache.js';
+import { HandshakeClientSchema } from '@evf/shared-protocol';
 ```
-
-**Path aliases:** None explicitly defined; imports use relative paths or workspace `@evf/*` protocol (pnpm `workspace:*` in `package.json`).
-
-**File extensions:** `.js` required in relative imports (ESM module resolution). TypeScript compiles to JS, extension is preserved.
-
-## JSDoc/TSDoc on Public APIs
-
-**Requirement:** Every exported function, class, interface, and constant must have a JSDoc comment block.
-
-**Format observed:**
-```typescript
-/**
- * Brief one-line summary.
- *
- * Optional multi-paragraph description of behavior, side-effects, and constraints.
- * May reference external specs, ADRs, or phase decisions.
- *
- * @param paramName — Description of parameter
- * @returns Description of return value
- * @see Specs.md §section (canonical upstream source)
- * @see docs/architecture/ADR-NNNN.md
- * @example
- * ```ts
- * // Code example showing typical usage
- * ```
- */
-export function myFunction(paramName: string): string { ... }
-```
-
-**Examples from codebase:**
-
-From `packages/foundry-module/src/settings.ts`:
-```typescript
-/**
- * Registers the EvenFoundryVTT settings menu in the Foundry Settings panel.
- *
- * Must be called inside the `Hooks.once("init")` callback to ensure
- * `game.settings` is available. Reads `game.i18n.lang` immediately and
- * stores the result in `detectedLocale` for downstream consumers.
- *
- * Registers the bearer registry and internal secrets as hidden world-scope
- * settings (Tier 3 DM-authoritative storage per D-2.12).
- *
- * @example
- * ```ts
- * Hooks.once('init', () => {
- *   registerSettings();
- * });
- * ```
- */
-export function registerSettings(): void { ... }
-```
-
-From `packages/shared-render/src/ascii-grid.ts`:
-```typescript
-/**
- * Character-precision grid model for INV-1 layout integrity testing.
- * Source: Specs.md §7.14.4 ck 11-15 + §7.1a Layout Integrity Invariants.
- *
- * @since 0.1.0-alpha (Phase 1 wire-up)
- */
-export class AsciiGrid { ... }
-```
-
-**Type annotations on JSDoc:** Not required by Biome, but comments should include enough context for readers to understand intention without reading implementation.
 
 ## Naming Conventions
 
 **Files:**
-- Package entry point: `src/index.ts` (re-exports, single line per excluded file in vitest config)
-- Module files: `src/module-name.ts` (kebab-case, PascalCase class names)
-- Test files: `src/module-name.test.ts` or `src/__tests__/module-name.test.ts`
-- Configuration: `tsconfig.json`, `vitest.config.ts` (lowercase, camelCase for TS configs)
+- Kebab-case: `token-cache.ts`, `portrait-renderer.ts`, `audio-stream-route.ts`
+- Pattern: descriptive nouns with hyphens separating concepts
+- Test files: `{module}.test.ts` co-located with source; integrated tests in `__tests__/` subdirectory
+- Fixtures: `{feature}.{state}.{lang?}.txt` (e.g., `status-hud.hp-overflow.txt`, `boot-error.bridge-unreachable.it.txt`)
 
-**Functions/Methods:**
-- camelCase: `function registerSettings()`, `async buildServer()`, `getInternalSecret()`
-- Private/internal prefix: `_privateFn()` (used for unused parameters by TS strict rules)
+**Functions & Methods:**
+- camelCase: `buildServer()`, `handleHandshake()`, `createTokenCache()`, `validateToken()`
+- Verbs for actions: `build*`, `handle*`, `create*`, `validate*`, `register*`, `render*`
+- Booleans start with `is`, `has`, `can`, `should`: `isValid`, `hasCache`, `canResume`
 
-**Variables:**
-- camelCase: `let detectedLocale = 'en'`, `const VALID_TOKEN = '...'`
-- Constants: UPPER_SNAKE_CASE when truly constant and top-level (e.g., `MODULE_ID = 'evenfoundryvtt' as const`)
-- Unused variables: Prefix with `_` to satisfy `noUnusedLocals` (e.g., `function makeValidFn(): (_token: string) => ...`)
+**Variables & Constants:**
+- camelCase for mutable vars: `tokenCache`, `sessionStore`, `metricsRegistry`
+- UPPER_SNAKE_CASE for module-level constants: `TTL_MS`, `CLOSE_INVALID_HANDSHAKE`, `SERVER_CAPS_V1`
+- Avoid abbreviations except standard: `srv` ✗, `server` ✓; `fn` acceptable in callback contexts
 
-**Types/Interfaces:**
-- PascalCase: `type HandshakeClient = ...`, `interface BuildServerOptions { ... }`, `class AsciiGrid { ... }`
-- Avoid `I` prefix (e.g., `interface UserData` not `interface IUserData`)
+**Types & Interfaces:**
+- PascalCase: `TokenCache`, `ValidateTokenResult`, `SessionStore`, `BootStep`
+- Suffix patterns:
+  - `*Schema` for Zod schemas: `HandshakeClientSchema`, `CharacterSnapshotSchema`
+  - `*Result` for operation outcomes: `ValidateTokenResult`
+  - `*Fn` for function types: `FoundryValidateFn`, `ToolHandler`
 
-**Zod Schemas:**
-- Suffix with `Schema`: `HandshakeClientSchema`, `EnvelopeSchema`, `DeltaEnvelopeSchema`
-- Accompanying TypeScript type: `type HandshakeClient = z.infer<typeof HandshakeClientSchema>`
+**Abbreviations in identifiers:**
+- Allowed: `req` (request), `res` (response), `fn` (function in callback contexts), `msg` (message)
+- Not allowed: `svr`, `srv`, `u` (use), `obj`, `val`
+- Entity types: Full form always (`entity`, `actor`, `item`, not `ent`, `a`, `i`)
 
-Example from `packages/shared-protocol/src/envelope.ts`:
+## JSDoc / TSDoc Comments
+
+**When required (INV-4 §0.1):**
+- Every exported function/class/interface requires JSDoc block
+- Every public method requires TSDoc
+- Internal helpers (not exported) may use brief one-line `//` comments
+
+**Format:**
 ```typescript
-export const EnvelopeSchema = z.object({
-  proto: z.literal('evf-v1'),
-  seq: z.number().int().nonnegative(),
-  // ... fields
-});
-
-export type Envelope = z.infer<typeof EnvelopeSchema>;
+/**
+ * Brief one-line description.
+ *
+ * Longer explanation if needed. Mention related files, ADRs, or Specs sections.
+ * @see Specs.md §4.1 (reference)
+ * @see docs/architecture/ADR-NNNN.md (architecture decision)
+ * @see .planning/phases/NN-name/NN-PLAN.md Task X (planning context)
+ */
+export function handleSomething(param: Type): Promise<Result> {
 ```
+
+**Example from codebase (`packages/bridge/src/auth/token-cache.ts`):**
+```typescript
+/**
+ * Token validation cache — 5-minute in-memory TTL over socketlib roundtrip.
+ *
+ * Bridge consults Foundry's bearer registry via `socketlib.executeAsGM("evf.validateToken", token)`
+ * on every cache miss. Cache hit avoids hot-loop roundtrips (D-2.12).
+ *
+ * Security notes (T-02-01, T-02-05):
+ * - Token values are NEVER logged. Only the first 6 chars are used as a correlation hint.
+ * - Cache keys are token values; all cache.keys() iteration is internal-only.
+ * - 5-minute TTL is intentional: allows prompt revoke propagation within ~5 min.
+ */
+```
+
+**Comments in code:**
+- Mark decision rationale with `// [REASON]` if non-obvious: `// Advance past 5-minute TTL (D-2.12)`
+- Mark workarounds with `// TODO (#issue-id)` or `// FIXME (ADR-NNNN)` — CI fails on bare `TODO` without reference
 
 ## Error Handling
 
-**Pattern: Try-catch with explicit side effects**
+**Strategy:** Explicit result types (discriminated unions) + try-catch for edge cases.
 
-Observed in `packages/foundry-module/src/settings.ts`:
+**Patterns observed:**
+
+**1. Zod schema validation — `.safeParse()` for untrusted input:**
 ```typescript
-try {
-  const lang = game.i18n?.lang ?? 'en';
-  detectedLocale = lang.split('-')[0] ?? 'en';
-} catch {
-  detectedLocale = 'en';
+const parseResult = HandshakeClientSchema.safeParse(parsed);
+if (!parseResult.success) {
+  logger.warn({ issues: parseResult.error.issues.length }, 'schema validation failed');
+  socket.close(CLOSE_INVALID_HANDSHAKE, 'invalid_handshake');
+  return null;
 }
 ```
 
-**Pattern: Fire-and-forget async with console.warn fallback**
-
-From `packages/foundry-module/src/module.ts`:
+**2. Result type (discriminated union) for operations:**
 ```typescript
-void (async () => {
+export interface ValidateTokenResult {
+  valid: boolean;
+  entry?: { alias: string; expiresAt: number; worldId: string };
+  reason?: 'unknown_token' | 'revoked' | 'expired' | 'foundry_unreachable';
+}
+```
+
+**3. Async functions — catch for unexpected errors:**
+```typescript
+socket.once('message', async (rawData) => {
   try {
-    await fetch(`${bridgeUrl}/internal/delta`, { ... });
+    // Main logic
   } catch (err) {
-    // Warning only — bridge unavailability must not crash Foundry session
-    // console.warn allowed per biome.jsonc noConsole allow:[error,warn]
-    console.warn('[EVF] bridgeDeltaEmitter failed:', (err as Error).message ?? err);
+    logger.error({ err }, 'WS handshake: unexpected error');
+    socket.close(CLOSE_INVALID_HANDSHAKE, 'internal_error');
   }
-})();
+});
 ```
 
-**Pattern: Early return on validation failure**
-
-From `packages/foundry-module/src/module.ts`:
+**4. Promise rejection handling:**
 ```typescript
-const internalSecret = getInternalSecret();
-const bridgeUrl = getBridgeUrl();
-
-if (internalSecret === null || bridgeUrl === null) {
-  // No active pair — delta silently dropped (not a warning; normal before pairing)
-  return;
-}
+handleHandshake(socket, req, tokenCache, replayBuffer, sessionStore, logger)
+  .then((sessionId) => {
+    if (sessionId) deltaEmitter.registerSession(sessionId);
+  })
+  .catch((err) => {
+    logger.error({ err }, 'WS handshake caught unhandled error');
+  });
 ```
 
-**Principles:**
-- No unhandled promise rejections — if async fails, catch and log/recover
-- Network failures (fetch) are logged but never throw (sessions must stay stable)
-- Type guards preferred over assertions (e.g., `value?.field ?? fallback` over `value!.field`)
+**Logging levels:**
+- `logger.debug()` — Development tracing (token hint, state transitions)
+- `logger.warn()` — Recoverable issues (invalid token, schema mismatch, unknown capabilities)
+- `logger.error()` — Unexpected failures (socket close, metrics error, I/O failure)
+
+**No silent errors:** Every catch block logs. Exceptions are never swallowed.
 
 ## Logging
 
-**Framework:** `console.warn` / `console.error` only (per Biome allow list)
+**Framework:** Pino 10.3.1 (structured JSON-line logging)
 
-**Pattern:** Prefix with module name: `console.warn('[EVF] bridgeDeltaEmitter failed:', ...)`, `console.error('[MODULE] error type:', ...)`
-
-**Notes:**
-- Production bridge logging uses pino (JSON structured, not phase 1 yet)
-- Foundry module logging uses console (Foundry redirects to F12 console)
-
-## Comments
-
-**Inline comments:** Explain WHY, not WHAT
-- **Good:** `// No active pair — delta silently dropped (not a warning; normal before pairing)`
-- **Bad:** `// Return if no internal secret`
-
-**Section dividers:** ASCII divider comments for major blocks:
+**Instance creation in server (`packages/bridge/src/server.ts`):**
 ```typescript
-// ─── Test suite ──────────────────────────────────────────────────────────────
-
-// ─── Foundry global mock helpers ────────────────────────────────────────────
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || 'info',
+    redact: {
+      paths: ['req.headers.authorization', ...], // T-02-01 redaction
+      censor: '[REDACTED]'
+    }
+  }
+});
 ```
 
-**TODO discipline (INV-4):** Every `// TODO` MUST include `(#issue)` or `(ADR-NNNN)` reference.
+**Token redaction pattern (T-02-01):**
+- Never log full bearer token
+- Use first 6 characters as correlation hint: `logger.debug({ tokenHint: token.slice(0, 6) }, '...')`
+- Biome rule + manual review prevents accidental token logs
 
-CI gate (D-1.10 gate 5) enforces:
-```bash
-grep -RnE '// TODO(?!\((#[0-9]+|ADR-[0-9]+)\))' packages/ docs/architecture/
-```
-
-**Example with valid reference:**
-```typescript
-// TODO (ADR-0003): validate mock shapes against fvtt-types when package
-// stabilises (Phase 3+).
-```
-
-## Module Design
-
-**Exports:** Named exports preferred; default exports used only for factory functions (`export default defineProject(...)`, `export default defineConfig(...)`).
-
-**Barrel files:** `src/index.ts` re-exports public API; internal files not re-exported.
-
-**Single responsibility:** Each module focuses on one concept (handshake, envelope, token cache, etc.). Related files group under semantic directories (`src/pair/`, `src/readers/`, `src/routes/`, `src/ws/`).
-
-**Example structure from `packages/foundry-module/src/`:**
-```
-src/
-├── module.ts              # Entry point, hook registration
-├── settings.ts            # Settings panel, locale detection
-├── pair/
-│   ├── PairModal.ts       # UI component
-│   └── socketlib-handlers.ts  # Socketlib GM-side handlers
-├── readers/
-│   └── hook-subscribers.ts    # Foundry hook → delta pipeline
-├── types/
-│   └── foundry-globals.d.ts   # Ambient type declarations
-└── module.test.ts         # Unit tests
-```
+**Logging across packages:**
+- `@evf/bridge` — Pino logger on every request handler and async operation
+- `@evf/foundry-module` — Console or Foundry's `console.log` (Foundry-standard)
+- `@evf/g2-app` — Console (browser WebView)
+- `@evf/foundry-mcp` — Pino logger (Node service)
 
 ## Function Design
 
-**Size:** Keep functions ≤ 50 lines (rough heuristic); extract helpers for repeated logic.
+**Size guideline:** ~50-150 lines for typical handler functions (e.g., `handleHandshake` is ~80 lines, readable with clear sections).
 
-**Parameters:** Use objects for multiple params (avoids positional confusion):
+**Parameters:**
+- Ordered logically: entity first, options/callbacks last
+- Named intentionally: `foundryValidateFn` over `fn`, `tokenCache` over `cache`
+- Use destructuring for object params: `{ lines, branches, functions }` not `thresholds`
+- Prefix unused params with `_`: `_req` (FastifyRequest available but not used)
+
+**Return types:**
+- Always explicit in signatures: `Promise<string | null>` not `Promise<any>`
+- Use discriminated unions for complex returns: `{ valid: true; entry: ... } | { valid: false; reason: '...' }`
+- Void functions are rare (prefer result types for testability)
+
+## Module Design
+
+**Exports:**
+- Default export: rarely used (most modules export named functions/classes)
+- Named exports: prefer multiple exports over default for tree-shaking
+- Example (`packages/bridge/src/server.ts`):
+  ```typescript
+  export interface BuildServerOptions { ... }
+  export async function buildServer(opts: BuildServerOptions): Promise<FastifyInstance> { ... }
+  ```
+
+**Barrel files:**
+- Minimal use; most packages have no `index.ts` that re-exports everything
+- `@evf/shared-protocol` exports types/schemas: `export * from './payloads/character.js'`
+- Avoids circular dependencies
+
+**File organization by concern:**
+- `src/auth/` — Token validation, bearer registry
+- `src/cache/` — In-memory caches (tokens, portraits, entity packs)
+- `src/routes/` — HTTP route handlers (REST endpoints)
+- `src/ws/` — WebSocket logic (handshake, delta emission, session management)
+- `src/voice/` — Speech-to-text, Deepgram integration, keyterm management
+- `src/middleware/` — Fastify hooks (idempotency, metrics, logging)
+- `src/metrics/` — Prometheus registry and counter definitions
+
+## Type Safety Patterns
+
+**Avoid `any`:**
+- Every value has a type
+- `unknown` for unvalidated inputs (before Zod parse)
+- Biome warns on `any` (rule: `noExplicitAny: "warn"`)
+
+**Discriminated unions for variants:**
 ```typescript
-// Good — named
-async function buildServer(options: BuildServerOptions): FastifyInstance { ... }
-
-// Avoid — positional
-async function buildServer(fn, dir, snapFn, store, registry): FastifyInstance { ... }
+type BootStepState = 'pending' | 'in_progress' | 'done' | 'error';
+type ActionResult = { success: true; data: T } | { success: false; error: string };
 ```
 
-**Return values:** Prefer explicit types, nullable returns use `| null` not `| undefined`.
-
-**Async:** Always use `async`/`await` over `.then()` chains. Fire-and-forget async wrapped in `void (async () => { ... })()` (for type-checker).
-
-## Conventional Commits
-
-**Enforced via:** commitlint + husky commit-msg hook
-
-**Format:** `<type>(<scope>): <subject>`
-
-**Type enum:** `feat`, `fix`, `docs`, `chore`, `test`, `refactor`, `perf`, `style`, `ci`
-
-**Scope enum (advisory):**
-- Package names: `g2-app`, `bridge`, `foundry-module`, `shared-protocol`, `shared-render`, `validation-harness`, `foundry-mcp`
-- Wildcard: `*` (when change affects multiple packages)
-
-**Subject:** No case enforcement (Italian commits allowed per `subject-case: [0]`)
-
-**Body:** (optional) Wrap at 72 characters; reference issues/ADRs.
-
-**Example commits in git log:**
+**Branded types where semantics matter:**
+```typescript
+type SessionId = string & { readonly __brand: 'SessionId' };
+type BearerToken = string & { readonly __brand: 'BearerToken' };
 ```
-docs(260513-l12): SUMMARY + STATE — ApplicationV2 v13 namespace fix complete
-chore: merge quick task worktree (worktree-agent-a0c0b6af189b5feff)
-fix(foundry-module): resolve ApplicationV2 via foundry.applications.api (v13+ runtime)
-```
+
+**Zod validation at boundaries:**
+- Parse untrusted JSON at API entry points
+- Payload schemas (`@evf/shared-protocol/src/payloads/*`) are Zod schemas + TypeScript types
+- Use `.parse()` for trusted internal data, `.safeParse()` for external/user input
 
 ---
 
-*Convention analysis: 2026-05-14*
+*Convention analysis: 2026-05-24*
