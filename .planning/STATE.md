@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 Phase: — (no active milestone)
 Plan: —
 Status: v0.9.13 ARCHIVED — phase dirs under `.planning/milestones/v0.9.13-phases/`; REQUIREMENTS.md removed (fresh for next milestone); tag `v0.9.13` pushed; PROJECT.md + ROADMAP.md reflect archived state
-Last activity: 2026-05-18 -- v0.9.13 milestone shipped via INV-3 atomic close
+Last activity: 2026-05-25 - Completed quick task 260525-oao: GitFlow + automated release tooling
 
 ## Performance Metrics
 
@@ -210,6 +210,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - **Phase 0 hardware access dependency:** Even Hub developer access required for §10.0.1-10.0.9 tests. Timeline estimate: 1-2 weeks request → grant. Tracks to Phase 0 entry.
 - **Phase 0 Branch A/B/C decision gates everything:** §10.0.5 binary decision tree must produce ADR-0005 before Phase 1 applicative code. Branch C (glyph-only) would defer raster pipeline to Phase 13 stretch and reshape Phase 4a/4b scope significantly.
 - **Research-flagged Phase 7 open questions (Specs §12.B q.11-12, q.15):** MidiQOL `completeActivityUse` signature + Fighter Extra Attack route (`activity.use({count: 2})` vs client-loop) need empirical verification — gate on Phase 7 entry.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260525-oao | GitFlow CI triggers + Changesets Version-PR release automation + Biome pre-commit auto-fix + INV-3 branch-strategy coherence | 2026-05-25 | be12f28 | [260525-oao-adottare-gitflow-branch-develop-release-](./quick/260525-oao-adottare-gitflow-branch-develop-release-/) |
+
+> **Follow-ups (orchestrator-owned, not yet done):** (1) create + push `develop` branch from `main`; (2) GitHub branch protection on `main` + `develop` (PR-only, required check `quality-gates`, no force-push) — both pending user confirmation.
 
 ## Deferred Items
 
