@@ -216,8 +216,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260525-oao | GitFlow CI triggers + Changesets Version-PR release automation + Biome pre-commit auto-fix + INV-3 branch-strategy coherence | 2026-05-25 | be12f28 | [260525-oao-adottare-gitflow-branch-develop-release-](./quick/260525-oao-adottare-gitflow-branch-develop-release-/) |
+| 260525-owx | Vitest branch coverage 78.11% → 80.72% (CI gate green): extract bearerEquals to tested helper + 3 justified boot/worker exclusions + real branch tests | 2026-05-25 | 9917b81 | [260525-owx-branch-coverage-vitest-a-80-gate-verde-t](./quick/260525-owx-branch-coverage-vitest-a-80-gate-verde-t/) |
 
-> **Follow-ups (orchestrator-owned, not yet done):** (1) create + push `develop` branch from `main`; (2) GitHub branch protection on `main` + `develop` (PR-only, required check `quality-gates`, no force-push) — both pending user confirmation.
+> **GitFlow status:** `develop` created + pushed; branch protection on `main` + `develop` is PR-only (no force-push/delete, conversation-resolution, `enforce_admins: false`). **Required status check `quality-gates` still NOT added** — pending the coverage fix landing on `develop`. Quick task 260525-owx (on branch `feature/coverage-80pct`) fixes the coverage gate; once its PR merges to `develop` and CI is green, add `quality-gates` as a required check on both branches to complete the "CI green to merge" intent. PR #1 "Version Packages" (Changesets) is open against `main`.
 
 ## Deferred Items
 
