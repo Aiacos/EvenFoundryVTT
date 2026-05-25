@@ -26,11 +26,11 @@
  * @see .planning/phases/11-v2-foundry-mcp-server/11-01-PLAN.md Task 2
  */
 
-import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { BootError, parseMcpEnv } from './env.js';
 import { buildLogger } from './logger.js';
+import { bearerEquals } from './security/bearer-equals.js';
 import { buildMcpServer } from './server-factory.js';
 
 /** Read the full body of an IncomingMessage as a Buffer. */
@@ -45,29 +45,6 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
     });
     req.on('error', reject);
   });
-}
-
-/**
- * Constant-time bearer comparison (T-11-02).
- *
- * Length mismatch returns false immediately (before compare) to avoid
- * leaking timing information on length difference. Both buffers are
- * zero-padded to equal length before timingSafeEqual when lengths differ,
- * but the length check result is returned, not the compare result.
- *
- * Implementation detail: comparing Buffers of equal length is required by
- * `crypto.timingSafeEqual`. We fast-reject on length mismatch as a first
- * guard, then safe-compare on same-length inputs.
- */
-function bearerEquals(provided: string, expected: string): boolean {
-  // Fast-reject on length mismatch (no timing info beyond the mismatch fact).
-  if (provided.length !== expected.length) {
-    return false;
-  }
-  // Same-length: use constant-time compare.
-  const a = Buffer.from(provided, 'utf-8');
-  const b = Buffer.from(expected, 'utf-8');
-  return timingSafeEqual(a, b);
 }
 
 /** HTTP methods that the MCP Streamable HTTP transport handles. */
