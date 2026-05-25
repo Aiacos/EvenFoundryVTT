@@ -71,7 +71,15 @@ jobs:
       # @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
       - name: Single-workflow-origin guard (ADR-0011)
         run: |
-          if grep -rE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts" 2>/dev/null; then
+          # Match real calls only. The post-filter drops grep hits whose line
+          # content (after `path:NN:`) begins with a comment marker (JSDoc `*`,
+          # `//`, or `/*`) — doc comments that merely *mention* activity.use()
+          # (e.g. "NEVER calls activity.use() directly") are documentation, not
+          # a client-side write bypass. Real calls never start with a comment.
+          HITS=$(grep -rnE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts" 2>/dev/null \
+            | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
             echo "::error::Client-side activity.use() call detected in packages/g2-app or packages/bridge."
             echo "::error::All write-path mutations must go through packages/foundry-module/src/write-path/handlers/."
             echo "::error::See docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)"
