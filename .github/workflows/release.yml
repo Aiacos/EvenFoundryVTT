@@ -1,0 +1,66 @@
+# EVF Release Workflow — Changesets "Version-PR" model
+#
+# IMPORTANT: GitHub Actions token recursive-trigger limitation
+# ===========================================================
+# A tag pushed using the default GITHUB_TOKEN does NOT trigger `on: push: tags`
+# in foundry-module-release.yml. GitHub suppresses workflow runs triggered by
+# the default token to prevent accidental recursive loops. Therefore,
+# release-tag.mjs explicitly dispatches that workflow via `gh workflow run`
+# (workflow_dispatch DOES fire with the default token — it is user-initiated,
+# not recursive). No PAT secret is introduced.
+#
+# How this workflow operates:
+#   1. Every push to main runs changesets/action@v1.
+#   2. If unconsumed changesets exist → the action opens/updates a
+#      "Version Packages" PR that bumps per-package versions + consumes changesets.
+#      The `publish` step does NOT run while changesets are present.
+#   3. When the "Version Packages" PR is merged (no changesets left) → the action
+#      runs `release:tag` which:
+#        a. Reads the version from packages/foundry-module/package.json.
+#        b. Idempotently creates + pushes the v<version> tag (skip if already exists).
+#        c. Dispatches foundry-module-release.yml via `gh workflow run` to build
+#           and publish the Foundry module package.
+#   4. No npm publish occurs (pre-1.0, privatePackages.tag=false per .changeset/config.json).
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Never cancel-in-progress: a half-cancelled tag push is worse than queueing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history + tags needed for idempotent tag check
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Create Release PR or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm run release:tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
