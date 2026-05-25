@@ -3732,8 +3732,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 
 ### 11.5.6 Branch strategy
 
-- **Decisione**: trunk-based development con `main` come default branch. Feature branches short-lived (≤1 settimana). PR required + 1 review (anche self-review) + CI green prima del merge.
-- **Releases**: tag semver per ogni package via Changesets. CI publishing automatico su `main` push tag.
+- **Decisione**: GitFlow — `develop` è il branch di integrazione permanente; feature branch `feature/*` partono da `develop` e vi rientrano via PR; `develop -> main` via PR di release. CI green + PR required prima di ogni merge (anche self-review). I milestone branch GSD diventano feature branch su `develop`.
+- **Releases**: modello Changesets "Version-PR". Push su `main` → `changesets/action@v1` apre/aggiorna una PR "Version Packages" che bumpa le versioni per-package e consuma i changeset; al merge (zero changeset residui) lo step `publish` crea+pusha il tag `v<version>` (derivato da `@evf/foundry-module`) e dispatcha `foundry-module-release.yml`. Nessun `npm publish` (pre-1.0, privatePackages tag:false). Nota: un tag pushato col GITHUB_TOKEN di default NON triggera altri workflow → il dispatch usa `gh workflow run` (workflow_dispatch), nessun PAT aggiuntivo.
 
 ### 11.5.7 Raster pipeline library stack (v0.9.3)
 
@@ -4048,6 +4048,14 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-05-25 (tooling — GitFlow + automated release)** — Branch strategy migrata da trunk-based a GitFlow; pipeline di release automatizzata via Changesets + GitHub Actions. **No spec version bump** (solo tooling/workflow — nessun cambio a version, fps, fase, librerie, locale).
+  - **CI triggers estesi a `develop`**: `.github/workflows/ci.yml` ora esegue su `push + pull_request` per `[main, develop]`; tutti gli 8 gate di qualità (Biome, typecheck, coverage, TODO discipline, snapshot drift, changeset-status, ADR-0011 guard, SKT-02 probe) e il job `commit-lint-pr-title` rimangono invariati.
+  - **Nuovo `release.yml`**: modello Changesets "Version-PR" — su ogni push a `main`, `changesets/action@v1` apre/aggiorna una PR "Version Packages" se ci sono changeset non consumati; al merge, lo step `publish` esegue `pnpm run release:tag`.
+  - **`scripts/release-tag.mjs`**: legge la versione da `packages/foundry-module/package.json`, crea+pusha il tag `v<version>` in modo **idempotente** (skip se il tag esiste già), poi dispatcha `foundry-module-release.yml` via `gh workflow run -f tag=v<version>`. Rationale del dispatch esplicito: un tag pushato col GITHUB_TOKEN di default NON triggera `on: push: tags` in altri workflow (GitHub anti-loop protection) → `workflow_dispatch` funziona col token di default perché è user-initiated, non ricorsivo. Nessun PAT aggiuntivo richiesto.
+  - **Pre-commit hook aggiornato**: `.husky/pre-commit` ora esegue `pnpm biome check --write --staged --no-errors-on-unmatched` (auto-fix in place) seguito da `git update-index --again` per re-stagiare i fix nella commit corrente. `.husky/commit-msg` (commitlint) invariato.
+  - **INV-3 coerenza**: §11.5.6 + README.md + docs/showcase/index.html aggiornati nello stesso commit.
+  - **Re-verified ✓ (n/a — internal tooling change, no upstream claim)**: nessuna claim tecnica su hardware/library upstream modificata; versioni librerie invariate.
 
 - **2026-05-18 (v0.9.13 SHIPPED — Sheet Data Completion + Polish)** — Three software-only phases close end-to-end the v1 Character Sheet panel data wiring (Main + Skills tabs) plus the Phase-14.1 spec-prose drift carry-forward. **Bump v0.9.12 → v0.9.13.**
   - **Phase 16 — Sheet Main tab abilities end-to-end** (commits `1336417` → `d68d7f2`). `CharacterSnapshotSchema.abilities` REQUIRED — 6 sub-objects (str/dex/con/int/wis/cha) each `{value, mod, save, proficient, dc}`; `AbilitiesSchema` uses `z.strictObject` (6 keys frozen by canonical D&D 5e rules), inner `AbilityScoreSchema` uses `z.object` (forward-compat for sibling fields). `extractAbilities` reader helper reads `save.value` (dnd5e prep-time computed total) NOT recomputed from `mod + prof` — magic items / racial save bonuses / feats would diverge under recomputation. Reader coerces dnd5e raw `proficient: 0|0.5|1|2` to strict boolean (half-prof 0.5 → false for Main tab boolean). `renderMainTab` data binding replacing 14 cells of `—` placeholder with formatted values via `formatAbilityValue` + `formatAbilityMod` helpers; renderer proficient glyph is data-driven (`profGlyph(prof)` returns `◉` or `○`). 4 INV-1 fixtures byte-updated (`sheet.main.{2014.it,2024.it,2014.en,2014.de}.txt`). SHEET-05/06/07 closed. **INV-2 cross-checked ✓ 2026-05-18**: `github.com/foundryvtt/dnd5e@release-5.3.3` `module/data/actor/templates/common.mjs` + dnd5e wiki Roll-Formulas (`@abilities.*.value / .mod / .save.value / .dc / .proficient`).
