@@ -46,6 +46,23 @@ export default defineConfig({
         // which require Even Hub access (Phase 0 closure). Unit tests for pure
         // helpers can land in tests/ to lift these exclusions incrementally.
         'packages/validation-harness/src/lib/**',
+        // g2-app raster Web Worker — body runs in a separate thread via
+        // `new Worker(new URL('./raster-worker.ts', import.meta.url))` and is
+        // never imported under Vitest (raster-controller tests inject a workerFactory
+        // mock; the happy-dom environment has no `self` worker scope). v8 cannot
+        // instrument worker-thread code. Pure helper extraction to raster-pipeline.ts
+        // is logged future debt (CONCERNS.md §Raster Worker Isolation).
+        'packages/g2-app/src/raster/raster-worker.ts',
+        // foundry-mcp Streamable HTTP entry — top-level `(async () => { … })()` IIFE
+        // that binds 0.0.0.0:port + connects MCP transport on import; un-instrumentable
+        // as a unit (mirrors bridge/src/index.ts). Its testable security primitive
+        // `bearerEquals` was extracted to `security/bearer-equals.ts` and is
+        // unit-tested (Task 1, quick task 260525-owx).
+        'packages/foundry-mcp/src/http.ts',
+        // foundry-mcp stdio entry — top-level `(async () => { … })()` IIFE connecting
+        // StdioServerTransport on import; un-instrumentable as a unit (mirrors
+        // bridge/src/index.ts). The 2 branches are BootError catch arms.
+        'packages/foundry-mcp/src/index.ts',
       ],
     },
   },
