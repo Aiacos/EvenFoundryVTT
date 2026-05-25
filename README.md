@@ -153,7 +153,7 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 - **G2 app**: HTML/JS plugin (Even Hub WebView), TypeScript build, `image-q` + `upng-js` + `xxhash-wasm` for raster pipeline (browser-side), `OffscreenCanvas` GPU resize
 - **Foundry module**: `dnd5e` 5.x adapter, `socketlib`, optional `MidiQOL`
 - **MCP** (optional V2): `@modelcontextprotocol/sdk` (TypeScript), exposes Foundry tools/resources to any MCP client
-- **Tooling**: pnpm workspaces · Vitest · Biome · Changesets
+- **Tooling**: pnpm workspaces · Vitest · Biome · Changesets · GitFlow (`feature/* → develop → main`, automated Changesets-driven releases)
 
 ## Documentation
 

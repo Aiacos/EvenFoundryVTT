@@ -18,6 +18,7 @@
     "test:coverage": "vitest --run --coverage",
     "changeset": "changeset",
     "changeset:status": "changeset status --since=main",
+    "release:tag": "node scripts/release-tag.mjs",
     "prepare": "husky || true"
   },
   "devDependencies": {
