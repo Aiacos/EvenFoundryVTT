@@ -247,4 +247,144 @@ describe('WsReconnectController', () => {
     // seqTracker reset must have happened
     expect(seqTracker.getLastConfirmedSeq()).toBe(-1);
   });
+
+  // ─── quick-task 260529-khy Wave 1 Task 1 — onReconnected + repeated-reconnect ──
+
+  describe('onReconnected callback (BLOCKER 2 inbound)', () => {
+    it('WSR-08a: onReconnected fires with newWs BEFORE onChipUnmount on resume_replay', async () => {
+      // Dispose the beforeEach default controller (also armed on originalWs) so only
+      // the local controller `c` reacts to the close event.
+      controller.dispose();
+      const order: string[] = [];
+      const onReconnected = vi.fn((arg: WebSocket) => {
+        order.push(`reconnected:${arg === (newWs as unknown as WebSocket) ? 'newWs' : 'other'}`);
+      });
+      onChipUnmount.mockImplementation(() => order.push('unmount'));
+
+      const c = new WsReconnectController({
+        ws: originalWs as unknown as WebSocket,
+        url: 'wss://test.local/ws',
+        sessionId: FIXED_SESSION_ID,
+        seqTracker,
+        onChipTick,
+        onChipUnmount,
+        onFullRefreshRequired,
+        onReconnected: onReconnected as unknown as (ws: WebSocket) => void,
+        wsFactory: wsFactory as unknown as (url: string) => WebSocket,
+        performHandshake: performHandshake as unknown as (
+          ws: WebSocket,
+          sessionId: string,
+        ) => Promise<{ session_id: string }>,
+      });
+
+      originalWs.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      newWs.fireMessage({ proto: 'evf-v1', type: 'resume_replay', count: 1 });
+
+      expect(onReconnected).toHaveBeenCalledTimes(1);
+      expect(order).toEqual(['reconnected:newWs', 'unmount']);
+      c.dispose();
+    });
+
+    it('WSR-08b: onReconnected fires after seqTracker.reset, before onChipUnmount on resume_full_snapshot', async () => {
+      // Dispose the beforeEach default controller (also armed on originalWs) so only
+      // the local controller `c` reacts to the close event.
+      controller.dispose();
+      const order: string[] = [];
+      seqTracker.observe({ seq: 99 });
+      const onReconnected = vi.fn(() => {
+        // seqTracker.reset() must already have run on the full-snapshot path
+        order.push(`reconnected:seq=${seqTracker.getLastConfirmedSeq()}`);
+      });
+      onFullRefreshRequired.mockImplementation(() => order.push('fullRefresh'));
+      onChipUnmount.mockImplementation(() => order.push('unmount'));
+
+      const c = new WsReconnectController({
+        ws: originalWs as unknown as WebSocket,
+        url: 'wss://test.local/ws',
+        sessionId: FIXED_SESSION_ID,
+        seqTracker,
+        onChipTick,
+        onChipUnmount,
+        onFullRefreshRequired,
+        onReconnected: onReconnected as unknown as (ws: WebSocket) => void,
+        wsFactory: wsFactory as unknown as (url: string) => WebSocket,
+        performHandshake: performHandshake as unknown as (
+          ws: WebSocket,
+          sessionId: string,
+        ) => Promise<{ session_id: string }>,
+      });
+
+      originalWs.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      newWs.fireMessage({
+        proto: 'evf-v1',
+        type: 'resume_full_snapshot',
+        reason: 'buffer_expired',
+      });
+
+      // reset (-1) → onReconnected → fullRefresh → unmount
+      expect(order).toEqual(['reconnected:seq=-1', 'fullRefresh', 'unmount']);
+      c.dispose();
+    });
+
+    it('WSR-08c: absent onReconnected is a no-op (backward compatible)', async () => {
+      // The default controller has NO onReconnected — resume_replay still works.
+      originalWs.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(() =>
+        newWs.fireMessage({ proto: 'evf-v1', type: 'resume_replay', count: 1 }),
+      ).not.toThrow();
+      expect(onChipUnmount).toHaveBeenCalled();
+    });
+  });
+
+  describe('repeated reconnect — close re-arm (BLOCKER 1)', () => {
+    it('WSR-09: a SECOND disconnect (on ws2) triggers a second countdown + reconnect to ws3', async () => {
+      const ws2 = new MockWebSocket();
+      const ws3 = new MockWebSocket();
+      // wsFactory returns ws2 then ws3 on successive reconnects.
+      wsFactory.mockReturnValueOnce(ws2).mockReturnValueOnce(ws3);
+
+      // First disconnect: original → ws2, resume succeeds.
+      originalWs.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(wsFactory).toHaveBeenCalledTimes(1);
+      ws2.fireMessage({ proto: 'evf-v1', type: 'resume_replay', count: 1 });
+
+      // SECOND disconnect now happens on ws2 (the live socket after reconnect).
+      // Today this is NEVER detected (listener only on originalWs) — RED.
+      ws2.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+
+      expect(wsFactory).toHaveBeenCalledTimes(2);
+      expect(wsFactory).toHaveBeenNthCalledWith(2, 'wss://test.local/ws');
+      // The second reconnect targets ws3 and sends client_resume on it.
+      expect(ws3.sentMessages.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('WSR-10: dispose() after a reconnect removes the close listener from the CURRENT socket (ws2)', async () => {
+      const ws2 = new MockWebSocket();
+      wsFactory.mockReturnValueOnce(ws2);
+
+      originalWs.fireClose();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      ws2.fireMessage({ proto: 'evf-v1', type: 'resume_replay', count: 1 });
+
+      const callsBeforeDispose = wsFactory.mock.calls.length;
+      controller.dispose();
+
+      // A close on ws2 after dispose must NOT start a new countdown.
+      ws2.fireClose();
+      vi.advanceTimersByTime(2000);
+      await vi.runAllTimersAsync();
+      expect(wsFactory.mock.calls.length).toBe(callsBeforeDispose);
+    });
+  });
 });
