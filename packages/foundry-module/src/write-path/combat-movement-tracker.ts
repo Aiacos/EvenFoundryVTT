@@ -135,15 +135,18 @@ function _getPlayerActorId(): string | null {
  *     combat is active.
  *   - `updateCombat` — resets the accumulator on `change.turn !== undefined`
  *     (turn advance).
+ *   - `deleteCombat` (FIX E) — clears _state + _lastPosition entirely when a combat
+ *     is removed, so stale `usedThisTurn` from the ended encounter cannot leak into a
+ *     freshly created combat before its first turn-advance.
  *
  * @param emit - Callback to emit the movement budget payload via bridgeDeltaEmitter.
  *               Called at most once per triggering event. Never called when:
  *               - No x/y change in the token update (CMT-02)
  *               - Token is not the player's actor (CMT-02/07)
  *               - Combat is not active (CMT-04)
- * @returns Unsubscribe closure — calls `Hooks.off(updateTokenHookId)` and
- *          `Hooks.off(updateCombatHookId)`. Discarded by module.ts for MVP
- *          (module lifecycle is for-the-session).
+ * @returns Unsubscribe closure — calls `Hooks.off(updateTokenHookId)`,
+ *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (FIX E).
+ *          Discarded by module.ts for MVP (module lifecycle is for-the-session).
  */
 export function registerMovementTracker(
   emit: (payload: MovementBudgetPayload) => void,
@@ -284,9 +287,23 @@ export function registerMovementTracker(
     // NEVER return false — Foundry hook chain must not be interrupted
   });
 
+  // ── deleteCombat hook (FIX E) ─────────────────────────────────────────────────
+  // When a combat is removed, clear all tracked movement state so a freshly created
+  // combat does not inherit stale `usedThisTurn` from the ended encounter.
+  const deleteCombatHookId = Hooks.on('deleteCombat', (..._args: unknown[]): void => {
+    try {
+      _state.clear();
+      _lastPosition.clear();
+    } catch (err) {
+      console.warn('[combat-movement-tracker] deleteCombat handler threw', err);
+    }
+    // NEVER return false — Foundry hook chain must not be interrupted
+  });
+
   // Return unsubscribe closure
   return (): void => {
     Hooks.off(updateTokenHookId);
     Hooks.off(updateCombatHookId);
+    Hooks.off(deleteCombatHookId); // FIX E
   };
 }
