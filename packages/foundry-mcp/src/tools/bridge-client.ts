@@ -278,8 +278,12 @@ export class BridgeClient {
       ws.onclose = (event: CloseEvent) => {
         this._connected = false;
         if (!this._sessionId) {
-          // Closed before handshake completed — resolve ready anyway.
+          // Closed before handshake completed — resolve ready anyway and STOP:
+          // a pre-handshake close has no pending work to reject/drain, so do not
+          // fall through to the 4001 / other-close branches (which would run
+          // _rejectPendingWithAuthError / _resolvePending on an empty pipeline).
           resolve();
+          return;
         }
         if (event.code === 4001) {
           // Bearer expired — reject pending and drain queue.
@@ -458,6 +462,9 @@ export class BridgeClient {
             return data[0] as import('@evf/shared-protocol').CharacterSnapshot;
           return null;
         },
+        // Network failure → null (honour the `… | null` return type; without an
+        // explicit default a throw would yield `undefined as T`).
+        null,
       );
     }
     return this._restGet<import('@evf/shared-protocol').CharacterSnapshot | null>(
@@ -466,6 +473,7 @@ export class BridgeClient {
         if (res.status === 404) return null;
         return res.json() as Promise<import('@evf/shared-protocol').CharacterSnapshot>;
       },
+      null,
     );
   }
 
@@ -481,6 +489,7 @@ export class BridgeClient {
         if (res.status === 204 || res.status === 404) return null;
         return res.json() as Promise<import('@evf/shared-protocol').CombatSnapshot>;
       },
+      null, // network failure → null (honour the `… | null` return type)
     );
   }
 
@@ -494,6 +503,7 @@ export class BridgeClient {
         if (res.status === 404) return null;
         return res.json() as Promise<import('@evf/shared-protocol').SceneViewport>;
       },
+      null, // network failure → null (honour the `… | null` return type)
     );
   }
 

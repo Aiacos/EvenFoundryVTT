@@ -55,6 +55,12 @@ describe('SPELL_LOOKUP table invariants', () => {
     const found = SPELL_LOOKUP.filter((e) => required.has(e.dnd5eId));
     expect(found.length).toBe(5);
   });
+
+  it('mass-cure-wounds is grouped at level 5 (guards placement, not just data)', () => {
+    const entry = SPELL_LOOKUP.find((e) => e.dnd5eId === 'mass-cure-wounds');
+    expect(entry).toBeDefined();
+    expect(entry?.level).toBe(5);
+  });
 });
 
 // ─── lookupSpellId — exact matches ──────────────────────────────────────────
