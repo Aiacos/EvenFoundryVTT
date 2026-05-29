@@ -65,6 +65,15 @@ describe('DebugEventSchema', () => {
       expect(result.success, `direction '${direction}' should parse`).toBe(true);
     }
   });
+
+  it('rejects id < 1 (buffer ids start at 1); accepts 1', () => {
+    expect(DebugEventSchema.safeParse({ ...valid, id: 0 }).success).toBe(false);
+    expect(DebugEventSchema.safeParse({ ...valid, id: 1 }).success).toBe(true);
+  });
+
+  it('rejects a non-integer ts', () => {
+    expect(DebugEventSchema.safeParse({ ...valid, ts: 1.5 }).success).toBe(false);
+  });
 });
 
 describe('DisplayOpPayloadSchema', () => {
@@ -87,6 +96,22 @@ describe('DisplayOpPayloadSchema', () => {
   it('rejects an unknown op', () => {
     const result = DisplayOpPayloadSchema.safeParse({ op: 'explode', ts: 1 });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-integer layer index z', () => {
+    expect(DisplayOpPayloadSchema.safeParse({ op: 'mount', z: 1.5, ts: 1 }).success).toBe(false);
+    expect(DisplayOpPayloadSchema.safeParse({ op: 'mount', z: 1, ts: 1 }).success).toBe(true);
+  });
+
+  it('rejects a non-integer ts (op-level and perf-sample)', () => {
+    expect(DisplayOpPayloadSchema.safeParse({ op: 'mount', ts: 1.5 }).success).toBe(false);
+    expect(
+      DisplayOpPayloadSchema.safeParse({
+        op: 'perf',
+        ts: 1,
+        perf: [{ station: 'flush', key: 'page', ts: 2.5 }],
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts an optional perf array of station samples', () => {

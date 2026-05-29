@@ -145,8 +145,9 @@ describe('ActionResultPayloadSchema', () => {
     expect(withNumber.success).toBe(false);
   });
 
-  // ART-09: d20 is number().int().nullable() — null accepted; 21 accepted; 0.5 rejected
-  it('ART-09: accepts null d20 (no_roll case) and integer 21; rejects float 0.5', async () => {
+  // ART-09: d20 is number().int().min(1).max(20).nullable() — null accepted; in-range
+  // integer accepted; 21 now REJECTED (out of die range, R-review fix); 0.5 rejected.
+  it('ART-09: accepts null d20 (no_roll case) and in-range integer; rejects out-of-range 21 and float 0.5', async () => {
     const { ActionResultPayloadSchema } = await import('./action-result.js');
 
     const withNull = ActionResultPayloadSchema.safeParse(
@@ -154,8 +155,11 @@ describe('ActionResultPayloadSchema', () => {
     );
     expect(withNull.success).toBe(true);
 
-    const withInt = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: 21 }));
+    const withInt = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: 20 }));
     expect(withInt.success).toBe(true);
+
+    const outOfRange = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: 21 }));
+    expect(outOfRange.success).toBe(false);
 
     const withFloat = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: 0.5 }));
     expect(withFloat.success).toBe(false);
@@ -172,6 +176,19 @@ describe('ActionResultPayloadSchema', () => {
   it('ART-11: R1_ACTION_RESULT_TYPE equals "r1.action.result"', async () => {
     const { R1_ACTION_RESULT_TYPE } = await import('./action-result.js');
     expect(R1_ACTION_RESULT_TYPE).toBe('r1.action.result');
+  });
+
+  // ART-D20-BOUNDS: d20 must be a natural die face in [1, 20] (or null).
+  it('ART-D20-BOUNDS: rejects d20 outside 1-20; accepts 1, 20, and null', async () => {
+    const { ActionResultPayloadSchema } = await import('./action-result.js');
+    for (const bad of [0, 21, -1]) {
+      const result = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: bad }));
+      expect(result.success, `d20=${bad} should be rejected`).toBe(false);
+    }
+    for (const good of [1, 20, null]) {
+      const result = ActionResultPayloadSchema.safeParse(makeValidPayload({ d20: good }));
+      expect(result.success, `d20=${good} should be accepted`).toBe(true);
+    }
   });
 
   // ART-12: barrel re-export compiles + import resolves from shared-protocol index

@@ -39,9 +39,9 @@ import { z } from 'zod';
  */
 export const DebugEventSchema = z.object({
   /** Monotonic buffer id (assigned on push, starts at 1). */
-  id: z.number().int(),
+  id: z.number().int().min(1),
   /** `Date.now()` ms epoch at capture time. */
-  ts: z.number(),
+  ts: z.number().int(),
   /** Which leg of the chain produced the event. */
   direction: z.enum(['inbound', 'outbound', 'tool', 'log', 'display']),
   /** Owning session, or `null` for broadcast / session-less events. */
@@ -85,7 +85,7 @@ export const DisplayOpPayloadSchema = z.object({
   /** The render op kind. */
   op: z.enum(['mount', 'destroy', 'rebuild', 'perf']),
   /** Optional layer index (z=0 map, z=1 status HUD, z=2 overlay). */
-  z: z.number().optional(),
+  z: z.number().int().optional(),
   /** Optional total container count after the op. */
   containerCount: z.number().int().optional(),
   /** Optional free-form detail string. */
@@ -99,12 +99,12 @@ export const DisplayOpPayloadSchema = z.object({
         /** Sample key within the station. */
         key: z.string(),
         /** `Date.now()` ms epoch of the sample. */
-        ts: z.number(),
+        ts: z.number().int(),
       }),
     )
     .optional(),
   /** `Date.now()` ms epoch at the op. */
-  ts: z.number(),
+  ts: z.number().int(),
 });
 
 /** A display operation mirrored from the g2-app render engine (inferred). */

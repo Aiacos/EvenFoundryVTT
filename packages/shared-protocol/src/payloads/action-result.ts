@@ -134,8 +134,8 @@ export const ActionResultPayloadSchema = z
     idempotencyKey: z.string().uuid(),
     /** Tool that produced this result. */
     toolId: TOOL_ID_SCHEMA,
-    /** Raw d20 result, or null when no roll was made. */
-    d20: z.number().int().nullable(),
+    /** Raw d20 result (1-20), or null when no roll was made. */
+    d20: z.number().int().min(1).max(20).nullable(),
     /** Action outcome. One of 6 canonical values — 'critical' is not allowed. */
     outcome: ActionOutcome,
     /** Optional damage string (max 24 chars, toast-budget truncated by watcher). */
