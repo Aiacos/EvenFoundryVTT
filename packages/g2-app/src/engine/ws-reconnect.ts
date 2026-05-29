@@ -92,6 +92,19 @@ export interface WsReconnectControllerOpts {
    * (T-10-01 mitigation — stale-seq forced full refresh.)
    */
   readonly onFullRefreshRequired: () => void;
+  /**
+   * Fired with the now-live WebSocket immediately after a successful resume, so the
+   * host can rebind persistent INBOUND listeners (sceneInput, R1, dispatchers, the
+   * wsEvents bus) onto the new socket AND swap the outbound `WsSender` target via
+   * `holder.swap(newWs)` (quick-task 260529-khy — BLOCKER 2 full rewire).
+   *
+   * Fires BEFORE `onChipUnmount` on BOTH resume paths. On `resume_full_snapshot` it
+   * fires AFTER `seqTracker.reset()` and BEFORE `onFullRefreshRequired`.
+   *
+   * Optional — absent callback is a no-op (backward compatible; existing callers that
+   * never reconnect twice or never rebind keep working unchanged).
+   */
+  readonly onReconnected?: (newWs: WebSocket) => void;
 }
 
 /**
@@ -122,10 +135,23 @@ export class WsReconnectController {
   /** Bound close handler — stored so it can be removed via removeEventListener. */
   private readonly _onClose: () => void;
 
+  /**
+   * The socket the 'close' listener is currently armed on (BLOCKER 1 fix —
+   * quick-task 260529-khy).
+   *
+   * Initialised to `opts.ws`; re-pointed to the new live socket on each successful
+   * reconnect so REPEATED disconnects are each detected. `dispose()` removes the
+   * listener from THIS socket (not the original `opts.ws`).
+   */
+  private currentWs: WebSocket;
+
   constructor(opts: WsReconnectControllerOpts) {
     this.opts = opts;
+    this.currentWs = opts.ws;
     this._onClose = () => this._handleClose();
-    opts.ws.addEventListener('close', this._onClose as EventListener);
+    // Arm the 'close' listener on the current live socket. Re-armed on `currentWs`
+    // after each successful reconnect so a second/third disconnect is also detected.
+    this.currentWs.addEventListener('close', this._onClose as EventListener);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -134,7 +160,9 @@ export class WsReconnectController {
 
   /**
    * Cancel any pending reconnect timer, remove the 'close' listener from the
-   * original socket, and prevent any further reconnect attempts.
+   * CURRENT live socket (`currentWs` — re-armed on each successful reconnect, so
+   * after N reconnects this removes it from the Nth socket, NOT the original
+   * `opts.ws`), and prevent any further reconnect attempts.
    *
    * Called in boot-engine-core teardown (reverse-mount order, before unsubR1).
    * Idempotent — second calls are no-ops.
@@ -142,7 +170,7 @@ export class WsReconnectController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.opts.ws.removeEventListener('close', this._onClose as EventListener);
+    this.currentWs.removeEventListener('close', this._onClose as EventListener);
     this._clearTimers();
   }
 
@@ -246,6 +274,13 @@ export class WsReconnectController {
       });
       newWs.send(resumeMsg);
 
+      // BLOCKER 1 (quick-task 260529-khy) — RE-ARM the 'close' listener on the new
+      // live socket so REPEATED disconnects are each detected. Done synchronously (no
+      // await between the three steps) so no close can slip through a half-armed window.
+      this.currentWs.removeEventListener('close', this._onClose as EventListener);
+      this.currentWs = newWs;
+      newWs.addEventListener('close', this._onClose as EventListener);
+
       // Attach one-time listener for resume response
       this._attachResumeListener(newWs);
     } catch {
@@ -291,15 +326,21 @@ export class WsReconnectController {
       ws.removeEventListener('message', onMessage as EventListener);
 
       if (msg.type === 'resume_replay') {
-        // Normal resume: contiguous replay follows, chip unmounts
+        // Normal resume: contiguous replay follows, chip unmounts.
+        // quick-task 260529-khy — fire onReconnected with the now-live socket BEFORE
+        // onChipUnmount so the host rebinds inbound listeners + swaps the WsSender first.
+        this.opts.onReconnected?.(ws);
         this.opts.onChipUnmount();
       } else {
         // resume_full_snapshot — T-10-01 mitigation
         // 1. Reset seq tracker so stale seq cannot cause another partial replay
         this.opts.seqTracker.reset();
-        // 2. Notify caller to re-fetch via REST BEFORE any further envelope processing
+        // 2. quick-task 260529-khy — rebind/swap onto the live socket AFTER the reset
+        //    and BEFORE the full-refresh + chip-unmount callbacks.
+        this.opts.onReconnected?.(ws);
+        // 3. Notify caller to re-fetch via REST BEFORE any further envelope processing
         this.opts.onFullRefreshRequired();
-        // 3. Also unmount the chip (connection is live, just needs full refresh)
+        // 4. Also unmount the chip (connection is live, just needs full refresh)
         this.opts.onChipUnmount();
       }
     };
