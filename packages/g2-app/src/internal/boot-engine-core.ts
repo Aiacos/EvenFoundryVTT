@@ -1058,7 +1058,6 @@ export async function _bootEngineCore(
   //      through `as ServerCap` is intentional — the wire shape is `string[]`, and the
   //      bridge emits 'voice' when configured. This follows the same pattern used
   //      for negotiatedCaps in step 7.
-  // biome-ignore lint/suspicious/noExplicitAny: AudioCaptureHandle type is opaque here; full import is in audio-capture.ts
   let audioCaptureHandle: ReturnType<typeof startAudioCapture> | null = null;
 
   if (negotiatedCaps.has('voice' as ServerCap)) {

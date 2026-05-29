@@ -419,7 +419,6 @@ export class ReactionPromptPanel implements OverlayPanel {
    * Tests stub via `vi.stubGlobal('crypto', { randomUUID: () => '...' })`.
    */
   private _uuid(): string {
-    // biome-ignore lint/suspicious/noExplicitAny: crypto global not typed in happy-dom
     return (globalThis as unknown as { crypto: { randomUUID(): string } }).crypto.randomUUID();
   }
 }

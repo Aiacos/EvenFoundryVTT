@@ -415,6 +415,80 @@ export function renderInventoryStandaloneContent(
   return padToRowCount(rows);
 }
 
+// ─── Header-aware row → item mapping (R-longpress) ────────────────────────────
+
+/**
+ * Build the row → item map that runs parallel to the `allRows` array produced by
+ * {@link renderInventoryStandaloneContent}.
+ *
+ * R-longpress fix: the standalone renderer interleaves section headers, item rows
+ * and blank separators and scrolls by content-ROW index, but the long-press
+ * handler used to index the FLAT `inventory` array with `scrollOffset` — so any
+ * section header above the cursor shifted the mapping → the WRONG item was
+ * dispatched after scrolling. This map returns the item reference for addressable
+ * item rows and `null` for headers / blanks / the condensed CARRIED summary, in
+ * the exact order the renderer emits them.
+ *
+ * The CARRIED section is condensed to a non-addressable summary line in the
+ * standalone view, so container/currency items are intentionally `null` here.
+ *
+ * @param snapshot Character snapshot (null → empty map).
+ * @returns Array aligned 1:1 with the renderer's `allRows`; `null` at non-item rows.
+ */
+export function buildInventoryRowItemMap(
+  snapshot: CharacterSnapshot | null,
+  locale: HudLocale,
+): (InventoryItem | null)[] {
+  if (snapshot === null) return [];
+  const inventory = snapshot.inventory;
+  const map: (InventoryItem | null)[] = [];
+
+  // EQUIPPED section: header + item rows + blank.
+  map.push(null); // equipped header
+  const equipped = inventory.filter(
+    (i) => i.type === 'weapon' || i.type === 'armor' || i.type === 'equipment',
+  );
+  for (const item of equipped) map.push(item);
+  map.push(null); // blank separator
+
+  // CONSUMABLES section: header + item rows + blank.
+  map.push(null); // consumables header
+  const consumables = inventory.filter((i) => i.type === 'consumable');
+  for (const item of consumables) map.push(item);
+  map.push(null); // blank separator
+
+  // CARRIED section is condensed to {header, summary-line} in standalone — neither
+  // row is an addressable item. Mirror its row COUNT so the map stays aligned.
+  const carriedRows = renderCarriedSection(inventory, locale, true);
+  for (let i = 0; i < carriedRows.length; i++) map.push(null);
+
+  return map;
+}
+
+/**
+ * Resolve the item under the cursor row from a row → item map.
+ *
+ * The cursor row is the clamped scroll offset (first visible content row). If it
+ * lands on a header / blank / summary (`null`), fall through to the nearest
+ * FOLLOWING item row so the established offset-0 behavior still dispatches the
+ * first item. Returns `null` when no item follows.
+ *
+ * @param rowItemMap Output of {@link buildInventoryRowItemMap}.
+ * @param cursorRow  Clamped scroll offset (the first visible content row index).
+ */
+export function resolveItemAtRow(
+  rowItemMap: readonly (InventoryItem | null)[],
+  cursorRow: number,
+): InventoryItem | null {
+  if (rowItemMap.length === 0) return null;
+  const start = Math.max(0, Math.min(cursorRow, rowItemMap.length - 1));
+  for (let i = start; i < rowItemMap.length; i++) {
+    const item = rowItemMap[i];
+    if (item != null) return item;
+  }
+  return null;
+}
+
 // ─── InventoryPanel class ─────────────────────────────────────────────────────
 
 /**
@@ -568,11 +642,17 @@ export default class InventoryPanel implements OverlayPanel {
         if (this.actionOptionsHandler === null) {
           break;
         }
-        const items = this.snapshot?.inventory ?? [];
-        const idx = Math.max(0, Math.min(this.scrollOffset, items.length - 1));
-        const item = items[idx];
-        if (this.snapshot === null || item === undefined) {
-          console.warn('[inventory-panel] long-press with no item at scrollOffset — no-op');
+        // R-longpress: resolve the item under the cursor ROW via the header-aware
+        // row → item map (NOT inventory[scrollOffset], which mis-maps after a section
+        // header). The cursor row is the clamped scroll offset = first visible row.
+        const rowItemMap = buildInventoryRowItemMap(this.snapshot, this.locale);
+        const clampedOffset = Math.max(
+          0,
+          Math.min(this.scrollOffset, Math.max(0, rowItemMap.length - (ROW_COUNT - 1))),
+        );
+        const item = resolveItemAtRow(rowItemMap, clampedOffset);
+        if (this.snapshot === null || item == null) {
+          console.warn('[inventory-panel] long-press with no item under cursor row — no-op');
           break;
         }
         // requiresTarget heuristic: consumables self-target by default (potions, etc.).

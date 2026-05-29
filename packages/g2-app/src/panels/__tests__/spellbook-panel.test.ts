@@ -63,11 +63,13 @@ import { isOverlayPanel } from '../../engine/overlay-panel.js';
 import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import type { ActionOptionsRequest } from '../action-options-modal.js';
 import SpellbookPanel, {
+  buildSpellbookRowItemMap,
   renderLevelSection,
   renderSlotBar,
   renderSpellbookStandaloneContent,
   renderSpellRow,
   renderSpellsTabContent,
+  resolveSpellAtRow,
 } from '../spellbook-panel.js';
 
 // ─── Fixture helpers ───────────────────────────────────────────────────────────
@@ -862,6 +864,167 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     expect(String(msg)).toContain('spellbook-panel');
 
     warnSpy.mockRestore();
+    await panel.onUnmount();
+  });
+});
+
+// ─── SBP-LPMAP-*: R-longpress header-aware row → spell mapping ─────────────────
+
+/**
+ * Multi-section snapshot: 1 cantrip + 2 level-1 spells. The standalone renderer's
+ * `allRows` layout is:
+ *   row 0: title
+ *   row 1: cantrips header
+ *   row 2: cantrip spell (spell-light)
+ *   row 3: blank
+ *   row 4: L1 header
+ *   row 5: L1 spell (spell-magic-missile)
+ *   row 6: L1 spell (spell-cure-wounds)
+ *   row 7: blank
+ * BUG: indexing the flat spells[] by scrollOffset would, at offset 4, pick
+ * spells[4] (out of range / wrong) instead of the spell visually on row 4/5.
+ */
+const multiSectionSnapshot: CharacterSnapshot = {
+  ...snapshotWithSpell,
+  spells: {
+    slots: [{ level: 1, value: 2, max: 2 }],
+    spells: [
+      {
+        id: 'spell-light',
+        name: 'Luce',
+        level: 0,
+        school: 'evocation',
+        activation: 'action',
+        range: '9m',
+        effect: 'luce',
+        prepared: true,
+        alwaysPrepared: false,
+        concentration: false,
+      },
+      {
+        id: 'spell-magic-missile',
+        name: 'Dardo Incantato',
+        level: 1,
+        school: 'evocation',
+        activation: 'action',
+        range: '36m',
+        effect: '3d4+3',
+        prepared: true,
+        alwaysPrepared: false,
+        concentration: false,
+      },
+      {
+        id: 'spell-cure-wounds',
+        name: 'Cura Ferite',
+        level: 1,
+        school: 'evocation',
+        activation: 'action',
+        range: 'touch',
+        effect: '1d8+mod',
+        prepared: true,
+        alwaysPrepared: false,
+        concentration: false,
+      },
+    ],
+  },
+};
+
+describe('buildSpellbookRowItemMap + resolveSpellAtRow (R-longpress)', () => {
+  it('SBP-LPMAP-01: map aligns headers→null and item rows→spell across sections', () => {
+    const map = buildSpellbookRowItemMap(multiSectionSnapshot);
+    // [title, cantrip-hdr, light, blank, L1-hdr, magic-missile, cure-wounds, blank]
+    expect(map.length).toBe(8);
+    expect(map[0]).toBeNull(); // title
+    expect(map[1]).toBeNull(); // cantrips header
+    expect(map[2]?.id).toBe('spell-light');
+    expect(map[3]).toBeNull(); // blank
+    expect(map[4]).toBeNull(); // L1 header
+    expect(map[5]?.id).toBe('spell-magic-missile');
+    expect(map[6]?.id).toBe('spell-cure-wounds');
+    expect(map[7]).toBeNull(); // blank
+  });
+
+  it('SBP-LPMAP-02: cursor row on an item resolves that exact spell (not flat index)', () => {
+    const map = buildSpellbookRowItemMap(multiSectionSnapshot);
+    // Cursor at row 5 → magic-missile (flat spells[5] would be undefined → bug).
+    expect(resolveSpellAtRow(map, 5)?.id).toBe('spell-magic-missile');
+    expect(resolveSpellAtRow(map, 6)?.id).toBe('spell-cure-wounds');
+  });
+
+  it('SBP-LPMAP-03: cursor on a header/title falls through to the next item row', () => {
+    const map = buildSpellbookRowItemMap(multiSectionSnapshot);
+    expect(resolveSpellAtRow(map, 0)?.id).toBe('spell-light'); // title → first item
+    expect(resolveSpellAtRow(map, 4)?.id).toBe('spell-magic-missile'); // L1 header → next item
+  });
+
+  it('SBP-LPMAP-04: empty map → null (no-op)', () => {
+    expect(resolveSpellAtRow([], 0)).toBeNull();
+    expect(buildSpellbookRowItemMap(null)).toEqual([]);
+  });
+
+  it('SBP-LPMAP-05: long-press after scrolling a tall list resolves the cursor-row spell across a header', async () => {
+    // Build a list TALLER than ROW_COUNT (18) so the scroll window actually shifts.
+    // 18 cantrips push the level-1 header + spells below the first visible page;
+    // scrolling moves clampedOffset into the level-1 section.
+    const cantrips = Array.from({ length: 18 }, (_, i) => ({
+      id: `cantrip-${i}`,
+      name: `Trucchetto ${i}`,
+      level: 0 as const,
+      school: 'evocation',
+      activation: 'action' as const,
+      range: '9m',
+      effect: 'fx',
+      prepared: true,
+      alwaysPrepared: false,
+      concentration: false,
+    }));
+    const tallSnapshot: CharacterSnapshot = {
+      ...snapshotWithSpell,
+      spells: {
+        slots: [{ level: 1, value: 2, max: 2 }],
+        spells: [
+          ...cantrips,
+          {
+            id: 'spell-magic-missile',
+            name: 'Dardo Incantato',
+            level: 1,
+            school: 'evocation',
+            activation: 'action',
+            range: '36m',
+            effect: '3d4+3',
+            prepared: true,
+            alwaysPrepared: false,
+            concentration: false,
+          },
+        ],
+      },
+    };
+    // allRows: row 0 title, row 1 cantrips-hdr, rows 2..19 cantrips 0..17,
+    // row 20 blank, row 21 L1-hdr, row 22 magic-missile, row 23 blank → length 24.
+    // The scroll window (17 content rows) clamps the max offset to length-(18-1)=7.
+    const map = buildSpellbookRowItemMap(tallSnapshot);
+    expect(map.length).toBe(24);
+    expect(map[2]?.id).toBe('cantrip-0'); // first cantrip row (after title + header)
+    expect(map[22]?.id).toBe('spell-magic-missile');
+
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(tallSnapshot);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    // Scroll down well past the clamp ceiling (clamped offset = 7). At offset 7 the
+    // cursor row is allRows[7] = cantrip-5 (id 'cantrip-5'). The OLD flat-index code
+    // dispatched spells[7] = 'cantrip-7' — off by the 2 header rows (title + section
+    // header). This guards the header-aware mapping fix.
+    for (let i = 0; i < 20; i++) bus.publish({ kind: 'scroll', direction: 'down' });
+    bus.publish({ kind: 'long-press' });
+
+    const req = spy.mock.calls.at(-1)?.[0];
+    expect(req?.itemId).toBe('cantrip-5'); // row-mapped (correct), NOT 'cantrip-7' (old bug)
+
     await panel.onUnmount();
   });
 });
