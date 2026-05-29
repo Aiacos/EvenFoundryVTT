@@ -44,6 +44,7 @@ import type { DeltaEmitter } from '../ws/delta-emitter.js';
 import type { ReplayBuffer } from '../ws/replay-buffer.js';
 import type { SessionStore } from '../ws/session-store.js';
 import type { DispatchToolFn } from '../ws/tool-invoke.js';
+import { DASHBOARD_HTML } from './dashboard.js';
 import type { DebugEventBus } from './debug-event-bus.js';
 
 /**
@@ -135,6 +136,19 @@ export async function registerDebugRoutes(
     metricsAccessors,
     dispatchToolFn,
   } = deps;
+
+  // ── GET /debug/console (alias /debug) — single-file CRT dashboard ──────────────
+  // Secret-gated. HTML is an inlined string constant (tsup-bundle-safe — no asset
+  // resolution needed in dev or bundled dist). See ./dashboard.ts.
+  const serveDashboard = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): FastifyReply | undefined => {
+    if (!requireSecret(request, reply)) return undefined;
+    return reply.status(200).type('text/html; charset=utf-8').send(DASHBOARD_HTML);
+  };
+  app.get('/debug/console', async (request, reply) => serveDashboard(request, reply));
+  app.get('/debug', async (request, reply) => serveDashboard(request, reply));
 
   // ── GET /debug/state — redacted bridge snapshot ────────────────────────────────
   app.get('/debug/state', async (request, reply) => {
