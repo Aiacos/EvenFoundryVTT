@@ -55,6 +55,13 @@ import type {
 /** Minimal Worker-like contract honored by both the real `Worker` and the test mock. */
 export interface WorkerLike {
   onmessage: ((ev: { data?: unknown; type: string }) => void) | null;
+  /**
+   * Fatal-error handler (R2). The real `Worker` fires this on an uncaught
+   * worker-thread error; assigning it lets the controller settle every pending
+   * frame instead of leaving callers parked forever. Optional so the narrow
+   * mock and any future stub need not declare it.
+   */
+  onerror?: ((ev: unknown) => void) | null;
   postMessage(message: unknown, transfer?: ReadonlyArray<Transferable>): void;
   terminate(): void;
 }
@@ -140,6 +147,39 @@ export class RasterController implements RasterControllerLike {
     this.worker.onmessage = (ev): void => {
       this._handleWorkerResponse(ev.data);
     };
+    this.worker.onerror = (ev): void => {
+      this._handleWorkerFatalError(ev);
+    };
+  }
+
+  /**
+   * Handle a fatal worker error (R2).
+   *
+   * The real `Worker` fires `onerror` when its thread throws uncaught. Without
+   * this handler every in-flight `requestFrame` promise would park forever in
+   * `pending` (and a debounced-but-unflushed call in `pendingPayload`), hanging
+   * any awaiting caller permanently. We settle ALL of them with the existing
+   * `RasterResponse.error` shape, clear the map, then log — no permanent hang.
+   */
+  private _handleWorkerFatalError(ev: unknown): void {
+    const errorResponse = (frameId: number): RasterResponse => ({
+      frameId,
+      changedTiles: [],
+      error: { stage: 'worker', message: 'worker fatal error' },
+    });
+    for (const [frameId, pending] of this.pending) {
+      pending.resolve(errorResponse(frameId));
+    }
+    this.pending.clear();
+    if (this.pendingPayload !== null) {
+      this.pendingPayload.resolver.resolve(errorResponse(-1));
+      this.pendingPayload = null;
+      if (this.debounceTimer !== null) {
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = null;
+      }
+    }
+    console.error('[EVF] raster-controller: worker fatal error', ev);
   }
 
   /**
