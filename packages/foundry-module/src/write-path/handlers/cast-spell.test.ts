@@ -15,7 +15,7 @@
  * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 1
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,7 +53,11 @@ function makeActor(opts: { id?: string; item?: ReturnType<typeof makeItem> | nul
   };
 }
 
-function makeGameGlobal(actor: ReturnType<typeof makeActor> | null = makeActor()) {
+function makeGameGlobal(
+  actor: ReturnType<typeof makeActor> | null = makeActor(),
+  opts: { midiActive?: boolean; targets?: Set<unknown> } = {},
+) {
+  const midiActive = opts.midiActive ?? false;
   return {
     actors: {
       get: vi.fn((id: string) => (actor?.id === id ? actor : undefined)),
@@ -68,8 +72,12 @@ function makeGameGlobal(actor: ReturnType<typeof makeActor> | null = makeActor()
     },
     i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
     combat: null,
-    user: { isGM: false, targets: new Set() },
+    user: { isGM: false, targets: opts.targets ?? new Set() },
     messages: { contents: [], get: vi.fn() },
+    // FIX-C: capability detection surface for midi-qol (default inactive).
+    modules: {
+      get: vi.fn((id: string) => (id === 'midi-qol' ? { active: midiActive } : undefined)),
+    },
   };
 }
 
@@ -587,5 +595,159 @@ describe('castSpellHandler', () => {
 
     // Reset emitter
     setConcConflictEmitter(null);
+  });
+
+  // ── FIX-C: capability-split targets forwarding (260529-eer) ──────────────────
+
+  describe('MidiQOL targets forwarding (cast-spell)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('CM1: MidiQOL present + targets + slot_level=3 → completeActivityUse with midiOptions.targetUuids + spell slot override; activity.use NOT called', async () => {
+      const activity = makeActivity({ chatCardId: 'cm-cm1' });
+      const item = makeItem({ id: 'spell-1', activity });
+      const actor = makeActor({ id: 'actor-a', item });
+
+      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: true }));
+      const completeActivityUse = vi.fn().mockResolvedValue({ id: 'cm-cm1' });
+      vi.stubGlobal('MidiQOL', { completeActivityUse });
+
+      const { castSpellHandler } = await import('./cast-spell.js');
+
+      const result = await castSpellHandler.handle({
+        actor_id: 'actor-a',
+        spell_id: 'spell-1',
+        slot_level: 3,
+        targets: ['tok-a'],
+      });
+
+      expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cm1' } });
+      expect(completeActivityUse).toHaveBeenCalledTimes(1);
+      const [firstArg, secondArg] = completeActivityUse.mock.calls[0] as [
+        unknown,
+        { midiOptions: Record<string, unknown> },
+      ];
+      expect(firstArg).toBe(activity);
+      expect(secondArg.midiOptions).toEqual({
+        targetUuids: ['tok-a'],
+        spell: { slot: 'spell3' },
+      });
+      expect(activity.use).not.toHaveBeenCalled();
+    });
+
+    it('CV1: MidiQOL absent + targets + slot_level=0 → activity.use({configure:false}); single console.warn (targets+MidiQOL); game.user.targets NEVER mutated', async () => {
+      const activity = makeActivity({ chatCardId: 'cm-cv1' });
+      const item = makeItem({ id: 'spell-1', activity });
+      const actor = makeActor({ id: 'actor-a', item });
+
+      const userTargets = new Set();
+      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false, targets: userTargets }));
+      vi.stubGlobal('MidiQOL', undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { castSpellHandler } = await import('./cast-spell.js');
+
+      const result = await castSpellHandler.handle({
+        actor_id: 'actor-a',
+        spell_id: 'spell-1',
+        slot_level: 0,
+        targets: ['tok-a'],
+      });
+
+      expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cv1' } });
+      expect(activity.use).toHaveBeenCalledWith({ configure: false });
+      expect(userTargets.size).toBe(0);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = String(warnSpy.mock.calls[0]?.[0]);
+      expect(msg).toMatch(/target/i);
+      expect(msg).toMatch(/midi-?qol/i);
+
+      warnSpy.mockRestore();
+    });
+
+    it('CB1 (backward-compat): MidiQOL absent + targets=[] + slot_level=3 → activity.use({configure:false, spell:{slot:spell3}}), no warn, no completeActivityUse', async () => {
+      const activity = makeActivity({ chatCardId: 'cm-cb1' });
+      const item = makeItem({ id: 'spell-1', activity });
+      const actor = makeActor({ id: 'actor-a', item });
+
+      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false }));
+      vi.stubGlobal('MidiQOL', undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { castSpellHandler } = await import('./cast-spell.js');
+
+      const result = await castSpellHandler.handle({
+        actor_id: 'actor-a',
+        spell_id: 'spell-1',
+        slot_level: 3,
+        targets: [],
+      });
+
+      expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cb1' } });
+      expect(activity.use).toHaveBeenCalledWith({
+        configure: false,
+        spell: { slot: 'spell3' },
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it('CM-CONC: conc-conflict pre-check runs FIRST even under MidiQOL — concentration-required before any completeActivityUse', async () => {
+      const activity = makeActivity({ chatCardId: 'cm-conc-midi' });
+      const item = {
+        id: 'spell-bless',
+        name: 'Bless',
+        type: 'spell',
+        system: {
+          components: { concentration: true },
+          activities: { contents: [activity] },
+        },
+      };
+      const actor = {
+        id: 'actor-conc-midi',
+        name: 'Cleric',
+        type: 'character',
+        items: { contents: [item] },
+        effects: {
+          contents: [
+            {
+              id: 'eff-existing',
+              name: 'Hold Person',
+              statuses: new Set(['concentrating']),
+              flags: { dnd5e: { item: { name: 'Hold Person' } } },
+            },
+          ],
+        },
+      };
+
+      vi.stubGlobal('game', {
+        actors: { get: vi.fn((id: string) => (actor.id === id ? actor : undefined)) },
+        scenes: { active: null },
+        users: { contents: [] },
+        settings: { get: vi.fn(), set: vi.fn(), register: vi.fn(), registerMenu: vi.fn() },
+        i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
+        combat: null,
+        user: { isGM: false, targets: new Set() },
+        messages: { contents: [], get: vi.fn() },
+        modules: { get: vi.fn(() => ({ active: true })) },
+      });
+      const completeActivityUse = vi.fn().mockResolvedValue({ id: 'cm-conc-midi' });
+      vi.stubGlobal('MidiQOL', { completeActivityUse });
+
+      const { castSpellHandler } = await import('./cast-spell.js');
+
+      const result = await castSpellHandler.handle({
+        actor_id: 'actor-conc-midi',
+        spell_id: 'spell-bless',
+        slot_level: 1,
+        targets: ['tok-a'],
+      });
+
+      expect(result).toEqual({ success: false, error: 'concentration-required' });
+      expect(completeActivityUse).not.toHaveBeenCalled();
+      expect(activity.use).not.toHaveBeenCalled();
+    });
   });
 });
