@@ -92,6 +92,14 @@ export function createMockOffscreenCanvas(width: number, height: number): MockOf
 type MockEventHandler = (event: { data?: unknown; type: string }) => void;
 
 /**
+ * Fatal-error handler shape — matches the real `Worker.onerror` (and the
+ * `WorkerLike.onerror` contract), which receives an opaque error event, not a
+ * `MessageEvent`. Kept distinct from {@link MockEventHandler} so the mock stays
+ * structurally assignable to `WorkerLike` (whose `onerror` takes `unknown`).
+ */
+type MockErrorHandler = (event: unknown) => void;
+
+/**
  * Minimal Worker-compatible shape returned by `createMockWorker`.
  *
  * Implementations of `postMessage` push synchronously into the internal queue
@@ -103,7 +111,7 @@ export interface MockWorker {
   /** Set the `onmessage` handler (matches Worker's `onmessage` property). */
   onmessage: MockEventHandler | null;
   /** Set the `onerror` handler (matches Worker's `onerror` property). */
-  onerror: MockEventHandler | null;
+  onerror: MockErrorHandler | null;
   /** Send a message to the (mock) worker. Captured for assertions. */
   postMessage(message: unknown, transfer?: ReadonlyArray<Transferable>): void;
   /** Subscribe to messages or errors. */
@@ -118,6 +126,14 @@ export interface MockWorker {
    * real Worker runtime would do when the worker thread `postMessage`s back.
    */
   _dispatchMessage(data: unknown): void;
+  /**
+   * Test-only: synchronously fire the worker's fatal-error handler.
+   *
+   * Mirrors what the real Worker runtime does when the worker thread throws an
+   * uncaught error — invokes `onerror` plus any `'error'` listeners. Lets the
+   * raster-controller R2 fix be unit-tested (all pending frames settle, no hang).
+   */
+  _dispatchError(event: unknown): void;
   /**
    * Test-only: read the messages sent into this worker via `postMessage`.
    *
@@ -184,6 +200,21 @@ export function createMockWorker(): MockWorker {
       }
       for (const fn of messageListeners) {
         fn(event);
+      }
+    },
+
+    _dispatchError(event: unknown): void {
+      if (terminated) {
+        return;
+      }
+      if (worker.onerror !== null) {
+        worker.onerror(event);
+      }
+      // `addEventListener('error', …)` handlers receive a WHATWG-event-shaped
+      // object; wrap the opaque payload so they see `{ type: 'error', data }`.
+      const wrapped = { type: 'error', data: event };
+      for (const fn of errorListeners) {
+        fn(wrapped);
       }
     },
 

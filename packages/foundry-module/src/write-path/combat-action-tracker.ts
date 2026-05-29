@@ -167,12 +167,15 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
  *     by `(actorId, attackId)` composite key.
  *   - `updateCombat` — resets all per-actor counters when `change.turn !== undefined`
  *     OR `change.round !== undefined` (both represent "new combatant's turn").
+ *   - `deleteCombat` (R3, mirrors combat-movement-tracker FIX E) — clears `_state`
+ *     and `_attackIdSeen` entirely when a combat is removed, so a freshly created
+ *     combat does not inherit stale counters or attack-dedup entries.
  *
  * @param emit - Callback to emit the action economy payload via bridgeDeltaEmitter.
  *               Fire-and-forget; failures are swallowed with console.warn.
- * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)` and
- *          `Hooks.off(updateCombatHookId)`. Discarded by module.ts for MVP
- *          (module lifecycle is for-the-session).
+ * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)`,
+ *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (R3).
+ *          Discarded by module.ts for MVP (module lifecycle is for-the-session).
  */
 export function registerCombatActionTracker(
   emit: (payload: ActionEconomyPayload) => void,
@@ -297,9 +300,23 @@ export function registerCombatActionTracker(
     // NEVER return false — Foundry hook chain must not be interrupted
   });
 
+  // ── deleteCombat hook (R3, mirrors combat-movement-tracker FIX E) ─────────────
+  // When a combat is removed, clear all tracked action-economy state + attackId
+  // dedup so a freshly created combat does not inherit stale counters.
+  const deleteCombatHookId = Hooks.on('deleteCombat', (..._args: unknown[]): void => {
+    try {
+      _state.clear();
+      _attackIdSeen.clear();
+    } catch (err) {
+      console.warn('[combat-action-tracker] deleteCombat handler threw', err);
+    }
+    // NEVER return false — Foundry hook chain must not be interrupted
+  });
+
   // Return unsubscribe closure
   return (): void => {
     Hooks.off(createChatHookId);
     Hooks.off(updateCombatHookId);
+    Hooks.off(deleteCombatHookId); // R3
   };
 }

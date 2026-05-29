@@ -221,6 +221,17 @@ describe('BridgeClient', () => {
     await expect(invokePromise).rejects.toBeInstanceOf(BridgeAuthExpiredError);
   });
 
+  it('case 5b: pre-handshake close (no session yet) resolves ready and does NOT fall through to the 4001 branch', async () => {
+    client = createClient();
+    mockWs.simulateOpen();
+    // NO server_hello → _sessionId stays unset (pre-handshake).
+    // A close arriving now (even code 4001) must resolve ready and early-return,
+    // never running _rejectPendingWithAuthError on the (empty) pending pipeline.
+    mockWs.simulateClose(4001, 'invalid_token');
+    // ready resolves (does not hang, does not reject).
+    await expect(client.ready).resolves.toBeUndefined();
+  });
+
   it('case 6: bridge returns foundry_unreachable → result: { success: false, error: "foundry_unreachable" }', async () => {
     client = await connectClient();
     const invokePromise = client.invokeTool('cast_spell', {});
@@ -318,12 +329,25 @@ describe('BridgeClient', () => {
       expect(result).toBeNull();
     });
 
-    it('case 13: getCharacterSnapshot with actorId — network error → undefined (catch arm, no defaultValue passed)', async () => {
+    it('case 13: getCharacterSnapshot with actorId — network error → null (honours `… | null` return)', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
       client = await connectClient();
-      // _restGet called without defaultValue → returns undefined on catch
+      // _restGet now receives an explicit `null` default → returns null, not undefined.
       const result = await client.getCharacterSnapshot('actor-1');
-      expect(result).toBeUndefined();
+      expect(result).toBeNull();
+    });
+
+    it('case 13b: getCombatSnapshot / getSceneViewport — network error → null', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+      client = await connectClient();
+      expect(await client.getCombatSnapshot()).toBeNull();
+      expect(await client.getSceneViewport()).toBeNull();
+    });
+
+    it('case 13c: getCharacterSnapshot auto-detect — network error → null', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+      client = await connectClient();
+      expect(await client.getCharacterSnapshot()).toBeNull();
     });
 
     it('case 14: getCharacterSnapshot auto-detect (no actorId) — array body → first element', async () => {

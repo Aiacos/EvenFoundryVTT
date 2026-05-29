@@ -62,6 +62,7 @@ function makeSpellItem(
     level: number;
     activation: string;
     concentration: boolean;
+    range: { value: number | undefined; units: string };
   }> = {},
 ) {
   return {
@@ -72,7 +73,7 @@ function makeSpellItem(
       level: overrides.level ?? 3,
       school: 'evocation',
       activation: { type: overrides.activation ?? 'action' },
-      range: { value: 150, units: 'ft' },
+      range: overrides.range ?? { value: 150, units: 'ft' },
       damage: { parts: [['8d6', 'fire']] },
       components: { concentration: overrides.concentration ?? false },
       preparation: { mode: 'prepared', prepared: true },
@@ -628,6 +629,32 @@ describe('getCharacterSnapshot', () => {
 
     const snap = getCharacterSnapshot('pc-spl-4');
     expect(snap?.spells.spells[0]?.concentration).toBe(true);
+  });
+
+  it('CHRD-SPL-RANGE-0: range.value 0 with a non-self/non-touch unit → "--" (not "0m")', () => {
+    const noRange = makeSpellItem({
+      id: 'sp-r0',
+      name: 'Sacred Flame',
+      range: { value: 0, units: 'ft' },
+    });
+    const actor = makeActor({ id: 'pc-r0', items: [noRange] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-r0');
+    expect(snap?.spells.spells[0]?.range).toBe('--');
+  });
+
+  it('CHRD-SPL-RANGE-POS: positive range.value → "{value}m"', () => {
+    const ranged = makeSpellItem({
+      id: 'sp-r150',
+      name: 'Fireball',
+      range: { value: 150, units: 'ft' },
+    });
+    const actor = makeActor({ id: 'pc-r150', items: [ranged] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-r150');
+    expect(snap?.spells.spells[0]?.range).toBe('150m');
   });
 
   it('CHRD-SPL-5: snapshot round-trips through CharacterSnapshotSchema when spells populated', async () => {

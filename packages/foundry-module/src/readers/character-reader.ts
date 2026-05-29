@@ -222,10 +222,12 @@ function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook 
     const rangeRaw = (system.range as Record<string, unknown>) ?? {};
     const rangeValue = (rangeRaw.value as number | undefined) ?? '';
     const rangeUnit = (rangeRaw.units as string | undefined) ?? '';
+    // A range.value of 0 with a non-self/non-touch unit is not a real distance
+    // (it represents "no range"), so it must render as '--', never '0m'.
     const rangeStr =
       rangeUnit === 'self' || rangeUnit === 'touch'
         ? rangeUnit
-        : rangeValue !== ''
+        : typeof rangeValue === 'number' && rangeValue > 0
           ? `${rangeValue}m`
           : '--';
 

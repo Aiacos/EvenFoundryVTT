@@ -55,10 +55,12 @@ import { isOverlayPanel } from '../../engine/overlay-panel.js';
 import { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import type { ActionOptionsRequest } from '../action-options-modal.js';
 import InventoryPanel, {
+  buildInventoryRowItemMap,
   renderEquippedSection,
   renderInventoryRow,
   renderInventoryStandaloneContent,
   renderInventoryTabContent,
+  resolveItemAtRow,
 } from '../inventory-panel.js';
 
 // ─── Fixture helpers ───────────────────────────────────────────────────────────
@@ -611,6 +613,103 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     expect(String(msg)).toContain('inventory-panel');
 
     warnSpy.mockRestore();
+    await panel.onUnmount();
+  });
+});
+
+// ─── INV-LPMAP-*: R-longpress header-aware row → item mapping ──────────────────
+
+/**
+ * Multi-section snapshot: 1 equipped weapon + 1 consumable. The standalone
+ * renderer's `allRows` layout is:
+ *   row 0: EQUIPPED header
+ *   row 1: weapon (item-sword)
+ *   row 2: blank
+ *   row 3: CONSUMABLES header
+ *   row 4: consumable (item-potion)
+ *   row 5: blank
+ *   rows 6-7: CARRIED header + condensed summary (non-addressable)
+ * BUG: flat inventory[scrollOffset] mis-maps once a header sits above the cursor.
+ */
+const multiSectionInvSnapshot: CharacterSnapshot = {
+  ...snapshot2014,
+  inventory: [
+    { id: 'item-sword', name: 'Spada lunga', type: 'weapon', damage: '1d8 taglio' },
+    { id: 'item-potion', name: 'Pozione', type: 'consumable', damage: '2d4+2', quantity: 2 },
+  ],
+};
+
+describe('buildInventoryRowItemMap + resolveItemAtRow (R-longpress)', () => {
+  it('INV-LPMAP-01: map aligns headers/blanks→null and item rows→item across sections', () => {
+    const map = buildInventoryRowItemMap(multiSectionInvSnapshot, 'it');
+    expect(map[0]).toBeNull(); // EQUIPPED header
+    expect(map[1]?.id).toBe('item-sword');
+    expect(map[2]).toBeNull(); // blank
+    expect(map[3]).toBeNull(); // CONSUMABLES header
+    expect(map[4]?.id).toBe('item-potion');
+    expect(map[5]).toBeNull(); // blank
+    // CARRIED header + summary are non-addressable nulls.
+    expect(map[6]).toBeNull();
+    expect(map.slice(6).every((m) => m === null)).toBe(true);
+  });
+
+  it('INV-LPMAP-02: cursor on a consumable item row resolves that item (not flat index)', () => {
+    const map = buildInventoryRowItemMap(multiSectionInvSnapshot, 'it');
+    // Row 4 → potion. The OLD flat index inventory[4] would be undefined.
+    expect(resolveItemAtRow(map, 4)?.id).toBe('item-potion');
+  });
+
+  it('INV-LPMAP-03: cursor on a header falls through to the next item row', () => {
+    const map = buildInventoryRowItemMap(multiSectionInvSnapshot, 'it');
+    expect(resolveItemAtRow(map, 0)?.id).toBe('item-sword'); // EQUIPPED header → first item
+    expect(resolveItemAtRow(map, 3)?.id).toBe('item-potion'); // CONSUMABLES header → next item
+  });
+
+  it('INV-LPMAP-04: empty map → null; null snapshot → empty map', () => {
+    expect(resolveItemAtRow([], 0)).toBeNull();
+    expect(buildInventoryRowItemMap(null, 'it')).toEqual([]);
+  });
+
+  it('INV-LPMAP-05: long-press after scrolling a tall list resolves the cursor-row item across a header', async () => {
+    // Build a list TALLER than ROW_COUNT (18) so the scroll window actually shifts.
+    const weapons = Array.from({ length: 18 }, (_, i) => ({
+      id: `weapon-${i}`,
+      name: `Arma ${i}`,
+      type: 'weapon' as const,
+      damage: '1d6',
+    }));
+    const tallSnapshot: CharacterSnapshot = {
+      ...snapshot2014,
+      inventory: [...weapons, { id: 'item-potion', name: 'Pozione', type: 'consumable' }],
+    };
+    // allRows: row 0 EQUIPPED hdr, rows 1..18 weapons 0..17, row 19 blank,
+    // row 20 CONSUMABLES hdr, row 21 potion, ... → the scroll window clamps offset.
+    const map = buildInventoryRowItemMap(tallSnapshot, 'it');
+    expect(map[1]?.id).toBe('weapon-0'); // first weapon row (after EQUIPPED header)
+
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(tallSnapshot);
+    await panel.onMount();
+
+    const spy = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(spy);
+
+    // Scroll down well past the clamp ceiling. The cursor row is offset by the
+    // single EQUIPPED header, so the resolved item is weapon-(offset-1) — the OLD
+    // flat-index code dispatched inventory[offset] = weapon-offset (off by 1 header).
+    for (let i = 0; i < 20; i++) bus.publish({ kind: 'scroll', direction: 'down' });
+    bus.publish({ kind: 'long-press' });
+
+    const req = spy.mock.calls.at(-1)?.[0];
+    // Clamp ceiling = allRows.length - 17. Resolve item at that row via the map and
+    // assert the handler dispatched the SAME item (row-mapped, header-aware).
+    const clampCeiling = Math.max(0, map.length - 17);
+    const expected = resolveItemAtRow(map, clampCeiling);
+    expect(req?.itemId).toBe(expected?.id);
+    // The mapped item must be header-shifted relative to the naive flat index.
+    expect(req?.itemId).not.toBe(`weapon-${clampCeiling}`);
+
     await panel.onUnmount();
   });
 });

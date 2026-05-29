@@ -436,6 +436,83 @@ export function renderSpellbookStandaloneContent(
   return padToRowCount(rows);
 }
 
+// ─── Header-aware row → spell mapping (R-longpress) ───────────────────────────
+
+/**
+ * Build the row → spell map that runs parallel to the `allRows` array produced by
+ * {@link renderSpellbookStandaloneContent}.
+ *
+ * R-longpress fix: the standalone renderer interleaves a title row, section
+ * headers, spell rows and blank separators into `allRows` and scrolls by
+ * content-ROW index. The long-press handler used to index the FLAT `spells`
+ * array with `scrollOffset`, so any section header above the cursor shifted the
+ * mapping → the WRONG spell was dispatched after scrolling. This map returns the
+ * spell reference for item rows and `null` for title / header / blank rows, in
+ * the exact same order the renderer emits them, so the cursor row resolves to
+ * the spell visually under it.
+ *
+ * Must stay structurally in lock-step with `renderSpellbookStandaloneContent`'s
+ * row construction (title → cantrips → levels 1-9, each header + spell rows +
+ * blank). The shared `cantrips`/`lvlSpells` filtering keeps the two in sync.
+ *
+ * @param snapshot Character snapshot (null → empty map).
+ * @returns Array aligned 1:1 with the renderer's `allRows`; `null` at non-item rows.
+ */
+export function buildSpellbookRowItemMap(
+  snapshot: CharacterSnapshot | null,
+): (SpellEntry | null)[] {
+  if (snapshot === null) return [];
+  const { spells: spellList, slots } = snapshot.spells;
+  const map: (SpellEntry | null)[] = [];
+
+  // Row 0: title (never an item).
+  map.push(null);
+
+  // Cantrips section (header + spell rows + blank) — mirrors renderer.
+  const cantrips = spellList.filter((s) => s.level === 0);
+  if (cantrips.length > 0) {
+    map.push(null); // cantrips header
+    for (const spell of cantrips) map.push(spell);
+    map.push(null); // blank separator
+  }
+
+  // Spell levels 1-9 (header + spell rows + blank) — mirrors renderer's gating.
+  for (let lvl = 1; lvl <= 9; lvl++) {
+    const lvlSpells = spellList.filter((s) => s.level === lvl);
+    const slot = slots.find((sl) => sl.level === lvl);
+    if (lvlSpells.length === 0 && (slot === undefined || slot.max === 0)) continue;
+    map.push(null); // renderLevelSection header
+    for (const spell of lvlSpells) map.push(spell);
+    map.push(null); // blank separator
+  }
+
+  return map;
+}
+
+/**
+ * Resolve the spell under the cursor row from a row → spell map.
+ *
+ * The cursor row is the clamped scroll offset (first visible content row). If it
+ * lands on a header / blank / title (`null`), fall through to the nearest
+ * FOLLOWING item row so the established offset-0 behavior (where row 0 is the
+ * title) still dispatches the first spell. Returns `null` when no item follows.
+ *
+ * @param rowItemMap Output of {@link buildSpellbookRowItemMap}.
+ * @param cursorRow  Clamped scroll offset (the first visible content row index).
+ */
+export function resolveSpellAtRow(
+  rowItemMap: readonly (SpellEntry | null)[],
+  cursorRow: number,
+): SpellEntry | null {
+  if (rowItemMap.length === 0) return null;
+  const start = Math.max(0, Math.min(cursorRow, rowItemMap.length - 1));
+  for (let i = start; i < rowItemMap.length; i++) {
+    const item = rowItemMap[i];
+    if (item != null) return item;
+  }
+  return null;
+}
+
 // ─── SpellbookPanel class ─────────────────────────────────────────────────────
 
 /**
@@ -588,11 +665,17 @@ export default class SpellbookPanel implements OverlayPanel {
         if (this.actionOptionsHandler === null) {
           break;
         }
-        const spells = this.snapshot?.spells?.spells ?? [];
-        const idx = Math.max(0, Math.min(this.scrollOffset, spells.length - 1));
-        const spell = spells[idx];
-        if (this.snapshot === null || spell === undefined) {
-          console.warn('[spellbook-panel] long-press with no spell at scrollOffset — no-op');
+        // R-longpress: resolve the spell under the cursor ROW via the header-aware
+        // row → spell map (NOT spells[scrollOffset], which mis-maps after a section
+        // header). The cursor row is the clamped scroll offset = first visible row.
+        const rowItemMap = buildSpellbookRowItemMap(this.snapshot);
+        const clampedOffset = Math.max(
+          0,
+          Math.min(this.scrollOffset, Math.max(0, rowItemMap.length - (ROW_COUNT - 1))),
+        );
+        const spell = resolveSpellAtRow(rowItemMap, clampedOffset);
+        if (this.snapshot === null || spell == null) {
+          console.warn('[spellbook-panel] long-press with no spell under cursor row — no-op');
           break;
         }
         // requiresTarget heuristic: spells with a real range that are not reactions typically

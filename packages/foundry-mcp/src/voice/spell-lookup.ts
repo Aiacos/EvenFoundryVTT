@@ -4,7 +4,7 @@
  * Phase 12 Plan 01 Task 2.
  *
  * SPELL_LOOKUP: 70 entries covering SRD cantrips (~20) + L1 (~30) + L2 (~14) +
- * L3 (~6) + 5 reactions. Each entry has:
+ * L3 (5) + L5 (1) + reactions. Each entry has:
  * - `dnd5eId`  — dnd5e 5.3.3 canonical kebab-case ID
  * - `it`       — Italian display string (dnd5e.it community localisation)
  * - `en`       — English display string (canonical)
@@ -66,7 +66,7 @@ export interface SpellLookupResult {
  * Italian translations follow the dnd5e.it community localisation.
  * Where multiple Italian variants exist, the most common single form is used.
  *
- * Ordered by: cantrips (level 0) first, then L1..L3, then dedicated reaction entries.
+ * Ordered by: cantrips (level 0) first, then L1..L3, then L5, then dedicated reaction entries.
  * Note: shield and feather-fall appear at their respective spell levels
  * (L1 reaction + L1 bonus-action). counterspell / absorb-elements / hellish-rebuke
  * appear at their native levels (L3/L1/L1).
@@ -149,12 +149,14 @@ export const SPELL_LOOKUP: ReadonlyArray<SpellLookupEntry> = Object.freeze([
   { dnd5eId: 'spider-climb', it: 'arrampicarsi', en: 'spider climb', level: 2 },
   { dnd5eId: 'web', it: 'tela di ragno', en: 'web', level: 2 },
 
-  // ─── L3 — 6 entries ───────────────────────────────────────────────────────
+  // ─── L3 — 5 entries ───────────────────────────────────────────────────────
   { dnd5eId: 'counterspell', it: 'contromagia', en: 'counterspell', level: 3 },
   { dnd5eId: 'dispel-magic', it: 'dissolvi magie', en: 'dispel magic', level: 3 },
   { dnd5eId: 'fireball', it: 'palla di fuoco', en: 'fireball', level: 3 },
   { dnd5eId: 'fly', it: 'volare', en: 'fly', level: 3 },
   { dnd5eId: 'haste', it: 'velocità', en: 'haste', level: 3 },
+
+  // ─── L5 — 1 entry ─────────────────────────────────────────────────────────
   { dnd5eId: 'mass-cure-wounds', it: 'cura ferite di massa', en: 'mass cure wounds', level: 5 },
 ]);
 

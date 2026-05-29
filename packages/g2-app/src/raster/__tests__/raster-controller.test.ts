@@ -174,6 +174,47 @@ describe('RasterController — Worker singleton + debounce + heartbeat + failure
     controller.terminate();
   });
 
+  it('RC-10: worker.onerror settles ALL pending frames with an error response (no hang)', async () => {
+    const { bridge } = makeMockBridge();
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {
+      /* swallow */
+    });
+    const controller = new RasterController(bridge, { workerFactory });
+    // Park two in-flight frames in the pending map (each gets a distinct frameId
+    // because each requestFrame flushes its own debounce window).
+    const p1 = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    const p2 = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    // Two postMessages issued → two pending entries awaiting a worker response.
+    expect(worker._sentMessages().length).toBe(2);
+
+    // Worker dies fatally before either response arrives.
+    worker._dispatchError({ message: 'worker crashed' });
+
+    const r1 = await p1;
+    const r2 = await p2;
+    expect(r1.error).toBeDefined();
+    expect(r2.error).toBeDefined();
+    expect(errSpy).toHaveBeenCalled();
+    controller.terminate();
+  });
+
+  it('RC-11: worker.onerror settles a debounced pendingPayload resolver too', async () => {
+    const { bridge } = makeMockBridge();
+    vi.spyOn(console, 'error').mockImplementation(() => {
+      /* swallow */
+    });
+    const controller = new RasterController(bridge, { workerFactory });
+    // A frame queued but NOT yet flushed (still in pendingPayload, debounce pending).
+    const pending = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    // No timer advance → still parked in pendingPayload.
+    worker._dispatchError({ message: 'worker crashed mid-debounce' });
+    const res = await pending;
+    expect(res.error).toBeDefined();
+    controller.terminate();
+  });
+
   it('RC-9 (B-4 type-level contract): RasterController satisfies RasterControllerLike', () => {
     const { bridge } = makeMockBridge();
     const controller = new RasterController(bridge, { workerFactory });
