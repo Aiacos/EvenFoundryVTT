@@ -69,6 +69,7 @@ import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
 import { WsReconnectController } from '../engine/ws-reconnect.js';
+import { WsSender } from '../engine/ws-sender.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
@@ -498,11 +499,23 @@ export async function _bootEngineCore(
     (typeof window !== 'undefined' &&
       new URL(window.location.href).searchParams.get('probe') === 'true');
 
+  // quick-task 260529-khy Wave 1 (BLOCKER 2 outbound) — stable outbound holder.
+  //
+  // Construct the WsSender ONCE here, BEFORE perfProbe + the outbound panels, so every
+  // outbound sender (perfProbe.wsSend, SlotPickerPanel, both ActionOptionsModal sites)
+  // routes through this single indirection. On WS reconnect the onReconnected handler
+  // calls `wsSender.swap(newWs)` and every sender targets the new live socket with no
+  // re-wiring — the holder satisfies the narrow panel `{ send(data:string):void }`
+  // shape, so it is passed in place of the raw ws with no constructor churn.
+  // INBOUND listeners cannot be redirected this way (addEventListener binds to a socket
+  // instance) — they are disposed-and-re-attached against newWs in onReconnected below.
+  const wsSender = new WsSender(ws);
+
   const perfProbe = new PerfProbe({
     enabled: perfProbeEnabled,
     sessionId: handshake.session_id,
     wsSend: (env) => {
-      ws.send(JSON.stringify(env));
+      wsSender.send(JSON.stringify(env));
     },
     seqProvider: () => seqTracker.getLastConfirmedSeq() + 1,
   });
@@ -519,7 +532,9 @@ export async function _bootEngineCore(
 
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
   //     canvas extractions route through controller.requestFrame.
-  const unsubSceneInput = attachSceneInputToWs(ws, rasterController);
+  // quick-task 260529-khy — INBOUND unsubs are `let` so onReconnected can
+  // dispose-before-reattach against newWs; the teardown reads the current value.
+  let unsubSceneInput = attachSceneInputToWs(ws, rasterController);
 
   // 11a. Phase 10 Plan 10-01 — WS reconnect controller (D-Area1 / SC-1 / T-10-01).
   //
@@ -533,31 +548,12 @@ export async function _bootEngineCore(
   //
   //     SYNC LOST chip persistence is in-memory only — DO NOT persist to Even Hub kv store.
   //     Per D-Area5 T-10-01: full_refresh_required fires BEFORE any further envelope forwarding.
-  const wsReconnect = new WsReconnectController({
-    ws,
-    url: opts.bridgeUrl,
-    sessionId: handshake.session_id,
-    seqTracker,
-    wsFactory: deps?.wsFactory ?? ((u: string) => new WebSocket(u)),
-    performHandshake: (newWs: WebSocket, sid: string) =>
-      performCapabilityHandshake(newWs, opts.token, opts.locale, sid),
-    onChipTick: ({ remainingMs }) => {
-      statusHud.setSyncLost({ retryInMs: remainingMs });
-    },
-    onChipUnmount: () => {
-      statusHud.setSyncLost(null);
-    },
-    onFullRefreshRequired: () => {
-      // TODO(SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
-      // Out of scope for Plan 10-01 (bridge resume protocol is client-side only).
-      // T-10-01 mitigation is in place: seqTracker.reset() was already called in
-      // WsReconnectController._attachResumeListener before this callback fires.
-      console.warn(
-        '[boot-engine-core] onFullRefreshRequired: T-10-01 full refresh needed — ' +
-          'REST GET /v1/actor wiring deferred to Plan 10-04 (D-Area5 SC-10-01).',
-      );
-    },
-  });
+  //
+  //     quick-task 260529-khy — the controller is CONSTRUCTED LATER (after all INBOUND
+  //     dispatchers are declared) because its `onReconnected` handler must dispose +
+  //     re-attach every inbound `let` unsub against newWs. Forward-declared here so the
+  //     surrounding wiring + teardown ordering comments stay anchored to step 11a.
+  let wsReconnect: WsReconnectController;
 
   // 11b. R1 gesture bridge — WS `r1.gesture` envelopes → PanelGestureBus publish.
   //      Must run AFTER step 7 `setNegotiatedCaps` so LayerManager's negotiated
@@ -565,7 +561,7 @@ export async function _bootEngineCore(
   //      `DEFAULT_R1_TIMINGS` is the Phase 6 default; SC-06-01 hardware-tuning
   //      closure may adjust `longPressMs` in a future phase.
   const gestureBus = new PanelGestureBus();
-  const unsubR1 = attachR1EventSource(ws, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
+  let unsubR1 = attachR1EventSource(ws, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
 
   // 11c. LocaleEventEmitter singleton + QuickActionMenuPanel factory + long-press dispatcher.
   //      The `makeMenu` factory is a closure that captures boot-time references (bridge,
@@ -690,7 +686,7 @@ export async function _bootEngineCore(
     };
   }
 
-  const unsubConcConflict = attachConcConflictHandler(
+  let unsubConcConflict = attachConcConflictHandler(
     ws,
     bridge,
     gestureBus,
@@ -704,7 +700,7 @@ export async function _bootEngineCore(
   //        at z=2 after a 500ms debounce; 5s auto-timeout on inactivity.
   //        `getPlayerActorId` + `getPlayerWeaponId` stub null for MVP — Phase 9
   //        TODO(ADR-0005): resolve actor + weapon IDs from StatusHudLayer snapshot cache.
-  const detachReactionPrompt = attachReactionPromptHandler({
+  let detachReactionPrompt = attachReactionPromptHandler({
     ws: ws as unknown as Parameters<typeof attachReactionPromptHandler>[0]['ws'],
     layerManager,
     bridge,
@@ -718,7 +714,7 @@ export async function _bootEngineCore(
   // 11d-ii. Phase 13 Plan 13-04 — portrait-state dispatcher (STRETCH-06).
   //         Listens for `r1.portrait.ready` envelopes; populates portrait-state cache
   //         used by CharacterSheetPanel Bio tab override (D-13-09).
-  const detachPortrait = attachPortraitHandler(
+  let detachPortrait = attachPortraitHandler(
     ws as unknown as Parameters<typeof attachPortraitHandler>[0],
   );
 
@@ -742,7 +738,7 @@ export async function _bootEngineCore(
   //      userIds. TODO(ADR-0005): resolve bearer user_id through handshake in Phase 9.
   // NOTE: toastQueue is now declared above in step 11d (Plan 09-03 move).
   const currentUserId = '<unknown>';
-  const unsubActionResult = attachActionResultHandler(
+  let unsubActionResult = attachActionResultHandler(
     ws as unknown as Parameters<typeof attachActionResultHandler>[0],
     toastQueue,
     effectiveLocale,
@@ -751,10 +747,104 @@ export async function _bootEngineCore(
   // Phase 9 Plan 09-02 — wire action economy dispatcher (BERW-13..16).
   // Attached AFTER attachActionResultHandler so teardown reverse-order is:
   //   unsubActionEconomy → unsubActionResult → unsubConcConflict → ...
-  const unsubActionEconomy = attachActionEconomyHandler(
+  let unsubActionEconomy = attachActionEconomyHandler(
     ws as unknown as Parameters<typeof attachActionEconomyHandler>[0],
     currentUserId,
   );
+
+  // 11e-recon. quick-task 260529-khy — construct the WsReconnectController now that all
+  //   INBOUND `let` unsubs exist. The onReconnected handler performs the FULL R1 rewire:
+  //     (1) wsSender.swap(newWs)            → OUTBOUND senders (perfProbe + panels) hit newWs.
+  //     (2) dispose + re-attach all 7 INBOUND listeners against newWs (a holder cannot
+  //         redirect an addEventListener binding — these are disposed-then-re-attached).
+  //     (3) statusHud.rebindWsEvents(createWsEventBus(newWs, …)) → the 3 HUD channels.
+  //   Senders use a holder (no re-wire); listeners re-attach (binding is socket-specific).
+  //   Dispatcher-spawned senders (conc-conflict / reaction-prompt / template-placement)
+  //   need no holder — they are re-attached here as inbound listeners with newWs, so every
+  //   panel they spawn post-reconnect sends to newWs automatically.
+  wsReconnect = new WsReconnectController({
+    ws,
+    url: opts.bridgeUrl,
+    sessionId: handshake.session_id,
+    seqTracker,
+    wsFactory: deps?.wsFactory ?? ((u: string) => new WebSocket(u)),
+    performHandshake: (newWs: WebSocket, sid: string) =>
+      performCapabilityHandshake(newWs, opts.token, opts.locale, sid),
+    onChipTick: ({ remainingMs }) => {
+      statusHud.setSyncLost({ retryInMs: remainingMs });
+    },
+    onChipUnmount: () => {
+      statusHud.setSyncLost(null);
+    },
+    onFullRefreshRequired: () => {
+      // TODO(SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
+      // Out of scope for Plan 10-01 (bridge resume protocol is client-side only).
+      // T-10-01 mitigation is in place: seqTracker.reset() was already called in
+      // WsReconnectController._attachResumeListener before this callback fires.
+      console.warn(
+        '[boot-engine-core] onFullRefreshRequired: T-10-01 full refresh needed — ' +
+          'REST GET /v1/actor wiring deferred to Plan 10-04 (D-Area5 SC-10-01).',
+      );
+    },
+    onReconnected: (newWs: WebSocket) => {
+      // (1) OUTBOUND — redirect every sender (perfProbe + SlotPicker + both
+      //     ActionOptionsModal) to the new live socket via the stable holder.
+      wsSender.swap(newWs);
+
+      // (2) INBOUND — dispose-before-reattach all 7 listeners against newWs. reactionPrompt
+      //     + portrait are included here (the two sources MISSED in v1 of the rewire).
+      unsubSceneInput();
+      unsubSceneInput = attachSceneInputToWs(newWs, rasterController);
+
+      unsubR1();
+      unsubR1 = attachR1EventSource(newWs, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
+
+      unsubConcConflict();
+      unsubConcConflict = attachConcConflictHandler(
+        newWs,
+        bridge,
+        gestureBus,
+        layerManager,
+        effectiveLocale,
+        toastQueue,
+      );
+
+      detachReactionPrompt();
+      detachReactionPrompt = attachReactionPromptHandler({
+        ws: newWs as unknown as Parameters<typeof attachReactionPromptHandler>[0]['ws'],
+        layerManager,
+        bridge,
+        gestureBus,
+        locale: effectiveLocale,
+        sessionId: handshake.session_id,
+        getPlayerActorId: () => null,
+        getPlayerWeaponId: () => null,
+      });
+
+      detachPortrait();
+      detachPortrait = attachPortraitHandler(
+        newWs as unknown as Parameters<typeof attachPortraitHandler>[0],
+      );
+
+      unsubActionResult();
+      unsubActionResult = attachActionResultHandler(
+        newWs as unknown as Parameters<typeof attachActionResultHandler>[0],
+        toastQueue,
+        effectiveLocale,
+        currentUserId,
+      );
+
+      unsubActionEconomy();
+      unsubActionEconomy = attachActionEconomyHandler(
+        newWs as unknown as Parameters<typeof attachActionEconomyHandler>[0],
+        currentUserId,
+      );
+
+      // (3) HUD wsEvents bus — rebind the 3 status-hud channels onto newWs. seqProvider
+      //     already reads the shared seqTracker (no rebind needed there).
+      statusHud.rebindWsEvents(createWsEventBus(newWs, seqTracker, perfProbe));
+    },
+  });
 
   // 11f. Factory closures for Phase 8 action overlays (Plan 08-03 + Plan 08-04).
   //      These closures are registered via setPanelInstanceHandler so they are injected
@@ -815,7 +905,10 @@ export async function _bootEngineCore(
           void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
             const slotPicker = new SlotPickerPanel(
               bridge,
-              ws as unknown as ConstructorParameters<typeof SlotPickerPanel>[1],
+              // quick-task 260529-khy — pass the WsSender holder (structurally satisfies
+              // SlotPickerWebSocket `{send}`) so a reconnect's holder.swap redirects this
+              // panel's sends to newWs with no re-construction.
+              wsSender,
               gestureBus,
               {
                 actorId: enrichedReq.actorId,
@@ -836,7 +929,9 @@ export async function _bootEngineCore(
 
         const modal = new ActionOptionsModal(
           bridge,
-          ws as unknown as ConstructorParameters<typeof ActionOptionsModal>[1],
+          // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
+          // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
+          wsSender,
           gestureBus,
           enrichedReq,
           effectiveLocale,
@@ -864,7 +959,9 @@ export async function _bootEngineCore(
       void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
         const modal = new ActionOptionsModal(
           bridge,
-          ws as unknown as ConstructorParameters<typeof ActionOptionsModal>[1],
+          // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
+          // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
+          wsSender,
           gestureBus,
           req as ConstructorParameters<typeof ActionOptionsModal>[3],
           effectiveLocale,

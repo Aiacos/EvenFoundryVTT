@@ -211,7 +211,9 @@ describe('boot-engine reconnect rewire (R1 FULL — BERR-01..04)', () => {
       envelope(R1_PORTRAIT_READY_TYPE, {
         actorId: ACTOR_ID,
         pngBase64: 'aGVsbG8=',
-        urlHash: 'abc123',
+        width: 100,
+        height: 60,
+        urlHash: 'a'.repeat(64),
       }),
     );
     await flush();
