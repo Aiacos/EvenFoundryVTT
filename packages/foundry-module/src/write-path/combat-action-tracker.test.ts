@@ -29,14 +29,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const MOCK_CREATE_CHAT_HOOK_ID = 201;
 const MOCK_UPDATE_COMBAT_HOOK_ID = 202;
+const MOCK_DELETE_COMBAT_HOOK_ID = 203;
 
 /** Captured hook handlers for test invocation. */
 let capturedCreateChatHandler: ((...args: unknown[]) => void) | null = null;
 let capturedUpdateCombatHandler: ((...args: unknown[]) => void) | null = null;
+let capturedDeleteCombatHandler: ((...args: unknown[]) => void) | null = null;
 
 function makeHooksMock() {
   capturedCreateChatHandler = null;
   capturedUpdateCombatHandler = null;
+  capturedDeleteCombatHandler = null;
   return {
     on: vi.fn((event: string, fn: (...args: unknown[]) => void): number => {
       if (event === 'createChatMessage') {
@@ -46,6 +49,10 @@ function makeHooksMock() {
       if (event === 'updateCombat') {
         capturedUpdateCombatHandler = fn;
         return MOCK_UPDATE_COMBAT_HOOK_ID;
+      }
+      if (event === 'deleteCombat') {
+        capturedDeleteCombatHandler = fn;
+        return MOCK_DELETE_COMBAT_HOOK_ID;
       }
       return 0;
     }),
@@ -112,6 +119,13 @@ function fireUpdateCombat(change: Record<string, unknown>): void {
     throw new Error('updateCombat handler not registered');
   }
   capturedUpdateCombatHandler({}, change, {}, 'user-player-1');
+}
+
+function fireDeleteCombat(): void {
+  if (capturedDeleteCombatHandler === null) {
+    throw new Error('deleteCombat handler not registered');
+  }
+  capturedDeleteCombatHandler({}, {}, 'user-player-1');
 }
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
@@ -645,5 +659,87 @@ describe('registerCombatActionTracker', () => {
     expect(resetPayload?.actorId).toBe('actor-pal');
     expect(resetPayload?.reactionsUsed).toBe(0);
     expect(resetPayload?.actionsUsed).toBe(0);
+  });
+
+  // ── R3: deleteCombat cleanup (mirror combat-movement-tracker FIX E) ──────────
+
+  it('R3-CAT-DELETE-01: registers a deleteCombat hook', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    registerCombatActionTracker(vi.fn());
+
+    expect(hooksMock.on).toHaveBeenCalledWith('deleteCombat', expect.any(Function));
+  });
+
+  it('R3-CAT-DELETE-02: deleteCombat clears _state — a later turn advance emits nothing', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    // Accumulate state for an actor.
+    fireCreateChatMessage(makeChatMsg({ audit: { toolId: 'cast-spell', actorId: 'actor-mage' } }));
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // Combat removed → tracker state must be cleared.
+    fireDeleteCombat();
+    emit.mockClear();
+
+    // A turn advance now iterates an EMPTY _state → no reset payload emitted.
+    fireUpdateCombat({ turn: 2 });
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('R3-CAT-DELETE-03: deleteCombat clears _attackIdSeen — first card after delete re-counts the action', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    // First multi-attack card sets actionsUsed=1 and records attackId.
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'weapon-attack', actorId: 'actor-fighter', attackId: 'atk-1' },
+      }),
+    );
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit.mock.calls[0]?.[0]?.actionsUsed).toBe(1);
+
+    // Combat removed → _attackIdSeen + _state cleared.
+    fireDeleteCombat();
+    emit.mockClear();
+
+    // The SAME attackId arriving after a delete must NOT be treated as a duplicate
+    // (the dedup set was cleared) → it emits again with actionsUsed=1.
+    fireCreateChatMessage(
+      makeChatMsg({
+        audit: { toolId: 'weapon-attack', actorId: 'actor-fighter', attackId: 'atk-1' },
+      }),
+    );
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit.mock.calls[0]?.[0]?.actionsUsed).toBe(1);
+  });
+
+  it('R3-CAT-DELETE-04: unsubscribe() also offs the deleteCombat hook id', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const unsubscribe = registerCombatActionTracker(vi.fn());
+    unsubscribe();
+
+    expect(hooksMock.off).toHaveBeenCalledWith(MOCK_CREATE_CHAT_HOOK_ID);
+    expect(hooksMock.off).toHaveBeenCalledWith(MOCK_UPDATE_COMBAT_HOOK_ID);
+    expect(hooksMock.off).toHaveBeenCalledWith(MOCK_DELETE_COMBAT_HOOK_ID);
   });
 });
