@@ -381,6 +381,91 @@ describe('dispatchTool', () => {
     expect(handleFn).toHaveBeenCalledTimes(2);
   });
 
+  it('FIX D: two CONCURRENT dispatches with same bearer+idempotencyKey collapse to ONE handler.handle, both get same result', async () => {
+    // RED against current code: both concurrent callers pass the cache-miss check
+    // and double-execute handler.handle. The in-flight dedup must collapse them.
+    //
+    // We gate the handler on a manually-resolved deferred so BOTH concurrent
+    // dispatches are guaranteed to be parked inside handle() (or, for the fixed
+    // code, the second caller is parked awaiting the shared in-flight promise)
+    // before either resolves. This removes any reliance on microtask-timing luck.
+    let callCount = 0;
+    let releaseHandle: () => void = () => undefined;
+    const handleGate = new Promise<void>((resolve) => {
+      releaseHandle = resolve;
+    });
+    const handleFn = vi.fn<() => Promise<ToolResult>>().mockImplementation(async () => {
+      callCount += 1;
+      const ord = callCount;
+      await handleGate; // park until the test releases
+      return { success: true, data: { ord } };
+    });
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('cast-spell', handler);
+
+    const payload = {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-00000000000b',
+      bearer: 'test-bearer-concurrent-dedup',
+    };
+
+    // Fire both WITHOUT awaiting the first before starting the second.
+    const p1 = dispatchTool('cast-spell', payload);
+    const p2 = dispatchTool('cast-spell', payload);
+
+    // Let all hashBearer/digest continuations + cache-miss checks settle so any
+    // second concurrent handle() call would already have been issued.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Release the (single, for fixed code) parked handler.
+    releaseHandle();
+    const [r1, r2] = await Promise.all([p1, p2]);
+
+    // EXACTLY ONE handler invocation for the overlapping pair.
+    expect(handleFn).toHaveBeenCalledOnce();
+    // Both callers receive the identical ToolResult.
+    expect(r1).toEqual(r2);
+    expect(r1.success).toBe(true);
+    if (r1.success) {
+      expect(r1.data).toEqual({ ord: 1 });
+    }
+    // And exactly one audit-log write for the collapsed dispatch.
+    expect(auditLogMock).toHaveBeenCalledOnce();
+  });
+
+  it('FIX D: in-flight entry is cleared after settle — a LATER (non-overlapping) call re-runs the handler', async () => {
+    // The finally{} delete must ensure the map only holds OVERLAPPING calls, so a
+    // sequential retry after the first settles re-executes (and then caches success).
+    const handleFn = vi.fn<() => Promise<ToolResult>>().mockImplementation(async () => {
+      await Promise.resolve();
+      return { success: false, error: 'transient' };
+    });
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: handleFn,
+    };
+    registerToolHandler('use-item', handler);
+
+    const payload = {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-00000000000c',
+      bearer: 'test-bearer-inflight-clear',
+    };
+
+    // First dispatch fully settles (failure → not cached).
+    const r1 = await dispatchTool('use-item', payload);
+    expect(r1.success).toBe(false);
+    expect(handleFn).toHaveBeenCalledTimes(1);
+
+    // Second, non-overlapping dispatch: in-flight was deleted, failure not cached → re-runs.
+    const r2 = await dispatchTool('use-item', payload);
+    expect(r2.success).toBe(false);
+    expect(handleFn).toHaveBeenCalledTimes(2);
+  });
+
   it('T-07-02 regression: same idempotencyKey + different bearer = NO cache hit', async () => {
     const handleFn = vi.fn<() => Promise<ToolResult>>().mockResolvedValue({
       success: true,
