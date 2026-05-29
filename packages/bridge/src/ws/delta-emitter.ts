@@ -68,6 +68,19 @@ export class DeltaEmitter {
   /** Global monotonic seq counter (per-bridge-instance). T-02-02. */
   private globalSeq = 0;
 
+  /**
+   * ADDITIVE dev-only observability hook (Quick Task 260529-h5e).
+   *
+   * Invoked at the END of {@link emitDelta} ONLY when set. Default `undefined`
+   * means ZERO overhead and byte-identical behavior in production — the emitter
+   * has no knowledge of the debug bus (server.ts sets this in debug mode only).
+   *
+   * @param type    - The delta type just emitted.
+   * @param payload - The delta payload just emitted.
+   * @param seq     - The seq assigned to this delta.
+   */
+  onEmit?: (type: string, payload: unknown, seq: number) => void;
+
   constructor(
     private readonly replayBuffer: ReplayBuffer,
     private readonly sessionStore: SessionStore,
@@ -144,6 +157,9 @@ export class DeltaEmitter {
       // Update session's lastSeq in store (T-02-02)
       this.sessionStore.updateLastSeq(sessionId, seq);
     }
+
+    // ADDITIVE dev-only observability hook — no-op unless set (Quick Task 260529-h5e).
+    this.onEmit?.(type, payload, seq);
   }
 
   /**

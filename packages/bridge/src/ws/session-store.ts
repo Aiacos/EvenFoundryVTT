@@ -88,4 +88,16 @@ export class SessionStore {
   get size(): number {
     return this.sessions.size;
   }
+
+  /**
+   * Return a snapshot array of all active sessions.
+   *
+   * Used by the dev-only debug snapshot route (Quick Task 260529-h5e) to render a
+   * redacted session table. Returns a fresh array; mutating it does not affect the
+   * store. Token values are present on the returned objects — callers MUST redact
+   * (the debug route emits only a `tokenHint`, never the raw token).
+   */
+  listSessions(): Session[] {
+    return Array.from(this.sessions.values());
+  }
 }
