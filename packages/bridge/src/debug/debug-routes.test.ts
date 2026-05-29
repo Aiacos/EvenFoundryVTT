@@ -139,6 +139,95 @@ describe('GET /debug/state', () => {
     expect(JSON.stringify(body)).not.toContain('supersecrettoken_abcdef123456');
     expect(body.sessions[0].token).toBeUndefined();
   });
+
+  it('enriches per-session with age_ms (number) and lastSeq', async () => {
+    const res = await app.inject({ method: 'GET', url: '/debug/state', headers: auth });
+    const body = res.json();
+    const s = body.sessions[0];
+    expect(typeof s.age_ms).toBe('number');
+    expect(s.age_ms).toBeGreaterThanOrEqual(0);
+    expect(typeof s.lastSeq).toBe('number');
+  });
+
+  it('adds top-level uptime_sec, ts, and debug.{eventBufferSize,byDirection}', async () => {
+    const res = await app.inject({ method: 'GET', url: '/debug/state', headers: auth });
+    const body = res.json();
+    expect(typeof body.uptime_sec).toBe('number');
+    expect(body.uptime_sec).toBeGreaterThanOrEqual(0);
+    expect(typeof body.ts).toBe('number');
+    expect(typeof body.debug.eventBufferSize).toBe('number');
+    expect(body.debug.byDirection).toEqual({
+      inbound: 0,
+      outbound: 0,
+      tool: 0,
+      log: 0,
+      display: 0,
+    });
+  });
+});
+
+describe('GET /debug/state — enriched debug.byDirection + cache counts', () => {
+  let app: FastifyInstance;
+  let bus: DebugEventBus;
+  beforeEach(async () => {
+    bus = new DebugEventBus();
+    bus.push({
+      ts: 1,
+      direction: 'log',
+      sessionId: null,
+      type: 'log.warn',
+      seq: null,
+      summary: 'x',
+      payload: {},
+    });
+    bus.push({
+      ts: 2,
+      direction: 'outbound',
+      sessionId: null,
+      type: 'character.delta',
+      seq: 1,
+      summary: 'x',
+      payload: {},
+    });
+    ({ app } = await buildDebugApp({
+      debugBus: bus,
+      spellCache: {
+        get: () => ({ count: 70, entries: [] }),
+      } as unknown as DebugRouteDeps['spellCache'],
+      entityCache: {
+        get: () => ({ count: 12, entries: [] }),
+      } as unknown as DebugRouteDeps['entityCache'],
+    }));
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('debug.byDirection + eventBufferSize reflect pushed events', async () => {
+    const res = await app.inject({ method: 'GET', url: '/debug/state', headers: auth });
+    const body = res.json();
+    expect(body.debug.eventBufferSize).toBe(2);
+    expect(body.debug.byDirection.log).toBe(1);
+    expect(body.debug.byDirection.outbound).toBe(1);
+  });
+
+  it('caches surface {populated,count} summaries (no entries dumped)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/debug/state', headers: auth });
+    const body = res.json();
+    expect(body.caches.spell).toEqual({ populated: true, count: 70 });
+    expect(body.caches.entity).toEqual({ populated: true, count: 12 });
+    // No full entries array dumped into the snapshot.
+    expect(JSON.stringify(body.caches)).not.toContain('entries');
+  });
+
+  it('cold caches report populated:false count:0', async () => {
+    const { app: coldApp } = await buildDebugApp({ debugBus: new DebugEventBus() });
+    const res = await coldApp.inject({ method: 'GET', url: '/debug/state', headers: auth });
+    const body = res.json();
+    expect(body.caches.spell).toEqual({ populated: false, count: 0 });
+    expect(body.caches.entity).toEqual({ populated: false, count: 0 });
+    await coldApp.close();
+  });
 });
 
 describe('GET /debug/events', () => {

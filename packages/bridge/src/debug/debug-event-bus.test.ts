@@ -106,6 +106,45 @@ describe('DebugEventBus.subscribe', () => {
   });
 });
 
+describe('DebugEventBus.size + byDirection (Quick Task 260529-icd)', () => {
+  it('size reflects buffer length (and honours cap eviction)', () => {
+    const bus = new DebugEventBus({ cap: 3 });
+    expect(bus.size).toBe(0);
+    bus.push(ev());
+    bus.push(ev());
+    expect(bus.size).toBe(2);
+    bus.push(ev());
+    bus.push(ev());
+    bus.push(ev());
+    // cap=3 → size stays at 3 after 5 pushes.
+    expect(bus.size).toBe(3);
+  });
+
+  it('byDirection seeds all 5 directions at 0 and counts pushed events', () => {
+    const bus = new DebugEventBus();
+    expect(bus.byDirection()).toEqual({
+      inbound: 0,
+      outbound: 0,
+      tool: 0,
+      log: 0,
+      display: 0,
+    });
+    bus.push(ev({ direction: 'inbound' }));
+    bus.push(ev({ direction: 'outbound' }));
+    bus.push(ev({ direction: 'outbound' }));
+    bus.push(ev({ direction: 'log' }));
+    bus.push(ev({ direction: 'tool' }));
+    bus.push(ev({ direction: 'display' }));
+    expect(bus.byDirection()).toEqual({
+      inbound: 1,
+      outbound: 2,
+      tool: 1,
+      log: 1,
+      display: 1,
+    });
+  });
+});
+
 describe('DebugEventBus structural redaction (W-4)', () => {
   const TOKEN = 'evf_live_9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c';
 
