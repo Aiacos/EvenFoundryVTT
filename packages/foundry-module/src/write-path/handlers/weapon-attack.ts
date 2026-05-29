@@ -20,6 +20,26 @@
  * `consume.action: true` only on `i === 0` — action economy deducted once
  * (Extra Attack is a feature, not a repeated Action cost in 5e rules).
  *
+ * ## Advantage + targets capability split (FIX-B/FIX-C — 260529-eer)
+ *
+ * `args.advantage` and `args.targets` are forwarded into the dnd5e workflow via
+ * a MidiQOL capability split (research §1-6):
+ *
+ * - **MidiQOL PRESENT** (`typeof MidiQOL !== 'undefined' &&
+ *   game.modules.get('midi-qol')?.active`): each iteration calls
+ *   `MidiQOL.completeActivityUse(activity, { midiOptions: { targetUuids,
+ *   advantage, disadvantage }, consume: { action: i===0 } }, { configure:false },
+ *   { create:true })` — full attack→damage→save→apply against explicit targets
+ *   WITHOUT touching `game.user.targets`.
+ * - **MidiQOL ABSENT**: behavior is EXACTLY today's `activity.use({ configure:
+ *   false, consume:{ action:i===0 } })`. Vanilla dnd5e cannot headlessly
+ *   auto-apply advantage to a card-based roll (a standalone `rollAttack`
+ *   alongside `use()` would create an unclicked card PLUS a loose roll — a
+ *   non-deterministic double-execution hazard; research §2). We therefore do
+ *   NOT call `rollAttack`, do NOT register any roll hook, and do NOT mutate
+ *   `game.user.targets`. When advantage!=='normal' OR targets were requested we
+ *   emit a SINGLE honest `console.warn` that auto-application requires MidiQOL.
+ *
  * ## Progress emission
  *
  * After each successful iteration, `emitMultiAttackProgress` is called with
@@ -99,6 +119,20 @@ function isNoGmError(err: unknown): boolean {
   return msg.includes('no_gm_connected') || msg.includes('No connected GM');
 }
 
+/**
+ * Detects whether the MidiQOL automation module is present and active.
+ *
+ * The `MidiQOL` global can be `undefined` even when the module is
+ * active-but-not-yet-initialized, so BOTH the `typeof` check AND the
+ * `game.modules.get('midi-qol')?.active` check are required before any
+ * dereference of `MidiQOL` (research §6, FIX-B/FIX-C 260529-eer).
+ *
+ * @returns true only when MidiQOL is defined and the module reports active.
+ */
+function isMidiQolActive(): boolean {
+  return typeof MidiQOL !== 'undefined' && game.modules.get('midi-qol')?.active === true;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /**
@@ -141,11 +175,55 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
     const attackId = crypto.randomUUID();
     const attacks: Array<{ attackIndex: number; chatCardId: string | null }> = [];
 
+    // FIX-B/FIX-C: decide the workflow origin once before the loop.
+    // - MidiQOL PRESENT → completeActivityUse forwards advantage + explicit targets.
+    // - MidiQOL ABSENT  → EXACTLY today's activity.use (no roll, no hook, no
+    //   game.user.targets mutation). We surface a SINGLE honest warn (guarded by
+    //   `vanillaWarned`) when advantage/targets were requested but cannot be
+    //   auto-applied — never a silent drop, never a double-roll (research §1-3).
+    const useMidi = isMidiQolActive();
+    let vanillaWarned = false;
+
     for (let i = 0; i < count; i++) {
       try {
-        // consume.action: true only on first iteration (action economy — Extra Attack
-        // does NOT double-spend the action; see RESEARCH Pattern 2).
-        const result = await activity.use({ configure: false, consume: { action: i === 0 } });
+        let result: unknown;
+        if (useMidi) {
+          // MidiQOL drives the full attack workflow against explicit targets.
+          // DESIGN: `consume.action` is passed via the usage config to preserve
+          // the i===0 Extra-Attack action economy 1:1. NOTE: whether MidiQOL
+          // honors this top-level consume field is NOT INV-2-verified — it is
+          // hardware-deferred (research §5); tests do not over-assert it.
+          result = await MidiQOL!.completeActivityUse(
+            activity,
+            {
+              midiOptions: {
+                targetUuids: args.targets,
+                advantage: args.advantage === 'advantage',
+                disadvantage: args.advantage === 'disadvantage',
+              },
+              consume: { action: i === 0 },
+            },
+            { configure: false },
+            { create: true },
+          );
+        } else {
+          // Vanilla path — UNCHANGED from today. vanilla dnd5e cannot headlessly
+          // auto-apply advantage to a card-based roll (a standalone rollAttack
+          // alongside use() would post an unclicked card PLUS a loose roll — a
+          // non-deterministic double-execution hazard; research §2). MidiQOL is
+          // the automation layer. We NEVER call rollAttack, NEVER register a
+          // roll hook, and NEVER mutate game.user.targets.
+          if (!vanillaWarned && (args.advantage !== 'normal' || args.targets.length > 0)) {
+            console.warn(
+              '[weapon-attack] advantage/target auto-application requires MidiQOL (midi-qol) ' +
+                'and is not active — advantage/targets were not applied to this roll.',
+            );
+            vanillaWarned = true;
+          }
+          // consume.action: true only on first iteration (action economy — Extra
+          // Attack does NOT double-spend the action; see RESEARCH Pattern 2).
+          result = await activity.use({ configure: false, consume: { action: i === 0 } });
+        }
         const chatCardId = extractChatCardId(result);
         attacks.push({ attackIndex: i + 1, chatCardId });
 
