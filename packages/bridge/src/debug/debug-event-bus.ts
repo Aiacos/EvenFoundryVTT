@@ -136,6 +136,37 @@ export class DebugEventBus {
     return this.subscribers.size;
   }
 
+  /**
+   * Current number of retained events (≤ cap).
+   *
+   * Cheap O(1) read for the `/debug/state` snapshot (Quick Task 260529-icd).
+   */
+  get size(): number {
+    return this.buffer.length;
+  }
+
+  /**
+   * Count retained events by direction, seeding all 5 keys at 0.
+   *
+   * Used by the `/debug/state` snapshot (Quick Task 260529-icd) to summarise the
+   * ring buffer without dumping events. O(n) over the bounded buffer.
+   *
+   * @returns A record with an integer count for each {@link DebugEvent.direction}.
+   */
+  byDirection(): Record<DebugEvent['direction'], number> {
+    const counts: Record<DebugEvent['direction'], number> = {
+      inbound: 0,
+      outbound: 0,
+      tool: 0,
+      log: 0,
+      display: 0,
+    };
+    for (const e of this.buffer) {
+      counts[e.direction] += 1;
+    }
+    return counts;
+  }
+
   /** Empty the buffer (subscribers are retained). */
   clear(): void {
     this.buffer.length = 0;

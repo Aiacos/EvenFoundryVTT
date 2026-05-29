@@ -151,8 +151,12 @@ export async function registerDebugRoutes(
   app.get('/debug', async (request, reply) => serveDashboard(request, reply));
 
   // ── GET /debug/state — redacted bridge snapshot ────────────────────────────────
+  // Quick Task 260529-icd: enriched with cheap counts/summaries. Tokens stay redacted
+  // (tokenHint only); the response intentionally carries counts/summaries — NEVER full
+  // cache entries, payloads, or raw tokens — so it remains small and fast.
   app.get('/debug/state', async (request, reply) => {
     if (!requireSecret(request, reply)) return;
+    const now = Date.now();
     const sessions = sessionStore.listSessions().map((s) => ({
       sessionId: s.sessionId,
       tokenHint: tokenHint(s.token),
@@ -160,16 +164,29 @@ export async function registerDebugRoutes(
       caps: s.caps,
       lastSeq: s.lastSeq,
       createdAt: s.createdAt,
+      // age_ms = wall time since the session was created (epoch-ms createdAt).
+      age_ms: now - s.createdAt,
     }));
+    // Read each cache exactly ONCE; surface a {populated,count} summary only.
+    const spellSnap = spellCache.get();
+    const entitySnap = entityCache.get();
     return reply.status(200).send({
+      ts: now,
+      uptime_sec: Math.floor(process.uptime()),
       sessions,
       replayBuffer: { size: replayBuffer.size() },
       deltaEmitter: {
         currentSeq: deltaEmitter.currentSeq,
         connectionCount: deltaEmitter.connectionCount,
       },
+      // tokenCache hits/misses are prom-client Counters (not cheaply readable as a
+      // single value here) → intentionally OMITTED; only the current size is exposed.
       tokenCache: { size: tokenCache.size },
-      caches: { spell: spellCache.get() !== null, entity: entityCache.get() !== null },
+      caches: {
+        spell: { populated: spellSnap !== null, count: spellSnap?.count ?? 0 },
+        entity: { populated: entitySnap !== null, count: entitySnap?.count ?? 0 },
+      },
+      debug: { eventBufferSize: debugBus.size, byDirection: debugBus.byDirection() },
       metrics: { connectionCount: metricsAccessors.connectionCount() },
     });
   });
