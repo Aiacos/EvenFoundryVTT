@@ -57,6 +57,7 @@ import type { ServerCap } from '@evf/shared-protocol';
 import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
+import { DebugMirror } from '../engine/debug-mirror.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
@@ -367,7 +368,42 @@ export async function _bootEngineCore(
   const handshake = await performCapabilityHandshake(ws, opts.token, opts.locale);
 
   // 7. Bind the LayerManager + propagate the negotiated capability set.
-  const layerManager = new LayerManager(bridge);
+  //
+  // Quick Task 260529-h5e Wave 4 — opt-in display-op debug mirror (parallel to the
+  // perf-probe `?probe=true` opt-in below). Constructed ENABLED only under the
+  // `?debug=true` URL param; default OFF ⇒ DebugMirror.record() is a hard no-op and
+  // the LayerManager mirror DI is undefined (byte-identical to pre-Wave-4 behavior).
+  //
+  // The mirror POSTs a DisplayOpPayload to the bridge `/debug/displayop` endpoint
+  // (HTTP base derived from bridgeUrl ws→http). It does NOT call activity.use or add
+  // any socketlib handler (ADR-0011 — debug HTTP sink only). The debug secret is read
+  // from `?debugSecret=` (dev-only; the endpoint is itself gated by EVF_DEBUG +
+  // EVF_INTERNAL_SECRET on the bridge — a missing/wrong secret is silently dropped).
+  const debugMirrorEnabled =
+    typeof window !== 'undefined' &&
+    new URL(window.location.href).searchParams.get('debug') === 'true';
+  let debugMirror: DebugMirror | undefined;
+  if (debugMirrorEnabled) {
+    const displayOpUrl = `${opts.bridgeUrl.replace(/^ws/, 'http').replace(/\/+$/, '')}/debug/displayop`;
+    const debugSecret =
+      typeof window !== 'undefined'
+        ? (new URL(window.location.href).searchParams.get('debugSecret') ?? '')
+        : '';
+    debugMirror = new DebugMirror({
+      enabled: true,
+      send: (payload) => {
+        // Fire-and-forget POST; failures are swallowed (dev-only observability sink).
+        void fetch(displayOpUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${debugSecret}` },
+          body: JSON.stringify(payload),
+        }).catch(() => {
+          /* dev mirror — never surface POST failures to the render path */
+        });
+      },
+    });
+  }
+  const layerManager = new LayerManager(bridge, debugMirror);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
   // the typed `ServerCap` literal union before handing to LayerManager. The
   // bridge's HandshakeServer producer only emits values from SERVER_CAPS_V1,

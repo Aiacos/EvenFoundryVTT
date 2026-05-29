@@ -19,6 +19,17 @@
  * 8. Internal route: POST /internal/delta (module → bridge delta push)
  * 9. WS route: /ws (handshake)
  * 10. Voice audio stream route: /v1/audio/stream (Phase 12 Deepgram STT)
+ * 11. Dev-only debug routes: /debug/* (Quick Task 260529-h5e) — registered ONLY when
+ *     isDebugEnabled() (existence gate). Behind EVF_INTERNAL_SECRET (timing-safe).
+ *
+ * Environment variables (debug backdoor — Quick Task 260529-h5e):
+ *   - EVF_DEBUG='true'            — enable the /debug/* observability + command backend.
+ *   - EVF_DEBUG_ALLOW_PROD='true' — REQUIRED double opt-in to enable debug in
+ *                                    NODE_ENV=production (default prod = OFF regardless).
+ *   - EVF_INTERNAL_SECRET         — reused as the debug auth secret (same as /internal/delta).
+ *   - EVF_DEBUG_LOG_LEVEL         — (Quick Task 260529-icd) min pino level forwarded into
+ *                                    the DebugEventBus 'log' tap (default 'info'). Independent
+ *                                    of stdout LOG_LEVEL; only consulted when EVF_DEBUG is on.
  *
  * @see Specs.md §5.2 (Bridge stack)
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.12
@@ -31,13 +42,18 @@ import { SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
-import Fastify, { type FastifyInstance } from 'fastify';
-import type { Logger } from 'pino';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import pino, { type Logger } from 'pino';
 import type { Registry } from 'prom-client';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
 import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
+import { createBusLogStream } from './debug/bus-log-stream.js';
+import { DebugEventBus } from './debug/debug-event-bus.js';
+import { registerDebugRoutes } from './debug/debug-routes.js';
+import { makeInboundTap } from './debug/inbound-tap.js';
+import { isDebugEnabled } from './debug/is-debug-enabled.js';
 import { createMetricsRegistry } from './metrics/registry.js';
 import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
 import { PortraitCache } from './portrait/portrait-cache.js';
@@ -159,31 +175,65 @@ export interface BuildServerOptions {
  * Does NOT start the server — caller must call `.listen()`.
  * Tests use `.inject()` directly.
  */
+// Single source of truth for the pino redact list (T-02-01 / T-03-07 / T-12-02).
+// Both the debug-OFF inline-config path and the debug-ON pino-instance path share
+// this EXACT array so redaction is byte-identical regardless of debug mode — bearer
+// tokens, internal secrets, idempotency keys, and Deepgram API keys never reach logs.
+// The 4 Deepgram/apiKey paths cover top-level + nested (`*.`) log call shapes.
+const LOGGER_REDACT = [
+  'apiKey',
+  'bearer',
+  'deepgramKey',
+  'EVF_INTERNAL_SECRET',
+  'headers.authorization',
+  'headers.idempotency-key',
+  'token',
+  '*.apiKey',
+  '*.bearer',
+  '*.deepgramKey',
+  '*.token',
+] as const;
+
 export async function buildServer(opts: BuildServerOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({
-    logger: {
-      level: process.env.LOG_LEVEL ?? 'info',
-      // T-02-01: bearer tokens + internal secrets must NEVER appear in logs.
-      // T-03-07: idempotency-key must also be redacted to prevent accidental
-      //   logging of client-supplied intent identifiers.
-      // T-12-02 (Plan 12-03): Deepgram API key must never appear in logs.
-      //   4 field paths cover the expected log call shapes: deepgramKey, apiKey,
-      //   *.deepgramKey (nested objects), *.apiKey (nested objects).
-      redact: [
-        'apiKey',
-        'bearer',
-        'deepgramKey',
-        'EVF_INTERNAL_SECRET',
-        'headers.authorization',
-        'headers.idempotency-key',
-        'token',
-        '*.apiKey',
-        '*.bearer',
-        '*.deepgramKey',
-        '*.token',
-      ],
-    },
-  });
+  // --- Debug bus (hoisted, Quick Task 260529-icd) ---
+  // The DebugEventBus is dependency-free (a bounded ring buffer), so it is created
+  // here — BEFORE Fastify — so the pino multistream log tap can reference the SAME
+  // instance that registerDebugRoutes + the inbound/outbound taps use later.
+  // W-2: capture the debug-enabled boolean ONCE; the WS loop must not re-read env.
+  const debugEnabled = isDebugEnabled();
+  const debugBus = debugEnabled ? new DebugEventBus() : undefined;
+
+  const logLevel = process.env.LOG_LEVEL ?? 'info';
+  // Build the Fastify logging option ONCE (single Fastify() call below) so `app` has
+  // a single, uniform type. Two mutually-exclusive shapes:
+  //   - Debug ON  → a pre-built pino INSTANCE via `loggerInstance` (Fastify 5 requires
+  //                 `loggerInstance` for an instance; `logger` only accepts a config
+  //                 object). The instance owns an in-process multistream: leg 1 = stdout
+  //                 (fd 1, preserving normal logging), leg 2 = the DebugEventBus sink
+  //                 gated by EVF_DEBUG_LOG_LEVEL (default 'info'). A multistream — NOT a
+  //                 transport — is REQUIRED: a transport runs in a worker thread that
+  //                 cannot reach the in-process bus. Redaction (LOGGER_REDACT) is applied
+  //                 by the instance, byte-identical to the OFF path.
+  //   - Debug OFF → the EXACT original inline `logger` config object (byte-identical).
+  // T-02-01: bearer tokens + internal secrets must NEVER appear in logs.
+  // T-03-07: idempotency-key must also be redacted.
+  // T-12-02 (Plan 12-03): Deepgram API key must never appear in logs.
+  const fastifyLogOpts: Pick<FastifyServerOptions, 'logger' | 'loggerInstance'> =
+    debugEnabled && debugBus !== undefined
+      ? {
+          loggerInstance: pino(
+            { level: logLevel, redact: [...LOGGER_REDACT] },
+            pino.multistream([
+              { stream: pino.destination(1) },
+              {
+                level: process.env.EVF_DEBUG_LOG_LEVEL ?? 'info',
+                stream: createBusLogStream(debugBus) as unknown as pino.DestinationStream,
+              },
+            ]),
+          ),
+        }
+      : { logger: { level: logLevel, redact: [...LOGGER_REDACT] } };
+  const app = Fastify(fastifyLogOpts);
 
   // --- 1. CORS ---
   // EVF_PLUGIN_HOST_URL must be set in production (Specs.md §3.3 — no wildcard origins).
@@ -215,6 +265,32 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
   // Use injected store for test isolation; production creates a fresh instance.
   const idempotencyStore = opts.idempotencyStore ?? new IdempotencyStore();
+
+  // --- 4 (debug). Dev-only observability taps (Quick Task 260529-h5e) ---
+  // `debugEnabled` + `debugBus` are hoisted above (before Fastify) so the pino
+  // multistream log tap (Quick Task 260529-icd) shares the SAME bus instance used
+  // here for the WS inbound tap and the DeltaEmitter onEmit hook. When disabled, the
+  // inbound tap is a no-op and the onEmit hook is never set — zero overhead.
+  // makeInboundTap(false, …) returns a no-op fn ignoring the bus; only the enabled
+  // branch ever touches it, so the placeholder bus when disabled is never used.
+  const debugInboundTap = makeInboundTap(
+    debugEnabled,
+    debugBus ?? (undefined as unknown as DebugEventBus),
+  );
+  if (debugEnabled && debugBus !== undefined) {
+    // outbound observability: set the additive onEmit hook ONLY in debug mode.
+    deltaEmitter.onEmit = (type, payload, seq) => {
+      debugBus.push({
+        ts: Date.now(),
+        direction: 'outbound',
+        sessionId: null,
+        type,
+        seq,
+        summary: type,
+        payload,
+      });
+    };
+  }
 
   // --- 4a. Metrics registry (per-server-instance, Pitfall 2 — T-03-10) ---
   // Create AFTER idempotencyStore and replayBuffer so the accessors can
@@ -327,6 +403,33 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     handleEntityPackEnvelope(type, payload, entityCache);
   });
 
+  // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---
+  // Registered ONLY behind isDebugEnabled() (existence gate — layer 1). When OFF,
+  // the routes are literally absent → genuine 404 (NOT 403). Auth (layer 2) and
+  // redaction (layer 3) live inside registerDebugRoutes / DebugEventBus.
+  // ADR-0011: /debug/dispatch-tool reuses the SAME wsDispatchFn (declared below at
+  // step 9). A late-bound ref lets us register here while the const is defined below;
+  // dispatch only fires at request time, by which point the ref is populated.
+  const debugDispatchRef: { fn: DispatchToolFn } = {
+    fn: async () => ({ success: false, error: 'dispatch-fn-not-wired' }),
+  };
+  if (debugEnabled && debugBus !== undefined) {
+    // Seed known tokens so the bus can structurally scrub them from summaries/payloads.
+    debugBus.setKnownTokens(sessionStore.listSessions().map((s) => s.token));
+    await registerDebugRoutes(app, {
+      debugBus,
+      sessionStore,
+      deltaEmitter,
+      replayBuffer,
+      tokenCache,
+      spellCache,
+      entityCache,
+      metricsAccessors: { connectionCount: () => deltaEmitter.connectionCount },
+      // Lazily forward to the production dispatch fn declared at step 9.
+      dispatchToolFn: (payload, bearer) => debugDispatchRef.fn(payload, bearer),
+    });
+  }
+
   // --- 9. WS handshake route ---
   // Wires handshake → registerSession → message-loop → close-cleanup. This is
   // the production wiring that closes the Phase 02 latent gap where deltaEmitter
@@ -342,6 +445,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       success: false,
       error: 'phase-07-stub: real socketlib wiring pending Phase 8',
     }));
+
+  // Late-bind the debug dispatch ref to the SAME production dispatch fn (ADR-0011).
+  // /debug/dispatch-tool therefore routes identically to the WS tool.invoke path.
+  debugDispatchRef.fn = wsDispatchFn;
 
   app.get('/ws', { websocket: true }, (socket, req) => {
     const logger = app.log as Logger;
@@ -365,6 +472,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // handleResume processes 'client_resume'; handleToolInvoke processes 'tool.invoke'.
         // Both no-op on unrecognised input — ordering does not matter.
         socket.on('message', (rawData) => {
+          // W-2: inbound debug tap — a no-op fn when debug is disabled (zero work
+          // per message: no JSON parse, no bus.push). debugEnabled was captured once
+          // at buildServer time; this branch is the only per-message debug cost.
+          if (debugEnabled) {
+            debugInboundTap(sessionId, rawData);
+          }
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
           void handleToolInvoke(socket, sessionId, sessionStore, wsDispatchFn, rawData, logger);
         });

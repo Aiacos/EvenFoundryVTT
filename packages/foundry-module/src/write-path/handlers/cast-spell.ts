@@ -1,12 +1,25 @@
 /**
  * castSpellHandler — Phase 7 Plan 02 (Wave 1) write-path handler.
  *
- * Resolves an actor + spell item + spell activity, then calls
- * `activity.use({ configure: false })` via the dnd5e 5.x Activity API.
+ * Resolves an actor + spell item + spell activity, then drives the dnd5e 5.x
+ * Activity API via a MidiQOL capability split (FIX-C — 260529-eer):
+ *
+ * - **MidiQOL PRESENT** (`typeof MidiQOL !== 'undefined' &&
+ *   game.modules.get('midi-qol')?.active`): `MidiQOL.completeActivityUse(activity,
+ *   { midiOptions: { targetUuids, ...slotOverride } }, { configure:false },
+ *   { create:true })` — forwards `args.targets` to the full workflow WITHOUT
+ *   mutating `game.user.targets` (research §3-6). cast-spell has NO advantage field.
+ * - **MidiQOL ABSENT**: behavior is EXACTLY today's `activity.use({ configure:
+ *   false, ...slotOverride })`. Vanilla dnd5e reads ONLY `game.user.targets`
+ *   (the GM here) — mutating it is the documented v13 per-user pitfall (research
+ *   §3), so when targets were requested we emit a SINGLE honest `console.warn`
+ *   that auto-application requires MidiQOL and NEVER mutate `game.user.targets`.
+ *   No roll hook, no double-execution (research §1-2).
  *
  * Single-workflow-origin discipline (ADR-0011): this file is the ONLY place
- * in the EVF codebase that calls `activity.use()` for spell casting.
- * CI Gate 8 prevents `activity.use(` from appearing in g2-app or bridge.
+ * in the EVF codebase that calls `activity.use()` / `MidiQOL.completeActivityUse`
+ * for spell casting. CI Gate 8 prevents `activity.use(` from appearing in
+ * g2-app or bridge.
  *
  * # Error codes
  * - `actor_not_found`        — `args.actor_id` not in `game.actors`
@@ -104,6 +117,20 @@ function isNoGmError(err: unknown): boolean {
   return msg.includes('no_gm_connected') || msg.includes('No connected GM');
 }
 
+/**
+ * Detects whether the MidiQOL automation module is present and active.
+ *
+ * The `MidiQOL` global can be `undefined` even when the module is
+ * active-but-not-yet-initialized, so BOTH the `typeof` check AND the
+ * `game.modules.get('midi-qol')?.active` check are required before any
+ * dereference of `MidiQOL` (research §6, FIX-C 260529-eer).
+ *
+ * @returns true only when MidiQOL is defined and the module reports active.
+ */
+function isMidiQolActive(): boolean {
+  return typeof MidiQOL !== 'undefined' && game.modules.get('midi-qol')?.active === true;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /**
@@ -171,6 +198,28 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
         ? ({ spell: { slot: `spell${args.slot_level}` } } as { spell: { slot: string } })
         : {};
     try {
+      // FIX-C: forward explicit targets ONLY when MidiQOL is present.
+      // - MidiQOL PRESENT → completeActivityUse with midiOptions.targetUuids;
+      //   the slot override is merged into midiOptions so the existing slot
+      //   semantics are preserved. cast-spell has NO advantage field.
+      // - MidiQOL ABSENT  → EXACTLY today's activity.use. Vanilla dnd5e reads
+      //   ONLY game.user.targets (the GM here) — mutating it is the documented
+      //   v13 per-user pitfall (research §3), so we WARN once and NEVER mutate.
+      if (isMidiQolActive()) {
+        const result = await MidiQOL!.completeActivityUse(
+          activity,
+          { midiOptions: { targetUuids: args.targets, ...slotOverride } },
+          { configure: false },
+          { create: true },
+        );
+        return { success: true, data: { chatCardId: extractChatCardId(result) } };
+      }
+      if (args.targets.length > 0) {
+        console.warn(
+          '[cast-spell] explicit-target auto-application requires MidiQOL (midi-qol) ' +
+            'and is not active — targets were not applied to this cast.',
+        );
+      }
       const result = await activity.use({ configure: false, ...slotOverride });
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {

@@ -864,3 +864,105 @@ describe('Plan 03-05: production startup guard semantics', () => {
     expect(checkProdGuard(undefined, undefined)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Quick Task 260529-icd Task 1: pino logger → DebugEventBus 'log' tap
+// ---------------------------------------------------------------------------
+// When isDebugEnabled() is true, the bridge logger is built explicitly with a
+// pino.multistream whose second leg forwards redacted NDJSON into the SAME
+// DebugEventBus that backs /debug/events. When OFF, the logger is the inline
+// config object (byte-identical) and NO 'log' events are produced.
+// ---------------------------------------------------------------------------
+describe('Quick Task 260529-icd: debug logger tap', () => {
+  const SECRET = 'icd-debug-secret';
+  let savedDebug: string | undefined;
+  let savedSecret: string | undefined;
+  let savedAllowProd: string | undefined;
+  let savedLogLevel: string | undefined;
+
+  beforeEach(() => {
+    savedDebug = process.env.EVF_DEBUG;
+    savedSecret = process.env.EVF_INTERNAL_SECRET;
+    savedAllowProd = process.env.EVF_DEBUG_ALLOW_PROD;
+    savedLogLevel = process.env.EVF_DEBUG_LOG_LEVEL;
+  });
+  afterEach(() => {
+    const restore = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    };
+    restore('EVF_DEBUG', savedDebug);
+    restore('EVF_INTERNAL_SECRET', savedSecret);
+    restore('EVF_DEBUG_ALLOW_PROD', savedAllowProd);
+    restore('EVF_DEBUG_LOG_LEVEL', savedLogLevel);
+  });
+
+  it('enabled: app.log.warn surfaces as a log.warn DebugEvent in /debug/events', async () => {
+    process.env.EVF_DEBUG = 'true';
+    process.env.EVF_INTERNAL_SECRET = SECRET;
+    process.env.EVF_DEBUG_LOG_LEVEL = 'info';
+    const app = await buildServer({
+      foundryValidateFn: makeValidFn(),
+      langDirOverride: LANG_DIR,
+    });
+    try {
+      app.log.warn({ foo: 1 }, 'hello-debug');
+      const res = await app.inject({
+        method: 'GET',
+        url: '/debug/events?direction=log',
+        headers: { authorization: `Bearer ${SECRET}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const events = res.json() as Array<{
+        direction: string;
+        type: string;
+        summary: string;
+        payload: { foo?: number };
+      }>;
+      const warn = events.find((e) => e.type === 'log.warn' && e.summary === 'hello-debug');
+      expect(warn).toBeDefined();
+      expect(warn?.direction).toBe('log');
+      expect(warn?.payload.foo).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('enabled: a logged secret never appears in the bus log event', async () => {
+    process.env.EVF_DEBUG = 'true';
+    process.env.EVF_INTERNAL_SECRET = SECRET;
+    const app = await buildServer({
+      foundryValidateFn: makeValidFn(),
+      langDirOverride: LANG_DIR,
+    });
+    const LEAK = 'leaked-bearer-token-1234567890abcdef';
+    try {
+      app.log.info({ token: LEAK, bearer: LEAK }, 'auth-attempt');
+      const res = await app.inject({
+        method: 'GET',
+        url: '/debug/events?direction=log',
+        headers: { authorization: `Bearer ${SECRET}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain(LEAK);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('disabled: no log-direction events are produced and /debug/events is absent (404)', async () => {
+    delete process.env.EVF_DEBUG;
+    const app = await buildServer({
+      foundryValidateFn: makeValidFn(),
+      langDirOverride: LANG_DIR,
+    });
+    try {
+      // Logger still works (writes to stdout) — does not throw.
+      expect(() => app.log.warn('off-mode')).not.toThrow();
+      const res = await app.inject({ method: 'GET', url: '/debug/events?direction=log' });
+      expect(res.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+});

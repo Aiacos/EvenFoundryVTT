@@ -355,3 +355,23 @@ export {
   SPELL_KEYTERMS,
   type SpellKeytermEntry,
 } from './voice/spell-keyterms.js';
+
+// ─── Quick Task 260529-h5e — Debug Console schemas (dev-only) ─────────────────
+// Lean dev-tooling contracts for the bridge debug backend (Wave 2), CRT dashboard
+// (Wave 3), and g2-app display-op mirror (Wave 4). Models the privileged dev
+// backdoor described in the plan's <security_model>. DebugGestureBodySchema.kind
+// reuses the canonical 5 R1 gesture kinds from R1GesturePayloadSchema.
+
+export {
+  type DebugDispatchBody,
+  DebugDispatchBodySchema,
+  type DebugEvent,
+  DebugEventSchema,
+  type DebugGestureBody,
+  DebugGestureBodySchema,
+  type DebugInjectBody,
+  DebugInjectBodySchema,
+  type DisplayOpPayload,
+  DisplayOpPayloadSchema,
+  R1_DEBUG_DISPLAYOP_TYPE,
+} from './debug/debug-events.js';

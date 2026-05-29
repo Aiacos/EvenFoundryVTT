@@ -82,7 +82,10 @@ function makeChatMsg(opts?: { audit?: MockAuditFlags; userId?: string }) {
         ? {
             evf: {
               audit: {
-                toolId: opts.audit.toolId,
+                // Production-real flag property is `tool` (AuditEntry / writeAuditLog),
+                // NOT `toolId`. The fixture input keeps `toolId` for ergonomics; only
+                // the EMITTED flag-object property must match production wire shape.
+                tool: opts.audit.toolId,
                 actorId: opts.audit.actorId ?? 'actor-default',
                 ...(opts.audit.attackId !== undefined ? { attackId: opts.audit.attackId } : {}),
                 ...(opts.audit.recipientUserId !== undefined
@@ -146,6 +149,47 @@ describe('registerCombatActionTracker', () => {
 
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_CREATE_CHAT_HOOK_ID);
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_UPDATE_COMBAT_HOOK_ID);
+  });
+
+  // ── CAT-REGRESSION: real wire shape (flags.evf.audit.tool) drives the emit ──
+  // Guards the field-name contract between writeAuditLog (writes `tool`) and this
+  // tracker (must read `tool`). The original bug read `audit.toolId` → always
+  // undefined → emit never fired. This test builds a production-shaped message
+  // INLINE (independent of makeChatMsg) so it documents the real flag property.
+
+  it('CAT-REGRESSION: production-shaped audit flag (tool) fires the economy emit exactly once', async () => {
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', hooksMock);
+
+    const { registerCombatActionTracker } = await import('./combat-action-tracker.js');
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit);
+
+    if (capturedCreateChatHandler === null) throw new Error('handler not set');
+
+    // Real wire shape produced by writeAuditLog / dispatchTool: `tool`, not `toolId`.
+    capturedCreateChatHandler(
+      {
+        user: 'user-player-1',
+        flags: {
+          evf: {
+            audit: {
+              tool: 'cast-spell',
+              actorId: 'actor-mage',
+              recipientUserId: 'user-player-1',
+            },
+          },
+        },
+      },
+      {},
+      'user-player-1',
+    );
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const payload = emit.mock.calls[0]?.[0];
+    expect(payload?.actorId).toBe('actor-mage');
+    expect(payload?.actionsUsed).toBe(1);
   });
 
   // ── CAT-01: cast-spell → actionsUsed 0→1 ───────────────────────────────────
@@ -439,7 +483,7 @@ describe('registerCombatActionTracker', () => {
       flags: {
         evf: {
           audit: {
-            toolId: 'cast-spell',
+            tool: 'cast-spell',
             actorId: 'actor-1',
           },
         },

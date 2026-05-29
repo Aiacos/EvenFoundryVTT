@@ -23,14 +23,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const MOCK_UPDATE_TOKEN_HOOK_ID = 101;
 const MOCK_UPDATE_COMBAT_HOOK_ID = 102;
+const MOCK_DELETE_COMBAT_HOOK_ID = 103;
 
 /** Captured hook handlers for test invocation. */
 let capturedUpdateTokenHandler: ((...args: unknown[]) => void) | null = null;
 let capturedUpdateCombatHandler: ((...args: unknown[]) => void) | null = null;
+let capturedDeleteCombatHandler: ((...args: unknown[]) => void) | null = null;
 
 function makeHooksMock() {
   capturedUpdateTokenHandler = null;
   capturedUpdateCombatHandler = null;
+  capturedDeleteCombatHandler = null;
   return {
     on: vi.fn((event: string, fn: (...args: unknown[]) => void): number => {
       if (event === 'updateToken') {
@@ -40,6 +43,10 @@ function makeHooksMock() {
       if (event === 'updateCombat') {
         capturedUpdateCombatHandler = fn;
         return MOCK_UPDATE_COMBAT_HOOK_ID;
+      }
+      if (event === 'deleteCombat') {
+        capturedDeleteCombatHandler = fn;
+        return MOCK_DELETE_COMBAT_HOOK_ID;
       }
       return 0;
     }),
@@ -130,6 +137,14 @@ function fireUpdateCombat(change: Record<string, unknown>): void {
   capturedUpdateCombatHandler({}, change, {}, 'user-player-1');
 }
 
+/** Fire the captured deleteCombat handler. */
+function fireDeleteCombat(): void {
+  if (capturedDeleteCombatHandler === null) {
+    throw new Error('deleteCombat handler not registered');
+  }
+  capturedDeleteCombatHandler({}, {}, 'user-player-1');
+}
+
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
 describe('registerMovementTracker', () => {
@@ -151,11 +166,13 @@ describe('registerMovementTracker', () => {
 
     expect(hooksMock.on).toHaveBeenCalledWith('updateToken', expect.any(Function));
     expect(hooksMock.on).toHaveBeenCalledWith('updateCombat', expect.any(Function));
+    // FIX E: deleteCombat hook also registered to reset stale movement state.
+    expect(hooksMock.on).toHaveBeenCalledWith('deleteCombat', expect.any(Function));
     expect(typeof unsubscribe).toBe('function');
   });
 
-  // CMT-01b: unsubscribe calls Hooks.off for both hook IDs
-  it('CMT-01b: unsubscribe() calls Hooks.off for updateToken and updateCombat hookIds', async () => {
+  // CMT-01b: unsubscribe calls Hooks.off for all three hook IDs
+  it('CMT-01b: unsubscribe() calls Hooks.off for updateToken, updateCombat and deleteCombat hookIds', async () => {
     const gameMock = makeGameMock();
     const hooksMock = makeHooksMock();
     vi.stubGlobal('game', gameMock);
@@ -169,6 +186,8 @@ describe('registerMovementTracker', () => {
 
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_UPDATE_TOKEN_HOOK_ID);
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_UPDATE_COMBAT_HOOK_ID);
+    // FIX E: deleteCombat hook also detached on unsubscribe.
+    expect(hooksMock.off).toHaveBeenCalledWith(MOCK_DELETE_COMBAT_HOOK_ID);
   });
 
   // CMT-02: updateToken handler — no change.x or change.y → silent return, no emit
@@ -348,6 +367,41 @@ describe('registerMovementTracker', () => {
     fireUpdateToken(makeTokenDoc(), { x: 100 });
 
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  // CMT-09 (FIX E): deleteCombat clears _state + _lastPosition so a new combat starts fresh
+  it('CMT-09: deleteCombat resets accumulator — new-combat movement starts at usedThisTurn=0', async () => {
+    const gameMock = makeGameMock({ hasCombat: true });
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('canvas', {
+      scene: { grid: { size: 100, distance: 5 } },
+    });
+
+    const { registerMovementTracker } = await import('./combat-movement-tracker.js');
+    const emit = vi.fn<(payload: MovementBudgetPayload) => void>();
+    registerMovementTracker(emit);
+
+    // Accumulate usedThisTurn > 0 in the first combat.
+    // First move establishes lastPosition at (100,0) with delta 0.
+    fireUpdateToken(makeTokenDoc({ x: 0, y: 0 }), { x: 100 });
+    // Second move (100,0)->(200,0) = 100px = 5ft accumulates.
+    fireUpdateToken(makeTokenDoc({ x: 100, y: 0 }), { x: 200 });
+    const beforeDelete = emit.mock.calls.at(-1)?.[0] as MovementBudgetPayload | undefined;
+    expect(beforeDelete?.usedThisTurn).toBeGreaterThan(0);
+
+    // Combat ends → deleteCombat fires. RED against current code: no handler registered.
+    fireDeleteCombat();
+
+    // New combat: a first move starts fresh — _lastPosition cleared so delta is 0,
+    // and _state cleared so usedThisTurn does NOT carry the old accumulation.
+    emit.mockClear();
+    fireUpdateToken(makeTokenDoc({ x: 0, y: 0 }), { x: 300 });
+    const afterDelete = emit.mock.calls.at(-1)?.[0] as MovementBudgetPayload | undefined;
+    expect(afterDelete).toBeDefined();
+    expect(afterDelete?.usedThisTurn).toBe(0);
+    expect(afterDelete?.remainingFeet).toBe(30);
   });
 
   // CMT-08: Signature check — registerMovementTracker returns () => void

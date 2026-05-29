@@ -153,6 +153,48 @@ declare const socketlib: {
   executeAsGM(moduleId: string, handlerId: string, ...args: unknown[]): Promise<unknown>;
 };
 
+/**
+ * MidiQOL global — optional Foundry automation module (FIX-B/FIX-C, 260529-eer).
+ *
+ * MidiQOL is an OPTIONAL Foundry module (gitlab.com/tposney/midi-qol), NOT on
+ * npm. When present it owns the full attack→damage→save→apply workflow and is
+ * the ONLY layer that can headlessly auto-apply advantage / inject explicit
+ * targets without mutating `game.user.targets` (the documented v13 per-user
+ * pitfall). Vanilla dnd5e `activity.use()` cannot do this (research §2/§3).
+ *
+ * Declared **possibly-undefined**: the global can be `undefined` even when the
+ * module is active-but-not-yet-initialized. The runtime source of truth is the
+ * guard `typeof MidiQOL !== 'undefined' && game.modules.get('midi-qol')?.active`,
+ * and `MidiQOL` is only dereferenced inside that guarded branch.
+ *
+ * `midiOptions.targetUuids` (string UUID array) + `advantage`/`disadvantage`
+ * booleans drive the workflow against explicit targets (research §4/§5/§6).
+ *
+ * @see packages/foundry-module/src/write-path/handlers/weapon-attack.ts
+ * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
+ */
+declare const MidiQOL:
+  | {
+      /**
+       * Drives the full activity workflow (attack→damage→save→apply) against
+       * the targets in `usage.midiOptions.targetUuids`, honoring
+       * `midiOptions.advantage` / `midiOptions.disadvantage`.
+       *
+       * @param activity - The dnd5e activity to execute
+       * @param usage - Usage config; `midiOptions` carries targetUuids + advantage flags
+       * @param dialog - Dialog config (`configure: false` for headless EVF invocation)
+       * @param message - Message config (`create: true` posts the chat card)
+       * @returns Resolves with a MidiQOL Workflow object
+       */
+      completeActivityUse(
+        activity: FoundryActivity,
+        usage?: { midiOptions?: Record<string, unknown> } & Record<string, unknown>,
+        dialog?: { configure?: boolean },
+        message?: { create?: boolean },
+      ): Promise<unknown>;
+    }
+  | undefined;
+
 // ─── dnd5e 5.x actor system shape ─────────────────────────────────────────────
 // Read-only fields consumed by character-reader.ts (Phase 2 — no writes).
 // Migration alert: dnd5e 5.3.0+ uses object-iteration for advancement data.
@@ -1029,6 +1071,20 @@ declare const game: {
    * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
    */
   users: FoundryCollection<FoundryUser>;
+  /**
+   * Module registry — capability detection for optional module dependencies.
+   *
+   * Added by FIX-B/FIX-C (260529-eer): the write-path handlers query
+   * `game.modules.get('midi-qol')?.active` to decide between the MidiQOL
+   * automation path (advantage + explicit targets) and the vanilla
+   * `activity.use` path. `get` returns `undefined` for unknown / not-installed
+   * module IDs.
+   *
+   * @see packages/foundry-module/src/write-path/handlers/weapon-attack.ts
+   * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
+   * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.ModuleManagement.html
+   */
+  modules: { get(id: string): { active: boolean } | undefined };
 };
 
 /**

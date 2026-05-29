@@ -28,8 +28,8 @@
  *
  * ## Threat model
  *
- * T-09-01 (Tampering): filter strictly on `flags.evf.audit.toolId in
- *   {cast-spell, weapon-attack, use-item}`. All other toolIds are silently ignored.
+ * T-09-01 (Tampering): filter strictly on `flags.evf.audit.tool in
+ *   {cast-spell, weapon-attack, use-item}`. All other tool ids are silently ignored.
  * T-09-02 (Spoofing): `_attackIdSeen` keyed by `actorId` → Set<attackId>. Two players
  *   who share an attackId (defensive, never expected with UUID v4) are scoped
  *   to their own actor partition.
@@ -162,7 +162,7 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
  * Register the `createChatMessage` + `updateCombat` hook subscribers.
  *
  * Hooks:
- *   - `createChatMessage` — inspects `flags.evf.audit.toolId` to determine which
+ *   - `createChatMessage` — inspects `flags.evf.audit.tool` to determine which
  *     economy slot was consumed. Deduplicates weapon-attack multi-attack sequences
  *     by `(actorId, attackId)` composite key.
  *   - `updateCombat` — resets all per-actor counters when `change.turn !== undefined`
@@ -196,8 +196,12 @@ export function registerCombatActionTracker(
       const audit = evf.audit as Record<string, unknown> | undefined;
       if (audit === null || audit === undefined) return;
 
-      // Determine toolId and its economy slot
-      const toolId = audit.toolId as string | undefined;
+      // Determine toolId and its economy slot.
+      // Reads the real audit flag property `tool` (written by writeAuditLog /
+      // dispatchTool per AuditEntry) — NOT `toolId`. Reading `toolId` here was a
+      // dead-code bug: the property is always undefined → early return → emit never
+      // fired. The sibling action-result-watcher reads `audit.tool` correctly.
+      const toolId = audit.tool as string | undefined;
       if (typeof toolId !== 'string') return;
 
       const slot = TOOL_SLOT_MAP[toolId];

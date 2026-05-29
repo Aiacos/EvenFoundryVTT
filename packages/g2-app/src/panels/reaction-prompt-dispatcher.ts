@@ -116,6 +116,10 @@ export function attachReactionPromptHandler(
 
   // ── onClose callback shared between mount path and cleanup ───────────────
   function handleClose(): void {
+    // FIX F: idempotency guard — once the 5s auto-timeout (or a prior close) has
+    // nulled mountedPanel, a late gesture onClose is a no-op. Mirrors the auto-timeout's
+    // own `if (mountedPanel !== null)` gate so no redundant second destroy bundle fires.
+    if (mountedPanel === null) return;
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
       timeoutId = null;

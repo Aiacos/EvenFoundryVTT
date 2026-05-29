@@ -221,6 +221,29 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
  */
 export const moduleIdempotencyStore = new IdempotencyStore();
 
+// ─── In-flight dispatch registry (FIX D) ──────────────────────────────────────
+
+/**
+ * Module-scoped in-flight registry for `dispatchTool` (FIX D).
+ *
+ * Keyed by the same bearer-bound `cacheKey` used by {@link moduleIdempotencyStore},
+ * it holds the live `Promise<ToolResult>` for a dispatch that is currently executing
+ * (handler.handle + cache set + audit write). Truly-concurrent duplicate calls — two
+ * overlapping invocations with the same (bearer, idempotencyKey) that BOTH miss the
+ * idempotency cache — collapse onto this single promise: exactly one `handler.handle`,
+ * one `moduleIdempotencyStore.set`, and one `writeAuditLog`. The second caller awaits
+ * and receives the identical ToolResult.
+ *
+ * The entry is deleted in a `finally` once the dispatch settles, so the map only ever
+ * holds OVERLAPPING calls. A later, non-overlapping retry (after the first settled)
+ * re-runs normally — which is required for WR-01 (failures are not cached and stay
+ * retryable).
+ *
+ * Not exported: this is an internal concurrency detail with no test-visible surface
+ * beyond the observable single-dispatch guarantee.
+ */
+const inFlight = new Map<string, Promise<ToolResult>>();
+
 // ─── extractActorId helper ────────────────────────────────────────────────────
 
 /**
@@ -253,6 +276,12 @@ export function extractActorId(args: unknown): string | null {
  * Implements the 7-step pipeline per ADR-0011:
  * 1. Compute bearer-bound cache key (`hashBearer(bearer) + ':' + idempotencyKey`)
  * 2. Check idempotency cache — return cached result on hit (no re-execution)
+ * 2.5. In-flight dedup (FIX D) — if an overlapping dispatch for the same cacheKey is
+ *      already running, return its shared `Promise<ToolResult>` instead of re-executing.
+ *      This collapses truly-concurrent duplicates (both cache-misses) to ONE
+ *      `handler.handle`, ONE cache set, and ONE audit write; both callers receive the
+ *      identical result. The in-flight entry is cleared in a `finally`, so it only ever
+ *      holds OVERLAPPING calls — a later sequential retry re-runs (required for WR-01).
  * 3. Look up handler in TOOL_REGISTRY — return `unknown_tool` error on miss
  * 4. Validate args via `handler.argsSchema.safeParse` — return parse error on failure
  * 5. Call `handler.handle(parsedArgs)` wrapped in try/catch — normalise throw to ToolResult
@@ -277,76 +306,100 @@ export async function dispatchTool(
   const bearerHash = await hashBearer(payload.bearer);
   const cacheKey = buildCacheKey(bearerHash, payload.idempotencyKey);
 
-  // Step 2: idempotency cache lookup — return immediately on hit
+  // Step 2: idempotency cache lookup — return immediately on hit.
+  // A cache hit short-circuits BEFORE touching the in-flight machinery.
   const cached = moduleIdempotencyStore.get(cacheKey);
   if (cached !== undefined) {
     return cached.result;
   }
 
-  // Step 3: handler lookup — return error on unknown tool
-  const handler = TOOL_REGISTRY[toolId];
-  if (handler === undefined) {
-    return { success: false, error: 'unknown_tool' };
+  // Step 2.5: in-flight dedup (FIX D) — collapse truly-concurrent duplicates.
+  // If an overlapping dispatch for this exact cacheKey is already running, return its
+  // shared promise so both callers receive the SAME ToolResult from ONE handler.handle.
+  const existing = inFlight.get(cacheKey);
+  if (existing !== undefined) {
+    return existing;
   }
 
-  // Step 4: args validation
-  const parseResult = handler.argsSchema.safeParse(payload.args);
-  if (!parseResult.success) {
-    return { success: false, error: parseResult.error.message };
-  }
+  // Steps 3-7 run inside a single shared promise registered in `inFlight`. `run()`
+  // itself never rejects (step 5 catches handler throws, step 7 catches audit throws),
+  // so `await p` below cannot reject — preserving "always resolves, never rejects".
+  const run = async (): Promise<ToolResult> => {
+    // Step 3: handler lookup — return error on unknown tool
+    const handler = TOOL_REGISTRY[toolId];
+    if (handler === undefined) {
+      return { success: false, error: 'unknown_tool' };
+    }
 
-  // Step 5: handler invocation (error isolation)
-  let result: ToolResult;
-  try {
-    result = await handler.handle(parseResult.data);
-  } catch (err) {
-    result = { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+    // Step 4: args validation
+    const parseResult = handler.argsSchema.safeParse(payload.args);
+    if (!parseResult.success) {
+      return { success: false, error: parseResult.error.message };
+    }
 
-  // Step 6: cache ONLY successful results (WR-01).
-  // Failure results are intentionally not cached — failures are retryable (e.g.,
-  // `no_gm_connected` when the GM momentarily disconnects). Caching a failure would
-  // lock the idempotencyKey for 60s, preventing legitimate retries after transient
-  // errors. The spec's idempotency intent is "don't re-execute successful writes",
-  // not "don't retry failures".
-  if (result.success) {
-    moduleIdempotencyStore.set(cacheKey, { result, cachedAt: Date.now() });
-  }
+    // Step 5: handler invocation (error isolation)
+    let result: ToolResult;
+    try {
+      result = await handler.handle(parseResult.data);
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
 
-  // Step 7: audit log (fault-tolerant — failure must NOT propagate)
-  // Plan 09-01 T-09-04: propagate attackId from handler result when present.
-  // weapon-attack handler returns { success: true, data: { attackId, attacks } }.
-  // Extracting attackId here (at the dispatchTool boundary) avoids changing the
-  // weapon-attack handler and keeps the audit-log as the single authoritative
-  // source for chat-card deduplication (combat-action-tracker reads it via
-  // flags.evf.audit.attackId).
-  const resultAttackId: string | undefined =
-    result.success &&
-    result.data !== null &&
-    result.data !== undefined &&
-    typeof result.data === 'object' &&
-    'attackId' in result.data &&
-    typeof (result.data as Record<string, unknown>).attackId === 'string' &&
-    ((result.data as Record<string, unknown>).attackId as string).length > 0
-      ? ((result.data as Record<string, unknown>).attackId as string)
-      : undefined;
+    // Step 6: cache ONLY successful results (WR-01).
+    // Failure results are intentionally not cached — failures are retryable (e.g.,
+    // `no_gm_connected` when the GM momentarily disconnects). Caching a failure would
+    // lock the idempotencyKey for 60s, preventing legitimate retries after transient
+    // errors. The spec's idempotency intent is "don't re-execute successful writes",
+    // not "don't retry failures".
+    if (result.success) {
+      moduleIdempotencyStore.set(cacheKey, { result, cachedAt: Date.now() });
+    }
 
-  const auditEntry: AuditEntry = {
-    tool: toolId,
-    payload: payload.args,
-    idempotencyKey: payload.idempotencyKey,
-    actorId: extractActorId(payload.args),
-    result,
-    timestamp: Date.now(),
-    bearer_id: bearerHash.slice(0, 8), // T-02-01: never the full token
-    ...(resultAttackId !== undefined ? { attackId: resultAttackId } : {}),
+    // Step 7: audit log (fault-tolerant — failure must NOT propagate)
+    // Plan 09-01 T-09-04: propagate attackId from handler result when present.
+    // weapon-attack handler returns { success: true, data: { attackId, attacks } }.
+    // Extracting attackId here (at the dispatchTool boundary) avoids changing the
+    // weapon-attack handler and keeps the audit-log as the single authoritative
+    // source for chat-card deduplication (combat-action-tracker reads it via
+    // flags.evf.audit.attackId).
+    const resultAttackId: string | undefined =
+      result.success &&
+      result.data !== null &&
+      result.data !== undefined &&
+      typeof result.data === 'object' &&
+      'attackId' in result.data &&
+      typeof (result.data as Record<string, unknown>).attackId === 'string' &&
+      ((result.data as Record<string, unknown>).attackId as string).length > 0
+        ? ((result.data as Record<string, unknown>).attackId as string)
+        : undefined;
+
+    const auditEntry: AuditEntry = {
+      tool: toolId,
+      payload: payload.args,
+      idempotencyKey: payload.idempotencyKey,
+      actorId: extractActorId(payload.args),
+      result,
+      timestamp: Date.now(),
+      bearer_id: bearerHash.slice(0, 8), // T-02-01: never the full token
+      ...(resultAttackId !== undefined ? { attackId: resultAttackId } : {}),
+    };
+    try {
+      await writeAuditLog(auditEntry);
+    } catch {
+      // writeAuditLog already catches internally — this outer catch is a safety net
+      // in case of unexpected synchronous throws from writeAuditLog itself.
+    }
+
+    return result;
   };
-  try {
-    await writeAuditLog(auditEntry);
-  } catch {
-    // writeAuditLog already catches internally — this outer catch is a safety net
-    // in case of unexpected synchronous throws from writeAuditLog itself.
-  }
 
-  return result;
+  const p = run();
+  inFlight.set(cacheKey, p);
+  try {
+    return await p;
+  } finally {
+    // Always clear so the map only holds OVERLAPPING calls; a later non-overlapping
+    // retry re-runs (WR-01: failures are not cached and must stay retryable).
+    inFlight.delete(cacheKey);
+  }
 }
