@@ -654,3 +654,109 @@ describe('StatusHudLayer — Phase 9 action economy subscription (SHL-AE-01..04)
     expect(arg?.actionsUsed).toBe(0);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SHL-REBIND — rebindWsEvents (quick-task 260529-khy Wave 1 Task 2 — R1 reconnect)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Richer wsEvents source that tracks per-source subscribe + unsub call counts so a
+ * rebind test can assert the old source drops to zero subscribers and the new source
+ * gains exactly one per channel (no double-subscribe / no leak).
+ */
+function makeTrackedSource() {
+  let subCount = 0;
+  let unsubCount = 0;
+  const handlers: Record<string, (raw: unknown) => void> = {};
+  const subscribe: CharacterDeltaEvents['subscribe'] = (channel, fn) => {
+    subCount += 1;
+    handlers[channel] = fn;
+    return () => {
+      unsubCount += 1;
+    };
+  };
+  return {
+    src: { subscribe } as CharacterDeltaEvents,
+    get subCount() {
+      return subCount;
+    },
+    get unsubCount() {
+      return unsubCount;
+    },
+    emit(channel: string, raw: unknown): void {
+      handlers[channel]?.(raw);
+    },
+  };
+}
+
+describe('StatusHudLayer — rebindWsEvents (R1 reconnect)', () => {
+  let activeLayer: StatusHudLayer | null = null;
+
+  afterEach(() => {
+    activeLayer?.destroy();
+    activeLayer = null;
+  });
+
+  it('SHL-REBIND-1: rebind drops all 3 old subscriptions and re-subscribes the new source once each', () => {
+    const original = makeTrackedSource();
+    const replacement = makeTrackedSource();
+    const bridge = makeMockBridge();
+    const layer = new StatusHudLayer({
+      bridge,
+      renderer: new StatusHudRenderer({ locale: 'en' }),
+      wsEvents: original.src,
+    });
+    activeLayer = layer;
+
+    // Constructor subscribed 3 channels on the original source.
+    expect(original.subCount).toBe(3);
+    expect(original.unsubCount).toBe(0);
+
+    layer.rebindWsEvents(replacement.src);
+
+    // Old source: all 3 unsubscribed (back to zero live subscriptions).
+    expect(original.unsubCount).toBe(3);
+    // New source: exactly 3 fresh subscriptions, none yet unsubscribed.
+    expect(replacement.subCount).toBe(3);
+    expect(replacement.unsubCount).toBe(0);
+  });
+
+  it('SHL-REBIND-2: after rebind a delta on the NEW source updates the HUD cache', () => {
+    const original = makeTrackedSource();
+    const replacement = makeTrackedSource();
+    const bridge = makeMockBridge();
+    const layer = new StatusHudLayer({
+      bridge,
+      renderer: new StatusHudRenderer({ locale: 'en' }),
+      wsEvents: original.src,
+    });
+    activeLayer = layer;
+
+    layer.rebindWsEvents(replacement.src);
+
+    // Cache is empty before any new-source delta.
+    expect(layer.getCachedSnapshot()).toBeNull();
+    // Delta on the NEW source is cached (proves the character.delta channel is wired to it).
+    replacement.emit('character.delta', VALID_SNAPSHOT);
+    expect(layer.getCachedSnapshot()?.actorId).toBe(VALID_SNAPSHOT.actorId);
+  });
+
+  it('SHL-REBIND-3: destroy() after a rebind disposes the CURRENT (new-source) subscriptions', () => {
+    const original = makeTrackedSource();
+    const replacement = makeTrackedSource();
+    const bridge = makeMockBridge();
+    const layer = new StatusHudLayer({
+      bridge,
+      renderer: new StatusHudRenderer({ locale: 'en' }),
+      wsEvents: original.src,
+    });
+
+    layer.rebindWsEvents(replacement.src);
+    layer.destroy();
+
+    // destroy() must unsubscribe the 3 NEW-source closures (not re-call the old ones).
+    expect(replacement.unsubCount).toBe(3);
+    // Old source already fully unsubscribed at rebind time — not double-called.
+    expect(original.unsubCount).toBe(3);
+  });
+});
