@@ -16,6 +16,7 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DebugMirror } from '../debug-mirror.js';
 import { LayerManager } from '../layer-manager.js';
 import {
   type Layer,
@@ -890,5 +891,57 @@ describe('LayerManager.getTopLayer (LMT-TOP-01..04)', () => {
     const panel = makeTopLayerOverlayPanel('real-panel');
     layers.set(ZIndex.Z2_OVERLAY, panel);
     expect(lm.getTopLayer()?.id).toBe('real-panel');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Debug mirror DI (Quick Task 260529-h5e Wave 4)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('LayerManager — debug mirror DI (backward-compat + injected)', () => {
+  it('mirror undefined (default) → bundle still flushes exactly one rebuildPageContainer (byte-identical)', async () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]);
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it('injected mirror → records op:rebuild with containerCount once after _flushPage', async () => {
+    const bridge = makeMockBridge();
+    const record = vi.fn();
+    const lm = new LayerManager(
+      bridge as unknown as EvenAppBridge,
+      { record } as unknown as DebugMirror,
+    );
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]);
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const rebuildCalls = record.mock.calls.filter((c) => (c[0] as { op: string }).op === 'rebuild');
+    expect(rebuildCalls).toHaveLength(1);
+    expect((rebuildCalls[0]?.[0] as { containerCount?: number }).containerCount).toBeTypeOf(
+      'number',
+    );
+  });
+
+  it('injected mirror → records mount and destroy ops from bundle', async () => {
+    const bridge = makeMockBridge();
+    const record = vi.fn();
+    const lm = new LayerManager(
+      bridge as unknown as EvenAppBridge,
+      { record } as unknown as DebugMirror,
+    );
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    const hudLayer = makeMockLayer('hud');
+    // mount map (capture) + hud (non-capture)
+    await lm.bundle([
+      { type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer },
+      { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: hudLayer },
+    ]);
+    // destroy hud (map remains as sole capture)
+    await lm.bundle([{ type: 'destroy', z: ZIndex.Z1_STATUS_HUD }]);
+    const ops = record.mock.calls.map((c) => (c[0] as { op: string }).op);
+    expect(ops).toContain('mount');
+    expect(ops).toContain('destroy');
   });
 });

@@ -1,9 +1,10 @@
 ---
 '@evf/shared-protocol': minor
 '@evf/bridge': minor
+'@evf/g2-app': minor
 ---
 
-Quick Task 260529-h5e — Debug Console (Waves 1+2: shared-protocol schemas + bridge backend)
+Quick Task 260529-h5e — Debug Console (Waves 1-4: shared-protocol schemas + bridge backend + CRT dashboard + g2-app display-op mirror)
 
 Dev-only, gated observability + command system for the bridge.
 
@@ -29,5 +30,23 @@ Dev-only, gated observability + command system for the bridge.
   (`makeInboundTap`, no work per message when disabled). `SessionStore.listSessions()` added for
   the redacted snapshot.
 
-Waves 3 (CRT dashboard) + 4 (g2-app display-op mirror) land in a follow-up run; `@evf/g2-app`
-gets its `minor` bump there.
+**@evf/bridge (Wave 3):**
+
+- Single-file phosphor-green CRT debug console dashboard, inlined as a TS string constant
+  (`dashboard.ts`) so it survives the tsup bundle with no runtime asset resolution. Served at
+  `GET /debug/console` (+ `/debug` alias), secret-gated: 200 `text/html` when enabled+authed,
+  401 on bad secret, 404 when debug disabled. Live WS `/debug/stream` feed with direction/type/
+  session filters, `/debug/state` poll panel, and inject/dispatch-tool/simulate-gesture forms.
+
+**@evf/g2-app (Wave 4):**
+
+- `DebugMirror` (`src/engine/debug-mirror.ts`) copies the PerfProbe zero-overhead pattern:
+  `record()` is a hard no-op when disabled (no allocations, sink never called); when enabled it
+  stamps `ts` and POSTs a `DisplayOpPayload` to the bridge `/debug/displayop` sink.
+- `LayerManager` gains an optional injected `debugMirror?` (default undefined ⇒ byte-identical to
+  prior behavior — all existing tests pass unchanged). When present it records `mount`/`destroy`
+  ops during a bundle and a `rebuild` (z-stack summary + container count) after `_flushPage()`.
+- Boot wiring (`boot-engine-core.ts`) constructs the mirror enabled ONLY under `?debug=true`
+  (parallel to the perf-probe `?probe=true` opt-in); default off. The mirror POSTs to a debug HTTP
+  endpoint — it never calls `activity.use` and adds no socketlib handler (ADR-0011; Gate 8 = 17).
+  The live "what the glasses show" feed is hardware-deferred; software tests mock the POST sink.

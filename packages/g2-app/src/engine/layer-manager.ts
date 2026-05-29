@@ -33,6 +33,7 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
+import type { DebugMirror } from './debug-mirror.js';
 import {
   type Layer,
   LayerManagerError,
@@ -84,8 +85,17 @@ export class LayerManager {
    *
    * The bridge MUST already be ready (`waitForEvenAppBridge()` resolved).
    * Stored as private — never re-exposed.
+   *
+   * @param bridge      Resolved EvenAppBridge singleton.
+   * @param debugMirror Optional display-op mirror (Quick Task 260529-h5e Wave 4).
+   *                    Default `undefined` ⇒ byte-identical behavior to before:
+   *                    the mirror is a fully-injected, zero-overhead no-op when
+   *                    absent. Constructed enabled ONLY under `?debug=true`.
    */
-  constructor(private readonly bridge: EvenAppBridge) {}
+  constructor(
+    private readonly bridge: EvenAppBridge,
+    private readonly debugMirror?: DebugMirror,
+  ) {}
 
   /**
    * Replace the negotiated capability set.
@@ -241,12 +251,16 @@ export class LayerManager {
           mountedPanels.push(op.layer);
         }
         this.layers.set(op.z, op.layer);
+        // Display mirror (Wave 4): record the mount op. No-op when mirror absent.
+        this.debugMirror?.record({ op: 'mount', z: op.z, detail: op.layer.id });
       } else {
         const existing = this.layers.get(op.z);
         if (existing !== undefined && isOverlayPanel(existing)) {
           unmountedPanels.push(existing);
         }
         this.layers.delete(op.z);
+        // Display mirror (Wave 4): record the destroy op. No-op when mirror absent.
+        this.debugMirror?.record({ op: 'destroy', z: op.z, detail: existing?.id });
       }
     }
 
@@ -269,6 +283,14 @@ export class LayerManager {
 
     // STEP 6 — Single bridge flush.
     await this._flushPage();
+
+    // STEP 7 — Display mirror (Wave 4): record the resulting page rebuild with a
+    // z-stack summary + container count. No-op when mirror absent (default).
+    this.debugMirror?.record({
+      op: 'rebuild',
+      containerCount: this.layers.size,
+      detail: [...this.layers.keys()].sort((a, b) => a - b).join(','),
+    });
   }
 
   /**
