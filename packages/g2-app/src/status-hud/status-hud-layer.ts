@@ -135,15 +135,21 @@ export class StatusHudLayer implements Layer {
    */
   private readonly layerManager: LayerManagerLike | null;
 
-  /** Unsubscribe callback returned by `wsEvents.subscribe` (character.delta). */
-  private readonly unsubscribe: () => void;
+  /**
+   * Unsubscribe callback returned by `wsEvents.subscribe` (character.delta).
+   *
+   * Mutable (quick-task 260529-khy Wave 1) so {@link rebindWsEvents} can drop the
+   * old subscription and store the new one on a WS reconnect.
+   */
+  private unsubscribe: () => void;
   /**
    * Phase 8 Plan 08-04 — unsubscribe for r1.movement.budget channel.
    *
    * Registered in the constructor alongside the character.delta subscription.
    * Released in `destroy()` to prevent listener leaks (T-4b-01-03 pattern).
+   * Mutable (quick-task 260529-khy) for reconnect rebind.
    */
-  private readonly unsubscribeMovement: () => void;
+  private unsubscribeMovement: () => void;
 
   /**
    * Phase 9 Plan 09-02 — unsubscribe for r1.action.economy channel.
@@ -151,8 +157,9 @@ export class StatusHudLayer implements Layer {
    * Registered in the constructor after the movement subscription.
    * Drives `renderer.setActionEconomy` on validated payload arrival.
    * Released in `destroy()` to prevent listener leaks (T-4b-01-03 pattern).
+   * Mutable (quick-task 260529-khy) for reconnect rebind.
    */
-  private readonly unsubscribeEconomy: () => void;
+  private unsubscribeEconomy: () => void;
 
   /** Latest snapshot seen via WS delta — `null` until first valid payload. */
   private snapshot: CharacterSnapshot | null = null;
@@ -194,24 +201,15 @@ export class StatusHudLayer implements Layer {
     this.heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
     this.layerManager = opts.layerManager ?? null;
 
-    // Subscribe to character.delta and cache the unsubscribe fn for destroy().
-    this.unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
-      this._onDelta(raw),
-    );
-
-    // Phase 8 Plan 08-04 — subscribe to r1.movement.budget envelopes.
-    // Dispatches MovementBudgetPayloadSchema.safeParse → renderer.setMovementBudget
-    // so the Mov chip updates without triggering a full character delta re-render.
-    this.unsubscribeMovement = opts.wsEvents.subscribe(R1_MOVEMENT_BUDGET_TYPE, (raw) =>
-      this._onMovementBudget(raw),
-    );
-
-    // Phase 9 Plan 09-02 — subscribe to r1.action.economy envelopes.
-    // Dispatches ActionEconomyPayloadSchema.safeParse → renderer.setActionEconomy
-    // so the economy widget updates without triggering a full character delta re-render.
-    this.unsubscribeEconomy = opts.wsEvents.subscribe(R1_ACTION_ECONOMY_TYPE, (raw) =>
-      this._onActionEconomy(raw),
-    );
+    // Subscribe to the 3 WS channels (character.delta, r1.movement.budget,
+    // r1.action.economy) and cache their unsubscribe fns. Extracted into a helper
+    // so rebindWsEvents() can re-run it against a fresh source on reconnect.
+    // Field initialisers below satisfy strict definite-assignment; subscribeWsEvents
+    // reassigns them immediately.
+    this.unsubscribe = () => undefined;
+    this.unsubscribeMovement = () => undefined;
+    this.unsubscribeEconomy = () => undefined;
+    this.subscribeWsEvents(opts.wsEvents);
 
     // Start the idle heartbeat. Every tick re-renders the cached snapshot
     // (or the loading state if none has arrived) so the HUD never drifts.
@@ -298,6 +296,54 @@ export class StatusHudLayer implements Layer {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  /**
+   * Rebind all WS subscriptions onto a fresh `wsEvents` source (R1 reconnect —
+   * quick-task 260529-khy Wave 1).
+   *
+   * On a WS reconnect the old socket's `addEventListener('message', …)` bindings are
+   * dead and cannot be redirected, so `boot-engine-core` builds a NEW `wsEvents` bus
+   * over the live socket and calls this method. It drops the 3 current subscriptions
+   * (character.delta, r1.movement.budget, r1.action.economy) and re-subscribes the
+   * same 3 channels against `newWsEvents`, storing the fresh unsub closures so
+   * `destroy()` continues to release the current (post-rebind) subscriptions.
+   *
+   * No double-subscribe: the old source's subscriptions are released before the new
+   * ones are created.
+   *
+   * @param newWsEvents The wsEvents source over the new live socket.
+   */
+  rebindWsEvents(newWsEvents: CharacterDeltaEvents): void {
+    this.unsubscribe();
+    this.unsubscribeMovement();
+    this.unsubscribeEconomy();
+    this.subscribeWsEvents(newWsEvents);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Internal — subscription wiring
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Subscribe the 3 WS channels against `src` and store their unsub closures.
+   *
+   * Called from the constructor and from {@link rebindWsEvents}. Each subscription
+   * dispatches into the corresponding `_on*` validator → renderer setter path.
+   *
+   * @param src The wsEvents source to subscribe against.
+   */
+  private subscribeWsEvents(src: CharacterDeltaEvents): void {
+    // character.delta — validated snapshot → cache + debounced redraw.
+    this.unsubscribe = src.subscribe(CHARACTER_DELTA_CHANNEL, (raw) => this._onDelta(raw));
+    // Phase 8 Plan 08-04 — r1.movement.budget → renderer.setMovementBudget.
+    this.unsubscribeMovement = src.subscribe(R1_MOVEMENT_BUDGET_TYPE, (raw) =>
+      this._onMovementBudget(raw),
+    );
+    // Phase 9 Plan 09-02 — r1.action.economy → renderer.setActionEconomy.
+    this.unsubscribeEconomy = src.subscribe(R1_ACTION_ECONOMY_TYPE, (raw) =>
+      this._onActionEconomy(raw),
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
