@@ -377,7 +377,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       flags: {
         evf: {
           audit: {
-            toolId: 'cast-spell',
+            tool: 'cast-spell',
             actorId: 'actor-w9-4',
             recipientUserId: 'user-w9-4',
           },
@@ -435,7 +435,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       flags: {
         evf: {
           audit: {
-            toolId: 'weapon-attack',
+            tool: 'weapon-attack',
             actorId,
             attackId,
             recipientUserId: 'user-w9-5',
@@ -498,7 +498,7 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
       flags: {
         evf: {
           audit: {
-            toolId: 'cast-spell',
+            tool: 'cast-spell',
             actorId,
             recipientUserId: 'user-w9-6',
           },
