@@ -339,6 +339,39 @@ describe('IS-06: INV-5 (gesture determinism)', () => {
     const inv5 = suite.results.find((r) => r.id === 'INV-5');
     expect(inv5?.status).toBe('green');
   });
+
+  it('IS-06-FALSE-PASS: is skipped (not green) when vitest exits 0 with "No test files found"', async () => {
+    await makeVersionDocs({ repoRoot: tmpDir });
+    // The COR- vitest run (identified by the --testNamePattern COR- arg) exits 0
+    // but emits the no-tests signal on stdout. vitest exits 0 on "no test files
+    // found" → must NOT report green. All other spawns (incl. the grep anchor)
+    // exit 0 normally.
+    vi.mocked(childProcess.spawn).mockImplementation(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts?: unknown,
+      ): ReturnType<typeof childProcess.spawn> => {
+        const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
+        const stdout = new EventEmitter();
+        const stderr = new EventEmitter();
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = stdout;
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = stderr;
+        const isCorRun = args.includes('COR-');
+        process.nextTick(() => {
+          if (isCorRun) {
+            stdout.emit('data', Buffer.from('No test files found, exiting with code 0\n'));
+          }
+          emitter.emit('exit', 0);
+        });
+        return emitter;
+      },
+    );
+
+    const suite = await runInvSuite({ repoRoot: tmpDir });
+    const inv5 = suite.results.find((r) => r.id === 'INV-5');
+    expect(inv5?.status).toBe('skipped');
+  });
 });
 
 // =====================================================================================

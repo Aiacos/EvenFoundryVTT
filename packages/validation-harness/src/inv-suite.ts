@@ -317,7 +317,7 @@ async function checkInv4(repoRoot: string): Promise<InvResult> {
 /** @see docs/architecture/INVARIANTS.md §5 */
 async function checkInv5(repoRoot: string): Promise<InvResult> {
   // Run the cross-overlay-reachability test
-  const { exitCode, stderr } = await runSpawn(
+  const { exitCode, stdout, stderr } = await runSpawn(
     'pnpm',
     [
       '--filter',
@@ -338,6 +338,18 @@ async function checkInv5(repoRoot: string): Promise<InvResult> {
       id: 'INV-5',
       status: 'red',
       detail: `cross-overlay-reachability tests failed (exit ${exitCode}): ${hint}`,
+    };
+  }
+
+  // FALSE-PASS GUARD: vitest exits 0 when NO test files / NO tests match the
+  // filter ("no test files found"). An exit-0-with-zero-tests run proves nothing,
+  // so it must NOT report green. Detect the no-tests signal and return 'skipped'.
+  const combinedOutput = `${stdout}\n${stderr}`;
+  if (/no test files found|no tests found|\b0 tests\b/i.test(combinedOutput)) {
+    return {
+      id: 'INV-5',
+      status: 'skipped',
+      detail: 'no COR- tests matched the filter — skipped (not green); exit 0 proves nothing',
     };
   }
 
