@@ -26,6 +26,31 @@ import type { LayerManager } from '../engine/layer-manager.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { attachReactionPromptHandler } from './reaction-prompt-dispatcher.js';
 
+// ─── ReactionPromptPanel mock (captures onClose for FIX F idempotency test) ─────
+
+/** Most-recent panel onClose (9th constructor arg) captured by the mock. */
+let lastCapturedOnClose: (() => void) | null = null;
+
+vi.mock('./reaction-prompt-panel.js', () => {
+  class MockReactionPromptPanel {
+    onClose: () => void;
+    constructor(...args: unknown[]) {
+      // Constructor arg order (see reaction-prompt-panel.ts):
+      // bridge, ws, gestureBus, payload, locale, sessionId,
+      // playerActorId, playerWeaponId, onClose, onTimeoutToast?
+      this.onClose = args[8] as () => void;
+      lastCapturedOnClose = this.onClose;
+    }
+    async draw(): Promise<void> {
+      // no-op render
+    }
+    destroy(): void {
+      // no-op teardown
+    }
+  }
+  return { ReactionPromptPanel: MockReactionPromptPanel };
+});
+
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
 function makeWs() {
@@ -107,6 +132,7 @@ function makeValidEnvelope(
 describe('attachReactionPromptHandler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    lastCapturedOnClose = null;
   });
 
   afterEach(() => {
@@ -392,6 +418,45 @@ describe('attachReactionPromptHandler', () => {
     vi.advanceTimersByTime(1000);
     await Promise.resolve();
     expect(layerManager.bundle).not.toHaveBeenCalled();
+  });
+
+  // ── Idempotent close (FIX F) ────────────────────────────────────────────────
+
+  it('RPD-IDEMPOTENT-CLOSE-01: handleClose after the 5s auto-timeout is a no-op (no second destroy)', async () => {
+    const ws = makeWs();
+    const layerManager = makeLayerManager();
+
+    attachReactionPromptHandler({
+      ws,
+      layerManager,
+      bridge: makeBridge(),
+      gestureBus: makeGestureBus(),
+      locale: 'it',
+      sessionId: 'sess-1',
+      getPlayerActorId: () => 'actor-1',
+      getPlayerWeaponId: () => null,
+    });
+
+    // Mount the panel; the mocked ReactionPromptPanel captures its onClose (handleClose).
+    ws.fire(makeValidEnvelope());
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+    expect(layerManager.bundle).toHaveBeenCalledTimes(1); // mount
+    const capturedOnClose = lastCapturedOnClose;
+    expect(capturedOnClose).not.toBeNull();
+
+    layerManager.bundle.mockClear();
+
+    // 5s auto-timeout fires → exactly one destroy bundle, mountedPanel nulled.
+    vi.advanceTimersByTime(5000);
+    await Promise.resolve();
+    expect(layerManager.bundle).toHaveBeenCalledTimes(1); // the timeout's destroy
+
+    // Late gesture invokes handleClose AFTER the timeout already destroyed the panel.
+    // RED against current code: this fires a SECOND destroy bundle (count → 2).
+    capturedOnClose?.();
+    await Promise.resolve();
+    expect(layerManager.bundle).toHaveBeenCalledTimes(1); // still 1 — idempotent
   });
 
   // ── No actor ───────────────────────────────────────────────────────────────
