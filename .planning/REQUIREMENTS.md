@@ -59,7 +59,7 @@ Explicitly excluded for v0.9.14.
 
 ## Traceability
 
-Populated during roadmap creation; pre-mapped from confirmed phase plan.
+Roadmap created 2026-05-30. All 13 v1 requirements mapped to Phases 19–22.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -84,4 +84,4 @@ Populated during roadmap creation; pre-mapped from confirmed phase plan.
 
 ---
 *Requirements defined: 2026-05-30*
-*Last updated: 2026-05-30 after milestone v0.9.14 opening*
+*Last updated: 2026-05-30 — roadmap Phases 19–22 created; all 13 v1 REQ-IDs mapped*
