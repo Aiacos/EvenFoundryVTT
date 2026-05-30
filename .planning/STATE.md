@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.9.14
 milestone_name: Release & Distribution + deferred hardening
-status: planning
-last_updated: "2026-05-30T23:00:00.000Z"
-last_activity: 2026-05-30
+status: executing
+stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
+last_updated: "2026-05-30T23:03:29.053Z"
+last_activity: 2026-05-30 -- Phase 19 execution started
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** v0.9.14 — Phase 19 Release & Distribution (roadmap created, ready to plan)
+**Current focus:** Phase 19 — Release & Distribution
 
 ## Current Position
 
-Phase: 19 of 22 (Phase 19: Release & Distribution)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-05-30 — Roadmap Phases 19–22 created; 13/13 v1 REQ-IDs mapped; Phase 19 ready to plan
+Phase: 19 (Release & Distribution) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 19
+Last activity: 2026-05-30 -- Phase 19 execution started
 
 ## Performance Metrics
 

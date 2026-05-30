@@ -57,7 +57,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 
 **Milestone Goal:** Ship an installable release of all system components via CI/CD, then close the highest-value hardening gaps surfaced by the 2026-05-29/30 deep reviews.
 
-- [ ] **Phase 19: Release & Distribution** — CD pipeline: foundry-module GitHub Release (module.json + zip) · bridge Docker GHCR · g2-app dist zip · Changesets release notes · README Installation section (INV-3)
+- [x] **Phase 19: Release & Distribution** — CD pipeline: foundry-module GitHub Release (module.json + zip) · bridge Docker GHCR · g2-app dist zip · Changesets release notes · README Installation section (INV-3) (completed 2026-05-30)
 - [ ] **Phase 20: Background-state & Lifecycle** — INV-2 SDK 0.0.10 lifecycle surface verification · session-state survival across background/foreground · shutDownPageContainer exit gesture · mic-off on background
 - [ ] **Phase 21: Render Correctness** — `_flushPage` real container schema · overlay-block/toast-block hardware rendering · exactly-one isEventCapture:1 · INV-1 LVGL pixel-model reconciliation · HUD/glyph ≤10 rows vertical budget
 - [ ] **Phase 22: Tier-4 Polish** — DE locale support + minor 2026-05-29 deep-review carries
@@ -76,8 +76,8 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   4. The GitHub Release page shows human-readable release notes aggregated from the Changesets changelog without any manual copy-paste
   5. `README.md` "Installation" section documents all three component installation paths (foundry-module manifest URL, bridge docker-compose from GHCR, g2-app static host), coherent with Specs.md + showcase per INV-3
 **Plans**: 2 plans
-- [ ] 19-01-PLAN.md — CD workflow: GHCR bridge image + g2-app dist zip + Changesets release notes (REL-01..04)
-- [ ] 19-02-PLAN.md — README ## Installation (3 components) + INV-3 atomic close + bridge GHCR runbook (REL-05)
+- [x] 19-01-PLAN.md — CD workflow: GHCR bridge image + g2-app dist zip + Changesets release notes (REL-01..04)
+- [x] 19-02-PLAN.md — README ## Installation (3 components) + INV-3 atomic close + bridge GHCR runbook (REL-05)
 **UI hint**: no
 
 ### Phase 20: Background-state & Lifecycle
@@ -136,7 +136,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 16. Sheet Ability Scores | v0.9.13 | 3/3 | Complete | 2026-05-18 |
 | 17. Sheet Skills Tab | v0.9.13 | 3/3 | Complete | 2026-05-18 |
 | 18. Phase-14.1 Spec-Drift Polish | v0.9.13 | 1/1 | Complete | 2026-05-18 |
-| 19. Release & Distribution | v0.9.14 | 0/? | Not started | - |
+| 19. Release & Distribution | v0.9.14 | 2/2 | Complete   | 2026-05-30 |
 | 20. Background-state & Lifecycle | v0.9.14 | 0/? | Not started | - |
 | 21. Render Correctness | v0.9.14 | 0/? | Not started | - |
 | 22. Tier-4 Polish | v0.9.14 | 0/? | Not started | - |
