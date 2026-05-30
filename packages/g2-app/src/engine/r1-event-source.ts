@@ -20,8 +20,12 @@
  *
  * # Wire → internal R1Gesture translation (RESEARCH §Q7)
  *
- *   Bridge wire kinds (`'scroll-up'` / `'scroll-down'`) are flat string enums
- *   from the Even Hub SDK. The internal `R1Gesture` discriminated union uses
+ *   Bridge wire kinds (`'scroll-up'` / `'scroll-down'` / `'tap'` / `'long-press'` /
+ *   `'double-tap'`) are the bridge's server-side-normalized strings, mapped from the
+ *   SDK's `OsEventTypeList` enum values carried with `EventSourceType.TOUCH_EVENT_FROM_RING`
+ *   ring-input events (`@evenrealities/even_hub_sdk` `index.d.ts` lines 707 / 733).
+ *   The flat-string normalization is performed server-side by the bridge, not by the SDK.
+ *   The internal `R1Gesture` discriminated union uses
  *   `{ kind: 'scroll'; direction: 'up' | 'down' }`. Translation lives here —
  *   callers of `PanelGestureBus.subscribe` always see the internal shape.
  *
@@ -143,7 +147,8 @@ export function attachR1EventSource(
       }
 
       // Step 7 — wire-to-internal R1Gesture translation.
-      // Wire: kind 'scroll-up' | 'scroll-down' (flat SDK strings)
+      // Wire: bridge-normalized strings ('scroll-up' | 'scroll-down' | 'tap' | …)
+      //   mapped server-side from SDK OsEventTypeList + EventSourceType.TOUCH_EVENT_FROM_RING.
       // Internal: { kind: 'scroll'; direction: 'up' | 'down' }
       // All other wire kinds pass through as-is.
       let gesture: R1Gesture;

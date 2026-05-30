@@ -10,6 +10,7 @@
  *   - ASR-06: Deepgram Results frame triggers VoiceTranscriptPayload envelope via deltaEmitter.emitDelta
  *   - ASR-07: Client WS close triggers stream.close()
  *   - ASR-08: emitDelta payload parses via VoiceTranscriptPayloadSchema (defence-in-depth)
+ *   - ASR-09: WS upgrade authenticated via ?token= query param (no Authorization header) → connect called
  *
  * @see ./audio-stream-route.ts
  * @see .planning/phases/12-v2-voice-ux-tuning/12-03-PLAN.md Task 1
@@ -81,20 +82,24 @@ function buildDisabledDeepgramAdapter(): DeepgramAdapter {
 
 /** Minimal mock Fastify app that captures route handlers */
 function buildMockApp() {
-  let wsHandler: ((socket: MockWsSocket, req: { headers: Record<string, string> }) => void) | null =
-    null;
+  let wsHandler:
+    | ((socket: MockWsSocket, req: { headers: Record<string, string>; url?: string }) => void)
+    | null = null;
 
   return {
     get(
       path: string,
       _opts: unknown,
-      handler: (socket: MockWsSocket, req: { headers: Record<string, string> }) => void,
+      handler: (
+        socket: MockWsSocket,
+        req: { headers: Record<string, string>; url?: string },
+      ) => void,
     ) {
       if (path === '/v1/audio/stream') {
         wsHandler = handler;
       }
     },
-    _invokeWsHandler(socket: MockWsSocket, req: { headers: Record<string, string> }) {
+    _invokeWsHandler(socket: MockWsSocket, req: { headers: Record<string, string>; url?: string }) {
       wsHandler?.(socket, req);
     },
   };
@@ -356,5 +361,34 @@ describe('registerAudioStreamRoute — enabled path (ASR-04..ASR-08)', () => {
       expect(parseResult.data.language).toBe('multi');
       expect(parseResult.data.isFinal).toBe(false);
     }
+  });
+
+  it('ASR-09: WS upgrade authenticated via ?token= query param (no Authorization header) → deepgramStt.connect called', async () => {
+    // Regression test: browser/WKWebView WebSocket ignores the `headers` option.
+    // Production auth path relies on `?token=` query param appended by audio-capture.ts.
+    const app = buildMockApp();
+    const delta = buildMockDeltaEmitter();
+    const deepgramStt = buildEnabledDeepgramAdapter();
+    const tokenCache = buildMockTokenCache(true);
+    await registerAudioStreamRoute({
+      app: app as unknown as Parameters<typeof registerAudioStreamRoute>[0]['app'],
+      deltaEmitter: delta as unknown as Parameters<
+        typeof registerAudioStreamRoute
+      >[0]['deltaEmitter'],
+      deepgramStt,
+      tokenCache: tokenCache as unknown as Parameters<
+        typeof registerAudioStreamRoute
+      >[0]['tokenCache'],
+      logger: silentLogger,
+    });
+    const socket = buildMockWsSocket();
+    // No Authorization header — bearer travels only via ?token= query param.
+    app._invokeWsHandler(socket, {
+      headers: {},
+      url: '/v1/audio/stream?token=valid-bearer',
+    });
+    await Promise.resolve();
+    expect(deepgramStt.connectSpy).toHaveBeenCalledTimes(1);
+    expect(socket.close).not.toHaveBeenCalled();
   });
 });
