@@ -39,6 +39,7 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-4 (import type rationale)
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
+import { ImageRawDataUpdate, ImageRawDataUpdateResult } from '@evenrealities/even_hub_sdk';
 import type { LayerManager } from '../engine/layer-manager.js';
 import type { Layer, RasterControllerLike } from '../engine/layer-types.js';
 import type { GlyphSceneInput, renderGlyphScene } from './glyph-renderer.js';
@@ -99,7 +100,8 @@ export class MapBaseLayer implements Layer {
    * When non-null, `draw()` issues an additional `bridge.updateImageRawData`
    * call for the override slot AFTER the raster pipeline call. The portrait
    * bytes are rendered as a 100×60 4-bit greyscale overlay replacing the
-   * corresponding raster tile (slot 3 = bottom-right by convention, D-13-08).
+   * corresponding image tile container `map-tile-${slot}`
+   * (slot 3 = bottom-right by convention, D-13-08).
    *
    * CharacterSheetPanel.onMount/_applyPortraitOverride sets this;
    * CharacterSheetPanel.onUnmount clears it via setPortraitOverride(slot, null).
@@ -220,24 +222,22 @@ export class MapBaseLayer implements Layer {
       this.currentScene.height,
     );
 
-    // Portrait override — issue additional updateImageRawData for the reserved slot
+    // Portrait override — issue additional updateImageRawData for the reserved image tile slot
     // AFTER the raster pipeline call (D-13-08 simpler design: overlay piggybacks on
     // a raster tile slot; no new container allocated; budget stays at 4 image, 1 text).
+    // Targets map-tile-${slot} (an image container), NOT the text capture container.
     if (this._portraitOverride !== null) {
       const { slot, bytes } = this._portraitOverride;
-      await (
-        this.bridge as unknown as {
-          updateImageRawData: (opts: {
-            containerName: string;
-            index: number;
-            imageData: Uint8Array;
-          }) => Promise<boolean>;
-        }
-      ).updateImageRawData({
-        containerName: 'map-capture',
-        index: slot,
+      const payload = new ImageRawDataUpdate({
+        containerName: `map-tile-${slot}`,
         imageData: bytes,
       });
+      const result = await this.bridge.updateImageRawData(payload);
+      if (!ImageRawDataUpdateResult.isSuccess(result)) {
+        console.warn(
+          `[EVF] map-base-layer: portrait-override dispatch failed for slot ${slot} — updateImageRawData returned non-success`,
+        );
+      }
     }
   }
 
