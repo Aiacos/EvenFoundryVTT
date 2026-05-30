@@ -562,7 +562,12 @@ This section documents the existing pipeline to prevent misunderstanding during 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Resolved during plan-check 2026-05-30 — answers folded into Plan 19-01/19-02 task actions.
+> - **Q1 (REL-04 aggregation scope):** RESOLVED → aggregate `foundry-module` + `bridge` + `g2-app` CHANGELOG.md sections, each guarded by `test -f` (internal `shared-*` excluded from user-facing notes).
+> - **Q2 (docker-compose.prod.yml):** RESOLVED → document as an inline `# replace build: with image:` comment in `docker-compose.yml`; no separate prod-compose file in v0.9.14 scope.
+> - **Q3 (README version pinning):** RESOLVED → README uses `ghcr.io/aiacos/evf-bridge:latest` (user-facing) and notes that version-pinned tags are available on the Releases page.
 
 1. **Aggregation scope for REL-04 release notes**
    - What we know: `.changeset/config.json` manages `@evf/foundry-module`, `@evf/bridge`, `@evf/g2-app`, `@evf/shared-protocol`, etc. independently. Each may get a separate CHANGELOG.md entry.
