@@ -24,9 +24,19 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 - **Carry to next milestone**: minimal — Spells tab DC binding (primed by `abilities.<k>.dc` field) deferred to future Sheet polish cycle; Inventory/Bio/Feats tab data-binding polish out of scope; half-prof narrative glyph (`◐` half-tone) deferred per INV-1 width budget.
 - **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.13), INV-3 atomic doc coherence).
 
-## Next Milestone Goals (post-v0.9.13)
+## Current Milestone: v0.9.14 Release & Distribution + deferred hardening
 
-After v0.9.13 shipped, likely candidates:
+**Goal:** Ship an installable release of all system components via CI/CD (so end users can actually run the system), then close the highest-value hardening gaps surfaced by the 2026-05-30 G2 skill audit + 2026-05-29 deep review.
+
+**Target features:**
+- **Release & Distribution (headline, sequenced first):** CD pipeline on a GitFlow release (develop→main + version tag) that produces + publishes installable artifacts for every component: `foundry-module` → GitHub Release assets (`module.json` manifest + `evenfoundryvtt.zip`, installable via Foundry "Install Module" manifest URL); `bridge` → Docker image (multi-stage `node:24-alpine`) pushed to GHCR; `g2-app` → static Vite dist bundle zipped + attached to the GitHub Release. Release notes (aggregated Changesets changelog) written to the GitHub Release page. README gains an "Installation" section documenting how to install all 3 components (INV-3 coherent). Changesets stays pre-1.0 no-publish (no npm publish of internal `@evf/shared-*`).
+- **Background-state & Lifecycle:** INV-2 verification round on the actual SDK 0.0.10 lifecycle surface (`onEvenHubEvent` FOREGROUND_ENTER/EXIT/ABNORMAL_EXIT/SYSTEM_EXIT — note `setBackgroundState`/`onBackgroundRestore` do NOT exist on 0.0.10), then session-state survival across phone background→foreground, app exit via `shutDownPageContainer`, hardware-stop (mic-off) on background/exit.
+- **Render correctness:** `LayerManager._flushPage` assembles the real container schema so `overlay-block`/`toast-block` actually render on hardware; INV-1 char-grid vs LVGL-proportional-pixel reconciliation + HUD/glyph vertical overflow (288px @ 27px ≈ 10 rows max) — spec-level, INV-3.
+- **Tier-4 polish:** DE-locale + minor items deferred from the 2026-05-29 deep review.
+
+**Key context:** Release form per-component confirmed by user (GitHub Release for foundry-module + g2-app, GHCR Docker for bridge; NO npm publish). Headline Release phase is independent of the deferred items and ships first. The deferred hardening items derive from `project_g2_skill_audit_20260530` + `project_full_review_20260529`. Phase numbering continues from v0.9.13 (ended Phase 18) → v0.9.14 starts at Phase 19.
+
+## Future Milestone Candidates (beyond v0.9.14)
 
 1. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
 2. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
@@ -104,13 +114,18 @@ Full traceability and final outcomes archived to [`milestones/v0.9.13-REQUIREMEN
 #### Doc-Coherence Polish
 - ✓ **INFILL-14.1-A..C** — Phase-14.1 spec-drift polish: archived 14-UI-SPEC §2 col-anchors reconciled (col 70 → col 67, content-width 66 → 64) + §10 width-budget re-derived from runtime literals + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/5/7/9/12/17 + Z05-INV-02b-triade test extension — v0.9.13 (Phase 18, commit `df4ea02`)
 
-### Active
+### Active (v0.9.14 Release & Distribution + deferred hardening — opened 2026-05-30)
 
-(No active milestone — v0.9.13 closed cleanly 2026-05-18. Next milestone opens via `/gsd-new-milestone`.)
+Scope confirmed by user 2026-05-30. Requirements in [`.planning/REQUIREMENTS.md`](REQUIREMENTS.md); roadmap Phases 19–22.
 
-**Likely candidates for v0.9.14** (not committed; user-confirmed scope pending):
-- **Skill Check + Saving Throw write path** — mirror of Phase 8 (manual action UX) for skill/save rolls. `skill_check` in `bridge/src/routes/tools-dispatch.ts:80` is still a stub; `evf.rollSkill` + `evf.rollAbilitySave` socketlib handlers absent (would bump CI Gate 8 17 → 18 or 19). Gesture wiring (scroll-tap "tira abilità" hint in Skills tab fixture) currently disconnected from backend. Toast result feedback missing.
-- **Spells tab DC binding** — primed by Phase 16 `abilities.<k>.dc` field; Spells tab itself not yet data-bound.
+- **REL-01..05** — Release & Distribution (CD: foundry-module GitHub Release manifest+zip · bridge Docker GHCR · g2-app dist zip · Changesets release notes on GitHub Release page · README Installation section). *Phase 19, sequenced first.*
+- **LIFE-01..04** — Background-state & lifecycle (INV-2 round on SDK 0.0.10 lifecycle surface → foreground/exit handling, `shutDownPageContainer`, mic-off on background). *Phase 20.*
+- **REND-01..03** — Render correctness (`_flushPage` real container schema · INV-1 pixel-model vs LVGL · HUD/glyph vertical overflow). *Phase 21.*
+- **LOC-01** — Tier-4 polish (DE-locale + minor 2026-05-29 review carries). *Phase 22.*
+
+**Still deferred (not in v0.9.14):**
+- **Skill Check + Saving Throw write path** — `skill_check` stub in `bridge/src/routes/tools-dispatch.ts:80`; `evf.rollSkill`/`evf.rollAbilitySave` socketlib handlers absent (would bump CI Gate 8 17 → 18/19). Gesture wiring disconnected from backend.
+- **Spells tab DC binding** — primed by Phase 16 `abilities.<k>.dc` field; Spells tab not yet data-bound.
 
 ### Out of Scope
 
@@ -190,4 +205,4 @@ This document evolves at phase transitions and milestone boundaries.
 **Specs.md drift policy** (project-specific): se PROJECT.md e Specs.md divergono su un claim tecnico, **Specs.md vince** (è la fonte canonica). Aggiornare PROJECT.md per riallinearsi e committare insieme (INV-3).
 
 ---
-*Last updated: 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived (Phase 16 abilities · Phase 17 skills · Phase 18 spec-drift polish + Specs.md v0.9.13 INV-3 atomic milestone close `df4ea02`).*
+*Last updated: 2026-05-30 — opened milestone v0.9.14 Release & Distribution + deferred hardening (Phases 19–22; headline = CD installable-release pipeline for foundry-module/bridge/g2-app + README install docs; deferred-hardening phases from the 2026-05-30 G2 skill audit). Prior: 2026-05-18 v0.9.13 shipped + archived.*

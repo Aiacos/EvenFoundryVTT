@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.13
-milestone_name: Sheet Data Completion + Polish
-status: archived
-last_updated: "2026-05-18T16:00:00.000Z"
-last_activity: 2026-05-18 -- v0.9.13 milestone shipped, audited, completed, cleaned up; awaiting new milestone
+milestone: v0.9.14
+milestone_name: Release & Distribution + deferred hardening
+status: planning
+last_updated: "2026-05-30T22:39:06.002Z"
+last_activity: 2026-05-30
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: — (no active milestone)
+Phase: Not started (defining requirements)
 Plan: —
-Status: v0.9.13 ARCHIVED — phase dirs under `.planning/milestones/v0.9.13-phases/`; REQUIREMENTS.md removed (fresh for next milestone); tag `v0.9.13` pushed; PROJECT.md + ROADMAP.md reflect archived state
-Last activity: 2026-05-30 - Completed quick task 260530-x2b: G2 SDK-conformance fixes (portrait updateImageRawData, audio WS bearer auth, R1 comment) from skill audit
+Status: Defining requirements
+Last activity: 2026-05-30 — Milestone v0.9.14 started
 
 ## Performance Metrics
 
