@@ -11,7 +11,11 @@
 
 ---
 
-## Quick install (Foundry desktop / The Forge)
+## Installation
+
+EvenFoundryVTT has three components. Install them in order:
+
+### 1. Foundry Module
 
 In Foundry → **Setup** → **Add-on Modules** → **Install Module** → paste this **Manifest URL**:
 
@@ -22,6 +26,50 @@ https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
 Same URL works on **The Forge** (Bazaar → *+ Install Module from a Manifest*). Foundry will auto-install `socketlib`, `midi-qol`, and require dnd5e ≥ 5.3.3.
 
 > **Note:** the manifest URL only works once a GitHub Release exists. If install fails with *"Failed to fetch package manifest"*, no release has been published yet — see [`docs/release/foundry-module.md`](docs/release/foundry-module.md) for cutting a release. Until then, install in dev mode by symlinking `packages/foundry-module/` into your Foundry `Data/modules/evenfoundryvtt/` folder (then run `pnpm --filter @evf/foundry-module build`).
+
+### 2. Bridge (Docker)
+
+Pull the pre-built image from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/aiacos/evf-bridge:latest
+```
+
+Version-pinned tags (e.g. `ghcr.io/aiacos/evf-bridge:0.1.0`) are listed on the
+[Releases page](https://github.com/Aiacos/EvenFoundryVTT/releases).
+
+Or run via Docker Compose (builds locally from source — recommended for homelab):
+
+```bash
+cd deploy/
+cp .env.example .env
+# Edit .env:
+#   EVF_INTERNAL_SECRET=$(openssl rand -base64 32)
+#   EVF_PLUGIN_HOST_URL=https://your-g2app-host.example.com
+docker compose up -d
+```
+
+See [`deploy/.env.example`](deploy/.env.example) for the full env-var contract and
+[`docs/release/bridge.md`](docs/release/bridge.md) for the GHCR first-push visibility
+note (one-time manual step required after the first release).
+
+### 3. G2 App (static HTTPS host)
+
+Download `g2-app-dist.zip` from the
+[GitHub Release](https://github.com/Aiacos/EvenFoundryVTT/releases/latest),
+extract, and serve the `dist/` directory from any HTTPS static host (nginx, Caddy,
+GitHub Pages, Cloudflare Pages):
+
+```bash
+unzip g2-app-dist.zip
+# Serve dist/ via your preferred HTTPS host, e.g.:
+npx serve dist/
+# or: cp -r dist/ /var/www/evf-g2app/
+```
+
+Set `EVF_PLUGIN_HOST_URL` in `deploy/.env` to the origin of your static host
+(e.g. `https://g2app.yourdomain.com`). The bridge uses this value for CORS — it
+must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 
 ---
 
