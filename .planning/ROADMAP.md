@@ -75,7 +75,9 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   3. A user can download `g2-app-dist.zip` from the GitHub Release page and serve it from a static HTTPS host to run the g2-app plugin
   4. The GitHub Release page shows human-readable release notes aggregated from the Changesets changelog without any manual copy-paste
   5. `README.md` "Installation" section documents all three component installation paths (foundry-module manifest URL, bridge docker-compose from GHCR, g2-app static host), coherent with Specs.md + showcase per INV-3
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 19-01-PLAN.md — CD workflow: GHCR bridge image + g2-app dist zip + Changesets release notes (REL-01..04)
+- [ ] 19-02-PLAN.md — README ## Installation (3 components) + INV-3 atomic close + bridge GHCR runbook (REL-05)
 **UI hint**: no
 
 ### Phase 20: Background-state & Lifecycle
