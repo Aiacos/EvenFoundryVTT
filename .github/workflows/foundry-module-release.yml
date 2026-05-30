@@ -10,8 +10,11 @@ name: Foundry Module Release
 #   2. Builds the Foundry module (pnpm + tsup, bundles @evf/shared-protocol + qrcode)
 #   3. Patches module.json `version` + `download` from the tag
 #   4. Zips the runtime assets (module.json + dist/ + lang/ + templates/)
-#   5. Creates the GitHub Release on the tag (auto-generates release notes from commits)
-#   6. Uploads module.json + evenfoundryvtt.zip as release assets
+#   5. Extracts release notes from Changesets CHANGELOG.md (falls back to --generate-notes on first release)
+#   6. Creates the GitHub Release on the tag
+#   7. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
+#   8. Builds + pushes bridge Docker image to GHCR (REL-02, job: build-bridge-ghcr)
+#   9. Builds g2-app Vite bundle, zips dist/, uploads g2-app-dist.zip (REL-03, job: build-g2app-zip)
 #
 # After completion, the install URL works:
 #   https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
@@ -21,6 +24,9 @@ name: Foundry Module Release
 #
 # Manual override: workflow_dispatch lets you re-run for a specific tag
 # without re-tagging (useful if a previous run failed).
+#
+# GHCR first-push note (one-time manual step after first real release):
+#   GitHub → Profile → Packages → evf-bridge → Package settings → Change visibility → Public
 
 on:
   push:
@@ -34,12 +40,13 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write  # required for `gh release upload`
+# Top-level permissions removed; each job declares only what it needs (least privilege, T-19-02).
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required for `gh release create` + `gh release upload`
 
     steps:
       - name: Checkout repository
@@ -119,32 +126,109 @@ jobs:
           ls -la ../evenfoundryvtt.zip
           unzip -l ../evenfoundryvtt.zip | head -20
 
+      # REL-04: Extract release notes from Changesets CHANGELOG.md files.
+      # Aggregates user-facing packages: foundry-module (primary) + bridge + g2-app (if present).
+      # Falls back to empty output when no CHANGELOG.md exists yet (first release, Pitfall 5).
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          NOTES_FILE="/tmp/release-notes.md"
+          FOUND=0
+
+          # foundry-module CHANGELOG.md (primary — always include if present)
+          if test -f "packages/foundry-module/CHANGELOG.md"; then
+            node -e "
+              const fs = require('node:fs');
+              const ver = process.env.VERSION;
+              const log = fs.readFileSync('packages/foundry-module/CHANGELOG.md', 'utf-8');
+              const escaped = ver.replace(/\\./g, '\\\\.');
+              const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
+              if (!m) { console.error('No foundry-module CHANGELOG entry for ' + ver); process.exit(1); }
+              fs.appendFileSync('${NOTES_FILE}', m[0].trim() + '\\n');
+            "
+            FOUND=1
+          fi
+
+          # bridge CHANGELOG.md (append if present)
+          if test -f "packages/bridge/CHANGELOG.md"; then
+            node -e "
+              const fs = require('node:fs');
+              const ver = process.env.VERSION;
+              const log = fs.readFileSync('packages/bridge/CHANGELOG.md', 'utf-8');
+              const escaped = ver.replace(/\\./g, '\\\\.');
+              const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
+              if (m) {
+                fs.appendFileSync('${NOTES_FILE}', '\\n---\\n\\n' + m[0].trim() + '\\n');
+              }
+            " || true
+          fi
+
+          # g2-app CHANGELOG.md (append if present)
+          if test -f "packages/g2-app/CHANGELOG.md"; then
+            node -e "
+              const fs = require('node:fs');
+              const ver = process.env.VERSION;
+              const log = fs.readFileSync('packages/g2-app/CHANGELOG.md', 'utf-8');
+              const escaped = ver.replace(/\\./g, '\\\\.');
+              const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
+              if (m) {
+                fs.appendFileSync('${NOTES_FILE}', '\\n---\\n\\n' + m[0].trim() + '\\n');
+              }
+            " || true
+          fi
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo "notes_file=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
+            echo "Using CHANGELOG.md release notes:"
+            cat "${NOTES_FILE}"
+          else
+            echo "No CHANGELOG.md found — will use --generate-notes fallback"
+            echo "notes_file=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release if missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.vars.outputs.tag }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
           # Idempotent: if the release already exists (manual creation or workflow re-run),
-          # skip; otherwise create with auto-generated notes from commit history.
+          # skip; otherwise create with CHANGELOG.md notes or auto-generated fallback.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists — skipping creation."
           else
             # Mark pre-releases (anything with a hyphen after the version) automatically.
             PRERELEASE_FLAG=""
             if [[ "$TAG" == *"-"* ]]; then PRERELEASE_FLAG="--prerelease"; fi
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes \
-              $PRERELEASE_FLAG
+            if [[ -n "$NOTES_FILE" ]]; then
+              # REL-04: use Changesets-produced CHANGELOG.md notes (human-curated)
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --notes-file "$NOTES_FILE" \
+                $PRERELEASE_FLAG
+            else
+              # Fallback: auto-generate notes from commit history (first release or missing CHANGELOG)
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --generate-notes \
+                $PRERELEASE_FLAG
+            fi
             echo "Created release $TAG"
           fi
 
+      # REL-01 regression: module.json (manifest URL: /releases/latest/download/module.json)
+      # + evenfoundryvtt.zip are the two canonical Foundry install assets. --clobber ensures
+      # safe re-runs without manual deletion. These assets MUST remain present in every release.
       - name: Upload module.json + zip to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
           # --clobber: overwrite if the release already has these assets (re-run safety)
+          # REL-01 contract: module.json serves /releases/latest/download/module.json
+          # REL-01 contract: evenfoundryvtt.zip is the Foundry module runtime bundle
           gh release upload "$TAG" \
             packages/foundry-module/module.json \
             packages/foundry-module/evenfoundryvtt.zip \
@@ -156,3 +240,129 @@ jobs:
         run: |
           echo "::notice title=Module ready::Install URL → https://github.com/${{ github.repository }}/releases/latest/download/module.json"
           echo "::notice title=Version-pinned ZIP::https://github.com/${{ github.repository }}/releases/download/${TAG}/evenfoundryvtt.zip"
+
+  # REL-02: Build bridge Docker image and push to GHCR.
+  # Least-privilege: packages:write only (no contents:write — no release upload needed).
+  # Auth: GITHUB_TOKEN (auto-scoped, short-lived) — NOT a PAT (T-19-03).
+  # Runs after `release` so the GitHub Release context is available if needed in future steps.
+  build-bridge-ghcr:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # checkout only
+      packages: write  # GHCR push (T-19-02)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # GHCR requires lowercase image path (Pitfall 4 from RESEARCH.md).
+      # github.repository_owner may be mixed-case (Aiacos); tr converts to lowercase.
+      - name: Lowercase owner
+        id: lower
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # T-19-03: authenticate with GITHUB_TOKEN — no PAT, no long-lived secret
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derive tag + version identically to the release job (reuses same validated tag path)
+      - name: Derive release tag + version
+        id: vars
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match required vMAJOR.MINOR.PATCH[-prerelease] format"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # REL-02: generate version + latest tags from the semver version.
+      # latest=auto: suppress :latest on pre-release tags automatically.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.lower.outputs.owner }}/evf-bridge
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.vars.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.vars.outputs.tag }}
+
+      # REL-02: build from deploy/bridge.Dockerfile (multi-stage node:24-alpine — do NOT modify Dockerfile).
+      # GHA layer cache (cache-from/cache-to gha) reduces rebuild time dramatically on re-runs.
+      - name: Build and push bridge image to GHCR
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/bridge.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # REL-03: Build g2-app Vite bundle, zip dist/, and attach g2-app-dist.zip to the GitHub Release.
+  # Needs `release` so the GitHub Release exists before `gh release upload` is called (Pitfall 2).
+  build-g2app-zip:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required for `gh release upload`
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # REL-03: build produces packages/g2-app/dist/ (outDir per vite.config.ts)
+      - name: Build g2-app
+        run: pnpm --filter @evf/g2-app build
+
+      # Zip from packages/g2-app so archive paths are dist/... (not packages/g2-app/dist/...).
+      # End-user extracts zip → gets `dist/` directly; serve via HTTPS static host.
+      - name: Create g2-app-dist.zip
+        working-directory: packages/g2-app
+        run: zip -r ../../g2-app-dist.zip dist/ -x "*.map"
+
+      # REL-03: upload g2-app-dist.zip to the GitHub Release created by the `release` job.
+      - name: Upload g2-app-dist.zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          gh release upload "$TAG" g2-app-dist.zip --clobber
