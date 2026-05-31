@@ -12,8 +12,18 @@
 #
 # Env file: deploy/.env (gitignored, see deploy/.env.example for template)
 
+# Compose project name → container/network prefix (otherwise Compose defaults to the
+# directory name "deploy"). Containers: evf-bridge, evf-foundry-mcp; network: evenfoundryvtt_default.
+name: evenfoundryvtt
+
 services:
   bridge:
+    container_name: evf-bridge
+    # Same greyscale d20 icon as the Even Hub listing; Compose UIs (Portainer/Dockge/Komodo)
+    # that read a container icon label will pick this up.
+    labels:
+      com.evenfoundryvtt.icon: "https://raw.githubusercontent.com/Aiacos/EvenFoundryVTT/main/assets/icon/icon.png"
+      org.opencontainers.image.title: "EvenFoundryVTT Bridge"
     build:
       context: ..
       dockerfile: deploy/bridge.Dockerfile
@@ -34,6 +44,7 @@ services:
     restart: unless-stopped
 
   foundry-mcp:
+    container_name: evf-foundry-mcp
     build:
       context: ..
       dockerfile: deploy/foundry-mcp.Dockerfile

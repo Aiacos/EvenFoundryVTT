@@ -2,6 +2,8 @@
   "package_id": "io.github.aiacos.foundryvtt",
   "edition": "202601",
   "name": "FoundryVTT G2 HUD",
+  "description": "Foundry VTT D&D 5e session on Even Realities G2 \u2014 glanceable HUD driven by R1 ring gestures.",
+  "icon": "icon.png",
   "version": "0.1.0",
   "min_app_version": "2.0.0",
   "min_sdk_version": "0.0.10",
