@@ -94,26 +94,34 @@ interface FoundryI18n {
 declare namespace foundry {
   namespace applications {
     namespace api {
+      // Minimal v13 ApplicationV2 surface used by PairModal. ApplicationV2 itself is abstract
+      // about rendering; a renderable subclass mixes in HandlebarsApplicationMixin (below).
       class ApplicationV2 {
-        /** Renders the application (force=true ensures re-render even if already open). */
-        render(force?: boolean): this | Promise<this>;
-        /** Closes the application. Returns a promise that resolves when closed. */
+        constructor(options?: object);
+        /** Root content element after a render. */
+        readonly element: HTMLElement;
+        /** Render the application (v13 takes options, e.g. { force: true }). */
+        render(options?: boolean | { force?: boolean }): Promise<this>;
+        /** Close the application. */
         close(options?: { animate?: boolean }): Promise<void>;
-        /** Returns template context data (override in subclass). */
-        getData(): Promise<Record<string, unknown>>;
-        /** Binds DOM event listeners (override in subclass). */
-        _activateListeners(html: HTMLElement): void;
-        /** Static default options for the application (override in subclass). */
-        static get defaultOptions(): {
-          id: string;
-          title: string;
-          template: string;
-          width: number;
-          height: string | number;
-          resizable: boolean;
-          [key: string]: unknown;
-        };
+        /** Build the template render context (override in subclass — replaces v1 getData). */
+        protected _prepareContext(options?: unknown): Promise<Record<string, unknown>>;
+        /** Post-render hook for listeners (override in subclass — replaces v1 _activateListeners). */
+        protected _onRender(context: unknown, options: unknown): void;
+        /** v13 static config (replaces v1 defaultOptions). Title is localised when an i18n key. */
+        static DEFAULT_OPTIONS: Record<string, unknown>;
+        /** Template parts rendered by HandlebarsApplicationMixin. */
+        static PARTS: Record<string, { template: string }>;
       }
+
+      /**
+       * Mixin supplying `_renderHTML`/`_replaceHTML` by rendering `static PARTS` Handlebars
+       * templates. A renderable ApplicationV2 subclass MUST use it (otherwise Foundry throws
+       * "not renderable because it does not implement _renderHTML and _replaceHTML").
+       * Typed as identity over the constructor so the subclass keeps ApplicationV2's members.
+       */
+      // biome-ignore lint/suspicious/noExplicitAny: mixin over an arbitrary constructor
+      function HandlebarsApplicationMixin<T extends new (...args: any[]) => object>(Base: T): T;
     }
   }
 }
