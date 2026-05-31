@@ -210,7 +210,7 @@ export class ReactionPromptPanel implements OverlayPanel {
     } else if (gesture.kind === 'double-tap') {
       this.onCloseCb();
     }
-    // scroll, long-press → panel stays mounted
+    // scroll → panel stays mounted
   }
 
   /**

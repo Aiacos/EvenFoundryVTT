@@ -13,12 +13,7 @@
  *   window after the first for it to count as a double-tap. [ASSUMED]
  *   NOTE: the Bridge currently synthesises double-tap events directly;
  *   this field is reserved for client-side disambiguation if needed.
- * - `longPressMs` (600 ms) — long-press detection threshold.
- *   The Bridge classifies long-press directly (fires when the SDK long-press
- *   threshold is met). The Specs.md §10.0.1 GO criterion says ≥500 ms.
- *   600 ms adds a 100 ms margin for real-hardware detection latency.
- *   This field is currently a client-side guard — not actively applied in
- *   Phase 6 (Bridge classifies). Hardware-tuning closes via SC-06-01.
+ *   (`long-press` was retired by ADR-0012 — no duration-based input exists.)
  * - `scrollDebounceMs` (50 ms) — scroll event debounce. [ASSUMED]
  *   Currently documented but not actively applied in Phase 6 software;
  *   closes via SC-06-01 hardware-tuning.
@@ -29,7 +24,7 @@
  * via `pnpm --filter @evf/validation-harness validate:all` when Even Hub
  * access is available (ADR-0005 Branch A `human_needed` carry-forward).
  *
- * @see Specs.md §3.2 (R1 hardware gesture model — long-press ≥500 ms GO criterion)
+ * @see Specs.md §3.2 (R1 hardware gesture model — 4 canonical gestures, ADR-0012)
  * @see Specs.md §10.0.1 (Phase 0 GO/NO-GO timing test)
  * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 1 (timing defaults decision)
  * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q1 (assumptions analysis)
@@ -48,12 +43,6 @@ export type R1Timings = {
   readonly tapMs: number;
   /** Double-tap second-tap arrival window in ms. [ASSUMED — SC-06-01 pending] */
   readonly doubleTapWindowMs: number;
-  /**
-   * Long-press detection threshold in ms. Must be ≥500 per Specs §10.0.1 GO criterion.
-   * The Bridge classifies long-press directly; this is a client-side guard.
-   * [ASSUMED — SC-06-01 pending]
-   */
-  readonly longPressMs: number;
   /** Scroll event debounce window in ms. [ASSUMED — SC-06-01 pending] */
   readonly scrollDebounceMs: number;
 };
@@ -67,11 +56,9 @@ export type R1Timings = {
  * by RT-02 unit test.
  *
  * All values are [ASSUMED] pending SC-06-01 hardware-validation closure.
- * The `longPressMs` regression guard `≥500` is verified by RT-03 unit test.
  */
 export const DEFAULT_R1_TIMINGS: R1Timings = Object.freeze({
   tapMs: 250,
   doubleTapWindowMs: 350,
-  longPressMs: 600,
   scrollDebounceMs: 50,
 });

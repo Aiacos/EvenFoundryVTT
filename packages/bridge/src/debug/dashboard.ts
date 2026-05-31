@@ -50,7 +50,7 @@ const ENVELOPE_TYPES = [
   'template.placement.requested',
 ] as const;
 
-const GESTURE_KINDS = ['tap', 'double-tap', 'scroll-up', 'scroll-down', 'long-press'] as const;
+const GESTURE_KINDS = ['tap', 'double-tap', 'scroll-up', 'scroll-down'] as const;
 
 const typeOptions = ENVELOPE_TYPES.map((t) => `<option value="${t}">${t}</option>`).join('');
 const gestureOptions = GESTURE_KINDS.map((k) => `<option value="${k}">${k}</option>`).join('');

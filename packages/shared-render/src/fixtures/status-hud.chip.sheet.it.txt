@@ -1,1 +1,1 @@
-R1: tap=tab scroll=cont long=q[sheet]
+R1: tap=tab scroll=cont qa=q[sheet]

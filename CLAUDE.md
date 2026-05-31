@@ -118,6 +118,18 @@ Crucial constraints baked into the spec (do not re-litigate without upstream evi
 - **Locale follows Foundry** (`game.i18n.lang`) with **on-glasses override** via Quick Action `[N] Language`. Override is device-local, never modifies world settings. See §7.16.
 - **Phase 0 is gating**: hardware assumptions (R1 events, image API format, BLE bandwidth, partial-update API, DLE, audio chunk size) all have written GO/NO-GO tests before any application code lands. See §10.0.
 
+### Even Hub canonical developer docs (INV-2 source of truth)
+
+The Even Hub developer documentation is the canonical upstream for every G2/plugin claim above. Re-verify against these before any bump (INV-2); aggregator/blog/AI-summary sources are **not** authoritative.
+
+- **Overview / execution model** — <https://hub.evenrealities.com/docs/getting-started/overview> — *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."* Canonical source for: phone-WebView execution, the 5-step dev workflow, and the G2 hardware envelope (576×288 4-bit greyscale, 4-mic 16 kHz PCM, touchpad press/double-press/swipe-up/swipe-down, **no camera, no speaker**).
+- **Device APIs** — <https://hub.evenrealities.com/docs/guides/device-apis> — verbatim constraint list: *"no arbitrary pixel drawing, no audio output, no text alignment, no font control, no background colors, no per-item list styling, no programmatic scroll position, no animations, no camera (there is none), and images are greyscale only."* Audio capture: `bridge.audioControl(true|false)` → PCM 16 kHz s16le mono via `audioEvent`.
+- **Input & events** — <https://hub.evenrealities.com/docs/guides/input-events> — complete gesture set is press / double-press / swipe-up / swipe-down only (`CLICK_EVENT(0)`, `DOUBLE_CLICK_EVENT(3)`, `SCROLL_TOP_EVENT(1)`, `SCROLL_BOTTOM_EVENT(2)`); **no long-press / duration-based input** (see GEST-01 drift in Specs.md changelog 2026-05-31).
+- **CLI reference** — <https://hub.evenrealities.com/docs/reference/cli> — commands are `login` / `init` / `qr` / `pack` only; **there is NO non-interactive `publish`/`submit`/`upload` command** (portal submission is manual + review-gated). `evenhub pack app.json dist -o myapp.ehpk` (`-c` runs the online package_id availability check).
+- **Packaging & App Submission** — <https://hub.evenrealities.com/docs/reference/packaging> · <https://hub.evenrealities.com/docs/reference/app-submission> — `.ehpk` manifest fields + the manual portal review/approval gate.
+- **npm packages**: `@evenrealities/even_hub_sdk` (plugin SDK — we ship hand-typed `packages/g2-app/src/types/even-hub.d.ts` + `hub-polyfill.ts` against it), `@evenrealities/evenhub-simulator` (local preview: `evenhub-simulator http://localhost:5173`), `@evenrealities/evenhub-cli` (init/pack used by the CD).
+- **Our runbook**: `docs/release/evenhub.md` operationalizes the above for `packages/g2-app` (build → version-sync → `pack` → artifact; manual portal submit). CD: `.github/workflows/evenhub-pack.yml`.
+
 ## Working in this repo
 
 - The user's primary language is **Italian**; the spec is mostly Italian with English code/identifiers. Reply in Italian unless they ask otherwise. UI strings target IT (MVP) + EN (canonical fallback) per §7.16.5.

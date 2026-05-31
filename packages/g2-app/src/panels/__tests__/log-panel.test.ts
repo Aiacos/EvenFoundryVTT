@@ -397,10 +397,10 @@ describe('LogPanel — INV-1 fixture round-trips', () => {
 // ─── LP-R1HINTS-* (Phase 6 Plan 03) ──────────────────────────────────────────
 
 describe('LogPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
-  it('LP-R1HINTS-IT: returns getR1Hints with q[log] longPressLabel (IT locale)', () => {
+  it('LP-R1HINTS-IT: returns getR1Hints with q[log] quickActionLabel (IT locale)', () => {
     const { panel } = makePanel();
     const hints = panel.getR1Hints();
-    expect(hints.longPressLabel).toMatch(/q\[log\]/);
+    expect(hints.quickActionLabel).toMatch(/q\[log\]/);
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
     expect(hints.tap.length).toBeGreaterThan(0);
@@ -416,7 +416,26 @@ describe('LogPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       const hints = panel.getR1Hints();
       expect([...hints.tap].length).toBeLessThanOrEqual(38);
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
-      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+      expect([...hints.quickActionLabel].length).toBeLessThanOrEqual(38);
     }
+  });
+});
+
+// ─── LP-TOP-BOUNDARY — over-scroll boundary (ADR-0012 D-2) ────────────────────
+
+describe('LogPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('LP-TOP-BOUNDARY: true at scrollOffset 0, false after scroll-down reveals older events', async () => {
+    const { panel, bus } = makePanel();
+    await panel.onMount();
+    panel.onSnapshot({
+      events: [makeEvent({ id: 'e1' }), makeEvent({ id: 'e2' }), makeEvent({ id: 'e3' })],
+    });
+
+    // Fresh snapshot resets scrollOffset to 0 → at top.
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    // scroll-down increments scrollOffset → no longer at top.
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
   });
 });

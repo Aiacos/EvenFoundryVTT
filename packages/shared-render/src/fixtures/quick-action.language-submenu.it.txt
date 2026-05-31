@@ -10,4 +10,4 @@
 └────────────────────────────────────────────────────────────────────┘
   scroll = cambia voce attiva                                         
   tap = apri voce                                                     
-  long-press = annulla                                                
+  tap×2 = annulla                                                     

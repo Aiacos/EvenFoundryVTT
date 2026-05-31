@@ -5,8 +5,8 @@
  * Implements {@link ../engine/layer-types.js#OverlayPanel}:
  *   - `onMount()`   — subscribes to PanelGestureBus
  *   - `onUnmount()` — unsubscribes (T-4b-01-03 mitigation — prevents subscriber leaks)
- *   - `onEvent(g)`  — tap toggles item detail; scroll cycles item highlight;
- *                     double-tap → close (Phase 6 NAV-01 stub); long-press → stub.
+ *   - `onEvent(g)`  — tap opens Action Options for the cursor item; scroll cycles
+ *                     item highlight; double-tap → close (Phase 6 NAV-01 stub).
  *
  * **Column layout (UI-SPEC §5.4 shared for both sheet-tab and standalone):**
  * ```
@@ -415,16 +415,16 @@ export function renderInventoryStandaloneContent(
   return padToRowCount(rows);
 }
 
-// ─── Header-aware row → item mapping (R-longpress) ────────────────────────────
+// ─── Header-aware row → item mapping (cursor-row resolution) ──────────────────
 
 /**
  * Build the row → item map that runs parallel to the `allRows` array produced by
  * {@link renderInventoryStandaloneContent}.
  *
- * R-longpress fix: the standalone renderer interleaves section headers, item rows
- * and blank separators and scrolls by content-ROW index, but the long-press
- * handler used to index the FLAT `inventory` array with `scrollOffset` — so any
- * section header above the cursor shifted the mapping → the WRONG item was
+ * Cursor-row mapping: the standalone renderer interleaves section headers, item rows
+ * and blank separators and scrolls by content-ROW index, but the context-action
+ * handler must not index the FLAT `inventory` array with `scrollOffset` — any
+ * section header above the cursor would shift the mapping → the WRONG item would be
  * dispatched after scrolling. This map returns the item reference for addressable
  * item rows and `null` for headers / blanks / the condensed CARRIED summary, in
  * the exact order the renderer emits them.
@@ -504,9 +504,8 @@ export function resolveItemAtRow(
  * **Lifecycle:**
  * - `onMount`   — subscribes to PanelGestureBus for R1 gesture fan-out.
  * - `onUnmount` — unsubscribes (T-4b-01-03 mitigation).
- * - `onEvent`   — tap toggles item detail sub-line (Phase 5 returns immediately);
- *                 scroll cycles item highlight; double-tap = close stub (Phase 6 NAV-01);
- *                 long-press = Quick Action stub (Phase 6).
+ * - `onEvent`   — tap opens Action Options for the cursor item (Phase 8);
+ *                 scroll cycles item highlight; double-tap = close stub (Phase 6 NAV-01).
  *
  * **Container strategy:** single text container `overlay-block`, zero image containers.
  * `getContainerCount()` returns `{ image: 0, text: 1 }` (Strategy A exemplar).
@@ -556,12 +555,12 @@ export default class InventoryPanel implements OverlayPanel {
   private unsubscribe: (() => void) | null = null;
 
   /**
-   * Optional long-press handler injected by the boot orchestrator (Plan 08-03).
+   * Optional Action Options handler injected by the boot orchestrator (Plan 08-03).
    *
-   * When set, `onEvent('long-press')` calls this handler with the currently
-   * highlighted item's ActionOptionsRequest. When null, long-press is a no-op
-   * (the Phase 6 router-level `quick-action-long-press-dispatcher` still fires
-   * and mounts the QuickActionMenu — preserved backward-compat).
+   * When set, `onEvent('tap')` calls this handler with the currently highlighted
+   * item's ActionOptionsRequest. When null, tap falls back to a re-draw no-op
+   * (the Quick Action menu now opens via the router-level over-scroll dispatcher,
+   * ADR-0012 D-2 — not from this panel).
    *
    * Plan 08-05 wires this via `panel.setActionOptionsHandler(handler)` after
    * boot mounts the panel. The setter is preferred over a constructor arg to
@@ -611,40 +610,26 @@ export default class InventoryPanel implements OverlayPanel {
   /**
    * Handle a published R1 gesture.
    *
-   * Dispatch table per UI-SPEC §7.1:
-   * - `tap`         → toggle item detail sub-line (Phase 5 boundary: stub, returns immediately)
+   * Dispatch table per UI-SPEC §7.1 (ADR-0012 D-3 — context action on tap):
+   * - `tap`         → open Action Options for the cursor item (Phase 8)
    * - `scroll-down` → advance scroll offset; re-draw
-   * - `scroll-up`   → retreat scroll offset; re-draw
+   * - `scroll-up`   → retreat scroll offset; re-draw (clamps at 0 — over-scroll opens Quick Action)
    * - `double-tap`  → close stub (Phase 6 NAV-01)
-   * - `long-press`  → Quick Action stub (Phase 6)
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
-      case 'tap':
-        // Phase 5: toggle item detail stub — returns immediately (Phase 6 wires execution)
-        void this.draw();
-        break;
-      case 'scroll':
-        if (gesture.direction === 'down') {
-          this.scrollOffset += 1;
-        } else {
-          this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-        }
-        void this.draw();
-        break;
-      case 'double-tap':
-        // Phase 6 NAV-01 stub: close → MAIN_MAP
-        break;
-      case 'long-press': {
+      case 'tap': {
+        // ADR-0012 D-3: tap opens Action Options for the cursor item.
         // Phase 8 Plan 08-03: if setActionOptionsHandler was called, dispatch to it.
-        // Otherwise, remain a no-op (Phase 6 router-level quick-action-long-press-dispatcher
-        // still fires and mounts the QuickActionMenu — backward-compat preserved).
+        // Otherwise, remain a re-draw no-op (Quick Action now opens via the
+        // router-level over-scroll dispatcher, ADR-0012 D-2 — not from this panel).
         if (this.actionOptionsHandler === null) {
+          void this.draw();
           break;
         }
-        // R-longpress: resolve the item under the cursor ROW via the header-aware
-        // row → item map (NOT inventory[scrollOffset], which mis-maps after a section
-        // header). The cursor row is the clamped scroll offset = first visible row.
+        // Resolve the item under the cursor ROW via the header-aware row → item map
+        // (NOT inventory[scrollOffset], which mis-maps after a section header). The
+        // cursor row is the clamped scroll offset = first visible row.
         const rowItemMap = buildInventoryRowItemMap(this.snapshot, this.locale);
         const clampedOffset = Math.max(
           0,
@@ -652,7 +637,7 @@ export default class InventoryPanel implements OverlayPanel {
         );
         const item = resolveItemAtRow(rowItemMap, clampedOffset);
         if (this.snapshot === null || item == null) {
-          console.warn('[inventory-panel] long-press with no item under cursor row — no-op');
+          console.warn('[inventory-panel] tap with no item under cursor row — no-op');
           break;
         }
         // requiresTarget heuristic: consumables self-target by default (potions, etc.).
@@ -667,21 +652,43 @@ export default class InventoryPanel implements OverlayPanel {
         });
         break;
       }
+      case 'scroll':
+        if (gesture.direction === 'down') {
+          this.scrollOffset += 1;
+        } else {
+          this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+        }
+        void this.draw();
+        break;
+      case 'double-tap':
+        // Phase 6 NAV-01 stub: close → MAIN_MAP
+        break;
     }
   }
 
   /**
-   * Inject the action options handler for long-press dispatch (Plan 08-03 wire point).
+   * INV-5 over-scroll boundary probe (ADR-0012 D-2).
+   *
+   * Returns `true` when the panel is scrolled to the top, so a swipe-up at this
+   * point is an over-scroll that the router-level dispatcher routes to the Quick
+   * Action menu (the panel's own swipe-up is a clamped no-op at offset 0).
+   */
+  isAtTopBoundary(): boolean {
+    return this.scrollOffset === 0;
+  }
+
+  /**
+   * Inject the action options handler for tap dispatch (Plan 08-03 wire point).
    *
    * Called by the boot orchestrator (Plan 08-05) after the panel is mounted.
-   * When non-null, `onEvent('long-press')` calls this handler with the currently
-   * highlighted item's `ActionOptionsRequest`. When null, long-press reverts to
-   * a no-op (Phase 6 router-level dispatcher still fires).
+   * When non-null, `onEvent('tap')` calls this handler with the currently
+   * highlighted item's `ActionOptionsRequest`. When null, tap reverts to a
+   * re-draw no-op (Quick Action opens via the over-scroll dispatcher, ADR-0012 D-2).
    *
-   * Pass `null` to remove the handler (useful in tests that verify backward-compat).
+   * Pass `null` to remove the handler (useful in tests that verify the no-op path).
    *
    * @param handler Callback receiving the request for the highlighted item,
-   *                or null to disable Phase 8 long-press wiring.
+   *                or null to disable Phase 8 tap wiring.
    */
   setActionOptionsHandler(handler: ((req: ActionOptionsRequest) => void) | null): void {
     this.actionOptionsHandler = handler;
@@ -735,12 +742,16 @@ export default class InventoryPanel implements OverlayPanel {
    * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
    *
    * Returns the parsed hint object from the pre-composed `hud_r1_inv` i18n
-   * string — e.g. IT: `{ tap: 'usa', scroll: 'oggetto', longPressLabel: 'q[inv]' }`.
+   * string — e.g. IT: `{ tap: 'usa', scroll: 'oggetto', quickActionLabel: 'q[inv]' }`.
    *
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
    * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_inv key
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_inv', this.locale));
   }
 }

@@ -13,7 +13,7 @@
  * │   SW    SE                                   │
  * │        S                                     │
  * │                                              │
- * │  [tap] commit  [long] annulla                │
+ * │  [tap] commit  [×2] annulla                  │
  * └──────────────────────────────────────────────┘
  * ```
  *
@@ -24,8 +24,9 @@
  * - tap          → normal: emit `tool.invoke` move-token envelope + onClose.
  *                  exhausted (remainingFeet ≤ 0): no-op (MDP-06 guard).
  * - double-tap  → cancel + onClose (no emit)
- * - long-press  → ignored at panel level (router-level QuickActionMenu mounts
- *                  on top — MVP accepted per AOM-07 pattern)
+ *
+ * The Quick Action menu opens via over-scroll at the router level (ADR-0012) — the
+ * panel never opens it itself.
  *
  * ## Delta strategy
  *
@@ -260,7 +261,9 @@ export class MoveDirectionPicker implements OverlayPanel {
    * - scroll-up   → retreat selectedDirection (reverse cycle)
    * - tap          → normal: emit move-token + onClose; exhausted: no-op
    * - double-tap  → cancel + onClose (no emit)
-   * - long-press  → ignored (router-level dispatcher mounts QuickActionMenu)
+   *
+   * Quick Action opens via over-scroll at the router level (ADR-0012) — the panel
+   * does not handle it.
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -318,12 +321,18 @@ export class MoveDirectionPicker implements OverlayPanel {
         this.onCloseCb();
         break;
       }
-
-      case 'long-press': {
-        // MDP-09: ignored at panel level (router-level dispatcher handles)
-        break;
-      }
     }
+  }
+
+  /**
+   * Whether the panel is at its top boundary (ADR-0012 D-2).
+   *
+   * The compass picker is a single-screen modal with no vertical scroll cursor,
+   * so it is always at the top — any swipe-up is an over-scroll that the
+   * router-level dispatcher routes to the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return true;
   }
 
   // ─── Layer contract ────────────────────────────────────────────────────────
@@ -360,9 +369,13 @@ export class MoveDirectionPicker implements OverlayPanel {
   /**
    * R1 context chip hints from pre-authored `hud_r1_move_picker` i18n key.
    *
-   * Format: `tap=commit scroll=direzione long=annulla` (locale-aware per i18n-budgets.ts).
+   * Format: `tap=commit scroll=direzione qa=annulla` (locale-aware per i18n-budgets.ts).
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_move_picker', this.locale));
   }
 
@@ -394,7 +407,7 @@ export class MoveDirectionPicker implements OverlayPanel {
    * │   SW    SE                                   │
    * │        S                                     │
    * │                                              │
-   * │  [tap] commit  [long] annulla                │
+   * │  [tap] commit  [×2] annulla                  │
    * └──────────────────────────────────────────────┘
    * ```
    *
@@ -461,7 +474,7 @@ export class MoveDirectionPicker implements OverlayPanel {
       this._innerRow(`   ${fmt('SW')}    ${fmt('SE')}`),
       this._innerRow(`        ${fmt('S')}`),
       this._innerRow(''),
-      this._innerRow(`  [tap] ${confirmHint}  [long] ${cancelHint}`),
+      this._innerRow(`  [tap] ${confirmHint}  [×2] ${cancelHint}`),
       bottomBorder,
     ];
   }

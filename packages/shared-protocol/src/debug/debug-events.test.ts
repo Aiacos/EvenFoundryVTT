@@ -181,8 +181,8 @@ describe('DebugDispatchBodySchema', () => {
 });
 
 describe('DebugGestureBodySchema', () => {
-  it('accepts each of the 5 R1 kinds', () => {
-    for (const kind of ['tap', 'double-tap', 'scroll-up', 'scroll-down', 'long-press'] as const) {
+  it('accepts each of the 4 R1 kinds', () => {
+    for (const kind of ['tap', 'double-tap', 'scroll-up', 'scroll-down'] as const) {
       const result = DebugGestureBodySchema.safeParse({ sessionId: 's', kind });
       expect(result.success, `kind '${kind}' should parse`).toBe(true);
     }

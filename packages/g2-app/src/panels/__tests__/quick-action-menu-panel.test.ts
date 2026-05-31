@@ -11,8 +11,8 @@
  *   - QAM-07:  sub-menu nav-keys are A I E D S F P (mutually exclusive modes)
  *   - QAM-08:  sub-menu locale select: scroll to [I] → tap → persistLocaleOverride('it') + localeEvents.emit + mode='main'
  *   - QAM-09:  sub-menu Auto: tap [A] → persistLocaleOverride('auto') + localeEvents.emit('auto')
- *   - QAM-10:  long-press cancel from main mode → calls onClose()
- *   - QAM-11:  long-press from language mode → mode returns to 'main', does NOT call onClose()
+ *   - QAM-10:  double-tap cancel from main mode → calls onClose()
+ *   - QAM-11:  double-tap from language mode → mode returns to 'main', does NOT call onClose()
  *   - QAM-12:  tap actions: [S]→onNavigate('character-sheet') ONLY (no onClose — CR-01 fix),
  *              [C]→'combat-tracker', [L]→'log', [B]→'spellbook', [I]→'inventory',
  *              [M]→onMapModeToggle+onClose, [A]→onAction+onClose, [X]→onClose
@@ -297,14 +297,14 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
   });
 });
 
-describe('QuickActionMenuPanel — long-press behaviour (QAM-10, QAM-11)', () => {
-  it('QAM-10: long-press from main mode calls onClose()', () => {
+describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-11)', () => {
+  it('QAM-10: double-tap from main mode calls onClose()', () => {
     const { panel, callbacks } = makeMenu();
-    panel.onEvent({ kind: 'long-press' });
+    panel.onEvent({ kind: 'double-tap' });
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('QAM-11: long-press from language mode returns to main mode without calling onClose()', async () => {
+  it('QAM-11: double-tap from language mode returns to main mode without calling onClose()', async () => {
     const { panel, bridge, callbacks } = makeMenu();
 
     // Enter language mode
@@ -313,8 +313,8 @@ describe('QuickActionMenuPanel — long-press behaviour (QAM-10, QAM-11)', () =>
     }
     panel.onEvent({ kind: 'tap' });
 
-    // Long-press from language mode
-    panel.onEvent({ kind: 'long-press' });
+    // Double-tap (back) from language mode
+    panel.onEvent({ kind: 'double-tap' });
 
     expect(callbacks.onClose).not.toHaveBeenCalled();
 
@@ -400,13 +400,13 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
 });
 
 describe('QuickActionMenuPanel — getR1Hints (QAM-13, QAM-14)', () => {
-  it('QAM-13: getR1Hints() in main mode returns locale-aware tap/scroll/longPressLabel', () => {
+  it('QAM-13: getR1Hints() in main mode returns locale-aware tap/scroll/quickActionLabel', () => {
     const { panel } = makeMenu({ locale: 'it' });
     const hints = panel.getR1Hints?.();
     expect(hints).toBeDefined();
     expect(hints?.tap).toBe('apri');
     expect(hints?.scroll).toBe('voce');
-    expect(hints?.longPressLabel).toBe('annulla');
+    expect(hints?.quickActionLabel).toBe('annulla');
   });
 
   it('QAM-14: getR1Hints() in language sub-menu mode returns different hints', () => {
@@ -421,7 +421,16 @@ describe('QuickActionMenuPanel — getR1Hints (QAM-13, QAM-14)', () => {
     expect(hints?.tap).toBe('applica');
     expect(hints?.scroll).toBe('lingua');
     // WR-01 fix: 'indietro' → 'dietro' so assembled chip ≤ 38 code-points.
-    expect(hints?.longPressLabel).toBe('dietro');
+    expect(hints?.quickActionLabel).toBe('dietro');
+  });
+});
+
+describe('QuickActionMenuPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('QAM-OVERSCROLL: true at selection index 0, false after scrolling down', () => {
+    const { panel } = makeMenu({ locale: 'it' });
+    expect(panel.isAtTopBoundary?.()).toBe(true);
+    panel.onEvent({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary?.()).toBe(false);
   });
 });
 

@@ -10,9 +10,9 @@
  *   - TPP-06: scroll-down/up cycles selectedIdx mod candidates.length
  *   - TPP-07: tap → canonical tool.invoke envelope ws.send + onClose
  *   - TPP-08: double-tap → onClose WITHOUT emitting
- *   - TPP-09: long-press → ignored (panel stays mounted)
+ *   - TPP-09: isAtTopBoundary → true at top, false once scrolled (ADR-0012 D-2)
  *   - TPP-10: getContainerCount → { image: 0, text: 1 }
- *   - TPP-11: getR1Hints returns { tap, scroll, longPressLabel } strings
+ *   - TPP-11: getR1Hints returns { tap, scroll, quickActionLabel } strings
  *   - TPP-12: draw() calls bridge.textContainerUpgrade with BERSAGLIO title
  *   - TPP-13: empty state renders 'Nessun bersaglio' hint
  *   - TPP-14: W-4 envelope round-trip — EnvelopeSchema + ToolInvocationEnvelopePayloadSchema
@@ -350,17 +350,15 @@ describe('TargetPickerPanel — TPP-08: double-tap cancels without emitting', ()
   });
 });
 
-// ─── TPP-09 — long-press (ignored) ────────────────────────────────────────────
+// ─── TPP-09 — isAtTopBoundary (ADR-0012 D-2) ─────────────────────────────────
 
-describe('TargetPickerPanel — TPP-09: long-press is ignored', () => {
-  it('TPP-09: long-press does not call ws.send or onClose', async () => {
-    const ws = makeWs();
-    const onClose = vi.fn();
-    const { panel } = makePanel({ ws, onClose });
+describe('TargetPickerPanel — TPP-09: isAtTopBoundary', () => {
+  it('TPP-09: true at selectedIdx 0, false after scroll-down advances the cursor', async () => {
+    const { panel } = makePanel();
     await panel.onMount();
-    panel.onEvent({ kind: 'long-press' });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(panel.isAtTopBoundary()).toBe(true);
+    panel.onEvent({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
   });
 });
 
@@ -376,13 +374,13 @@ describe('TargetPickerPanel — TPP-10: getContainerCount', () => {
 // ─── TPP-11 — getR1Hints ─────────────────────────────────────────────────────
 
 describe('TargetPickerPanel — TPP-11: getR1Hints', () => {
-  it('TPP-11: getR1Hints returns object with tap/scroll/longPressLabel strings', () => {
+  it('TPP-11: getR1Hints returns object with tap/scroll/quickActionLabel strings', () => {
     const { panel } = makePanel({ locale: 'it' });
     const hints = panel.getR1Hints?.();
     expect(hints).toBeDefined();
     expect(typeof hints?.tap).toBe('string');
     expect(typeof hints?.scroll).toBe('string');
-    expect(typeof hints?.longPressLabel).toBe('string');
+    expect(typeof hints?.quickActionLabel).toBe('string');
     expect(hints?.tap.length).toBeGreaterThan(0);
   });
 });

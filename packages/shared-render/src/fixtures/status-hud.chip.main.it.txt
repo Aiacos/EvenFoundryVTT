@@ -1,1 +1,1 @@
-R1: tap=cycle scroll=nav long=quick
+R1: tap=cycle scroll=nav qa=quick

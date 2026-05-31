@@ -10,7 +10,7 @@
  *   - MDP-06: tap when remainingFeet ≤ 0 is no-op (MDP-06 exhausted guard)
  *   - MDP-07: tap when not exhausted emits tool.invoke + calls onClose
  *   - MDP-08: double-tap calls onClose without emit
- *   - MDP-09: long-press is ignored at panel level
+ *   - MDP-09: isAtTopBoundary → always true (single-screen, over-scroll → Quick Action; ADR-0012 D-2)
  *   - MDP-10: getContainerCount returns { image: 0, text: 1 }
  *   - MDP-11: getR1Hints delegates to parseR1HintString(hud_r1_move_picker)
  *   - MDP-12: draw renders compass with ▶ before selected direction (default N)
@@ -213,13 +213,14 @@ describe('MoveDirectionPicker — MDP-08: double-tap cancels', () => {
   });
 });
 
-describe('MoveDirectionPicker — MDP-09: long-press ignored', () => {
-  it('MDP-09: long-press is ignored at panel level (no emit, no close)', async () => {
-    const { panel, ws, onClose, gestureBus } = makePanel();
+describe('MoveDirectionPicker — MDP-09: isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('MDP-09: single-screen compass is always at top (over-scroll → Quick Action)', async () => {
+    const { panel, gestureBus } = makePanel();
     await panel.onMount();
-    gestureBus.emit({ kind: 'long-press' });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(panel.isAtTopBoundary()).toBe(true);
+    // Cycling the compass direction does not introduce a vertical scroll cursor.
+    gestureBus.emit({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(true);
   });
 });
 
@@ -231,12 +232,12 @@ describe('MoveDirectionPicker — MDP-10: getContainerCount', () => {
 });
 
 describe('MoveDirectionPicker — MDP-11: getR1Hints', () => {
-  it('MDP-11: getR1Hints returns parsed tap/scroll/longPressLabel from hud_r1_move_picker', () => {
+  it('MDP-11: getR1Hints returns parsed tap/scroll/quickActionLabel from hud_r1_move_picker', () => {
     const { panel } = makePanel();
     const hints = panel.getR1Hints();
     expect(hints.tap).toBe('commit');
     expect(hints.scroll).toBe('direzione');
-    expect(hints.longPressLabel).toBe('annulla');
+    expect(hints.quickActionLabel).toBe('annulla');
   });
 });
 

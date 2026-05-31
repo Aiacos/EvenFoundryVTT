@@ -3,7 +3,7 @@
 │   AZIONE: Pozione di Guarigione                          │
 │                                                          │
 │   [tap]   Usa oggetto                                    │
-│   [long]  Mostra dettagli                                │
+│                                                          │
 │   [×2]    Annulla                                        │
 │                                                          │
 │                                                          │

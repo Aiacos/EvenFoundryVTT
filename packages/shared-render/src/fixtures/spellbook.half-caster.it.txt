@@ -6,7 +6,7 @@ L1   slot ░░░░ 0/4   ← disponibili
 L2   slot ░░   0/2   ← disponibili
    ◉ Aiuto               azione  tocco  vantaggio
 
-▼ scroll · long-press = lancia
+▼ scroll · ↑in cima = lancia
 
 
 

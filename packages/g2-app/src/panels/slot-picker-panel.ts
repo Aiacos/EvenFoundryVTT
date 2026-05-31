@@ -1,7 +1,7 @@
 /**
  * SlotPickerPanel — z=2 OverlayPanel for spell-slot level selection (upcast/downcast).
  *
- * Presented when a player long-presses a spell with more than one available slot level
+ * Presented when a player selects a spell with more than one available slot level
  * (i.e. `availableSlots.length > 1`). The player uses R1 scroll to cycle through
  * available levels and R1 tap to confirm, dispatching a canonical `tool.invoke`
  * envelope with `slot_level: <selected>`.
@@ -16,8 +16,8 @@
  *   both advance to next; Phase 10 may refine.
  * - Tap = confirm selection; emit tool.invoke + onCloseCb.
  * - Double-tap = cancel (close without emitting).
- * - Long-press = ignored at panel level (router-level QuickActionLongPressDispatcher
- *   still fires — accepted MVP per AOM-07 precedent).
+ * - Quick Action = opened by the router-level over-scroll dispatcher (swipe-up at
+ *   the top boundary, ADR-0012); the panel never opens it itself.
  *
  * ## Container strategy (Strategy A — ADR-0009 Amendment 1)
  *
@@ -224,7 +224,9 @@ export class SlotPickerPanel implements OverlayPanel {
    *                      re-draw panel.
    *   - `tap`          → emit canonical `tool.invoke` envelope with selected `slot_level` + onClose.
    *   - `double-tap`   → onClose WITHOUT emitting (cancel).
-   *   - `long-press`   → ignored at panel level (Phase 6 QuickActionLongPressDispatcher handles).
+   *
+   * Quick Action opens via over-scroll at the router level (ADR-0012) — the panel
+   * does not handle it.
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -268,13 +270,18 @@ export class SlotPickerPanel implements OverlayPanel {
         this.onCloseCb();
         break;
       }
-
-      case 'long-press': {
-        // Ignored at panel level — Phase 6 QuickActionLongPressDispatcher handles this.
-        // Accepted MVP behaviour per AOM-07 precedent (SPP-06).
-        break;
-      }
     }
+  }
+
+  /**
+   * Whether the panel is at its top boundary (ADR-0012 D-2).
+   *
+   * The slot picker renders all available levels on one screen with no vertical
+   * scroll cursor, so it is always at the top — any swipe-up is an over-scroll the
+   * router-level dispatcher routes to the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return true;
   }
 
   // ─── Layer contract ────────────────────────────────────────────────────────
@@ -312,10 +319,14 @@ export class SlotPickerPanel implements OverlayPanel {
    * R1 context chip hints for the status HUD chip (Phase 6 NAV-01 pattern).
    *
    * Uses the composite `hud_r1_slot_picker` key which stores a pre-composed
-   * chip string in `tap=<tap>  scroll=<scroll>  long=<long>` format per
+   * chip string in `tap=<tap>  scroll=<scroll>  qa=<quick-action>` format per
    * parseR1HintString convention.
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_slot_picker', this.locale));
   }
 
@@ -347,7 +358,7 @@ export class SlotPickerPanel implements OverlayPanel {
    * │ ▶ 4°  (3/3 disponibili)  ← upcast +1d6                          │
    * │   5°  (1/2 disponibili)  ← upcast +2d6                          │
    * │                                                                  │  (blank padding)
-   * │  [tap] conferma  [long] annulla                                  │  row 12 (hint row)
+   * │  [tap] conferma  [×2] annulla                                   │  row 12 (hint row)
    * └──────────────────────────────────────────────────────────────────┘  row 13
    * ```
    */

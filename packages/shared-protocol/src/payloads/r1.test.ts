@@ -3,7 +3,7 @@
  *
  * Covers the R1 wire-schema behavior block:
  *   - R1-01: valid tap payload parses successfully
- *   - R1-02: all five wire kinds parse (tap, scroll-up, scroll-down, long-press, double-tap)
+ *   - R1-02: all four wire kinds parse (tap, scroll-up, scroll-down, double-tap)
  *   - R1-03: unknown kind is rejected (enum guard)
  *   - R1-04: missing timestamp is rejected (timestamp required)
  *   - R1-05: string timestamp is rejected (must be integer)
@@ -30,8 +30,8 @@ describe('R1GesturePayloadSchema (R1-01..R1-05, R1-08..R1-10)', () => {
     expect(result.success).toBe(true);
   });
 
-  it('R1-02: parses all five wire kinds', () => {
-    const kinds = ['tap', 'scroll-up', 'scroll-down', 'long-press', 'double-tap'] as const;
+  it('R1-02: parses all four wire kinds', () => {
+    const kinds = ['tap', 'scroll-up', 'scroll-down', 'double-tap'] as const;
     for (const kind of kinds) {
       const result = R1GesturePayloadSchema.safeParse({ kind, timestamp: 1700000000000 });
       expect(result.success, `kind '${kind}' should parse`).toBe(true);
@@ -40,6 +40,11 @@ describe('R1GesturePayloadSchema (R1-01..R1-05, R1-08..R1-10)', () => {
 
   it('R1-03: rejects unknown kind (enum guard)', () => {
     const result = R1GesturePayloadSchema.safeParse({ kind: 'unknown', timestamp: 0 });
+    expect(result.success).toBe(false);
+  });
+
+  it('R1-03b: rejects retired long-press kind (ADR-0012)', () => {
+    const result = R1GesturePayloadSchema.safeParse({ kind: 'long-press', timestamp: 0 });
     expect(result.success).toBe(false);
   });
 

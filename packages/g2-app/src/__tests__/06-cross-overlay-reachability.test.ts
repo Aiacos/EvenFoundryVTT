@@ -13,7 +13,7 @@
  *   - Real StatusHudRenderer (for COR-15 chip assertions).
  *   - Real ToastQueueLayer (z=1.5) for COR-11/12 toast-survival assertions.
  *   - Real QuickActionMenuPanel constructed by `makeMenu` factory.
- *   - Real `attachQuickActionLongPress` wired to the bus.
+ *   - Real `attachQuickActionOverscroll` wired to the bus.
  *   - TestablePanelRouter with 5 production panels.
  *   - `StubCaptureLayer` (z=0) + `StubIdleLayer` (z=0.5) — matches PSM pattern.
  *
@@ -22,19 +22,19 @@
  * is tested separately in `r1-event-source.test.ts`.
  *
  * Tests (COR-* discriminator markers):
- *   COR-01  main HUD → CharacterSheet: long-press → tap [S] (ck 1)
- *   COR-02  main HUD → CombatTracker: long-press → tap [C] (ck 2)
- *   COR-03  main HUD → Log: long-press → tap [L] (ck 3)
- *   COR-04  main HUD → Spellbook: long-press → tap [B] (ck 4)
- *   COR-05  main HUD → Inventory: long-press → tap [I] (ck 5)
- *   COR-06  CharacterSheet → Combat: long-press → tap [C] (ck 6)
- *   COR-07  CharacterSheet → Quick Action menu: long-press (ck 7)
+ *   COR-01  main HUD → CharacterSheet: over-scroll → tap [S] (ck 1)
+ *   COR-02  main HUD → CombatTracker: over-scroll → tap [C] (ck 2)
+ *   COR-03  main HUD → Log: over-scroll → tap [L] (ck 3)
+ *   COR-04  main HUD → Spellbook: over-scroll → tap [B] (ck 4)
+ *   COR-05  main HUD → Inventory: over-scroll → tap [I] (ck 5)
+ *   COR-06  CharacterSheet → Combat: over-scroll → tap [C] (ck 6)
+ *   COR-07  CharacterSheet → Quick Action menu: over-scroll (ck 7)
  *   COR-08  Quick Action menu → CharacterSheet via tap [S] (ck 8)
  *   COR-09  main HUD → menu → [X] Close → main HUD restored (ck 9)
  *   COR-10  CharSheet suspended → [X] Close from menu → CharSheet restored (ck 10)
  *   COR-11  Toast survives menu open (ck 11) — ADR-0009 Amendment 1 Rule 2
  *   COR-12  Toast survives panel-to-panel transition via menu (ck 12)
- *   COR-13  conc-modal → long-press → menu replaces modal; console.warn emitted (ck 13)
+ *   COR-13  conc-modal → over-scroll → menu replaces modal; console.warn emitted (ck 13)
  *   COR-14  INV-1 fixture round-trip: menu over CombatTracker (ck 14)
  *   COR-15  context chip updates on each layer-mount/unmount transition (ck 15)
  *
@@ -66,8 +66,8 @@ import CombatTrackerPanel from '../panels/combat-tracker-panel.js';
 import { ConcentrationDropModalPanel } from '../panels/concentration-drop-modal.js';
 import InventoryPanel from '../panels/inventory-panel.js';
 import LogPanel from '../panels/log-panel.js';
-import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
+import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
 import SpellbookPanel from '../panels/spellbook-panel.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
@@ -202,7 +202,7 @@ const PRODUCTION_PANEL_MODULES: Record<string, () => Promise<{ default: PanelCon
  */
 function simulateGesture(
   bus: PanelGestureBus,
-  kind: 'tap' | 'scroll' | 'long-press' | 'double-tap',
+  kind: 'tap' | 'scroll' | 'double-tap',
   direction: 'up' | 'down' = 'up',
 ): void {
   if (kind === 'scroll') {
@@ -210,6 +210,16 @@ function simulateGesture(
   } else {
     bus.publish({ kind } as Parameters<typeof bus.publish>[0]);
   }
+}
+
+/**
+ * Publish an OVER-SCROLL (swipe-up at the top boundary) — the ADR-0012 D-2 gesture
+ * that opens the Quick Action menu. The freshly-mounted production panels report
+ * `isAtTopBoundary() === true` at `scrollOffset === 0`, and a null top layer falls
+ * back to the dispatcher's `?? true` default, so this reliably triggers the menu.
+ */
+function simulateOverscroll(bus: PanelGestureBus): void {
+  bus.publish({ kind: 'scroll', direction: 'up' });
 }
 
 /**
@@ -259,7 +269,7 @@ async function tapMenuItemByKey(
  *   - Real StatusHudRenderer (for chip assertions)
  *   - Real ToastQueueLayer (z=1.5 — toast-survival assertions)
  *   - TestablePanelRouter with 5 production panels
- *   - `attachQuickActionLongPress` wired to the bus
+ *   - `attachQuickActionOverscroll` wired to the bus
  */
 async function makeHarness() {
   const bridgeBundle = makeMockBridge();
@@ -317,8 +327,8 @@ async function makeHarness() {
       },
     );
 
-  // Wire the long-press dispatcher
-  const unsubLongPress = attachQuickActionLongPress(gestureBus, router, lm, makeMenu);
+  // Wire the over-scroll dispatcher
+  const unsubOverscroll = attachQuickActionOverscroll(gestureBus, router, lm, makeMenu);
 
   return {
     lm,
@@ -333,7 +343,7 @@ async function makeHarness() {
     idleLayer,
     captureLayer,
     makeMenu,
-    unsubLongPress,
+    unsubOverscroll,
   };
 }
 
@@ -358,14 +368,14 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   /**
    * Maps to Specs §7.14.4 ck 1 — main HUD → CharacterSheet in ≤2 gestures.
    *
-   * Gesture 1: long-press → opens Quick Action menu.
+   * Gesture 1: over-scroll → opens Quick Action menu.
    * Gesture 2: tap [S] → navigates to CharacterSheet.
    */
-  it('COR-01: ck 1 — main HUD → CharacterSheet in ≤2 gestures (long-press → tap [S])', async () => {
+  it('COR-01: ck 1 — main HUD → CharacterSheet in ≤2 gestures (over-scroll → tap [S])', async () => {
     const h = await makeHarness();
 
-    // From main HUD (no z=2 overlay) — long-press opens the menu
-    simulateGesture(h.gestureBus, 'long-press');
+    // From main HUD (no z=2 overlay) — over-scroll opens the menu
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -377,7 +387,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -386,10 +396,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   /**
    * Maps to Specs §7.14.4 ck 2 — main HUD → CombatTracker in ≤2 gestures.
    */
-  it('COR-02: ck 2 — main HUD → CombatTracker in ≤2 gestures (long-press → tap [C])', async () => {
+  it('COR-02: ck 2 — main HUD → CombatTracker in ≤2 gestures (over-scroll → tap [C])', async () => {
     const h = await makeHarness();
 
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -400,7 +410,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CombatTrackerPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -409,10 +419,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   /**
    * Maps to Specs §7.14.4 ck 3 — main HUD → Log in ≤2 gestures.
    */
-  it('COR-03: ck 3 — main HUD → Log in ≤2 gestures (long-press → tap [L])', async () => {
+  it('COR-03: ck 3 — main HUD → Log in ≤2 gestures (over-scroll → tap [L])', async () => {
     const h = await makeHarness();
 
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -421,7 +431,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(LogPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -430,10 +440,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   /**
    * Maps to Specs §7.14.4 ck 4 — main HUD → Spellbook in ≤2 gestures.
    */
-  it('COR-04: ck 4 — main HUD → Spellbook in ≤2 gestures (long-press → tap [B])', async () => {
+  it('COR-04: ck 4 — main HUD → Spellbook in ≤2 gestures (over-scroll → tap [B])', async () => {
     const h = await makeHarness();
 
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -442,7 +452,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(SpellbookPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -451,10 +461,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   /**
    * Maps to Specs §7.14.4 ck 5 — main HUD → Inventory in ≤2 gestures.
    */
-  it('COR-05: ck 5 — main HUD → Inventory in ≤2 gestures (long-press → tap [I])', async () => {
+  it('COR-05: ck 5 — main HUD → Inventory in ≤2 gestures (over-scroll → tap [I])', async () => {
     const h = await makeHarness();
 
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -463,7 +473,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(InventoryPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -482,7 +492,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
     // Long-press → menu opens (CharSheet suspended)
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -494,29 +504,29 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CombatTrackerPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
   // ─── COR-07: CharacterSheet → Quick Action menu ───────────────────────────
 
   /**
-   * Maps to Specs §7.14.4 ck 7 — long-press from CharacterSheet opens Quick Action menu.
+   * Maps to Specs §7.14.4 ck 7 — over-scroll from CharacterSheet opens Quick Action menu.
    *
-   * 1 gesture: long-press → menu mounted at z=2; CharSheet suspended.
+   * 1 gesture: over-scroll → menu mounted at z=2; CharSheet suspended.
    */
-  it('COR-07: ck 7 — CharacterSheet → Quick Action menu via long-press (1 gesture)', async () => {
+  it('COR-07: ck 7 — CharacterSheet → Quick Action menu via over-scroll (1 gesture)', async () => {
     const h = await makeHarness();
 
     await h.router.openPanel('character-sheet', h.deps);
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -533,7 +543,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     const h = await makeHarness();
 
     // Open menu from main HUD
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -547,7 +557,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // Stack is cleared (no suspended panel — menu was opened over main HUD)
     expect(h.router.getOverlayStackLength()).toBe(0);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -560,8 +570,8 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   it('COR-09: ck 9 — main HUD → menu → [X] Close → main HUD restored (no z=2)', async () => {
     const h = await makeHarness();
 
-    // From main HUD: long-press → menu
-    simulateGesture(h.gestureBus, 'long-press');
+    // From main HUD: over-scroll → menu
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -576,7 +586,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // z=0.5 must be restored (differential demolish inverse)
     expect(h.lm.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBe(h.idleLayer);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -597,7 +607,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
     // Long-press → menu pushes over CharSheet (CharSheet suspended)
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -611,7 +621,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
     expect(h.router.getOverlayStackLength()).toBe(0);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -637,8 +647,8 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     });
     expect(h.toastLayer.getVisibleCount()).toBeGreaterThanOrEqual(1);
 
-    // Open menu via long-press
-    simulateGesture(h.gestureBus, 'long-press');
+    // Open menu via over-scroll
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -646,7 +656,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // Toast must still be visible after menu opens
     expect(h.toastLayer.getVisibleCount()).toBeGreaterThanOrEqual(1);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -674,7 +684,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     await h.router.openPanel('character-sheet', h.deps);
 
     // Long-press → menu
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY) as QuickActionMenuPanel;
@@ -688,14 +698,14 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // Toast must still be visible after panel-to-panel transition
     expect(h.toastLayer.getVisibleCount()).toBeGreaterThanOrEqual(1);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
-  // ─── COR-13: conc-modal → long-press → menu replaces modal ───────────────
+  // ─── COR-13: conc-modal → over-scroll → menu replaces modal ───────────────
 
   /**
-   * Maps to Specs §7.14.4 ck 13 — conc-modal active when long-press fires.
+   * Maps to Specs §7.14.4 ck 13 — conc-modal active when over-scroll fires.
    *
    * Edge case: the concentration-drop modal is NOT in the overlayStack (it was
    * mounted directly by `attachConcConflictHandler`, not via `pushOverlay`).
@@ -705,7 +715,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
    * After menu closes (or any subsequent action), the state returns to main HUD
    * (overlayStack is empty).
    */
-  it('COR-13: ck 13 — conc-modal → long-press → console.warn + menu replaces modal', async () => {
+  it('COR-13: ck 13 — conc-modal → over-scroll → console.warn + menu replaces modal', async () => {
     const h = await makeHarness();
 
     // Mount a conc-modal directly (simulating conc-conflict-dispatcher)
@@ -733,7 +743,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)?.id).toBe('conc-drop-modal');
 
     // Long-press → dispatcher should warn and replace modal with menu
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     // console.warn must have been called with the conc-modal message
@@ -745,7 +755,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // Menu must now be mounted
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 
@@ -799,7 +809,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
    * Asserts chip text after each transition:
    *   - main HUD (no overlay): hud_r1_main string
    *   - CharSheet: includes sheet-specific R1 hints (tap=tab/cycle, scroll=nav)
-   *   - Quick Action menu: tap=apri/open, scroll=cambia/change, long=annulla/cancel
+   *   - Quick Action menu: tap=apri/open, scroll=cambia/change, qa=annulla/cancel
    *   - Back to main HUD: hud_r1_main again
    */
   it('COR-15: ck 15 — context chip updates on every layer-mount/unmount transition', async () => {
@@ -808,7 +818,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // State 1: main HUD (no overlay layer with getR1Hints) — chip uses hud_r1_main
     const chip1 = h.renderer.renderContextChip(h.lm, 'it');
     expect(chip1).toMatch(/^R1:/);
-    // Main HUD uses defaults from hud_r1_main (tap=cicla/scroll=nav/long=quick)
+    // Main HUD uses defaults from hud_r1_main (tap=cicla/scroll=nav/qa=quick)
     expect(chip1).toContain('tap=');
 
     // State 2: Open CharacterSheet
@@ -819,14 +829,14 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(chip2).toContain('tap=');
 
     // State 3: Long-press → Quick Action menu
-    simulateGesture(h.gestureBus, 'long-press');
+    simulateOverscroll(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
     const chip3 = h.renderer.renderContextChip(h.lm, 'it');
     expect(chip3).toMatch(/^R1:/);
-    // Quick Action menu provides its own hints — long=annulla (cancel in 'it')
-    expect(chip3).toContain('long=');
+    // Quick Action menu provides its own hints — qa=annulla (cancel in 'it')
+    expect(chip3).toContain('qa=');
 
     // State 4: [X] Close → back to main HUD
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY) as QuickActionMenuPanel;
@@ -844,7 +854,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // chip3 ≠ chip4 (Quick Action menu vs main HUD)
     expect(chip3).not.toBe(chip4);
 
-    h.unsubLongPress();
+    h.unsubOverscroll();
     h.toastLayer.destroy();
   });
 });

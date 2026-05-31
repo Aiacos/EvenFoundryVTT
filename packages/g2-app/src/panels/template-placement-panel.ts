@@ -4,13 +4,13 @@
  * Mounts when the bridge emits a `template.placement.requested` envelope (Plan 07-03
  * ACT-02). Displays the template type, spell name, template index, and a crosshair
  * position widget. R1 scroll adjusts position; R1 tap emits the confirmation; R1
- * long-press cancels placement.
+ * double-tap cancels placement (ADR-0012 D-3 — cancel = close/back for a transient modal).
  *
  * Implements {@link ../engine/layer-types.ts#OverlayPanel} verbatim:
  *
  *   - `onMount()`   — subscribes to {@link ../engine/panel-gesture-bus.ts#PanelGestureBus}
  *   - `onUnmount()` — unsubscribes (T-4b-01-03 no-leak mitigation)
- *   - `onEvent(g)`  — scroll → adjust position; tap → confirm + ws.send; long-press → cancel + ws.send
+ *   - `onEvent(g)`  — scroll → adjust position; tap → confirm + ws.send; double-tap → cancel + ws.send
  *
  * **Container strategy (Strategy A — ADR-0009 Amendment 1):**
  * Single text container `'overlay-block'` with newline-joined content.
@@ -20,14 +20,13 @@
  * - scroll-up   → y -= GRID_STEP (50px)
  * - scroll-down → y += GRID_STEP (50px)
  * - tap         → emit `tool.invoke` envelope (toolId: 'confirm-template-placement')
- * - long-press  → emit `template.placement.cancel` envelope + onClose
- * - double-tap  → ignored (panel stays mounted; consistent with other panels)
+ * - double-tap  → emit `template.placement.cancel` envelope + onClose
  *
  * **Wire format (tap confirm):**
  * The tap emits a `tool.invoke` envelope with the inner payload:
  * `{ toolId: 'confirm-template-placement', args: { placementId, templateIndex, x, y } }`
  *
- * **Wire format (long-press cancel):**
+ * **Wire format (double-tap cancel):**
  * Emits a `template.placement.cancel` envelope with:
  * `{ placementId }` — module discards the placement context.
  *
@@ -80,7 +79,7 @@ export interface TemplatePanelWebSocket {
 
 // ─── Close handler ────────────────────────────────────────────────────────────
 
-/** Invoked when the user confirms (tap) or cancels (long-press). */
+/** Invoked when the user confirms (tap) or cancels (double-tap). */
 export type TemplatePanelCloseHandler = () => void;
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
@@ -169,8 +168,7 @@ export class TemplatePlacementPanel implements OverlayPanel {
    * - scroll-up   → y -= GRID_STEP; re-draw
    * - scroll-down → y += GRID_STEP; re-draw
    * - tap         → emit `tool.invoke` confirm envelope + onClose
-   * - long-press  → emit `template.placement.cancel` envelope + onClose
-   * - double-tap  → ignored (panel stays mounted)
+   * - double-tap  → emit `template.placement.cancel` envelope + onClose (ADR-0012 D-3)
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -210,8 +208,9 @@ export class TemplatePlacementPanel implements OverlayPanel {
         break;
       }
 
-      case 'long-press': {
-        // Emit cancel envelope → module discards placement context
+      case 'double-tap': {
+        // ADR-0012 D-3: double-tap (= close/back) cancels the transient placement.
+        // Emit cancel envelope → module discards placement context.
         const cancelEnvelope = {
           proto: 'evf-v1' as const,
           seq: 0,
@@ -226,11 +225,18 @@ export class TemplatePlacementPanel implements OverlayPanel {
         this.onCloseCb();
         break;
       }
-
-      case 'double-tap':
-        // Ignored — panel stays mounted; no action.
-        break;
     }
+  }
+
+  /**
+   * INV-5 over-scroll boundary probe (ADR-0012 D-2).
+   *
+   * The template-placement panel is a single-screen transient modal with no
+   * scroll offset, so it is always at its top boundary — a swipe-up here is an
+   * over-scroll that the router-level dispatcher routes to the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return true;
   }
 
   // ─── Layer contract ────────────────────────────────────────────────────────
@@ -267,13 +273,18 @@ export class TemplatePlacementPanel implements OverlayPanel {
   /**
    * R1 context chip hints for the status HUD chip (Phase 6 NAV-01 pattern).
    *
-   * Returns localised hints showing scroll=pos, tap=confirm, long=cancel.
+   * Returns localised hints showing scroll=pos, tap=confirm, and the
+   * quick-action affordance label (over-scroll → Quick Action, ADR-0012 D-2).
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return {
       tap: getLabel('hud_r1_tmpl_tap', this.locale),
       scroll: getLabel('hud_r1_tmpl_scroll', this.locale),
-      longPressLabel: getLabel('hud_r1_tmpl_long', this.locale),
+      quickActionLabel: getLabel('hud_r1_tmpl_long', this.locale),
     };
   }
 
@@ -304,9 +315,12 @@ export class TemplatePlacementPanel implements OverlayPanel {
    * │  ║  X: 000  Y: 000           ║            │
    * │  ╚═══════════════════════════╝            │
    * │                                            │
-   * │   [R1] Conferma       [lng] Annulla        │
+   * │   [R1] Conferma       [×2] Annulla         │
    * └────────────────────────────────────────────┘
    * ```
+   *
+   * The cancel affordance is double-tap (ADR-0012 D-3); the hint string text is
+   * owned by the i18n slice (`tmpl_long_hint` key, retired-label naming).
    */
   private _buildLines(): string[] {
     const title = getLabel('tmpl_title', this.locale);
@@ -314,7 +328,7 @@ export class TemplatePlacementPanel implements OverlayPanel {
     const indexLabel = getLabel('tmpl_index_label', this.locale);
     const posLabel = getLabel('tmpl_position_label', this.locale);
     const tapHint = getLabel('tmpl_tap_hint', this.locale);
-    const longHint = getLabel('tmpl_long_hint', this.locale);
+    const cancelHint = getLabel('tmpl_long_hint', this.locale);
 
     // Top border with title
     const titleBracket = `[ ${title} ]`;
@@ -332,7 +346,7 @@ export class TemplatePlacementPanel implements OverlayPanel {
     const posLine = `X: ${xStr}  Y: ${yStr}`;
 
     // Button row
-    const btnRow = `${tapHint.padEnd(20)}${longHint}`;
+    const btnRow = `${tapHint.padEnd(20)}${cancelHint}`;
 
     const lines: string[] = [
       topBorder,

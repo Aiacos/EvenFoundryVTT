@@ -76,7 +76,7 @@ import { parseR1HintString } from './r1-hint-parser.js';
 export const DEFAULT_R1_HINTS = Object.freeze({
   tap: 'cycle',
   scroll: 'nav',
-  longPressLabel: 'quick',
+  quickActionLabel: 'quick',
 } as const);
 
 /**
@@ -91,7 +91,11 @@ export const DEFAULT_R1_HINTS = Object.freeze({
  */
 export interface R1HintProvider {
   /** Optional R1 hint data per Phase 6 Plan 03 contract (same shape as `Layer.getR1Hints`). */
-  getR1Hints?(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string };
+  getR1Hints?(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  };
 }
 
 /**
@@ -815,7 +819,7 @@ export class StatusHudRenderer {
    * total code-points — SR-CHIP-07 budget).
    *
    * **Cases 1+2+3 share the same output** to keep test assertions symmetrical:
-   * all three return `R1: tap=cycle  scroll=nav  long=quick` for the `'it'` locale
+   * all three return `R1: tap=cycle  scroll=nav  qa=quick` for the `'it'` locale
    * (the `hud_r1_main` canonical string parses to the same values as DEFAULT_R1_HINTS).
    *
    * @param layerManager The LayerManager to query, or `null` during early boot.
@@ -851,15 +855,15 @@ export class StatusHudRenderer {
       // Case 4: top layer provides hints — compose with single-space separators.
       // Pre-authored i18n strings already fit within 38 chars; dynamic values from
       // test mocks or future panels may still be truncated by the defensive check below.
-      chipContent = `tap=${hints.tap} scroll=${hints.scroll} long=${hints.longPressLabel}`;
+      chipContent = `tap=${hints.tap} scroll=${hints.scroll} qa=${hints.quickActionLabel}`;
     } else if (top === null) {
       // Cases 1+2: no LayerManager or no overlay — use hud_r1_main pre-authored string
       const raw = getLabel('hud_r1_main', locale);
       const parsed = parseR1HintString(raw);
-      chipContent = `tap=${parsed.tap} scroll=${parsed.scroll} long=${parsed.longPressLabel}`;
+      chipContent = `tap=${parsed.tap} scroll=${parsed.scroll} qa=${parsed.quickActionLabel}`;
     } else {
       // Case 3: top layer exists but predates getR1Hints — hard DEFAULT_R1_HINTS fallback
-      chipContent = `tap=${DEFAULT_R1_HINTS.tap} scroll=${DEFAULT_R1_HINTS.scroll} long=${DEFAULT_R1_HINTS.longPressLabel}`;
+      chipContent = `tap=${DEFAULT_R1_HINTS.tap} scroll=${DEFAULT_R1_HINTS.scroll} qa=${DEFAULT_R1_HINTS.quickActionLabel}`;
     }
 
     // Defensive truncation to 38 code-points (INV-1 §3.2 R1 segment budget)

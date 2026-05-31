@@ -9,7 +9,7 @@
  *   SPP-05: R1 tap emits canonical tool.invoke envelope with payload.toolId === 'cast-spell'
  *           AND payload.args.slot_level === selected level; calls onCloseCb; deterministic
  *           idempotencyKey via crypto.randomUUID()
- *   SPP-06: R1 long-press is ignored (no emit, no close)
+ *   SPP-06: isAtTopBoundary → always true (single-screen, over-scroll → Quick Action; ADR-0012 D-2)
  *   SPP-07: R1 double-tap calls onCloseCb WITHOUT emitting
  *   SPP-08: empty availableSlots throws at construction (precondition violation T-09-06)
  *   SPP-09: availableSlots filtered to only entries where value > 0 (caller responsibility —
@@ -266,17 +266,16 @@ describe('SlotPickerPanel', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // SPP-06: long-press is ignored
+  // SPP-06: isAtTopBoundary (ADR-0012 D-2)
   // ──────────────────────────────────────────────────────────────────────────
 
-  it('SPP-06: long-press does NOT emit or close (panel-level no-op)', async () => {
-    const ws = makeWs();
-    const onClose = vi.fn();
-    const { panel, gestureBus } = makePanel({ ws, onClose });
+  it('SPP-06: isAtTopBoundary is always true (single-screen; over-scroll → Quick Action)', async () => {
+    const { panel, gestureBus } = makePanel();
     await panel.onMount();
-    gestureBus.publish({ kind: 'long-press' });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(panel.isAtTopBoundary()).toBe(true);
+    // Cycling the selected slot does not introduce a vertical scroll cursor.
+    gestureBus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(true);
     await panel.onUnmount();
   });
 
@@ -495,12 +494,12 @@ describe('SlotPickerPanel', () => {
   // Additional: getR1Hints returns parseable chip
   // ──────────────────────────────────────────────────────────────────────────
 
-  it('getR1Hints() returns tap/scroll/longPressLabel from hud_r1_slot_picker key', () => {
+  it('getR1Hints() returns tap/scroll/quickActionLabel from hud_r1_slot_picker key', () => {
     const { panel } = makePanel({ locale: 'it' });
     const hints = panel.getR1Hints();
     expect(hints).toHaveProperty('tap');
     expect(hints).toHaveProperty('scroll');
-    expect(hints).toHaveProperty('longPressLabel');
+    expect(hints).toHaveProperty('quickActionLabel');
     expect(hints.tap).toBeTruthy();
     expect(hints.scroll).toBeTruthy();
   });
