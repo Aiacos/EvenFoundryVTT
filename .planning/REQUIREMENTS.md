@@ -44,6 +44,10 @@ Deferred to future milestones. Tracked but not in current roadmap.
 ### Hardware UAT
 - **UAT-01**: Execute the 35 software-complete `human_needed` SCs against real G2 + R1 + Even Hub; close ADR-0005 PROVISIONAL → ACCEPTED.
 
+### INV-2 Drift Corrections (surfaced 2026-05-31, canonical hub.evenrealities.com/docs/*)
+- **GEST-01** (IMPORTANT): Retire `long-press` — canonical docs confirm the gesture set is press/double-press/swipe-up/swipe-down only, NO duration-based input. Redesign Quick-Action menu invocation onto a supported gesture (candidate: double-press), remove `long-press` from the `R1Gesture` union + dispatchers + fixtures + tests, and update Specs §3.2/§10.0.1/§7.14.4 + showcase atomically (INV-3). Deep multi-file + hardware-gated ⇒ dedicated effort, not folded into Phase 19. Pairs naturally with Phase 20 (input/lifecycle).
+- **DIST-EHUB-01** (IMPORTANT): Author `packages/g2-app/app.json` Even Hub manifest (`package_id`, `edition: "202601"`, `entrypoint`, `permissions[]` incl. `network.whitelist` of origin-complete bridge + plugin-host URLs, `supported_languages`). Required for the WebView to load the plugin and reach the bridge; absent today ⇒ g2-app cannot run on real Even Hub. Deployment-origin-specific + hardware-gated.
+
 ## Out of Scope
 
 Explicitly excluded for v0.9.14.

@@ -143,7 +143,7 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 ### Constraints
 
 - **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image max 200×100 px, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
-- **Hardware R1**: BLE → smartphone Even App → G2; gesture solo `tap / scroll / long-press`; nessun input testuale possibile. — *Hardware Even Realities.*
+- **Hardware R1**: BLE → smartphone Even App → G2; gesture supportate (doc canonica) = `press / double-press / swipe-up / swipe-down`; **nessun long-press / input duration-based**; nessun input testuale. — *Hardware Even Realities (INV-2 re-verified 2026-05-31).* ⚠️ DRIFT noto: il codice usa ancora `long-press` per l'invocazione Quick-Action (assunzione `[SC-06-01 pending]` ora contraddetta) → fix schedulato GEST-01 (Specs changelog 2026-05-31). La doc canonica vince.
 - **Plugin execution model**: il codice plugin è servito da un server HTTP separato; l'Even Realities App lo carica nel WebView phone. Il G2 firmware NON esegue il nostro codice. — *Verbatim simulator README.*
 - **Network**: HTTPS obbligatorio in prod; ogni dominio outbound deve essere in `app.json` whitelist (origin completo, no wildcards). — *Vincolo Even Hub.*
 - **BLE bandwidth**: target ≥200 kbps sustained; <100 kbps blocca raster MVP (degrade a glyph-only). — *Phase 0 §10.0.3.*
