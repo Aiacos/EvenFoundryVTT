@@ -71,6 +71,31 @@ Set `EVF_PLUGIN_HOST_URL` in `deploy/.env` to the origin of your static host
 (e.g. `https://g2app.yourdomain.com`). The bridge uses this value for CORS — it
 must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 
+(The Compose project is named `evenfoundryvtt`; the container is `evf-bridge`.)
+
+### 4. Testing on G2 — dev mode vs the `.ehpk`
+
+Two different paths — don't confuse them (uploading an `.ehpk` as a "trial version" is
+what produces the Even app's **"trial version expired"** error):
+
+- **Dev mode (no expiry, hot reload)** — the right tool for iterating. Run the dev server
+  and load it on the glasses via QR:
+  ```bash
+  pnpm --filter @evf/g2-app dev        # vite dev server on :5173
+  pnpm --filter @evf/g2-app dev:qr     # QR for http://<LAN-IP>:5173 — scan in the Even app
+  ```
+  Phone + machine on the same LAN; the app hot-reloads on every save. Verbatim Even docs:
+  *"Your app loads on the glasses with hot reload support."*
+- **`.ehpk` (for shipping / short-lived private test)** — a portal trial upload **expires**.
+  Regenerate a fresh bundle (CI also attaches one to every Release):
+  ```bash
+  pnpm --filter @evf/g2-app pack:ehpk  # → packages/g2-app/evenfoundryvtt.ehpk
+  ```
+  A **permanent** install only comes from a portal submission Even approves.
+
+Full runbook: [`docs/release/evenhub.md`](docs/release/evenhub.md) ·
+wiki: [Testing & Distribution](https://github.com/Aiacos/EvenFoundryVTT/wiki/Testing-and-Distribution).
+
 ---
 
 ## In one sentence

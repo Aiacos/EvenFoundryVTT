@@ -45,3 +45,6 @@ Thumbs.db
 # deploy: never commit real secrets (deploy/.env.example is the template)
 deploy/.env
 deploy/.env.local
+
+# Even Hub package bundles — build artifacts, regenerated via `pnpm --filter @evf/g2-app pack:ehpk`
+*.ehpk
