@@ -1,6 +1,6 @@
 {
   "name": "@evf/validation-harness",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "EVF validation harness — Phase 0 hardware/SDK validation tests + future re-validation entry point. Folded from tests/phase-0/ during Phase 1 per D-15.",
