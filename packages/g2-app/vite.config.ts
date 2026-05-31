@@ -16,16 +16,23 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // `root: 'src'` makes the HTML entries resolve relative to src/, so Vite emits
+  // them at the dist ROOT (dist/index.html, dist/wizard/wizard.html) instead of
+  // leaking the source path into the bundle (dist/src/index.html). This keeps the
+  // Even Hub manifest entrypoint the canonical `index.html` — see app.json and
+  // docs/release/evenhub.md (DIST-EHUB-01).
+  root: 'src',
   build: {
     target: 'es2023',
-    outDir: 'dist',
+    // outDir is relative to `root`, so '../dist' lands at the package root.
+    outDir: '../dist',
     emptyOutDir: true,
     rollupOptions: {
       input: {
         // Phase 4a G2 plugin host entry (placeholder — real implementation Phase 4a)
-        main: 'src/index.html',
+        main: 'index.html',
         // Phase 2 phone WebView wizard entry
-        wizard: 'src/wizard/wizard.html',
+        wizard: 'wizard/wizard.html',
       },
     },
   },
