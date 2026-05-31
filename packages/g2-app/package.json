@@ -6,7 +6,7 @@
   "description": "EVF G2 plugin host bundle — served via static HTTP to Even Realities App WebView (Phase 4a fills real implementation).",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173",
     "test": "vitest --run --project g2-app --root ../..",
     "typecheck": "tsc --noEmit",
     "pack:ehpk": "vite build && npx --yes @evenrealities/evenhub-cli pack app.json dist -o evenfoundryvtt.ehpk",

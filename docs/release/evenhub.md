@@ -83,15 +83,41 @@ step stubbed at the bottom of `build-g2app-zip` in `foundry-module-release.yml` 
 
 ## One-time prerequisites before the first submission
 
-1. **Set the real network whitelist** in `packages/g2-app/app.json` → `permissions[0].whitelist`.
-   Replace the `REPLACE-WITH-YOUR-ORIGIN.example` placeholders with the **origin-complete,
-   wildcard-free** URLs of your deployed bridge and plugin host (e.g.
-   `https://evf-bridge.yourhome.net`, `https://evf-plugin.yourhome.net`). The WebView
-   enforces this list at runtime; wrong/placeholder origins → the plugin cannot reach the
-   bridge.
-2. **Verify `min_app_version`** (`2.0.0` placeholder) against your target Even Realities
-   App version, and `package_id` availability:
+### Deploy bridge + plugin host over HTTPS (Caddy)
+
+The Even Hub WebView requires **HTTPS with a valid cert** (self-signed is rejected on the
+phone), so the bridge and the static plugin host must be served over real HTTPS origins.
+A turnkey Caddy reverse proxy (auto Let's Encrypt) is provided:
+
+```bash
+# 1. real, publicly-resolvable hostnames + secret in deploy/.env
+cp deploy/.env.example deploy/.env
+#    set EVF_INTERNAL_SECRET (openssl rand -base64 32),
+#        EVF_BRIDGE_HOST=evf-bridge.yourdomain.net,
+#        EVF_PLUGIN_HOST=evf-plugin.yourdomain.net,
+#        EVF_PLUGIN_HOST_URL=https://evf-plugin.yourdomain.net   (bridge CORS)
+# 2. build the plugin host, then bring up bridge + Caddy
+pnpm --filter @evf/g2-app build
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.https.yml up -d --build
+```
+
+DNS A records for both hostnames must point at the host, with ports **80 + 443** reachable.
+**No public IP / homelab?** Front Caddy with a tunnel instead of opening ports:
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+or **Tailscale Funnel** (`tailscale funnel 443`) — both give a valid HTTPS hostname without
+port-forwarding. Use that hostname as `EVF_PLUGIN_HOST` / `EVF_BRIDGE_HOST`.
+
+### Then sync the manifest + verify
+
+1. **Whitelist** — derive `app.json` → `permissions[0].whitelist` from those hostnames
+   (origin-complete, no wildcards — the WebView enforces it at runtime):
+   ```bash
+   node deploy/sync-app-whitelist.mjs       # reads deploy/.env → writes the two https origins
+   ```
+2. **Verify `min_app_version`** (`2.0.0` placeholder) against your target Even Realities App
+   version, and `package_id` availability (online, after `evenhub login`):
    `npx @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/g2-app/dist -c`.
+3. **Repackage** with the real whitelist: `pnpm --filter @evf/g2-app pack:ehpk`.
 
 ## Manual submission steps
 
