@@ -6,6 +6,10 @@ on:
   push:
     branches: [main, develop]
   pull_request:
+    # `edited` is required so commit-lint-pr-title re-evaluates when a PR title
+    # is corrected — without it the default [opened, synchronize, reopened] left
+    # a stale title-lint result that no title edit could clear (only a new push).
+    types: [opened, synchronize, reopened, edited]
     branches: [main, develop]
 
 jobs:

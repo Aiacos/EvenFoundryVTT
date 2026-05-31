@@ -26,9 +26,19 @@
  *
  * # Auth
  *
- * The WS to `/v1/audio/stream` uses `Authorization: Bearer <bearer>` — the same
- * 24h bearer paired via QR scan in Phase 2 (NOT Deepgram's `Token` scheme, which
- * is only used by the bridge-to-Deepgram WS in deepgram-stt.ts).
+ * The WS to `/v1/audio/stream` uses a dual-channel bearer strategy:
+ *
+ *   1. **`?token=` query param** (production WKWebView path) — browser WebSocket
+ *      ignores the `headers` option, so the token is appended as a URL-encoded
+ *      query parameter. The bridge reads this as a fallback when the Authorization
+ *      header is absent/malformed (mirrors the `?secret=` pattern in debug-routes.ts).
+ *   2. **`Authorization: Bearer <bearer>` header** (Node-ws / test path) — retained
+ *      for the `_wsFactory` test injection path where `ws` honours headers.
+ *
+ * Both channels carry the same 24h bearer paired via QR scan in Phase 2 (NOT
+ * Deepgram's `Token` scheme, which is only used by the bridge-to-Deepgram WS in
+ * deepgram-stt.ts). The token is NEVER logged — the log line uses a token-stripped
+ * URL (base path only).
  *
  * @see packages/bridge/src/voice/audio-stream-route.ts (route this uploads to)
  * @see packages/bridge/src/voice/deepgram-stt.ts (downstream Deepgram WS)
@@ -72,15 +82,41 @@ export interface AudioCaptureHandle {
 // ─── URL helper ───────────────────────────────────────────────────────────────
 
 /**
- * Convert an HTTP(S) bridge URL to a WebSocket URL for `/v1/audio/stream`.
+ * Convert an HTTP(S) bridge URL to a WebSocket URL for `/v1/audio/stream`,
+ * appending the bearer token as a `?token=` URL-encoded query parameter.
+ *
+ * Browser/WKWebView WebSocket ignores the `headers` option (only Node's `ws`
+ * package honours it), so the bearer must travel as a query param for production
+ * use. The header path is retained for the Node-ws test injection path.
+ *
+ * The token-bearing URL must NEVER appear in logs — callers should derive a
+ * token-free base URL for logging (call this function before token appending, or
+ * strip the query string before passing to the logger).
+ *
+ * @param bridgeUrl - HTTP(S) base URL of the bridge, e.g. `'http://localhost:8910'`
+ * @param bearer    - 24h opaque bearer from QR-pairing (Phase 2). URL-encoded and
+ *                    appended as `?token=`. Example value: `'abc123'` (placeholder).
  *
  * @example
- * buildAudioStreamUrl('http://localhost:8910')  → 'ws://localhost:8910/v1/audio/stream'
- * buildAudioStreamUrl('https://bridge.example.com') → 'wss://bridge.example.com/v1/audio/stream'
+ * buildAudioStreamUrl('http://localhost:8910', '<token>')
+ *   → 'ws://localhost:8910/v1/audio/stream?token=%3Ctoken%3E'
+ * buildAudioStreamUrl('https://bridge.example.com', '<token>')
+ *   → 'wss://bridge.example.com/v1/audio/stream?token=%3Ctoken%3E'
  */
-function buildAudioStreamUrl(bridgeUrl: string): string {
-  const url = bridgeUrl.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://');
-  const trimmed = url.endsWith('/') ? url.slice(0, -1) : url;
+export function buildAudioStreamUrl(bridgeUrl: string, bearer: string): string {
+  const wsUrl = bridgeUrl.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://');
+  const trimmed = wsUrl.endsWith('/') ? wsUrl.slice(0, -1) : wsUrl;
+  return `${trimmed}/v1/audio/stream?token=${encodeURIComponent(bearer)}`;
+}
+
+/**
+ * Derive a token-free base URL for logging (strips `?token=...` if present).
+ *
+ * @internal Used only to produce safe log strings — never logged with the token.
+ */
+function _buildAudioStreamBaseUrl(bridgeUrl: string): string {
+  const wsUrl = bridgeUrl.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://');
+  const trimmed = wsUrl.endsWith('/') ? wsUrl.slice(0, -1) : wsUrl;
   return `${trimmed}/v1/audio/stream`;
 }
 
@@ -136,9 +172,10 @@ export function startAudioCapture(opts: AudioCaptureOpts): AudioCaptureHandle {
       }
 
       const bridge = bridgeFactory();
-      const streamUrl = buildAudioStreamUrl(opts.bridgeUrl);
+      const streamUrl = buildAudioStreamUrl(opts.bridgeUrl, opts.bearer);
 
-      log.info?.(`[audio-capture] opening mic + WS to ${streamUrl}`);
+      // Log only the token-free base path — NEVER log the bearer token.
+      log.info?.(`[audio-capture] opening mic + WS to ${_buildAudioStreamBaseUrl(opts.bridgeUrl)}`);
 
       // 1. Enable the G2 mic via SDK.
       await bridge.audioControl(true);

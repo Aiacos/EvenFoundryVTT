@@ -1,16 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.13
-milestone_name: Sheet Data Completion + Polish
-status: archived
-last_updated: "2026-05-18T16:00:00.000Z"
-last_activity: 2026-05-18 -- v0.9.13 milestone shipped, audited, completed, cleaned up; awaiting new milestone
+milestone: v0.9.14
+milestone_name: Release & Distribution + deferred hardening
+status: completed
+stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
+last_updated: "2026-05-30T23:24:05.487Z"
+last_activity: 2026-05-30 -- Phase 19 marked complete
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** No active milestone — v0.9.13 closed cleanly (audit ✅ → complete ✅ → cleanup ✅ → tag `v0.9.13` pushed). Next step: `/gsd-new-milestone` to open v0.9.14 (likely candidate: Skill Check + Saving Throw write path — CI Gate 8 17 → 18 socketlib handler).
+**Current focus:** Phase 19 — Release & Distribution
 
 ## Current Position
 
-Phase: — (no active milestone)
-Plan: —
-Status: v0.9.13 ARCHIVED — phase dirs under `.planning/milestones/v0.9.13-phases/`; REQUIREMENTS.md removed (fresh for next milestone); tag `v0.9.13` pushed; PROJECT.md + ROADMAP.md reflect archived state
-Last activity: 2026-05-25 - Completed quick task 260525-oao: GitFlow + automated release tooling
+Phase: 19 — COMPLETE
+Plan: 1 of 2
+Status: Phase 19 complete
+Last activity: 2026-05-30 -- Phase 19 marked complete
 
 ## Performance Metrics
 
@@ -217,6 +218,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 |---|-------------|------|--------|-----------|
 | 260525-oao | GitFlow CI triggers + Changesets Version-PR release automation + Biome pre-commit auto-fix + INV-3 branch-strategy coherence | 2026-05-25 | be12f28 | [260525-oao-adottare-gitflow-branch-develop-release-](./quick/260525-oao-adottare-gitflow-branch-develop-release-/) |
 | 260525-owx | Vitest branch coverage 78.11% → 80.72% (CI gate green): extract bearerEquals to tested helper + 3 justified boot/worker exclusions + real branch tests | 2026-05-25 | 9917b81 | [260525-owx-branch-coverage-vitest-a-80-gate-verde-t](./quick/260525-owx-branch-coverage-vitest-a-80-gate-verde-t/) |
+| 260530-x2b | Fix 3 G2 SDK-conformance findings from skill audit (sdk-reference/device-features/glasses-ui): **B1** portrait override `map-base-layer.ts` — removed `as unknown as` cast hiding 3 SDK violations (phantom `index` field, text-container `map-capture` → image tile `map-tile-${slot}`, unchecked result) now typed `ImageRawDataUpdate` + `ImageRawDataUpdateResult.isSuccess`; **B2** (prod bug) audio-stream WS bearer dropped in WKWebView (`{headers}` ignored by browser WebSocket) → g2-app appends URL-encoded `?token=`, bridge `audio-stream-route.ts` reads `?token=` query-param fallback (mirrors `/debug/stream` `?secret=`), +test ASR-09; **B3** INV-2 doc — R1 wire kinds are bridge-normalized strings (SDK `OsEventTypeList`+`EventSourceType.TOUCH_EVENT_FROM_RING`), not "flat SDK enums". 2859/2859 tests, CI Gate 8=17 (no socketlib handlers), patch changeset @evf/g2-app+@evf/bridge. | 2026-05-30 | e3c2a58 | [260530-x2b-fix-3-g2-sdk-conformance-findings-from-s](./quick/260530-x2b-fix-3-g2-sdk-conformance-findings-from-s/) |
 
 > **GitFlow status (2026-05-25):** `develop` is the permanent integration branch. Branch protection on `main` + `develop`: PR-only, no force-push/delete, conversation-resolution, **`quality-gates` required status check (strict:false)**, `enforce_admins: false` (admin escape hatch + auto-mirror compatibility). PR #2 (coverage fix, task 260525-owx) merged to `develop` with full green CI — fixed a chain of 3 latent CI gates (coverage, `changeset:status --since=origin/main`, ADR-0011 guard comment false-positive). `develop` CI is green.
 >

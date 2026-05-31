@@ -8,8 +8,11 @@
  * # Flow
  *
  * 1. WS upgrade received at `/v1/audio/stream`
- * 2. Extract `Authorization: Bearer <token>` header, validate via TokenCache
- *    - Invalid/missing → close 1008 'invalid-bearer'
+ * 2. Extract bearer from `Authorization: Bearer <token>` header OR `?token=` query param.
+ *    Browser/WKWebView WebSocket cannot set custom headers (ignores the `headers` option);
+ *    the `?token=` query param is the production auth path (mirrors `?secret=` in
+ *    debug-routes.ts). Header path is retained for the Node-`ws` test injection path.
+ *    - Invalid/missing (neither source yields a well-formed bearer) → close 1008 'invalid-bearer'
  * 3. Check `deepgramStt.isEnabled()`
  *    - Disabled → close 1011 'voice-disabled' (bridge soft-fail — Phase 11 precedent)
  * 4. `deepgramStt.connect(sessionId)` → create a live DeepgramStream
@@ -22,7 +25,10 @@
  * # Security (T-12-07)
  *
  * tokenCache.validate(bearer) at WS upgrade — same gate as existing /ws route.
- * Without valid bearer → close(1008, 'invalid-bearer').
+ * Bearer resolved from: (1) `Authorization: Bearer <t>` header (preferred — Node-ws path);
+ * (2) `?token=` query param fallback (required for browser/WKWebView production path).
+ * The token is NEVER logged.
+ * Without a valid bearer from either source → close(1008, 'invalid-bearer').
  *
  * @see ./deepgram-stt.ts (DeepgramAdapter + DeepgramStream)
  * @see ../ws/delta-emitter.ts (DeltaEmitter.emitDelta)
@@ -70,22 +76,36 @@ export async function registerAudioStreamRoute(opts: RegisterAudioStreamRouteOpt
         close: (code: number, reason: string) => void;
         on: (event: string, handler: (...args: unknown[]) => void) => void;
       },
-      req: { headers: Record<string, string | string[] | undefined> },
+      req: { headers: Record<string, string | string[] | undefined>; url?: string },
     ) => {
       // Handler is sync — async work runs inside via void-wrapped async IIFE.
       void (async () => {
-        // 1. Extract bearer token from Authorization header.
+        // 1. Extract bearer token from Authorization header OR ?token= query param.
+        //
+        //    Browser/WKWebView WebSocket ignores the `headers` option — only Node's
+        //    `ws` package honours it. In production, the token arrives as `?token=`
+        //    (appended by audio-capture.ts buildAudioStreamUrl). The header path is
+        //    retained for the Node-ws test injection path (belt-and-suspenders).
+        //    Token is NEVER logged — log.warn messages use only status codes / labels.
+        //
+        //    Mirror of debug-routes.ts:308-312 `?secret=` pattern.
         const authHeader =
           (req.headers['authorization'] as string | undefined) ??
           (req.headers['Authorization'] as string | undefined);
 
-        if (!authHeader?.startsWith('Bearer ')) {
-          logger.warn('audio-stream-route: missing or malformed Authorization header');
+        const headerBearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+
+        // Parse `?token=` from the request URL (fallback for browser WS).
+        const reqUrl = new URL(req.url ?? '/v1/audio/stream', 'http://localhost');
+        const queryToken = reqUrl.searchParams.get('token') ?? undefined;
+
+        const bearer = headerBearer ?? queryToken;
+
+        if (!bearer) {
+          logger.warn('audio-stream-route: missing or malformed bearer (no header, no ?token=)');
           socket.close(1008, 'invalid-bearer');
           return;
         }
-
-        const bearer = authHeader.slice(7); // strip "Bearer "
 
         // 2. Validate bearer via TokenCache (same gate as /ws route).
         const validation = await tokenCache.validate(bearer);
