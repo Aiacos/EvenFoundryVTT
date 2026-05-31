@@ -1,5 +1,17 @@
 # @evf/g2-app
 
+## 0.1.1
+
+### Patch Changes
+
+- cfc02e5: Fix `app.json` `entrypoint` to `src/index.html` — Vite emits the entry at
+  `dist/src/index.html`, so the Even Hub `pack` step now resolves it correctly
+  (verified: `Successfully packed ... (99940 bytes)`).
+- 83d0c0c: Add Even Hub manifest (`app.json`) for the g2-app plugin + CI packaging pipeline
+  (`evenhub-pack.yml`) that builds and packs a submission-ready `.ehpk` on every merge
+  to main. Closes DIST-EHUB-01 (portal submission remains manual — Even Hub has no
+  non-interactive CI submit). See `docs/release/evenhub.md`.
+
 ## 0.1.0
 
 ### Minor Changes
