@@ -91,7 +91,12 @@ describe('scheduleBearerRotation', () => {
     // Stub Foundry globals before importing the module
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('game', {
       settings: {
