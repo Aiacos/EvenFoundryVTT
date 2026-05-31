@@ -12,7 +12,7 @@ tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 
 **EvenFoundryVTT** porta una sessione di D&D 5e su FoundryVTT direttamente sugli occhiali AR **Even Realities G2**, controllata dall'**anello R1**.
 
-**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, scroll, long-press), tutto sincronizzato in real-time con FoundryVTT tramite un Bridge service. Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
+**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, swipe-up, swipe-down, double-tap), tutto sincronizzato in real-time con FoundryVTT tramite un Bridge service. Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
 
 **Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 e il bridge non integrano AI direttamente — restano deterministici.
 
@@ -115,7 +115,7 @@ Il codice (quando inizierà ad esistere, post-Phase 0) deve essere **sempre puli
 
 ### 1.1 Vision
 
-Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa di carta, miniature, altri giocatori). Tutto ciò che oggi richiede laptop o tablet — scheda personaggio, combat tracker, mappa digitale, tiri di dado — appare proiettato come **HUD glanceable in basso/laterale** sul G2, esattamente come un monitor "in volo" davanti a lui. L'azione è guidata da **gesture R1** (tap, scroll, long-press) sui chip di navigazione e sui bottoni quick-action.
+Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa di carta, miniature, altri giocatori). Tutto ciò che oggi richiede laptop o tablet — scheda personaggio, combat tracker, mappa digitale, tiri di dado — appare proiettato come **HUD glanceable in basso/laterale** sul G2, esattamente come un monitor "in volo" davanti a lui. L'azione è guidata da **gesture R1** (tap, swipe-up, swipe-down, double-tap) sui chip di navigazione e sui bottoni quick-action.
 
 **Modello UI** (ispirato a Foundry desktop): la **mini-mappa è il layer di base sempre visibile**; una **scheda di stato compatta del PG** è ancorata a destra in modo permanente (HP, AC, action economy, slot, condizioni); le altre viste (Sheet completa, Combat tracker, Log, Spellbook, Inventory, Clarify) si aprono come **overlay** sopra la mappa, dismissibili con tap R1. Niente cambio "pagina" hard — è una sola UI con layer impilati, esattamente come una sessione Foundry classica davanti al monitor.
 
@@ -127,7 +127,7 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 - ✅ Combat tracker con turno corrente, iniziativa, effetti
 - ✅ Mini-mappa text-based centrata sul player token
 - ✅ Log eventi sintetico, spellbook e inventory consultabili
-- ✅ Navigazione gesture-based via R1 (tap, scroll, long-press)
+- ✅ Navigazione gesture-based via R1 (tap, swipe-up, swipe-down, double-tap)
 - ✅ **Esecuzione azioni base manuali**: aprire Spellbook → scroll allo spell → tap-cast → confermare target via R1 scroll+tap
 
 ### 1.3 Obiettivi Secondari (v2)
@@ -136,7 +136,7 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 - ⏳ Reaction handling automatico (Shield, Counterspell)
 - ⏳ Notifiche push (turno, concentrazione, HP critici)
 - ⏳ Sync biometrici R1 → atmosfera narrativa (HR alto in combat → audio cue)
-- ⏳ **Voice/AI control via MCP server** (modulo opzionale, vedi §5.7) — push-to-talk con long-press R1, frase naturale → tool MCP → azione Foundry. Architettura plug-and-play: qualunque client MCP-compatibile può guidare il sistema.
+- ⏳ **Voice/AI control via MCP server** (modulo opzionale, vedi §5.7) — push-to-talk via Quick Action (over-scroll: swipe-up al top), frase naturale → tool MCP → azione Foundry. Architettura plug-and-play: qualunque client MCP-compatibile può guidare il sistema.
 
 ### 1.4 Non-Goals (fuori MVP)
 
@@ -167,7 +167,7 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 ┌─────────────────────────────────────────────────────┐
 │           EvenFoundryVTT G2 App (HTML/JS plugin)        │
 │  • Layered UI: map base + status HUD + overlays     │
-│  • R1 event handler (tap/scroll/long-press)         │
+│  • R1 event handler (tap/swipe-up/swipe-down/2-tap) │
 │  • Plugin panels: sheet, combat, log, spell, inv    │
 └──────────┬──────────────────────────────────────────┘
            │ HTTPS / WebSocket (CORS-allowed)
@@ -308,7 +308,7 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 | Parametro | Valore |
 |---|---|
 | Connessione | BLE → smartphone Even App → G2 |
-| Gesture | terminologia ufficiale Even: **tap, scroll, long-press** (la pagina prodotto `/smart-ring` cita testualmente "tap, scroll, long-press gestures" — coincide 1:1 con la spec, no remap necessario) |
+| Gesture | set canonico Even Hub (`guides/input-events`): **press / double-press / swipe-up / swipe-down** — quattro eventi discreti, **nessun long-press / nessun input duration-based** (re-verified 2026-05-31, ADR-0012). Il R1 espone lo **stesso set di 4 gesture degli occhiali**. La pagina prodotto `/smart-ring` cita "tap, scroll, long-press" come marketing, ma la doc dev canonica vince |
 | Biometria | HR, HRV, SpO₂, respiratory rate, skin temp, sleep, calorie, passi |
 | Materiali | zirconia ceramica + **medical-grade stainless steel** lining, anti-fingerprint coating |
 | Resistenza | IP68 (50 m / 30 min) |
@@ -320,12 +320,12 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 
 | Gesture R1 | Azione |
 |---|---|
-| Tap singolo | conferma / espandi elemento focus |
-| Tap doppio | torna a Page default (Sheet) |
-| Scroll su/giù | scroll verticale contenuto pagina |
-| Scroll dx/sx | cambio pagina (Sheet ↔ Combat ↔ Map ↔ Log) |
-| Long-press (≥500 ms) | Apri **Quick Action menu** (§7.13a) — entry point per overlay e azioni |
-| Long-press + scroll | quick-action contestuale (es. zoom mappa) |
+| Tap singolo (press) | conferma / espandi elemento focus / azione primaria del panel |
+| Tap doppio (double-press) | **EXIT** root-page (`bridge.shutDownPageContainer(1)`) sulla mappa · close/back sugli overlay |
+| Swipe-up | scroll su contenuto pagina; **al top boundary = over-scroll** → apri **Quick Action menu** (§7.13a) |
+| Swipe-down | scroll giù contenuto pagina |
+
+> **Over-scroll = invocazione Quick Action** (ADR-0012). Non esiste un quinto gesture: il menu si apre quando il layer in focus riceve uno `swipe-up` mentre è già al proprio top boundary. I layer non scrollabili sono sempre "al top", quindi un singolo `swipe-up` apre il menu. Cambio pagina/overlay non avviene più via swipe laterale (l'hardware non espone swipe dx/sx): la navigazione tra panel passa dal Quick Action menu.
 
 ### 3.3 Networking (verificato su `hub.evenrealities.com/docs/guides/networking`)
 
@@ -570,7 +570,7 @@ Eventi ring espressi al plugin via Even App:
 | `r1.longPress` | `{ phase: "start"\|"end", duration_ms }` |
 | `r1.biometrics` | `{ hr, hrv, spo2, ts }` (low-frequency push) |
 
-⚠️ La superficie esatta degli eventi R1 nel SDK Even Hub non è ancora documentata pubblicamente al 2026-05; il design assume gli eventi standard tap/scroll/long-press confermati dalla pagina prodotto. **Validation con SDK reale = milestone 0.**
+⚠️ La superficie esatta degli eventi R1 nel SDK Even Hub è il set canonico a 4 gesture (`press / double-press / swipe-up / swipe-down`, `guides/input-events`, ADR-0012); il design non assume più alcun long-press. **Validation con SDK reale = milestone 0.**
 
 ### 4.5 STT (Speech-to-Text) — V2 opzionale
 
@@ -698,7 +698,7 @@ Vedi §7 per UI dettagliata.
 2. **Persistent Status HUD** — corner card destra, sempre visibile in gameplay
 3. **Overlay slot** — un panel modulare alla volta sopra la mappa (Sheet, Combat, Log, Spellbook, Inventory, Action confirm)
 
-Pagine separate solo per: `Boot` (setup iniziale, MVP) e `QuickAction` (modal full-screen aperto via long-press, MVP). `VoiceModal` solo V2 — non incluso nel MVP file layout.
+Pagine separate solo per: `Boot` (setup iniziale, MVP) e `QuickAction` (modal full-screen aperto via over-scroll — swipe-up al top boundary, MVP). `VoiceModal` solo V2 — non incluso nel MVP file layout.
 
 **File layout** (panel-based, modulare):
 
@@ -759,7 +759,7 @@ g2-app/
 │  ├─ pages/
 │  │   ├─ boot.js                 # standalone page (MVP)
 │  │   ├─ main.js                 # layered gameplay page (MVP)
-│  │   ├─ quick-action.js         # modal long-press menu (MVP)
+│  │   ├─ quick-action.js         # modal over-scroll menu (MVP)
 │  │   └─ voice-modal.js          # full-screen PTT (V2 only — not in MVP build)
 │  └─ config/
 │      ├─ schema.json             # versioned settings schema
@@ -1211,7 +1211,7 @@ Il G2 rende **verde monocromatico 4-bit**. Trattiamo questa limitazione come fea
 
 - **Mappa = base layer permanente** (sempre visibile, è il mondo di gioco — come il canvas Foundry desktop)
 - **Status HUD = corner persistente** (HP/AC/azioni/slot/condizioni — sempre visibile)
-- **Tutti gli altri panel = popup/finestre fluttuanti** sopra la mappa (Sheet con i suoi 6 tab interni, Combat, Log, Spellbook, Inventory, Map ctrl, Quick Action) — esattamente lo stesso pattern delle finestre Foundry desktop: aprire un panel = aprire una finestra; chiuderla = tap-doppio o long-press → cancel
+- **Tutti gli altri panel = popup/finestre fluttuanti** sopra la mappa (Sheet con i suoi 6 tab interni, Combat, Log, Spellbook, Inventory, Map ctrl, Quick Action) — esattamente lo stesso pattern delle finestre Foundry desktop: aprire un panel = aprire una finestra; chiuderla = tap-doppio (close/back)
 - **Window chrome coerente**: ogni popup ha frame `┌─...─┐ │ │ └─...─┘` con titolo nel header
 - **Frame ASCII coerente** (page frame + status divider)
 - **Nessun riempimento di sfondo** — solo bordi e testo
@@ -2171,15 +2171,15 @@ Replica esattamente la lista skill Foundry, raggruppata per ability score, con p
 ║ │   ▼ scroll for more · R1 scroll-tap = roll skill                │   ║                  ║
 ║ └─────────────────────────────────────────────────────────────────┘   ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
-║ R1: tap=next tab  scroll=skill  long=quick                  [▶sheet] [combat] [log] …    ║
+║ R1: tap=next tab  scroll=skill  qa=quick                    [▶sheet] [combat] [log] …    ║
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-Tap esteso (long-press su skill highlighted) → tira via `actor.rollSkill(skillId)` → result appare in Log overlay.
+Tap sulla skill highlighted → tira via `actor.rollSkill(skillId)` → result appare in Log overlay.
 
 #### 7.5.4 Tab 3 — Inventory (full Foundry inventory layout)
 
-Replica fedele del tab Inventory di Foundry: **currency strip**, sezioni **EQUIPPED / CONSUMABLES / EQUIPMENT / CONTAINER**, peso e encumbrance bar. Tap singolo su un item espande dettagli; long-press lo usa/equipaggia/sequipaggia (chiama `item.use()` o toggle `equipped: true/false`).
+Replica fedele del tab Inventory di Foundry: **currency strip**, sezioni **EQUIPPED / CONSUMABLES / EQUIPMENT / CONTAINER**, peso e encumbrance bar. **Tap** su un item apre le **Action Options** (use / equip / unequip → chiama `item.use()` o toggle `equipped: true/false`); over-scroll (swipe-up al top) apre il Quick Action menu (ADR-0012).
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2209,7 +2209,7 @@ Replica fedele del tab Inventory di Foundry: **currency strip**, sezioni **EQUIP
 ║ │                                                                 │   ║                  ║
 ║ │  ◆ CONTAINER · Bag of Holding (500 lb)                          │   ║                  ║
 ║ │    Crystal goblet  1 lb · gold trim · 50 gp                     │   ║                  ║
-║ │  ▼ scroll · long-press = use/equip                              │   ║                  ║
+║ │  ▼ scroll · tap = use/equip                                     │   ║                  ║
 ║ └─────────────────────────────────────────────────────────────────┘   ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
 ║ R1: tap=next tab  scroll=item  long=use/equip                [▶sheet] [combat] [log] …    ║
@@ -2220,7 +2220,7 @@ Replica fedele del tab Inventory di Foundry: **currency strip**, sezioni **EQUIP
 
 #### 7.5.5 Tab 4 — Spells (full Foundry spellbook layout)
 
-Replica fedele del tab Spells di Foundry: **header spellcasting** (DC, atk mod, prepared count), **filter bar**, sezioni **CANTRIPS** + **L1, L2, L3...** con slot tracker per livello, indicatori prepared/known/at-will. Tap su uno spell = apri detail; long-press = cast.
+Replica fedele del tab Spells di Foundry: **header spellcasting** (DC, atk mod, prepared count), **filter bar**, sezioni **CANTRIPS** + **L1, L2, L3...** con slot tracker per livello, indicatori prepared/known/at-will. **Tap** su uno spell apre le **Action Options** (cast / target / opzioni); over-scroll (swipe-up al top) apre il Quick Action menu (ADR-0012).
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2250,7 +2250,7 @@ Replica fedele del tab Spells di Foundry: **header spellcasting** (DC, atk mod, 
 ║ │  ◇ LEVEL 3   slots ░░    0/2 used                               │   ║                  ║
 ║ │   ▶ Fireball         action    150 ft   V·S·M    8d6 fire 20ft  │   ║                  ║
 ║ │     Counterspell     reaction  60 ft    S        block ≤3rd     │   ║                  ║
-║ │  ▼ scroll · long-press = cast                                    │   ║                  ║
+║ │  ▼ scroll · tap = cast                                           │   ║                  ║
 ║ └─────────────────────────────────────────────────────────────────┘   ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
 ║ R1: tap=next tab  scroll=spell  long=cast                    [▶sheet] [combat] [log] …    ║
@@ -2342,7 +2342,7 @@ Le voci con `░` accanto sono **usabili** (resource pool: Second Wind, Action S
 ║ │    clan tended the forges of Moradin. After the orc raid that   │   ║    Concentr.     ║
 ║ │    destroyed his home village, he took up the warhammer of      │   ║                  ║
 ║ │    his fallen father and swore vengeance...                     │   ║                  ║
-║ │  ▼ scroll for more · long-press = close                          │   ║                  ║
+║ │  ▼ scroll for more · tap×2 = close                               │   ║                  ║
 ║ └─────────────────────────────────────────────────────────────────┘   ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
 ║ R1: tap=cycle tab  scroll=text  tap×2=close                  [▶sheet] [combat] [log] …    ║
@@ -2516,7 +2516,7 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 
 > **Non parte del MVP**. La voice UI vive nel client MCP (§5.7) — l'LLM non è on-glasses (vincolo §3.6). Tuttavia la **cattura audio sul G2 è hardware-fattibile** (verificato v0.9.10, vedi §3.5): il G2 ha 4-mic e SDK espone `audioControl()` → PCM 16 kHz s16le mono al plugin nel WebView del telefono. Architettura V2: G2 mic → plugin WebView → bridge `/v1/voice` (§4.2) → STT cloud (§4.5) → tool MCP → toast risultato sul G2. **Audio output non disponibile** (G2 no speaker §3.1) → tutto il feedback è visivo (toast HUD §7.15.2, status update §7.4).
 
-Mostrato durante long-press R1. Sostituisce temporaneamente la vista di base (status HUD nascosta — focus totale sull'azione vocale).
+Mostrato dopo l'apertura del Quick Action menu via over-scroll (swipe-up al top). Sostituisce temporaneamente la vista di base (status HUD nascosta — focus totale sull'azione vocale).
 
 **State 1 — Listening**:
 
@@ -2623,9 +2623,9 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-### 7.13a Quick Action Menu (MVP — long-press R1 entry point)
+### 7.13a Quick Action Menu (MVP — over-scroll entry point)
 
-Apparso su **long-press R1** quando nessun overlay è aperto. Selezione via scroll, conferma via tap.
+Apparso su **over-scroll (swipe-up al top boundary del layer in focus)**, ADR-0012. Selezione via scroll, conferma via tap.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2642,11 +2642,11 @@ Apparso su **long-press R1** quando nessun overlay è aperto. Selezione via scro
 ║                         [ N ]  laNguage  (Foundry: it · override: —)                      ║
 ║                         [ X ]  Cancel                                                     ║
 ║                                                                                           ║
-║                              R1 scroll=select  tap=open  long=cancel                      ║
+║                              R1 scroll=select  tap=open  tap×2=cancel                     ║
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-Risolve il vincolo "chip-bar non può catturare input direttamente" (solo 1 container ha capture per pagina): il long-press apre questa list-modal che cattura input correttamente. Vedi §7.14 per state machine completo.
+Risolve il vincolo "chip-bar non può catturare input direttamente" (solo 1 container ha capture per pagina): l'over-scroll apre questa list-modal che cattura input correttamente. Vedi §7.14 per state machine completo.
 
 ### 7.14 Complete Navigation Map & Button Audit
 
@@ -2672,14 +2672,14 @@ Risolve il vincolo "chip-bar non può catturare input direttamente" (solo 1 cont
         │  Persistent Status HUD (z=1)                           │     reachable
         │  capture: map base                                     │
         └────────────────────────┬───────────────────────────────┘
-                                 │ long-press R1
+                                 │ over-scroll (↑ at top)
                                  ▼
                        ┌──────────────────────┐
                        │ QUICK_ACTION (§7.13a)│
                        │   list-modal          │
                        │  scroll  = highlight  │
                        │  tap     = open       │
-                       │  long    = cancel     │
+                       │  tap×2   = cancel     │
                        └──┬──┬──┬──┬──┬──┬──┬──┘
                           │  │  │  │  │  │  │
                          [S][C][L][B][I][M][X]
@@ -2702,7 +2702,7 @@ Risolve il vincolo "chip-bar non può catturare input direttamente" (solo 1 cont
          ALL OVERLAYS (size=panel)
          ┌──────────────────────────────────────┐
          │ tap×2 (double-tap) → close → MAIN_MAP│
-         │ long-press → reopen QUICK_ACTION     │
+         │ over-scroll → reopen QUICK_ACTION    │
          │   (allows jumping to another overlay │
          │    without going back to map first)  │
          └──────────────────────────────────────┘
@@ -2723,36 +2723,36 @@ Risolve il vincolo "chip-bar non può catturare input direttamente" (solo 1 cont
 
 #### 7.14.2 Button Mapping per Schermata
 
-| Schermata | Tap singolo | Tap doppio | Scroll su/giù | Long-press |
+| Schermata | Tap singolo | Tap doppio | Scroll su/giù | Over-scroll (↑ al top) |
 |---|---|---|---|---|
 | **BOOT** | — | — | — | — |
-| **MAIN_MAP** | ping cella sotto cursore | recenter mappa su player | pan mappa | apri **Quick Action** |
-| **QUICK_ACTION** | attiva opzione highlighted | — | cicla highlight | cancel → MAIN_MAP |
-| **SHEET** (qualunque tab) | **cicla tab** Main→Skills→Inv→Spells→Feats→Bio | close → MAIN_MAP | naviga contenuto del tab | **azione contestuale** sull'item highlighted (use feature, cast spell, equip item) |
-| **COMBAT** | cicla quick-action `[A][S][I][M]` | close → MAIN_MAP | cicla iniziativa (target select) | esegui quick-action su target highlighted |
-| **LOG** | espandi dettaglio evento highlighted | close → MAIN_MAP | scroll storia (older/newer) | — |
-| **SPELLBOOK** | toggle descrizione spell | close → MAIN_MAP | cicla spell | **cast** spell highlighted |
-| **INVENTORY** | toggle descrizione item | close → MAIN_MAP | cicla item | **use/equip** item highlighted |
-| **MAP CTRL submenu** | seleziona azione (toggle mode / zoom / center) | — | cicla opzione | cancel → MAIN_MAP |
-| *VOICE (V2)* | cancel recording | — | — | hold = recording, release = submit |
-| *CLARIFY (V2)* | confirm option | — | cicla option | cancel → MAIN_MAP |
+| **MAIN_MAP** | ping cella sotto cursore | **EXIT** root (`shutDownPageContainer(1)`) | pan mappa | apri **Quick Action** |
+| **QUICK_ACTION** | attiva opzione highlighted | cancel → MAIN_MAP | cicla highlight | (già al top: no-op) |
+| **SHEET** (qualunque tab) | **cicla tab** Main→Skills→Inv→Spells→Feats→Bio | close → MAIN_MAP | naviga contenuto del tab | apri **Quick Action** |
+| **COMBAT** | cicla quick-action `[A][S][I][M]` (tap su highlight = esegui su target) | close → MAIN_MAP | cicla iniziativa (target select) | apri **Quick Action** |
+| **LOG** | espandi dettaglio evento highlighted | close → MAIN_MAP | scroll storia (older/newer) | apri **Quick Action** |
+| **SPELLBOOK** | **Action Options** sullo spell highlighted (cast / target) | close → MAIN_MAP | cicla spell | apri **Quick Action** |
+| **INVENTORY** | **Action Options** sull'item highlighted (use / equip) | close → MAIN_MAP | cicla item | apri **Quick Action** |
+| **MAP CTRL submenu** | seleziona azione (toggle mode / zoom / center) | cancel → MAIN_MAP | cicla opzione | apri **Quick Action** |
+| *VOICE (V2)* | cancel recording | — | — | — |
+| *CLARIFY (V2)* | confirm option | cancel → MAIN_MAP | cicla option | apri **Quick Action** |
 
-**Regola di consistenza**:
-- **Tap doppio = "indietro"** in tutti gli overlay (chiude e torna a MAIN_MAP).
-- **Long-press = context-sensitive** — in MAIN_MAP apre Quick Action; in overlay esegue l'azione di quel panel; in modal cancella.
+**Regola di consistenza** (ADR-0012):
+- **Tap doppio = EXIT/back** — sulla root (MAIN_MAP) chiama `bridge.shutDownPageContainer(1)` (exit dialog); negli overlay chiude e torna a MAIN_MAP; nei modal cancella.
+- **Over-scroll (swipe-up al top boundary) = apri Quick Action** — da MAIN_MAP e da ogni overlay; cross-overlay senza tornare alla mappa.
 - **Scroll = navigazione** — pan mappa, lista item, storia eventi.
-- **Tap = primary cycle** — cicla opzione/tab/azione a seconda del contesto.
+- **Tap = primary** — cicla opzione/tab oppure esegue l'azione primaria del panel (Action Options su Spellbook/Inventory).
 
 #### 7.14.3 Combat Overlay Quick-Action `[A][S][I][M]`
 
 Dentro Combat overlay, tap cicla l'highlight tra le 4 quick-action:
 
-| Quick-action | Effetto al long-press |
+| Quick-action | Effetto al tap sull'highlight |
 |---|---|
 | `[A]ttack` | esegue attacco con weapon main-hand su target highlighted (scroll seleziona target prima) |
 | `[S]pell` | apre **SPELLBOOK** overlay (cross-navigation, mantiene combat target) |
 | `[I]tem` | apre **INVENTORY** overlay |
-| `[M]ove` | entra in **map control mode**: scroll = direzione, long-press = commit move, tap×2 = cancel |
+| `[M]ove` | entra in **map control mode**: scroll = direzione, tap = commit move, tap×2 = cancel |
 
 #### 7.14.4 Verification Checklist (10×)
 
@@ -2765,9 +2765,9 @@ Dentro Combat overlay, tap cicla l'highlight tra le 4 quick-action:
 | 5 | Status HUD persistente visibile durante MAIN_MAP e tutti gli overlay `size=panel`. | ✓ |
 | 6 | Status HUD nascosto durante modal `size=modal` (Quick Action, V2 Voice/Clarify) — focus totale sull'azione. | ✓ |
 | 7 | Sheet 6 tab tutti raggiungibili via cycle (tap singolo) — nessuno isolato. | ✓ |
-| 8 | Quick Action menu cancellabile via long-press senza side effects. | ✓ |
-| 9 | Long-press semantica context-sensitive ben definita per ogni schermata (vedi tabella §7.14.2 colonna "Long-press"). | ✓ |
-| 10 | Cross-overlay navigation (es. da Combat → Spellbook senza passare da MAIN_MAP) supportata via long-press → Quick Action → tap nuova destinazione. | ✓ |
+| 8 | Quick Action menu cancellabile via tap-doppio senza side effects. | ✓ |
+| 9 | Over-scroll (swipe-up al top boundary) apre Quick Action da ogni schermata; tap = azione primaria del panel (vedi tabella §7.14.2). | ✓ |
+| 10 | Cross-overlay navigation (es. da Combat → Spellbook senza passare da MAIN_MAP) supportata via over-scroll → Quick Action → tap nuova destinazione. | ✓ |
 | 11 | **INV-1 Layout integrity — corner alignment**: snapshot test verifica che `┌ ┐ └ ┘` (e variant doppia) di ogni overlay siano sulla **stessa colonna** dal top al bottom in ogni stato (idle/loading/error/disconnect). Diff atteso = 0. | ✓ |
 | 12 | **INV-1 Layout integrity — variable-content stress**: snapshot test con HP `7` / `70` / `700` / `7000`, nome PG `4ch` / `8ch` / `16ch` / `20ch` (truncate `…`), conditions `0` / `4` / `7` (overflow `+N`) — Status HUD occupa sempre col 70-95 row 1-21. | ✓ |
 | 13 | **INV-1 Layout integrity — tab strip equal-width**: ogni tab dello Sheet (Main/Skills/Inv/Spells/Feats/Bio) ha **stessa larghezza char-count** in entrambi gli stati `[ XXX ]`/`[▶XXX ]`; toggle non shifta gli adiacenti. | ✓ |
@@ -3051,7 +3051,7 @@ BLE budget: OK (sotto 25 KB/s real-world)
 3. **Tap singolo = primary cycle**: cicla tab (Sheet), opzione (Quick Action), quick-action (Combat), o attiva l'item highlighted (Spellbook/Inventory).
 4. **Scroll = navigazione**: pan mappa, lista item, storia eventi, opzioni modal.
 
-**Footer chip-bar**: visualizza il panel attivo (es. `[▶sheet] [combat] [log] [spell] [inv]`) come breadcrumb **read-only** — non è un'area di tap perché solo 1 container ha capture. Per cambiare panel: tap-doppio per uscire → long-press per Quick Action → tap nuovo panel. Cross-overlay rapido: long-press dentro un overlay apre Quick Action senza chiudere prima.
+**Footer chip-bar**: visualizza il panel attivo (es. `[▶sheet] [combat] [log] [spell] [inv]`) come breadcrumb **read-only** — non è un'area di tap perché solo 1 container ha capture. Per cambiare panel: tap-doppio per uscire → over-scroll (swipe-up al top) per Quick Action → tap nuovo panel. Cross-overlay rapido: over-scroll dentro un overlay apre Quick Action senza chiudere prima.
 
 Per il dettaglio per-schermata e la verifica di reachability, vedere **§7.14**.
 
@@ -3182,7 +3182,7 @@ Settings i18n sono **device-local** (LRU per-device, non world-scope) — ogni p
 
 ### 8.1 Esempio A — Fireball su gruppo
 
-**Player** (long-press R1): *"Vedo un grosso gruppo di goblin in avvicinamento, mi preparo ad attaccarli con palla di fuoco e brucio quei bastardi."*
+**Player** (Quick Action via over-scroll → Voice): *"Vedo un grosso gruppo di goblin in avvicinamento, mi preparo ad attaccarli con palla di fuoco e brucio quei bastardi."*
 
 **STT output** (`~250 ms`): testo plain.
 
@@ -3229,7 +3229,7 @@ await MidiQOL.completeActivityUse(activity, {
 
 ### 8.2 Esempio B — Dual-wield Action + Bonus Action
 
-**Player** (long-press R1): *"Sono circondato da due nemici a destra e sinistra: attacco con la spada corta lo skeleton a sinistra cercando di perforargli il cuore, e con la scimitarra il goblin a destra per tagliargli la gola."*
+**Player** (Quick Action via over-scroll → Voice): *"Sono circondato da due nemici a destra e sinistra: attacco con la spada corta lo skeleton a sinistra cercando di perforargli il cuore, e con la scimitarra il goblin a destra per tagliargli la gola."*
 
 **Scene context**:
 - Player: Thorin (Rogue/Fighter, dual-wielder, light weapons OK)
@@ -3345,13 +3345,13 @@ Phase 0 è la **bottiglia critica**: senza queste validazioni il design Phase 1+
 **Procedura**:
 1. Even Hub developer access ottenuto (timeline stimata: 1-2 settimane request → grant)
 2. Plugin sample che logga ogni evento R1 ricevuto via callback al G2 plugin
-3. User esegue gesture sequence: 1× tap singolo, 1× tap doppio, scroll up 3 click, scroll down 3 click, long-press 1s, long-press 2s
+3. User esegue gesture sequence: 1× tap singolo (press), 1× tap doppio (double-press), swipe-up 3 click, swipe-down 3 click
 4. Verifica events ricevuti corrispondono mapping table §3.2
 
 **GO/NO-GO criteria**:
-- ✓ tap singolo / tap doppio distinguibili by timing
-- ✓ scroll direction (up/down) e magnitude (click count)
-- ✓ long-press start/end con duration ≥500 ms
+- ✓ tap singolo / tap doppio distinguibili (eventi discreti `CLICK_EVENT` / `DOUBLE_CLICK_EVENT`)
+- ✓ swipe direction (up/down) e magnitude (click count) — `SCROLL_TOP_EVENT` / `SCROLL_BOTTOM_EVENT`
+- ⓘ **Long-press RITIRATO (ADR-0012)**: non è un gesture hardware (`guides/input-events`, no input duration-based) — nessun criterio timing ≥500 ms. L'invocazione Quick Action è **over-scroll** (swipe-up al top boundary), che non richiede alcuna soglia temporale.
 - ✗ **BLOCKING**: nessun evento R1 → R1 non utilizzabile, falla design completo (in worst case → fallback a gesture sul G2 nativo se disponibili, altrimenti project halt)
 
 #### 10.0.2 Test `updateImageRawData` Format
@@ -3492,7 +3492,7 @@ Decisione Phase 0 → Phase 1 commencement deve essere documentata in `docs/arch
 
 ### Phase 0 — Validation (Week 0)
 - [ ] Even Hub SDK access verificato, plugin sample funzionante su G2 reale
-- [ ] **Test §10.0.1 R1 ring eventi confermati nel SDK** (gesture map: tap, scroll, long-press)
+- [ ] **Test §10.0.1 R1 ring eventi confermati nel SDK** (gesture map: press, double-press, swipe-up, swipe-down)
 - [ ] **Test §10.0.3 BLE bandwidth real-world** (1 minute sustained, p95/p99 latency)
 - [ ] **Test §10.0.2 `updateImageRawData` formato verificato** (PNG vs raw 4-bit packed; **precondizione CRITICAL per Phase 4 raster mode (MVP default)** + Phase 13 Sheet portrait + Phase 13 dice raster)
 - [ ] **Test §10.0.5 GO/NO-GO Decision Tree**: documenta esito Phase 0 in ADR-0005 prima di Phase 1
@@ -3578,9 +3578,9 @@ Decisione Phase 0 → Phase 1 commencement deve essere documentata in `docs/arch
 - [ ] **Test**: aggiungere un panel-mock in 5 minuti senza toccare core
 
 ### Phase 6 — R1 Integration + Event Plumbing (Week 7-8)
-- [ ] Provider `ring-r1` con event source (tap/scroll/long-press)
+- [ ] Provider `ring-r1` con event source (press/double-press/swipe-up/swipe-down)
 - [ ] Routing R1 events → layer top-of-stack
-- [ ] **Quick Action menu** su long-press (mockup §7.14)
+- [ ] **Quick Action menu** su over-scroll (swipe-up al top boundary) (mockup §7.14)
 - [ ] **Telemetry**: log frame timing, gesture latency
 
 ### Phase 7 — Foundry Module Write Path (Week 8-9)
@@ -3659,7 +3659,7 @@ Decisione Phase 0 → Phase 1 commencement deve essere documentata in `docs/arch
 
 | Risk | Impact | Probability | Mitigation |
 |---|---|---|---|
-| R1 ring SDK eventi non documentati | High | Medium | Phase 0 validation; fallback a scroll/tap soltanto se long-press non esposto |
+| R1 ring SDK eventi non documentati | High | Medium | Phase 0 validation; il set canonico è press/double-press/swipe-up/swipe-down (ADR-0012), nessun long-press da validare |
 | LLM tool-call ambiguity (target sbagliato) | High | Medium | Schema `clarify` + confirmation overlay sotto soglia confidenza 90% |
 | Latency > 3 s rovina UX | Medium | Medium | Streaming tool use, scene context pre-cached, STT cloud edge |
 | MidiQOL breaking changes | Medium | Medium | Pin version, fallback a vanilla activity.use() chain |
@@ -3924,7 +3924,7 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ### 12.A — Hardware / SDK validation (Phase 0 CRITICAL)
 
-1. **R1 SDK API surface esatta**: quali eventi sono effettivamente esposti al plugin G2 (tap/scroll/long-press confermati pubblicamente, ma binding esatto SDK?). Validation con accesso developer Even Hub.
+1. **R1 SDK API surface esatta**: quali eventi sono effettivamente esposti al plugin G2 (press/double-press/swipe-up/swipe-down confermati da `guides/input-events`, ma binding esatto SDK?). Validation con accesso developer Even Hub.
 2. **`updateImageRawData` formato esatto**: PNG indexed-palette? Raw 4-bit packed? Endianness? Packing nibble order? **Gating per Phase 4 raster mode** (default MVP post-v0.7).
 3. **BLE bandwidth real-world G2**: misurare phone↔G2 effective MTU + sustained throughput. Target ≥200 kbps per Phase 4. Se <100 kbps, fallback obbligato a glyph-only.
 4. **Frame rate sostenibile** (vedi §7.4b.6.1): **5 fps standard committed** (Layer 1+3+4+6 sempre attivi), **15 fps aspirational** richiede tutti 6 layer + Phase 0 §10.0.6 + §10.0.7 ✓. Worst case BLE 4.x no DLE: 5-8 fps cap. Phase 0 deve quantificare il bandwidth reale per assegnare branch A/B/C.
@@ -4051,7 +4051,7 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 - **2026-05-31 (INV-2 full validation round — hub.evenrealities.com/docs/*)** — Whole-development re-verification against the canonical Even Hub developer docs (overview · getting-started/architecture · guides/{display,device-apis,page-lifecycle,input-events,networking,design-guidelines} · reference/packaging). **No spec version bump** (validation + drift log; coherent corrections scheduled to dedicated v0.9.14 work per the §0 drift policy "fixato in PR dedicato").
   - **Re-verified ✓ (no change):** execution model (app logic in phone WebView, glasses = display + native scroll only); container budget 4 image + 8 other = 12 max; exactly one `isEventCapture:1`; canvas 576×288 4-bit greyscale; **image container 20–200 × 20–100 px** (canonical doc CONFIRMS Specs §3.1's 200×100 — supersedes the 2026-05-14 simulator-`index.d.ts` note that suggested 288×144; the docs are authoritative ⇒ our 200×100 tiles are correct); audio PCM 16 kHz s16le mono via `audioControl(true|false)` + `audioEvent`; `imuControl`; `getDeviceInfo`/`getUserInfo`; `getLocalStorage`/`setLocalStorage`; explicit "no audio output, no camera, greyscale only, no animations, no programmatic scroll position"; `shutDownPageContainer(0=immediate, 1=confirm)`; lifecycle events `FOREGROUND_ENTER_EVENT(4)`/`FOREGROUND_EXIT_EVENT(5)`/`ABNORMAL_EXIT_EVENT(6)` via `onEvenHubEvent`; **`setBackgroundState`/`onBackgroundRestore` confirmed ABSENT** (validates v0.9.14 LIFE phase scoping); networking full-origin whitelist (no wildcards), HTTPS-required, CORS not bypassed by whitelist, **WebSocket cannot set request headers from the WebView** (validates the 2026-05-30 audio-stream `?token=` query-param fix, task 260530-x2b).
-  - **Drift: R1 long-press gesture — IMPORTANT.** Canonical `guides/input-events` + `getting-started/overview` + `guides/design-guidelines` now state the COMPLETE gesture set is **press / double-press / swipe-up / swipe-down only** (`CLICK_EVENT(0)`, `DOUBLE_CLICK_EVENT(3)`, `SCROLL_TOP_EVENT(1)`, `SCROLL_BOTTOM_EVENT(2)`) — *"Long-press is not a supported gesture on the Even G2 or Even R1 … No duration-based input exists in the API."* This contradicts the prior INV-2 round (changelog 2026-05-?? "tap scroll long-press 1:1 Re-verified ✓") and the project's `[ASSUMED — SC-06-01 pending]` long-press≥500 ms hypothesis (§3.2 / §10.0.1). Impact: the Quick-Action menu invocation (`quick-action-long-press-dispatcher`, NAV-02, §7.14.4 ck 7) is built on a gesture the hardware does not deliver. **Fix scheduled (dedicated, hardware-gated):** redesign Quick-Action invocation onto a supported gesture (candidate: `double-press`) + retire `long-press` from the `R1Gesture` union + update §3.2/§7.14.4 mockups + showcase atomically (INV-3) → tracked as **GEST-01** (REQUIREMENTS v2). Not hotfixed into the Phase 19 release PR (deep multi-file + spec change; on-glasses behavior already `human_needed` per ADR-0005).
+  - **Drift: R1 long-press gesture — IMPORTANT.** Canonical `guides/input-events` + `getting-started/overview` + `guides/design-guidelines` now state the COMPLETE gesture set is **press / double-press / swipe-up / swipe-down only** (`CLICK_EVENT(0)`, `DOUBLE_CLICK_EVENT(3)`, `SCROLL_TOP_EVENT(1)`, `SCROLL_BOTTOM_EVENT(2)`) — *"Long-press is not a supported gesture on the Even G2 or Even R1 … No duration-based input exists in the API."* This contradicts the prior INV-2 round (changelog 2026-05-?? "tap scroll long-press 1:1 Re-verified ✓") and the project's `[ASSUMED — SC-06-01 pending]` long-press≥500 ms hypothesis (§3.2 / §10.0.1). Impact: the Quick-Action menu invocation (`quick-action-long-press-dispatcher`, NAV-02, §7.14.4 ck 7) is built on a gesture the hardware does not deliver. **Fix scheduled (dedicated, hardware-gated):** redesign Quick-Action invocation onto a supported gesture (candidate: `double-press`) + retire `long-press` from the `R1Gesture` union + update §3.2/§7.14.4 mockups + showcase atomically (INV-3) → tracked as **GEST-01** (REQUIREMENTS v2). Not hotfixed into the Phase 19 release PR (deep multi-file + spec change; on-glasses behavior already `human_needed` per ADR-0005). **Update 2026-05-31 — DESIGN LOCKED [ADR-0012]:** the earlier `double-press` candidate is rejected (`double-tap` is reserved for the root-exit `shutDownPageContainer(1)`, LIFE-03/EXIT-01). Quick-Action invocation moves to **over-scroll (swipe-up at the focused layer's top boundary)**; per-panel context actions remap (`inventory`/`spellbook` Action Options → `tap`; `template-placement` cancel → `double-tap`). Implementation is the dedicated **Phase 20** effort (input/lifecycle), executed via the GSD phase flow. See `docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md`.
   - **Drift: `packages/g2-app/app.json` MISSING — IMPORTANT.** `reference/packaging` requires an Even Hub manifest (`package_id`, `edition: "202601"`, `entrypoint`, `permissions[]` incl. `network.whitelist` of origin-complete bridge + plugin-host URLs, `supported_languages`) for the WebView to load the plugin and reach the bridge. The g2-app has none ⇒ cannot run on real Even Hub / hardware yet. **Fix scheduled:** author `app.json` with the deployment origins → tracked as **DIST-EHUB-01** (REQUIREMENTS v2). Deployment-specific origins + hardware-gated ⇒ not in the Phase 19 release PR.
 
 - **2026-05-31 (tooling — Release & Distribution + README Installation docs)** — Phase 19 closes the full CI/CD release pipeline (REL-01..05). **No spec version bump** (solo tooling/distribuzione — nessun cambio a hardware/library/fps/phase/locale claims).

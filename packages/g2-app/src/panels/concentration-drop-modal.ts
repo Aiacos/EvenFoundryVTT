@@ -343,7 +343,7 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
       }
       this.onCloseCb();
     }
-    // Other gestures (scroll, long-press) ignored — modal stays mounted.
+    // Other gestures (scroll) ignored — modal stays mounted.
   }
 
   /**

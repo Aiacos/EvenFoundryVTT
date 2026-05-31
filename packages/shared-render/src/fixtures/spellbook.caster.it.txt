@@ -14,5 +14,5 @@ L3   slot ▓▓   2/2
    ◉ Palla di Fuoco      azione  45m    8d6 fuoco  sfera 6m
      Contrincantesimo    reaziN  18m    blocca incantesimo ≤ 3°
 
-▼ scroll · long-press = lancia
+▼ scroll · ↑in cima = lancia
 

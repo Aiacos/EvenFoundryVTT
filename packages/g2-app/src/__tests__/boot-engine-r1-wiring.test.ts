@@ -4,7 +4,7 @@
  * Verifies that `_bootEngineCore` correctly wires the Phase 6 + Phase 8 dispatchers
  * into the boot sequence:
  *   - `attachR1EventSource`         — WS → PanelGestureBus bridge (step 11)
- *   - `attachQuickActionLongPress`  — long-press → pushOverlay(menu) (step 11b)
+ *   - `attachQuickActionOverscroll`  — over-scroll → pushOverlay(menu) (step 11b)
  *   - `attachConcConflictHandler`   — conc.conflict WS → modal mount (step 11d)
  *   - `attachActionResultHandler`   — r1.action.result → toast (step 11e, Plan 08-01)
  *
@@ -21,7 +21,7 @@
  *
  * Tests (BERW-* discriminator markers):
  *   BERW-01  attachR1EventSource called once after boot (spy)
- *   BERW-02  attachQuickActionLongPress called once after boot (spy)
+ *   BERW-02  attachQuickActionOverscroll called once after boot (spy)
  *   BERW-03  localeEvents exposed on handle; size() === 0 after boot
  *   BERW-04  end-to-end: r1.gesture WS envelope → gesture published to bus (behavioral)
  *   BERW-05  teardown calls unsubscribe closures from all 3 dispatchers (spy)
@@ -76,7 +76,7 @@ const r1Record: DispatcherCallRecord = {
   callArgs: [],
   unsubSpy: vi.fn(),
 };
-const longPressRecord: DispatcherCallRecord = {
+const overscrollRecord: DispatcherCallRecord = {
   callCount: 0,
   callArgs: [],
   unsubSpy: vi.fn(),
@@ -114,7 +114,7 @@ vi.mock('../panels/action-economy-dispatcher.js', () => ({
 }));
 
 vi.mock('../engine/r1-event-source.js', () => ({
-  DEFAULT_R1_TIMINGS: { longPressMs: 500, debounceMs: 60 },
+  DEFAULT_R1_TIMINGS: { tapMs: 250, doubleTapWindowMs: 350, scrollDebounceMs: 50 },
   attachR1EventSource: (...args: unknown[]): (() => void) => {
     r1Record.callCount++;
     r1Record.callArgs.push(args);
@@ -122,11 +122,11 @@ vi.mock('../engine/r1-event-source.js', () => ({
   },
 }));
 
-vi.mock('../panels/quick-action-long-press-dispatcher.js', () => ({
-  attachQuickActionLongPress: (...args: unknown[]): (() => void) => {
-    longPressRecord.callCount++;
-    longPressRecord.callArgs.push(args);
-    return longPressRecord.unsubSpy as unknown as () => void;
+vi.mock('../panels/quick-action-overscroll-dispatcher.js', () => ({
+  attachQuickActionOverscroll: (...args: unknown[]): (() => void) => {
+    overscrollRecord.callCount++;
+    overscrollRecord.callArgs.push(args);
+    return overscrollRecord.unsubSpy as unknown as () => void;
   },
 }));
 
@@ -258,9 +258,9 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
     r1Record.callArgs = [];
     r1Record.unsubSpy.mockClear();
 
-    longPressRecord.callCount = 0;
-    longPressRecord.callArgs = [];
-    longPressRecord.unsubSpy.mockClear();
+    overscrollRecord.callCount = 0;
+    overscrollRecord.callArgs = [];
+    overscrollRecord.unsubSpy.mockClear();
 
     concRecord.callCount = 0;
     concRecord.callArgs = [];
@@ -322,16 +322,16 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
   });
 
   /**
-   * BERW-02: `attachQuickActionLongPress` is called exactly once during boot.
+   * BERW-02: `attachQuickActionOverscroll` is called exactly once during boot.
    *
    * Receives the gesture bus, panelRouter, layerManager, and makeMenu factory
    * (in that order). `makeMenu` is a function (the factory closure).
    */
-  it('BERW-02: attachQuickActionLongPress called exactly once after boot', async () => {
+  it('BERW-02: attachQuickActionOverscroll called exactly once after boot', async () => {
     const { handle } = await bootWithWiring();
 
-    expect(longPressRecord.callCount).toBe(1);
-    const callArgs = longPressRecord.callArgs[0] ?? [];
+    expect(overscrollRecord.callCount).toBe(1);
+    const callArgs = overscrollRecord.callArgs[0] ?? [];
     // Arg 0: gestureBus, Arg 1: panelRouter, Arg 2: layerManager, Arg 3: makeMenu factory
     expect(callArgs).toHaveLength(4);
     expect(typeof callArgs[3]).toBe('function'); // makeMenu factory
@@ -344,7 +344,7 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
    * immediately after boot. The single permanent subscriber is the WR-03 locale-
    * tracking listener in boot-engine-core.ts step 11c — it keeps the `makeMenu`
    * factory's `currentMenuLocale` / `currentMenuOverride` mutable refs live so
-   * every subsequent long-press produces a menu in the user's current locale, not
+   * every subsequent over-scroll produces a menu in the user's current locale, not
    * the boot-time locale.
    *
    * Panel subscribers (QuickActionMenuPanel etc.) subscribe on `onMount`; this
@@ -398,19 +398,19 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
    * INV-5 / T-06-04-01: exactly-once attach + exactly-once detach is the
    * idempotency contract for the dispatcher lifecycle.
    */
-  it('BERW-05: teardown calls all 3 unsubscribe closures (r1 + long-press + conc-conflict)', async () => {
+  it('BERW-05: teardown calls all 3 unsubscribe closures (r1 + over-scroll + conc-conflict)', async () => {
     const { handle } = await bootWithWiring();
 
     // Before teardown — unsubscribes have NOT been called.
     expect(r1Record.unsubSpy).not.toHaveBeenCalled();
-    expect(longPressRecord.unsubSpy).not.toHaveBeenCalled();
+    expect(overscrollRecord.unsubSpy).not.toHaveBeenCalled();
     expect(concRecord.unsubSpy).not.toHaveBeenCalled();
 
     handle.teardown();
 
     // After teardown — all three must have been called exactly once.
     expect(r1Record.unsubSpy).toHaveBeenCalledOnce();
-    expect(longPressRecord.unsubSpy).toHaveBeenCalledOnce();
+    expect(overscrollRecord.unsubSpy).toHaveBeenCalledOnce();
     expect(concRecord.unsubSpy).toHaveBeenCalledOnce();
   });
 
@@ -428,8 +428,8 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
     // effectiveLocale should be 'de'.
     expect(handle.effectiveLocale).toBe('de');
 
-    // The makeMenu factory is the 4th arg passed to attachQuickActionLongPress.
-    const makeMenu = longPressRecord.callArgs[0]?.[3] as (() => { locale: string }) | undefined;
+    // The makeMenu factory is the 4th arg passed to attachQuickActionOverscroll.
+    const makeMenu = overscrollRecord.callArgs[0]?.[3] as (() => { locale: string }) | undefined;
     expect(typeof makeMenu).toBe('function');
 
     // Call the factory and verify the locale field on the constructed panel.

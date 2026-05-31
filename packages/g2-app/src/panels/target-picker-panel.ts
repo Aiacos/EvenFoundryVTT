@@ -10,8 +10,8 @@
  *
  * - Double-tap = cancel (close without emitting)
  * - Empty list = render 'Nessun bersaglio' hint + auto-close after 2s via setTimeout
- * - Long-press = ignored at panel level (routed to QuickActionMenu by Phase 6
- *   `quick-action-long-press-dispatcher` at the router level)
+ * - Quick Action = opened by the router-level over-scroll dispatcher (swipe-up at
+ *   the top boundary, ADR-0012); the panel never opens it itself
  * - No `static meta` — panel is opened directly via pushOverlay, NOT via Quick
  *   Action menu registry (same as ConcentrationDropModalPanel pattern)
  *
@@ -222,8 +222,9 @@ export class TargetPickerPanel implements OverlayPanel {
    *   - `scroll-up`    → selectedIdx-- mod candidates.length; re-draw
    *   - `tap`          → emit tool.invoke envelope + onClose (no-op if empty)
    *   - `double-tap`   → onClose WITHOUT emitting (cancel)
-   *   - `long-press`   → ignored (Panel-level no-op; Phase 6 QuickActionMenu
-   *                       dispatcher intercepts at router level)
+   *
+   * Quick Action opens via over-scroll at the router level (ADR-0012) — the panel
+   * does not handle it.
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -271,11 +272,17 @@ export class TargetPickerPanel implements OverlayPanel {
         // Cancel — close without emitting
         this.onCloseCb();
         break;
-
-      case 'long-press':
-        // Ignored at panel level — Phase 6 QuickActionLongPressDispatcher handles this.
-        break;
     }
+  }
+
+  /**
+   * Whether the target list selection cursor is at its top boundary (ADR-0012 D-2).
+   *
+   * The router-level over-scroll dispatcher reads this on a `scroll-up` gesture:
+   * `true` means a further swipe-up is an over-scroll that opens the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return this.selectedIdx === 0;
   }
 
   // ─── Layer contract ────────────────────────────────────────────────────────
@@ -313,10 +320,14 @@ export class TargetPickerPanel implements OverlayPanel {
    * R1 context chip hints for the status HUD chip (Phase 6 NAV-01 pattern).
    *
    * Uses the composite `hud_r1_target_picker` key which stores a pre-composed
-   * chip string in `tap=<tap>  scroll=<scroll>  long=<long>` format per
+   * chip string in `tap=<tap>  scroll=<scroll>  qa=<quick-action>` format per
    * parseR1HintString convention.
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_target_picker', this.locale));
   }
 
@@ -345,7 +356,7 @@ export class TargetPickerPanel implements OverlayPanel {
    * │  <target rows — up to VISIBLE_ROWS>                              │  rows 2..N
    * │  (blank rows pad to VISIBLE_ROWS count)                          │
    * │                                                                  │  spacer
-   * │  [tap] conferma  [long] annulla                                  │  hint row (non-empty)
+   * │  [tap] conferma  [×2] annulla                                   │  hint row (non-empty)
    * └──────────────────────────────────────────────────────────────────┘  row 17
    * ```
    *
@@ -435,13 +446,14 @@ export class TargetPickerPanel implements OverlayPanel {
     }
 
     // ── Hint row ──────────────────────────────────────────────────────────
+    // Cancel is double-tap (`[×2]`) since long-press was retired (ADR-0012).
     const tapLabel = '[tap]';
-    const longLabel = '[long]';
+    const cancelGestureLabel = '[×2]';
     const confirmLabel =
       getLabel('target_picker_title', this.locale) === 'BERSAGLIO' ? 'conferma' : 'confirm';
     const cancelLabel =
       getLabel('target_picker_title', this.locale) === 'BERSAGLIO' ? 'annulla' : 'cancel';
-    const hintText = `${tapLabel} ${confirmLabel}  ${longLabel} ${cancelLabel}`;
+    const hintText = `${tapLabel} ${confirmLabel}  ${cancelGestureLabel} ${cancelLabel}`;
     lines.push(this._innerRow(` ${hintText}`));
 
     lines.push(bottomBorder);

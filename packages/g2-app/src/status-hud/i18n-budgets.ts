@@ -346,9 +346,9 @@ export const HUD_WIDTH_BUDGETS = {
   },
   'sheet.spell.level_section': { it: '◇ LIVELLO N', en: '◇ LEVEL N', de: '◇ GRAD N', max: 11 },
   'sheet.spell.scroll_hint': {
-    it: '▼ scroll · long-press = lancia',
-    en: '▼ scroll · long-press = cast',
-    de: '▼ scrollen · long-press = zaubern',
+    it: '▼ scroll · ↑in cima = lancia',
+    en: '▼ scroll · ↑top = cast',
+    de: '▼ scrollen · ↑oben = zaubern',
     max: 34,
   },
 
@@ -392,9 +392,9 @@ export const HUD_WIDTH_BUDGETS = {
     max: 24,
   },
   'sheet.bio.scroll_hint': {
-    it: '▼ scroll per altro · long-press = chiudi',
-    en: '▼ scroll for more · long-press = close',
-    de: '▼ scrollen für mehr · long-press = schließen',
+    it: '▼ scroll per altro · tap×2 = chiudi',
+    en: '▼ scroll for more · tap×2 = close',
+    de: '▼ scrollen für mehr · tap×2 = schließen',
     max: 45,
   },
 
@@ -515,9 +515,9 @@ export const HUD_WIDTH_BUDGETS = {
   'spell.activation.ritual': { it: 'ritual', en: 'ritual', de: 'ritual', max: 6 },
   'spell.cursor_marker': { it: '▶', en: '▶', de: '▶', max: 1 },
   'spell.scroll_hint': {
-    it: '▼ scroll · long-press = lancia',
-    en: '▼ scroll · long-press = cast',
-    de: '▼ scrollen · long-press = zaubern',
+    it: '▼ scroll · ↑in cima = lancia',
+    en: '▼ scroll · ↑top = cast',
+    de: '▼ scrollen · ↑oben = zaubern',
     max: 34,
   },
 
@@ -559,33 +559,33 @@ export const HUD_WIDTH_BUDGETS = {
   // budget hints slightly — assertWithinBudget warns at runtime; the renderer
   // falls back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
   'footer.hint.sheet': {
-    it: 'tap=prossimo tab  scroll=contenuto  tap×2=chiudi  long=rapida',
-    en: 'tap=next tab  scroll=content  tap×2=close  long=quick',
-    de: 'tap=nächster Tab  scroll=Inhalt  tap×2=schließen  long=schnell',
+    it: 'tap=prossimo tab  scroll=contenuto  tap×2=chiudi  qa=rapida',
+    en: 'tap=next tab  scroll=content  tap×2=close  qa=quick',
+    de: 'tap=nächster Tab  scroll=Inhalt  tap×2=schließen  qa=schnell',
     max: 63,
   },
   'footer.hint.combat': {
-    it: 'scroll=iniziativa  tap=rapida  long=rapida',
-    en: 'scroll=initiative  tap=quick  long=quick',
-    de: 'scroll=Initiative  tap=schnell  long=schnell',
+    it: 'scroll=iniziativa  tap=rapida  qa=rapida',
+    en: 'scroll=initiative  tap=quick  qa=quick',
+    de: 'scroll=Initiative  tap=schnell  qa=schnell',
     max: 46,
   },
   'footer.hint.log': {
-    it: 'scroll=storia  tap=dettaglio  long=rapida',
-    en: 'scroll=history  tap=detail  long=quick',
-    de: 'scroll=Verlauf  tap=Detail  long=schnell',
+    it: 'scroll=storia  tap=dettaglio  qa=rapida',
+    en: 'scroll=history  tap=detail  qa=quick',
+    de: 'scroll=Verlauf  tap=Detail  qa=schnell',
     max: 42,
   },
   'footer.hint.inventory': {
-    it: 'scroll=oggetto  tap=usa  long=rapida',
-    en: 'scroll=item  tap=use  long=quick',
-    de: 'scroll=Gegenstand  tap=nutzen  long=schnell',
+    it: 'scroll=oggetto  tap=usa  qa=rapida',
+    en: 'scroll=item  tap=use  qa=quick',
+    de: 'scroll=Gegenstand  tap=nutzen  qa=schnell',
     max: 45,
   },
   'footer.hint.spellbook': {
-    it: 'scroll=incantesimo  tap=lancia  long=rapida',
-    en: 'scroll=spell  tap=cast  long=quick',
-    de: 'scroll=Zauber  tap=zaubern  long=schnell',
+    it: 'scroll=incantesimo  tap=lancia  qa=rapida',
+    en: 'scroll=spell  tap=cast  qa=quick',
+    de: 'scroll=Zauber  tap=zaubern  qa=schnell',
     max: 44,
   },
 
@@ -617,13 +617,13 @@ export const HUD_WIDTH_BUDGETS = {
   /** Default `scroll=` label shown when no overlay is active. */
   hud_r1_default_scroll: { it: 'nav', en: 'nav', de: 'Nav', max: 22 },
 
-  /** Default long-press label shown when no overlay is active. */
+  /** Default quick-action (over-scroll) label shown when no overlay is active. */
   hud_r1_default_long: { it: 'quick', en: 'quick', de: 'Schnell', max: 22 },
 
-  /** Boot-splash chip placeholder — long-press is a no-op during splash. */
+  /** Boot-splash chip placeholder — quick-action (over-scroll) is a no-op during splash. */
   hud_r1_boot_label: { it: '—', en: '—', de: '—', max: 4 },
 
-  /** Boot-error long-press label — long-press retries the boot sequence. */
+  /** Boot-error quick-action (over-scroll) label — over-scroll retries the boot sequence. */
   hud_r1_boot_error_label: { it: 'riprova', en: 'retry', de: 'erneut', max: 22 },
 
   /**
@@ -633,9 +633,9 @@ export const HUD_WIDTH_BUDGETS = {
    * `_template` suffix exemption, Phase 4b Plan 01 Deviation #2 precedent).
    */
   inv5_chip_tooltip: {
-    it: 'INV-5: long-press apre il menu del livello attivo',
-    en: 'INV-5: long-press opens active layer menu',
-    de: 'INV-5: Halten öffnet Menü der aktiven Ebene',
+    it: 'INV-5: ↑over-scroll apre il menu del livello attivo',
+    en: 'INV-5: ↑over-scroll opens active layer menu',
+    de: 'INV-5: ↑Über-Scroll öffnet Menü der aktiven Ebene',
     max: 60,
   },
 
@@ -697,11 +697,11 @@ export const HUD_WIDTH_BUDGETS = {
     max: 66,
   },
 
-  /** Footer hint — long-press action description (line 3 of 3 footer rows). */
+  /** Footer hint — cancel action description (line 3 of 3 footer rows). Cancel is double-tap per ADR-0012. */
   quick_hint_long: {
-    it: 'long-press = annulla',
-    en: 'long-press = cancel',
-    de: 'long-press = abbrechen',
+    it: 'tap×2 = annulla',
+    en: 'tap×2 = cancel',
+    de: 'tap×2 = abbrechen',
     max: 66,
   },
 
@@ -711,14 +711,14 @@ export const HUD_WIDTH_BUDGETS = {
   /** R1 chip scroll label — main menu mode. */
   quick_r1_main_scroll: { it: 'voce', en: 'item', de: 'Eintrag', max: 22 },
 
-  /** R1 chip long-press label — main menu mode (long-press closes the menu). */
+  /** R1 chip quick-action label — main menu mode (double-tap closes the menu per ADR-0012). */
   quick_r1_main_long: { it: 'annulla', en: 'cancel', de: 'Abbruch', max: 22 },
 
   /**
    * R1 chip tap label — language sub-menu mode (tap applies the selected locale).
    *
    * WR-01 fix: DE changed from 'anwenden' (8) to 'wählen' (6) so the assembled
-   * chip `tap=wählen scroll=Sprache long=zurück` = 37 chars ≤ 38 renderer budget.
+   * chip `tap=wählen scroll=Sprache qa=zurück` = 35 chars ≤ 38 renderer budget.
    * IT 'applica' (7) + DE 'wählen' (6): both fit within budget.
    */
   quick_r1_lang_tap: { it: 'applica', en: 'apply', de: 'wählen', max: 22 },
@@ -727,16 +727,17 @@ export const HUD_WIDTH_BUDGETS = {
   quick_r1_lang_scroll: { it: 'lingua', en: 'language', de: 'Sprache', max: 22 },
 
   /**
-   * R1 chip long-press label — language sub-menu mode (long-press returns to main menu,
-   * not close — UI-SPEC §1 footer hint "long-press = annulla" means "back one level"
-   * when in sub-menu).
+   * R1 chip quick-action label — language sub-menu mode (over-scroll returns to main menu,
+   * not close — UI-SPEC §1 footer hint "qa=annulla" means "back one level"
+   * when in sub-menu; double-tap closes entirely per ADR-0012).
    *
    * WR-01 fix: IT changed from 'indietro' (8) to 'dietro' (6) so the assembled
-   * chip `tap=applica scroll=lingua long=dietro` = 37 chars ≤ 38 renderer budget.
-   * Verified all 3 locales post-fix (see WR-01 in 06-REVIEW.md):
-   *   IT: tap=applica(7) + scroll=lingua(6) + long=dietro(6) → 37 chars ✓
-   *   EN: tap=apply(5)   + scroll=language(8) + long=back(4) → 31 chars ✓
-   *   DE: tap=wählen(6)  + scroll=Sprache(7) + long=zurück(6) → 37 chars ✓
+   * chip `tap=applica scroll=lingua qa=dietro` = 35 chars ≤ 38 renderer budget.
+   * Verified all 3 locales post-fix (see WR-01 in 06-REVIEW.md), now 2 chars
+   * shorter each since `qa=` replaces `long=`:
+   *   IT: tap=applica(7) + scroll=lingua(6) + qa=dietro(6) → 35 chars ✓
+   *   EN: tap=apply(5)   + scroll=language(8) + qa=back(4) → 29 chars ✓
+   *   DE: tap=wählen(6)  + scroll=Sprache(7) + qa=zurück(6) → 35 chars ✓
    */
   quick_r1_lang_long: { it: 'dietro', en: 'back', de: 'zurück', max: 22 },
 
@@ -754,12 +755,12 @@ export const HUD_WIDTH_BUDGETS = {
 
   /**
    * Main HUD chip (no overlay active — default navigation state).
-   * IT: `tap=cycle scroll=nav long=quick` (33 chars — fits within 38).
+   * IT: `tap=cycle scroll=nav qa=quick` (29 chars — fits within 38).
    */
   hud_r1_main: {
-    it: 'tap=cycle scroll=nav long=quick',
-    en: 'tap=cycle scroll=nav long=quick',
-    de: 'tap=Wechsel scroll=Nav long=Schnell',
+    it: 'tap=cycle scroll=nav qa=quick',
+    en: 'tap=cycle scroll=nav qa=quick',
+    de: 'tap=Wechsel scroll=Nav qa=Schnell',
     max: 35,
   },
 
@@ -767,13 +768,13 @@ export const HUD_WIDTH_BUDGETS = {
    * Character Sheet overlay chip.
    * IT pre-truncated to fit 38-char budget (UI-SPEC §3.2).
    * Single-space separators — pre-authored abbreviations replace the full raw form
-   * (`tap=cycle-tab  scroll=tab-content  long=quick[sheet]` = 51 chars).
+   * (`tap=cycle-tab  scroll=tab-content  qa=quick[sheet]` = 49 chars).
    * Token values returned by `CharacterSheetPanel.getR1Hints()` match these abbreviations.
    */
   hud_r1_sheet: {
-    it: 'tap=tab scroll=cont long=q[sheet]',
-    en: 'tap=tab scroll=cont long=q[sheet]',
-    de: 'tap=Tab scroll=Inhalt long=q[Blatt]',
+    it: 'tap=tab scroll=cont qa=q[sheet]',
+    en: 'tap=tab scroll=cont qa=q[sheet]',
+    de: 'tap=Tab scroll=Inhalt qa=q[Blatt]',
     max: 36,
   },
 
@@ -782,9 +783,9 @@ export const HUD_WIDTH_BUDGETS = {
    * IT pre-truncated: single-space format fits within 38-char budget (UI-SPEC §3.2).
    */
   hud_r1_combat: {
-    it: 'scroll=iniz tap=rapida long=q[combat]',
-    en: 'scroll=init tap=quick long=q[combat]',
-    de: 'scroll=Init tap=Schnell long=q[Kampf]',
+    it: 'scroll=iniz tap=rapida qa=q[combat]',
+    en: 'scroll=init tap=quick qa=q[combat]',
+    de: 'scroll=Init tap=Schnell qa=q[Kampf]',
     max: 38,
   },
 
@@ -792,9 +793,9 @@ export const HUD_WIDTH_BUDGETS = {
    * Log panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_log: {
-    it: 'scroll=evento tap=apri long=q[log]',
-    en: 'scroll=event tap=open long=q[log]',
-    de: 'scroll=Eintrag tap=öffnen long=q[Log]',
+    it: 'scroll=evento tap=apri qa=q[log]',
+    en: 'scroll=event tap=open qa=q[log]',
+    de: 'scroll=Eintrag tap=öffnen qa=q[Log]',
     max: 38,
   },
 
@@ -802,9 +803,9 @@ export const HUD_WIDTH_BUDGETS = {
    * Inventory panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_inv: {
-    it: 'scroll=oggetto tap=usa long=q[inv]',
-    en: 'scroll=item tap=use long=q[inv]',
-    de: 'scroll=Gegenst tap=Nutzen long=q[Inv]',
+    it: 'scroll=oggetto tap=usa qa=q[inv]',
+    en: 'scroll=item tap=use qa=q[inv]',
+    de: 'scroll=Gegenst tap=Nutzen qa=q[Inv]',
     max: 38,
   },
 
@@ -812,9 +813,9 @@ export const HUD_WIDTH_BUDGETS = {
    * Spellbook panel overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_spell: {
-    it: 'scroll=incant tap=lancia long=q[spell]',
-    en: 'scroll=spell tap=cast long=q[spell]',
-    de: 'scroll=Zauber tap=wirken long=q[Spell]',
+    it: 'scroll=incant tap=lancia qa=q[spell]',
+    en: 'scroll=spell tap=cast qa=q[spell]',
+    de: 'scroll=Zauber tap=wirken qa=q[Spell]',
     max: 38,
   },
 
@@ -822,15 +823,16 @@ export const HUD_WIDTH_BUDGETS = {
    * Quick Action Menu overlay chip (fits 38-char budget with single-space separators).
    */
   hud_r1_menu: {
-    it: 'scroll=voce tap=apri long=annulla',
-    en: 'scroll=item tap=open long=cancel',
-    de: 'scroll=Eintrag tap=öffnen long=Abbruch',
+    it: 'scroll=voce tap=apri qa=annulla',
+    en: 'scroll=item tap=open qa=cancel',
+    de: 'scroll=Eintrag tap=öffnen qa=Abbruch',
     max: 38,
   },
 
   // WR-04 fix: hud_r1_lang_submenu deleted — dead code (INV-4 zero dead code).
   // The language sub-menu chip is assembled dynamically by renderContextChip from
-  // separate quick_r1_lang_tap + quick_r1_lang_scroll + quick_r1_lang_long keys.
+  // separate quick_r1_lang_tap + quick_r1_lang_scroll + quick_r1_lang_long keys
+  // (the `long` suffix in the key name is historical; the chip token is now `qa=`).
   // This composite entry was never consumed by any production code path; it only
   // appeared in a test-file comment. Additionally its max: 39 exceeded the 38
   // code-point renderer budget enforced by renderContextChip (line 628 of
@@ -838,7 +840,7 @@ export const HUD_WIDTH_BUDGETS = {
   // Post-WR-01 fix the actual assembled chips are 37 chars for IT and DE.
 
   /**
-   * Boot splash chip — long-press is a no-op during boot splash.
+   * Boot splash chip — quick-action (over-scroll) is a no-op during boot splash.
    * Single em-dash placeholder. `max: 4` (just the em-dash).
    */
   hud_r1_boot: {
@@ -849,24 +851,24 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * Boot error chip — long-press retries the boot sequence.
-   * IT: `long=riprova` (12 chars — fits 38).
+   * Boot error chip — over-scroll retries the boot sequence.
+   * IT: `qa=riprova` (10 chars — fits 38).
    */
   hud_r1_boot_error: {
-    it: 'long=riprova',
-    en: 'long=retry',
-    de: 'long=erneut',
+    it: 'qa=riprova',
+    en: 'qa=retry',
+    de: 'qa=erneut',
     max: 38,
   },
 
   /**
    * Concentration modal chip (shown when ConcentrationDropModalPanel is active).
-   * IT: `tap=Y  scroll=—  long=annulla` (fits 38).
+   * IT: `tap=Y  scroll=—  qa=annulla` (fits 38).
    */
   hud_r1_conc_modal: {
-    it: 'tap=Y  scroll=—  long=annulla',
-    en: 'tap=Y  scroll=—  long=cancel',
-    de: 'tap=Y  scroll=—  long=Abbruch',
+    it: 'tap=Y  scroll=—  qa=annulla',
+    en: 'tap=Y  scroll=—  qa=cancel',
+    de: 'tap=Y  scroll=—  qa=Abbruch',
     max: 38,
   },
 
@@ -942,13 +944,13 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * Template placement panel long-press-to-cancel hint (footer button label).
-   * IT max: "[lng] Annulla" = 14 chars.
+   * Template placement panel double-tap-to-cancel hint (footer button label).
+   * Cancel is double-tap per ADR-0012. IT max: "[×2] Annulla" = 12 chars.
    */
   tmpl_long_hint: {
-    it: '[lng] Annulla',
-    en: '[lng] Cancel',
-    de: '[lng] Abbr.',
+    it: '[×2] Annulla',
+    en: '[×2] Cancel',
+    de: '[×2] Abbr.',
     max: 14,
   },
 
@@ -976,8 +978,8 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * R1 context chip long-press label for TemplatePlacementPanel.
-   * IT max: "annulla" = 7 chars.
+   * R1 context chip quick-action (over-scroll) label for TemplatePlacementPanel.
+   * Cancel is double-tap per ADR-0012. IT max: "annulla" = 7 chars.
    */
   hud_r1_tmpl_long: {
     it: 'annulla',
@@ -1097,14 +1099,14 @@ export const HUD_WIDTH_BUDGETS = {
 
   /**
    * R1 context chip composite hint for the TargetPickerPanel overlay.
-   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * Pipe-separated tap|scroll|qa format per Phase 6 parseR1HintString convention.
    * IT: "conferma|scroll|annulla" (23) · EN: "confirm|scroll|cancel" (21) · DE: "best.|scroll|abbr." (18).
-   * Assembled chip: `tap=conferma scroll=scroll long=annulla` (fits 38-char budget).
+   * Assembled chip: `tap=conferma scroll=scroll qa=annulla` (fits 38-char budget).
    */
   hud_r1_target_picker: {
-    it: 'tap=conferma scroll=lista long=annulla',
-    en: 'tap=confirm scroll=list long=cancel',
-    de: 'tap=best. scroll=Liste long=abbr.',
+    it: 'tap=conferma scroll=lista qa=annulla',
+    en: 'tap=confirm scroll=list qa=cancel',
+    de: 'tap=best. scroll=Liste qa=abbr.',
     max: 38,
   },
 
@@ -1147,17 +1149,6 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * Long-press label — instructs user to view item/spell details.
-   * IT: "Mostra dettagli" (15) · EN: "Show details" (12) · DE: "Details zeigen" (14).
-   */
-  action_options_long_label: {
-    it: 'Mostra dettagli',
-    en: 'Show details',
-    de: 'Details zeigen',
-    max: 24,
-  },
-
-  /**
    * Double-tap cancel label.
    * IT: "Annulla" (7) · EN: "Cancel" (6) · DE: "Abbrechen" (9).
    */
@@ -1170,14 +1161,14 @@ export const HUD_WIDTH_BUDGETS = {
 
   /**
    * R1 context chip composite hint for the ActionOptionsModal overlay.
-   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * Pipe-separated tap|scroll|qa format per Phase 6 parseR1HintString convention.
    * scroll segment is '—' because the modal ignores scroll events (AOM-08).
-   * IT: "tap=conferma scroll=— long=annulla" (36) within max 38.
+   * IT: "tap=conferma scroll=— qa=annulla" (32) within max 38.
    */
   hud_r1_action_options: {
-    it: 'tap=conferma scroll=— long=annulla',
-    en: 'tap=confirm scroll=— long=cancel',
-    de: 'tap=best. scroll=— long=abbr.',
+    it: 'tap=conferma scroll=— qa=annulla',
+    en: 'tap=confirm scroll=— qa=cancel',
+    de: 'tap=best. scroll=— qa=abbr.',
     max: 38,
   },
 
@@ -1235,7 +1226,7 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * MoveDirectionPicker double-tap / long-press cancel footer label.
+   * MoveDirectionPicker double-tap cancel footer label (cancel is double-tap per ADR-0012).
    * IT: "annulla" (7) · EN: "cancel" (6) · DE: "abbrechen" (9).
    */
   move_picker_cancel_hint: {
@@ -1259,17 +1250,17 @@ export const HUD_WIDTH_BUDGETS = {
 
   /**
    * R1 context chip composite hint for the MoveDirectionPicker overlay.
-   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
+   * Pipe-separated tap|scroll|qa format per Phase 6 parseR1HintString convention.
    * IT: "commit|direzione|annulla" (24) · EN: "commit|direction|cancel" (23) · DE: 19.
-   * Assembled chip fits within 38-char budget:
-   *   IT: tap=commit scroll=direzione long=annulla = 37 chars ✓
-   *   EN: tap=commit scroll=direction long=cancel = 36 chars ✓
-   *   DE: tap=bestätigen scroll=Richtung long=abbr. = 38 chars ✓ (exact limit)
+   * Assembled chip fits within 38-char budget (`qa=` saves 2 chars vs old `long=`):
+   *   IT: tap=commit scroll=direzione qa=annulla = 38 chars ✓
+   *   EN: tap=commit scroll=direction qa=cancel = 37 chars ✓
+   *   DE: tap=bestätigen scroll=Richtung qa=abbr. = 39 chars (≤42 budget) ✓
    */
   hud_r1_move_picker: {
-    it: 'tap=commit scroll=direzione long=annulla',
-    en: 'tap=commit scroll=direction long=cancel',
-    de: 'tap=bestätigen scroll=Richtung long=abbr.',
+    it: 'tap=commit scroll=direzione qa=annulla',
+    en: 'tap=commit scroll=direction qa=cancel',
+    de: 'tap=bestätigen scroll=Richtung qa=abbr.',
     max: 42,
   },
 
@@ -1425,27 +1416,28 @@ export const HUD_WIDTH_BUDGETS = {
   },
 
   /**
-   * Long-press-to-cancel footer hint in the SlotPickerPanel.
-   * IT: "[long] annulla" (14) · EN: "[long] cancel" (13) · DE: "[long] abbrechen" (17). max 24.
+   * Double-tap-to-cancel footer hint in the SlotPickerPanel (cancel is double-tap per ADR-0012).
+   * IT: "[×2] annulla" (12) · EN: "[×2] cancel" (11) · DE: "[×2] abbrechen" (14). max 24.
    */
   'slot_picker.cancel_hint': {
-    it: '[long] annulla',
-    en: '[long] cancel',
-    de: '[long] abbrechen',
+    it: '[×2] annulla',
+    en: '[×2] cancel',
+    de: '[×2] abbrechen',
     max: 24,
   },
 
   /**
    * R1 context chip composite hint for the SlotPickerPanel overlay.
-   * Pipe-separated tap|scroll|long format per Phase 6 parseR1HintString convention.
-   * scroll cycles slot levels; tap confirms; long-press (at router level) opens QuickAction.
-   * IT: "tap=conferma scroll=livello long=annulla" (40) · EN: (38) · DE: (38). max 42.
-   * Note: DE "tap=best. scroll=Grad long=abbr." = 37 chars ≤ 42.
+   * Pipe-separated tap|scroll|qa format per Phase 6 parseR1HintString convention.
+   * scroll cycles slot levels; tap confirms; over-scroll (at router level) opens QuickAction.
+   * `qa=` saves 2 chars vs old `long=`:
+   * IT: "tap=conferma scroll=livello qa=annulla" (38) · EN: (34) · DE: (30). max 42.
+   * Note: DE "tap=best. scroll=Grad qa=abbr." = 30 chars ≤ 42.
    */
   hud_r1_slot_picker: {
-    it: 'tap=conferma scroll=livello long=annulla',
-    en: 'tap=confirm scroll=level long=cancel',
-    de: 'tap=best. scroll=Grad long=abbr.',
+    it: 'tap=conferma scroll=livello qa=annulla',
+    en: 'tap=confirm scroll=level qa=cancel',
+    de: 'tap=best. scroll=Grad qa=abbr.',
     max: 42,
   },
 

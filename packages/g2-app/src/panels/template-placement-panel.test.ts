@@ -6,7 +6,7 @@
  * - scroll-up adjusts y position
  * - scroll-down adjusts y position
  * - tap emits confirm-template-placement tool.invoke envelope + calls onClose
- * - long-press emits cancel envelope + calls onClose
+ * - double-tap emits cancel envelope + calls onClose (ADR-0012 D-3)
  * - getR1Hints returns expected shape
  * - getContainerCount returns {image:0, text:1}
  * - onUnmount releases gesture bus subscription (no leak)
@@ -131,7 +131,7 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
     expect(panel.getContainerCount()).toEqual({ image: 0, text: 1 });
   });
 
-  it('TP-04: getR1Hints returns an object with tap, scroll, longPressLabel strings', () => {
+  it('TP-04: getR1Hints returns an object with tap, scroll, quickActionLabel strings', () => {
     const panel = new TemplatePlacementPanel(
       bridge,
       ws,
@@ -145,7 +145,7 @@ describe('TemplatePlacementPanel — constructor + lifecycle', () => {
     expect(hints).toBeDefined();
     expect(typeof hints?.tap).toBe('string');
     expect(typeof hints?.scroll).toBe('string');
-    expect(typeof hints?.longPressLabel).toBe('string');
+    expect(typeof hints?.quickActionLabel).toBe('string');
     // Verify it mentions confirm/position concepts
     expect(hints?.tap.length).toBeGreaterThan(0);
     expect(hints?.scroll.length).toBeGreaterThan(0);
@@ -318,7 +318,7 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('TP-12: long-press emits cancel envelope with TEMPLATE_PLACEMENT_CANCEL_TYPE + calls onClose', async () => {
+  it('TP-12: double-tap emits cancel envelope with TEMPLATE_PLACEMENT_CANCEL_TYPE + calls onClose', async () => {
     const onClose = vi.fn();
     const payload = makePayload({
       placementId: '550e8400-e29b-41d4-a716-446655440004',
@@ -333,7 +333,7 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
       onClose,
     );
     await panel.onMount();
-    panel.onEvent({ kind: 'long-press' });
+    panel.onEvent({ kind: 'double-tap' });
 
     expect(ws.send).toHaveBeenCalledTimes(1);
     const sentRaw = ws._sent[0]!;
@@ -350,8 +350,7 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('TP-13: double-tap is ignored (no send, no close)', async () => {
-    const onClose = vi.fn();
+  it('TP-13: isAtTopBoundary() returns true (single-screen → swipe-up over-scrolls to Quick Action)', () => {
     const panel = new TemplatePlacementPanel(
       bridge,
       ws,
@@ -359,13 +358,9 @@ describe('TemplatePlacementPanel — R1 gesture handling', () => {
       makePayload(),
       locale,
       SESSION_ID,
-      onClose,
+      vi.fn(),
     );
-    await panel.onMount();
-    panel.onEvent({ kind: 'double-tap' });
-
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(panel.isAtTopBoundary()).toBe(true);
   });
 
   it('TP-14: tap envelope type is "tool.invoke" (TEMPLATE_PLACEMENT_CONFIRMED_TYPE is for inner payload marker)', () => {

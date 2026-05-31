@@ -658,12 +658,12 @@ describe('INV-1 fixture round-trips', () => {
 // ─── SP-R1HINTS-* (Phase 6 Plan 03) ──────────────────────────────────────────
 
 describe('SpellbookPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
-  it('SP-R1HINTS-IT: returns getR1Hints with q[spell] longPressLabel (IT locale)', () => {
+  it('SP-R1HINTS-IT: returns getR1Hints with q[spell] quickActionLabel (IT locale)', () => {
     const bridge = makeMockBridge();
     const bus = makeMockBus();
     const panel = new SpellbookPanel(bridge, bus, 'it');
     const hints = panel.getR1Hints();
-    expect(hints.longPressLabel).toMatch(/q\[spell\]/);
+    expect(hints.quickActionLabel).toMatch(/q\[spell\]/);
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
     expect(hints.tap.length).toBeGreaterThan(0);
@@ -679,12 +679,31 @@ describe('SpellbookPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       const hints = panel.getR1Hints();
       expect([...hints.tap].length).toBeLessThanOrEqual(38);
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
-      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+      expect([...hints.quickActionLabel].length).toBeLessThanOrEqual(38);
     }
   });
 });
 
-// ─── SBP-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + long-press wiring
+// ─── SBP-OVERSCROLL-*: ADR-0012 D-2 over-scroll boundary probe ────────────────
+
+describe('SpellbookPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('SBP-OVERSCROLL-01: true at offset 0, false after scrolling down', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithSpell);
+    await panel.onMount();
+
+    expect(panel.isAtTopBoundary()).toBe(true);
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
+    bus.publish({ kind: 'scroll', direction: 'up' });
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    await panel.onUnmount();
+  });
+});
+
+// ─── SBP-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + tap context action
 
 /**
  * Minimal CharacterSnapshot with one spell for SBP-LP-* tests.
@@ -757,7 +776,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     expect(typeof panel.setActionOptionsHandler).toBe('function');
   });
 
-  it('SBP-LP-02: long-press with handler set + valid snapshot calls handler with ActionOptionsRequest', async () => {
+  it('SBP-LP-02: tap with handler set + valid snapshot calls handler with ActionOptionsRequest', async () => {
     const bus = new PanelGestureBus();
     const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
     panel.onSnapshot(snapshotWithSpell);
@@ -766,7 +785,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     expect(spy).toHaveBeenCalledTimes(1);
     const req = spy.mock.calls[0]?.[0];
@@ -788,7 +807,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     const req = spy.mock.calls[0]?.[0];
     expect(req?.requiresTarget).toBe(true);
@@ -825,7 +844,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     const req = spy.mock.calls[0]?.[0];
     expect(req?.requiresTarget).toBe(false);
@@ -833,20 +852,20 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     await panel.onUnmount();
   });
 
-  it('SBP-LP-03: long-press with handler NOT set → handler not called (backward-compat)', async () => {
+  it('SBP-LP-03: tap with handler NOT set → handler not called (re-draw no-op)', async () => {
     const bus = new PanelGestureBus();
     const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
     panel.onSnapshot(snapshotWithSpell);
     await panel.onMount();
 
-    // No setActionOptionsHandler call — should be a no-op
-    bus.publish({ kind: 'long-press' });
+    // No setActionOptionsHandler call — should be a re-draw no-op
+    bus.publish({ kind: 'tap' });
 
     // Panel stays alive — no crash, no call to any handler
     await panel.onUnmount();
   });
 
-  it('SBP-LP-04: long-press with handler set but snapshot=null → no-op + console.warn', async () => {
+  it('SBP-LP-04: tap with handler set but snapshot=null → no-op + console.warn', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const bus = new PanelGestureBus();
     const panel = new SpellbookPanel(makeMockBridge(), bus, 'it');
@@ -856,7 +875,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     expect(spy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -868,7 +887,7 @@ describe('SpellbookPanel — setActionOptionsHandler (SBP-LP-*)', () => {
   });
 });
 
-// ─── SBP-LPMAP-*: R-longpress header-aware row → spell mapping ─────────────────
+// ─── SBP-LPMAP-*: header-aware row → spell mapping (cursor-row resolution) ─────
 
 /**
  * Multi-section snapshot: 1 cantrip + 2 level-1 spells. The standalone renderer's
@@ -929,7 +948,7 @@ const multiSectionSnapshot: CharacterSnapshot = {
   },
 };
 
-describe('buildSpellbookRowItemMap + resolveSpellAtRow (R-longpress)', () => {
+describe('buildSpellbookRowItemMap + resolveSpellAtRow (cursor-row resolution)', () => {
   it('SBP-LPMAP-01: map aligns headers→null and item rows→spell across sections', () => {
     const map = buildSpellbookRowItemMap(multiSectionSnapshot);
     // [title, cantrip-hdr, light, blank, L1-hdr, magic-missile, cure-wounds, blank]
@@ -962,7 +981,7 @@ describe('buildSpellbookRowItemMap + resolveSpellAtRow (R-longpress)', () => {
     expect(buildSpellbookRowItemMap(null)).toEqual([]);
   });
 
-  it('SBP-LPMAP-05: long-press after scrolling a tall list resolves the cursor-row spell across a header', async () => {
+  it('SBP-LPMAP-05: tap after scrolling a tall list resolves the cursor-row spell across a header', async () => {
     // Build a list TALLER than ROW_COUNT (18) so the scroll window actually shifts.
     // 18 cantrips push the level-1 header + spells below the first visible page;
     // scrolling moves clampedOffset into the level-1 section.
@@ -1020,7 +1039,7 @@ describe('buildSpellbookRowItemMap + resolveSpellAtRow (R-longpress)', () => {
     // dispatched spells[7] = 'cantrip-7' — off by the 2 header rows (title + section
     // header). This guards the header-aware mapping fix.
     for (let i = 0; i < 20; i++) bus.publish({ kind: 'scroll', direction: 'down' });
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     const req = spy.mock.calls.at(-1)?.[0];
     expect(req?.itemId).toBe('cantrip-5'); // row-mapped (correct), NOT 'cantrip-7' (old bug)

@@ -34,7 +34,7 @@
  *
  * No-op gestures:
  *   - CHSP-DBL-TAP-1:    double-tap is a no-op (no state change, no draw call)
- *   - CHSP-LONG-PRESS-1: long-press is a no-op stub (no state change, no draw call)
+ *   - CHSP-TOP-BOUNDARY-1: isAtTopBoundary reflects scrollOffset (ADR-0012 D-2)
  *
  * INV-1 fixtures (SHEET-04 ck 13):
  *   - CHSP-FIX-MAIN:      buildTabStrip(0) matches sheet.tab-strip.main-active.it.txt
@@ -493,15 +493,17 @@ describe('CharacterSheetPanel — no-op gestures', () => {
     // (We verify indirectly by checking no new draw was triggered.)
   });
 
-  it('CHSP-LONG-PRESS-1: long-press is a no-op stub (no state change, no additional draw)', async () => {
+  it('CHSP-TOP-BOUNDARY-1: isAtTopBoundary reflects scrollOffset (ADR-0012 D-2)', async () => {
     const bus = new PanelGestureBus();
-    const { panel, bridge } = makePanel({ bus });
+    const { panel } = makePanel({ bus });
     await panel.onMount();
-    const callsBefore = bridge.textContainerUpgrade.mock.calls.length;
 
-    bus.publish({ kind: 'long-press' });
+    // Fresh mount: scrollOffset === 0 → at top.
+    expect(panel.isAtTopBoundary()).toBe(true);
 
-    expect(bridge.textContainerUpgrade.mock.calls.length).toBe(callsBefore);
+    // A tap cycles the tab and resets scrollOffset to 0 — still at top.
+    bus.publish({ kind: 'tap' });
+    expect(panel.isAtTopBoundary()).toBe(true);
   });
 });
 
@@ -548,10 +550,10 @@ describe('buildTabStrip — INV-1 fixture round-trips (SHEET-04 ck 13)', () => {
 // ─── CHSP-R1HINTS-* (Phase 6 Plan 03) ────────────────────────────────────────
 
 describe('CharacterSheetPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
-  it('CHSP-R1HINTS-IT: returns getR1Hints with q[sheet] longPressLabel (IT locale)', () => {
+  it('CHSP-R1HINTS-IT: returns getR1Hints with q[sheet] quickActionLabel (IT locale)', () => {
     const { panel } = makePanel();
     const hints = panel.getR1Hints();
-    expect(hints.longPressLabel).toMatch(/q\[sheet\]/);
+    expect(hints.quickActionLabel).toMatch(/q\[sheet\]/);
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
     expect(hints.tap.length).toBeGreaterThan(0);
@@ -570,7 +572,7 @@ describe('CharacterSheetPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => 
       // The composed chip string budget (38 chars for the R1: segment) is enforced by the renderer.
       expect([...hints.tap].length).toBeLessThanOrEqual(38);
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
-      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+      expect([...hints.quickActionLabel].length).toBeLessThanOrEqual(38);
     }
   });
 });

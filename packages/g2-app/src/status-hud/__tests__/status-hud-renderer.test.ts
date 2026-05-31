@@ -467,7 +467,7 @@ describe('Phase 4b death-saves mode (DEATH-01)', () => {
  * that StatusHudRenderer will accept (narrower than the full LayerManager class).
  */
 function makeLm(
-  topLayer: { getR1Hints?(): { tap: string; scroll: string; longPressLabel: string } } | null,
+  topLayer: { getR1Hints?(): { tap: string; scroll: string; quickActionLabel: string } } | null,
 ): {
   getTopLayer(): typeof topLayer;
 } {
@@ -475,22 +475,22 @@ function makeLm(
 }
 
 describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', () => {
-  it('SR-CHIP-01: null layerManager → returns chip containing tap=cycle, scroll=nav, long=quick (fallback)', () => {
+  it('SR-CHIP-01: null layerManager → returns chip containing tap=cycle, scroll=nav, qa=quick (fallback)', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const chip = renderer.renderContextChip(null, 'it');
     expect(chip).toContain('tap=cycle');
     expect(chip).toContain('scroll=nav');
-    expect(chip).toContain('long=quick');
+    expect(chip).toContain('qa=quick');
   });
 
   it('SR-CHIP-02: layerManager.getTopLayer() === null (no overlay) → uses hud_r1_main chip', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const lm = makeLm(null);
     const chip = renderer.renderContextChip(lm, 'it');
-    // Main chip has: tap=cycle scroll=nav long=quick
+    // Main chip has: tap=cycle scroll=nav qa=quick
     expect(chip).toContain('tap=cycle');
     expect(chip).toContain('scroll=nav');
-    expect(chip).toContain('long=quick');
+    expect(chip).toContain('qa=quick');
   });
 
   it('SR-CHIP-03: top layer has no getR1Hints → falls back to DEFAULT_R1_HINTS', () => {
@@ -502,15 +502,15 @@ describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', ()
     const chip = renderer.renderContextChip(lm, 'it');
     expect(chip).toContain('tap=cycle');
     expect(chip).toContain('scroll=nav');
-    expect(chip).toContain('long=quick');
+    expect(chip).toContain('qa=quick');
   });
 
   it('SR-CHIP-04: top layer is CharacterSheetPanel → chip contains q[sheet]', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     // Abbreviated token values matching hud_r1_sheet IT pre-authored string
-    // (tap=tab scroll=cont long=q[sheet] = 33 chars — fits 38-char budget)
+    // (tap=tab scroll=cont qa=q[sheet] = 31 chars — fits 38-char budget)
     const fakeSheet = {
-      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', longPressLabel: 'q[sheet]' }),
+      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', quickActionLabel: 'q[sheet]' }),
     };
     const lm = makeLm(fakeSheet);
     const chip = renderer.renderContextChip(lm, 'it');
@@ -520,7 +520,7 @@ describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', ()
   it('SR-CHIP-05: top layer is CombatTrackerPanel → chip contains q[combat]', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const fakeCombat = {
-      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', longPressLabel: 'q[combat]' }),
+      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', quickActionLabel: 'q[combat]' }),
     };
     const lm = makeLm(fakeCombat);
     const chip = renderer.renderContextChip(lm, 'it');
@@ -530,7 +530,7 @@ describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', ()
   it('SR-CHIP-06: top layer is QuickActionMenuPanel (main mode) → chip contains scroll=voce and annulla', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const fakeMenu = {
-      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', longPressLabel: 'annulla' }),
+      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', quickActionLabel: 'annulla' }),
     };
     const lm = makeLm(fakeMenu);
     const chip = renderer.renderContextChip(lm, 'it');
@@ -545,7 +545,7 @@ describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', ()
       getR1Hints: () => ({
         tap: 'cycle-tab',
         scroll: 'tab-content',
-        longPressLabel: 'quick[sheet]',
+        quickActionLabel: 'quick[sheet]',
       }),
     };
     const lm = makeLm(fakeSheet);
@@ -556,7 +556,7 @@ describe('StatusHudRenderer.renderContextChip (SR-CHIP-* / Phase 6 Plan 03)', ()
 
   it('SR-CHIP-08 (DE stress): chip fits budget with DE locale labels', () => {
     const renderer = new StatusHudRenderer({ locale: 'de' });
-    // Main state — DE string is "tap=Wechsel  scroll=Nav  long=Schnell" (37 chars)
+    // Main state — DE string is "tap=Wechsel scroll=Nav qa=Schnell" (33 chars)
     const chip = renderer.renderContextChip(makeLm(null), 'de');
     // The full chip starts with "R1: " then the content; total ≤ 42.
     expect([...chip].length).toBeLessThanOrEqual(42);
@@ -585,9 +585,9 @@ describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CH
 
   it('SR-FIX-CHIP-02: sheet chip matches status-hud.chip.sheet.it.txt', async () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
-    // Abbreviated token values matching hud_r1_sheet IT (tap=tab scroll=cont long=q[sheet])
+    // Abbreviated token values matching hud_r1_sheet IT (tap=tab scroll=cont qa=q[sheet])
     const fakeSheet = {
-      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', longPressLabel: 'q[sheet]' }),
+      getR1Hints: () => ({ tap: 'tab', scroll: 'cont', quickActionLabel: 'q[sheet]' }),
     };
     const chip = renderer.renderContextChip(makeLm(fakeSheet), 'it');
     await matchAsciiFixture(
@@ -605,7 +605,7 @@ describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CH
   it('SR-FIX-CHIP-03: combat chip matches status-hud.chip.combat.it.txt', async () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const fakeCombat = {
-      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', longPressLabel: 'q[combat]' }),
+      getR1Hints: () => ({ tap: 'rapida', scroll: 'iniz', quickActionLabel: 'q[combat]' }),
     };
     const chip = renderer.renderContextChip(makeLm(fakeCombat), 'it');
     await matchAsciiFixture(
@@ -623,7 +623,7 @@ describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CH
   it('SR-FIX-CHIP-04: menu chip matches status-hud.chip.menu.it.txt', async () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const fakeMenu = {
-      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', longPressLabel: 'annulla' }),
+      getR1Hints: () => ({ tap: 'apri', scroll: 'voce', quickActionLabel: 'annulla' }),
     };
     const chip = renderer.renderContextChip(makeLm(fakeMenu), 'it');
     await matchAsciiFixture(
@@ -643,7 +643,7 @@ describe('StatusHudRenderer.renderContextChip — INV-1 chip fixtures (SR-FIX-CH
     // Boot-error state: no overlay, but renderer produces boot-error chip when asked
     // directly. We test the chip using the hud_r1_boot_error key directly.
     const fakeBootError = {
-      getR1Hints: () => ({ tap: '', scroll: '', longPressLabel: 'riprova' }),
+      getR1Hints: () => ({ tap: '', scroll: '', quickActionLabel: 'riprova' }),
     };
     const chip = renderer.renderContextChip(makeLm(fakeBootError), 'it');
     await matchAsciiFixture(

@@ -5,8 +5,8 @@
  * Implements {@link ../engine/layer-types.js#OverlayPanel}:
  *   - `onMount()`   — subscribes to PanelGestureBus
  *   - `onUnmount()` — unsubscribes (T-4b-01-03 mitigation — prevents subscriber leaks)
- *   - `onEvent(g)`  — tap = cast Phase 6 stub; scroll cycles spell highlight;
- *                     double-tap → close (Phase 6 NAV-01 stub); long-press → stub.
+ *   - `onEvent(g)`  — tap opens Action Options for the cursor spell; scroll cycles
+ *                     spell highlight; double-tap → close (Phase 6 NAV-01 stub).
  *
  * **Column layout (UI-SPEC §5.11 — shared between sheet-tab §5.5 and standalone):**
  * ```
@@ -436,17 +436,17 @@ export function renderSpellbookStandaloneContent(
   return padToRowCount(rows);
 }
 
-// ─── Header-aware row → spell mapping (R-longpress) ───────────────────────────
+// ─── Header-aware row → spell mapping (cursor-row resolution) ─────────────────
 
 /**
  * Build the row → spell map that runs parallel to the `allRows` array produced by
  * {@link renderSpellbookStandaloneContent}.
  *
- * R-longpress fix: the standalone renderer interleaves a title row, section
+ * Cursor-row mapping: the standalone renderer interleaves a title row, section
  * headers, spell rows and blank separators into `allRows` and scrolls by
- * content-ROW index. The long-press handler used to index the FLAT `spells`
- * array with `scrollOffset`, so any section header above the cursor shifted the
- * mapping → the WRONG spell was dispatched after scrolling. This map returns the
+ * content-ROW index. The context-action handler must not index the FLAT `spells`
+ * array with `scrollOffset`, since any section header above the cursor would shift
+ * the mapping → the WRONG spell would be dispatched after scrolling. This map returns the
  * spell reference for item rows and `null` for title / header / blank rows, in
  * the exact same order the renderer emits them, so the cursor row resolves to
  * the spell visually under it.
@@ -528,8 +528,8 @@ export function resolveSpellAtRow(
  * **Lifecycle:**
  * - `onMount`   — subscribes to PanelGestureBus for R1 gesture fan-out.
  * - `onUnmount` — unsubscribes (T-4b-01-03 mitigation).
- * - `onEvent`   — tap = cast stub (Phase 6 execution); scroll cycles spell highlight;
- *                 double-tap = close stub (Phase 6 NAV-01); long-press = Quick Action stub.
+ * - `onEvent`   — tap opens Action Options for the cursor spell (Phase 8);
+ *                 scroll cycles spell highlight; double-tap = close stub (Phase 6 NAV-01).
  *
  * **Container strategy:** single text container `overlay-block`, zero image containers.
  * `getContainerCount()` returns `{ image: 0, text: 1 }` (Strategy A exemplar).
@@ -579,12 +579,12 @@ export default class SpellbookPanel implements OverlayPanel {
   private unsubscribe: (() => void) | null = null;
 
   /**
-   * Optional long-press handler injected by the boot orchestrator (Plan 08-05).
+   * Optional Action Options handler injected by the boot orchestrator (Plan 08-05).
    *
-   * When set, `onEvent('long-press')` calls this handler with the currently
-   * highlighted spell's ActionOptionsRequest. When null, long-press is a no-op
-   * (the Phase 6 router-level `quick-action-long-press-dispatcher` still fires
-   * and mounts the QuickActionMenu — preserved backward-compat).
+   * When set, `onEvent('tap')` calls this handler with the currently highlighted
+   * spell's ActionOptionsRequest. When null, tap falls back to a re-draw no-op
+   * (the Quick Action menu now opens via the router-level over-scroll dispatcher,
+   * ADR-0012 D-2 — not from this panel).
    *
    * Plan 08-05 wires this via `panel.setActionOptionsHandler(handler)` after
    * boot mounts the panel. The setter is preferred over a constructor arg to
@@ -634,40 +634,26 @@ export default class SpellbookPanel implements OverlayPanel {
   /**
    * Handle a published R1 gesture.
    *
-   * Dispatch table per UI-SPEC §7.1:
-   * - `tap`         → cast spell stub (Phase 6 wires execution)
+   * Dispatch table per UI-SPEC §7.1 (ADR-0012 D-3 — context action on tap):
+   * - `tap`         → open Action Options for the cursor spell (Phase 8)
    * - `scroll-down` → advance scroll offset; re-draw
-   * - `scroll-up`   → retreat scroll offset; re-draw
+   * - `scroll-up`   → retreat scroll offset; re-draw (clamps at 0 — over-scroll opens Quick Action)
    * - `double-tap`  → close stub (Phase 6 NAV-01)
-   * - `long-press`  → Quick Action stub (Phase 6)
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
-      case 'tap':
-        // Phase 6: cast selected spell — stub, returns immediately
-        void this.draw();
-        break;
-      case 'scroll':
-        if (gesture.direction === 'down') {
-          this.scrollOffset += 1;
-        } else {
-          this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-        }
-        void this.draw();
-        break;
-      case 'double-tap':
-        // Phase 6 NAV-01 stub: close → MAIN_MAP
-        break;
-      case 'long-press': {
+      case 'tap': {
+        // ADR-0012 D-3: tap opens Action Options for the cursor spell.
         // Phase 8 Plan 08-03: if setActionOptionsHandler was called, dispatch to it.
-        // Otherwise, remain a no-op (Phase 6 router-level quick-action-long-press-dispatcher
-        // still fires and mounts the QuickActionMenu — backward-compat preserved).
+        // Otherwise, remain a re-draw no-op (Quick Action now opens via the
+        // router-level over-scroll dispatcher, ADR-0012 D-2 — not from this panel).
         if (this.actionOptionsHandler === null) {
+          void this.draw();
           break;
         }
-        // R-longpress: resolve the spell under the cursor ROW via the header-aware
-        // row → spell map (NOT spells[scrollOffset], which mis-maps after a section
-        // header). The cursor row is the clamped scroll offset = first visible row.
+        // Resolve the spell under the cursor ROW via the header-aware row → spell map
+        // (NOT spells[scrollOffset], which mis-maps after a section header). The cursor
+        // row is the clamped scroll offset = first visible row.
         const rowItemMap = buildSpellbookRowItemMap(this.snapshot);
         const clampedOffset = Math.max(
           0,
@@ -675,7 +661,7 @@ export default class SpellbookPanel implements OverlayPanel {
         );
         const spell = resolveSpellAtRow(rowItemMap, clampedOffset);
         if (this.snapshot === null || spell == null) {
-          console.warn('[spellbook-panel] long-press with no spell under cursor row — no-op');
+          console.warn('[spellbook-panel] tap with no spell under cursor row — no-op');
           break;
         }
         // requiresTarget heuristic: spells with a real range that are not reactions typically
@@ -691,21 +677,43 @@ export default class SpellbookPanel implements OverlayPanel {
         });
         break;
       }
+      case 'scroll':
+        if (gesture.direction === 'down') {
+          this.scrollOffset += 1;
+        } else {
+          this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+        }
+        void this.draw();
+        break;
+      case 'double-tap':
+        // Phase 6 NAV-01 stub: close → MAIN_MAP
+        break;
     }
   }
 
   /**
-   * Inject the action options handler for long-press dispatch (Plan 08-03 wire point).
+   * INV-5 over-scroll boundary probe (ADR-0012 D-2).
+   *
+   * Returns `true` when the panel is scrolled to the top, so a swipe-up at this
+   * point is an over-scroll that the router-level dispatcher routes to the Quick
+   * Action menu (the panel's own swipe-up is a clamped no-op at offset 0).
+   */
+  isAtTopBoundary(): boolean {
+    return this.scrollOffset === 0;
+  }
+
+  /**
+   * Inject the action options handler for tap dispatch (Plan 08-03 wire point).
    *
    * Called by the boot orchestrator (Plan 08-05) after the panel is mounted.
-   * When non-null, `onEvent('long-press')` calls this handler with the currently
-   * highlighted spell's `ActionOptionsRequest`. When null, long-press reverts to
-   * a no-op (Phase 6 router-level dispatcher still fires).
+   * When non-null, `onEvent('tap')` calls this handler with the currently
+   * highlighted spell's `ActionOptionsRequest`. When null, tap reverts to a
+   * re-draw no-op (Quick Action opens via the over-scroll dispatcher, ADR-0012 D-2).
    *
-   * Pass `null` to remove the handler (useful in tests that verify backward-compat).
+   * Pass `null` to remove the handler (useful in tests that verify the no-op path).
    *
    * @param handler Callback receiving the request for the highlighted spell,
-   *                or null to disable Phase 8 long-press wiring.
+   *                or null to disable Phase 8 tap wiring.
    */
   setActionOptionsHandler(handler: ((req: ActionOptionsRequest) => void) | null): void {
     this.actionOptionsHandler = handler;
@@ -759,12 +767,16 @@ export default class SpellbookPanel implements OverlayPanel {
    * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
    *
    * Returns the parsed hint object from the pre-composed `hud_r1_spell` i18n
-   * string — e.g. IT: `{ tap: 'lancia', scroll: 'incant', longPressLabel: 'q[spell]' }`.
+   * string — e.g. IT: `{ tap: 'lancia', scroll: 'incant', quickActionLabel: 'q[spell]' }`.
    *
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
    * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_spell key
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_spell', this.locale));
   }
 }

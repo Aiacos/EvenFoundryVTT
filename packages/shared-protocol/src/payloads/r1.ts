@@ -16,13 +16,10 @@
  * the two lives exclusively in `r1-event-source.ts` (attachR1EventSource),
  * not in callers — CONTEXT.md D-Area-1 + RESEARCH.md §Q7.
  *
- * # Hardware-pending (SC-06-01)
+ * # Gesture synthesis
  *
- * The Bridge currently classifies `long-press` directly (fires when the SDK
- * long-press threshold is met). The `double-tap` variant is synthesised by the
- * Bridge from two rapid `tap` events. The `longPressMs` timing constant in
- * `r1-timings.ts` is currently a client-side guard reserved for future
- * hardware-tuning closure via SC-06-01.
+ * The `double-tap` variant is synthesised by the Bridge from two rapid `tap`
+ * events. `long-press` was removed (ADR-0012) — it is not a hardware gesture.
  *
  * @see Specs.md §3.2 (R1 hardware gesture model)
  * @see Specs.md §4.4 (R1 SDK event surface)
@@ -56,20 +53,24 @@ export const R1_GESTURE_TYPE = 'r1.gesture' as const;
  * - `timestamp` — Bridge-side `Date.now()` ms epoch at gesture detection time.
  *                 Integer required (no fractional milliseconds from the SDK).
  *
- * Wire kinds:
- * - `'tap'`        — single tap on the R1 ring (maps to internal `{ kind: 'tap' }`)
- * - `'scroll-up'`  — ring scroll upward (maps to internal `{ kind: 'scroll', direction: 'up' }`)
- * - `'scroll-down'`— ring scroll downward (maps to internal `{ kind: 'scroll', direction: 'down' }`)
- * - `'long-press'` — held press (Bridge classifies; maps to internal `{ kind: 'long-press' }`)
- * - `'double-tap'` — two rapid taps (Bridge synthesises; maps to internal `{ kind: 'double-tap' }`)
+ * Wire kinds (the COMPLETE Even hardware gesture set — `guides/input-events`,
+ * INV-2 re-verified 2026-05-31; there is NO long-press / duration-based input):
+ * - `'tap'`        — single tap / press, `CLICK_EVENT(0)` (maps to internal `{ kind: 'tap' }`)
+ * - `'scroll-up'`  — swipe-up, `SCROLL_TOP_EVENT(1)` (maps to internal `{ kind: 'scroll', direction: 'up' }`)
+ * - `'scroll-down'`— swipe-down, `SCROLL_BOTTOM_EVENT(2)` (maps to internal `{ kind: 'scroll', direction: 'down' }`)
+ * - `'double-tap'` — double-press, `DOUBLE_CLICK_EVENT(3)` (maps to internal `{ kind: 'double-tap' }`)
+ *
+ * `long-press` was retired by ADR-0012: the Quick-Action menu now opens via
+ * over-scroll (swipe-up at the focused layer's top boundary), detected client-side
+ * in g2-app — so no new wire kind is needed.
  *
  * @see Specs.md §3.2 (R1 hardware gesture model — verified source)
- * @see Specs.md §10.0.1 (Phase 0 GO criteria for long-press ≥500 ms detection)
+ * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md (D-1)
  * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md §Q7 (wire→internal translation rationale)
  */
 export const R1GesturePayloadSchema = z
   .object({
-    kind: z.enum(['tap', 'scroll-up', 'scroll-down', 'long-press', 'double-tap']),
+    kind: z.enum(['tap', 'scroll-up', 'scroll-down', 'double-tap']),
     timestamp: z.number().int(),
   })
   .strict();

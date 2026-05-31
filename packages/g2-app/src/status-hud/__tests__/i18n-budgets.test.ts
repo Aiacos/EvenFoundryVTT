@@ -250,9 +250,10 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // Phase 8 Plan 02 totals: 5 TargetPickerPanel keys
     //   (target_picker_title, target_picker_empty_hint, target_picker_hp_label,
     //    target_picker_ac_label, hud_r1_target_picker).
-    // Phase 8 Plan 03 totals: 6 ActionOptionsModal keys
+    // Phase 8 Plan 03 totals: 5 ActionOptionsModal keys (action_options_long_label
+    //   removed by ADR-0012 — the long-press "Mostra dettagli" row was retired).
     //   (action_options_title, action_options_tap_label_spell, action_options_tap_label_item,
-    //    action_options_long_label, action_options_cancel_label, hud_r1_action_options).
+    //    action_options_cancel_label, hud_r1_action_options).
     // Phase 8 Plan 04 totals: 8 MoveDirectionPicker + StatusHud movement chip keys
     //   (move_picker_title, move_picker_remaining_template, move_picker_exhausted_hint,
     //    move_picker_confirm_hint, move_picker_cancel_hint, status_hud_movement_label,
@@ -272,7 +273,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // Phase 13 Plan 02 totals: 8 Reaction Prompt Panel keys
     //   (reaction_prompt_title, _subject_shield, _subject_counterspell, _subject_opp_attack,
     //    _y_shield, _y_counterspell, _y_opp_attack, _n_cancel).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(225);
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -353,8 +354,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 209 after Phase 9 Plan 03 (1 error.action.concentration-cancelled key).
     // Updated to 216 after Phase 9 Plan 04 (7 SlotPickerPanel keys).
     // Updated to 218 after Phase 10 Plan 01 (2 SYNC LOST chip keys).
-    // Updated to 226 after Phase 13 Plan 02 (8 Reaction Prompt Panel keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
+    // Updated to 225 (226 after Phase 13 Plan 02 minus action_options_long_label retired by ADR-0012).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(225);
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
@@ -412,7 +413,7 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
 
   // ─── Footer hints ─────────────────────────────────────────────────────────
   it('IB-P5-FOOTER: footer.hint.combat IT verbatim', () => {
-    expect(getLabel('footer.hint.combat', 'it')).toBe('scroll=iniziativa  tap=rapida  long=rapida');
+    expect(getLabel('footer.hint.combat', 'it')).toBe('scroll=iniziativa  tap=rapida  qa=rapida');
   });
 
   // ─── Empty states ─────────────────────────────────────────────────────────
@@ -529,6 +530,6 @@ describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
     // Note: after Plan 09-04, total is 216 (209 + 7 SlotPickerPanel keys).
     // Note: after Plan 10-01, total is 218 (216 + 2 SYNC LOST chip keys).
     // Note: after Plan 13-02, total is 226 (218 + 8 Reaction Prompt Panel keys).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(226);
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(225);
   });
 });

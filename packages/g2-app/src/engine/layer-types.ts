@@ -82,21 +82,39 @@ export interface Layer {
    *
    * Overlay-aware layers (OverlayPanel implementations) may expose hints so the
    * StatusHudRenderer can render a contextual `R1: tap=<tap>  scroll=<scroll>
-   * long=quick[<id>]` footer row. Layers that omit this method (z=0 map,
+   * qa=<id>` footer row. Layers that omit this method (z=0 map,
    * z=1 status HUD, z=1.5 toast queue, z=0.5 idle infill) inherit the
    * StatusHudRenderer default:
-   * `{ tap: 'cycle', scroll: 'nav', longPressLabel: 'quick' }`.
+   * `{ tap: 'cycle', scroll: 'nav', quickActionLabel: 'quick' }`.
    *
    * INV-5 visible enforcement (SC-4 per Phase 6 ROADMAP success criteria): the
-   * chip names the live long-press target, making the routing invariant auditable
-   * at a glance by the player. Plan 06-03 wires the chip; this field is the
-   * interface contract that makes it pluggable per overlay type.
+   * chip names the live Quick-Action target (opened via over-scroll — swipe-up at
+   * the top boundary, ADR-0012), making the routing invariant auditable at a glance
+   * by the player. Plan 06-03 wires the chip; this field is the interface contract
+   * that makes it pluggable per overlay type.
    *
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
+   * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md (D-2)
    * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2 (chip design)
-   * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-RESEARCH.md Pitfall 5 (separation decision)
    */
-  getR1Hints?(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string };
+  getR1Hints?(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  };
+  /**
+   * Whether the layer's scroll/selection cursor is at its TOP boundary (ADR-0012 D-2).
+   *
+   * Read by the router-level `quick-action-overscroll-dispatcher` on a
+   * `{ kind: 'scroll', direction: 'up' }` gesture: when the focused layer is already
+   * at its top (`true`), the swipe-up is an OVER-SCROLL → open the Quick-Action menu.
+   * The layer's own `scroll-up` handler is a clamped no-op at the top boundary, so
+   * there is no double-action (INV-5: the layer no-ops, the dispatcher mounts).
+   *
+   * Omitted ⇒ the dispatcher treats the layer as always-at-top (`?? true`): non-scrolling
+   * layers (the bare map, single-screen modals) over-scroll on any swipe-up.
+   */
+  isAtTopBoundary?(): boolean;
 }
 
 /**
@@ -115,13 +133,13 @@ export interface Layer {
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04B-RESEARCH.md §Q2 (Phase 6 source channel rationale)
  * @see .planning/phases/04b-overlay-slot-map-mode-toggle-adversarial-ui/04b-CONTEXT.md §Area 2 (Panel API)
  */
-// TODO(ADR-0009): Phase 6 long-press source channel — derive from CLICK_EVENT timing
-// or use a separate SDK channel (see 04B-RESEARCH §Q2). `kind: 'long-press'` is
-// stubbed here for forward-compat so panels can pattern-match Phase 5 already.
+// The four canonical Even hardware gestures (guides/input-events, INV-2 2026-05-31).
+// `long-press` was retired by ADR-0012 — it is not a hardware gesture. The Quick-Action
+// menu opens via OVER-SCROLL (swipe-up at a layer's top boundary, see isAtTopBoundary +
+// quick-action-overscroll-dispatcher); double-tap is the root-exit / panel-close gesture.
 export type R1Gesture =
   | { readonly kind: 'tap' }
   | { readonly kind: 'scroll'; readonly direction: 'up' | 'down' }
-  | { readonly kind: 'long-press' }
   | { readonly kind: 'double-tap' };
 
 /**

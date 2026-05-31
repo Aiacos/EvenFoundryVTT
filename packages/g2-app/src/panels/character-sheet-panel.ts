@@ -20,7 +20,9 @@
  * - `scroll-up`   → cycle backward (Main → Bio wraps)
  * - `scroll-down` → cycle forward (same as tap)
  * - `double-tap`  → no-op stub (Phase 6 NAV-01 wires close)
- * - `long-press`  → no-op stub (Phase 6 Quick Action wires this)
+ *
+ * The Quick Action menu opens via over-scroll (swipe-up at the top boundary),
+ * dispatched at the router level (ADR-0012) — not by this panel.
  *
  * ## Persistence
  *
@@ -326,7 +328,9 @@ export default class CharacterSheetPanel implements OverlayPanel {
    * - `scroll-up`    → cycle backward; reset scroll; persist; draw
    * - `scroll-down`  → cycle forward (identical to tap); persist; draw
    * - `double-tap`   → no-op stub (Phase 6 NAV-01)
-   * - `long-press`   → no-op stub (Phase 6 Quick Action)
+   *
+   * Quick Action opens via over-scroll at the router level (ADR-0012) — the panel
+   * does not handle it.
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -352,11 +356,17 @@ export default class CharacterSheetPanel implements OverlayPanel {
       case 'double-tap':
         // No-op stub — Phase 6 NAV-01 wires close behaviour.
         break;
-
-      case 'long-press':
-        // No-op stub — Phase 6 Quick Action wires this.
-        break;
     }
+  }
+
+  /**
+   * Whether the active tab's scroll cursor is at its top boundary (ADR-0012 D-2).
+   *
+   * The router-level over-scroll dispatcher reads this on a `scroll-up` gesture:
+   * `true` means a further swipe-up is an over-scroll that opens the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return this.scrollOffset === 0;
   }
 
   /**
@@ -433,17 +443,22 @@ export default class CharacterSheetPanel implements OverlayPanel {
    * R1 hint metadata for the StatusHudRenderer context chip (Plan 06-03).
    *
    * Returns the parsed hint object from the pre-composed `hud_r1_sheet` i18n
-   * string — e.g. IT: `{ tap: 'cambia-tab', scroll: 'cont', longPressLabel: 'q[sheet]' }`.
+   * string — e.g. IT: `{ tap: 'cambia-tab', scroll: 'cont', quickActionLabel: 'q[sheet]' }`.
    *
-   * The `longPressLabel` always contains `q[sheet]` across all locales — the
+   * The `quickActionLabel` always contains `q[sheet]` across all locales — the
    * renderer strips this to verify INV-5 SC-4 (visible enforcement: chip names
-   * the live long-press target per overlay-id bracket).
+   * the live Quick-Action target, opened via over-scroll per ADR-0012, per
+   * overlay-id bracket).
    *
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
    * @see packages/g2-app/src/status-hud/i18n-budgets.ts hud_r1_sheet key
    * @see packages/g2-app/src/status-hud/r1-hint-parser.ts parseR1HintString
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_sheet', this.locale));
   }
 
