@@ -1,0 +1,76 @@
+# Even Hub packaging — builds the g2-app plugin into a submission-ready .ehpk on
+# every merge to main (DIST-EHUB-01).
+#
+# IMPORTANT — Even Hub has NO non-interactive / CI submit path (INV-2 verified
+# 2026-05-31 against hub.evenrealities.com/docs/reference/{cli,app-submission} +
+# the everything-evenhub:build-and-deploy skill): the CLI exposes only
+# login/init/qr/pack, `evenhub login` is interactive, and the final submission is
+# a MANUAL upload to the Even Hub developer portal (review + approval gated).
+# Therefore "publish on every merge to main" is implemented as far as the tooling
+# allows: this workflow produces + validates the .ehpk and uploads it as a build
+# artifact so the latest publishable package is always available. The portal
+# submission step is manual — see docs/release/evenhub.md.
+name: Even Hub Pack
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pack-ehpk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build g2-app
+        run: pnpm --filter @evf/g2-app build
+
+      # Keep app.json version in lockstep with the g2-app package version so each
+      # packaged .ehpk carries the released version (Changesets-managed).
+      - name: Sync app.json version from package.json
+        run: |
+          node -e "const fs=require('fs'); \
+            const ver=require('./packages/g2-app/package.json').version; \
+            const p='packages/g2-app/app.json'; \
+            const j=JSON.parse(fs.readFileSync(p,'utf8')); \
+            j.version=ver; \
+            fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n'); \
+            console.log('app.json version =', ver)"
+
+      # Pack + validate the manifest/build into an .ehpk. (`-c` package_id
+      # availability check is intentionally omitted — it is an online/auth-gated
+      # check; run it manually pre-submission per docs/release/evenhub.md.)
+      - name: Pack .ehpk
+        run: npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/g2-app/dist -o evenfoundryvtt.ehpk
+
+      - name: Verify .ehpk produced
+        run: test -f evenfoundryvtt.ehpk && ls -lh evenfoundryvtt.ehpk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evenfoundryvtt-ehpk
+          path: evenfoundryvtt.ehpk
+          retention-days: 90
+
+      # Manual step (cannot be automated — no CI submit API): download this
+      # artifact and submit it at the Even Hub developer portal. See
+      # docs/release/evenhub.md. If Even Realities ever ships a non-interactive
+      # submit command + token, add a gated step here:
+      #   if: ${{ secrets.EVENHUB_TOKEN != '' }}
+      #   run: npx --yes @evenrealities/evenhub-cli <submit-cmd> evenfoundryvtt.ehpk
+      #   env: { EVENHUB_TOKEN: ${{ secrets.EVENHUB_TOKEN }} }
