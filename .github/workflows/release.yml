@@ -31,6 +31,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write  # release-tag.mjs dispatches foundry-module-release.yml via `gh workflow run`
+                  # (workflow_dispatch) — needs actions:write or the dispatch 403s and the tagged
+                  # release does not auto-build (had to be dispatched manually for v0.1.1).
 
 # Never cancel-in-progress: a half-cancelled tag push is worse than queueing.
 concurrency:
