@@ -36,7 +36,10 @@ services:
       - LOG_LEVEL=info
       - PORT=8910
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8910/healthz"]
+      # 127.0.0.1 (not localhost): inside the container `localhost` also resolves to ::1 (IPv6),
+      # but the server binds IPv4 0.0.0.0 only → a localhost healthcheck hits ::1 and reports
+      # "connection refused" (false unhealthy). Force IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8910/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -60,7 +63,8 @@ services:
       bridge:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8911/healthz"]
+      # Force IPv4 (see bridge healthcheck note).
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8911/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
