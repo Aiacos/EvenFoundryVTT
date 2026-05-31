@@ -23,8 +23,9 @@
 import { installHubPolyfill } from '../hub-polyfill.js';
 
 import { initAutoConnect } from './auto-connect.js';
-import { clearI18nCache, loadI18n, makeT } from './i18n.js';
-import { createInitialState, createStore, defaultI18n, WizardStep } from './state.js';
+import { clearI18nCache, detectLocale, loadI18n, makeT } from './i18n.js';
+import { defaultWizardCatalog } from './i18n-catalog.js';
+import { createInitialState, createStore, WizardStep } from './state.js';
 import * as Completion from './steps/completion.js';
 import * as Step1 from './steps/step1-profile.js';
 import * as Step2 from './steps/step2-token.js';
@@ -115,16 +116,23 @@ export async function initWizard(): Promise<void> {
   const store = createStore(createInitialState());
   const { profileId } = store.get();
 
-  // Load i18n — best-effort; falls back to key names if bridge not up
-  let t = defaultI18n;
+  // Load i18n. The bundled catalog is the BASE so every step (incl. Step 1, which runs
+  // before any bridge is known) is readable; the bridge-fetched catalog is merged on top
+  // and may override/extend it. Missing-everywhere keys still fall back to the key name.
+  const bundled = defaultWizardCatalog(detectLocale());
+  let t = makeT(bundled);
   const { bridgeUrl } = store.get();
   if (bridgeUrl) {
-    const catalog = await loadI18n(bridgeUrl, undefined);
-    t = makeT(catalog);
-    // Log any missing keys (informational for development)
-    const missing = checkRequiredKeys(catalog);
-    if (missing.length > 0) {
-      console.warn('[EVF] wizard: missing i18n keys (using key names as fallback):', missing);
+    const bridgeCatalog = await loadI18n(bridgeUrl, undefined);
+    t = makeT({ ...bundled, ...bridgeCatalog });
+    // Informational: which keys the BRIDGE did not serve (the bundle still covers them, so
+    // the UI is fully translated — this just flags drift between bridge + bundle for devs).
+    const missingFromBridge = checkRequiredKeys(bridgeCatalog);
+    if (missingFromBridge.length > 0) {
+      console.warn(
+        '[EVF] wizard: keys not served by bridge (using bundled fallback):',
+        missingFromBridge,
+      );
     }
   }
 
