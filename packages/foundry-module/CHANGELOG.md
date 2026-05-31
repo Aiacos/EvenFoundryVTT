@@ -1,5 +1,17 @@
 # @evf/foundry-module
 
+## 0.1.4
+
+### Patch Changes
+
+- e5b4a3f: Fix the "Pair Device" dialog crashing on Foundry v13+ with _"PairModal … is not renderable
+  because it does not implement \_renderHTML and \_replaceHTML"_. `PairModal` mixed v1 `Application`
+  patterns (`defaultOptions.template`, `getData`, `_activateListeners`) onto the abstract
+  `ApplicationV2` base. Converted it to the real v13 API: `HandlebarsApplicationMixin(ApplicationV2)`
+  - `static DEFAULT_OPTIONS`/`PARTS`, `_prepareContext()`, `_onRender()` (reads `this.element`),
+    and `render({ force: true })`. The hand-rolled `foundry.applications.api` type declaration gained
+    `HandlebarsApplicationMixin` + the v13 ApplicationV2 surface.
+
 ## 0.1.3
 
 ### Patch Changes

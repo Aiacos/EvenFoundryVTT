@@ -1,5 +1,26 @@
 # @evf/g2-app
 
+## 0.2.2
+
+### Patch Changes
+
+- e11cf2c: Dev/deploy ergonomics for on-glasses testing and the permanent-install (Even Hub submission) path.
+
+  - `pnpm --filter @evf/g2-app dev` now binds `--host 0.0.0.0 --port 5173` so the Even app can reach
+    the dev server over the LAN (scan the `dev:qr` QR → dev mode, no trial expiry).
+  - Turnkey HTTPS deploy: `deploy/Caddyfile` + `deploy/docker-compose.https.yml` (Caddy reverse
+    proxy with auto Let's Encrypt — fronts the bridge + serves the g2-app plugin host), and
+    `deploy/sync-app-whitelist.mjs` to fill `app.json`'s network whitelist from `deploy/.env`.
+    Documented in `docs/release/evenhub.md` (incl. Cloudflare/Tailscale tunnel alternatives for
+    homelabs without a public IP).
+
+- be05f4b: Fix the phone-setup wizard showing raw i18n key names (e.g. `evf.wizard.step1.title`) instead
+  of labels. The wizard fetched all strings from the bridge (`/v1/i18n/{lang}`), but Step 1 is
+  where you enter the bridge URL — so there is no bridge to fetch from yet (chicken-and-egg), and
+  the catalog also never defined the wizard keys. Adds a bundled IT/EN wizard catalog
+  (`wizard/i18n-catalog.ts`, all 44 keys) used as the base, with the bridge catalog merged on top
+  when connected. Every wizard step is now readable with no bridge.
+
 ## 0.2.1
 
 ### Patch Changes
