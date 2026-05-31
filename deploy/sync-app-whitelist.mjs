@@ -13,7 +13,7 @@
  *
  * Then repackage:  pnpm --filter @evf/g2-app pack:ehpk
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +37,12 @@ const env = { ...readEnv(envPath), ...process.env };
 const bridgeHost = env.EVF_BRIDGE_HOST;
 const pluginHost = env.EVF_PLUGIN_HOST;
 
-if (!bridgeHost || !pluginHost || /example\.com$/.test(bridgeHost) || /example\.com$/.test(pluginHost)) {
+if (
+  !bridgeHost ||
+  !pluginHost ||
+  /example\.com$/.test(bridgeHost) ||
+  /example\.com$/.test(pluginHost)
+) {
   console.error(
     'EVF_BRIDGE_HOST / EVF_PLUGIN_HOST missing or still the example placeholder.\n' +
       'Set them to your real hostnames in deploy/.env (e.g. evf-bridge.yourdomain.net) and re-run.',
