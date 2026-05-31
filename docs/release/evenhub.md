@@ -3,34 +3,47 @@
 How the EvenFoundryVTT G2 plugin (`packages/g2-app`) is packaged and submitted to the
 Even Hub. Closes **DIST-EHUB-01**.
 
-## What the CI/CD does automatically (every merge to `main`)
+## What the CI/CD does automatically (maximum possible automation)
 
-`.github/workflows/evenhub-pack.yml` runs on every push to `main`:
+Two automated paths produce the submission-ready `.ehpk`:
 
-1. Builds `g2-app` (`pnpm --filter @evf/g2-app build` → `dist/`).
-2. Syncs `app.json` `version` from the Changesets-managed `packages/g2-app/package.json`.
-3. Packs + validates the manifest/build into `evenfoundryvtt.ehpk` (`evenhub pack`).
-4. Uploads `evenfoundryvtt.ehpk` as a build artifact (90-day retention).
+1. **Every push to `main`** — `.github/workflows/evenhub-pack.yml`:
+   builds `g2-app` → syncs `app.json` `version` from `packages/g2-app/package.json` →
+   `evenhub pack` → uploads `evenfoundryvtt.ehpk` as a **build artifact** (90-day retention).
+2. **Every tagged release** — `.github/workflows/foundry-module-release.yml` (`build-g2app-zip`
+   job): same build + pack, then attaches `evenfoundryvtt.ehpk` as a **permanent GitHub
+   Release asset** alongside `module.json`, `evenfoundryvtt.zip`, and `g2-app-dist.zip`.
 
-The latest submission-ready `.ehpk` is therefore always available from the workflow run.
+So the latest submission-ready `.ehpk` is always one download away — either the workflow run
+or, for releases, `https://github.com/Aiacos/EvenFoundryVTT/releases/latest`.
 
-## Why submission is NOT fully automated (INV-2, 2026-05-31)
+## Why submission is NOT fully automated (INV-2, re-verified 2026-05-31)
 
-Verified against `hub.evenrealities.com/docs/reference/{cli,app-submission}` + the
-`everything-evenhub:build-and-deploy` skill:
+Re-verified against `hub.evenrealities.com/docs/reference/{cli,app-submission}`, the live
+`evenhub --help` of **CLI 0.1.13** (latest), AND the CLI source (`main.js`):
 
-- The Even Hub CLI (`@evenrealities/evenhub-cli`) exposes only `login`, `init`, `qr`,
-  `pack` — **there is no `publish`/`submit`/`deploy`/`upload` command.**
-- `evenhub login` is **interactive** — no documented token / env-var / non-interactive
-  auth for CI.
-- The final submission is a **manual upload to the Even Hub developer portal**, which
-  runs compatibility checks and a **review/approval** gate before the app goes live.
+- The Even Hub CLI exposes only `login`, `init`, `pack`, `qr` — **there is no
+  `publish`/`submit`/`deploy`/`upload` command** (confirmed in 0.1.13 `--help`).
+- `evenhub login` takes only `-e/--email`; the password is prompted **interactively** — no
+  documented token / env-var / non-interactive login for CI.
+- App-submission doc verbatim: *"Every app submitted to Even Hub goes through a **manual
+  review**."* Submission is a **manual upload to the developer portal**, review/approval-gated.
 
-So a literal "auto-publish to the hub on every merge" is not possible with the current
-tooling. The workflow automates everything up to (and including) producing the validated
-`.ehpk`; the portal submission is the one manual step. If Even Realities later ships a
-non-interactive submit command + token, wire the gated step already stubbed at the bottom
-of `evenhub-pack.yml` (it expects an `EVENHUB_TOKEN` GitHub secret).
+### Private API surface found in the CLI (NOT used — documented for completeness)
+
+The CLI talks to a private REST API at `https://hub.evenrealities.com/api/v1/…`
+(overridable via `EVENHUB_BASE_URL` / `EVENHUB_API_URL`, extra headers via `EVENHUB_API_HEADERS`):
+
+- `POST /api/v1/auth/login {email, password}` → access/refresh tokens (header `X-Even-Authorization`).
+- `POST /api/v1/auth/refresh`, `GET /api/v1/auth/self_check`.
+- `POST /api/v1/apps/check {package_id}` (the `pack -c` availability check — **needs auth**).
+
+A non-interactive login is therefore *technically* possible, **but there is NO documented app
+upload/submit endpoint** (none in the CLI, none in the docs), and any use of this private API
+would be unsupported, fragile, possibly against ToS, and still review-gated. We deliberately do
+**not** build CI on it. The day Even ships a real CI submit command + token, enable the gated
+step stubbed at the bottom of `build-g2app-zip` in `foundry-module-release.yml` (and in
+`evenhub-pack.yml`) — it expects an `EVENHUB_TOKEN` secret; no other change needed.
 
 ## One-time prerequisites before the first submission
 
