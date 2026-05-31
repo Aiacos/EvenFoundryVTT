@@ -1,0 +1,26 @@
+# EvenFoundryVTT — Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+#
+# Two public hostnames, both auto-TLS:
+#   - EVF_BRIDGE_HOST  → the bridge (WS + REST). Caddy upgrades WebSockets transparently.
+#   - EVF_PLUGIN_HOST  → the g2-app plugin host (static files from /srv/g2app = dist/).
+#
+# Even Hub requires HTTPS with a valid cert (the phone WebView rejects self-signed), so a
+# real, publicly-resolvable hostname is needed. No public IP? Front this with a tunnel
+# (Cloudflare Tunnel / Tailscale Funnel) instead of exposing 80/443 — see docs/release/evenhub.md.
+#
+# Both hostnames go into packages/g2-app/app.json → permissions[0].whitelist (origin-complete,
+# no wildcards). Use `node deploy/sync-app-whitelist.mjs` to fill them from deploy/.env.
+
+{$EVF_BRIDGE_HOST} {
+	# REST + WebSocket (Caddy auto-detects and proxies the WS Upgrade).
+	reverse_proxy bridge:8910
+	encode zstd gzip
+}
+
+{$EVF_PLUGIN_HOST} {
+	# Static plugin host — serves the built g2-app (dist/) mounted at /srv/g2app.
+	root * /srv/g2app
+	file_server
+	encode zstd gzip
+	header Cache-Control "public, max-age=300"
+}
