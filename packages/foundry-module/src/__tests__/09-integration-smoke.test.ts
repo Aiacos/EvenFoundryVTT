@@ -170,7 +170,12 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
 
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', {
       once: vi.fn(),

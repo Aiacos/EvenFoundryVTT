@@ -40,17 +40,20 @@ class ApplicationStub {
 }
 
 class ApplicationV2Stub {
-  render(_force?: boolean): this {
+  constructor(_options?: unknown) {}
+  element: HTMLElement =
+    globalThis.document?.createElement?.('div') ??
+    ({ querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement);
+  render(_options?: unknown): this {
     return this;
   }
-  async close(): Promise<void> {}
-  async getData(): Promise<Record<string, unknown>> {
+  async close(_options?: unknown): Promise<void> {}
+  async _prepareContext(_options?: unknown): Promise<Record<string, unknown>> {
     return {};
   }
-  _activateListeners(_html: HTMLElement): void {}
-  static get defaultOptions() {
-    return { id: '', title: '', template: '', width: 400, height: 'auto', resizable: false };
-  }
+  _onRender(_context?: unknown, _options?: unknown): void {}
+  static DEFAULT_OPTIONS = { id: '', window: { title: '' }, position: { width: 400 } };
+  static PARTS = {};
 }
 
 type HandlerFn = (...args: unknown[]) => unknown;
@@ -105,7 +108,12 @@ describe('socketlib handlers → dispatchTool forwarding (Plan 07-02)', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn() });
     vi.stubGlobal('game', makeGameMock());

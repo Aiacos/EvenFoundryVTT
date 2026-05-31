@@ -3,10 +3,10 @@
  *
  * Tests verify:
  * - PairModal class is defined and extends ApplicationV2
- * - getData() returns correct state based on bearer TTL
+ * - _prepareContext() returns correct state based on bearer TTL
  * - All 5 modal states are returned correctly: active, empty, refresh-needed, expired, pairing-in-progress
- * - getData() includes qrSvg for active/pairing-in-progress states
- * - getData() excludes qrSvg for expired state (shows banner instead)
+ * - _prepareContext() includes qrSvg for active/pairing-in-progress states
+ * - _prepareContext() excludes qrSvg for expired state (shows banner instead)
  * - _onClickRevoke extracts token-id and calls revokeBearer
  * - _onClickRefresh calls generateBearer with refresh=true
  *
@@ -21,17 +21,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // ─── Foundry global stubs ─────────────────────────────────────────────────────
 
 class ApplicationV2Stub {
-  render(_force?: boolean): this {
+  constructor(_options?: unknown) {}
+  element: HTMLElement =
+    globalThis.document?.createElement?.('div') ??
+    ({ querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement);
+  render(_options?: unknown): this {
     return this;
   }
-  async close(): Promise<void> {}
-  async getData(): Promise<Record<string, unknown>> {
+  async close(_options?: unknown): Promise<void> {}
+  async _prepareContext(_options?: unknown): Promise<Record<string, unknown>> {
     return {};
   }
-  _activateListeners(_html: HTMLElement): void {}
-  static get defaultOptions() {
-    return { id: '', title: '', template: '', width: 400, height: 'auto', resizable: false };
-  }
+  _onRender(_context?: unknown, _options?: unknown): void {}
+  static DEFAULT_OPTIONS = { id: '', window: { title: '' }, position: { width: 400 } };
+  static PARTS = {};
 }
 
 class ApplicationStub {
@@ -87,6 +90,19 @@ vi.mock('qrcode', () => ({
 
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
+/**
+ * Renderable view of a PairModal instance. The Foundry `HandlebarsApplicationMixin`
+ * is not described by the local type declarations (`foundry.applications.api` lacks it),
+ * so the mixed-in `element` / `render` / `_onRender` members are invisible on the
+ * `PairModal` static type. This view restores them for test wiring only.
+ */
+interface RenderableModal {
+  element: HTMLElement;
+  render(options?: unknown): unknown;
+  _onRender(context: unknown, options: unknown): void;
+  close(options?: unknown): Promise<void>;
+}
+
 describe('PairModal', () => {
   let gameMock: ReturnType<typeof makeGameMock>;
 
@@ -94,7 +110,12 @@ describe('PairModal', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     gameMock = makeGameMock('it');
@@ -111,11 +132,11 @@ describe('PairModal', () => {
     expect(typeof PairModal).toBe('function');
   });
 
-  describe('getData() state machine', () => {
+  describe('_prepareContext() state machine', () => {
     it('returns state="empty" when no active bearers exist', async () => {
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       expect(data.state).toBe('empty');
       expect(data.qrSvg).toBeUndefined();
     });
@@ -126,7 +147,7 @@ describe('PairModal', () => {
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       expect(data.state).toBe('active');
       expect(typeof data.qrSvg).toBe('string');
       expect(data.qrSvg).toContain('svg');
@@ -151,7 +172,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -159,7 +185,7 @@ describe('PairModal', () => {
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       expect(data.state).toBe('expired');
       expect(data.qrSvg).toBeUndefined();
     });
@@ -183,7 +209,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -191,17 +222,17 @@ describe('PairModal', () => {
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       expect(data.state).toBe('refresh-needed');
       expect(typeof data.qrSvg).toBe('string');
     });
   });
 
-  describe('getData() i18n field', () => {
+  describe('_prepareContext() i18n field', () => {
     it('includes an i18n object with required keys', async () => {
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       expect(data.i18n).toBeDefined();
       const i18n = data.i18n as Record<string, string>;
       // Must include at least these keys required by the template
@@ -211,27 +242,30 @@ describe('PairModal', () => {
     });
   });
 
-  describe('getData() devices list', () => {
+  describe('_prepareContext() devices list', () => {
     it('returns devices array from listBearers()', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
       await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       const devices = data.devices as unknown[];
       expect(Array.isArray(devices)).toBe(true);
       expect(devices.length).toBeGreaterThan(0);
     });
   });
 
-  describe('_activateListeners()', () => {
+  describe('_onRender()', () => {
     it('binds click handler to [data-action="revoke"] buttons', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
       const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
 
       // Build minimal DOM: a div with a revoke button
       const html = document.createElement('div');
@@ -240,7 +274,9 @@ describe('PairModal', () => {
       revokeBtn.dataset.tokenId = entry.token;
       html.appendChild(revokeBtn);
 
-      modal._activateListeners(html);
+      // _onRender reads this.element (root content element after ApplicationV2 render)
+      modal.element = html;
+      modal._onRender({}, {});
 
       // Clicking the revoke button should call revokeBearer
       revokeBtn.click();
@@ -256,7 +292,10 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -265,12 +304,13 @@ describe('PairModal', () => {
       refreshBtn.dataset.action = 'refresh';
       html.appendChild(refreshBtn);
 
-      modal._activateListeners(html);
+      modal.element = html;
+      modal._onRender({}, {});
       refreshBtn.click();
 
       // generateBearer returns a promise; allow microtasks to flush
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(renderSpy).toHaveBeenCalledWith(true);
+      expect(renderSpy).toHaveBeenCalledWith({ force: true });
     });
 
     it('binds click handler to [data-action="new-code"] button (expired state)', async () => {
@@ -278,7 +318,10 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -287,11 +330,12 @@ describe('PairModal', () => {
       newCodeBtn.dataset.action = 'new-code';
       html.appendChild(newCodeBtn);
 
-      modal._activateListeners(html);
+      modal.element = html;
+      modal._onRender({}, {});
       newCodeBtn.click();
 
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(renderSpy).toHaveBeenCalledWith(true);
+      expect(renderSpy).toHaveBeenCalledWith({ force: true });
     });
   });
 
@@ -333,7 +377,7 @@ describe('PairModal', () => {
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
-      const data = await modal.getData();
+      const data = await modal._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('—');
     });
@@ -357,7 +401,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -365,7 +414,7 @@ describe('PairModal', () => {
       // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('Online');
     });
@@ -388,7 +437,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -396,7 +450,7 @@ describe('PairModal', () => {
       // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toContain('min ago');
     });
@@ -419,7 +473,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -427,7 +486,7 @@ describe('PairModal', () => {
       // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('2 h ago');
     });
@@ -450,7 +509,12 @@ describe('PairModal', () => {
       vi.resetModules();
       vi.stubGlobal('Application', ApplicationStub);
       vi.stubGlobal('foundry', {
-        applications: { api: { ApplicationV2: ApplicationV2Stub } },
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
       });
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
@@ -458,7 +522,7 @@ describe('PairModal', () => {
       // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc').getData();
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('>24 h ago');
     });
@@ -470,16 +534,20 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
 
-      // Start a countdown by activating listeners with a time element
+      // Start a countdown by rendering with a time element
       const html = document.createElement('div');
       const timeEl = document.createElement('time');
       timeEl.setAttribute('data-countdown', '');
       timeEl.setAttribute('data-expires', String(Date.now() + 2 * 3600_000));
       html.appendChild(timeEl);
 
-      modal._activateListeners(html);
+      modal.element = html;
+      modal._onRender({}, {});
 
       // Interval should be set now; close() should clear it without error
       await expect(modal.close()).resolves.toBeUndefined();

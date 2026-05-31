@@ -111,7 +111,12 @@ describe('generateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
@@ -220,7 +225,12 @@ describe('validateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
@@ -273,7 +283,12 @@ describe('validateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', { settings: settingsMock });
@@ -290,7 +305,12 @@ describe('revokeBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
@@ -334,7 +354,12 @@ describe('listBearers', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
@@ -382,7 +407,12 @@ describe('getActiveBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();

@@ -30,9 +30,10 @@ import QRCode from 'qrcode';
 import type { BearerEntry } from './bearer-registry.js';
 import { generateBearer, listBearers, revokeBearer } from './bearer-registry.js';
 
-// Foundry v13+: ApplicationV2 lives under foundry.applications.api, not as a bare global.
-// Local destructure preserves the v12-style ergonomics at use sites below (extends + defaultOptions).
-const { ApplicationV2 } = foundry.applications.api;
+// Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
+// ApplicationV2 is abstract about rendering — a renderable subclass MUST provide `_renderHTML`/
+// `_replaceHTML`, which HandlebarsApplicationMixin supplies (it renders `static PARTS` templates).
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -191,40 +192,33 @@ function buildI18n(): Record<string, string> {
  *
  * @see 02-UI-SPEC.md §UI-A for the full wireframe, states, and revoke flow.
  */
-export class PairModal extends ApplicationV2 {
+export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   private readonly _bridgeUrl: string;
   private readonly _worldId: string;
   private _countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+  /** ApplicationV2 window/position config (replaces the v1 `defaultOptions` getter). */
+  static override DEFAULT_OPTIONS = {
+    id: 'evf-pair-modal',
+    classes: ['evf-pair-modal'],
+    position: { width: 540, height: 'auto' as const },
+    // ApplicationV2 localises `window.title` automatically when it is an i18n key.
+    window: { title: 'evf.pair.modal.title', resizable: false },
+  };
+
+  /** HandlebarsApplicationMixin renders these template parts (supplies _renderHTML/_replaceHTML). */
+  static override PARTS = {
+    main: { template: 'modules/evenfoundryvtt/templates/pair-modal.hbs' },
+  };
 
   /**
    * @param bridgeUrl - Bridge URL to include in the QR payload
    * @param worldId - Foundry world ID to include in the QR payload
    */
   constructor(bridgeUrl: string, worldId: string) {
-    super();
+    super({});
     this._bridgeUrl = bridgeUrl;
     this._worldId = worldId;
-  }
-
-  /** @override */
-  static override get defaultOptions(): {
-    id: string;
-    title: string;
-    template: string;
-    width: number;
-    height: string | number;
-    resizable: boolean;
-    [key: string]: unknown;
-  } {
-    return {
-      ...ApplicationV2.defaultOptions,
-      id: 'evf-pair-modal',
-      title: game.i18n.localize('evf.pair.modal.title'),
-      template: 'modules/evenfoundryvtt/templates/pair-modal.hbs',
-      width: 540,
-      height: 'auto',
-      resizable: false,
-    };
   }
 
   /**
@@ -272,7 +266,7 @@ export class PairModal extends ApplicationV2 {
    *
    * @returns PairModalData template context
    */
-  override async getData(): Promise<PairModalData> {
+  override async _prepareContext(_options: unknown): Promise<PairModalData> {
     const { state, activeEntry } = this._computeState();
     const devices = listBearers().map(toDeviceRow);
     const i18n = buildI18n();
@@ -298,10 +292,14 @@ export class PairModal extends ApplicationV2 {
   /**
    * Binds DOM event listeners and starts the 60-second countdown timer.
    *
-   * @param html - The rendered HTML element (root of the ApplicationV2 content area)
+   * @param context - Prepared render context (unused here)
+   * @param options - Render options (unused here)
    */
-  override _activateListeners(html: HTMLElement): void {
-    super._activateListeners(html);
+  override _onRender(context: unknown, options: unknown): void {
+    super._onRender(context as never, options as never);
+
+    // `this.element` is the root content element after an ApplicationV2 render.
+    const html = this.element;
 
     // Revoke button handlers
     const revokeButtons = Array.from(html.querySelectorAll('[data-action="revoke"]'));
@@ -379,7 +377,7 @@ export class PairModal extends ApplicationV2 {
     if (!tokenId) return;
 
     revokeBearer(tokenId);
-    this.render(true);
+    void this.render({ force: true });
   }
 
   /**
@@ -398,7 +396,7 @@ export class PairModal extends ApplicationV2 {
     // Generate new bearer with grace period (D-2.11)
     generateBearer(currentAlias, this._bridgeUrl, this._worldId, true)
       .then(() => {
-        this.render(true);
+        void this.render({ force: true });
       })
       .catch((err: unknown) => {
         console.error('[EVF] PairModal refresh error:', err);
