@@ -1,6 +1,6 @@
 {
   "name": "@evf/bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "EVF Bridge service — Fastify + ws CORS proxy with bearer auth + Tool Registry (Phase 3 fills real implementation).",

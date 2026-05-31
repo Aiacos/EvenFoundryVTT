@@ -1,6 +1,6 @@
 {
   "name": "@evf/shared-render",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "EVF shared render — ASCII grid model + snapshot matcher for INV-1 layout integrity testing.",
