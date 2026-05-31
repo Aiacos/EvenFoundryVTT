@@ -258,7 +258,7 @@ describe('panel-gesture-bus single-receiver invariant (PGB-SR-*)', () => {
    * INV-5 note: the TRANSIENT zero is acceptable — no R1 gesture is published
    * during a bundle call (the R1 event source reads from the WS, which cannot
    * interleave with synchronous JS). The dispatcher is not a panel subscriber;
-   * it is a separate bus subscriber (see `quick-action-long-press-dispatcher.ts`).
+   * it is a separate bus subscriber (see `quick-action-overscroll-dispatcher.ts`).
    *
    * @see packages/g2-app/src/engine/layer-manager.ts (bundle — onUnmount → onMount order)
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)

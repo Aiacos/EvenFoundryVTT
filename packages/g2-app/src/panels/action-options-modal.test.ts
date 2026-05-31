@@ -8,7 +8,7 @@
  *   - AOM-04: onMount subscribes to bus; onUnmount unsubscribes (T-4b-01-03)
  *   - AOM-05: tap + requiresTarget=false → ws.send tool.invoke + onClose
  *   - AOM-06: double-tap → onClose without emit (cancel)
- *   - AOM-07: long-press → console.warn (no emit, no close)
+ *   - AOM-07: isAtTopBoundary → true (over-scroll opens Quick Action, ADR-0012 D-2)
  *   - AOM-08: scroll → ignored (no-op)
  *   - AOM-09: getContainerCount → { image: 0, text: 1 }
  *   - AOM-10: getR1Hints → parsed from 'hud_r1_action_options' i18n key
@@ -329,26 +329,12 @@ describe('AOM-06: double-tap → cancel (onClose without emit)', () => {
   });
 });
 
-// ─── AOM-07: long-press → console.warn (no-op for modal) ─────────────────────
+// ─── AOM-07: isAtTopBoundary → over-scroll opens Quick Action (ADR-0012 D-2) ──
 
-describe('AOM-07: long-press → console.warn, no emit, no close', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('long-press triggers console.warn with action-options-modal in message', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const ws = makeWs();
-    const onClose = vi.fn();
-    const { modal } = makeModal({ ws, onClose });
-    await modal.onMount();
-    modal.onEvent({ kind: 'long-press' });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const msg = warnSpy.mock.calls[0]?.[0];
-    expect(String(msg)).toContain('action-options-modal');
-    await modal.onUnmount();
+describe('AOM-07: isAtTopBoundary → always true (non-scrolling modal)', () => {
+  it('isAtTopBoundary() returns true so swipe-up over-scrolls into Quick Action', () => {
+    const { modal } = makeModal();
+    expect(modal.isAtTopBoundary()).toBe(true);
   });
 });
 
@@ -390,12 +376,12 @@ describe('AOM-09: getContainerCount → { image: 0, text: 1 }', () => {
 // ─── AOM-10: getR1Hints ───────────────────────────────────────────────────────
 
 describe('AOM-10: getR1Hints → parsed from hud_r1_action_options', () => {
-  it('returns an object with tap, scroll, longPressLabel string keys', () => {
+  it('returns an object with tap, scroll, quickActionLabel string keys', () => {
     const { modal } = makeModal({ locale: 'it' });
     const hints = modal.getR1Hints();
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
-    expect(typeof hints.longPressLabel).toBe('string');
+    expect(typeof hints.quickActionLabel).toBe('string');
   });
 
   it('IT locale tap hint is non-empty', () => {

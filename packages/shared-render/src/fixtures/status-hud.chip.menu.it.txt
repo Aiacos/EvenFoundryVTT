@@ -1,1 +1,1 @@
-R1: tap=apri scroll=voce long=annulla
+R1: tap=apri scroll=voce qa=annulla

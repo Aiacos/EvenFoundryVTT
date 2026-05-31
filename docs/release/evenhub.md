@@ -61,5 +61,23 @@ of `evenhub-pack.yml` (it expects an `EVENHUB_TOKEN` GitHub secret).
 | `name` | `FoundryVTT G2 HUD` | ≤20 chars (avoid "Even") |
 | `version` | synced from `g2-app/package.json` | semver, no `v` prefix |
 | `min_app_version` / `min_sdk_version` | `2.0.0` / `0.0.10` | both required; SDK floor `0.0.10` |
-| `entrypoint` | `index.html` | must exist in the build output (`dist/`) |
+| `entrypoint` | `index.html` | must exist at the build-output root. `vite.config.ts` uses `root: 'src'` + `outDir: '../dist'` so the entry emits as `dist/index.html` (not `dist/src/index.html`) — keeping the canonical `index.html` entrypoint. |
 | `supported_languages` | `["it","en"]` | from `en,de,fr,es,it,zh,ja,ko` |
+
+## Canonical Even Hub references (INV-2)
+
+Authoritative upstream for the packaging pipeline. Re-verify against these before any
+change (INV-2); aggregator/blog/AI-summary sources are not authoritative.
+
+| Topic | Canonical URL | Used for |
+|-------|---------------|----------|
+| Execution model + dev workflow | <https://hub.evenrealities.com/docs/getting-started/overview> | *"App logic runs on the phone; the glasses handle display rendering and native scroll processing."* — 5-step workflow (write → preview → test → **pack** → submit). |
+| CLI reference | <https://hub.evenrealities.com/docs/reference/cli> | Commands `login` / `init` / `qr` / `pack` only — **no `publish`/`submit`/`upload`** (portal submit is manual). `evenhub pack app.json dist -o myapp.ehpk` (`-c` = online `package_id` availability check). |
+| Packaging | <https://hub.evenrealities.com/docs/reference/packaging> | `.ehpk` format + manifest field rules. |
+| App submission & QA | <https://hub.evenrealities.com/docs/reference/app-submission> | Manual portal upload + review/approval gate (why the CD stops at the artifact). |
+| Device APIs | <https://hub.evenrealities.com/docs/guides/device-apis> | Hardware envelope + `network` whitelist enforcement that the manifest `permissions` declares. |
+
+npm tooling: `@evenrealities/evenhub-cli` (used by `.github/workflows/evenhub-pack.yml`),
+`@evenrealities/evenhub-simulator` (local preview — `evenhub-simulator http://localhost:5173`),
+`@evenrealities/even_hub_sdk` (plugin SDK; the g2-app types live in
+`packages/g2-app/src/types/even-hub.d.ts`).

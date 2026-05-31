@@ -7,5 +7,5 @@
 │   SW    SE                                 │
 │        S                                   │
 │                                            │
-│  [tap] commit  [long] annulla              │
+│  [tap] commit  [×2] annulla                │
 └────────────────────────────────────────────┘

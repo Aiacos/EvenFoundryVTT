@@ -15,8 +15,9 @@
  *   pending placement context and calls `canvas.scene.createEmbeddedDocuments`.
  *
  * - {@link TemplatePlacementCancelPayloadSchema} — g2-app → Module:
- *   Emitted by {@link TemplatePlacementPanel} when R1 long-press cancels placement.
- *   Module discards the placement context; no template is committed.
+ *   Emitted by {@link TemplatePlacementPanel} when R1 double-tap cancels placement
+ *   (ADR-0012 — long-press retired). Module discards the placement context; no
+ *   template is committed.
  *
  * # Critical design rules (RESEARCH §Q2 + Pitfall 3)
  * - `AbilityTemplate.fromActivity()` is SYNCHRONOUS — never await it.
@@ -134,7 +135,7 @@ export const TEMPLATE_PLACEMENT_CONFIRMED_TYPE = 'template.placement.confirmed' 
  * g2-app → Module template placement cancellation payload.
  *
  * Emitted by the g2-app {@link TemplatePlacementPanel} when the player performs
- * R1 long-press to cancel the placement. The module discards the placement context
+ * R1 double-tap to cancel the placement (ADR-0012). The module discards the placement context
  * (PLACEMENT_CONTEXTS.delete(placementId)) and no template is committed to the scene.
  *
  * Fields:

@@ -10,10 +10,14 @@
  * │ AZIONE: Palla di Fuoco                       │
  * │                                              │
  * │  [tap]   Lancia incantesimo                  │
- * │  [long]  Mostra dettagli                     │
+ * │                                              │
  * │  [×2]    Annulla                             │
  * └──────────────────────────────────────────────┘
  * ```
+ *
+ * (The old `[long]  Mostra dettagli` detail-viewer row was a long-press affordance,
+ * never implemented; the gesture is retired per ADR-0012, so the row is now blank
+ * — kept to preserve the modal's fixed height/width (INV-1).)
  *
  * ## AOM-05 — requiresTarget branching
  *
@@ -25,15 +29,15 @@
  * the `requiresTarget` flag and immediately opens a TargetPickerPanel via
  * `pushOverlay` to collect the target before dispatching the tool.
  *
- * ## AOM-07 — router-level long-press still fires (MVP accepted)
+ * ## AOM-07 — Quick Action via over-scroll (ADR-0012 D-2)
  *
- * The panel-level long-press handler does NOT call onClose. The Phase 6
- * `quick-action-long-press-dispatcher` subscribes PERSISTENTLY to the gesture bus
- * and ALSO fires on long-press, mounting QuickActionMenu on top via pushOverlay.
- * The user can dismiss the menu with [X] and the ActionOptionsModal is still
- * underneath. This is documented accepted behaviour per CONTEXT.md §Specifics.
- * Future: Plan 08-05 may extend the dispatcher with a `top.id === 'action-options-modal'`
- * short-circuit if integration smoke surfaces a UX issue.
+ * The modal no longer has a long-press handler (long-press retired per ADR-0012 — doc note).
+ * The Quick Action menu opens via the router-level over-scroll dispatcher
+ * (swipe-up at a layer's top boundary). This modal is non-scrolling, so
+ * `isAtTopBoundary()` returns `true` and a swipe-up over-scrolls into the menu,
+ * mounting QuickActionMenu on top via pushOverlay. The user can dismiss the menu
+ * and the ActionOptionsModal is still underneath. This is documented accepted
+ * behaviour per CONTEXT.md §Specifics.
  *
  * ## Container strategy (Strategy A — ADR-0009 Amendment 1)
  *
@@ -96,7 +100,7 @@ const NAME_BUDGET = 30;
  * Request payload passed to ActionOptionsModal at construction.
  *
  * Carries the action context from SpellbookPanel or InventoryPanel's
- * long-press handler (via the injected openActionOptions callback).
+ * tap handler (via the injected openActionOptions callback).
  *
  * @see AOM-03 — shape verified in tests
  */
@@ -298,11 +302,8 @@ export class ActionOptionsModal implements OverlayPanel {
    *            IF requiresTarget=true  → onClose WITHOUT emitting (Plan 08-05 caller
    *            detects this and opens TargetPickerPanel). See AOM-05 + AOM-16.
    *   - `double-tap`: onClose() without emitting (cancel). See AOM-06.
-   *   - `long-press`: console.warn (Phase 9 details viewer not implemented).
-   *                   Does NOT call onClose. The router-level QuickActionLongPressDispatcher
-   *                   also fires and mounts QuickActionMenu on top — accepted MVP behaviour
-   *                   per T-08-03-01 (CONTEXT §Specifics). See AOM-07.
-   *   - `scroll`: ignored. See AOM-08.
+   *   - `scroll`: ignored — modal is non-scrolling, so a swipe-up over-scrolls
+   *               into the router-level Quick Action menu (ADR-0012 D-2). See AOM-08.
    */
   onEvent(gesture: R1Gesture): void {
     switch (gesture.kind) {
@@ -396,18 +397,22 @@ export class ActionOptionsModal implements OverlayPanel {
         break;
       }
 
-      case 'long-press': {
-        // AOM-07: Phase 9 detail viewer not yet implemented.
-        // Router-level QuickActionLongPressDispatcher also fires (accepted MVP behaviour).
-        console.warn('[action-options-modal] details viewer not yet implemented (Phase 9)');
-        break;
-      }
-
       case 'scroll': {
-        // AOM-08: scroll ignored — modal has no scrollable content.
+        // AOM-08: scroll ignored — modal has no scrollable content. A swipe-up
+        // over-scrolls into the router-level Quick Action menu (ADR-0012 D-2).
         break;
       }
     }
+  }
+
+  /**
+   * INV-5 over-scroll boundary probe (ADR-0012 D-2).
+   *
+   * The modal is non-scrolling, so it is always at its top boundary — a swipe-up
+   * is an over-scroll that the router-level dispatcher routes to the Quick Action menu.
+   */
+  isAtTopBoundary(): boolean {
+    return true;
   }
 
   /**
@@ -443,11 +448,15 @@ export class ActionOptionsModal implements OverlayPanel {
    * R1 context chip hints for the status HUD (Phase 6 NAV-01 pattern).
    *
    * Uses the composite `hud_r1_action_options` key which stores a pre-composed
-   * chip string in the `tap=<tap> scroll=<scroll> long=<long>` format per
+   * chip string in the `tap=<tap> scroll=<scroll> qa=<qa>` format per
    * parseR1HintString convention. The scroll segment is `—` (em dash) because
    * ActionOptionsModal ignores scroll events (AOM-08).
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     return parseR1HintString(getLabel('hud_r1_action_options', this.locale));
   }
 
@@ -463,7 +472,7 @@ export class ActionOptionsModal implements OverlayPanel {
    * │  AZIONE: Palla di Fuoco                               │  row 2
    * │                                                        │  row 3 (blank)
    * │  [tap]   Lancia incantesimo                            │  row 4
-   * │  [long]  Mostra dettagli                               │  row 5
+   * │                                                        │  row 5 (blank — ex-[long], ADR-0012)
    * │  [×2]    Annulla                                       │  row 6
    * │                                                        │  row 7 (blank)
    * │                                                        │  row 8 (blank)
@@ -480,7 +489,6 @@ export class ActionOptionsModal implements OverlayPanel {
       this.request.kind === 'spell'
         ? getLabel('action_options_tap_label_spell', this.locale)
         : getLabel('action_options_tap_label_item', this.locale);
-    const longLabel = getLabel('action_options_long_label', this.locale);
     const cancelLabel = getLabel('action_options_cancel_label', this.locale);
 
     // Top border: ┌─[ AZIONE ]───...─┐
@@ -501,7 +509,10 @@ export class ActionOptionsModal implements OverlayPanel {
       this._innerRow(nameLine),
       this._innerRow(''),
       this._innerRow(`  [tap]   ${tapLabel}`),
-      this._innerRow(`  [long]  ${longLabel}`),
+      // Row vacated by ADR-0012: the old `[long] Mostra dettagli` detail-viewer was a
+      // long-press affordance (gesture retired) and was never implemented — kept blank
+      // to preserve the modal's fixed height/width (INV-1).
+      this._innerRow(''),
       this._innerRow(`  [×2]    ${cancelLabel}`),
       this._innerRow(''),
       this._innerRow(''),

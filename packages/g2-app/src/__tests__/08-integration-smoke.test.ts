@@ -4,7 +4,7 @@
  * End-to-end coverage of Phase 8's action-flow round-trips using REAL layer
  * instances, REAL dispatchers, and mocked bridge/WS:
  *
- *   - ISM-W8-01: Spellbook long-press → ActionOptionsModal opens at z=2
+ *   - ISM-W8-01: Spellbook tap → ActionOptionsModal opens at z=2
  *   - ISM-W8-02: ActionOptionsModal with requiresTarget=false + tap → tool.invoke WS envelope
  *   - ISM-W8-03: ActionOptionsModal with requiresTarget=true + tap → TargetPickerPanel opens
  *   - ISM-W8-04: CombatTrackerPanel [A] tap-twice → console.warn stub (Phase 8 minimal)
@@ -12,7 +12,7 @@
  *   - ISM-W8-06: Synthetic r1.action.result envelope → toast enqueued on ToastQueueLayer
  *   - ISM-W8-07: T-08-02 — mismatched recipientUserId → NO toast enqueued (silent drop)
  *   - ISM-W8-08: Synthetic r1.movement.budget → StatusHudLayer renderer.setMovementBudget called
- *   - ISM-W8-09: Inventory long-press → ActionOptionsModal opens (requiresTarget=false → tool.invoke)
+ *   - ISM-W8-09: Inventory tap → ActionOptionsModal opens (requiresTarget=false → tool.invoke)
  *   - ISM-W8-10: 5 error.action.* i18n keys render correctly across IT/EN/DE error-toast path
  *
  * Test harness uses:
@@ -267,12 +267,13 @@ describe('Phase 8 integration smoke (ISM-W8-01..10) — action-flow round-trips'
   });
 
   /**
-   * ISM-W8-01: Spellbook long-press → ActionOptionsModal opens at z=2.
+   * ISM-W8-01: Spellbook tap → ActionOptionsModal opens at z=2.
    *
-   * Verifies that when SpellbookPanel receives 'long-press' AND a handler is set,
+   * Verifies that when SpellbookPanel receives 'tap' AND a handler is set,
    * the handler fires and the caller can push ActionOptionsModal via pushOverlay.
+   * (ADR-0012 D-3: tap — not the retired long-press — opens Action Options.)
    */
-  it('ISM-W8-01: Spellbook long-press → ActionOptionsModal opens at z=2', async () => {
+  it('ISM-W8-01: Spellbook tap → ActionOptionsModal opens at z=2', async () => {
     const { bridge, ws, lm, gestureBus, router } = await makeSmokeSuite();
     const negotiatedCaps = new Set<string>([...SERVER_CAPS_V1]);
 
@@ -299,9 +300,10 @@ describe('Phase 8 integration smoke (ISM-W8-01..10) — action-flow round-trips'
     });
     await flushMicrotasks();
 
-    // Fire a long-press gesture — SpellbookPanel should call the handler
-    // (panel uses scrollOffset=0 to pick the current spell)
-    gestureBus.publish({ kind: 'long-press' });
+    // Fire a tap gesture — SpellbookPanel should call the Action Options handler
+    // (ADR-0012 D-3: tap opens Action Options for the highlighted spell;
+    // panel uses scrollOffset=0 to pick the current spell)
+    gestureBus.publish({ kind: 'tap' });
     await flushMicrotasks();
 
     // Handler should have been called (even with null snapshot → minimal req)
@@ -648,11 +650,12 @@ describe('Phase 8 integration smoke (ISM-W8-01..10) — action-flow round-trips'
   });
 
   /**
-   * ISM-W8-09: Inventory long-press → ActionOptionsModal opens (requiresTarget=false → tool.invoke).
+   * ISM-W8-09: Inventory tap → ActionOptionsModal opens (requiresTarget=false → tool.invoke).
    *
    * Same as ISM-W8-01/02 but for InventoryPanel to confirm the handler wiring is symmetric.
+   * (ADR-0012 D-3: tap — not the retired long-press — opens Action Options.)
    */
-  it('ISM-W8-09: Inventory long-press → ActionOptionsModal + tap → tool.invoke envelope', async () => {
+  it('ISM-W8-09: Inventory tap → ActionOptionsModal + tap → tool.invoke envelope', async () => {
     const { bridge, ws, lm, gestureBus, router } = await makeSmokeSuite();
     const negotiatedCaps = new Set<string>([...SERVER_CAPS_V1]);
 
@@ -676,8 +679,8 @@ describe('Phase 8 integration smoke (ISM-W8-01..10) — action-flow round-trips'
     });
     await flushMicrotasks();
 
-    // Trigger long-press
-    gestureBus.publish({ kind: 'long-press' });
+    // Trigger tap → opens Action Options for the highlighted item (ADR-0012 D-3)
+    gestureBus.publish({ kind: 'tap' });
     await flushMicrotasks();
 
     // Panel opened — inventory is at z=2

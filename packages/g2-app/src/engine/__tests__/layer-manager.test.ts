@@ -257,8 +257,6 @@ describe('Phase 4b layer-types contract surface', () => {
           return 'tap';
         case 'scroll':
           return `scroll:${g.direction}`;
-        case 'long-press':
-          return 'long-press';
         case 'double-tap':
           return 'double-tap';
       }
@@ -266,7 +264,6 @@ describe('Phase 4b layer-types contract surface', () => {
     expect(getKind({ kind: 'tap' })).toBe('tap');
     expect(getKind({ kind: 'scroll', direction: 'up' })).toBe('scroll:up');
     expect(getKind({ kind: 'scroll', direction: 'down' })).toBe('scroll:down');
-    expect(getKind({ kind: 'long-press' })).toBe('long-press');
     expect(getKind({ kind: 'double-tap' })).toBe('double-tap');
   });
 

@@ -283,15 +283,6 @@ describe('ConcentrationDropModalPanel — ignored gestures', () => {
     expect(ws.send).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
-
-  it('CDM-12b: long-press gesture is ignored', async () => {
-    const bus = new PanelGestureBus();
-    const { modal, ws, onClose } = makeModal({ bus });
-    await modal.onMount();
-    bus.publish({ kind: 'long-press' });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────

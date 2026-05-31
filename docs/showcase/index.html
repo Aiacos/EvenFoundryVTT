@@ -462,7 +462,7 @@ footer.show a { color: var(--g2); border: none; }
   ███████   ████   ███████ ██   ████  ██       ██████   ██████  ██   ████ ██████  ██   ██    ██     ╚████╔╝    ██       ██
 </pre>
     <div class="tagline"><span class="typed" id="typedHero"></span></div>
-    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / scroll / long-press gestures from the Even R1 smart ring. Eyes on the table, not on a laptop.</p>
+    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / swipe / over-scroll gestures from the Even R1 smart ring. Eyes on the table, not on a laptop.</p>
 
     <div class="stats">
       <div class="stat"><span class="num">576×288</span><span class="lab">px / eye</span></div>
@@ -493,7 +493,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Gesture-driven</h3>
-        <p>R1 ring: tap to cycle, double-tap to back, scroll to navigate, long-press for the Quick Action menu. No on-glass keyboard, ever.</p>
+        <p>R1 ring: tap to cycle, double-tap to exit/close, swipe to navigate, over-scroll (swipe-up at the top) for the Quick Action menu. No on-glass keyboard, ever.</p>
       </div>
       <div class="pillar">
         <div class="icon">✦</div>
@@ -630,7 +630,7 @@ footer.show a { color: var(--g2); border: none; }
               <!-- gesture indicators around ring -->
               <text class="label" x="60" y="105" text-anchor="middle">tap</text>
               <text class="label" x="160" y="180" text-anchor="middle">scroll</text>
-              <text class="label" x="260" y="105" text-anchor="middle">long-press</text>
+              <text class="label" x="260" y="105" text-anchor="middle">over-scroll</text>
               <!-- biometric pulse line -->
               <path d="M 110 105 L 130 105 L 135 90 L 145 120 L 155 80 L 165 110 L 175 105 L 210 105"
                     stroke="var(--g3)" stroke-width="1.5" fill="none" class="pulse-fill" />
@@ -639,7 +639,7 @@ footer.show a { color: var(--g2); border: none; }
         </div>
         <table>
           <tr><th>Connection</th><td>BLE → Even App → G2</td></tr>
-          <tr><th>Gestures</th><td>tap · scroll · long-press</td></tr>
+          <tr><th>Gestures</th><td>tap · double-tap · swipe-up · swipe-down</td></tr>
           <tr><th>Biometrics</th><td>HR · HRV · SpO₂ · skin temp · steps · sleep</td></tr>
           <tr><th>Material</th><td>zirconia ceramic + medical-grade stainless steel</td></tr>
           <tr><th>Water</th><td>IP68 · 50 m / 30 min</td></tr>
@@ -723,7 +723,7 @@ footer.show a { color: var(--g2); border: none; }
       </div>
       <pre class="screen" id="hudScreen"></pre>
       <div class="meta">
-        <span id="hudHint">R1: scroll = pan · tap = ping · long-press = quick action</span>
+        <span id="hudHint">R1: scroll = pan · tap = ping · ↑top = quick action</span>
         <span id="hudMode">mode: ▶ RASTER (toggle GLYPH)</span>
       </div>
     </div>
@@ -760,7 +760,7 @@ footer.show a { color: var(--g2); border: none; }
         <g>
           <rect class="node node-mvp" x="280" y="40" width="160" height="80" />
           <text class="label" x="360" y="68" text-anchor="middle">Even R1 Ring</text>
-          <text class="label-sm" x="360" y="86" text-anchor="middle">tap · scroll · long-press</text>
+          <text class="label-sm" x="360" y="86" text-anchor="middle">tap · swipe · over-scroll</text>
           <text class="label-sm" x="360" y="102" text-anchor="middle">+ biometrics</text>
         </g>
         <line class="arrow arrow-mvp" x1="280" y1="80" x2="220" y2="80" marker-end="url(#arrowhead-mvp)" />
@@ -988,7 +988,7 @@ footer.show a { color: var(--g2); border: none; }
       </div>
     </div>
     <div class="voice-flow">
-      <div class="vstep"><div class="num">▸ 01</div><div class="what">Player long-presses R1 and speaks naturally</div><div class="lat">~ 0 ms</div></div>
+      <div class="vstep"><div class="num">▸ 01</div><div class="what">Player opens Quick Action (over-scroll) and speaks</div><div class="lat">~ 0 ms</div></div>
       <div class="vstep"><div class="num">▸ 02</div><div class="what">MCP client captures audio + STT</div><div class="lat">~ 250–310 ms · AssemblyAI / built-in</div></div>
       <div class="vstep"><div class="num">▸ 03</div><div class="what">LLM tool call streamed</div><div class="lat">~ 600 ms · Claude Sonnet 4.6</div></div>
       <div class="vstep"><div class="num">▸ 04</div><div class="what"><code>cast_spell</code> tool received by foundry-mcp</div><div class="lat">~ 5 ms</div></div>
@@ -1224,10 +1224,10 @@ spell: `╔═══════════════════════
 ║ │   ▶ Fireball         action  150 ft   8d6 fire  20-ft sphere   │   ║                  ║
 ║ │     Counterspell     reaction  60 ft  block spell ≤ 3rd        │   ║ Conditions       ║
 ║ │                                                                │   ║  ▶ Bless (7r)    ║
-║ │  long-press = cast highlighted                                 │   ║    Concentr.     ║
+║ │  tap = cast highlighted                                        │   ║    Concentr.     ║
 ║ └────────────────────────────────────────────────────────────────┘   ║                  ║
 ╠══════════════════════════════════════════════════════════════════════╩══════════════════╣
-║ R1: scroll=spell  tap=detail  long=cast                                                   ║
+║ R1: scroll=spell  tap=cast  ↑top=quick                                                    ║
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝`,
 
 inv: `╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -1275,13 +1275,13 @@ quick: `╔═══════════════════════
   };
 
   const hints = {
-    map:    'R1: scroll = pan · tap = ping cell · long-press = quick action',
-    sheet:  'R1: tap = next tab · scroll = content · tap×2 = close · long-press = quick',
-    combat: 'R1: scroll = initiative · tap = quick action [A][S][I][M] · long-press = quick',
-    log:    'R1: scroll = history · tap = detail · long-press = quick',
-    spell:  'R1: scroll = spell · tap = detail · long-press = CAST highlighted',
-    inv:    'R1: scroll = item · tap = detail · long-press = USE / EQUIP',
-    quick:  'R1: scroll = select · tap = open panel · long-press = cancel'
+    map:    'R1: scroll = pan · tap = ping cell · ↑top = quick action',
+    sheet:  'R1: tap = next tab · scroll = content · tap×2 = close · ↑top = quick',
+    combat: 'R1: scroll = initiative · tap = quick action [A][S][I][M] · ↑top = quick',
+    log:    'R1: scroll = history · tap = detail · ↑top = quick',
+    spell:  'R1: scroll = spell · tap = CAST highlighted · ↑top = quick',
+    inv:    'R1: scroll = item · tap = USE / EQUIP · ↑top = quick',
+    quick:  'R1: scroll = select · tap = open panel · tap×2 = cancel'
   };
 
   function setPanel(name) {

@@ -10,7 +10,7 @@
  *   1. **Outer envelope shape** — `EnvelopeSchema.safeParse` enforces the
  *      canonical wire format (`proto/seq/ts/type/session_id/payload`).
  *   2. **Inner payload shape** — `R1GesturePayloadSchema.safeParse` enforces
- *      `kind ∈ {tap, scroll-up, scroll-down, long-press, double-tap}` + integer
+ *      `kind ∈ {tap, scroll-up, scroll-down, double-tap}` + integer
  *      `timestamp`.
  *   Failure of the outer envelope → silent skip (bridge sends many envelope types
  *   on the same socket; non-r1.gesture types are normal traffic, not errors).
@@ -20,8 +20,8 @@
  *
  * # Wire → internal R1Gesture translation (RESEARCH §Q7)
  *
- *   Bridge wire kinds (`'scroll-up'` / `'scroll-down'` / `'tap'` / `'long-press'` /
- *   `'double-tap'`) are the bridge's server-side-normalized strings, mapped from the
+ *   Bridge wire kinds (`'scroll-up'` / `'scroll-down'` / `'tap'` / `'double-tap'`)
+ *   are the bridge's server-side-normalized strings, mapped from the
  *   SDK's `OsEventTypeList` enum values carried with `EventSourceType.TOUCH_EVENT_FROM_RING`
  *   ring-input events (`@evenrealities/even_hub_sdk` `index.d.ts` lines 707 / 733).
  *   The flat-string normalization is performed server-side by the bridge, not by the SDK.
@@ -36,16 +36,15 @@
  *   Never a silent drop. The warning message must contain `'no top layer'` and
  *   `'INV-5'` so R1E-08 unit test can assert them.
  *
- * # Long-press classification (D-Area-1)
+ * # Gesture set (ADR-0012)
  *
- *   The Bridge classifies `long-press` directly (fires when the SDK threshold is
- *   met). `longPressMs` in `r1-timings.ts` is currently a client-side guard
- *   reserved for SC-06-01 hardware-tuning closure — NOT actively applied in Phase
- *   6 software. Long-press events arriving in the envelope are passed through
- *   verbatim (R1E-07 verifies this).
+ *   The four canonical Even hardware gestures are tap / double-tap / swipe-up /
+ *   swipe-down. `long-press` was retired — the Quick-Action menu opens via
+ *   over-scroll (swipe-up at a layer's top boundary), detected downstream by the
+ *   `quick-action-overscroll-dispatcher`, not here.
  *
  * @see packages/shared-protocol/src/payloads/r1.ts (R1GesturePayloadSchema)
- * @see packages/g2-app/src/engine/r1-timings.ts (DEFAULT_R1_TIMINGS)
+ * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md
  * @see packages/g2-app/src/engine/layer-manager.ts (getTopLayer)
  * @see packages/g2-app/src/panels/conc-conflict-dispatcher.ts (double-trust exemplar)
  * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
@@ -158,7 +157,7 @@ export function attachR1EventSource(
       } else if (kind === 'scroll-down') {
         gesture = { kind: 'scroll', direction: 'down' };
       } else {
-        // 'tap' | 'long-press' | 'double-tap' — pass through verbatim.
+        // 'tap' | 'double-tap' — pass through verbatim.
         gesture = { kind } as R1Gesture;
       }
 

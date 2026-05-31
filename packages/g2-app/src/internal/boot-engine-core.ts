@@ -41,7 +41,7 @@
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
  *  11e+. attachActionEconomyHandler(ws, currentUserId) — Plan 09-02 r1.action.economy → StatusHudLayer + AOM preconditioner
- *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 long-press modal injection
+ *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 tap → Action Options modal injection (ADR-0012)
  *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
  *  13. await mapBase.draw() — first frame
@@ -80,9 +80,10 @@ import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
 import { attachPortraitHandler } from '../panels/portrait-dispatcher.js';
 import { clearPortraitBytes } from '../panels/portrait-state.js';
-import { attachQuickActionLongPress } from '../panels/quick-action-long-press-dispatcher.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
+import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
+import { attachRootExit } from '../panels/root-exit-dispatcher.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
@@ -559,11 +560,11 @@ export async function _bootEngineCore(
   //      Must run AFTER step 7 `setNegotiatedCaps` so LayerManager's negotiated
   //      caps are consistent before gestures can flow (RESEARCH §Q2 / BERW-08).
   //      `DEFAULT_R1_TIMINGS` is the Phase 6 default; SC-06-01 hardware-tuning
-  //      closure may adjust `longPressMs` in a future phase.
+  //      closure may adjust the tap/double-tap windows in a future phase.
   const gestureBus = new PanelGestureBus();
   let unsubR1 = attachR1EventSource(ws, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
 
-  // 11c. LocaleEventEmitter singleton + QuickActionMenuPanel factory + long-press dispatcher.
+  // 11c. LocaleEventEmitter singleton + QuickActionMenuPanel factory + over-scroll dispatcher.
   //      The `makeMenu` factory is a closure that captures boot-time references (bridge,
   //      bus, locale, localeEvents) and constructs a fresh `QuickActionMenuPanel` on
   //      each `pushOverlay` call (factory pattern — panel state is ephemeral, not cached).
@@ -574,7 +575,7 @@ export async function _bootEngineCore(
   //      WR-03 fix: `makeMenu` must read the CURRENT effective locale at call time, not
   //      the boot-time value captured by the outer closure. Two mutable refs are
   //      maintained here and updated by a localeEvents listener so every subsequent
-  //      long-press produces a menu in the user's live locale, not the boot locale.
+  //      over-scroll produces a menu in the user's live locale, not the boot locale.
   //
   //      The `makeMenu` callbacks:
   //        onClose    → `popOverlay(lm)` — suspends/restores the panel below the menu.
@@ -640,12 +641,19 @@ export async function _bootEngineCore(
     );
   };
 
-  const unsubLongPress = attachQuickActionLongPress(
+  const unsubOverscroll = attachQuickActionOverscroll(
     gestureBus,
     panelRouter,
     layerManager,
     makeMenu,
   );
+
+  // 11c-exit. EXIT-01 / LIFE-03 — root-page exit. A double-tap while the bare map
+  //           (id 'map-base', no overlay) is the top layer calls
+  //           `bridge.shutDownPageContainer(1)` (Mode 1 graceful exit dialog). On
+  //           overlay panels double-tap is close/back (handled by the panel), so the
+  //           dispatcher only fires at the root. See ADR-0012 D-4.
+  const unsubRootExit = attachRootExit(gestureBus, layerManager, bridge);
 
   // 11d. Conc-conflict dispatcher — closes the Plan 04b-05 deferred wire.
   //      Subscribes to `conc.conflict` WS envelopes and mounts the concentration-drop
@@ -1141,9 +1149,14 @@ export async function _bootEngineCore(
         console.warn('[boot-engine-core] teardown: detachReactionPrompt failed', err);
       }
       try {
-        unsubLongPress();
+        unsubOverscroll();
       } catch (err) {
-        console.warn('[boot-engine-core] teardown: unsubLongPress failed', err);
+        console.warn('[boot-engine-core] teardown: unsubOverscroll failed', err);
+      }
+      try {
+        unsubRootExit();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubRootExit failed', err);
       }
       // WR-03: tear down the localeEvents listener that keeps makeMenu locale refs live.
       try {

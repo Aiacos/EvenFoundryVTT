@@ -3,7 +3,7 @@
  *
  * SEPARATE from `PanelGestureBus` by design (planner-locked resolution of
  * RESEARCH.md Pitfall 7): the `R1Gesture` discriminated union is reserved for
- * ACTUAL R1 hardware gesture events (tap, scroll, long-press, double-tap).
+ * ACTUAL R1 hardware gesture events (tap, scroll, double-tap).
  * Locale changes are in-process synthetic signals with a distinct type surface —
  * they must NOT pollute the R1Gesture union with artificial `kind: 'locale.changed'`
  * variants. A dedicated emitter keeps both type surfaces clean and testable

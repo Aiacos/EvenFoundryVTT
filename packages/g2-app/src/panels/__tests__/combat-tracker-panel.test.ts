@@ -674,12 +674,12 @@ describe('CombatTrackerPanel — WR-02 scrollOffset clamping', () => {
 // ─── CTP-R1HINTS-* (Phase 6 Plan 03) ─────────────────────────────────────────
 
 describe('CombatTrackerPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
-  it('CTP-R1HINTS-IT: returns getR1Hints with q[combat] longPressLabel (IT locale)', () => {
+  it('CTP-R1HINTS-IT: returns getR1Hints with q[combat] quickActionLabel (IT locale)', () => {
     const bridge = makeMockBridge();
     const bus = new PanelGestureBus();
     const panel = new CombatTrackerPanel(bridge, bus, 'it');
     const hints = panel.getR1Hints();
-    expect(hints.longPressLabel).toMatch(/q\[combat\]/);
+    expect(hints.quickActionLabel).toMatch(/q\[combat\]/);
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
     expect(hints.tap.length).toBeGreaterThan(0);
@@ -695,8 +695,28 @@ describe('CombatTrackerPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       const hints = panel.getR1Hints();
       expect([...hints.tap].length).toBeLessThanOrEqual(38);
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
-      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+      expect([...hints.quickActionLabel].length).toBeLessThanOrEqual(38);
     }
+  });
+});
+
+// ─── CTP-TOP-BOUNDARY — over-scroll boundary (ADR-0012 D-2) ───────────────────
+
+describe('CombatTrackerPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('CTP-TOP-BOUNDARY: true at scrollOffset 0, false after scroll-up shifts the window', async () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const panel = new CombatTrackerPanel(bridge, bus, 'it');
+    await panel.onMount();
+    // Seed a snapshot large enough to allow scrolling (>5 combatants), current turn mid-list.
+    panel.onSnapshot(makeCombatSnapshot(makeCombatants(8), 4));
+
+    // Fresh snapshot resets scrollOffset to 0 → at top.
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    // scroll-up shifts the window up (scrollOffset becomes negative) → no longer at top.
+    bus.publish({ kind: 'scroll', direction: 'up' });
+    expect(panel.isAtTopBoundary()).toBe(false);
   });
 });
 

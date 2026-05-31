@@ -4,17 +4,19 @@
  * Implements {@link ../engine/layer-types.js#OverlayPanel} verbatim (mirroring
  * the ConcentrationDropModalPanel exemplar from Phase 4b).
  *
- * **Purpose (NAV-02):** A long-press gesture from any mounted panel opens this
- * menu via `PanelRouter.pushOverlay(menu)`. The player can navigate to any of
- * the 5 read-only panels, toggle map mode, or change the display locale.
+ * **Purpose (NAV-02):** An over-scroll gesture (swipe-up at a layer's top
+ * boundary) from any mounted panel opens this menu via the router-level
+ * over-scroll dispatcher → `PanelRouter.pushOverlay(menu)` (ADR-0012 D-2). The
+ * player can navigate to any of the 5 read-only panels, toggle map mode, or
+ * change the display locale.
  *
  * **Two modes:**
  *   - `'main'`     — 9-item menu (`[S][C][L][B][I][A][M][N][X]`)
  *   - `'language'` — 7-item locale picker (from `LOCALE_MENU` Phase 5 constant)
  *
  * Mode switches without remounting the panel (state-based rendering, same
- * container). Long-press in sub-menu returns to main mode (back-one-level);
- * long-press in main mode calls `callbacks.onClose()` (popOverlay).
+ * container). Double-tap in sub-menu returns to main mode (back-one-level);
+ * double-tap in main mode calls `callbacks.onClose()` (popOverlay) — ADR-0012 D-3.
  *
  * **Container strategy (Strategy A — ADR-0009 Amendment 1):**
  * Single `'overlay-block'` text container. Reuses the same container name as
@@ -24,7 +26,7 @@
  * **navKey: ''** — empty navKey marks this as a system overlay (Phase 6 Plan 02
  * relaxed `PanelMetaSchema.navKey` to `z.string().max(1)`). QuickActionMenuPanel
  * is filtered out of `discoverPanels()` registry so it never appears in the
- * user-navigable nav set. Constructed directly by the long-press dispatcher in
+ * user-navigable nav set. Constructed directly by the over-scroll dispatcher in
  * Plan 06-04.
  *
  * **INV-5 Gesture Determinism:** `onMount` acquires the gesture bus subscription;
@@ -101,7 +103,7 @@ const MAIN_ITEMS = [
 // ─── Callbacks type ───────────────────────────────────────────────────────────
 
 /**
- * Callbacks injected by the long-press dispatcher (Plan 06-04 wires these).
+ * Callbacks injected by the over-scroll dispatcher (Plan 06-04 wires these).
  *
  * These are plain function references — not re-exported from PanelRouter or
  * LayerManager to keep the panel module dependency-free from the router.
@@ -136,7 +138,7 @@ export interface QuickActionMenuCallbacks {
 /**
  * z=2 system overlay — Quick Action main menu + `[N] Language` sub-menu.
  *
- * Constructed directly by the long-press dispatcher (Plan 06-04); never
+ * Constructed directly by the over-scroll dispatcher (Plan 06-04); never
  * discovered via `discoverPanels()` (empty `navKey` filters it out).
  */
 export class QuickActionMenuPanel implements OverlayPanel {
@@ -234,11 +236,10 @@ export class QuickActionMenuPanel implements OverlayPanel {
   /**
    * Handle a published R1 gesture.
    *
-   * Dispatch table per UI-SPEC §1 + §2:
+   * Dispatch table per UI-SPEC §1 + §2 (ADR-0012 D-3 — double-tap = close/back):
    *   - `scroll` → cycle `activeIndex` within the current mode + re-draw
    *   - `tap`    → activate the current item (mode-dependent)
-   *   - `long-press` → in sub-menu: return to main mode; in main: `onClose()`
-   *   - other (`double-tap`) → no-op
+   *   - `double-tap` → in sub-menu: return to main mode; in main: `onClose()`
    */
   onEvent(gesture: R1Gesture): void {
     if (gesture.kind === 'scroll') {
@@ -246,7 +247,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
       void this.draw();
     } else if (gesture.kind === 'tap') {
       void this._activateCurrentItem();
-    } else if (gesture.kind === 'long-press') {
+    } else if (gesture.kind === 'double-tap') {
       if (this.mode === 'language') {
         // Back one level — return to main mode, keep [N] focused.
         this.mode = 'main';
@@ -257,7 +258,18 @@ export class QuickActionMenuPanel implements OverlayPanel {
         this.callbacks.onClose();
       }
     }
-    // `double-tap` and any future gesture kinds: no-op.
+  }
+
+  /**
+   * INV-5 over-scroll boundary probe (ADR-0012 D-2).
+   *
+   * Returns `true` when the active selection is at index 0 (top of the list), so
+   * a swipe-up at this point is an over-scroll. (The menu is itself an overlay,
+   * so re-opening Quick Action over it is benign; the probe keeps the contract
+   * uniform across layers.)
+   */
+  isAtTopBoundary(): boolean {
+    return this.activeIndex === 0;
   }
 
   /**
@@ -297,24 +309,28 @@ export class QuickActionMenuPanel implements OverlayPanel {
   /**
    * R1 hint metadata for the status-HUD context chip (Plan 06-03 consumer).
    *
-   * Main mode: tap=open item, scroll=change selection, long-press=cancel (close).
-   * Language sub-menu: tap=apply locale, scroll=cycle locales, long-press=back.
+   * Main mode: tap=open item, scroll=change selection, double-tap=cancel (close).
+   * Language sub-menu: tap=apply locale, scroll=cycle locales, double-tap=back.
    *
    * @see docs/architecture/INVARIANTS.md §5 INV-5 (visible enforcement)
    * @see .planning/phases/06-r1-integration-quick-action-inv-5/06-CONTEXT.md §Area 2
    */
-  getR1Hints(): { readonly tap: string; readonly scroll: string; readonly longPressLabel: string } {
+  getR1Hints(): {
+    readonly tap: string;
+    readonly scroll: string;
+    readonly quickActionLabel: string;
+  } {
     if (this.mode === 'language') {
       return {
         tap: getLabel('quick_r1_lang_tap', this.locale),
         scroll: getLabel('quick_r1_lang_scroll', this.locale),
-        longPressLabel: getLabel('quick_r1_lang_long', this.locale),
+        quickActionLabel: getLabel('quick_r1_lang_long', this.locale),
       };
     }
     return {
       tap: getLabel('quick_r1_main_tap', this.locale),
       scroll: getLabel('quick_r1_main_scroll', this.locale),
-      longPressLabel: getLabel('quick_r1_main_long', this.locale),
+      quickActionLabel: getLabel('quick_r1_main_long', this.locale),
     };
   }
 
@@ -433,7 +449,8 @@ export class QuickActionMenuPanel implements OverlayPanel {
     // Footer hint rows (3 lines) — below the bottom border
     const hintScroll = getLabel('quick_hint_scroll', this.locale);
     const hintTap = getLabel('quick_hint_tap', this.locale);
-    const hintLong = getLabel('quick_hint_long', this.locale);
+    // Close/back affordance (double-tap, ADR-0012 D-3); hint text owned by i18n slice.
+    const hintClose = getLabel('quick_hint_long', this.locale);
 
     return [
       topBorder,
@@ -442,7 +459,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
       bottomBorder,
       _padRow(hintScroll, MENU_WIDTH),
       _padRow(hintTap, MENU_WIDTH),
-      _padRow(hintLong, MENU_WIDTH),
+      _padRow(hintClose, MENU_WIDTH),
     ];
   }
 

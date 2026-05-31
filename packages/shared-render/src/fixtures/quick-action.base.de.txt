@@ -12,4 +12,4 @@
 └────────────────────────────────────────────────────────────────────┘
   scroll = Eintrag wählen                                             
   tap = öffnen                                                        
-  long-press = abbrechen                                              
+  tap×2 = abbrechen                                                   

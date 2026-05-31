@@ -89,7 +89,7 @@ must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 - ✓ **Action economy enforcement** — Action / Bonus / Reaction, spell slot consumption, concentration handling, multi-attack tracker, reaction passive notifications, death saves, AoE templates.
 - ✓ **Manual action UX** — tap-to-cast / attack / use, Quick Action menu, action-result toast queue (FIFO + squash).
 - ✓ **i18n** — IT + EN catalogs + on-glasses language override (Quick Action `[N] Language`); build-time width-budget validation (INV-1).
-- ✓ **R1 integration** — gesture routing (tap / scroll / long-press / double-tap), INV-5 Gesture Determinism ratified.
+- ✓ **R1 integration** — gesture routing (tap / swipe-up / swipe-down / double-tap), INV-5 Gesture Determinism ratified.
 - ✓ **Voice (V2 OPTIONAL shipped)** — `foundry-mcp` Streamable HTTP server, Deepgram Nova-3 Multilingual STT with Keyterm Prompting (+625% recall on esoteric names like Bigby's Hand, Counterspell), vocabulary union of static SRD (70 × IT + EN = 140) + dynamic Foundry-derived entity-pack, hot-updated via WS delta (250 ms debounce + drain-then-restart mutex).
 - ✓ **Quality** — **2668 workspace tests** green, coverage ≥80% in the critical packages, TypeScript strict, Biome lint clean, 7 CI gates green on every PR, INV-1..5 verification suite (`inv:all`) + INV-3 atomic doc-coherence enforced.
 
@@ -117,7 +117,7 @@ must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 | **Idle Content Infill (z=0.5)** | **NEW v0.9.12** — text strips that fill the otherwise-empty rows below the raster tiles when no overlay is active (combat log mini · z=0.5 label · stats: mode / fps / BLE). Auto-demolished when an overlay opens, auto-reborn when it closes. INV-1 layout-preserving. See [§7.4c](Specs.md). Ratified Phase 14 (2026-05-17). |
 | **Persistent Status HUD** | HP / AC / action economy / spell slots / conditions, always in the corner — never hidden by overlays. |
 | **Overlay panels** | Sheet (6 tabs: Main / Skills / Inventory / Spells / Feats / Bio), Combat tracker, Event log, Spellbook, Inventory — all stacked over the map like Foundry desktop windows. |
-| **R1 gesture control** | tap = cycle • double-tap = back to map • scroll = navigate • long-press = Quick Action menu. |
+| **R1 gesture control** | tap = cycle/primary • double-tap = exit (root) / close (panel) • swipe = navigate • over-scroll (swipe-up at top) = Quick Action menu. |
 | **Manual MVP** | Cast / attack / use are explicit: scroll to spell → tap → confirm target. No surprises. |
 | **Optional V2 voice** | A standalone `foundry-mcp` server exposes Foundry tools via Model Context Protocol — drive the table from Claude Desktop, Claude Code, or any MCP client. AI never lives inside the core. |
 
@@ -191,8 +191,8 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 
 ## Hardware
 
-- **Even Realities G2** smart glasses — 576 × 288 px monocular, 4-bit greyscale (16 levels of green), 4 image + 8 other containers per page, 200 × 100 max image size. **4-mic directional array** (single audio stream PCM 16 kHz s16le mono via `bridge.audioControl()`), **no speaker / no audio output** (visual-only feedback), no camera. *([Even Hub display guide](https://hub.evenrealities.com/docs/guides/display) · [device APIs](https://hub.evenrealities.com/docs/guides/device-apis))*
-- **Even Realities R1** smart ring — BLE, gestures (tap, scroll, long-press) + biometrics (HR / HRV / SpO₂ / skin temp), zirconia ceramic + medical-grade stainless steel, IP68 50 m / 30 min, ~4 days battery. *([Even smart ring page](https://www.evenrealities.com/smart-ring))*
+- **Even Realities G2** smart glasses — 576 × 288 px monocular, 4-bit greyscale (16 levels of green), 4 image + 8 other containers per page, 200 × 100 max image size. **4-mic directional array** (single audio stream PCM 16 kHz s16le mono via `bridge.audioControl()`), **no speaker / no audio output** (visual-only feedback), no camera. *([Even Hub overview](https://hub.evenrealities.com/docs/getting-started/overview) · [display guide](https://hub.evenrealities.com/docs/guides/display) · [device APIs](https://hub.evenrealities.com/docs/guides/device-apis))*
+- **Even Realities R1** smart ring — BLE, gestures (press, double-press, swipe-up, swipe-down) — the same 4-gesture set as the glasses (input-events canonical) — + biometrics (HR / HRV / SpO₂ / skin temp), zirconia ceramic + medical-grade stainless steel, IP68 50 m / 30 min, ~4 days battery. *([Even smart ring page](https://www.evenrealities.com/smart-ring))*
 - **FoundryVTT** ≥ v13.347 (v14 verified) + **dnd5e** ≥ 5.3.x (Activity system mandatory). *([dnd5e](https://github.com/foundryvtt/dnd5e))*
 
 ## Stack

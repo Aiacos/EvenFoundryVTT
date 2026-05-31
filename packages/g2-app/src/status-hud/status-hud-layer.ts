@@ -500,7 +500,7 @@ export class StatusHudLayer implements Layer {
    *   1. The 28×21 corner card (AsciiGrid.toString()) — always-visible status HUD.
    *   2. The R1 context chip footer row (Phase 6 Plan 03 — NAV-01 + INV-5 visible
    *      enforcement). The chip reads `layerManager.getTopLayer()?.getR1Hints?.()`
-   *      on every render so it always names the live long-press target.
+   *      on every render so it always names the live Quick-Action (over-scroll) target.
    *
    * Both are concatenated into a single `textContainerUpgrade` payload. The
    * bridge displays them sequentially as the corner-card content + footer chip.

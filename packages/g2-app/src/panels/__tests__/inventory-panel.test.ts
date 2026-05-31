@@ -473,12 +473,12 @@ describe('Empty inventory behavior', () => {
 // ─── IP-R1HINTS-* (Phase 6 Plan 03) ──────────────────────────────────────────
 
 describe('InventoryPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
-  it('IP-R1HINTS-IT: returns getR1Hints with q[inv] longPressLabel (IT locale)', () => {
+  it('IP-R1HINTS-IT: returns getR1Hints with q[inv] quickActionLabel (IT locale)', () => {
     const bridge = makeMockBridge();
     const bus = makeMockBus();
     const panel = new InventoryPanel(bridge, bus, 'it');
     const hints = panel.getR1Hints();
-    expect(hints.longPressLabel).toMatch(/q\[inv\]/);
+    expect(hints.quickActionLabel).toMatch(/q\[inv\]/);
     expect(typeof hints.tap).toBe('string');
     expect(typeof hints.scroll).toBe('string');
     expect(hints.tap.length).toBeGreaterThan(0);
@@ -494,12 +494,31 @@ describe('InventoryPanel — getR1Hints (Phase 6 NAV-01 chip data)', () => {
       const hints = panel.getR1Hints();
       expect([...hints.tap].length).toBeLessThanOrEqual(38);
       expect([...hints.scroll].length).toBeLessThanOrEqual(38);
-      expect([...hints.longPressLabel].length).toBeLessThanOrEqual(38);
+      expect([...hints.quickActionLabel].length).toBeLessThanOrEqual(38);
     }
   });
 });
 
-// ─── INV-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + long-press wiring
+// ─── INV-OVERSCROLL-*: ADR-0012 D-2 over-scroll boundary probe ────────────────
+
+describe('InventoryPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
+  it('INV-OVERSCROLL-01: true at offset 0, false after scrolling down', async () => {
+    const bus = new PanelGestureBus();
+    const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
+    panel.onSnapshot(snapshotWithWeapon);
+    await panel.onMount();
+
+    expect(panel.isAtTopBoundary()).toBe(true);
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
+    bus.publish({ kind: 'scroll', direction: 'up' });
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    await panel.onUnmount();
+  });
+});
+
+// ─── INV-LP-*: Phase 8 Plan 08-03 — setActionOptionsHandler + tap context action
 
 /**
  * Snapshot with weapon item at index 0 for INV-LP-* tests.
@@ -541,7 +560,7 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     expect(typeof panel.setActionOptionsHandler).toBe('function');
   });
 
-  it('INV-LP-02: long-press with handler set + valid snapshot (weapon) calls handler', async () => {
+  it('INV-LP-02: tap with handler set + valid snapshot (weapon) calls handler', async () => {
     const bus = new PanelGestureBus();
     const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
     panel.onSnapshot(snapshotWithWeapon);
@@ -550,7 +569,7 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     expect(spy).toHaveBeenCalledTimes(1);
     const req = spy.mock.calls[0]?.[0];
@@ -573,7 +592,7 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     const req = spy.mock.calls[0]?.[0];
     expect(req?.requiresTarget).toBe(false);
@@ -582,20 +601,20 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     await panel.onUnmount();
   });
 
-  it('INV-LP-03: long-press with handler NOT set → no-op (backward-compat)', async () => {
+  it('INV-LP-03: tap with handler NOT set → re-draw no-op', async () => {
     const bus = new PanelGestureBus();
     const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
     panel.onSnapshot(snapshotWithWeapon);
     await panel.onMount();
 
-    // No setActionOptionsHandler call — should be a no-op
-    bus.publish({ kind: 'long-press' });
+    // No setActionOptionsHandler call — should be a re-draw no-op
+    bus.publish({ kind: 'tap' });
 
     // Panel stays alive — no crash
     await panel.onUnmount();
   });
 
-  it('INV-LP-04: long-press with handler set but snapshot=null → no-op + console.warn', async () => {
+  it('INV-LP-04: tap with handler set but snapshot=null → no-op + console.warn', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const bus = new PanelGestureBus();
     const panel = new InventoryPanel(makeMockBridge(), bus, 'it');
@@ -605,7 +624,7 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
     const spy = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(spy);
 
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     expect(spy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -617,7 +636,7 @@ describe('InventoryPanel — setActionOptionsHandler (INV-LP-*)', () => {
   });
 });
 
-// ─── INV-LPMAP-*: R-longpress header-aware row → item mapping ──────────────────
+// ─── INV-LPMAP-*: header-aware row → item mapping (cursor-row resolution) ──────
 
 /**
  * Multi-section snapshot: 1 equipped weapon + 1 consumable. The standalone
@@ -639,7 +658,7 @@ const multiSectionInvSnapshot: CharacterSnapshot = {
   ],
 };
 
-describe('buildInventoryRowItemMap + resolveItemAtRow (R-longpress)', () => {
+describe('buildInventoryRowItemMap + resolveItemAtRow (cursor-row resolution)', () => {
   it('INV-LPMAP-01: map aligns headers/blanks→null and item rows→item across sections', () => {
     const map = buildInventoryRowItemMap(multiSectionInvSnapshot, 'it');
     expect(map[0]).toBeNull(); // EQUIPPED header
@@ -670,7 +689,7 @@ describe('buildInventoryRowItemMap + resolveItemAtRow (R-longpress)', () => {
     expect(buildInventoryRowItemMap(null, 'it')).toEqual([]);
   });
 
-  it('INV-LPMAP-05: long-press after scrolling a tall list resolves the cursor-row item across a header', async () => {
+  it('INV-LPMAP-05: tap after scrolling a tall list resolves the cursor-row item across a header', async () => {
     // Build a list TALLER than ROW_COUNT (18) so the scroll window actually shifts.
     const weapons = Array.from({ length: 18 }, (_, i) => ({
       id: `weapon-${i}`,
@@ -699,7 +718,7 @@ describe('buildInventoryRowItemMap + resolveItemAtRow (R-longpress)', () => {
     // single EQUIPPED header, so the resolved item is weapon-(offset-1) — the OLD
     // flat-index code dispatched inventory[offset] = weapon-offset (off by 1 header).
     for (let i = 0; i < 20; i++) bus.publish({ kind: 'scroll', direction: 'down' });
-    bus.publish({ kind: 'long-press' });
+    bus.publish({ kind: 'tap' });
 
     const req = spy.mock.calls.at(-1)?.[0];
     // Clamp ceiling = allRows.length - 17. Resolve item at that row via the map and

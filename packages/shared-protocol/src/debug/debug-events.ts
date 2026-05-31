@@ -11,8 +11,8 @@
  *
  * # Source-of-truth reuse
  *
- * `DebugGestureBodySchema.kind` deliberately reuses the SAME 5 R1 gesture kinds as
- * {@link R1GesturePayloadSchema} (`tap | double-tap | scroll-up | scroll-down | long-press`)
+ * `DebugGestureBodySchema.kind` deliberately reuses the SAME 4 R1 gesture kinds as
+ * {@link R1GesturePayloadSchema} (`tap | double-tap | scroll-up | scroll-down`)
  * — do NOT diverge from the canonical gesture enum.
  *
  * @see ../payloads/r1.ts (R1GesturePayloadSchema — gesture kind enum source of truth)
@@ -170,8 +170,8 @@ export type DebugDispatchBody = z.infer<typeof DebugDispatchBodySchema>;
 export const DebugGestureBodySchema = z.object({
   /** Target session (non-empty). */
   sessionId: z.string().min(1),
-  /** One of the 5 canonical R1 gesture kinds. */
-  kind: z.enum(['tap', 'double-tap', 'scroll-up', 'scroll-down', 'long-press']),
+  /** One of the 4 canonical R1 gesture kinds (long-press retired — ADR-0012). */
+  kind: z.enum(['tap', 'double-tap', 'scroll-up', 'scroll-down']),
 });
 
 /** Request body for `POST /debug/simulate-gesture` (inferred). */

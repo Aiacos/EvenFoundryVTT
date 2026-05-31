@@ -11,7 +11,7 @@
  *   - R1E-04: valid tap gesture → gestureBus.publish({ kind: 'tap' })
  *   - R1E-05: wire kind 'scroll-up' → internal { kind: 'scroll', direction: 'up' }
  *   - R1E-06: wire kind 'scroll-down' → internal { kind: 'scroll', direction: 'down' }
- *   - R1E-07: kind 'long-press' passes through verbatim
+ *   - R1E-07: retired wire kind 'long-press' → rejected by schema (console.warn + no publish)
  *   - R1E-08: getTopLayer() returns null → console.warn 'no top layer' + publish NOT called (INV-5 no-op)
  *   - R1E-09: unsubscribe idempotency — double off() does not throw; removeEventListener called at most once
  *   - R1E-10: after off(), subsequent fireMessage does NOT publish
@@ -200,16 +200,18 @@ describe('attachR1EventSource (R1E-01..R1E-10)', () => {
     }
   });
 
-  it('R1E-07: kind long-press passes through verbatim as { kind: "long-press" }', () => {
+  it('R1E-07: retired wire kind long-press → rejected by schema (warn + no publish)', () => {
+    // ADR-0012 D-1: `long-press` was removed from R1GesturePayloadSchema — it is not
+    // a supported hardware gesture. A bridge that ever sent it is now rejected at the
+    // wire boundary (defensive). The payload safeParse fails → console.warn + no publish.
     const panel = makeOverlayPanelStub('panel');
     const lm = makeMockLayerManager(panel);
     attachR1EventSource(ws, bus, lm);
 
     ws.fireMessage(makeR1Envelope('long-press'));
 
-    expect(publishSpy).toHaveBeenCalledTimes(1);
-    const published = publishSpy.mock.calls[0]?.[0] as R1Gesture;
-    expect(published.kind).toBe('long-press');
+    expect(publishSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
   });
 
   it('R1E-08: getTopLayer() returns null → console.warn (INV-5 no-op) + publish NOT called', () => {
