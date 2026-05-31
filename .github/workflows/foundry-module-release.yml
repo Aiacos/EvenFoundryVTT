@@ -355,8 +355,27 @@ jobs:
         working-directory: packages/g2-app
         run: zip -r ../../g2-app-dist.zip dist/ -x "*.map"
 
-      # REL-03: upload g2-app-dist.zip to the GitHub Release created by the `release` job.
-      - name: Upload g2-app-dist.zip to GitHub Release
+      # DIST-EHUB-01: also pack the submission-ready Even Hub .ehpk and attach it to the
+      # Release as a permanent, versioned asset. This is the MAXIMUM automation possible:
+      # Even Hub has NO non-interactive CI submit (INV-2 re-verified 2026-05-31 against CLI
+      # 0.1.13 source + docs — commands are login/init/pack/qr only, login is interactive,
+      # submission is a MANUAL portal upload gated by MANUAL review). The portal upload +
+      # review stay manual; the .ehpk here is the artifact to upload. See docs/release/evenhub.md.
+      - name: Sync app.json version from g2-app package.json
+        run: |
+          node -e "const fs=require('fs'); \
+            const ver=require('./packages/g2-app/package.json').version; \
+            const p='packages/g2-app/app.json'; \
+            const j=JSON.parse(fs.readFileSync(p,'utf8')); \
+            j.version=ver; \
+            fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n'); \
+            console.log('app.json version =', ver)"
+
+      - name: Pack Even Hub .ehpk
+        run: npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/g2-app/dist -o evenfoundryvtt.ehpk
+
+      # REL-03 + DIST-EHUB-01: upload g2-app-dist.zip AND evenfoundryvtt.ehpk to the Release.
+      - name: Upload g2-app assets to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -365,4 +384,12 @@ jobs:
           else
             TAG="${GITHUB_REF#refs/tags/}"
           fi
-          gh release upload "$TAG" g2-app-dist.zip --clobber
+          gh release upload "$TAG" g2-app-dist.zip evenfoundryvtt.ehpk --clobber
+
+      # Auto-submit hook (currently NOT possible — kept as the activation point).
+      # Even Hub exposes no non-interactive submit. The day Even ships a CI submit command +
+      # token, enable this gated step (no other change needed):
+      #   - name: Submit .ehpk to Even Hub
+      #     if: ${{ secrets.EVENHUB_TOKEN != '' }}
+      #     run: npx --yes @evenrealities/evenhub-cli <submit-cmd> evenfoundryvtt.ehpk
+      #     env: { EVENHUB_TOKEN: ${{ secrets.EVENHUB_TOKEN }} }
