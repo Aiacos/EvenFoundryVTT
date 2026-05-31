@@ -3,6 +3,42 @@
 How the EvenFoundryVTT G2 plugin (`packages/g2-app`) is packaged and submitted to the
 Even Hub. Closes **DIST-EHUB-01**.
 
+## Testing on the glasses — dev mode vs the `.ehpk` (the "trial version expired" trap)
+
+There are **two different ways** to get the plugin onto the G2, and conflating them is the
+cause of the *"trial version expired"* error in the Even app.
+
+| | **Dev mode** (for iterating) | **`.ehpk` upload** (for shipping) |
+|---|---|---|
+| Tool | `evenhub qr` → scan with the Even app | Even Hub developer **portal** upload |
+| What loads | Your **live dev server** (`http://<LAN-IP>:5173`), with **hot reload** | The packaged `.ehpk` bundle |
+| Expiry | **None** — reloads as long as the dev server runs | **Trial builds EXPIRE** (a private/test upload is time-limited) → *"versione di prova scaduta"* |
+| Use it for | Day-to-day development + on-device testing | Final submission for review, or a short-lived private test |
+
+> Verbatim, `hub.evenrealities.com/docs/reference/cli`: *"Scan the QR code with the Even
+> Realities App on your phone. Your app loads on the glasses with **hot reload** support."*
+> The CLI README adds: *"For development mode with the Even app, the `qr` command is the only
+> command you need."* The `.ehpk` is for distribution, **not** for day-to-day testing.
+
+### Fix for "versione di prova scaduta"
+
+1. **For ongoing testing, stop uploading `.ehpk` trials — use dev mode instead** (no expiry):
+   ```bash
+   pnpm --filter @evf/g2-app dev        # vite dev server on :5173 (bind to 0.0.0.0 for LAN)
+   pnpm --filter @evf/g2-app dev:qr     # prints a QR for http://<LAN-IP>:5173 — scan in the Even app
+   ```
+   The phone must be on the **same LAN** as your machine; the app hot-reloads on every save.
+2. **If you must re-test via an uploaded trial, regenerate a FRESH `.ehpk` and re-upload** — a
+   new upload resets the trial window. The `.ehpk` carries no expiry itself; the limit is a
+   portal-side trial policy, so a stale upload simply needs replacing:
+   ```bash
+   pnpm --filter @evf/g2-app pack:ehpk  # fresh build + pack → packages/g2-app/evenfoundryvtt.ehpk
+   ```
+   CI also attaches a fresh `evenfoundryvtt.ehpk` to **every GitHub Release**
+   (`foundry-module-release.yml`), so the latest release asset is always current.
+3. The **permanent** install (no expiry) only comes from a **portal submission that Even
+   approves** — see *Manual submission steps* below.
+
 ## What the CI/CD does automatically (maximum possible automation)
 
 Two automated paths produce the submission-ready `.ehpk`:

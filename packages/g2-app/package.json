@@ -8,7 +8,9 @@
     "build": "vite build",
     "dev": "vite",
     "test": "vitest --run --project g2-app --root ../..",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:ehpk": "vite build && npx --yes @evenrealities/evenhub-cli pack app.json dist -o evenfoundryvtt.ehpk",
+    "dev:qr": "npx --yes @evenrealities/evenhub-cli qr --port 5173"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.10",
