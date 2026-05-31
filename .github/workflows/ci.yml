@@ -63,8 +63,11 @@ jobs:
         run: pnpm vitest --run --update=false
 
       # D-1.10 gate 7: changeset status (PR only — main branch doesn't need to declare changes)
+      # Skipped on the Changesets "Version Packages" PR (head `changeset-release/*`):
+      # that PR CONSUMES changesets and by design adds none, so `changeset status`
+      # would always fail there. Feature PRs still require a declared changeset.
       - name: Changeset status
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset:status
 
       # D-7.01 gate 8: Single-workflow-origin guard (Phase 7 ADR-0011 + Plan 07-01)
