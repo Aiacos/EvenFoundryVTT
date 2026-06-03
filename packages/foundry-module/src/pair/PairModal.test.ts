@@ -7,8 +7,12 @@
  * - All 5 modal states are returned correctly: active, empty, refresh-needed, expired, pairing-in-progress
  * - _prepareContext() includes qrSvg for active/pairing-in-progress states
  * - _prepareContext() excludes qrSvg for expired state (shows banner instead)
+ * - _prepareContext() populates boolean flags (isEmpty, isExpired, isRefreshNeeded, isPairing, showQr)
+ * - _prepareContext() populates expiresAtMs (epoch ms, not ISO) for active states
+ * - _prepareContext() i18n includes expiresIn and close keys (regression for missing-key defects)
  * - _onClickRevoke extracts token-id and calls revokeBearer
  * - _onClickRefresh calls generateBearer with refresh=true
+ * - empty state exposes new-code button wiring via _onRender
  *
  * Note: QR SVG generation via qrcode@1.5.4 is mocked to return a sentinel SVG string.
  *
@@ -228,6 +232,121 @@ describe('PairModal', () => {
     });
   });
 
+  describe('_prepareContext() boolean flags', () => {
+    it('sets isEmpty=true and showQr=false for empty state', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      expect(data.isEmpty).toBe(true);
+      expect(data.isExpired).toBe(false);
+      expect(data.isRefreshNeeded).toBe(false);
+      expect(data.isPairing).toBe(false);
+      expect(data.showQr).toBe(false);
+    });
+
+    it('sets isEmpty=false, showQr=true for active state', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      expect(data.isEmpty).toBe(false);
+      expect(data.isExpired).toBe(false);
+      expect(data.isRefreshNeeded).toBe(false);
+      expect(data.isPairing).toBe(false);
+      expect(data.showQr).toBe(true);
+    });
+
+    it('sets isExpired=true and showQr=false for expired state', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | { entries: Record<string, { expiresAt: number }> }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.expiresAt = Date.now() - 1000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('foundry', {
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
+      });
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      expect(data.isExpired).toBe(true);
+      expect(data.isEmpty).toBe(false);
+      expect(data.showQr).toBe(false);
+    });
+
+    it('sets isRefreshNeeded=true and showQr=true for refresh-needed state', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
+        | { entries: Record<string, { expiresAt: number }> }
+        | undefined;
+      if (registry?.entries[entry.token]) {
+        // biome-ignore lint/style/noNonNullAssertion: safe — checked above
+        registry.entries[entry.token]!.expiresAt = Date.now() + 30 * 60 * 1000;
+        gameMock.settings.set('evenfoundryvtt', 'bearerRegistry', registry);
+      }
+
+      vi.resetModules();
+      vi.stubGlobal('Application', ApplicationStub);
+      vi.stubGlobal('foundry', {
+        applications: {
+          api: {
+            ApplicationV2: ApplicationV2Stub,
+            HandlebarsApplicationMixin: (Base: unknown) => Base,
+          },
+        },
+      });
+      vi.stubGlobal('Hooks', makeHooksMock());
+      vi.stubGlobal('game', gameMock);
+      vi.stubGlobal('crypto', makeCryptoMock());
+
+      const { PairModal: PM } = await import('./PairModal.js');
+      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      expect(data.isRefreshNeeded).toBe(true);
+      expect(data.showQr).toBe(true);
+    });
+  });
+
+  describe('_prepareContext() expiresAtMs', () => {
+    it('provides expiresAtMs as a number (epoch ms) for active state', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      expect(typeof data.expiresAtMs).toBe('number');
+      // Must be a future timestamp (epoch ms, not seconds)
+      expect(data.expiresAtMs as number).toBeGreaterThan(Date.now());
+    });
+
+    it('expiresAtMs is undefined for empty state', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      expect(data.expiresAtMs).toBeUndefined();
+    });
+  });
+
   describe('_prepareContext() i18n field', () => {
     it('includes an i18n object with required keys', async () => {
       const { PairModal } = await import('./PairModal.js');
@@ -239,6 +358,25 @@ describe('PairModal', () => {
       expect(i18n.title).toBeDefined();
       expect(i18n.tableHeading).toBeDefined();
       expect(i18n.emptyHeading).toBeDefined();
+    });
+
+    it('includes expiresIn key in i18n (regression: was missing from buildI18n)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.expiresIn).toBeDefined();
+      // game.i18n.localize is stubbed to return the key unchanged
+      expect(i18n.expiresIn).toBe('evf.pair.qr.expires_in');
+    });
+
+    it('includes close key in i18n (regression: was missing from buildI18n)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.close).toBeDefined();
+      expect(i18n.close).toBe('evf.pair.modal.close');
     });
   });
 
@@ -317,6 +455,29 @@ describe('PairModal', () => {
       const { generateBearer } = await import('./bearer-registry.js');
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
+
+      const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
+
+      const html = document.createElement('div');
+      const newCodeBtn = document.createElement('button');
+      newCodeBtn.dataset.action = 'new-code';
+      html.appendChild(newCodeBtn);
+
+      modal.element = html;
+      modal._onRender({}, {});
+      newCodeBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(renderSpy).toHaveBeenCalledWith({ force: true });
+    });
+
+    it('binds click handler to [data-action="new-code"] button (empty state — first pairing)', async () => {
+      // Empty state: no bearers at all. The empty-state section must still wire new-code.
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal(
         'https://bridge.local:8910',
