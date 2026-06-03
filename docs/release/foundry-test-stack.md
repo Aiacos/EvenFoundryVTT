@@ -52,15 +52,16 @@ licenses, add `FOUNDRY_LICENSE_KEY=...` to `.env`.)
 1. **Game Settings → Configure Settings → EvenFoundryVTT**: set the **Bridge URL** to
    `http://<your-host-ip>:8910` (use the LAN IP, not `localhost`, if the phone must reach it),
    and the **internal secret** to the **same `EVF_INTERNAL_SECRET`** you put in `deploy/.env`.
-2. **Game Settings → EvenFoundryVTT → "Pair Device"** (the QR-code button). This generates a
-   **24h bearer token** + a QR.
+2. **Game Settings → EvenFoundryVTT → "Pair a G2 device"**. This generates a
+   **24h bearer token**; the PairModal shows the bridge URL + token as copyable text
+   (token masked by default — click **Reveal**/**Copy**).
 
 ## 4. Run the wizard end-to-end
 
 In the phone wizard (or the simulator / a browser at `http://<host>:5173/wizard/wizard.html`):
 
 1. **Step 1** — Bridge URL: `http://<your-host-ip>:8910`.
-2. **Step 2** — paste the bearer token (or scan the QR) from §3.2. The bridge validates it via
+2. **Step 2** — paste the bearer token copied in §3.2. The bridge validates it via
    the connected Foundry module → connects.
 3. **Step 3** — pick the character you created in §2.7.
 4. Done — the engine boots and the G2 HUD is driven by the live Foundry session.

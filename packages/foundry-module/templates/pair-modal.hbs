@@ -3,25 +3,30 @@
 
   Rendered by PairModal._prepareContext() → ApplicationV2 template engine.
   All user-facing strings come from {{i18n.*}} (pre-resolved in _prepareContext, never raw keys).
-  QR SVG uses triple-mustache {{{qrSvg}}} — trusted server-generated SVG, not user content.
+
+  Pairing model: the Even Hub platform exposes no camera / QR-scan API to apps (canonical:
+  "no camera (there is none)"). The token is therefore COPIED here and PASTED into the g2-app
+  wizard step 2 on the phone. The bridge URL and bearer token are rendered as copyable text;
+  the token is masked by default and revealed only on explicit "Reveal" action. The token
+  value is rendered via {{token}} (escaped) — never via triple-mustache / innerHTML.
 
   Boolean flags precomputed in _prepareContext (no `eq` helper required — Foundry does not
   register `eq` by default):
-    - isEmpty       — state === "empty"
-    - isExpired     — state === "expired"
+    - isEmpty         — state === "empty"
+    - isExpired       — state === "expired"
     - isRefreshNeeded — state === "refresh-needed"
-    - isPairing     — state === "pairing-in-progress"
-    - showQr        — state is active | refresh-needed | pairing-in-progress
+    - isPairing       — state === "pairing-in-progress"
+    - showCredentials — state is active | refresh-needed | pairing-in-progress
 
   States handled:
     - "empty"              — no devices paired; informational copy + generate first code CTA
-    - "active"             — valid QR shown; countdown timer; paired devices table
+    - "active"             — copyable bridge URL + token; countdown timer; paired devices table
     - "pairing-in-progress"— same as active + spinner
-    - "refresh-needed"     — QR shown; countdown accent-coloured; Refresh CTA
-    - "expired"            — expired banner; no QR; paired devices still shown
+    - "refresh-needed"     — credentials shown; countdown accent-coloured; Refresh CTA
+    - "expired"            — expired banner; no credentials; paired devices still shown
 
   Accessibility:
-    - QR SVG block has aria-label + role="img"
+    - Token field labelled; reveal/copy buttons have aria-labels via i18n
     - Countdown wrapped in <time datetime="...">
     - Device table has <thead> with <th scope="col">
     - Revoke buttons have aria-label="Revoke {alias}"
@@ -33,12 +38,12 @@
 
 <div class="evf-pair-modal">
 
-  {{!-- ── QR Region ─────────────────────────────────────────────────────────── --}}
+  {{!-- ── Credentials Region ────────────────────────────────────────────────── --}}
   {{#unless isEmpty}}
-  <section class="evf-pair-modal__qr-region">
+  <section class="evf-pair-modal__cred-region">
 
     {{#if isExpired}}
-    {{!-- Expired state: banner instead of QR --}}
+    {{!-- Expired state: banner instead of credentials --}}
     <div class="evf-pair-modal__expired-banner" role="alert">
       <h2>{{i18n.expiredTitle}}</h2>
       <p>{{i18n.expiredBody}}</p>
@@ -48,16 +53,47 @@
     </div>
 
     {{else}}
-    {{!-- active | refresh-needed | pairing-in-progress: show QR SVG --}}
-    <div
-      class="evf-pair-modal__qr-wrap"
-      role="img"
-      aria-label="Pairing QR code for EvenFoundryVTT"
-    >
-      {{{qrSvg}}}
+    {{!-- active | refresh-needed | pairing-in-progress: show copyable credentials --}}
+    <p class="evf-pair-modal__copy-instruction">{{i18n.copyInstruction}}</p>
+
+    {{!-- Bridge URL (always visible, copyable) --}}
+    <div class="evf-pair-modal__cred-field">
+      <span class="evf-pair-modal__cred-label">{{i18n.copyBridgeUrl}}</span>
+      <code class="evf-pair-modal__cred-value" data-bridge-url>{{bridgeUrl}}</code>
+      <button
+        type="button"
+        class="evf-btn evf-btn--ghost evf-pair-modal__copy-btn"
+        data-action="copy"
+        data-copy-value="{{bridgeUrl}}"
+        aria-label="{{i18n.copyButton}} {{i18n.copyBridgeUrl}}"
+      >
+        {{i18n.copyButton}}
+      </button>
     </div>
 
-    <p class="evf-pair-modal__scan-hint">{{i18n.scanInstruction}}</p>
+    {{!-- Token (masked by default, reveal + copy) --}}
+    <div class="evf-pair-modal__cred-field">
+      <span class="evf-pair-modal__cred-label">{{i18n.copyToken}}</span>
+      <code class="evf-pair-modal__cred-value" data-token-mask aria-hidden="true">••••••••••••••••••••••••</code>
+      <code class="evf-pair-modal__cred-value evf-hidden" data-token-plain>{{token}}</code>
+      <button
+        type="button"
+        class="evf-btn evf-btn--ghost evf-pair-modal__reveal-btn"
+        data-action="reveal-token"
+        aria-label="{{i18n.copyReveal}} {{i18n.copyToken}}"
+      >
+        {{i18n.copyReveal}}
+      </button>
+      <button
+        type="button"
+        class="evf-btn evf-btn--ghost evf-pair-modal__copy-btn"
+        data-action="copy"
+        data-copy-value="{{token}}"
+        aria-label="{{i18n.copyButton}} {{i18n.copyToken}}"
+      >
+        {{i18n.copyButton}}
+      </button>
+    </div>
 
     <div class="evf-pair-modal__ttl-row">
       {{!-- Countdown: expiresAtMs (epoch ms) read by JS every 60s; expiresIso for datetime attr --}}
