@@ -1,12 +1,20 @@
 {{!--
   pair-modal.hbs — EvenFoundryVTT ApplicationV2 pair modal template.
 
-  Rendered by PairModal.getData() → ApplicationV2 template engine.
-  All user-facing strings come from {{i18n.*}} (pre-resolved in getData, never raw keys).
+  Rendered by PairModal._prepareContext() → ApplicationV2 template engine.
+  All user-facing strings come from {{i18n.*}} (pre-resolved in _prepareContext, never raw keys).
   QR SVG uses triple-mustache {{{qrSvg}}} — trusted server-generated SVG, not user content.
 
+  Boolean flags precomputed in _prepareContext (no `eq` helper required — Foundry does not
+  register `eq` by default):
+    - isEmpty       — state === "empty"
+    - isExpired     — state === "expired"
+    - isRefreshNeeded — state === "refresh-needed"
+    - isPairing     — state === "pairing-in-progress"
+    - showQr        — state is active | refresh-needed | pairing-in-progress
+
   States handled:
-    - "empty"              — no devices paired; informational copy + no table headers
+    - "empty"              — no devices paired; informational copy + generate first code CTA
     - "active"             — valid QR shown; countdown timer; paired devices table
     - "pairing-in-progress"— same as active + spinner
     - "refresh-needed"     — QR shown; countdown accent-coloured; Refresh CTA
@@ -20,16 +28,16 @@
     - Inline confirmation uses aria-live="polite"
 
   @see 02-UI-SPEC.md §UI-A (layout, wireframe, i18n keys, accessibility)
-  @see packages/foundry-module/src/pair/PairModal.ts (getData context shape)
+  @see packages/foundry-module/src/pair/PairModal.ts (_prepareContext context shape)
 --}}
 
 <div class="evf-pair-modal">
 
   {{!-- ── QR Region ─────────────────────────────────────────────────────────── --}}
-  {{#unless (eq state "empty")}}
+  {{#unless isEmpty}}
   <section class="evf-pair-modal__qr-region">
 
-    {{#if (eq state "expired")}}
+    {{#if isExpired}}
     {{!-- Expired state: banner instead of QR --}}
     <div class="evf-pair-modal__expired-banner" role="alert">
       <h2>{{i18n.expiredTitle}}</h2>
@@ -52,10 +60,10 @@
     <p class="evf-pair-modal__scan-hint">{{i18n.scanInstruction}}</p>
 
     <div class="evf-pair-modal__ttl-row">
-      {{!-- Countdown: expiresAt as data-expires epoch ms; text updated by JS every 60s --}}
+      {{!-- Countdown: expiresAtMs (epoch ms) read by JS every 60s; expiresIso for datetime attr --}}
       <span class="evf-pair-modal__expires-label">{{i18n.expiresIn}}</span>
       <time
-        class="evf-pair-modal__ttl{{#if (eq state "refresh-needed")}} evf-ttl--urgent{{/if}}"
+        class="evf-pair-modal__ttl{{#if isRefreshNeeded}} evf-ttl--urgent{{/if}}"
         datetime="{{expiresIso}}"
         data-countdown
         data-expires="{{expiresAtMs}}"
@@ -63,25 +71,37 @@
         {{ttlDisplay}}
       </time>
 
-      {{#if (eq state "refresh-needed")}}
+      {{#if isRefreshNeeded}}
       <button type="button" data-action="refresh" class="evf-btn evf-btn--accent">
         {{i18n.refresh}}
       </button>
       {{/if}}
     </div>
 
-    {{#if (eq state "pairing-in-progress")}}
+    {{#if isPairing}}
     <div class="evf-pair-modal__awaiting" role="status" aria-live="polite">
       <span class="evf-spinner" aria-hidden="true">↺</span>
       <span>{{i18n.awaiting}}</span>
     </div>
     {{/if}}
 
-    {{/if}}{{!-- end expired/active branch --}}
+    {{/if}}{{!-- end isExpired/active branch --}}
   </section>
   {{/unless}}
 
+  {{!-- ── Empty state: generate first pairing code ───────────────────────────── --}}
+  {{#if isEmpty}}
+  <section class="evf-pair-modal__empty-state">
+    <p class="evf-pair-modal__empty-heading">{{i18n.emptyHeading}}</p>
+    <p class="evf-pair-modal__empty-body">{{i18n.emptyBody}}</p>
+    <button type="button" data-action="new-code" class="evf-btn evf-btn--primary">
+      {{i18n.expiredCta}}
+    </button>
+  </section>
+  {{/if}}
+
   {{!-- ── Paired Devices Table ──────────────────────────────────────────────── --}}
+  {{#unless isEmpty}}
   <section class="evf-pair-modal__devices">
     <h2 class="evf-pair-modal__devices-heading">{{i18n.tableHeading}}</h2>
     <hr class="evf-pair-modal__divider" />
@@ -121,11 +141,12 @@
     </div>
 
     {{else}}
-    {{!-- Empty state: informational copy --}}
+    {{!-- Expired/active state with no devices (edge case) --}}
     <p class="evf-pair-modal__empty-heading">{{i18n.emptyHeading}}</p>
     <p class="evf-pair-modal__empty-body">{{i18n.emptyBody}}</p>
     {{/if}}
   </section>
+  {{/unless}}
 
   {{!-- ── Footer ───────────────────────────────────────────────────────────── --}}
   <footer class="evf-pair-modal__footer">

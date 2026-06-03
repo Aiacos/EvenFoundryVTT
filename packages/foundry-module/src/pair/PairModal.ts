@@ -21,6 +21,11 @@
  * - A `setInterval` at 60-second granularity updates the countdown `<time>` element.
  * - Interval is stored in `_countdownInterval` and cleared in `close()`.
  *
+ * Template boolean flags:
+ * - Foundry VTT does not register an `eq` Handlebars helper. All state comparisons are
+ *   resolved in `_prepareContext` and exposed as boolean flags (`isEmpty`, `isExpired`,
+ *   `isRefreshNeeded`, `isPairing`, `showQr`) so the template uses `{{#if flag}}` only.
+ *
  * @see 02-02-PLAN.md Task 2 (PairModal specification)
  * @see 02-UI-SPEC.md §UI-A (full layout, states, revoke flow, i18n keys)
  * @see 02-CONTEXT.md D-2.02 (ApplicationV2 dialog framework), D-2.10 (opaque bearer)
@@ -40,15 +45,27 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 /** Modal render state discriminant. */
 type ModalState = 'empty' | 'active' | 'pairing-in-progress' | 'refresh-needed' | 'expired';
 
-/** Template context returned by getData(). */
+/** Template context returned by _prepareContext(). */
 export interface PairModalData extends Record<string, unknown> {
   state: ModalState;
-  /** SVG string for the QR code; only present for active/pairing-in-progress/refresh-needed */
+  /** true when state === "empty"; used in template instead of `eq` helper */
+  isEmpty: boolean;
+  /** true when state === "expired"; used in template instead of `eq` helper */
+  isExpired: boolean;
+  /** true when state === "refresh-needed"; used in template instead of `eq` helper */
+  isRefreshNeeded: boolean;
+  /** true when state === "pairing-in-progress"; used in template instead of `eq` helper */
+  isPairing: boolean;
+  /** true when QR SVG should be shown (active | pairing-in-progress | refresh-needed) */
+  showQr: boolean;
+  /** SVG string for the QR code; only present when showQr is true */
   qrSvg?: string;
-  /** Human-readable TTL string e.g. "23h 47m"; present when state !== "empty" | "expired" */
+  /** Human-readable TTL string e.g. "23h 47m"; present when showQr is true */
   ttlDisplay?: string;
   /** ISO8601 expiry for <time datetime="..."> semantic element */
   expiresIso?: string;
+  /** Unix epoch milliseconds for data-expires attribute (countdown JS reads this) */
+  expiresAtMs?: number;
   /** Active (non-revoked) bearer entries for the devices table */
   devices: DeviceRow[];
   /** Pre-localised string map — keys consumed by pair-modal.hbs template */
@@ -150,6 +167,16 @@ function buildQrPayload(
  * Returns the pre-localised i18n object for the template.
  * All keys are resolved via `game.i18n.localize()` here so the template
  * uses `{{i18n.key}}` (pre-resolved string), never raw key lookup.
+ *
+ * Keys provided:
+ * - title, scanInstruction, refresh, awaiting — QR region
+ * - expiresIn — countdown label (maps to evf.pair.qr.expires_in)
+ * - expiredTitle, expiredBody, expiredCta — expired banner
+ * - tableHeading, colAlias, colPaired, colLastSeen, colAction — devices table header
+ * - emptyHeading, emptyBody — empty state copy
+ * - revokeButton, revokeConfirmBody, revokeConfirmCancel, revokeConfirmProceed — revoke flow
+ * - revokeSuccess, revokeErrorBridge — revoke feedback
+ * - close — footer close button
  */
 function buildI18n(): Record<string, string> {
   const l = (key: string) => game.i18n.localize(key);
@@ -158,6 +185,7 @@ function buildI18n(): Record<string, string> {
     scanInstruction: l('evf.pair.qr.scan_instruction'),
     refresh: l('evf.pair.qr.refresh'),
     awaiting: l('evf.pair.qr.awaiting'),
+    expiresIn: l('evf.pair.qr.expires_in'),
     expiredTitle: l('evf.pair.qr.expired.title'),
     expiredBody: l('evf.pair.qr.expired.body'),
     expiredCta: l('evf.pair.qr.expired.cta'),
@@ -174,6 +202,7 @@ function buildI18n(): Record<string, string> {
     revokeConfirmProceed: l('evf.pair.revoke.confirm.proceed'),
     revokeSuccess: l('evf.pair.revoke.success'),
     revokeErrorBridge: l('evf.pair.revoke.error.bridge_unreachable'),
+    close: l('evf.pair.modal.close'),
   };
 }
 
@@ -186,8 +215,8 @@ function buildI18n(): Record<string, string> {
  * "Pair a G2 device" (registered via `game.settings.registerMenu` in settings.ts).
  *
  * The modal lifecycle:
- * 1. `render(true)` — opens and calls `getData()` → builds QR SVG + state
- * 2. `_activateListeners(html)` — binds Revoke/Refresh click handlers + countdown timer
+ * 1. `render(true)` — opens and calls `_prepareContext()` → builds QR SVG + state
+ * 2. `_onRender(context, options)` — binds Revoke/Refresh/NewCode click handlers + countdown timer
  * 3. `close()` — clears countdown interval, closes modal
  *
  * @see 02-UI-SPEC.md §UI-A for the full wireframe, states, and revoke flow.
@@ -261,6 +290,9 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   /**
    * Builds the template context for the pair modal.
    *
+   * All state comparisons are resolved here as boolean flags to avoid the use of
+   * the `eq` Handlebars helper, which Foundry VTT does not register by default.
+   *
    * QR generation (qrcode@1.5.4): only runs for active/pairing-in-progress/refresh-needed
    * states. The SVG output is trusted (generated server-side, not from user input).
    *
@@ -271,8 +303,14 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const devices = listBearers().map(toDeviceRow);
     const i18n = buildI18n();
 
-    if (state === 'empty' || state === 'expired') {
-      return { state, devices, i18n };
+    const isEmpty = state === 'empty';
+    const isExpired = state === 'expired';
+    const isRefreshNeeded = state === 'refresh-needed';
+    const isPairing = state === 'pairing-in-progress';
+    const showQr = !isEmpty && !isExpired;
+
+    if (isEmpty || isExpired) {
+      return { state, isEmpty, isExpired, isRefreshNeeded, isPairing, showQr, devices, i18n };
     }
 
     // state: active | refresh-needed | pairing-in-progress
@@ -281,12 +319,26 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const ttlMs = entry.expiresAt - Date.now();
     const ttlDisplay = formatTtl(ttlMs);
     const expiresIso = new Date(entry.expiresAt).toISOString();
+    const expiresAtMs = entry.expiresAt;
 
     // Generate QR SVG (T-02-01: token value enters only the SVG, not the rendered HTML text)
     const payload = buildQrPayload(entry, this._bridgeUrl, this._worldId);
     const qrSvg = await QRCode.toString(JSON.stringify(payload), { type: 'svg' });
 
-    return { state, qrSvg, ttlDisplay, expiresIso, devices, i18n };
+    return {
+      state,
+      isEmpty,
+      isExpired,
+      isRefreshNeeded,
+      isPairing,
+      showQr,
+      qrSvg,
+      ttlDisplay,
+      expiresIso,
+      expiresAtMs,
+      devices,
+      i18n,
+    };
   }
 
   /**
@@ -313,7 +365,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       refreshBtn.addEventListener('click', (event) => this._onClickRefresh(event));
     }
 
-    // New Code button (expired state)
+    // New Code button (expired state or empty state)
     const newCodeBtn = html.querySelector('[data-action="new-code"]');
     if (newCodeBtn) {
       newCodeBtn.addEventListener('click', (event) => this._onClickRefresh(event));
@@ -381,7 +433,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
-   * Handles click on "Refresh" or "New Code" button.
+   * Handles click on "Refresh", "New Code" (expired state), or first-code button (empty state).
    *
    * Generates a new bearer (with `refresh=true` to apply 60s grace on the old token),
    * and re-renders the modal in-place. The QR SVG updates without a full modal reload.
