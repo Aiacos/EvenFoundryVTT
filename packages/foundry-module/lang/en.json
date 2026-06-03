@@ -3,6 +3,7 @@
   "evf.settings.pair_button": "Pair a G2 device",
 
   "evf.pair.modal.title": "EvenFoundryVTT — Pair a G2 Device",
+  "evf.pair.modal.close": "Close",
   "evf.pair.qr.scan_instruction": "Scan with Even Realities App",
   "evf.pair.qr.expires_in": "Expires in: {time}",
   "evf.pair.qr.refresh": "Refresh",
@@ -17,7 +18,7 @@
   "evf.pair.table.col.last_seen": "Last seen",
   "evf.pair.table.col.action": "Action",
   "evf.pair.table.empty.heading": "No devices paired yet.",
-  "evf.pair.table.empty.body": "Scan the QR code above to connect your first Even Realities G2.",
+  "evf.pair.table.empty.body": "Click \"New Code\" to generate your first pairing code.",
   "evf.pair.table.last_seen.online": "Online",
 
   "evf.pair.revoke.button": "Revoke",
