@@ -482,7 +482,7 @@ Verbatim upstream `support.evenrealities.com`: *"You can configure each widget i
 | Campo | Tipo | Esempio | Note |
 |---|---|---|---|
 | Bridge URL | URL string | `https://homelab.lan:8910` | Endpoint REST/WS verso Foundry. HTTPS prod, HTTP solo dev. Whitelist app.json richiesta. |
-| Auth token | password (paste) | `evf_a3b2c1...` | Bearer 24h dal Foundry module §11.5.4. Pasted dal client Foundry del player o scansionato via QR (§7.14.7.3). |
+| Auth token | password (paste) | `evf_a3b2c1...` | Bearer 24h dal Foundry module §11.5.4. Copiato dal DM nel PairModal Foundry e **incollato** dal player (la piattaforma Even Hub non espone fotocamera/QR-scan alle app — vedi §7.14.7.3). |
 | Player / character | enum (post-handshake) | `Thorin (multi)` | Lista popolata via bridge `/v1/actor` dopo connessione. Selezione via tap sul phone. |
 | World identifier (opt) | string | `homebrew-2024` | Auto-detected via handshake; override manuale se più world condivisi. |
 | Connection profile | enum | `homelab / cloud / dev` | Multi-profile per chi gioca su più server (es. Linux homelab + remote VPS). |
@@ -492,10 +492,10 @@ Verbatim upstream `support.evenrealities.com`: *"You can configure each widget i
 
 **Discovery & bootstrap flow** (worked example §7.14.7.2):
 
-1. User installa plugin via QR scan (verbatim tutorial *"deployment involves scanning a QR code with the Even Realities App on your phone"*).
+1. User installa l'app EVF via Even Hub. **Dev**: `evenhub qr` genera un QR che codifica l'**URL del plugin-host** (verbatim CLI reference: *"deployment involves scanning a QR code with the Even Realities App on your phone"* — il QR carica l'app, NON un token). **Prod**: `evenhub pack` → `.ehpk` → review manuale sul portale → install dall'app store dentro l'Even Realities App.
 2. Plugin host URL diventa available in Even Realities App.
 3. User apre il plugin → Even Realities App carica WebView → plugin detecta first-run (no settings) → mostra **on-phone setup wizard** (HTML form rendered nel WebView phone-side, **non** sul G2).
-4. User paste/scan bridge URL + auth token via QR generato dal Foundry module Settings.
+4. User incolla bridge URL + auth token (il token è **copiato** dal PairModal del Foundry module; nessuno scan QR — la piattaforma non espone fotocamera alle app, §3.1).
 5. Plugin chiama handshake `GET /v1/actor` → riceve lista character → user seleziona → settings persistite.
 6. User mette G2 → plugin auto-connecta con settings persistite → render HUD (§7.4).
 
@@ -2848,10 +2848,10 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 │  │ evf_•••••••••••••••••••••••••                          │      │
 │  └─────────────────────────────────────────────────────────┘      │
 │                                                                   │
-│  [ 📷 Scan QR from Foundry module ]   [ 📋 Paste from clipboard ] │
+│  [ Paste from clipboard ]                                         │
 │                                                                   │
-│  ⓘ Generate the QR in Foundry: Settings → EvenFoundryVTT →       │
-│    "Pair G2 device" (24h validity).                              │
+│  i  Copy the token in Foundry: Settings -> EvenFoundryVTT ->      │
+│     "Pair a G2 device", then paste it here (24h validity).        │
 │                                                                   │
 │  ─────────────────────────────────────────────────────────────    │
 │                                                                   │
@@ -2877,22 +2877,22 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 - Layout responsive standard (no constraint 96×24 char). Può usare HTML/CSS/flex normale.
 - Stile coerente con resto del plugin (phosphor-green su sfondo scuro) per continuità visiva con il G2 HUD, ma free-form.
 - Testo input via tastiera virtuale del phone (iOS/Android native).
-- QR scan tramite Web API del WebView (`navigator.mediaDevices.getUserMedia`) — richiede permission camera, dichiarata in `app.json`.
+- **Nessuno scan QR**: la piattaforma Even Hub non espone API fotocamera/QR-scan alle app (canonica `hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). Il token si trasferisce via **copia** (PairModal Foundry) → **incolla** (questo wizard). Resta disponibile la tastiera virtuale per l'inserimento manuale.
 
 ##### 7.14.7.2 Worked example bootstrap (zero → connesso)
 
-1. **User**: scansiona QR `evenfoundryvtt-g2/install` con Even Realities App → plugin URL aggiunto.
+1. **User**: installa l'app EVF via Even Hub (dev: `evenhub qr` → l'Even Realities App carica l'**URL del plugin-host**; prod: install dall'app store Even Hub dopo review del `.ehpk`).
 2. **User**: apre "EvenFoundryVTT" dalla home dell'Even App → WebView fetcha plugin URL.
 3. **Plugin**: detect first-run (`localStorage["evf:bridge_url"] == null`) → render setup wizard §7.14.7.1.
 4. **User**: seleziona profilo "Homelab", incolla `https://homelab.lan:8910`.
-5. **User**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair G2 device"** → genera token 24h → mostra QR.
-6. **User**: tap "📷 Scan QR" sul phone → camera leggi QR → token autocompila.
+5. **User (DM)**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair a G2 device"** → genera token 24h → il PairModal mostra **bridge URL + token copiabili** (token nascosto di default, con toggle Mostra/Copia).
+6. **User**: copia il token dal PairModal e lo **incolla** nel wizard sul phone (tap "Paste from clipboard").
 7. **Plugin**: chiama `GET /v1/actor` con bearer → bridge risponde con lista character.
 8. **User**: seleziona "Thorin", checkbox "Auto-connect when G2 worn".
 9. **Plugin**: persiste settings phone-side, dismissa wizard, mostra status "Pronto. Indossa il G2 per iniziare".
 10. **User**: indossa G2 → Even Realities App detecta wear (via `bridge.onWear`) → riapre plugin auto → handshake completo → render HUD §7.4.
 
-**Latenza target end-to-end** primo setup: ≤90 sec dalla scansione QR install al primo HUD on-glasses.
+**Latenza target end-to-end** primo setup: ≤90 sec dall'apertura dell'app (post-install) al primo HUD on-glasses.
 
 ##### 7.14.7.3 Foundry module — pair-G2 flow
 
@@ -2905,15 +2905,14 @@ Foundry — Game Settings → Module Settings → EvenFoundryVTT
 
 When clicked:
   1. Generate opaque bearer token (32 byte random, 24h TTL)
-  2. Persist token in user's foundry profile (server-side)
-  3. Render QR with payload:
-     {
-       "bridge_url": "<auto-detected from settings>",
-       "token": "evf_<...>",
-       "world": "<id>",
-       "expires": <iso8601>
-     }
-  4. Display QR for 60 sec; auto-dismiss after scan or timeout
+  2. Persist token in user's foundry profile (server-side); the
+     bridge_url + world are provisioned to the bridge with the token
+  3. Display the credentials as COPYABLE TEXT (no QR — the Even Hub
+     platform exposes no camera/QR-scan API to apps):
+       Bridge URL : https://homelab.lan:8910   [ Copy ]
+       Token      : ••••••••••••••••••••••••   [ Reveal ] [ Copy ]
+     (token masked by default; revealed only on explicit Reveal)
+  4. Countdown shows remaining TTL; Refresh regenerates with 60s grace
   5. Log pairing event in module event-log (audit trail)
 
 Existing pairings:
@@ -2923,7 +2922,7 @@ Existing pairings:
     [ Revoke ]
 ```
 
-Auth token in §11.5.4 si arricchisce: il bearer è **provisioned via QR scan**, non via copy-paste manuale (ridotto attack surface — nessuna esposizione del token in clipboard non sicura). Il foundry-module mantiene un registro pairing per revoca.
+Auth token in §11.5.4: il bearer è trasferito via **copia (PairModal Foundry) → incolla (wizard phone)**. Il QR-provisioning è irrealizzabile perché la piattaforma Even Hub non espone fotocamera/QR-scan alle app (`hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). Per compromesso sicurezza il token è **nascosto di default** nel PairModal con toggle Mostra/Copia; non viene mai loggato. Il foundry-module mantiene un registro pairing per revoca.
 
 ##### 7.14.7.4 Edge cases
 
@@ -2933,8 +2932,8 @@ Auth token in §11.5.4 si arricchisce: il bearer è **provisioned via QR scan**,
 | Token expired/revoked | Plugin runtime mostra `⌁ AUTH EXPIRED` in header HUD G2 + toast on phone "Re-pair from Foundry". Auto-reopen wizard al prossimo open plugin. |
 | Token whitelist mismatch | Foundry bridge restituisce 403 → wizard mostra "Token not authorized for this world. Re-pair from Foundry." |
 | Multi-device same character | Foundry module registra pairing distinte; nessun conflitto. Però **HP/state** sono shared → due G2 mostrano stessa view. |
-| QR scan fallisce (camera permission denied) | Fallback a "📋 Paste from clipboard" sempre disponibile. |
-| User cambia phone | Re-installa plugin, re-scan QR install, re-pair via QR Foundry. Settings phone-side perse. Foundry pairings storiche revocabili da DM. |
+| Clipboard non disponibile (permission denied) | Fallback: il token resta selezionabile nel PairModal per copia manuale; inserimento manuale via tastiera virtuale sempre disponibile. |
+| User cambia phone | Re-installa l'app via Even Hub, re-incolla bridge URL + token dal PairModal Foundry. Settings phone-side perse. Foundry pairings storiche revocabili da DM. |
 | G2 viene tolto durante sessione | `bridge.onWear(false)` → plugin entra in "standby" mode (nessuna BLE op), auto-resume on wear. Settings preservate. |
 
 ---
@@ -3701,15 +3700,15 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 ### 11.5.4 Authentication scheme
 
 - **Decisione**: **Bearer token opaco per-player**, generato server-side dal modulo Foundry. Token derivato da `user.id + secret + timestamp`, hash HMAC-SHA256, expiry 24h con refresh automatico.
-- **Provisioning** (v0.9.11): il bearer è **paired via QR scan** dal Foundry module Settings UI desktop verso l'Even Realities App phone (vedi §7.14.7.3). Riduce attack surface (no token in clipboard non sicura) e rende auditable il pairing dal DM-side. Paste manuale resta fallback per accessibility.
+- **Provisioning** (v0.9.13 corretto, INV-2 re-verified 2026-06-03): il bearer è trasferito via **copia (PairModal Foundry desktop) → incolla (wizard phone)** (vedi §7.14.7.3). Il QR-provisioning della v0.9.11 era irrealizzabile: la piattaforma Even Hub **non espone fotocamera/QR-scan alle app** (`hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*) e `evenhub qr` codifica l'URL del plugin-host, non un token. Compromesso sicurezza: nel PairModal il token è **nascosto di default** con toggle Mostra/Copia, mai loggato; il pairing resta auditable e revocabile dal DM-side.
 - **Lifecycle**:
-  1. DM/player genera QR pairing in Foundry Settings → EvenFoundryVTT → "Pair G2 device" — payload: `{bridge_url, token, world, expires}` (24h TTL)
-  2. Player scansiona QR dall'Even Realities App phone → settings persistite (§3.8)
+  1. DM genera il pairing in Foundry Settings → EvenFoundryVTT → "Pair a G2 device" — il PairModal mostra `bridge_url` + `token` copiabili (24h TTL); `world`/`internal_secret` sono provisioned al bridge col token
+  2. Player installa l'app via Even Hub (§3.8), apre il wizard e **incolla** bridge URL + token → settings persistite
   3. Plugin G2 chiama `/v1/handshake` con `Authorization: Bearer <token>` al boot
   4. Bridge verifica con modulo Foundry: token valido? non revocato? user permission ≥ Player?
   5. Se OK, bridge restituisce session metadata (character list, world id) → boot splash → main HUD
   6. Token rotation a 24h (silent refresh in background); revoca dal Foundry module pairing registry
-- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. QR pairing standardizza il pattern delle phone-side bootstrap (no flusso "trovati il token e copialo").
+- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. Il copy/paste è l'unico pattern realizzabile per il phone-side bootstrap (nessuna app può scansionare un QR — niente fotocamera).
 
 ### 11.5.5 Storage backend
 
@@ -4048,6 +4047,12 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-06-03 (PAIR-EHUB-01 — pairing reale = install via Even Hub + paste del token; QR-scan ritirato)** — Correzione di design/piattaforma applicata nello stesso PR su codice + doc (INV-3). **No spec version bump** (correzione coerente, no nuovi claim hardware/library/fps/phase/locale).
+  - **Root cause (confermata):** il QR-pairing assunto in v0.9.11 era irrealizzabile. La piattaforma Even Hub **non espone fotocamera/QR-scan alle app** e l'app gira nel WebView del telefono; il PairModal nascondeva inoltre il token (mai reso come testo), quindi il DM non poteva passarlo al player. Path reale: install via Even Hub (dev `evenhub qr` = carica l'URL del plugin-host; prod `.ehpk` → review portale → store) + **paste manuale** del token.
+  - **Codice:** `PairModal` rimuove la generazione QR (dropped `qrcode`/`@types/qrcode` da `@evf/foundry-module`) e mostra **bridge URL + token copiabili** (token mascherato di default con toggle Reveal/Copy — compromesso sicurezza documentato); il wizard g2-app `step2-token` rimuove il dead-code QR-scan (`hub.camera`/`_probeCameraApi`/`scan_qr_btn`, INV-4) lasciando paste/clipboard + inserimento manuale. i18n riallineata (rimosso `evf.pair.qr.scan_instruction`; aggiunte `evf.pair.copy.*`, IT primario + EN). Test aggiornati; suite verde.
+  - **Doc:** §3.8, §7.14.7.1–7.14.7.3, §11.5.4 riscritte sul flusso install-via-Even-Hub + paste; mockup wizard step 2 riallineato a colonna (INV-1, paste-only); ADR-0005 §OQ-INV2-4 risolto.
+  - **Re-verified ✓ 2026-06-03 (INV-2):** `hub.evenrealities.com/docs/guides/device-apis` — *"no camera (there is none)"* (nessuna API fotocamera/QR-scan per le app); `hub.evenrealities.com/docs/reference/cli` — `evenhub qr` codifica l'URL del dev-server (carica l'app, non un token); distribuzione prod via `evenhub pack` → `.ehpk` → review manuale del portale.
 
 - **2026-05-31 (INV-2 full validation round — hub.evenrealities.com/docs/*)** — Whole-development re-verification against the canonical Even Hub developer docs (overview · getting-started/architecture · guides/{display,device-apis,page-lifecycle,input-events,networking,design-guidelines} · reference/packaging). **No spec version bump** (validation + drift log; coherent corrections scheduled to dedicated v0.9.14 work per the §0 drift policy "fixato in PR dedicato").
   - **Re-verified ✓ (no change):** execution model (app logic in phone WebView, glasses = display + native scroll only); container budget 4 image + 8 other = 12 max; exactly one `isEventCapture:1`; canvas 576×288 4-bit greyscale; **image container 20–200 × 20–100 px** (canonical doc CONFIRMS Specs §3.1's 200×100 — supersedes the 2026-05-14 simulator-`index.d.ts` note that suggested 288×144; the docs are authoritative ⇒ our 200×100 tiles are correct); audio PCM 16 kHz s16le mono via `audioControl(true|false)` + `audioEvent`; `imuControl`; `getDeviceInfo`/`getUserInfo`; `getLocalStorage`/`setLocalStorage`; explicit "no audio output, no camera, greyscale only, no animations, no programmatic scroll position"; `shutDownPageContainer(0=immediate, 1=confirm)`; lifecycle events `FOREGROUND_ENTER_EVENT(4)`/`FOREGROUND_EXIT_EVENT(5)`/`ABNORMAL_EXIT_EVENT(6)` via `onEvenHubEvent`; **`setBackgroundState`/`onBackgroundRestore` confirmed ABSENT** (validates v0.9.14 LIFE phase scoping); networking full-origin whitelist (no wildcards), HTTPS-required, CORS not bypassed by whitelist, **WebSocket cannot set request headers from the WebView** (validates the 2026-05-30 audio-stream `?token=` query-param fix, task 260530-x2b).

@@ -5,16 +5,17 @@
  * - PairModal class is defined and extends ApplicationV2
  * - _prepareContext() returns correct state based on bearer TTL
  * - All 5 modal states are returned correctly: active, empty, refresh-needed, expired, pairing-in-progress
- * - _prepareContext() includes qrSvg for active/pairing-in-progress states
- * - _prepareContext() excludes qrSvg for expired state (shows banner instead)
- * - _prepareContext() populates boolean flags (isEmpty, isExpired, isRefreshNeeded, isPairing, showQr)
+ * - _prepareContext() includes copyable bridgeUrl + token for active/refresh-needed states
+ * - _prepareContext() excludes credentials for expired/empty state (banner / empty copy instead)
+ * - _prepareContext() populates boolean flags (isEmpty, isExpired, isRefreshNeeded, isPairing, showCredentials)
  * - _prepareContext() populates expiresAtMs (epoch ms, not ISO) for active states
  * - _prepareContext() i18n includes expiresIn and close keys (regression for missing-key defects)
  * - _onClickRevoke extracts token-id and calls revokeBearer
  * - _onClickRefresh calls generateBearer with refresh=true
  * - empty state exposes new-code button wiring via _onRender
  *
- * Note: QR SVG generation via qrcode@1.5.4 is mocked to return a sentinel SVG string.
+ * Pairing model: no QR — the token + bridge URL are rendered as copyable text (token masked
+ * by default). The Even Hub platform has no camera/QR-scan API for apps (ADR-0005 §OQ-INV2-4).
  *
  * @see packages/foundry-module/src/pair/PairModal.ts
  * @see 02-02-PLAN.md Task 2 (PairModal ApplicationV2)
@@ -84,14 +85,6 @@ function makeCryptoMock() {
   };
 }
 
-// ─── qrcode mock ─────────────────────────────────────────────────────────────
-
-vi.mock('qrcode', () => ({
-  default: {
-    toString: vi.fn().mockResolvedValue('<svg data-testid="mock-qr">MOCK QR SVG</svg>'),
-  },
-}));
-
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
 /**
@@ -125,9 +118,6 @@ describe('PairModal', () => {
     gameMock = makeGameMock('it');
     vi.stubGlobal('game', gameMock);
     vi.stubGlobal('crypto', makeCryptoMock());
-    // The top-level vi.mock('qrcode', ...) at module scope is automatically re-applied
-    // after vi.resetModules(). Do NOT call vi.mock() here — it is not hoisted inside
-    // beforeEach and emits a Vitest 4 runtime warning. (WR-03 fix)
   });
 
   it('PairModal class is exported', async () => {
@@ -142,19 +132,20 @@ describe('PairModal', () => {
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
       const data = await modal._prepareContext({});
       expect(data.state).toBe('empty');
-      expect(data.qrSvg).toBeUndefined();
+      expect(data.token).toBeUndefined();
+      expect(data.bridgeUrl).toBeUndefined();
     });
 
-    it('returns state="active" with qrSvg when a valid bearer exists', async () => {
+    it('returns state="active" with copyable token + bridgeUrl when a valid bearer exists', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
       const data = await modal._prepareContext({});
       expect(data.state).toBe('active');
-      expect(typeof data.qrSvg).toBe('string');
-      expect(data.qrSvg).toContain('svg');
+      expect(data.token).toBe(entry.token);
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
     });
 
     it('returns state="expired" when the only bearer is expired', async () => {
@@ -191,7 +182,7 @@ describe('PairModal', () => {
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
       const data = await modal._prepareContext({});
       expect(data.state).toBe('expired');
-      expect(data.qrSvg).toBeUndefined();
+      expect(data.token).toBeUndefined();
     });
 
     it('returns state="refresh-needed" when TTL < 1h', async () => {
@@ -228,12 +219,12 @@ describe('PairModal', () => {
       const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
       const data = await modal._prepareContext({});
       expect(data.state).toBe('refresh-needed');
-      expect(typeof data.qrSvg).toBe('string');
+      expect(typeof data.token).toBe('string');
     });
   });
 
   describe('_prepareContext() boolean flags', () => {
-    it('sets isEmpty=true and showQr=false for empty state', async () => {
+    it('sets isEmpty=true and showCredentials=false for empty state', async () => {
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal('https://bridge.local:8910', 'world-abc');
       const data = await modal._prepareContext({});
@@ -241,10 +232,10 @@ describe('PairModal', () => {
       expect(data.isExpired).toBe(false);
       expect(data.isRefreshNeeded).toBe(false);
       expect(data.isPairing).toBe(false);
-      expect(data.showQr).toBe(false);
+      expect(data.showCredentials).toBe(false);
     });
 
-    it('sets isEmpty=false, showQr=true for active state', async () => {
+    it('sets isEmpty=false, showCredentials=true for active state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
       await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
@@ -255,10 +246,10 @@ describe('PairModal', () => {
       expect(data.isExpired).toBe(false);
       expect(data.isRefreshNeeded).toBe(false);
       expect(data.isPairing).toBe(false);
-      expect(data.showQr).toBe(true);
+      expect(data.showCredentials).toBe(true);
     });
 
-    it('sets isExpired=true and showQr=false for expired state', async () => {
+    it('sets isExpired=true and showCredentials=false for expired state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
       const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
@@ -289,10 +280,10 @@ describe('PairModal', () => {
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       expect(data.isExpired).toBe(true);
       expect(data.isEmpty).toBe(false);
-      expect(data.showQr).toBe(false);
+      expect(data.showCredentials).toBe(false);
     });
 
-    it('sets isRefreshNeeded=true and showQr=true for refresh-needed state', async () => {
+    it('sets isRefreshNeeded=true and showCredentials=true for refresh-needed state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
       const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
@@ -322,7 +313,7 @@ describe('PairModal', () => {
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
       expect(data.isRefreshNeeded).toBe(true);
-      expect(data.showQr).toBe(true);
+      expect(data.showCredentials).toBe(true);
     });
   });
 
@@ -377,6 +368,86 @@ describe('PairModal', () => {
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.close).toBeDefined();
       expect(i18n.close).toBe('evf.pair.modal.close');
+    });
+
+    it('includes copy/reveal i18n keys (no missing-key regression for the copy UX)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.copyInstruction).toBe('evf.pair.copy.instruction');
+      expect(i18n.copyBridgeUrl).toBe('evf.pair.copy.bridge_url');
+      expect(i18n.copyToken).toBe('evf.pair.copy.token');
+      expect(i18n.copyReveal).toBe('evf.pair.copy.reveal');
+      expect(i18n.copyHide).toBe('evf.pair.copy.hide');
+      expect(i18n.copyButton).toBe('evf.pair.copy.copy');
+      expect(i18n.copyCopied).toBe('evf.pair.copy.copied');
+    });
+
+    it('does NOT resolve the removed evf.pair.qr.scan_instruction key', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.scanInstruction).toBeUndefined();
+    });
+  });
+
+  describe('copyable credentials UX', () => {
+    it('_onClickReveal toggles token mask/plain visibility and button label', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal & {
+        _onClickReveal(event: Event): void;
+      };
+
+      const html = document.createElement('div');
+      const mask = document.createElement('code');
+      mask.setAttribute('data-token-mask', '');
+      const plain = document.createElement('code');
+      plain.setAttribute('data-token-plain', '');
+      plain.classList.add('evf-hidden');
+      const revealBtn = document.createElement('button');
+      revealBtn.dataset.action = 'reveal-token';
+      html.append(mask, plain, revealBtn);
+
+      modal.element = html;
+      modal._onRender({}, {});
+
+      // Initially hidden
+      expect(plain.classList.contains('evf-hidden')).toBe(true);
+      revealBtn.click();
+      expect(plain.classList.contains('evf-hidden')).toBe(false);
+      expect(mask.classList.contains('evf-hidden')).toBe(true);
+      // Toggle back
+      revealBtn.click();
+      expect(plain.classList.contains('evf-hidden')).toBe(true);
+    });
+
+    it('_onClickCopy writes data-copy-value to the clipboard', async () => {
+      const writeText = vi.fn(async () => undefined);
+      vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal(
+        'https://bridge.local:8910',
+        'world-abc',
+      ) as unknown as RenderableModal;
+
+      const html = document.createElement('div');
+      const copyBtn = document.createElement('button');
+      copyBtn.dataset.action = 'copy';
+      copyBtn.dataset.copyValue = 'my-secret-token';
+      html.appendChild(copyBtn);
+
+      modal.element = html;
+      modal._onRender({}, {});
+      copyBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(writeText).toHaveBeenCalledWith('my-secret-token');
     });
   });
 
@@ -572,7 +643,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
@@ -608,7 +678,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
@@ -644,7 +713,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
@@ -680,7 +748,6 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
       const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});

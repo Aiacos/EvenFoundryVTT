@@ -7,7 +7,7 @@
  *   3. Subscribe to the wizard store — render the correct step on each change.
  *   4. Manage step lifecycle: call `step.destroy()` before switching.
  *
- * All 25 UI-B i18n keys from 02-UI-SPEC.md are wired through the `t` function.
+ * All 24 UI-B i18n keys from 02-UI-SPEC.md are wired through the `t` function.
  * Key wiring is validated at load time via `checkRequiredKeys`.
  *
  * Security (T-02-03): step titles rendered via textContent; step indicators via aria attributes.
@@ -35,7 +35,7 @@ import * as Step3 from './steps/step3-character.js';
 installHubPolyfill();
 
 /**
- * All 25 UI-B i18n keys from 02-UI-SPEC.md.
+ * All 24 UI-B i18n keys from 02-UI-SPEC.md.
  * This array is the compile-time source of truth for key coverage.
  * If a key is missing from the bridge catalog, `t(key)` returns the key itself.
  */
@@ -53,7 +53,6 @@ export const ALL_I18N_KEYS = [
   'evf.wizard.step2.show_toggle',
   'evf.wizard.step2.hide_toggle',
   'evf.wizard.step2.paste_btn',
-  'evf.wizard.step2.scan_qr_btn',
   'evf.wizard.step2.connecting',
   'evf.wizard.step2.error.401',
   'evf.wizard.step2.error.403',
@@ -86,7 +85,7 @@ export const ALL_I18N_KEYS = [
   'evf.btn.edit_url',
 ] as const;
 
-/** Verify that all 25 UI-B keys from 02-UI-SPEC.md are present. Called at init. */
+/** Verify that all 24 UI-B keys from 02-UI-SPEC.md are present. Called at init. */
 export function checkRequiredKeys(catalog: Record<string, string>): string[] {
   return ALL_I18N_KEYS.filter((key) => !(key in catalog));
 }
