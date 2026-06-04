@@ -1,6 +1,10 @@
 {
   "evf.settings.section_title": "EvenFoundryVTT",
   "evf.settings.pair_button": "Abbina un dispositivo G2",
+  "evf.settings.bridge_url.name": "URL del bridge",
+  "evf.settings.bridge_url.hint": "Origine completa del bridge EvenFoundryVTT (es. https://bridge.example.com:8910). Deve corrispondere al tuo deployment del bridge.",
+  "evf.settings.bridge_internal_secret.name": "Segreto interno del bridge",
+  "evf.settings.bridge_internal_secret.hint": "Il valore EVF_INTERNAL_SECRET del bridge. Autentica i push di questo mondo verso il bridge. Mantienilo segreto.",
 
   "evf.pair.modal.title": "EvenFoundryVTT — Abbina un G2",
   "evf.pair.modal.close": "Chiudi",

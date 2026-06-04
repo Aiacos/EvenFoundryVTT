@@ -215,6 +215,40 @@ describe('Hooks.once("init") → registerSettings()', () => {
       }),
     );
   });
+
+  // Quick Task 260604-hs5: two DM-visible world settings link the module to the
+  // bridge deployment (bridge URL + matching EVF_INTERNAL_SECRET).
+  it('registers the bridgeUrl world setting as a visible GM-restricted config (260604-hs5)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeUrl',
+      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+    );
+  });
+
+  it('registers the bridgeInternalSecret world setting as a visible GM-restricted config (260604-hs5)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeInternalSecret',
+      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+    );
+  });
 });
 
 describe('PairModal (registered in settings)', () => {
