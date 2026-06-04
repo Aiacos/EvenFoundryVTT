@@ -88,6 +88,42 @@ describe('page-lifecycle.createBootPage', () => {
     ]);
   });
 
+  it('PL-3b: every container carries the registry numeric containerID (images i, text 4-10)', async () => {
+    await createBootPage(bridge as unknown as EvenAppBridge);
+    const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    const images = (arg?.imageObject ?? []) as ImageContainerProperty[];
+    const texts = (arg?.textObject ?? []) as TextContainerProperty[];
+    // image map-tile-i → containerID i
+    images.forEach((img, i) => {
+      expect(img.containerID).toBe(i);
+    });
+    // text ids 4-10 in declaration order header..z05-stats
+    const expectedTextIds: Array<[string, number]> = [
+      ['header', 4],
+      ['footer', 5],
+      ['status-hud', 6],
+      ['map-capture', 7],
+      ['z05-combat-log', 8],
+      ['z05-label', 9],
+      ['z05-stats', 10],
+    ];
+    expectedTextIds.forEach(([name, id], i) => {
+      expect(texts[i]?.containerName).toBe(name);
+      expect(texts[i]?.containerID).toBe(id);
+    });
+  });
+
+  it('PL-3c: every text container has non-zero width AND height (geometry present)', async () => {
+    await createBootPage(bridge as unknown as EvenAppBridge);
+    const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    const texts = (arg?.textObject ?? []) as TextContainerProperty[];
+    expect(texts).toHaveLength(7);
+    for (const t of texts) {
+      expect(t.width).toBeGreaterThan(0);
+      expect(t.height).toBeGreaterThan(0);
+    }
+  });
+
   it('PL-4: throws Error including the non-success result value', async () => {
     bridge.createStartUpPageContainer.mockResolvedValue(StartUpPageCreateResult.oversize);
     await expect(createBootPage(bridge as unknown as EvenAppBridge)).rejects.toThrow(

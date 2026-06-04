@@ -28,11 +28,16 @@
 import {
   CreateStartUpPageContainer,
   type EvenAppBridge,
-  ImageContainerProperty,
+  type ImageContainerProperty,
   RebuildPageContainer,
   StartUpPageCreateResult,
-  TextContainerProperty,
+  type TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
+import {
+  BASE_CONTAINER_TOTAL,
+  buildBaseImageContainers,
+  buildBaseTextContainers,
+} from './container-registry.js';
 
 /**
  * Build the canonical Phase 4a boot/main page container schema.
@@ -54,63 +59,33 @@ import {
  *
  * containerTotalNum: 11 (= 4 image + 7 text, within SDK 1-12 limit).
  *
+ * The schema is sourced ENTIRELY from the shared container registry
+ * (`./container-registry.ts`) — the single source of truth for every
+ * container's numeric `containerID`, pixel geometry, and `isEventCapture`
+ * flag. The host requires a numeric `container_id` per container (otherwise
+ * `textContainerUpgrade` is rejected → blank glasses) and text containers
+ * need geometry to render at non-zero size; both now come from the registry
+ * so the page schema and the upgrade call sites can never drift apart.
+ *
  * This is a pure helper exposed for tests and for any consumer that wants
  * to inspect the schema without invoking the bridge.
+ *
+ * @see ./container-registry.ts (CONTAINER_REGISTRY single source of truth)
+ * @see .planning/debug/glasses-render-blank-containerid.md
  */
 export function buildBootPageSchema(): {
   containerTotalNum: number;
   imageObject: ImageContainerProperty[];
   textObject: TextContainerProperty[];
 } {
-  const imageObject = [
-    new ImageContainerProperty({
-      containerName: 'map-tile-0',
-      width: 200,
-      height: 100,
-      xPosition: 0,
-      yPosition: 0,
-    }),
-    new ImageContainerProperty({
-      containerName: 'map-tile-1',
-      width: 200,
-      height: 100,
-      xPosition: 200,
-      yPosition: 0,
-    }),
-    new ImageContainerProperty({
-      containerName: 'map-tile-2',
-      width: 200,
-      height: 100,
-      xPosition: 0,
-      yPosition: 100,
-    }),
-    new ImageContainerProperty({
-      containerName: 'map-tile-3',
-      width: 200,
-      height: 100,
-      xPosition: 200,
-      yPosition: 100,
-    }),
-  ];
-
-  // Construct text containers via the SDK's TextContainerProperty class
-  // to keep `isEventCapture` / `containerName` field-mapping consistent
-  // with the host-side PB normalisation (camelCase ↔ protoName).
-  const textObject: TextContainerProperty[] = [
-    new TextContainerProperty({ containerName: 'header', isEventCapture: 0 }),
-    new TextContainerProperty({ containerName: 'footer', isEventCapture: 0 }),
-    new TextContainerProperty({ containerName: 'status-hud', isEventCapture: 0 }),
-    // The capture container — exactly one isEventCapture=1 per page
-    // (INV-5 / ADR-0001 / UI-SPEC §Interaction Contract).
-    new TextContainerProperty({ containerName: 'map-capture', isEventCapture: 1 }),
-    new TextContainerProperty({ containerName: 'z05-combat-log', isEventCapture: 0 }),
-    new TextContainerProperty({ containerName: 'z05-label', isEventCapture: 0 }),
-    new TextContainerProperty({ containerName: 'z05-stats', isEventCapture: 0 }),
-  ];
+  // All ids + geometry + isEventCapture come from the registry — nothing is
+  // hand-built here anymore (no drift between schema and upgrade sites).
+  const imageObject = buildBaseImageContainers();
+  const textObject = buildBaseTextContainers();
 
   // 4 image + 7 text → containerTotalNum: 11 (UI-SPEC §Container Budget Allocation).
   return {
-    containerTotalNum: imageObject.length + textObject.length,
+    containerTotalNum: BASE_CONTAINER_TOTAL,
     imageObject,
     textObject,
   };

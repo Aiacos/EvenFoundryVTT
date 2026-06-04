@@ -19,10 +19,11 @@
  * its `bridge` reference private and never re-exposes it.
  *
  * Phase 4a Plan 02 scope: this class lands the runtime contract. `_flushPage()`
- * currently emits a minimal `RebuildPageContainer` payload sufficient for the
- * Plan 05 atomic-bundle smoke test; concrete container assembly (image/text
- * slot layout per UI-SPEC §Container Budget Allocation) is refined by Plans 03
- * (raster) and 04 (status-hud) as their own layer implementations land.
+ * rebuilds the canonical BASE page schema (11 containers, numeric ids +
+ * geometry, exactly one isEventCapture=1) from the shared container registry
+ * (`./container-registry.ts`) so the base HUD containers persist across the
+ * boot→main bundle (Quick Task 260604-qm0 render-blank fix). Composing actual
+ * overlay-panel container sets is a separate overlay-id follow-up.
  *
  * @see docs/architecture/0009-layer-manager-contract.md (ADR-0009)
  * @see docs/architecture/0001-layered-ui-model.md (ADR-0001 + Amendment 1)
@@ -33,6 +34,11 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
+import {
+  BASE_CONTAINER_TOTAL,
+  buildBaseImageContainers,
+  buildBaseTextContainers,
+} from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
 import {
   type Layer,
@@ -425,20 +431,34 @@ export class LayerManager {
    * Flush the current layer composition to the bridge via a single
    * `rebuildPageContainer` envelope.
    *
-   * Plan 02 ships a minimal payload (containerTotalNum + empty arrays). Plans
-   * 03 (raster) and 04 (status-hud) will refine this to assemble the real
-   * image/text container schema per UI-SPEC §Container Budget Allocation.
-   * The single-call contract is verified by the Plan 02 unit tests and is
-   * load-bearing for ADR-0001 Amendment 1 (no intermediate frame between
-   * z=0.5 demolition and z=2 mount).
+   * **Render-blank fix (Quick Task 260604-qm0):** this method previously sent
+   * a degenerate payload (`containerTotalNum: 1`, empty arrays). Because the
+   * boot→main transition runs `createBootPage` then bundles in the real layers
+   * via this flush, that empty rebuild WIPED every base container after boot —
+   * so the layer renderers then upgraded containers that no longer existed and
+   * the glasses stayed blank. It now rebuilds the canonical BASE page schema
+   * from the shared container registry (11 containers, numeric ids + geometry,
+   * exactly one isEventCapture=1 = map-capture) so the base HUD containers
+   * persist across the rebuild and the host accepts every subsequent
+   * `textContainerUpgrade` / `updateImageRawData`.
+   *
+   * The single-call contract (exactly one `rebuildPageContainer` per bundle) is
+   * preserved and load-bearing for ADR-0001 Amendment 1 (no intermediate frame
+   * between z=0.5 demolition and z=2 mount).
+   *
+   * Scope note: this restores the BASE schema on every flush; composing the
+   * actual overlay-panel container sets (z=2 overlay ids/geometry) is the
+   * separate overlay-id follow-up, not this fix.
+   *
+   * @see ./container-registry.ts (CONTAINER_REGISTRY single source of truth)
+   * @see .planning/debug/glasses-render-blank-containerid.md
    */
   private async _flushPage(): Promise<void> {
     const payload = new RebuildPageContainer({
-      // Minimum valid containerTotalNum (1-12 per SDK PB constraint).
-      // Plans 03/04 will compute this from the actually-mounted layer set.
-      containerTotalNum: 1,
-      textObject: [],
-      imageObject: [],
+      // Canonical 11-container base schema (registry-sourced ids + geometry).
+      containerTotalNum: BASE_CONTAINER_TOTAL,
+      textObject: buildBaseTextContainers(),
+      imageObject: buildBaseImageContainers(),
     });
     await this.bridge.rebuildPageContainer(payload);
   }

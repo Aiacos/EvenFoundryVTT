@@ -185,6 +185,32 @@ describe('LayerManager — bundle() atomic semantics', () => {
     expect(lm.getCaptureContainerCount()).toBe(1);
   });
 
+  it('Test 8b: _flushPage rebuilds the canonical 11-container base schema (registry ids + geometry, one isEventCapture=1) — NOT an empty payload', async () => {
+    // Render-blank fix (Quick Task 260604-qm0): the flush must NOT wipe the page.
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    await lm.bundle([]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(11);
+    expect(arg?.imageObject?.length).toBe(4);
+    expect(arg?.textObject?.length).toBe(7);
+    // Exactly one isEventCapture=1 and it is map-capture (id 7).
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.containerName).toBe('map-capture');
+    expect(captures[0]?.containerID).toBe(7);
+    // Every text container has the numeric containerID + geometry.
+    for (const t of arg?.textObject ?? []) {
+      expect(typeof t.containerID).toBe('number');
+      expect(t.width).toBeGreaterThan(0);
+      expect(t.height).toBeGreaterThan(0);
+    }
+  });
+
   it('Test 9: bundle applies ops in order; transient invariant violation tolerated when final state is valid', async () => {
     // Start: z=0 holds capture.
     const mapLayer = makeMockLayer('map', 'map-capture');
