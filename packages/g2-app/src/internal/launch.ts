@@ -5,8 +5,9 @@
  * {@link launchApp}. This module decides what the app does next:
  *
  *   - **Branch A — no-auth dev:** when `isNoAuth()` is `true`, boot the engine
- *     immediately via `bootEngine({ bridgeUrl: devBridgeUrl(), token: '', locale })`.
- *     The dev no-auth bridge accepts an empty token, so this is the ONLY path
+ *     immediately via `bootEngine({ bridgeUrl: devBridgeUrl(), token: 'dev-no-auth', locale })`.
+ *     A non-empty sentinel is required because the handshake schema enforces
+ *     `token.min(1)`; the dev no-auth bridge then accepts it. This is the ONLY path
  *     that can boot from "no usable token". This is what unblocks the EvenHub
  *     simulator (boot sequence + HUD frame instead of a black screen).
  *   - **Branch B — paired, non-dev:** `isNoAuth()` is `false` and a stored
@@ -93,14 +94,18 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
 
   const locale = deps.locale ?? DEFAULT_LAUNCH_LOCALE;
 
-  // Branch A — no-auth dev: boot immediately with an empty token. The no-auth
-  // bridge accepts it; this is the only path that can boot without a token, and
-  // it unblocks the EvenHub simulator. Boot regardless of any stored session.
+  // Branch A — no-auth dev: boot immediately with a non-empty sentinel token.
+  // The capability handshake's HandshakeClientSchema enforces `token: z.string().min(1)`,
+  // so an empty string is rejected at the schema layer (close 4400) BEFORE the
+  // no-auth bypass runs. The no-auth bridge (EVF_DEV_NO_AUTH) accepts ANY token,
+  // so a non-empty sentinel passes the schema and is then short-circuited as valid.
+  // This is the only path that can boot without a real token, and it unblocks the
+  // EvenHub simulator. Boot regardless of any stored session.
   if (deps.isNoAuth()) {
     try {
       await deps.bootEngine({
         bridgeUrl: deps.devBridgeUrl(),
-        token: '',
+        token: 'dev-no-auth',
         // The wider LaunchDeps.locale is a string; BootEngineOpts.locale is the
         // narrower HudLocale union. The default 'it' is valid; a caller-supplied
         // override is the caller's responsibility (tests use 'it'/'en').

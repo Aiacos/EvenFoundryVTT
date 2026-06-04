@@ -57,7 +57,7 @@ describe('launchApp', () => {
     vi.restoreAllMocks();
   });
 
-  it('LAUNCH-A: no-auth dev → boots with devBridgeUrl + empty token; does not navigate', async () => {
+  it('LAUNCH-A: no-auth dev → boots with devBridgeUrl + sentinel token; does not navigate', async () => {
     const deps = makeDeps({
       isNoAuth: vi.fn().mockReturnValue(true),
       devBridgeUrl: vi.fn().mockReturnValue('http://localhost:9999'),
@@ -68,7 +68,9 @@ describe('launchApp', () => {
     expect(deps.bootEngine).toHaveBeenCalledTimes(1);
     expect(deps.bootEngine).toHaveBeenCalledWith({
       bridgeUrl: 'http://localhost:9999',
-      token: '',
+      // Non-empty sentinel: HandshakeClientSchema enforces token.min(1); the
+      // no-auth bridge accepts any token. An empty string would close 4400.
+      token: 'dev-no-auth',
       locale: 'it',
     });
     expect(deps.navigate).not.toHaveBeenCalled();
@@ -83,7 +85,7 @@ describe('launchApp', () => {
     await launchApp(deps);
 
     expect(deps.bootEngine).toHaveBeenCalledWith(
-      expect.objectContaining({ token: '', locale: 'en' }),
+      expect.objectContaining({ token: 'dev-no-auth', locale: 'en' }),
     );
   });
 
