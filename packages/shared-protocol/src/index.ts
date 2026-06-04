@@ -375,3 +375,28 @@ export {
   DisplayOpPayloadSchema,
   R1_DEBUG_DISPLAYOP_TYPE,
 } from './debug/debug-events.js';
+
+// ─── Quick Task 260604-cwa — Agent control-channel schemas (dev-only) ──────────
+// Wire-protocol contracts for the debug agent control channel: a WS endpoint
+// where the g2-app connects AS a named agent, a relay (POST /debug/cmd) that
+// routes commands and correlates results by id, /debug/agents roster, and
+// aggregated /debug/logs reader with newest-id tracking.
+
+export {
+  AgentClientFrameSchema,
+  type AgentClientFrame,
+  AgentCommandSchema,
+  type AgentCommand,
+  AgentLogSchema,
+  type AgentLog,
+  AgentRegisterSchema,
+  type AgentRegister,
+  AgentResultSchema,
+  type AgentResult,
+  AgentRoleSchema,
+  type AgentRole,
+  DEBUG_AGENT_LOG_DIRECTION,
+  DEBUG_AGENT_RESULT_DIRECTION,
+  DebugCmdBodySchema,
+  type DebugCmdBody,
+} from './debug/agent-protocol.js';

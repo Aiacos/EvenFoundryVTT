@@ -46,7 +46,7 @@ describe('AgentRegistry — register / list / unregister', () => {
     const after = Date.now();
     const list = registry.listAgents();
     expect(list).toHaveLength(1);
-    const agent = list[0];
+    const agent = list[0]!;
     expect(agent.agentId).toBe(agentId);
     expect(agent.role).toBe('g2-app');
     expect(agent.name).toBe('main');
@@ -88,7 +88,7 @@ describe('AgentRegistry — send', () => {
     expect(result).not.toBeNull();
     expect(typeof result?.id).toBe('string');
     expect(socket.send).toHaveBeenCalledOnce();
-    const frame = JSON.parse(socket.send.mock.calls[0][0] as string) as {
+    const frame = JSON.parse(socket.send.mock.calls[0]![0] as string) as {
       id: string;
       cmd: string;
       args: unknown;

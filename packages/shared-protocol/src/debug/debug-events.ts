@@ -42,8 +42,13 @@ export const DebugEventSchema = z.object({
   id: z.number().int().min(1),
   /** `Date.now()` ms epoch at capture time. */
   ts: z.number().int(),
-  /** Which leg of the chain produced the event. */
-  direction: z.enum(['inbound', 'outbound', 'tool', 'log', 'display']),
+  /**
+   * Which leg of the chain produced the event.
+   *
+   * Extended in Quick Task 260604-cwa with `'agent-log'` and `'agent-result'`
+   * directions for the dev-only agent control channel.
+   */
+  direction: z.enum(['inbound', 'outbound', 'tool', 'log', 'display', 'agent-log', 'agent-result']),
   /** Owning session, or `null` for broadcast / session-less events. */
   sessionId: z.string().nullable(),
   /** Envelope/event type discriminant (free-form string). */

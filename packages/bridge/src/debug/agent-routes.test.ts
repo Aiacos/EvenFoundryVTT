@@ -170,9 +170,10 @@ describe('GET /debug/agents', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { agents: Array<{ agentId: string; role: string; name: string }> };
     expect(body.agents).toHaveLength(1);
-    expect(body.agents[0].agentId).toBe(agentId);
-    expect(body.agents[0].role).toBe('g2-app');
-    expect(body.agents[0].name).toBe('main');
+    const agent = body.agents[0]!;
+    expect(agent.agentId).toBe(agentId);
+    expect(agent.role).toBe('g2-app');
+    expect(agent.name).toBe('main');
   });
 });
 

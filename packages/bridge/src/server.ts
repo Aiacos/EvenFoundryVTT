@@ -21,6 +21,7 @@
  * 10. Voice audio stream route: /v1/audio/stream (Phase 12 Deepgram STT)
  * 11. Dev-only debug routes: /debug/* (Quick Task 260529-h5e) — registered ONLY when
  *     isDebugEnabled() (existence gate). Behind EVF_INTERNAL_SECRET (timing-safe).
+ *     @see ./debug/agent-routes.ts (agent control channel — Quick Task 260604-cwa)
  *
  * Environment variables (debug backdoor — Quick Task 260529-h5e):
  *   - EVF_DEBUG='true'            — enable the /debug/* observability + command backend.
@@ -51,6 +52,8 @@ import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
 import { createBusLogStream } from './debug/bus-log-stream.js';
 import { DebugEventBus } from './debug/debug-event-bus.js';
+import { registerAgentRoutes } from './debug/agent-routes.js';
+import { AgentRegistry } from './debug/agent-registry.js';
 import { registerDebugRoutes } from './debug/debug-routes.js';
 import { makeInboundTap } from './debug/inbound-tap.js';
 import { isDebugEnabled } from './debug/is-debug-enabled.js';
@@ -428,6 +431,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       // Lazily forward to the production dispatch fn declared at step 9.
       dispatchToolFn: (payload, bearer) => debugDispatchRef.fn(payload, bearer),
     });
+    // Quick Task 260604-cwa: agent control channel routes.
+    // WS /debug/agent + GET /debug/agents + POST /debug/cmd + GET /debug/logs.
+    // Registered inside the SAME `if (debugEnabled && debugBus !== undefined)` block
+    // so they are genuinely absent (404) when debug is off.
+    const agentRegistry = new AgentRegistry();
+    await registerAgentRoutes(app, { debugBus, agentRegistry });
   }
 
   // --- 9. WS handshake route ---
