@@ -113,8 +113,11 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
       });
     } catch (err) {
       // Fail-soft: a boot error must never bubble out of the top-level module
-      // (no silent white-screen). Log and return normally.
-      console.error('[EVF] launch: bootEngine failed', err);
+      // (no silent white-screen). Log a STRING (Error objects serialize to "{}"
+      // in the EvenHub simulator's console capture, hiding the real cause).
+      const detail =
+        err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : String(err);
+      console.error(`[EVF] launch: bootEngine failed — ${detail}`);
     }
     return;
   }
