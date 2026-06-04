@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { launchApp, type LaunchDeps } from '../internal/launch.js';
+import { type LaunchDeps, launchApp } from '../internal/launch.js';
 import type { Session } from '../wizard/tier3-storage.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
