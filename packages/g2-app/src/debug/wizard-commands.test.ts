@@ -26,8 +26,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createInitialState, createStore, WizardStep } from '../wizard/state.js';
 import { initWizard } from '../wizard/wizard.js';
-import { WizardStep, createInitialState, createStore } from '../wizard/state.js';
 import { makeWizardCommandHandlers } from './wizard-commands.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────

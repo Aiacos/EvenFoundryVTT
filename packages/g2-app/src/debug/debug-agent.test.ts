@@ -34,7 +34,10 @@ interface FakeWSInstance {
   _triggerClose(): void;
 }
 
-function makeFakeWebSocket(): { FakeWS: new (url: string) => FakeWSInstance; instance: { current: FakeWSInstance | null } } {
+function makeFakeWebSocket(): {
+  FakeWS: new (url: string) => FakeWSInstance;
+  instance: { current: FakeWSInstance | null };
+} {
   const instance: { current: FakeWSInstance | null } = { current: null };
   class FakeWS implements FakeWSInstance {
     onopen: ((ev: Event) => void) | null = null;
@@ -159,8 +162,8 @@ describe('installDebugAgent — enabled (VITE_EVF_DEBUG=true)', () => {
     // Trigger console.warn
     console.warn('[test] debug-agent mirror test');
     await new Promise((r) => setTimeout(r, 10));
-    const logFrames = fakeWS.instance.current!.sentFrames
-      .map((f) => {
+    const logFrames = fakeWS.instance
+      .current!.sentFrames.map((f) => {
         try {
           return JSON.parse(f) as { kind: string; level?: string };
         } catch {

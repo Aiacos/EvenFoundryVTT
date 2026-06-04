@@ -37,8 +37,8 @@ import {
 } from '@evf/shared-protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import type { DebugEventBus } from './debug-event-bus.js';
 import type { AgentRegistry } from './agent-registry.js';
+import type { DebugEventBus } from './debug-event-bus.js';
 import { checkWsSecret, requireSecret } from './debug-secret.js';
 
 /**

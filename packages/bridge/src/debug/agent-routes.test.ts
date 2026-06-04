@@ -30,9 +30,9 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { DebugEventBus } from './debug-event-bus.js';
 import { AgentRegistry } from './agent-registry.js';
 import { type AgentRouteDeps, registerAgentRoutes } from './agent-routes.js';
+import { DebugEventBus } from './debug-event-bus.js';
 
 const SECRET = 'test-agent-secret-42';
 const auth = { authorization: `Bearer ${SECRET}` };
@@ -385,20 +385,17 @@ describe('WS /debug/agent — wrong secret closes 1008', () => {
       );
       ws.on('open', () => {
         // Send register frame
-        ws.send(
-          JSON.stringify({ kind: 'register', role: 'g2-app', name: 'test-agent' }),
-          (err) => {
-            if (err) {
-              reject(err);
-            } else {
-              // Give it a tick to process, then close cleanly
-              setTimeout(() => {
-                ws.close();
-                resolve();
-              }, 50);
-            }
-          },
-        );
+        ws.send(JSON.stringify({ kind: 'register', role: 'g2-app', name: 'test-agent' }), (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            // Give it a tick to process, then close cleanly
+            setTimeout(() => {
+              ws.close();
+              resolve();
+            }, 50);
+          }
+        });
       });
       ws.on('error', reject);
     }));

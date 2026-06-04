@@ -120,11 +120,13 @@ export async function initWizard(): Promise<void> {
   // T-cwa-05: the dynamic import is guarded by the SAME boolean flag that the
   // debug-agent module itself checks, so Rollup sees both branches as dead in prod.
   if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
-    import('../debug/debug-agent.js').then(({ installDebugAgent }) => {
-      installDebugAgent({ store });
-    }).catch(() => {
-      // Soft-fail — debug agent unavailable does not break the wizard
-    });
+    import('../debug/debug-agent.js')
+      .then(({ installDebugAgent }) => {
+        installDebugAgent({ store });
+      })
+      .catch(() => {
+        // Soft-fail — debug agent unavailable does not break the wizard
+      });
   }
 
   // Load i18n. The bundled catalog is the BASE so every step (incl. Step 1, which runs

@@ -27,9 +27,7 @@ import type { WebSocket } from 'ws';
  * Result shape returned by `waitFor` and `resolve`. Mirrors the AgentResultSchema
  * without the `kind` discriminant (that's a WS-wire concern, not a registry concern).
  */
-export type CommandOutcome =
-  | { ok: true; result?: unknown }
-  | { ok: false; error: string };
+export type CommandOutcome = { ok: true; result?: unknown } | { ok: false; error: string };
 
 /** Options for constructing an {@link AgentRegistry}. */
 export interface AgentRegistryOpts {

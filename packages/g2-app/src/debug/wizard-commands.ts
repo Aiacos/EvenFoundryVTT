@@ -30,7 +30,7 @@
  * @see ../wizard/state.ts (WizardState + Store<T>)
  * @see ../wizard/wizard.ts (entry that calls installDebugAgent behind the dev gate)
  */
-import { WizardStep, type Store, type WizardState } from '../wizard/state.js';
+import { type Store, type WizardState, WizardStep } from '../wizard/state.js';
 
 // ─── Action alias map ─────────────────────────────────────────────────────────
 
@@ -186,7 +186,9 @@ export function makeWizardCommandHandlers(store: Store<WizardState>): WizardComm
 
     async snapshot(): Promise<{ step: string; visibleButtons: string[]; inputs: string[] }> {
       const state = store.get();
-      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button:not(.evf-hidden)'))
+      const buttons = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('button:not(.evf-hidden)'),
+      )
         .filter((b) => !b.disabled || b.offsetParent !== null)
         .map((b) => b.id || b.textContent?.trim() || b.className)
         .filter(Boolean);

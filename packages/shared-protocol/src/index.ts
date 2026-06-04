@@ -383,20 +383,20 @@ export {
 // aggregated /debug/logs reader with newest-id tracking.
 
 export {
-  AgentClientFrameSchema,
   type AgentClientFrame,
-  AgentCommandSchema,
+  AgentClientFrameSchema,
   type AgentCommand,
-  AgentLogSchema,
+  AgentCommandSchema,
   type AgentLog,
-  AgentRegisterSchema,
+  AgentLogSchema,
   type AgentRegister,
-  AgentResultSchema,
+  AgentRegisterSchema,
   type AgentResult,
-  AgentRoleSchema,
+  AgentResultSchema,
   type AgentRole,
+  AgentRoleSchema,
   DEBUG_AGENT_LOG_DIRECTION,
   DEBUG_AGENT_RESULT_DIRECTION,
-  DebugCmdBodySchema,
   type DebugCmdBody,
+  DebugCmdBodySchema,
 } from './debug/agent-protocol.js';

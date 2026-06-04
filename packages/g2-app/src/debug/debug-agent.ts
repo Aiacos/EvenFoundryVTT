@@ -47,8 +47,8 @@
 // Task 3 grep gate: `! grep -rE "__EVF_DEBUG_AGENT_v1__" packages/g2-app/dist`
 const EVF_DEBUG_AGENT_MARKER = '__EVF_DEBUG_AGENT_v1__';
 
-import { makeWizardCommandHandlers, type WizardCommandHandlers } from './wizard-commands.js';
 import type { Store, WizardState } from '../wizard/state.js';
+import { makeWizardCommandHandlers, type WizardCommandHandlers } from './wizard-commands.js';
 
 /** Options passed to {@link installDebugAgent}. */
 export interface DebugAgentOpts {
@@ -99,8 +99,7 @@ export function installDebugAgent(opts?: DebugAgentOpts): boolean {
 
   // Resolve hub URL + optional secret from env
   const hubUrl =
-    (import.meta.env.VITE_EVF_DEBUG_HUB as string | undefined) ??
-    'ws://localhost:8910/debug/agent';
+    (import.meta.env.VITE_EVF_DEBUG_HUB as string | undefined) ?? 'ws://localhost:8910/debug/agent';
   const secret = import.meta.env.VITE_EVF_DEBUG_SECRET as string | undefined;
   const wsUrl = secret ? `${hubUrl}?secret=${encodeURIComponent(secret)}` : hubUrl;
 

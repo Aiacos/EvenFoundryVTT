@@ -86,9 +86,11 @@ export const PACKAGE_NAME = '@evf/g2-app';
 // Log-only path (no store) — exposes window.__EVF_DEBUG__ + console mirror.
 // Dynamic import gate so the debug-agent module is tree-shaken from prod dist.
 if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
-  import('./debug/debug-agent.js').then(({ installDebugAgent }) => {
-    installDebugAgent();
-  }).catch(() => {
-    // Soft-fail — debug agent is dev-only; failure must not affect prod callers.
-  });
+  import('./debug/debug-agent.js')
+    .then(({ installDebugAgent }) => {
+      installDebugAgent();
+    })
+    .catch(() => {
+      // Soft-fail — debug agent is dev-only; failure must not affect prod callers.
+    });
 }
