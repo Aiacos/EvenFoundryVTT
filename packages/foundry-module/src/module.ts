@@ -107,12 +107,27 @@ let bearerRegistryHandle:
   | null = null;
 
 /**
- * Retrieves the internal_secret for the given token from the bearer registry.
+ * Resolves the internal secret used to authenticate POSTs to /internal/delta.
  *
- * Returns null if no matching active entry is found.
- * Used by bridgeDeltaEmitter to authenticate POSTs to /internal/delta.
+ * Precedence (Quick Task 260604-hs5):
+ * 1. The DM-visible `bridgeInternalSecret` world setting, when it is a non-empty
+ *    string. This is the bridge deployment's static `EVF_INTERNAL_SECRET`, the
+ *    only value that can match the bridge's auth check for a real Forge world.
+ * 2. Otherwise, the first active (non-revoked, non-expired) bearer-registry
+ *    entry's `internalSecret` (legacy per-pair value, kept for backward compat).
+ * 3. Otherwise null.
+ *
+ * The secret value is NEVER logged.
  */
 function getInternalSecret(): string | null {
+  // 260604-hs5: settings-preferred. Treat the setting value as unknown; only a
+  // non-empty string wins, so existing tests that return a registry object for
+  // every key fall through to the bearer scan below.
+  const fromSetting: unknown = game.settings.get(MODULE_ID, 'bridgeInternalSecret');
+  if (typeof fromSetting === 'string' && fromSetting !== '') {
+    return fromSetting;
+  }
+
   const stored = game.settings.get(MODULE_ID, 'bearerRegistry') as
     | {
         entries: Record<
@@ -138,12 +153,23 @@ function getInternalSecret(): string | null {
 }
 
 /**
- * Bridge URL for outbound delta POSTs.
+ * Resolves the bridge URL for outbound delta POSTs.
  *
- * Read from the first active bearer entry's bridgeUrl at emit time.
- * Returns null if no active pair exists.
+ * Precedence (Quick Task 260604-hs5):
+ * 1. The DM-visible `bridgeUrl` world setting, when it is a non-empty string.
+ *    This points the world at the actual bridge deployment.
+ * 2. Otherwise, the first active (non-revoked, non-expired) bearer-registry
+ *    entry's `bridgeUrl` (legacy per-pair value, kept for backward compat).
+ * 3. Otherwise null.
  */
 function getBridgeUrl(): string | null {
+  // 260604-hs5: settings-preferred. Only a non-empty string wins; a registry
+  // object (returned by existing tests for every key) falls through.
+  const fromSetting: unknown = game.settings.get(MODULE_ID, 'bridgeUrl');
+  if (typeof fromSetting === 'string' && fromSetting !== '') {
+    return fromSetting;
+  }
+
   const stored = game.settings.get(MODULE_ID, 'bearerRegistry') as
     | {
         entries: Record<string, { bridgeUrl: string; revokedAt: number | null; expiresAt: number }>;

@@ -11,6 +11,14 @@
  * Also registers the bearer registry setting (scope: "world", config: false —
  * programmatic access only, not shown in the Foundry UI settings form).
  *
+ * Quick Task 260604-hs5: additionally registers two DM-visible (config: true,
+ * restricted: true) world settings — `bridgeUrl` and `bridgeInternalSecret` —
+ * that link this world to a specific bridge deployment. The DM enters the bridge
+ * URL plus the bridge's actual `EVF_INTERNAL_SECRET` so that outbound
+ * `/internal/delta` pushes authenticate against the bridge's single static secret
+ * (a real Forge-hosted world otherwise generates random per-pair secrets that can
+ * never match the bridge). The secret value is NEVER logged.
+ *
  * @see Specs.md §7.14.7.3 (pair flow — QR + bearer)
  * @see 02-CONTEXT.md D-2.01 (pair-button location: Settings panel)
  * @see 02-CONTEXT.md D-2.18 (locale detection: game.i18n.lang at boot)
@@ -36,6 +44,13 @@ export let detectedLocale: string = 'en';
  *
  * Registers the bearer registry and internal secrets as hidden world-scope
  * settings (Tier 3 DM-authoritative storage per D-2.12).
+ *
+ * Quick Task 260604-hs5: also registers two DM-visible world settings
+ * (`bridgeUrl`, `bridgeInternalSecret`, both config: true + restricted: true)
+ * that the DM fills with the bridge deployment URL and its matching
+ * `EVF_INTERNAL_SECRET`. These take precedence in `getBridgeUrl()` /
+ * `getInternalSecret()` over the per-pair bearer-registry values. The secret
+ * value is never written to any log.
  *
  * @example
  * ```ts
@@ -63,6 +78,34 @@ export function registerSettings(): void {
     config: false,
     type: Object,
     default: { entries: {}, version: 1 },
+  });
+
+  // Quick Task 260604-hs5: DM-visible bridge deployment URL. World scope,
+  // GM-restricted. When non-empty it takes precedence over the per-pair
+  // bearer-registry bridgeUrl in getBridgeUrl().
+  game.settings.register(MODULE_ID, 'bridgeUrl', {
+    name: 'evf.settings.bridge_url.name',
+    hint: 'evf.settings.bridge_url.hint',
+    scope: 'world',
+    config: true,
+    restricted: true,
+    type: String,
+    default: '',
+  });
+
+  // Quick Task 260604-hs5: DM-visible bridge internal secret — the bridge's
+  // EVF_INTERNAL_SECRET value used to authenticate this world's outbound
+  // /internal/delta pushes. World scope, GM-restricted. When non-empty it takes
+  // precedence over the per-pair bearer-registry internalSecret in
+  // getInternalSecret(). The value is NEVER logged.
+  game.settings.register(MODULE_ID, 'bridgeInternalSecret', {
+    name: 'evf.settings.bridge_internal_secret.name',
+    hint: 'evf.settings.bridge_internal_secret.hint',
+    scope: 'world',
+    config: true,
+    restricted: true,
+    type: String,
+    default: '',
   });
 
   // Pair button in Module Settings panel — opens PairModal (Wave 1).

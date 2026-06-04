@@ -215,6 +215,40 @@ describe('Hooks.once("init") → registerSettings()', () => {
       }),
     );
   });
+
+  // Quick Task 260604-hs5: two DM-visible world settings link the module to the
+  // bridge deployment (bridge URL + matching EVF_INTERNAL_SECRET).
+  it('registers the bridgeUrl world setting as a visible GM-restricted config (260604-hs5)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeUrl',
+      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+    );
+  });
+
+  it('registers the bridgeInternalSecret world setting as a visible GM-restricted config (260604-hs5)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeInternalSecret',
+      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+    );
+  });
 });
 
 describe('PairModal (registered in settings)', () => {
@@ -917,6 +951,144 @@ describe('bridgeDeltaEmitter — via hook pipeline', () => {
 
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick Task 260604-hs5: bridge settings resolution — settings preferred over bearer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('bridge settings resolution — settings preferred over bearer (260604-hs5)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
+    });
+  });
+
+  /** Active bearer-registry fixture (used as the fallback source). */
+  function makeActiveRegistry() {
+    const now = Date.now();
+    return {
+      entries: {
+        'token-1': {
+          internalSecret: 'bearer-secret',
+          bridgeUrl: 'https://bearer.local:8910',
+          revokedAt: null,
+          expiresAt: now + 86_400_000,
+        },
+      },
+    };
+  }
+
+  /** Stub player-character actor that getCharacterSnapshot can read. */
+  const stubActor = {
+    id: 'actor-1',
+    name: 'Aragorn',
+    type: 'character',
+    system: {
+      attributes: {
+        hp: { value: 40, max: 50, temp: 0, tempmax: 0 },
+        ac: { value: 18 },
+        exhaustion: 0,
+      },
+      details: { level: 5 },
+    },
+    statuses: new Set<string>(),
+  };
+
+  it('uses the SETTINGS bridge URL + secret when both settings are non-empty strings', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    gameMock.actors.get.mockReturnValue(stubActor);
+
+    // Key-aware settings.get: strings for the new settings, registry object for bearerRegistry.
+    const registry = makeActiveRegistry();
+    gameMock.settings.get.mockImplementation((_moduleId: string, key: string) => {
+      if (key === 'bridgeUrl') return 'https://settings.example.com:8910';
+      if (key === 'bridgeInternalSecret') return 'settings-secret';
+      if (key === 'bearerRegistry') return registry;
+      return undefined;
+    });
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    // socketlib handler count invariant (CI Gate 8) — assert in a ready-firing test.
+    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: { value: 40 } } } });
+
+    await vi.waitFor(() => fetchMock.mock.calls.length > 0, { timeout: 2000 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://settings.example.com:8910/internal/delta',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer settings-secret',
+        }),
+      }),
+    );
+  });
+
+  it('falls back to the active bearer entry when both settings are empty strings', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const socketlibMock = makeSocketlibMock();
+    const canvasMock = makeCanvasMock();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    gameMock.actors.get.mockReturnValue(stubActor);
+
+    const registry = makeActiveRegistry();
+    gameMock.settings.get.mockImplementation((_moduleId: string, key: string) => {
+      if (key === 'bridgeUrl') return '';
+      if (key === 'bridgeInternalSecret') return '';
+      if (key === 'bearerRegistry') return registry;
+      return undefined;
+    });
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    vi.stubGlobal('socketlib', socketlibMock);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+    hooksMock.fire('ready');
+
+    hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: { value: 40 } } } });
+
+    await vi.waitFor(() => fetchMock.mock.calls.length > 0, { timeout: 2000 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://bearer.local:8910/internal/delta',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-secret',
+        }),
+      }),
+    );
   });
 });
 
