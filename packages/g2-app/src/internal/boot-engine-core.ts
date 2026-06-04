@@ -70,6 +70,7 @@ import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
 import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { WsSender } from '../engine/ws-sender.js';
+import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
@@ -110,7 +111,14 @@ export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
  * Single source of truth — re-exported as `BootEngineOpts` from `../index.ts`.
  */
 export interface BootEngineOpts {
-  /** Bridge WebSocket URL (Phase 3 bridge service). */
+  /**
+   * Bridge **REST base URL** (scheme `http`/`https`, e.g. `https://host:443`) —
+   * the Phase 3 bridge service. NOT the WebSocket connect URL: the engine derives
+   * the `ws(s)://…/ws` connect URL internally via {@link toWsConnectUrl} (the
+   * bridge serves its socket at the `/ws` route, and WebSocket requires a
+   * `ws`/`wss` scheme). The displayop + audio consumers use this value as the
+   * HTTP(S) REST base directly.
+   */
   readonly bridgeUrl: string;
   /** 24h bearer token paired via QR (Specs §11.5.4). */
   readonly token: string;
@@ -363,7 +371,7 @@ export async function _bootEngineCore(
 
   // 5. Open the bridge WebSocket and wait for it to be ready.
   const wsCtor = deps?.wsFactory ?? ((url: string) => new WebSocket(url));
-  const ws = wsCtor(opts.bridgeUrl);
+  const ws = wsCtor(toWsConnectUrl(opts.bridgeUrl));
   await awaitWsOpen(ws);
 
   // 6. Perform the capability handshake — yields negotiated server caps.
@@ -772,7 +780,7 @@ export async function _bootEngineCore(
   //   panel they spawn post-reconnect sends to newWs automatically.
   wsReconnect = new WsReconnectController({
     ws,
-    url: opts.bridgeUrl,
+    url: toWsConnectUrl(opts.bridgeUrl),
     sessionId: handshake.session_id,
     seqTracker,
     wsFactory: deps?.wsFactory ?? ((u: string) => new WebSocket(u)),
