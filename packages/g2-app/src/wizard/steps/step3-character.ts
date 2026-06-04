@@ -217,15 +217,26 @@ export function destroy(): void {
 // ---------------------------------------------------------------------------
 
 function _parseCharacters(body: unknown): CharacterEntry[] {
-  if (!Array.isArray(body)) {
-    return [];
-  }
+  // The bridge's GET /v1/characters returns `{ characters: [{ actorId, name, level }] }`.
+  // Accept that envelope; also tolerate a bare array (legacy/test shape). Entries use
+  // `actorId` per the bridge contract — fall back to `id` for backward compatibility.
+  const list: unknown[] = Array.isArray(body)
+    ? body
+    : typeof body === 'object' &&
+        body !== null &&
+        Array.isArray((body as Record<string, unknown>).characters)
+      ? ((body as Record<string, unknown>).characters as unknown[])
+      : [];
   const results: CharacterEntry[] = [];
-  for (const item of body) {
-    if (typeof item === 'object' && item !== null && 'id' in item && 'name' in item) {
+  for (const item of list) {
+    if (typeof item === 'object' && item !== null && 'name' in item) {
       const entry = item as Record<string, unknown>;
+      const rawId = entry.actorId ?? entry.id;
+      if (rawId === undefined || rawId === null) {
+        continue;
+      }
       const charEntry: CharacterEntry = {
-        id: String(entry.id),
+        id: String(rawId),
         name: String(entry.name),
       };
       if (typeof entry.class === 'string') {
