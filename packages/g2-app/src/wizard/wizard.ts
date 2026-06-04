@@ -115,6 +115,18 @@ export async function initWizard(): Promise<void> {
   const store = createStore(createInitialState());
   const { profileId } = store.get();
 
+  // Quick Task 260604-cwa: dev-only debug agent — wire behind dynamic import gate so
+  // the entire debug-agent module is tree-shaken from the production bundle.
+  // T-cwa-05: the dynamic import is guarded by the SAME boolean flag that the
+  // debug-agent module itself checks, so Rollup sees both branches as dead in prod.
+  if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
+    import('../debug/debug-agent.js').then(({ installDebugAgent }) => {
+      installDebugAgent({ store });
+    }).catch(() => {
+      // Soft-fail — debug agent unavailable does not break the wizard
+    });
+  }
+
   // Load i18n. The bundled catalog is the BASE so every step (incl. Step 1, which runs
   // before any bridge is known) is readable; the bridge-fetched catalog is merged on top
   // and may override/extend it. Missing-everywhere keys still fall back to the key name.

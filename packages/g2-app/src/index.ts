@@ -81,3 +81,14 @@ export async function bootEngine(opts: BootEngineOpts): Promise<{
 
 /** Stable package name marker (retained for any consumer that imported the Phase 1 stub). */
 export const PACKAGE_NAME = '@evf/g2-app';
+
+// Quick Task 260604-cwa: install the dev-only debug agent on engine boot.
+// Log-only path (no store) — exposes window.__EVF_DEBUG__ + console mirror.
+// Dynamic import gate so the debug-agent module is tree-shaken from prod dist.
+if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
+  import('./debug/debug-agent.js').then(({ installDebugAgent }) => {
+    installDebugAgent();
+  }).catch(() => {
+    // Soft-fail — debug agent is dev-only; failure must not affect prod callers.
+  });
+}

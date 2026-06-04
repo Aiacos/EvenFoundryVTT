@@ -71,8 +71,8 @@ describe('makeWizardCommandHandlers — getState / setBridgeUrl', () => {
     expect(typeof state.bridgeUrl).toBe('string');
   });
 
-  it('setBridgeUrl(url) updates store.bridgeUrl and returns the new snapshot', async () => {
-    const result = await handlers.setBridgeUrl('http://localhost:8910');
+  it('setBridgeUrl({url}) updates store.bridgeUrl and returns the new snapshot', async () => {
+    const result = await handlers.setBridgeUrl({ url: 'http://localhost:8910' });
     expect(result.bridgeUrl).toBe('http://localhost:8910');
   });
 });
@@ -110,24 +110,24 @@ describe('makeWizardCommandHandlers — goStep / setToken / click', () => {
     document.body.innerHTML = '';
   });
 
-  it('goStep(2) transitions store.step to STEP2', async () => {
-    const state = await handlers.goStep(2);
+  it('goStep({n:2}) transitions store.step to STEP2', async () => {
+    const state = await handlers.goStep({ n: 2 });
     expect(state.step).toBe(WizardStep.STEP2);
   });
 
-  it('goStep(1) transitions store.step to STEP1', async () => {
-    await handlers.goStep(2);
-    const state = await handlers.goStep(1);
+  it('goStep({n:1}) transitions store.step to STEP1', async () => {
+    await handlers.goStep({ n: 2 });
+    const state = await handlers.goStep({ n: 1 });
     expect(state.step).toBe(WizardStep.STEP1);
   });
 
-  it('goStep(3) transitions store.step to STEP3', async () => {
-    const state = await handlers.goStep(3);
+  it('goStep({n:3}) transitions store.step to STEP3', async () => {
+    const state = await handlers.goStep({ n: 3 });
     expect(state.step).toBe(WizardStep.STEP3);
   });
 
   it('setBridgeUrl updates bridgeUrl in store', async () => {
-    const state = await handlers.setBridgeUrl('http://bridge.local:8910');
+    const state = await handlers.setBridgeUrl({ url: 'http://bridge.local:8910' });
     expect(state.bridgeUrl).toBe('http://bridge.local:8910');
   });
 });
@@ -209,8 +209,8 @@ describe('makeWizardCommandHandlers — end-to-end pairing flow via command hand
   });
 
   it('setBridgeUrl → goStep(2) → store reflects transitions', async () => {
-    await handlers.setBridgeUrl('http://localhost:8910');
-    const s2 = await handlers.goStep(2);
+    await handlers.setBridgeUrl({ url: 'http://localhost:8910' });
+    const s2 = await handlers.goStep({ n: 2 });
     expect(s2.bridgeUrl).toBe('http://localhost:8910');
     expect(s2.step).toBe(WizardStep.STEP2);
   });
