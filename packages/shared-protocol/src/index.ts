@@ -376,6 +376,29 @@ export {
   R1_DEBUG_DISPLAYOP_TYPE,
 } from './debug/debug-events.js';
 
+// ─── Quick Task 260604-eyf — bearer-registry + character-list push schemas ───────
+// BearerRegistrySnapshotSchema pushed by foundry-module bearer-registry-reader.ts.
+// Bridge caches via bearer-registry-cache.ts + builds internal foundryValidateFn.
+// CharacterListSnapshotSchema pushed by foundry-module character-list-reader.ts.
+// Bridge caches via character-list-cache.ts + serves GET /v1/characters from cache.
+// Both pipelines push via the existing /internal/delta channel (count stays 17).
+
+export {
+  type BearerRegistryEntry,
+  BearerRegistryEntrySchema,
+  type BearerRegistrySnapshot,
+  BearerRegistrySnapshotSchema,
+  R1_BEARERS_AVAILABLE_TYPE,
+} from './payloads/bearer-registry.js';
+
+export {
+  type CharacterListEntry,
+  CharacterListEntrySchema,
+  type CharacterListSnapshot,
+  CharacterListSnapshotSchema,
+  R1_CHARACTERS_AVAILABLE_TYPE,
+} from './payloads/character-list.js';
+
 // ─── Quick Task 260604-cwa — Agent control-channel schemas (dev-only) ──────────
 // Wire-protocol contracts for the debug agent control channel: a WS endpoint
 // where the g2-app connects AS a named agent, a relay (POST /debug/cmd) that
