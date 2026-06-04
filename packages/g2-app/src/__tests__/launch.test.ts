@@ -126,7 +126,11 @@ describe('launchApp', () => {
     });
 
     await expect(launchApp(deps)).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith('[EVF] launch: bootEngine failed', bootErr);
+    // Logged as a single string (Error objects serialize to "{}" in the EvenHub
+    // simulator console capture, hiding the cause) — assert the message + cause text.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toContain('[EVF] launch: bootEngine failed');
+    expect(errorSpy.mock.calls[0]?.[0]).toContain('handshake failed');
     expect(deps.navigate).not.toHaveBeenCalled();
   });
 
