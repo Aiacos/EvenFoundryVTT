@@ -220,9 +220,13 @@ export async function initWizard(): Promise<void> {
         break;
       case WizardStep.COMPLETION: {
         const selected = Step3.getSelectedCharacter();
+        // Quick Task 260604-ovn: hand off to the engine after the success screen.
+        // handoff:true schedules the redirect to ../index.html (engine entry) so
+        // launchApp picks up the freshly-saved session. REPAIR (below) omits it.
         Completion.render(content, store, t, {
           characterName: selected.name || store.get().characterId,
           characterClass: selected.characterClass,
+          handoff: true,
         });
         break;
       }

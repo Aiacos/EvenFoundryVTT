@@ -27,18 +27,35 @@ export type CompletionKeys =
 let _cleanup: (() => void) | null = null;
 
 /**
+ * Delay before the COMPLETION → engine handoff redirect fires, so the user
+ * briefly sees the success screen before `index.html` takes over.
+ */
+const HANDOFF_REDIRECT_MS = 1500;
+
+/**
+ * Engine entry path relative to `dist/wizard/wizard.html` (vite emits the engine
+ * entry at `dist/index.html`, one directory up from the wizard).
+ */
+const ENGINE_ENTRY_PATH = '../index.html';
+
+/**
  * Render the Completion screen into the given container.
  *
  * @param container - The `#step-content` element.
  * @param store - Wizard state store.
  * @param t - i18n translation function.
  * @param opts - Optional character display info.
+ *   `opts.handoff === true` (set only by the COMPLETION branch in wizard.ts,
+ *   NOT by the REPAIR re-entry branch) schedules a redirect to the engine entry
+ *   after a short delay so `index.html`'s `launchApp` picks up the freshly-saved
+ *   session. The timer is cleared by {@link destroy} so a torn-down screen never
+ *   triggers a stray navigation (keeps existing wizard tests throwless).
  */
 export function render(
   container: HTMLElement,
   store: Store<WizardState>,
   t: (key: string, vars?: Record<string, string>) => string,
-  opts?: { characterName?: string; characterClass?: string },
+  opts?: { characterName?: string; characterClass?: string; handoff?: boolean },
 ): void {
   destroy();
 
@@ -102,8 +119,23 @@ export function render(
 
   repairLink.addEventListener('click', onRepair);
 
+  // COMPLETION → engine handoff. Only fires when the COMPLETION branch requests
+  // it (opts.handoff === true); the REPAIR re-entry path passes no handoff so it
+  // never redirects. The timer is stored and cleared by destroy() so a torn-down
+  // screen (e.g. in unit tests) never navigates after teardown.
+  let handoffTimer: ReturnType<typeof setTimeout> | null = null;
+  if (opts?.handoff === true) {
+    handoffTimer = setTimeout(() => {
+      window.location.href = ENGINE_ENTRY_PATH;
+    }, HANDOFF_REDIRECT_MS);
+  }
+
   _cleanup = () => {
     repairLink.removeEventListener('click', onRepair);
+    if (handoffTimer !== null) {
+      clearTimeout(handoffTimer);
+      handoffTimer = null;
+    }
   };
 }
 

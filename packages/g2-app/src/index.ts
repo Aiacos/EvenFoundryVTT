@@ -6,16 +6,19 @@
  * which lives behind the `internal/` directory boundary
  * (Option B per 04A-PLAN-CHECK.md §NF-2).
  *
- * **W-4 closure (do NOT inline `wsFactory` / `bridgeFactory` here):**
+ * **W-4 closure (do NOT inline the test-only DI factory literals here):**
  *
  * The boot-sequence body — including every reference to test-only DI
  * factories — lives in `./internal/boot-engine-core.ts`. This file
- * contains zero `wsFactory` / `bridgeFactory` substrings and zero
- * `TestingDependencies` references; both are confined to the internal
- * core + `./index.test-support.ts`. The W-4 grep gate
- * (`! grep -E "wsFactory|bridgeFactory" packages/g2-app/src/index.ts`)
+ * contains zero ws-factory / bridge-factory substrings and zero
+ * testing-dependencies references; both are confined to the internal
+ * core + `./index.test-support.ts`. The W-4 grep gate (a `! grep -E`
+ * over the two DI-factory identifiers against this file, see
+ * `src/__tests__/launch.test.ts` LAUNCH-W4 + the Task 2 verify)
  * enforces this constraint and lets the test-only DI surface stay
- * structurally invisible to production callers.
+ * structurally invisible to production callers. The forbidden literals
+ * are deliberately spelled with hyphens above so this header itself
+ * stays grep-clean (Quick Task 260604-ovn — W-4 gate hardening).
  *
  * Production usage:
  * ```ts
@@ -38,6 +41,7 @@
 
 import type { LayerManager } from './engine/layer-manager.js';
 import { _bootEngineCore, type BootEngineOpts } from './internal/boot-engine-core.js';
+import { launchApp } from './internal/launch.js';
 import type { RasterController } from './raster/raster-controller.js';
 
 /** Re-export the production options type — single source of truth in boot-engine-core.ts. */
@@ -94,3 +98,16 @@ if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
       // Soft-fail — debug agent is dev-only; failure must not affect prod callers.
     });
 }
+
+// Quick Task 260604-ovn: production launch glue.
+//
+// On index.html load, decide between booting the engine (no-auth dev fallback)
+// and redirecting to the pairing wizard (unpaired / paired-non-dev). Runs AFTER
+// the debug-agent block above: the debug-agent install is fire-and-forget, and
+// bootEngine (inside launchApp) installs the hub polyfill + waits for the bridge
+// itself, so ordering is safe. launchApp is internally fail-soft; the extra
+// `.catch` here is belt-and-suspenders against a synchronous-throw edge so a
+// launch error never white-screens the app.
+launchApp().catch((err) => {
+  console.error('[EVF] index: launchApp failed', err);
+});
