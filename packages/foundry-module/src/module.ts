@@ -46,6 +46,12 @@ import { registerHookSubscribers } from './readers/hook-subscribers.js';
 // Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
 // socketlib count stays 17 (Phase 13 invariant preserved).
 import { registerSpellPackReader } from './readers/spell-pack-reader.js';
+// Quick Task 260604-eyf — bearer-registry + character-list push (push-based, no new socketlib handler).
+// Emits r1.bearers.available envelopes when bearers are generated/revoked/rotated.
+// Emits r1.characters.available on ready + actor lifecycle hooks (createActor/updateActor/deleteActor).
+// Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
+import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
+import { registerCharacterListReader } from './readers/character-list-reader.js';
 import { registerSettings } from './settings.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
@@ -84,6 +90,19 @@ import { registerReactionWatcher } from './write-path/reaction-watcher.js';
  * the module. Must match the `id` field in module.json exactly.
  */
 export const MODULE_ID = 'evenfoundryvtt' as const;
+
+/**
+ * Module-level bearer registry re-emit handle.
+ *
+ * Populated once the `ready` hook fires (via `registerBearerRegistryReader`).
+ * Null before ready — callers guard with optional chaining.
+ *
+ * Quick Task 260604-eyf: `reEmit()` is called by the `scheduleBearerRotation`
+ * callback to push a fresh bearer snapshot after rotation, so the bridge cache
+ * stays current without a new socketlib handler. The handle is available to
+ * future PairModal generate/revoke paths as well.
+ */
+let bearerRegistryHandle: import('./readers/bearer-registry-reader.js').BearerRegistryReaderHandle | null = null;
 
 /**
  * Retrieves the internal_secret for the given token from the bearer registry.
@@ -221,8 +240,18 @@ Hooks.once('ready', () => {
   // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace, reusing generateBearer(refresh=true)).
   // Called AFTER registerReactionWatcher per the ready-hook assembly order.
   // No new socketlib handler registered — count stays at 14.
+  // Quick Task 260604-eyf: after rotation, also push a fresh bearer registry snapshot so the bridge
+  // cache stays current. bearerRegistryEmit is populated later in this same ready handler — the
+  // callback is only invoked asynchronously (after the TTL), so it sees the populated closure.
   scheduleBearerRotation({
-    emit: (payload) => bridgeDeltaEmitter(BEARER_ROTATED_TYPE, payload),
+    emit: (payload) => {
+      bridgeDeltaEmitter(BEARER_ROTATED_TYPE, payload);
+      // Quick Task 260604-eyf: re-push the bearer registry after rotation so the bridge
+      // cache reflects the new (rotated) token. bearerRegistryHandle.reEmit() is set
+      // below in this same ready handler — the rotation callback fires ≥24h later, so
+      // bearerRegistryHandle is guaranteed populated.
+      bearerRegistryHandle?.reEmit();
+    },
   });
   // Plan 08-01 — register the action-result watcher (ACT-01 telemetry).
   // Listens on createChatMessage; filters for flags.evf.audit.idempotencyKey;
@@ -244,6 +273,19 @@ Hooks.once('ready', () => {
   // Called AFTER registerCombatActionTracker per the ready-hook assembly order.
   // NO new socketlib handler — count stays 14 (ADR-0011 invariant).
   setConcConflictEmitter((type, payload) => bridgeDeltaEmitter(type, payload));
+  // Quick Task 260604-eyf — bearer-registry + character-list push readers.
+  // Registered in ready hook so both Foundry settings (world scope) and game.actors are loaded.
+  // registerBearerRegistryReader: pushes non-revoked, non-expired bearer registry snapshot.
+  // registerCharacterListReader: pushes player-character roster on ready + actor lifecycle hooks.
+  // NO new socketlib handler registered for either — count stays 17 (Phase 13 invariant).
+  //
+  // Quick Task 260604-eyf: register bearer-registry reader, store the handle for
+  // rotation re-emit. bearerRegistryHandle.reEmit() is called by scheduleBearerRotation
+  // above (the rotation fires ≥24h later, so the handle is always populated).
+  bearerRegistryHandle = registerBearerRegistryReader(
+    (type, payload) => bridgeDeltaEmitter(type, payload),
+  );
+  registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.
   // The emit callback dispatches the typed FramePixels payload on the
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
