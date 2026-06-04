@@ -39,6 +39,9 @@
 // Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
 // pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
 // so r1.spells.available and r1.entities.available envelopes are routed to their caches.
+// Quick Task 260604-eyf — bearer-registry + character-list push caches + handlers.
+// BearerRegistryCache feeds internalValidateFn; CharacterListCache feeds internalSnapshotFn.
+// Both multiplexed in the same /internal/delta onDelta callback (no new socketlib handler).
 import { SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -49,6 +52,8 @@ import type { Registry } from 'prom-client';
 import { DEV_NO_AUTH_SENTINEL, isDevNoAuth } from './auth/is-dev-no-auth.js';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
+import { BearerRegistryCache } from './cache/bearer-registry-cache.js';
+import { CharacterListCache } from './cache/character-list-cache.js';
 import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
 import { AgentRegistry } from './debug/agent-registry.js';
@@ -86,6 +91,8 @@ import { createDeepgramStt } from './voice/deepgram-stt.js';
 import { buildKeytermList } from './voice/keyterm-merger.js';
 import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
+import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
+import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
@@ -171,6 +178,34 @@ export interface BuildServerOptions {
    * @see routes/entities.ts
    */
   entityCache?: EntityPackCache;
+  /**
+   * Inject a custom BearerRegistryCache for test isolation (Quick Task 260604-eyf).
+   *
+   * In production: a fresh `BearerRegistryCache` is created per `buildServer()` call.
+   * The cache feeds the internal `foundryValidateFn` — token lookup without socketlib.
+   * In tests: pass a pre-populated cache to assert `GET /v1/health` validation paths.
+   *
+   * `opts.foundryValidateFn` still overrides the internal validate fn when provided
+   * (existing tests inject their own fn and must not be affected).
+   *
+   * @see cache/bearer-registry-cache.ts
+   * @see ws/bearer-registry-handler.ts
+   */
+  bearerRegistryCache?: BearerRegistryCache;
+  /**
+   * Inject a custom CharacterListCache for test isolation (Quick Task 260604-eyf).
+   *
+   * In production: a fresh `CharacterListCache` is created per `buildServer()` call.
+   * The cache feeds the internal `foundrySnapshotFn` for `GET /v1/characters`.
+   * In tests: pass a pre-populated cache to assert characters are served from cache.
+   *
+   * `opts.foundrySnapshotFn` still overrides the internal snapshot fn when provided
+   * (existing tests inject their own fn and must not be affected).
+   *
+   * @see cache/character-list-cache.ts
+   * @see ws/character-list-handler.ts
+   */
+  characterListCache?: CharacterListCache;
 }
 
 /**
@@ -310,16 +345,74 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     opts.metricsRegistry,
   );
 
+  // --- 4b-pre. Push caches (Quick Task 260604-eyf) ---
+  // BearerRegistryCache: populated by handleBearerRegistryEnvelope (step 8).
+  //   Feeds internalValidateFn below — token validation without socketlib roundtrip.
+  // CharacterListCache: populated by handleCharacterListEnvelope (step 8).
+  //   Feeds internalSnapshotFn below — /v1/characters served from cache.
+  //
+  // Declared HERE (before TokenCache) so internalValidateFn below can close over them.
+  // opts.bearerRegistryCache / opts.characterListCache inject pre-populated caches in tests.
+  const bearerRegistryCache = opts.bearerRegistryCache ?? new BearerRegistryCache();
+  const characterListCache = opts.characterListCache ?? new CharacterListCache();
+
+  // Internal foundryValidateFn built from BearerRegistryCache (Quick Task 260604-eyf).
+  //
+  // Four-way result (T-RFP-03):
+  //   - cache === null (never pushed)   → foundry_unreachable  (503)
+  //   - token absent in pushed registry → unknown_token        (401)
+  //   - token present but expired       → expired              (401)
+  //   - token present + not expired     → valid                (200)
+  //
+  // opts.foundryValidateFn still overrides when provided — existing tests inject their
+  // own fn and continue to work unchanged (backward-compatible).
+  const internalValidateFn: FoundryValidateFn = async (token: string) => {
+    const snapshot = bearerRegistryCache.get();
+    if (snapshot === null) {
+      // Module never connected — distinguish from bad token (T-RFP-03).
+      return { valid: false, reason: 'foundry_unreachable' };
+    }
+    const entry = snapshot.bearers.find((b) => b.token === token);
+    if (entry === undefined) {
+      return { valid: false, reason: 'unknown_token' };
+    }
+    if (entry.expiresAt <= Date.now()) {
+      return { valid: false, reason: 'expired' };
+    }
+    return {
+      valid: true,
+      entry: { alias: entry.alias, expiresAt: entry.expiresAt, worldId: entry.worldId },
+    };
+  };
+
   // --- 4b. Token cache (with metrics hooks) ---
-  const tokenCache = new TokenCache(opts.foundryValidateFn, {
+  // opts.foundryValidateFn overrides the internal cache-backed validate fn when provided.
+  // Production buildServer({}) uses internalValidateFn (from BearerRegistryCache).
+  // Tests inject their own foundryValidateFn to remain unaffected.
+  const tokenCache = new TokenCache(opts.foundryValidateFn ?? internalValidateFn, {
     onHit: () => metrics.tokenCacheHitsTotal.inc(),
     onMiss: () => metrics.tokenCacheMissesTotal.inc(),
   });
 
-  // Default no-op snapshot fn — production passes the real socketlib wrapper via opts
-  const foundryFn: FoundrySnapshotFn =
-    // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
-    opts.foundrySnapshotFn ?? (async (_h: string, ..._a: unknown[]): Promise<any> => null);
+  // Internal foundrySnapshotFn built from CharacterListCache (Quick Task 260604-eyf).
+  // Serves GET /v1/characters from cache when 'evf.listCharacters' handler is invoked.
+  // opts.foundrySnapshotFn overrides when provided (existing tests unchanged).
+  //
+  // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
+  const internalSnapshotFn: FoundrySnapshotFn = async (
+    handler: string,
+    // biome-ignore lint/suspicious/noExplicitAny: variadic socket args — untyped by design
+    ..._args: unknown[]
+  ): Promise<any> => {
+    if (handler === 'evf.listCharacters') {
+      return characterListCache.get()?.characters ?? [];
+    }
+    return null;
+  };
+
+  // Default snapshot fn: opts.foundrySnapshotFn overrides when provided.
+  // Production buildServer({}) uses internalSnapshotFn (from CharacterListCache).
+  const foundryFn: FoundrySnapshotFn = opts.foundrySnapshotFn ?? internalSnapshotFn;
 
   // --- 4c. Idempotency middleware ---
   // Must be registered BEFORE route registration so the preHandler+onSend hooks
@@ -412,7 +505,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // onDelta hook: multiplexed dispatch — intercept r1.spells.available AND r1.entities.available
   // envelopes to update their respective caches BEFORE fan-out. Each handler returns false when
   // its type does not match, so calling both in sequence is safe and order-independent.
+  // Multiplex all four envelope handlers: bearer-registry + character-list (260604-eyf)
+  // alongside the existing spell-pack + entity-pack. Each returns false on type mismatch
+  // so ordering does not matter and all are safe to call unconditionally.
   await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
+    handleBearerRegistryEnvelope(type, payload, bearerRegistryCache);
+    handleCharacterListEnvelope(type, payload, characterListCache);
     handleSpellPackEnvelope(type, payload, spellCache);
     handleEntityPackEnvelope(type, payload, entityCache);
   });

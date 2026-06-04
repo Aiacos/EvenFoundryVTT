@@ -519,6 +519,248 @@ describe('buildServer integration', () => {
     });
   });
 
+  // ── Quick Task 260604-eyf: internal validate fn from BearerRegistryCache ──────
+
+  describe('buildServer({}) — internalValidateFn from BearerRegistryCache', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    it('returns 503 foundry_unreachable when cache is cold (module never connected)', async () => {
+      // buildServer({}) with NO foundryValidateFn → internalValidateFn uses cold cache
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json<{ error: string }>().error).toBe('foundry_unreachable');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 200 for a valid token pushed via /internal/delta', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      const futureExpiry = Date.now() + 86_400_000;
+      // Push a bearer registry snapshot
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [{ token: VALID_TOKEN, alias: 'G2 Test', expiresAt: futureExpiry, worldId: 'world-1' }],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 unknown_token for token absent from pushed registry', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      // Push a registry with a DIFFERENT token (not VALID_TOKEN)
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [{ token: 'different-token-xyz', alias: 'Other', expiresAt: Date.now() + 86_400_000, worldId: 'w' }],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json<{ error: string }>().error).toBe('invalid_token');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 expired for token that is expired in registry', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      // Push a registry with an EXPIRED token
+      const expiredTime = Date.now() - 1000; // already expired
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [{ token: VALID_TOKEN, alias: 'Old G2', expiresAt: expiredTime, worldId: 'w' }],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      // TokenCache caches validations for 5 min, so this goes through to internalValidateFn.
+      // expired → 401 invalid_token
+      expect(res.statusCode).toBe(401);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('opts.foundryValidateFn overrides internalValidateFn when provided', async () => {
+      // Existing tests that inject foundryValidateFn must not be affected
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      // makeValidFn() returns valid for VALID_TOKEN even with cold cache
+      expect(res.statusCode).toBe(200);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+  });
+
+  // ── Quick Task 260604-eyf: GET /v1/characters from CharacterListCache ─────────
+
+  describe('GET /v1/characters from CharacterListCache (buildServer({}))', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    it('returns [] when character list cache is cold', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+
+      const futureExpiry = Date.now() + 86_400_000;
+      // Pre-populate bearerRegistryCache so token validates
+      const { BearerRegistryCache } = await import('./cache/bearer-registry-cache.js');
+      const bearerCache = new BearerRegistryCache();
+      bearerCache.set({
+        bearers: [{ token: VALID_TOKEN, alias: 'G2', expiresAt: futureExpiry, worldId: 'w' }],
+        source: 'foundry-registry',
+        count: 1,
+        generatedAt: Date.now(),
+      });
+      app = await buildServer({ langDirOverride: LANG_DIR, bearerRegistryCache: bearerCache });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ characters: unknown[] }>().characters).toHaveLength(0);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns pushed roster when character list cache has data', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+
+      const futureExpiry = Date.now() + 86_400_000;
+      const { BearerRegistryCache } = await import('./cache/bearer-registry-cache.js');
+      const { CharacterListCache } = await import('./cache/character-list-cache.js');
+
+      const bearerCache = new BearerRegistryCache();
+      bearerCache.set({
+        bearers: [{ token: VALID_TOKEN, alias: 'G2', expiresAt: futureExpiry, worldId: 'w' }],
+        source: 'foundry-registry',
+        count: 1,
+        generatedAt: Date.now(),
+      });
+
+      const charCache = new CharacterListCache();
+      charCache.set({
+        characters: [
+          { actorId: 'actor-1', name: 'Aragorn', level: 10 },
+          { actorId: 'actor-2', name: 'Gimli', level: 7 },
+        ],
+        source: 'foundry-world',
+        count: 2,
+        generatedAt: Date.now(),
+      });
+
+      app = await buildServer({
+        langDirOverride: LANG_DIR,
+        bearerRegistryCache: bearerCache,
+        characterListCache: charCache,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: Array<{ name: string }> }>();
+      expect(body.characters).toHaveLength(2);
+      expect(body.characters.map((c) => c.name)).toContain('Aragorn');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('opts.foundrySnapshotFn overrides internalSnapshotFn when provided', async () => {
+      // Existing tests that inject foundrySnapshotFn must continue to work
+      const mockList = [{ actorId: 'actor-1', name: 'Legolas', level: 8 }];
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockList;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: typeof mockList }>();
+      expect(body.characters).toHaveLength(1);
+      expect(body.characters[0]?.name).toBe('Legolas');
+    });
+  });
+
   // ── POST /internal/delta ──────────────────────────
 
   describe('POST /internal/delta', () => {
