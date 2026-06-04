@@ -194,8 +194,9 @@ describe('Hooks.once("init") → registerSettings()', () => {
     // Fire the init hook
     hooksMock.fire('init');
 
-    // After init fires, registerMenu should have been called exactly once
-    expect(gameMock.settings.registerMenu).toHaveBeenCalledTimes(1);
+    // After init fires, registerMenu should have been called exactly twice:
+    // 'pairDevice' (PairModal) + 'bridgeConfig' (BridgeConfigModal, Quick Task 260604-mjr).
+    expect(gameMock.settings.registerMenu).toHaveBeenCalledTimes(2);
   });
 
   it('registers the pair button menu at MODULE_ID scope', async () => {
@@ -218,9 +219,11 @@ describe('Hooks.once("init") → registerSettings()', () => {
     );
   });
 
-  // Quick Task 260604-hs5: two DM-visible world settings link the module to the
-  // bridge deployment (bridge URL + matching EVF_INTERNAL_SECRET).
-  it('registers the bridgeUrl world setting as a visible GM-restricted config (260604-hs5)', async () => {
+  // Quick Task 260604-hs5: two world settings link the module to the bridge
+  // deployment (bridge URL + matching EVF_INTERNAL_SECRET).
+  // Quick Task 260604-mjr: both demoted to config: false (managed via the dedicated
+  // "EVF — Bridge Configuration" dialog, not the generic Configure Settings panel).
+  it('registers the bridgeUrl world setting as a hidden GM-restricted config (260604-mjr)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     vi.stubGlobal('game', gameMock);
@@ -232,11 +235,11 @@ describe('Hooks.once("init") → registerSettings()', () => {
     expect(gameMock.settings.register).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'bridgeUrl',
-      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+      expect.objectContaining({ config: false, scope: 'world', restricted: true }),
     );
   });
 
-  it('registers the bridgeInternalSecret world setting as a visible GM-restricted config (260604-hs5)', async () => {
+  it('registers the bridgeInternalSecret world setting as a hidden GM-restricted config (260604-mjr)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     vi.stubGlobal('game', gameMock);
@@ -248,8 +251,34 @@ describe('Hooks.once("init") → registerSettings()', () => {
     expect(gameMock.settings.register).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'bridgeInternalSecret',
-      expect.objectContaining({ config: true, scope: 'world', restricted: true }),
+      expect.objectContaining({ config: false, scope: 'world', restricted: true }),
     );
+  });
+
+  // Quick Task 260604-mjr: a second registerMenu wires the BridgeConfigModal dialog.
+  it('registers the bridgeConfig settings menu (BridgeConfigModal) at MODULE_ID scope (260604-mjr)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    expect(gameMock.settings.registerMenu).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeConfig',
+      expect.objectContaining({
+        name: 'evf.settings.bridge_config_button',
+        label: 'evf.settings.bridge_config_button',
+        hint: 'evf.settings.bridge_config_hint',
+        restricted: true,
+      }),
+    );
+    const calls = gameMock.settings.registerMenu.mock.calls;
+    const bridgeConfigCall = calls.find((c) => c[1] === 'bridgeConfig');
+    expect(bridgeConfigCall).toBeDefined();
+    expect(typeof bridgeConfigCall?.[2]?.type).toBe('function');
   });
 
   // Quick Task 260604-lg4: the two DM-visible settings must persist and read back
@@ -264,16 +293,17 @@ describe('Hooks.once("init") → registerSettings()', () => {
     await import('./module.js');
     hooksMock.fire('init');
 
-    // Both registered config:true (visible to the GM in the settings panel).
+    // Both registered config:false (260604-mjr: managed via the BridgeConfigModal
+    // dialog, not the generic settings panel) — still persist + read back.
     expect(gameMock.settings.register).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'bridgeUrl',
-      expect.objectContaining({ config: true }),
+      expect.objectContaining({ config: false }),
     );
     expect(gameMock.settings.register).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'bridgeInternalSecret',
-      expect.objectContaining({ config: true }),
+      expect.objectContaining({ config: false }),
     );
 
     // Round-trip: set via game.settings.set, read back via game.settings.get.
