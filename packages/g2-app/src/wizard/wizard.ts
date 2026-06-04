@@ -23,6 +23,7 @@
 import { installHubPolyfill } from '../hub-polyfill.js';
 
 import { initAutoConnect } from './auto-connect.js';
+import { isWizardNoAuth } from './is-dev-no-auth.js';
 import { clearI18nCache, detectLocale, loadI18n, makeT } from './i18n.js';
 import { defaultWizardCatalog } from './i18n-catalog.js';
 import { createInitialState, createStore, WizardStep } from './state.js';
@@ -152,12 +153,17 @@ export async function initWizard(): Promise<void> {
   // Store i18n fn in state
   store.set({ i18n: t });
 
-  // Initialize auto-connect
-  try {
-    initAutoConnect(store, profileId);
-  } catch {
-    // Even Hub may not be available in dev environment — not fatal
-    console.warn('[EVF] wizard: hub.eventBus not available — auto-connect disabled.');
+  // Initialize auto-connect.
+  // DEV-ONLY: skip it when the token is removed (isWizardNoAuth) — the saved-profile
+  // auto-load would clobber the pre-filled dev bridge URL and re-introduce a stale
+  // (possibly token-bound) session, breaking the clean tokenless dev flow.
+  if (!isWizardNoAuth()) {
+    try {
+      initAutoConnect(store, profileId);
+    } catch {
+      // Even Hub may not be available in dev environment — not fatal
+      console.warn('[EVF] wizard: hub.eventBus not available — auto-connect disabled.');
+    }
   }
 
   // Track current step component for cleanup

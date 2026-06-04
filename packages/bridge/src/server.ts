@@ -46,6 +46,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import pino, { type Logger } from 'pino';
 import type { Registry } from 'prom-client';
+import { DEV_NO_AUTH_SENTINEL, isDevNoAuth } from './auth/is-dev-no-auth.js';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
 import { EntityPackCache } from './cache/entity-pack-cache.js';
@@ -243,8 +244,11 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // Dev fallback is 'http://localhost:5173' (Vite default). Never use `true` (allow-all).
   // TODO (#42): enforce EVF_PLUGIN_HOST_URL as required in Docker entrypoint.
   const pluginHostUrl = process.env.EVF_PLUGIN_HOST_URL ?? 'http://localhost:5173';
+  // DEV-ONLY: when the bearer-auth bypass is active (EVF_DEV_NO_AUTH, never prod),
+  // reflect any origin so a local Vite dev server / EvenHub simulator (whose origin
+  // varies) can reach the bridge. Production keeps the strict single-origin whitelist.
   await app.register(cors, {
-    origin: pluginHostUrl,
+    origin: isDevNoAuth() ? true : pluginHostUrl,
     methods: ['GET', 'HEAD', 'OPTIONS', 'POST'],
   });
 
@@ -329,6 +333,13 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // onResponse: compute duration, observe with bounded labels only (method, route pattern, status_code).
   app.addHook('onRequest', async (request) => {
     request.evfStartTime = Date.now();
+    // DEV-ONLY: inject a sentinel bearer for token-less requests so routes that
+    // reject a missing Authorization header BEFORE calling TokenCache.validate
+    // (e.g. /v1/health, /v1/characters) proceed; validate() then resolves it to a
+    // synthetic dev session. Never active in prod (EVF_DEV_NO_AUTH + NODE_ENV gate).
+    if (isDevNoAuth() && !request.headers.authorization?.startsWith('Bearer ')) {
+      request.headers.authorization = `Bearer ${DEV_NO_AUTH_SENTINEL}`;
+    }
   });
   app.addHook('onResponse', async (request, reply) => {
     if (request.evfStartTime === undefined) return;

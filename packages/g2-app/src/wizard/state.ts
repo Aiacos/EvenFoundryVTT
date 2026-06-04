@@ -8,6 +8,8 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 1
  */
 
+import { devBridgeUrl } from './is-dev-no-auth.js';
+
 /** Steps in the 3-step pairing wizard. */
 export enum WizardStep {
   STEP1 = 'STEP1',
@@ -125,7 +127,10 @@ export function generateProfileId(): string {
 export function createInitialState(): WizardState {
   return {
     step: WizardStep.STEP1,
-    bridgeUrl: '',
+    // DEV-ONLY: pre-fill the bridge URL so the tester never types it. Empty in
+    // production builds and unit tests (devBridgeUrl returns '' unless an explicit
+    // dev flag/override is set). See ./is-dev-no-auth.ts.
+    bridgeUrl: devBridgeUrl(),
     token: '',
     characterId: '',
     profileId: generateProfileId(),

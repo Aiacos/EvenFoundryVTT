@@ -11,6 +11,8 @@
  * - `invalidateToken` provides an explicit eviction path for Plan 05 "Refresh now".
  */
 
+import { isDevNoAuth } from './is-dev-no-auth.js';
+
 /** Result type returned by Foundry-side `evf.validateToken` socketlib handler. */
 export interface ValidateTokenResult {
   valid: boolean;
@@ -87,6 +89,20 @@ export class TokenCache {
    * Fires `metricsHooks.onHit` on a cache hit and `metricsHooks.onMiss` on a miss.
    */
   async validate(token: string): Promise<ValidateTokenResult> {
+    // DEV-ONLY: when the bearer-auth bypass is active (EVF_DEV_NO_AUTH, never prod),
+    // every token validates to a synthetic 24h dev session. Checked first so the
+    // bridge is reachable without Foundry or a real pairing token.
+    if (isDevNoAuth()) {
+      return {
+        valid: true,
+        entry: {
+          alias: 'dev-no-auth',
+          expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
+          worldId: process.env.EVF_DEV_WORLD ?? 'dev',
+        },
+      };
+    }
+
     const cached = this.cache.get(token);
     if (cached !== undefined && Date.now() - cached.cachedAt < TTL_MS) {
       this.metricsHooks.onHit?.();

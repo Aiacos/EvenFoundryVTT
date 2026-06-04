@@ -13,8 +13,12 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 2
  */
 
+import { isWizardNoAuth } from '../is-dev-no-auth.js';
 import type { WizardState } from '../state.js';
 import { type Store, WizardStep } from '../state.js';
+
+/** Step to return to from Step 3's "Back": Step 1 when the token step is skipped (dev), else Step 2. */
+const backStep = (): WizardStep => (isWizardNoAuth() ? WizardStep.STEP1 : WizardStep.STEP2);
 import { saveSession } from '../tier3-storage.js';
 
 /** Threshold: above this count, use dropdown instead of card grid. */
@@ -160,7 +164,7 @@ export function render(
   // --- Event listeners ---
   function onBack() {
     abortController.abort();
-    store.set({ step: WizardStep.STEP2, error: null });
+    store.set({ step: backStep(), error: null });
   }
 
   async function onConfirm() {
@@ -373,7 +377,7 @@ function _renderFetchError(
   goBackBtn.className = 'evf-btn evf-btn-ghost';
   goBackBtn.textContent = t('evf.wizard.step3.error.go_back');
   goBackBtn.addEventListener('click', () => {
-    store.set({ step: WizardStep.STEP2, error: null });
+    store.set({ step: backStep(), error: null });
   });
 
   errorRegion.appendChild(retryBtn);
