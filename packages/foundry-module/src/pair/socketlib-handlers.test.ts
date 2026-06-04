@@ -1,8 +1,9 @@
 /**
  * Unit tests for socketlib-handlers — registerSocketlibHandlers.
  *
- * Mocks the `socketlib` global and the bearer-registry functions to verify:
- * - Handler registration occurs at call time
+ * Mocks the `socketlib` global (real registerModule/register API — 260604-lg4)
+ * and the bearer-registry functions to verify:
+ * - Handler registration occurs at call time via socket.register
  * - evf.validateToken returns correct result shapes
  * - evf.revokeToken calls revokeBearer exactly once
  * - Handlers validate input types before processing (T-02-04 guard)
@@ -73,28 +74,46 @@ const makeGameMock = () => {
   };
 };
 
-// ─── Socketlib mock ───────────────────────────────────────────────────────────
+// ─── Socketlib mock (real registerModule/register API — 260604-lg4) ───────────
 
 type HandlerFn = (...args: unknown[]) => unknown;
 
+/**
+ * Builds a socketlib mock matching the REAL farling42/foundryvtt-socketlib API:
+ * `registerModule(moduleId)` returns a module-scoped socket whose `register(name,
+ * fn)` (a vi spy) stores handlers, and whose `executeAsGM` / `callHandler` helpers
+ * invoke a registered handler by name. The `register` spy is the one asserted for
+ * the 17-handler invariant.
+ */
 function makeSocketlibMock() {
   const handlers = new Map<string, HandlerFn>();
-  return {
-    registerComplexHandler: vi.fn((_moduleId: string, handlerId: string, handler: HandlerFn) => {
-      handlers.set(handlerId, handler);
+  const socket = {
+    register: vi.fn((name: string, fn: HandlerFn) => {
+      handlers.set(name, fn);
     }),
-    executeAsGM: vi.fn(async (_moduleId: string, handlerId: string, ...args: unknown[]) => {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    executeAsGM: vi.fn(async (name: string, ...args: unknown[]) => {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     }),
     /** Test helper: directly call a registered handler */
-    callHandler(handlerId: string, ...args: unknown[]): unknown {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    callHandler(name: string, ...args: unknown[]): unknown {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     },
     _handlers: handlers,
+  };
+  return {
+    registerModule: vi.fn(() => socket),
+    /** The module-scoped socket (exposed so tests can assert register + call handlers). */
+    socket,
+    /** Convenience pass-through to the socket's register spy. */
+    register: socket.register,
+    /** Convenience pass-through to the socket's callHandler helper. */
+    callHandler(name: string, ...args: unknown[]): unknown {
+      return socket.callHandler(name, ...args);
+    },
   };
 }
 
@@ -129,21 +148,14 @@ describe('registerSocketlibHandlers', () => {
   it('registers evf.validateToken handler', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
-      'evenfoundryvtt',
-      'evf.validateToken',
-      expect.any(Function),
-    );
+    expect(socketlibMock.registerModule).toHaveBeenCalledWith('evenfoundryvtt');
+    expect(socketlibMock.register).toHaveBeenCalledWith('evf.validateToken', expect.any(Function));
   });
 
   it('registers evf.revokeToken handler', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
-      'evenfoundryvtt',
-      'evf.revokeToken',
-      expect.any(Function),
-    );
+    expect(socketlibMock.register).toHaveBeenCalledWith('evf.revokeToken', expect.any(Function));
   });
 
   describe('evf.validateToken handler', () => {
@@ -371,25 +383,22 @@ describe('registerSocketlibHandlers', () => {
   it('registers exactly 17 handlers total (Phase 13 invariant FLIP — 14 → 17)', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // registerModule is called exactly once; the socket's register spy is called 17×.
+    expect(socketlibMock.registerModule).toHaveBeenCalledTimes(1);
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 
   // Positive assertions for the 3 new ACT-04 handlers
   it('registers evf.castShield with a dispatch adapter', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
-      expect.any(String),
-      'evf.castShield',
-      expect.any(Function),
-    );
+    expect(socketlibMock.register).toHaveBeenCalledWith('evf.castShield', expect.any(Function));
   });
 
   it('registers evf.castCounterspell with a dispatch adapter', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(socketlibMock.register).toHaveBeenCalledWith(
       'evf.castCounterspell',
       expect.any(Function),
     );
@@ -398,8 +407,7 @@ describe('registerSocketlibHandlers', () => {
   it('registers evf.opportunityAttack with a dispatch adapter', async () => {
     const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
     registerSocketlibHandlers();
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(socketlibMock.register).toHaveBeenCalledWith(
       'evf.opportunityAttack',
       expect.any(Function),
     );

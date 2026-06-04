@@ -164,7 +164,7 @@ describe('Hooks.once("init") → registerSettings()', () => {
     });
   });
 
-  it('registers "init" and "ready" hook handlers on module load', async () => {
+  it('registers "init", "socketlib.ready" and "ready" hook handlers on module load', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     vi.stubGlobal('game', gameMock);
@@ -172,9 +172,11 @@ describe('Hooks.once("init") → registerSettings()', () => {
 
     await import('./module.js');
 
-    // Wave 1: two Hooks.once registrations — "init" (settings) and "ready" (socketlib)
-    expect(hooksMock.once).toHaveBeenCalledTimes(2);
+    // 260604-lg4: three Hooks.once registrations — "init" (settings),
+    // "socketlib.ready" (socketlib handlers), and "ready" (push readers/subscribers).
+    expect(hooksMock.once).toHaveBeenCalledTimes(3);
     expect(hooksMock.once).toHaveBeenCalledWith('init', expect.any(Function));
+    expect(hooksMock.once).toHaveBeenCalledWith('socketlib.ready', expect.any(Function));
     expect(hooksMock.once).toHaveBeenCalledWith('ready', expect.any(Function));
   });
 
@@ -248,6 +250,38 @@ describe('Hooks.once("init") → registerSettings()', () => {
       'bridgeInternalSecret',
       expect.objectContaining({ config: true, scope: 'world', restricted: true }),
     );
+  });
+
+  // Quick Task 260604-lg4: the two DM-visible settings must persist and read back
+  // their saved values (round-trip via the makeGameMock settingsStore) AND both
+  // remain registered config:true. The secret value is never logged.
+  it('bridgeUrl + bridgeInternalSecret persist and read back their saved values (260604-lg4)', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    // Both registered config:true (visible to the GM in the settings panel).
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeUrl',
+      expect.objectContaining({ config: true }),
+    );
+    expect(gameMock.settings.register).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'bridgeInternalSecret',
+      expect.objectContaining({ config: true }),
+    );
+
+    // Round-trip: set via game.settings.set, read back via game.settings.get.
+    game.settings.set('evenfoundryvtt', 'bridgeUrl', 'https://bridge.example');
+    game.settings.set('evenfoundryvtt', 'bridgeInternalSecret', 's3cret');
+
+    expect(game.settings.get('evenfoundryvtt', 'bridgeUrl')).toBe('https://bridge.example');
+    expect(game.settings.get('evenfoundryvtt', 'bridgeInternalSecret')).toBe('s3cret');
   });
 });
 
@@ -361,18 +395,31 @@ describe('detectedLocale', () => {
 // ready hook — registerSocketlibHandlers + registerHookSubscribers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Minimal socketlib stub that records handler registrations. */
+/**
+ * Minimal socketlib stub matching the REAL registerModule/register API (260604-lg4).
+ *
+ * `registerModule(moduleId)` returns a module-scoped socket whose `register(name,
+ * fn)` records the handler into `_registered` keyed by the moduleId (so existing
+ * `_registered.get('evenfoundryvtt')` assertions keep working). The socket's
+ * `register` is the spy asserted for the 17-handler count.
+ */
 function makeSocketlibMock() {
   const registered = new Map<string, Map<string, (...args: unknown[]) => unknown>>();
+  const register = vi.fn((moduleId: string, name: string, fn: (...args: unknown[]) => unknown) => {
+    if (!registered.has(moduleId)) {
+      registered.set(moduleId, new Map());
+    }
+    registered.get(moduleId)?.set(name, fn);
+  });
+  const registerModule = vi.fn((moduleId: string) => ({
+    // Bind the moduleId so the socket's register matches the real (name, fn) arity.
+    register: (name: string, fn: (...args: unknown[]) => unknown) => register(moduleId, name, fn),
+    executeAsGM: vi.fn(),
+  }));
   return {
-    registerComplexHandler: vi.fn(
-      (moduleId: string, handlerName: string, fn: (...args: unknown[]) => unknown) => {
-        if (!registered.has(moduleId)) {
-          registered.set(moduleId, new Map());
-        }
-        registered.get(moduleId)?.set(handlerName, fn);
-      },
-    ),
+    registerModule,
+    /** The underlying register spy — asserted for the 17-handler count. */
+    register,
     _registered: registered,
   };
 }
@@ -409,7 +456,7 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     });
   });
 
-  it('fires ready hook without throwing when socketlib stub is present', async () => {
+  it('fires ready + socketlib.ready hooks without throwing when socketlib stub is present', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -423,11 +470,46 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     await import('./module.js');
     hooksMock.fire('init');
 
-    // Fire ready — should not throw
+    // Fire both hooks — neither should throw
+    expect(() => hooksMock.fire('socketlib.ready')).not.toThrow();
     expect(() => hooksMock.fire('ready')).not.toThrow();
   });
 
-  it('registers all 17 socketlib handlers on ready (7 read + 7 tool + 3 ACT-04 reaction)', async () => {
+  // 260604-lg4 defense in depth: the Foundry 'ready' hook must NOT depend on
+  // socketlib. With socketlib absent, firing 'ready' must not throw and the push
+  // readers + hook subscribers must still register (the /internal/delta path
+  // real pairing depends on must always come up).
+  it('fires ready WITHOUT socketlib present and still registers push readers + hook subscribers', async () => {
+    const gameMock = makeGameMock('en');
+    const hooksMock = makeHooksMock();
+    const canvasMock = makeCanvasMock();
+
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', hooksMock);
+    // socketlib is intentionally undefined for this test.
+    vi.stubGlobal('socketlib', undefined);
+    vi.stubGlobal('canvas', canvasMock);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    await import('./module.js');
+    hooksMock.fire('init');
+
+    // Firing 'ready' (NOT 'socketlib.ready') must not throw even with no socketlib.
+    expect(() => hooksMock.fire('ready')).not.toThrow();
+
+    // Hook subscribers + push readers registered independently of socketlib:
+    // registerHookSubscribers + the actor-lifecycle readers call Hooks.on(...).
+    const registeredEvents = hooksMock.on.mock.calls.map((c) => c[0]);
+    expect(registeredEvents).toContain('updateActor');
+    expect(registeredEvents).toContain('updateCombat');
+    // registerCharacterListReader subscribes to actor lifecycle hooks (push readers).
+    expect(registeredEvents).toContain('createActor');
+  });
+
+  it('registers all 17 socketlib handlers on socketlib.ready (7 read + 7 tool + 3 ACT-04 reaction)', async () => {
     const gameMock = makeGameMock('en');
     const hooksMock = makeHooksMock();
     const socketlibMock = makeSocketlibMock();
@@ -440,6 +522,8 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
 
     await import('./module.js');
     hooksMock.fire('init');
+    // 260604-lg4: handler registration now happens on socketlib.ready, not ready.
+    hooksMock.fire('socketlib.ready');
     hooksMock.fire('ready');
 
     const handlers = socketlibMock._registered.get('evenfoundryvtt');
@@ -463,7 +547,8 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     // Plan 07-05: evf.setTargets stub renamed → evf.dropConcentration real handler (count stays 14)
     expect(handlers?.has('evf.setTargets')).toBe(false);
     expect(handlers?.has('evf.dropConcentration')).toBe(true);
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    expect(socketlibMock.registerModule).toHaveBeenCalledTimes(1);
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 
   it('hook subscribers are registered (updateActor, updateCombat, etc.) on ready', async () => {
@@ -593,8 +678,10 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     // At least 3: hook-subscribers + action-result-watcher + combat-action-tracker
     expect(createChatCalls.length).toBeGreaterThanOrEqual(3);
 
-    // 14-socketlib-handler invariant: Plan 09-01 adds NO new socketlib handler
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // 17-socketlib-handler invariant: Plan 09-01 adds NO new socketlib handler.
+    // 260604-lg4: registration happens on socketlib.ready (decoupled from ready).
+    hooksMock.fire('socketlib.ready');
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 
   // T-08-MOD-04: registerComplexHandler count is 17 (Phase 13 FLIP — Plan 08-04 adds NO new socketlib handler)
@@ -624,8 +711,10 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     hooksMock.fire('init');
     hooksMock.fire('ready');
 
-    // Plan 08-04 must NOT add any new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // Plan 08-04 must NOT add any new socketlib handlers — count must stay at 17.
+    // 260604-lg4: registration happens on socketlib.ready (decoupled from ready).
+    hooksMock.fire('socketlib.ready');
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 
   // T-08-MOD-02: registerComplexHandler count is 17 (Phase 13 FLIP — Plan 08-01 adds NO new socketlib handler)
@@ -655,8 +744,10 @@ describe('Hooks.once("ready") → registerSocketlibHandlers + registerHookSubscr
     hooksMock.fire('init');
     hooksMock.fire('ready');
 
-    // Plan 08-01 must NOT add any new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // Plan 08-01 must NOT add any new socketlib handlers — count must stay at 17.
+    // 260604-lg4: registration happens on socketlib.ready (decoupled from ready).
+    hooksMock.fire('socketlib.ready');
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 });
 
@@ -1031,8 +1122,10 @@ describe('bridge settings resolution — settings preferred over bearer (260604-
     hooksMock.fire('init');
     hooksMock.fire('ready');
 
-    // socketlib handler count invariant (CI Gate 8) — assert in a ready-firing test.
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // socketlib handler count invariant (CI Gate 8). 260604-lg4: registration
+    // happens on socketlib.ready (decoupled from ready).
+    hooksMock.fire('socketlib.ready');
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
 
     hooksMock.fire('updateActor', stubActor, { system: { attributes: { hp: { value: 40 } } } });
 
@@ -1234,7 +1327,9 @@ describe('scheduleBearerRotation wiring (Plan 07-06)', () => {
     hooksMock.fire('init');
     hooksMock.fire('ready');
 
-    // Plan 07-06 adds NO new socketlib handlers — count must stay at 14
-    expect(socketlibMock.registerComplexHandler).toHaveBeenCalledTimes(17);
+    // Plan 07-06 adds NO new socketlib handlers — count must stay at 17.
+    // 260604-lg4: registration happens on socketlib.ready (decoupled from ready).
+    hooksMock.fire('socketlib.ready');
+    expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 });
