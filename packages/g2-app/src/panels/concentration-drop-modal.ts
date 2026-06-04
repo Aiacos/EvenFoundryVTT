@@ -47,6 +47,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { CONC_DROP_CONFIRMED_TYPE, type ConcConflictPayload } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
@@ -209,6 +210,9 @@ export class ConcentrationDropModalPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(CONC_MODAL_CONTAINER_NAME),
       containerName: CONC_MODAL_CONTAINER_NAME,
       content: lines.join('\n'),
     });

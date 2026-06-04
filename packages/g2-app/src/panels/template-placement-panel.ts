@@ -41,6 +41,7 @@ import {
   TEMPLATE_PLACEMENT_CANCEL_TYPE,
   type TemplatePlacementRequestedPayload,
 } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
@@ -250,6 +251,9 @@ export class TemplatePlacementPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(TMPL_CONTAINER_NAME),
       containerName: TMPL_CONTAINER_NAME,
       content: lines.join('\n'),
     });

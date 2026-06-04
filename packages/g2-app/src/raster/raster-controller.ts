@@ -46,6 +46,7 @@ import {
   ImageRawDataUpdate,
   ImageRawDataUpdateResult,
 } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type {
   RasterChangedTile,
   RasterControllerLike,
@@ -328,8 +329,10 @@ export class RasterController implements RasterControllerLike {
    */
   private async _dispatchChangedTiles(tiles: ReadonlyArray<RasterChangedTile>): Promise<void> {
     for (const tile of tiles) {
+      const containerName = `map-tile-${tile.index}`;
       const payload = new ImageRawDataUpdate({
-        containerName: `map-tile-${tile.index}`,
+        ...resolveContainerIdField(containerName),
+        containerName,
         imageData: tile.pngBytes,
       });
       const result = await this.bridge.updateImageRawData(payload);

@@ -41,6 +41,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { CharacterSnapshot, InventoryItem } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
@@ -716,6 +717,9 @@ export default class InventoryPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const rows = renderInventoryStandaloneContent(this.snapshot, this.locale, this.scrollOffset);
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(INVENTORY_PANEL_CONTAINER_NAME),
       containerName: INVENTORY_PANEL_CONTAINER_NAME,
       content: rows.join('\n'),
     });

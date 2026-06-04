@@ -24,6 +24,7 @@ import {
   buildBaseImageContainers,
   buildBaseTextContainers,
   resolveContainerId,
+  resolveContainerIdField,
 } from '../container-registry.js';
 
 describe('container-registry', () => {
@@ -97,5 +98,20 @@ describe('container-registry', () => {
     expect(resolveContainerId('toast-block')).toBeUndefined();
     expect(resolveContainerId('boot-error-block')).toBeUndefined();
     expect(resolveContainerId('does-not-exist')).toBeUndefined();
+  });
+
+  it('REG-7: resolveContainerIdField yields a spreadable { containerID } for base names', () => {
+    expect(resolveContainerIdField('header')).toEqual({ containerID: 4 });
+    expect(resolveContainerIdField('map-tile-0')).toEqual({ containerID: 0 });
+    expect(resolveContainerIdField('map-capture')).toEqual({ containerID: 7 });
+  });
+
+  it('REG-8: resolveContainerIdField yields an EMPTY object for overlay/unknown names (field omitted)', () => {
+    expect(resolveContainerIdField('overlay-block')).toEqual({});
+    expect(resolveContainerIdField('toast-block')).toEqual({});
+    expect(resolveContainerIdField('boot-error-block')).toEqual({});
+    // No own `containerID` key at all (so spreading omits the field entirely
+    // under exactOptionalPropertyTypes).
+    expect(Object.hasOwn(resolveContainerIdField('overlay-block'), 'containerID')).toBe(false);
   });
 });

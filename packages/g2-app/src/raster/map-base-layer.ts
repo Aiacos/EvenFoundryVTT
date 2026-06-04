@@ -40,6 +40,7 @@
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { ImageRawDataUpdate, ImageRawDataUpdateResult } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { LayerManager } from '../engine/layer-manager.js';
 import type { Layer, RasterControllerLike } from '../engine/layer-types.js';
 import type { GlyphSceneInput, renderGlyphScene } from './glyph-renderer.js';
@@ -228,8 +229,10 @@ export class MapBaseLayer implements Layer {
     // Targets map-tile-${slot} (an image container), NOT the text capture container.
     if (this._portraitOverride !== null) {
       const { slot, bytes } = this._portraitOverride;
+      const containerName = `map-tile-${slot}`;
       const payload = new ImageRawDataUpdate({
-        containerName: `map-tile-${slot}`,
+        ...resolveContainerIdField(containerName),
+        containerName,
         imageData: bytes,
       });
       const result = await this.bridge.updateImageRawData(payload);

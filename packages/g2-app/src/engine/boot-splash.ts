@@ -28,6 +28,7 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from './container-registry.js';
 
 /** State of an individual boot-splash checklist step. */
 export type BootStepState = 'pending' | 'in_progress' | 'done' | 'failed';
@@ -90,6 +91,10 @@ export async function showBootSplash(
   opts: BootSplashOptions,
 ): Promise<void> {
   const containerName = opts.containerName ?? 'header';
+  // Numeric host id (the EvenHub host requires container_id, not just the name).
+  // Spread as a partial so the field is omitted for unknown names (type-safe
+  // under exactOptionalPropertyTypes).
+  const idField = resolveContainerIdField(containerName);
 
   // Render each step cumulatively: at step i, all steps[0..i] are visible
   // and the i-th one carries its `state` marker. Earlier steps keep their
@@ -98,12 +103,16 @@ export async function showBootSplash(
     const visible = opts.steps.slice(0, i + 1);
     const lines = visible.map((s) => `${marker(s.state)} ${s.label}`);
     const content = lines.join('\n');
-    const payload = new TextContainerUpgrade({ containerName, content });
+    const payload = new TextContainerUpgrade({ ...idField, containerName, content });
     await bridge.textContainerUpgrade(payload);
   }
 
   // Final protocol line — single textContainerUpgrade.
   const protoLine = `protocol ${opts.protocolVersion} · panels available: ${opts.panelsAvailable}`;
-  const finalPayload = new TextContainerUpgrade({ containerName, content: protoLine });
+  const finalPayload = new TextContainerUpgrade({
+    ...idField,
+    containerName,
+    content: protoLine,
+  });
   await bridge.textContainerUpgrade(finalPayload);
 }

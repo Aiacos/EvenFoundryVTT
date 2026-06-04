@@ -24,6 +24,7 @@
  */
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { AsciiGrid, type Cell } from '@evf/shared-render';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 
 /** Token kinds renderable in glyph mode (UI-SPEC §Glyph Dictionary). */
 export type GlyphTokenKind = 'pc' | 'monster' | 'npc' | 'object';
@@ -202,6 +203,7 @@ export async function renderGlyphScene(
 ): Promise<void> {
   const grid = buildGlyphGrid(scene);
   const payload = new TextContainerUpgrade({
+    ...resolveContainerIdField(containerName),
     containerName,
     content: grid.toString(),
   });

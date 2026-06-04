@@ -268,3 +268,31 @@ export function buildBaseTextContainers(): TextContainerProperty[] {
 export function resolveContainerId(name: string): number | undefined {
   return CONTAINER_REGISTRY[name]?.id;
 }
+
+/**
+ * Resolve the numeric host `containerID` for a container name as a SPREADABLE
+ * partial — `{ containerID: n }` for a known base name, or `{}` for an unknown /
+ * overlay-only name.
+ *
+ * This is the call-site-friendly companion to {@link resolveContainerId}. The
+ * SDK payload classes are compiled under `exactOptionalPropertyTypes: true`, so
+ * assigning `containerID: undefined` to an optional `containerID?: number` field
+ * is a type error. Spreading the result of this helper into the payload literal
+ * sets the field ONLY when an id exists and omits it entirely otherwise — exactly
+ * the host contract (numeric id for base containers; addressed by name for
+ * overlay containers until the overlay-id path lands).
+ *
+ * @example
+ *   new TextContainerUpgrade({
+ *     ...resolveContainerIdField('status-hud'), // → { containerID: 6 }
+ *     containerName: 'status-hud',
+ *     content,
+ *   });
+ *
+ * @param name Container name as used at the call site.
+ * @returns `{ containerID }` for a known base name, else `{}` (field omitted).
+ */
+export function resolveContainerIdField(name: string): { containerID?: number } {
+  const id = resolveContainerId(name);
+  return id === undefined ? {} : { containerID: id };
+}

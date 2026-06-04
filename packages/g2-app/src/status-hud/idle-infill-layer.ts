@@ -31,6 +31,7 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { Layer } from '../engine/layer-types.js';
 
 /** Map-rendering mode — drives the 3-vs-2-container degradation. */
@@ -116,6 +117,7 @@ export class IdleInfillLayer implements Layer {
     if (this.mode === 'raster') {
       await this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
+          ...resolveContainerIdField(Z05_COMBAT_LOG),
           containerName: Z05_COMBAT_LOG,
           // Phase 4a placeholder — Plan 06 wires combat.recentEvents[0]
           content: '⚔ —',
@@ -125,6 +127,7 @@ export class IdleInfillLayer implements Layer {
 
     await this.bridge.textContainerUpgrade(
       new TextContainerUpgrade({
+        ...resolveContainerIdField(Z05_LABEL),
         containerName: Z05_LABEL,
         content: LABEL_SEPARATOR_CONTENT,
       }),
@@ -132,6 +135,7 @@ export class IdleInfillLayer implements Layer {
 
     await this.bridge.textContainerUpgrade(
       new TextContainerUpgrade({
+        ...resolveContainerIdField(Z05_STATS),
         containerName: Z05_STATS,
         content: statsContent,
       }),

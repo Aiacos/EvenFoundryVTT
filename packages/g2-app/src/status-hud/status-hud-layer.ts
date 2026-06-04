@@ -55,6 +55,7 @@ import {
   R1_ACTION_ECONOMY_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
 } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { Layer } from '../engine/layer-types.js';
 import type { LayerManagerLike, StatusHudRenderer } from './status-hud-renderer.js';
 
@@ -517,6 +518,7 @@ export class StatusHudLayer implements Layer {
       syncLost: this.syncLostState,
     });
     const payload = new TextContainerUpgrade({
+      ...resolveContainerIdField(this.containerName),
       containerName: this.containerName,
       content: `${grid.toString()}\n${chip}`,
     });
