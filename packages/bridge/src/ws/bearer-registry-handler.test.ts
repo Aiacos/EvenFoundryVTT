@@ -19,7 +19,12 @@ const NOW = 1_700_000_000_000;
 function makeValidPayload() {
   return {
     bearers: [
-      { token: 'valid-token-abc', alias: 'G2 Device', expiresAt: NOW + 86_400_000, worldId: 'world-xyz' },
+      {
+        token: 'valid-token-abc',
+        alias: 'G2 Device',
+        expiresAt: NOW + 86_400_000,
+        worldId: 'world-xyz',
+      },
     ],
     source: 'foundry-registry' as const,
     count: 1,
@@ -68,10 +73,14 @@ describe('handleBearerRegistryEnvelope', () => {
 
   it('last-write-wins: second valid push overwrites first', () => {
     const first = makeValidPayload();
-    const second = { ...makeValidPayload(), count: 2, bearers: [
-      { token: 'token-1', alias: 'G2 A', expiresAt: NOW + 1000, worldId: 'w' },
-      { token: 'token-2', alias: 'G2 B', expiresAt: NOW + 2000, worldId: 'w' },
-    ] };
+    const second = {
+      ...makeValidPayload(),
+      count: 2,
+      bearers: [
+        { token: 'token-1', alias: 'G2 A', expiresAt: NOW + 1000, worldId: 'w' },
+        { token: 'token-2', alias: 'G2 B', expiresAt: NOW + 2000, worldId: 'w' },
+      ],
+    };
     handleBearerRegistryEnvelope(R1_BEARERS_AVAILABLE_TYPE, first, cache);
     handleBearerRegistryEnvelope(R1_BEARERS_AVAILABLE_TYPE, second, cache);
     expect(cache.get()?.count).toBe(2);

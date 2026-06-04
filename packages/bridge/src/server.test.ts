@@ -556,7 +556,9 @@ describe('buildServer integration', () => {
         body: JSON.stringify({
           type: 'r1.bearers.available',
           payload: {
-            bearers: [{ token: VALID_TOKEN, alias: 'G2 Test', expiresAt: futureExpiry, worldId: 'world-1' }],
+            bearers: [
+              { token: VALID_TOKEN, alias: 'G2 Test', expiresAt: futureExpiry, worldId: 'world-1' },
+            ],
             source: 'foundry-registry',
             count: 1,
             generatedAt: Date.now(),
@@ -589,7 +591,14 @@ describe('buildServer integration', () => {
         body: JSON.stringify({
           type: 'r1.bearers.available',
           payload: {
-            bearers: [{ token: 'different-token-xyz', alias: 'Other', expiresAt: Date.now() + 86_400_000, worldId: 'w' }],
+            bearers: [
+              {
+                token: 'different-token-xyz',
+                alias: 'Other',
+                expiresAt: Date.now() + 86_400_000,
+                worldId: 'w',
+              },
+            ],
             source: 'foundry-registry',
             count: 1,
             generatedAt: Date.now(),
@@ -624,7 +633,9 @@ describe('buildServer integration', () => {
         body: JSON.stringify({
           type: 'r1.bearers.available',
           payload: {
-            bearers: [{ token: VALID_TOKEN, alias: 'Old G2', expiresAt: expiredTime, worldId: 'w' }],
+            bearers: [
+              { token: VALID_TOKEN, alias: 'Old G2', expiresAt: expiredTime, worldId: 'w' },
+            ],
             source: 'foundry-registry',
             count: 1,
             generatedAt: Date.now(),

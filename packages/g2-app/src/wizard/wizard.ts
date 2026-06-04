@@ -23,9 +23,9 @@
 import { installHubPolyfill } from '../hub-polyfill.js';
 
 import { initAutoConnect } from './auto-connect.js';
-import { isWizardNoAuth } from './is-dev-no-auth.js';
 import { clearI18nCache, detectLocale, loadI18n, makeT } from './i18n.js';
 import { defaultWizardCatalog } from './i18n-catalog.js';
+import { isWizardNoAuth } from './is-dev-no-auth.js';
 import { createInitialState, createStore, WizardStep } from './state.js';
 import * as Completion from './steps/completion.js';
 import * as Step1 from './steps/step1-profile.js';

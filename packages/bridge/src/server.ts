@@ -90,9 +90,9 @@ import { createDeepgramStt } from './voice/deepgram-stt.js';
 // output (SPELL_KEYTERMS ∪ EntityPackCache snapshot) as Deepgram session keyterms.
 import { buildKeytermList } from './voice/keyterm-merger.js';
 import { KeytermRefresher } from './voice/keyterm-refresher.js';
-import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
 import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
+import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';

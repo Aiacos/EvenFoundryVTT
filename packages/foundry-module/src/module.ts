@@ -35,6 +35,12 @@ import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
+// Quick Task 260604-eyf — bearer-registry + character-list push (push-based, no new socketlib handler).
+// Emits r1.bearers.available envelopes when bearers are generated/revoked/rotated.
+// Emits r1.characters.available on ready + actor lifecycle hooks (createActor/updateActor/deleteActor).
+// Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
+import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
+import { registerCharacterListReader } from './readers/character-list-reader.js';
 // Quick Task 260517-k2g — entity-pack vocabulary push (parallel additive pipeline, NO new socketlib handler).
 // Emits r1.entities.available envelopes via bridgeDeltaEmitter for non-spell Items + Actors (npc/vehicle).
 // Registered alongside spell-pack so weapon/armor/monster recognition is available at init time too.
@@ -46,12 +52,6 @@ import { registerHookSubscribers } from './readers/hook-subscribers.js';
 // Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
 // socketlib count stays 17 (Phase 13 invariant preserved).
 import { registerSpellPackReader } from './readers/spell-pack-reader.js';
-// Quick Task 260604-eyf — bearer-registry + character-list push (push-based, no new socketlib handler).
-// Emits r1.bearers.available envelopes when bearers are generated/revoked/rotated.
-// Emits r1.characters.available on ready + actor lifecycle hooks (createActor/updateActor/deleteActor).
-// Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
-import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
-import { registerCharacterListReader } from './readers/character-list-reader.js';
 import { registerSettings } from './settings.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
@@ -102,7 +102,9 @@ export const MODULE_ID = 'evenfoundryvtt' as const;
  * stays current without a new socketlib handler. The handle is available to
  * future PairModal generate/revoke paths as well.
  */
-let bearerRegistryHandle: import('./readers/bearer-registry-reader.js').BearerRegistryReaderHandle | null = null;
+let bearerRegistryHandle:
+  | import('./readers/bearer-registry-reader.js').BearerRegistryReaderHandle
+  | null = null;
 
 /**
  * Retrieves the internal_secret for the given token from the bearer registry.
@@ -282,8 +284,8 @@ Hooks.once('ready', () => {
   // Quick Task 260604-eyf: register bearer-registry reader, store the handle for
   // rotation re-emit. bearerRegistryHandle.reEmit() is called by scheduleBearerRotation
   // above (the rotation fires ≥24h later, so the handle is always populated).
-  bearerRegistryHandle = registerBearerRegistryReader(
-    (type, payload) => bridgeDeltaEmitter(type, payload),
+  bearerRegistryHandle = registerBearerRegistryReader((type, payload) =>
+    bridgeDeltaEmitter(type, payload),
   );
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Plan 04a-06 — raster pipeline data-source ingress.

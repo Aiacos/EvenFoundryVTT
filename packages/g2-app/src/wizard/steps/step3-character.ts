@@ -19,6 +19,7 @@ import { type Store, WizardStep } from '../state.js';
 
 /** Step to return to from Step 3's "Back": Step 1 when the token step is skipped (dev), else Step 2. */
 const backStep = (): WizardStep => (isWizardNoAuth() ? WizardStep.STEP1 : WizardStep.STEP2);
+
 import { saveSession } from '../tier3-storage.js';
 
 /** Threshold: above this count, use dropdown instead of card grid. */

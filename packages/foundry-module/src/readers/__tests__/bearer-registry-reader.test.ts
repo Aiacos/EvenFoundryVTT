@@ -27,15 +27,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ─── Foundry global stubs (required for transitive module.ts import) ──────────
 
 class ApplicationStub {
-  get title(): string { return ''; }
+  get title(): string {
+    return '';
+  }
 }
 
 class ApplicationV2Stub {
-  render(_force?: boolean): this { return this; }
+  render(_force?: boolean): this {
+    return this;
+  }
   async close(): Promise<void> {}
-  async getData(): Promise<Record<string, unknown>> { return {}; }
+  async getData(): Promise<Record<string, unknown>> {
+    return {};
+  }
   _activateListeners(_html: HTMLElement): void {}
-  static get defaultOptions() { return { id: '', title: '', template: '', width: 400 }; }
+  static get defaultOptions() {
+    return { id: '', title: '', template: '', width: 400 };
+  }
 }
 
 function stubFoundryGlobals(settingsStore: Map<string, unknown>) {
@@ -55,9 +63,7 @@ function stubFoundryGlobals(settingsStore: Map<string, unknown>) {
   });
   vi.stubGlobal('game', {
     settings: {
-      get: vi.fn((moduleId: string, key: string) =>
-        settingsStore.get(`${moduleId}.${key}`),
-      ),
+      get: vi.fn((moduleId: string, key: string) => settingsStore.get(`${moduleId}.${key}`)),
       set: vi.fn((moduleId: string, key: string, value: unknown) => {
         settingsStore.set(`${moduleId}.${key}`, value);
       }),
@@ -141,10 +147,13 @@ describe('readBearerRegistry', () => {
     vi.setSystemTime(NOW);
 
     const futureExpiry = NOW + 86_400_000;
-    settingsStore.set('evenfoundryvtt.bearerRegistry', makeRegistry({
-      'token-1': makeEntry('token-1', 'G2 Alice', 'world-xyz', futureExpiry),
-      'token-2': makeEntry('token-2', 'G2 Bob', 'world-xyz', futureExpiry + 1000),
-    }));
+    settingsStore.set(
+      'evenfoundryvtt.bearerRegistry',
+      makeRegistry({
+        'token-1': makeEntry('token-1', 'G2 Alice', 'world-xyz', futureExpiry),
+        'token-2': makeEntry('token-2', 'G2 Bob', 'world-xyz', futureExpiry + 1000),
+      }),
+    );
 
     const { readBearerRegistry } = await import('../bearer-registry-reader.js');
     const result = readBearerRegistry();
@@ -164,10 +173,13 @@ describe('readBearerRegistry', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
-    settingsStore.set('evenfoundryvtt.bearerRegistry', makeRegistry({
-      'token-expired': makeEntry('token-expired', 'Old G2', 'world-xyz', NOW - 1),
-      'token-valid': makeEntry('token-valid', 'New G2', 'world-xyz', NOW + 86_400_000),
-    }));
+    settingsStore.set(
+      'evenfoundryvtt.bearerRegistry',
+      makeRegistry({
+        'token-expired': makeEntry('token-expired', 'Old G2', 'world-xyz', NOW - 1),
+        'token-valid': makeEntry('token-valid', 'New G2', 'world-xyz', NOW + 86_400_000),
+      }),
+    );
 
     const { readBearerRegistry } = await import('../bearer-registry-reader.js');
     const result = readBearerRegistry();
@@ -181,10 +193,19 @@ describe('readBearerRegistry', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
-    settingsStore.set('evenfoundryvtt.bearerRegistry', makeRegistry({
-      'token-revoked': makeEntry('token-revoked', 'Revoked G2', 'world-xyz', NOW + 86_400_000, NOW - 500),
-      'token-valid': makeEntry('token-valid', 'Valid G2', 'world-xyz', NOW + 86_400_000),
-    }));
+    settingsStore.set(
+      'evenfoundryvtt.bearerRegistry',
+      makeRegistry({
+        'token-revoked': makeEntry(
+          'token-revoked',
+          'Revoked G2',
+          'world-xyz',
+          NOW + 86_400_000,
+          NOW - 500,
+        ),
+        'token-valid': makeEntry('token-valid', 'Valid G2', 'world-xyz', NOW + 86_400_000),
+      }),
+    );
 
     const { readBearerRegistry } = await import('../bearer-registry-reader.js');
     const result = readBearerRegistry();
@@ -242,9 +263,7 @@ describe('registerBearerRegistryReader', () => {
     vi.stubGlobal('Hooks', makeFullHooksMock());
     vi.stubGlobal('game', {
       settings: {
-        get: vi.fn((moduleId: string, key: string) =>
-          settingsStore.get(`${moduleId}.${key}`),
-        ),
+        get: vi.fn((moduleId: string, key: string) => settingsStore.get(`${moduleId}.${key}`)),
         set: vi.fn(),
         register: vi.fn(),
         registerMenu: vi.fn(),
@@ -269,9 +288,12 @@ describe('registerBearerRegistryReader', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
-    settingsStore.set('evenfoundryvtt.bearerRegistry', makeRegistry({
-      'token-1': makeEntry('token-1', 'G2', 'world-xyz', NOW + 86_400_000),
-    }));
+    settingsStore.set(
+      'evenfoundryvtt.bearerRegistry',
+      makeRegistry({
+        'token-1': makeEntry('token-1', 'G2', 'world-xyz', NOW + 86_400_000),
+      }),
+    );
 
     const { registerBearerRegistryReader } = await import('../bearer-registry-reader.js');
     const emit = vi.fn();
@@ -291,9 +313,12 @@ describe('registerBearerRegistryReader', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
-    settingsStore.set('evenfoundryvtt.bearerRegistry', makeRegistry({
-      'token-1': makeEntry('token-1', 'G2', 'world-xyz', NOW + 86_400_000),
-    }));
+    settingsStore.set(
+      'evenfoundryvtt.bearerRegistry',
+      makeRegistry({
+        'token-1': makeEntry('token-1', 'G2', 'world-xyz', NOW + 86_400_000),
+      }),
+    );
 
     const { registerBearerRegistryReader } = await import('../bearer-registry-reader.js');
     const emit = vi.fn();
