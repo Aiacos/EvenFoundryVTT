@@ -58,23 +58,36 @@ class ApplicationV2Stub {
 
 type HandlerFn = (...args: unknown[]) => unknown;
 
+/**
+ * Socketlib mock matching the REAL registerModule/register API (260604-lg4).
+ * `registerModule` returns a module-scoped socket; the `callHandler` helper
+ * resolves and invokes a handler registered via `socket.register(name, fn)`.
+ */
 function makeSocketlibMock() {
   const handlers = new Map<string, HandlerFn>();
-  return {
-    registerComplexHandler: vi.fn((_moduleId: string, handlerId: string, handler: HandlerFn) => {
-      handlers.set(handlerId, handler);
+  const socket = {
+    register: vi.fn((name: string, fn: HandlerFn) => {
+      handlers.set(name, fn);
     }),
-    executeAsGM: vi.fn(async (_moduleId: string, handlerId: string, ...args: unknown[]) => {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    executeAsGM: vi.fn(async (name: string, ...args: unknown[]) => {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     }),
-    callHandler(handlerId: string, ...args: unknown[]): unknown {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    callHandler(name: string, ...args: unknown[]): unknown {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     },
     _handlers: handlers,
+  };
+  return {
+    registerModule: vi.fn(() => socket),
+    socket,
+    register: socket.register,
+    callHandler(name: string, ...args: unknown[]): unknown {
+      return socket.callHandler(name, ...args);
+    },
   };
 }
 

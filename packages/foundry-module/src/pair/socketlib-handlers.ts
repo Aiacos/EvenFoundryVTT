@@ -2,9 +2,16 @@
  * @evf/foundry-module — socketlib GM-side handler registrations.
  *
  * Registers the two original handlers (Plan 02) PLUS five new snapshot-read handlers
- * (Plan 05 — M-1 gap fix) that bridge REST routes call via socketlib.executeAsGM.
+ * (Plan 05 — M-1 gap fix) that bridge REST routes invoke via the socket's executeAsGM.
  * Also registers 7 write-path stub handlers (Plan 03-04 — ADR-0003 Tool Registry).
  * Phase 13 ACT-04 adds 3 reaction handlers (count = 17).
+ *
+ * Quick Task 260604-lg4: uses the REAL socketlib API —
+ * `socketlib.registerModule(MODULE_ID)` returns a module-scoped socket, then each
+ * handler is registered with `socket.register(name, fn)` (NO moduleId argument).
+ * The previously-used `registerComplexHandler` global method did not exist in the
+ * real library and threw at runtime. Registration happens on socketlib's
+ * `socketlib.ready` hook (see module.ts), NOT inside Foundry's `ready` hook.
  *
  * All handlers (17 total — Phase 13 INVARIANT FLIP: 14 → 17):
  * - `evf.validateToken`      — validates a bearer token (Plan 02)
@@ -26,7 +33,7 @@
  * - `evf.opportunityAttack`          — Plan 13-01 ACT-04 reaction (opportunityAttackHandler)
  *
  * The single-workflow-origin discipline (Phase 0 D-15 Option A) requires ALL reads
- * from Foundry game state via the bridge to go through `socketlib.executeAsGM`.
+ * from Foundry game state via the bridge to go through the socket's `executeAsGM`.
  *
  * T-03-14 [HIGH] boundary: the 7 Plan 03-04 stub handlers MUST NOT call any write API.
  * They return a literal `{ status: 'phase-07-pending' }` object only.
@@ -50,6 +57,31 @@ import { getSceneViewport } from '../readers/scene-reader.js';
 import type { ToolId, ToolResult } from '../write-path/tool-registry.js';
 import { dispatchTool } from '../write-path/tool-registry.js';
 import { revokeBearer, validateBearer } from './bearer-registry.js';
+
+// ─── Module-scoped socket holder (Quick Task 260604-lg4) ──────────────────────
+
+/**
+ * The module-scoped socketlib socket, resolved by `registerSocketlibHandlers()`
+ * via `socketlib.registerModule(MODULE_ID)`. Null until registration runs.
+ *
+ * @see getEvfSocket
+ */
+let evfSocket: SocketlibSocket | null = null;
+
+/**
+ * Returns the module-scoped socketlib socket, or null before registration.
+ *
+ * Exposed for correctness so any future module-side caller invokes a GM handler
+ * via the REAL API (`getEvfSocket()?.executeAsGM(name, ...args)`) rather than a
+ * fictional `socketlib.executeAsGM(moduleId, ...)` global. The module side does
+ * NOT call `executeAsGM` today (dispatchTool runs in GM context); the bridge
+ * package owns the real call sites.
+ *
+ * @returns The resolved {@link SocketlibSocket}, or null if registration has not run
+ */
+export function getEvfSocket(): SocketlibSocket | null {
+  return evfSocket;
+}
 
 // ─── Handler implementations ─────────────────────────────────────────────────
 
@@ -269,7 +301,7 @@ function makeDispatchAdapter(
 //
 // The 4 stubs from Plan 03-04 are REPLACED IN-PLACE here.
 // Registration call sites below remain identical — ONLY the handler function
-// bodies change. The total registerComplexHandler count stays 14.
+// bodies change. The total socket.register count stays 17 (Phase 13 invariant).
 //
 // ADR-0011 single-workflow-origin discipline: each handler calls dispatchTool
 // which routes to the appropriate ToolHandler registered in TOOL_REGISTRY
@@ -277,7 +309,7 @@ function makeDispatchAdapter(
 //
 // Pitfall 5 (no_gm_connected): dispatchTool catches errors and normalises
 // them — the adapter propagates the ToolResult as-is.
-// Pitfall 7 (handler count): no NEW registrations below — count stays 14.
+// Pitfall 7 (handler count): no NEW registrations below — count stays 17.
 
 /**
  * castSpell socketlib handler — Plan 07-02 replacement of Plan 03-04 stub.
@@ -378,7 +410,7 @@ const handleDropConcentration = makeDispatchAdapter('drop-concentration');
 //
 // Plan 13-01 ADDS three new handlers. These are NOT replacements — they are
 // genuinely new registrations that increase the total count from 14 to 17.
-// Phase 13 INVARIANT: registerComplexHandler count = 17.
+// Phase 13 INVARIANT: socket.register count = 17.
 //
 // ADR-0011 single-workflow-origin discipline; CI Gate 8: no activity.use() here.
 // T-13-04 mitigation: all three route through dispatchTool (bearer + audit log).
@@ -419,17 +451,21 @@ const handleOpportunityAttack = makeDispatchAdapter('opportunity-attack');
 /**
  * Registers all socketlib GM-side handlers.
  *
- * Must be called inside the `Hooks.once("ready")` callback — AFTER socketlib
- * has loaded and initialised its global. Calling before "ready" will throw
- * because `socketlib` is not yet available.
+ * Must be called inside the `Hooks.once('socketlib.ready', ...)` callback —
+ * `socketlib.ready` is the canonical registration point for socketlib handlers
+ * (verified: `farling42/foundryvtt-socketlib` README — a module obtains its
+ * socket via `socketlib.registerModule(moduleId)` and registers each handler on
+ * that socket; this is guaranteed safe once `socketlib.ready` has fired).
  *
- * The "ready" hook is the canonical registration point for socketlib handlers
- * (verified: `farling42/foundryvtt-socketlib` README — handlers must be registered
- * before any `executeAsGM` call, and socketlib is guaranteed available on "ready").
+ * Quick Task 260604-lg4: uses the REAL API. First resolves the module-scoped
+ * socket via `socketlib.registerModule(MODULE_ID)` (exactly once), then registers
+ * each of the 17 handlers via `socket.register(name, fn)` (NO moduleId argument).
+ * The old `registerComplexHandler` global method did not exist in the real
+ * library and threw at runtime.
  *
  * @example
  * ```ts
- * Hooks.once('ready', () => {
+ * Hooks.once('socketlib.ready', () => {
  *   registerSocketlibHandlers();
  * });
  * ```
@@ -438,41 +474,36 @@ const handleOpportunityAttack = makeDispatchAdapter('opportunity-attack');
  * @see packages/foundry-module/src/module.ts (registration call site)
  */
 export function registerSocketlibHandlers(): void {
+  // Resolve the module-scoped socket once (Quick Task 260604-lg4).
+  evfSocket = socketlib.registerModule(MODULE_ID);
+
   // Plan 02 handlers — bearer token validation + revocation
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.validateToken', handleValidateToken);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.revokeToken', handleRevokeToken);
+  evfSocket.register('evf.validateToken', handleValidateToken);
+  evfSocket.register('evf.revokeToken', handleRevokeToken);
 
   // Plan 05 handlers — snapshot reads (M-1 gap fix per 02-PLAN-CHECK.md)
-  socketlib.registerComplexHandler(
-    MODULE_ID,
-    'evf.getCharacterSnapshot',
-    handleGetCharacterSnapshot,
-  );
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.getCombatSnapshot', handleGetCombatSnapshot);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.getSceneViewport', handleGetSceneViewport);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.getEventLog', handleGetEventLog);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.listCharacters', handleListCharacters);
+  evfSocket.register('evf.getCharacterSnapshot', handleGetCharacterSnapshot);
+  evfSocket.register('evf.getCombatSnapshot', handleGetCombatSnapshot);
+  evfSocket.register('evf.getSceneViewport', handleGetSceneViewport);
+  evfSocket.register('evf.getEventLog', handleGetEventLog);
+  evfSocket.register('evf.listCharacters', handleListCharacters);
 
-  // Plan 07-02 + 07-03: 6 real handlers (replaced in-place — no new registrations, count stays 14)
+  // Plan 07-02 + 07-03: 6 real handlers (replaced in-place — no new registrations, count stays 17)
   // Each adapter validates input shape → calls dispatchTool → returns ToolResult.
   // ADR-0011 single-workflow-origin discipline; CI Gate 8: no activity.use() here.
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.castSpell', handleCastSpell);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.weaponAttack', handleWeaponAttack);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.useItem', handleUseItem);
-  // Plan 07-03: 'evf.skillCheck' stub slot renamed → 'evf.confirmTemplatePlacement' (count stays 14)
-  socketlib.registerComplexHandler(
-    MODULE_ID,
-    'evf.confirmTemplatePlacement',
-    handleConfirmTemplatePlacement,
-  );
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.moveToken', handleMoveToken);
+  evfSocket.register('evf.castSpell', handleCastSpell);
+  evfSocket.register('evf.weaponAttack', handleWeaponAttack);
+  evfSocket.register('evf.useItem', handleUseItem);
+  // Plan 07-03: 'evf.skillCheck' stub slot renamed → 'evf.confirmTemplatePlacement' (count stays 17)
+  evfSocket.register('evf.confirmTemplatePlacement', handleConfirmTemplatePlacement);
+  evfSocket.register('evf.moveToken', handleMoveToken);
   // Plan 07-03: placeTemplate stub replaced with real handler (placeTemplateHandler)
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.placeTemplate', handlePlaceTemplate);
-  // Plan 07-05: 'evf.setTargets' stub renamed → 'evf.dropConcentration' real handler (count was 14)
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.dropConcentration', handleDropConcentration);
+  evfSocket.register('evf.placeTemplate', handlePlaceTemplate);
+  // Plan 07-05: 'evf.setTargets' stub renamed → 'evf.dropConcentration' real handler
+  evfSocket.register('evf.dropConcentration', handleDropConcentration);
 
   // Phase 13 ACT-04: 3 new reaction handlers — count FLIPS to 17 (Plan 13-01 INVARIANT)
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.castShield', handleCastShield);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.castCounterspell', handleCastCounterspell);
-  socketlib.registerComplexHandler(MODULE_ID, 'evf.opportunityAttack', handleOpportunityAttack);
+  evfSocket.register('evf.castShield', handleCastShield);
+  evfSocket.register('evf.castCounterspell', handleCastCounterspell);
+  evfSocket.register('evf.opportunityAttack', handleOpportunityAttack);
 }
