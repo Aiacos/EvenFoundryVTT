@@ -10,9 +10,13 @@
  * - Export MODULE_ID constant
  * - Register `Hooks.once("init")` → `registerSettings()`
  *
- * Wave 1 scope (Plan 02):
- * - Register `Hooks.once("ready")` → `registerSocketlibHandlers()`
- *   socketlib is guaranteed available on "ready" (farling42/foundryvtt-socketlib README).
+ * Wave 1 scope (Plan 02; corrected in Quick Task 260604-lg4):
+ * - Register `Hooks.once("socketlib.ready")` → `registerSocketlibHandlers()`.
+ *   `socketlib.ready` is socketlib's canonical registration point (the module
+ *   obtains its socket via `socketlib.registerModule` and registers handlers on
+ *   it). Registration is DECOUPLED from Foundry's `ready` hook so that a
+ *   socketlib failure can never abort the `ready` body — the HTTP push readers
+ *   (`/internal/delta`) registered there must always run (defense in depth).
  *
  * Wave 3 scope (Plan 05):
  * - `Hooks.once("ready")` also calls `registerHookSubscribers(bridgeDeltaEmitter)`
@@ -248,12 +252,23 @@ Hooks.once('init', () => {
   registerEntityPackReader((type, payload) => bridgeDeltaEmitter(type, payload));
 });
 
-// Register socketlib GM-side handlers + hook subscribers on "ready".
-// socketlib is guaranteed available on "ready" (before "ready" it may not yet be initialised).
+// Register socketlib GM-side handlers on socketlib's canonical 'socketlib.ready' hook
+// (Quick Task 260604-lg4). The module obtains its socket via socketlib.registerModule
+// and registers handlers on it (real farling42/foundryvtt-socketlib API). This is
+// DECOUPLED from Foundry's 'ready' hook below so a socketlib failure can never abort
+// the push-reader registration that real /internal/delta pairing depends on.
 // All bridge→Foundry bearer registry writes go through socketlib handlers (D-2.12).
+Hooks.once('socketlib.ready', () => {
+  registerSocketlibHandlers();
+});
+
+// Register hook subscribers + HTTP push readers on Foundry's "ready" hook.
+// These are socketlib-INDEPENDENT: this hook body contains NO direct socketlib
+// call (Quick Task 260604-lg4 defense in depth), so even if socketlib is absent
+// or broken the push readers (bearer-registry + character-list) STILL register
+// and emit /internal/delta — the path real pairing depends on.
 // Hook subscribers (Plan 05) push deltas to bridge via bridgeDeltaEmitter (D-2.14).
 Hooks.once('ready', () => {
-  registerSocketlibHandlers();
   registerHookSubscribers(bridgeDeltaEmitter);
   // Plan 07-04 — wire multi-attack progress emitter via bridgeDeltaEmitter.
   // Called AFTER registerHookSubscribers (matching pattern from plan spec).

@@ -127,38 +127,72 @@ declare namespace foundry {
 }
 
 /**
+ * A module-scoped socket returned by `socketlib.registerModule(moduleId)`.
+ *
+ * This is the REAL `farling42/foundryvtt-socketlib` API shape. A module first
+ * obtains its socket via `socketlib.registerModule('evenfoundryvtt')`, then
+ * registers each handler on the socket with `socket.register(name, fn)` (no
+ * moduleId argument — the module scope is captured by `registerModule`). The
+ * bridge later invokes a handler on the GM client via
+ * `socket.executeAsGM(name, ...args)`.
+ *
+ * The previously-declared `socketlib.registerComplexHandler(moduleId, ...)`
+ * method DID NOT EXIST in the real library (it was invented here so TS compiled
+ * and mocked in tests so tests passed), and threw
+ * `TypeError: socketlib.registerComplexHandler is not a function` at runtime —
+ * aborting the Foundry "ready" hook (Quick Task 260604-lg4).
+ *
+ * @see https://github.com/farling42/foundryvtt-socketlib (registerModule + socket.register/executeAsGM)
+ */
+interface SocketlibSocket {
+  /**
+   * Registers a named handler on this module's socket.
+   *
+   * @param name - Handler identifier (e.g. "evf.validateToken")
+   * @param fn - Function executed on the GM client; may be sync or async
+   */
+  register(name: string, fn: (...args: unknown[]) => unknown | Promise<unknown>): void;
+
+  /**
+   * Executes a registered handler on the GM client and returns the result.
+   *
+   * The module side never calls this directly today (dispatchTool runs in GM
+   * context); the bridge package owns the real `executeAsGM` call sites. The
+   * method is declared for correctness so any future module-side caller uses
+   * the real API (name first, NO moduleId argument).
+   *
+   * @param name - Handler identifier
+   * @param args - Arguments forwarded to the handler
+   * @returns Promise resolving to the handler's return value
+   */
+  executeAsGM(name: string, ...args: unknown[]): Promise<unknown>;
+}
+
+/**
  * Socketlib global injected by the socketlib Foundry module.
  *
- * Available after Foundry's "ready" hook fires (socketlib loads before "ready").
- * NOT on npm — declared as `relationships.requires.socketlib` in module.json.
+ * Available after socketlib fires its `socketlib.ready` hook — the canonical
+ * registration point for module handlers (registration MUST happen on
+ * `Hooks.once('socketlib.ready', ...)`, NOT inside Foundry's `ready` hook).
+ * socketlib is NOT on npm — declared as `relationships.requires.socketlib`
+ * in module.json.
  *
  * @see https://github.com/farling42/foundryvtt-socketlib
- * @see 02-02-PLAN.md Task 2 (socketlib-handlers.ts)
+ * @see packages/foundry-module/src/pair/socketlib-handlers.ts (registerSocketlibHandlers)
  * @see packages/foundry-module/module.json (relationships.requires)
  */
 declare const socketlib: {
   /**
-   * Registers a complex (async, return-value) socket handler.
+   * Registers this module with socketlib and returns its scoped socket.
+   *
+   * Call once per module (idempotent — returns the same socket for the same id).
+   * All handlers are then registered on the returned socket via
+   * `socket.register(name, fn)`.
    *
    * @param moduleId - The module ID (e.g. "evenfoundryvtt")
-   * @param handlerId - Handler identifier (e.g. "evf.validateToken")
-   * @param handler - Async function executed on the GM client
+   * @returns The module-scoped {@link SocketlibSocket}
    */
-  registerComplexHandler(
-    moduleId: string,
-    handlerId: string,
-    handler: (...args: unknown[]) => unknown | Promise<unknown>,
-  ): void;
-
-  /**
-   * Executes a handler on the GM client and returns the result.
-   *
-   * @param moduleId - The module ID
-   * @param handlerId - Handler identifier
-   * @param args - Arguments forwarded to the handler
-   * @returns Promise resolving to the handler's return value
-   */
-  executeAsGM(moduleId: string, handlerId: string, ...args: unknown[]): Promise<unknown>;
+  registerModule(moduleId: string): SocketlibSocket;
 };
 
 /**
