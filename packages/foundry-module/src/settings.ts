@@ -11,13 +11,19 @@
  * Also registers the bearer registry setting (scope: "world", config: false —
  * programmatic access only, not shown in the Foundry UI settings form).
  *
- * Quick Task 260604-hs5: additionally registers two DM-visible (config: true,
- * restricted: true) world settings — `bridgeUrl` and `bridgeInternalSecret` —
- * that link this world to a specific bridge deployment. The DM enters the bridge
- * URL plus the bridge's actual `EVF_INTERNAL_SECRET` so that outbound
- * `/internal/delta` pushes authenticate against the bridge's single static secret
- * (a real Forge-hosted world otherwise generates random per-pair secrets that can
- * never match the bridge). The secret value is NEVER logged.
+ * Quick Task 260604-hs5: additionally registers two world settings —
+ * `bridgeUrl` and `bridgeInternalSecret` — that link this world to a specific
+ * bridge deployment. The DM enters the bridge URL plus the bridge's actual
+ * `EVF_INTERNAL_SECRET` so that outbound `/internal/delta` pushes authenticate
+ * against the bridge's single static secret (a real Forge-hosted world otherwise
+ * generates random per-pair secrets that can never match the bridge). The secret
+ * value is NEVER logged.
+ *
+ * Quick Task 260604-mjr: those two settings are now `config: false` (no longer
+ * loose fields in the generic "Configure Settings" panel) and are managed solely
+ * through the dedicated "EVF — Bridge Configuration" dialog (`BridgeConfigModal`),
+ * registered via a second `registerMenu`. The dialog reliably pre-loads, displays,
+ * validates and persists both values on an explicit Save.
  *
  * @see Specs.md §7.14.7.3 (pair flow — QR + bearer)
  * @see 02-CONTEXT.md D-2.01 (pair-button location: Settings panel)
@@ -26,6 +32,7 @@
  */
 
 import { MODULE_ID } from './module.js';
+import { BridgeConfigModal } from './pair/BridgeConfigModal.js';
 import { PairModal } from './pair/PairModal.js';
 
 /**
@@ -45,12 +52,13 @@ export let detectedLocale: string = 'en';
  * Registers the bearer registry and internal secrets as hidden world-scope
  * settings (Tier 3 DM-authoritative storage per D-2.12).
  *
- * Quick Task 260604-hs5: also registers two DM-visible world settings
- * (`bridgeUrl`, `bridgeInternalSecret`, both config: true + restricted: true)
+ * Quick Task 260604-hs5/260604-mjr: also registers two world settings
+ * (`bridgeUrl`, `bridgeInternalSecret`, both config: false + restricted: true)
  * that the DM fills with the bridge deployment URL and its matching
  * `EVF_INTERNAL_SECRET`. These take precedence in `getBridgeUrl()` /
- * `getInternalSecret()` over the per-pair bearer-registry values. The secret
- * value is never written to any log.
+ * `getInternalSecret()` over the per-pair bearer-registry values. They are managed
+ * via the dedicated "EVF — Bridge Configuration" dialog (registered as a second
+ * `registerMenu`), not the generic settings panel. The secret value is never logged.
  *
  * @example
  * ```ts
@@ -80,29 +88,32 @@ export function registerSettings(): void {
     default: { entries: {}, version: 1 },
   });
 
-  // Quick Task 260604-hs5: DM-visible bridge deployment URL. World scope,
-  // GM-restricted. When non-empty it takes precedence over the per-pair
-  // bearer-registry bridgeUrl in getBridgeUrl().
+  // Bridge deployment URL. World scope, GM-restricted. When non-empty it takes
+  // precedence over the per-pair bearer-registry bridgeUrl in getBridgeUrl().
+  // Quick Task 260604-mjr: now config: false — no longer a loose field in the
+  // generic "Configure Settings" panel; managed solely via the BridgeConfigModal
+  // dialog ("EVF — Bridge Configuration"), which reliably pre-loads + persists it.
   game.settings.register(MODULE_ID, 'bridgeUrl', {
     name: 'evf.settings.bridge_url.name',
     hint: 'evf.settings.bridge_url.hint',
     scope: 'world',
-    config: true,
+    config: false,
     restricted: true,
     type: String,
     default: '',
   });
 
-  // Quick Task 260604-hs5: DM-visible bridge internal secret — the bridge's
-  // EVF_INTERNAL_SECRET value used to authenticate this world's outbound
-  // /internal/delta pushes. World scope, GM-restricted. When non-empty it takes
-  // precedence over the per-pair bearer-registry internalSecret in
-  // getInternalSecret(). The value is NEVER logged.
+  // Bridge internal secret — the bridge's EVF_INTERNAL_SECRET value used to
+  // authenticate this world's outbound /internal/delta pushes. World scope,
+  // GM-restricted. When non-empty it takes precedence over the per-pair
+  // bearer-registry internalSecret in getInternalSecret(). The value is NEVER logged.
+  // Quick Task 260604-mjr: now config: false — managed solely via the
+  // BridgeConfigModal dialog (masked input + explicit Save), not the generic panel.
   game.settings.register(MODULE_ID, 'bridgeInternalSecret', {
     name: 'evf.settings.bridge_internal_secret.name',
     hint: 'evf.settings.bridge_internal_secret.hint',
     scope: 'world',
-    config: true,
+    config: false,
     restricted: true,
     type: String,
     default: '',
@@ -116,6 +127,21 @@ export function registerSettings(): void {
     label: 'evf.settings.pair_button',
     icon: 'fas fa-qrcode',
     type: PairModal as unknown as new (...args: unknown[]) => object,
+    restricted: true,
+  });
+
+  // Quick Task 260604-mjr: dedicated "EVF — Bridge Configuration" dialog. Opens the
+  // BridgeConfigModal, which pre-loads + displays the saved bridgeUrl + (masked)
+  // internalSecret and persists both on an explicit Save with success feedback. This
+  // replaces the easy-to-miss loose fields in the generic "Configure Settings" panel
+  // (both settings demoted to config: false above). registerMenu instantiates with
+  // `new type()` (no args); the same generic-constructor cast as pairDevice applies.
+  game.settings.registerMenu(MODULE_ID, 'bridgeConfig', {
+    name: 'evf.settings.bridge_config_button',
+    label: 'evf.settings.bridge_config_button',
+    hint: 'evf.settings.bridge_config_hint',
+    icon: 'fas fa-sliders-h',
+    type: BridgeConfigModal as unknown as new (...args: unknown[]) => object,
     restricted: true,
   });
 }

@@ -28,6 +28,8 @@ interface FoundrySettings {
     data: {
       name: string;
       label: string;
+      /** Optional tooltip/help text shown beside the menu button (i18n key). */
+      hint?: string;
       icon: string;
       // Foundry accepts any constructor — args vary by runtime context
       type: new (
@@ -1135,6 +1137,29 @@ declare const game: {
  * May be null/undefined before the canvas is initialised.
  */
 declare const canvas: FoundryCanvas | null | undefined;
+
+/**
+ * Foundry UI singleton — global access to interface managers.
+ *
+ * Added Quick Task 260604-mjr for the BridgeConfigModal Save/error feedback.
+ * Only the `notifications` manager is declared (the minimal surface used:
+ * transient toast notifications). `info`/`error`/`warn` post a toast; they are
+ * declared optional-chainable on `ui.notifications` because Foundry may not have
+ * initialised the notifications manager in very early lifecycle phases.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.interaction.Notifications.html
+ * @see packages/foundry-module/src/pair/BridgeConfigModal.ts
+ */
+declare const ui: {
+  notifications?: {
+    /** Post an informational (success) toast. */
+    info(message: string): void;
+    /** Post a warning toast. */
+    warn(message: string): void;
+    /** Post an error toast. */
+    error(message: string): void;
+  };
+};
 
 /**
  * Foundry Hooks registry — global event bus for module lifecycle events.
