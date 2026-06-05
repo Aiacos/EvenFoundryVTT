@@ -44,6 +44,7 @@
  *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 tap → Action Options modal injection (ADR-0012)
  *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
+ *  12a. paint header (id4) + footer (id5) frame chrome — never leaves SDK 'Text' default
  *  13. await mapBase.draw() — first frame
  *  14. return { layerManager, rasterController, localeEvents, teardown }
  *
@@ -58,6 +59,7 @@ import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { DebugMirror } from '../engine/debug-mirror.js';
+import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
@@ -1177,6 +1179,35 @@ export async function _bootEngineCore(
     { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
     { type: 'mount', z: ZIndex.Z1_5_TOAST, layer: toastQueue },
   ]);
+
+  // 12a. Paint persistent frame chrome — header (id4) + footer (id5).
+  //
+  //      WHY AFTER the bundle flush: `lm.bundle([...])` above triggers a single
+  //      `rebuildPageContainer` flush (_flushPage) that re-emits the canonical page
+  //      schema from the registry. Any `textContainerUpgrade` written BEFORE the flush
+  //      would be overwritten (the host resets container content on rebuild). Writing
+  //      chrome AFTER the flush guarantees id4/id5 carry final content and are never
+  //      reset back to the SDK "Text" default by a later rebuild.
+  //
+  //      StatusHudLayer / IdleInfillLayer self-redraw via their own `draw()` /
+  //      subscription path post-bundle; the header and footer have NO owning layer, so
+  //      this explicit post-flush write is their sole draw call.
+  //
+  //      Rejection-guarded per T-etr-03: a chrome write failure MUST NOT abort an
+  //      already-booted engine. Each writer is awaited inside its own try/catch so
+  //      a rejection is logged and execution continues to step 13. This mirrors the
+  //      step-12b audio-capture try/catch pattern.
+  const chromeMode = effectiveVerdict === 'glyph' ? 'glyph' : 'raster';
+  try {
+    await writeHeaderChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
+  } catch (err) {
+    console.warn('[boot-engine-core] header chrome write failed:', err);
+  }
+  try {
+    await writeFooterChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
+  } catch (err) {
+    console.warn('[boot-engine-core] footer chrome write failed:', err);
+  }
 
   // 12b. Phase 12 Plan 12-03 — voice audio capture (zero-cost when voice cap absent).
   //
