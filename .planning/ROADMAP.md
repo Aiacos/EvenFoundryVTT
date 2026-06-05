@@ -80,7 +80,11 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   3. `pnpm test` passa con tutte le 2668+ test esistenti byte-identiche (zero regressioni sulla glyph path); i test di `CanvasCompositor` verificano: composite z-order, dirty/clean layer skip, `deactivate()`, `_compositeAndPush()` chiamato dopo `_flushPage` in modalità canvas
   4. `buildHudRasterPageSchema()` produce uno schema con `containerTotalNum: 5`, 4 image container (`hud-tile-0..3`) e 1 text container (`hud-capture`, `isEventCapture: 1`) — verificato in test unitari; `LayerManager` in canvas mode passa la budget-assertion senza `capture_invariant_violated`
   5. `LayerManager.renderMode` può essere impostato a `'canvas'` o `'glyph'`; in modalità `'glyph'` il comportamento di `_flushPage()` è identico a oggi (3 container text, glyph path byte-identica — verificabile via test)
-**Plans**: TBD
+**Plans**: 4 plans (3 waves)
+- [ ] 19-01-PLAN.md — ADR-0013 Amendment 1 (canvas compositor contract, RAST-05)
+- [ ] 19-02-PLAN.md — HUD_TILE_GEOMETRY 288×144 → 200×100 / 400×200 migration (RINV-02)
+- [ ] 19-03-PLAN.md — CanvasCompositor + CanvasLayer + buildHudRasterPageSchema (RAST-01, RAST-02)
+- [ ] 19-04-PLAN.md — LayerManager renderMode + _flushPage selector + _compositeAndPush + canvas budget (RAST-03, RAST-04, RAST-01)
 **UI hint**: no
 
 ### Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline
