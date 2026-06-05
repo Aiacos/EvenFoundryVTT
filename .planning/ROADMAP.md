@@ -70,7 +70,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 
 ## Phase Details
 
-### Phase 19: ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
+### Phase 19: ADR-0013 Amendment 1 + Canvas Compositor Core
 **Goal**: Il contratto architetturale del compositor è scritto e ratificato, la geometria hardware dei tile è verificata contro la doc canonica, e il substrato `CanvasCompositor` + interfaccia `CanvasLayer` + schema-pagina 5-container sono implementati — senza alcun cambiamento visibile alla UI (la glyph path è byte-identica).
 **Depends on**: Nothing (prima deliverable del milestone)
 **Requirements**: RAST-01, RAST-02, RAST-03, RAST-04, RAST-05, RINV-02
