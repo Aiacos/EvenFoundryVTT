@@ -179,10 +179,18 @@ export async function createHudPocPage(bridge: EvenAppBridge): Promise<void> {
 /**
  * Push 4 dithered PNG tiles to the G2 framebuffer via `updateImageRawData`.
  *
+ * This is the **production serialized-push path** called from
+ * `LayerManager._compositeAndPush()` in canvas mode (ADR-0013 Amendment 1,
+ * RAST-01). It is also used directly by the PoC boot path (`?hud=raster`).
+ *
  * For each tile, builds an `ImageRawDataUpdate` carrying:
  * - `containerID` — numeric id (required by the host, qm0 requirement)
  * - `containerName` — string name
  * - `imageData` — 4-bit indexed-palette PNG bytes from `buildHudTiles`
+ *
+ * **Serialization contract (CM-01):** uses `for...of` + `await` per tile — the
+ * Even Hub SDK does NOT accept concurrent `updateImageRawData` calls on the same
+ * container. Do NOT replace this loop with `Promise.all`.
  *
  * On `!ImageRawDataUpdateResult.isSuccess(result)`: logs a `console.warn` and
  * continues to the next tile (fail-soft best-effort, never throws). Mirrors
@@ -191,7 +199,9 @@ export async function createHudPocPage(bridge: EvenAppBridge): Promise<void> {
  * @param bridge The resolved `EvenAppBridge` singleton.
  * @param tiles  4 `HudTile` objects from `buildHudTiles`.
  *
+ * @see packages/g2-app/src/engine/layer-manager.ts#_compositeAndPush (production caller)
  * @see packages/g2-app/src/raster/raster-controller.ts#_dispatchChangedTiles (pattern source)
+ * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-01)
  * @see .planning/debug/glasses-render-blank-containerid.md (qm0 numeric-id requirement)
  */
 export async function pushHudTiles(

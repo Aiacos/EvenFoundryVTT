@@ -36,7 +36,14 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
-import { BOOT_CONTAINER_TOTAL, buildStatusViewTextContainers } from './container-registry.js';
+import { pushHudTiles } from '../hud/hud-poc-page.js';
+import { buildHudTiles } from '../hud/hud-raster-frame.js';
+import type { CanvasCompositorLike } from './canvas-compositor.js';
+import {
+  BOOT_CONTAINER_TOTAL,
+  buildHudRasterPageSchema,
+  buildStatusViewTextContainers,
+} from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
 import {
   type Layer,
@@ -73,6 +80,34 @@ export class LayerManager {
   private mapMode: MapMode = 'auto';
 
   /**
+   * HUD render mode — selects the `_flushPage()` schema and whether
+   * `_compositeAndPush()` is invoked after the page rebuild.
+   *
+   * - `'glyph'` (default): status-view schema (3 text containers); no compositor.
+   *   Byte-identical to the pre-Phase-19 behavior — all existing tests pass unchanged.
+   * - `'canvas'`: HUD raster schema (4 image tiles + 1 text capture = 5 containers);
+   *   followed by `_compositeAndPush()` which composites layers and pushes 4 PNG tiles.
+   *
+   * The default is `'glyph'` so that existing production callers (boot-engine-core.ts,
+   * all tests constructed without a compositor) are unaffected. Phase 20 will flip
+   * this to `'canvas'` when real `CanvasLayer` implementations land.
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
+   */
+  private renderMode: 'canvas' | 'glyph' = 'glyph';
+
+  /**
+   * Optional canvas compositor injected at construction.
+   *
+   * Null in glyph mode or when constructed without the 3rd parameter (the default
+   * for all existing call sites). `_compositeAndPush()` returns early when null
+   * (Pitfall 2 null-guard, 19-RESEARCH). Phase 20 passes the real `CanvasCompositor`.
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-01)
+   */
+  private readonly compositor: CanvasCompositorLike | null;
+
+  /**
    * Idle infill layer stashed while a z=2 overlay is mounted.
    *
    * ADR-0009 Amendment 1 differential demolish rule: when `bundle()` mounts
@@ -95,11 +130,21 @@ export class LayerManager {
    *                    Default `undefined` ⇒ byte-identical behavior to before:
    *                    the mirror is a fully-injected, zero-overhead no-op when
    *                    absent. Constructed enabled ONLY under `?debug=true`.
+   * @param compositor  Optional canvas compositor (Phase 19 Plan 04, ADR-0013 Amendment 1).
+   *                    Default `undefined` ⇒ `this.compositor = null`; the glyph path
+   *                    remains byte-identical. Pass a `CanvasCompositorLike` to enable
+   *                    canvas mode (Phase 20+). All existing 2-arg call sites (boot-engine-core.ts,
+   *                    tests) continue to compile unchanged — the parameter is optional.
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (Open Question #3)
    */
   constructor(
     private readonly bridge: EvenAppBridge,
     private readonly debugMirror?: DebugMirror,
-  ) {}
+    compositor?: CanvasCompositorLike,
+  ) {
+    this.compositor = compositor ?? null;
+  }
 
   /**
    * Replace the negotiated capability set.
@@ -313,6 +358,32 @@ export class LayerManager {
   }
 
   /**
+   * Set the HUD render mode for `_flushPage()` schema selection.
+   *
+   * - `'glyph'` (default): status-view schema (3 text containers; no compositor).
+   *   Byte-identical to the pre-Phase-19 behavior.
+   * - `'canvas'`: HUD raster schema (5 containers) followed by `_compositeAndPush()`.
+   *
+   * No bridge I/O on mode change itself — the mode takes effect on the next `bundle()`.
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
+   */
+  setRenderMode(mode: 'canvas' | 'glyph'): void {
+    this.renderMode = mode;
+  }
+
+  /**
+   * Read the current HUD render mode.
+   *
+   * Defaults to `'glyph'` until `setRenderMode('canvas')` is called (Phase 20).
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
+   */
+  getRenderMode(): 'canvas' | 'glyph' {
+    return this.renderMode;
+  }
+
+  /**
    * Count layers that currently report a capture container.
    *
    * Exposed for tests and diagnostics; consumers should rely on the manager
@@ -347,6 +418,18 @@ export class LayerManager {
    * Throw `LayerManagerError('panel_mount_budget_exceeded')` when the cumulative
    * mounted-layer container footprint would exceed the SDK 4-image / 8-text cap.
    *
+   * **Canvas mode (ADR-0013 Amendment 1, locked decision #3):** the budget is FIXED
+   * at page creation (5 containers: 4 image tiles + 1 text capture). The per-layer
+   * sum is meaningless in canvas mode — `MapBaseLayer.getContainerCount()` returns
+   * `{image:4, text:1}` in raster mode, which would false-fire against the sum cap
+   * (Pitfall 1, 19-RESEARCH). Instead, validate that EVERY layer declares
+   * `{image:0, text:0}`: any non-zero count signals a mis-classified glyph layer
+   * incorrectly mounted in canvas mode. Returns early without falling through to
+   * the glyph per-layer sum.
+   *
+   * **Glyph mode:** existing per-layer sum behavior is byte-identical (unchanged).
+   * `img > 4 || txt > 8` → throws `panel_mount_budget_exceeded`.
+   *
    * Strategy A (ADR-0009 Amendment 1): each layer self-declares its footprint
    * via `getContainerCount()`. Missing method ⇒ default `{ image: 0, text: 1 }`
    * (one text/list slot, no image slots) — matches the most common no-capture
@@ -358,9 +441,33 @@ export class LayerManager {
    * INV-2 re-verified 2026-05-15.
    *
    * Runs AFTER `_assertCaptureInvariant` so callers see the more diagnostic
-   * capture-violation message first (LMT-CB-03 pins this ordering).
+   * capture-violation message first (LMT-CB-03 pins this ordering — DO NOT reorder).
+   *
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-03, locked decision #3)
    */
   private _assertContainerBudget(): void {
+    if (this.renderMode === 'canvas') {
+      // Canvas mode: fixed 5-container budget declared at page creation (buildHudRasterPageSchema).
+      // CanvasLayer.getContainerCount() MUST return {image:0, text:0} — canvas layers do not
+      // allocate individual SDK containers. A non-zero count signals a mis-classified glyph
+      // layer incorrectly mounted in canvas mode → throw to surface the mis-configuration.
+      // Do NOT fall through to the per-layer sum: it is semantically meaningless in canvas mode
+      // and would false-fire on any layer that reports image containers (e.g., MapBaseLayer).
+      for (const layer of this.layers.values()) {
+        const cnt = layer.getContainerCount?.() ?? { image: 0, text: 1 };
+        if (cnt.image > 0 || cnt.text > 0) {
+          throw new LayerManagerError(
+            'panel_mount_budget_exceeded',
+            `canvas mode: layer '${layer.id}' declared non-zero container count ` +
+              `${JSON.stringify(cnt)}; canvas layers must return {image:0, text:0} ` +
+              `(ADR-0013 Amendment 1, locked decision #3)`,
+          );
+        }
+      }
+      return; // Fixed budget always passes when all layers declare {image:0, text:0}.
+    }
+
+    // Glyph mode: per-layer sum (byte-identical to pre-Phase-19 behavior).
     let img = 0;
     let txt = 0;
     for (const layer of this.layers.values()) {
@@ -436,43 +543,79 @@ export class LayerManager {
    * so the layer renderers then upgraded containers that no longer existed and
    * the glasses stayed blank.
    *
-   * **Default status-view schema (Quick Task 260605-j0t-05):** the flush now
-   * rebuilds the DEFAULT STATUS-VIEW schema (3 text containers: header id4,
-   * footer id5, status-hud id6; 0 image containers; containerTotalNum:3) —
-   * identical to `buildBootPageSchema()` in `page-lifecycle.ts`. This avoids
-   * the "Text" ghosting/overlap artifact that occurred when the flush declared
-   * the FULL 11-container registry including map-capture (id7, identical full
-   * rect as status-hud) and z05-* (ids 8-10), which the G2 host rendered as
-   * "Text" placeholders overlapping the status sheet.
+   * **Mode-aware schema selector (Phase 19 Plan 04, implementing j0t-05 TODO):**
+   * This method now selects the page schema based on `renderMode`:
+   *
+   * - `'glyph'` (default): DEFAULT STATUS-VIEW schema (3 text containers: header id4,
+   *   footer id5, status-hud id6; 0 image containers; containerTotalNum:3) —
+   *   identical to `buildBootPageSchema()` in `page-lifecycle.ts`. Byte-identical
+   *   to the pre-Phase-19 behavior. Avoids the "Text" ghosting/overlap artifact
+   *   that occurred with the full 11-container schema.
+   *
+   * - `'canvas'`: HUD RASTER schema (4 image tiles hud-tile-0..3 at 200×100 each +
+   *   1 text capture container hud-capture; containerTotalNum:5) from
+   *   `buildHudRasterPageSchema()`. Followed immediately by `_compositeAndPush()`
+   *   which composites all registered `CanvasLayer`s and pushes 4 serialized
+   *   `updateImageRawData` calls.
    *
    * map-capture and z05-* remain in the registry for the deferred map-mode
-   * page (Phase 20 / Specs §7.4). They MUST NOT be declared in the default
-   * status-view flush.
+   * page (Phase 20 / Specs §7.4). They MUST NOT be declared in either schema.
    *
    * The single-call contract (exactly one `rebuildPageContainer` per bundle) is
    * preserved and load-bearing for ADR-0001 Amendment 1 (no intermediate frame
    * between z=0.5 demolition and z=2 mount).
    *
-   * TODO(j0t-05): when map mode is gesture-opened (Phase 20), this flush will
-   * need a different schema depending on which mode is active. At that point
-   * extract a `_buildCurrentPageSchema()` helper that selects between the
-   * status-view schema (3 containers) and the map-mode schema (11 containers).
-   * (#issue)
-   *
-   * @see ./container-registry.ts (buildStatusViewTextContainers, BOOT_CONTAINER_TOTAL)
+   * @see ./container-registry.ts (buildStatusViewTextContainers, BOOT_CONTAINER_TOTAL,
+   *   buildHudRasterPageSchema, HUD_RASTER_CONTAINER_TOTAL)
    * @see ./page-lifecycle.ts#buildBootPageSchema (parallel default-view schema)
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
    * @see .planning/debug/glasses-render-blank-containerid.md
    */
   private async _flushPage(): Promise<void> {
-    const payload = new RebuildPageContainer({
-      // Default status-view schema: header(id4) + footer(id5) + status-hud(id6).
-      // map-capture (id7), z05-* (ids 8-10), and image map-tiles are EXCLUDED —
-      // they are deferred to the gesture-opened map-mode page (Phase 20).
-      // Matches buildBootPageSchema() in page-lifecycle.ts exactly.
-      containerTotalNum: BOOT_CONTAINER_TOTAL,
-      textObject: buildStatusViewTextContainers(),
-      imageObject: [],
-    });
+    const schema =
+      this.renderMode === 'canvas'
+        ? buildHudRasterPageSchema() // 4 image tiles + 1 capture text = 5 containers (canvas mode)
+        : {
+            // Glyph mode: default status-view schema — byte-identical to pre-Phase-19 behavior.
+            // header(id4) + footer(id5) + status-hud(id6); map-capture + z05-* EXCLUDED.
+            containerTotalNum: BOOT_CONTAINER_TOTAL,
+            textObject: buildStatusViewTextContainers(),
+            imageObject: [] as never[],
+          };
+    const payload = new RebuildPageContainer(schema);
     await this.bridge.rebuildPageContainer(payload);
+    if (this.renderMode === 'canvas') {
+      await this._compositeAndPush();
+    }
+  }
+
+  /**
+   * Composite all registered `CanvasLayer`s and push 4 serialized tile updates
+   * to the G2 framebuffer via `bridge.updateImageRawData`.
+   *
+   * # Serialization contract (CM-01)
+   *
+   * `updateImageRawData` does NOT accept concurrent sends — the Even Hub SDK
+   * rejects concurrent calls on the same image container. This method uses the
+   * existing `pushHudTiles` serialized loop (`for...of` + `await` per tile)
+   * which guarantees sequential delivery. Do NOT use `Promise.all` here.
+   *
+   * # Null-compositor guard (Pitfall 2, 19-RESEARCH)
+   *
+   * If `this.compositor` is null (default for 2-arg construction, glyph-only mode),
+   * this method returns immediately without throwing. This ensures that calling
+   * `setRenderMode('canvas')` without providing a compositor at construction time
+   * does not crash — it simply produces no tile updates (useful for schema-select
+   * tests that only assert `rebuildPageContainer`).
+   *
+   * @see packages/g2-app/src/hud/hud-poc-page.ts#pushHudTiles (serialized push)
+   * @see packages/g2-app/src/hud/hud-raster-frame.ts#buildHudTiles (RGBA → 4 tiles)
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-01)
+   */
+  private async _compositeAndPush(): Promise<void> {
+    if (this.compositor === null) return; // Pitfall 2 null-guard
+    const rgba = this.compositor.composite(); // 400×200×4 RGBA → 320000 bytes
+    const tiles = buildHudTiles(rgba); // 4 × HudTile (200×100 dithered 4-bit PNG)
+    await pushHudTiles(this.bridge, tiles); // serialized: for...of + await per tile (CM-01)
   }
 }

@@ -10,12 +10,21 @@
  *   - bundle() applies ops in order; intermediate invariant-violation is tolerated
  *   - setMapMode / getMapMode round-trip without bridge I/O
  *
+ * Phase 19 Plan 04 additions:
+ *   - setRenderMode / getRenderMode round-trip (default 'glyph')
+ *   - canvas mode _flushPage: containerTotalNum:5 + _compositeAndPush invoked
+ *   - CM-01: updateImageRawData called 4 times sequentially in canvas mode
+ *   - null-compositor canvas mode: _compositeAndPush returns without throwing
+ *   - _assertContainerBudget canvas-mode fixed-budget branch
+ *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §layer-manager.test.ts
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-02-PLAN.md Task 1
+ * @see .planning/phases/EVF-19-adr-0013-amendment-1-canvas-compositor-core/19-04-PLAN.md
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CanvasCompositorLike } from '../canvas-compositor.js';
 import type { DebugMirror } from '../debug-mirror.js';
 import { LayerManager } from '../layer-manager.js';
 import {
@@ -975,5 +984,334 @@ describe('LayerManager — debug mirror DI (backward-compat + injected)', () => 
     const ops = record.mock.calls.map((c) => (c[0] as { op: string }).op);
     expect(ops).toContain('mount');
     expect(ops).toContain('destroy');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 19 Plan 04 — renderMode + canvas-mode _flushPage + _compositeAndPush
+// (RAST-04, RAST-01)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal CanvasCompositorLike stub for testing _compositeAndPush.
+ *
+ * Returns a blank 400×200×4 RGBA buffer (320000 bytes, all zeros).
+ */
+function makeFakeCompositor(): CanvasCompositorLike & {
+  composite: ReturnType<typeof vi.fn>;
+} {
+  const blankRgba = new Uint8ClampedArray(400 * 200 * 4); // 320000 zeros
+  return {
+    composite: vi.fn().mockReturnValue(blankRgba),
+    registerLayer: vi.fn(),
+    deregisterLayer: vi.fn(),
+    markDirty: vi.fn(),
+  };
+}
+
+describe('LayerManager — renderMode (Phase 19 Plan 04, RAST-04)', () => {
+  it('LMT-RM-01: getRenderMode() defaults to glyph', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    expect(lm.getRenderMode()).toBe('glyph');
+  });
+
+  it('LMT-RM-02: setRenderMode/getRenderMode round-trip without bridge I/O', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+
+    lm.setRenderMode('canvas');
+    expect(lm.getRenderMode()).toBe('canvas');
+    lm.setRenderMode('glyph');
+    expect(lm.getRenderMode()).toBe('glyph');
+
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
+  it('LMT-RM-03: 2-arg constructor (no compositor) still compiles and defaults to glyph', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    expect(lm.getRenderMode()).toBe('glyph');
+    // bridge should not be touched by construction
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+  });
+});
+
+describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
+  it('LMT-CF-01: canvas mode _flushPage calls rebuildPageContainer with containerTotalNum:5', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    // Mount a capture-providing layer to satisfy capture invariant.
+    // In canvas mode, the capture layer must declare {image:0, text:0} per ADR-0013.
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(5);
+  });
+
+  it('LMT-CF-02: canvas mode _flushPage schema has 4 image containers + 1 text capture', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.imageObject?.length).toBe(4);
+    expect(arg?.textObject?.length).toBe(1);
+    // The text container must have isEventCapture:1
+    const captureContainers = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captureContainers).toHaveLength(1);
+  });
+
+  it('LMT-CF-03: canvas mode _flushPage calls _compositeAndPush (compositor.composite invoked)', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // compositor.composite() must have been called once
+    expect(compositor.composite).toHaveBeenCalledTimes(1);
+  });
+
+  it('LMT-CF-04: glyph mode _flushPage is byte-identical to before (containerTotalNum:3, no compositor call) — j0t-05 preserved', async () => {
+    // This is the same as existing Test 8b, re-asserted here for glyph coexistence
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    // glyph mode is the default; do NOT call setRenderMode
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(3);
+    expect(arg?.imageObject?.length).toBe(0);
+    expect(arg?.textObject?.length).toBe(3);
+    // NO isEventCapture:1 in glyph status-view schema
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(0);
+    // compositor.composite must NOT have been called in glyph mode
+    expect(compositor.composite).not.toHaveBeenCalled();
+  });
+});
+
+describe('LayerManager — CM-01 serialized updateImageRawData (RAST-01)', () => {
+  it('CM-01: canvas mode _compositeAndPush calls bridge.updateImageRawData exactly 4 times sequentially', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    // Track call order to verify sequential execution
+    const callOrder: string[] = [];
+    bridge.updateImageRawData.mockImplementation(async (payload: { containerName?: string }) => {
+      callOrder.push(`update:${payload.containerName ?? 'unknown'}`);
+      return 'success';
+    });
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // Must be called exactly 4 times (4 HUD tiles)
+    expect(bridge.updateImageRawData).toHaveBeenCalledTimes(4);
+    // All calls recorded in sequence (not concurrent - Promise.all would interleave differently)
+    expect(callOrder).toHaveLength(4);
+    expect(callOrder[0]).toMatch(/^update:/);
+    expect(callOrder[1]).toMatch(/^update:/);
+    expect(callOrder[2]).toMatch(/^update:/);
+    expect(callOrder[3]).toMatch(/^update:/);
+  });
+});
+
+describe('LayerManager — null-compositor guard (Pitfall 2)', () => {
+  it('LMT-NC-01: canvas mode with null compositor (no 3rd arg) does not throw when _compositeAndPush runs', async () => {
+    // Construct without compositor (2-arg call) then set canvas mode
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    // Must not throw even though compositor is null
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]),
+    ).resolves.not.toThrow();
+
+    // rebuildPageContainer still called once (schema built even without compositor)
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    // updateImageRawData NOT called (compositor null → _compositeAndPush returns early)
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 19 Plan 04 — _assertContainerBudget canvas-mode fixed-budget branch
+// (RAST-03)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('LayerManager — _assertContainerBudget canvas-mode (RAST-03)', () => {
+  it('LMT-CB-CV-01: canvas mode — layer with {image:0,text:0} does NOT throw', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const canvasLayer: Layer = {
+      id: 'canvas-layer',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    // Must not throw — {image:0,text:0} is the correct canvas-layer declaration
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: canvasLayer }]),
+    ).resolves.not.toThrow();
+  });
+
+  it('LMT-CB-CV-02: canvas mode — layer with {image:1,text:0} throws panel_mount_budget_exceeded', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const misclassifiedLayer: Layer = {
+      id: 'misclassified',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 1, text: 0 }), // non-zero = mis-classified glyph layer
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: misclassifiedLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-03: canvas mode — layer with {image:0,text:1} throws panel_mount_budget_exceeded', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const misclassifiedLayer: Layer = {
+      id: 'misclassified-text',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 1 }), // non-zero = mis-classified
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: misclassifiedLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-04: glyph mode budget behavior unchanged (existing LMT-CB-01 pattern)', async () => {
+    // Verify the glyph mode per-layer sum behavior is byte-identical
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    // glyph is default — no setRenderMode call needed
+
+    // A map layer with {image:4, text:1} is OK in glyph mode
+    const mapLayer = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]),
+    ).resolves.not.toThrow();
+
+    // Now add a layer that overflows the text budget
+    const overflowLayer = makeCountedLayer('overflow', { image: 0, text: 8 }); // 1+8 = 9 > 8 cap
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: overflowLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-05: canvas-mode capture-ordering preserved — capture violation throws first (LMT-CB-03 canvas analog)', async () => {
+    // Even in canvas mode, _assertCaptureInvariant runs BEFORE _assertContainerBudget
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    // Mount a valid capture layer first
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+    bridge.rebuildPageContainer.mockClear();
+
+    // Now mount a SECOND capture layer — capture violation must throw before budget check
+    const dupCapture: Layer = {
+      id: 'dup-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture-dup',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: dupCapture }]),
+    ).rejects.toMatchObject({ code: 'capture_invariant_violated' });
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
   });
 });
