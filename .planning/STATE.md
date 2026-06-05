@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.14
-milestone_name: Release & Distribution + deferred hardening
-status: completed
-stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
-last_updated: "2026-05-30T23:24:05.487Z"
-last_activity: 2026-05-30 -- Phase 19 marked complete
+milestone: v0.10.0
+milestone_name: Raster UI Substrate
+status: planning
+last_updated: "2026-06-05T14:28:37.279Z"
+last_activity: 2026-06-05
 progress:
-  total_phases: 4
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 19 — COMPLETE
-Plan: 1 of 2
-Status: Phase 19 complete
-Last activity: 2026-06-05 -- 260605-ksd: image-HUD PoC SUCCESS (branch feat/hud-raster-rendering). `?hud=raster` flag → canvas 576×288 (14px compact font, graphical HP bar) → 4-bit dither (image-q) → 4 tiles 288×144 → updateImageRawData → glasses framebuffer. LIVE-SIM VERIFIED: Artemis sheet rendered as an image, dense + readable, only top half used (density now our choice). 5 commits (src/hud/*: hud-canvas-renderer, hud-raster-frame, hud-poc-page, boot-hud-raster-poc + launch ?hud=raster wiring), 1459 g2-app tests, isolated (normal text boot byte-identical when flag absent). Frame: release-artifacts/evf-hud-poc-artemis.png + /tmp/glasses-hud-poc.png. EMAIL ATTEMPT FAILED: Gmail MCP create_draft can't reliably attach binaries (flagged "attachments not supported" + manual base64 transcription truncated) → 2 stray text-only drafts left in user's Gmail ("[EVF] PoC HUD a immagini ..."), can be deleted. Next image-HUD steps (ADR-0013 §Scope): live character.delta re-render + ~5fps delta loop + final font/density choice. --- (earlier) Completed 260605-j0t: HUD text-layout redesign for the real 27px grid (full-width 8-row status sheet as default view; map deferred), live-sim clean. THEN user PIVOTED: render the HUD entirely as IMAGES/raster (OffscreenCanvas → 4-bit dither → 4 image tiles = full 576×288) for full font/layout control, 5fps ok. Per user request, the image-HUD work moves to a NEW clean branch `feat/hud-raster-rendering` (off feat/real-foundry-pairing) with fresh planning (ADR-0013) — NOT tangled with the old quick-task pile. "Generate with Python?" → NO: runtime renders in the phone WebView (JS/OffscreenCanvas) or optionally the Node bridge (sharp); raster pipeline (image-q/upng/xxhash) is already JS; Python would fragment the TS stack. The j0t text renderer's CONTENT logic is reusable for the canvas draw. --- (earlier) Added `pnpm sim` one-command simulator harness (260605-hd5): `pnpm sim start [--actor <id>]` boots bridge(no-auth)+seed+vite+sim and prints a cheatsheet; `pnpm sim shot` screenshots; `pnpm sim stop` tears down. Fixtures committed (scripts/sim-fixtures/), docs/simulator-testing.md. Effortless sim testing — NO token needed (no-auth dev). Orchestrator-verified end-to-end (clean HUD). **OPEN ISSUE: "scritte troppo grandi" — G2 font fixed at 27px line height (~10 rows) vs the HUD's ~12px/24-row layout assumption → text too big/overlapping. Real fix = layout redesign for the 27px grid (container-registry + status-hud-renderer + Specs INV-1 mockups + fixtures + showcase); spec-level, design decisions needed; NOT started.** Earlier this session: d0v+dog+e9t (on-connect character data), etr+f9s (clean HUD, no SDK "Text"), flv (character selection), g54 (release prep: changesets + self-hosting guide). All live-sim verified: clean glasses HUD rendering the CHOSEN PC's real data on first connect. g54 added 3 minor changesets + docs/self-hosting.md + README Self-Hosting section. Even Hub portal upload is MANUAL (no CLI publish) — physical-glasses testing via dev-mode QR against the user's own bridge (guide: docs/self-hosting.md). Temp dev setup STILL RUNNING for the user to look at: bridge :8911 (dev-no-auth, current code, Artemis+Dante seeded), vite repointed to :8911, sim :9898 at ?actor=Dante. TO RESTORE the user's original setup: restart vite with VITE_EVF_DEV_BRIDGE_URL=https://evenfoundry.lucifer-tnas.mywire.org:443. When restarting the dev bridge, re-seed roster+snapshots (in-memory cache lost on restart; /tmp/evf-roster.json + evf-snapshot-verify.json + evf-snapshot-dante.json).
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-05 — Milestone v0.10.0 started
 
 ## Performance Metrics
 
