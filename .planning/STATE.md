@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 19 — ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
+**Current focus:** Phase 19 — ADR-0013 Amendment 1 + Canvas Compositor Core
 
 ## Current Position
 
 Phase: 19 — ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
 Plan: —
 Status: Roadmap created — ready for /gsd-plan-phase 19
-Last activity: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created (8 phases, 19 REQ-IDs, 100% coverage)
+Last activity: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created (8 phases, 19 REQ-IDs, 100% coverage), then INV-2 corrected: raster geometry 576×288/288×144 → 400×200/200×100 (G2 image-container hard cap; full-screen raster impossible). PROJECT/REQUIREMENTS/ROADMAP/SUMMARY updated.
 
 ## Performance Metrics
 

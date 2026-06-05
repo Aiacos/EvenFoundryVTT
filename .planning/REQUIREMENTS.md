@@ -4,6 +4,8 @@
 **Core Value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica — e ora l'intera UI è renderizzata come immagini raster compositate, con full controllo tipografico, non più subordinata al font fisso 27px dell'SDK.
 
 > Anchor: ADR-0013 (+ Amendment 1 da scrivere) · `.planning/TODO-hud-raster.md` · `.planning/research/SUMMARY.md` (2026-06-05). Decisioni locked dall'utente 2026-06-05: compositing su canvas unico (forzato dai 4 image-container); render mix statico+dinamico; estendere subito schema feats/bio; **delta loop + promozione a default INCLUSI** in v0.10.0; xxhash delta DEVE precedere la promozione (vincolo BLE).
+>
+> **⚠ Correzione INV-2 (verificata 2026-06-05 su `hub.evenrealities.com/docs/guides/display`):** gli image-container G2 sono **max 4 per pagina, ognuno 20–200px largo × 20–100px alto**. Quindi la superficie raster è **400×200 (4 tile 200×100), NON 576×288** — lo schermo pieno non è riempibile di immagini (il simulatore NON applica i limiti hardware, per questo il PoC 288×144 passava). Architettura corretta: **UNA regione raster condivisa 400×200**, i 4 image-tile fissi nello schema-pagina, contenuto (mappa/scheda/turni/status compositati nel nostro canvas) cambiato via `updateImageRawData` (flicker-free; `rebuildPageContainer` darebbe flicker). `updateImageRawData` **non ammette invii concorrenti** → i 4 tile vanno serializzati. Capture-invariant via un container TEXT (può essere full-screen) con `isEventCapture:1` dietro i tile. Margine schermo residuo (oltre i 400×200) = vuoto/green o striscia text. OffscreenCanvas/Worker/FontFace non sono documentati → assunzioni WebView con fallback main-thread.
 
 ## v1 Requirements
 
@@ -11,7 +13,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
 ### Raster Compositor (RAST) — *fondamento; tutto il resto dipende da qui*
 
-- [ ] **RAST-01**: `LayerManager` composita i layer su un singolo canvas 576×288 — ogni layer disegna sulla propria `OffscreenCanvas`, il compositor le combina in z-order via `drawImage`, e consegna l'RGBA master alla pipeline esistente `buildHudTiles`/`pushHudTiles` (4 tile 288×144 → `updateImageRawData`).
+- [ ] **RAST-01**: `LayerManager` composita i layer su un singolo canvas **400×200** (regione raster condivisa) — ogni layer disegna sulla propria `OffscreenCanvas`, il compositor le combina in z-order via `drawImage`, e consegna l'RGBA master alla pipeline `buildHudTiles`/`pushHudTiles` come **4 tile 200×100** → `updateImageRawData` **serializzati** (no invii concorrenti). Lo schema-pagina dei 4 image-container è FISSO; il cambio pannello ri-renderizza gli stessi tile (flicker-free), niente `rebuildPageContainer` per-frame. (Geometria/posizionamento esatto dei tile nei 576×288 = decisione del compositor/UI phase; baseline 2×2 = 400×200.)
 - [ ] **RAST-02**: La capture-invariant (INV-5) è preservata in modalità canvas tramite un container testo dedicato a dimensione zero con `isEventCapture:1` (`hud-capture`), così le gesture R1 continuano a essere instradate mentre i 4 image-tile renderizzano.
 - [ ] **RAST-03**: L'audit del budget container opera in modalità canvas a budget fisso (5 container: 4 image-tile + 1 capture) senza falsi `capture_invariant_violated` / budget-overflow durante mount/destroy/bundle.
 - [ ] **RAST-04**: Il path glyph/text coesiste invariato — un flag `renderMode: 'canvas' | 'glyph'` seleziona lo schema-pagina e se invocare il compositor; in modalità glyph i layer text sono byte-identici a oggi (fallback BLE-degraded, ADR-0005 Branch A). Lo switch di modalità è atomico (`bundle`).
@@ -44,12 +46,12 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 ### Delta Loop & Promotion (RPROMO) — *delta DEVE precedere la promozione (vincolo BLE)*
 
 - [ ] **RPROMO-01**: La HUD raster è guidata da un loop **~5fps con delta sub-tile xxhash** (riusa `RasterController`) + debounce, così solo i tile **CHANGED** vengono ri-encodati/spediti; HUD idle ≈ banda BLE quasi-zero.
-- [ ] **RPROMO-02**: La UI raster è il **substrato di boot di default** (sostituisce la status-page text-container); la HUD glyph/text resta il **fallback BLE-degraded** (degrade automatico sotto soglia banda per ADR-0005 Branch A).
+- [ ] **RPROMO-02**: La **regione raster 400×200** (4 tile + 1 capture/background text container) è il **substrato di boot di default** (sostituisce la status-page text-container); la HUD glyph/text resta il **fallback BLE-degraded** (degrade automatico sotto soglia banda per ADR-0005 Branch A). Nota: lo schermo non è interamente raster — il residuo oltre i 400×200 è il capture/background text container.
 
 ### Quality Contracts (RINV)
 
 - [ ] **RINV-01**: **Contratto INV-1 raster** — snapshot deterministici via **hash dei byte PNG dei tile** prodotti da input RGBA sintetico (NON canvas text, non-deterministico/untestabile in happy-dom); le funzioni pure di content-logic (`formatConditions`, `formatSlots`, …) testate a parte; `inv:all` separa glyph vs raster.
-- [ ] **RINV-02**: **INV-2 re-verify hardware** — la dimensione tile 288×144 vs cap documentato 200×100 e il pattern capture-container zero-size sono validati nel simulatore early (prima della Phase compositor); SC su hardware reale portata `human_needed` sotto ADR-0005 Branch A se l'hardware non è disponibile.
+- [ ] **RINV-02**: **INV-2 — geometria tile corretta (verificata 2026-06-05)**: il cap ufficiale è **200×100 per image-container, max 4 → regione 400×200**; il 288×144 del PoC è respinto (passava solo in sim, che non applica i limiti). Il piano è già corretto a 200×100/400×200. Verifica hardware residua su G2 reale (`human_needed` sotto ADR-0005 Branch A): che la regione 400×200 a 4 tile renderizzi correttamente e che il pattern capture-container (text full-screen con `isEventCapture:1` dietro i tile) funzioni e instradi le gesture.
 - [ ] **RINV-03**: **INV-3 doc coherence** — `Specs.md` §7 (layout raster-HUD) + `README.md` + `docs/showcase/index.html` aggiornati atomicamente nello stesso commit; i mockup ASCII 27px stantii riconciliati (annotati come path glyph-fallback).
 
 ## v2 Requirements
@@ -57,7 +59,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 Deferred to future milestones. Tracked but not in current roadmap.
 
 ### Raster pipeline generalization
-- **RGEN-01** (TODO-hud-raster #7): generalizzare `raster-worker` (oggi map-only 400×200 / 200×100) alla geometria full-screen 576×288 / 288×144 così map + HUD condividono un worker; offload del tiling/encode fuori dal main thread.
+- **RGEN-01** (TODO-hud-raster #7): generalizzare `raster-worker` (oggi map-only) così map + HUD condividano un worker — entrambi usano la stessa geometria **400×200 / tile 200×100** (il full-screen raster non è possibile, cap 4 image-container); offload del tiling/encode fuori dal main thread.
 
 ### Standalone raster action panels
 - **RACT-01**: pannelli raster dedicati per Action Options / spellbook / inventory action (oggi tab dentro la scheda); valutare overlay raster autonomi se la densità lo richiede.
@@ -68,7 +70,7 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Generalizzazione `raster-worker` map+HUD condiviso (TODO #7) | Il map worker resta 400×200 per v0.10.0; il compositor HUD usa la propria geometria 576×288. Generalizzazione = v2 (RGEN-01). |
+| Generalizzazione `raster-worker` map+HUD condiviso (TODO #7) | Il map worker resta separato per v0.10.0; il compositor HUD usa la propria geometria 400×200 (stessa famiglia 200×100). Generalizzazione = v2 (RGEN-01). |
 | Map live-data wiring oltre lo stato attuale | La mappa resta il base layer com'è; questo milestone non aggiunge nuovi canali scene/map. |
 | Pannelli raster standalone (spellbook/inventory/action-options) | Restano tab dentro la scheda raster; overlay raster autonomi = v2 (RACT-01). |
 | v0.9.14 Release & Distribution (REL/LIFE/REND/LOC) | PARCHEGGIATO al pivot raster; ripreso in un milestone successivo (vedi sezione Parked). |

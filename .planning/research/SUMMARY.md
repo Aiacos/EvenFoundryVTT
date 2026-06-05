@@ -6,6 +6,8 @@
 **Researched:** 2026-06-05
 **Confidence:** HIGH (stack additions from platform API specs + npm registry; architecture from verified codebase; features from CharacterSnapshotSchema + renderer source; pitfalls from ADR-0013 + ADR-0005 + raster source files)
 
+> **⚠ INV-2 GEOMETRY CORRECTION (2026-06-05, post-synthesis — supersedes any 288×144 / 576×288 figure below):** verified against `hub.evenrealities.com/docs/guides/display` — G2 image containers are **max 4 per page, each 20–200px wide × 20–100px tall**. The **288×144** tile (Pitfall R-2) is **confirmed REJECTED** on real hardware (it only worked because the simulator does not enforce hardware size limits). The raster surface is therefore a shared **400×200 region (4 tiles 200×100), NOT the full 576×288 screen** — the full screen cannot be raster-filled. `updateImageRawData` does not allow concurrent sends (serialize the 4 tile pushes); a fixed image-tile page schema + per-frame `updateImageRawData` avoids `rebuildPageContainer` flicker; capture-invariant via a full-screen text container with `isEventCapture:1` behind the tiles. The active plan (PROJECT.md / REQUIREMENTS.md / ROADMAP.md) is corrected to 400×200 / 200×100. See memory `g2-image-container-hard-limits`. The HUD_TILE_GEOMETRY "FULL_SCREEN_2x2 vs DOCUMENTED_LIMIT_2x2" toggle proposed below is moot — it is fixed at 200×100.
+
 ---
 
 ## Executive Summary

@@ -1,5 +1,7 @@
 # TODO — Image-based HUD (raster) — branch `feat/hud-raster-rendering`
 
+> **Superseded 2026-06-05** by the formal milestone **v0.10.0 "Raster UI Substrate"** (`.planning/{ROADMAP,REQUIREMENTS}.md`, Phases 19–26). **INV-2 correction:** the PoC geometry below (canvas 576×288 → 4 tiles 288×144) is **wrong for real hardware** — G2 image containers are max 4 × ≤200×100px, so the raster surface is **400×200 (4 tiles 200×100), not full-screen**. The 288×144 only worked because the simulator does not enforce hardware limits. See memory `g2-image-container-hard-limits`. The checklist below is kept for historical PoC reference.
+
 Direction anchor: **ADR-0013** (`docs/architecture/0013-hud-raster-rendering.md`).
 PoC done + live-sim verified (quick task `260605-ksd`): a single image-HUD frame renders on the
 glasses framebuffer via `?hud=raster` (canvas 576×288 → 4-bit dither → 4 tiles 288×144 →
