@@ -96,6 +96,17 @@ what produces the Even app's **"trial version expired"** error):
 Full runbook: [`docs/release/evenhub.md`](docs/release/evenhub.md) ·
 wiki: [Testing & Distribution](https://github.com/Aiacos/EvenFoundryVTT/wiki/Testing-and-Distribution).
 
+### Self-Hosting
+
+The complete end-to-end deployment guide lives at
+**[`docs/self-hosting.md`](docs/self-hosting.md)**.
+
+The stack is: Foundry module → bridge (Docker Compose) → plugin host (static HTTPS, Caddy) →
+G2 glasses (Even Realities App WebView). Each self-hoster must build their own `.ehpk` with
+their own bridge + plugin-host HTTPS origins baked in — the Even Hub WebView enforces the
+network whitelist at runtime with no wildcards (Specs.md §3.3). Portal submission is manual
+(Even Hub CLI has no `publish`/`submit` command; INV-2, re-verified 2026-05-31).
+
 ---
 
 ## In one sentence
