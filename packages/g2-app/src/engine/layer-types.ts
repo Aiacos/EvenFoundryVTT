@@ -197,6 +197,80 @@ export interface OverlayPanel extends Layer {
   onEvent(gesture: R1Gesture): void;
 }
 
+// ── CanvasLayer (ADR-0013 Amendment 1 — additive extension) ───────────────────
+
+/**
+ * Canvas-rendering layer — extends Layer with per-layer OffscreenCanvas ownership.
+ *
+ * Implementations (CanvasStatusHudLayer, CanvasCharacterSheetPanel, etc. — Phase 20+)
+ * own their own OffscreenCanvas; `CanvasCompositor` assembles them in z-order via
+ * `drawImage` on a master 400×200 canvas.
+ *
+ * # Container budget contract
+ *
+ * `getContainerCount()` MUST return `{image:0, text:0}` for canvas layers — the
+ * 5-container page schema is declared once at page creation (fixed budget mode);
+ * canvas layers do NOT allocate individual SDK containers. `LayerManager._assertContainerBudget()`
+ * uses a fixed-budget branch in canvas mode that validates each layer returns the
+ * zero-zero count, throwing `panel_mount_budget_exceeded` if a layer claims non-zero
+ * counts (ADR-0013 Amendment 1, locked decision #3).
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (Amendment 1 — canvas compositor substrate)
+ * @see packages/g2-app/src/engine/canvas-compositor.ts (compositor counterpart)
+ */
+export interface CanvasLayer extends Layer {
+  /**
+   * Assign the OffscreenCanvas (or HTMLCanvasElement fallback) this layer paints on.
+   *
+   * Called by `LayerManager.bundle()` after the layer is registered, before the
+   * first `composite()` call. The canvas is provided by `CanvasCompositor` so
+   * ownership of the surface belongs to the layer but creation is managed centrally.
+   */
+  attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): void;
+
+  /**
+   * Repaint the layer's canvas from current cached state.
+   *
+   * `CanvasCompositor` calls this before blitting a dirty layer onto the master
+   * canvas. The implementation renders to the canvas provided via `attachCanvas`.
+   * Should be a cheap incremental update when the layer has not changed (the
+   * dirty flag ensures `paint()` is only called when the layer declares it is
+   * dirty via `isDirty() === true`).
+   */
+  paint(): void;
+
+  /**
+   * Returns `true` when the layer has un-flushed state changes since the last
+   * `paint()` call.
+   *
+   * `CanvasCompositor` skips `paint()` for clean layers and blits the cached
+   * canvas directly (dirty-skip optimisation — ADR-0013 Amendment 1, §Compositor
+   * model). Implementations MUST return `true` at least once after a state
+   * mutation to ensure the mutation reaches the composited output.
+   */
+  isDirty(): boolean;
+}
+
+/**
+ * Runtime type guard — returns `true` when `layer` implements the full
+ * {@link CanvasLayer} interface (all three methods are functions).
+ *
+ * Used by `LayerManager._assertContainerBudget()` to detect canvas layers
+ * and apply the fixed-budget branch (ADR-0013 Amendment 1, locked decision #4).
+ *
+ * @param layer Any `Layer` instance to inspect.
+ * @returns `true` if `layer` exposes `attachCanvas`, `paint`, and `isDirty` as functions.
+ */
+export function isCanvasLayer(layer: Layer): layer is CanvasLayer {
+  return (
+    typeof (layer as CanvasLayer).attachCanvas === 'function' &&
+    typeof (layer as CanvasLayer).paint === 'function' &&
+    typeof (layer as CanvasLayer).isDirty === 'function'
+  );
+}
+
+// ── LayerOp ────────────────────────────────────────────────────────────────────
+
 /**
  * Atomic mount/destroy operation for `LayerManager.bundle()`.
  *
