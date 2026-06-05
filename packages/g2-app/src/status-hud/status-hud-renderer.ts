@@ -10,7 +10,7 @@
  *
  * The original 28×21 corner card was designed for a ~12px/24-row grid — text
  * appeared ~2.25× too big on real glasses ("scritte troppo grandi", 2026-06-05).
- * This renderer replaces the default always-on view with a 9-row full-width sheet:
+ * This renderer replaces the default always-on view with an 8-row full-width sheet:
  *
  * ```
  *   Dante Lanzulli            Lv10 —
@@ -21,8 +21,14 @@
  *   ——————————————————————————————————————————
  *   Slot 1●○○○  2●●○  3●○
  *   TS morte  ○○○ / ○○○
- *   R1: ^v scorri  tap ping  oo menu
  * ```
+ *
+ * **8-row layout (not 9):** 8×27=216px ≤ h=234 (status-hud id6). The 9th row
+ * (R1 gesture hints) was removed from the body because: (a) it overflows the
+ * 234px container (9×27=243px > 234px), pushing content into the footer strip;
+ * and (b) the footer container (id5) already renders the R1 hint chip via
+ * `renderContextChip` / hud-chrome — duplicating it in the body sheet is
+ * redundant. (Quick Task 260605-j0t-05)
  *
  * ## API contract
  *
@@ -160,10 +166,15 @@ const G2_MAX_PX = 576;
 
 /**
  * Row count for the full-width 27px status sheet.
- * 9 rows: name/level | divider | HP/CA/VEL | Turn row | Conditions |
- *         divider | Slots | Death saves | R1 hint
+ * 8 rows: name/level | divider | HP/CA/VEL | Turn row | Conditions |
+ *         divider | Slots | Death saves
+ *
+ * WHY 8 NOT 9: status-hud (id6) has h=234px → 8×27=216px ≤ 234px (fits).
+ * A 9th row (R1 hints) would need 9×27=243px > 234px → overflows into footer.
+ * R1 hints are already in the footer (id5) via renderContextChip / hud-chrome.
+ * (j0t-05)
  */
-const SHEET_ROWS = 9;
+const SHEET_ROWS = 8;
 
 /** Em-dash missing-scalar placeholder (project-wide convention). */
 const EM_DASH = '—';
@@ -510,9 +521,9 @@ export class StatusHudRenderer {
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Assemble the 9-row full-width sheet from pre-formatted scalars.
+   * Assemble the 8-row full-width sheet from pre-formatted scalars.
    *
-   * Layout (rows 0-8):
+   * Layout (rows 0-7):
    *   0: `{name}   Lv{N} {class}`
    *   1: divider
    *   2: `{hpLabel} {bar} {cur}/{max}   {acLabel} {ac}   {spdLabel} {spd}`
@@ -521,10 +532,15 @@ export class StatusHudRenderer {
    *   5: divider
    *   6: `Slot {slot rows}`
    *   7: `TS morte  ○○○ / ○○○`
-   *   8: `R1: ^v scorri  tap ping  oo menu`
+   *
+   * NOTE: the R1 gesture hint line has been REMOVED from the body sheet (j0t-05).
+   * It was row 8 (9th row) in the previous design, but 9×27=243px > h=234px
+   * (status-hud container), causing overflow into the footer strip. The footer
+   * container (id5) already renders the R1 hint chip via renderContextChip /
+   * hud-chrome — the body duplicate was redundant and overflowed.
    *
    * Every row is measured by pretext and truncated with `…` if > 576px.
-   * The returned string has exactly SHEET_ROWS lines joined with `\n`.
+   * The returned string has exactly SHEET_ROWS (8) lines joined with `\n`.
    */
   private _buildSheet(fields: SheetFields): string {
     const { locale } = this;
@@ -580,12 +596,8 @@ export class StatusHudRenderer {
     const row6 = fitLine(`${slotLabel} ${fields.slotsText}`, locale);
     lines.push(row6);
 
-    // Row 7: Death saves
+    // Row 7: Death saves (last row — no R1 hint, see SHEET_ROWS comment above)
     lines.push(fitLine(fields.deathSavesText, locale));
-
-    // Row 8: R1 hint (bottom row)
-    const r1Row = getLabel('hud27_r1_hint', locale);
-    lines.push(fitLine(r1Row, locale));
 
     if (lines.length !== SHEET_ROWS) {
       throw new Error(`StatusHudRenderer: produced ${lines.length} rows, expected ${SHEET_ROWS}`);

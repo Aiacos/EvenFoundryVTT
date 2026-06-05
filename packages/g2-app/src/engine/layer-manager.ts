@@ -19,11 +19,13 @@
  * its `bridge` reference private and never re-exposes it.
  *
  * Phase 4a Plan 02 scope: this class lands the runtime contract. `_flushPage()`
- * rebuilds the canonical BASE page schema (11 containers, numeric ids +
- * geometry, exactly one isEventCapture=1) from the shared container registry
- * (`./container-registry.ts`) so the base HUD containers persist across the
- * boot→main bundle (Quick Task 260604-qm0 render-blank fix). Composing actual
- * overlay-panel container sets is a separate overlay-id follow-up.
+ * rebuilds the DEFAULT STATUS-VIEW page schema (3 containers: header id4,
+ * footer id5, status-hud id6; containerTotalNum:3) from the shared container
+ * registry (`./container-registry.ts`) so the base HUD containers persist
+ * across the boot→main bundle. The full 11-container schema (map-capture, z05-*,
+ * image tiles) is deferred to the gesture-opened map-mode page (Phase 20 /
+ * Quick Task 260605-j0t-05 flush-schema fix). Composing actual overlay-panel
+ * container sets is a separate overlay-id follow-up.
  *
  * @see docs/architecture/0009-layer-manager-contract.md (ADR-0009)
  * @see docs/architecture/0001-layered-ui-model.md (ADR-0001 + Amendment 1)
@@ -34,11 +36,7 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
-import {
-  BASE_CONTAINER_TOTAL,
-  buildBaseImageContainers,
-  buildBaseTextContainers,
-} from './container-registry.js';
+import { BOOT_CONTAINER_TOTAL, buildStatusViewTextContainers } from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
 import {
   type Layer,
@@ -436,29 +434,44 @@ export class LayerManager {
    * boot→main transition runs `createBootPage` then bundles in the real layers
    * via this flush, that empty rebuild WIPED every base container after boot —
    * so the layer renderers then upgraded containers that no longer existed and
-   * the glasses stayed blank. It now rebuilds the canonical BASE page schema
-   * from the shared container registry (11 containers, numeric ids + geometry,
-   * exactly one isEventCapture=1 = map-capture) so the base HUD containers
-   * persist across the rebuild and the host accepts every subsequent
-   * `textContainerUpgrade` / `updateImageRawData`.
+   * the glasses stayed blank.
+   *
+   * **Default status-view schema (Quick Task 260605-j0t-05):** the flush now
+   * rebuilds the DEFAULT STATUS-VIEW schema (3 text containers: header id4,
+   * footer id5, status-hud id6; 0 image containers; containerTotalNum:3) —
+   * identical to `buildBootPageSchema()` in `page-lifecycle.ts`. This avoids
+   * the "Text" ghosting/overlap artifact that occurred when the flush declared
+   * the FULL 11-container registry including map-capture (id7, identical full
+   * rect as status-hud) and z05-* (ids 8-10), which the G2 host rendered as
+   * "Text" placeholders overlapping the status sheet.
+   *
+   * map-capture and z05-* remain in the registry for the deferred map-mode
+   * page (Phase 20 / Specs §7.4). They MUST NOT be declared in the default
+   * status-view flush.
    *
    * The single-call contract (exactly one `rebuildPageContainer` per bundle) is
    * preserved and load-bearing for ADR-0001 Amendment 1 (no intermediate frame
    * between z=0.5 demolition and z=2 mount).
    *
-   * Scope note: this restores the BASE schema on every flush; composing the
-   * actual overlay-panel container sets (z=2 overlay ids/geometry) is the
-   * separate overlay-id follow-up, not this fix.
+   * TODO(j0t-05): when map mode is gesture-opened (Phase 20), this flush will
+   * need a different schema depending on which mode is active. At that point
+   * extract a `_buildCurrentPageSchema()` helper that selects between the
+   * status-view schema (3 containers) and the map-mode schema (11 containers).
+   * (#issue)
    *
-   * @see ./container-registry.ts (CONTAINER_REGISTRY single source of truth)
+   * @see ./container-registry.ts (buildStatusViewTextContainers, BOOT_CONTAINER_TOTAL)
+   * @see ./page-lifecycle.ts#buildBootPageSchema (parallel default-view schema)
    * @see .planning/debug/glasses-render-blank-containerid.md
    */
   private async _flushPage(): Promise<void> {
     const payload = new RebuildPageContainer({
-      // Canonical 11-container base schema (registry-sourced ids + geometry).
-      containerTotalNum: BASE_CONTAINER_TOTAL,
-      textObject: buildBaseTextContainers(),
-      imageObject: buildBaseImageContainers(),
+      // Default status-view schema: header(id4) + footer(id5) + status-hud(id6).
+      // map-capture (id7), z05-* (ids 8-10), and image map-tiles are EXCLUDED —
+      // they are deferred to the gesture-opened map-mode page (Phase 20).
+      // Matches buildBootPageSchema() in page-lifecycle.ts exactly.
+      containerTotalNum: BOOT_CONTAINER_TOTAL,
+      textObject: buildStatusViewTextContainers(),
+      imageObject: [],
     });
     await this.bridge.rebuildPageContainer(payload);
   }

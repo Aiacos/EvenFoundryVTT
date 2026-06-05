@@ -6,4 +6,3 @@ Cond: —
 ───────────────────────────…
 Slot —
 TS morte  ○○○ / ○○○
-R1: ^v scorri  tap ping  oo menu

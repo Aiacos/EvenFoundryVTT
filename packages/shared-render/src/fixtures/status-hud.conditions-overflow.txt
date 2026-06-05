@@ -6,4 +6,3 @@ Cond: poisoned, prone, bless, haste, rage, invisible, charmed
 ───────────────────────────…
 Slots —
 Death saves  ○○○ / ○○○
-R1: ^v scroll  tap ping  oo menu

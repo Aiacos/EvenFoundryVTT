@@ -185,26 +185,35 @@ describe('LayerManager — bundle() atomic semantics', () => {
     expect(lm.getCaptureContainerCount()).toBe(1);
   });
 
-  it('Test 8b: _flushPage rebuilds the canonical 11-container base schema (registry ids + geometry, one isEventCapture=1) — NOT an empty payload', async () => {
-    // Render-blank fix (Quick Task 260604-qm0): the flush must NOT wipe the page.
+  it('Test 8b: _flushPage rebuilds the default STATUS-VIEW schema (3 text, 0 image, no isEventCapture=1) — not the full 11-container schema (j0t-05 flush fix)', async () => {
+    // j0t-05 flush fix: _flushPage must use the status-view schema (same as buildBootPageSchema),
+    // NOT the full 11-container registry. The full schema re-declares map-capture (id7, same
+    // rect as status-hud id6) and z05-* (ids 8-10), causing "Text" ghosting/overlap on the glasses.
     const mapLayer = makeMockLayer('map', 'map-capture');
     lm.mount(ZIndex.Z0_MAP, mapLayer);
     await lm.bundle([]);
 
     expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
     const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
-    expect(arg?.containerTotalNum).toBe(11);
-    expect(arg?.imageObject?.length).toBe(4);
-    expect(arg?.textObject?.length).toBe(7);
-    // Exactly one isEventCapture=1 and it is map-capture (id 7).
+    // Default status-view: 3 text (header id4, footer id5, status-hud id6), 0 image.
+    expect(arg?.containerTotalNum).toBe(3);
+    expect(arg?.imageObject?.length).toBe(0);
+    expect(arg?.textObject?.length).toBe(3);
+    // NO isEventCapture=1 in the status-view schema (map-capture id7 excluded).
     const captures = (arg?.textObject ?? []).filter(
       (t: { isEventCapture?: number }) => t.isEventCapture === 1,
     );
-    expect(captures).toHaveLength(1);
-    expect(captures[0]?.containerName).toBe('map-capture');
-    expect(captures[0]?.containerID).toBe(7);
+    expect(captures).toHaveLength(0);
+    // The 3 containers are header(4), footer(5), status-hud(6) in id order.
+    const texts = arg?.textObject ?? [];
+    expect(texts[0]?.containerName).toBe('header');
+    expect(texts[0]?.containerID).toBe(4);
+    expect(texts[1]?.containerName).toBe('footer');
+    expect(texts[1]?.containerID).toBe(5);
+    expect(texts[2]?.containerName).toBe('status-hud');
+    expect(texts[2]?.containerID).toBe(6);
     // Every text container has the numeric containerID + geometry.
-    for (const t of arg?.textObject ?? []) {
+    for (const t of texts) {
       expect(typeof t.containerID).toBe('number');
       expect(t.width).toBeGreaterThan(0);
       expect(t.height).toBeGreaterThan(0);

@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.14)
+# EvenFoundryVTT — Project Specification (v0.9.15)
 
 ## 0. Executive Summary
 
@@ -1364,9 +1364,9 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 > **HUD-27PX redesign (v0.9.14, 2026-06-05):** The default always-on glasses view is now the **full-width Character Status Sheet**, NOT the raster map. The G2 LVGL font has a **fixed 27px line height** (no font control per SDK). Screen: 576×288 px → ~10 rows max; full-width line ≈ ~50 chars (variable-width, measured by `@evenrealities/pretext`). The old 28×21 corner card was designed for a ~12px/24-row grid — text appeared ~2.25× too big on real glasses ("scritte troppo grandi"). This section describes the new default view. The raster/glyph map mode is a **DEFERRED gesture-opened overlay** (see §7.4 "Map mode — DEFERRED" below and ADR-0001 Amendment 2).
 
-#### Status-default view (27px grid) — IMPLEMENTED (v0.9.14)
+#### Status-default view (27px grid) — IMPLEMENTED (v0.9.14, 8-row layout v0.9.15)
 
-The always-on default view is the Character Status Sheet — ~9 rows × ~50 chars, full-width 576px:
+The always-on default view is the Character Status Sheet — 8 rows × ~50 chars, full-width 576px:
 
 ```
 Dante Lanzulli            Lv10 —
@@ -1377,10 +1377,9 @@ Cond: concentrato, benedetto
 ────────────────────────────────────────────
 Slot 1●●●○  2●●○  3●○
 TS morte  ○○○ / ○○○
-R1: ^v scorri  tap ping  oo menu
 ```
 
-**Lettura (9 righe):**
+**Lettura (8 righe):**
 
 - **Riga 0**: nome personaggio · `Lv{N}` · classe (placeholder `—` finché non wired)
 - **Riga 1**: divisore `────` (full-width)
@@ -1391,7 +1390,8 @@ R1: ^v scorri  tap ping  oo menu
 - **Riga 5**: divisore `────`
 - **Riga 6**: `Slot {1●●●○  2●●○  ...}` — spell slot (livelli da snapshot); `●` = disponibile, `○` = usato
 - **Riga 7**: `TS morte  ●●○ / ○○○` (IT) / `Death saves  ●●○ / ○○○` (EN) — tiri salvezza dalla morte
-- **Riga 8**: `R1: ^v scorri  tap ping  oo menu` (IT) — gesture hint row (sempre visibile, ultimo)
+
+> **Nota (j0t-05):** la riga R1 gesture hint (`R1: ^v scorri  tap ping  oo menu`) è stata RIMOSSA dal corpo del foglio stato: 9×27=243px supera h=234px del container status-hud (id6), causando overflow nel footer. L'hint R1 è già nel footer container (id5) via `renderContextChip` / hud-chrome — ridondante nel corpo. Layout finale: 8×27=216px ≤ 234px — nessun overflow.
 
 **Width budget (INV-1):** ogni riga è misurata con `getTextWidth()` da `@evenrealities/pretext` e troncata con `…` se supera 576px. Il test `WIDTH-ASSERTION` in `status-hud-renderer.test.ts` fallisce la build se qualsiasi riga supera il budget.
 
@@ -1404,7 +1404,7 @@ R1: ^v scorri  tap ping  oo menu
 | Container | ID | x | y | w | h | Note |
 |-----------|----|---|---|---|---|------|
 | header | 4 | 0 | 0 | 576 | 27 | 1 riga header |
-| status-hud | 6 | 0 | 27 | 576 | 234 | 9 righe × 27px — **base visibile** |
+| status-hud | 6 | 0 | 27 | 576 | 234 | 8 righe × 27px=216px ≤ 234px — **base visibile** |
 | footer | 5 | 0 | 261 | 576 | 27 | 1 riga footer |
 | map-capture | 7 | 0 | 27 | 576 | 234 | PRESERVATO per map-mode DEFERRED |
 | z05-* | 8-10 | 0 | 189/216/243 | 576 | 27 | PRESERVATI per idle-infill DEFERRED |
@@ -2661,7 +2661,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.14                                          ║
+║                              EVENFOUNDRYVTT  v0.9.15                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -4101,6 +4101,12 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-06-05 (v0.9.15 — j0t-05: flush status-view schema + 8-row sheet)** — Fix di due artefatti residui dopo il boot real-pairing (j0t tasks precedenti). **Bump v0.9.14 → v0.9.15.**
+  - **Bug 1 — "Text" ghosting/overlap (PRIMARY):** `LayerManager._flushPage()` usava `buildBaseTextContainers()` (7 text + 4 image = 11 container), re-dichiarando `map-capture` (id7, stessa rect identica di `status-hud` id6) e `z05-*` (ids 8-10) dopo ogni bundle. Il G2 host renderizzava questi container sovrapposti come placeholder "Text", oscurando il foglio stato. **Fix:** `_flushPage()` ora usa `buildStatusViewTextContainers()` (3 container: header id4, footer id5, status-hud id6; 0 image; `containerTotalNum:3`) — identico schema della boot page (`buildBootPageSchema()`). `map-capture` e `z05-*` restano nel registry per il map-mode DEFERRED (Phase 20) ma NON vengono dichiarati nel flush di default.
+  - **Bug 2 — overflow 234px + hint duplicato:** `SHEET_ROWS=9` → 9×27=243px > h=234px del container `status-hud` (id6) → il 9° riga (R1 hint) trabocca nel footer strip; e il footer (id5) mostra già l'hint R1 via `renderContextChip` / hud-chrome → duplicato. **Fix:** `SHEET_ROWS=8`, riga R1 hint rimossa dal corpo del foglio. 8×27=216px ≤ 234px — nessun overflow.
+  - **INV-3 coerenza:** §7.4 mockup aggiornato da 9 a 8 righe (riga R1 rimossa); tabella container nota `9 righe` → `8 righe × 27px=216px ≤ 234px`; nota j0t-05 aggiunta. Changelog aggiornato.
+  - **Test delta:** `Test 8b` in `layer-manager.test.ts` aggiornato a 3-container status-view schema (da 11-container); `NEW_HUD_ROWS=9→8` + `SHR27-P8` aggiornato in `status-hud-renderer.test.ts`; 5 fixture INV-1 rigenerati a 8 righe (rimossa riga R1). Suite g2-app **1435 test GREEN**.
 
 - **2026-06-05 (v0.9.14 — HUD-27PX: full-width 27px status sheet as default glasses view)** — Fix per "scritte troppo grandi": il font G2 LVGL ha altezza riga fissa 27px, non ~12px come il vecchio layout assumeva. **Bump v0.9.13 → v0.9.14.**
   - **Root cause:** il renderer `StatusHudRenderer` e la geometria container in `container-registry.ts` erano progettati per una griglia 12px/24-righe (28 char × 21 righe). Sul G2 reale il testo appariva ~2.25× troppo grande, overlappato, e clippato.

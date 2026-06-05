@@ -39,10 +39,13 @@ const G2_WIDTH_PX = 576;
 
 /**
  * Expected row count for the new full-width 27px status sheet.
- * 9 rows: name/level, divider, HP/CA/VEL, turn row, conditions, divider,
- *         slots, death saves, R1 hint.
+ * 8 rows: name/level, divider, HP/CA/VEL, turn row, conditions, divider,
+ *         slots, death saves.
+ *
+ * R1 hint was row 8 (9th row) but removed (j0t-05): 9×27=243px > h=234px
+ * status-hud container; footer id5 already shows the R1 hint via hud-chrome.
  */
-const NEW_HUD_ROWS = 9;
+const NEW_HUD_ROWS = 8;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -281,13 +284,16 @@ describe('StatusHudRenderer 27px — render(snapshot) content', () => {
     expect(output).toMatch(/TS|morte|[◯●]/i);
   });
 
-  it('SHR27-P8: R1 hint row is the last line', () => {
+  it('SHR27-P8: last row is death saves (NOT R1 hint — removed in j0t-05)', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
     const output = renderer.render(APPROVED_SNAPSHOT);
     const lines = output.split('\n');
+    // 8 rows: last row (index 7) is death saves, not R1 hint.
+    // R1 hint is in the footer container (id5) via hud-chrome, not the body sheet.
     const lastLine = lines[lines.length - 1] ?? '';
-    // R1 hint row should mention R1 or gesture vocabulary
-    expect(lastLine).toMatch(/R1|scorri|ping|menu/i);
+    expect(lastLine).toMatch(/TS|morte|Death|saves|[●○]/i);
+    // Explicitly assert R1 hint is NOT the body sheet's last row
+    expect(lastLine).not.toMatch(/^R1:/);
   });
 
   it('SHR27-P9: turn/round render as `—` (not in CharacterSnapshot)', () => {
