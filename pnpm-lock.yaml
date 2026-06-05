@@ -180,6 +180,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@evenrealities/pretext':
+        specifier: ^0.1.4
+        version: 0.1.4
       vite:
         specifier: 8.0.11
         version: 8.0.11(@types/node@25.6.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)
@@ -588,6 +591,9 @@ packages:
   '@evenrealities/even_hub_sdk@0.0.10':
     resolution: {integrity: sha512-95zmlbFzyyh+TxPz5Wq8Ix4IxUDZzo/WJWAUXPQ/83kaU8R78MOYYBgKDM47Yw61LoEn+Ob5GNLDu/T9bj85xA==}
     engines: {node: ^20.0.0 || >=22.0.0}
+
+  '@evenrealities/pretext@0.1.4':
+    resolution: {integrity: sha512-gSZk/uxIhZW3geOM5bP1IS0s1sg7cA7KLLpBDgH9T1+ZNHMIFTMcgQN1qw4+/Xi/rcxsDsWZ7UZndIS/s4fRcA==}
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
@@ -3078,6 +3084,8 @@ snapshots:
     optional: true
 
   '@evenrealities/even_hub_sdk@0.0.10': {}
+
+  '@evenrealities/pretext@0.1.4': {}
 
   '@fastify/ajv-compiler@4.0.5':
     dependencies:
