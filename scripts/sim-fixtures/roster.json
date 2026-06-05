@@ -1,0 +1,30 @@
+{
+  "type": "r1.characters.available",
+  "payload": {
+    "characters": [
+      {
+        "actorId": "E14Tfh9Ba07cpPyM",
+        "name": "Artemis",
+        "level": 10
+      },
+      {
+        "actorId": "6KWxQXAiJgz4zKlS",
+        "name": "Dante Lanzulli",
+        "level": 10
+      },
+      {
+        "actorId": "4GXG7ufxylS4H1Pk",
+        "name": "Karius Frede",
+        "level": 10
+      },
+      {
+        "actorId": "VoNfASW4hQ4dG4cv",
+        "name": "Shin",
+        "level": 10
+      }
+    ],
+    "source": "foundry-world",
+    "count": 4,
+    "generatedAt": 1749081600000
+  }
+}

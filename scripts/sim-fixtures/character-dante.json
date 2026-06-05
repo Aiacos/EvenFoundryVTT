@@ -1,0 +1,46 @@
+{
+  "type": "character.delta",
+  "payload": {
+    "actorId": "6KWxQXAiJgz4zKlS",
+    "name": "Dante Lanzulli",
+    "hp": 41,
+    "maxHp": 63,
+    "tempHp": 5,
+    "ac": 16,
+    "level": 10,
+    "conditions": [],
+    "exhaustion": 0,
+    "death": { "success": 0, "failure": 0 },
+    "world": { "modernRules": false },
+    "inventory": [],
+    "spells": { "slots": [], "spells": [] },
+    "abilities": {
+      "str": { "value": 10, "mod": 0, "save": 0, "proficient": false, "dc": 10 },
+      "dex": { "value": 14, "mod": 2, "save": 2, "proficient": false, "dc": 10 },
+      "con": { "value": 16, "mod": 3, "save": 7, "proficient": true, "dc": 15 },
+      "int": { "value": 18, "mod": 4, "save": 8, "proficient": true, "dc": 16 },
+      "wis": { "value": 12, "mod": 1, "save": 1, "proficient": false, "dc": 10 },
+      "cha": { "value": 16, "mod": 3, "save": 3, "proficient": false, "dc": 10 }
+    },
+    "skills": {
+      "acr": { "total": 2, "ability": "dex", "proficient": 0, "passive": 12 },
+      "ani": { "total": 1, "ability": "wis", "proficient": 0, "passive": 11 },
+      "arc": { "total": 8, "ability": "int", "proficient": 2, "passive": 18 },
+      "ath": { "total": 0, "ability": "str", "proficient": 0, "passive": 10 },
+      "dec": { "total": 7, "ability": "cha", "proficient": 1, "passive": 17 },
+      "his": { "total": 8, "ability": "int", "proficient": 2, "passive": 18 },
+      "ins": { "total": 1, "ability": "wis", "proficient": 0, "passive": 11 },
+      "itm": { "total": 3, "ability": "cha", "proficient": 0, "passive": 13 },
+      "inv": { "total": 8, "ability": "int", "proficient": 2, "passive": 18 },
+      "med": { "total": 1, "ability": "wis", "proficient": 0, "passive": 11 },
+      "nat": { "total": 4, "ability": "int", "proficient": 0, "passive": 14 },
+      "prc": { "total": 1, "ability": "wis", "proficient": 0, "passive": 11 },
+      "prf": { "total": 3, "ability": "cha", "proficient": 0, "passive": 13 },
+      "per": { "total": 7, "ability": "cha", "proficient": 1, "passive": 17 },
+      "rel": { "total": 8, "ability": "int", "proficient": 2, "passive": 18 },
+      "slt": { "total": 2, "ability": "dex", "proficient": 0, "passive": 12 },
+      "ste": { "total": 2, "ability": "dex", "proficient": 0, "passive": 12 },
+      "sur": { "total": 1, "ability": "wis", "proficient": 0, "passive": 11 }
+    }
+  }
+}

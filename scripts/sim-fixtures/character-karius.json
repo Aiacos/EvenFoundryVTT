@@ -1,0 +1,46 @@
+{
+  "type": "character.delta",
+  "payload": {
+    "actorId": "4GXG7ufxylS4H1Pk",
+    "name": "Karius Frede",
+    "hp": 70,
+    "maxHp": 70,
+    "tempHp": 0,
+    "ac": 20,
+    "level": 10,
+    "conditions": [],
+    "exhaustion": 0,
+    "death": { "success": 0, "failure": 0 },
+    "world": { "modernRules": false },
+    "inventory": [],
+    "spells": { "slots": [], "spells": [] },
+    "abilities": {
+      "str": { "value": 20, "mod": 5, "save": 9, "proficient": true, "dc": 17 },
+      "dex": { "value": 10, "mod": 0, "save": 0, "proficient": false, "dc": 10 },
+      "con": { "value": 18, "mod": 4, "save": 8, "proficient": true, "dc": 16 },
+      "int": { "value": 8, "mod": -1, "save": -1, "proficient": false, "dc": 10 },
+      "wis": { "value": 14, "mod": 2, "save": 2, "proficient": false, "dc": 10 },
+      "cha": { "value": 12, "mod": 1, "save": 1, "proficient": false, "dc": 10 }
+    },
+    "skills": {
+      "acr": { "total": 0, "ability": "dex", "proficient": 0, "passive": 10 },
+      "ani": { "total": 2, "ability": "wis", "proficient": 0, "passive": 12 },
+      "arc": { "total": -1, "ability": "int", "proficient": 0, "passive": 9 },
+      "ath": { "total": 9, "ability": "str", "proficient": 2, "passive": 19 },
+      "dec": { "total": 1, "ability": "cha", "proficient": 0, "passive": 11 },
+      "his": { "total": -1, "ability": "int", "proficient": 0, "passive": 9 },
+      "ins": { "total": 2, "ability": "wis", "proficient": 0, "passive": 12 },
+      "itm": { "total": 5, "ability": "cha", "proficient": 1, "passive": 15 },
+      "inv": { "total": -1, "ability": "int", "proficient": 0, "passive": 9 },
+      "med": { "total": 2, "ability": "wis", "proficient": 0, "passive": 12 },
+      "nat": { "total": -1, "ability": "int", "proficient": 0, "passive": 9 },
+      "prc": { "total": 6, "ability": "wis", "proficient": 2, "passive": 16 },
+      "prf": { "total": 1, "ability": "cha", "proficient": 0, "passive": 11 },
+      "per": { "total": 1, "ability": "cha", "proficient": 0, "passive": 11 },
+      "rel": { "total": -1, "ability": "int", "proficient": 0, "passive": 9 },
+      "slt": { "total": 0, "ability": "dex", "proficient": 0, "passive": 10 },
+      "ste": { "total": 0, "ability": "dex", "proficient": 0, "passive": 10 },
+      "sur": { "total": 6, "ability": "wis", "proficient": 2, "passive": 16 }
+    }
+  }
+}
