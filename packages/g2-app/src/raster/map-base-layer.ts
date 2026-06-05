@@ -39,7 +39,11 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-4 (import type rationale)
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
-import { ImageRawDataUpdate, ImageRawDataUpdateResult } from '@evenrealities/even_hub_sdk';
+import {
+  ImageRawDataUpdate,
+  ImageRawDataUpdateResult,
+  TextContainerUpgrade,
+} from '@evenrealities/even_hub_sdk';
 import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { LayerManager } from '../engine/layer-manager.js';
 import type { Layer, RasterControllerLike } from '../engine/layer-types.js';
@@ -191,16 +195,40 @@ export class MapBaseLayer implements Layer {
    *   - `'auto'` is folded to `'raster'` or `'glyph'` using the controller's
    *     BLE verdict (raster default while pending).
    *
-   * On `currentScene === null` (no scene yet) the method resolves without
-   * touching the bridge — a no-op draw is correct during the "loading"
-   * window before Plan 06 pushes the first scene.
+   * **No-frame (null scene) raster path (quick-260605-f9s FIX 2):**
+   * In raster mode the visible map area is the image tile grid (`map-tile-0..3`);
+   * the `map-capture` TEXT container must be BLANK so the image tiles sit over an
+   * empty background. Without this write, the EvenHub SDK leaves `map-capture` at
+   * its boot-time default literal `"Text"`, violating the canonical INV-1 fixture
+   * (`glyph-scene.raster-idle-it.txt` rows 5-18 show image tiles, not text).
+   * When the operative mode is `'raster'` and no scene has arrived yet, this method
+   * issues a single `textContainerUpgrade` for `map-capture` with `content: ''`
+   * and returns without calling `requestFrame` (no pixel data available).
+   *
+   * In glyph mode the null-scene path is a true no-op: `map-capture` is owned by
+   * `renderGlyphScene` (called once a glyph scene arrives). Pre-blanking in glyph
+   * mode would be unnecessary and could race a queued glyph repaint.
    */
   async draw(): Promise<void> {
-    if (this.currentScene === null) {
-      return;
-    }
     const declared = this.layerManager.getMapMode();
     const mode = resolveAutoMode(declared, this.controller.getBleVerdict());
+
+    if (this.currentScene === null) {
+      if (mode === 'raster') {
+        // Raster idle: blank the map-capture text container so the SDK default "Text"
+        // is never shown. The image tile grid (map-tile-0..3) covers the map area;
+        // map-capture must be empty, not the literal "Text" default.
+        await this.bridge.textContainerUpgrade(
+          new TextContainerUpgrade({
+            ...resolveContainerIdField('map-capture'),
+            containerName: 'map-capture',
+            content: '',
+          }),
+        );
+      }
+      // Glyph no-frame: no-op — glyph map-capture is managed by renderGlyphScene.
+      return;
+    }
     if (mode === 'glyph') {
       // Caller is responsible for ensuring `currentScene` matches the mode
       // when forcing 'glyph'; in 'auto' the orchestrator (Plan 06) supplies
