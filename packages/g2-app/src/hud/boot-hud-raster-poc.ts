@@ -22,10 +22,26 @@
  * 6. `const tiles = buildHudTiles(rgba)`.
  * 7. `await pushHudTiles(bridge, tiles)`.
  *
- * # SINGLE FRAME
+ * # LIVE RE-RENDER
  *
- * This PoC renders exactly ONE frame on connect — no Web Worker loop, no live
- * `character.delta` re-render. Follow-up per ADR-0013 §Scope.
+ * After the REST first-frame (steps 4-7), the PoC opens a WebSocket to the
+ * bridge and subscribes to `character.delta` via `createWsEventBus`. Because
+ * of last-value replay, the subscription fires immediately with any cached
+ * on-connect delta AND on every future snapshot update. Each fired snapshot
+ * re-draws all 4 tiles (naive scope — no xxhash delta diffing, see TODO below).
+ *
+ * The WS wiring is fail-soft: a connection or subscribe failure is logged via
+ * `console.warn` and NEVER rejects boot. The REST first-frame stays on screen
+ * even if the WS path fails entirely (T-m4e-03 mitigation).
+ *
+ * TODO(ADR-0013): ~5fps debounced RasterController loop + xxhash sub-tile delta
+ * diffing (re-push only CHANGED tiles) is TODO-hud-raster #2 and is intentionally
+ * NOT implemented here.
+ *
+ * # Normal path isolation
+ *
+ * The normal text-HUD boot (`bootEngine`) is BYTE-IDENTICAL when the flag is
+ * absent — no new runtime code runs on that path.
  *
  * # Fail-soft
  *
@@ -37,12 +53,16 @@
  * @see packages/g2-app/src/hud/hud-poc-page.ts (createHudPocPage + pushHudTiles)
  * @see packages/g2-app/src/hud/hud-canvas-renderer.ts (renderHudFrame)
  * @see packages/g2-app/src/hud/hud-raster-frame.ts (buildHudTiles)
+ * @see packages/g2-app/src/hud/hud-live-render.ts (makeSnapshotRenderHandler)
  */
 
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
+import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
+import { createWsEventBus } from '../internal/boot-engine-core.js';
 import { renderHudFrame } from './hud-canvas-renderer.js';
+import { makeSnapshotRenderHandler } from './hud-live-render.js';
 import { createHudPocPage, pushHudTiles } from './hud-poc-page.js';
 import { buildHudTiles } from './hud-raster-frame.js';
 
@@ -185,21 +205,63 @@ async function fetchSnapshot(
   }
 }
 
+// ── Private WS open helper ────────────────────────────────────────────────────
+
+/**
+ * Wait for a WebSocket to reach the `OPEN` state.
+ *
+ * Resolves immediately if the socket is already open (`readyState === 1`).
+ * Rejects if an `error` event fires before `open`.
+ *
+ * Mirrors `boot-engine-core#awaitWsOpen` (which is private to that module).
+ * A local copy is used here so the PoC does NOT import a private symbol.
+ *
+ * @param ws WebSocket to await.
+ * @returns Promise that resolves when the socket is open.
+ */
+function awaitWsOpen(ws: WebSocket): Promise<void> {
+  // WebSocket.OPEN === 1 in browsers + Even Realities App WKWebView.
+  if (ws.readyState === 1) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onOpen = (): void => {
+      ws.removeEventListener('open', onOpen as EventListener);
+      ws.removeEventListener('error', onError as EventListener);
+      resolve();
+    };
+    const onError = (ev: Event): void => {
+      ws.removeEventListener('open', onOpen as EventListener);
+      ws.removeEventListener('error', onError as EventListener);
+      reject(new Error(`[EVF] hud-raster-poc: WS error before open: ${String(ev.type)}`));
+    };
+    ws.addEventListener('open', onOpen as EventListener);
+    ws.addEventListener('error', onError as EventListener);
+  });
+}
+
 // ── Public boot function ──────────────────────────────────────────────────────
 
 /**
- * Isolated PoC boot: bridge → page → fetch snapshot → render → push 1 frame.
+ * Isolated PoC boot: bridge → page → REST first-frame → live character.delta loop.
  *
- * **SINGLE FRAME.** No Web Worker. No live `character.delta` re-render.
- * (Follow-up per ADR-0013 §Scope.)
+ * **LIVE RE-RENDER.** After the REST first-frame, a WebSocket is opened to the
+ * bridge and `createWsEventBus(ws).subscribe('character.delta', handler)` is
+ * registered. Because of last-value replay, the subscription fires immediately
+ * with any cached on-connect delta AND on every future snapshot update. Each
+ * fired snapshot re-draws ALL 4 tiles (naive scope — no xxhash delta diffing).
+ *
+ * TODO(ADR-0013): ~5fps debounced loop + xxhash sub-tile delta diffing is
+ * TODO-hud-raster #2 and is intentionally NOT implemented here.
  *
  * Triggered ONLY when `?hud=raster` is present in the no-auth dev branch of
- * `launchApp`. The normal text-HUD boot (`bootEngine`) is byte-identical when
- * the flag is absent.
+ * `launchApp`. The normal text-HUD boot (`bootEngine`) is BYTE-IDENTICAL when
+ * the flag is absent — no new code runs on the normal path.
  *
- * The entire body is wrapped in try/catch — any error is logged via
- * `console.error` and the function returns normally (fail-soft, never rejects).
- * This prevents a PoC render error from white-screening the app.
+ * **Fail-soft:** the outer try/catch logs errors via `console.error` and the
+ * function returns normally (never rejects). The WS wiring block has its own
+ * inner try/catch → `console.warn` so a WS failure leaves the REST first-frame
+ * on screen and never aborts boot (T-m4e-03 mitigation).
  *
  * @param opts Boot options (bridgeUrl, token, locale, optional characterId).
  *
@@ -228,6 +290,50 @@ export async function bootHudRasterPoc(opts: BootHudRasterPocOpts): Promise<void
 
     // Step 7: Push the 4 tiles to the G2 framebuffer (fail-soft per tile).
     await pushHudTiles(bridge, tiles);
+
+    // ── Steps 8-10: Live character.delta subscription ─────────────────────
+    //
+    // Fail-soft around the entire WS wiring block (T-m4e-03). A WS failure
+    // MUST leave the REST first-frame on screen and NEVER reject boot.
+    //
+    // Note: importing createWsEventBus pulls the boot-engine-core module graph
+    // into the PoC chunk; acceptable for the dev-only ?hud=raster path (it is
+    // already a dev-no-auth branch). If a circular import surfaces, fall back
+    // to a local inline of the 1-persistent-listener + last-value-replay
+    // pattern (≤40 lines) — but PREFER the import for a single source of truth.
+    try {
+      // Step 8: Build the render deps for the live re-render loop.
+      const renderDeps = {
+        render: (s: CharacterSnapshot) => renderHudFrame(s, { width: 576, height: 288 }),
+        assemble: buildHudTiles,
+        push: (t: ReturnType<typeof buildHudTiles>) => pushHudTiles(bridge, t),
+        onError: (err: unknown) => {
+          console.warn('[EVF] hud-raster-poc: live re-render failed (last good frame kept) —', err);
+        },
+      };
+
+      // Step 9: Open WS + await OPEN.
+      const wsUrl = toWsConnectUrl(opts.bridgeUrl);
+      const ws = new WebSocket(wsUrl);
+      await awaitWsOpen(ws);
+
+      // Step 10: Build event bus and subscribe to character.delta.
+      //
+      // createWsEventBus(ws) — no seqTracker / perfProbe needed for the PoC.
+      // subscribe('character.delta', handler) invokes the handler synchronously
+      // with any cached last value (last-value replay) AND on every future delta.
+      // Each call redraws + re-pushes ALL 4 tiles (naive scope, TODO-hud-raster #1).
+      //
+      // TODO(ADR-0013): xxhash sub-tile delta diffing (re-push only CHANGED tiles)
+      // is TODO-hud-raster #2 and is intentionally NOT implemented here.
+      const bus = createWsEventBus(ws);
+      bus.subscribe('character.delta', makeSnapshotRenderHandler(renderDeps));
+    } catch (wsErr) {
+      console.warn(
+        '[EVF] hud-raster-poc: WS live-render setup failed (REST first-frame kept) —',
+        wsErr,
+      );
+    }
   } catch (err) {
     const detail =
       err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : String(err);
