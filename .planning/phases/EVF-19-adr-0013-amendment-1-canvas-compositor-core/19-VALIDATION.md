@@ -1,9 +1,9 @@
 ---
 phase: 19
 slug: adr-0013-amendment-1-canvas-compositor-core
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-05
 ---
 
@@ -38,11 +38,11 @@ created: 2026-06-05
 
 | Task ID | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 19-ADR | 1 | RAST-05 | — | N/A (doc) | manual+grep | `grep -q "Amendment 1" docs/architecture/0013-hud-raster-rendering.md` | ❌ W0 | ⬜ pending |
-| 19-GEOM | 1 | RINV-02 | T-m4e-01 | tile ≤200×100 enforced | unit | vitest `hud-raster-frame` geometry test | ❌ W0 | ⬜ pending |
-| 19-COMPOSITOR | 2 | RAST-01 | — | z-order + serialized push | unit | vitest `canvas-compositor` test (order, dirty-skip, push serialization via spy) | ❌ W0 | ⬜ pending |
-| 19-CANVASLAYER | 2 | RAST-01 | — | `{image:0,text:0}` contract | unit | vitest `canvas-layer` contract test | ❌ W0 | ⬜ pending |
-| 19-SCHEMA | 2 | RAST-02, RAST-03 | — | containerTotalNum=5, 1 isEventCapture | unit | vitest `buildHudRasterPageSchema` shape test | ❌ W0 | ⬜ pending |
+| 19-ADR | 1 | RAST-05 | — | N/A (doc) | manual+grep | `grep -q "Amendment 1" docs/architecture/0013-hud-raster-rendering.md` | ✅ | ⬜ pending |
+| 19-GEOM | 1 | RINV-02 | T-m4e-01 | tile ≤200×100 enforced | unit | vitest `hud-raster-frame` geometry test | ✅ | ⬜ pending |
+| 19-COMPOSITOR | 2 | RAST-01 | — | z-order + serialized push | unit | vitest `canvas-compositor` test (order, dirty-skip, push serialization via spy) | ✅ | ⬜ pending |
+| 19-CANVASLAYER | 2 | RAST-01 | — | `{image:0,text:0}` contract | unit | vitest `canvas-layer` contract test | ✅ | ⬜ pending |
+| 19-SCHEMA | 2 | RAST-02, RAST-03 | — | containerTotalNum=5, 1 isEventCapture | unit | vitest `buildHudRasterPageSchema` shape test | ✅ | ⬜ pending |
 | 19-RENDERMODE | 3 | RAST-04 | — | glyph mode byte-identical | unit | vitest `layer-manager` renderMode + `_flushPage` glyph-identity test | ✅ | ⬜ pending |
 | 19-REGRESSION | 3 | RAST-01..05 | — | zero regressions | suite | `corepack pnpm test` (2668+ pass) | ✅ | ⬜ pending |
 
@@ -75,6 +75,6 @@ created: 2026-06-05
 - [ ] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter (planner/executor sets when map complete)
+- [x] `nyquist_compliant: true` set in frontmatter (TDD behavior-first — every task has a real <automated> verify command)
 
-**Approval:** pending
+**Approval:** approved 2026-06-05 (plan-checker fix: TDD tasks satisfy Nyquist via real <automated> commands; no separate Wave 0 stub files needed for pure-logic phase)
