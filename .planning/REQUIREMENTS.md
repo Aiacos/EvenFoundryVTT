@@ -1,92 +1,93 @@
-# Requirements: EvenFoundryVTT — Milestone v0.9.14 "Release & Distribution + deferred hardening"
+# Requirements: EvenFoundryVTT — Milestone v0.10.0 "Raster UI Substrate"
 
-**Defined:** 2026-05-30
-**Core Value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica — e ora il sistema è effettivamente **installabile** da un utente reale.
+**Defined:** 2026-06-05
+**Core Value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica — e ora l'intera UI è renderizzata come immagini raster compositate, con full controllo tipografico, non più subordinata al font fisso 27px dell'SDK.
+
+> Anchor: ADR-0013 (+ Amendment 1 da scrivere) · `.planning/TODO-hud-raster.md` · `.planning/research/SUMMARY.md` (2026-06-05). Decisioni locked dall'utente 2026-06-05: compositing su canvas unico (forzato dai 4 image-container); render mix statico+dinamico; estendere subito schema feats/bio; **delta loop + promozione a default INCLUSI** in v0.10.0; xxhash delta DEVE precedere la promozione (vincolo BLE).
 
 ## v1 Requirements
 
-Requirements for milestone v0.9.14. Each maps to exactly one roadmap phase (19–22).
+Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
-### Release & Distribution (REL) — *Phase 19, sequenced first, independent of all other phases*
+### Raster Compositor (RAST) — *fondamento; tutto il resto dipende da qui*
 
-- [ ] **REL-01**: On a GitFlow release (version tag on `main`), CI builds `foundry-module` and attaches `module.json` + `evenfoundryvtt.zip` to the GitHub Release such that a user can install it in Foundry via the "Install Module" manifest URL.
-- [ ] **REL-02**: On a version tag, CI builds the `bridge` as a multi-stage `node:24-alpine` Docker image and pushes it to GHCR (`ghcr.io/<owner>/evf-bridge:<version>` + `:latest`), pullable by an end user.
-- [ ] **REL-03**: On a version tag, CI builds the `g2-app` Vite production bundle and attaches a `g2-app-dist.zip` to the GitHub Release for a static plugin host.
-- [ ] **REL-04**: The GitHub Release page is auto-populated with release notes aggregated from the Changesets changelog across the released packages (no manual copy-paste).
-- [ ] **REL-05**: `README.md` has an "Installation" section documenting how an end user installs each of the 3 components (foundry-module via manifest URL, bridge via `docker run`/compose from GHCR, g2-app static host), kept coherent with `Specs.md` + showcase per INV-3.
+- [ ] **RAST-01**: `LayerManager` composita i layer su un singolo canvas 576×288 — ogni layer disegna sulla propria `OffscreenCanvas`, il compositor le combina in z-order via `drawImage`, e consegna l'RGBA master alla pipeline esistente `buildHudTiles`/`pushHudTiles` (4 tile 288×144 → `updateImageRawData`).
+- [ ] **RAST-02**: La capture-invariant (INV-5) è preservata in modalità canvas tramite un container testo dedicato a dimensione zero con `isEventCapture:1` (`hud-capture`), così le gesture R1 continuano a essere instradate mentre i 4 image-tile renderizzano.
+- [ ] **RAST-03**: L'audit del budget container opera in modalità canvas a budget fisso (5 container: 4 image-tile + 1 capture) senza falsi `capture_invariant_violated` / budget-overflow durante mount/destroy/bundle.
+- [ ] **RAST-04**: Il path glyph/text coesiste invariato — un flag `renderMode: 'canvas' | 'glyph'` seleziona lo schema-pagina e se invocare il compositor; in modalità glyph i layer text sono byte-identici a oggi (fallback BLE-degraded, ADR-0005 Branch A). Lo switch di modalità è atomico (`bundle`).
+- [ ] **RAST-05**: **ADR-0013 Amendment 1** ratifica il compositor model (per-layer OffscreenCanvas → drawImage), la re-mappatura capture-container, la budget-mode canvas, la coesistenza glyph e il selettore di schema in `_flushPage` — scritto PRIMA dell'implementazione.
 
-### Background-state & Lifecycle (LIFE) — *Phase 20*
+### Render Substrate & Fonts (RFONT)
 
-- [ ] **LIFE-01** — *INV-2 round ✅ done 2026-05-31 (see ADR-0012 D-5)*: confirms the actual lifecycle-event surface of `@evenrealities/even_hub_sdk@0.0.10` — `OsEventTypeList.FOREGROUND_ENTER_EVENT=4 / FOREGROUND_EXIT_EVENT=5 / ABNORMAL_EXIT_EVENT=6` + `OsEventTypeList.fromJson` (`dist/index.d.ts:707-714`), consumed via `onEvenHubEvent`. `setBackgroundState`/`onBackgroundRestore` confirmed absent on 0.0.10. Implementation (wiring the handlers) remains Phase 20.
-- [ ] **LIFE-02**: Engine session state (active panel, last-confirmed seq, negotiated caps, effective locale, map mode) survives a phone background→foreground cycle without resetting to boot.
-- [ ] **LIFE-03**: The user can exit the plugin from the glasses/ring via `bridge.shutDownPageContainer(...)` wired to a reserved gesture.
-- [ ] **LIFE-04**: On background/abnormal-exit lifecycle events the app stops hardware capture (`audioControl(false)`) and tears down cleanly (no mic left hot).
+- [ ] **RFONT-01**: Il font pixel **VT323** (`@fontsource/vt323`, self-hosted ~10KB WOFF2) è caricato nel contesto canvas/Worker con una **fallback chain** try/catch a `monospace` di sistema (incertezza `self.fonts` su WKWebView Worker iOS 16); il font è risolto prima della prima frame.
+- [ ] **RFONT-02**: Il chrome statico (cornici, label, tab strip, sfondi) è **pre-bakato una volta** in cache `ImageBitmap` e compositato sotto il contenuto dinamico a ogni frame (mix statico+dinamico), senza re-render per-frame del chrome.
+- [ ] **RFONT-03**: I dati dinamici (HP, slot, turni, condizioni) re-renderizzano **solo il proprio layer** su `character.delta` / `combat.delta` riusando `hud-live-render.ts`, poi ricompositano — non si ridisegna l'intero canvas se solo un layer cambia.
 
-### Render Correctness (REND) — *Phase 21*
+### Raster Character Sheet (RSHEET)
 
-- [ ] **REND-01**: `LayerManager._flushPage` assembles the real container schema from mounted layers so `overlay-block` and `toast-block` are declared and actually render on hardware (not empty arrays); exactly one emitted container carries `isEventCapture:1`.
-- [ ] **REND-02**: INV-1 layout integrity is validated against LVGL pixel metrics (not just character counts) for alignment-bearing columns, reconciling the proportional-font reality with the char-grid model.
-- [ ] **REND-03**: HUD card and glyph map fit the 576×288 / 27px-line canvas (≤10 rows for a full-screen container); vertical overflow of the 21-row HUD/glyph layouts is resolved or re-budgeted.
+- [ ] **RSHEET-01**: La scheda PG è renderizzata come **pannello raster overlay z=2** sulla mappa, con i 6 tab (Main · Skills · Inventory · Spells · Features · Biography) disegnati su canvas con densità glanceable (controllo tipografico nostro, non i ~10 righe del 27px SDK).
+- [ ] **RSHEET-02**: La navigazione tab + apertura/chiusura del pannello scheda funzionano via gesture R1 (press/double-press/scroll, no long-press) sulla scheda raster, preservando la semantica gesture esistente (`panel-gesture-bus`).
+- [ ] **RSHEET-03**: L'**immagine portrait** del personaggio è renderizzata (greyscale-dithered) dentro la scheda, dimensionata per la glanceability, fetch async-una-volta (riusa l'infra portrait-override di `MapBaseLayer`).
 
-### Localization & Tier-4 Polish (LOC) — *Phase 22*
+### Raster Combat Tracker (RCOMB)
 
-- [ ] **LOC-01**: DE locale support + minor Tier-4 items carried from the 2026-05-29 deep review are addressed (or explicitly re-deferred with reasoning if hardware/spec-blocked).
+- [ ] **RCOMB-01**: Il combat tracker / turni è renderizzato come **pannello raster overlay z=2** sulla mappa (ordine iniziativa, highlight turno corrente, HP, concentrazione, quick-action bar), preservando il comportamento gesture esistente (finestra scorrevole 5 combattenti).
+
+### Sheet Data Extension (RDATA) — *estese atomicamente coi rispettivi renderer*
+
+- [ ] **RDATA-01**: `CharacterSnapshotSchema` porta `class` (+ reader `foundry-module`) — il tab Main mostra classe/livello reali.
+- [ ] **RDATA-02**: `CharacterSnapshotSchema` porta `initiative` + `speed` (+ reader) — surfacciati nel tab pertinente al posto di placeholder.
+- [ ] **RDATA-03**: `CharacterSnapshotSchema` porta `feats[]` (`{category, name, isOrigin, description}`) dal reader `foundry-module` (`actor.items` filtrati) — il tab Features mostra feat reali invece della fixture `DEFAULT_FEATS` hardcoded.
+- [ ] **RDATA-04**: `CharacterSnapshotSchema` porta `biography` (personality/ideal/bond/flaw/backstory) dal reader — il tab Biography mostra bio reale invece del testo hardcoded.
+- [ ] **RDATA-05**: `CombatantSchema` porta `ac` (+ read path nel combat reader) — il combat tracker mostra l'AC reale invece del placeholder `' --'`.
+
+### Delta Loop & Promotion (RPROMO) — *delta DEVE precedere la promozione (vincolo BLE)*
+
+- [ ] **RPROMO-01**: La HUD raster è guidata da un loop **~5fps con delta sub-tile xxhash** (riusa `RasterController`) + debounce, così solo i tile **CHANGED** vengono ri-encodati/spediti; HUD idle ≈ banda BLE quasi-zero.
+- [ ] **RPROMO-02**: La UI raster è il **substrato di boot di default** (sostituisce la status-page text-container); la HUD glyph/text resta il **fallback BLE-degraded** (degrade automatico sotto soglia banda per ADR-0005 Branch A).
+
+### Quality Contracts (RINV)
+
+- [ ] **RINV-01**: **Contratto INV-1 raster** — snapshot deterministici via **hash dei byte PNG dei tile** prodotti da input RGBA sintetico (NON canvas text, non-deterministico/untestabile in happy-dom); le funzioni pure di content-logic (`formatConditions`, `formatSlots`, …) testate a parte; `inv:all` separa glyph vs raster.
+- [ ] **RINV-02**: **INV-2 re-verify hardware** — la dimensione tile 288×144 vs cap documentato 200×100 e il pattern capture-container zero-size sono validati nel simulatore early (prima della Phase compositor); SC su hardware reale portata `human_needed` sotto ADR-0005 Branch A se l'hardware non è disponibile.
+- [ ] **RINV-03**: **INV-3 doc coherence** — `Specs.md` §7 (layout raster-HUD) + `README.md` + `docs/showcase/index.html` aggiornati atomicamente nello stesso commit; i mockup ASCII 27px stantii riconciliati (annotati come path glyph-fallback).
 
 ## v2 Requirements
 
 Deferred to future milestones. Tracked but not in current roadmap.
 
-### Write Path Extension
-- **SKILL-WR-01**: Skill-check write path (`evf.rollSkill` socketlib handler + `skill_check` dispatch un-stub + Skills-tab gesture wiring + toast feedback).
-- **SAVE-WR-01**: Saving-throw write path (`evf.rollAbilitySave` handler), mirror of Phase 8 manual-action UX.
-- **SPELL-DC-01**: Spells tab DC data-binding (primed by Phase 16 `abilities.<k>.dc`).
+### Raster pipeline generalization
+- **RGEN-01** (TODO-hud-raster #7): generalizzare `raster-worker` (oggi map-only 400×200 / 200×100) alla geometria full-screen 576×288 / 288×144 così map + HUD condividono un worker; offload del tiling/encode fuori dal main thread.
 
-### Hardware UAT
-- **UAT-01**: Execute the 35 software-complete `human_needed` SCs against real G2 + R1 + Even Hub; close ADR-0005 PROVISIONAL → ACCEPTED.
-
-### INV-2 Drift Corrections (surfaced 2026-05-31, canonical hub.evenrealities.com/docs/*)
-- **GEST-01** (IMPORTANT) — **DESIGN LOCKED [ADR-0012], impl Phase 20**: Retire `long-press` — canonical docs confirm the gesture set is press/double-press/swipe-up/swipe-down only, NO duration-based input. **Decision (ADR-0012, 2026-05-31, supersedes the earlier "candidate: double-press" guess):** Quick-Action menu invocation moves to **over-scroll (swipe-up at the focused layer's top boundary)** — NOT double-press, because `double-tap` is reserved for the LIFE-03 root-exit (`shutDownPageContainer(1)`). Per-panel context actions remap: `inventory`/`spellbook` Action Options → `tap`; `template-placement` cancel → `double-tap`. Scope: `shared-protocol` `R1GesturePayloadSchema` enum + `bridge` classifier (`debug/dashboard.ts`) + g2-app `R1Gesture` union + 12 panels + `quick-action-overscroll-dispatcher` + status-HUD hint chip (`long=`→`quick=`) + i18n keys + 22 test files, AND Specs §3.2/§10.0.1/§7.14.4 mockups + README + showcase, atomically (INV-3). Deep multi-file + hardware-gated ⇒ dedicated Phase 20 effort (input/lifecycle), executed via the GSD phase flow. See `docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md`.
-- **EXIT-01** (CRITICAL, submission-blocker) — tracked as **LIFE-03**, **DESIGN LOCKED [ADR-0012 D-4], impl Phase 20**: app-submission QA requires root-page double-tap → `bridge.shutDownPageContainer(1)` (Mode 1 graceful exit dialog; Mode 0 unacceptable). Currently never called in production (only test mocks). SDK confirmed: `dist/index.d.ts:1201`.
-- **DIST-EHUB-01** (IMPORTANT) — ✅ MOSTLY DONE 2026-05-31: Authored `packages/g2-app/app.json` (`package_id` `io.github.aiacos.foundryvtt`, `edition 202601`, `name`, `version` CI-synced, `min_app_version`/`min_sdk_version`, `entrypoint index.html`, `network` permission whitelist, `supported_languages [it,en]`) + `.github/workflows/evenhub-pack.yml` (builds + packs + validates `.ehpk` on every push to main, uploads artifact) + `docs/release/evenhub.md` runbook. **Remaining (user/manual):** (a) replace the `network.whitelist` placeholder origins with the real deployed bridge + plugin-host URLs; (b) verify `min_app_version`; (c) **portal submission is MANUAL** — Even Hub has NO non-interactive CI submit (INV-2: CLI = login/init/qr/pack only, interactive login, portal review-gated). Auto-submit-on-merge is therefore not possible with current tooling; the CD produces the submission-ready `.ehpk` and the stubbed `EVENHUB_TOKEN`-gated step is ready if Even ever ships a CI submit path.
+### Standalone raster action panels
+- **RACT-01**: pannelli raster dedicati per Action Options / spellbook / inventory action (oggi tab dentro la scheda); valutare overlay raster autonomi se la densità lo richiede.
 
 ## Out of Scope
 
-Explicitly excluded for v0.9.14.
+Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| npm publish of `@evf/shared-*` | Internal deps only; Changesets stays pre-1.0 no-publish (user-confirmed 2026-05-30). Not needed to run the system. |
-| `foundry-mcp` (V2) release artifact | V2 optional surface; not part of the core installable MVP. Add when V2 ships. |
-| `.ehpk` Even Hub packaging for g2-app | Static dist zip chosen for v0.9.14; `.ehpk` can be added later if Even Hub store distribution is pursued. |
-| Cloud / multi-tenant hosting of release artifacts | Single-tenant homelab MVP; cloud is STRETCH-08. |
-| Hardware UAT execution | Requires physical G2 + R1 + Even Hub access (ADR-0005 carry pattern). |
-| `setBackgroundState`/`onBackgroundRestore` SDK calls | Confirmed absent on SDK 0.0.10 — LIFE phase uses the `onEvenHubEvent` lifecycle pattern instead. |
+| Generalizzazione `raster-worker` map+HUD condiviso (TODO #7) | Il map worker resta 400×200 per v0.10.0; il compositor HUD usa la propria geometria 576×288. Generalizzazione = v2 (RGEN-01). |
+| Map live-data wiring oltre lo stato attuale | La mappa resta il base layer com'è; questo milestone non aggiunge nuovi canali scene/map. |
+| Pannelli raster standalone (spellbook/inventory/action-options) | Restano tab dentro la scheda raster; overlay raster autonomi = v2 (RACT-01). |
+| v0.9.14 Release & Distribution (REL/LIFE/REND/LOC) | PARCHEGGIATO al pivot raster; ripreso in un milestone successivo (vedi sezione Parked). |
+| DE-locale + Tier-4 polish | Parcheggiati con v0.9.14. |
+
+## Parked — Milestone v0.9.14 "Release & Distribution + deferred hardening"
+
+Avviato 2026-05-30, sospeso 2026-06-05 al pivot verso la UI raster. Da riprendere in un milestone successivo. Requirements (REL-01..05, LIFE-01..04, REND-01..03, LOC-01) conservati nell'archivio git (commit `4f2bfc4^` e antecedenti) e nel changelog; non attivi in v0.10.0.
 
 ## Traceability
 
-Roadmap created 2026-05-30. All 13 v1 requirements mapped to Phases 19–22.
+Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REL-01 | Phase 19 | Pending |
-| REL-02 | Phase 19 | Pending |
-| REL-03 | Phase 19 | Pending |
-| REL-04 | Phase 19 | Pending |
-| REL-05 | Phase 19 | Pending |
-| LIFE-01 | Phase 20 | Pending |
-| LIFE-02 | Phase 20 | Pending |
-| LIFE-03 | Phase 20 | Pending |
-| LIFE-04 | Phase 20 | Pending |
-| REND-01 | Phase 21 | Pending |
-| REND-02 | Phase 21 | Pending |
-| REND-03 | Phase 21 | Pending |
-| LOC-01 | Phase 22 | Pending |
-
-**Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13
-- Unmapped: 0 ✓
-
----
-*Requirements defined: 2026-05-30*
-*Last updated: 2026-05-30 — roadmap Phases 19–22 created; all 13 v1 REQ-IDs mapped*
+| RAST-01..05 | TBD | Pending |
+| RFONT-01..03 | TBD | Pending |
+| RSHEET-01..03 | TBD | Pending |
+| RCOMB-01 | TBD | Pending |
+| RDATA-01..05 | TBD | Pending |
+| RPROMO-01..02 | TBD | Pending |
+| RINV-01..03 | TBD | Pending |
