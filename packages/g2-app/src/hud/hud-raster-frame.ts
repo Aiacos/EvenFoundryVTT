@@ -1,6 +1,16 @@
 /**
- * HUD raster frame assembler — slices a 576×288 RGBA frame into 4 × 288×144
+ * HUD raster frame assembler — slices a 400×200 RGBA frame into 4 × 200×100
  * dithered 4-bit PNG tiles ready for `updateImageRawData`.
+ *
+ * # Geometry (INV-2 verified 2026-06-05)
+ *
+ * G2 image containers are capped at 20–200 px wide × 20–100 px tall
+ * (`hub.evenrealities.com/docs/guides/display`, verified 2026-06-05). The
+ * raster surface is therefore 400×200 (4 tiles of 200×100 each), NOT 576×288.
+ * On-screen placement of the 400×200 region inside 576×288 is parameterized
+ * (default deferred to Phase 20).
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  *
  * # Reuse from raster-worker.ts (patterns replicated minimally — NOT imported)
  *
@@ -12,8 +22,8 @@
  * - `buildGreyscalePalette()` — canonical 16-step 0..240 greyscale palette
  *   (verbatim from raster-worker.ts, same algorithm)
  * - `ditherTile()` — Floyd-Steinberg dither via image-q against the palette
- *   (adapted for TILE_W/TILE_H = 288×144 instead of 200×100)
- * - `UPNG.encode([rgba.buffer], 288, 144, 16)` — 4-bit indexed-palette PNG
+ *   (adapted for TILE_W/TILE_H = 200×100)
+ * - `UPNG.encode([rgba.buffer], 200, 100, 16)` — 4-bit indexed-palette PNG
  *   (verbatim call pattern from raster-worker.ts Stage 9)
  *
  * No xxhash/delta/RLE — the PoC encodes all 4 tiles unconditionally (single
@@ -36,14 +46,26 @@ import * as UPNG from 'upng-js';
 
 // ── Frame / tile geometry ─────────────────────────────────────────────────────
 
-/** Full-frame width (pixels). */
-const FRAME_W = 576;
-/** Full-frame height (pixels). */
-const FRAME_H = 288;
-/** Tile width (pixels) — half of FRAME_W (2 columns). */
-const TILE_W = 288;
-/** Tile height (pixels) — half of FRAME_H (2 rows). */
-const TILE_H = 144;
+/**
+ * Raster surface width: 4 tiles × 100 px each arranged in 2 columns = 400 px.
+ * INV-2 verified 2026-06-05 (`hub.evenrealities.com/docs/guides/display`).
+ */
+const FRAME_W = 400;
+/**
+ * Raster surface height: 2 rows × 100 px each = 200 px.
+ * INV-2 verified 2026-06-05 (`hub.evenrealities.com/docs/guides/display`).
+ */
+const FRAME_H = 200;
+/**
+ * Tile width — max per Even Realities image container spec (20–200 px).
+ * Source: `hub.evenrealities.com/docs/guides/display`, verified 2026-06-05.
+ */
+const TILE_W = 200;
+/**
+ * Tile height — max per Even Realities image container spec (20–100 px).
+ * Source: `hub.evenrealities.com/docs/guides/display`, verified 2026-06-05.
+ */
+const TILE_H = 100;
 /** Number of tiles per frame (2×2 layout). */
 const TILES_PER_FRAME = 4;
 
@@ -70,19 +92,26 @@ export interface HudTile {
  *
  * Used by `hud-poc-page.ts` to build the `CreateStartUpPageContainer` schema
  * and by tests to assert the tile layout without calling the dither pipeline.
+ *
+ * `x` and `y` are offsets **relative to the 400×200 raster-region origin** —
+ * not absolute on-screen positions within the 576×288 G2 display. The raster
+ * region's on-screen placement inside 576×288 is parameterized (Phase 20
+ * decision). No hard-coded 576×288 on-screen offset is introduced here.
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1 — geometry)
  */
 export interface HudTileGeometryEntry {
   /** Numeric host container ID (0-3). */
   readonly containerID: number;
   /** Container name (e.g. `"hud-tile-0"`). */
   readonly containerName: string;
-  /** Top-left X position in the 576×288 screen (pixels). */
+  /** Top-left X offset relative to the 400×200 raster-region origin (pixels). */
   readonly x: number;
-  /** Top-left Y position in the 576×288 screen (pixels). */
+  /** Top-left Y offset relative to the 400×200 raster-region origin (pixels). */
   readonly y: number;
-  /** Tile width in pixels (always 288). */
+  /** Tile width in pixels (always 200 — max per Even Realities image container spec). */
   readonly width: number;
-  /** Tile height in pixels (always 144). */
+  /** Tile height in pixels (always 100 — max per Even Realities image container spec). */
   readonly height: number;
 }
 
@@ -91,21 +120,28 @@ export interface HudTileGeometryEntry {
 /**
  * The 4 HUD tile geometry descriptors in id order (TL, TR, BL, BR).
  *
+ * Tile offsets are relative to the **400×200 raster-region origin** (not the
+ * 576×288 physical G2 screen). The raster-region's on-screen placement is
+ * parameterized — default deferred to Phase 20 (ADR-0013 Amendment 1).
+ *
  * ```
- *   ┌─────────────┬─────────────┐
- *   │  hud-tile-0 │  hud-tile-1 │  (0,0)─(288,0)─(576,0)
- *   │   288×144   │   288×144   │
- *   ├─────────────┼─────────────┤  y=144
- *   │  hud-tile-2 │  hud-tile-3 │
- *   │   288×144   │   288×144   │
- *   └─────────────┴─────────────┘  y=288
+ *   ┌────────────┬────────────┐
+ *   │ hud-tile-0 │ hud-tile-1 │  (0,0)─(200,0)─(400,0)
+ *   │   200×100  │   200×100  │
+ *   ├────────────┼────────────┤  y=100
+ *   │ hud-tile-2 │ hud-tile-3 │
+ *   │   200×100  │   200×100  │
+ *   └────────────┴────────────┘  y=200
  * ```
  *
- * The 2×2 arrangement covers the full 576×288 G2 screen with 4 image containers
- * (the maximum the SDK supports). Container IDs start at 0 and are declared
- * first in the boot schema (images before text in the global id namespace).
+ * Tile size (200×100) is the hardware maximum per Even Realities image container
+ * spec (`hub.evenrealities.com/docs/guides/display`, INV-2 verified 2026-06-05).
+ * 4 tiles at maximum size yield the 400×200 raster surface.
  *
- * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013)
+ * Container IDs start at 0 and are declared first in the page schema (images
+ * before text in the global id namespace).
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1 — geometry)
  * @see .planning/debug/glasses-render-blank-containerid.md (global id namespace)
  */
 export const HUD_TILE_GEOMETRY: ReadonlyArray<HudTileGeometryEntry> = Object.freeze([
@@ -152,13 +188,14 @@ function buildGreyscalePalette(): ImageQ.utils.Palette {
 }
 
 /**
- * Quantize one 288×144 RGBA tile against the greyscale palette using
+ * Quantize one 200×100 RGBA tile against the greyscale palette using
  * Floyd-Steinberg dithering.
  *
- * Adapted from `raster-worker.ts#ditherTile` for the HUD tile dimensions
- * (288×144 instead of 200×100).
+ * Replicated MINIMALLY from `raster-worker.ts#ditherTile` for the HUD tile
+ * dimensions (200×100 — max per Even Realities image container spec,
+ * `hub.evenrealities.com/docs/guides/display`, INV-2 verified 2026-06-05).
  *
- * @param rgba   288×144×4 RGBA pixel buffer.
+ * @param rgba   200×100×4 RGBA pixel buffer.
  * @param pal    16-step greyscale palette from `buildGreyscalePalette`.
  * @returns Dithered RGBA Uint8ClampedArray of the same length.
  *
@@ -174,12 +211,12 @@ function ditherTile(rgba: Uint8ClampedArray, pal: ImageQ.utils.Palette): Uint8Cl
 }
 
 /**
- * Slice a 576×288 RGBA frame into 4 × 288×144 tile buffers (row-by-row copy).
+ * Slice a 400×200 RGBA frame into 4 × 200×100 tile buffers (row-by-row copy).
  *
  * Layout: TL(id=0), TR(id=1), BL(id=2), BR(id=3) — mirrors `raster-worker.ts`
- * `splitIntoTiles` but for the HUD 576×288 / 288×144 geometry.
+ * `splitIntoTiles` but for the HUD 400×200 / 200×100 geometry.
  *
- * @param rgba 576×288×4 RGBA pixel buffer.
+ * @param rgba 400×200×4 RGBA pixel buffer.
  * @returns Array of 4 tile buffers in id order.
  */
 function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
@@ -203,13 +240,13 @@ function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Slice a 576×288 RGBA frame into 4 dithered 4-bit PNG tiles ready for
+ * Slice a 400×200 RGBA frame into 4 dithered 4-bit PNG tiles ready for
  * `updateImageRawData`, returning them in container-id order (0..3).
  *
  * # Pipeline (single frame — no delta, no xxhash, no RLE):
- * 1. Validate `rgba.length === 576*288*4` (throws on mismatch).
- * 2. Split into 4 × 288×144 tile buffers (row-by-row subarray copy).
- * 3. For each tile: Floyd-Steinberg dither → `UPNG.encode([…], 288, 144, 16)`
+ * 1. Validate `rgba.length === 400*200*4` (throws on mismatch).
+ * 2. Split into 4 × 200×100 tile buffers (row-by-row subarray copy).
+ * 3. For each tile: Floyd-Steinberg dither → `UPNG.encode([…], 200, 100, 16)`
  *    → `new Uint8Array(png)`.
  * 4. Return 4 `HudTile` objects with `containerName`, `containerID`, `bytes`.
  *
@@ -217,11 +254,14 @@ function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
  * (`buildGreyscalePalette`, `ditherTile`, `UPNG.encode` call pattern) without
  * importing the worker module itself (ADR-0013, ADR-0006 cross-reference).
  *
- * @param rgba 576×288×4 RGBA Uint8ClampedArray from `renderHudFrame`.
- * @returns 4 `HudTile` objects in id order (0=TL, 1=TR, 2=BL, 3=BR).
- * @throws Error when `rgba.length !== 576*288*4`.
+ * Tile size (200×100) is the hardware maximum per Even Realities image container
+ * spec (`hub.evenrealities.com/docs/guides/display`, INV-2 verified 2026-06-05).
  *
- * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 §Scope — single frame PoC)
+ * @param rgba 400×200×4 RGBA Uint8ClampedArray (from `CanvasCompositor.composite()` in canvas mode).
+ * @returns 4 `HudTile` objects in id order (0=TL, 1=TR, 2=BL, 3=BR).
+ * @throws Error when `rgba.length !== 400*200*4`.
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  * @see packages/g2-app/src/raster/raster-worker.ts (source of replicated patterns)
  * @see packages/g2-app/src/hud/hud-poc-page.ts (consumer — pushHudTiles)
  */
@@ -230,7 +270,7 @@ export function buildHudTiles(rgba: Uint8ClampedArray): HudTile[] {
   if (rgba.length !== expectedLength) {
     throw new Error(
       `[EVF] buildHudTiles: rgba buffer has wrong length ${rgba.length}; ` +
-        `expected 576*288*4 = ${expectedLength}`,
+        `expected 400*200*4 = ${expectedLength}`,
     );
   }
 
