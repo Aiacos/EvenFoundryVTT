@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: planning
-last_updated: "2026-06-05T18:00:00.000Z"
-last_activity: 2026-06-05
+status: Phase 19 Wave 2 complete — plan 19-03 done (canvas compositor substrate)
+stopped_at: Completed 19-03-PLAN.md (CanvasCompositor + CanvasLayer + buildHudRasterPageSchema)
+last_updated: "2026-06-05T18:07:00.000Z"
+last_activity: "2026-06-05 — Plan 19-03: CanvasCompositor (master 400×200, dirty-skip, z-order) + CanvasLayer interface + buildHudRasterPageSchema() 5-container schema. 3140 workspace tests pass."
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 4
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -24,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 19 — ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
-Plan: —
-Status: Roadmap created — ready for /gsd-plan-phase 19
-Last activity: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created (8 phases, 19 REQ-IDs, 100% coverage), then INV-2 corrected: raster geometry 576×288/288×144 → 400×200/200×100 (G2 image-container hard cap; full-screen raster impossible). PROJECT/REQUIREMENTS/ROADMAP/SUMMARY updated.
+Phase: 19 — EXECUTED ✅ (software-complete; hardware-render SC human_needed per ADR-0005 Branch A)
+Plan: 4/4 plans executed (3 waves)
+Status: Phase 19 verified 5/5 software must-haves — ready for Phase 20
+Last activity: 2026-06-05 — Phase 19 (ADR-0013 Amendment 1 + Canvas Compositor Core) EXECUTED via /gsd-autonomous. ADR Amendment 1 ratified (400×200/200×100 geometry, Option B compositor, serialized push, fixed schema, full-screen hud-capture isEventCapture:1, renderMode + _flushPage selector). New: CanvasCompositor + CanvasLayer + buildHudRasterPageSchema (5-container) + LayerManager renderMode/_flushPage-selector/_compositeAndPush/canvas-budget. 3154 workspace tests pass, tsc+lint clean, socketlib=17, glyph path byte-identical (Test 8b unchanged). NO visible UI change (foundation only). Branch feat/hud-raster-rendering (git.branching_strategy="none" to avoid stray gsd/ branch). Next: Phase 20 (Status HUD on canvas + VT323 + INV-1 raster baseline).
 
 ## Performance Metrics
 
