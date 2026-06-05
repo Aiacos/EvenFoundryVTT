@@ -5,7 +5,12 @@
  * {@link launchApp}. This module decides what the app does next:
  *
  *   - **Branch A — no-auth dev:** when `isNoAuth()` is `true`, boot the engine
- *     immediately via `bootEngine({ bridgeUrl: devBridgeUrl(), token: 'dev-no-auth', locale })`.
+ *     immediately. Two sub-branches:
+ *     - **Branch A-raster — `?hud=raster` PoC (ADR-0013):** calls
+ *       `bootHudRasterPoc` INSTEAD of `bootEngine`. The normal text-HUD boot
+ *       is BYTE-IDENTICAL when this flag is absent (no code runs from the new
+ *       PoC modules on the normal path).
+ *     - **Branch A-normal:** calls `bootEngine({ bridgeUrl, token, locale })`.
  *     A non-empty sentinel is required because the handshake schema enforces
  *     `token.min(1)`; the dev no-auth bridge then accepts it. This is the ONLY path
  *     that can boot from "no usable token". This is what unblocks the EvenHub
@@ -27,14 +32,19 @@
  * **W-4 gate:** this module imports `bootEngine` from `../index.js` (the thin
  * production wrapper) so it stays free of DI literals. The W-4 grep gate only
  * covers `../index.ts`; `bootEngine` itself routes through `_bootEngineCore`
- * with no test-injection surface.
+ * with no test-injection surface. `bootHudRasterPoc` is imported directly from
+ * `../hud/boot-hud-raster-poc.js` — it does NOT use `wsFactory`/`bridgeFactory`
+ * literals, so no W-4 violation.
  *
  * @see ../index.ts (thin production entry — calls launchApp)
  * @see ../wizard/tier3-storage.ts (SessionSchema — tokenObfuscated: z.null(), T-02-01)
  * @see ../wizard/is-dev-no-auth.ts (isWizardNoAuth + devBridgeUrl)
+ * @see ../hud/boot-hud-raster-poc.ts (Branch A-raster PoC boot — ADR-0013)
  * @see .planning/quick/260604-ovn-wire-the-production-launch-glue-so-index/260604-ovn-PLAN.md
+ * @see .planning/quick/260605-ksd-poc-image-based-hud-render-one-complete-/260605-ksd-PLAN.md
  */
 
+import { type BootHudRasterPocOpts, bootHudRasterPoc } from '../hud/boot-hud-raster-poc.js';
 import { type BootEngineOpts, bootEngine } from '../index.js';
 import { devBridgeUrl, isWizardNoAuth } from '../wizard/is-dev-no-auth.js';
 import { listProfiles, type Session } from '../wizard/tier3-storage.js';
@@ -56,6 +66,17 @@ const DEFAULT_LAUNCH_LOCALE = 'it';
 export interface LaunchDeps {
   /** Boot the engine. Defaults to the real {@link bootEngine} from `../index.js`. */
   bootEngine: (opts: BootEngineOpts) => Promise<unknown>;
+  /**
+   * Boot the raster HUD PoC (ADR-0013 Branch A-raster).
+   *
+   * Called INSTEAD of `bootEngine` when `?hud=raster` is present in the no-auth
+   * dev branch. Defaults to the real {@link bootHudRasterPoc} from
+   * `../hud/boot-hud-raster-poc.js`.
+   *
+   * @see ../hud/boot-hud-raster-poc.ts
+   * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013)
+   */
+  bootHudRasterPoc: (opts: BootHudRasterPocOpts) => Promise<void>;
   /** List stored Tier 3 sessions. Defaults to `listProfiles` from tier3-storage. */
   listProfiles: () => Promise<Session[]>;
   /** Dev no-auth gate. Defaults to `isWizardNoAuth`. */
@@ -72,8 +93,8 @@ export interface LaunchDeps {
    * Defaults to `() => window.location.search`. Injected in tests to supply
    * a custom query string without touching `window.location`.
    *
-   * Used to extract the `?actor=<id>` URL param which overrides the Tier3
-   * characterId for the no-auth dev branch (sim / quick testing).
+   * Used to extract the `?actor=<id>` and `?hud=<mode>` URL params in the
+   * no-auth dev branch (sim / quick testing).
    */
   readUrlSearch?: () => string;
 }
@@ -93,6 +114,7 @@ export interface LaunchDeps {
 export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> {
   const deps: LaunchDeps = {
     bootEngine,
+    bootHudRasterPoc,
     listProfiles,
     isNoAuth: isWizardNoAuth,
     devBridgeUrl,
@@ -117,25 +139,45 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
     // No stored session is available in the no-auth branch, so only the URL param applies.
     // Precedence: ?actor=<id> > undefined (no pin → roster[0] legacy behavior).
     const search = deps.readUrlSearch ? deps.readUrlSearch() : '';
-    const actorParam = new URLSearchParams(search).get('actor');
+    const params = new URLSearchParams(search);
+    const actorParam = params.get('actor');
     const characterId = actorParam !== null && actorParam.length > 0 ? actorParam : undefined;
 
+    // ADR-0013 Branch A-raster: ?hud=raster routes to the PoC boot path INSTEAD
+    // of the normal bootEngine. When the flag is absent/any-other-value, fall
+    // through to the EXISTING normal bootEngine call — BYTE-IDENTICAL.
+    const hudMode = params.get('hud');
+
     try {
-      await deps.bootEngine({
-        bridgeUrl: deps.devBridgeUrl(),
-        token: 'dev-no-auth',
-        // The wider LaunchDeps.locale is a string; BootEngineOpts.locale is the
-        // narrower HudLocale union. The default 'it' is valid; a caller-supplied
-        // override is the caller's responsibility (tests use 'it'/'en').
-        locale: locale as BootEngineOpts['locale'],
-        ...(characterId !== undefined ? { characterId } : {}),
-      });
+      if (hudMode === 'raster') {
+        // Branch A-raster: isolated PoC boot (single frame, no Worker, no delta).
+        await deps.bootHudRasterPoc({
+          bridgeUrl: deps.devBridgeUrl(),
+          token: 'dev-no-auth',
+          locale,
+          ...(characterId !== undefined ? { characterId } : {}),
+        });
+      } else {
+        // Branch A-normal: existing text-HUD boot (byte-identical to pre-ADR-0013).
+        await deps.bootEngine({
+          bridgeUrl: deps.devBridgeUrl(),
+          token: 'dev-no-auth',
+          // The wider LaunchDeps.locale is a string; BootEngineOpts.locale is the
+          // narrower HudLocale union. The default 'it' is valid; a caller-supplied
+          // override is the caller's responsibility (tests use 'it'/'en').
+          locale: locale as BootEngineOpts['locale'],
+          ...(characterId !== undefined ? { characterId } : {}),
+        });
+      }
     } catch (err) {
       // Fail-soft: a boot error must never bubble out of the top-level module
       // (no silent white-screen). Log a STRING (Error objects serialize to "{}"
       // in the EvenHub simulator's console capture, hiding the real cause).
       const detail =
         err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : String(err);
+      // Keep the original error prefix for the normal bootEngine path — existing tests
+      // assert on '[EVF] launch: bootEngine failed'. The raster PoC also uses this
+      // path (both share the same try/catch block).
       console.error(`[EVF] launch: bootEngine failed — ${detail}`);
     }
     return;
