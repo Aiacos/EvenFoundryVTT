@@ -145,7 +145,8 @@ describe('createWsEventBus — persistent-listener + last-value-replay bus', () 
     });
     const markSpy = vi.spyOn(perfProbe, 'mark');
 
-    const bus = createWsEventBus(ws as unknown as WebSocket, seqTracker, perfProbe);
+    const _bus = createWsEventBus(ws as unknown as WebSocket, seqTracker, perfProbe);
+    void _bus; // bus created for side-effect (attaches global listener); subscribe not needed for this test
 
     // No subscribe needed — hooks fire on inbound regardless.
     const idempotencyKey = 'abcdef0123456789';
