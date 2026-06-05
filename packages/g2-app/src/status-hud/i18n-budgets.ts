@@ -1523,6 +1523,59 @@ export const HUD_WIDTH_BUDGETS = {
     de: '[N] Abbrechen',
     max: 14,
   },
+
+  // ─── HUD-27PX redesign (quick-260605-j0t) — full-width 27px status sheet ──
+  // New keys for the 9-row character status sheet replacing the 28×21 card.
+  // All strings pretext-budgeted against the 576px G2 display.
+
+  /**
+   * Turn number label (row 3 of the status sheet).
+   * IT: `Turno` · EN: `Turn` · DE: `Runde`
+   * TODO(HUD-27PX): wire actual turn data into CharacterSnapshot (#issue)
+   */
+  hud27_turn_label: { it: 'Turno', en: 'Turn', de: 'Runde', max: 6 },
+
+  /**
+   * Round number label (row 3 of the status sheet).
+   * IT: `Round` · EN: `Round` · DE: `Runde`
+   * TODO(HUD-27PX): wire actual round data into CharacterSnapshot (#issue)
+   */
+  hud27_round_label: { it: 'Round', en: 'Round', de: 'Rnd', max: 6 },
+
+  /**
+   * "Your turn" indicator label (row 3, shown in brackets `[…]`).
+   * IT: `TUO TURNO` · EN: `YOUR TURN` · DE: `DEIN ZUG`
+   * Renders as — until turn data is wired into CharacterSnapshot.
+   * TODO(HUD-27PX): wire your-turn flag into CharacterSnapshot (#issue)
+   */
+  hud27_your_turn_label: { it: 'TUO TURNO', en: 'YOUR TURN', de: 'DEIN ZUG', max: 10 },
+
+  /**
+   * Conditions row prefix (row 4 of the status sheet).
+   * IT: `Cond` · EN: `Cond` · DE: `Zust`
+   */
+  hud27_cond_prefix: { it: 'Cond:', en: 'Cond:', de: 'Zust:', max: 5 },
+
+  /**
+   * Death saves row label (row 7 of the status sheet).
+   * IT: `TS morte` · EN: `Death saves` · DE: `Todesrettung`
+   */
+  hud27_death_saves_label: { it: 'TS morte', en: 'Death saves', de: 'Todesrettung', max: 13 },
+
+  /**
+   * R1 hint row (row 8 — bottom row of the status sheet).
+   * Full-width hint string using the over-scroll/double-tap vocabulary agreed in the
+   * approved mockup. Does NOT use `qa=` tokens (GEST-01/ADR-0012 Phase 20 sweep pending).
+   * IT: `R1: ^v scorri  tap ping  oo menu`
+   * EN: `R1: ^v scroll  tap ping  oo menu`
+   * DE: `R1: ^v scrollen  tap ping  oo Menü`
+   */
+  hud27_r1_hint: {
+    it: 'R1: ^v scorri  tap ping  oo menu',
+    en: 'R1: ^v scroll  tap ping  oo menu',
+    de: 'R1: ^v scrollen  tap ping  oo Menü',
+    max: 38,
+  },
 } as const satisfies Record<string, WidthBudgetRow>;
 
 /**
