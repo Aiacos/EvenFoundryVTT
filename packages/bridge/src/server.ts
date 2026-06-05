@@ -422,11 +422,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // Serves GET /v1/character/:actorId from CharacterSnapshotCache ('evf.getCharacterSnapshot').
   // opts.foundrySnapshotFn overrides when provided (existing tests unchanged).
   //
-  // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
   const internalSnapshotFn: FoundrySnapshotFn = async (
     handler: string,
-    // biome-ignore lint/suspicious/noExplicitAny: variadic socket args — untyped by design
     ...args: unknown[]
+    // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
   ): Promise<any> => {
     if (handler === 'evf.listCharacters') {
       return characterListCache.get()?.characters ?? [];
