@@ -217,99 +217,182 @@ function buildBootSteps(): BootStep[] {
 }
 
 /**
- * Minimal `wsEvents` adapter — bridges native WebSocket message events into the
- * `{subscribe(channel, fn): unsubscribe}` shape StatusHudLayer expects.
+ * WS event bus — persistent single listener + last-value-replay per channel.
  *
- * Listens for `message` events; routes JSON envelopes whose `type` matches the
- * requested channel to the registered subscriber. Errors are swallowed and
- * logged — malformed payloads are the producer's bug, not the HUD's.
+ * ## Why this design (quick-task 260605-e9t)
  *
- * **Phase 10 Plan 10-01 (D-Area1):** when a `SeqTracker` is provided, every
- * successfully-parsed envelope is passed to `seqTracker.observe()` BEFORE being
- * forwarded to channel subscribers. The observe call is a pure number compare
- * (hot path — no Zod parse here; WS parse already happened above). This ensures
- * `lastConfirmedSeq` is always current for `WsReconnectController.client_resume`.
+ * The prior implementation attached a fresh `ws.addEventListener('message', …)` on
+ * EVERY `subscribe()` call and kept NO per-channel cache. This meant the bridge's
+ * on-connect `character.delta` — sent immediately after the handshake response
+ * (quick 260605-d0v/dog) — arrived during boot steps 7-11, **before**
+ * `StatusHudLayer` subscribed at step 12, and was permanently dropped. The HUD
+ * therefore booted showing placeholders (PF …, CA —).
  *
- * **Phase 10 Plan 10-02 (D-Area1 / T-10-02):** when a `PerfProbe` is provided,
- * inbound `r1.action.result` envelopes trigger a `result_envelope` station mark.
- * The idempotencyKey is extracted from the envelope payload (field `idempotencyKey`).
- * Station 3 (handler_invoke) is server-side — NOT measured here (TODO SC-10-02).
+ * Fix: ONE persistent `message` listener is attached at **bus creation** (right after
+ * WS open, before `performCapabilityHandshake` — see `_bootEngineCore` step 5).
+ * Every inbound envelope is cached as the last value per channel
+ * (`lastByChannel: Map<string, unknown>`, keyed by `envelope.type`). When
+ * `subscribe(channel, fn)` is called, if a cached value exists the fn is invoked
+ * **synchronously** before being registered for future envelopes. This closes the
+ * timing gap: a `character.delta` pushed during boot steps 6-11 is replayed to
+ * `StatusHudLayer` the moment it subscribes at step 12.
+ *
+ * ## Phase 10 D-Area1 hot-path preservation
+ *
+ * The `seqTracker.observe()` call (Plan 10-01) and the `perfProbe.mark('result_envelope', …)`
+ * call (Plan 10-02) are preserved VERBATIM in the single `globalHandler`. They fire on
+ * every inbound envelope, independent of whether any subscriber is registered.
+ *
+ * ## Late-binding PerfProbe
+ *
+ * `perfProbe` is not available at bus-creation time (step 5) because it depends on
+ * `handshake.session_id` which is only known after step 6. The returned object therefore
+ * exposes a `setPerfProbe(p)` method that swaps the probe reference into the shared
+ * closure. Call it at step 10 (after perfProbe is constructed). The reconnect path
+ * (`rebindWsEvents(createWsEventBus(newWs, seqTracker, perfProbe))` ~line 861) uses the
+ * 3-arg form where both are already available — no `setPerfProbe` call needed there.
  *
  * @internal
  */
-function createWsEventBus(
+export function createWsEventBus(
   ws: WebSocket,
   seqTracker?: SeqTracker,
-  perfProbe?: PerfProbe,
+  perfProbeArg?: PerfProbe,
 ): {
   subscribe: (channel: string, fn: (raw: unknown) => void) => () => void;
+  setPerfProbe: (p: PerfProbe) => void;
 } {
-  return {
-    subscribe(channel, fn) {
-      const handler = (ev: MessageEvent): void => {
-        try {
-          const rawText =
-            typeof ev.data === 'string'
-              ? ev.data
-              : new TextDecoder().decode(ev.data as ArrayBuffer);
-          const parsed = JSON.parse(rawText) as {
-            type?: unknown;
-            payload?: unknown;
-            seq?: unknown;
-          };
-          // Phase 10 Plan 10-01 — observe seq BEFORE forwarding (D-Area1 hot-path).
-          // Duck-typed: if the envelope has a numeric seq field, track it.
-          if (seqTracker !== undefined && typeof parsed.seq === 'number') {
-            seqTracker.observe({ seq: parsed.seq });
+  /** Last payload per channel — keyed by envelope `type`. */
+  const lastByChannel = new Map<string, unknown>();
+  /** Per-channel subscriber sets. */
+  const subscribers = new Map<string, Set<(raw: unknown) => void>>();
+  /** Late-bound perfProbe reference (set via setPerfProbe after handshake). */
+  let perfProbeRef: PerfProbe | undefined = perfProbeArg;
+
+  /**
+   * ONE persistent listener for the lifetime of this bus.
+   *
+   * Parses each inbound envelope once, runs the Phase 10 hot-path hooks verbatim,
+   * caches the last payload per channel, then fans out to per-channel subscriber Sets.
+   * NEVER removed — the bus lives for the WS lifetime; subscribe/unsubscribe only
+   * mutate per-channel subscriber Sets.
+   */
+  const globalHandler = (ev: MessageEvent): void => {
+    try {
+      const rawText =
+        typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer);
+      const parsed = JSON.parse(rawText) as {
+        type?: unknown;
+        payload?: unknown;
+        seq?: unknown;
+      };
+      // Phase 10 Plan 10-01 — observe seq BEFORE forwarding (D-Area1 hot-path).
+      // Duck-typed: if the envelope has a numeric seq field, track it.
+      if (seqTracker !== undefined && typeof parsed.seq === 'number') {
+        seqTracker.observe({ seq: parsed.seq });
+      }
+      // Phase 10 Plan 10-02 — perf probe stations 1 + 4 (WS-receive side).
+      //
+      // Station 1: gesture_emit — mark when r1.gesture envelope is received.
+      // The r1.gesture envelope does not carry an idempotencyKey (the key is
+      // generated by ActionOptionsModal when the user confirms the action).
+      // We use the gesture timestamp as a proxy key for pre-idempotency-key
+      // correlation. This is a best-effort measurement — the real correlation
+      // happens in flush() which pairs gesture_emit with subsequent stations
+      // via idempotencyKey threading.
+      //
+      // TODO(SC-10-02): Full gesture_emit wiring requires idempotencyKey
+      // threading from the gesture source (ActionOptionsModal) back to the
+      // R1EventSource level. For Phase 10 Plan 02, gesture_emit is marked
+      // at the r1.gesture receive site with a placeholder key derived from
+      // the gesture payload timestamp. The bridge_post station carries the
+      // real key when action-options-modal sends the tool.invoke envelope.
+      //
+      // Station 4: result_envelope — mark when r1.action.result envelope received.
+      // idempotencyKey from the payload. T-10-02: the key is hashed inside
+      // PerfProbe.flush() before transmission — never logged or leaked here.
+      //
+      // TODO(SC-10-02): handler_invoke (station 3) is server-side and NOT
+      // measured by g2-app. The PerfProbe approximates it from bridge/result
+      // timestamps during flush(). Full measurement requires bridge-log
+      // instrumentation in the foundry-module socketlib handler.
+      if (perfProbeRef !== undefined && typeof parsed.type === 'string') {
+        if (
+          parsed.type === 'r1.action.result' &&
+          typeof parsed.payload === 'object' &&
+          parsed.payload !== null
+        ) {
+          const payloadObj = parsed.payload as Record<string, unknown>;
+          if (typeof payloadObj.idempotencyKey === 'string') {
+            perfProbeRef.mark('result_envelope', payloadObj.idempotencyKey);
           }
-          // Phase 10 Plan 10-02 — perf probe stations 1 + 4 (WS-receive side).
-          //
-          // Station 1: gesture_emit — mark when r1.gesture envelope is received.
-          // The r1.gesture envelope does not carry an idempotencyKey (the key is
-          // generated by ActionOptionsModal when the user confirms the action).
-          // We use the gesture timestamp as a proxy key for pre-idempotency-key
-          // correlation. This is a best-effort measurement — the real correlation
-          // happens in flush() which pairs gesture_emit with subsequent stations
-          // via idempotencyKey threading.
-          //
-          // TODO(SC-10-02): Full gesture_emit wiring requires idempotencyKey
-          // threading from the gesture source (ActionOptionsModal) back to the
-          // R1EventSource level. For Phase 10 Plan 02, gesture_emit is marked
-          // at the r1.gesture receive site with a placeholder key derived from
-          // the gesture payload timestamp. The bridge_post station carries the
-          // real key when action-options-modal sends the tool.invoke envelope.
-          //
-          // Station 4: result_envelope — mark when r1.action.result envelope received.
-          // idempotencyKey from the payload. T-10-02: the key is hashed inside
-          // PerfProbe.flush() before transmission — never logged or leaked here.
-          //
-          // TODO(SC-10-02): handler_invoke (station 3) is server-side and NOT
-          // measured by g2-app. The PerfProbe approximates it from bridge/result
-          // timestamps during flush(). Full measurement requires bridge-log
-          // instrumentation in the foundry-module socketlib handler.
-          if (perfProbe !== undefined && typeof parsed.type === 'string') {
-            if (
-              parsed.type === 'r1.action.result' &&
-              typeof parsed.payload === 'object' &&
-              parsed.payload !== null
-            ) {
-              const payloadObj = parsed.payload as Record<string, unknown>;
-              if (typeof payloadObj.idempotencyKey === 'string') {
-                perfProbe.mark('result_envelope', payloadObj.idempotencyKey);
-              }
-            }
-          }
-          if (parsed.type === channel) {
+        }
+      }
+      // Cache last value per channel + fan out to subscribers.
+      if (typeof parsed.type === 'string') {
+        lastByChannel.set(parsed.type, parsed.payload);
+        const set = subscribers.get(parsed.type);
+        if (set !== undefined) {
+          for (const fn of set) {
             fn(parsed.payload);
           }
-        } catch (err) {
-          console.warn('[boot-engine-core] ws-event-bus parse failure', err);
         }
-      };
-      ws.addEventListener('message', handler as EventListener);
+      }
+    } catch (err) {
+      console.warn('[boot-engine-core] ws-event-bus parse failure', err);
+    }
+  };
+
+  // Attach the ONE persistent listener at bus creation (before any subscribe calls).
+  ws.addEventListener('message', globalHandler as EventListener);
+
+  return {
+    /**
+     * Subscribe to a channel.
+     *
+     * If the bus has already seen an envelope on `channel` (e.g. the on-connect
+     * `character.delta` that arrived during boot before this subscribe call),
+     * `fn` is invoked **synchronously** with the cached last value before being
+     * registered for future envelopes. This is the last-value-replay guarantee.
+     *
+     * @param channel Envelope `type` string to filter on.
+     * @param fn Callback receiving the envelope `payload`.
+     * @returns Unsubscribe function — removes only this `fn`; the global listener
+     *   is never removed by calling unsubscribe.
+     */
+    subscribe(channel, fn) {
+      // Replay the cached last value synchronously if one exists.
+      if (lastByChannel.has(channel)) {
+        fn(lastByChannel.get(channel));
+      }
+      // Register for future envelopes on this channel.
+      let set = subscribers.get(channel);
+      if (set === undefined) {
+        set = new Set();
+        subscribers.set(channel, set);
+      }
+      set.add(fn);
+      // Unsubscribe removes only this fn from the per-channel Set.
+      // NEVER calls ws.removeEventListener — globalHandler lives for bus lifetime.
       return () => {
-        ws.removeEventListener('message', handler as EventListener);
+        subscribers.get(channel)?.delete(fn);
       };
+    },
+
+    /**
+     * Late-bind the `PerfProbe` instance.
+     *
+     * Called at boot step 10 (after `handshake.session_id` is available and
+     * `PerfProbe` is constructed) to enable the `result_envelope` station mark.
+     * The `globalHandler` closure reads `perfProbeRef` on each inbound envelope,
+     * so marks fire from the moment this setter is called — even for envelopes
+     * that arrived before the probe was bound will NOT be retroactively marked
+     * (by design: they predate the probe's session_id context).
+     *
+     * @param p Constructed, enabled-or-disabled `PerfProbe` instance.
+     */
+    setPerfProbe(p: PerfProbe): void {
+      perfProbeRef = p;
     },
   };
 }
@@ -373,6 +456,27 @@ export async function _bootEngineCore(
   const wsCtor = deps?.wsFactory ?? ((url: string) => new WebSocket(url));
   const ws = wsCtor(toWsConnectUrl(opts.bridgeUrl));
   await awaitWsOpen(ws);
+
+  // 5a. Construct SeqTracker early (no dependencies) and create the WS event bus
+  //     immediately after WS open, BEFORE performCapabilityHandshake.
+  //
+  //     CRITICAL ORDERING (quick-task 260605-e9t): the bus must be created HERE so its
+  //     persistent globalHandler listener is live when the bridge's on-connect
+  //     `character.delta` arrives (sent immediately after the handshake response in
+  //     quick 260605-d0v/dog). If the bus were created later (at step 10, as before),
+  //     that envelope would be permanently dropped because no listener was attached.
+  //
+  //     SeqTracker: previously created at step 10. Moved here because it has no
+  //     dependencies (pure in-memory counter) and is needed to construct the bus.
+  //
+  //     PerfProbe: still constructed at step 10 (after handshake.session_id is
+  //     available). Wired into the bus via `wsEventBus.setPerfProbe(perfProbe)` at
+  //     that point. The globalHandler reads `perfProbeRef` per-envelope, so the
+  //     result_envelope station mark fires correctly for every envelope arriving after
+  //     the probe is bound — envelopes arriving before binding are handled without
+  //     probe marks (they predate the session_id context, by design).
+  const seqTracker = new SeqTracker();
+  const wsEventBus = createWsEventBus(ws, seqTracker);
 
   // 6. Perform the capability handshake — yields negotiated server caps.
   const handshake = await performCapabilityHandshake(ws, opts.token, opts.locale);
@@ -484,10 +588,11 @@ export async function _bootEngineCore(
 
   // 10. Construct the 3 layers.
   //
-  // Phase 10 Plan 10-01 (D-Area1): SeqTracker is constructed once here and shared
-  // with the WS event bus (for observe) and WsReconnectController (for getLastConfirmedSeq).
-  // In-memory only — seq is lost on Even App reload (acceptable for single-tenant MVP).
-  const seqTracker = new SeqTracker();
+  // Phase 10 Plan 10-01 (D-Area1): SeqTracker was moved to step 5a (pre-handshake)
+  // and is already constructed above. It is shared with the WS event bus (for observe)
+  // and WsReconnectController (for getLastConfirmedSeq). In-memory only — seq is lost
+  // on Even App reload (acceptable for single-tenant MVP).
+  // (seqTracker declared at step 5a above)
 
   // Phase 10 Plan 10-02 (D-Area1 / T-10-02) — opt-in perf probe construction.
   //
@@ -529,14 +634,26 @@ export async function _bootEngineCore(
     seqProvider: () => seqTracker.getLastConfirmedSeq() + 1,
   });
 
+  // quick-task 260605-e9t — late-bind perfProbe into the bus created at step 5a.
+  // Now that handshake.session_id is available and perfProbe is constructed, wire
+  // it into wsEventBus so subsequent inbound envelopes trigger the result_envelope
+  // station mark (Phase 10 Plan 10-02 / D-Area1). Envelopes that arrived before
+  // this call (during handshake) are already cached in lastByChannel but will NOT
+  // retroactively trigger a mark — they predate the session context, by design.
+  wsEventBus.setPerfProbe(perfProbe);
+
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
   const statusHud = new StatusHudLayer({
     bridge,
     renderer: new StatusHudRenderer({ locale: effectiveLocale }),
-    // Phase 10 Plan 10-01: pass seqTracker so every parsed envelope is observed.
-    // Phase 10 Plan 10-02: pass perfProbe so result_envelope station is marked.
-    wsEvents: createWsEventBus(ws, seqTracker, perfProbe),
+    // Phase 10 Plan 10-01: seqTracker is shared with the bus created at step 5a
+    // (no additional observe wiring needed here — globalHandler already calls it).
+    // Phase 10 Plan 10-02: perfProbe late-bound via wsEventBus.setPerfProbe above.
+    // Pass the SAME wsEventBus instance (created at step 5a, persistent listener
+    // already attached) — the StatusHudLayer.subscribeWsEvents call will replay
+    // any character.delta cached during boot steps 6-9c.
+    wsEvents: wsEventBus,
   });
 
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
