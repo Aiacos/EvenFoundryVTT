@@ -21,8 +21,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   BASE_CONTAINER_TOTAL,
+  BOOT_CONTAINER_TOTAL,
   buildBaseImageContainers,
   buildBaseTextContainers,
+  buildHudRasterPageSchema,
+  HUD_RASTER_CONTAINER_TOTAL,
   resolveContainerId,
   resolveContainerIdField,
 } from '../container-registry.js';
@@ -113,5 +116,94 @@ describe('container-registry', () => {
     // No own `containerID` key at all (so spreading omits the field entirely
     // under exactOptionalPropertyTypes).
     expect(Object.hasOwn(resolveContainerIdField('overlay-block'), 'containerID')).toBe(false);
+  });
+});
+
+// ── buildHudRasterPageSchema (ADR-0013 Amendment 1 — RAST-02) ─────────────────
+
+describe('buildHudRasterPageSchema', () => {
+  it('returns containerTotalNum === 5 (HUD_RASTER_CONTAINER_TOTAL)', () => {
+    const schema = buildHudRasterPageSchema();
+    expect(schema.containerTotalNum).toBe(5);
+    expect(HUD_RASTER_CONTAINER_TOTAL).toBe(5);
+  });
+
+  it('imageObject has exactly 4 entries named hud-tile-0..3 at 200×100', () => {
+    const { imageObject } = buildHudRasterPageSchema();
+    expect(imageObject).toHaveLength(4);
+
+    const expectedNames = ['hud-tile-0', 'hud-tile-1', 'hud-tile-2', 'hud-tile-3'];
+    expectedNames.forEach((name, i) => {
+      const tile = imageObject[i];
+      expect(tile?.containerName).toBe(name);
+      expect(tile?.containerID).toBe(i);
+      expect(tile?.width).toBe(200);
+      expect(tile?.height).toBe(100);
+    });
+  });
+
+  it('imageObject tile offsets are (0,0)/(200,0)/(0,100)/(200,100) (2×2 layout)', () => {
+    const { imageObject } = buildHudRasterPageSchema();
+    const positions = imageObject.map((t) => ({ x: t.xPosition, y: t.yPosition }));
+    expect(positions).toEqual([
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 0, y: 100 },
+      { x: 200, y: 100 },
+    ]);
+  });
+
+  it('textObject has exactly 1 entry: hud-capture full-screen with isEventCapture=1', () => {
+    const { textObject } = buildHudRasterPageSchema();
+    expect(textObject).toHaveLength(1);
+    const capture = textObject[0];
+    expect(capture?.containerName).toBe('hud-capture');
+    expect(capture?.containerID).toBe(4);
+    expect(capture?.isEventCapture).toBe(1);
+    expect(capture?.width).toBe(576);
+    expect(capture?.height).toBe(288);
+    expect(capture?.xPosition).toBe(0);
+    expect(capture?.yPosition).toBe(0);
+  });
+
+  it('exactly ONE container in the whole schema has isEventCapture=1', () => {
+    const { imageObject, textObject } = buildHudRasterPageSchema();
+    // ImageContainerProperty does not expose isEventCapture — only check text containers.
+    // imageObject tiles all have isEventCapture=0 by design (no image tile can be a capture target).
+    const imageCaptureCount = imageObject.filter(
+      (c) => (c as { isEventCapture?: number }).isEventCapture === 1,
+    ).length;
+    const textCaptureCount = textObject.filter((c) => c.isEventCapture === 1).length;
+    expect(imageCaptureCount + textCaptureCount).toBe(1);
+    // The one capture must be in textObject only.
+    expect(textCaptureCount).toBe(1);
+    expect(imageCaptureCount).toBe(0);
+  });
+
+  it('schema contains NO map-capture / map-tile-* / z05-* / header / footer / status-hud entries', () => {
+    const { imageObject, textObject } = buildHudRasterPageSchema();
+    const allNames = [...imageObject, ...textObject].map((c) => c.containerName);
+    const forbidden = [
+      'map-capture',
+      'map-tile-0',
+      'map-tile-1',
+      'map-tile-2',
+      'map-tile-3',
+      'z05-combat-log',
+      'z05-label',
+      'z05-stats',
+      'header',
+      'footer',
+      'status-hud',
+    ];
+    for (const name of forbidden) {
+      expect(allNames, `schema must not contain "${name}"`).not.toContain(name);
+    }
+  });
+
+  it('BOOT_CONTAINER_TOTAL is still 3 (glyph path unchanged)', () => {
+    // Regression guard: adding HUD raster entries to CONTAINER_REGISTRY must not
+    // change the default boot schema count (glyph path is byte-identical).
+    expect(BOOT_CONTAINER_TOTAL).toBe(3);
   });
 });
