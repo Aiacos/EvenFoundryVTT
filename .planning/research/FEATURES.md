@@ -1,393 +1,466 @@
 # Feature Research
 
-**Domain:** D&D 5e companion app on AR smart-glasses (Even Realities G2) — VTT-companion + glanceable AR HUD hybrid
-**Researched:** 2026-05-10
-**Confidence:** HIGH for spec-already-committed features, MEDIUM for adversarial-found gaps (validated against Specs.md v0.9.11), LOW for AR-HUD-specific UX claims that have no direct competitor on this hardware (G2 is novel)
+**Domain:** Raster UI Substrate — D&D 5e HUD on 576x288 4-bit greyscale AR display (v0.10.0)
+**Researched:** 2026-06-05
+**Confidence:** HIGH (sourced directly from ADR-0013, existing renderer code, CharacterSnapshotSchema, and hardware constraints)
 
 ---
 
-## Scope of this research
+## Scope
 
-EVF sits at the intersection of three product categories with different feature DNA:
-
-1. **VTT companion apps** (D&D Beyond mobile, Foundry's player UI, Roll20 Companion, **Argon Combat HUD** for Foundry) — character sheet, dice, combat tracker, spellbook, inventory
-2. **AR/smart-glass game HUDs** (Mirrorscape on Snapdragon Spaces, Tilt Five, Even Hub-native widgets, HoloLens RPG demos) — glanceable status, hands-free gestures, head-pose interaction
-3. **Hardware-constrained streaming HUDs** (Doom-on-watch, fbDOOM, rp2040_doom_1b, Atari ST 16-color) — dithering, delta-tile streaming, adaptive frame rate
-
-The Specs.md v0.9.11 already commits to ~70 features across §7 (UI/UX), §5 (components), §10 (roadmap). This research **does not duplicate the spec** — instead it:
-
-- Re-classifies existing spec features as table-stakes vs differentiators vs anti-features for the **EVF product positioning**
-- Surfaces **adversarial gaps** (features the spec implicitly assumes but doesn't enumerate) on three vectors:
-  - dnd5e Activity system corners (legendary actions, lair actions, multi-attack, concentration drop, reactions other than Shield/Counterspell)
-  - MidiQOL workflow integration (damage application asymmetry, save chain, advantage/disadvantage source resolution)
-  - AR-HUD primitives the spec mentions but doesn't fully feature-gate (boot splash variants, error states, R1-disconnected fallback)
+This document covers **only the NEW raster-UI feature behaviors** introduced in v0.10.0.
+Existing text-container functionality (already shipping in v0.9.13) is baseline context, not scope.
+Every feature maps to a REQ-ID placeholder for the roadmap.
 
 ---
 
-## Feature Landscape
+## Hardware Constraints (Non-Negotiable Context)
 
-### Table Stakes — D&D 5e Player Companion (must have or product feels broken)
-
-These are non-negotiable. A player who installs EVF expects them on day 1; missing them means EVF "isn't a real D&D companion." All map onto Specs.md requirements already committed.
-
-| Feature | Why Expected (table-stakes evidence) | Complexity | Specs ref | Notes |
-|---|---|---|---|---|
-| **Character sheet read-only view (HP/AC/abilities/saves/skills/senses)** | Universal across D&D Beyond mobile, Foundry player UI, Roll20 char sheet, Argon HUD. A D&D companion without a character sheet is unrecognizable as one. | LOW | SHEET-01, §7.5.2-7.5.7 | Foundry has the canonical layout; spec replicates 6 tabs faithfully. |
-| **HP / temp HP display with color/visual state** | D&D Beyond, Argon, Foundry all show HP front-and-center. HP is the #1 thing a player checks mid-turn. | LOW | DISP-01, §7.3 Status HUD `HP ████████░░` | Spec uses glyph bar `████████░░ 45/68 +10t`. |
-| **AC, initiative, speed at-a-glance** | Argon HUD core; Foundry desktop ABS displays. Combat math without these means rolling on paper. | LOW | DISP-01 | In Status HUD corner card. |
-| **Action economy tracker (action/bonus/reaction/move)** | Argon's flagship feature. dnd5e 5.x activity system enforces; players need to see remaining slots for each. | LOW | COMB-02, §7.4 `Act ░ Bns ░ R░ Move 30/30` | Visible always, not just in Combat overlay. |
-| **Spell slot tracker per level with used/remaining** | D&D Beyond, Foundry, Argon all surface this prominently. Wizard/cleric players cycle through this constantly. | LOW | SHEET-01, §7.4 `Slots 1° ▓▓░░ 2/4` | Spec uses `▓` used / `░` available — 3-level visible, +N overflow. |
-| **Active conditions list (Bless, Concentrating, Poisoned, …) with duration** | Foundry Argon, D&D Beyond. Concentration drops and rounds-remaining decisions hinge on this. | LOW | DISP-01, §7.4 Conditions block | Spec caps at 4 visible with `+N` overflow. |
-| **Combat tracker — initiative order, current turn marker, all combatants** | Foundry's combat tracker is *the* canonical reference; D&D Beyond launched its own in 2024. | MEDIUM | COMB-01, §7.6 | Spec includes effects + concentration source + range/direction. |
-| **Spellbook organized by level with prepared/known/at-will markers** | Foundry's spellbook tab is the de-facto layout. Cantrips at top, levels below, slot tracker per level. | LOW | SHEET-01 (Tab 4), §7.5.5, SPLBK §7.8 | Two surfaces (deep-dive Sheet tab + quick-cast standalone overlay) — Specs.md §7.5.5 explicitly notes coexistence. |
-| **Inventory with equipped/consumables/carried separation, weight/encumbrance** | D&D Beyond and Foundry organize inventory this way; encumbrance is a 5e rule that matters. | LOW | SHEET-01 (Tab 3), §7.5.4, §7.9 | Currency strip + encumbrance bar in Sheet; condensed in standalone. |
-| **Event log / chat reflection (rolls, damage, status changes)** | Foundry chat log is the session record; Roll20 chat is the canonical narrative. Players review what happened. | LOW | DISP-01, §7.7 | Spec adds filter chips `[ALL] Rolls Damage Status Chat`. |
-| **Map / scene awareness (player token visible, FoW, lighting)** | Foundry's canvas, Roll20 VTT, Owlbear Rodeo all are map-first. A "VTT companion" without map awareness is just a sheet viewer. | HIGH | MAP-01..05, §7.4 + §7.4a + §7.4b | The hardest single feature — see PITFALLS.md. |
-| **Roll feedback (dice result, crit/fumble visual)** | Universal. Players want to *see* their roll, even if the GM/Foundry is the authority. | MEDIUM | §7.15 Dice & Roll Result Display | Toast banner over map + persistent in Log. |
-| **Real-time sync with Foundry world state** | Foundry's hooks are the truth source; players need <1s latency to feel in-session. | HIGH | FOUN-01..04, §2.2 latency budget <500ms p95 | The whole architecture is designed around this. |
-| **Boot/loading state (the "is this thing connected?" question)** | Every connected app has this. Without it, silent failures kill UX. | LOW | NAV-04, §7.12 Boot Splash | Spec shows handshake sequence with checkmarks. |
-| **Connection-lost graceful degradation (last-cached read-only)** | Production VTT apps all degrade rather than blank-screen. Players forgive disconnect; they don't forgive lost state. | MEDIUM | §7.14.5 Edge Cases (Bridge disconnesso → cached read-only, write disabled) | Spec calls this out explicitly. |
-| **Localization — at minimum auto-detect Foundry locale (IT/EN MVP)** | dnd5e ships ~10 language catalogs, players expect their lang to "just work." | MEDIUM | I18N-01..05, §7.16 | Spec relies on Foundry/dnd5e catalogs; G2 ships zero strings. |
-
-### Table Stakes — AR HUD specific (must have for glasses to feel right)
-
-These come from the AR/smart-glass form factor; missing them makes EVF feel like a phone app forced onto glasses.
-
-| Feature | Why Expected | Complexity | Specs ref | Notes |
-|---|---|---|---|---|
-| **Persistent glanceable status (no menu dive to check HP)** | Google Glimmer principle: "glance, return to real world." Smart-glass UX research consistent. | LOW | DISP-01 (HUD persistente status PG sempre visibile in corner card) | Status HUD never hides except in modal. The single most important UX choice in the spec. |
-| **Layered z-order (map base, status overlay, popup)** | All AR HUD design languages (Glimmer, Apple Vision OS, HoloLens) use z-layering for context. | LOW | DISP-02, §7.2 Layered Rendering Model | Spec is explicit: z=0 map / z=1 status / z=2 overlay. |
-| **Hands-free gesture input (no phone touch needed mid-session)** | The whole point of glasses + ring — if user must reach for phone, the form factor failed. | MEDIUM | NAV-01, §3.2 R1 gestures | tap/scroll/long-press only — see anti-features for what's deliberately absent. |
-| **Boot splash with capability handshake feedback** | Smart-glass apps need to show "I am ready" because there's no system tray. | LOW | NAV-04, §7.12 | Spec includes protocol version + panel count handshake feedback. |
-| **Disconnect indicator (R1 / bridge / Foundry) without cluttering main view** | Glasses users can't have alarm modals — needs subtle persistent indicator. | LOW | §7.14.5 (`⚠ SYNC LOST` header glyph, `⌁ R1 DISC`) | Spec uses header glyphs. |
-| **Battery indicator (R1) prominent** | R1 ring is a small device; running out mid-session = unplayable. | LOW | §7.4 header `⌁ R1 92%` | Spec puts it top-right header. |
-| **Layout integrity invariants (text never disaligns regardless of HP=7 vs HP=7000)** | Monospace HUD with shifting columns looks broken; Glimmer-equivalent stability. | HIGH | INV-1, §7.1a (snapshot-tested ck 11-15) | Spec elevates this to project invariant. |
-| **Quick Action menu (long-press R1 → modal list of jumps)** | Discovery/escape hatch — players need to know "I can always reach X." | LOW | NAV-02, §7.13a | Spec keys it to `[S][C][L][B][I][A][M][N][X]` — Sheet/Combat/Log/Spellbook/Inv/Attack/Map/laNguage/cancel. |
-
-### Differentiators — what no other companion app does
-
-These are EVF's competitive moat. Each derives from the unique form factor (G2 + R1 + Foundry as authority) and aligns with PROJECT.md Core Value (*"il giocatore non distoglie mai lo sguardo dalla scena fisica"*).
-
-| Feature | Value Proposition | Complexity | Specs ref | Notes |
-|---|---|---|---|---|
-| **"Eyes never leave the table" HUD model** | The product's *raison d'être*. D&D Beyond mobile, Argon, Foundry all require looking at a screen. EVF projects to peripheral vision. | — (architectural) | PROJECT.md Core Value, §1.1 Vision | Mirrorscape/Tilt Five do AR table-replacement; EVF augments physical play. Different positioning. |
-| **Faithful Foundry canvas raster on AR glasses (4-bit dithered)** | No competitor streams Foundry's actual canvas to glasses. "Doom-on-watch" pattern applied to TTRPG. | HIGH | MAP-01, §7.4b raster mode | 400×200 effective resolution, 5 fps standard / 15 fps stretch. Pipeline: Floyd-Steinberg dither + sub-tile delta + RLE + BLE DLE. |
-| **Glyph-mode fallback (text-only 96×24 grid)** | When BLE is saturated or canvas extract fails, gracefully degrade to ASCII map instead of blanking. Doom-on-watch pattern equivalent. | MEDIUM | MAP-02, §7.4a | User-toggleable runtime via `[M] Map ctrl`. |
-| **6-layer adaptive optimization stack** | Delta hash + sub-tile + static cache + RLE + BLE DLE + adaptive fps — published as a research pattern, no competitor stack exists. | HIGH | MAP-03, §7.4b.6.1 | Doom-on-watch / rp2040_doom_1b pattern lifted to TTRPG context. |
-| **R1 ring as the *only* required input device** | Players never need to look at phone or laptop. Even the Settings UI is split 3-way (§7.14.6) so phone is only used for bootstrap. | MEDIUM | NAV-01, §7.14.6 (3-surface settings) | Even Hub native apps still expect phone touch; EVF ring-only is novel. |
-| **Glasses-faithful Foundry sheet replication (6 tabs, identical iconography mapped to monospace Unicode)** | Argon HUD, D&D Beyond all simplify the sheet. EVF replicates *all* the data Foundry exposes — encumbrance, hit dice, multi-class spell slots, currency, container nesting. | MEDIUM | SHEET-01, §7.5.2-7.5.7 | Spec maps 30+ Foundry data fields to glyph display. |
-| **Dual-edition rules support (PHB 2014 + PHB 2024)** | Argon and most VTT companions force a choice; EVF surfaces `core.modernRules` switch and re-renders. | MEDIUM | SHEET-03, §11.5.1 | Foundry dnd5e 5.x supports both — EVF passes through. |
-| **GM authority preserved (`socketlib.executeAsGM` + `MidiQOL.completeActivityUse`)** | Player commands that touch NPC state are veto-able. Other AR demos (Mirrorscape, Tilt Five) tend toward player-authoritative. | MEDIUM | ACT-03, §2.3 Trust & Authority | The DM remains the human source of truth — explicit anti-pattern to AI replacing GM. |
-| **MCP-first V2 voice (any MCP client → Foundry tools)** | No companion app speaks MCP. Means *any* future LLM client (Claude Desktop, Claude Code, OpenAI MCP) drives Foundry without changing EVF. | MEDIUM | VOICE-02, §5.7 | Plug-and-play — voice is purely additive. |
-| **Three-surface settings model (Foundry world / Phone bootstrap / G2 device-local)** | Solves "how do you configure a device with no keyboard?" without compromising. Phone is bootstrap-only; G2 is gesture-only; Foundry is authoritative. | MEDIUM | §7.14.6 + CONN-01..05 | Most smart-glass apps mix surfaces unclearly; EVF assigns by decision tree. |
-| **QR-pairing for player auth (24h bearer rotation)** | Avoids clipboard secrets, gives DM audit trail of paired G2s, revocable per-device. | LOW | CONN-03..05, §11.5.4 | Lifted from common 2FA patterns; novel for VTT context. |
-| **Fixed-width layout invariants enforced at engine, not view** | Spec §7.1a.7: panels emit `Box`/`TextRun` trees, never concatenate ASCII. CI-enforced. Argon and other HUDs hand-build CSS. | HIGH | INV-1, §7.1a | Ditherpunk/Doom-port discipline applied to layout. |
-| **Glyph-based combat overlay quick-actions `[A][S][I][M]` cycling** | Argon shows action panels; EVF cycles through 4 actions with one tap. Deeper hands-free integration. | LOW | COMB-03, §7.14.3 | Faster than menu navigation, learnable in <30 sec. |
-| **Animated AoE template glyphs (`✦`/`◇` blink) on glyph-mode map** | Smart-glass static glyphs feel dead; 500ms alternation makes Fireball *pulse*. | LOW | §7.4a.3 | 4-bit hardware can't do sprite engines, only `updateText` periodicity. |
-| **Aesthetic positioning — Alien Nostromo / VFD / CRT green** | Every other VTT app aims for "modern flat design." EVF leans into the hardware as a feature: phosphor-green retro HUD. Marketing differentiator. | LOW | §7.1 Design Language | Adopts the constraint as identity. |
-
-### Anti-Features — deliberately NOT building (and why)
-
-Anti-feature catalog is critical because the AR/D&D space has many "obvious" requests that violate Core Value or hardware reality. Each item here has been considered and rejected with rationale.
-
-| Anti-Feature | Why Often Requested | Why We Don't Build | Spec ref / Alternative |
-|---|---|---|---|
-| **3D rendered scene on glasses** | "AR glasses should show 3D D&D scenes!" Tilt Five does this. | G2 is 4-bit greyscale 576×288, max 200×100 image containers, no GPU. Physically impossible on this hardware. Different product category. | §3.1 hardware constraints; spec frames G2 as "monitor floating in front of the player," not "AR scene replacement." |
-| **DM/GM-side features on glasses** | "DM should also have glasses for narration / monster stats." | Doubles spec surface area and mixes player/GM permission models. DM keeps laptop. Out of MVP & V2. | PROJECT.md Out of Scope: "DM continua a usare laptop tradizionale." |
-| **Multi-player simultaneous G2 instances synced** | "All players at the table should wear G2!" | Foundry already syncs 4 players via existing socket; multi-G2 sync is single-player × N, not new architecture, but operational complexity (4× pairing/auth/bandwidth) is huge. Phase 13 stretch. | PROJECT.md OoS; §10 roadmap Phase 13. |
-| **AI replacing or arbitrating the DM** | "Let the AI run the encounter!" | The whole point of D&D is human storytelling. AI-as-tool yes (V2 MCP); AI-as-arbiter no, ever. | §1.4 Non-Goals: "Sostituzione del DM umano." |
-| **Direct D&D Beyond integration (bypass Foundry)** | "I have my chars on D&D Beyond, why do I need Foundry?" | Two sources of truth = sync hell. Foundry already imports D&D Beyond via existing modules; EVF reads Foundry. | PROJECT.md OoS; §1.4. |
-| **Voice/AI as MVP requirement** | "AR glasses should have voice control like Meta Ray-Ban." | EvenAI native is non-API for devs (§3.6 verbatim verified). External MCP V2 is correct architecture but adds STT/LLM cost + latency + dependency. MVP must work 100% without LLM. | §1.2 MVP / §1.3 V2; §5.7. |
-| **Audio output (TTS spoken results)** | "Tell me my roll out loud!" | G2 has no speaker (§3.1 verified). Hardware impossibility. Output stays visual: toast banner + status update. | §3.1 hardware; §7.10 Voice State 3 visual-only. |
-| **Native EvenAI hijack ("Hey Even" → Foundry tool)** | "Just use the built-in voice." | EvenAI is proprietary, not exposed as API for dev apps (§3.6 verbatim from Even Realities docs). | §3.6 + §1.4 OoS; V2 uses external MCP + STT. |
-| **RTL languages (Arabic, Hebrew)** | "Localization should cover everyone." | G2 firmware is monospace LTR-only; right-to-left layout would require rendering rewrite + bidirectional text engine — months of work for <1% TTRPG audience. ADR-0007. | PROJECT.md OoS; ADR-0007. |
-| **Multi-tenant cloud SaaS deployment** | "I want EVF as a service." | MVP is homelab Docker Compose — single-tenant. Multi-tenant requires per-user auth, isolation, billing, observability stack. Phase 13 stretch. | PROJECT.md OoS; §11.5.3. |
-| **Fully on-glasses execution (no phone WebView)** | "Why does it need the phone? Just run on the glasses!" | G2 firmware does not execute developer code; the Even Realities App on phone hosts the WebView. Verbatim Even Hub architecture. Not negotiable. | §2.1; §3.1 plugin execution model. |
-| **Touch input on G2 frame (capacitive temple-tap)** | "What if I want to control without the ring?" | G2 has no documented touch sensor exposed to plugins. R1 is the only input device. Adding fallback would need Even SDK extension. | §3.2 R1 gestures; §7.14.5 (R1 disconnected → input blocked, no fallback). |
-| **Camera-based gesture recognition** | "Use the camera to see hand gestures over the table." | G2 has no camera (§3.1 verified). Hardware impossibility. | §3.1; PROJECT.md OoS. |
-| **Real-time biometric narrative integration as MVP** | "HR up → tense music!" | Spec has this as V2 stretch (§1.3); requires MCP/audio stack on phone, not glasses, and is purely additive. Zero MVP value if HUD doesn't work. | §1.3 obj. secondari; PROJECT.md `Sync biometrici R1 → atmosfera narrativa`. |
-| **Foundry write operations bypassing GM authority** | "Let players auto-apply damage to monsters." | Permission boundary is hard-coded: NPC state changes go through `socketlib.executeAsGM`. Player can request, GM can veto. | ACT-03, §2.3. |
-| **Inline rich-text rules / spell tooltips** | "Show me the spell description!" | G2 monospace 96×24 char with no scrolling rich text. Spec shows compact 1-line spell summary; full description is in Foundry, not glasses. | §7.8 Spellbook layout; §7.4a glyph dictionary (no rich text). |
-| **Custom dice (DSN-style 3D animations) on glasses** | "Cool dice rolling visuals!" | 4-bit greyscale + 5 fps + image container budget rules out 3D rendering. Spec uses Unicode `⚀` indicator + numeric result toast. | §7.15 dice display. |
-| **In-glasses chat input / typing** | "Let me type to the GM." | No keyboard, no virtual keyboard surface large enough on 96×24 char. Output-only on glasses; chat happens via voice (V2) or by speaking to the table. | §3.2 R1 gestures; §7.14.6 (no text input on G2). |
-| **Push notifications for non-game events (weather, calendar)** | "It's a smart glass, why not show my Slack?" | Even Hub already provides those native widgets. EVF is a TTRPG app, scope-creep into general HUD = lose focus. | PROJECT.md scope. |
-| **Color-coded UI (red HP low, green HP full)** | "Use color for status!" | G2 is monocrome green only (no color channel). Spec uses density/glyph variation: `█` full → `░` low. | §3.1 + §7.1a glyph dictionary. |
+Before any feature table: the display is **576x288 pixels, 4-bit greyscale (16 shades), phosphor-green aesthetic**.
+At raster density we control typography entirely -- no SDK 27px lock-in.
+Practical density target: **~14-18 rows at 12px font** (vs. 10 rows at SDK 27px).
+The full canvas composites to **4 tiles of 288x144**, pushed via the 4 image-container SDK slots.
+Input is **press / double-press / scroll-up / scroll-down only** -- no long-press, no text, no touch.
 
 ---
 
-## Adversarial Gap Hunt — features the spec implicitly assumes but doesn't fully enumerate
+## Part A -- Main Tab (Canvas Raster)
 
-This section is the value-add of this research — running adversarial review against the spec's strongest claims.
+### Table Stakes
 
-### Vector A — dnd5e Activity system corners
+Fields users expect to see on the Main tab of a D&D 5e character sheet.
+Missing any of these makes the sheet feel broken.
 
-The spec covers attack, cast, use-item, place-template — the common cases. dnd5e 5.x Activity system has more activity types and edge cases:
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Character name (prominent) | Identity anchor; first thing a player checks | LOW | `snapshot.name` -- already in schema | Truncate at ~20 chars; render in a larger font weight or bold glyph if font supports it. REQ-MAIN-01 |
+| Class + level line | Core identity context ("Fighter 5") | LOW | `snapshot.level` + `snapshot.world.modernRules` -- already in schema; class string NOT yet in schema | Class label is missing from `CharacterSnapshotSchema`. Must add `class: z.string()` + reader. REQ-MAIN-02 / schema dep: REQ-SCHEMA-01 |
+| HP bar (visual, proportional fill) | Instant glanceable health state; bar is more legible than numbers at glance distance | LOW | `snapshot.hp`, `snapshot.maxHp`, `snapshot.tempHp` -- already in schema | Existing 12-glyph bar logic reused as canvas rect. REQ-MAIN-03 |
+| AC value | Defensive anchor; asked constantly in combat | LOW | `snapshot.ac` -- already in schema | Simple numeric, large font. REQ-MAIN-04 |
+| 6 Ability scores + modifiers | Core identity; players reference constantly | MEDIUM | `snapshot.abilities.{str,dex,con,int,wis,cha}.{value,mod}` -- already in schema (Phase 16) | Grid layout 2-col (3 per row) or 3-col (2 per row). Value + parenthesized modifier. REQ-MAIN-05 |
+| 6 Saving throw modifiers + prof glyphs | Referenced on every save call | MEDIUM | `snapshot.abilities.*.{save,proficient}` -- already in schema (Phase 16) | Can share space with ability grid. REQ-MAIN-06 |
+| Conditions (active conditions list) | Combat-critical -- "Am I poisoned?"; zero-glance | MEDIUM | `snapshot.conditions` -- already in schema | Compact glyph-per-condition row or small label list below HP. Max ~4 conditions visible. REQ-MAIN-07 |
+| Death saving throw progress | High-stakes combat state; wrong data = death | MEDIUM | `snapshot.death.{success,failure}` -- already in schema (Phase 4b) | 3 pip glyphs each, existing logic reused as canvas draw. REQ-MAIN-08 |
+| Senses passives (PP / PI / INV) | Referenced ~5 times per session | LOW | `snapshot.skills.{prc,ins,inv}.passive` -- already in schema (Phase 17) | One compact line. REQ-MAIN-09 |
+| Initiative bonus | Referenced at start of every combat encounter | LOW | NOT yet in schema -- `actor.system.attributes.init.total` | Must add to `CharacterSnapshotSchema`. REQ-MAIN-10 / schema dep: REQ-SCHEMA-02 |
+| Speed (walk) | Referenced every combat turn | LOW | NOT yet in schema -- `actor.system.attributes.movement.walk` | Must add to `CharacterSnapshotSchema`. REQ-MAIN-11 / schema dep: REQ-SCHEMA-03 |
+| Proficiency bonus | Used constantly (saves, skills, attacks) | LOW | Derivable from `snapshot.level` (already in schema) at render time | `Math.ceil(level/4) + 1` -- existing formula already in renderMainTab. REQ-MAIN-12 |
+| Exhaustion level | Combat-mechanical; affects all checks | LOW | `snapshot.exhaustion` -- already in schema | Show only when > 0 to save prime real estate. REQ-MAIN-13 |
 
-| Gap | Why it matters | Severity | Suggested classification | Spec coverage |
-|---|---|---|---|---|
-| **Reaction handling beyond Shield/Counterspell (Opportunity Attack, Hellish Rebuke, Sentinel feat triggers)** | dnd5e fires `dnd5e.preUseActivity` for reactions; player needs to *see prompt* and choose use/skip in <6 sec. The spec calls reaction handling V2 (ACT-04). | MEDIUM | Differentiator if MVP, otherwise V2 | ACT-04 explicitly V2; §1.3 obj. secondari. **Gap**: even passive notification ("you could react") is not in MVP — players miss reactions silently. Recommend: at least a passive toast ("Reaction available: Shield") in MVP. |
-| **Multi-attack flow (Fighter Extra Attack — 2+ attacks per Action)** | Spec §12.B q.15 flags this as open. The Combat overlay `[A]ttack` quick-action implicitly assumes 1 attack per Action. | HIGH | Table stakes (any L5+ Fighter expects this) | Open Q in §12.B; **Gap**: needs UI design for "did you attack 1 or 2 times?" Spec does not show. Recommend: action economy widget tracks `Atk 1/2` not just `Act ░`. |
-| **Concentration drop mid-cast (cast new conc spell while concentrating)** | dnd5e auto-prompts; the spec §12.C q.16 calls this open for V2 voice. **MVP path is undefined**: tap-to-cast Bless while Hex is up — what happens? | HIGH | Table stakes (5e core mechanic) | §12.C q.16 only addresses voice path; **Gap**: MVP manual cast must show concentration drop confirm dialog. Recommend: modal "Cast Bless? Drop Hex (concentrating)?" before action. |
-| **Legendary actions / lair actions (DM-side, but player should see "Boss is taking legendary action")** | Foundry hooks fire; combat tracker should reflect. Spec's combat tracker shows initiative + effects but not "between-turn" actions. | LOW | Differentiator | §7.6 mockup doesn't show; **Gap**: log entry would suffice, but visibility in Combat overlay is more glanceable. |
-| **Save chains (Fireball → 8d6, each target rolls DEX save independently)** | §8.1 shows the V2 voice path collapses this neatly. **MVP manual path**: GM rolls saves; what does the player see during the 5-10 seconds of save resolution? | MEDIUM | Table stakes (any AoE caster) | §7.10 State 3 toast shows result *after* resolution; **Gap**: during resolution the HUD is silent. Recommend: per-target streaming log entries as saves resolve. |
-| **Attack with advantage/disadvantage source resolution (Bless + Pack Tactics + prone target)** | dnd5e roll dialog asks. Spec's `weapon_attack` tool has `advantage: "auto"|"yes"|"no"` but UI flow is undefined. | MEDIUM | Table stakes | §5.3 tool input includes advantage flag; **Gap**: MVP UI to *show* sources of advantage and override. Recommend: pre-roll modal listing active modifiers with toggle. |
-| **Critical hit damage doubling visualization** | Foundry doubles dice automatically. Player wants to see the moment. | LOW | Table stakes | Implicit in roll result toast; **Gap**: the visual moment of crit (vs normal hit) isn't designed. Recommend: distinct toast styling — `★ CRIT ★` banner. |
-| **Ammunition tracking (consume arrow on attack)** | dnd5e automates if configured. Player checks "do I still have arrows?" | LOW | Table stakes | Implicit in inventory; **Gap**: no surfacing in Combat overlay. Recommend: weapon line shows `Longbow [3 arrows]`. |
-| **Death saves (HP=0, contested rolls)** | Visceral D&D moment. dnd5e has `actor.system.attributes.death.success/failure`. | MEDIUM | Differentiator | **Gap**: not in spec. Recommend: when HP=0, status HUD pivots to death save tracker `Death ✓✓✕ (1/3 fail)`. |
-| **Exhaustion levels (PHB 2024 has 10 levels, very different from 2014)** | `core.modernRules` toggle changes mechanics; spec covers dual-edition support but doesn't surface exhaustion display. | LOW | Differentiator | **Gap**: condition `Exhaustion 3/6` (2014) vs `Exhaustion 4/10` (2024) needs distinct rendering. |
-| **Inspiration (2014: 1 binary; 2024: heroic inspiration die pool)** | Same dual-edition issue. | LOW | Differentiator | §7.5.2 shows `★ INSP ░` (single pip) — works for 2014 but 2024 may differ. |
+### Differentiators
 
-### Vector B — MidiQOL workflow integration
+Features that elevate the raster sheet above a plain text transcription.
 
-MidiQOL is an *optional* dependency in Specs.md (FOUN-03), but most production Foundry tables run it. The spec's write-path examples (§8.1) use MidiQOL. Risks if absent:
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Portrait inset (greyscale dithered) | Instant "which character is this" visual anchor; distinctive phosphor-green dithered art is the aesthetic centerpiece of the milestone | HIGH | `snapshot.portrait.url` optional -- already in schema (STRETCH-06, Phase 13). Requires async fetch + dither via existing `image-q` pipeline. Sized ~80-100px wide, placed top-right of Main tab. REQ-MAIN-14 |
+| Graphical HP bar with temp-HP overflow segment | Temp HP as a visually distinct second bar segment (lighter shade) | LOW | `snapshot.tempHp` -- already in schema | Raster gives full control. Current text renderer already tracks tempHp. REQ-MAIN-15 |
+| Ability grid with visual section separator (chrome) | Distinct section chrome (thin rule, header label) baked as static layer makes layout self-documenting at glance | LOW | Static chrome -- no data dep | Differentiates from flat text list. REQ-MAIN-16 |
+| Concentration indicator on Main tab | Saves opening Combat Tracker just to check concentration | LOW | Derivable: `snapshot.spells.spells` filter `concentration && prepared` | Single glyph near HP line. REQ-MAIN-17 |
+| PHB edition badge (2014 / 2024) | Players switching campaigns; immediate orientation | LOW | `snapshot.world.modernRules` -- already in schema | Tiny badge in corner. REQ-MAIN-18 |
 
-| Gap | Why it matters | Severity | Spec coverage |
-|---|---|---|---|
-| **MidiQOL absent → fallback to Foundry-native `activity.use()`** | dnd5e 5.x core supports the activity flow without MidiQOL, but the rolls pause at chat-card "Roll Damage" buttons. Player on glasses sees half-resolved cards. | HIGH | §12.B q.11-12 flag MidiQOL signature open. **Gap**: MVP needs to detect MidiQOL absence and either (a) require it or (b) implement a simpler "auto-roll" path. Recommend: spec should declare MidiQOL required for MVP, OR build native fallback. |
-| **MidiQOL workflow timing (preItemRoll, midi-qol.preItemRoll, midi-qol.RollComplete)** | Toast streaming relies on these hooks firing in order. If a module breaks the chain, the HUD desyncs from chat. | MEDIUM | §7.7 log shows post-resolution state; **Gap**: streaming partial state during workflow is not designed. |
-| **MidiQOL "fast forward" mode vs "Foundry-native dialog mode"** | MidiQOL has settings that change roll prompts. Player on glasses can't see Foundry desktop dialog → if MidiQOL not in fast-forward, action stalls. | HIGH | **Gap**: Phase 0 should include a MidiQOL config requirement check ("MidiQOL must be in autoFastForward mode for EVF"). |
-| **Chat card visibility (MidiQOL hides some cards by default)** | Player log overlay reads from `createChatMessage`; if MidiQOL filters them, log is sparse. | MEDIUM | §7.7 log; **Gap**: filter design assumes all cards arrive. |
-| **Damage application asymmetry (player rolls, GM clicks "apply")** | Without MidiQOL auto-apply, damage doesn't reflect on tokens until GM intervention. HUD HP display lags reality. | HIGH | **Gap**: MVP behavior undefined when GM hasn't clicked apply yet. Recommend: log shows "Damage rolled: 28 — awaiting GM apply" state. |
-| **Concentration save prompts (when concentrator takes damage)** | MidiQOL auto-prompts; Foundry-native does not. Player on glasses needs the prompt as modal. | MEDIUM | **Gap**: not in spec. Recommend: concentration save prompt = modal overlay with R1 confirm. |
+### Anti-Features
 
-### Vector C — AR HUD primitives the spec mentions but doesn't fully enumerate
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead / REQ-ID |
+|--------------|---------------|--------------|------------------------------|
+| Hit Dice recovery UI on Main tab | Players see it on desktop sheet | Recovery is a WRITE action; no write path for HP-regen exists yet; cramming both display and input onto the smallest tab creates false expectations | Show Hit Dice value as read-only stat (class die x level). Add write path in a later milestone. REQ-MAIN-A01 |
+| XP bar | Foundry sheet has it | XP is checked maybe once per session; wastes prime real estate from HP/AC/abilities which are checked every 30 seconds in combat | Omit; at most tiny text line if space remains after all table-stakes fit. REQ-MAIN-A02 |
+| Race / background text block | Foundry sheet shows it | Purely narrative; zero combat relevance; competes with mechanical data for the same 576px-wide canvas | Surface race name in a very small font near name/level line if pixel budget allows; no background text. REQ-MAIN-A03 |
+| Spell attack bonus on Main tab | Casters reference it | Derived from `abilities.<k>.mod + prof`; already visible in Spells tab context; putting it on Main tab duplicates data and clutters the primary combat view for non-casters | Surface only in Spells tab header. REQ-MAIN-A04 |
+| Full conditions text descriptions | Player wants to know exactly what poisoned does | Descriptions are multi-line prose; zero value at glance speed | Max 3-5 char abbreviation per condition, existing logic reused. REQ-MAIN-A05 |
 
-| Gap | Why it matters | Severity | Spec coverage |
-|---|---|---|---|
-| **Boot splash error states (handshake failed, version mismatch, no character)** | §7.12 shows happy-path only. What does the boot screen show when bridge is unreachable? | MEDIUM | §7.14.5 mentions "Bridge disconnesso" → MAIN_MAP with cached state, but boot-time failure (cold start, no cache) is not designed. **Gap**: spec needs error-boot mockups. |
-| **First-run / onboarding (zero-state)** | §7.12 assumes paired G2, paired R1, character selected. New user sees what? | MEDIUM | CONN-01..03 spec the phone-side wizard, but **Gap**: G2-side first-run state (waiting for phone setup) has no mockup. |
-| **R1 battery low warning (not just disconnect)** | R1 at 5% — does player get a warning before disconnect? | LOW | §7.4 header `⌁ R1 92%` shows %, but **Gap**: threshold-based warning (`⌁ R1 LOW` blink at <15%) not specified. |
-| **G2 battery (HUD itself)** | Spec mentions R1 battery but not G2. G2 also has battery. | LOW | **Gap**: needs header indicator. |
-| **Notification queue (multiple toasts overlapping)** | Player casts Fireball (3 saves stream in), then GM applies damage, then concentrate save fires. 4 toasts in 2 seconds. | MEDIUM | §7.15.2 mentions toasts; **Gap**: queue/stack design not specified. Recommend: max 2 toasts visible, FIFO with auto-dismiss 3s. |
-| **Dim / always-on / off display states (G2 firmware likely has these)** | Smart glasses dim during inactivity. EVF needs to handle re-wake without losing state. | MEDIUM | **Gap**: not addressed. Even Hub `FOREGROUND` lifecycle event mentioned in references but spec doesn't bind it. |
-| **Map ping / DM-attention request (player wants to draw GM's eye to a map cell)** | VTT companion apps support player pings; spec §7.14.2 says "MAIN_MAP tap = ping cella sotto cursore" but doesn't elaborate. | LOW | §7.14.2; **Gap**: ping visibility on GM canvas + duration + visual style not specified. |
-| **Long-name overflow on combat tracker (NPC "Goblin Archer Lieutenant Vossnak")** | §7.6 shows `GOBLIN ARCHER` 13ch fitting; spec §7.1a.2 says `…` truncate but combat tracker per-row width budget not pinned. | LOW | §7.1a.2 establishes pattern; **Gap**: applied to combat-tracker row not explicitly enumerated. |
-| **Targeting state visualization (Foundry token targeted by my activity)** | When player taps a target, the GM canvas should highlight; conversely GM-side targeting changes should reflect. | LOW | FOUN-04 (`TokenLayer.setTargets()` v13); **Gap**: G2-side display of "currently targeting tok-goblin1" not in mockups. Recommend: status HUD shows `Target: g1` line during targeting flow. |
-| **Group initiative (Foundry has it for multiple identical NPCs)** | Combat tracker shows individual rows; group rolls collapse them. | LOW | §7.6 shows individual rows; **Gap**: group-init rendering. |
-| **Combat round transitions (round 1 → round 2 visual moment)** | §7.7 log shows `── ROUND 3 begins ──` line. Persistent visual moment? | LOW | §7.7; **Gap**: optional "round X" full-screen flash for 1 sec? Probably anti-feature, but unspecified. |
-| **Stealth / hidden combatant rendering (token visible to me, hidden from others)** | Foundry has visibility per-user. Combat tracker should reflect. | LOW | §7.4a.4 FoW for map; **Gap**: combat tracker hidden-row state not designed. |
+---
+
+## Part B -- Skills Tab (Canvas Raster)
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| All 18 skills with total modifier | Core identity; "What's my Stealth?" | LOW | `snapshot.skills.*.total` -- already in schema (Phase 17) | Existing renderer logic is the content model; output target changes to canvas. REQ-SKILL-01 |
+| Proficiency glyph per skill (circle / filled circle / star) | Proficiency context at a glance | LOW | `snapshot.skills.*.proficient` -- already in schema | Existing 3-glyph logic preserved verbatim. REQ-SKILL-02 |
+| Ability label per skill group (STR / DEX / ...) | Grouping by ability is how players scan the sheet | LOW | `snapshot.skills.*.ability` -- already in schema | Existing group-header logic preserved. REQ-SKILL-03 |
+| Scrollable list (scroll-up / scroll-down) | 18 skills do not fit in one canvas view | LOW | gesture bus already wired | Existing scroll-offset windowing logic preserved. REQ-SKILL-04 |
+| Scroll-position hint row | User needs to know there are more items | LOW | Static text row | Existing hint row logic preserved. REQ-SKILL-05 |
+| Passive scores (PP / PI / INV) on tab | Frequently referenced; keeping them here avoids switching to Main | LOW | `snapshot.skills.{prc,ins,inv}.passive` -- already in schema | Existing senses-line logic, now on canvas. REQ-SKILL-06 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Mini proficiency legend as tab header chrome | Reduces cognitive load for new players; self-documenting | LOW | Static chrome -- no data dep | Small font at top of tab. REQ-SKILL-07 |
+| Ability-group section dividers (thin rule) | Visual grouping by STR/DEX/etc. faster to scan than text group labels | LOW | Static chrome per group | Renders once as static chrome layer. REQ-SKILL-08 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Skill check dice-roll button | "Would be convenient" | Write path for skill checks (`evf.rollSkill`) is a known deferred stub (PROJECT.md); cramming UI affordance before backend exists sets false expectations | Read-only tab this milestone; skill roll is a future REQ. REQ-SKILL-A01 |
+| Expertise breakdown (base + expertise split) | Bards / Rogues want to see the split | Two numbers per row vs. one; 18 x 2 = 36 data points in a 576px canvas | The star glyph already signals expertise; total modifier is the operative number at the table. REQ-SKILL-A02 |
+
+---
+
+## Part C -- Inventory Tab (Canvas Raster)
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Item list with type glyph (weapon / armor / consumable) | Instant item-type recognition | LOW | `snapshot.inventory` -- already in schema (Phase 5) | Existing glyph map preserved. REQ-INV-01 |
+| Item name column (truncated) | Name is the primary identifier | LOW | `snapshot.inventory[].name` -- already in schema | REQ-INV-02 |
+| Damage formula column (weapons) | Most commonly referenced attribute | LOW | `snapshot.inventory[].damage` -- already in schema | REQ-INV-03 |
+| Quantity column | Consumables / ammo tracking | LOW | `snapshot.inventory[].quantity` -- already in schema | REQ-INV-04 |
+| Scrollable list | More items than one screen | LOW | gesture bus wired | Existing scroll logic. REQ-INV-05 |
+| PHB 2024 `[M]` mastery flag on weapons | Edition-correct rendering | LOW | `snapshot.world.modernRules` -- already in schema | Existing `[M]` logic preserved. REQ-INV-06 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Section dividers by item type (Weapons / Armor / Consumables) | Faster scan at table -- player knows where to look | LOW | Static chrome per type group | Renders as a thin rule + section label. REQ-INV-07 |
+| Weight total footer line | Quick encumbrance check | LOW | `snapshot.inventory[].weight` -- already in schema (optional) | Sum only items with `weight` defined. REQ-INV-08 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Currency summary | Visible on Foundry sheet | Currency tracking at the table is DM/player negotiation, not a glance-speed concern; clutters the limited line budget | Skip. Currency items already have a type slot in the schema but no detail needed on the G2. REQ-INV-A01 |
+| Item description panel inline | Players want to know what a potion does | Descriptions are paragraphs; G2 is a glance device not a reference manual | The Action Options modal (already built) can surface a truncated description on interaction. REQ-INV-A02 |
+
+---
+
+## Part D -- Spells Tab (Canvas Raster)
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Spell slot bars per level | Most-referenced caster resource in combat | LOW | `snapshot.spells.slots` -- already in schema (Phase 5) | Existing filled/empty bar logic preserved. REQ-SPELL-01 |
+| Prepared spell list per level section | What can I cast right now? | LOW | `snapshot.spells.spells[].{name,level,prepared}` -- already in schema | Existing group-by-level logic preserved. REQ-SPELL-02 |
+| Activation abbreviation column (action / bonus / reaction / ritual) | Cast time is combat-critical | LOW | `snapshot.spells.spells[].activation` -- already in schema | Existing abbreviation map preserved. REQ-SPELL-03 |
+| Range column | Tactical positioning | LOW | `snapshot.spells.spells[].range` -- already in schema | REQ-SPELL-04 |
+| Concentration glyph | Knowing you are concentrating before casting another spell | LOW | `snapshot.spells.spells[].concentration` -- already in schema | REQ-SPELL-05 |
+| PHB 2024 always-prepared glyph | Edition-correct rendering | LOW | `snapshot.spells.spells[].alwaysPrepared` + `snapshot.world.modernRules` -- already in schema | REQ-SPELL-06 |
+| Scrollable list | Many spells per caster | LOW | gesture bus wired | Existing scroll logic. REQ-SPELL-07 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Spell save DC displayed in tab header per ability | Casters reference DC constantly | LOW | `snapshot.abilities.{wis,int,cha,etc.}.dc` -- already in schema (Phase 16, deferred binding per PROJECT.md) | One line: "DC WIS 16". Schema primed; just bind the value. REQ-SPELL-08 |
+| Slot exhaustion visual state (dimmed section when 0 remaining) | Immediate awareness that a level is spent | LOW | `snapshot.spells.slots[].value` -- already in schema | Raster gives pixel control: render section header at lower brightness when value == 0. REQ-SPELL-09 |
+| Cantrip section always at top | Cantrips are always available; most-used spells for many classes | LOW | Level-0 filter on `spells[].level` | Existing level-sort logic already handles this. REQ-SPELL-10 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Spell description inline | "Would save flipping pages" | Multi-paragraph text on a 576px canvas is unreadable at AR glance distance | Action Options modal can surface a truncated effect line on interaction. REQ-SPELL-A01 |
+| Unprepared spell list | "I want to see everything I know" | Doubles the list length; the operative question at the table is "what can I cast NOW?" | Filtered to prepared-only; Foundry sheet is the reference for full list. REQ-SPELL-A02 |
+
+---
+
+## Part E -- Features Tab (Canvas Raster)
+
+**Critical dependency:** Today `renderFeatsTab` uses `DEFAULT_FEATS` hardcoded fixtures.
+This milestone adds `feats[]` to `CharacterSnapshotSchema` and the foundry-module reader.
+REQ-SCHEMA-04 must land before the Features tab can show real data.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Class features list with name | "What does Second Wind do again?" -- players reference class features several times per session | MEDIUM | NOT yet in schema -- must extend with `feats: z.array(FeatSchema)` | REQ-FEAT-01 / schema dep: REQ-SCHEMA-04 |
+| Category grouping (Class / Race / Background / General Feat) | Standard Foundry sheet organization | LOW | `feats[].category` field on each feat | Existing `DEFAULT_FEATS.category` model confirmed -- needs real data. REQ-FEAT-02 |
+| Feat name (truncated) | Identity | LOW | `feats[].name` | REQ-FEAT-03 |
+| Short description (1 line) | "What does it do at the table?" | MEDIUM | NOT yet in schema -- `feats[].shortDesc` strip/truncate from `actor.items.system.description.value` | Existing `DEFAULT_FEATS[].desc` field is the model; reader extracts from Foundry item description (strip HTML, take first sentence). REQ-FEAT-04 |
+| PHB 2024 `[Origine]` annotation for origin feats | Edition-correct | LOW | `feats[].isOrigin` + `snapshot.world.modernRules` -- matches existing `DEFAULT_FEATS[].isOrigin` model | REQ-FEAT-05 |
+| Scrollable list | Many feats per high-level character | LOW | gesture bus wired | Existing scroll logic preserved. REQ-FEAT-06 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Passive vs. active feat indicator | Passive = always on; Active = must spend an action. Useful orientation during turn planning | MEDIUM | Requires `feats[].activation` field (new schema field) -- whether the feat has an activation type | REQ-FEAT-07 |
+| Section divider chrome per category | Same scan-speed benefit as Inventory type sections | LOW | Static chrome | REQ-FEAT-08 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Full feat description text | "I don't remember War Caster" | Multi-paragraph reference text; this is a glance surface, not a rulebook | Short description (first sentence) is the right answer; Foundry desktop for full text. REQ-FEAT-A01 |
+| Feat prerequisite details | Completeness | Character-creation-time info; zero table relevance during combat | Omit entirely. REQ-FEAT-A02 |
+
+---
+
+## Part F -- Biography Tab (Canvas Raster)
+
+**Critical dependency:** Today `renderBioTab` uses hardcoded placeholder text.
+This milestone adds `biography` to `CharacterSnapshotSchema` and the foundry-module reader.
+REQ-SCHEMA-05 must land before the Biography tab shows real data.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Personality trait | Roleplay orientation -- players reference it for RP decisions | LOW | NOT yet in schema -- must extend with `biography: {personality, ideal, bond, flaw, backstory}` | REQ-BIO-01 / schema dep: REQ-SCHEMA-05 |
+| Ideal | Moral/motivational compass for RP moments | LOW | Same schema dep | REQ-BIO-02 |
+| Bond | "Who do I care about?" -- plot-relevant | LOW | Same schema dep | REQ-BIO-03 |
+| Flaw | Roleplay tension | LOW | Same schema dep | REQ-BIO-04 |
+| Scrollable backstory text (word-wrapped) | Background context for roleplay | MEDIUM | Same schema dep + HTML strip already implemented in `stripHtml` + `wordWrap` | Existing helper functions preserved. REQ-BIO-05 |
+| Section headers (Personality / Ideal / Bond / Flaw / Backstory) | Navigation orientation within the scrollable tab | LOW | Existing i18n keys `sheet.bio.*` -- already in i18n-budgets | REQ-BIO-06 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Backstory summary (first 3-4 lines) with scroll-to-more | Most use is "remind me who I am" at the table, not reading the full backstory | LOW | Word-wrap at 3-4 lines then show scroll hint | REQ-BIO-07 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Full backstory prose (multiple screens) | Completeness | Biography is 1-2 paragraphs minimum; scrolling through prose text on a combat-session display defeats the glanceable Core Value | First 3-4 lines visible immediately; scroll to more if desired. REQ-BIO-A01 |
+| Character appearance (height/weight/eye color) | Foundry sheet has it | Appearance stats are session-zero information with zero table relevance during play | Omit. No schema slot exists and no use case exists at play time. REQ-BIO-A02 |
+
+---
+
+## Part G -- Combat Tracker (Canvas Raster Overlay, z=2)
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Initiative order (5-row sliding window) | Core combat orientation | LOW | `snapshot.combatants[].{initiative,name,isCurrentTurn}` -- already in `CombatSnapshot` | Existing `computeWindow` logic preserved verbatim. REQ-COMB-01 |
+| Current-turn highlight (arrow marker) | Instant "who's turn is it?" | LOW | `combatants[].isCurrentTurn` -- already in schema | Existing arrow marker logic preserved. REQ-COMB-02 |
+| HP bar per combatant | Tactical health state | LOW | `combatants[].{hp,maxHp}` -- already in schema | Existing `_hpBar` logic preserved. REQ-COMB-03 |
+| HP numeric (current/max) | Exact value when bar is ambiguous | LOW | Same | Existing `_formatHpField` logic. REQ-COMB-04 |
+| AC per combatant | Tactical attack-roll context | MEDIUM | KNOWN GAP: `CombatantSchema` has `acValue = ' --'` placeholder (combat-tracker-panel.ts line 292) -- AC not yet in snapshot | Must add `ac` to `CombatantSchema` and foundry-module reader. REQ-COMB-05 / schema dep: REQ-SCHEMA-06 |
+| "YOU" marker on player's own combatant | Self-identification in multi-combatant list | LOW | `ownActorId` + `combatants[].actorId` -- already wired | Existing logic preserved. REQ-COMB-06 |
+| Concentration sub-line per concentrating combatant | "Is my Bless still up?" | LOW | `combatants[].concentration.{spellName,duration}` -- already in schema | Existing sub-line logic preserved. REQ-COMB-07 |
+| Quick-action bar footer (A / S / I / M) | Combat action dispatch anchored to tracker | LOW | gesture bus already wired (Phase 8) | Existing `renderQuickActionBar` logic preserved. REQ-COMB-08 |
+| Multi-attack chip `[Atk N/M]` | Mid-turn feedback | LOW | `MultiAttackState` -- already wired (Phase 7) | Existing chip logic preserved. REQ-COMB-09 |
+| Turn-advance auto-resets scroll | Prevents window drifting off the active combatant | LOW | `onSnapshot` turn-change detection -- already wired | Existing behavior preserved. REQ-COMB-10 |
+| Party-vs-enemy faction glyph | Tactical orientation | LOW | `isParty` flag -- already wired | Existing glyph logic preserved. REQ-COMB-11 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Current-turn row rendered at full contrast (brighter area or heavier glyph) | Instant focus vs. reading an arrow marker | LOW | Raster gives pixel-level brightness control; inactive rows at lower shade | REQ-COMB-12 |
+| HP bar fill uses greyscale intensity gradient (not just filled/empty blocks) | Richer visual: full = bright, near-dead = dim | LOW | Only possible in raster -- 4-bit palette gives 16 shades | REQ-COMB-13 |
+| Scrollable effects section (active status effects per combatant) | Players forget what effects are active | MEDIUM | Effects data not currently in `CombatantSchema` -- needs extension or derivation from `conditions` | Current effects section is a placeholder. REQ-COMB-14 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Full combat log on tracker overlay | "I want to see damage history" | Log is a stream of events; displaying it alongside initiative order creates visual competition for the same 576px canvas | Toast messages (already built) cover the immediate feedback need. REQ-COMB-A01 |
+| Real token-position distance/direction column | Tactical positioning | Token position requires Scene API read per turn, adds latency, is always approximate | Current `--` placeholder is correct; real distance is a STRETCH feature for a future milestone. REQ-COMB-A02 |
+| Spell detail pop-up from tracker | "I want to see what Bless does" | Combat tracker is a tactical summary surface; sub-panels create a nested navigation model exceeding the 4-gesture vocabulary | The Action Options modal handles spell detail when accessible from Spellbook. REQ-COMB-A03 |
+
+---
+
+## Part H -- Gesture Navigation (Raster Context)
+
+The raster substrate does not change the gesture vocabulary -- it changes what those gestures render.
+The new canvas model introduces NEW navigation requirements vs. text-container behavior.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Press = forward-tab cycle (Main -> Skills -> Inventory -> Spells -> Features -> Bio -> wraps) | Standard single-action cycle; the R1 ring is operated without looking | LOW | Existing gesture bus + tab state machine | Same as text-container; output target changes to canvas. REQ-NAV-01 |
+| Scroll-up / scroll-down within tabs that have scrollable lists | Long lists require scroll | LOW | Existing scroll-offset per tab | Same as text-container. REQ-NAV-02 |
+| Double-press = close overlay (return to map+HUD) | Escape hatch from overlay to primary view | LOW | Existing double-tap -> close route via ADR-0012 | Same as text-container. REQ-NAV-03 |
+| Over-scroll at top boundary = open Quick Action menu | Navigation between overlays | LOW | Existing over-scroll dispatcher (ADR-0012) | Same as text-container. REQ-NAV-04 |
+| Press on Main tab (no scrollable content) = forward-tab immediately | Main tab has no scrollable list; press should cycle tabs, not fake-scroll | LOW | Conditional: if current tab has no scrollable content, press = tab advance | REQ-NAV-05 |
+| Tab strip visible on all tabs showing active tab | User must know where they are without looking at their hand | LOW | Static chrome per tab -- rendered once as part of canvas | Raster: tab labels rendered as small-font row at top of overlay canvas. REQ-NAV-06 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Active tab rendered as filled/inverted block (not just underline) | Higher contrast at AR glance distance | LOW | Raster control: invert the active tab label bg/fg | REQ-NAV-07 |
+| Scroll-position indicator (thin 1-pixel rightmost column progress bar) | Tells user "you are 40% down the skills list" without text | LOW | `scrollOffset / maxOffset` ratio -> height of filled bar | REQ-NAV-08 |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Tap-and-hold to access a secondary action layer | "Would allow more gestures" | Long-press is retired by ADR-0012 / GEST-01. No duration-based input exists. | Use double-press + press sequence within Quick Action menu instead. REQ-NAV-A01 |
+| Swipe-to-close (horizontal swipe) | Natural for mobile users | G2 R1 has no horizontal axis -- only scroll-up/scroll-down. There is no horizontal gesture. | Double-press is the close gesture. REQ-NAV-A02 |
+
+---
+
+## Part I -- Static vs. Dynamic Split (Raster Canvas)
+
+This is an implementation-shaping feature boundary -- it determines what gets pre-baked once vs. what redraws on data change.
+The milestone brief specifies "render mix statico + dinamico" as a core target.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Depends On | Notes / REQ-ID |
+|---------|--------------|------------|------------|----------------|
+| Static chrome layer (borders, labels, tab strip, section dividers) pre-baked once per panel open | Without this, every HP tick forces a full re-draw of all chrome, wasting CPU and BLE bandwidth | MEDIUM | `LayerManager` static-chrome caching mechanism (new) | Chrome pixels never change within a panel session. Draw once -> cache canvas. Delta hash skips unchanged tiles. REQ-PERF-01 |
+| Dynamic data layer redraws only affected regions on `character.delta` | HP bar update should NOT redraw the abilities grid | MEDIUM | `hud-live-render.ts` loop (already exists) + region-dirty tracking | Existing delta-change loop reused; raster version adds per-region dirty flag. REQ-PERF-02 |
+| Portrait fetch + dither executed once at panel open, cached as pre-dithered tile | Portrait never changes mid-session; re-dithering on every frame is wasted compute | MEDIUM | Portrait URL from snapshot + existing `image-q` pipeline | Fetch -> dither -> store as 4-bit bitmap in memory; re-composite on frame. REQ-PERF-03 |
+| Tab switch replaces content region only (chrome shared or reused) | Tab outer frame does not change between tabs; only content area differs | MEDIUM | Compositor separation of chrome layer vs. content layer | REQ-PERF-04 |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes / REQ-ID |
+|---------|-------------------|------------|----------------|
+| Sub-tile xxhash delta so only tiles with changed pixels get re-encoded | Already designed in ADR-0013 and PROJECT.md TODO-hud-raster #2 -- the main bandwidth optimization | HIGH | `xxhash-wasm` already in pipeline; tile-hash compare before encode | Path to ~5 fps budget being achievable in practice. REQ-PERF-05 (PROJECT.md marks this out-of-scope for v0.10.0 itself; flag for v0.10.1) |
+
+### Anti-Features
+
+| Anti-Feature | Why Requested | Why It Hurts | What to Do Instead |
+|--------------|---------------|--------------|---------------------|
+| Full 576x288 canvas re-encode on every data change | Simplicity | At 5 fps, a full frame is ~82 KB raw -> 4 PNG encode operations per frame -> CPU-bound in the worker; BLE bandwidth may not sustain it | Static/dynamic split + tile delta is the designed mitigation. REQ-PERF-A01 |
+| Double-buffered canvas (two canvases, swap on frame) | Prevents tearing | G2 display does not tear -- it is a frame-push display where the SDK atomically replaces image tiles; double-buffering adds memory overhead with zero visual benefit | Single OffscreenCanvas composite, single push per delta cycle. REQ-PERF-A02 |
+
+---
+
+## Part J -- Schema Extensions Required (v0.10.0 Milestone)
+
+These are not UI features per se but are blocking dependencies for the features above.
+Every extension must ship in the same atomic commit as the renderer that consumes it (Phase 4b / 16 atomic-commit pattern).
+
+| Extension | Blocks | Complexity | Notes / REQ-ID |
+|-----------|--------|------------|----------------|
+| `class: z.string()` in `CharacterSnapshotSchema` + foundry-module reader | REQ-MAIN-02 (class/level line) | LOW | Reader: `actor.items.find(type=class)?.name`. REQ-SCHEMA-01 |
+| `initiative: z.number().int()` in `CharacterSnapshotSchema` + reader | REQ-MAIN-10 (initiative display) | LOW | Reader: `actor.system.attributes.init.total`. REQ-SCHEMA-02 |
+| `speed: z.number().int()` in `CharacterSnapshotSchema` + reader | REQ-MAIN-11 (speed display) | LOW | Reader: `actor.system.attributes.movement.walk`. REQ-SCHEMA-03 |
+| `feats: z.array(FeatSchema)` in `CharacterSnapshotSchema` + foundry-module reader | REQ-FEAT-01..06 (Features tab real data) | MEDIUM | `FeatSchema` needs `{id, name, category, isOrigin, shortDesc, activation?}`. Reader: `actor.items.filter(type in feat/class/race)` + HTML-strip first sentence. REQ-SCHEMA-04 |
+| `biography: BiographySchema` in `CharacterSnapshotSchema` + foundry-module reader | REQ-BIO-01..05 (Biography tab real data) | LOW | `BiographySchema = {personality, ideal, bond, flaw, backstory}` as strings. Reader: `actor.system.details.biography.{value,personality,ideals,bonds,flaws}` + HTML-strip. REQ-SCHEMA-05 |
+| `ac: z.number().int()` in `CombatantSchema` + foundry-module combat reader | REQ-COMB-05 (AC per combatant) | MEDIUM | Reader: `actor.system.attributes.ac.value` per combatant. REQ-SCHEMA-06 |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[Status HUD persistence (DISP-01)]
-    └──requires──> [Layered rendering model (DISP-02)]
-                       └──requires──> [Layout integrity invariants (INV-1)]
-                                         └──requires──> [Snapshot test framework (Phase 4)]
+REQ-MAIN-14 (portrait inset)
+    requires --> snapshot.portrait.url (optional in schema since Phase 13, STRETCH-06)
+                 requires --> image-q dither pipeline (already in raster worker)
 
-[Map raster mode (MAP-01)]
-    └──requires──> [PIXI canvas extract pipeline (Phase 4)]
-                       └──requires──> [Phase 0 §10.0.2 updateImageRawData validation]
-    └──requires──> [BLE bandwidth ≥200 kbps (Phase 0 §10.0.3)]
-    └──enhances──> [6-layer optimization stack (MAP-03)]
-                       └──unlocks──> [15 fps stretch target]
+REQ-FEAT-01..08 (Features tab real data)
+    requires --> REQ-SCHEMA-04 (feats[] schema + reader)
 
-[Map glyph mode (MAP-02)]
-    └──requires──> [SceneSnapshot extraction (Foundry hooks)]
-    └──fallback-for──> [Map raster mode] when BLE saturated
+REQ-BIO-01..07 (Biography tab real data)
+    requires --> REQ-SCHEMA-05 (biography schema + reader)
 
-[Character sheet 6-tab (SHEET-01)]
-    └──requires──> [actor.system.* binding via dnd5e 5.x adapter]
-    └──requires──> [Foundry adapter versioned (§5.6.2)]
-    └──reads-from──> [actor.items + activity system]
+REQ-MAIN-02 (class/level line)
+    requires --> REQ-SCHEMA-01 (class field in snapshot)
 
-[Combat tracker (COMB-01)]
-    └──requires──> [Combat document hooks (updateCombat, updateActor)]
-    └──enhances──> [Action economy widget (COMB-02)]
-                       └──requires──> [dnd5e activity system access]
+REQ-MAIN-10 (initiative display)
+    requires --> REQ-SCHEMA-02 (initiative field in snapshot)
 
-[Spell cast manual (ACT-01)]
-    └──requires──> [activity.use() write path (FOUN-03)]
-    └──requires──> [AbilityTemplate.fromActivity() (ACT-02)]
-    └──requires──> [TokenLayer.setTargets() v13 (FOUN-04)]
-    └──enhances──> [MidiQOL workflow integration]
-                       └──critical-for──> [Damage auto-apply, concentration saves]
+REQ-MAIN-11 (speed display)
+    requires --> REQ-SCHEMA-03 (speed field in snapshot)
 
-[Quick Action Menu (NAV-02)]
-    └──requires──> [R1 long-press gesture (Phase 0 §10.0.1)]
-    └──unlocks──> [Cross-overlay navigation reachability (NAV-03)]
+REQ-COMB-05 (AC per combatant)
+    requires --> REQ-SCHEMA-06 (ac in CombatantSchema)
 
-[Boot handshake (NAV-04)]
-    └──requires──> [Capability negotiation (§5.6.3)]
-    └──requires──> [Bearer token + QR pairing (CONN-03..05)]
-                       └──requires──> [Phone setup wizard (CONN-01)]
+REQ-PERF-01..04 (static/dynamic split)
+    requires --> compositor canvas architecture (LayerManager evolution -- ADR-0013 core)
 
-[Voice/AI V2 (VOICE-01..05)]
-    └──requires──> [MCP server foundry-mcp (§5.7) — independent module]
-    └──requires──> [Tool registry parity with manual path (§5.3)]
-    └──independent-from──> [MVP] (zero MVP coupling)
-    └──conflicts──> [Native EvenAI hijack] (anti-feature)
+REQ-PERF-05 (sub-tile delta loop)
+    requires --> REQ-PERF-01..04
+    NOTE --> PROJECT.md marks out-of-scope for v0.10.0 (TODO-hud-raster #2)
+
+REQ-SPELL-08 (spell save DC binding)
+    requires --> snapshot.abilities.*.dc (already in schema since Phase 16) -- data-bind only
+    NOTE --> PROJECT.md notes this as a "carry" from v0.9.13
+
+All raster renderers
+    require --> canvas compositor (LayerManager -> single 576x288 OffscreenCanvas, ADR-0013)
+    require --> 4-tile push mechanism (288x144 tiles via updateImageRawData)
 ```
 
-### Critical dependency notes
+### Dependency Notes
 
-- **MAP-01 (raster) requires Phase 0 GO/NO-GO §10.0.2 + §10.0.3** — if either fails, fallback is MAP-02 (glyph) only, raster moves to Phase 13 stretch (per spec §10.0.5 decision tree)
-- **All write actions require working MidiQOL OR Foundry-native fallback** — see Vector B gap above; spec §12.B has open questions
-- **R1 disconnect blocks all input** (§7.14.5) — there is *no* fallback gesture model on G2 native; this is a single-point-of-failure
-- **Sheet portrait image (§7.5.8) takes 1 of 4 image containers when overlay open** — degrades raster from 2×2 to 3-tile during sheet view; `sheet.portrait.enabled` feature flag is OFF until Phase 0 validates
+- Schema extensions before renderers: Every REQ-SCHEMA-* must land (shared-protocol + foundry-module reader) before the corresponding renderer can bind real data. Use the Phase 16 / Phase 17 atomic-commit pattern.
+- Features/Bio tab has hardcoded fixtures today: `DEFAULT_FEATS` and hardcoded bio strings in `renderFeatsTab` / `renderBioTab` are explicitly stub code. REQ-SCHEMA-04 and REQ-SCHEMA-05 are the unlock.
+- Combat tracker AC is a known placeholder: `acValue = ' --'` at line 292 of `combat-tracker-panel.ts` is a documented stub. REQ-SCHEMA-06 closes it.
+- Portrait fetch is async + once: Portrait must be fetched from Foundry origin URL, dithered, and cached at panel-open time, not per-frame. The existing `MapBaseLayer` portrait-override infrastructure is the model.
+- Static/dynamic compositor is the architectural foundation: Every feature above depends on `LayerManager` evolving to composite onto a single 576x288 canvas. All other features are content layered on top of that foundation. REQ-PERF-01 is the root dependency.
 
 ---
 
-## MVP Definition (re-validated against spec)
+## MVP Definition
 
-The spec's Phase 0–10 = MVP (13 weeks). Re-classified per this research:
+### Launch With (v0.10.0 must-haves)
 
-### Launch With (v1 = MVP)
+Minimum viable product -- what is needed to close the milestone.
 
-Specs.md commits these and they are table-stakes per this research:
+- [ ] REQ-PERF-01..04 -- Static/dynamic compositor architecture (foundation for all raster panels)
+- [ ] REQ-MAIN-01..13 -- All Main tab table-stakes fields (name, class/level, HP bar, AC, abilities+mods, saves+glyphs, conditions, death saves, senses passives, initiative, speed, proficiency, exhaustion)
+- [ ] REQ-MAIN-14 -- Portrait inset (schema already has `portrait.url`)
+- [ ] REQ-SKILL-01..06 -- Skills tab table-stakes (all 18 skills, prof glyphs, ability groups, scroll, hint, passives)
+- [ ] REQ-INV-01..06 -- Inventory tab table-stakes (item list, glyphs, name, damage, quantity, scroll, mastery flag)
+- [ ] REQ-SPELL-01..08 -- Spells tab table-stakes + DC binding (schema primed, just needs wiring)
+- [ ] REQ-FEAT-01..06 -- Features tab with real data (REQ-SCHEMA-04 must ship in same atomic commit)
+- [ ] REQ-BIO-01..06 -- Biography tab with real data (REQ-SCHEMA-05 must ship in same atomic commit)
+- [ ] REQ-COMB-01..13 -- Combat tracker: all existing table-stakes ported to raster + brightness differentiators
+- [ ] REQ-NAV-01..08 -- Gesture navigation (tab cycle, scroll, close, over-scroll, tab strip chrome, progress bar)
+- [ ] REQ-SCHEMA-01..06 -- All schema extensions (class, initiative, speed, feats, biography, combatant AC)
 
-- [x] **Persistent Status HUD** (DISP-01..03) — non-negotiable for AR-form-factor
-- [x] **Map raster mode default + glyph fallback** (MAP-01..05) — Core Value enabler
-- [x] **6-tab Foundry-faithful sheet** (SHEET-01..04) — table-stakes
-- [x] **Combat tracker + action economy** (COMB-01..03) — table-stakes
-- [x] **Manual spell cast / weapon attack / item use via R1** (ACT-01..03) — only viable input model
-- [x] **Quick Action menu (long-press R1)** (NAV-01..04) — discovery escape hatch
-- [x] **Foundry module + bridge service + Docker Compose deploy** (FOUN-01..04) — architecture foundation
-- [x] **Boot splash + capability handshake + QR pairing** (CONN-01..05, NAV-04) — first-run UX
-- [x] **i18n auto-detect + runtime override** (I18N-01..05) — multi-locale table-stakes
+### Add After Validation (v0.10.x)
 
-**Adversarial gaps that should join MVP** (from Vector A/B/C above):
+Features to add once the v0.10.0 canvas compositor baseline is stable.
 
-- [ ] **Reaction *notification* (passive toast)** — without this, players silently miss reactions in 5e (Vector A). Recommend MVP, even if execution is V2 (ACT-04).
-- [ ] **Concentration drop confirm modal on cast** — 5e core mechanic, spec gap (Vector A)
-- [ ] **Death saves status HUD** — visceral D&D moment, missing from spec (Vector A)
-- [ ] **MidiQOL config requirement check at boot** — Phase 0 should validate MidiQOL present + autoFastForward (Vector B)
-- [ ] **Boot error states (handshake failed, version mismatch, no character)** — spec mockups happy-path only (Vector C)
-- [ ] **Toast queue/stack (max 2 visible, FIFO 3s)** — Fireball + saves chain overflows visible area (Vector C)
-- [ ] **Multi-attack action tracker `Atk 1/2`** — Fighter L5+ flagged in spec Open Questions §12.B q.15 (Vector A)
+- [ ] REQ-PERF-05 (xxhash sub-tile delta loop) -- PROJECT.md marks as TODO-hud-raster #2; bandwidth-critical but complex; add after baseline ships
+- [ ] REQ-COMB-14 (live effects section in combat tracker) -- requires effects data added to `CombatantSchema`
+- [ ] REQ-MAIN-15 (temp-HP overflow segment) -- low-hanging fruit polish pass
 
-### Add After Validation (v1.x — Phase 11+)
+### Future Consideration (v2+)
 
-- [ ] **Voice/AI via MCP** (VOICE-01..05, §5.7) — purely additive, post-Phase 10 (V2 OPZIONALE)
-- [ ] **Reaction execution (Shield, Counterspell auto-trigger flow)** (ACT-04) — V2
-- [ ] **Push notifications (turn start, concentration drop, HP critical)** (§1.3) — V2
-- [ ] **Biometric narrative cues (R1 HR → audio cue)** (§1.3) — V2 stretch
-- [ ] **Multi-target intelligent selection** — V2
-- [ ] **Group initiative collapsing** (Vector C gap)
-- [ ] **Stealth / hidden combatant separate row in tracker** (Vector C gap)
-- [ ] **Advantage/disadvantage source modal** (Vector A gap)
-- [ ] **Ammunition tracking display** (Vector A gap)
-- [ ] **Per-target streaming save resolution log** (Vector A gap)
-
-### Future Consideration (v2+ / Phase 13 stretch)
-
-- [ ] **Multi-player sync (4× G2 simultaneously)** — Phase 13 stretch
-- [ ] **Multi-tenant cloud SaaS** — Phase 13 stretch
-- [ ] **Server-side canvas extract (no PIXI in player WebView)** — Phase 13 stretch (§7.4b.8 Option B)
-- [ ] **Advanced compression (Brotli, fflate)** — Phase 13 open question (§11.5.7)
-- [ ] **In-glasses audio capture for V2 voice** (§7.10 note: "evoluzione futura")
+- [ ] Skill check dice-roll from Skills tab (write path stub exists; deferred per PROJECT.md)
+- [ ] Spell description sub-panel from Spells tab
+- [ ] Real distance/direction on combat tracker (requires Scene API read path)
+- [ ] Full combat log surface
 
 ---
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Priority |
-|---|---|---|---|
-| Status HUD persistent | HIGH | LOW | **P1** |
-| Layout integrity invariants | HIGH (failure = product feels broken) | HIGH | **P1** |
-| Sheet 6-tab faithful | HIGH | MEDIUM | **P1** |
-| Combat tracker | HIGH | MEDIUM | **P1** |
-| Spellbook with cast | HIGH | MEDIUM | **P1** |
-| Inventory with use/equip | HIGH | MEDIUM | **P1** |
-| Quick Action menu | HIGH | LOW | **P1** |
-| R1 gesture model | HIGH | MEDIUM (Phase 0 dependent) | **P1** |
-| Map raster default | HIGH | HIGH | **P1** (with glyph fallback) |
-| Map glyph fallback | MEDIUM | MEDIUM | **P1** (de-risks raster) |
-| Boot splash + handshake | MEDIUM | LOW | **P1** |
-| QR pairing + bearer token | MEDIUM | LOW | **P1** |
-| i18n auto-detect | MEDIUM | MEDIUM | **P1** |
-| 6-layer optimization stack | HIGH (15 fps stretch) | HIGH | **P2** (5 fps committed = P1 layers, 15 fps stretch = P2) |
-| Concentration drop modal | HIGH (Vector A gap) | LOW | **P1** (needs MVP add) |
-| Death saves HUD | HIGH (Vector A gap) | LOW | **P1** (needs MVP add) |
-| Reaction passive toast | MEDIUM (Vector A gap) | LOW | **P1** (needs MVP add) |
-| MidiQOL config check | HIGH (Vector B gap) | LOW | **P1** (needs MVP add) |
-| Boot error states | MEDIUM (Vector C gap) | LOW | **P1** (needs MVP add) |
-| Toast queue | MEDIUM (Vector C gap) | LOW | **P1** (needs MVP add) |
-| Multi-attack tracker | HIGH (Vector A gap) | MEDIUM | **P1** (needs MVP add) |
-| Voice/AI via MCP | HIGH (differentiator) | HIGH | **P2** (V2 OPZIONALE, post-Phase 10) |
-| Reaction execution flow | MEDIUM | MEDIUM | **P2** (V2) |
-| Biometric narrative cues | LOW | MEDIUM | **P3** (V2 stretch) |
-| Multi-player sync | LOW (single-player MVP works) | HIGH | **P3** (Phase 13 stretch) |
-| Multi-tenant SaaS | LOW (homelab MVP works) | HIGH | **P3** (Phase 13 stretch) |
-| 3D scene rendering | — | impossible on G2 | **anti-feature** |
-| DM-side glasses | — | scope explosion | **anti-feature** |
-| AI as DM | — | violates Core Value | **anti-feature** |
+| Feature Group | User Value | Implementation Cost | Priority |
+|---------------|------------|---------------------|----------|
+| Compositor architecture (REQ-PERF-01..04) | HIGH (all raster features depend on it) | HIGH | P1 |
+| Main tab table-stakes (REQ-MAIN-01..13) | HIGH | LOW (data already in schema) | P1 |
+| Schema extensions (REQ-SCHEMA-01..06) | HIGH (unlocks Features+Bio real data + combatant AC) | LOW-MEDIUM | P1 |
+| Combat tracker raster port (REQ-COMB-01..11) | HIGH (most session time is in combat) | LOW (logic already exists) | P1 |
+| Skills tab raster port (REQ-SKILL-01..06) | HIGH | LOW | P1 |
+| Inventory tab raster port (REQ-INV-01..06) | HIGH | LOW | P1 |
+| Spells tab raster port (REQ-SPELL-01..07) | HIGH | LOW | P1 |
+| Gesture navigation (REQ-NAV-01..08) | HIGH (usability) | LOW | P1 |
+| Features tab real data (REQ-FEAT-01..06) | MEDIUM (checked occasionally) | MEDIUM (schema dep + reader) | P1 |
+| Biography tab real data (REQ-BIO-01..06) | LOW (checked rarely at table) | LOW (schema dep + reader) | P2 |
+| Portrait inset (REQ-MAIN-14) | MEDIUM (aesthetic centerpiece of milestone) | HIGH (async fetch + dither) | P2 |
+| Spells DC binding (REQ-SPELL-08) | MEDIUM (casters only) | LOW (schema already primed) | P2 |
+| Combat tracker current-turn brightness / HP gradient (REQ-COMB-12..13) | MEDIUM (aesthetic upgrade) | LOW | P2 |
+| Sub-tile delta (REQ-PERF-05) | HIGH (BLE bandwidth in production) | HIGH | P3 (v0.10.1) |
+| Combat tracker AC (REQ-SCHEMA-06 + REQ-COMB-05) | MEDIUM | MEDIUM | P2 |
 
 **Priority key:**
-- **P1** = MVP must-have
-- **P2** = V2 (Phase 11+, opzionale)
-- **P3** = Phase 13 stretch / deferred
-
----
-
-## Competitor Feature Analysis
-
-| Feature | D&D Beyond mobile | Foundry desktop UI | Argon Combat HUD | Mirrorscape (AR) | Tilt Five | EVF (our approach) |
-|---|---|---|---|---|---|---|
-| Character sheet | Full, official | Full, system-defined | Subset (combat-focused) | Via Foundry | Via Fantasy Grounds | Foundry-faithful 6-tab on G2 |
-| Combat tracker | Beta (2024+) | Yes | Yes (its main feature) | Limited | Via VTT integration | Yes, with effects + concentration source |
-| Spellbook | Yes (subscription) | Yes | Quick-cast subset | Yes | — | Two surfaces (deep+quick) |
-| Inventory | Yes | Yes | Subset | — | — | Two surfaces (deep+quick) |
-| Map / VTT view | No (companion only) | Canvas | No (HUD only) | AR table replacement | 3D holographic table | 4-bit dithered raster + glyph fallback |
-| Voice control | No | No | No | "Coming" via Snapdragon Spaces | No | V2 OPZIONALE via MCP (any LLM client) |
-| Hands-free | No (touch app) | No (mouse) | No (mouse) | Hand+eye tracking | Wand controller | R1 ring (3 gestures) |
-| GM authority | Yes (DM tools subscription) | Yes (built-in) | Yes (Foundry-rooted) | Player-authoritative | Mixed | **Strict** via socketlib + MidiQOL |
-| Form factor | Phone | Desktop monitor | Desktop monitor | AR glasses (Lenovo proto) | AR glasses (proprietary) + game board | Even G2 (4-bit greyscale) + R1 ring |
-| Eyes-on-table | No (look at phone) | No (look at monitor) | No (look at monitor) | Yes (look at AR table) | Yes (look at table through glasses) | **Yes** (peripheral HUD, real table center) |
-| Cost (player) | $0–$60/yr | $0 (paid by GM) | $0 (Foundry module) | Hardware TBD | $359 set | G2 ~$650 + R1 + Foundry |
-| Hardware-constrained streaming | N/A | N/A | N/A | High-end AR | Custom holographic | **Doom-on-watch pattern** (4-bit + dither + delta + RLE + adaptive fps) |
-
-**Positioning insight:** EVF is the only product in this space that:
-1. Augments **existing physical play** (paper map, miniatures, human DM) rather than replacing it (vs Mirrorscape/Tilt Five)
-2. Speaks **MCP-native** so any LLM client integrates (vs none)
-3. Treats **Foundry as authoritative source of truth** while running on glasses (vs D&D Beyond, which is its own silo)
-4. Uses **Doom-on-watch** streaming pattern for hardware-constrained AR (novel application)
+- P1: Must have for milestone close
+- P2: Should have, add within v0.10.0 if budget allows
+- P3: Defer to next milestone
 
 ---
 
 ## Sources
 
-### Spec / project (canonical)
-- [Specs.md v0.9.11 (project canonical)](file:///home/aiacos/workspace/FoundryVTT/EvenFoundryVTT/Specs.md) — §1, §5, §6, §7, §8, §10, §12 referenced
-- [PROJECT.md (GSD projection)](file:///home/aiacos/workspace/FoundryVTT/EvenFoundryVTT/.planning/PROJECT.md)
-
-### VTT companion landscape
-- [Argon - Combat HUD (DND5E)](https://foundryvtt.com/packages/enhancedcombathud-dnd5e) — canonical Foundry HUD module reference
-- [Argon - Combat HUD (CORE)](https://foundryvtt.com/packages/enhancedcombathud)
-- [D&D Beyond Mobile App – D&D Beyond support](https://dndbeyond-support.wizards.com/hc/en-us/articles/7747193137684-D-D-Beyond-Mobile-App)
-- [Plans for Encounters/Combat Tracker in Mobile App? - D&D Beyond Forums](https://www.dndbeyond.com/forums/d-d-beyond-general/d-d-beyond-feedback/d-d-beyond-mobile-app-feedback/116190-plans-for-encounters-combat-tracker-in-mobile-app)
-- [Best D&D Apps for Players and GMs in 2026 — StoryRoll](https://storyroll.app/blog/best-dnd-apps-2026)
-- [Best Virtual Tabletops for D&D in 2026 — StoryRoll](https://storyroll.app/blog/best-virtual-tabletops-dnd-2026)
-- [VTT Quality of Life & Feature Improvements – Roll20 Help Center](https://help.roll20.net/hc/en-us/articles/25289127045143-VTT-Quality-of-Life-Feature-Improvements)
-
-### AR / smart-glass tabletop & HUD design
-- [Mirrorscape's new AR tabletop platform — TechCrunch](https://techcrunch.com/2023/07/26/gaming-startup-mirrorscape-tabletop-gaming-ar/)
-- [Tilt Five — AR Made To Crowd Around](https://www.tiltfive.com/)
-- [Google Glimmer UI design language for AR HUD glasses — UploadVR](https://www.uploadvr.com/google-details-glimmer-its-ui-design-language-for-hud-ar-glasses/)
-- [Smart Glasses With Display: HUD vs Virtual Screen Guide 2026 — Even Realities](https://www.evenrealities.com/blog/smart-glasses-with-display)
-- [Even Realities Even Hub Launches — Next Reality](https://virtual.reality.news/news/even-realities-even-hub-launches-can-constrained-smart-glasses-build-an-app-ecosystem/)
-- [Dashboard – Even Support Center](https://support.evenrealities.com/hc/en-us/articles/14269247458319-Dashboard)
-
-### Doom-on-exotic-devices pattern (raster pipeline lineage)
-- [DOOM on a watch (jborza, 2020)](https://jborza.com/post/2020-11-20-doom-on-a-watch/)
-- [rp2040_doom_1b](https://github.com/meadiode/rp2040_doom_1b)
-- [Ditherpunk (surma.dev)](https://surma.dev/things/ditherpunk/)
-- [DOOM 16-color Atari ST port — Tom's Hardware](https://www.tomshardware.com/video-games/retro-gaming/doom-slithers-and-dithers-its-way-with-a-16-color-atari-st-port)
-
-### Foundry / dnd5e API references (cited from Specs.md §13)
-- [dnd5e source (5.3.x)](https://github.com/foundryvtt/dnd5e)
-- [Activity classes (dnd5e 5.3.x)](https://github.com/foundryvtt/dnd5e/tree/5.3.x/module/documents/activity)
-- [MidiQOL](https://gitlab.com/tposney/midi-qol)
-- [socketlib](https://github.com/farling42/foundryvtt-socketlib)
-
-### MCP (V2 voice path)
-- [Model Context Protocol spec](https://modelcontextprotocol.io/)
-- [Anthropic MCP docs](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)
+- `/home/aiacos/workspace/EvenFoundryVTT/.planning/PROJECT.md` -- v0.10.0 milestone scope, carry items, REQ-ID history
+- `/home/aiacos/workspace/EvenFoundryVTT/docs/architecture/0013-hud-raster-rendering.md` -- ADR-0013 raster decision, scope, alternatives
+- `/home/aiacos/workspace/EvenFoundryVTT/packages/g2-app/src/panels/character-sheet-tab-renderers.ts` -- all 6 tab renderers, existing field bindings, Phase 16/17 binding status, DEFAULT_FEATS stub, hardcoded bio stub
+- `/home/aiacos/workspace/EvenFoundryVTT/packages/g2-app/src/panels/combat-tracker-panel.ts` -- combat tracker layout, known AC placeholder at line 292, gesture model
+- `/home/aiacos/workspace/EvenFoundryVTT/packages/g2-app/src/panels/inventory-panel.ts` -- inventory column model and type glyphs
+- `/home/aiacos/workspace/EvenFoundryVTT/packages/g2-app/src/panels/spellbook-panel.ts` -- spells column model and slot bar logic
+- `/home/aiacos/workspace/EvenFoundryVTT/packages/shared-protocol/src/payloads/character.ts` -- full `CharacterSnapshotSchema` field inventory; confirmed which fields are in schema vs. missing
 
 ---
-
-*Feature research for: D&D 5e companion app on Even Realities G2 AR glasses (greenfield)*
-*Researched: 2026-05-10*
-*Confidence: HIGH on spec-committed features (cross-validated v0.9.11), MEDIUM on adversarial-found gaps, LOW on AR-HUD-specific UX claims (G2 product is novel, no direct competitor on this hardware)*
+*Feature research for: EvenFoundryVTT v0.10.0 Raster UI Substrate*
+*Researched: 2026-06-05*

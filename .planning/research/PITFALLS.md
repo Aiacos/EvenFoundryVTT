@@ -1,7 +1,7 @@
-# Pitfalls Research
+# Domain Pitfalls
 
 **Domain:** FoundryVTT D&D 5e companion plugin streaming to Even Realities G2 AR glasses + R1 ring (BLE), with optional V2 MCP voice
-**Researched:** 2026-05-10
+**Researched:** 2026-05-10 (baseline) + 2026-06-05 (v0.10.0 raster-substrate addendum)
 **Confidence:** MEDIUM (HIGH on Foundry/dnd5e + BLE physics + i18n via official docs and Specs.md cross-validation; MEDIUM on Even Realities firmware/policy due to limited public surface; LOW on MCP streaming UX which is rapidly evolving 2025-2026)
 
 > **Scope contract.** Specs.md §11 (Risk Assessment), §11.5.8 (Failure Modes), §12 (Open Questions) already enumerate the obvious risks. This document is the **gap layer**: the things experience teaches that the spec under-specifies, the second-order failure modes, and the "looks done but isn't" traps that bite during implementation. Each pitfall is **specific to this stack** (Foundry + dnd5e 5.x + BLE-bound G2 + 4-bit raster + R1 gestures + 3-tier settings + optional MCP) — not generic advice.
@@ -515,6 +515,340 @@ Naive WS broadcast model: bridge → all subscribed clients of the actor. Per-de
 
 ---
 
+## v0.10.0 Raster UI Substrate — Project-Specific Pitfalls
+
+> **Scope:** The pitfalls below are specific to milestone v0.10.0 (converting the text-container HUD to a composited raster canvas substrate). They supplement the baseline pitfalls above. Cross-references: ADR-0013 (`docs/architecture/0013-hud-raster-rendering.md`), ADR-0005 (`docs/architecture/0005-phase0-go-no-go.md`), `TODO-hud-raster.md`.
+
+---
+
+### Pitfall R-1: Canvas text rendering is non-deterministic across engines — the INV-1 ASCII contract becomes meaningless without a new raster-snapshot contract
+
+**What goes wrong:**
+The existing INV-1 suite in `packages/shared-render/src/fixtures/` contains ~60 `.txt` ASCII fixtures that assert character-perfect output for every HUD state. Once the HUD substrate moves to canvas, those fixtures test the *text-container (glyph fallback) path* — not the production raster path. If the raster HUD ships without a replacement INV-1 contract, CI stays green while the primary rendering surface has zero fixture coverage.
+
+Simultaneously, canvas `fillText()` with `'14px monospace'` is non-deterministic:
+- Chrome (V8) renders fonts at slightly different sub-pixel positions than Safari WKWebView (the actual runtime on iOS).
+- `measureText()` return values differ between engines.
+- happy-dom (the Vitest test environment) has no real canvas 2D implementation — `renderHudFrame()` throws "no canvas API available" and cannot be called from unit tests.
+- Linux CI runner uses a different font-renderer than macOS dev or iOS WebView.
+
+A test that snapshots `canvas.toDataURL()` or PNG bytes across these environments will be **flaky by construction**.
+
+**Why it happens:**
+Canvas text rendering depends on font rasterizer, font file on disk, subpixel hinting, and the OS text engine. Cross-platform canonical output for `ctx.fillText()` does not exist.
+
+**Consequences:**
+- Old ASCII INV-1 suite passes but tests a path exercised only in BLE-degraded glyph fallback.
+- No automated guard on the primary raster HUD layout — visual regressions are invisible to CI.
+- A refactor moves a draw call and nothing catches it.
+
+**Prevention — the correct INV-1 raster contract:**
+
+The only stable, cross-platform, deterministic output from the raster pipeline is the **pipeline itself applied to a synthetic RGBA buffer**. This pattern is already proven in `hud-raster-frame.test.ts`:
+
+1. **Inject a synthetic RGBA fixture** — a deterministic pixel array that does NOT come from `renderHudFrame()`. This bypasses canvas text non-determinism entirely.
+2. **Run `buildHudTiles(syntheticRgba)`** through the full dither + encode pipeline.
+3. **Snapshot the tile PNG SHA-256 or xxhash** with `expect(hex).toMatchInlineSnapshot()`. The dither algorithm (`image-q` Floyd-Steinberg with the canonical 16-step palette) is deterministic for a given input — same bytes in, same PNG out, every platform.
+4. **Content-correctness tests on pure functions**: `formatConditions`, `formatSlots`, `formatDeathSaves`, `hpFraction` are already pure and testable without canvas. Unit-test these independently of `renderHudFrame`.
+5. **Visual layout gate**: use the EvenHub simulator HTTP screenshot API (`pnpm sim shot`) as a **manual gate** with `human_needed` verification mode — the same pattern established by ADR-0005. This is not a Vitest test; it is a manual inspection step.
+
+The distinction: INV-1 raster tests pipeline determinism (dither → encode → bytes), not canvas font rendering. Canvas font rendering is validated visually via simulator screenshot.
+
+**Phase to own the mitigation:**
+- **Phase promoting raster to default (TODO-hud-raster #4)**: define the new INV-1 raster contract in a written note before retiring the text-container HUD as the primary path.
+- **Phase wiring the production loop (TODO-hud-raster #1 + #2)**: add `toMatchInlineSnapshot` hash tests against at least one canonical synthetic input.
+- **Do NOT retire the ASCII fixture suite** until glyph path is explicitly gated in a separate CI target.
+
+**Warning signs:**
+- CI green but `pnpm sim shot` shows a blank or garbled HUD.
+- `hud-canvas-renderer.ts` renders on the developer's machine but not on the CI Linux runner (font missing → empty canvas).
+- The `inv:all` orchestrator passes with 0 raster-specific assertions.
+- A developer changes `renderHudFrame` draw order and no test catches it.
+
+**Severity:** **CRITICAL** — gates the entire milestone's quality bar.
+
+---
+
+### Pitfall R-2: Hardware tile size (288×144) is unverified on real G2 — the 200×100 documented cap may be enforced on real hardware
+
+**What goes wrong:**
+ADR-0013 documents that the PoC "pushed 288×144 tiles and it WORKED in the simulator." ADR-0005 §OQ-INV2-1.b explicitly states the simulator does not enforce hardware-size constraints and the specific 200×100 size limit is unconfirmed. The entire v0.10.0 raster substrate is built on 288×144 tiles — 4× the documented container area (41,472 pixels vs 20,000 pixels).
+
+If real hardware enforces the 200×100 cap, every `updateImageRawData` call for a 288×144 tile will either silently drop, crop to 200×100, or return non-success. The entire raster HUD fails on real hardware while appearing perfect in the simulator.
+
+**Why it happens:**
+The EvenHub simulator explicitly says it does NOT enforce hardware image size limits. This is a known, documented gap in ADR-0005 Branch A PROVISIONAL.
+
+**Consequences:**
+- v0.10.0 ships; field UAT fails immediately on the first hardware test.
+- TILE_W=288, TILE_H=144 constants in `hud-raster-frame.ts` need complete rework.
+- Fallback tiling scheme (4 tiles of 200×100, matching the existing `raster-worker.ts` map geometry) must be designed under pressure.
+
+**Prevention:**
+
+1. **INV-2 re-verify before TODO-hud-raster #4 (promote off flag)**: fetch `hub.evenrealities.com/docs/guides/device-apis` and `hub.evenrealities.com/docs/getting-started/overview` and check for image container size documentation updates. Log result with confidence level.
+2. **Contingency tiling design ready**: design the fallback scheme (400×200 canvas → 4×200×100 tiles, matching `raster-worker.ts` geometry) as a parallel code path. Parameterize `HUD_TILE_GEOMETRY` so a config flag can switch between `FULL_SCREEN_2x2` (288×144, simulator-verified) and `DOCUMENTED_LIMIT_2x2` (200×100, spec-documented).
+3. **ADR-0005 §OQ-INV2-1.b carry**: add a `human_needed` success criterion in the v0.10.0 phase plan explicitly gating "288×144 tile accepted by real G2 hardware" — following the established Branch A PROVISIONAL carry pattern.
+
+**Phase to own the mitigation:**
+- **INV-2 re-verify**: in the phase declaring TODO-hud-raster #4. Must complete before any PR makes the raster HUD the default boot page.
+- **Hardware UAT**: carry as `human_needed` SC to the Hardware UAT closure milestone.
+
+**Warning signs:**
+- `pushHudTiles` logs non-success `updateImageRawData` results on real hardware.
+- Real G2 shows a black screen or shows only the top-left 200×100 crop of each tile.
+- `pnpm sim shot` shows correct rendering but the user reports black glasses.
+
+**Severity:** **CRITICAL** — a single hardware test away from a complete rework.
+
+---
+
+### Pitfall R-3: Re-encoding all 4 tiles unconditionally on every `character.delta` is a BLE bandwidth bomb
+
+**What goes wrong:**
+`hud-live-render.ts` currently re-renders, re-dithers, and re-encodes all 4 tiles on every `character.delta` event. The file explicitly documents this: "TODO(ADR-0013): xxhash sub-tile delta diffing is TODO-hud-raster #2 — intentionally out of scope."
+
+A full-frame push at 576×288 4-bit PNG after dithering produces approximately 4 tiles × ~12 KB each = ~48 KB per event. At 5 fps with no delta: 48 KB × 5 = 240 KB/sec sustained — which exactly saturates the Phase 0 Branch A p50 threshold of 200 kbps. In combat, `character.delta` fires 3–5 times per round for HP changes, condition toggles, spell slot use. Without delta: 3 events × 48 KB = 144 KB in one second on top of other BLE traffic.
+
+**Why it happens:**
+The PoC (TODO-hud-raster #1) intentionally omitted delta encoding to get a working single-frame render. This was correct PoC scope. The risk is that TODO-hud-raster #2 is deferred indefinitely while the no-delta path stays wired to `character.delta`.
+
+**Consequences:**
+- BLE saturation → queue depth exceeded → firmware drops tiles → visual corruption (baseline Pitfall 3).
+- Even in the simulator (unconstrained BLE), 4 full Floyd-Steinberg encodes per delta event stalls the WebView main thread (see Pitfall R-5).
+
+**Prevention:**
+
+1. **Phase plan TODO-hud-raster #2 as a blocking item for #4**: never promote the raster HUD to default boot page while #2 (delta loop) is outstanding.
+2. **Wire the existing xxhash infrastructure**: `TileDelta` in `tile-delta.ts` already implements sub-tile hash diffing. A HUD-specific `TileDelta(4, N)` instance (N sub-tiles per 288×144 tile) short-circuits re-encoding for unchanged tiles.
+3. **Static pre-bake pattern** (ADR-0013 §Decision): pre-bake the chrome layer (dividers, labels, static backgrounds) once at boot. Only the dynamic data cells (HP number, slot pips, turn indicator) are re-rendered on delta. The chrome hash never changes → those sub-tiles skip re-encode.
+4. **Immediate guard**: add `MIN_REDRAW_INTERVAL_MS = 200` in `makeSnapshotRenderHandler` before #2 is fully implemented. Prevents burst floods at negligible cost.
+5. **Roadmap ordering constraint**: TODO-hud-raster #4 (promote) must be sequenced AFTER #2 (delta loop) in the phase plan.
+
+**Warning signs:**
+- CPU profiler shows the render loop consuming >30% of main thread budget.
+- `pushHudTiles` logs non-success results during a simulated combat sequence.
+- Bridge telemetry shows BLE outbound spikes >200 KB/event.
+
+**Severity:** **CRITICAL** — BLE saturation breaks the primary feature on real hardware.
+
+---
+
+### Pitfall R-4: The existing ASCII INV-1 test suite becomes a false safety net — stale green tests hide raster regressions
+
+**What goes wrong:**
+The ~60 ASCII fixture files in `packages/shared-render/src/fixtures/` test the text-container rendering path. When the HUD substrate moves to raster canvas, these fixtures continue testing the glyph-fallback path. In the typical development + CI context (no real G2, no BLE), the glyph path is never triggered; tests pass vacuously. The result: passing fixtures give the impression the HUD is thoroughly tested while the primary rendering surface has zero fixture coverage.
+
+**Prevention:**
+
+1. **Annotate glyph-path fixtures** with a comment clarifying they test the BLE-degraded fallback, not the production path.
+2. **Do NOT delete the ASCII fixtures** until the glyph fallback has its own dedicated CI target.
+3. **Create a `raster-fixtures/` directory** in `packages/shared-render/src/` for raster INV-1 artifacts (synthetic-input tile hashes, pure-function content snapshots). Physically separate the two test domains.
+4. **Update `inv:all`** to distinguish "glyph suite" (existing, BLE-degraded path) from "raster suite" (new, primary path). Both must green for `inv:all` to pass.
+
+**Phase to own the mitigation:** Same phase as Pitfall R-1 mitigation — when defining the new INV-1 raster contract.
+
+**Warning signs:**
+- `pnpm inv:all` shows 60/60 passing with "raster" nowhere in the output.
+- A developer changes `renderHudFrame` draw order and no test flags it.
+
+**Severity:** MODERATE — creates a false quality signal; the real damage is silent regressions.
+
+---
+
+### Pitfall R-5: `renderHudFrame` runs on the WebView main thread — dither CPU cost causes main-thread jank and R1 gesture starvation
+
+**What goes wrong:**
+The current PoC calls `renderHudFrame()` synchronously in the WS subscription callback on the main thread. `getImageData(0, 0, 576, 288)` blocks the main thread until the GPU compositor finishes. `buildHudTiles()` then runs `image-q` Floyd-Steinberg on 4 × 288×144 = 165,888 pixel dither passes — also on the main thread. HUD tiles are 4× larger in area than map tiles (288×144 vs 200×100 per tile), and map tiles already required worker isolation per the raster-worker design.
+
+Main-thread synchronous dither → jank → dropped R1 gesture events → player presses swipe-up and the HUD doesn't respond.
+
+**Prevention:**
+
+1. **Move `buildHudTiles()` into the Web Worker**: TODO-hud-raster #7 (generalize raster pipeline geometry) is the correct solution. Worker receives RGBA buffer via `Transferable` (zero-copy), runs dither + encode, posts tiles back.
+2. **Interim mitigation**: yield the event loop between render and encode with `scheduler.postTask()` or `setTimeout(0)` to prevent gesture-event starvation.
+3. **Architecture split**: `renderHudFrame()` stays main-thread (needs `document`/`OffscreenCanvas`); only `buildHudTiles()` moves to the worker.
+
+**Phase to own the mitigation:**
+- **TODO-hud-raster #7**: moves dither to worker.
+- **TODO-hud-raster #1 (short-term)**: add `setTimeout(0)` yield between render and assemble as an interim guard.
+
+**Warning signs:**
+- R1 swipe-up input has >200 ms latency during a `character.delta` render cycle.
+- Chrome DevTools timeline shows main thread blocked >100 ms during HUD render.
+- Gesture events arrive with timestamps >3 frames behind the BLE receive time.
+
+**Severity:** MODERATE — causes gesture-input degradation under combat load.
+
+---
+
+### Pitfall R-6: INV-3 doc drift — Specs §7 ASCII mockups become stale once the HUD is raster
+
+**What goes wrong:**
+Specs.md §7.4 (Status HUD) and §7.2 (Layered Rendering Model) contain ASCII mockups that describe the text-container layout. Once the HUD substrate is raster canvas, these mockups describe only the glyph-fallback path — but look like current specs to any reader. INV-3 mandates Specs.md + README + showcase update in the same commit for any cross-cutting change.
+
+The README's "Rendering" section and the showcase stat of "10 rows × 50 chars" (the 27px SDK grid) become factually wrong once the raster HUD ships with 20+ canvas rows.
+
+**Prevention:**
+
+1. **Atomic INV-3 commit** for the PR that promotes the raster HUD to default (TODO-hud-raster #4) must update:
+   - Specs.md §7.2 — add raster substrate section
+   - Specs.md §7.4 — mark existing ASCII mockup as "glyph fallback" and add a raster canvas layout spec
+   - README.md — update "Rendering" section
+   - `docs/showcase/index.html` — update font size stat and rendering description
+2. **Pre-promotion checklist**: add "Specs §7 ASCII mockups still accurate for glyph fallback?" as an explicit item in the phase plan.
+3. **ASCII mockups are NOT deleted**: they describe the glyph-fallback path (still valid). Move them to a "Glyph Fallback Mode" subsection of §7.4, clearly labeled.
+
+**Phase to own the mitigation:** TODO-hud-raster #6 (INV-3 coherence) — scoped to cover §7 ASCII mockup migration, not just a version bump.
+
+**Warning signs:**
+- Specs.md §7.4 still shows text-container ASCII after raster HUD is the default.
+- A developer reads §7 and tries to add a new text container to the HUD.
+- README hero stat says "10 rows × 50 chars" after the raster HUD ships.
+
+**Severity:** MODERATE — INV-3 violation; causes incorrect future development.
+
+---
+
+### Pitfall R-7: The capture-container invariant (INV-5) breaks if the raster HUD page schema omits `isEventCapture: 1`
+
+**What goes wrong:**
+The text-container HUD page declares one container with `isEventCapture: 1`. The raster HUD PoC page (`buildHudPocPageSchema()`) declares `containerTotalNum: 4` with only `imageObject: [...]` and `textObject: []` — no capture container. The PoC boots via `?hud=raster` bypassing `LayerManager`. When TODO-hud-raster #4 promotes the raster HUD to the default boot page through `LayerManager`, the capture invariant check fires: `LayerManagerError('capture_invariant_violated')` on every page transition.
+
+Since the raster HUD uses all 4 image containers for tiles, there is no room for a dedicated image capture container. The capture container must either be an additional text container (`containerTotalNum: 5`) or a zero-size invisible container — both untested on real hardware.
+
+**Prevention:**
+
+1. **Design capture container placement explicitly** before TODO-hud-raster #4. Record the decision in ADR-0013 as a §Consequences addendum.
+2. **Test the zero-size capture container pattern in the simulator** before promoting.
+3. **Add a capture-container assertion** to `hud-poc-page.test.ts` once the schema includes the capture container.
+4. **The `LayerManager._flushPage()` raster path must include the capture container** once it learns to flush the raster HUD schema.
+
+**Phase to own the mitigation:** TODO-hud-raster #4 — capture container placement is a hard prerequisite.
+
+**Warning signs:**
+- `LayerManagerError('capture_invariant_violated')` in the boot log after promotion.
+- R1 gesture events stop arriving after page transitions.
+- The simulator accepts the 4-image-only schema but real G2 requires a capture container for R1 events.
+
+**Severity:** MODERATE — breaks gesture input entirely on page transition.
+
+---
+
+### Pitfall R-8: `buildGreyscalePalette` + `ditherTile` are duplicated from `raster-worker.ts` — divergence produces different pixel output for the same input
+
+**What goes wrong:**
+`hud-raster-frame.ts` explicitly documents that `buildGreyscalePalette()` and `ditherTile()` are "replicated MINIMALLY from `raster-worker.ts`" because the worker cannot be imported in the main thread. This creates two canonical implementations of the core raster pipeline.
+
+If a future change updates the palette algorithm or dither options in `raster-worker.ts` (e.g., enabling serpentine scan per baseline Pitfall 15's mitigation), the HUD pipeline is not automatically updated. Map tiles and HUD tiles dither the same input differently, visible as mismatched brightness across the screen.
+
+**Prevention:**
+
+1. **TODO-hud-raster #7 (pipeline generalization)** is the correct fix — one worker, one pipeline. This pitfall is explicitly a PoC-only compromise.
+2. **Until #7 lands**: add a cross-file constant comparison test asserting palette constants in `hud-raster-frame.ts` match `raster-worker.ts`.
+3. **Track the divergence explicitly**: ADR-0013 §Scope item "Generalize the raster pipeline geometry" must be sequenced before any palette calibration work.
+
+**Phase to own the mitigation:** TODO-hud-raster #7 — eliminate duplication entirely.
+
+**Warning signs:**
+- Map tile midtones render at different apparent brightness than HUD tile midtones on the same screen.
+- A palette parameter change is committed to `raster-worker.ts` without updating `hud-raster-frame.ts`.
+
+**Severity:** MODERATE — visual artifact on real hardware; low priority in simulator.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall R-9: Small font legibility on 4-bit greyscale — anti-aliased text + FS dither = muddy characters at 14px
+
+**What goes wrong:**
+At 14px monospace, character strokes are 1–2 pixels wide. Anti-aliasing fringe pixels (intermediate greyscale, ~0.3–0.7 luma) are dithered individually. With only 16 palette levels, the dither pattern at this scale is visible as noise within the character strokes, not just in the background. Thin characters (`a`, `e`, `s` at 14px) may become illegible.
+
+**Prevention:**
+
+1. **Bitmap/pixel font**: a 1-bit pixel font (no anti-aliasing) eliminates the dither-fringe problem. This is explicitly the scope of TODO-hud-raster #3.
+2. **Pre-test in simulator**: `pnpm sim shot` before finalizing the font choice.
+3. **Minimum stroke width**: at ≥16px, strokes are reliably 2px and dither cleanly. A pixel font at 8px (every pixel exactly 0 or 255) outperforms system monospace at 14px on legibility.
+
+**Phase to own the mitigation:** TODO-hud-raster #3 — the explicit scope for font choice.
+
+**Warning signs:**
+- `pnpm sim shot` shows "grainy" text where lowercase characters are hard to distinguish.
+- Character strokes thinner than 2px visible in the screenshot.
+
+**Severity:** MINOR (addressed by TODO #3, already planned) but HIGH USER IMPACT if font is finalized without visual validation.
+
+---
+
+### Pitfall R-10: `FontFaceSet` not available in `WorkerGlobalScope` on older WKWebView — custom font loading in the worker silently falls back to system font
+
+**What goes wrong:**
+If TODO-hud-raster #7 moves `renderHudFrame()` into the Web Worker, `document.fonts` is unavailable. `FontFace` + `self.fonts.add(face)` in a worker exists in modern browsers but is NOT supported in older WKWebView versions (iOS 15 and earlier). If the font fails to load silently, `ctx.font = '8px MyPixelFont'` falls back to system monospace — different size, anti-aliased, different layout — without any error.
+
+**Prevention:**
+
+1. **Font loading test in the worker**: assert font is available after worker init; emit error to main thread and fall back to glyph mode if not.
+2. **Data-URI embedded font**: inline the font as base64 in the TypeScript source. Eliminates the network round-trip and the `FontFaceSet` availability issue.
+3. **Stick to system fonts in the worker if portability matters**: `'monospace'` is available everywhere. Custom pixel font + worker = must solve this explicitly.
+
+**Phase to own the mitigation:** TODO-hud-raster #7 — if rendering moves to the worker, font loading strategy is a prerequisite.
+
+**Warning signs:**
+- Worker logs font load failure; HUD renders with fallback font at wrong size.
+- Layout breaks on iOS 15 but works on iOS 17.
+- `pnpm sim shot` (Chromium) shows pixel font; real iPhone shows system monospace.
+
+**Severity:** MINOR — only relevant when TODO #3 (custom font) AND #7 (worker rendering) are both implemented.
+
+---
+
+### Pitfall R-11: The text-HUD-to-raster migration leaves a half-migrated codebase if the transition scope is not tracked explicitly
+
+**What goes wrong:**
+The current codebase has parallel paths:
+- `packages/g2-app/src/status-hud/status-hud-renderer.ts` — text-container HUD (default boot)
+- `packages/g2-app/src/hud/hud-canvas-renderer.ts` — raster canvas HUD (PoC, `?hud=raster`)
+- `packages/g2-app/src/engine/container-registry.ts` — text container registry (drives default boot page)
+- `packages/g2-app/src/hud/hud-poc-page.ts` — raster page schema (PoC-only)
+
+Without an explicit migration scope in the TODO-hud-raster #4 phase plan, the codebase risks: the default boot page still uses the text-container path but `status-hud-renderer.ts` is half-refactored; the `?hud=raster` guard is never removed (INV-4 dead code); the old renderer is neither deleted nor clearly labeled as glyph fallback.
+
+**Prevention:**
+
+1. **Explicit migration checklist in the #4 phase plan**:
+   - Is `status-hud-renderer.ts` retired, kept for glyph fallback (rename to `glyph-hud-renderer.ts`), or merged?
+   - Is `container-registry.ts` default page schema updated to 4-image-tile schema?
+   - Are all `?hud=raster` guards removed or converted to explicit feature flags with a defined retirement date?
+2. **INV-4 dead-code enforcement**: Biome will flag unreachable code. TSDoc must be updated on every module that changes responsibility.
+3. **Rename rather than delete**: `status-hud-renderer.ts` → `glyph-hud-renderer.ts` with a TSDoc header clarifying it is the BLE-degraded fallback.
+
+**Phase to own the mitigation:** TODO-hud-raster #4 — explicit promotion scope defines what gets retired, kept, and renamed.
+
+**Warning signs:**
+- `status-hud-renderer.ts` has no callers but no `@deprecated` tag.
+- The `?hud=raster` flag guard is still in the codebase 2 phases after promotion.
+- INV-4 CI gate catches dead imports in `container-registry.ts` after the raster page becomes default.
+
+**Severity:** MINOR — technical debt; not a user-facing bug.
+
+---
+
+## Phase-Specific Warnings (v0.10.0)
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|---|---|---|
+| TODO #1: Live re-render wiring | Raw WS events call renderRasterHudFrame without debounce → BLE saturation | Add 200 ms debounce gate BEFORE wiring; document as prerequisite for #2 |
+| TODO #2: Delta loop | TileDelta geometry hardcoded for 200×100 map tiles; HUD needs 288×144 geometry | Parameterize TileDelta sub-tile geometry; do not copy-paste 200×100 constants |
+| TODO #3: Final font | System monospace at 14px + FS dither = muddy characters (R-9) | Test pixel/bitmap font via `pnpm sim shot` before committing |
+| TODO #4: Promote off flag | Missing capture container (R-7); INV-2 re-verify of 288×144 size limit (R-2); INV-3 §7 mockup drift (R-6) | All three are hard prerequisites; no PR merge until all three green |
+| TODO #5: INV-1 raster contract | Fixture snapshots hash the pipeline output, not `renderHudFrame` canvas output (R-1) | Synthetic RGBA → `buildHudTiles` → hash tile PNG bytes; content tests on pure functions only |
+| TODO #6: INV-3 coherence | Specs §7 describes text-container layout; README says "10 rows × 50 chars" (R-6) | Update §7 ASCII mockups as "glyph fallback" section; update README font stat |
+| TODO #7: Pipeline generalization | `buildGreyscalePalette` / `ditherTile` duplication between worker and HUD (R-8) | Merge into shared worker export; delete replicated functions in `hud-raster-frame.ts` |
+| Hardware UAT (any future milestone) | 288×144 tile size rejected by real G2 hardware (R-2) | `human_needed` SC must gate the hardware closure milestone; fallback tiling design ready before UAT |
+
+---
+
 ## Technical Debt Patterns
 
 Shortcuts that seem reasonable but create long-term problems specific to this stack.
@@ -530,6 +864,8 @@ Shortcuts that seem reasonable but create long-term problems specific to this st
 | Persistent G2 Tier 4 settings across sessions (no auto-clear) | Simpler state model | Pitfall 8 stale overrides leak between sessions, user confused | Acceptable if explicitly user-set as "remember always" preference |
 | QR token TTL = 24h with no rotation | UX simplicity (one pair per day) | Pitfall 16 lost-phone attack window | OK for MVP homelab; rotate to refresh-token before cloud stretch |
 | Render every MCP tool call to G2 in V2 voice mode | Easier Phase 11 wiring | Pitfall 14 — UX leaks LLM internals, feels slower than synchronous | Never — coalesce to milestones from day one |
+| Re-encode all 4 HUD tiles on every character.delta (no delta loop) | Simpler PoC implementation | Pitfall R-3 — BLE bandwidth bomb; saturates link at 5 fps with no delta | Never in production — TODO-hud-raster #2 must precede #4 |
+| Promote raster HUD before INV-2 re-verify of tile size | Faster milestone close | Pitfall R-2 — first real-hardware test fails entirely | Never — INV-2 re-verify is a 30-min task; no excuse to skip |
 
 ## Integration Gotchas
 
@@ -538,17 +874,19 @@ Common mistakes when connecting to external services in this domain.
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
 | **Foundry module + dnd5e 5.x** | Reading `item.system.actionType` to dispatch | Read `activity.type` from `item.system.activities[i]` — activities are the canonical surface (pitfall 1) |
-| **Foundry v13 targeting** | Using global `game.user.targets` from any context | v13 targeting is per-user; bridge must track per-user. `TokenLayer.setTargets()` per Specs §FOUN-04 expects user context (Specs §12.B q15 implicit) |
+| **Foundry v13 targeting** | Using global `game.user.targets` from any context | v13 targeting is per-user; bridge must track per-user. `TokenLayer.setTargets()` per Specs §FOUN-04 expects user context |
 | **MidiQOL + socketlib** | Calling `activity.use()` on player + forwarding via socketlib | Pick one workflow origin (option A: GM-side via socketlib only) per pitfall 6 |
-| **Even Realities WebView** | Assuming standard browser CSP, all WebAPIs available | Domain whitelist required in `app.json`; getUserMedia for QR scan needs explicit permission (Specs §7.14.7.1 note); some APIs may be missing — capability-detect at boot |
+| **Even Realities WebView** | Assuming standard browser CSP, all WebAPIs available | Domain whitelist required in `app.json`; some APIs may be missing — capability-detect at boot |
 | **Even Realities G2 BLE** | Trusting connect-time MTU through session | Inferred MTU monitoring via RTT canary (pitfall 10); log every MTU observation as telemetry |
-| **R1 ring SDK** | Treating tap and double-tap as truly separate events | Specs §10.0.1 confirms distinguishable, but timing window is firmware-defined; tune debounce in Phase 6, not Phase 0 |
+| **R1 ring SDK** | Treating tap and double-tap as truly separate events | Timing window is firmware-defined; tune debounce in Phase 6, not Phase 0 |
 | **MCP server (V2)** | Running pre-2025-03-26 HTTP+SSE transport | Use Streamable HTTP per Specs §4.7 + 2026 MCP roadmap; HTTP+SSE deprecated |
 | **MCP client (V2)** | Streaming all tool-call events to UI | Coalesce to milestone events per Tool Registry (pitfall 14) |
 | **STT (V2)** | Single-language model | Multilingual model + locale-aware fuzzy lookup table (pitfall 13) |
-| **Sharp (Option B bridge raster)** | Expecting 4-bit indexed PNG output | Sharp produces 8-bit indexed; post-pass via upng-js to 4-bit (Specs §11.5.7 Option B note already documents — ensure Phase 13 implementer reads it) |
+| **Sharp (Option B bridge raster)** | Expecting 4-bit indexed PNG output | Sharp produces 8-bit indexed; post-pass via upng-js to 4-bit |
 | **xxhash-wasm** | Rolling JS hash because "WASM is overkill" | 5–10× slowdown blows compute budget per Specs §11.5.7.1 — adopt the wasm path |
-| **image-q npm** | Trusting npm version matches GitHub tag | Specs §11.5.7 documents npm 4.x vs git latest 2.1.2 mismatch; pin by hash in pnpm-lock |
+| **image-q npm** | Trusting npm version matches GitHub tag | Specs §11.5.7 documents npm 4.x vs git latest mismatch; pin by hash in pnpm-lock |
+| **HUD raster tile geometry** | Using 288×144 as confirmed hardware limit (not just simulator-confirmed) | 288×144 is PROVISIONAL per ADR-0005 §OQ-INV2-1.b; always carry `human_needed` SC until real hardware confirms |
+| **HUD INV-1 contract** | Snapshotting canvas output bytes as the regression gate | Canvas output is non-deterministic across engines; snapshot `buildHudTiles` output from synthetic RGBA instead |
 
 ## Performance Traps
 
@@ -561,10 +899,13 @@ Patterns that work at small scale but fail as session length / load grows.
 | Render Status HUD every Foundry render tick | UI thread blocked, player Foundry stutters (pitfall 11) | Schedule HUD updates on actor-state-change events only | After 30 min sustained play |
 | Persistent BLE bandwidth telemetry only at connect | DLE renegotiation invisible (pitfall 10) | RTT canary every 2 sec | Phone battery <25% or background switch |
 | Ship adaptive fps with only scene-activity input | Doesn't react to BLE degradation | Layer 6 reads both scene activity AND BLE telemeter | First user with bad WiFi |
-| Cache PIXI canvas extract result | Stale tiles when scene changes | Invalidate on canvas-dirty events (e.g., `canvas.tokens.placeables` change) | First token move after extract caching |
+| Cache PIXI canvas extract result | Stale tiles when scene changes | Invalidate on canvas-dirty events | First token move after extract caching |
 | Hash 200 sub-tiles in JS instead of WASM | Compute alone exceeds 66 ms frame budget | xxhash-wasm per Specs §11.5.7.1 | At 8+ fps target |
 | Catalog all i18n strings as cosmetic (no kind taxonomy) | IT/DE/ES strings truncate-lose-info | Kind taxonomy + per-kind truncation strategy (pitfall 9) | First non-EN field test |
-| MCP tool-call results streamed verbatim | UI feels slower than synchronous | Coalesce to milestones (pitfall 14) | First V2 voice user not familiar with MCP semantics |
+| MCP tool-call results streamed verbatim | UI feels slower than synchronous | Coalesce to milestones (pitfall 14) | First V2 voice user |
+| Re-encode all 4 HUD tiles per character.delta without debounce | BLE saturation in combat; main-thread jank on every delta event | 200 ms debounce + delta hash (pitfall R-3) | First combat encounter |
+| Run `renderHudFrame` + `buildHudTiles` synchronously on main thread | R1 gesture events dropped during render (pitfall R-5) | Move `buildHudTiles` to Web Worker (TODO-hud-raster #7) | Heavy combat with frequent delta events |
+| Finalize tile geometry at 288×144 without INV-2 re-verify | First real-hardware push returns non-success; blank screen | INV-2 re-verify + fallback tiling path ready before promotion (pitfall R-2) | First hardware UAT session |
 
 ## Security Mistakes
 
@@ -573,13 +914,13 @@ Domain-specific security issues beyond general web security.
 | Mistake | Risk | Prevention |
 |---------|------|------------|
 | 24h opaque bearer token with no rotation | Phone-loss attack window (pitfall 16) | Refresh-token pattern with 15-min access tokens; bridge revocation list with WS push |
-| Token paste fallback always available alongside QR | Defeats the point of QR provisioning (Specs §11.5.4 attack-surface reduction) | Hide paste behind admin toggle; warn user when used |
-| WS endpoint accepts any Origin header | Cross-site connection from malicious page | CORS whitelist enforced; Specs §FOUN-02 explicit "CORS-friendly" — make it CORS-correct, not CORS-permissive |
-| Bridge URL stored in phone localStorage in cleartext | Local-device-compromise reads URL+token | Use platform secure storage (iOS Keychain via Even App SDK if available); document fallback to localStorage as MVP-only |
-| Voice recordings (V2) sent to cloud STT without consent prompt | GDPR + Specs §11 "privacy audio cloud" | Default opt-in, explicit consent dialog at first activation, Specs §11 already captures this — surface it in Phase 12 |
-| MCP tool exposes write actions without GM authority gate | Player AI bypasses DM judgement | Tool Registry §5.3 + Specs §FOUN-03 "GM veto power preserved" — every write tool must be cancellable from GM chat |
-| QR payload includes raw token (not nonce → fetch-token) | Token captured if QR is photographed | QR contains a one-time pairing code; phone exchanges code for token over TLS at first connect |
-| No audit log of pair/unpair events | Can't detect compromise | §7.14.7.3 mentions "Log pairing event in module event-log" — make it append-only, surface in DM Settings |
+| Token paste fallback always available alongside QR | Defeats the point of QR provisioning | Hide paste behind admin toggle |
+| WS endpoint accepts any Origin header | Cross-site connection from malicious page | CORS whitelist enforced |
+| Bridge URL stored in phone localStorage in cleartext | Local-device-compromise reads URL+token | Use platform secure storage |
+| Voice recordings (V2) sent to cloud STT without consent prompt | GDPR | Default opt-in, explicit consent dialog at first activation |
+| MCP tool exposes write actions without GM authority gate | Player AI bypasses DM judgement | Tool Registry §5.3 — every write tool must be cancellable from GM chat |
+| QR payload includes raw token (not nonce → fetch-token) | Token captured if QR is photographed | QR contains a one-time pairing code; phone exchanges code for token over TLS |
+| No audit log of pair/unpair events | Can't detect compromise | Append-only pairing event log in DM Settings |
 
 ## UX Pitfalls
 
@@ -590,34 +931,32 @@ Common user experience mistakes specific to AR HUD + tabletop social context.
 | Constant-on full-density status HUD (pitfall 4) | Eye fatigue at 30-60 min mark; player removes glasses | Layered priority + idle dimmer + user toggle |
 | R1 long-press meaning differs by overlay (pitfall 5) | Misclick shame in social setting; trust erosion | INV-5 gesture determinism: long-press always means Quick Action of current top layer |
 | No visual indication of "system thinking" during BLE blip | Player thinks system froze; tries random gestures | Header chip `⚠ SYNC` during reconnect; greyed quick actions |
-| Toast for every dice roll, all auto-dismiss 3s | Combat round 4: 20 toasts queued, miss critical info | Toast deduplication; long-press to pin; rolls below DC threshold suppressed (configurable) |
-| Settings change broadcast as silent toast | User doesn't notice DM changed something, "why is the map weird?" | Banner notification with brief animation, dismissable explicitly |
-| Confirmation modal for every action (defensive design) | Combat takes 3× longer; flow killed | Confirm only state-altering Quick Actions; simple navigation never confirms |
-| Power user has no way to disable training overlays | Friction for experienced users | "Verbose UI" toggle in Tier 4 G2 device-local settings |
+| Toast for every dice roll, all auto-dismiss 3s | Combat round 4: 20 toasts queued, miss critical info | Toast deduplication; long-press to pin; rolls below DC threshold suppressed |
+| Settings change broadcast as silent toast | User doesn't notice DM changed something | Banner notification with brief animation, dismissable explicitly |
+| Confirmation modal for every action (defensive design) | Combat takes 3× longer; flow killed | Confirm only state-altering Quick Actions |
 | Italian player reads truncated stat strings (pitfall 9) | Loses concentration target, mis-applies effect | Kind-aware truncation + abbreviation tables |
 | MCP V2 streaming UI exposes tool names (pitfall 14) | Sees `roll_attack_v2` instead of "rolling attack" | Milestone naming; never leak internal tool names |
-| QR pair flow timing out at exactly 60 sec (Specs §7.14.7.3 step 4) with no warning | Player tries to scan and gets "expired" | 50 sec countdown visible on QR display + 10 sec grace window |
 | Ghost token after delta-encoding error (pitfall 3) | Player attacks empty square; embarrassment | Keyframe interval + visible chip when stale state detected |
+| HUD raster font too small/noisy (pitfall R-9) | Player squints to read HP during combat | Validate font choice with `pnpm sim shot` before production; bitmap font preferred |
 
 ## "Looks Done But Isn't" Checklist
 
 Things that appear complete in demo but are missing critical pieces.
 
+- [ ] **Raster HUD (v0.10.0):** Looks done when `pnpm sim shot` shows a rendered canvas frame; often missing **delta loop + INV-1 raster contract + capture container + INV-2 re-verify + INV-3 doc update** — verify all 5 are complete before the raster HUD is the default boot page.
+- [ ] **INV-1 raster contract:** Looks done with any passing Vitest tests; often missing **synthetic-RGBA tile hash snapshots** — verify `inv:all` includes a `raster suite` entry in addition to the existing `glyph suite`.
 - [ ] **Raster pipeline:** Looks done in Phase 4 demo (a static scene renders); often missing **delta+keyframe correctness under reconnect** (pitfall 3) — verify by killing bridge mid-session and confirming rendered tiles are correct on reconnect, not stale.
-- [ ] **R1 long-press menu:** Looks done with 9 quick actions visible; often missing **gesture-context disambiguation** (pitfall 5) — verify INV-5 by long-pressing from each of the 8 reachable screens and confirming each opens the correct context's Quick Actions menu, not the main one.
-- [ ] **Foundry write path:** Looks done with attack producing chat card; often missing **single-workflow-origin discipline** (pitfall 6) — verify by attacking an NPC and confirming exactly one MidiQOL workflow runs (`MidiQOL.Workflow.workflows.size === 1` during the operation).
-- [ ] **i18n IT support:** Looks done with strings translated; often missing **kind-aware truncation** (pitfall 9) — verify by rendering all status chips in IT and visually checking no semantic info is lost to `…`.
-- [ ] **Phase 0 §10.0.3 BLE bandwidth:** Looks done with a number; often missing **environmental variation** (pitfall 2) — verify by repeating in 3 RF environments (clean, 2.4 GHz loaded, microwave-on).
-- [ ] **Phase 0 §10.0.7 DLE test:** Looks done with MTU=244 confirmed at connect; often missing **sustained-run validation** (pitfall 10) — verify by running 30 min sustained, not 30 sec.
-- [ ] **Settings UI:** Looks done with 3-tier model documented; often missing **mid-session change broadcast + introspection panel** (pitfall 8) — verify by having DM change a world setting mid-session and confirming player G2 toasts the change.
-- [ ] **QR pairing:** Looks done with token provisioned; often missing **revocation latency SLA + revocation list propagation** (pitfall 16) — verify by clicking Revoke and confirming bridge rejects within <30 sec.
-- [ ] **Floyd-Steinberg dither:** Looks done with map rendering on G2; often missing **linearize-before-dither + perceptually-spaced palette** (pitfall 15) — verify by rendering a luminance-ramp test pattern and inspecting on actual G2 phosphor.
-- [ ] **Status HUD:** Looks done with all chips visible; often missing **layered priority + idle dimmer** (pitfall 4) — verify by 60-min wear with self-reported fatigue score.
-- [ ] **MidiQOL integration:** Looks done with workflow firing; often missing **completeActivityUse signature validation** (Specs §10.0.10 P2 row 1, pitfall 1+6) — verify against installed MidiQOL version, document in ADR.
-- [ ] **Multi-tile rendering:** Looks done with 4-tile mosaic; often missing **queue-depth-aware scheduler** (pitfall 12) — verify by measuring actual queue depth and confirming scheduler matches.
-- [ ] **MCP V2 voice:** Looks done with `cast Fireball` working in clean case; often missing **streaming UX coalescing + cancellation** (pitfall 14) — verify by mid-action cancel and confirming clean state restoration.
-- [ ] **Capability handshake:** Looks done with fields populated; often missing **firmware_version + app_host_version logging** (pitfall 7) — verify by checking telemetry coverage.
-- [ ] **Even Realities firmware compatibility:** Looks done after first OTA test; often missing **boot-time format probe** (pitfall 7) — verify by simulating a format mismatch and confirming graceful degradation to glyph mode.
+- [ ] **R1 long-press menu:** Looks done with 9 quick actions visible; often missing **gesture-context disambiguation** (pitfall 5) — verify INV-5 by long-pressing from each of the 8 reachable screens.
+- [ ] **Foundry write path:** Looks done with attack producing chat card; often missing **single-workflow-origin discipline** (pitfall 6) — verify `MidiQOL.Workflow.workflows.size === 1` during the operation.
+- [ ] **i18n IT support:** Looks done with strings translated; often missing **kind-aware truncation** (pitfall 9) — verify by rendering all status chips in IT.
+- [ ] **Phase 0 §10.0.3 BLE bandwidth:** Looks done with a number; often missing **environmental variation** (pitfall 2) — verify in 3 RF environments.
+- [ ] **Phase 0 §10.0.7 DLE test:** Looks done with MTU=244 confirmed at connect; often missing **sustained-run validation** (pitfall 10) — verify 30 min sustained, not 30 sec.
+- [ ] **Settings UI:** Looks done with 3-tier model documented; often missing **mid-session change broadcast + introspection panel** (pitfall 8).
+- [ ] **QR pairing:** Looks done with token provisioned; often missing **revocation latency SLA** (pitfall 16).
+- [ ] **Floyd-Steinberg dither:** Looks done with map rendering on G2; often missing **linearize-before-dither + perceptually-spaced palette** (pitfall 15).
+- [ ] **Status HUD:** Looks done with all chips visible; often missing **layered priority + idle dimmer** (pitfall 4) — verify with 60-min wear.
+- [ ] **Multi-tile rendering:** Looks done with 4-tile mosaic; often missing **queue-depth-aware scheduler** (pitfall 12).
+- [ ] **Hardware tile size:** Looks done in simulator; missing **real-hardware confirmation of 288×144 acceptance** (pitfall R-2) — always carry `human_needed` SC.
 
 ## Recovery Strategies
 
@@ -625,96 +964,53 @@ When pitfalls occur despite prevention.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Pitfall 1 (dnd5e 5.x activity API misuse) | HIGH | Adapter rewrite of writer module; Phase 7 work redone; can reuse readers if they followed activity-only path |
-| Pitfall 2 (BLE under interference) | MEDIUM | Add multi-environment test results; tune Layer 6 thresholds; ship glyph fallback prominent; document in user-facing FAQ "if your fps drops, here's why" |
-| Pitfall 3 (delta corruption) | LOW (if caught early) / HIGH (if shipped) | Add keyframe + seqno; Phase 4 internal — discoverable in field test; shipped → hotfix release with cache invalidation telemetry |
-| Pitfall 4 (HUD fatigue) | LOW | Add idle dimmer + layered priority — config-only change, no architecture impact |
-| Pitfall 5 (gesture polysemy) | MEDIUM | Add INV-5 + footer chip + confirm-before-execute; Phase 6 redo if not done at design time |
-| Pitfall 6 (workflow re-entrancy) | HIGH | Pick option A (GM-side); rewrite writer module; Phase 7 redo |
-| Pitfall 7 (Even SDK breakage) | VARIES | Capability handshake → glyph mode auto; if format change is total → ship update with new format; worst case → users wait for fix |
-| Pitfall 8 (settings drift) | MEDIUM | Add introspection + broadcast events; Phase 5 redo for settings UI; backward-compat through schema versioning |
-| Pitfall 9 (i18n width overflow) | LOW | Catalog augment with kind annotations + abbreviations; can ship as catalog-only update without code change if catalog format pre-supports it |
-| Pitfall 10 (BLE silent degradation) | MEDIUM | RTT canary added; Layer 6 wired; HUD chip added; not a redesign, an instrumentation add |
-| Pitfall 11 (PIXI extract blocking) | MEDIUM | OffscreenCanvas hand-off + cadence throttling; Phase 4 partial redo for capture path |
-| Pitfall 12 (queue-depth misalignment) | LOW | Scheduler parameterization; Phase 4 internal — discovered by Phase 0 §10.0.8 measurement; if shipped, hotfix |
-| Pitfall 13 (V2 STT vocab) | MEDIUM | Vocab file expansion + threshold tuning; iterative — Phase 12 + ongoing |
-| Pitfall 14 (MCP streaming UX) | LOW | Tool registry adds milestone schema; Phase 11/12 work — fix before V2 ship |
-| Pitfall 15 (sRGB FS dither) | LOW | Linearize step in worker; palette recalibration; Phase 0 + Phase 4 |
-| Pitfall 16 (token reuse on phone loss) | MEDIUM | Refresh-token pattern + bridge revocation list; Phase 3 internal; if shipped without, hotfix release |
-| Pitfall 17 (multi-device state collision) | LOW | Subscription-scope schema + flag-gate to Phase 13; MVP unaffected |
-
-## Pitfall-to-Phase Mapping
-
-How roadmap phases (Specs §10) should address each pitfall, including phase additions where Specs needs extension.
-
-| Pitfall | Prevention Phase | Specs Phase Reference | Verification |
-|---------|------------------|----------------------|--------------|
-| 1 — dnd5e 5.x activity API | Phase 0 + 2 + 7 | §10 Phase 2 readers / Phase 7 writers; ADR after §10.0.10 P2 row 1 | Schema fixture freeze; one-workflow-per-action runtime check |
-| 2 — BLE interference | Phase 0 + 4 + 10 | §10.0.3 (extend) + §11.5.8.2 (tighten) | Multi-environment §10.0.3 results; Layer 6 telemeter unit test; field test microwave |
-| 3 — Delta tile corruption | Phase 4 | §7.4b.6.1.2 Layer 1 (extend with keyframe) | Reconnect+verify-tile integrity test |
-| 4 — HUD information density | Phase 4 + 10 | §7.2 + §7.4 (extend with priority/dimmer) | NASA-TLX score in §10 Phase 10 field test |
-| 5 — R1 long-press polysemy | Phase 6 + 8 | §7.13 + §7.14 (add INV-5) | Verification checklist 15× extended; long-press from every screen |
-| 6 — Workflow re-entrancy | Phase 7 | §FOUN-03 + §10.0.10 P2 row 1 | One-workflow assertion in writer test |
-| 7 — Even SDK SemVer absence | Phase 0 + 5 + 10 + 13 | §3.7 + §5.6.3 (extend) + §11 monitoring | Boot-time format probe; firmware compatibility matrix |
-| 8 — Settings tier drift | Phase 5 + 7 + 10 | §7.14.6 + §11.5.5 (extend with broadcast + introspection) | Mid-session DM-change-detected toast verification |
-| 9 — i18n IT width overflow | Phase 1 + 5 | §I18N-04 + §7.16 (extend with kind taxonomy) | All-chips IT visual stress test |
-| 10 — BLE silent MTU degradation | Phase 0 + 4 | §10.0.7 (extend to sustained) | RTT canary unit test; degraded-mode HUD chip |
-| 11 — PIXI extract blocking | Phase 4 + 10 | §7.4b.4 + §7.4b.8 (Option A → B fallback) | Frametime instrumentation p95 < 30 ms |
-| 12 — Queue depth misalignment | Phase 0 + 4 | §10.0.8 (extend with full table) | Empirical queue probe at boot |
-| 13 — V2 STT D&D vocab | Phase 11 + 12 | §4.5 + §12.C q17 | IT slang corpus test |
-| 14 — MCP streaming UX | Phase 11 + 12 | §5.3 + §7.10 + §8 | Worked examples re-validated with milestones |
-| 15 — sRGB FS dither | Phase 0 + 4 | §10.0.2 (extend with calibration) + §7.4b.5 | Luminance-ramp test pattern on G2 |
-| 16 — Token reuse on phone loss | Phase 3 + 7 | §11.5.4 (extend with rotation + revocation list) | Revocation latency <30 sec test |
-| 17 — Multi-device same character | Phase 3 + 13 | §7.14.7.4 (extend with scope schema) | Subscription-scope routing unit test |
-
-**Phase ordering implications:**
-
-- **Phase 0 expands** beyond Specs §10.0 to include: multi-environment §10.0.3, sustained §10.0.7, full queue-depth table §10.0.8, palette calibration sub-step in §10.0.2, boot-time format probe spec.
-- **Phase 4 carries the most pitfalls** (3, 4, 10, 11, 12, 15) — flag as **highest-risk phase** in roadmap with extra time buffer beyond Specs §10 Phase 4 Week 4–7. Recommend 4 weeks → 5 weeks if buffer is available.
-- **Phase 5 (panels)** addresses i18n + settings UX (8, 9) — relatively low risk if catalog schema is right from Phase 1.
-- **Phase 6 (R1)** must establish INV-5 (gesture determinism) — small change, large UX impact.
-- **Phase 7 (write path)** bundles Foundry/dnd5e pitfalls (1, 6) + token rotation (16); allocate full week.
-- **Phase 10 (field test)** is verification-heavy: HUD fatigue, BLE microwave test, mid-session settings, firmware compatibility matrix. Specs commits to 4h session — extend to multi-session for fatigue measurement.
-- **Phase 11/12 V2** carries 13 + 14; lower priority since V2 is opt-in.
+| Pitfall 1 (dnd5e 5.x activity API misuse) | HIGH | Adapter rewrite of writer module; Phase 7 work redone |
+| Pitfall 2 (BLE under interference) | MEDIUM | Multi-environment test results; tune Layer 6; ship glyph fallback prominent |
+| Pitfall 3 (delta corruption) | LOW (if caught early) / HIGH (if shipped) | Add keyframe + seqno; hotfix release with cache invalidation telemetry |
+| Pitfall 4 (HUD fatigue) | LOW | Add idle dimmer + layered priority — config-only change |
+| Pitfall 5 (gesture polysemy) | MEDIUM | Add INV-5 + footer chip + confirm-before-execute |
+| Pitfall 6 (workflow re-entrancy) | HIGH | Pick option A (GM-side); rewrite writer module |
+| Pitfall 7 (Even SDK breakage) | VARIES | Capability handshake → glyph mode auto; if total format change → ship update |
+| Pitfall 8 (settings drift) | MEDIUM | Add introspection + broadcast events |
+| Pitfall 9 (i18n width overflow) | LOW | Catalog augment with kind annotations + abbreviations |
+| Pitfall 10 (BLE silent degradation) | MEDIUM | RTT canary; Layer 6 wired; HUD chip added |
+| Pitfall 11 (PIXI extract blocking) | MEDIUM | OffscreenCanvas hand-off + cadence throttling |
+| Pitfall 12 (queue-depth misalignment) | LOW | Scheduler parameterization |
+| Pitfall 13 (V2 STT vocab) | MEDIUM | Vocab file expansion + threshold tuning; iterative |
+| Pitfall 14 (MCP streaming UX) | LOW | Tool registry adds milestone schema |
+| Pitfall 15 (sRGB FS dither) | LOW | Linearize step in worker; palette recalibration |
+| Pitfall 16 (token reuse on phone loss) | MEDIUM | Refresh-token pattern + bridge revocation list |
+| Pitfall 17 (multi-device state collision) | LOW | Subscription-scope schema + flag-gate to Phase 13 |
+| Pitfall R-1 (INV-1 raster contract missing) | MEDIUM | Define synthetic-RGBA hash tests; annotate glyph suite; creates testing debt |
+| Pitfall R-2 (tile size hardware failure) | HIGH | Rework TILE_W/TILE_H to 200×100; redesign page schema; 1-2 days full rework |
+| Pitfall R-3 (BLE bandwidth bomb from no delta) | MEDIUM | Add debounce + delta hash as hotfix; promoted path must be patched before next hardware session |
+| Pitfall R-4 (ASCII fixtures as false safety net) | LOW | Annotate fixtures; add raster suite; no code rework |
+| Pitfall R-5 (main-thread jank from dither) | MEDIUM | Move buildHudTiles to worker; requires TODO-hud-raster #7 |
+| Pitfall R-6 (INV-3 doc drift) | LOW | Atomic spec update; 1-2 hours |
+| Pitfall R-7 (capture container missing) | LOW-MEDIUM | Add capture container to page schema; test in simulator; 1-3 hours |
+| Pitfall R-8 (palette duplication divergence) | LOW | Cross-file constant test; eliminated by TODO #7 |
 
 ## Sources
 
-- **Specs.md (canonical)** — `/home/aiacos/workspace/FoundryVTT/EvenFoundryVTT/Specs.md` v0.9.11, especially §11 risk register, §11.5.7/§11.5.8 library stack & failure modes, §12 open questions, §10.0 Phase 0 validation tests, §7.4b raster pipeline, §7.14 navigation map, §7.16 i18n
-- **PROJECT.md** — `/home/aiacos/workspace/FoundryVTT/EvenFoundryVTT/.planning/PROJECT.md`
-- [dnd5e 5.0.0 release notes — shim removal](https://newreleases.io/project/github/foundryvtt/dnd5e/release/release-5.0.0) (HIGH confidence on shim removal claim)
-- [dnd5e 5.3.2 release](https://github.com/foundryvtt/dnd5e/releases/tag/release-5.3.2) (HIGH)
-- [dnd5e issue tracker — current breakages](https://github.com/foundryvtt/dnd5e/issues) (HIGH)
-- [More Activities module docs (3rd-party reference impl)](https://foundryvtt.com/packages/more-activities) (MEDIUM)
-- [MidiQOL package page](https://foundryvtt.com/packages/midi-qol) (HIGH)
-- [MidiQOL GitHub mirror](https://github.com/tposney/midi-qol) (HIGH)
-- [socketlib package](https://foundryvtt.com/packages/socketlib) (HIGH)
-- [Foundry v13 ApplicationV2 hook deprecation issue #12335](https://github.com/foundryvtt/foundryvtt/issues/12335) (HIGH)
-- [Foundry API Migration Guides](https://foundryvtt.com/article/migration/) (HIGH)
-- [Foundry v13 release notes](https://foundryvtt.com/releases/13.340) (HIGH)
-- [Even Realities G2 engineering rebuild blog](https://www.evenrealities.com/blogs/even-insider/how-we-rebuilt-g2-from-the-inside-out) (MEDIUM — vendor blog)
-- [Even Realities Known Issues (support)](https://support.evenrealities.com/hc/en-us/articles/14309475255183-Known-Issues) (MEDIUM)
-- [Even G2 BLE protocol RE — i-soxi/even-g2-protocol](https://github.com/i-soxi/even-g2-protocol) (LOW — community RE, not authoritative)
-- [BLE DLE negotiation — TI BLE-Stack Guide](https://software-dl.ti.com/lprf/simplelink_cc2640r2_latest/docs/blestack/ble_user_guide/html/ble-stack-3.x/data-length-extensions.html) (HIGH)
-- [Punch Through — Maximizing BLE Throughput Pt 3 DLE](https://punchthrough.com/maximizing-ble-throughput-part-3-data-length-extension-dle-2/) (HIGH)
-- [Punch Through — Maximizing BLE Throughput Pt 4](https://punchthrough.com/ble-throughput-part-4/) (HIGH)
-- [Floyd-Steinberg Wikipedia](https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering) (HIGH)
-- [Floyd-Steinberg implementation gentle intro 2024](https://every-algorithm.github.io/2024/10/19/floydsteinberg_dithering.html) (MEDIUM)
-- [INAIRSPACE — AR ergonomics blog](https://inairspace.com/blogs/learn-with-inair/ergonomics-design-for-ar-glass-the-unseen-bridge-between-human-and-machine) (MEDIUM)
-- [MDPI 2024 — Smart glasses logistics 6-month observational](https://www.mdpi.com/1424-8220/24/20/6515) (HIGH — peer-reviewed)
-- [AR glasses comfort analysis — ScienceDirect](https://www.sciencedirect.com/science/article/pii/S2405844024119305) (HIGH — peer-reviewed)
-- [PubMed — AR glasses comfort during long-term wear](https://pubmed.ncbi.nlm.nih.gov/36377507/) (HIGH)
-- [HUD Glasses Guide 2026](https://electronics.alibaba.com/buyingguides/hud-glasses-guide-what-actually-matters-in-2026) (LOW — buying guide tone)
-- [MCP 2026 Roadmap (official)](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) (HIGH)
-- [MCP Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) (HIGH)
-- [D&D 2024 IT translation gist (336 spells)](https://gist.github.com/vietts/bee17c5aaa7b74f470c8016085864202) (MEDIUM — community resource)
-- [Italian D&D Wiki — Palla di Fuoco](https://dungeonsanddragons.fandom.com/it/wiki/Palla_di_Fuoco) (MEDIUM)
-- [QR Code Authentication Guide — OLOID](https://www.oloid.com/blog/qr-code-authentication) (MEDIUM)
-- [Token Replay Attacks — Obsidian Security](https://www.obsidiansecurity.com/blog/token-replay-attacks-detection-prevention) (MEDIUM)
-- [Bearer token security — Auth0 refresh tokens](https://auth0.com/blog/refresh-tokens-what-are-they-and-when-to-use-them/) (HIGH)
-- [Foundry Users & Permissions](https://foundryvtt.com/article/users/) (HIGH)
-- [Foundry Tokens article](https://foundryvtt.com/article/tokens/) (HIGH)
+- `docs/architecture/0013-hud-raster-rendering.md` (ADR-0013) — ADR context, consequences, scope, tile geometry decision
+- `docs/architecture/0005-phase0-go-no-go.md` (ADR-0005) — OQ-INV2-1.b hardware tile size PROVISIONAL, Branch A PROVISIONAL pattern
+- `.planning/PROJECT.md` — v0.10.0 milestone goals, TODO-hud-raster reference, constraints
+- `.planning/TODO-hud-raster.md` — 7 next-step items, delta loop scoping, INV-1 / INV-3 items
+- `packages/g2-app/src/hud/hud-raster-frame.ts` — 288×144 tile geometry, palette replication comment, `buildHudTiles` API
+- `packages/g2-app/src/hud/hud-canvas-renderer.ts` — main-thread canvas rendering, 14px monospace font, happy-dom exclusion note
+- `packages/g2-app/src/hud/hud-live-render.ts` — TODO(ADR-0013) delta loop deferral comment, all-tiles re-push pattern
+- `packages/g2-app/src/hud/hud-poc-page.ts` — no-capture-container page schema, PoC isolation note
+- `packages/g2-app/src/hud/hud-raster-frame.test.ts` — proven synthetic-RGBA test pattern (baseline for INV-1 raster contract)
+- `packages/g2-app/src/raster/raster-worker.ts` — map pipeline 200×100 geometry, worker isolation rationale
+- `packages/g2-app/src/raster/tile-delta.ts` — TileDelta API, sub-tile geometry constants
+- `packages/g2-app/src/engine/layer-manager.ts` — capture-container invariant enforcement
+- `packages/shared-render/src/snapshot.ts` — `matchAsciiFixture` pattern (text-container only; baseline for INV-1 architecture)
+- `packages/shared-render/src/fixtures/` — ~60 ASCII fixture files (text-container glyph-fallback path)
+- CLAUDE.md §Project Invariants — INV-1..5 definitions
+- Baseline pitfalls (v0.9.11 research, 2026-05-10): Pitfall 15 (greyscale dithering in sRGB), Pitfall 2 (BLE bandwidth), Pitfall 3 (delta encoding loss)
 
 ---
-*Pitfalls research for: FoundryVTT D&D 5e companion plugin streaming to Even Realities G2 AR glasses with optional V2 MCP voice*
-*Researched: 2026-05-10 (consumer of Specs.md v0.9.11)*
-*Confidence: MEDIUM overall — HIGH on Foundry/BLE/Floyd-Steinberg via authoritative sources, MEDIUM on Even Realities (limited public surface), LOW on MCP streaming UX (rapidly evolving, 2026 roadmap)*
+
+*Baseline pitfalls researched: 2026-05-10 (consumer of Specs.md v0.9.11)*
+*v0.10.0 raster addendum researched: 2026-06-05 (consumer of ADR-0013, ADR-0005, TODO-hud-raster.md, hud-raster-frame.ts, hud-canvas-renderer.ts, hud-live-render.ts)*
+*Overall confidence: MEDIUM — HIGH on raster pipeline determinism via source code review + image-q/canvas API analysis; MEDIUM on hardware tile size (simulator confirmed, real-hardware pending ADR-0005 OQ-INV2-1.b); HIGH on INV-1 raster contract via existing test pattern analysis*
