@@ -48,3 +48,6 @@ deploy/.env.local
 
 # Even Hub package bundles — build artifacts, regenerated via `pnpm --filter @evf/g2-app pack:ehpk`
 *.ehpk
+
+# Simulator harness runtime directory — pid files, log files (gitignored, regenerated on start)
+.sim-run/

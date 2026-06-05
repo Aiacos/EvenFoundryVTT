@@ -96,6 +96,19 @@ what produces the Even app's **"trial version expired"** error):
 Full runbook: [`docs/release/evenhub.md`](docs/release/evenhub.md) ·
 wiki: [Testing & Distribution](https://github.com/Aiacos/EvenFoundryVTT/wiki/Testing-and-Distribution).
 
+### Simulator Testing (local dev loop)
+
+One-command EvenHub simulator dev/test harness — no real glasses required:
+
+```bash
+pnpm sim start               # bridge (no-auth) + seed fixtures + vite + EvenHub simulator
+pnpm sim start --actor 6KWxQXAiJgz4zKlS   # select Dante as the rendered PC
+pnpm sim shot /tmp/glasses.png            # capture a 576x288 glasses screenshot
+pnpm sim stop                             # tear down all three services
+```
+
+Full documentation: **[`docs/simulator-testing.md`](docs/simulator-testing.md)**
+
 ### Self-Hosting
 
 The complete end-to-end deployment guide lives at
