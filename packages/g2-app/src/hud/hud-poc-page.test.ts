@@ -7,7 +7,12 @@
  * - pushHudTiles() calls updateImageRawData once per tile with correct shape
  * - pushHudTiles() logs a warning (does NOT throw) on non-success result
  *
+ * Geometry updated from 288×144 (PoC / simulator-only) to 200×100 per INV-2
+ * verification 2026-06-05 (`hub.evenrealities.com/docs/guides/display`).
+ * This is a deliberate fixture correction per ADR-0013 Amendment 1 (RINV-02).
+ *
  * @see packages/g2-app/src/hud/hud-poc-page.ts
+ * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  */
 import { describe, expect, it, vi } from 'vitest';
 import { buildHudPocPageSchema, HUD_POC_CONTAINERS, pushHudTiles } from './hud-poc-page.js';
@@ -30,48 +35,48 @@ describe('HUD_POC_CONTAINERS', () => {
     expect(HUD_POC_CONTAINERS).toHaveLength(4);
   });
 
-  it('entry 0 — hud-tile-0 id=0 at (0,0) 288×144', () => {
+  it('entry 0 — hud-tile-0 id=0 at (0,0) 200×100', () => {
     const c = HUD_POC_CONTAINERS[0];
     expect(c).toBeDefined();
     expect(c?.containerName).toBe('hud-tile-0');
     expect(c?.containerID).toBe(0);
     expect(c?.xPosition).toBe(0);
     expect(c?.yPosition).toBe(0);
-    expect(c?.width).toBe(288);
-    expect(c?.height).toBe(144);
+    expect(c?.width).toBe(200);
+    expect(c?.height).toBe(100);
   });
 
-  it('entry 1 — hud-tile-1 id=1 at (288,0) 288×144', () => {
+  it('entry 1 — hud-tile-1 id=1 at (200,0) 200×100', () => {
     const c = HUD_POC_CONTAINERS[1];
     expect(c).toBeDefined();
     expect(c?.containerName).toBe('hud-tile-1');
     expect(c?.containerID).toBe(1);
-    expect(c?.xPosition).toBe(288);
+    expect(c?.xPosition).toBe(200);
     expect(c?.yPosition).toBe(0);
-    expect(c?.width).toBe(288);
-    expect(c?.height).toBe(144);
+    expect(c?.width).toBe(200);
+    expect(c?.height).toBe(100);
   });
 
-  it('entry 2 — hud-tile-2 id=2 at (0,144) 288×144', () => {
+  it('entry 2 — hud-tile-2 id=2 at (0,100) 200×100', () => {
     const c = HUD_POC_CONTAINERS[2];
     expect(c).toBeDefined();
     expect(c?.containerName).toBe('hud-tile-2');
     expect(c?.containerID).toBe(2);
     expect(c?.xPosition).toBe(0);
-    expect(c?.yPosition).toBe(144);
-    expect(c?.width).toBe(288);
-    expect(c?.height).toBe(144);
+    expect(c?.yPosition).toBe(100);
+    expect(c?.width).toBe(200);
+    expect(c?.height).toBe(100);
   });
 
-  it('entry 3 — hud-tile-3 id=3 at (288,144) 288×144', () => {
+  it('entry 3 — hud-tile-3 id=3 at (200,100) 200×100', () => {
     const c = HUD_POC_CONTAINERS[3];
     expect(c).toBeDefined();
     expect(c?.containerName).toBe('hud-tile-3');
     expect(c?.containerID).toBe(3);
-    expect(c?.xPosition).toBe(288);
-    expect(c?.yPosition).toBe(144);
-    expect(c?.width).toBe(288);
-    expect(c?.height).toBe(144);
+    expect(c?.xPosition).toBe(200);
+    expect(c?.yPosition).toBe(100);
+    expect(c?.width).toBe(200);
+    expect(c?.height).toBe(100);
   });
 });
 
@@ -101,7 +106,7 @@ describe('buildHudPocPageSchema', () => {
     expect(ids).toEqual([0, 1, 2, 3]);
   });
 
-  it('imageObject entry 0 has correct geometry', () => {
+  it('imageObject entry 0 has correct geometry (200×100, INV-2 verified)', () => {
     const schema = buildHudPocPageSchema();
     const img = schema.imageObject[0] as {
       containerID?: number;
@@ -114,8 +119,8 @@ describe('buildHudPocPageSchema', () => {
     expect(img.containerName).toBe('hud-tile-0');
     expect(img.xPosition).toBe(0);
     expect(img.yPosition).toBe(0);
-    expect(img.width).toBe(288);
-    expect(img.height).toBe(144);
+    expect(img.width).toBe(200);
+    expect(img.height).toBe(100);
   });
 });
 
