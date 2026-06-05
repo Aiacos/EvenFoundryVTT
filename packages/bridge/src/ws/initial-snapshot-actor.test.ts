@@ -9,7 +9,7 @@
  * @see packages/bridge/src/ws/initial-snapshot.ts
  */
 import pino from 'pino';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CharacterListCache } from '../cache/character-list-cache.js';
 import type { FoundrySnapshotFn } from '../routes/character.js';
 import { DeltaEmitter } from './delta-emitter.js';
