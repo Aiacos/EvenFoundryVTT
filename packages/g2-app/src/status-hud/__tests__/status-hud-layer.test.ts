@@ -204,8 +204,9 @@ describe('StatusHudLayer — debounced render', () => {
       | { containerName: string; content: string }
       | undefined;
     expect(arg?.containerName).toBe('status-hud');
-    // Grid content is multi-row and contains the box-drawing border
-    expect(arg?.content).toContain('║');
+    // Sheet content is multi-line and contains the name + divider line
+    // HUD-27PX: old ║ border is replaced by ─ divider (full-width status sheet)
+    expect(arg?.content).toContain('─');
     expect(arg?.content).toContain('Thorin');
   });
 

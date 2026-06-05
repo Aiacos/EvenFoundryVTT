@@ -20,6 +20,15 @@
  *   - SECOND GAP: text containers also need geometry (`xPosition/yPosition/
  *     width/height`); without it the host renders them at size 0 → still blank.
  *
+ * ## HUD-27PX redesign (quick-260605-j0t)
+ *
+ * The `status-hud` (id 6) geometry has been updated from the old 168×252 narrow
+ * column (col 68-95 at 6px/col, rows 1-21 at 12px/row) to the new FULL-WIDTH
+ * 576×234 layout (y=27, 9 rows × 27px — the real G2 LVGL font grid).
+ * The `header` and `footer` heights are updated to 27px (was 12/24).
+ * `map-capture` and `z05-*` are preserved at their new 27px-grid positions for
+ * the deferred map-mode gesture toggle (Specs §7.4, Phase 20).
+ *
  * This module is the ONE place ids + geometry are declared. `page-lifecycle`
  * builds both the boot and main page schemas from it; `LayerManager._flushPage`
  * rebuilds the same canonical schema from it; and every render call site resolves
@@ -27,16 +36,28 @@
  * container id or text-container geometry — that keeps the page schema and the
  * upgrade sites in lockstep (no drift between the two).
  *
- * # Geometry derivation (ASSUMPTION)
+ * # Geometry derivation — HUD-27PX redesign (quick-260605-j0t)
  *
- * Image-tile geometry is preserved verbatim from the pre-existing page schema
- * (200×100, tiled 2×2). Text-container pixel geometry is derived from the
- * UI-SPEC 96×24 character grid at 6 px/col × 12 px/row (576×288 total):
- *   - header     row 0, full width
- *   - footer     rows 22-23, full width
- *   - status-hud col 68-95, rows 1-21
- *   - map-capture map area col 0-67, rows 1-21 (isEventCapture=1)
- *   - z05-*      rows 17/18/19, col 0-67
+ * Image-tile geometry is preserved verbatim (200×100, tiled 2×2, ids 0-3).
+ * Text-container pixel geometry is derived from the REAL G2 LVGL font grid:
+ *   - Fixed 27px line height (no font control per SDK)
+ *   - Screen: 576×288 px → ~10 rows max
+ *
+ * New text-container geometry (27px grid):
+ *   - header     (id 4): y=0,   height=27  (1 row: boot splash)
+ *   - footer     (id 5): y=261, height=27  (1 row: R1 hint / mode footer)
+ *   - status-hud (id 6): x=0,   y=27, width=576, height=234 (9 rows × 27px)
+ *                         FULL-WIDTH (was narrow 168px col) — replaces map as default base
+ *   - map-capture (id 7): x=0, y=27, width=576, height=234 (isEventCapture=1)
+ *                         Geometry matches status-hud; not the visible base in default view
+ *                         (deferred map mode — RESERVED for gesture-opened map toggle)
+ *   - z05-* (ids 8-10):  y=189/216/243, height=27 (rows at bottom of content area)
+ *                         NOT painted in default status-sheet view (idle-infill skipped)
+ *
+ * DEFERRED: map-capture and z05-* are kept in the registry so overlay/map-mode code
+ * paths continue to reference them by name. The deferred map-mode gesture toggle
+ * (Phase 20 / Specs §7.4 "Map mode (gesture-opened, future)") will re-activate them.
+ *
  * If a coordinate proves ambiguous on real hardware, the priority is VISIBLE
  * rendering (full-width strips); pixel-perfect alignment can follow.
  *
@@ -125,74 +146,88 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
     kind: 'image',
   },
 
-  // ── Text containers (ids 4-10) — geometry from UI-SPEC 96×24 grid @ 6×12 px ──
-  // header: row 0, full width.
+  // ── Text containers (ids 4-10) — geometry from REAL G2 LVGL font grid (27px/row) ──
+  //
+  // HUD-27PX redesign (quick-260605-j0t):
+  //   - All text geometry now uses 27px row height (LVGL fixed line height)
+  //   - status-hud is now FULL-WIDTH (576px) — the default always-on base
+  //   - map-capture preserved but not painted as the default base (deferred map mode)
+  //   - z05-* preserved but not painted in default view (idle-infill skipped)
+
+  // header: y=0, height=27 (1 row, 27px grid).
   header: {
     id: 4,
     xPosition: 0,
     yPosition: 0,
     width: 576,
-    height: 12,
+    height: 27,
     isEventCapture: 0,
     kind: 'text',
   },
-  // footer: rows 22-23, full width.
+  // footer: y=261 (288-27), height=27 (1 row, bottom of screen, 27px grid).
   footer: {
     id: 5,
     xPosition: 0,
-    yPosition: 264,
+    yPosition: 261,
     width: 576,
-    height: 24,
+    height: 27,
     isEventCapture: 0,
     kind: 'text',
   },
-  // status-hud: col 68-95 (68*6=408, 28*6=168), rows 1-21 (1*12=12, 21*12=252).
+  // status-hud: FULL-WIDTH (x=0, width=576), y=27 (below header), height=234 (9 rows × 27px).
+  // HUD-27PX: was narrow 168px col (col 68-95) — now full-width character status sheet.
+  // This is the VISIBLE default base layer.
   'status-hud': {
     id: 6,
-    xPosition: 408,
-    yPosition: 12,
-    width: 168,
-    height: 252,
+    xPosition: 0,
+    yPosition: 27,
+    width: 576,
+    height: 234,
     isEventCapture: 0,
     kind: 'text',
   },
-  // map-capture: map area col 0-67, rows 1-21 — the SOLE base capture container.
+  // map-capture: full-width, same geometry as status-hud (isEventCapture=1).
+  // PRESERVED for deferred gesture-opened map mode (Specs §7.4, Phase 20).
+  // NOT the visible base in the default status-sheet view.
+  // TODO(HUD-27PX): re-activate as visible base when map mode toggle is implemented (#issue)
   'map-capture': {
     id: 7,
     xPosition: 0,
-    yPosition: 12,
-    width: 408,
-    height: 252,
+    yPosition: 27,
+    width: 576,
+    height: 234,
     isEventCapture: 1,
     kind: 'text',
   },
-  // z05-combat-log: row 17 (17*12=204), col 0-67.
+  // z05-combat-log: y=189 (7 rows × 27px from top of content area), height=27.
+  // PRESERVED for deferred idle-infill (not painted in default status-sheet view).
+  // TODO(HUD-27PX): re-evaluate z05 positions once map-mode is gesture-opened (#issue)
   'z05-combat-log': {
     id: 8,
     xPosition: 0,
-    yPosition: 204,
-    width: 408,
-    height: 12,
+    yPosition: 189,
+    width: 576,
+    height: 27,
     isEventCapture: 0,
     kind: 'text',
   },
-  // z05-label: row 18 (18*12=216), col 0-67.
+  // z05-label: y=216 (8 rows × 27px from top of content area), height=27.
   'z05-label': {
     id: 9,
     xPosition: 0,
     yPosition: 216,
-    width: 408,
-    height: 12,
+    width: 576,
+    height: 27,
     isEventCapture: 0,
     kind: 'text',
   },
-  // z05-stats: row 19 (19*12=228), col 0-67.
+  // z05-stats: y=243 (9 rows × 27px from top of content area), height=27.
   'z05-stats': {
     id: 10,
     xPosition: 0,
-    yPosition: 228,
-    width: 408,
-    height: 12,
+    yPosition: 243,
+    width: 576,
+    height: 27,
     isEventCapture: 0,
     kind: 'text',
   },

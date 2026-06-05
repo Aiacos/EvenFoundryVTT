@@ -1313,18 +1313,32 @@ export async function _bootEngineCore(
 
   // 13. Post-bundle render: draw idle infill strips + first map frame.
   //
-  //     WHY HERE (not in step 12a): `layerManager.bundle()` (step 12) issues a
-  //     single `rebuildPageContainer` flush that resets ALL text containers — including
-  //     the z05 idle infill strips (ids 8-10) — back to the EvenHub SDK default literal
-  //     "Text". The step-12a chrome writers run post-flush; this step runs last, also
-  //     post-flush, so the z05 containers receive their real content and are never left
-  //     at the SDK default.
+  // HUD-27PX (quick-260605-j0t): the default always-on view is now the character
+  // STATUS SHEET (status-hud, id 6, full-width 576px), NOT the raster map.
+  // In the default view:
+  //   - The raster MAP is NOT painted as the base (MapBaseLayer.draw() is skipped).
+  //     This avoids overwriting the status-hud container with a blank map frame.
+  //   - IDLE INFILL (z05 strips, ids 8-10) is NOT painted (idle-infill only makes
+  //     sense when the map is the base, filling empty map rows — not needed here).
+  //   - The StatusHudLayer self-redraws via its WS subscription / heartbeat.
   //
-  //     `finalizeIdleRender` awaits `idleInfill.draw()` first (so z05 strips paint),
-  //     then `mapBase.draw()` (which blanks map-capture in raster-idle). Each call is
-  //     independently rejection-guarded — a failure from either MUST NOT abort an
-  //     already-booted engine (T-etr-03 pattern).
-  await finalizeIdleRender(idleInfill, mapBase);
+  // This change is MINIMAL and REVERSIBLE: both `idleInfill` and `mapBase` are
+  // still constructed at step 10 and mounted at step 12 so the deferred map-mode
+  // gesture toggle (Phase 20, Specs §7.4 "Map mode (gesture-opened, future)") can
+  // re-activate them by calling `finalizeIdleRender` again when the user opens the
+  // map view. The `finalizeIdleRender` helper is preserved and still exported for
+  // that future use path.
+  //
+  // TODO(HUD-27PX): re-call finalizeIdleRender when map mode is gesture-opened (#issue)
+  // DEFERRED per Specs §7.4 "Map mode (gesture-opened, future)" + ADR-0001 Amendment.
+  //
+  // The old call was:
+  //   await finalizeIdleRender(idleInfill, mapBase);
+  // In the default status-sheet view this is intentionally a no-op — idleInfill
+  // and mapBase are mounted in lm.bundle (step 12) and destroyed in teardown,
+  // but their draw() is not called at boot for the default view.
+  // The deferred map-mode will call finalizeIdleRender() when the user opens
+  // map mode via gesture (Phase 20).
 
   // 14. Return the handle with teardown closure + step 9c effective locale + localeEvents.
   return {
