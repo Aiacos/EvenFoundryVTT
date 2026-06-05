@@ -57,3 +57,80 @@ Runtime rendering happens in the **phone WebView (JS/TS + OffscreenCanvas)** —
 3. Boot page = 4 HUD image tiles; wire `character.delta` → redraw → tiles.
 4. INV-1 contract for the raster HUD (snapshot the canvas output / tile hashes deterministically) + Specs §7 update + showcase.
 5. Glyph/text fallback retained for the BLE-degraded path (ADR-0005).
+
+## Amendments
+
+### Amendment 1 — Canvas compositor substrate (2026-06-05, Specs v0.10.0)
+
+**Status:** ACCEPTED — extends the raster HUD direction; does not overturn it. The core decision (render the always-on HUD as a rasterized image via the existing raster pipeline) stands unchanged. This amendment corrects the geometry stated in the original Decision body and ratifies the five architectural decisions required for the Canvas Compositor Core phase (Phase 19).
+
+**Trigger:** INV-2 verification round (2026-06-05) against `hub.evenrealities.com/docs/guides/display` confirmed that the G2 image-container hardware cap is **20–200 px wide × 20–100 px tall, max 4 per page** — not the 288×144 assumed in the original Decision. The 288×144 / 576×288 geometry was derived from the `@evenrealities/even_hub_sdk` TypeScript typedefs and validated only in the EvenHub simulator (which does not enforce hardware image-size limits). It was never confirmed on real hardware. Additionally, the Phase 19 compositor design decisions (Option B per-layer OffscreenCanvas, capture-container re-mapping, fixed-budget canvas mode, serialized push, renderMode flag) were locked during architecture research and must be ratified as a written contract before any implementation merge.
+
+**Decision:**
+
+This amendment locks five architectural decisions for the Canvas Compositor Core (Phase 19+):
+
+#### 1. Compositor model — Option B
+
+**Per-layer `OffscreenCanvas`, composited via `drawImage` in ascending z-order onto a master 400×200 canvas.** `CanvasCompositor` owns the master canvas; `LayerManager` stays orchestrator-only (it does not render directly). Each `CanvasLayer` exposes `paint()` + dirty-tracking + optional static cache. The compositor iterates registered layers sorted by ascending `ZIndex` value (using `[...entries].sort(([a],[b]) => a-b)`) to guarantee correct z-order regardless of registration order.
+
+Rationale: the static/dynamic layer split is first-class at the `CanvasLayer` boundary; each layer is independently testable; `LayerManager` retains its existing orchestration contract without acquiring rendering responsibilities; the existing `buildHudTiles` / `pushHudTiles` pipeline is consumed unchanged.
+
+#### 2. Geometry correction (INV-2, verified 2026-06-05)
+
+**Raster surface = 400×200 (4 tiles of 200×100 each), NOT 576×288 / 288×144.**
+
+| Dimension | Original Decision | Corrected (INV-2) | Source |
+|-----------|-------------------|-------------------|--------|
+| Tile width | 288 px | **200 px** | `hub.evenrealities.com/docs/guides/display` — image container max width |
+| Tile height | 144 px | **100 px** | same — image container max height |
+| Raster region | 576×288 (full screen) | **400×200** | 4 tiles × 200 px wide, 2 rows × 100 px tall |
+| Tile layout | 2×2 covering full screen | **2×2 covering a 400×200 region** | same hardware cap |
+
+`HUD_TILE_GEOMETRY` is set to 200×100 (4 tiles). Tile offsets relative to the raster-region origin: tile-0=(0,0), tile-1=(200,0), tile-2=(0,100), tile-3=(200,100). **The on-screen placement of the 400×200 region inside the 576×288 physical screen is parameterized** — the default offset is deferred to Phase 20 when visible content is first rendered. No hard-coded 576×288 on-screen offset is introduced in Phase 19.
+
+**Why 288×144 must be rejected:** that geometry passed only in the EvenHub simulator, which does not enforce hardware image-size limits. On real G2 hardware, a 288×144 image container would exceed the 200×100 per-container cap and be rejected by the host. See memory `g2-image-container-hard-limits`.
+
+#### 3. Capture-container re-mapping
+
+**The 5th page container `'hud-capture'` is a full-screen text container (576×288) with `isEventCapture:1`, placed behind the 4 image tiles in declaration order.** It is NOT a zero-size container — that approach is undocumented and untested. The canonical EvenHub first-app example uses a full-screen text container as the gesture-capture target; this is the established pattern.
+
+INV-5 (gesture determinism) is preserved: the `hud-capture` text container is the sole `isEventCapture:1` container on the HUD raster page, providing unambiguous R1 input routing. `MapBaseLayer.getCaptureContainer()` continues to return `'map-capture'` for the map/glyph path; the HUD raster page uses `'hud-capture'` as its capture target (different page, different container namespace).
+
+#### 4. Container budget — fixed mode + serialized push
+
+**In canvas mode the container budget is FIXED at page creation: 5 containers (4 image tiles + 1 text capture).** `CanvasLayer.getContainerCount()` MUST return `{image:0, text:0}` — canvas layers do not allocate individual SDK containers; the 5-container budget is declared once via `buildHudRasterPageSchema()` at `_flushPage()`. `_assertContainerBudget()` uses a fixed-budget branch in canvas mode (no per-layer sum) that validates each layer returns `{image:0, text:0}` and throws `panel_mount_budget_exceeded` if a layer declares non-zero counts.
+
+**Serialized push:** `updateImageRawData` does NOT allow concurrent sends (SDK constraint). `_compositeAndPush()` pushes the 4 tiles sequentially (`for...of` with `await` per tile), NOT concurrently (`Promise.all` is forbidden). The existing `pushHudTiles()` implementation already uses serialized push; it is called unchanged from `_compositeAndPush()`.
+
+**Schema is fixed:** panel change (Phase 21+) is accomplished via `updateImageRawData` on existing tiles, NOT `rebuildPageContainer` — rebuilding the page schema would flicker and lose all container state. The page schema is declared once per `_flushPage()` call; subsequent redraws update the image data in-place.
+
+#### 5. Glyph fallback coexistence + `_flushPage()` schema selector
+
+**`LayerManager.renderMode: 'canvas' | 'glyph'`** selects the rendering path. Default = `'glyph'` (backwards-compatible with all existing behavior). The glyph path is **byte-identical to today** throughout Phase 19 — BLE-degraded fallback per ADR-0005 Branch A; zero behavioral changes to the glyph branch.
+
+`_flushPage()` selects the page schema based on `renderMode`:
+
+| `renderMode` | Schema builder | Containers |
+|-------------|----------------|------------|
+| `'canvas'`  | `buildHudRasterPageSchema()` | 5 (4 image tiles + 1 text capture) |
+| `'glyph'`   | `buildStatusViewTextContainers()` | 3 (header + footer + status-hud text, unchanged) |
+
+Mode switch is atomic via `bundle([])`. In canvas mode, `_flushPage()` additionally calls `_compositeAndPush()` to write the compositor's RGBA output to the 4 image tiles.
+
+---
+
+**Consistency check vs original Decision:**
+
+- ✓ Raster-substrate direction retained — the always-on HUD is rendered as a rasterized image pushed via `updateImageRawData`.
+- ✓ Layered z-model retained — ADR-0001 Option A z-stack unchanged; `CanvasCompositor` composites within z=1.
+- ✓ Reuse of existing raster pipeline (`buildHudTiles`, `pushHudTiles`, `image-q`, `upng-js`) — these are consumed unchanged.
+- ✓ Glyph fallback retained — `renderMode: 'glyph'` path is byte-identical to pre-Phase-19 behavior.
+- ⚠ **Geometry corrected:** 288×144 / 576×288 → **200×100 / 400×200**. The original Decision stated "4 image tiles of 288×144 covering the full 576×288 screen" — this is rejected by INV-2 hardware evidence. The raster region covers 400×200 of the 576×288 screen; placement of the region is parameterized.
+- ⚠ **Capture container type changed:** the original ADR had no explicit capture-container in the HUD raster schema (it was a PoC with only 4 image tiles). Amendment 1 adds the required `'hud-capture'` text container as the 5th container with `isEventCapture:1`, satisfying INV-5.
+
+---
+
+**INV-2 status:** Verified 2026-06-05 against `hub.evenrealities.com/docs/guides/display`. The G2 image-container hardware limits are: max 4 image containers per page, each 20–200 px wide × 20–100 px tall. The 400×200 raster region (4 tiles 200×100 each) is at the hardware maximum. Source authority: `hub.evenrealities.com/docs/guides/display` (INV-2 primary source). Memory record: `g2-image-container-hard-limits`. This verification supersedes the `@evenrealities/even_hub_sdk` typedef dimensions and the EvenHub simulator behavior, both of which permitted oversized containers.
+
+**Hardware SC:** The 400×200 raster region + full-screen `hud-capture` text container rendering and gesture routing on **real G2 hardware** is `human_needed` under **ADR-0005 Branch A** — no physical hardware is available for automated testing. The software-side geometry migration (RINV-02) and schema construction (RAST-02) are verified by automated unit tests. Hardware confirmation is deferred to the first real-device test session.
