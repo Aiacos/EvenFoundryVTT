@@ -153,6 +153,20 @@ export interface BootEngineOpts {
    * @see docs/perf/phase-10-latency.md
    */
   readonly perfProbe?: boolean;
+
+  /**
+   * Selected PC actor id (FLV-CHAR-SELECT).
+   *
+   * Forwarded to the bridge as the handshake `actorId` field so the session's
+   * `character.delta` stream is pinned to this actor — the HUD renders THIS
+   * character instead of always `characters[0]`.
+   *
+   * Resolved by `launchApp` with precedence:
+   *   1. `?actor=<id>` URL param (dev / simulator override)
+   *   2. Tier3 `Session.characterId` (wizard-persisted choice)
+   *   3. `undefined` (no pin — legacy last-write-wins roster[0] behavior)
+   */
+  readonly characterId?: string;
 }
 
 /**
@@ -527,7 +541,16 @@ export async function _bootEngineCore(
   const wsEventBus = createWsEventBus(ws, seqTracker);
 
   // 6. Perform the capability handshake — yields negotiated server caps.
-  const handshake = await performCapabilityHandshake(ws, opts.token, opts.locale);
+  // FLV-CHAR-SELECT: thread opts.characterId as the actorId so the bridge
+  // pins this session's character.delta stream to the player's chosen PC.
+  const handshake = await performCapabilityHandshake(
+    ws,
+    opts.token,
+    opts.locale,
+    undefined,
+    10_000,
+    opts.characterId,
+  );
 
   // 7. Bind the LayerManager + propagate the negotiated capability set.
   //
@@ -950,7 +973,8 @@ export async function _bootEngineCore(
     seqTracker,
     wsFactory: deps?.wsFactory ?? ((u: string) => new WebSocket(u)),
     performHandshake: (newWs: WebSocket, sid: string) =>
-      performCapabilityHandshake(newWs, opts.token, opts.locale, sid),
+      // FLV-CHAR-SELECT: re-send characterId on reconnect so the bridge restores the pin.
+      performCapabilityHandshake(newWs, opts.token, opts.locale, sid, 10_000, opts.characterId),
     onChipTick: ({ remainingMs }) => {
       statusHud.setSyncLost({ retryInMs: remainingMs });
     },

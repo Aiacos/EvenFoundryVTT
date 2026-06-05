@@ -66,6 +66,16 @@ export interface LaunchDeps {
   navigate: (url: string) => void;
   /** Launch locale. Defaults to `'it'` (Session has no locale field — do NOT read it from the session). */
   locale?: string;
+  /**
+   * Read the current URL search string (FLV-CHAR-SELECT testing seam).
+   *
+   * Defaults to `() => window.location.search`. Injected in tests to supply
+   * a custom query string without touching `window.location`.
+   *
+   * Used to extract the `?actor=<id>` URL param which overrides the Tier3
+   * characterId for the no-auth dev branch (sim / quick testing).
+   */
+  readUrlSearch?: () => string;
 }
 
 /**
@@ -89,6 +99,7 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
     navigate: (url: string) => {
       window.location.href = url;
     },
+    readUrlSearch: () => window.location.search,
     ...overrides,
   };
 
@@ -102,6 +113,13 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
   // This is the only path that can boot without a real token, and it unblocks the
   // EvenHub simulator. Boot regardless of any stored session.
   if (deps.isNoAuth()) {
+    // FLV-CHAR-SELECT: resolve characterId from ?actor= URL param.
+    // No stored session is available in the no-auth branch, so only the URL param applies.
+    // Precedence: ?actor=<id> > undefined (no pin → roster[0] legacy behavior).
+    const search = deps.readUrlSearch ? deps.readUrlSearch() : '';
+    const actorParam = new URLSearchParams(search).get('actor');
+    const characterId = actorParam !== null && actorParam.length > 0 ? actorParam : undefined;
+
     try {
       await deps.bootEngine({
         bridgeUrl: deps.devBridgeUrl(),
@@ -110,6 +128,7 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
         // narrower HudLocale union. The default 'it' is valid; a caller-supplied
         // override is the caller's responsibility (tests use 'it'/'en').
         locale: locale as BootEngineOpts['locale'],
+        ...(characterId !== undefined ? { characterId } : {}),
       });
     } catch (err) {
       // Fail-soft: a boot error must never bubble out of the top-level module
