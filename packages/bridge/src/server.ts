@@ -42,6 +42,9 @@
 // Quick Task 260604-eyf — bearer-registry + character-list push caches + handlers.
 // BearerRegistryCache feeds internalValidateFn; CharacterListCache feeds internalSnapshotFn.
 // Both multiplexed in the same /internal/delta onDelta callback (no new socketlib handler).
+// Quick Task 260605-dog — character-snapshot cache + handler. CharacterSnapshotCache feeds
+// internalSnapshotFn for evf.getCharacterSnapshot; populated by handleCharacterSnapshotEnvelope
+// via the same /internal/delta fan-out. Closes the actor_not_found gap (GET /v1/character/:id).
 import { SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -54,6 +57,7 @@ import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
 import { BearerRegistryCache } from './cache/bearer-registry-cache.js';
 import { CharacterListCache } from './cache/character-list-cache.js';
+import { CharacterSnapshotCache } from './cache/character-snapshot-cache.js';
 import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
 import { AgentRegistry } from './debug/agent-registry.js';
@@ -92,6 +96,7 @@ import { buildKeytermList } from './voice/keyterm-merger.js';
 import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
 import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
+import { handleCharacterSnapshotEnvelope } from './ws/character-snapshot-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
@@ -207,6 +212,18 @@ export interface BuildServerOptions {
    * @see ws/character-list-handler.ts
    */
   characterListCache?: CharacterListCache;
+  /**
+   * Inject a custom CharacterSnapshotCache for test isolation (Quick Task 260605-dog).
+   *
+   * In production: a fresh `CharacterSnapshotCache` is created per `buildServer()` call.
+   * Populated by `handleCharacterSnapshotEnvelope` via the `/internal/delta` push channel;
+   * read back by `internalSnapshotFn` for `evf.getCharacterSnapshot` (backing
+   * `GET /v1/character/:actorId` and the d0v on-connect initial push).
+   *
+   * @see cache/character-snapshot-cache.ts
+   * @see ws/character-snapshot-handler.ts
+   */
+  characterSnapshotCache?: CharacterSnapshotCache;
 }
 
 /**
@@ -346,16 +363,21 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     opts.metricsRegistry,
   );
 
-  // --- 4b-pre. Push caches (Quick Task 260604-eyf) ---
+  // --- 4b-pre. Push caches (Quick Task 260604-eyf + Quick Task 260605-dog) ---
   // BearerRegistryCache: populated by handleBearerRegistryEnvelope (step 8).
   //   Feeds internalValidateFn below — token validation without socketlib roundtrip.
   // CharacterListCache: populated by handleCharacterListEnvelope (step 8).
   //   Feeds internalSnapshotFn below — /v1/characters served from cache.
+  // CharacterSnapshotCache: populated by handleCharacterSnapshotEnvelope (step 8). (Quick Task 260605-dog)
+  //   Feeds internalSnapshotFn for evf.getCharacterSnapshot — GET /v1/character/:actorId.
   //
   // Declared HERE (before TokenCache) so internalValidateFn below can close over them.
-  // opts.bearerRegistryCache / opts.characterListCache inject pre-populated caches in tests.
+  // opts.bearerRegistryCache / opts.characterListCache / opts.characterSnapshotCache inject
+  // pre-populated caches in tests.
   const bearerRegistryCache = opts.bearerRegistryCache ?? new BearerRegistryCache();
   const characterListCache = opts.characterListCache ?? new CharacterListCache();
+  // Quick Task 260605-dog: per-actor snapshot cache; closed over by internalSnapshotFn below.
+  const characterSnapshotCache = opts.characterSnapshotCache ?? new CharacterSnapshotCache();
 
   // Internal foundryValidateFn built from BearerRegistryCache (Quick Task 260604-eyf).
   //
@@ -395,18 +417,25 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     onMiss: () => metrics.tokenCacheMissesTotal.inc(),
   });
 
-  // Internal foundrySnapshotFn built from CharacterListCache (Quick Task 260604-eyf).
-  // Serves GET /v1/characters from cache when 'evf.listCharacters' handler is invoked.
+  // Internal foundrySnapshotFn built from push caches (Quick Task 260604-eyf + 260605-dog).
+  // Serves GET /v1/characters from CharacterListCache ('evf.listCharacters').
+  // Serves GET /v1/character/:actorId from CharacterSnapshotCache ('evf.getCharacterSnapshot').
   // opts.foundrySnapshotFn overrides when provided (existing tests unchanged).
   //
   // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
   const internalSnapshotFn: FoundrySnapshotFn = async (
     handler: string,
     // biome-ignore lint/suspicious/noExplicitAny: variadic socket args — untyped by design
-    ..._args: unknown[]
+    ...args: unknown[]
   ): Promise<any> => {
     if (handler === 'evf.listCharacters') {
       return characterListCache.get()?.characters ?? [];
+    }
+    // Quick Task 260605-dog: serve cached snapshot for getCharacterSnapshot.
+    // args[0] === actorId (see routes/character.ts line 52 + initial-snapshot.ts line 97).
+    if (handler === 'evf.getCharacterSnapshot') {
+      const actorId = args[0];
+      return typeof actorId === 'string' ? (characterSnapshotCache.get(actorId) ?? null) : null;
     }
     return null;
   };
@@ -503,15 +532,17 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await registerEntitiesRoute(app, tokenCache, entityCache);
 
   // --- 8. Internal delta route (module → bridge push) ---
-  // onDelta hook: multiplexed dispatch — intercept r1.spells.available AND r1.entities.available
-  // envelopes to update their respective caches BEFORE fan-out. Each handler returns false when
-  // its type does not match, so calling both in sequence is safe and order-independent.
-  // Multiplex all four envelope handlers: bearer-registry + character-list (260604-eyf)
-  // alongside the existing spell-pack + entity-pack. Each returns false on type mismatch
-  // so ordering does not matter and all are safe to call unconditionally.
+  // onDelta hook: multiplexed dispatch — five envelope handlers, each returning false when
+  // the type does not match. Order is irrelevant; all are safe to call unconditionally.
+  //   - bearer-registry (r1.bearers.available)      → BearerRegistryCache → internalValidateFn
+  //   - character-list (r1.characters.available)    → CharacterListCache  → evf.listCharacters
+  //   - character-snapshot (character.delta)        → CharacterSnapshotCache → evf.getCharacterSnapshot (dog)
+  //   - spell-pack (r1.spells.available)            → SpellPackCache      → /v1/spells/available
+  //   - entity-pack (r1.entities.available)         → EntityPackCache     → /v1/entities/available
   await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
     handleBearerRegistryEnvelope(type, payload, bearerRegistryCache);
     handleCharacterListEnvelope(type, payload, characterListCache);
+    handleCharacterSnapshotEnvelope(type, payload, characterSnapshotCache);
     handleSpellPackEnvelope(type, payload, spellCache);
     handleEntityPackEnvelope(type, payload, entityCache);
   });
@@ -597,10 +628,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // between handshake and this point — the empty-token fallback results
         // in the foundryFn returning null, which is a graceful no-op per IS-05).
         //
-        // NOTE: internalSnapshotFn returns null for 'evf.getCharacterSnapshot'
-        // (no live snapshot source in production until the module pushes one);
-        // this call is a safe no-op in default prod and exercises the populated
-        // path only when opts.foundrySnapshotFn is injected (e.g. in tests).
+        // Quick Task 260605-dog: internalSnapshotFn now serves a cached snapshot
+        // for 'evf.getCharacterSnapshot' when the module has pushed a character.delta
+        // for the roster actor. It remains a graceful no-op while the cache is cold
+        // (returns null → IS-05 path) until the first /internal/delta push arrives.
         const session = sessionStore.getSession(sessionId);
         void pushInitialCharacterDelta({
           sessionId,
