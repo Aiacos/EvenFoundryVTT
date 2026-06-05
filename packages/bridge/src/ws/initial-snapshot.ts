@@ -8,7 +8,8 @@
  *
  * ## Design
  *
- * - Actor selection: `roster.characters[0].actorId` (last-write-wins push source).
+ * - Actor selection (FLV-CHAR-SELECT): `selectedActorId` (session's handshake pin)
+ *   takes precedence over `roster.characters[0].actorId` (last-write-wins fallback).
  * - Snapshot fetch: `foundryFn('evf.getCharacterSnapshot', actorId, token)` — the
  *   same injection point that backs `GET /v1/character/:actorId`.
  * - Schema guard: `CharacterSnapshotSchema.safeParse` — mirrors `routes/character.ts`
@@ -58,13 +59,28 @@ export interface PushInitialCharacterDeltaArgs {
   foundryFn: FoundrySnapshotFn;
   /** pino logger for debug/error messages. */
   logger: Logger;
+  /**
+   * Optional selected PC actor id for this session (FLV-CHAR-SELECT).
+   *
+   * When set, this actor is served instead of `roster[0]`. The pinned id is
+   * fetched directly via `foundryFn` regardless of whether it appears in the
+   * roster (the dog cache serves any pushed actorId; a non-cached id returns
+   * null, which is the graceful no-op IS-05 path). Actor selection precedence:
+   *   1. `selectedActorId` (from session.selectedActorId → handshake actorId)
+   *   2. `roster.characters[0].actorId` (legacy last-write-wins)
+   */
+  selectedActorId?: string;
 }
 
 /**
  * Push an initial `character.delta` to a newly-connected WS session.
  *
- * Selects the first actor from the `CharacterListCache` roster (last-write-wins
- * push source), fetches and validates its snapshot via `foundryFn`, then calls
+ * Actor selection (FLV-CHAR-SELECT):
+ *   1. `args.selectedActorId` — session's pinned actor (from handshake `actorId` field).
+ *      When set, fetched directly even if not in the roster.
+ *   2. `roster.characters[0].actorId` — legacy last-write-wins fallback.
+ *
+ * Fetches and validates the snapshot via `foundryFn`, then calls
  * `deltaEmitter.sendInitialToSession` to deliver the envelope only to the new
  * session. All error paths are graceful no-ops with debug logs.
  *
@@ -74,21 +90,31 @@ export interface PushInitialCharacterDeltaArgs {
 export async function pushInitialCharacterDelta(
   args: PushInitialCharacterDeltaArgs,
 ): Promise<void> {
-  const { sessionId, token, deltaEmitter, characterListCache, foundryFn, logger } = args;
+  const { sessionId, token, deltaEmitter, characterListCache, foundryFn, logger, selectedActorId } =
+    args;
 
-  // Step 1: resolve actor from roster (IS-03, IS-04).
-  const roster = characterListCache.get();
-  if (roster === null || roster.characters.length === 0) {
-    logger.debug({ sessionId }, 'initial-snapshot: no roster — skipping initial character.delta');
-    return;
-  }
+  // Step 1: resolve actor — selectedActorId takes precedence over roster[0] (FLV-CHAR-SELECT).
+  let actorId: string | undefined;
 
-  const actorId = roster.characters[0]?.actorId;
-  if (actorId === undefined) {
-    // Unreachable under normal conditions (length > 0 guard above), but safe-guard
-    // against noUncheckedIndexedAccess.
-    logger.debug({ sessionId }, 'initial-snapshot: roster[0] undefined — skipping');
-    return;
+  if (selectedActorId !== undefined) {
+    // Pinned actor: fetch directly, skip roster-empty guard (the dog cache serves any pushed id).
+    actorId = selectedActorId;
+    logger.debug({ sessionId, actorId }, 'initial-snapshot: using pinned selectedActorId');
+  } else {
+    // Legacy fallback: use roster[0] (IS-03, IS-04).
+    const roster = characterListCache.get();
+    if (roster === null || roster.characters.length === 0) {
+      logger.debug({ sessionId }, 'initial-snapshot: no roster — skipping initial character.delta');
+      return;
+    }
+
+    actorId = roster.characters[0]?.actorId;
+    if (actorId === undefined) {
+      // Unreachable under normal conditions (length > 0 guard above), but safe-guard
+      // against noUncheckedIndexedAccess.
+      logger.debug({ sessionId }, 'initial-snapshot: roster[0] undefined — skipping');
+      return;
+    }
   }
 
   // Step 2: fetch snapshot via foundryFn (IS-07).

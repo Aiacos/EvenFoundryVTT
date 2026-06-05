@@ -108,9 +108,16 @@ export class DeltaEmitter {
    * For each registered session:
    * 1. Looks up the session in SessionStore to check caps
    * 2. Checks capability requirement for this delta type
-   * 3. If session has the cap (or no cap is required), sends the envelope
-   * 4. Pushes the per-session envelope to ReplayBuffer
-   * 5. Updates SessionStore lastSeq
+   * 3. **character.delta actor gate (FLV-CHAR-SELECT):** when ALL THREE are present —
+   *    `type === 'character.delta'` AND `session.selectedActorId` is set AND
+   *    `payload.actorId` is a string — the delta is only delivered when
+   *    `session.selectedActorId === payload.actorId`. If any of the three is absent,
+   *    the gate does not fire (current broadcast behavior is preserved). This prevents
+   *    cross-player character leakage (T-flv-01) while keeping backward compatibility
+   *    for sessions without a pin and payloads without an actorId field.
+   * 4. If session has the cap (or no cap is required), sends the envelope
+   * 5. Pushes the per-session envelope to ReplayBuffer
+   * 6. Updates SessionStore lastSeq
    *
    * @param type    - Delta type discriminant (e.g. "character.delta")
    * @param payload - Delta payload (any serialisable value)
@@ -118,6 +125,16 @@ export class DeltaEmitter {
   emitDelta(type: string, payload: unknown): void {
     const seq = ++this.globalSeq;
     const ts = Date.now();
+
+    // Extract payload.actorId defensively for the character.delta targeting gate.
+    const payloadActorId: string | undefined =
+      type === 'character.delta' &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'actorId' in payload &&
+      typeof (payload as { actorId?: unknown }).actorId === 'string'
+        ? (payload as { actorId: string }).actorId
+        : undefined;
 
     for (const [sessionId, ws] of this.connections.entries()) {
       const session = this.sessionStore.getSession(sessionId);
@@ -131,6 +148,17 @@ export class DeltaEmitter {
       const requiredCap = DELTA_CAP_MAP[type];
       if (requiredCap !== undefined && !session.caps.includes(requiredCap)) {
         continue; // Session does not have the required capability
+      }
+
+      // character.delta actor targeting gate (FLV-CHAR-SELECT / T-flv-01).
+      // Gate fires ONLY when all three are present to preserve broadcast back-compat.
+      if (
+        type === 'character.delta' &&
+        session.selectedActorId !== undefined &&
+        payloadActorId !== undefined &&
+        session.selectedActorId !== payloadActorId
+      ) {
+        continue; // This session is pinned to a different actor — skip.
       }
 
       const envelope: Envelope = {

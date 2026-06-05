@@ -639,6 +639,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           characterListCache,
           foundryFn,
           logger,
+          // FLV-CHAR-SELECT: pass the session's pinned actor so the initial push
+          // serves the player's chosen PC instead of always roster[0].
+          selectedActorId: session?.selectedActorId,
         }).catch((err) => {
           logger.error({ err }, 'initial character.delta push failed');
         });
