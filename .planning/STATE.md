@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: planning
-last_updated: "2026-06-05T14:28:37.279Z"
+last_updated: "2026-06-05T18:00:00.000Z"
 last_activity: 2026-06-05
 progress:
-  total_phases: 0
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 19 — Release & Distribution
+**Current focus:** Phase 19 — ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 19 — ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-05 — Milestone v0.10.0 started
+Status: Roadmap created — ready for /gsd-plan-phase 19
+Last activity: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created (8 phases, 19 REQ-IDs, 100% coverage)
 
 ## Performance Metrics
 

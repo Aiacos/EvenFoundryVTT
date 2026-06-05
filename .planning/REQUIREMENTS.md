@@ -84,10 +84,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAST-01..05 | TBD | Pending |
-| RFONT-01..03 | TBD | Pending |
-| RSHEET-01..03 | TBD | Pending |
-| RCOMB-01 | TBD | Pending |
-| RDATA-01..05 | TBD | Pending |
-| RPROMO-01..02 | TBD | Pending |
-| RINV-01..03 | TBD | Pending |
+| RAST-01 | Phase 19 | Pending |
+| RAST-02 | Phase 19 | Pending |
+| RAST-03 | Phase 19 | Pending |
+| RAST-04 | Phase 19 | Pending |
+| RAST-05 | Phase 19 | Pending |
+| RFONT-01 | Phase 20 | Pending |
+| RFONT-02 | Phase 20 | Pending |
+| RFONT-03 | Phase 20 | Pending |
+| RINV-01 | Phase 20 | Pending |
+| RSHEET-01 | Phase 21 | Pending |
+| RSHEET-02 | Phase 21 | Pending |
+| RSHEET-03 | Phase 21 | Pending |
+| RDATA-01 | Phase 21 | Pending |
+| RDATA-02 | Phase 21 | Pending |
+| RDATA-03 | Phase 22 | Pending |
+| RDATA-04 | Phase 22 | Pending |
+| RCOMB-01 | Phase 23 | Pending |
+| RDATA-05 | Phase 23 | Pending |
+| RPROMO-01 | Phase 24 | Pending |
+| RPROMO-02 | Phase 25 | Pending |
+| RINV-02 | Phase 19 | Pending |
+| RINV-03 | Phase 26 | Pending |
