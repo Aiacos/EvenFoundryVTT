@@ -163,6 +163,77 @@ export class DeltaEmitter {
   }
 
   /**
+   * Send an initial targeted delta to a single newly-connected session.
+   *
+   * This is the on-connect push counterpart to {@link emitDelta}. Where
+   * `emitDelta` fans out to ALL sessions with the matching capability,
+   * `sendInitialToSession` sends to ONE session only — the session that just
+   * completed the WS handshake.
+   *
+   * Behaviour is intentionally identical to a single-session `emitDelta` leg:
+   * - Capability gate via {@link DELTA_CAP_MAP}: if the session lacks the
+   *   required cap, nothing is sent and `globalSeq` is NOT incremented.
+   * - Seq is allocated AFTER the cap check (same ordering as `emitDelta`).
+   * - The envelope is pushed to the {@link ReplayBuffer} and
+   *   `sessionStore.updateLastSeq` is called (mirror of `emitDelta`).
+   * - Send errors remove the stale connection and do NOT propagate.
+   * - Unknown / unregistered `sessionId` is a no-op.
+   *
+   * Security (T-d0v-01): a session without the required cap receives nothing —
+   * no actor data leaks to under-capable clients.
+   *
+   * @param sessionId - UUID v4 of the newly-connected session.
+   * @param type      - Delta type (e.g. `'character.delta'`).
+   * @param payload   - Validated delta payload (any serialisable value).
+   */
+  sendInitialToSession(sessionId: string, type: string, payload: unknown): void {
+    const ws = this.connections.get(sessionId);
+    if (ws === undefined) {
+      // Unknown / unregistered session — no-op (DE-INIT-05).
+      return;
+    }
+
+    const session = this.sessionStore.getSession(sessionId);
+    if (session === undefined) {
+      // Session not found in store — clean up stale connection entry and return.
+      this.connections.delete(sessionId);
+      return;
+    }
+
+    // Capability check (DE-INIT-04) — must happen BEFORE seq allocation.
+    const requiredCap = DELTA_CAP_MAP[type];
+    if (requiredCap !== undefined && !session.caps.includes(requiredCap)) {
+      return; // Session lacks cap — seq must NOT increment.
+    }
+
+    const seq = ++this.globalSeq;
+    const ts = Date.now();
+
+    const envelope: Envelope = {
+      proto: 'evf-v1',
+      seq,
+      ts,
+      type,
+      session_id: sessionId,
+      payload,
+    };
+
+    try {
+      ws.send(JSON.stringify(envelope));
+    } catch {
+      // Send error — remove stale connection (DE-INIT-06).
+      this.connections.delete(sessionId);
+      return;
+    }
+
+    this.replayBuffer.push(envelope);
+    this.sessionStore.updateLastSeq(sessionId, seq);
+
+    // Parity with emitDelta: invoke debug observability hook if set.
+    this.onEmit?.(type, payload, seq);
+  }
+
+  /**
    * Current number of registered live connections.
    *
    * Visible for testing.

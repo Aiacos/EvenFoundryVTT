@@ -288,4 +288,93 @@ describe('DeltaEmitter', () => {
       expect(goodWs.send).toHaveBeenCalledOnce();
     });
   });
+
+  // ─── sendInitialToSession tests (DE-INIT-01..06) ──────────────────────────────
+
+  describe('sendInitialToSession', () => {
+    it('DE-INIT-01: sends to the target session only — other sessions receive nothing', () => {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+
+      const target = sessionStore.createSession('tok-target', 'it', ['read_char']);
+      const other = sessionStore.createSession('tok-other', 'it', ['read_char']);
+      const wsTarget = makeMockWs();
+      const wsOther = makeMockWs();
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(target.sessionId, wsTarget as any);
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(other.sessionId, wsOther as any);
+
+      emitter.sendInitialToSession(target.sessionId, 'character.delta', { hp: 42 });
+
+      expect(wsTarget.send).toHaveBeenCalledOnce();
+      expect(wsOther.send).not.toHaveBeenCalled();
+    });
+
+    it('DE-INIT-02: envelope has proto evf-v1, fresh seq, correct type, session_id = target', () => {
+      const { emitter, session, ws } = setup(['read_char']);
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 7 });
+
+      expect(ws.send).toHaveBeenCalledOnce();
+      const envelope = JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}');
+      expect(envelope.proto).toBe('evf-v1');
+      expect(envelope.seq).toBe(1); // incremented from 0
+      expect(envelope.type).toBe('character.delta');
+      expect(envelope.payload).toEqual({ hp: 7 });
+      expect(envelope.session_id).toBe(session.sessionId);
+      expect(typeof envelope.ts).toBe('number');
+    });
+
+    it('DE-INIT-03: envelope pushed to replay buffer and lastSeq updated', () => {
+      const { emitter, session, replayBuffer, sessionStore } = setup(['read_char']);
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 9 });
+
+      const replayed = replayBuffer.replay(session.sessionId, 0);
+      expect(replayed).toHaveLength(1);
+      expect(replayed[0]?.type).toBe('character.delta');
+
+      const updated = sessionStore.getSession(session.sessionId);
+      expect(updated?.lastSeq).toBe(1);
+    });
+
+    it('DE-INIT-04: cap gate — session without read_char receives nothing and seq stays 0', () => {
+      const { emitter, session, ws } = setup(['read_combat']); // no read_char
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 99 });
+
+      expect(ws.send).not.toHaveBeenCalled();
+      expect(emitter.currentSeq).toBe(0); // seq must NOT have incremented
+    });
+
+    it('DE-INIT-05: unknown/unregistered sessionId → no-op, no throw, seq unchanged', () => {
+      const { emitter } = setup(['read_char']);
+      emitter._resetSeq();
+
+      expect(() =>
+        emitter.sendInitialToSession('nonexistent-session-id', 'character.delta', {}),
+      ).not.toThrow();
+      expect(emitter.currentSeq).toBe(0);
+    });
+
+    it('DE-INIT-06: send() throws → stale connection cleaned up, no throw to caller', () => {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+
+      const s = sessionStore.createSession('tok-broken', 'it', ['read_char']);
+      const brokenWs = makeMockWs(true); // throws on send
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(s.sessionId, brokenWs as any);
+
+      expect(emitter.connectionCount).toBe(1);
+      expect(() => emitter.sendInitialToSession(s.sessionId, 'character.delta', {})).not.toThrow();
+      expect(emitter.connectionCount).toBe(0); // stale connection cleaned up
+    });
+  });
 });
