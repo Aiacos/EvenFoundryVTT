@@ -1219,3 +1219,318 @@ describe('Quick Task 260529-icd: debug logger tap', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Quick Task 260605-d0v: WS connect → initial character.delta push
+// ---------------------------------------------------------------------------
+// Integration tests assert that a g2-app WS client receives an initial
+// character.delta envelope immediately after completing the handshake when
+// the bridge has a populated CharacterListCache and an injected foundryFn.
+//
+// Strategy: build a real server, call app.listen({ port: 0 }), open a real
+// WebSocket client, complete the EVF handshake, then assert the next message
+// is (or is not) a character.delta envelope.
+// ---------------------------------------------------------------------------
+
+import WebSocket from 'ws';
+import { CharacterListCache } from './cache/character-list-cache.js';
+
+/** Full mock CharacterSnapshot satisfying CharacterSnapshotSchema. */
+const INITIAL_DELTA_SNAPSHOT = {
+  actorId: 'actor-thorin',
+  name: 'Thorin',
+  hp: 45,
+  maxHp: 68,
+  tempHp: 0,
+  ac: 16,
+  level: 5,
+  conditions: [],
+  exhaustion: 0,
+  death: { success: 0, failure: 0 },
+  world: { modernRules: false },
+  inventory: [],
+  spells: { slots: [], spells: [] },
+  abilities: {
+    str: { value: 16, mod: 3, save: 3, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 14, mod: 2, save: 2, proficient: false, dc: 10 },
+    int: { value: 8, mod: -1, save: -1, proficient: false, dc: 10 },
+    wis: { value: 12, mod: 1, save: 1, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+  },
+  skills: {
+    acr: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ani: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    arc: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    ath: { total: 3, ability: 'str' as const, proficient: 0 as const, passive: 13 },
+    dec: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    his: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    ins: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    itm: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    inv: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    med: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    nat: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    prc: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    prf: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    per: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    rel: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    slt: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    sur: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+  },
+} as const;
+
+describe('Quick Task 260605-d0v: WS connect → initial character.delta', () => {
+  const SECRET = 'd0v-integration-secret';
+  let savedSecret: string | undefined;
+  let savedDevNoAuth: string | undefined;
+
+  beforeEach(() => {
+    savedSecret = process.env.EVF_INTERNAL_SECRET;
+    savedDevNoAuth = process.env.EVF_DEV_NO_AUTH;
+    process.env.EVF_INTERNAL_SECRET = SECRET;
+    process.env.EVF_DEV_NO_AUTH = 'true'; // no-auth so bearer sentinel is accepted
+  });
+
+  afterEach(() => {
+    const restore = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    };
+    restore('EVF_INTERNAL_SECRET', savedSecret);
+    restore('EVF_DEV_NO_AUTH', savedDevNoAuth);
+  });
+
+  /**
+   * Build a server on a random port with:
+   * - A seeded CharacterListCache (roster = [actor-thorin])
+   * - foundrySnapshotFn returning INITIAL_DELTA_SNAPSHOT for 'evf.getCharacterSnapshot'
+   */
+  async function buildD0vServer(): Promise<{ app: FastifyInstance; port: number }> {
+    const characterListCache = new CharacterListCache();
+    characterListCache.set({
+      characters: [{ actorId: 'actor-thorin', name: 'Thorin', level: 5 }],
+      source: 'foundry-world',
+      count: 1,
+      generatedAt: Date.now(),
+    });
+
+    const app = await buildServer({
+      langDirOverride: LANG_DIR,
+      characterListCache,
+      foundrySnapshotFn: async (handler, ..._args) => {
+        if (handler === 'evf.getCharacterSnapshot') return INITIAL_DELTA_SNAPSHOT;
+        return null;
+      },
+    });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const addr = app.server.address();
+    const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+    return { app, port };
+  }
+
+  /**
+   * Complete the EVF WS handshake (send client hello, receive server hello).
+   * Returns the sessionId from the handshake response.
+   */
+  function completeHandshake(ws: WebSocket, token: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      ws.once('open', () => {
+        ws.send(
+          JSON.stringify({
+            proto: 'evf-v1',
+            token,
+            locale: 'it',
+            capabilities: ['read_char', 'read_combat'],
+          }),
+        );
+      });
+      ws.once('message', (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString()) as { session_id?: string; proto_chosen?: string };
+          if (msg.proto_chosen === 'evf-v1' && typeof msg.session_id === 'string') {
+            resolve(msg.session_id);
+          } else {
+            reject(new Error(`Unexpected handshake response: ${raw.toString()}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+      ws.once('error', reject);
+    });
+  }
+
+  it(
+    'D0V-INT-01: WS connect with populated roster → client receives character.delta with actorId',
+    () =>
+      new Promise<void>((done, fail) => {
+        buildD0vServer()
+          .then(({ app, port }) => {
+            const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+            // Collect ALL messages (handshake + initial delta may arrive in quick succession).
+            const received: Array<{ type: string; payload?: { actorId?: string } }> = [];
+            let resolved = false;
+
+            // Timer: allow up to 2s for the character.delta to arrive.
+            const deadline = setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                ws.close();
+                app
+                  .close()
+                  .then(() =>
+                    fail(
+                      new Error(
+                        `No character.delta received within 2s. Got: ${JSON.stringify(received)}`,
+                      ),
+                    ),
+                  )
+                  .catch(fail);
+              }
+            }, 2000);
+
+            ws.on('message', (raw) => {
+              try {
+                const msg = JSON.parse(raw.toString()) as {
+                  type?: string;
+                  proto_chosen?: string;
+                  payload?: { actorId?: string };
+                };
+                if (msg.type !== undefined) {
+                  received.push(msg as { type: string; payload?: { actorId?: string } });
+                }
+                // Handshake response has proto_chosen — send client hello now.
+                if (msg.proto_chosen === undefined && msg.type === undefined) return;
+
+                // Check if character.delta already arrived.
+                const delta = received.find((m) => m.type === 'character.delta');
+                if (delta !== undefined && !resolved) {
+                  resolved = true;
+                  clearTimeout(deadline);
+                  try {
+                    expect(delta.payload?.actorId).toBe('actor-thorin');
+                    ws.close();
+                    app.close().then(done).catch(fail);
+                  } catch (err) {
+                    ws.close();
+                    app
+                      .close()
+                      .then(() => fail(err))
+                      .catch(fail);
+                  }
+                }
+              } catch (err) {
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(deadline);
+                  ws.close();
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                }
+              }
+            });
+
+            ws.once('open', () => {
+              ws.send(
+                JSON.stringify({
+                  proto: 'evf-v1',
+                  token: 'dev-no-auth',
+                  locale: 'it',
+                  capabilities: ['read_char', 'read_combat'],
+                }),
+              );
+            });
+
+            ws.once('error', (err) => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(deadline);
+                app
+                  .close()
+                  .then(() => fail(err))
+                  .catch(fail);
+              }
+            });
+          })
+          .catch(fail);
+      }),
+    5000,
+  );
+
+  it('D0V-INT-02: WS connect with COLD roster → client receives handshake only (no character.delta)', () =>
+    new Promise<void>((done, fail) => {
+      // Build server with cold CharacterListCache (no call to cache.set()).
+      buildServer({
+        langDirOverride: LANG_DIR,
+        // characterListCache not set → buildServer creates a fresh cold one
+        foundrySnapshotFn: async () => INITIAL_DELTA_SNAPSHOT,
+      })
+        .then((app) => {
+          app
+            .listen({ port: 0, host: '127.0.0.1' })
+            .then(() => {
+              const addr = app.server.address();
+              const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+              const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+
+              completeHandshake(ws, 'dev-no-auth')
+                .then(() => {
+                  // Wait 150ms: if no message arrives, cold roster correctly produced no push.
+                  const timer = setTimeout(() => {
+                    // No character.delta received — PASS.
+                    ws.close();
+                    app.close().then(done).catch(fail);
+                  }, 150);
+
+                  ws.once('message', (raw) => {
+                    clearTimeout(timer);
+                    const envelope = JSON.parse(raw.toString()) as { type: string };
+                    ws.close();
+                    app
+                      .close()
+                      .then(() => {
+                        fail(new Error(`Expected no message but received type='${envelope.type}'`));
+                      })
+                      .catch(fail);
+                  });
+                })
+                .catch((err) => {
+                  ws.close();
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                });
+            })
+            .catch(fail);
+        })
+        .catch(fail);
+    }));
+});
+
+/*
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Sim smoke (manual) — NOT an automated gate (EvenHub simulator requires
+ * xvfb + GTK; the deterministic gate is the Vitest integration test above).
+ *
+ * To verify end-to-end with the real EvenHub simulator:
+ *
+ * 1. Start the bridge in dev-no-auth mode:
+ *      EVF_DEV_NO_AUTH=true EVF_INTERNAL_SECRET=dev pnpm --filter @evf/bridge start
+ *
+ * 2. Seed the roster via POST /internal/delta:
+ *      curl -s -X POST http://localhost:8910/internal/delta \
+ *        -H "Authorization: Bearer dev" \
+ *        -H "Content-Type: application/json" \
+ *        -d '{"type":"r1.characters.available","payload":{"characters":[{"actorId":"actor-1","name":"Thorin","level":5}],"source":"foundry-world","count":1,"generatedAt":0}}'
+ *
+ * 3. Set g2-app bridgeUrl to http://localhost:8910 and launch the EvenHub simulator
+ *    (xvfb headless, drive via :9898 HTTP API per evenhub:simulator-automation skill).
+ *
+ * 4. Confirm: on WS connect the glasses status HUD shows the character name and HP
+ *    (status-hud-layer.ts CHARACTER_DELTA_CHANNEL handler consumes the delta).
+ * ──────────────────────────────────────────────────────────────────────────────
+ */

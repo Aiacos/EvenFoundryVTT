@@ -95,6 +95,7 @@ import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
+import { pushInitialCharacterDelta } from './ws/initial-snapshot.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
 import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
@@ -585,6 +586,32 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         deltaEmitter.registerSession(sessionId, socket);
         // Instrument: increment WS sessions gauge on successful registration.
         metrics.wsSessionsActive.inc();
+
+        // On-connect initial push (Quick Task 260605-d0v): proactively send
+        // character.delta for the first roster actor so the glasses HUD renders
+        // real character data immediately on connect, without waiting for the
+        // next Foundry-triggered delta.
+        //
+        // Fire-and-forget; error-safe. The session token is read from the store
+        // (sessionStore.getSession returns undefined when the session was deleted
+        // between handshake and this point — the empty-token fallback results
+        // in the foundryFn returning null, which is a graceful no-op per IS-05).
+        //
+        // NOTE: internalSnapshotFn returns null for 'evf.getCharacterSnapshot'
+        // (no live snapshot source in production until the module pushes one);
+        // this call is a safe no-op in default prod and exercises the populated
+        // path only when opts.foundrySnapshotFn is injected (e.g. in tests).
+        const session = sessionStore.getSession(sessionId);
+        void pushInitialCharacterDelta({
+          sessionId,
+          token: session?.token ?? '',
+          deltaEmitter,
+          characterListCache,
+          foundryFn,
+          logger,
+        }).catch((err) => {
+          logger.error({ err }, 'initial character.delta push failed');
+        });
 
         // Message router: each handler is responsible for its own envelope type.
         // handleResume processes 'client_resume'; handleToolInvoke processes 'tool.invoke'.
