@@ -632,17 +632,21 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // for the roster actor. It remains a graceful no-op while the cache is cold
         // (returns null → IS-05 path) until the first /internal/delta push arrives.
         const session = sessionStore.getSession(sessionId);
-        void pushInitialCharacterDelta({
+        // FLV-CHAR-SELECT: conditionally include selectedActorId so the initial push
+        // serves the player's chosen PC instead of always roster[0]. Conditional spread
+        // is required by exactOptionalPropertyTypes (cannot pass undefined explicitly).
+        const initialPushArgs = {
           sessionId,
           token: session?.token ?? '',
           deltaEmitter,
           characterListCache,
           foundryFn,
           logger,
-          // FLV-CHAR-SELECT: pass the session's pinned actor so the initial push
-          // serves the player's chosen PC instead of always roster[0].
-          selectedActorId: session?.selectedActorId,
-        }).catch((err) => {
+          ...(session?.selectedActorId !== undefined
+            ? { selectedActorId: session.selectedActorId }
+            : {}),
+        };
+        void pushInitialCharacterDelta(initialPushArgs).catch((err) => {
           logger.error({ err }, 'initial character.delta push failed');
         });
 
