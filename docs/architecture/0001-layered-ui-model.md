@@ -109,3 +109,34 @@ The single-capture-container migration on overlay open/close gives unambiguous R
 **INV-2 status:** Container budget statement (`max 4 image + 8 text/list + 1 capture per page`) re-verified against `hub.evenrealities.com/docs/guides/device-apis` 2026-05-14 — drift verdict NEUTRO. Broader canonical constraint *"no arbitrary pixel drawing, no audio output, no camera"* confirmed verbatim. Specific 200×100 per-image-container dimension not directly visible on the canonical primary fetch snapshot 2026-05-14 — flagged as INV-2 follow-up (non-blocker for this amendment). Full evidence: `.planning/quick/20260514-raster-dynamic-infill/EVIDENCE.md`.
 
 **Phase 14 ratification (2026-05-17):** Phase 14 (commit hash TBD — set by the commit step) ratifies the z=0.5 contract end-to-end: INV-1 fixtures locked (3 added — `raster-overlay-open.it.txt`, `raster-overlay-open.en.txt`, `glyph-scene.glyph-idle-z05.it.txt`); cross-state column-equality invariants verified (Z05-INV-01..04 in `packages/g2-app/src/status-hud/__tests__/z05-state-machine-fixtures.test.ts`); race coverage locked (LMT-DD-07 in `packages/g2-app/src/engine/__tests__/layer-manager.test.ts`). Full UI contract: `.planning/phases/EVF-14-raster-z-0-5-idle-content-infill/14-UI-SPEC.md` (Approval flipped to APPROVED Phase 14).
+
+### Amendment 2 — Character Status Sheet as default base layer (2026-06-05, Specs v0.9.14)
+
+**Status:** ACCEPTED — amends the z=0 assumption; does not overturn the layered model.
+
+**Trigger:** Real-glasses test revealed "scritte troppo grandi" — the G2 LVGL font has a fixed 27px line height (no font control per SDK); the old 28×21 corner card was designed for a ~12px/24-row grid. Text appeared ~2.25× too big, overlapping, and clipping on real hardware (user report 2026-06-05).
+
+**Decision:** The **default always-on glasses view** is now the **full-width Character Status Sheet** (~9 rows × ~50 chars, 576px wide, 27px grid), NOT the raster/glyph map. Specifically:
+
+- `z=1` (StatusHudLayer) is now the **visible default base layer** — the status sheet fills the full 576px width
+- `z=0` (MapBaseLayer) is **preserved in the layer stack** but its `draw()` is NOT called at boot for the default view — the map becomes a gesture-opened mode (deferred to Phase 20 / GEST-01 map-mode toggle)
+- `z=0.5` (IdleInfillLayer) is similarly **preserved but not painted** in the default view (idle-infill only fills empty map rows; with the status sheet as base there are no empty map rows)
+- All layer instances (`mapBase`, `idleInfill`) are still constructed and mounted in `lm.bundle()` so the deferred map-mode gesture toggle can re-activate them without a boot restart
+
+**Why this overturns the pre-v0.9.14 z=0 assumption:** ADR-0001 (2026-05-11) assumed "z=0 map is always the bottom layer and always visible." The 27px font grid makes it physically impossible to show the map (z=0) AND readable character data (z=1) simultaneously within the 576×288 pixel budget AND a 27px line height. The character's status data is more "glanceable" than the map (the map is the physical table; the player looks DOWN at it naturally — Specs.md Core Value). Therefore z=1 becomes the primary visible layer.
+
+**Consistency check vs original Option A:**
+
+- ✓ Container budget invariant preserved (4 image + 8 text/list + 1 capture — same registry, same IDs)
+- ✓ Status HUD persistence (z=1 always visible) — STRENGTHENED (now also the visible base)
+- ✓ Single capture container — unchanged (map-capture id=7 is still the sole `isEventCapture=1` container)
+- ✓ R1 input routing (INV-5) — unchanged (top-of-stack rule applies; map gesture toggle is future)
+- ✓ Panel Plugin System (Phase 5) contract — unchanged (z=2 overlays mount above z=1 status sheet)
+- ⚠ **Amendment to original**: z=0 map is no longer the default visible base. This is a design shift, not a contradiction — the layered z-stack model holds, but z=1 is now "always on top" in the default view.
+
+**INV-2 note:** No new hardware claims. The 27px line height + ~50-char budget cites the prior `@evenrealities/pretext` measurement (verified on this project via the library's README + font data from EvenHub firmware).
+
+**DEFERRED follow-up:** A dedicated "g2-app UI 27px density rework" phase will:
+1. Update all overlay panel renderers (combat tracker, inventory, spellbook, etc.) to the 27px grid
+2. Implement the real map-mode gesture toggle (Phase 20 / GEST-01)
+3. Re-evaluate the z=0.5 idle-infill role in map mode

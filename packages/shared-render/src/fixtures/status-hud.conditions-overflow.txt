@@ -1,21 +1,9 @@
-║ Thorin                   ║
-║ ────────────────         ║
-║ HP █████░░░              ║
-║    45/68                 ║
-║ AC 18  SPD —             ║
-║                          ║
-║ Act —  Bns —  R—         ║
-║ Mov —/—                  ║
-║                          ║
-║ Slots                    ║
-║                          ║
-║                          ║
-║                          ║
-║                          ║
-║ Conditions               ║
-║  ▶ poisoned              ║
-║    prone                 ║
-║    bless                 ║
-║    … +4                  ║
-║                          ║
-╠══════════════════════════╣
+Thorin   Lv5 —
+───────────────────────────…
+HP ██████▓░░░ 45/68   AC 18   SPD —
+Turn —   Round —   [—]
+Cond: poisoned, prone, bless, haste, rage, invisible, charmed
+───────────────────────────…
+Slots —
+Death saves  ○○○ / ○○○
+R1: ^v scroll  tap ping  oo menu

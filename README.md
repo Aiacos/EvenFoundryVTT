@@ -2,8 +2,8 @@
 
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
-[![status: v0.9.13 shipped](https://img.shields.io/badge/status-v0.9.13%20shipped-brightgreen)](#status)
-[![spec: v0.9.13](https://img.shields.io/badge/spec-v0.9.13-blue)](Specs.md)
+[![status: v0.9.14 shipped](https://img.shields.io/badge/status-v0.9.14%20shipped-brightgreen)](#status)
+[![spec: v0.9.14](https://img.shields.io/badge/spec-v0.9.14-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
 [![Foundry: v13.347+](https://img.shields.io/badge/foundry-v13.347%2B-orange)](https://foundryvtt.com)

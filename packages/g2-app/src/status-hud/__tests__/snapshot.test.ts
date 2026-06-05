@@ -101,8 +101,13 @@ function loadSceneFixture(filename: string): AsciiGrid {
   return AsciiGrid.fromString(text);
 }
 
-/** Build the Status HUD card AsciiGrid for a given locale + snapshot. */
-function buildHudCard(locale: HudLocale, snapshot: CharacterSnapshot): AsciiGrid {
+/**
+ * Build the Status HUD sheet string for a given locale + snapshot.
+ *
+ * HUD-27PX: renderer now returns a multi-line string (not AsciiGrid).
+ * The returned string has 9 lines joined with \n.
+ */
+function buildHudSheet(locale: HudLocale, snapshot: CharacterSnapshot): string {
   return new StatusHudRenderer({ locale }).render(snapshot);
 }
 
@@ -112,27 +117,27 @@ function buildHudCard(locale: HudLocale, snapshot: CharacterSnapshot): AsciiGrid
 
 describe('INV-1 ck 11 — Status HUD overflow', () => {
   it('INV-1 ck 11 [hp-overflow]: HP=99999/99999 + long name truncates to status-hud.hp-overflow.txt', async () => {
-    const grid = buildHudCard('en', {
+    // HUD-27PX: renderer returns a string (not AsciiGrid)
+    const output = buildHudSheet('en', {
       ...IDLE_SNAPSHOT,
       name: 'VeryLongNameOverflow',
       hp: 99999,
       maxHp: 99999,
       tempHp: 999,
     });
-    await matchAsciiFixture(
-      grid,
+    await expect(`${output}\n`).toMatchFileSnapshot(
       '../../../../shared-render/src/fixtures/status-hud.hp-overflow.txt',
     );
   });
 
-  it('INV-1 ck 11 [conditions-overflow]: 7 conditions → 3 visible + `… +4` row', async () => {
-    const grid = buildHudCard('en', {
+  it('INV-1 ck 11 [conditions-overflow]: 7 conditions → truncated within 576px', async () => {
+    // HUD-27PX: conditions overflow now uses pretext-budgeted truncation (not `… +4` row count)
+    const output = buildHudSheet('en', {
       ...IDLE_SNAPSHOT,
       tempHp: 0,
       conditions: ['poisoned', 'prone', 'bless', 'haste', 'rage', 'invisible', 'charmed'],
     });
-    await matchAsciiFixture(
-      grid,
+    await expect(`${output}\n`).toMatchFileSnapshot(
       '../../../../shared-render/src/fixtures/status-hud.conditions-overflow.txt',
     );
   });
@@ -236,7 +241,10 @@ describe('INV-1 ck 14 — i18n longest-string stress', () => {
 
 describe('INV-1 ck 15 — loading placeholder', () => {
   it('INV-1 ck 15 [loading]: renderLoading() matches status-hud.loading.txt', async () => {
-    const grid = new StatusHudRenderer({ locale: 'en' }).renderLoading();
-    await matchAsciiFixture(grid, '../../../../shared-render/src/fixtures/status-hud.loading.txt');
+    // HUD-27PX: renderer returns a string (not AsciiGrid)
+    const output = new StatusHudRenderer({ locale: 'en' }).renderLoading();
+    await expect(`${output}\n`).toMatchFileSnapshot(
+      '../../../../shared-render/src/fixtures/status-hud.loading.txt',
+    );
   });
 });

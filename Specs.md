@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.13)
+# EvenFoundryVTT — Project Specification (v0.9.14)
 
 ## 0. Executive Summary
 
@@ -1360,16 +1360,70 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 **z=0.5 placement**: occupa le ultime ~3 row del map-area (idle state). Quando un overlay z=2 viene montato, z=0.5 è demolito e quelle row tornano disponibili al z=2 layout. Vedi §7.4c per il contratto completo.
 
-### 7.4 Default View — Map + Persistent Status HUD
+### 7.4 Default View — Character Status Sheet (27px grid)
 
-> **Mode selector** (v0.7+): la mappa supporta due rendering mode mutuamente esclusivi, selezionabili runtime via Quick Action `[M] Map ctrl`:
->
-> - **`raster` (DEFAULT MVP)** — canvas Foundry rasterizzato 4-bit greyscale, 4 image container 2×2 = **400×200 px effective** (massimo possibile sull'hardware G2). **Faithful al canvas Foundry** (texture, lighting, walls, decorazioni). Pipeline §7.4b.4.
-> - **`glyph` (FALLBACK ALTERNATIVA)** — text-based glyph synthesis 66×21 char con `░▒▓` per terreno e lettere per token. Usato come fallback quando BLE saturato, canvas extract fallisce, o utente preferisce. Pipeline §7.4a. Mockup §7.4b.7.
->
-> Setting hot-swappable: `view.map.mode = "raster" | "glyph"` (default `"raster"`). Toggle gesture-friendly via Quick Action menu.
+> **HUD-27PX redesign (v0.9.14, 2026-06-05):** The default always-on glasses view is now the **full-width Character Status Sheet**, NOT the raster map. The G2 LVGL font has a **fixed 27px line height** (no font control per SDK). Screen: 576×288 px → ~10 rows max; full-width line ≈ ~50 chars (variable-width, measured by `@evenrealities/pretext`). The old 28×21 corner card was designed for a ~12px/24-row grid — text appeared ~2.25× too big on real glasses ("scritte troppo grandi"). This section describes the new default view. The raster/glyph map mode is a **DEFERRED gesture-opened overlay** (see §7.4 "Map mode — DEFERRED" below and ADR-0001 Amendment 2).
 
-#### Default view in **RASTER mode** (MVP default)
+#### Status-default view (27px grid) — IMPLEMENTED (v0.9.14)
+
+The always-on default view is the Character Status Sheet — ~9 rows × ~50 chars, full-width 576px:
+
+```
+Dante Lanzulli            Lv10 —
+────────────────────────────────────────────
+PF ██████████ 41/63   CA 16   VEL —
+Turno —   Round —   [—]
+Cond: concentrato, benedetto
+────────────────────────────────────────────
+Slot 1●●●○  2●●○  3●○
+TS morte  ○○○ / ○○○
+R1: ^v scorri  tap ping  oo menu
+```
+
+**Lettura (9 righe):**
+
+- **Riga 0**: nome personaggio · `Lv{N}` · classe (placeholder `—` finché non wired)
+- **Riga 1**: divisore `────` (full-width)
+- **Riga 2**: `{hpLabel} {barra HP} {cur}/{max}   {acLabel} {ac}   {velLabel} {vel}`
+  - HP bar: 10 glifi `█▓░`; CA e VEL da snapshot; VEL placeholder `—` (campo non ancora in CharacterSnapshot)
+- **Riga 3**: `Turno —   Round —   [—]` — placeholder `—` finché non wired (turn/round non in snapshot)
+- **Riga 4**: `Cond: {condizioni, ...}` — lista condizioni attive; troncata con `…+N` se troppo larga per 576px
+- **Riga 5**: divisore `────`
+- **Riga 6**: `Slot {1●●●○  2●●○  ...}` — spell slot (livelli da snapshot); `●` = disponibile, `○` = usato
+- **Riga 7**: `TS morte  ●●○ / ○○○` (IT) / `Death saves  ●●○ / ○○○` (EN) — tiri salvezza dalla morte
+- **Riga 8**: `R1: ^v scorri  tap ping  oo menu` (IT) — gesture hint row (sempre visibile, ultimo)
+
+**Width budget (INV-1):** ogni riga è misurata con `getTextWidth()` da `@evenrealities/pretext` e troncata con `…` se supera 576px. Il test `WIDTH-ASSERTION` in `status-hud-renderer.test.ts` fallisce la build se qualsiasi riga supera il budget.
+
+**Data-gap placeholder (HUD-27PX):** `CharacterSnapshot` non porta ancora classe, velocità, o turno/round. Questi campi renderizzano come `—` con marcatori `// TODO(HUD-27PX): wire <field>`. La veridicità del dato è prioritaria rispetto alla completezza visiva.
+
+**Locales:** tutti i label (PF/HP, CA/AC, VEL/SPD, Turno/Turn, TS morte/Death saves, Cond:/Cond:) sono in `HUD_WIDTH_BUDGETS` (i18n-budgets.ts) con chiavi `hud27_*`. MVP canonical: IT; fallback: EN; third: DE.
+
+**Containerizzazione (27px grid):**
+
+| Container | ID | x | y | w | h | Note |
+|-----------|----|---|---|---|---|------|
+| header | 4 | 0 | 0 | 576 | 27 | 1 riga header |
+| status-hud | 6 | 0 | 27 | 576 | 234 | 9 righe × 27px — **base visibile** |
+| footer | 5 | 0 | 261 | 576 | 27 | 1 riga footer |
+| map-capture | 7 | 0 | 27 | 576 | 234 | PRESERVATO per map-mode DEFERRED |
+| z05-* | 8-10 | 0 | 189/216/243 | 576 | 27 | PRESERVATI per idle-infill DEFERRED |
+
+**Seguono deferred feature**:
+- Map-mode gesture-opened (Phase 20 / GEST-01)
+- Wiring di classe, velocità, turno/round in CharacterSnapshot
+- Overlay 27px density rework (tutti i pannelli attuali usano ancora la griglia 12px — "g2-app UI 27px density rework" come fase dedicata)
+
+#### Map mode (gesture-opened) — DEFERRED (future phase)
+
+> **Nota:** prima di v0.9.14, la mappa raster/glyph era il layer base z=0 della default view. Dal v0.9.14 la mappa è un overlay aperto via gesture — non la base di default. Vedi ADR-0001 Amendment 2.
+>
+> **Mode selector** (DEFERRED — Phase 20): la mappa supporterà due rendering mode mutuamente esclusivi, selezionabili via Quick Action `[M] Map ctrl`:
+>
+> - **`raster`** — canvas Foundry rasterizzato 4-bit greyscale, 4 image container 2×2 = **400×200 px effective**. Pipeline §7.4b.4.
+> - **`glyph` (FALLBACK)** — text-based glyph synthesis. Pipeline §7.4a. Mockup §7.4b.7.
+
+#### Default view in **RASTER mode** (MVP — DEFERRED, was pre-v0.9.14 default)
 
 Stato di default (nessun overlay aperto). La mappa cattura input.
 
@@ -1405,7 +1459,7 @@ Stato di default (nessun overlay aperto). La mappa cattura input.
 
 - **Header** (top, 1 row text container): nome scena · indicatore mode · round/turno · batteria R1
 - **Map area** (left): **4 image container** 200×100 ciascuno, tiled 2×2, totale **400×200 px effective**, contenuto = canvas Foundry rasterizzato + ditherato (vedi §7.4b.4 pipeline)
-- **Status HUD** (right, ~28 char × 21 row, text container): scheda mini sempre visibile (HP/AC/azioni/slot/condizioni)
+- **Status HUD** (right, ~28 char × 21 row, text container — DEFERRED: questo era il layout pre-v0.9.14. Dal v0.9.14, il default è il full-width status sheet §7.4 sopra): scheda mini sempre visibile (HP/AC/azioni/slot/condizioni)
 - **Footer** (bottom, 1-2 row text container): hint gesture + mode toggle + chip nav overlay
 - **Refresh rate**: **5 fps standard event-based** (token movement, template placement, scene change), **8 fps burst** durante combat attivo, **15 fps aspirational** se Phase 0 conferma Layer 2+5 unlock. Idle 0.3 fps heartbeat (Layer 6 adaptive). Strategia stratificata in §7.4b.6.1.
 
@@ -2607,7 +2661,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.13                                          ║
+║                              EVENFOUNDRYVTT  v0.9.14                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -4047,6 +4101,18 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-06-05 (v0.9.14 — HUD-27PX: full-width 27px status sheet as default glasses view)** — Fix per "scritte troppo grandi": il font G2 LVGL ha altezza riga fissa 27px, non ~12px come il vecchio layout assumeva. **Bump v0.9.13 → v0.9.14.**
+  - **Root cause:** il renderer `StatusHudRenderer` e la geometria container in `container-registry.ts` erano progettati per una griglia 12px/24-righe (28 char × 21 righe). Sul G2 reale il testo appariva ~2.25× troppo grande, overlappato, e clippato.
+  - **Fix:** `status-hud-renderer.ts` riscritto per emettere 9 righe full-width (~50 chars, ~576px misurate da `@evenrealities/pretext`) al posto della vecchia corner card 28×21. La vista di default è ora il Character Status Sheet (non la mappa raster). Geometria container aggiornata (27px/riga: header h=27, footer y=261 h=27, status-hud x=0 w=576 y=27 h=234). Boot skip di `finalizeIdleRender` per la default view (mappa + idle-infill non dipinte di default, preservate per il deferred map-mode gesture toggle).
+  - **Layout approvato (9 righe):** nome+Lv · divisore · HP bar+cur/max+CA+VEL · Turno/Round · Cond: · divisore · Slot · TS morte · R1 hint. Data-gap: classe/velocità/turno renderizzati come `—` con TODO(HUD-27PX) marker.
+  - **Width budget (INV-1):** ogni riga misurata con `getTextWidth()` da `@evenrealities/pretext`; WIDTH-ASSERTION test fallisce la build su overflow. `pxTruncate` tronca con `…` se necessario.
+  - **DEFERRED:** tutti i pannelli overlay + real map-mode toggle → fase dedicata "g2-app UI 27px density rework" (Phase 20+). I container map-capture + z05-* sono preservati nel registry per il deferred map-mode.
+  - **INV-3 coerenza:** Specs.md §7.4 + ADR-0001 Amendment 2 + README.md + docs/showcase/index.html aggiornati nello stesso commit (questo).
+  - **INV-2 note:** nessuna claim hardware nuova — la rimisurazione 27px/~50 chars cita il finding esistente da `@evenrealities/pretext` (stessa libreria installata e verificata precedentemente).
+  - **Test delta:** +33 nuovi test (`SHR27-*` in `status-hud-renderer.test.ts`); fixture INV-1 aggiornate (`status-hud.loading.txt`, `hp-overflow.txt`, `conditions-overflow.txt`, `sync-lost.{it,en}.txt`); suite g2-app **1401 → 1434** test (pre-Task2 → Task3 finale, inclusi +33 SHR27 + aggiustamenti SHL-3 + IB key-count +6). TypeScript strict + Biome lint:ci clean.
+  - **Code:** `packages/g2-app/src/status-hud/status-hud-renderer.ts` · `status-hud-layer.ts` · `engine/container-registry.ts` · `internal/boot-engine-core.ts` · `status-hud/i18n-budgets.ts` (+6 chiavi `hud27_*`). Dipendenza `@evenrealities/pretext@0.1.4` aggiunta come devDependency.
+  - **Quick task:** `.planning/quick/260605-j0t-redesign-the-g2-hud-for-the-real-27px-fo/260605-j0t-PLAN.md`.
 
 - **2026-06-03 (PAIR-EHUB-01 — pairing reale = install via Even Hub + paste del token; QR-scan ritirato)** — Correzione di design/piattaforma applicata nello stesso PR su codice + doc (INV-3). **No spec version bump** (correzione coerente, no nuovi claim hardware/library/fps/phase/locale).
   - **Root cause (confermata):** il QR-pairing assunto in v0.9.11 era irrealizzabile. La piattaforma Even Hub **non espone fotocamera/QR-scan alle app** e l'app gira nel WebView del telefono; il PairModal nascondeva inoltre il token (mai reso come testo), quindi il DM non poteva passarlo al player. Path reale: install via Even Hub (dev `evenhub qr` = carica l'URL del plugin-host; prod `.ehpk` → review portale → store) + **paste manuale** del token.
