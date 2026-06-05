@@ -45,7 +45,8 @@
  *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
  *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
  *  12a. paint header (id4) + footer (id5) frame chrome — never leaves SDK 'Text' default
- *  13. await mapBase.draw() — first frame
+ *  13. await finalizeIdleRender(idleInfill, mapBase) — draw idle infill strips +
+ *       first map frame post-bundle (both rejection-guarded, ordered: idleInfill first)
  *  14. return { layerManager, rasterController, localeEvents, teardown }
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §W-4 + §NF-2
@@ -216,6 +217,51 @@ function buildBootSteps(): BootStep[] {
     { label: 'Mount Status HUD', state: 'pending' },
     { label: 'Mount Map Base', state: 'pending' },
   ];
+}
+
+/**
+ * Post-bundle idle render finalizer — step 13 of the boot sequence.
+ *
+ * Awaits `idleInfill.draw()` then `mapBase.draw()` in sequence, each under
+ * its own `try/catch` rejection guard. This ordering is CRITICAL:
+ *
+ * - Both calls must happen AFTER `layerManager.bundle()` (step 12) has issued
+ *   its single `rebuildPageContainer` flush. That flush resets every text
+ *   container — including z05-combat-log / z05-label / z05-stats (ids 8-10) —
+ *   back to the EvenHub SDK default literal "Text". Calling `idleInfill.draw()`
+ *   post-flush ensures the z05 strips always show their real idle content
+ *   instead of the SDK default.
+ *
+ * - `idleInfill.draw()` runs before `mapBase.draw()` so that a slow BLE write
+ *   for z05 does not race a parallel `map-capture` blank write. Sequential
+ *   execution keeps the ordering deterministic and simplifies reasoning about
+ *   the boot render timeline.
+ *
+ * Rejection guards: a failure from either draw call MUST NOT abort an
+ * already-booted engine. Each call is independently guarded (T-etr-03 pattern,
+ * matching the step-12a chrome-writer try/catch). Warnings are logged so
+ * on-device debugging remains actionable; execution continues regardless.
+ *
+ * Extracted as a standalone exported helper to make this sequencing
+ * unit-testable without mocking the full WS / bridge / boot infrastructure.
+ *
+ * @param idleInfill - Layer with a `draw()` method (IdleInfillLayer or mock).
+ * @param mapBase    - Layer with a `draw()` method (MapBaseLayer or mock).
+ */
+export async function finalizeIdleRender(
+  idleInfill: { draw(): Promise<void> },
+  mapBase: { draw(): Promise<void> },
+): Promise<void> {
+  try {
+    await idleInfill.draw();
+  } catch (err) {
+    console.warn('[boot-engine-core] idle-infill draw failed:', err);
+  }
+  try {
+    await mapBase.draw();
+  } catch (err) {
+    console.warn('[boot-engine-core] map-base draw failed in finalizeIdleRender:', err);
+  }
 }
 
 /**
@@ -1189,9 +1235,11 @@ export async function _bootEngineCore(
   //      chrome AFTER the flush guarantees id4/id5 carry final content and are never
   //      reset back to the SDK "Text" default by a later rebuild.
   //
-  //      StatusHudLayer / IdleInfillLayer self-redraw via their own `draw()` /
-  //      subscription path post-bundle; the header and footer have NO owning layer, so
-  //      this explicit post-flush write is their sole draw call.
+  //      StatusHudLayer self-redraws via its WS subscription path post-bundle.
+  //      IdleInfillLayer is explicitly drawn at step 13 via `finalizeIdleRender` —
+  //      it does NOT self-redraw (see step-13 comment for rationale).
+  //      The header and footer have NO owning layer, so this explicit post-flush
+  //      write is their sole draw call.
   //
   //      Rejection-guarded per T-etr-03: a chrome write failure MUST NOT abort an
   //      already-booted engine. Each writer is awaited inside its own try/catch so
@@ -1239,9 +1287,20 @@ export async function _bootEngineCore(
     }
   }
 
-  // 13. Draw first frame (no scene yet — MapBaseLayer.draw is a no-op until
-  //     Plan 06 pushes the first frame_pixels envelope).
-  await mapBase.draw();
+  // 13. Post-bundle render: draw idle infill strips + first map frame.
+  //
+  //     WHY HERE (not in step 12a): `layerManager.bundle()` (step 12) issues a
+  //     single `rebuildPageContainer` flush that resets ALL text containers — including
+  //     the z05 idle infill strips (ids 8-10) — back to the EvenHub SDK default literal
+  //     "Text". The step-12a chrome writers run post-flush; this step runs last, also
+  //     post-flush, so the z05 containers receive their real content and are never left
+  //     at the SDK default.
+  //
+  //     `finalizeIdleRender` awaits `idleInfill.draw()` first (so z05 strips paint),
+  //     then `mapBase.draw()` (which blanks map-capture in raster-idle). Each call is
+  //     independently rejection-guarded — a failure from either MUST NOT abort an
+  //     already-booted engine (T-etr-03 pattern).
+  await finalizeIdleRender(idleInfill, mapBase);
 
   // 14. Return the handle with teardown closure + step 9c effective locale + localeEvents.
   return {
