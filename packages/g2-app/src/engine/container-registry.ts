@@ -235,10 +235,30 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
 
 /**
  * Total base-page container count (= 4 image + 7 text = 11), within the SDK's
- * 1-12 limit. Use this for `containerTotalNum` in every base-page schema so the
- * value is never hardcoded outside this module.
+ * 1-12 limit. This counts ALL entries in the registry (including deferred
+ * map-mode containers). Used only for informational purposes and by the map-mode
+ * page schema when it declares all containers.
+ *
+ * @see BOOT_CONTAINER_TOTAL for the default status-view boot schema count.
  */
 export const BASE_CONTAINER_TOTAL = Object.keys(CONTAINER_REGISTRY).length;
+
+/**
+ * The DEFAULT STATUS-VIEW boot page declares only 3 text containers:
+ *   - header     (id 4): y=0,   height=27
+ *   - footer     (id 5): y=261, height=27
+ *   - status-hud (id 6): y=27,  height=234
+ *
+ * These three exactly fill 576×288 with no gaps and no overlaps (27+234+27=288).
+ * map-capture (id 7), z05-* (ids 8-10), and the 4 image map-tiles are EXCLUDED
+ * from the default boot schema — they are deferred to the gesture-opened map
+ * mode (Phase 20 / Specs §7.4). The G2 host rejected the full 11-container
+ * schema because map-capture and status-hud are identical full rects, and
+ * including isEventCapture=1 on one of them caused a host-side conflict.
+ *
+ * Use this constant for `containerTotalNum` in the default-view boot schema.
+ */
+export const BOOT_CONTAINER_TOTAL = 3;
 
 /**
  * Build the 4 base image containers (ids 0-3) as SDK `ImageContainerProperty`
@@ -274,6 +294,44 @@ export function buildBaseImageContainers(): ImageContainerProperty[] {
 export function buildBaseTextContainers(): TextContainerProperty[] {
   return Object.entries(CONTAINER_REGISTRY)
     .filter(([, e]) => e.kind === 'text')
+    .sort(([, a], [, b]) => a.id - b.id)
+    .map(
+      ([name, e]) =>
+        new TextContainerProperty({
+          containerID: e.id,
+          containerName: name,
+          xPosition: e.xPosition,
+          yPosition: e.yPosition,
+          width: e.width,
+          height: e.height,
+          isEventCapture: e.isEventCapture,
+        }),
+    );
+}
+
+/**
+ * The three default status-view container names declared in the boot schema.
+ * Exported as a frozen set so callers can filter against it without coupling to
+ * the string literals.
+ */
+const STATUS_VIEW_NAMES: ReadonlySet<string> = new Set(['header', 'footer', 'status-hud']);
+
+/**
+ * Build the 3 default status-view text containers (header, footer, status-hud)
+ * as SDK `TextContainerProperty` instances, in id order (4, 5, 6).
+ *
+ * These are the ONLY containers declared in the default boot page schema. They
+ * tile perfectly: header(y=0,h=27) + status-hud(y=27,h=234) + footer(y=261,h=27)
+ * = 288px total, no gaps, no overlaps, all within 576×288.
+ *
+ * map-capture (id 7), z05-* (ids 8-10), and the 4 image map-tiles are excluded.
+ * They remain in the registry for the deferred map-mode page schema (Phase 20).
+ *
+ * @returns The 3 `TextContainerProperty` instances in id order (header, footer, status-hud).
+ */
+export function buildStatusViewTextContainers(): TextContainerProperty[] {
+  return Object.entries(CONTAINER_REGISTRY)
+    .filter(([name, e]) => e.kind === 'text' && STATUS_VIEW_NAMES.has(name))
     .sort(([, a], [, b]) => a.id - b.id)
     .map(
       ([name, e]) =>

@@ -2,12 +2,16 @@
  * Page-lifecycle wrappers around `EvenAppBridge` page operations
  * (createStartUpPageContainer / rebuildPageContainer).
  *
- * Purpose: centralise the boot-page container schema declared by UI-SPEC
- * §Container Budget Allocation (raster mode idle row — 4 image + 7 text +
- * 1 capture = 11 containers within the SDK's 1-12 limit). All Phase 4a
- * engine consumers call these wrappers; nobody else may build a
+ * Purpose: centralise the boot-page container schema. All Phase 4a engine
+ * consumers call these wrappers; nobody else may build a
  * `CreateStartUpPageContainer` payload, so the schema stays canonical in
  * one place.
+ *
+ * DEFAULT (status-view) boot schema: 3 text containers — header, footer,
+ * status-hud — NO image containers. map-capture and z05-* are excluded to
+ * avoid the full-rect overlap that caused the G2 host to reject the schema
+ * (quick-260605-j0t-04 fix). They remain in the registry for the deferred
+ * map-mode page (Phase 20 / Specs §7.4).
  *
  * No virtual DOM (D-2.04, CLAUDE.md) — every method directly forwards an
  * SDK class instance to the bridge.
@@ -33,44 +37,36 @@ import {
   StartUpPageCreateResult,
   type TextContainerProperty,
 } from '@evenrealities/even_hub_sdk';
-import {
-  BASE_CONTAINER_TOTAL,
-  buildBaseImageContainers,
-  buildBaseTextContainers,
-} from './container-registry.js';
+import { BOOT_CONTAINER_TOTAL, buildStatusViewTextContainers } from './container-registry.js';
 
 /**
- * Build the canonical Phase 4a boot/main page container schema.
+ * Build the DEFAULT STATUS-VIEW boot page container schema.
  *
- * 4 image containers (200×100 each, tiled 2×2 = 400×200 effective):
- *   - map-tile-0 @ (  0,   0)
- *   - map-tile-1 @ (200,   0)
- *   - map-tile-2 @ (  0, 100)
- *   - map-tile-3 @ (200, 100)
+ * The default view declares ONLY 3 text containers — NO image containers:
+ *   - header     (id 4): y=0,   width=576, height=27  (1 row: boot splash)
+ *   - footer     (id 5): y=261, width=576, height=27  (1 row: R1 hint / mode)
+ *   - status-hud (id 6): y=27,  width=576, height=234 (9 rows × 27px)
  *
- * 7 text containers (one with isEventCapture=1):
- *   - header        (z=1, col 0-95)
- *   - footer        (z=1, col 0-95)
- *   - status-hud    (z=1, col 68-95)
- *   - map-capture   (z=0, isEventCapture=1)
- *   - z05-combat-log (z=0.5)
- *   - z05-label      (z=0.5)
- *   - z05-stats      (z=0.5)
+ * These three tile perfectly within 576×288: 27+234+27=288, no gaps, no
+ * overlaps. containerTotalNum: 3.
  *
- * containerTotalNum: 11 (= 4 image + 7 text, within SDK 1-12 limit).
+ * WHY NOT ALL 11? After the HUD-27PX redesign (quick-260605-j0t), `map-capture`
+ * (id 7) and `status-hud` (id 6) share the IDENTICAL full rect (x=0, y=27,
+ * w=576, h=234). The G2 host rejects a schema where two text containers — one
+ * with `isEventCapture=1` — occupy the same rectangle, returning a non-success
+ * result from `createStartUpPageContainer` (hence `bootEngine failed`). The fix
+ * is to declare ONLY the status-default containers at boot, and defer map-capture
+ * / z05-* / image map-tiles to the gesture-opened map-mode page (Phase 20).
  *
- * The schema is sourced ENTIRELY from the shared container registry
- * (`./container-registry.ts`) — the single source of truth for every
- * container's numeric `containerID`, pixel geometry, and `isEventCapture`
- * flag. The host requires a numeric `container_id` per container (otherwise
- * `textContainerUpgrade` is rejected → blank glasses) and text containers
- * need geometry to render at non-zero size; both now come from the registry
- * so the page schema and the upgrade call sites can never drift apart.
+ * The registry still holds all 11 entries; `buildStatusViewTextContainers()`
+ * filters to the 3 that belong to the default view.
  *
  * This is a pure helper exposed for tests and for any consumer that wants
  * to inspect the schema without invoking the bridge.
  *
  * @see ./container-registry.ts (CONTAINER_REGISTRY single source of truth)
+ * @see ./container-registry.ts#buildStatusViewTextContainers
+ * @see ./container-registry.ts#BOOT_CONTAINER_TOTAL
  * @see .planning/debug/glasses-render-blank-containerid.md
  */
 export function buildBootPageSchema(): {
@@ -78,15 +74,15 @@ export function buildBootPageSchema(): {
   imageObject: ImageContainerProperty[];
   textObject: TextContainerProperty[];
 } {
-  // All ids + geometry + isEventCapture come from the registry — nothing is
-  // hand-built here anymore (no drift between schema and upgrade sites).
-  const imageObject = buildBaseImageContainers();
-  const textObject = buildBaseTextContainers();
+  // Status-view only: header (id4), footer (id5), status-hud (id6).
+  // map-capture (id7), z05-* (ids 8-10), and image map-tiles are EXCLUDED
+  // — they are deferred to the gesture-opened map-mode page (Phase 20).
+  const textObject = buildStatusViewTextContainers();
 
-  // 4 image + 7 text → containerTotalNum: 11 (UI-SPEC §Container Budget Allocation).
+  // 0 image + 3 text → containerTotalNum: 3 (BOOT_CONTAINER_TOTAL).
   return {
-    containerTotalNum: BASE_CONTAINER_TOTAL,
-    imageObject,
+    containerTotalNum: BOOT_CONTAINER_TOTAL,
+    imageObject: [],
     textObject,
   };
 }
@@ -94,11 +90,11 @@ export function buildBootPageSchema(): {
 /**
  * Create the G2 boot page via `bridge.createStartUpPageContainer`.
  *
- * The 4-image + 7-text container schema is built by `buildBootPageSchema()`
- * (see that helper for the canonical layout). On non-success result, the
- * function throws an `Error` whose message includes the result value so
- * upstream boot-error UI can surface it (Phase 4b will wire the boot-error
- * branches BOOT-01).
+ * The default status-view schema (3 text containers: header, footer,
+ * status-hud) is built by `buildBootPageSchema()` — see that helper for
+ * the canonical layout. On non-success result, the function throws an `Error`
+ * whose message includes the result value so upstream boot-error UI can
+ * surface it (Phase 4b will wire the boot-error branches BOOT-01).
  *
  * Idempotency: callers must invoke this AT MOST ONCE per app boot. A
  * subsequent boot transition uses `rebuildPageContainer` (via the
@@ -124,12 +120,12 @@ export async function createBootPage(bridge: EvenAppBridge): Promise<void> {
 /**
  * Build the canonical main-page schema.
  *
- * Phase 4a: identical to the boot-page schema — the boot-splash overlays
- * its checklist onto the same 7 text containers via `textContainerUpgrade`,
- * and after handshake completion the LayerManager bundles in the real HUD
- * layers without a `shutDownPageContainer`/`createStartUpPageContainer`
- * round-trip. Phase 4b may diverge boot vs main page layouts (e.g., to
- * collapse z=0.5 in glyph mode boot) — at which point this function
+ * Phase 4a: identical to the boot-page schema (3 text containers: header,
+ * footer, status-hud) — the boot-splash overlays its checklist onto those
+ * containers via `textContainerUpgrade`, and after handshake completion the
+ * LayerManager bundles in the real HUD layers without a
+ * `shutDownPageContainer`/`createStartUpPageContainer` round-trip. Phase 4b
+ * may diverge boot vs main page layouts — at which point this function
  * becomes the divergence point.
  */
 export async function createMainPage(bridge: EvenAppBridge): Promise<void> {
