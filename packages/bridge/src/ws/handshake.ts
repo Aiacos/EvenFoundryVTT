@@ -129,19 +129,30 @@ export async function handleHandshake(
           // Reconnect path: reuse existing session or create a new one if expired
           const existing = sessionStore.getSession(client.session_id);
           if (existing !== undefined) {
+            // Reconnect-found: preserve the existing session's selectedActorId — do NOT overwrite.
             sessionId = existing.sessionId;
             replaySeq = replayBuffer.lastSeq(sessionId);
             logger.debug({ sessionId, replaySeq }, 'WS handshake: reconnect — replaying from seq');
           } else {
-            // Session not found (expired/flushed) — create new
-            const session = sessionStore.createSession(client.token, client.locale, intersection);
+            // Session not found (expired/flushed) — create new, thread actorId from client.
+            const session = sessionStore.createSession(
+              client.token,
+              client.locale,
+              intersection,
+              client.actorId,
+            );
             sessionId = session.sessionId;
             replaySeq = 0;
             logger.debug({ sessionId }, 'WS handshake: reconnect session not found — new session');
           }
         } else {
-          // First connect
-          const session = sessionStore.createSession(client.token, client.locale, intersection);
+          // First connect — thread actorId from client so the bridge pins this session.
+          const session = sessionStore.createSession(
+            client.token,
+            client.locale,
+            intersection,
+            client.actorId,
+          );
           sessionId = session.sessionId;
           replaySeq = 0;
           logger.debug({ sessionId }, 'WS handshake: new session created');

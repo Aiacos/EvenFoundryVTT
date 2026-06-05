@@ -18,6 +18,11 @@ import { z } from 'zod';
  * - `locale`       — BCP-47 primary tag (e.g. `"it"`, `"en"`).
  * - `capabilities` — Features the client claims to support.
  * - `session_id`   — Present on reconnect; omitted on first connect.
+ * - `actorId`      — Optional selected PC actor id (bridge domain); when set the bridge
+ *                    pins this session's `character.delta` to that actor so the HUD
+ *                    renders the player's chosen PC instead of always `characters[0]`.
+ *                    Must be non-empty when present (`min(1)`).
+ *                    Omit entirely (not `""`) for back-compat with existing clients.
  */
 export const HandshakeClientSchema = z.object({
   proto: z.literal('evf-v1'),
@@ -25,6 +30,7 @@ export const HandshakeClientSchema = z.object({
   locale: z.string().min(2).max(35),
   capabilities: z.array(z.string()),
   session_id: z.string().uuid().optional(),
+  actorId: z.string().min(1).optional(),
 });
 
 export type HandshakeClient = z.infer<typeof HandshakeClientSchema>;
