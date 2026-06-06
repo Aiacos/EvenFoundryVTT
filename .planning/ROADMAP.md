@@ -67,122 +67,148 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [ ] **Phase 25: Promozione Raster a Default Boot + Fallback Glyph** — `boot-engine-core.ts` switched a canvas-default · `?hud=raster` guard rimosso (INV-4 dead-code rule) · `renderMode: 'glyph'` attivato da `RasterController.setBleVerdict('glyph')` con switch atomico via `bundle([])` · prerequisiti: delta (Phase 24) + INV-2 re-verify (Phase 19) + capture-container sim test + INV-3 §7 (Phase 26) (RPROMO-02)
 - [ ] **Phase 26: INV-3 Doc Coherence Milestone Close** — `Specs.md §7` raster-HUD substrate section + ASCII mockup glyph-fallback migration + `README.md` Rendering section + `docs/showcase/index.html` stats · commit atomico INV-3 (RINV-03)
 
-
 ## Phase Details
 
 ### Phase 19: ADR-0013 Amendment 1 + Canvas Compositor Core
+
 **Goal**: Il contratto architetturale del compositor è scritto e ratificato, la geometria hardware dei tile è verificata contro la doc canonica, e il substrato `CanvasCompositor` + interfaccia `CanvasLayer` + schema-pagina 5-container sono implementati — senza alcun cambiamento visibile alla UI (la glyph path è byte-identica).
 **Depends on**: Nothing (prima deliverable del milestone)
 **Requirements**: RAST-01, RAST-02, RAST-03, RAST-04, RAST-05, RINV-02
 **Success Criteria** (what must be TRUE):
+
   1. ADR-0013 Amendment 1 è presente su disco e ratificato, descrivendo: geometria **regione raster 400×200 / 4 tile 200×100** (cap hardware INV-2), `updateImageRawData` **serializzato** (no invii concorrenti), **schema-pagina fisso** (cambio pannello via updateImageRawData, non rebuildPageContainer), compositor model Option B (per-layer OffscreenCanvas + drawImage), capture-container = text container full-screen `hud-capture` con `isEventCapture:1` dietro i tile, budget-mode canvas (fixed 5 container, `getContainerCount()` returns `{image:0, text:0}` per canvas layer), `renderMode: 'canvas' | 'glyph'`, selettore `_flushPage()` — scritto PRIMA di qualunque merge dell'implementazione
   2. INV-2 geometria già verificata (2026-06-05, `hub.evenrealities.com/docs/guides/display`: image max 4 × 20–200×20–100px → 400×200). La costante `HUD_TILE_GEOMETRY` è impostata a 200×100 (4 tile, regione 400×200); il posizionamento dei tile nei 576×288 è parametrizzato. SC hardware reale residua (regione 400×200 + capture-container renderizzano su G2): `human_needed` per ADR-0005 Branch A
   3. `pnpm test` passa con tutte le 2668+ test esistenti byte-identiche (zero regressioni sulla glyph path); i test di `CanvasCompositor` verificano: composite z-order, dirty/clean layer skip, `deactivate()`, `_compositeAndPush()` chiamato dopo `_flushPage` in modalità canvas
   4. `buildHudRasterPageSchema()` produce uno schema con `containerTotalNum: 5`, 4 image container (`hud-tile-0..3`) e 1 text container (`hud-capture`, `isEventCapture: 1`) — verificato in test unitari; `LayerManager` in canvas mode passa la budget-assertion senza `capture_invariant_violated`
   5. `LayerManager.renderMode` può essere impostato a `'canvas'` o `'glyph'`; in modalità `'glyph'` il comportamento di `_flushPage()` è identico a oggi (3 container text, glyph path byte-identica — verificabile via test)
+
 **Plans**: 4 plans (3 waves)
+
 - [ ] 19-01-PLAN.md — ADR-0013 Amendment 1 (canvas compositor contract, RAST-05)
 - [ ] 19-02-PLAN.md — HUD_TILE_GEOMETRY 288×144 → 200×100 / 400×200 migration (RINV-02)
 - [ ] 19-03-PLAN.md — CanvasCompositor + CanvasLayer + buildHudRasterPageSchema (RAST-01, RAST-02)
 - [ ] 19-04-PLAN.md — LayerManager renderMode + _flushPage selector + _compositeAndPush + canvas budget (RAST-03, RAST-04, RAST-01)
+
 **UI hint**: no
 
 ### Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline
+
 **Goal**: La status HUD (z=1) è renderizzata su canvas con font pixel VT323 e chrome statico pre-baked, il contratto INV-1 raster (hash PNG tile) è stabilito, e `inv:all` distingue la glyph suite dalla raster suite.
 **Depends on**: Phase 19 (CanvasCompositor + CanvasLayer interface)
 **Requirements**: RFONT-01, RFONT-02, RFONT-03, RINV-01
 **Success Criteria** (what must be TRUE):
+
   1. `@fontsource/vt323` è installato; `hud-font-loader.ts` carica il font nel Worker/canvas context via `FontFace` + `self.fonts.add(face)` con una fallback-chain `try/catch` a `'16px monospace'` — il font è risolto prima della prima frame, e il fallback è testato esplicitamente
   2. Il chrome statico (cornici, label, tab strip, sfondi) è pre-bakato una volta in `ImageBitmap` cache durante il mount del layer; render successivi ri-usano il bitmap via GPU blit senza re-draw del chrome (verificabile: il `paint()` del chrome-layer è invocato una volta sola per session finché lo stato statico non cambia)
   3. `CanvasStatusHudLayer.paint()` viene invocato solo quando il layer è `isDirty()` (dopo un `character.delta`); frame senza delta non triggerano re-paint né re-push (verificabile via spy sul compositor)
   4. `inv:all` mostra due suite distinte: "glyph suite" (fixture ASCII esistenti, validano la BLE-degraded fallback path) e "raster suite" (hash SHA-256 o xxhash dei byte PNG tile prodotti da un RGBA sintetico canonico passato a `buildHudTiles()`); entrambe devono essere verdi per `inv:all` a passare
   5. Il rename `'map-capture'` → `'hud-capture'` è propagato in tutti i siti (container-registry, MapBaseLayer, LayerManager assertion, test) senza regressioni
+
 **Plans**: 5 plans (3 waves)
+
 - [x] 20-01-PLAN.md — VT323 font loader + async attachCanvas signature (RFONT-01) ✅
 - [x] 20-02-PLAN.md — Raster INV-1 contract: synthetic RGBA → buildHudTiles → SHA-256 fixture (RINV-01) ✅
-- [ ] 20-03-PLAN.md — CanvasStatusHudLayer: chrome pre-bake + dirty-gate (RFONT-02, RFONT-03)
+- [x] 20-03-PLAN.md — CanvasStatusHudLayer: chrome pre-bake + dirty-gate (RFONT-02, RFONT-03)
 - [ ] 20-04-PLAN.md — inv:all glyph + raster suite split with FALSE-PASS guard (RINV-01)
 - [ ] 20-05-PLAN.md — canvas boot default + map-capture→hud-capture reconciliation (RFONT-02, RFONT-03, RINV-01)
+
 **UI hint**: yes
 
 ### Phase 21: Character Sheet su Canvas + Dati Main-tab
+
 **Goal**: La scheda PG è renderizzata come pannello raster overlay z=2, con i 6 tab disegnati su canvas, navigazione gesture preservata, portrait greyscale-dithered, e i campi `class`/`initiative`/`speed` estesi nello schema e wired nel tab Main.
 **Depends on**: Phase 20 (CanvasStatusHudLayer pattern established, font loader, INV-1 raster baseline)
 **Requirements**: RSHEET-01, RSHEET-02, RSHEET-03, RDATA-01, RDATA-02
 **Success Criteria** (what must be TRUE):
+
   1. Il tab Main della scheda su canvas mostra classe/livello reali (da `CharacterSnapshotSchema.class` + reader `foundry-module`), iniziativa e velocità reali (da `CharacterSnapshotSchema.initiative` + `speed` + readers) al posto dei placeholder `—`
   2. Un utente può aprire la scheda raster da ogni stato HUD, navigare tra i 6 tab (Main · Skills · Inventory · Spells · Features · Biography) via gesture scroll del R1 ring, e chiudere la scheda via double-press — le semantiche gesture sono byte-identiche al path glyph esistente (`panel-gesture-bus` non modificato)
   3. L'immagine portrait del personaggio è renderizzata all'interno della scheda canvas (fetch async-una-volta, greyscale-dithered via `image-q`, dimensionata per glanceability) — riusa l'infra portrait-override di `MapBaseLayer`; su fetch-fail il campo è omesso senza errori
   4. I renderer glyph/text esistenti (`render*Tab() -> string`) per i 6 tab sono preservati intatti per il fallback BLE-degraded; i nuovi `paint*Tab(ctx, bounds)` canvas sono ADDITIVE (dual-output pattern, nessuna cancellazione)
   5. `pnpm test` passa con test di regressione per `CharacterSnapshotSchema.class`/`initiative`/`speed` (schema + reader) e per `CanvasCharacterSheetPanel.paint()` (tab-switch, portrait missing, gesture-bus unchanged)
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 22: Features + Biography Schema Extension
+
 **Goal**: `CharacterSnapshotSchema` porta `feats[]` e `biography` con reader nel `foundry-module`; i tab Features e Biography della scheda raster mostrano dati reali invece delle fixture hardcoded.
 **Depends on**: Phase 21 (CanvasCharacterSheetPanel must exist to consume new fields)
 **Requirements**: RDATA-03, RDATA-04
 **Success Criteria** (what must be TRUE):
+
   1. `CharacterSnapshotSchema.feats` è un array `FeatEntry[]` (con `{category, name, isOrigin, description}`) validato da Zod; `extractFeats()` nel reader `foundry-module` filtra `actor.items` per categoria feat e popola il campo; il tab Features della scheda raster mostra i feat reali del personaggio, non la fixture `DEFAULT_FEATS` hardcoded
   2. `CharacterSnapshotSchema.biography` porta i campi personality/ideal/bond/flaw/backstory dal reader; il tab Biography della scheda raster mostra la bio reale del personaggio, non il testo hardcoded
   3. L'estensione schema è atomica con i renderer: schema + reader `foundry-module` + tab canvas Feats + tab canvas Bio sono tutti in scope di questo phase (nessuna finestra di stato intermedio con schema esteso ma renderer non aggiornato)
   4. I downstream tests che costruiscono `CharacterSnapshot` literals nelle suite g2-app/bridge/foundry-mcp sono aggiornati con i nuovi campi opzionali (nessuna regressione di compilazione TypeScript strict)
   5. `pnpm test` passa con test di schema (FeatEntry validation, empty feats array, biography omitted → empty string fallback), test reader (mock actor.items → extractFeats output), e test renderer (tab Features paint con dati reali vs vuoti)
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 23: Combat Tracker su Canvas + Combatant AC
+
 **Goal**: Il combat tracker è renderizzato come pannello raster overlay z=2 con la finestra scorrevole a 5 combattenti, highlight turno corrente, HP e AC reali, e le gesture di navigazione preservate.
 **Depends on**: Phase 21 (CanvasCombatTrackerPanel pattern established by CanvasCharacterSheetPanel)
 **Requirements**: RCOMB-01, RDATA-05
 **Success Criteria** (what must be TRUE):
+
   1. Il combat tracker raster mostra per ogni combattente nella finestra: nome, HP corrente/max, ordine iniziativa, indicatore di concentrazione, e `ac` reale (da `CombatantSchema.ac` + reader `foundry-module`) al posto del placeholder `' --'`
   2. La finestra scorrevole a 5 combattenti funziona via gesture scroll del R1 ring; il combattente di turno corrente è evidenziato con contrasto full; il tracker si aggiorna automaticamente su `combat.delta`
   3. La gesture di apertura/chiusura del pannello combat tracker su canvas è semanticamente identica alla version glyph (la chiusura via double-press è preservata); `PanelGestureBus` e `panel-router.ts` non sono modificati
   4. `CombatantSchema.ac` è esteso con Zod + reader nel `foundry-module`; l'estensione è atomica con il renderer (schema + reader + canvas panel in scope di questo phase)
   5. `pnpm test` passa con test `CanvasCombatTrackerPanel` (scroll window, current-turn highlight, ac rendering, missing-ac fallback) e test `CombatantSchema.ac` (schema validation + reader mock)
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 24: Delta Loop ~5fps xxhash
+
 **Goal**: La HUD raster è guidata da un loop ~5fps con delta sub-tile xxhash; solo i tile CHANGED vengono re-encodati/spediti; la HUD idle ha banda BLE quasi-zero.
 **Depends on**: Phase 20 (CanvasStatusHudLayer must exist), Phase 23 (all raster panels must be wired before delta governs them)
 **Requirements**: RPROMO-01
 **Success Criteria** (what must be TRUE):
+
   1. Un'istanza `TileDelta` con geometria 200×100 (i 4 tile della regione raster 400×200) è usata per hashing sub-tile; solo i tile con hash cambiato vengono re-encodati e spediti via `pushHudTiles` (serializzati); in HUD idle (nessun `character.delta` né `combat.delta`) zero tile vengono respinti dopo il primo frame
   2. Il loop rispetta un `MIN_REDRAW_INTERVAL_MS = 200` (debounce) — eventi `character.delta` ravvicinati vengono collassati in un singolo render cycle, non spediti individualmente
   3. Un test di simulazione dimostra che per un RGBA sintetico con 1 tile modificato su 4, solo 1 `updateImageRawData` viene chiamato (verificabile via spy sul bridge mock); per 0 tile modificati, 0 `updateImageRawData` vengono chiamati
   4. `pnpm test` passa con la suite delta-loop (geometria parametrizzata, debounce, dirty-tracking, zero-push-on-idle) senza regressione sui test canvas esistenti (Phases 20–23)
   5. Il chrome statico (pre-baked via `ImageBitmap`, Phase 20) non genera mai tile CHANGED tra frame consecutivi senza dati dinamici mutati — la bitmap statica è deterministica per input identici
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 25: Promozione Raster a Default Boot + Fallback Glyph
+
 **Goal**: La UI raster è il substrato di boot di default; il path glyph/text è il fallback BLE-degraded; il `?hud=raster` guard è rimosso (INV-4 dead-code rule); il switch di modalità è atomico.
 **Depends on**: Phase 24 (delta loop must precede promotion — BLE constraint), Phase 19 (INV-2 re-verify must be complete), Phase 26 is a parallel INV-3 gate (promotion PR and doc PR can be sequenced, but INV-3 §7 coherence must be committed before or in the same atomic commit as promotion)
 **Requirements**: RPROMO-02
 **Success Criteria** (what must be TRUE):
+
   1. `boot-engine-core.ts` monta `CanvasStatusHudLayer` (canvas mode) come default; la status-page text-container 3-container non è più il schema di boot (verificabile: `_flushPage()` emette `buildHudRasterPageSchema()` su prima startup senza `?hud=raster`)
   2. Il guard `?hud=raster` è rimosso; tutti i percorsi PoC isolati (`boot-hud-raster-poc.ts` o equivalenti) sono o rimossi o chiaramente annotati come `@deprecated glyph-fallback-only` + refactored in dead-code-safe naming (INV-4: nessun codice irraggiungibile senza TSDoc `@deprecated`)
   3. `RasterController.setBleVerdict('glyph')` attiva `LayerManager.setRenderMode('glyph')`, che esegue un `bundle([])` atomico e porta il sistema al 3-container text-schema; l'intera sequenza è testata end-to-end (canvas → glyph switch, zero frame intermedio con schema misto)
   4. La HUD glyph in modalità BLE-degraded è byte-identica al comportamento pre-v0.10.0 (le ~60 ASCII fixture INV-1 esistenti passano invariate — validazione della backward-compatibility del fallback)
   5. `pnpm test` + `pnpm typecheck` + `pnpm lint:ci` passano tutti; CI Gate 8 socketlib count rimane a 17 (nessun nuovo handler — questo milestone è read-path + render only)
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 26: INV-3 Doc Coherence Milestone Close
+
 **Goal**: `Specs.md §7`, `README.md` e `docs/showcase/index.html` sono aggiornati atomicamente in un singolo commit INV-3 per riflettere il substrato raster come default, con i mockup ASCII ricondotti alla sezione "Glyph Fallback Mode".
 **Depends on**: Phase 25 (comportamento finalizzato — la doc descrive l'output stabile e definitivo)
 **Requirements**: RINV-03
 **Success Criteria** (what must be TRUE):
+
   1. Un commit atomico singolo aggiorna `Specs.md §7.2` (nuovo paragrafo raster substrate + `CanvasCompositor` model), `Specs.md §7.4` (ASCII mockup esistente spostato in subsection "Glyph Fallback Mode — BLE-degraded path", chiaramente labeled), `README.md` sezione Rendering (rimossa la stat "10 rows × 50 chars", aggiunta descrizione canvas compositor), e `docs/showcase/index.html` (stats aggiornati) — il commit NON tocca codice applicativo
   2. I mockup ASCII in `Specs.md §7` NON sono cancellati — sono annotati come path BLE-degraded e spostati in subsection, preservando la loro funzione come spec per il fallback glyph
   3. `grep -n "10 rows × 50 chars\|27px SDK\|text-container.*status" README.md docs/showcase/index.html` restituisce 0 match (o i match rimasti sono esplicitamente in contesto "glyph fallback")
   4. Il changelog di `Specs.md` registra il bump di versione v0.9.x → v0.10.0 con stanza che riassume il milestone: compositor model, 6-tab raster sheet, combat tracker raster, delta loop, promozione a default, INV-1 raster contract
   5. `pnpm inv:all` (dopo Phase 25) è verde su entrambe le suite (glyph + raster); il commit INV-3 è l'atto di chiusura del milestone v0.10.0
+
 **Plans**: TBD
 **UI hint**: no
-
 
 ## Progress
 
@@ -209,7 +235,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 17. Sheet Skills Tab | v0.9.13 | 3/3 | Complete | 2026-05-18 |
 | 18. Phase-14.1 Spec-Drift Polish | v0.9.13 | 1/1 | Complete | 2026-05-18 |
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
-| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 0/5 | Planned | - |
+| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 3/5 | In Progress|  |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 0/? | Not started | - |
 | 22. Features + Biography Schema Extension | v0.10.0 | 0/? | Not started | - |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |

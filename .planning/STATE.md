@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 20-02-PLAN.md (Phase 20 Plan 2 — RINV-01 raster INV-1 SHA-256 tile hash fixture)
-last_updated: "2026-06-06T08:01:27Z"
-last_activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: synthetic RGBA → buildHudTiles → SHA-256 golden fixture)
+stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
+last_updated: "2026-06-06T08:14:24.483Z"
+last_activity: "2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)"
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
-  percent: 19
+  completed_plans: 7
+  percent: 13
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTING
-Plan: 3 of 5
-Status: Executing Phase 20
+Plan: 4 of 5
+Status: Ready to execute
 Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)
 
 ## Performance Metrics
@@ -87,6 +87,7 @@ Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1
 | Phase 10-polish-field-test-mvp P02 | 11m | 3 tasks | 8 files |
 | Phase 10-polish-field-test-mvp P04 | 291 | 3 tasks | 6 files |
 | Phase 13-v2-stretch P03 | 75m | 3 tasks | 17 files |
+| Phase 20 P03 | 367 | 1 tasks | 2 files |
 
 ## Quick Tasks Completed
 
@@ -277,7 +278,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-05-18T15:30:00.000Z
+Last session: 2026-06-06T08:14:24.474Z
 Stopped at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)

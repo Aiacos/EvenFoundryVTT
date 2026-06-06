@@ -22,8 +22,8 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 ### Render Substrate & Fonts (RFONT)
 
 - [ ] **RFONT-01**: Il font pixel **VT323** (`@fontsource/vt323`, self-hosted ~10KB WOFF2) è caricato nel contesto canvas/Worker con una **fallback chain** try/catch a `monospace` di sistema (incertezza `self.fonts` su WKWebView Worker iOS 16); il font è risolto prima della prima frame.
-- [ ] **RFONT-02**: Il chrome statico (cornici, label, tab strip, sfondi) è **pre-bakato una volta** in cache `ImageBitmap` e compositato sotto il contenuto dinamico a ogni frame (mix statico+dinamico), senza re-render per-frame del chrome.
-- [ ] **RFONT-03**: I dati dinamici (HP, slot, turni, condizioni) re-renderizzano **solo il proprio layer** su `character.delta` / `combat.delta` riusando `hud-live-render.ts`, poi ricompositano — non si ridisegna l'intero canvas se solo un layer cambia.
+- [x] **RFONT-02**: Il chrome statico (cornici, label, tab strip, sfondi) è **pre-bakato una volta** in cache `ImageBitmap` e compositato sotto il contenuto dinamico a ogni frame (mix statico+dinamico), senza re-render per-frame del chrome.
+- [x] **RFONT-03**: I dati dinamici (HP, slot, turni, condizioni) re-renderizzano **solo il proprio layer** su `character.delta` / `combat.delta` riusando `hud-live-render.ts`, poi ricompositano — non si ridisegna l'intero canvas se solo un layer cambia.
 
 ### Raster Character Sheet (RSHEET)
 
@@ -59,9 +59,11 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 Deferred to future milestones. Tracked but not in current roadmap.
 
 ### Raster pipeline generalization
+
 - **RGEN-01** (TODO-hud-raster #7): generalizzare `raster-worker` (oggi map-only) così map + HUD condividano un worker — entrambi usano la stessa geometria **400×200 / tile 200×100** (il full-screen raster non è possibile, cap 4 image-container); offload del tiling/encode fuori dal main thread.
 
 ### Standalone raster action panels
+
 - **RACT-01**: pannelli raster dedicati per Action Options / spellbook / inventory action (oggi tab dentro la scheda); valutare overlay raster autonomi se la densità lo richiede.
 
 ## Out of Scope
@@ -92,8 +94,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RAST-04 | Phase 19 | Pending |
 | RAST-05 | Phase 19 | Pending |
 | RFONT-01 | Phase 20 | Pending |
-| RFONT-02 | Phase 20 | Pending |
-| RFONT-03 | Phase 20 | Pending |
+| RFONT-02 | Phase 20 | Complete |
+| RFONT-03 | Phase 20 | Complete |
 | RINV-01 | Phase 20 | Resolved |
 | RSHEET-01 | Phase 21 | Pending |
 | RSHEET-02 | Phase 21 | Pending |
