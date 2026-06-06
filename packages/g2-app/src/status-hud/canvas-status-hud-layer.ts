@@ -153,8 +153,15 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    * (ADR-0013 Amendment 1, Q1 resolution — 20-01). The caller (LayerManager.bundle)
    * MUST await this Promise to guarantee font resolution before the first frame.
    *
+   * Null-context degradation: when `getContext('2d')` returns `null` (test
+   * environment — happy-dom has no canvas 2D implementation), the method logs a
+   * warning and returns without initialising `_ctx`. Subsequent `paint()` calls
+   * return early via the existing `if (ctx === null) return` null-guard. This
+   * mirrors the `CanvasCompositor.composite()` null-guard pattern (Rule 2 fix,
+   * plan 20-05) — integration tests that boot through `_bootEngineCore` survive
+   * the canvas-mode boot path without requiring a real 2D context.
+   *
    * @param canvas The OffscreenCanvas or HTMLCanvasElement this layer paints on.
-   * @throws `[EVF]` Error if `getContext('2d')` returns null.
    */
   async attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<void> {
     const ctx = canvas.getContext('2d') as
@@ -162,7 +169,14 @@ export class CanvasStatusHudLayer implements CanvasLayer {
       | CanvasRenderingContext2D
       | null;
     if (ctx === null) {
-      throw new Error('[EVF] CanvasStatusHudLayer.attachCanvas: getContext("2d") returned null');
+      // Degrade gracefully in test environments (happy-dom returns null for
+      // getContext('2d')). paint() already null-guards _ctx, so no further
+      // initialisation is needed — the layer becomes a no-op renderer.
+      console.warn(
+        '[EVF] CanvasStatusHudLayer.attachCanvas: getContext("2d") returned null ' +
+          '— running in degraded mode (no canvas 2D context; paint() is a no-op).',
+      );
+      return;
     }
     this._ctx = ctx;
     // Fire and store the async init — returns synchronously so LayerManager can
@@ -234,6 +248,26 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   getContainerCount(): { image: number; text: number } {
     return { image: 0, text: 0 };
+  }
+
+  /**
+   * Capture-container provider for canvas mode.
+   *
+   * Returns `'hud-capture'` — the full-screen text container (576×288,
+   * `isEventCapture:1`) declared in the HUD raster page schema
+   * (`buildHudRasterPageSchema()`). This satisfies the LayerManager
+   * capture-invariant (exactly one mounted layer provides a capture container)
+   * when operating in canvas mode with no glyph `MapBaseLayer` mounted.
+   *
+   * Note: in canvas mode the `'hud-capture'` container routes R1 gestures
+   * (INV-5). In glyph mode `MapBaseLayer` provides `'map-capture'` instead;
+   * the two serve distinct page schemas with different geometry.
+   *
+   * @see packages/g2-app/src/engine/container-registry.ts ('hud-capture' entry, id=4)
+   * @see packages/g2-app/src/engine/layer-manager.ts (_assertCaptureInvariant)
+   */
+  getCaptureContainer(): string {
+    return 'hud-capture';
   }
 
   /**

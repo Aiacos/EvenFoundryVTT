@@ -58,6 +58,7 @@ import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hu
 import type { ServerCap } from '@evf/shared-protocol';
 import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
+import { CanvasCompositor } from '../engine/canvas-compositor.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { DebugMirror } from '../engine/debug-mirror.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
@@ -92,6 +93,7 @@ import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
 import { attachSceneInputToWs } from '../scene-input.js';
+import { CanvasStatusHudLayer } from '../status-hud/canvas-status-hud-layer.js';
 import { IdleInfillLayer } from '../status-hud/idle-infill-layer.js';
 import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
@@ -588,7 +590,22 @@ export async function _bootEngineCore(
       },
     });
   }
-  const layerManager = new LayerManager(bridge, debugMirror);
+  // Phase 20 Plan 05 — canvas compositor injected into LayerManager at boot.
+  //
+  // The compositor is constructed here (step 7, before LayerManager) so it is
+  // available when LayerManager.bundle() creates OffscreenCanvas instances for
+  // CanvasLayer mounts and registers them via compositor.registerLayer().
+  // The compositor's eager _acquireMasterCtx() will succeed on a real Even App
+  // WebView (OffscreenCanvas or document.createElement fallback) and silently
+  // degrade to _masterCtx=null in unit-test environments (happy-dom returns null
+  // from getContext('2d')). The composite() null-guard in canvas-compositor.ts
+  // returns an all-zero RGBA buffer in that case (Rule 2 fix, plan 20-05) so
+  // the integration-test boot path continues cleanly.
+  //
+  // @see packages/g2-app/src/engine/canvas-compositor.ts
+  // @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
+  const compositor = new CanvasCompositor();
+  const layerManager = new LayerManager(bridge, debugMirror, compositor);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
   // the typed `ServerCap` literal union before handing to LayerManager. The
   // bridge's HandshakeServer producer only emits values from SERVER_CAPS_V1,
@@ -596,6 +613,20 @@ export async function _bootEngineCore(
   // schema drift surfaces immediately at the LayerManager mount gate.
   const negotiatedCaps = new Set<ServerCap>(handshake.server_caps as ServerCap[]);
   layerManager.setNegotiatedCaps(negotiatedCaps);
+
+  // Phase 20 Plan 05 — flip the effective boot render mode to canvas.
+  //
+  // The `LayerManager.renderMode` class field defaults to `'glyph'` (line 99,
+  // layer-manager.ts) — kept so all ~50 existing tests constructed without a
+  // compositor continue to pass unchanged. We flip to `'canvas'` HERE, after
+  // setNegotiatedCaps, so the boot-time page rebuild uses buildHudRasterPageSchema()
+  // (4 image tiles + 1 text capture = 5 containers) instead of the glyph
+  // status-view schema (3 text containers). This is the ONLY place where the
+  // render mode is changed at boot — no class-field edit in layer-manager.ts.
+  //
+  // Research lock (20-RESEARCH.md Q2): flip via setRenderMode here, never via
+  // the private class field — changing the field default breaks ~50 tests.
+  layerManager.setRenderMode('canvas');
 
   // 8. Construct the raster controller (singleton Worker + debounce).
   const rasterController = new RasterController(bridge);
@@ -726,6 +757,26 @@ export async function _bootEngineCore(
     // any character.delta cached during boot steps 6-9c.
     wsEvents: wsEventBus,
   });
+
+  // Phase 20 Plan 05 — CanvasStatusHudLayer for the canvas boot path.
+  //
+  // Constructed here (step 10, after wsEventBus is available at step 5a) so it
+  // can subscribe to `character.delta` with last-value-replay. It is the SOLE
+  // layer mounted in canvas mode (bundle step 12 below) because
+  // `_assertContainerBudget()` in canvas mode requires ALL mounted layers to
+  // return `{image:0, text:0}`, and the glyph layers (MapBaseLayer: {4,1} or
+  // {0,1}; StatusHudLayer/IdleInfillLayer/ToastQueueLayer: {0,1}) all fail that
+  // check. CanvasStatusHudLayer returns `{image:0, text:0}` and satisfies the
+  // canvas budget (isCanvasLayer predicate passes for it in layer-manager.ts).
+  //
+  // The glyph layers (mapBase, idleInfill, statusHud, toastQueue) are still
+  // constructed and destroyed in teardown — they hold subscriptions and are
+  // preserved for the future gesture-opened map-mode path (Phase 20+).
+  //
+  // `getCaptureContainer()` returns `'hud-capture'` (id=4, 576×288,
+  // isEventCapture=1) — satisfies `_assertCaptureInvariant()` which requires
+  // exactly 1 capture provider when no glyph MapBaseLayer is mounted.
+  const canvasStatusHud = new CanvasStatusHudLayer({ wsEvents: wsEventBus });
 
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
   //     canvas extractions route through controller.requestFrame.
@@ -1241,14 +1292,32 @@ export async function _bootEngineCore(
 
   // 12. Atomic bundle — exactly one rebuildPageContainer flush per ADR-0001
   //     Amendment 1 / CONTEXT.md §Area 1.
-  //     ToastQueueLayer is mounted at z=1.5 (between Status HUD and overlay slot — survives
-  //     z=2 overlay open per ADR-0009 Amendment 1 carve-out rule).
-  await layerManager.bundle([
-    { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
-    { type: 'mount', z: ZIndex.Z0_5_IDLE_INFILL, layer: idleInfill },
-    { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
-    { type: 'mount', z: ZIndex.Z1_5_TOAST, layer: toastQueue },
-  ]);
+  //
+  //     Phase 20 Plan 05 — canvas mode boot: mount ONLY CanvasStatusHudLayer.
+  //
+  //     In canvas mode `_assertContainerBudget()` requires ALL mounted layers
+  //     to return `{image:0, text:0}` (the container budget is zero — the fixed
+  //     5-container HUD raster page schema is declared once at page creation via
+  //     `buildHudRasterPageSchema()`; layers do not contribute containers
+  //     individually). The glyph layers (mapBase, idleInfill, statusHud,
+  //     toastQueue) return non-zero counts and CANNOT be mounted in canvas mode
+  //     without triggering `panel_mount_budget_exceeded`.
+  //
+  //     CanvasStatusHudLayer.getContainerCount() returns `{image:0, text:0}` ✓
+  //     CanvasStatusHudLayer.getCaptureContainer() returns `'hud-capture'` ✓
+  //     (satisfies the single-capture-provider invariant)
+  //
+  //     ToastQueueLayer is intentionally EXCLUDED in canvas mode: it returns
+  //     `{image:0, text:1}` which fails the canvas budget check. Toast display
+  //     in canvas mode will be composited via CanvasStatusHudLayer in a future
+  //     phase (Phase 20+, TODO(ADR-0013): canvas toast overlay layer).
+  //
+  //     The glyph layers (mapBase, idleInfill, statusHud, toastQueue) are still
+  //     constructed above and destroyed in teardown. They are preserved for the
+  //     gesture-opened map-mode path (Phase 20, §7.4) and future glyph fallback
+  //     (Phase 25, `renderMode='glyph'` path). Their subscription wiring
+  //     (WS channels, WsReconnectController, R1 event source, etc.) is intact.
+  await layerManager.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud }]);
 
   // 12a. Paint persistent frame chrome — header (id4) + footer (id5).
   //
@@ -1449,9 +1518,18 @@ export async function _bootEngineCore(
       }
       // Tear down layers in reverse-mount order. We do NOT use bundle() here
       // because bundle() asserts the capture-invariant; tearing the capture
-      // provider (z=0 MapBaseLayer) would fail that assertion mid-teardown.
-      // Direct destroy() on each Layer instance is correct for teardown
-      // since we're not flushing a new page.
+      // provider would fail that assertion mid-teardown. Direct destroy() on
+      // each Layer instance is correct for teardown since we're not flushing.
+      //
+      // Phase 20 Plan 05 — canvas mode adds CanvasStatusHudLayer.
+      // Destroy in reverse bundle order: canvasStatusHud was mounted at z=1
+      // (the only canvas-mode mount), then glyph layers (not mounted but still
+      // constructed — they hold subscriptions and must be cleaned up).
+      try {
+        canvasStatusHud.destroy();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: canvasStatusHud.destroy failed', err);
+      }
       try {
         toastQueue.destroy();
       } catch (err) {

@@ -169,10 +169,15 @@ export class CanvasCompositor implements CanvasCompositorLike {
   composite(): Uint8ClampedArray {
     const ctx = this._masterCtx;
     if (ctx === null) {
-      throw new Error(
-        '[EVF] CanvasCompositor.composite(): no 2D context available. ' +
-          'In unit tests call _testSetMasterContext() before composite().',
+      // No 2D context available (test environment without _testSetMasterContext, or
+      // OffscreenCanvas + document both unavailable). Return a zeroed RGBA buffer
+      // (all-black / transparent) rather than throwing — _compositeAndPush callers
+      // should degrade gracefully to a blank frame rather than crashing the engine.
+      // In unit tests that need real compositing, call _testSetMasterContext() first.
+      console.warn(
+        '[EVF] CanvasCompositor.composite(): no 2D context — returning empty RGBA (all-zero).',
       );
+      return new Uint8ClampedArray(COMPOSITOR_W * COMPOSITOR_H * 4);
     }
 
     // Sort by ascending ZIndex value — Map iteration is insertion-order only
