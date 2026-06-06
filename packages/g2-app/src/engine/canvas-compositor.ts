@@ -58,8 +58,6 @@ interface LayerEntry {
   readonly layer: CanvasLayer;
   /** The layer's own OffscreenCanvas or HTMLCanvasElement, blitted to master via drawImage. */
   readonly canvas: OffscreenCanvas | HTMLCanvasElement;
-  /** Dirty flag — true initially; cleared after each composite(); set by markDirty(). */
-  isDirty: boolean;
 }
 
 // ── Public interface ───────────────────────────────────────────────────────────
@@ -152,18 +150,23 @@ export class CanvasCompositor implements CanvasCompositorLike {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   registerLayer(z: ZIndex, canvas: OffscreenCanvas | HTMLCanvasElement, layer: CanvasLayer): void {
-    this._layers.set(z, { layer, canvas, isDirty: true });
+    this._layers.set(z, { layer, canvas });
   }
 
   deregisterLayer(z: ZIndex): void {
     this._layers.delete(z);
   }
 
-  markDirty(z: ZIndex): void {
-    const entry = this._layers.get(z);
-    if (entry !== undefined) {
-      entry.isDirty = true;
-    }
+  /**
+   * No-op — dirtiness is now delegated entirely to each `CanvasLayer.isDirty()`
+   * (CR-02 fix: the single source of truth is the layer's own flag, not a
+   * redundant `LayerEntry.isDirty` copy). The method is retained so existing
+   * callers and tests that call `markDirty(z)` continue to compile.
+   *
+   * @param _z ZIndex parameter — unused; kept for interface compatibility.
+   */
+  markDirty(_z: ZIndex): void {
+    // Delegated to layer.isDirty() — no per-entry tracking needed.
   }
 
   composite(): Uint8ClampedArray {
@@ -180,14 +183,21 @@ export class CanvasCompositor implements CanvasCompositorLike {
       return new Uint8ClampedArray(COMPOSITOR_W * COMPOSITOR_H * 4);
     }
 
+    // WR-02 fix: clear the master canvas before compositing so deregistered-layer
+    // pixels do not ghost onto subsequent frames.
+    ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+
     // Sort by ascending ZIndex value — Map iteration is insertion-order only
     // (same pattern as LayerManager.getTopLayer() line 408).
     const sorted = [...this._layers.entries()].sort(([a], [b]) => a - b);
 
     for (const [, entry] of sorted) {
-      if (entry.isDirty) {
-        entry.layer.paint();
-        entry.isDirty = false;
+      // CR-02 fix: delegate dirtiness to the layer's own isDirty() flag — this is
+      // the single source of truth. The old LayerEntry.isDirty copy was never updated
+      // by CanvasStatusHudLayer._dirty transitions and went permanently false after the
+      // first composite(), causing paint() to never be called again on delta events.
+      if (entry.layer.isDirty()) {
+        entry.layer.paint(); // paint() resets _dirty=false as its last statement
       }
       ctx.drawImage(entry.canvas, 0, 0);
     }
