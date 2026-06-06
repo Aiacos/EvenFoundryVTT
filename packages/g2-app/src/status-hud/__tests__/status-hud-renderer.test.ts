@@ -95,13 +95,15 @@ function makeSnapshot(overrides: Partial<CharacterSnapshot> = {}): CharacterSnap
       ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
       sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
     },
+    class: 'Fighter',
+    initiative: 2,
+    speed: 30,
     ...overrides,
   };
 }
 
 /**
  * Full approved mockup snapshot per the plan design contract.
- * Class/speed/turn absent from CharacterSnapshot — render as '—'.
  */
 const APPROVED_SNAPSHOT: CharacterSnapshot = makeSnapshot({
   actorId: 'dante-actor',

@@ -140,6 +140,9 @@ describe('GET /v1/character/:actorId', () => {
         ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
         sur: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
       },
+      class: 'Fighter',
+      initiative: 2,
+      speed: 25,
     };
     app = await makeApp('valid', async () => snapshot);
     const res = await app.inject({

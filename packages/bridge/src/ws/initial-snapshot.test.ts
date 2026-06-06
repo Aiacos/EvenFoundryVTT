@@ -67,6 +67,9 @@ const MOCK_SNAPSHOT = {
     ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
     sur: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
   },
+  class: 'Fighter',
+  initiative: 2,
+  speed: 25,
 } as const;
 
 function makeMockWs(shouldThrow = false) {

@@ -77,6 +77,9 @@ import { buildHudTiles } from './hud-raster-frame.js';
  * only used when the gate fails, so no untrusted data reaches the renderer.
  */
 const FALLBACK_SNAPSHOT: CharacterSnapshot = {
+  class: '',
+  initiative: 0,
+  speed: 30,
   actorId: 'fallback',
   name: '—',
   hp: 0,

@@ -519,7 +519,9 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
  */
 function extractClass(actor: ReturnType<typeof game.actors.get>): string {
   if (actor === undefined) return '';
-  const classItems = (actor.items?.contents ?? []) as Array<Record<string, unknown>>;
+  const classItems = (actor.items?.contents ?? []) as unknown as Array<
+    Record<string, unknown>
+  >;
   const names = classItems
     .filter((item) => item.type === 'class')
     .map((item) => item.name as string)

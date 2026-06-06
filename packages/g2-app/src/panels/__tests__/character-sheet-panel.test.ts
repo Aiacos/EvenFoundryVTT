@@ -343,6 +343,9 @@ describe('CharacterSheetPanel — draw()', () => {
     const { panel, bridge } = makePanel();
     // Provide a populated snapshot so the real renderer produces content
     const mockSnapshot = {
+      class: 'Fighter',
+      initiative: 2,
+      speed: 30,
       actorId: 'thorin-001',
       name: 'THORIN',
       hp: 45,
@@ -406,6 +409,9 @@ describe('CharacterSheetPanel — draw()', () => {
     const bus = new PanelGestureBus();
     const { panel, bridge } = makePanel({ bus });
     const mockSnapshot = {
+      class: 'Fighter',
+      initiative: 2,
+      speed: 30,
       actorId: 'thorin-001',
       name: 'THORIN',
       hp: 45,
@@ -663,6 +669,9 @@ describe('CharacterSheetPanel — portrait wiring (Plan 13-04)', () => {
 
 describe('CharacterSheetPanel — INV-1 Bio fixtures (Plan 13-04)', () => {
   const bioSnapshot = {
+    class: 'Fighter',
+    initiative: 2,
+    speed: 30,
     actorId: 'thorin-001',
     name: 'THORIN',
     hp: 45,

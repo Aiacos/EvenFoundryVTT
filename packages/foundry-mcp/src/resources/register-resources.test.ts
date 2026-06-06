@@ -89,6 +89,9 @@ function makeSnapshot(hp: number): CharacterSnapshot {
       ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
       sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
     },
+    class: 'Fighter',
+    initiative: 2,
+    speed: 30,
   };
 }
 

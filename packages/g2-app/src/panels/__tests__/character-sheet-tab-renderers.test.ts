@@ -100,6 +100,9 @@ function loadFixture(name: string): string {
  *   CHA  8 mod -1 save -1
  */
 const snapshot2014: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'thorin-oakenshield-001',
   name: 'THORIN OAKENSHIELD',
   hp: 45,

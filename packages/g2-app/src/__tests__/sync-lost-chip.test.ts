@@ -26,6 +26,9 @@ import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 // ─── Canonical test snapshot for fixture rendering ────────────────────────────
 
 const IDLE_SNAPSHOT: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'pc-aiacos',
   name: 'Aiacos',
   ac: 16,

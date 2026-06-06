@@ -108,6 +108,9 @@ function makeMockBus(): PanelGestureBus {
 
 /** Thorin F3/W5 — full caster with spells at levels 0, 1, 2, 3. */
 const snapshotCaster: CharacterSnapshot = {
+  class: 'Fighter / Wizard',
+  initiative: 2,
+  speed: 30,
   actorId: 'thorin-001',
   name: 'THORIN OAKENSHIELD',
   hp: 45,
@@ -245,6 +248,9 @@ const snapshotCaster: CharacterSnapshot = {
 
 /** Paladin 5 — half caster with L1 and L2 slots. */
 const snapshotHalfCaster: CharacterSnapshot = {
+  class: 'Paladin',
+  initiative: 1,
+  speed: 30,
   actorId: 'paladin-001',
   name: 'AELA AURORA',
   hp: 44,
@@ -711,6 +717,9 @@ describe('SpellbookPanel — isAtTopBoundary (ADR-0012 D-2)', () => {
  * (range !== 'self' && range !== '' && activation !== 'reaction').
  */
 const snapshotWithSpell: CharacterSnapshot = {
+  class: 'Wizard',
+  initiative: 2,
+  speed: 30,
   actorId: 'hero-001',
   name: 'HERO',
   hp: 30,

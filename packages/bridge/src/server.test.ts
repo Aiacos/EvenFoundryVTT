@@ -268,6 +268,9 @@ describe('buildServer integration', () => {
         ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
         sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
       },
+      class: 'Fighter',
+      initiative: 2,
+      speed: 30,
     };
 
     it('returns 200 with CharacterSnapshot for valid bearer + actorId', async () => {
@@ -1278,6 +1281,9 @@ const INITIAL_DELTA_SNAPSHOT = {
     ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
     sur: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
   },
+  class: 'Fighter',
+  initiative: 2,
+  speed: 25,
 } as const;
 
 describe('Quick Task 260605-d0v: WS connect → initial character.delta', () => {

@@ -34,6 +34,9 @@ import type { HudTile } from './hud-raster-frame.js';
  * boot-hud-raster-poc.ts to avoid duplicating the full schema here.
  */
 const MINIMAL_SNAPSHOT: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'test-actor',
   name: 'Test Hero',
   hp: 12,

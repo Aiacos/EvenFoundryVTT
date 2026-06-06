@@ -132,6 +132,9 @@ function makeValidSnapshot() {
       ste: { total: 1, ability: 'dex' as const, proficient: 0 as const, passive: 11 },
       sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
     },
+    class: 'Fighter',
+    initiative: 2,
+    speed: 30,
   };
 }
 
