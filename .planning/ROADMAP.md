@@ -127,7 +127,13 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   4. I renderer glyph/text esistenti (`render*Tab() -> string`) per i 6 tab sono preservati intatti per il fallback BLE-degraded; i nuovi `paint*Tab(ctx, bounds)` canvas sono ADDITIVE (dual-output pattern, nessuna cancellazione)
   5. `pnpm test` passa con test di regressione per `CharacterSnapshotSchema.class`/`initiative`/`speed` (schema + reader) e per `CanvasCharacterSheetPanel.paint()` (tab-switch, portrait missing, gesture-bus unchanged)
 
-**Plans**: TBD
+**Plans**: 5 plans (4 waves)
+
+- [ ] 21-01-PLAN.md — CharacterSnapshotSchema class/initiative/speed + foundry-module readers + ~27 downstream literals (RDATA-01, RDATA-02)
+- [ ] 21-02-PLAN.md — dither-utils.ts extraction (ditherTile + buildGreyscalePalette exported, size-parameterized) for portrait reuse (RSHEET-03)
+- [ ] 21-03-PLAN.md — CanvasCharacterSheetPanel dual-interface (CanvasLayer+OverlayPanel) + 6-tab paint*Tab + gesture-identical nav + boot dispatch (RSHEET-01, RSHEET-02)
+- [ ] 21-04-PLAN.md — portrait async-once fetch → dither → MapBaseLayer slot 3, silent on fail (RSHEET-03)
+- [ ] 21-05-PLAN.md — INV-1 fixtures: 4 sheet.main.*.txt row-6 real INI/VEL + canvas-sheet-panel.raster-hash.json + inv:all regression (RSHEET-01, RDATA-01, RDATA-02)
 **UI hint**: yes
 
 ### Phase 22: Features + Biography Schema Extension
