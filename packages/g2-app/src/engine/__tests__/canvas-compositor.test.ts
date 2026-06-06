@@ -51,8 +51,14 @@ function makeFakeCanvas() {
 /** Build a stub CanvasLayer with spied paint() and an in-memory canvas. */
 function makeLayer(): CanvasLayer & {
   paintSpy: ReturnType<typeof vi.fn>;
+  _dirty: boolean;
+  markDirtyForTest: () => void;
 } {
-  const paintSpy = vi.fn();
+  let dirty = true; // starts dirty at construction, as the real CanvasStatusHudLayer does
+  const paintSpy = vi.fn(() => {
+    // Mirrors the real contract: paint() resets _dirty=false as its last statement.
+    dirty = false;
+  });
   const fakeCanvas = makeFakeCanvas();
   const layer = {
     id: `layer-${Math.random()}`,
@@ -60,10 +66,19 @@ function makeLayer(): CanvasLayer & {
     destroy: vi.fn(),
     attachCanvas: vi.fn(),
     paint: paintSpy,
-    isDirty: vi.fn().mockReturnValue(true),
+    isDirty: vi.fn(() => dirty),
+    markDirtyForTest: () => {
+      dirty = true;
+    },
     paintSpy,
     _canvas: fakeCanvas,
-  } satisfies CanvasLayer & { paintSpy: ReturnType<typeof vi.fn>; _canvas: HTMLCanvasElement };
+    get _dirty() {
+      return dirty;
+    },
+  } satisfies CanvasLayer & { paintSpy: ReturnType<typeof vi.fn>; _canvas: HTMLCanvasElement } & {
+    markDirtyForTest: () => void;
+    _dirty: boolean;
+  };
   return layer;
 }
 
@@ -123,18 +138,42 @@ describe('CanvasCompositor', () => {
     const fakeCanvas = makeFakeCanvas();
     compositor.registerLayer(ZIndex.Z1_STATUS_HUD, fakeCanvas, layer);
 
-    // First composite — layer is dirty (registered with isDirty=true).
+    // First composite — layer is dirty (isDirty()=true initially).
     compositor.composite();
     expect(layer.paint).toHaveBeenCalledTimes(1);
+    // After paint(), the layer's isDirty() resets to false (real contract: paint()
+    // resets _dirty=false as its last statement; stub mirrors this).
+    expect(layer.isDirty()).toBe(false);
 
-    // Second composite WITHOUT markDirty — paint must NOT be called again.
+    // Second composite WITHOUT re-dirtying — paint must NOT be called again.
     compositor.composite();
     expect(layer.paint).toHaveBeenCalledTimes(1);
   });
 
   // ── CC-03: dirty propagation ───────────────────────────────────────────────
 
-  it('CC-03: markDirty(z) forces repaint on next composite()', () => {
+  it('CC-03: layer re-dirtied via markDirtyForTest forces repaint on next composite()', () => {
+    const layer = makeLayer();
+    const fakeCanvas = makeFakeCanvas();
+    compositor.registerLayer(ZIndex.Z1_STATUS_HUD, fakeCanvas, layer);
+
+    // First composite — paints and resets dirty flag.
+    compositor.composite();
+    expect(layer.paint).toHaveBeenCalledTimes(1);
+    expect(layer.isDirty()).toBe(false);
+
+    // Re-dirty the layer directly (simulates a character.delta arriving).
+    layer.markDirtyForTest();
+    expect(layer.isDirty()).toBe(true);
+
+    // Next composite should re-paint because isDirty()=true.
+    compositor.composite();
+    expect(layer.paint).toHaveBeenCalledTimes(2);
+  });
+
+  // ── CC-03b: markDirty API ─────────────────────────────────────────────────
+
+  it('CC-03b: compositor.markDirty() is a no-op (dirtiness now owned by layer.isDirty())', () => {
     const layer = makeLayer();
     const fakeCanvas = makeFakeCanvas();
     compositor.registerLayer(ZIndex.Z1_STATUS_HUD, fakeCanvas, layer);
@@ -143,10 +182,11 @@ describe('CanvasCompositor', () => {
     compositor.composite();
     expect(layer.paint).toHaveBeenCalledTimes(1);
 
-    // Mark dirty — should cause a repaint.
+    // markDirty on the compositor is now a no-op; the layer's own isDirty()=false
+    // still governs. paint() should NOT be called again.
     compositor.markDirty(ZIndex.Z1_STATUS_HUD);
     compositor.composite();
-    expect(layer.paint).toHaveBeenCalledTimes(2);
+    expect(layer.paint).toHaveBeenCalledTimes(1);
   });
 
   // ── CC-04: return shape ────────────────────────────────────────────────────

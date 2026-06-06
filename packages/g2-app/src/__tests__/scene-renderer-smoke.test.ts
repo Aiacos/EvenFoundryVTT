@@ -335,13 +335,18 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
     expect(ws.close).toHaveBeenCalled();
   });
 
-  it('SR-8: character.delta WS event → debounced textContainerUpgrade on status-hud', async () => {
+  it('SR-8: character.delta WS event → event-driven recomposite triggers updateImageRawData (canvas mode)', async () => {
+    // Boot boots in canvas mode (Phase 20: renderMode defaults to 'canvas').
+    // StatusHudLayer is NOT constructed in canvas mode (CR-03 fix) — no
+    // textContainerUpgrade to 'status-hud' is expected. Instead, character.delta
+    // makes CanvasStatusHudLayer dirty; the LayerManager event-driven recomposite
+    // subscriber (CR-01 fix) calls _compositeAndPush() → updateImageRawData ×4.
     const { handle, bridgeSpies, ws } = await bootWithMocks();
-    const callsBefore = bridgeSpies.textContainerUpgrade.mock.calls.length;
+    const tileCallsBefore = bridgeSpies.updateImageRawData.mock.calls.length;
     // Fire a valid CharacterSnapshot wrapped in the ws-event-bus envelope
     // shape ({type, payload}). The createWsEventBus helper in
-    // boot-engine-core.ts routes type==='character.delta' payloads to the
-    // StatusHudLayer subscriber.
+    // boot-engine-core.ts routes type==='character.delta' payloads to both
+    // CanvasStatusHudLayer (sets _dirty=true) and the recomposite subscriber.
     const snapshotEvent = JSON.stringify({
       type: 'character.delta',
       payload: {
@@ -389,16 +394,13 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       },
     });
     ws.fireMessage(snapshotEvent);
-    // StatusHudLayer debounces 200 ms before re-rendering.
-    await vi.advanceTimersByTimeAsync(250);
-    const callsAfter = bridgeSpies.textContainerUpgrade.mock.calls.length;
-    expect(callsAfter).toBeGreaterThan(callsBefore);
-    // Find the status-hud-container call.
-    const hudCall = bridgeSpies.textContainerUpgrade.mock.calls.slice(callsBefore).find((call) => {
-      const arg = call[0] as { containerName?: string };
-      return arg.containerName === 'status-hud';
-    });
-    expect(hudCall).toBeDefined();
+    // Canvas recomposite is event-driven (no debounce timer) — flush microtasks
+    // so the void _compositeAndPush() Promise resolves through the bridge call.
+    await Promise.resolve();
+    await Promise.resolve();
+    const tileCallsAfter = bridgeSpies.updateImageRawData.mock.calls.length;
+    // _compositeAndPush() pushes 4 tiles (one per HUD image container).
+    expect(tileCallsAfter).toBeGreaterThan(tileCallsBefore);
     handle.teardown();
   });
 
