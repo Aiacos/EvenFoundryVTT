@@ -37,13 +37,13 @@
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
  *  11b. attachR1EventSource(ws, gestureBus, lm, DEFAULT_R1_TIMINGS) — R1 gesture bridge (Phase 6)
- *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionLongPress(bus, router, lm, makeMenu)
+ *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionOverscroll(bus, router, lm, makeMenu)
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
  *  11e+. attachActionEconomyHandler(ws, currentUserId) — Plan 09-02 r1.action.economy → StatusHudLayer + AOM preconditioner
  *  11f. makeActionOptions factory closure + setPanelInstanceHandler('spellbook'/'inventory') — Plan 08-03 tap → Action Options modal injection (ADR-0012)
  *  11g. quickActionHandler([A][S][I][M]) + setPanelInstanceHandler('combat-tracker') — Plan 08-05 quick-action dispatch
- *  12. await lm.bundle([mount z=0, mount z=0.5, mount z=1, mount z=1.5]) — atomic single-flush (includes ToastQueueLayer)
+ *  12. await lm.bundle([mount z=1 CanvasStatusHudLayer]) — canvas mode: single layer flush
  *  12a. paint header (id4) + footer (id5) frame chrome — never leaves SDK 'Text' default
  *  13. await finalizeIdleRender(idleInfill, mapBase) — draw idle infill strips +
  *       first map frame post-bundle (both rejection-guarded, ordered: idleInfill first)
@@ -605,7 +605,12 @@ export async function _bootEngineCore(
   // @see packages/g2-app/src/engine/canvas-compositor.ts
   // @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
   const compositor = new CanvasCompositor();
-  const layerManager = new LayerManager(bridge, debugMirror, compositor);
+  // CR-01 fix: pass wsEventBus as the 4th constructor argument so LayerManager can
+  // subscribe to character.delta and trigger _compositeAndPush() when any mounted
+  // CanvasLayer becomes dirty. The wsEventBus was created at step 5a (before this
+  // step 7) — it is available here. Phase 24 replaces this trigger with the ~5fps
+  // xxhash sub-tile delta loop. (ADR-0013)
+  const layerManager = new LayerManager(bridge, debugMirror, compositor, wsEventBus);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
   // the typed `ServerCap` literal union before handing to LayerManager. The
   // bridge's HandshakeServer producer only emits values from SERVER_CAPS_V1,
@@ -746,17 +751,29 @@ export async function _bootEngineCore(
 
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
-  const statusHud = new StatusHudLayer({
-    bridge,
-    renderer: new StatusHudRenderer({ locale: effectiveLocale }),
-    // Phase 10 Plan 10-01: seqTracker is shared with the bus created at step 5a
-    // (no additional observe wiring needed here — globalHandler already calls it).
-    // Phase 10 Plan 10-02: perfProbe late-bound via wsEventBus.setPerfProbe above.
-    // Pass the SAME wsEventBus instance (created at step 5a, persistent listener
-    // already attached) — the StatusHudLayer.subscribeWsEvents call will replay
-    // any character.delta cached during boot steps 6-9c.
-    wsEvents: wsEventBus,
-  });
+
+  // CR-03 fix: only construct StatusHudLayer in glyph mode. In canvas mode the
+  // glyph StatusHudLayer's 30s heartbeat would fire bridge.textContainerUpgrade
+  // calls targeting container id=6 ('status-hud'), which does NOT exist in the
+  // HUD raster page schema (buildHudRasterPageSchema creates only 4 image tiles +
+  // 1 text capture = 5 containers; no id=6). Those calls are silently swallowed by
+  // the `void` operator but produce a background error storm every 30s. Deferring
+  // construction to glyph mode eliminates the spurious write loop entirely.
+  // CanvasStatusHudLayer (constructed below) is the sole HUD renderer in canvas mode.
+  const statusHud =
+    layerManager.getRenderMode() === 'glyph'
+      ? new StatusHudLayer({
+          bridge,
+          renderer: new StatusHudRenderer({ locale: effectiveLocale }),
+          // Phase 10 Plan 10-01: seqTracker is shared with the bus created at step 5a
+          // (no additional observe wiring needed here — globalHandler already calls it).
+          // Phase 10 Plan 10-02: perfProbe late-bound via wsEventBus.setPerfProbe above.
+          // Pass the SAME wsEventBus instance (created at step 5a, persistent listener
+          // already attached) — the StatusHudLayer.subscribeWsEvents call will replay
+          // any character.delta cached during boot steps 6-9c.
+          wsEvents: wsEventBus,
+        })
+      : null;
 
   // Phase 20 Plan 05 — CanvasStatusHudLayer for the canvas boot path.
   //
@@ -1027,10 +1044,12 @@ export async function _bootEngineCore(
       // FLV-CHAR-SELECT: re-send characterId on reconnect so the bridge restores the pin.
       performCapabilityHandshake(newWs, opts.token, opts.locale, sid, 10_000, opts.characterId),
     onChipTick: ({ remainingMs }) => {
-      statusHud.setSyncLost({ retryInMs: remainingMs });
+      // CR-03: statusHud is null in canvas mode — no chip display in canvas path yet.
+      statusHud?.setSyncLost({ retryInMs: remainingMs });
     },
     onChipUnmount: () => {
-      statusHud.setSyncLost(null);
+      // CR-03: statusHud is null in canvas mode — no-op.
+      statusHud?.setSyncLost(null);
     },
     onFullRefreshRequired: () => {
       // TODO(SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
@@ -1098,7 +1117,8 @@ export async function _bootEngineCore(
 
       // (3) HUD wsEvents bus — rebind the 3 status-hud channels onto newWs. seqProvider
       //     already reads the shared seqTracker (no rebind needed there).
-      statusHud.rebindWsEvents(createWsEventBus(newWs, seqTracker, perfProbe));
+      // CR-03: statusHud is null in canvas mode — rebind is a no-op in that path.
+      statusHud?.rebindWsEvents(createWsEventBus(newWs, seqTracker, perfProbe));
     },
   });
 
@@ -1139,7 +1159,9 @@ export async function _bootEngineCore(
         // Fail-open: if snapshot is null (no delta received yet), fall back to
         // requiresSlotPicker=false + defaultSlotLevel=0 (cantrip-safe path).
         const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
-        const snapshot = statusHud.getCachedSnapshot();
+        // CR-03: statusHud is null in canvas mode; fall back to null snapshot
+        // (same fail-open path as "no delta received yet" below).
+        const snapshot = statusHud?.getCachedSnapshot() ?? null;
         const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
         const spellLevel = spellEntry?.level ?? 0;
         const availableSlots =
@@ -1403,9 +1425,9 @@ export async function _bootEngineCore(
   //
   // The old call was:
   //   await finalizeIdleRender(idleInfill, mapBase);
-  // In the default status-sheet view this is intentionally a no-op — idleInfill
-  // and mapBase are mounted in lm.bundle (step 12) and destroyed in teardown,
-  // but their draw() is not called at boot for the default view.
+  // In the default status-sheet view this is intentionally a no-op.
+  // mapBase and glyph layers are constructed but NOT mounted in canvas mode; destroyed in teardown.
+  // Their draw() is not called at boot for the default view.
   // The deferred map-mode will call finalizeIdleRender() when the user opens
   // map mode via gesture (Phase 20).
 
@@ -1535,10 +1557,13 @@ export async function _bootEngineCore(
       } catch (err) {
         console.warn('[boot-engine-core] teardown: toastQueue.destroy failed', err);
       }
-      try {
-        statusHud.destroy();
-      } catch (err) {
-        console.warn('[boot-engine-core] teardown: statusHud.destroy failed', err);
+      // CR-03: statusHud is null in canvas mode — only destroy when constructed.
+      if (statusHud !== null) {
+        try {
+          statusHud.destroy();
+        } catch (err) {
+          console.warn('[boot-engine-core] teardown: statusHud.destroy failed', err);
+        }
       }
       try {
         idleInfill.destroy();
@@ -1549,6 +1574,12 @@ export async function _bootEngineCore(
         mapBase.destroy();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: mapBase.destroy failed', err);
+      }
+      // CR-01: release the event-driven recomposite subscription (character.delta listener).
+      try {
+        layerManager.disposeSubscriptions();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: layerManager.disposeSubscriptions failed', err);
       }
       try {
         ws.close();
