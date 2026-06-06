@@ -220,13 +220,22 @@ export interface OverlayPanel extends Layer {
  */
 export interface CanvasLayer extends Layer {
   /**
-   * Assign the OffscreenCanvas (or HTMLCanvasElement fallback) this layer paints on.
+   * Assign the OffscreenCanvas (or HTMLCanvasElement fallback) this layer paints on
+   * and perform any async initialisation (VT323 font load, ImageBitmap chrome pre-bake)
+   * required before the first `composite()` / `paint()` call.
    *
-   * Called by `LayerManager.bundle()` after the layer is registered, before the
-   * first `composite()` call. The canvas is provided by `CanvasCompositor` so
-   * ownership of the surface belongs to the layer but creation is managed centrally.
+   * Called by `LayerManager.bundle()` after the layer is registered and BEFORE the
+   * first `composite()` call. The returned Promise MUST be awaited — the canvas path
+   * guarantees font resolution and chrome pre-bake complete before the first frame
+   * (ADR-0013 Amendment 1, Q1 resolution).
+   *
+   * The canvas is provided by `LayerManager` (created per-layer at mount time) so
+   * ownership of the surface belongs to the layer but lifecycle is managed centrally.
+   *
+   * @see ADR-0013 Amendment 1 §Q1 (async attachCanvas resolution)
+   * @see packages/g2-app/src/status-hud/vt323-font-loader.ts (font load that requires await)
    */
-  attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): void;
+  attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<void>;
 
   /**
    * Repaint the layer's canvas from current cached state.

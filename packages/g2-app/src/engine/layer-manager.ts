@@ -46,6 +46,8 @@ import {
 } from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
 import {
+  type CanvasLayer,
+  isCanvasLayer,
   type Layer,
   LayerManagerError,
   type LayerOp,
@@ -118,6 +120,18 @@ export class LayerManager {
    * mounted at the time of overlay open.
    */
   private _suspendedZ05: Layer | null = null;
+
+  /**
+   * Per-layer canvases for `CanvasLayer` instances (ADR-0013 Amendment 1, Q1 resolution).
+   *
+   * Keyed by ZIndex. Created in `bundle()` when a `CanvasLayer` is mounted;
+   * removed when the layer is destroyed. The compositor holds a reference to
+   * each canvas via `registerLayer`; this map keeps the lifecycle aligned with
+   * the z-stack so canvases are created/destroyed in lock-step with layers.
+   *
+   * @see attachCanvas async call in bundle() STEP 2 (Q1 resolution)
+   */
+  private readonly _layerCanvases = new Map<ZIndex, OffscreenCanvas | HTMLCanvasElement>();
 
   /**
    * Bind the manager to a resolved `EvenAppBridge` singleton.
@@ -282,9 +296,12 @@ export class LayerManager {
       }
     }
 
-    // STEP 2 — Apply effective ops; collect panels needing lifecycle invocation.
+    // STEP 2 — Apply effective ops; collect panels needing lifecycle invocation and
+    //          canvas layers needing async attachCanvas (Q1 resolution, ADR-0013 Amendment 1).
     const mountedPanels: OverlayPanel[] = [];
     const unmountedPanels: OverlayPanel[] = [];
+    const mountedCanvasLayers: Array<{ z: ZIndex; layer: CanvasLayer }> = [];
+    const destroyedCanvasZIndices: ZIndex[] = [];
     for (const op of effective) {
       if (op.type === 'mount') {
         const requiredCaps = op.requiredCaps ?? [];
@@ -299,6 +316,10 @@ export class LayerManager {
         if (isOverlayPanel(op.layer)) {
           mountedPanels.push(op.layer);
         }
+        // Collect CanvasLayer mounts for async attachCanvas wiring (Q1 resolution).
+        if (isCanvasLayer(op.layer)) {
+          mountedCanvasLayers.push({ z: op.z, layer: op.layer });
+        }
         this.layers.set(op.z, op.layer);
         // Display mirror (Wave 4): record the mount op. No-op when mirror absent.
         this.debugMirror?.record({ op: 'mount', z: op.z, detail: op.layer.id });
@@ -307,10 +328,39 @@ export class LayerManager {
         if (existing !== undefined && isOverlayPanel(existing)) {
           unmountedPanels.push(existing);
         }
+        // Track canvas layer destroys for compositor deregistration.
+        if (this._layerCanvases.has(op.z)) {
+          destroyedCanvasZIndices.push(op.z);
+        }
         this.layers.delete(op.z);
         // Display mirror (Wave 4): record the destroy op. No-op when mirror absent.
         this.debugMirror?.record({ op: 'destroy', z: op.z, detail: existing?.id });
       }
+    }
+
+    // STEP 2.5 — CanvasLayer attachment (Q1 resolution, ADR-0013 Amendment 1).
+    //
+    // For each newly-mounted CanvasLayer, create a per-layer OffscreenCanvas (or
+    // HTMLCanvasElement fallback), await layer.attachCanvas(canvas) so font load +
+    // chrome pre-bake complete before the first composite(), then register with the
+    // compositor. For destroyed canvas layers, deregister from the compositor.
+    //
+    // Kept before STEP 3 (invariant checks) so that if attachCanvas throws, the
+    // bundle aborts before the bridge call — consistent with the mount-lifecycle
+    // rejection contract (STEP 5 pattern).
+    //
+    // No-op for plain Layer instances (isCanvasLayer returns false) — glyph path unchanged.
+    for (const { z, layer } of mountedCanvasLayers) {
+      const canvas = LayerManager._createLayerCanvas();
+      this._layerCanvases.set(z, canvas);
+      // await is load-bearing — ensures VT323 font load + chrome pre-bake complete
+      // before the first _compositeAndPush() in STEP 6 (Q1 resolution).
+      await layer.attachCanvas(canvas);
+      this.compositor?.registerLayer(z, canvas, layer);
+    }
+    for (const z of destroyedCanvasZIndices) {
+      this.compositor?.deregisterLayer(z);
+      this._layerCanvases.delete(z);
     }
 
     // STEP 3 — Invariants BEFORE bridge call. Capture first so `_assertContainerBudget`
@@ -617,5 +667,37 @@ export class LayerManager {
     const rgba = this.compositor.composite(); // 400×200×4 RGBA → 320000 bytes
     const tiles = buildHudTiles(rgba); // 4 × HudTile (200×100 dithered 4-bit PNG)
     await pushHudTiles(this.bridge, tiles); // serialized: for...of + await per tile (CM-01)
+  }
+
+  /**
+   * Create a per-layer OffscreenCanvas (or HTMLCanvasElement fallback) at the
+   * compositor dimensions (400×200).
+   *
+   * Environment resolution order mirrors `CanvasCompositor._acquireMasterCtx`:
+   *   1. `OffscreenCanvas` — Web Worker context.
+   *   2. `document.createElement('canvas')` — WebView / browser main thread.
+   *   3. Returns a minimal HTMLCanvasElement-shaped object — test environment
+   *      (happy-dom; real canvas layers are never mounted in tests that omit a
+   *      compositor, and those tests use plain Layer stubs whose `isCanvasLayer`
+   *      returns false).
+   *
+   * @internal Used exclusively by `bundle()` STEP 2.5 (Q1 resolution).
+   */
+  private static _createLayerCanvas(): OffscreenCanvas | HTMLCanvasElement {
+    if (typeof OffscreenCanvas !== 'undefined') {
+      return new OffscreenCanvas(400, 200);
+    }
+    if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 200;
+      return canvas;
+    }
+    // Test environment fallback: return a minimal canvas-shaped object.
+    // Real CanvasLayer implementations are never mounted in happy-dom tests
+    // (those tests use plain Layer stubs), so this path is only reached in
+    // corner-case test scenarios. The cast is intentional — the object satisfies
+    // the OffscreenCanvas | HTMLCanvasElement union for the attachCanvas signature.
+    return { width: 400, height: 200, getContext: () => null } as unknown as HTMLCanvasElement;
   }
 }
