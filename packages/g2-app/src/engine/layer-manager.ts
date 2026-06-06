@@ -38,7 +38,7 @@ import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hu
 import type { ServerCap } from '@evf/shared-protocol';
 import { pushHudTiles } from '../hud/hud-poc-page.js';
 import { buildHudTiles } from '../hud/hud-raster-frame.js';
-import type { CanvasCompositorLike } from './canvas-compositor.js';
+import { type CanvasCompositorLike, COMPOSITOR_H, COMPOSITOR_W } from './canvas-compositor.js';
 import {
   BOOT_CONTAINER_TOTAL,
   buildHudRasterPageSchema,
@@ -110,6 +110,32 @@ export class LayerManager {
   private readonly compositor: CanvasCompositorLike | null;
 
   /**
+   * WS event bus — used by `_startDeltaRecomposite()` to subscribe to
+   * `character.delta` for the event-driven recomposite trigger (CR-01 fix).
+   *
+   * Null when no `wsEvents` was passed at construction (default for existing
+   * 3-arg and 2-arg call sites — glyph mode and tests). Phase 20 boot path
+   * passes the live bus as the 4th constructor argument.
+   */
+  private readonly _wsEvents: {
+    subscribe(channel: string, fn: (raw: unknown) => void): () => void;
+  } | null;
+
+  /**
+   * Unsubscribe function for the event-driven recomposite trigger (CR-01 fix).
+   *
+   * In canvas mode, `_startDeltaRecomposite()` subscribes to `character.delta`
+   * via the wsEvents bus. On each delta, if any mounted CanvasLayer is dirty,
+   * `_compositeAndPush()` is triggered. Null until `_startDeltaRecomposite()`
+   * is called; released in `_stopDeltaRecomposite()` (called by `destroy()`).
+   *
+   * This is the Phase 20 minimal event-driven driver. The full ~5fps xxhash
+   * sub-tile delta loop lands in Phase 24 and replaces this mechanism.
+   * (ADR-0013)
+   */
+  private _deltaRecompositeUnsub: (() => void) | null = null;
+
+  /**
    * Idle infill layer stashed while a z=2 overlay is mounted.
    *
    * ADR-0009 Amendment 1 differential demolish rule: when `bundle()` mounts
@@ -149,6 +175,13 @@ export class LayerManager {
    *                    remains byte-identical. Pass a `CanvasCompositorLike` to enable
    *                    canvas mode (Phase 20+). All existing 2-arg call sites (boot-engine-core.ts,
    *                    tests) continue to compile unchanged — the parameter is optional.
+   * @param wsEvents    Optional WS event bus (Phase 20, CR-01 fix).
+   *                    When provided and `renderMode === 'canvas'`, `_startDeltaRecomposite()`
+   *                    subscribes to `character.delta` and triggers `_compositeAndPush()` when
+   *                    any mounted CanvasLayer is dirty. Null ⇒ no event-driven recomposite
+   *                    (first-frame-only behavior, acceptable for tests and glyph mode).
+   *                    Phase 24 replaces this minimal trigger with the ~5fps xxhash sub-tile
+   *                    delta loop. (ADR-0013)
    *
    * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (Open Question #3)
    */
@@ -156,8 +189,10 @@ export class LayerManager {
     private readonly bridge: EvenAppBridge,
     private readonly debugMirror?: DebugMirror,
     compositor?: CanvasCompositorLike,
+    wsEvents?: { subscribe(channel: string, fn: (raw: unknown) => void): () => void },
   ) {
     this.compositor = compositor ?? null;
+    this._wsEvents = wsEvents ?? null;
   }
 
   /**
@@ -636,6 +671,10 @@ export class LayerManager {
     await this.bridge.rebuildPageContainer(payload);
     if (this.renderMode === 'canvas') {
       await this._compositeAndPush();
+      // CR-01 fix: start the event-driven recomposite trigger so subsequent
+      // character.delta events reach the display. Phase 24 replaces this with
+      // the ~5fps xxhash sub-tile delta loop. (ADR-0013)
+      this._startDeltaRecomposite();
     }
   }
 
@@ -670,6 +709,60 @@ export class LayerManager {
   }
 
   /**
+   * Release the event-driven recomposite subscription (CR-01 fix).
+   *
+   * Call from `boot-engine-core` teardown so the `character.delta` listener does
+   * not keep the LayerManager alive in memory after the engine is torn down.
+   * Idempotent — safe to call multiple times.
+   *
+   * Named `disposeSubscriptions` (not `destroy`) to avoid shadowing the existing
+   * `destroy(z: ZIndex)` layer-removal method.
+   */
+  disposeSubscriptions(): void {
+    this._stopDeltaRecomposite();
+  }
+
+  /**
+   * Subscribe to `character.delta` on the WS event bus and trigger
+   * `_compositeAndPush()` when any mounted CanvasLayer is dirty.
+   *
+   * This is the Phase 20 minimal event-driven recomposite driver. The full ~5fps
+   * xxhash sub-tile delta loop lands in Phase 24 and replaces this mechanism.
+   * (ADR-0013)
+   *
+   * No-op when `_wsEvents` is null (glyph mode, tests without wsEvents).
+   * Idempotent — calling twice only creates one subscription (the previous
+   * subscription is released before a new one is created).
+   */
+  private _startDeltaRecomposite(): void {
+    if (this._wsEvents === null) return;
+    // Release any existing subscription before creating a new one (idempotency).
+    this._stopDeltaRecomposite();
+    this._deltaRecompositeUnsub = this._wsEvents.subscribe('character.delta', () => {
+      // Check after the delta is dispatched whether any mounted CanvasLayer is dirty.
+      // Because the WS event bus replays cached values synchronously at subscribe time,
+      // and CanvasStatusHudLayer._onDelta sets _dirty=true before this handler fires
+      // (both are synchronous subscribers), the dirty check here is always accurate.
+      const anyDirty = [...this.layers.values()].some((l) => isCanvasLayer(l) && l.isDirty());
+      if (anyDirty && this.compositor !== null) {
+        void this._compositeAndPush();
+      }
+    });
+  }
+
+  /**
+   * Release the event-driven recomposite subscription.
+   *
+   * Idempotent — safe to call when `_deltaRecompositeUnsub` is already null.
+   */
+  private _stopDeltaRecomposite(): void {
+    if (this._deltaRecompositeUnsub !== null) {
+      this._deltaRecompositeUnsub();
+      this._deltaRecompositeUnsub = null;
+    }
+  }
+
+  /**
    * Create a per-layer OffscreenCanvas (or HTMLCanvasElement fallback) at the
    * compositor dimensions (400×200).
    *
@@ -685,12 +778,12 @@ export class LayerManager {
    */
   private static _createLayerCanvas(): OffscreenCanvas | HTMLCanvasElement {
     if (typeof OffscreenCanvas !== 'undefined') {
-      return new OffscreenCanvas(400, 200);
+      return new OffscreenCanvas(COMPOSITOR_W, COMPOSITOR_H);
     }
     if (typeof document !== 'undefined') {
       const canvas = document.createElement('canvas');
-      canvas.width = 400;
-      canvas.height = 200;
+      canvas.width = COMPOSITOR_W;
+      canvas.height = COMPOSITOR_H;
       return canvas;
     }
     // Test environment fallback: return a minimal canvas-shaped object.
@@ -698,6 +791,10 @@ export class LayerManager {
     // (those tests use plain Layer stubs), so this path is only reached in
     // corner-case test scenarios. The cast is intentional — the object satisfies
     // the OffscreenCanvas | HTMLCanvasElement union for the attachCanvas signature.
-    return { width: 400, height: 200, getContext: () => null } as unknown as HTMLCanvasElement;
+    return {
+      width: COMPOSITOR_W,
+      height: COMPOSITOR_H,
+      getContext: () => null,
+    } as unknown as HTMLCanvasElement;
   }
 }
