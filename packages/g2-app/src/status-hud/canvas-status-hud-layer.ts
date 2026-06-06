@@ -372,6 +372,12 @@ export class CanvasStatusHudLayer implements CanvasLayer {
 // These are separated from the class so SC2 tests can spy on ctx draw calls
 // without needing to reach into private class internals.
 
+/** Background color — black fill (dithered to darkest palette step on G2). */
+const CHROME_BG = '#000000';
+
+/** Foreground color — white lines/text (quantized to brightest palette step on G2). */
+const CHROME_FG = '#ffffff';
+
 /**
  * Draw the static HUD chrome onto `ctx`.
  *
@@ -380,24 +386,38 @@ export class CanvasStatusHudLayer implements CanvasLayer {
  *   - During `_prebakeChrome()` onto a scratch OffscreenCanvas (production path).
  *   - Inline from `paint()` when `_chromeBitmap` is null (happy-dom fallback).
  *
+ * Sets explicit `fillStyle`/`strokeStyle` so chrome and dynamic text render
+ * visibly on the G2 4-bit greyscale phosphor display (WR-01 fix). The color
+ * convention mirrors `hud-canvas-renderer.ts`: `#000000` background +
+ * `#ffffff` foreground (quantized by the dither pipeline to the darkest/brightest
+ * palette steps respectively).
+ *
  * The implementation is intentionally minimal for Phase 20 — it draws the outer
  * frame rectangle and a tab-strip separator. Future phases will enrich this
  * (detailed borders, section labels, background fills).
  *
- * @param ctx   The 2D rendering context to draw on.
- * @param fontFamily CSS font string resolved by `ensureVt323Loaded`.
+ * @param ctx          The 2D rendering context to draw on.
+ * @param _fontFamily  CSS font string — reserved for Phase 21 chrome section labels.
+ *                     Currently unused (no text is drawn in chrome for Phase 20).
  */
 function _drawChrome(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
-  fontFamily: string,
+  _fontFamily: string,
 ): void {
-  // Outer border — phosphor green on black (VFD / CRT aesthetic).
+  // Black background fill — ensures chrome is opaque and not transparent (WR-01).
+  ctx.fillStyle = CHROME_BG;
+  ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+  // Outer border — white (brightest palette step → phosphor green on G2).
+  ctx.strokeStyle = CHROME_FG;
   ctx.strokeRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
   // Tab-strip separator line (divides HP/AC header from body).
   const TAB_H = 24;
+  ctx.fillStyle = CHROME_FG;
   ctx.fillRect(0, TAB_H, COMPOSITOR_W, 1);
-  // Section label region placeholder — font needed even for chrome labels.
-  ctx.font = fontFamily;
+  // WR-03 fix: the trailing `ctx.font = fontFamily` was a dead no-op — the font
+  // was immediately overwritten by _drawDynamic and no text is drawn here.
+  // Removed. Phase 21 chrome labels will set font at their own draw site.
+  // TODO(ADR-0013): Phase 21 — draw section labels in chrome using fontFamily.
 }
 
 /**
@@ -420,6 +440,9 @@ function _drawDynamic(
   snapshot: CharacterSnapshot | null,
   fontFamily: string,
 ): void {
+  // WR-01 fix: set explicit fillStyle so text renders visibly on the G2 greyscale
+  // phosphor display. White (#ffffff) quantizes to the brightest 4-bit palette step.
+  ctx.fillStyle = CHROME_FG;
   ctx.font = fontFamily;
   if (snapshot === null) {
     ctx.fillText('PF — / —', 4, 18);
