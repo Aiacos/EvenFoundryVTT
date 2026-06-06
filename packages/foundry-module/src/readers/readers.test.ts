@@ -176,6 +176,17 @@ function makeActor(
     // `system.skills` is omitted entirely (per-field defaults still apply
     // when a partial subset is provided).
     skills: Partial<Record<SkillMockKey, SkillMockShape>> | undefined;
+    // Phase 21 Plan 21-01: initiative modifier override.
+    // When absent from overrides, `system.attributes.init` is omitted entirely
+    // so CR-INI-2 can test the missing-field defensive-default branch.
+    initTotal: number | undefined;
+    // Phase 21 Plan 21-01: walking speed override.
+    // When absent from overrides, `system.attributes.movement` is omitted
+    // entirely so CR-SPD-2 can test the missing-field defensive-default branch.
+    movementWalk: number | undefined;
+    // Phase 21 Plan 21-01: class item names.
+    // When absent from overrides, items has no type==='class' entries.
+    classNames: string[];
   }> = {},
 ) {
   const death =
@@ -201,6 +212,31 @@ function makeActor(
   // at all, system.skills is omitted entirely.
   const skillsField = 'skills' in overrides ? { skills: overrides.skills } : {};
 
+  // Phase 21 Plan 21-01: initiative total — only present when `initTotal` is
+  // explicitly set in overrides (exercises the missing-field branch when absent).
+  const initField =
+    'initTotal' in overrides && overrides.initTotal !== undefined
+      ? { init: { total: overrides.initTotal } }
+      : {};
+
+  // Phase 21 Plan 21-01: movement walk speed — only present when `movementWalk`
+  // is explicitly set in overrides (exercises the missing-field branch when absent).
+  const movementField =
+    'movementWalk' in overrides && overrides.movementWalk !== undefined
+      ? { movement: { walk: overrides.movementWalk } }
+      : {};
+
+  // Phase 21 Plan 21-01: class items — injected into the items.contents array
+  // alongside any inventory/spell items passed in `overrides.items`.
+  const classItems = (overrides.classNames ?? []).map((name, idx) => ({
+    id: `class-${idx}`,
+    name,
+    type: 'class',
+    system: {},
+  }));
+
+  const allItems = [...classItems, ...(overrides.items ?? [])];
+
   return {
     id: overrides.id ?? 'actor-1',
     name: overrides.name ?? 'Aragorn',
@@ -211,6 +247,8 @@ function makeActor(
         ac: { value: overrides.acValue ?? 18 },
         exhaustion: overrides.exhaustion ?? 0,
         death,
+        ...initField,
+        ...movementField,
       },
       details: {
         level: overrides.level ?? 5,
@@ -221,7 +259,7 @@ function makeActor(
     },
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
-    items: { contents: overrides.items ?? [] },
+    items: { contents: allItems },
     // img is optional — omit key entirely if undefined to exercise the absence guard
     ...('img' in overrides && overrides.img !== undefined ? { img: overrides.img } : {}),
   };
@@ -1050,6 +1088,136 @@ describe('getCharacterSnapshot', () => {
     const snap = getCharacterSnapshot('pc-port-3');
     expect(snap).not.toBeNull();
     expect(snap?.portrait).toBeUndefined();
+  });
+
+  // ── Phase 21 Plan 21-01: class reader (CR-CLS-1..4) ───────────────────────
+
+  it('CR-CLS-1: single class item → snapshot.class = class name', () => {
+    // Standard single-class actor: one item with type==='class'.
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-cls-1', classNames: ['Fighter'] })]));
+
+    const snap = getCharacterSnapshot('pc-cls-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Fighter');
+  });
+
+  it('CR-CLS-2: two class items → snapshot.class = "Fighter / Wizard" (multiclass)', () => {
+    // Multiclass: two type==='class' items joined by ' / '.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-cls-2', classNames: ['Fighter', 'Wizard'] })]),
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Fighter / Wizard');
+  });
+
+  it('CR-CLS-3: no class items → snapshot.class = "" (classless / fresh actor)', () => {
+    // Fresh actor with no items of type==='class': empty string.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-cls-3' })]), // no classNames
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('');
+  });
+
+  it('CR-CLS-4: items array has non-class items — only class items contribute', () => {
+    // Verify filter: weapon items are not counted as class names.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([
+        makeActor({
+          id: 'pc-cls-4',
+          classNames: ['Ranger'],
+          items: [makeItem({ name: 'Longbow', type: 'weapon' })],
+        }),
+      ]),
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Ranger');
+  });
+
+  // ── Phase 21 Plan 21-01: initiative reader (CR-INI-1..4) ──────────────────
+
+  it('CR-INI-1: actor.system.attributes.init.total = 3 → snapshot.initiative = 3', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-1', initTotal: 3 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(3);
+  });
+
+  it('CR-INI-2: missing actor.system.attributes.init → defaults to 0', () => {
+    // Actor without init field: defensive default of 0.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-ini-2' })]), // no initTotal
+    );
+
+    const snap = getCharacterSnapshot('pc-ini-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(0);
+  });
+
+  it('CR-INI-3: negative initiative modifier (DEX penalty) → preserved verbatim', () => {
+    // D&D 5e: negative DEX modifier reduces initiative. Must not be clamped.
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-3', initTotal: -1 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(-1);
+  });
+
+  it('CR-INI-4: initiative = 0 → preserved (not treated as falsy/missing)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-4', initTotal: 0 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(0);
+  });
+
+  // ── Phase 21 Plan 21-01: walk speed reader (CR-SPD-1..4) ──────────────────
+
+  it('CR-SPD-1: actor.system.attributes.movement.walk = 25 → snapshot.speed = 25 (dwarf)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-1', movementWalk: 25 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(25);
+  });
+
+  it('CR-SPD-2: missing actor.system.attributes.movement → defaults to 30 (D&D standard)', () => {
+    // Actor without movement field: D&D 5e standard walk speed of 30 ft.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-spd-2' })]), // no movementWalk
+    );
+
+    const snap = getCharacterSnapshot('pc-spd-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(30);
+  });
+
+  it('CR-SPD-3: movement.walk = 0 → preserved (immobilised actor, not treated as missing)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-3', movementWalk: 0 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(0);
+  });
+
+  it('CR-SPD-4: movement.walk = 60 (fast actor) → preserved', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-4', movementWalk: 60 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(60);
   });
 });
 
