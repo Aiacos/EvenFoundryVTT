@@ -542,6 +542,27 @@ export const CharacterSnapshotSchema = z.strictObject({
    */
   skills: SkillsSchema,
   /**
+   * Character class display name (Phase 21 Plan 21-01 atomic extension; RDATA-01).
+   * REQUIRED — empty string for classless or fresh actors.
+   * Multiclass: joined as "Fighter / Wizard" (reader extracts from actor.items
+   * filtered to `type === 'class'`).
+   * `level` carries the numeric level separately — this field is class name(s) only.
+   */
+  class: z.string(),
+  /**
+   * Initiative modifier — dnd5e prep-time computed total (Phase 21; RDATA-02).
+   * REQUIRED — integer, may be negative (e.g. DEX-penalised character).
+   * Reader path: `actor.system.attributes.init.total ?? 0`.
+   */
+  initiative: z.number().int(),
+  /**
+   * Walking speed in feet (Phase 21; RDATA-02).
+   * REQUIRED — non-negative integer (standard D&D 5e: 30 ft; dwarves 25 ft).
+   * Reader path: `actor.system.attributes.movement.walk ?? 30`.
+   * Other movement modes (fly/swim/climb) are deferred to a future phase.
+   */
+  speed: z.number().int().nonnegative(),
+  /**
    * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
    *
    * Optional — omitted entirely for actors where `actor.img` is absent or an empty string.
