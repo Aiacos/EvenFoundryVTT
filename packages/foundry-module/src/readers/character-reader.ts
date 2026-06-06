@@ -505,6 +505,61 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
 }
 
 /**
+ * Extract character class display name(s) from `actor.items.contents` (Phase 21 Plan 21-01;
+ * RDATA-01).
+ *
+ * Filters items to `type === 'class'`, maps `.name`, joins with `' / '` for multiclass.
+ * Returns `""` for classless or fresh actors (zero class items — valid for new characters
+ * before class assignment). The `level` field on the snapshot carries the numeric level
+ * separately; this field is class name(s) only.
+ *
+ * Defensive: `undefined` actor returns `""`. Items without a truthy `name` are filtered out.
+ *
+ * @internal
+ */
+function extractClass(actor: ReturnType<typeof game.actors.get>): string {
+  if (actor === undefined) return '';
+  const classItems = (actor.items?.contents ?? []) as Array<Record<string, unknown>>;
+  const names = classItems
+    .filter((item) => item.type === 'class')
+    .map((item) => item.name as string)
+    .filter((n) => typeof n === 'string' && n.length > 0);
+  return names.join(' / ');
+}
+
+/**
+ * Extract the initiative modifier from `actor.system.attributes.init.total` (Phase 21 Plan
+ * 21-01; RDATA-02).
+ *
+ * Returns the dnd5e prep-time computed total initiative modifier (may be negative for
+ * characters with a DEX penalty). Defensive `?? 0` for fresh actors where `init` is
+ * undefined before the first preparation run (INV-2 safety net — standard dnd5e 5.x path).
+ *
+ * @internal
+ */
+function extractInitiativeModifier(actor: ReturnType<typeof game.actors.get>): number {
+  if (actor === undefined) return 0;
+  return actor.system?.attributes?.init?.total ?? 0;
+}
+
+/**
+ * Extract the walking speed in feet from `actor.system.attributes.movement.walk` (Phase 21
+ * Plan 21-01; RDATA-02).
+ *
+ * Returns the walk speed when it is a non-negative number; otherwise returns 30 (the D&D 5e
+ * standard default) to handle fresh actors, actors with no movement field, or actors with
+ * an invalid negative value (T-21-DATA-01 mitigation). Other movement modes (fly/swim/climb)
+ * are deferred to a future phase.
+ *
+ * @internal
+ */
+function extractWalkSpeed(actor: ReturnType<typeof game.actors.get>): number {
+  if (actor === undefined) return 30;
+  const walk = actor.system?.attributes?.movement?.walk;
+  return typeof walk === 'number' && walk >= 0 ? walk : 30;
+}
+
+/**
  * Returns a character snapshot for the given actor ID, or null.
  *
  * Returns null if:
@@ -526,6 +581,10 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
  * (T-05-04-01 mitigation — InventoryItemSchema gates the wire payload) and
  * `actor.system.spells` to populate `spells` (T-05-04-02 mitigation).
  * Defensive empty-array defaults for non-casters and fresh actors.
+ *
+ * Phase 21 Plan 21-01 addition: reads `class`/`initiative`/`speed` via the new
+ * {@link extractClass}, {@link extractInitiativeModifier}, and {@link extractWalkSpeed}
+ * readers (RDATA-01, RDATA-02).
  *
  * @param actorId - Foundry actor document ID
  * @returns CharacterSnapshot or null
@@ -585,6 +644,9 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     spells: extractSpellbook(actor),
     abilities: extractAbilities(actor),
     skills: extractSkills(actor),
+    class: extractClass(actor),
+    initiative: extractInitiativeModifier(actor),
+    speed: extractWalkSpeed(actor),
     ...portraitField,
   };
 }

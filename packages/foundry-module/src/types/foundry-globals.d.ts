@@ -262,6 +262,24 @@ interface Dnd5eAttributes {
     success: number;
     failure: number;
   };
+  /**
+   * Initiative modifier — dnd5e prep-time computed total (Phase 21).
+   * Path: `actor.system.attributes.init.total`.
+   * May be undefined on freshly-created actors; reader defends with `?? 0`.
+   */
+  init?: { total?: number };
+  /**
+   * Movement speeds in feet (Phase 21).
+   * Path: `actor.system.attributes.movement.walk` (walk speed).
+   * Other modes (fly/swim/climb) included for completeness; all optional.
+   * May be undefined on freshly-created actors; reader defends with default 30.
+   */
+  movement?: {
+    walk?: number;
+    fly?: number;
+    swim?: number;
+    climb?: number;
+  };
 }
 
 /** Subset of the dnd5e 5.x actor system details used by character-reader. */
