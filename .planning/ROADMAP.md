@@ -99,7 +99,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   5. Il rename `'map-capture'` → `'hud-capture'` è propagato in tutti i siti (container-registry, MapBaseLayer, LayerManager assertion, test) senza regressioni
 **Plans**: 5 plans (3 waves)
 - [x] 20-01-PLAN.md — VT323 font loader + async attachCanvas signature (RFONT-01) ✅
-- [ ] 20-02-PLAN.md — Raster INV-1 contract: synthetic RGBA → buildHudTiles → SHA-256 fixture (RINV-01)
+- [x] 20-02-PLAN.md — Raster INV-1 contract: synthetic RGBA → buildHudTiles → SHA-256 fixture (RINV-01) ✅
 - [ ] 20-03-PLAN.md — CanvasStatusHudLayer: chrome pre-bake + dirty-gate (RFONT-02, RFONT-03)
 - [ ] 20-04-PLAN.md — inv:all glyph + raster suite split with FALSE-PASS guard (RINV-01)
 - [ ] 20-05-PLAN.md — canvas boot default + map-capture→hud-capture reconciliation (RFONT-02, RFONT-03, RINV-01)

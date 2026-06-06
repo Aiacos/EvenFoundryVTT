@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 20-01-PLAN.md (Phase 20 Plan 1 — VT323 font loader + async attachCanvas wired)
-last_updated: "2026-06-06T09:52:00.000Z"
-last_activity: 2026-06-06 -- Phase 20 Plan 01 completed (ensureVt323Loaded + CanvasLayer.attachCanvas Promise<void>)
+stopped_at: Completed 20-02-PLAN.md (Phase 20 Plan 2 — RINV-01 raster INV-1 SHA-256 tile hash fixture)
+last_updated: "2026-06-06T08:01:27Z"
+last_activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: synthetic RGBA → buildHudTiles → SHA-256 golden fixture)
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
-  percent: 17
+  completed_plans: 6
+  percent: 19
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Executing Phase 20
-Last activity: 2026-06-06 -- Phase 20 Plan 01 completed (@fontsource/vt323 + ensureVt323Loaded() + CanvasLayer.attachCanvas Promise<void>)
+Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)
 
 ## Performance Metrics
 
