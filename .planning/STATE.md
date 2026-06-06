@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: executing
-stopped_at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
-last_updated: "2026-06-06T08:19:53.508Z"
+status: verifying
+stopped_at: Completed 20-05-PLAN.md
+last_updated: "2026-06-06T08:41:39.340Z"
 last_activity: "2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)"
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 8
-  percent: 13
+  completed_plans: 9
+  percent: 25
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)
 
 ## Performance Metrics
@@ -89,6 +89,7 @@ Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1
 | Phase 13-v2-stretch P03 | 75m | 3 tasks | 17 files |
 | Phase 20 P03 | 367 | 1 tasks | 2 files |
 | Phase 20 P04 | 8 min | 1 tasks | 2 files |
+| Phase 20 P05 | 30 | 3 tasks | 3 files |
 
 ## Quick Tasks Completed
 
@@ -220,6 +221,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 18 D-4]: **`[GLY]` state-marker exemption** — C_it row 20 cols 89..93 carry `[GLY]` (legitimate glyph-mode indicator per UI-SPEC §6.3); A_it has these cols as spaces. Surgical 5-cell skip (`if (row === 20 && col >= 89 && col <= 93) continue;`) instead of dropping row 20 from the sweep — preserves regression detection on the rest of row 20 cols 69..88, 94..95 against any future drift around the marker. Choice preserves both UI-SPEC §6.3 visual contract and the triade test's tight regression net.
 - [Phase 18 D-5]: **INV-3 atomic close** — single commit ratifies Specs.md v0.9.12 → v0.9.13 bump + changelog stanza + README badge + showcase version stat + STATE.md frontmatter complete + ROADMAP Phase 18 ✅ + REQUIREMENTS INFILL-14.1-A/B/C → Resolved + 18-VERIFICATION.md. Pattern continues the Phase 14 (`3a0c5cf`) / Phase 15 (`dc161d6`) / Phase 16 (`d68d7f2`) / Phase 17 (`c208d24`) precedent. No quick task fall-out — Phase 18 is the milestone-close phase, not a follow-up.
 - [Phase ?]: 20-04
+- [Phase 20]: FALLBACK: hud-capture (id=4) and map-capture (id=7) are geometrically distinct; both CONTAINER_REGISTRY entries kept
+- [Phase 20]: Canvas boot default via setRenderMode in boot-engine-core.ts only; LayerManager class-field default stays glyph
+- [Phase 20]: Canvas mode bundles only CanvasStatusHudLayer; glyph layers constructed but not mounted (canvas budget constraint)
 
 ### Pending Todos
 
@@ -280,8 +284,8 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-06T08:19:50.604Z
-Stopped at: Completed 18-PLAN.md (Phase 18 CLOSED — v0.9.13 Sheet Data Completion + Polish ✅ SHIPPED)
+Last session: 2026-06-06T08:41:39.333Z
+Stopped at: Completed 20-05-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
 

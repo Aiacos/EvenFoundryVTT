@@ -59,7 +59,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 **Milestone Goal:** Sostituire il substrato di rendering della UI HUD da text-container 27px a immagini raster compositate su una regione raster condivisa 400×200 → dither → 4 tile 200×100 → push serializzato ai 4 image-container SDK, con full controllo tipografico, scheda PG a 6 tab, combat tracker, delta loop ~5fps e promozione a boot di default. **(INV-2 2026-06-05: image-container G2 = max 4 × ≤200×100 → 400×200, lo schermo pieno non è raster; vedi memory `g2-image-container-hard-limits`.)**
 
 - [x] **Phase 19: ADR-0013 Amendment 1 + Canvas Compositor Core** ✅ (5/5 software must-haves; hardware-render SC human_needed per ADR-0005 Branch A) — ADR scritto prima dell'impl (geometria 400×200 / 4 tile 200×100 ratificata, push serializzato, schema-pagina fisso) · `CanvasCompositor` (regione 400×200) + `CanvasLayer` + `buildHudRasterPageSchema()` (5 container: 4 image-tile 200×100 + 1 text capture full-screen `isEventCapture:1`) · `LayerManager` `renderMode` + `_flushPage()` mode-selector + `_compositeAndPush()` (serializza i 4 `updateImageRawData`) + fixed-budget assertion · glyph path byte-identico; NESSUNA UI change (RAST-01..05, RINV-02)
-- [ ] **Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline** — `CanvasStatusHudLayer` (z=1) · `@fontsource/vt323` con fallback-chain try/catch · chrome statico pre-baked via `ImageBitmap` · dati dinamici re-render only-on-delta · INV-1 raster contract (hash tile PNG da RGBA sintetico) + `inv:all` distingue glyph/raster suite; `map-capture` → `hud-capture` rename (RFONT-01..03, RINV-01)
+- [x] **Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline** — `CanvasStatusHudLayer` (z=1) · `@fontsource/vt323` con fallback-chain try/catch · chrome statico pre-baked via `ImageBitmap` · dati dinamici re-render only-on-delta · INV-1 raster contract (hash tile PNG da RGBA sintetico) + `inv:all` distingue glyph/raster suite; `map-capture` → `hud-capture` rename (RFONT-01..03, RINV-01) (completed 2026-06-06)
 - [ ] **Phase 21: Character Sheet su Canvas + Dati Main-tab** — `CanvasCharacterSheetPanel` z=2 · 6 tab su canvas (Main · Skills · Inventory · Spells · Features · Biography) · navigazione gesture preservata · portrait greyscale-dithered · `class`+`initiative`+`speed` schema+reader (RSHEET-01..03, RDATA-01..02)
 - [ ] **Phase 22: Features + Biography Schema Extension** — `feats[]` + `biography` in `CharacterSnapshotSchema` + `extractFeats()` + `extractBiography()` readers in `foundry-module` · Features + Biography tab wired su dati reali al posto delle fixture hardcoded (RDATA-03..04)
 - [ ] **Phase 23: Combat Tracker su Canvas + Combatant AC** — `CanvasCombatTrackerPanel` z=2 (5-row window · current-turn highlight · HP · concentrazione · quick-action bar) · `CombatantSchema.ac` + reader · gesture preservate (RCOMB-01, RDATA-05)
@@ -110,7 +110,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [x] 20-02-PLAN.md — Raster INV-1 contract: synthetic RGBA → buildHudTiles → SHA-256 fixture (RINV-01) ✅
 - [x] 20-03-PLAN.md — CanvasStatusHudLayer: chrome pre-bake + dirty-gate (RFONT-02, RFONT-03)
 - [x] 20-04-PLAN.md — inv:all glyph + raster suite split with FALSE-PASS guard (RINV-01)
-- [ ] 20-05-PLAN.md — canvas boot default + map-capture→hud-capture reconciliation (RFONT-02, RFONT-03, RINV-01)
+- [x] 20-05-PLAN.md — canvas boot default + map-capture→hud-capture reconciliation (RFONT-02, RFONT-03, RINV-01)
 
 **UI hint**: yes
 
@@ -235,7 +235,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 17. Sheet Skills Tab | v0.9.13 | 3/3 | Complete | 2026-05-18 |
 | 18. Phase-14.1 Spec-Drift Polish | v0.9.13 | 1/1 | Complete | 2026-05-18 |
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
-| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 4/5 | In Progress|  |
+| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 0/? | Not started | - |
 | 22. Features + Biography Schema Extension | v0.10.0 | 0/? | Not started | - |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
