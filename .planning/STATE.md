@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: Phase 20 executed — software-complete (hardware-render SC human_needed per ADR-0005 Branch A)
-stopped_at: Phase 20 verified 5/5 software must-haves; code review fixed (3 critical + 5 warning); ready for Phase 21
-last_updated: "2026-06-06T09:10:00.000Z"
-last_activity: "2026-06-06 -- Phase 20 (Status HUD su Canvas + VT323 + INV-1 raster baseline) EXECUTED via /gsd-autonomous. 5 plans/3 waves: vt323-font-loader (FontFace + monospace fallback) · async attachCanvas(): Promise<void> awaited in bundle() · CanvasStatusHudLayer (first real CanvasLayer, z=1: ImageBitmap chrome pre-bake + dirty-gate) · raster INV-1 contract (synthetic RGBA → buildHudTiles → SHA-256 status-hud.raster-hash.json fixture) · inv:all glyph+raster labelled suites + FALSE-PASS guard · canvas = DEFAULT boot via setRenderMode('canvas') in boot-engine-core (class default stays glyph). Code review found 3 critical (no render loop / dirty disconnected / glyph heartbeat in canvas mode) + 5 warning → FIXED: minimal event-driven recompose driver (composite() reads layer.isDirty(); LayerManager subscribes character.delta) — xxhash sub-tile loop still Phase 24 (ADR-0013); phosphor-green fill + clearRect; glyph StatusHudLayer not constructed in canvas mode. 3180 workspace tests pass, tsc + lint:ci exit 0, socketlib=17. SC5 map-capture→hud-capture: kept BOTH distinct containers (id4 canvas page / id7 glyph page). Hardware: VT323-on-G2 + idle-BLE deferred ADR-0005 Branch A (user chose continue). Next: Phase 21 (Character Sheet on Canvas + Main-tab data)."
+status: Phase 21 IN PROGRESS — plan 21-01 complete; 21-02..21-05 PAUSED (account monthly spend limit hit mid-run)
+stopped_at: "Completed 21-01 (schema class/initiative/speed + readers + ~26 downstream literals). PAUSED before 21-02 — executor subagent hit the account monthly spend limit. RESUME: /gsd-execute-phase 21 (runs 21-02..21-05) after raising the limit at claude.ai/settings/usage."
+last_updated: "2026-06-06T13:55:00.000Z"
+last_activity: "2026-06-06 -- Phase 21 Plan 21-01 COMPLETE: CharacterSnapshotSchema gained REQUIRED class/initiative/speed; foundry-module readers extractClass/extractInitiativeModifier/extractWalkSpeed wired into getCharacterSnapshot; ~26 downstream CharacterSnapshot literals updated. 235 files/3199 tests pass, tsc clean. Task 3 finished inline by the orchestrator after the executor subagent was cut off by the account monthly spend limit. REMAINING in Phase 21: 21-02 (extract ditherTile -> dither-utils.ts), 21-03 (CanvasCharacterSheetPanel z=2 dual-interface + paint*Tab), 21-04 (portrait async-once -> dither -> slot 3), 21-05 (INV-1 fixtures: sheet.main row-6 + canvas-sheet-panel.raster-hash.json). Then phases 22-26. RESUME with /gsd-execute-phase 21 (or /gsd-autonomous --from 21) after the spend limit is raised."
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
-  percent: 25
+  total_plans: 14
+  completed_plans: 10
+  percent: 28
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 20 — Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline
+**Current focus:** Phase 21 — Character Sheet su Canvas + Dati Main-tab
 
 ## Current Position
 
-Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTED ✅ (software-complete; hardware-render SC human_needed per ADR-0005 Branch A)
-Plan: 5 of 5 executed (3 waves) + code-review fix pass
-Status: Phase 20 verified 5/5 software must-haves — ready for Phase 21
-Last activity: 2026-06-06 -- Phase 20 EXECUTED + code-reviewed/fixed; canvas is now default boot with a minimal delta-recompose driver (xxhash loop deferred to Phase 24). Next: Phase 21 (Character Sheet su Canvas + Dati Main-tab).
+Phase: 21 (Character Sheet su Canvas + Dati Main-tab) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 21
+Last activity: 2026-06-06 -- Phase 21 execution started
 
 ## Performance Metrics
 
