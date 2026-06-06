@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: verifying
-stopped_at: Completed 20-05-PLAN.md
-last_updated: "2026-06-06T08:41:39.340Z"
-last_activity: "2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)"
+status: Phase 20 executed — software-complete (hardware-render SC human_needed per ADR-0005 Branch A)
+stopped_at: Phase 20 verified 5/5 software must-haves; code review fixed (3 critical + 5 warning); ready for Phase 21
+last_updated: "2026-06-06T09:10:00.000Z"
+last_activity: "2026-06-06 -- Phase 20 (Status HUD su Canvas + VT323 + INV-1 raster baseline) EXECUTED via /gsd-autonomous. 5 plans/3 waves: vt323-font-loader (FontFace + monospace fallback) · async attachCanvas(): Promise<void> awaited in bundle() · CanvasStatusHudLayer (first real CanvasLayer, z=1: ImageBitmap chrome pre-bake + dirty-gate) · raster INV-1 contract (synthetic RGBA → buildHudTiles → SHA-256 status-hud.raster-hash.json fixture) · inv:all glyph+raster labelled suites + FALSE-PASS guard · canvas = DEFAULT boot via setRenderMode('canvas') in boot-engine-core (class default stays glyph). Code review found 3 critical (no render loop / dirty disconnected / glyph heartbeat in canvas mode) + 5 warning → FIXED: minimal event-driven recompose driver (composite() reads layer.isDirty(); LayerManager subscribes character.delta) — xxhash sub-tile loop still Phase 24 (ADR-0013); phosphor-green fill + clearRect; glyph StatusHudLayer not constructed in canvas mode. 3180 workspace tests pass, tsc + lint:ci exit 0, socketlib=17. SC5 map-capture→hud-capture: kept BOTH distinct containers (id4 canvas page / id7 glyph page). Hardware: VT323-on-G2 + idle-BLE deferred ADR-0005 Branch A (user chose continue). Next: Phase 21 (Character Sheet on Canvas + Main-tab data)."
 progress:
   total_phases: 8
   completed_phases: 2
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-06-06 -- Phase 20 Plan 02 completed (RINV-01: 20-raster-inv1.test.ts + status-hud.raster-hash.json golden fixture, hashes stable)
+Phase: 20 (Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline) — EXECUTED ✅ (software-complete; hardware-render SC human_needed per ADR-0005 Branch A)
+Plan: 5 of 5 executed (3 waves) + code-review fix pass
+Status: Phase 20 verified 5/5 software must-haves — ready for Phase 21
+Last activity: 2026-06-06 -- Phase 20 EXECUTED + code-reviewed/fixed; canvas is now default boot with a minimal delta-recompose driver (xxhash loop deferred to Phase 24). Next: Phase 21 (Character Sheet su Canvas + Dati Main-tab).
 
 ## Performance Metrics
 
