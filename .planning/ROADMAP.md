@@ -109,7 +109,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [x] 20-01-PLAN.md — VT323 font loader + async attachCanvas signature (RFONT-01) ✅
 - [x] 20-02-PLAN.md — Raster INV-1 contract: synthetic RGBA → buildHudTiles → SHA-256 fixture (RINV-01) ✅
 - [x] 20-03-PLAN.md — CanvasStatusHudLayer: chrome pre-bake + dirty-gate (RFONT-02, RFONT-03)
-- [ ] 20-04-PLAN.md — inv:all glyph + raster suite split with FALSE-PASS guard (RINV-01)
+- [x] 20-04-PLAN.md — inv:all glyph + raster suite split with FALSE-PASS guard (RINV-01)
 - [ ] 20-05-PLAN.md — canvas boot default + map-capture→hud-capture reconciliation (RFONT-02, RFONT-03, RINV-01)
 
 **UI hint**: yes
@@ -235,7 +235,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 17. Sheet Skills Tab | v0.9.13 | 3/3 | Complete | 2026-05-18 |
 | 18. Phase-14.1 Spec-Drift Polish | v0.9.13 | 1/1 | Complete | 2026-05-18 |
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
-| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 3/5 | In Progress|  |
+| 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 4/5 | In Progress|  |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 0/? | Not started | - |
 | 22. Features + Biography Schema Extension | v0.10.0 | 0/? | Not started | - |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
