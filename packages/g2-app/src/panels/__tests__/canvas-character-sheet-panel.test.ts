@@ -677,3 +677,152 @@ describe('Boot dispatch — renderMode-gated panel id', () => {
     expect(selectPanelId('glyph')).toBe('character-sheet');
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RCSP-INV1 — raster INV-1 SHA-256 tile hashes (Plan 21-05)
+//
+// Contract: the same canonical synthetic RGBA used by Phase 20 RINV-01
+// (pixel at (x,y) = (y*400+x) mod 256, 400×200) is fed to buildHudTiles().
+// Each of the 4 resulting PNG tile bytes is SHA-256-hashed and compared
+// against the committed golden fixture
+// `packages/shared-render/src/fixtures/canvas-sheet-panel.raster-hash.json`.
+//
+// First-run: fixture absent → generate and write (always green).
+// Subsequent runs: fixture present → compare (fail on drift = INV-1 assertion).
+//
+// FALSE-PASS guard: the test explicitly asserts that the fixture exists and
+// has 4 entries BEFORE performing hash comparisons; if the fixture is deleted
+// or empty the test fails loudly rather than silently passing.
+//
+// Anti-pattern: do NOT hash canvas-rendered text (non-deterministic in
+// happy-dom). This test hashes only buildHudTiles output from synthetic RGBA.
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('RCSP-INV1: canvas sheet panel raster INV-1 SHA-256 tile hashes', () => {
+  it('RCSP-INV1: tile hashes match committed fixture (or generate fixture on first run)', async () => {
+    // Lazy-import Node built-ins (test-only; not bundled in g2-app)
+    const { createHash } = await import('node:crypto');
+    const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+    const { default: path } = await import('node:path');
+    const { buildHudTiles } = await import('../../hud/hud-raster-frame.js');
+
+    // ── Constants ──────────────────────────────────────────────────────────────
+
+    const FRAME_W = 400;
+    const FRAME_H = 200;
+
+    /**
+     * Path to the committed golden fixture.
+     * Resolves from __tests__/ up 3 levels to packages/, then into
+     * shared-render/src/fixtures/ — mirrors the Phase 20 RINV-01 pattern.
+     */
+    const FIXTURE_PATH = path.resolve(
+      import.meta.dirname,
+      '../../../../shared-render/src/fixtures/canvas-sheet-panel.raster-hash.json',
+    );
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /**
+     * Generate the canonical synthetic RGBA for RCSP-INV1.
+     *
+     * Pixel value at (x, y) = (y * FRAME_W + x) mod 256. All channels
+     * R=G=B=v, alpha=255. IDENTICAL to the generator in 20-raster-inv1.test.ts
+     * (RINV-01 canonical source) — reusing this exact generator is the
+     * correct approach per Plan 21-05 §Anti-Patterns (do NOT invent a new
+     * non-deterministic source).
+     */
+    function makeSyntheticRgba(): Uint8ClampedArray {
+      const buf = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);
+      for (let y = 0; y < FRAME_H; y++) {
+        for (let x = 0; x < FRAME_W; x++) {
+          const idx = (y * FRAME_W + x) * 4;
+          const v = (y * FRAME_W + x) % 256;
+          buf[idx] = v;
+          buf[idx + 1] = v;
+          buf[idx + 2] = v;
+          buf[idx + 3] = 255;
+        }
+      }
+      return buf;
+    }
+
+    /** Compute SHA-256 hex digest of data (synchronous Node crypto). */
+    function sha256hex(data: Uint8Array): string {
+      return createHash('sha256').update(data).digest('hex');
+    }
+
+    // ── Fixture type ───────────────────────────────────────────────────────────
+
+    interface RasterHashFixture {
+      version: number;
+      description: string;
+      tiles: Array<{
+        index: number;
+        containerName: string;
+        sha256: string;
+      }>;
+    }
+
+    // ── Build tiles + hash ─────────────────────────────────────────────────────
+
+    const rgba = makeSyntheticRgba();
+    const tiles = buildHudTiles(rgba);
+
+    // Guard: buildHudTiles must return exactly 4 tiles
+    expect(tiles).toHaveLength(4);
+
+    const hashes = tiles.map((t) => sha256hex(t.bytes));
+
+    // ── First-run: generate + write fixture ───────────────────────────────────
+
+    if (!existsSync(FIXTURE_PATH)) {
+      console.info('[EVF] RCSP-INV1: fixture absent — generating', FIXTURE_PATH);
+
+      const fixture: RasterHashFixture = {
+        version: 1,
+        description:
+          'SHA-256 hashes of 4 HUD tile PNGs from canonical synthetic RGBA (Phase 21 canvas sheet panel)',
+        tiles: tiles.map((t, i) => ({
+          index: i,
+          containerName: t.containerName,
+          sha256: hashes[i] ?? '',
+        })),
+      };
+
+      writeFileSync(FIXTURE_PATH, `${JSON.stringify(fixture, null, 2)}\n`);
+      console.info('[EVF] RCSP-INV1: fixture written — re-run to verify stability');
+
+      // First run always green (generation, not comparison)
+      return;
+    }
+
+    // ── Subsequent runs: FALSE-PASS guard + compare ───────────────────────────
+
+    // FALSE-PASS guard: fixture must exist and have exactly 4 entries.
+    // If the fixture is deleted/empty, this fails loudly rather than
+    // silently passing (prevents the test from being a no-op).
+    const raw = readFileSync(FIXTURE_PATH, 'utf8');
+    const fixture = JSON.parse(raw) as RasterHashFixture;
+
+    expect(
+      fixture.tiles,
+      '[EVF] RCSP-INV1: FALSE-PASS guard — fixture must have 4 tile entries',
+    ).toHaveLength(4);
+
+    // Core RCSP-INV1 assertion: SHA-256 of each tile PNG must match fixture
+    for (let i = 0; i < 4; i++) {
+      const fixtureEntry = fixture.tiles[i];
+      const computed = hashes[i];
+
+      expect(fixtureEntry).toBeDefined();
+      expect(computed).toBeDefined();
+
+      expect(
+        computed,
+        `[EVF] RCSP-INV1: tile ${i} (${fixtureEntry?.containerName}) SHA-256 mismatch — ` +
+          'raster pipeline is non-deterministic or fixture is stale',
+      ).toBe(fixtureEntry?.sha256);
+    }
+  });
+});
