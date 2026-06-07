@@ -692,6 +692,11 @@ function extractWalkSpeed(actor: ReturnType<typeof game.actors.get>): number {
  * {@link extractClass}, {@link extractInitiativeModifier}, and {@link extractWalkSpeed}
  * readers (RDATA-01, RDATA-02).
  *
+ * Phase 22 Plan 22-02 addition: reads `actor.items` feats via {@link extractFeats}
+ * and `actor.system.details.*` biography via {@link extractBiography} (RDATA-03,
+ * RDATA-04). Both fields are OPTIONAL on the schema — absent when all content is
+ * empty or actor not yet synced (D-22.1/D-22.4 contract).
+ *
  * @param actorId - Foundry actor document ID
  * @returns CharacterSnapshot or null
  */
