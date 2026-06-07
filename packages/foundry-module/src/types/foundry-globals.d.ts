@@ -285,6 +285,34 @@ interface Dnd5eAttributes {
 /** Subset of the dnd5e 5.x actor system details used by character-reader. */
 interface Dnd5eDetails {
   level: number;
+  /**
+   * Personality traits (Phase 22 Plan 22-02; RDATA-04).
+   * Field key is 'trait' (NOT 'personality') — labeled "DND5E.PersonalityTraits".
+   * The wire schema exposes this as `biography.personality` (D-22.4 naming).
+   * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/character.mjs
+   *        details.trait StringField label "DND5E.PersonalityTraits"
+   */
+  trait?: string;
+  /** Character ideals (Phase 22 Plan 22-02).
+   * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/templates/details.mjs
+   *        DetailsFields.creature.ideal StringField */
+  ideal?: string;
+  /** Character bonds (Phase 22 Plan 22-02).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.creature.bond */
+  bond?: string;
+  /** Character flaws (Phase 22 Plan 22-02).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.creature.flaw */
+  flaw?: string;
+  /**
+   * Character biography HTML (Phase 22 Plan 22-02).
+   * `value` is an HTMLField — HTML-stripped by extractBiography() before the wire payload
+   * (T-22-03 mitigation). `public` is the public-facing biography (not needed Phase 22).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.biography
+   */
+  biography?: {
+    value?: string;
+    public?: string;
+  };
 }
 
 /**
@@ -602,6 +630,31 @@ interface FoundryItem {
      */
     activities?: {
       contents: FoundryActivity[];
+    };
+    /**
+     * Feature type classification (Phase 22 Plan 22-02; RDATA-03).
+     * Present on feat items; may be absent on pre-categorisation legacy items (PHB 2014).
+     * `value`: dnd5e featureType key ('background'|'class'|'race'|'feat'|'monster'|etc.)
+     * `subtype`: sub-category ('origin'|'general'|'ki'|'fightingStyle'|etc.)
+     * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/item/feat.mjs
+     *        + module/config.mjs CONFIG.DND5E.featureTypes
+     *
+     * Inline declaration (no @evf/shared-protocol import) — ambient files must be
+     * import-free (script-mode) to preserve global scope (Pitfall 6).
+     */
+    type?: {
+      value?: string;
+      subtype?: string;
+    };
+    /**
+     * Item description (HTML). Present on most dnd5e items.
+     * Phase 22 Plan 22-02: used by extractFeats() to populate FeatEntry.description
+     * (HTML-stripped before entering the wire payload; T-22-03 mitigation).
+     * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/item/fields/
+     *        item-description.mjs (HTMLField labeled "DND5E.DescriptionValue")
+     */
+    description?: {
+      value?: string;
     };
   };
 }

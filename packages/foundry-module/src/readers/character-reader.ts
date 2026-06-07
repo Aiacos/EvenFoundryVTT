@@ -43,7 +43,9 @@ import type {
   Abilities,
   AbilityKey,
   AbilityScore,
+  BiographySnapshot,
   CharacterSnapshot,
+  FeatEntry,
   InventoryItem,
   InventoryItemType,
   Skill,
@@ -507,6 +509,98 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
 }
 
 /**
+ * Strip HTML tags from a string using a simple regex.
+ *
+ * Used by {@link extractFeats} and {@link extractBiography} to sanitise dnd5e HTMLField
+ * content (biography.value, item.system.description.value) before it enters the wire
+ * payload. Mirrors the `stripHtml` in `character-sheet-tab-renderers.ts`; duplicated
+ * here because `foundry-module` has no dep on `g2-app` (T-22-03 mitigation).
+ *
+ * @internal
+ */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '');
+}
+
+/**
+ * Extract character feats/features from `actor.items.contents` (Phase 22 Plan 22-02;
+ * RDATA-03).
+ *
+ * Filters items to `type === 'feat'`, determines category from `item.system.type.value`
+ * (dnd5e 2024 path; falls back to `'general'` for PHB 2014 items where the field is absent
+ * or blank — Pitfall 1 mitigation). `isOrigin` is `true` only when
+ * `system.type.value === 'feat' && system.type.subtype === 'origin'` (PHB 2024 origin feat).
+ * Feat description is HTML-stripped reader-side (T-22-03 mitigation).
+ *
+ * Never throws on missing structure — mirrors the null-safety style of
+ * {@link extractClass} and {@link extractWalkSpeed}.
+ *
+ * @param actor - Foundry actor document (may be `undefined` for fresh/missing actors)
+ * @returns Array of {@link FeatEntry} objects; `[]` for classless or undefined actors
+ * @internal
+ */
+export function extractFeats(actor: ReturnType<typeof game.actors.get>): FeatEntry[] {
+  if (actor === undefined) return [];
+  const contents = (actor.items?.contents ?? []) as unknown as Array<Record<string, unknown>>;
+  const feats: FeatEntry[] = [];
+  for (const item of contents) {
+    if ((item.type as string | undefined) !== 'feat') continue;
+    const sys = (item.system as Record<string, unknown> | undefined) ?? {};
+    const typeObj = (sys.type as Record<string, unknown> | undefined) ?? {};
+    const typeValue = (typeObj.value as string | undefined) ?? '';
+    const typeSubtype = (typeObj.subtype as string | undefined) ?? '';
+    const descObj = (sys.description as Record<string, unknown> | undefined) ?? {};
+    const rawDesc = (descObj.value as string | undefined) ?? '';
+    feats.push({
+      category: typeValue.length > 0 ? typeValue : 'general',
+      name: (item.name as string | undefined) ?? 'Unknown Feat',
+      isOrigin: typeValue === 'feat' && typeSubtype === 'origin',
+      description: stripHtml(rawDesc),
+    });
+  }
+  return feats;
+}
+
+/**
+ * Extract character biography from `actor.system.details.*` (Phase 22 Plan 22-02;
+ * RDATA-04).
+ *
+ * Maps `details.trait` → `personality` (NOT `details.personality` — Pitfall 2: dnd5e
+ * names the field `trait`, labeled "DND5E.PersonalityTraits"). Reads `ideal`, `bond`,
+ * and `flaw` verbatim. HTML-strips `details.biography.value` before storage
+ * (T-22-03 mitigation; Pitfall 3).
+ *
+ * Never throws on missing structure — mirrors null-safety of {@link extractWalkSpeed}.
+ * Returns all-empty-string {@link BiographySnapshot} for `undefined` actors or actors
+ * with no biography data.
+ *
+ * @param actor - Foundry actor document (may be `undefined` for fresh/missing actors)
+ * @returns {@link BiographySnapshot} with five string fields
+ * @internal
+ */
+export function extractBiography(actor: ReturnType<typeof game.actors.get>): BiographySnapshot {
+  const EMPTY: BiographySnapshot = {
+    personality: '',
+    ideal: '',
+    bond: '',
+    flaw: '',
+    backstory: '',
+  };
+  if (actor === undefined) return EMPTY;
+  // biography.value is an HTMLField; stripped before wire payload (T-05-03-02 mirror).
+  const details = (actor.system?.details as unknown as Record<string, unknown> | undefined) ?? {};
+  const bioField = (details.biography as Record<string, unknown> | undefined) ?? {};
+  const rawBackstory = (bioField.value as string | undefined) ?? '';
+  return {
+    personality: (details.trait as string | undefined) ?? '',
+    ideal: (details.ideal as string | undefined) ?? '',
+    bond: (details.bond as string | undefined) ?? '',
+    flaw: (details.flaw as string | undefined) ?? '',
+    backstory: stripHtml(rawBackstory),
+  };
+}
+
+/**
  * Extract character class display name(s) from `actor.items.contents` (Phase 21 Plan 21-01;
  * RDATA-01).
  *
@@ -649,6 +743,8 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     class: extractClass(actor),
     initiative: extractInitiativeModifier(actor),
     speed: extractWalkSpeed(actor),
+    feats: extractFeats(actor),
+    biography: extractBiography(actor),
     ...portraitField,
   };
 }
