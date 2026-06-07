@@ -60,10 +60,14 @@ import {
   type AbilityKey,
   AbilityKeySchema,
   AbilityScoreSchema,
+  type BiographySnapshot,
+  BiographySnapshotSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
   DeathSavesSchema,
+  type FeatEntry,
+  FeatEntrySchema,
   InventoryItemSchema,
   SKILL_KEYS,
   type Skill,
@@ -866,5 +870,178 @@ describe('CharacterSnapshotSchema — class/initiative/speed extension (CS-CIS)'
       class: 'Fighter / Wizard',
     });
     expect(multiclass.success).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 22 Plan 22-01 — FeatEntrySchema (CS-FE-1..6)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//   CS-FE-1  happy-path: {category, name, isOrigin, description} → success
+//   CS-FE-2  rejects name:'' (z.string().min(1))
+//   CS-FE-3  rejects missing isOrigin (boolean required)
+//   CS-FE-4  CharacterSnapshotSchema parses with feats:[oneFeatEntry] present
+//   CS-FE-5  CharacterSnapshotSchema parses WITHOUT feats key (optional absent)
+//   CS-FE-6  CharacterSnapshotSchema still rejects unknown top-level key (strictObject preserved)
+//
+// @see ./character.ts FeatEntrySchema (RDATA-03)
+// @see .planning/phases/EVF-22-features-biography-schema-extension/22-01-PLAN.md Task 1-2
+
+describe('FeatEntrySchema (CS-FE)', () => {
+  it('CS-FE-1: happy-path — {category, name, isOrigin, description} parses successfully', () => {
+    const result = FeatEntrySchema.safeParse({
+      category: 'feat',
+      name: 'War Caster',
+      isOrigin: true,
+      description: 'Advantage on concentration saves when taking damage.',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const fe: FeatEntry = result.data;
+      expect(fe.category).toBe('feat');
+      expect(fe.name).toBe('War Caster');
+      expect(fe.isOrigin).toBe(true);
+      expect(fe.description).toBe('Advantage on concentration saves when taking damage.');
+    }
+  });
+
+  it('CS-FE-2: rejects name:"" (z.string().min(1) — name must be non-empty)', () => {
+    const result = FeatEntrySchema.safeParse({
+      category: 'feat',
+      name: '',
+      isOrigin: false,
+      description: 'Some description.',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-FE-3: rejects missing isOrigin (boolean required, not optional)', () => {
+    const result = FeatEntrySchema.safeParse({
+      category: 'class',
+      name: 'Action Surge',
+      description: 'Gain an extra action.',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-FE-4: CharacterSnapshotSchema parses WITH feats:[oneFeatEntry] (optional present)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      feats: [
+        {
+          category: 'feat',
+          name: 'War Caster',
+          isOrigin: false,
+          description: 'Concentration advantage.',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.feats).toHaveLength(1);
+      expect(result.data.feats?.[0]?.name).toBe('War Caster');
+    }
+  });
+
+  it('CS-FE-5: CharacterSnapshotSchema parses WITHOUT feats key (optional — absent valid)', () => {
+    // D-22.1: feats is OPTIONAL — downstream literals that omit it must still parse.
+    const result = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.feats).toBeUndefined();
+    }
+  });
+
+  it('CS-FE-6: CharacterSnapshotSchema still REJECTS unknown top-level key (strictObject preserved)', () => {
+    // Pitfall 4: adding .optional() fields must NOT relax the strictObject unknown-key gate.
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      unknownField: 'should-be-rejected',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 22 Plan 22-01 — BiographySnapshotSchema (CS-BIO-1..5)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//   CS-BIO-1  happy-path: {personality, ideal, bond, flaw, backstory} → success
+//   CS-BIO-2  all-empty-string fields accepted (D-22.4 fallback valid)
+//   CS-BIO-3  rejects a missing field (all 5 keys required on sub-object)
+//   CS-BIO-4  CharacterSnapshotSchema parses WITH biography:{...} present
+//   CS-BIO-5  CharacterSnapshotSchema parses WITHOUT biography key (optional absent)
+//
+// @see ./character.ts BiographySnapshotSchema (RDATA-04)
+
+describe('BiographySnapshotSchema (CS-BIO)', () => {
+  it('CS-BIO-1: happy-path — all 5 string fields present → success', () => {
+    const result = BiographySnapshotSchema.safeParse({
+      personality: 'Cheerful and optimistic.',
+      ideal: 'Justice above all.',
+      bond: 'Protect my village.',
+      flaw: 'Overconfident in battle.',
+      backstory: 'Raised in the mountains of Karrak.',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const bio: BiographySnapshot = result.data;
+      expect(bio.personality).toBe('Cheerful and optimistic.');
+      expect(bio.ideal).toBe('Justice above all.');
+      expect(bio.bond).toBe('Protect my village.');
+      expect(bio.flaw).toBe('Overconfident in battle.');
+      expect(bio.backstory).toBe('Raised in the mountains of Karrak.');
+    }
+  });
+
+  it('CS-BIO-2: all-empty-string fields accepted (D-22.4: empty-string fallback is valid)', () => {
+    // The reader uses empty-string fallback when actor fields are absent.
+    const result = BiographySnapshotSchema.safeParse({
+      personality: '',
+      ideal: '',
+      bond: '',
+      flaw: '',
+      backstory: '',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CS-BIO-3: rejects a missing field (all 5 keys required on the sub-object)', () => {
+    // Missing `flaw` — the sub-object schema requires all 5 keys.
+    const result = BiographySnapshotSchema.safeParse({
+      personality: 'Brave.',
+      ideal: 'Freedom.',
+      bond: 'Family.',
+      backstory: 'Unknown origins.',
+      // flaw deliberately omitted
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CS-BIO-4: CharacterSnapshotSchema parses WITH biography:{...} present (optional present)', () => {
+    const result = CharacterSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT,
+      biography: {
+        personality: 'Stoic dwarf.',
+        ideal: 'Reclaim the Lonely Mountain.',
+        bond: 'Company of Thorin.',
+        flaw: 'Pride.',
+        backstory: 'Once a prince of Erebor.',
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.biography?.personality).toBe('Stoic dwarf.');
+      expect(result.data.biography?.backstory).toBe('Once a prince of Erebor.');
+    }
+  });
+
+  it('CS-BIO-5: CharacterSnapshotSchema parses WITHOUT biography key (optional — absent valid)', () => {
+    // D-22.1: biography is OPTIONAL — downstream literals that omit it must still parse.
+    const result = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.biography).toBeUndefined();
+    }
   });
 });
