@@ -816,9 +816,18 @@ export function renderFeatsTab(
  *
  * T-05-03-03 (DoS via large biography): word-wrap windowing ensures only 18
  * rows × 66 chars are processed per render call — O(n) but bounded output.
+ *
+ * Block-level tags (`<p>`, `<br>`, `<li>`, `<ul>`, `<ol>`, `<h1>`–`<h6>`, `<div>`,
+ * `<blockquote>`) are replaced with a single space before the generic strip pass to
+ * prevent adjacent sentence content from merging (WR-03 fix; mirrors reader-side
+ * `stripHtml` in `character-reader.ts`).
  */
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '');
+  return html
+    .replace(/<\/?(p|br|li|ul|ol|h[1-6]|div|blockquote)[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**

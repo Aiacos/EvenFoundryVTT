@@ -516,10 +516,18 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
  * payload. Mirrors the `stripHtml` in `character-sheet-tab-renderers.ts`; duplicated
  * here because `foundry-module` has no dep on `g2-app` (T-22-03 mitigation).
  *
+ * Block-level tags (`<p>`, `<br>`, `<li>`, `<ul>`, `<ol>`, `<h1>`–`<h6>`, `<div>`,
+ * `<blockquote>`) are replaced with a single space before the generic strip pass to
+ * prevent adjacent sentence content from merging (WR-03 fix).
+ *
  * @internal
  */
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '');
+  return html
+    .replace(/<\/?(p|br|li|ul|ol|h[1-6]|div|blockquote)[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**
