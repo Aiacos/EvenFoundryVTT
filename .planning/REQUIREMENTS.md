@@ -37,8 +37,8 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
 ### Sheet Data Extension (RDATA) — *estese atomicamente coi rispettivi renderer*
 
-- [ ] **RDATA-01**: `CharacterSnapshotSchema` porta `class` (+ reader `foundry-module`) — il tab Main mostra classe/livello reali.
-- [ ] **RDATA-02**: `CharacterSnapshotSchema` porta `initiative` + `speed` (+ reader) — surfacciati nel tab pertinente al posto di placeholder.
+- [x] **RDATA-01**: `CharacterSnapshotSchema` porta `class` (+ reader `foundry-module`) — il tab Main mostra classe/livello reali.
+- [x] **RDATA-02**: `CharacterSnapshotSchema` porta `initiative` + `speed` (+ reader) — surfacciati nel tab pertinente al posto di placeholder.
 - [ ] **RDATA-03**: `CharacterSnapshotSchema` porta `feats[]` (`{category, name, isOrigin, description}`) dal reader `foundry-module` (`actor.items` filtrati) — il tab Features mostra feat reali invece della fixture `DEFAULT_FEATS` hardcoded.
 - [ ] **RDATA-04**: `CharacterSnapshotSchema` porta `biography` (personality/ideal/bond/flaw/backstory) dal reader — il tab Biography mostra bio reale invece del testo hardcoded.
 - [ ] **RDATA-05**: `CombatantSchema` porta `ac` (+ read path nel combat reader) — il combat tracker mostra l'AC reale invece del placeholder `' --'`.
@@ -100,8 +100,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RSHEET-01 | Phase 21 | Complete |
 | RSHEET-02 | Phase 21 | Complete |
 | RSHEET-03 | Phase 21 | Complete |
-| RDATA-01 | Phase 21 | Pending |
-| RDATA-02 | Phase 21 | Pending |
+| RDATA-01 | Phase 21 | Complete |
+| RDATA-02 | Phase 21 | Complete |
 | RDATA-03 | Phase 22 | Pending |
 | RDATA-04 | Phase 22 | Pending |
 | RCOMB-01 | Phase 23 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 21-03-PLAN.md
-last_updated: "2026-06-07T19:55:04.105Z"
+stopped_at: Completed 21-05-PLAN.md (INV-1 fixture closure)
+last_updated: "2026-06-07T20:30:00.000Z"
 last_activity: 2026-06-07 -- Phase 21 execution started
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 25
+  completed_plans: 14
+  percent: 38
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 21 (Character Sheet su Canvas + Dati Main-tab) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-06-07 -- Phase 21 execution started
 
@@ -93,6 +93,7 @@ Last activity: 2026-06-07 -- Phase 21 execution started
 | Phase 21 P02 | 6 | 2 tasks | 3 files |
 | Phase 21 P03 | 35 | 3 tasks | 4 files |
 | Phase 21 P04 | 5min | 1 tasks | 2 files |
+| Phase 21 P05 | 7 min | 3 tasks | 6 files |
 
 ## Quick Tasks Completed
 
@@ -291,7 +292,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-07T19:55:04.098Z
+Last session: 2026-06-07T20:13:33.294Z
 Stopped at: Completed 21-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
