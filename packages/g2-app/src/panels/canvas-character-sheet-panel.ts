@@ -605,7 +605,9 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    */
   private async _persistLastTab(): Promise<void> {
     try {
-      await this._bridge.setLocalStorage(PERSIST_KEY, TABS[this._activeTabIndex] ?? 'main');
+      // _activeTabIndex is always in [0, TABS.length-1] via modulo — never undefined.
+      // biome-ignore lint/style/noNonNullAssertion: invariant enforced by all mutation sites
+      await this._bridge.setLocalStorage(PERSIST_KEY, TABS[this._activeTabIndex]!);
     } catch (err) {
       console.warn('[CanvasCharacterSheetPanel] setLocalStorage failed for', PERSIST_KEY, err);
     }
