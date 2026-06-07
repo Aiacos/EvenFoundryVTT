@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: Phase 21 IN PROGRESS — plan 21-01 complete; 21-02..21-05 PAUSED (account monthly spend limit hit mid-run)
-stopped_at: "Completed 21-01 (schema class/initiative/speed + readers + ~26 downstream literals). PAUSED before 21-02 — executor subagent hit the account monthly spend limit. RESUME: /gsd-execute-phase 21 (runs 21-02..21-05) after raising the limit at claude.ai/settings/usage."
-last_updated: "2026-06-06T13:55:00.000Z"
-last_activity: "2026-06-06 -- Phase 21 Plan 21-01 COMPLETE: CharacterSnapshotSchema gained REQUIRED class/initiative/speed; foundry-module readers extractClass/extractInitiativeModifier/extractWalkSpeed wired into getCharacterSnapshot; ~26 downstream CharacterSnapshot literals updated. 235 files/3199 tests pass, tsc clean. Task 3 finished inline by the orchestrator after the executor subagent was cut off by the account monthly spend limit. REMAINING in Phase 21: 21-02 (extract ditherTile -> dither-utils.ts), 21-03 (CanvasCharacterSheetPanel z=2 dual-interface + paint*Tab), 21-04 (portrait async-once -> dither -> slot 3), 21-05 (INV-1 fixtures: sheet.main row-6 + canvas-sheet-panel.raster-hash.json). Then phases 22-26. RESUME with /gsd-execute-phase 21 (or /gsd-autonomous --from 21) after the spend limit is raised."
+status: executing
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-06-07T19:26:59.888Z"
+last_activity: 2026-06-07 -- Phase 21 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
-  percent: 28
+  completed_plans: 11
+  percent: 25
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 21 (Character Sheet su Canvas + Dati Main-tab) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 21
-Last activity: 2026-06-06 -- Phase 21 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-06-07 -- Phase 21 execution started
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Last activity: 2026-06-06 -- Phase 21 execution started
 | Phase 20 P03 | 367 | 1 tasks | 2 files |
 | Phase 20 P04 | 8 min | 1 tasks | 2 files |
 | Phase 20 P05 | 30 | 3 tasks | 3 files |
+| Phase 21 P02 | 6 | 2 tasks | 3 files |
 
 ## Quick Tasks Completed
 
@@ -224,6 +225,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 20]: FALLBACK: hud-capture (id=4) and map-capture (id=7) are geometrically distinct; both CONTAINER_REGISTRY entries kept
 - [Phase 20]: Canvas boot default via setRenderMode in boot-engine-core.ts only; LayerManager class-field default stays glyph
 - [Phase 20]: Canvas mode bundles only CanvasStatusHudLayer; glyph layers constructed but not mounted (canvas budget constraint)
+- [Phase ?]: dither-utils.ts extraction: ditherTile takes explicit w/h params for portrait (100x60) + map tile (200x100) reuse — single algorithm, zero duplication
 
 ### Pending Todos
 
@@ -285,8 +287,8 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-06T08:41:39.333Z
-Stopped at: Completed 20-05-PLAN.md
+Last session: 2026-06-07T19:26:59.882Z
+Stopped at: Completed 21-02-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
 
