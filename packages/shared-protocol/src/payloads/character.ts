@@ -482,10 +482,11 @@ export const FeatEntrySchema = z.object({
    * Feature category from dnd5e featureTypes taxonomy.
    * Reader value: `item.system.type.value` when non-empty; fallback `'general'` for
    * PHB 2014 items that predate the categorisation system (blank/absent type.value).
-   * Open `z.string()` (NOT enum) — dnd5e featureTypes is extensible and the reader
+   * Open `z.string().min(1)` (NOT enum) — dnd5e featureTypes is extensible and the reader
    * passes `system.type.value` verbatim without remapping.
+   * min(1): reader guarantees non-empty (falls back to 'general'); schema enforces the invariant.
    */
-  category: z.string(),
+  category: z.string().min(1),
   /**
    * Display name of the feat/feature from `item.name`.
    * min(1): nameless items are dropped by the reader; the schema enforces the invariant.
