@@ -82,6 +82,15 @@ import {
 /** Background fill color — black (dithered to darkest G2 palette step). */
 const CHROME_BG = '#000000';
 
+/**
+ * Hard ceiling for `_scrollOffset` on scrollable tabs (bio, feats).
+ *
+ * Far above any realistic bio/feats line count; prevents unbounded integer
+ * growth when the user holds swipe-down. Renderers clamp to actual content
+ * length independently — this is a gesture-layer safety limit only.
+ */
+const MAX_SCROLL_OFFSET = 200;
+
 /** Foreground color — white lines/text (quantized to brightest G2 palette step). */
 const CHROME_FG = '#ffffff';
 
@@ -434,6 +443,7 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
         // isAtTopBoundary() stays _scrollOffset === 0 — DO NOT modify (Pitfall 5: ADR-0012 gate).
         const scrollTab = TABS[this._activeTabIndex] ?? 'main';
         const isScrollableTab = scrollTab === 'bio' || scrollTab === 'feats';
+        const prevTabIndex = this._activeTabIndex;
         if (gesture.direction === 'up') {
           if (isScrollableTab && this._scrollOffset > 0) {
             // Within-tab scroll up
@@ -445,15 +455,20 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
           }
         } else {
           if (isScrollableTab) {
-            // Within-tab scroll down (renderer clamps over-scroll)
-            this._scrollOffset++;
+            // Within-tab scroll down (renderer clamps over-scroll; gesture layer applies ceiling).
+            this._scrollOffset = Math.min(this._scrollOffset + 1, MAX_SCROLL_OFFSET);
           } else {
             // Non-scrollable: cycle tab forward + reset offset
             this._activeTabIndex = (this._activeTabIndex + 1) % TABS.length;
             this._scrollOffset = 0;
           }
         }
-        void this._persistLastTab();
+        // Only persist when the active tab changed — within-tab scroll (bio/feats) does
+        // NOT change the tab index and should not generate a BLE storage write on every
+        // swipe gesture (WR-02 fix).
+        if (this._activeTabIndex !== prevTabIndex) {
+          void this._persistLastTab();
+        }
         this._dirty = true;
         break;
       }
