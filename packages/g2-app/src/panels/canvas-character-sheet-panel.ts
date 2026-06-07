@@ -14,10 +14,13 @@
  *
  * `attachCanvas()` fires an async init (`_initAsync`) that:
  *   1. Loads VT323 via `ensureVt323Loaded()`.
- *   2. Pre-bakes the static chrome (tab strip + frame) into an `ImageBitmap`.
+ *   2. Pre-bakes the STATIC chrome (background fill + border + separator line)
+ *      into an `ImageBitmap`.  The tab strip text is NOT baked — it is drawn
+ *      inline on every `paint()` call so the active-tab highlight always tracks
+ *      the current gesture state (CR-01 fix).
  *
  * In happy-dom (no createImageBitmap), `_chromeBitmap` stays `null` and `paint()`
- * falls back to drawing chrome inline (SC2 fallback path).
+ * falls back to `_drawStaticChrome` inline (SC2 fallback path).
  *
  * # Dirty-gate (RSHEET-01 / RFONT-03 pattern)
  *
@@ -272,9 +275,13 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   /**
    * Repaint the layer's canvas from current cached state.
    *
-   * 1. Blits pre-baked chrome bitmap (GPU-accelerated) or draws chrome inline.
-   * 2. Dispatches to the active tab's `paint*Tab` method.
-   * 3. Sets `_dirty = false` as the LAST line.
+   * 1. Blits pre-baked static chrome bitmap (GPU-accelerated) or draws static
+   *    chrome inline — background fill + outer border + tab separator only.
+   * 2. Draws the tab strip inline on EVERY paint() call, so the highlight
+   *    reflects the CURRENT `_activeTabIndex` (CR-01 fix: tab strip is dynamic,
+   *    not included in the pre-baked bitmap).
+   * 3. Dispatches to the active tab's `paint*Tab` method.
+   * 4. Sets `_dirty = false` as the LAST line.
    *
    * Called by `CanvasCompositor` ONLY when `isDirty()` returns `true`.
    */
@@ -284,12 +291,17 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
 
     ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
 
-    // Chrome layer — GPU-blit pre-baked bitmap or inline fallback.
+    // Static chrome layer — GPU-blit pre-baked bitmap or inline fallback.
+    // The bitmap contains ONLY background fill + outer border + separator line
+    // (NOT the tab strip text, which changes on every gesture).
     if (this._chromeBitmap !== null) {
       ctx.drawImage(this._chromeBitmap, 0, 0);
     } else {
-      _drawChrome(ctx, this._fontFamily, this._activeTabIndex);
+      _drawStaticChrome(ctx);
     }
+
+    // Tab strip — ALWAYS drawn inline so the highlight tracks _activeTabIndex.
+    _drawTabStrip(ctx, this._fontFamily, this._activeTabIndex);
 
     // Active tab content layer.
     this._paintActiveTab(ctx);
@@ -481,9 +493,14 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   /**
    * Draw static chrome onto a scratch OffscreenCanvas and cache as `ImageBitmap`.
    *
+   * "Static chrome" = background fill + outer border + horizontal separator.
+   * The tab strip text is NOT baked here — it is drawn inline on every paint()
+   * call so the active-tab highlight always reflects the current gesture state
+   * (CR-01 fix).
+   *
    * On success: `_chromeBitmap` is set.
    * On failure (happy-dom / no `createImageBitmap`): `_chromeBitmap` stays `null`;
-   * `paint()` falls back to `_drawChrome` inline.
+   * `paint()` falls back to `_drawStaticChrome` inline.
    */
   private async _prebakeChrome(): Promise<void> {
     try {
@@ -495,7 +512,8 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
         );
         return;
       }
-      _drawChrome(sCtx, this._fontFamily, this._activeTabIndex);
+      // Bake ONLY the static parts (bg + border + separator). Tab strip is dynamic.
+      _drawStaticChrome(sCtx);
       this._chromeBitmap = await createImageBitmap(scratch);
     } catch {
       // createImageBitmap absent (happy-dom) — _chromeBitmap stays null, paint() falls back.
@@ -649,21 +667,20 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
 // ── Module-level helpers ───────────────────────────────────────────────────────
 
 /**
- * Draw static chrome (frame + tab strip) onto `ctx`.
+ * Draw the static (non-tab-dependent) chrome onto `ctx`.
  *
- * "Chrome" = everything that does NOT change with character state: outer border,
- * background fill, and the tab strip row. Called:
+ * Renders the background fill + outer border + horizontal separator line at y=27.
+ * The tab strip text is intentionally NOT drawn here so this output can be safely
+ * pre-baked into an `ImageBitmap` that remains valid across tab changes (CR-01 fix).
+ *
+ * Called:
  *   - During `_prebakeChrome()` onto a scratch OffscreenCanvas (production path).
  *   - Inline from `paint()` when `_chromeBitmap` is null (happy-dom fallback).
  *
- * @param ctx           2D rendering context.
- * @param fontFamily    CSS font string.
- * @param activeTabIdx  Currently active tab index for the tab strip highlight.
+ * @param ctx  2D rendering context.
  */
-function _drawChrome(
+function _drawStaticChrome(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
-  fontFamily: string,
-  activeTabIdx: number,
 ): void {
   // Black background fill.
   ctx.fillStyle = CHROME_BG;
@@ -676,8 +693,23 @@ function _drawChrome(
   // Tab strip separator line at y=27 (first line = tab strip).
   ctx.fillStyle = CHROME_FG;
   ctx.fillRect(0, 27, COMPOSITOR_W, 1);
+}
 
-  // Tab strip text (uses buildTabStrip from character-sheet-panel.ts).
+/**
+ * Draw the tab strip text onto `ctx` based on the CURRENT active tab index.
+ *
+ * Called inline on every `paint()` — never pre-baked — so the active-tab
+ * highlight always reflects the current gesture state (CR-01 fix).
+ *
+ * @param ctx           2D rendering context.
+ * @param fontFamily    CSS font string.
+ * @param activeTabIdx  Currently active tab index for the tab strip highlight.
+ */
+function _drawTabStrip(
+  ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
+  fontFamily: string,
+  activeTabIdx: number,
+): void {
   ctx.fillStyle = CHROME_FG;
   ctx.font = fontFamily;
   const tabStripRow = buildTabStrip(activeTabIdx);
