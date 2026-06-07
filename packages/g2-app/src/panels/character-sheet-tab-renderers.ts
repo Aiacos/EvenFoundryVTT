@@ -680,36 +680,33 @@ export function renderSkillsTab(
  *
  * Each entry: category, name, originFeat (2024 origin feat flag), description (short).
  */
+/**
+ * Internal display record for a single feat/feature row.
+ *
+ * Phase 22 Plan 22-03: `category` widened to `string` (was `'class'|'race'|'background'|'feat'`
+ * union) to match `FeatEntrySchema.category: z.string()` — dnd5e featureTypes is an open
+ * taxonomy (includes 'monster', 'supernaturalGift', 'enchantment', 'vehicle', etc.).
+ * RDATA-03 resolution.
+ */
 interface FeatDef {
-  readonly category: 'class' | 'race' | 'background' | 'feat';
+  readonly category: string;
   readonly name: string;
   readonly isOrigin: boolean; // true = 2024 origin feat (shows [Origine] annotation)
   readonly desc: string; // short description for display
 }
 
-const DEFAULT_FEATS: ReadonlyArray<FeatDef> = [
-  {
-    category: 'class',
-    name: 'Second Wind',
-    isOrigin: false,
-    desc: 'bonus action: recover 1d10+3 HP',
-  },
-  { category: 'class', name: 'Action Surge', isOrigin: false, desc: 'extra action 1/short rest' },
-  { category: 'race', name: 'Stonecunning', isOrigin: false, desc: '+10 History (stonework)' },
-  { category: 'race', name: 'Darkvision', isOrigin: false, desc: '18m dark/dim vision' },
-  {
-    category: 'background',
-    name: 'Military Rank',
-    isOrigin: false,
-    desc: 'authority over soldiers',
-  },
-  {
-    category: 'feat',
-    name: 'War Caster',
-    isOrigin: true,
-    desc: 'conc advantage + somatic w/weapons',
-  },
-  { category: 'feat', name: 'Tough', isOrigin: false, desc: '+16 HP max' },
+/**
+ * Known section categories rendered in display order.
+ *
+ * Categories not in this list are bucketed under the last entry ('feat' / general).
+ * Widened to `string` in Phase 22 per Open Question 1 resolution.
+ */
+const FEAT_SECTION_ORDER: ReadonlyArray<string> = [
+  'class',
+  'race',
+  'background',
+  'feat',
+  'general',
 ];
 
 /**
@@ -751,17 +748,36 @@ export function renderFeatsTab(
   }
   const lines: FeatLine[] = [];
 
-  const categories: Array<{ cat: FeatDef['category']; label: string }> = [
-    { cat: 'class', label: classSection },
-    { cat: 'race', label: raceSection },
-    { cat: 'background', label: bgSection },
-    { cat: 'feat', label: featsSection },
+  // Build FeatDef list from real snapshot.feats (RDATA-03 — INV-4 dead-code rule: no fixture fallback).
+  // Unknown categories (exotic dnd5e featureTypes) are normalised to 'general' for bucketing.
+  const featSource: ReadonlyArray<FeatDef> = (snapshot.feats ?? []).map((f) => ({
+    category: f.category.length > 0 ? f.category : 'general',
+    name: f.name,
+    isOrigin: f.isOrigin,
+    desc: truncateUnicode(f.description, 40),
+  }));
+
+  const sectionLabelMap: ReadonlyMap<string, string> = new Map([
+    ['class', classSection],
+    ['race', raceSection],
+    ['background', bgSection],
+    ['feat', featsSection],
+    ['general', featsSection],
+  ]);
+
+  // Collect all distinct categories in FEAT_SECTION_ORDER, then any remainder
+  const orderedCats = [
+    ...FEAT_SECTION_ORDER.filter((c) => featSource.some((f) => f.category === c)),
+    ...[...new Set(featSource.map((f) => f.category))].filter(
+      (c) => !FEAT_SECTION_ORDER.includes(c),
+    ),
   ];
 
-  for (const { cat, label } of categories) {
-    const featsInCat = DEFAULT_FEATS.filter((f) => f.category === cat);
+  for (const cat of orderedCats) {
+    const featsInCat = featSource.filter((f) => f.category === cat);
     if (featsInCat.length === 0) continue;
 
+    const label = sectionLabelMap.get(cat) ?? featsSection;
     lines.push({ isHeader: true, content: label });
     for (const feat of featsInCat) {
       const prefix = modernRules && feat.isOrigin ? `${originFlag} ` : '  ';
@@ -861,13 +877,16 @@ function wordWrap(text: string, maxWidth: number): string[] {
 /**
  * Render the Bio tab content per UI-SPEC §5.7.
  *
- * Strips HTML from `actor.system.details.biography.value`, then word-wraps at
- * 66 chars per row. Subsection headers for personality / ideal / bond / flaw /
- * backstory are inserted between sections.
+ * Reads biography fields from `snapshot.biography` (Phase 22 RDATA-04).
+ * Empty/absent biography → graceful empty state (all sections skipped, scroll
+ * hint + blank rows).
  *
- * Since CharacterSnapshot (Phase 2 schema) does not carry biography text, this
- * renderer generates a placeholder structure using the section headers from
- * i18n-budgets. Live data wiring defers to Phase 7+ schema extension.
+ * Sections with empty text are omitted (no header line emitted) per D-22.4.
+ * Backstory is HTML-stripped reader-side; the renderer applies stripHtml as
+ * an additional safety layer (T-05-03-02 defence-in-depth).
+ *
+ * T-05-03-03 (DoS via large biography): word-wrap windowing ensures only 18
+ * rows × 66 chars are processed per render call — O(n) but bounded output.
  *
  * @param snapshot     Character snapshot (null → blank rows)
  * @param locale       Active HUD locale
@@ -890,21 +909,22 @@ export function renderBioTab(
   const backstoryHeader = getLabel('sheet.bio.backstory', locale);
   const scrollHint = getLabel('sheet.bio.scroll_hint', locale);
 
-  // Representative bio text for Thorin Oakenshield (used when snapshot lacks bio data)
-  // HTML-strip + word-wrap used on any real biography value supplied in the snapshot.
-  // CharacterSnapshot schema (Phase 2) doesn't carry biography; we use representative text.
-  const personalityText = 'Sono un guerriero onesto che non si ferma davanti agli ostacoli.';
-  const idealText = 'Lealtà: la fedeltà ai compagni è tutto.';
-  const bondText = 'Difenderò la mia dimora ancestrale costi quel che costi.';
-  const flawText = "L'orgoglio mi rende spesso testardo e chiuso al compromesso.";
-  const backstoryText = 'Ex soldato del reggimento di montagna, veterano di tre campagne.';
+  // Real biography fields from snapshot.biography (RDATA-04).
+  // biography is optional (D-22.1); absent/empty-string → section skipped (D-22.4).
+  // Backstory is HTML-stripped reader-side; stripHtml here is defence-in-depth (T-05-03-02).
+  const personalityText = snapshot.biography?.personality ?? '';
+  const idealText = snapshot.biography?.ideal ?? '';
+  const bondText = snapshot.biography?.bond ?? '';
+  const flawText = snapshot.biography?.flaw ?? '';
+  const backstoryText = snapshot.biography?.backstory ?? '';
 
-  // Build flat lines list
+  // Build flat lines list; sections with empty text are OMITTED (D-22.4).
   const allLines: string[] = [];
 
   const addSection = (header: string, text: string): void => {
+    if (text.length === 0) return; // skip empty fields per D-22.4
     allLines.push(header);
-    const cleaned = stripHtml(text);
+    const cleaned = stripHtml(text); // defence-in-depth; reader already strips
     const wrapped = wordWrap(cleaned, INNER_WIDTH);
     allLines.push(...wrapped);
     allLines.push(''); // blank separator
