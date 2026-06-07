@@ -1442,7 +1442,7 @@ export async function _bootEngineCore(
   // map view. The `finalizeIdleRender` helper is preserved and still exported for
   // that future use path.
   //
-  // TODO(HUD-27PX): re-call finalizeIdleRender when map mode is gesture-opened (#issue)
+  // TODO(ADR-0013): re-call finalizeIdleRender when map mode is gesture-opened
   // DEFERRED per Specs §7.4 "Map mode (gesture-opened, future)" + ADR-0001 Amendment.
   //
   // The old call was:
