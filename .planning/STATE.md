@@ -4,8 +4,8 @@ milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: verifying
 stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-06-07T23:20:45.884Z"
-last_activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
+last_updated: "2026-06-07T23:45:59.319Z"
+last_activity: 2026-06-07
 progress:
   total_phases: 8
   completed_phases: 4
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 22 (Features + Biography Schema Extension) — EXECUTING
-Plan: 3 of 3
+Phase: 23
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
+Last activity: 2026-06-07
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 21
+- Total plans completed: 24
 - Average duration: 12.33 min
 - Total execution time: 74 min
 
@@ -47,6 +47,7 @@ Last activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + Biogra
 | 02 | 5 | - | - |
 | 03 | 5 | - | - |
 | 21 | 5 | - | - |
+| 22 | 3 | - | - |
 
 **Recent Trend:**
 

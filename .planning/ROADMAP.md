@@ -249,7 +249,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
 | 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
-| 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete   | 2026-06-07 |
+| 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete    | 2026-06-07 |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
