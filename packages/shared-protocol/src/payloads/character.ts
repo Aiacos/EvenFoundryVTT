@@ -461,6 +461,96 @@ export const SkillsSchema = z.strictObject({
 export type Skills = z.infer<typeof SkillsSchema>;
 
 /**
+ * A single feat or class feature carried by the character (Phase 22 Plan 22-01; RDATA-03).
+ *
+ * Validates entries extracted from `actor.items` filtered to `type === 'feat'`.
+ * The `category` is stored verbatim from `item.system.type.value` (dnd5e featureTypes
+ * taxonomy: `'background'|'class'|'race'|'feat'|'monster'|'supernaturalGift'|etc.`);
+ * PHB 2014 feats that lack `system.type.value` fall back to `'general'` in the reader.
+ *
+ * Uses `z.object` (NOT `z.strictObject`) for forward-compat — matching SpellEntrySchema
+ * and AbilityScoreSchema precedents. Extra fields passed on the wire survive without error.
+ *
+ * @see packages/foundry-module/src/readers/character-reader.ts (extractFeats producer)
+ * @see .planning/phases/EVF-22-features-biography-schema-extension/22-CONTEXT.md D-22.2
+ * @see .planning/phases/EVF-22-features-biography-schema-extension/22-01-PLAN.md Task 1
+ * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/config.mjs — featureTypes taxonomy
+ * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/item/fields/item-type-field.mjs
+ */
+export const FeatEntrySchema = z.object({
+  /**
+   * Feature category from dnd5e featureTypes taxonomy.
+   * Reader value: `item.system.type.value` when non-empty; fallback `'general'` for
+   * PHB 2014 items that predate the categorisation system (blank/absent type.value).
+   * Open `z.string()` (NOT enum) — dnd5e featureTypes is extensible and the reader
+   * passes `system.type.value` verbatim without remapping.
+   */
+  category: z.string(),
+  /**
+   * Display name of the feat/feature from `item.name`.
+   * min(1): nameless items are dropped by the reader; the schema enforces the invariant.
+   */
+  name: z.string().min(1),
+  /**
+   * True for PHB 2024 origin feats: `system.type.value === 'feat'` AND
+   * `system.type.subtype === 'origin'`. False for all other feats/features.
+   * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/config.mjs — feat subtypes
+   */
+  isOrigin: z.boolean(),
+  /**
+   * Short description (HTML-stripped in the reader before wire storage).
+   * Reader path: `item.system.description.value`, stripped via `/<[^>]*>/g → ''`.
+   * Empty string when description is absent (PHB 2014 items without descriptions).
+   */
+  description: z.string(),
+});
+export type FeatEntry = z.infer<typeof FeatEntrySchema>;
+
+/**
+ * Character biography fields from `actor.system.details.*` (Phase 22 Plan 22-01; RDATA-04).
+ *
+ * All five fields are REQUIRED on the sub-object (the reader always provides them as empty
+ * strings when the actor fields are absent — empty-string fallback per D-22.4). This avoids
+ * partial-object edge cases in the renderer.
+ *
+ * Uses `z.object` (NOT `z.strictObject`) for forward-compat, matching existing sub-schema
+ * patterns (WorldStateSchema, AbilityScoreSchema).
+ *
+ * Field-name mapping (dnd5e field key → BiographySnapshot key):
+ * - `system.details.trait` → `personality`  (labeled "DND5E.PersonalityTraits" in dnd5e; NOT
+ *   `system.details.personality` — common pitfall documented in 22-RESEARCH.md Pitfall 2)
+ * - `system.details.ideal` → `ideal`
+ * - `system.details.bond`  → `bond`
+ * - `system.details.flaw`  → `flaw`
+ * - `system.details.biography.value` (HTMLField, stripped) → `backstory`
+ *
+ * @see packages/foundry-module/src/readers/character-reader.ts (extractBiography producer)
+ * @see .planning/phases/EVF-22-features-biography-schema-extension/22-CONTEXT.md D-22.4
+ * @see .planning/phases/EVF-22-features-biography-schema-extension/22-01-PLAN.md Task 1
+ * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/character.mjs
+ * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/templates/details.mjs
+ */
+export const BiographySnapshotSchema = z.object({
+  /**
+   * Personality traits from `system.details.trait` (NOT `system.details.personality`).
+   * CITED: dnd5e character.mjs — field key is `trait`, label "DND5E.PersonalityTraits".
+   */
+  personality: z.string(),
+  /** Character ideals from `system.details.ideal`. */
+  ideal: z.string(),
+  /** Character bonds from `system.details.bond`. */
+  bond: z.string(),
+  /** Character flaws from `system.details.flaw`. */
+  flaw: z.string(),
+  /**
+   * Backstory from `system.details.biography.value` (HTMLField, HTML-stripped by reader).
+   * T-05-03-02 mirror: biography.value is HTML; stripped before wire payload by extractBiography.
+   */
+  backstory: z.string(),
+});
+export type BiographySnapshot = z.infer<typeof BiographySnapshotSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -562,6 +652,23 @@ export const CharacterSnapshotSchema = z.strictObject({
    * Other movement modes (fly/swim/climb) are deferred to a future phase.
    */
   speed: z.number().int().nonnegative(),
+  /**
+   * Character feats and features (Phase 22 Plan 22-01 atomic extension; RDATA-03).
+   * OPTIONAL — absent when the actor has not yet been synced or has no feat items.
+   * Renderers fall back to empty array (`snapshot.feats ?? []`) when absent.
+   * FeatEntry[] from `actor.items` filtered to `type === 'feat'`.
+   *
+   * Pitfall 4 (22-RESEARCH.md): optional on z.strictObject = field may be absent
+   * (valid) OR present with declared type (valid); unknown top-level keys still rejected.
+   */
+  feats: z.array(FeatEntrySchema).optional(),
+  /**
+   * Character biography (Phase 22 Plan 22-01 atomic extension; RDATA-04).
+   * OPTIONAL — absent when all biography fields are empty OR actor not yet synced.
+   * Renderer falls back to empty-string per field when absent (D-22.4).
+   * HTML-stripped in extractBiography before wire storage (T-22-01/T-22-02 mitigate).
+   */
+  biography: BiographySnapshotSchema.optional(),
   /**
    * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
    *
