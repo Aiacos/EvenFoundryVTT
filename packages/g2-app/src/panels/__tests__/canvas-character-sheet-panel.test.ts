@@ -679,6 +679,217 @@ describe('Boot dispatch — renderMode-gated panel id', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// RCSP-BIO-* + RCSP-PAINT-SCROLL — Phase 22 tab-aware scroll (Plan 22-03)
+//
+// D-22.5: Bio + Feats tabs scroll content via _scrollOffset; other tabs cycle.
+// Pattern 4 (RESEARCH): scroll-down/up on bio/feats adjusts _scrollOffset;
+// isAtTopBoundary() unchanged (Pitfall 5).
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
+  async function getPanel() {
+    const m = await import('../canvas-character-sheet-panel.js');
+    return m.default;
+  }
+
+  function makeMockGestureBus() {
+    const subscribers: Array<(g: { kind: string; direction?: string }) => void> = [];
+    return {
+      subscribe: vi.fn((fn: (g: { kind: string; direction?: string }) => void) => {
+        subscribers.push(fn);
+        return () => {
+          const idx = subscribers.indexOf(fn);
+          if (idx >= 0) subscribers.splice(idx, 1);
+        };
+      }),
+      publish: (g: { kind: string; direction?: string }) => {
+        for (const fn of [...subscribers]) fn(g);
+      },
+      size: () => subscribers.length,
+    };
+  }
+
+  function makeMockBridge() {
+    return {
+      setLocalStorage: vi.fn().mockResolvedValue('true'),
+      getLocalStorage: vi.fn().mockResolvedValue(''),
+      textContainerUpgrade: vi.fn().mockResolvedValue(undefined),
+      updateImageRawData: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  /**
+   * Navigate panel to a specific tab by cycling until `isAtTab` returns true.
+   * The panel starts at tab 0 (main); TABS order is [main, skills, inventory, spells, feats, bio].
+   */
+  async function navigateToTab(
+    panel: InstanceType<Awaited<ReturnType<typeof getPanel>>>,
+    bus: ReturnType<typeof makeMockGestureBus>,
+    targetTabIndex: number,
+  ): Promise<void> {
+    for (let i = 0; i < targetTabIndex; i++) {
+      bus.publish({ kind: 'tap' });
+    }
+    // Allow any async state updates
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // TABS order: main(0), skills(1), inventory(2), spells(3), feats(4), bio(5)
+  const BIO_TAB_INDEX = 5;
+  const FEATS_TAB_INDEX = 4;
+
+  it('RCSP-BIO-1: scroll-down on bio tab increments _scrollOffset (does NOT change tab)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
+
+    await panel.onMount();
+    // Navigate to bio tab
+    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+
+    // Panel is now on bio tab; isAtTopBoundary() must be true (_scrollOffset starts at 0)
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    // scroll-down on bio tab → _scrollOffset++ (not tab advance)
+    bus.publish({ kind: 'scroll', direction: 'down' });
+
+    // _scrollOffset > 0 → isAtTopBoundary() = false
+    expect(panel.isAtTopBoundary()).toBe(false);
+    // _dirty must be true
+    expect(panel.isDirty()).toBe(true);
+  });
+
+  it('RCSP-BIO-2: scroll-up on bio tab with _scrollOffset>0 decrements _scrollOffset (does NOT cycle tab)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
+
+    await panel.onMount();
+    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+
+    // Scroll down twice to get _scrollOffset to 2
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
+
+    // Scroll up once → _scrollOffset-- (still > 0 → not at boundary)
+    bus.publish({ kind: 'scroll', direction: 'up' });
+    // Still NOT at top (was 2, now 1)
+    expect(panel.isAtTopBoundary()).toBe(false);
+    expect(panel.isDirty()).toBe(true);
+  });
+
+  it('RCSP-BIO-3: scroll-up on bio tab with _scrollOffset===0 resets offset and isAtTopBoundary() returns true', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
+
+    await panel.onMount();
+    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+
+    // _scrollOffset is 0 at this point
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    // scroll-up with _scrollOffset===0 → should cycle tab backward AND isAtTopBoundary() remains true
+    bus.publish({ kind: 'scroll', direction: 'up' });
+    // _scrollOffset was reset to 0 (or stays 0); isAtTopBoundary() = true
+    expect(panel.isAtTopBoundary()).toBe(true);
+  });
+
+  it('RCSP-BIO-4: scroll-down on non-scrollable tab (main) cycles tab forward as before', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
+
+    await panel.onMount();
+    // Panel starts on main tab (index 0); _scrollOffset = 0
+
+    // scroll-down on main tab → must cycle tab (advance), NOT increment scrollOffset
+    // If it cycled, _scrollOffset is reset to 0 and isDirty is true
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    // isAtTopBoundary stays true (no scrollOffset increment on non-scrollable tab)
+    expect(panel.isAtTopBoundary()).toBe(true);
+    expect(panel.isDirty()).toBe(true);
+  });
+
+  it('RCSP-BIO-5: scroll-down on feats tab increments _scrollOffset (feats also scrollable)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
+
+    await panel.onMount();
+    await navigateToTab(panel, bus, FEATS_TAB_INDEX);
+
+    // _scrollOffset starts at 0 (reset on tab navigation)
+    expect(panel.isAtTopBoundary()).toBe(true);
+
+    // scroll-down on feats tab → _scrollOffset++ (feats is scrollable per research Pattern 4)
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    expect(panel.isAtTopBoundary()).toBe(false);
+  });
+});
+
+describe('character-sheet-tab-renderers — RCSP-PAINT-SCROLL (Plan 22-03)', () => {
+  it('RCSP-PAINT-SCROLL: paintBioTab(ctx, snapshot, bounds, font, locale, 3) forwards scrollOffset to renderBioTab (windowed output differs from offset 0)', async () => {
+    const { paintBioTab } = await import('../character-sheet-tab-renderers.js');
+
+    // Snapshot with enough biography text to make scrollOffset matter
+    const snapshotWithLongBio: import('@evf/shared-protocol').CharacterSnapshot = {
+      ...TEST_SNAPSHOT,
+      biography: {
+        personality: 'A brave warrior who never backs down from a challenge.',
+        ideal: 'Justice above all else.',
+        bond: 'My homeland is worth any sacrifice.',
+        flaw: 'My stubbornness gets me into trouble.',
+        backstory:
+          'Born in a mountain fortress, trained since childhood. ' +
+          'Survived three wars and countless skirmishes. ' +
+          'Now seeks redemption for past failures.',
+      },
+    };
+
+    function makeFakeCtxCapture() {
+      const calls: string[] = [];
+      const ctx = {
+        fillText: vi.fn((...args: unknown[]) => calls.push(args[0] as string)),
+        clearRect: vi.fn(),
+        drawImage: vi.fn(),
+        fillRect: vi.fn(),
+        strokeRect: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        measureText: vi.fn(() => ({ width: 10 })),
+        font: '',
+        fillStyle: '',
+        strokeStyle: '',
+        canvas: { width: 576, height: 288 } as HTMLCanvasElement,
+      } as unknown as CanvasRenderingContext2D;
+      return { ctx, calls };
+    }
+
+    const bounds = { x: 0, y: 0, w: 576, h: 288 };
+
+    const { ctx: ctx0, calls: calls0 } = makeFakeCtxCapture();
+    paintBioTab(ctx0, snapshotWithLongBio, bounds, '16px monospace', 'en', 0);
+
+    const { ctx: ctx3, calls: calls3 } = makeFakeCtxCapture();
+    paintBioTab(ctx3, snapshotWithLongBio, bounds, '16px monospace', 'en', 3);
+
+    // With a real scrollOffset=3, the visible window shifts — fillText calls differ
+    expect(calls0.join('\n')).not.toBe(calls3.join('\n'));
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // RCSP-INV1 — raster INV-1 SHA-256 tile hashes (Plan 21-05)
 //
 // Contract: the same canonical synthetic RGBA used by Phase 20 RINV-01
