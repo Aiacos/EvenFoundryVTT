@@ -1221,6 +1221,269 @@ describe('getCharacterSnapshot', () => {
   });
 });
 
+// ─── extractFeats reader tests (Phase 22 Plan 22-02; RDATA-03) ────────────────
+
+describe('extractFeats', () => {
+  let extractFeats: typeof import('./character-reader.js').extractFeats;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    extractFeats = mod.extractFeats;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Helper: build a minimal feat item mock.
+   * `systemType` controls the type/subtype object; omit for PHB 2014 fallback path.
+   */
+  function makeFeatItem(
+    overrides: {
+      name?: string;
+      systemType?: { value?: string; subtype?: string };
+      description?: string;
+    } = {},
+  ) {
+    return {
+      id: 'feat-1',
+      name: overrides.name ?? 'War Caster',
+      type: 'feat',
+      system: {
+        ...(overrides.systemType !== undefined ? { type: overrides.systemType } : {}),
+        description: { value: overrides.description ?? '' },
+      },
+    };
+  }
+
+  /**
+   * Helper: build a minimal actor mock with given feat items.
+   * Non-feat items are excluded from extractFeats output.
+   */
+  function makeActorWithFeats(featItems: ReturnType<typeof makeFeatItem>[]) {
+    return {
+      id: 'actor-feats',
+      name: 'Tester',
+      type: 'character',
+      items: { contents: featItems },
+    };
+  }
+
+  it('CR-FT-1: PHB 2024 origin feat → category:feat, isOrigin:true, HTML stripped', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({
+        name: 'War Caster',
+        systemType: { value: 'feat', subtype: 'origin' },
+        description: '<p>conc adv</p>',
+      }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'feat',
+      name: 'War Caster',
+      isOrigin: true,
+      description: 'conc adv',
+    });
+  });
+
+  it('CR-FT-2: PHB 2014 feat (no system.type) → category:general, isOrigin:false, no throw', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({ name: 'Alert', description: 'Always alert.' }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'general',
+      name: 'Alert',
+      isOrigin: false,
+      description: 'Always alert.',
+    });
+  });
+
+  it('CR-FT-3: actor with zero feat items → returns []', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toEqual([]);
+  });
+
+  it('CR-FT-4: background feat → category:background, isOrigin:false', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({
+        name: 'Acolyte Feature',
+        systemType: { value: 'background' },
+        description: 'You gain a benefit.',
+      }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'background',
+      isOrigin: false,
+    });
+  });
+
+  it('CR-FT-5: actor === undefined → returns [] (mirrors extractClass null-safety)', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const result = extractFeats(undefined as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toEqual([]);
+  });
+});
+
+// ─── extractBiography reader tests (Phase 22 Plan 22-02; RDATA-04) ────────────
+
+describe('extractBiography', () => {
+  let extractBiography: typeof import('./character-reader.js').extractBiography;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    extractBiography = mod.extractBiography;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Helper: build a minimal actor mock with given details overrides. */
+  function makeActorWithDetails(details: Record<string, unknown>) {
+    return {
+      id: 'actor-bio',
+      name: 'Tester',
+      type: 'character',
+      items: { contents: [] },
+      system: { details },
+    };
+  }
+
+  it('CR-BIO-1: all fields present → maps trait→personality, HTML-strips backstory', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({
+      trait: 'brave',
+      ideal: 'loyalty',
+      bond: 'home',
+      flaw: 'pride',
+      biography: { value: '<p>veteran</p>' },
+    });
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: 'brave',
+      ideal: 'loyalty',
+      bond: 'home',
+      flaw: 'pride',
+      backstory: 'veteran',
+    });
+  });
+
+  it('CR-BIO-2: HTML-stripping — complex HTML tags stripped from backstory', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({
+      biography: { value: '<h2>Hi</h2><strong>x</strong>' },
+    });
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result.backstory).toBe('Hix');
+  });
+
+  it('CR-BIO-3: empty/missing details → all five fields are empty strings, no throw', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({});
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: '',
+      ideal: '',
+      bond: '',
+      flaw: '',
+      backstory: '',
+    });
+  });
+
+  it('CR-BIO-4: actor === undefined → all-empty-string BiographySnapshot', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const result = extractBiography(undefined as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: '',
+      ideal: '',
+      bond: '',
+      flaw: '',
+      backstory: '',
+    });
+  });
+});
+
+// ─── Integration: getCharacterSnapshot carries feats + biography (Phase 22) ───
+
+describe('getCharacterSnapshot — feats + biography integration (CR-FT-6 / CR-BIO-5)', () => {
+  let getCharacterSnapshot: typeof import('./character-reader.js').getCharacterSnapshot;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    getCharacterSnapshot = mod.getCharacterSnapshot;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('CR-FT-6 / CR-BIO-5: snapshot carries feats[] and biography from real actor details', () => {
+    const actor = {
+      ...makeActor({
+        id: 'pc-bio-ft',
+        classNames: [],
+      }),
+      system: {
+        ...makeActor({ id: 'pc-bio-ft' }).system,
+        details: {
+          level: 5,
+          trait: 'bold',
+          ideal: 'justice',
+          bond: 'family',
+          flaw: 'reckless',
+          biography: { value: '<p>A veteran warrior.</p>' },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: 'feat-war',
+            name: 'War Caster',
+            type: 'feat',
+            system: {
+              type: { value: 'feat', subtype: 'origin' },
+              description: { value: '<b>Advantage</b> on concentration checks.' },
+            },
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', makeGameMock([actor as unknown as ReturnType<typeof makeActor>]));
+
+    const snap = getCharacterSnapshot('pc-bio-ft');
+    expect(snap).not.toBeNull();
+
+    // CR-FT-6: feats array populated from actor.items
+    expect(snap?.feats).toBeDefined();
+    expect(snap?.feats).toHaveLength(1);
+    expect(snap?.feats?.[0]).toMatchObject({
+      category: 'feat',
+      name: 'War Caster',
+      isOrigin: true,
+    });
+
+    // CR-BIO-5: biography.personality sourced from details.trait (NOT details.personality)
+    expect(snap?.biography).toBeDefined();
+    expect(snap?.biography?.personality).toBe('bold');
+    expect(snap?.biography?.backstory).toBe('A veteran warrior.');
+  });
+});
+
 // ─── Combat reader tests ───────────────────────────────────────────────────────
 
 describe('getCombatSnapshot', () => {
