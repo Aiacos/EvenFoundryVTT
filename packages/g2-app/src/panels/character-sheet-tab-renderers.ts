@@ -82,6 +82,18 @@
  * @see packages/g2-app/src/panels/character-sheet-panel.ts (TABS / buildTabStrip)
  * @see packages/g2-app/src/status-hud/i18n-budgets.ts (HUD_WIDTH_BUDGETS keys)
  * @see packages/shared-protocol/src/payloads/character.ts (CharacterSnapshotSchema)
+ *
+ * ## Phase 21 — Additive canvas paint*Tab methods (RSHEET-01)
+ *
+ * Six additive canvas paint methods added alongside the existing string renderers:
+ * `paintMainTab`, `paintSkillsTab`, `paintInventoryTab`, `paintSpellsTab`,
+ * `paintFeatsTab`, `paintBioTab`. These draw tab content directly onto a
+ * `CanvasRenderingContext2D` within the supplied bounds object. The existing
+ * `render*Tab()` string renderers are PRESERVED INTACT — the paint*Tab methods
+ * are purely additive (RSHEET-01 additive canvas path). The Main tab surfaces
+ * real `snapshot.initiative` (signed) and `snapshot.speed` instead of `—`.
+ *
+ * @see .planning/phases/EVF-21-character-sheet-su-canvas-dati-main-tab/21-03-PLAN.md
  */
 
 import { type CharacterSnapshot, SKILL_KEYS, type SkillKey } from '@evf/shared-protocol';
@@ -916,4 +928,250 @@ export function renderBioTab(
   rows.push(truncateUnicode(scrollHint, INNER_WIDTH));
 
   return padToRowCount(rows);
+}
+
+// ─── Canvas paint bounds type ─────────────────────────────────────────────────
+
+/**
+ * Axis-aligned bounding rectangle for canvas paint*Tab methods (Phase 21 Plan 21-03).
+ *
+ * All coordinates are in canvas pixels. The paint*Tab methods draw within
+ * this rectangle (origin = top-left corner, w/h = width/height in pixels).
+ *
+ * @see Phase 21 Plan 21-03 §Open Q 4 (paintMainTab signature recommendation)
+ * @see packages/g2-app/src/panels/canvas-character-sheet-panel.ts (caller)
+ */
+export interface PaintBounds {
+  /** X coordinate of the top-left corner (pixels). */
+  readonly x: number;
+  /** Y coordinate of the top-left corner (pixels). */
+  readonly y: number;
+  /** Width in pixels. */
+  readonly w: number;
+  /** Height in pixels. */
+  readonly h: number;
+}
+
+/** Phosphor-green foreground color (#ffffff → quantized to brightest G2 palette step). */
+const CANVAS_FG = '#ffffff';
+
+/** Line height (pixels) for the G2 VT323 27px fixed grid (Phase 21). */
+const CANVAS_LINE_H = 27;
+
+// ─── Canvas paint*Tab methods — ADDITIVE (string renderers preserved intact) ──
+
+/**
+ * Paint the Main tab content onto `ctx` within `bounds`.
+ *
+ * Draws real `snapshot.initiative` (signed +N/-N format via {@link formatAbilityMod})
+ * and `snapshot.speed` in the vitals row, replacing the `—` placeholders used
+ * by the glyph path's `renderMainTab`. Also surfaces `snapshot.class` and
+ * `snapshot.level` on the identity line.
+ *
+ * When `snapshot` is `null`, the method is a no-op — the compositor's chrome
+ * is already drawn and the content area is left blank.
+ *
+ * @param ctx      2D rendering context to draw on.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region `{x, y, w, h}` in canvas pixels.
+ * @param font     CSS font string (e.g. `'27px VT323'`) resolved by `ensureVt323Loaded`.
+ *
+ * @see packages/g2-app/src/panels/canvas-character-sheet-panel.ts (caller)
+ * @see Phase 21 Plan 21-03 §Task 1 (RSHEET-01 additive canvas renderers)
+ */
+export function paintMainTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  // Row 0: class + level identity line (real class from snapshot.class)
+  const classLevel =
+    snapshot.class.length > 0 ? `${snapshot.class} Lv ${snapshot.level}` : `Lv ${snapshot.level}`;
+  ctx.fillText(classLevel, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 1: HP bar
+  const hpRatio = snapshot.maxHp > 0 ? Math.max(0, Math.min(1, snapshot.hp / snapshot.maxHp)) : 0;
+  const hpFull = Math.round(hpRatio * 12);
+  const hpBar = `${'█'.repeat(hpFull)}${'░'.repeat(12 - hpFull)}`;
+  ctx.fillText(`PF ${hpBar} ${snapshot.hp}/${snapshot.maxHp}`, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 2: vitals — real initiative (signed) + real speed (plain integer)
+  const ini = formatAbilityMod(snapshot.initiative); // e.g. '+3', '-1', '+0'
+  const vel = String(snapshot.speed); // e.g. '30', '25'
+  ctx.fillText(`CA ${snapshot.ac}  INI ${ini}  VEL ${vel}`, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 3: abbreviated ability scores
+  const abs = snapshot.abilities;
+  ctx.fillText(
+    `FOR ${formatAbilityValue(abs.str.value)} DES ${formatAbilityValue(abs.dex.value)}` +
+      ` COS ${formatAbilityValue(abs.con.value)} INT ${formatAbilityValue(abs.int.value)}` +
+      ` SAG ${formatAbilityValue(abs.wis.value)} CAR ${formatAbilityValue(abs.cha.value)}`,
+    x,
+    lineY,
+  );
+}
+
+/**
+ * Paint the Skills tab content onto `ctx` within `bounds`.
+ *
+ * Delegates to `renderSkillsTab` (EN locale) to obtain localised lines and
+ * renders each via `fillText`. Phase 22 may replace this with a richer layout.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ */
+export function paintSkillsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderSkillsTab(snapshot, 'en', 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Inventory tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ */
+export function paintInventoryTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderTabContent('inventory', snapshot, 'en', 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Spells tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ */
+export function paintSpellsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderTabContent('spells', snapshot, 'en', 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Feats tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ */
+export function paintFeatsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderFeatsTab(snapshot, 'en', 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Biography tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ */
+export function paintBioTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderBioTab(snapshot, 'en', 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
 }
