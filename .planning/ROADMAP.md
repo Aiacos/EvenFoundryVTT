@@ -153,7 +153,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 **Plans**: 3 plans (3 waves)
 
 - [x] 22-01-PLAN.md — FeatEntrySchema + BiographySnapshotSchema + optional fields on CharacterSnapshotSchema (RDATA-03, RDATA-04)
-- [ ] 22-02-PLAN.md — foundry-module readers extractFeats() + extractBiography() (details.trait→personality) wired into getCharacterSnapshot (RDATA-03, RDATA-04)
+- [x] 22-02-PLAN.md — foundry-module readers extractFeats() + extractBiography() (details.trait→personality) wired into getCharacterSnapshot (RDATA-03, RDATA-04)
 - [ ] 22-03-PLAN.md — g2-app Feats/Bio tabs consume real data + gesture-driven within-tab scroll; remove DEFAULT_FEATS (RDATA-03, RDATA-04)
 
 **UI hint**: yes
@@ -249,7 +249,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
 | 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
-| 22. Features + Biography Schema Extension | v0.10.0 | 1/3 | In Progress|  |
+| 22. Features + Biography Schema Extension | v0.10.0 | 2/3 | In Progress|  |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |

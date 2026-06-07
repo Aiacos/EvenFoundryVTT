@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-06-08T00:50:00.000Z"
+stopped_at: Completed 21-03-PLAN.md
+last_updated: "2026-06-07T22:57:10.170Z"
 last_activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 16
   percent: 38
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 22 (Features + Biography Schema Extension) — EXECUTING
-Plan: 2 of 3
-Status: Executing Phase 22
+Plan: 3 of 3
+Status: Ready to execute
 Last activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
 
 ## Performance Metrics
@@ -96,6 +96,7 @@ Last activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + Biogra
 | Phase 21 P04 | 5min | 1 tasks | 2 files |
 | Phase 21 P05 | 7 min | 3 tasks | 6 files |
 | Phase 22 P01 | 5 min | 2 tasks | 2 files |
+| Phase 22 P02 | 4 min | - tasks | - files |
 
 ## Quick Tasks Completed
 
@@ -234,6 +235,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase ?]: canvas-character-sheet id distinct from glyph panel (Pitfall 2)
 - [Phase ?]: renderMode-gated dispatch in onNavigate — dispatch-time gate not sort order
 - [Phase 22 Plan 01]: FeatEntrySchema + BiographySnapshotSchema use `z.object` (NOT `z.strictObject`) — open for forward-compat, matching SpellEntrySchema/AbilityScoreSchema precedent; CharacterSnapshotSchema feats/biography are OPTIONAL (D-22.1) — ~26 downstream literals compile without mass update; `category` is `z.string()` (NOT enum) — dnd5e featureTypes open taxonomy, reader passes `system.type.value` verbatim
+- [Phase ?]: D-22.3: extractFeats category from system.type.value (PHB 2024 path); 'general' fallback for PHB 2014 (Pitfall 1 mitigated)
+- [Phase ?]: D-22.4: details.trait → biography.personality mapping (NOT details.personality — Pitfall 2 fix); HTML-stripped backstory reader-side (T-22-03 mitigation)
 
 ### Pending Todos
 
@@ -295,7 +298,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-07T22:49:08.270Z
+Last session: 2026-06-07T22:57:01.936Z
 Stopped at: Completed 21-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
