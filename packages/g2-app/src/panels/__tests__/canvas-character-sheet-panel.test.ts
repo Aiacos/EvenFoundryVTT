@@ -719,11 +719,10 @@ describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
   }
 
   /**
-   * Navigate panel to a specific tab by cycling until `isAtTab` returns true.
+   * Navigate panel to a specific tab by cycling tap until targetTabIndex reached.
    * The panel starts at tab 0 (main); TABS order is [main, skills, inventory, spells, feats, bio].
    */
   async function navigateToTab(
-    panel: InstanceType<Awaited<ReturnType<typeof getPanel>>>,
     bus: ReturnType<typeof makeMockGestureBus>,
     targetTabIndex: number,
   ): Promise<void> {
@@ -746,7 +745,7 @@ describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
 
     await panel.onMount();
     // Navigate to bio tab
-    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+    await navigateToTab(bus, BIO_TAB_INDEX);
 
     // Panel is now on bio tab; isAtTopBoundary() must be true (_scrollOffset starts at 0)
     expect(panel.isAtTopBoundary()).toBe(true);
@@ -767,7 +766,7 @@ describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
     const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
 
     await panel.onMount();
-    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+    await navigateToTab(bus, BIO_TAB_INDEX);
 
     // Scroll down twice to get _scrollOffset to 2
     bus.publish({ kind: 'scroll', direction: 'down' });
@@ -788,7 +787,7 @@ describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
     const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
 
     await panel.onMount();
-    await navigateToTab(panel, bus, BIO_TAB_INDEX);
+    await navigateToTab(bus, BIO_TAB_INDEX);
 
     // _scrollOffset is 0 at this point
     expect(panel.isAtTopBoundary()).toBe(true);
@@ -823,7 +822,7 @@ describe('CanvasCharacterSheetPanel — tab-aware scroll (RCSP-BIO)', () => {
     const panel = new CanvasCharacterSheetPanel(bridge as never, bus as never, 'it');
 
     await panel.onMount();
-    await navigateToTab(panel, bus, FEATS_TAB_INDEX);
+    await navigateToTab(bus, FEATS_TAB_INDEX);
 
     // _scrollOffset starts at 0 (reset on tab navigation)
     expect(panel.isAtTopBoundary()).toBe(true);
@@ -838,18 +837,22 @@ describe('character-sheet-tab-renderers — RCSP-PAINT-SCROLL (Plan 22-03)', () 
   it('RCSP-PAINT-SCROLL: paintBioTab(ctx, snapshot, bounds, font, locale, 3) forwards scrollOffset to renderBioTab (windowed output differs from offset 0)', async () => {
     const { paintBioTab } = await import('../character-sheet-tab-renderers.js');
 
-    // Snapshot with enough biography text to make scrollOffset matter
+    // Snapshot with enough biography text to make scrollOffset matter.
+    // The renderer windows ROW_COUNT-1=17 lines; we need >17 allLines so offset=3 shifts the window.
+    // Each addSection emits: header + wrapped-lines + blank; backstory below is ~4 wrapped lines.
+    // Total allLines ≈ 3+3+3+3+6 = 18 lines — offset=3 produces a different visible window.
     const snapshotWithLongBio: import('@evf/shared-protocol').CharacterSnapshot = {
       ...TEST_SNAPSHOT,
       biography: {
-        personality: 'A brave warrior who never backs down from a challenge.',
-        ideal: 'Justice above all else.',
-        bond: 'My homeland is worth any sacrifice.',
-        flaw: 'My stubbornness gets me into trouble.',
+        personality:
+          'A brave and steadfast warrior who never backs down from a challenge and always protects the weak.',
+        ideal: 'Justice above all else; the strong must shield those who cannot defend themselves.',
+        bond: 'My homeland and all its people are worth any sacrifice I can make.',
+        flaw: 'My stubbornness and pride too often get me and my companions into serious trouble.',
         backstory:
-          'Born in a mountain fortress, trained since childhood. ' +
-          'Survived three wars and countless skirmishes. ' +
-          'Now seeks redemption for past failures.',
+          'Born in a mountain fortress, trained since childhood by the order of the iron shield. ' +
+          'Survived three major wars and countless skirmishes across the known world. ' +
+          'Now seeks redemption for a past failure that cost many lives.',
       },
     };
 

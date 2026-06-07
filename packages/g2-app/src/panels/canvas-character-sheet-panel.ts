@@ -406,11 +406,16 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    * Handle a published R1 gesture (synchronous — schedules its own re-paint
    * by setting `_dirty = true`).
    *
-   * Dispatch table (byte-identical to glyph `CharacterSheetPanel`):
-   *   - `tap`         → advance tab mod 6; reset scroll; persist; dirty
-   *   - `scroll-up`   → decrement tab mod 6; reset scroll; persist; dirty
-   *   - `scroll-down` → advance tab mod 6; reset scroll; persist; dirty
-   *   - `double-tap`  → no-op; router handles close at bus level (ADR-0012)
+   * Dispatch table (Phase 22 D-22.5 tab-aware scroll):
+   *   - `tap`                             → advance tab mod 6; reset scroll; persist; dirty
+   *   - `scroll-down` (bio|feats tab)     → increment _scrollOffset (within-tab scroll); dirty
+   *   - `scroll-down` (other tabs)        → advance tab mod 6; reset scroll; persist; dirty
+   *   - `scroll-up`   (bio|feats, off>0)  → decrement _scrollOffset; dirty
+   *   - `scroll-up`   (bio|feats, off=0)  → cycle tab backward; reset scroll; persist; dirty
+   *   - `scroll-up`   (other tabs)        → cycle tab backward; reset scroll; persist; dirty
+   *   - `double-tap`                      → no-op; router handles close at bus level (ADR-0012)
+   *
+   * `isAtTopBoundary()` = `_scrollOffset === 0` (unchanged per Pitfall 5 — ADR-0012 contract).
    *
    * @param gesture R1 gesture from the PanelGestureBus.
    */
@@ -423,17 +428,35 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
         this._dirty = true;
         break;
 
-      case 'scroll':
+      case 'scroll': {
+        // D-22.5: Bio and Feats tabs scroll content via _scrollOffset.
+        // Other tabs cycle (existing behaviour). tap always cycles tabs (Open Question 2).
+        // isAtTopBoundary() stays _scrollOffset === 0 — DO NOT modify (Pitfall 5: ADR-0012 gate).
+        const scrollTab = TABS[this._activeTabIndex] ?? 'main';
+        const isScrollableTab = scrollTab === 'bio' || scrollTab === 'feats';
         if (gesture.direction === 'up') {
-          this._activeTabIndex = (this._activeTabIndex - 1 + TABS.length) % TABS.length;
+          if (isScrollableTab && this._scrollOffset > 0) {
+            // Within-tab scroll up
+            this._scrollOffset--;
+          } else {
+            // At boundary or non-scrollable: cycle tab backward + reset offset
+            this._activeTabIndex = (this._activeTabIndex - 1 + TABS.length) % TABS.length;
+            this._scrollOffset = 0;
+          }
         } else {
-          // scroll-down → forward (same as tap)
-          this._activeTabIndex = (this._activeTabIndex + 1) % TABS.length;
+          if (isScrollableTab) {
+            // Within-tab scroll down (renderer clamps over-scroll)
+            this._scrollOffset++;
+          } else {
+            // Non-scrollable: cycle tab forward + reset offset
+            this._activeTabIndex = (this._activeTabIndex + 1) % TABS.length;
+            this._scrollOffset = 0;
+          }
         }
-        this._scrollOffset = 0;
         void this._persistLastTab();
         this._dirty = true;
         break;
+      }
 
       case 'double-tap':
         // No-op stub — router closes panel at bus level per ADR-0012.
@@ -550,10 +573,10 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
         paintSpellsTab(ctx, this._snapshot, bounds, font, locale);
         break;
       case 'feats':
-        paintFeatsTab(ctx, this._snapshot, bounds, font, locale);
+        paintFeatsTab(ctx, this._snapshot, bounds, font, locale, this._scrollOffset);
         break;
       case 'bio':
-        paintBioTab(ctx, this._snapshot, bounds, font, locale);
+        paintBioTab(ctx, this._snapshot, bounds, font, locale, this._scrollOffset);
         break;
     }
   }

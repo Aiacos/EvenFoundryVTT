@@ -1159,6 +1159,7 @@ export function paintFeatsTab(
   bounds: PaintBounds,
   font: string,
   locale: HudLocale = 'en',
+  scrollOffset = 0,
 ): void {
   if (snapshot === null) return;
 
@@ -1168,7 +1169,7 @@ export function paintFeatsTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderFeatsTab(snapshot, locale, 0);
+  const rows = renderFeatsTab(snapshot, locale, scrollOffset);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
@@ -1191,6 +1192,7 @@ export function paintBioTab(
   bounds: PaintBounds,
   font: string,
   locale: HudLocale = 'en',
+  scrollOffset = 0,
 ): void {
   if (snapshot === null) return;
 
@@ -1200,7 +1202,7 @@ export function paintBioTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderBioTab(snapshot, locale, 0);
+  const rows = renderBioTab(snapshot, locale, scrollOffset);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
