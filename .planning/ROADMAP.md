@@ -150,7 +150,11 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   4. I downstream tests che costruiscono `CharacterSnapshot` literals nelle suite g2-app/bridge/foundry-mcp sono aggiornati con i nuovi campi opzionali (nessuna regressione di compilazione TypeScript strict)
   5. `pnpm test` passa con test di schema (FeatEntry validation, empty feats array, biography omitted → empty string fallback), test reader (mock actor.items → extractFeats output), e test renderer (tab Features paint con dati reali vs vuoti)
 
-**Plans**: TBD
+**Plans**: 3 plans (3 waves)
+
+- [ ] 22-01-PLAN.md — FeatEntrySchema + BiographySnapshotSchema + optional fields on CharacterSnapshotSchema (RDATA-03, RDATA-04)
+- [ ] 22-02-PLAN.md — foundry-module readers extractFeats() + extractBiography() (details.trait→personality) wired into getCharacterSnapshot (RDATA-03, RDATA-04)
+- [ ] 22-03-PLAN.md — g2-app Feats/Bio tabs consume real data + gesture-driven within-tab scroll; remove DEFAULT_FEATS (RDATA-03, RDATA-04)
 **UI hint**: yes
 
 ### Phase 23: Combat Tracker su Canvas + Combatant AC
