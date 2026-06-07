@@ -424,7 +424,8 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   const passivePrc = snapshot.skills.prc.passive;
   const passiveIns = snapshot.skills.ins.passive;
   const passiveInv = snapshot.skills.inv.passive;
-  const abbr = PASSIVE_ABBR[locale] ?? PASSIVE_ABBR.en;
+  // PASSIVE_ABBR is Record<HudLocale, ...> — all 6 locale keys present; index is always defined.
+  const abbr = PASSIVE_ABBR[locale];
   const sensesContent = `${abbr.prc} ${passivePrc} · ${abbr.ins} ${passiveIns} · ${abbr.inv} ${passiveInv}`;
   rows.push(`${sensesLabel}  ${sensesContent}`);
 
