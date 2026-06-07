@@ -61,7 +61,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [x] **Phase 19: ADR-0013 Amendment 1 + Canvas Compositor Core** ✅ (5/5 software must-haves; hardware-render SC human_needed per ADR-0005 Branch A) — ADR scritto prima dell'impl (geometria 400×200 / 4 tile 200×100 ratificata, push serializzato, schema-pagina fisso) · `CanvasCompositor` (regione 400×200) + `CanvasLayer` + `buildHudRasterPageSchema()` (5 container: 4 image-tile 200×100 + 1 text capture full-screen `isEventCapture:1`) · `LayerManager` `renderMode` + `_flushPage()` mode-selector + `_compositeAndPush()` (serializza i 4 `updateImageRawData`) + fixed-budget assertion · glyph path byte-identico; NESSUNA UI change (RAST-01..05, RINV-02)
 - [x] **Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline** — `CanvasStatusHudLayer` (z=1) · `@fontsource/vt323` con fallback-chain try/catch · chrome statico pre-baked via `ImageBitmap` · dati dinamici re-render only-on-delta · INV-1 raster contract (hash tile PNG da RGBA sintetico) + `inv:all` distingue glyph/raster suite; `map-capture` → `hud-capture` rename (RFONT-01..03, RINV-01) (completed 2026-06-06)
 - [x] **Phase 21: Character Sheet su Canvas + Dati Main-tab** — `CanvasCharacterSheetPanel` z=2 · 6 tab su canvas (Main · Skills · Inventory · Spells · Features · Biography) · navigazione gesture preservata · portrait greyscale-dithered · `class`+`initiative`+`speed` schema+reader (RSHEET-01..03, RDATA-01..02) (completed 2026-06-07)
-- [ ] **Phase 22: Features + Biography Schema Extension** — `feats[]` + `biography` in `CharacterSnapshotSchema` + `extractFeats()` + `extractBiography()` readers in `foundry-module` · Features + Biography tab wired su dati reali al posto delle fixture hardcoded (RDATA-03..04)
+- [x] **Phase 22: Features + Biography Schema Extension** — `feats[]` + `biography` in `CharacterSnapshotSchema` + `extractFeats()` + `extractBiography()` readers in `foundry-module` · Features + Biography tab wired su dati reali al posto delle fixture hardcoded (RDATA-03..04) (completed 2026-06-07)
 - [ ] **Phase 23: Combat Tracker su Canvas + Combatant AC** — `CanvasCombatTrackerPanel` z=2 (5-row window · current-turn highlight · HP · concentrazione · quick-action bar) · `CombatantSchema.ac` + reader · gesture preservate (RCOMB-01, RDATA-05)
 - [ ] **Phase 24: Delta Loop ~5fps xxhash** — loop `~5fps` + debounce 200ms + `TileDelta` sub-tile xxhash con geometria 200×100 · solo tile CHANGED vengono re-encodati/spediti (serializzati) · HUD idle ≈ banda BLE quasi-zero (RPROMO-01)
 - [ ] **Phase 25: Promozione Raster a Default Boot + Fallback Glyph** — `boot-engine-core.ts` switched a canvas-default · `?hud=raster` guard rimosso (INV-4 dead-code rule) · `renderMode: 'glyph'` attivato da `RasterController.setBleVerdict('glyph')` con switch atomico via `bundle([])` · prerequisiti: delta (Phase 24) + INV-2 re-verify (Phase 19) + capture-container sim test + INV-3 §7 (Phase 26) (RPROMO-02)
@@ -154,7 +154,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 
 - [x] 22-01-PLAN.md — FeatEntrySchema + BiographySnapshotSchema + optional fields on CharacterSnapshotSchema (RDATA-03, RDATA-04)
 - [x] 22-02-PLAN.md — foundry-module readers extractFeats() + extractBiography() (details.trait→personality) wired into getCharacterSnapshot (RDATA-03, RDATA-04)
-- [ ] 22-03-PLAN.md — g2-app Feats/Bio tabs consume real data + gesture-driven within-tab scroll; remove DEFAULT_FEATS (RDATA-03, RDATA-04)
+- [x] 22-03-PLAN.md — g2-app Feats/Bio tabs consume real data + gesture-driven within-tab scroll; remove DEFAULT_FEATS (RDATA-03, RDATA-04)
 
 **UI hint**: yes
 
@@ -249,7 +249,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 19. ADR-0013 Amendment 1 + INV-2 Re-verify + Canvas Compositor Core | v0.10.0 | 0/? | Not started | - |
 | 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
-| 22. Features + Biography Schema Extension | v0.10.0 | 2/3 | In Progress|  |
+| 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete   | 2026-06-07 |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
