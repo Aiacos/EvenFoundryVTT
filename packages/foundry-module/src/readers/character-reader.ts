@@ -545,7 +545,8 @@ function stripHtml(html: string): string {
  *
  * @param actor - Foundry actor document (may be `undefined` for fresh/missing actors)
  * @returns Array of {@link FeatEntry} objects; `[]` for classless or undefined actors
- * @internal
+ * @remarks Exported for unit-test access within the `foundry-module` package only.
+ *          Not part of the stable public API — prefer {@link getCharacterSnapshot}.
  */
 export function extractFeats(actor: ReturnType<typeof game.actors.get>): FeatEntry[] {
   if (actor === undefined) return [];
@@ -584,7 +585,8 @@ export function extractFeats(actor: ReturnType<typeof game.actors.get>): FeatEnt
  *
  * @param actor - Foundry actor document (may be `undefined` for fresh/missing actors)
  * @returns {@link BiographySnapshot} with five string fields
- * @internal
+ * @remarks Exported for unit-test access within the `foundry-module` package only.
+ *          Not part of the stable public API — prefer {@link getCharacterSnapshot}.
  */
 export function extractBiography(actor: ReturnType<typeof game.actors.get>): BiographySnapshot {
   const EMPTY: BiographySnapshot = {
