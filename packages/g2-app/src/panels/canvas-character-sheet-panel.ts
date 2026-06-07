@@ -645,7 +645,10 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
       const imgBitmap = await createImageBitmap(blob, { resizeWidth: W, resizeHeight: H });
       const scratch = new OffscreenCanvas(W, H);
       const sCtx = scratch.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
-      if (sCtx === null) return;
+      if (sCtx === null) {
+        imgBitmap.close(); // CR-02 fix: release GPU-backed memory before early return
+        return;
+      }
 
       sCtx.drawImage(imgBitmap, 0, 0, W, H);
       imgBitmap.close();
