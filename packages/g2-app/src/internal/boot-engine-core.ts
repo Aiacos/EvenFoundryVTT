@@ -884,7 +884,19 @@ export async function _bootEngineCore(
           // clearOverlayStack() is safe here: suspended panels had onUnmount
           // called when they were pushed, so no additional cleanup is needed.
           panelRouter.clearOverlayStack();
-          void panelRouter.openPanel(target, {
+
+          // Plan 21-03 — renderMode-gated character sheet dispatch (RCSP-BOOT-CANVAS/GLYPH).
+          // When the quick-action menu emits target='character-sheet' and the render mode
+          // is 'canvas', open the canvas-mode panel instead of the glyph panel.
+          // The two panels share the same PERSIST_KEY (view.sheet.lastTab) so tab state
+          // is preserved across mode switches.
+          // Pitfall 2 from 21-RESEARCH.md: do NOT sort panels by id — gate at dispatch time.
+          const resolvedTarget =
+            target === 'character-sheet' && layerManager.getRenderMode() === 'canvas'
+              ? 'canvas-character-sheet'
+              : target;
+
+          void panelRouter.openPanel(resolvedTarget, {
             bridge,
             layerManager,
             gestureBus,
@@ -996,6 +1008,16 @@ export async function _bootEngineCore(
   //          This allows CharacterSheetPanel.onMount to call setPortraitOverride
   //          when the Bio tab is opened with portrait enabled (D-13-08 slot override).
   panelRouter.setPanelInstanceHandler('character-sheet', (panel) => {
+    const sheet = panel as unknown as { setMapBaseLayer: (m: typeof mapBase) => void };
+    sheet.setMapBaseLayer(mapBase);
+  });
+
+  // 11d-iv. Plan 21-03 — canvas-character-sheet mapBase injection.
+  //         Mirror of the 'character-sheet' handler above for the canvas-mode panel.
+  //         CanvasCharacterSheetPanel.setMapBaseLayer wires the portrait-slot override
+  //         (slot 3) on onMount/onUnmount (Plan 21-04 adds portrait fetch — this handler
+  //         ensures the mapBase ref is available at panel construction time).
+  panelRouter.setPanelInstanceHandler('canvas-character-sheet', (panel) => {
     const sheet = panel as unknown as { setMapBaseLayer: (m: typeof mapBase) => void };
     sheet.setMapBaseLayer(mapBase);
   });
