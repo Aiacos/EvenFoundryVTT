@@ -1387,7 +1387,9 @@ describe('extractBiography', () => {
       biography: { value: '<h2>Hi</h2><strong>x</strong>' },
     });
     const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
-    expect(result.backstory).toBe('Hix');
+    // Block-level tags (<h2>) inject a separating space so adjacent runs don't merge;
+    // inline tags (<strong>) strip without one (WR-03 fix). → "Hi" + " " + "x".
+    expect(result.backstory).toBe('Hi x');
   });
 
   it('CR-BIO-3: empty/missing details → all five fields are empty strings, no throw', () => {
