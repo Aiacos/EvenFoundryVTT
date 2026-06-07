@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 21-03-PLAN.md
-last_updated: "2026-06-07T22:02:50.058Z"
-last_activity: 2026-06-07
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-06-08T00:50:00.000Z"
+last_activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
 progress:
   total_phases: 8
   completed_phases: 3
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 17
+  completed_plans: 15
   percent: 38
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 21 — Character Sheet su Canvas + Dati Main-tab
+**Current focus:** Phase 22 — Features + Biography Schema Extension
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-07
+Phase: 22 (Features + Biography Schema Extension) — EXECUTING
+Plan: 2 of 3
+Status: Executing Phase 22
+Last activity: 2026-06-08 -- Phase 22 Plan 01 complete (FeatEntrySchema + BiographySnapshotSchema)
 
 ## Performance Metrics
 
@@ -95,6 +95,7 @@ Last activity: 2026-06-07
 | Phase 21 P03 | 35 | 3 tasks | 4 files |
 | Phase 21 P04 | 5min | 1 tasks | 2 files |
 | Phase 21 P05 | 7 min | 3 tasks | 6 files |
+| Phase 22 P01 | 5 min | 2 tasks | 2 files |
 
 ## Quick Tasks Completed
 
@@ -232,6 +233,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase ?]: dither-utils.ts extraction: ditherTile takes explicit w/h params for portrait (100x60) + map tile (200x100) reuse — single algorithm, zero duplication
 - [Phase ?]: canvas-character-sheet id distinct from glyph panel (Pitfall 2)
 - [Phase ?]: renderMode-gated dispatch in onNavigate — dispatch-time gate not sort order
+- [Phase 22 Plan 01]: FeatEntrySchema + BiographySnapshotSchema use `z.object` (NOT `z.strictObject`) — open for forward-compat, matching SpellEntrySchema/AbilityScoreSchema precedent; CharacterSnapshotSchema feats/biography are OPTIONAL (D-22.1) — ~26 downstream literals compile without mass update; `category` is `z.string()` (NOT enum) — dnd5e featureTypes open taxonomy, reader passes `system.type.value` verbatim
 
 ### Pending Todos
 
@@ -293,7 +295,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-07T20:13:33.294Z
+Last session: 2026-06-07T22:49:08.270Z
 Stopped at: Completed 21-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
