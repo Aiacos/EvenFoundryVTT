@@ -1027,19 +1027,22 @@ export function paintMainTab(
 /**
  * Paint the Skills tab content onto `ctx` within `bounds`.
  *
- * Delegates to `renderSkillsTab` (EN locale) to obtain localised lines and
- * renders each via `fillText`. Phase 22 may replace this with a richer layout.
+ * Delegates to `renderSkillsTab` with the supplied `locale` to obtain
+ * localised lines and renders each via `fillText`. Phase 22 may replace
+ * this with a richer layout.
  *
  * @param ctx      2D rendering context.
  * @param snapshot Latest `CharacterSnapshot` or `null`.
  * @param bounds   Paint region.
  * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
  */
 export function paintSkillsTab(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   bounds: PaintBounds,
   font: string,
+  locale: HudLocale = 'en',
 ): void {
   if (snapshot === null) return;
 
@@ -1049,7 +1052,7 @@ export function paintSkillsTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderSkillsTab(snapshot, 'en', 0);
+  const rows = renderSkillsTab(snapshot, locale, 0);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
@@ -1064,12 +1067,14 @@ export function paintSkillsTab(
  * @param snapshot Latest `CharacterSnapshot` or `null`.
  * @param bounds   Paint region.
  * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
  */
 export function paintInventoryTab(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   bounds: PaintBounds,
   font: string,
+  locale: HudLocale = 'en',
 ): void {
   if (snapshot === null) return;
 
@@ -1079,7 +1084,7 @@ export function paintInventoryTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderTabContent('inventory', snapshot, 'en', 0);
+  const rows = renderTabContent('inventory', snapshot, locale, 0);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
@@ -1094,12 +1099,14 @@ export function paintInventoryTab(
  * @param snapshot Latest `CharacterSnapshot` or `null`.
  * @param bounds   Paint region.
  * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
  */
 export function paintSpellsTab(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   bounds: PaintBounds,
   font: string,
+  locale: HudLocale = 'en',
 ): void {
   if (snapshot === null) return;
 
@@ -1109,7 +1116,7 @@ export function paintSpellsTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderTabContent('spells', snapshot, 'en', 0);
+  const rows = renderTabContent('spells', snapshot, locale, 0);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
@@ -1124,12 +1131,14 @@ export function paintSpellsTab(
  * @param snapshot Latest `CharacterSnapshot` or `null`.
  * @param bounds   Paint region.
  * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
  */
 export function paintFeatsTab(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   bounds: PaintBounds,
   font: string,
+  locale: HudLocale = 'en',
 ): void {
   if (snapshot === null) return;
 
@@ -1139,7 +1148,7 @@ export function paintFeatsTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderFeatsTab(snapshot, 'en', 0);
+  const rows = renderFeatsTab(snapshot, locale, 0);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;
@@ -1154,12 +1163,14 @@ export function paintFeatsTab(
  * @param snapshot Latest `CharacterSnapshot` or `null`.
  * @param bounds   Paint region.
  * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
  */
 export function paintBioTab(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   bounds: PaintBounds,
   font: string,
+  locale: HudLocale = 'en',
 ): void {
   if (snapshot === null) return;
 
@@ -1169,7 +1180,7 @@ export function paintBioTab(
   const { x, y } = bounds;
   let lineY = y + CANVAS_LINE_H;
 
-  const rows = renderBioTab(snapshot, 'en', 0);
+  const rows = renderBioTab(snapshot, locale, 0);
   for (const row of rows) {
     ctx.fillText(row.trimEnd(), x, lineY);
     lineY += CANVAS_LINE_H;

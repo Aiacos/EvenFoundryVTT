@@ -59,6 +59,7 @@ import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { buildGreyscalePalette, ditherTile } from '../raster/dither-utils.js';
+import type { HudLocale } from '../status-hud/i18n-budgets.js';
 import { ensureVt323Loaded } from '../status-hud/vt323-font-loader.js';
 import {
   buildTabStrip,
@@ -126,11 +127,11 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   private _ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
 
   /**
-   * Active HUD locale forwarded to paint*Tab renderers (Plan 21-04 wires locale-aware rendering).
+   * Active HUD locale forwarded to paint*Tab renderers.
    *
-   * Stored as an instance field (assigned in constructor) to allow runtime locale updates in
-   * future phases. Using `_locale` as a parameter name in the constructor avoids
-   * TypeScript TS6133 "declared but never read" on the `private readonly` shorthand.
+   * Stored as an instance field (assigned in constructor) to allow runtime locale updates
+   * in future phases. Threaded through `_paintActiveTab` to all `paint*Tab` calls
+   * (WR-02 fix: eliminates dead `void this._locale` suppression).
    */
   private _locale: string;
 
@@ -526,34 +527,33 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    * Each method draws within the full compositor bounds. This plan (21-03) does
    * NOT include portrait rendering — Plan 21-04 adds the portrait layer.
    *
-   * Note: `_locale` is forwarded here so it's read at runtime; locale-aware
-   * rendering in paint*Tab methods is wired in Plan 21-04.
+   * `this._locale` is threaded through to each `paint*Tab` call so locale-aware
+   * rendering honours the device-locale override set at boot (WR-02 fix — removes
+   * the `void this._locale` dead-code suppression).
    */
   private _paintActiveTab(ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D): void {
     const bounds: PaintBounds = { x: 0, y: 30, w: COMPOSITOR_W, h: COMPOSITOR_H - 30 };
     const tab = TABS[this._activeTabIndex] ?? 'main';
     const font = this._fontFamily;
-    // locale forwarded to renderers in Plan 21-04 locale-aware wiring; retained here so
-    // the field is read (satisfies TS6133) — remove this line when Plan 21-04 wires it.
-    void this._locale;
+    const locale = this._locale as HudLocale;
     switch (tab) {
       case 'main':
         paintMainTab(ctx, this._snapshot, bounds, font);
         break;
       case 'skills':
-        paintSkillsTab(ctx, this._snapshot, bounds, font);
+        paintSkillsTab(ctx, this._snapshot, bounds, font, locale);
         break;
       case 'inventory':
-        paintInventoryTab(ctx, this._snapshot, bounds, font);
+        paintInventoryTab(ctx, this._snapshot, bounds, font, locale);
         break;
       case 'spells':
-        paintSpellsTab(ctx, this._snapshot, bounds, font);
+        paintSpellsTab(ctx, this._snapshot, bounds, font, locale);
         break;
       case 'feats':
-        paintFeatsTab(ctx, this._snapshot, bounds, font);
+        paintFeatsTab(ctx, this._snapshot, bounds, font, locale);
         break;
       case 'bio':
-        paintBioTab(ctx, this._snapshot, bounds, font);
+        paintBioTab(ctx, this._snapshot, bounds, font, locale);
         break;
     }
   }
