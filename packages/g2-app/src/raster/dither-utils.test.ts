@@ -25,23 +25,25 @@ function flatGreyRgba(w: number, h: number): Uint8ClampedArray {
 describe('buildGreyscalePalette', () => {
   it('DITHER-PAL-01: returns a 16-entry palette', () => {
     const pal = buildGreyscalePalette();
-    // ImageQ.utils.Palette exposes .pointArray (array of points)
-    expect(pal.pointArray).toHaveLength(16);
+    // The public API: getPointContainer() returns a 16×1 PointContainer.
+    // Its toUint8Array() yields 64 bytes = 16 entries × 4 channels (RGBA).
+    const arr = pal.getPointContainer().toUint8Array();
+    expect(arr).toHaveLength(64); // 16 entries × 4 bytes each
   });
 
   it('DITHER-PAL-02: palette values are 0, 16, 32, ..., 240 with alpha 255', () => {
     const pal = buildGreyscalePalette();
+    // Use the public getPointContainer().toUint8Array() API to inspect palette entries.
+    // The palette is stored as a 16×1 PointContainer, yielding 64 bytes (16 pixels × RGBA).
+    const arr = pal.getPointContainer().toUint8Array();
+    expect(arr).toHaveLength(64); // 16 entries × 4 channels
     for (let i = 0; i < 16; i++) {
-      const pt = pal.pointArray[i];
-      expect(pt).toBeDefined();
-      const coords = pt?.coordinates;
-      expect(coords).toBeDefined();
-      // RGBA components: r = g = b = i*16, a = 255
-      const expectedV = i * 16;
-      expect(coords?.[0]).toBe(expectedV); // R
-      expect(coords?.[1]).toBe(expectedV); // G
-      expect(coords?.[2]).toBe(expectedV); // B
-      expect(coords?.[3]).toBe(255); // A
+      const base = i * 4;
+      const expectedV = i * 16; // 0, 16, 32, ..., 240
+      expect(arr[base]).toBe(expectedV); // R
+      expect(arr[base + 1]).toBe(expectedV); // G
+      expect(arr[base + 2]).toBe(expectedV); // B
+      expect(arr[base + 3]).toBe(255); // A
     }
   });
 });
