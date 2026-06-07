@@ -4,7 +4,7 @@
 │ 100×60   │                                                      
 └──────────┘                                                      
 ♥ TP    ████████░░░░  45/68                                       
-⛨ RK 18    ⚡ INI —    ⚔ GES —    PROF +3                          
+⛨ RK 18    ⚡ INI +2    ⚔ GES 30    PROF +3                        
                                                                   
 ┌── ATTRIBUTE      ─┐  ┌── RETTUNGSWÜRFE ──┐                      
 │ STR 10 +0          │  │ ○ STR  +0  GES  +0 │                    

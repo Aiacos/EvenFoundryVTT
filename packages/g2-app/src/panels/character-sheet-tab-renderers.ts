@@ -314,11 +314,10 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
 
   // Ability scores — Phase 16 data binding (snapshot.abilities.<k>).
   // Phase 5 emitted `—` placeholders here; Plan 16-01 + 16-02 + 16-03 land the
-  // full read pipeline (schema → reader → renderer). The em-dash glyph is kept
-  // for the vitals row (INI/VEL) and Senses line per CONTEXT D-Area-3 (out of
-  // scope this phase — those come from `attributes.init.total` /
-  // `attributes.movement.walk` / `skills.<k>.passive`, not the abilities tree).
-  const dash = '—';
+  // full read pipeline (schema → reader → renderer). The em-dash glyph was kept
+  // for the vitals row (INI/VEL) per CONTEXT D-Area-3 (out of scope Phase 16).
+  // Phase 21 Plan 21-05: INI/VEL now use real snapshot.initiative/speed values.
+  const dash = '—'; // retained for Hit Dice placeholder (still pending)
   const abilities = snapshot.abilities;
   const profGlyph = (proficient: boolean): string => (proficient ? '◉' : '○');
 
@@ -351,8 +350,10 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   const hpLine = `♥ ${hpLabel}    ${hpBar}  ${hp}/${maxHp}    ${padRightUnicode(tempStr, 10)}`;
   rows.push(hpLine);
 
-  // Row 6: vitals bar (AC / INI / VEL / INSP / COMP)
-  const vitalsLine = `⛨ ${acLabel} ${ac}    ⚡ ${iniLabel} ${dash}    ⚔ ${velLabel} ${dash}    ${compLabel} ${profStr}`;
+  // Row 6: vitals bar (AC / INI / VEL / COMP)
+  // Phase 21 Plan 21-05: INI uses formatAbilityMod (signed +N/-N/+0); VEL uses
+  // String(snapshot.speed) — replaces the em-dash placeholders (RDATA-01/02).
+  const vitalsLine = `⛨ ${acLabel} ${ac}    ⚡ ${iniLabel} ${formatAbilityMod(snapshot.initiative)}    ⚔ ${velLabel} ${String(snapshot.speed)}    ${compLabel} ${profStr}`;
   rows.push(vitalsLine);
 
   // Row 7: blank separator

@@ -4,7 +4,7 @@
 │ 100×60   │                                                      
 └──────────┘                                                      
 ♥ HP    ████████░░░░  45/68                                       
-⛨ AC 18    ⚡ INI —    ⚔ SPD —    PROF +3                          
+⛨ AC 18    ⚡ INI +2    ⚔ SPD 30    PROF +3                        
                                                                   
 ┌── ABILITIES      ─┐  ┌── SAVING THROWS ──┐                      
 │ STR 10 +0          │  │ ○ STR  +0  DEX  +0 │                    
