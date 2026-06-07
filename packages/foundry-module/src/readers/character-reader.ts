@@ -123,12 +123,14 @@ function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryI
     const baseFormula = (damage.base as Record<string, unknown> | undefined)?.formula as
       | string
       | undefined;
-    const partsFirst = ((damage as Record<string, unknown>).parts as unknown[] | undefined)?.[0];
+    const partsFirst = (
+      (damage as Record<string, unknown>).parts as [string, string][] | undefined
+    )?.[0];
     const damageFormula: string | undefined =
       baseFormula !== undefined
         ? baseFormula
         : partsFirst !== undefined
-          ? String(partsFirst)
+          ? `${partsFirst[0]} ${partsFirst[1]}` // WR-01 fix: space-separated "formula type"
           : undefined;
 
     const quantity = (system.quantity as number | undefined) ?? 1;
@@ -519,9 +521,7 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
  */
 function extractClass(actor: ReturnType<typeof game.actors.get>): string {
   if (actor === undefined) return '';
-  const classItems = (actor.items?.contents ?? []) as unknown as Array<
-    Record<string, unknown>
-  >;
+  const classItems = (actor.items?.contents ?? []) as unknown as Array<Record<string, unknown>>;
   const names = classItems
     .filter((item) => item.type === 'class')
     .map((item) => item.name as string)
