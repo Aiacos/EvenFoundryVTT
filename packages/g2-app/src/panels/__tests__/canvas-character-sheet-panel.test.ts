@@ -562,15 +562,16 @@ describe('CanvasCharacterSheetPanel — portrait pipeline (RCSP-PORTRAIT)', () =
     const fakeBitmap = { close: vi.fn(), width: 100, height: 60 };
     globalThis.createImageBitmap = vi.fn().mockResolvedValue(fakeBitmap);
 
-    // Stub OffscreenCanvas → 2d context with getImageData returning 100×60×4 zeros
+    // Stub OffscreenCanvas via a real constructor function (required by Vitest for new OffscreenCanvas())
     const fakeImageData = { data: new Uint8ClampedArray(100 * 60 * 4) };
     const fakeCtx = {
       drawImage: vi.fn(),
       getImageData: vi.fn().mockReturnValue(fakeImageData),
     };
-    globalThis.OffscreenCanvas = vi.fn().mockImplementation(() => ({
-      getContext: vi.fn().mockReturnValue(fakeCtx),
-    })) as never;
+    // Must use function() syntax (not arrow) to work as a constructor with `new`
+    globalThis.OffscreenCanvas = vi.fn(function (this: { getContext: () => unknown }) {
+      this.getContext = vi.fn().mockReturnValue(fakeCtx);
+    }) as never;
 
     await panel.onMount();
     // Give microtasks a moment to settle
@@ -611,14 +612,15 @@ describe('CanvasCharacterSheetPanel — portrait pipeline (RCSP-PORTRAIT)', () =
       .mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(fakeBlob) });
     const fakeBitmap = { close: vi.fn(), width: 100, height: 60 };
     globalThis.createImageBitmap = vi.fn().mockResolvedValue(fakeBitmap);
-    const fakeImageData = { data: new Uint8ClampedArray(100 * 60 * 4) };
-    const fakeCtx = {
+    const fakeImageData2 = { data: new Uint8ClampedArray(100 * 60 * 4) };
+    const fakeCtx2 = {
       drawImage: vi.fn(),
-      getImageData: vi.fn().mockReturnValue(fakeImageData),
+      getImageData: vi.fn().mockReturnValue(fakeImageData2),
     };
-    globalThis.OffscreenCanvas = vi.fn().mockImplementation(() => ({
-      getContext: vi.fn().mockReturnValue(fakeCtx),
-    })) as never;
+    // Must use function() syntax (not arrow) to work as a constructor with `new`
+    globalThis.OffscreenCanvas = vi.fn(function (this: { getContext: () => unknown }) {
+      this.getContext = vi.fn().mockReturnValue(fakeCtx2);
+    }) as never;
 
     // Mount twice (simulating unmount+remount with same snapshot URL)
     await panel.onMount();
@@ -631,22 +633,25 @@ describe('CanvasCharacterSheetPanel — portrait pipeline (RCSP-PORTRAIT)', () =
     globalThis.createImageBitmap = origCreateImageBitmap;
     globalThis.OffscreenCanvas = origOffscreenCanvas;
 
-    // fetch must have been called exactly twice (once per mount cycle, guard resets on unmount)
-    // OR exactly once if the guard persists across mounts — plan says "per mounted snapshot"
-    // The plan says the guard resets on unmount so re-open re-fetches.
-    // So fetch should be called twice (once per mount).
-    const fetchCallCount = (globalThis.fetch as ReturnType<typeof vi.fn>).mock?.calls.length ?? 0;
-    // We can't inspect the mock after restore, so we rely on setPortraitOverride call count.
-    // The guard must not allow infinite re-fetches within a single mount — setPortraitOverride
-    // called at most twice (once per mount, not more) — actually for this test we just
-    // verify it was called at least once and at most twice (once per mount cycle).
-    const callCount = mapBaseLayer.setPortraitOverride.mock.calls.length;
-    expect(callCount).toBeGreaterThanOrEqual(1);
-    expect(callCount).toBeLessThanOrEqual(2);
-    // More precisely: within a single mount cycle it should be called exactly once.
-    // The ONCE guard prevents calling it multiple times if onMount is somehow called
-    // twice without an intervening unmount.
-    void fetchCallCount;
+    // setPortraitOverride call accounting:
+    //   - First mount: 1 call with pngBytes (portrait fetch)
+    //   - onUnmount:   1 call with null (slot clear)
+    //   - Second mount: 1 call with pngBytes (portrait fetch again — guard reset)
+    // Total expected: 3 calls (2 with bytes + 1 with null)
+    const allCalls = mapBaseLayer.setPortraitOverride.mock.calls as [number, unknown][];
+    expect(allCalls.length).toBe(3);
+
+    // The null call is the unmount clear — verify slot 3 is always the target
+    for (const [slot] of allCalls) {
+      expect(slot).toBe(3);
+    }
+
+    // Exactly two non-null calls (portrait fetched once per mount cycle)
+    const withBytes = allCalls.filter(([, bytes]) => bytes !== null);
+    expect(withBytes.length).toBe(2);
+
+    // The async-once guard ensures no more than one non-null call per mount cycle
+    // (guard set to true after first fetch; reset in onUnmount → second mount re-fetches once)
   });
 });
 

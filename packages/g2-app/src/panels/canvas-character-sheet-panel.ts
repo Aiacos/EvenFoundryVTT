@@ -49,11 +49,13 @@
 
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
+import * as UPNG from 'upng-js';
 import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
 import type { CanvasLayer, OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
+import { buildGreyscalePalette, ditherTile } from '../raster/dither-utils.js';
 import { ensureVt323Loaded } from '../status-hud/vt323-font-loader.js';
 import {
   buildTabStrip,
@@ -193,6 +195,15 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
 
   /** Portrait slot index (slot 3 = bottom-right tile, same as glyph panel). */
   private readonly _portraitSlot = 3;
+
+  /**
+   * Async-once guard for the portrait fetch pipeline.
+   *
+   * Set to `true` after `_fetchPortraitAsync` is called for the first time
+   * during a mount cycle. Reset to `false` in `onUnmount` so re-opening the
+   * panel re-fetches the portrait (in case the snapshot URL changed).
+   */
+  private _portraitFetched = false;
 
   // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -349,14 +360,15 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    *
    * 1. Subscribe to the gesture bus (stored for idempotent unsubscription).
    * 2. Restore last-viewed tab from Even Hub storage.
-   * 3. Set `_dirty = true` so the first composite paints.
-   *
-   * NOTE: portrait fetch (Plan 21-04) is NOT done here — this plan deliberately
-   * excludes the portrait pipeline. `onMount` does NOT block on network I/O.
+   * 3. Fire-and-forget the portrait pipeline (`_fetchPortraitAsync`) — must NOT
+   *    be awaited here; `LayerManager.bundle` awaits `onMount` and blocking on
+   *    a network fetch would delay panel appearance (Pitfall 3 from 21-PATTERNS.md).
+   * 4. Set `_dirty = true` so the first composite paints.
    */
   async onMount(): Promise<void> {
     this._unsubscribeGesture = this._gestureBus.subscribe((gesture) => this.onEvent(gesture));
     await this._restoreLastTab();
+    void this._fetchPortraitAsync();
     this._dirty = true;
   }
 
@@ -364,6 +376,7 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    * Release gesture bus subscription (T-21-LEAK / T-4b-01-03 mitigation).
    *
    * Idempotent: calling `onUnmount` twice is safe (null guard prevents double-free).
+   * Resets `_portraitFetched` so re-opening the panel re-fetches the portrait.
    */
   async onUnmount(): Promise<void> {
     if (this._unsubscribeGesture !== null) {
@@ -372,6 +385,8 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
     }
     // Always clear portrait override on unmount (idempotent — null-safe).
     this._mapBaseLayer?.setPortraitOverride(this._portraitSlot, null);
+    // Reset async-once guard so re-mounting re-fetches the portrait.
+    this._portraitFetched = false;
   }
 
   /**
@@ -553,6 +568,80 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
       this._activeTabIndex = Math.max(0, idx);
     } catch {
       this._activeTabIndex = 0;
+    }
+  }
+
+  // ── Private — portrait fetch / dither / slot pipeline ─────────────────────
+
+  /**
+   * Fetch the character portrait async-once, dither it to 4-bit greyscale,
+   * encode as a 100×60 PNG, and push to MapBaseLayer slot 3.
+   *
+   * # Pipeline (T-21-03 mitigations applied)
+   *
+   * 1. Read `this._snapshot?.portrait?.url` — return early if undefined
+   *    (RCSP-PORTRAIT-MISSING-URL).
+   * 2. Async-once guard (`_portraitFetched`) — return early if already fetched
+   *    this mount cycle (RCSP-PORTRAIT-ONCE).
+   * 3. `fetch(url)` → bail silently on rejection or `!response.ok`
+   *    (RCSP-PORTRAIT-FETCH-FAIL / T-21-03c mitigate).
+   * 4. `response.blob()` → `createImageBitmap(blob, { resizeWidth:100, resizeHeight:60 })`
+   *    → 100×60 OffscreenCanvas scratch → `getImageData` (T-21-03b: bitmap
+   *    decode to pixels — content is never executed).
+   * 5. `buildGreyscalePalette()` + `ditherTile(imageData.data, W, H, pal)` from
+   *    `dither-utils.ts` (RSHEET-03 reuse requirement).
+   * 6. `UPNG.encode([dithered.buffer], W, H, 16)` → `Uint8Array` PNG.
+   * 7. `this._mapBaseLayer?.setPortraitOverride(3, pngBytes)` — slot 3 =
+   *    bottom-right tile, same infra as glyph `CharacterSheetPanel`.
+   *
+   * # Error handling
+   *
+   * Entire body wrapped in `try/catch` — any error is silently discarded.
+   * Portrait failure MUST NOT propagate or crash the panel (T-21-03c).
+   *
+   * # Non-blocking (Pitfall 3 from 21-PATTERNS.md)
+   *
+   * Called with `void this._fetchPortraitAsync()` from `onMount` — the returned
+   * `Promise<void>` is intentionally fire-and-forget.
+   *
+   * @see packages/g2-app/src/raster/dither-utils.ts — `buildGreyscalePalette` + `ditherTile`
+   * @see packages/g2-app/src/raster/map-base-layer.ts — `setPortraitOverride(slot, bytes | null)`
+   */
+  private async _fetchPortraitAsync(): Promise<void> {
+    const url = this._snapshot?.portrait?.url;
+    if (url === undefined) return;
+
+    // Async-once guard: skip if already fetched this mount cycle.
+    if (this._portraitFetched) return;
+    this._portraitFetched = true;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return;
+
+      const blob = await response.blob();
+
+      const W = 100;
+      const H = 60;
+
+      const imgBitmap = await createImageBitmap(blob, { resizeWidth: W, resizeHeight: H });
+      const scratch = new OffscreenCanvas(W, H);
+      const sCtx = scratch.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+      if (sCtx === null) return;
+
+      sCtx.drawImage(imgBitmap, 0, 0, W, H);
+      imgBitmap.close();
+
+      const imageData = sCtx.getImageData(0, 0, W, H);
+
+      const pal = buildGreyscalePalette();
+      const dithered = ditherTile(imageData.data, W, H, pal);
+
+      const pngBytes = new Uint8Array(UPNG.encode([dithered.buffer as ArrayBuffer], W, H, 16));
+
+      this._mapBaseLayer?.setPortraitOverride(this._portraitSlot, pngBytes);
+    } catch {
+      // Non-fatal — portrait silently omitted on any error (T-21-03c mitigate).
     }
   }
 }
