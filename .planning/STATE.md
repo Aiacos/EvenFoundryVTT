@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 21-05-PLAN.md (INV-1 fixture closure)
-last_updated: "2026-06-07T20:30:00.000Z"
-last_activity: 2026-06-07 -- Phase 21 execution started
+stopped_at: Completed 21-03-PLAN.md
+last_updated: "2026-06-07T22:02:50.058Z"
+last_activity: 2026-06-07
 progress:
   total_phases: 8
   completed_phases: 3
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 21 (Character Sheet su Canvas + Dati Main-tab) — EXECUTING
-Plan: 5 of 5
+Phase: 22
+Plan: Not started
 Status: Ready to execute
-Last activity: 2026-06-07 -- Phase 21 execution started
+Last activity: 2026-06-07
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 16
+- Total plans completed: 21
 - Average duration: 12.33 min
 - Total execution time: 74 min
 
@@ -46,6 +46,7 @@ Last activity: 2026-06-07 -- Phase 21 execution started
 | 1 | 3 | 30 min | 10 min |
 | 02 | 5 | - | - |
 | 03 | 5 | - | - |
+| 21 | 5 | - | - |
 
 **Recent Trend:**
 
