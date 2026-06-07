@@ -21,8 +21,8 @@
  *      `tileDelta.detectChanges()`
  *   7. Group changed sub-tile indices by tile (0..3) and identify which
  *      tiles need re-encoding
- *   8. For each changed tile: encode the 4-bit indexed buffer via
- *      `encodeRle4bit` (telemetry; wire payload is PNG)
+ *   8. For each changed tile: (RLE telemetry step removed — was dead code
+ *      until wire-telemetry is designed; see WR-03 fix in Phase 21 review)
  *   9. For each changed tile: `UPNG.encode([rgba.buffer], 200, 100, 16)` →
  *      4-bit indexed-palette PNG byte stream
  *   10. `self.postMessage({frameId, changedTiles}, [transferables])`
@@ -61,7 +61,6 @@
 import * as UPNG from 'upng-js';
 import xxhash from 'xxhash-wasm';
 import { buildGreyscalePalette, ditherTile } from './dither-utils.js';
-import { encodeRle4bit } from './rle-encoder.js';
 import { TileDelta } from './tile-delta.js';
 
 // Number of 200×100 tiles per frame (4-image-container 2×2 layout per
@@ -257,18 +256,10 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
       }
       // Stage 3 (now per tile): dither (explicit tile dimensions for dither-utils API).
       const ditheredRgba = ditherTile(tileBuf, TILE_W, TILE_H, palette);
-      // Stage 8: RLE telemetry (length is logged via subTileCount, not
-      // shipped — the wire payload is the PNG). Convert RGBA → 4-bit index
-      // approximation by quantizing the R channel into 16 buckets.
-      const indexed = new Uint8Array(TILE_W * TILE_H);
-      for (let p = 0; p < indexed.length; p++) {
-        indexed[p] = ((ditheredRgba[p * 4] ?? 0) / 16) | 0;
-      }
-      // Bounds-safe: clamp to 0..15 since /16 of 0..255 yields 0..15.
-      const rleStats = encodeRle4bit(indexed);
-      // We don't ship `rleStats` over the wire — PNG is the payload — but we
-      // count its length in `subTileCount` for telemetry.
-      void rleStats;
+      // Stage 8: (RLE telemetry removed — WR-03 fix: encodeRle4bit result was
+      // immediately voided with no real dependency on rleStats; removed until
+      // telemetry is actually wired through WorkerResponse.)
+      //
       // Stage 9: PNG encode (4-bit indexed via cnum=16).
       const pngBuf = UPNG.encode([ditheredRgba.buffer], TILE_W, TILE_H, 16);
       const pngBytes = new Uint8Array(pngBuf);
