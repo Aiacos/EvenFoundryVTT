@@ -58,9 +58,9 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-UI-SPEC.md §Raster Pipeline Visual Contract
  */
 /// <reference lib="webworker" />
-import * as ImageQ from 'image-q';
 import * as UPNG from 'upng-js';
 import xxhash from 'xxhash-wasm';
+import { buildGreyscalePalette, ditherTile } from './dither-utils.js';
 import { encodeRle4bit } from './rle-encoder.js';
 import { TileDelta } from './tile-delta.js';
 
@@ -105,18 +105,8 @@ interface WorkerResponse {
 // Lazily-initialized singletons (first frame triggers WASM compile).
 // TODO(ADR-0005): verify 200×100 per tile + 16-color palette on real G2 — human_needed.
 let xxhashApi: Awaited<ReturnType<typeof xxhash>> | null = null;
-let palette: ImageQ.utils.Palette | null = null;
+let palette: ReturnType<typeof buildGreyscalePalette> | null = null;
 let tileDelta: TileDelta | null = null;
-
-/** Build the canonical 16-step phosphor-green greyscale palette (0..240). */
-function buildGreyscalePalette(): ImageQ.utils.Palette {
-  const pal = new ImageQ.utils.Palette();
-  for (let i = 0; i < 16; i++) {
-    const v = i * 16; // 0, 16, 32, ..., 240
-    pal.add(ImageQ.utils.Point.createByRGBA(v, v, v, 255));
-  }
-  return pal;
-}
 
 /** Convert RGBA pixel data to greyscale RGBA via luminance (Stage 2). */
 function toGreyscaleRgba(rgba: Uint8ClampedArray): Uint8ClampedArray {
@@ -187,16 +177,6 @@ function hashSubTiles(
     }
   }
   return out;
-}
-
-/** Quantize one 200×100 RGBA tile against the greyscale palette (Stage 3). */
-function ditherTile(rgba: Uint8ClampedArray, pal: ImageQ.utils.Palette): Uint8ClampedArray {
-  const inContainer = ImageQ.utils.PointContainer.fromUint8Array(rgba, TILE_W, TILE_H);
-  const outContainer = ImageQ.applyPaletteSync(inContainer, pal, {
-    imageQuantization: 'floyd-steinberg',
-    colorDistanceFormula: 'euclidean-bt709',
-  });
-  return new Uint8ClampedArray(outContainer.toUint8Array());
 }
 
 self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
@@ -275,8 +255,8 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
       if (tileBuf === undefined) {
         continue;
       }
-      // Stage 3 (now per tile): dither.
-      const ditheredRgba = ditherTile(tileBuf, palette);
+      // Stage 3 (now per tile): dither (explicit tile dimensions for dither-utils API).
+      const ditheredRgba = ditherTile(tileBuf, TILE_W, TILE_H, palette);
       // Stage 8: RLE telemetry (length is logged via subTileCount, not
       // shipped — the wire payload is the PNG). Convert RGBA → 4-bit index
       // approximation by quantizing the R channel into 16 buckets.
