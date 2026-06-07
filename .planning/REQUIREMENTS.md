@@ -27,8 +27,8 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
 ### Raster Character Sheet (RSHEET)
 
-- [ ] **RSHEET-01**: La scheda PG è renderizzata come **pannello raster overlay z=2** sulla mappa, con i 6 tab (Main · Skills · Inventory · Spells · Features · Biography) disegnati su canvas con densità glanceable (controllo tipografico nostro, non i ~10 righe del 27px SDK).
-- [ ] **RSHEET-02**: La navigazione tab + apertura/chiusura del pannello scheda funzionano via gesture R1 (press/double-press/scroll, no long-press) sulla scheda raster, preservando la semantica gesture esistente (`panel-gesture-bus`).
+- [x] **RSHEET-01**: La scheda PG è renderizzata come **pannello raster overlay z=2** sulla mappa, con i 6 tab (Main · Skills · Inventory · Spells · Features · Biography) disegnati su canvas con densità glanceable (controllo tipografico nostro, non i ~10 righe del 27px SDK).
+- [x] **RSHEET-02**: La navigazione tab + apertura/chiusura del pannello scheda funzionano via gesture R1 (press/double-press/scroll, no long-press) sulla scheda raster, preservando la semantica gesture esistente (`panel-gesture-bus`).
 - [x] **RSHEET-03**: L'**immagine portrait** del personaggio è renderizzata (greyscale-dithered) dentro la scheda, dimensionata per la glanceability, fetch async-una-volta (riusa l'infra portrait-override di `MapBaseLayer`).
 
 ### Raster Combat Tracker (RCOMB)
@@ -97,8 +97,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RFONT-02 | Phase 20 | Complete |
 | RFONT-03 | Phase 20 | Complete |
 | RINV-01 | Phase 20 | Resolved |
-| RSHEET-01 | Phase 21 | Pending |
-| RSHEET-02 | Phase 21 | Pending |
+| RSHEET-01 | Phase 21 | Complete |
+| RSHEET-02 | Phase 21 | Complete |
 | RSHEET-03 | Phase 21 | Complete |
 | RDATA-01 | Phase 21 | Pending |
 | RDATA-02 | Phase 21 | Pending |

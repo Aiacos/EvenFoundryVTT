@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-06-07T19:26:59.888Z"
+stopped_at: Completed 21-03-PLAN.md
+last_updated: "2026-06-07T19:45:43.452Z"
 last_activity: 2026-06-07 -- Phase 21 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 25
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 21 (Character Sheet su Canvas + Dati Main-tab) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-06-07 -- Phase 21 execution started
 
@@ -91,6 +91,7 @@ Last activity: 2026-06-07 -- Phase 21 execution started
 | Phase 20 P04 | 8 min | 1 tasks | 2 files |
 | Phase 20 P05 | 30 | 3 tasks | 3 files |
 | Phase 21 P02 | 6 | 2 tasks | 3 files |
+| Phase 21 P03 | 35 | 3 tasks | 4 files |
 
 ## Quick Tasks Completed
 
@@ -226,6 +227,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 20]: Canvas boot default via setRenderMode in boot-engine-core.ts only; LayerManager class-field default stays glyph
 - [Phase 20]: Canvas mode bundles only CanvasStatusHudLayer; glyph layers constructed but not mounted (canvas budget constraint)
 - [Phase ?]: dither-utils.ts extraction: ditherTile takes explicit w/h params for portrait (100x60) + map tile (200x100) reuse — single algorithm, zero duplication
+- [Phase ?]: canvas-character-sheet id distinct from glyph panel (Pitfall 2)
+- [Phase ?]: renderMode-gated dispatch in onNavigate — dispatch-time gate not sort order
 
 ### Pending Todos
 
@@ -287,8 +290,8 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-07T19:26:59.882Z
-Stopped at: Completed 21-02-PLAN.md
+Last session: 2026-06-07T19:45:43.445Z
+Stopped at: Completed 21-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
 
