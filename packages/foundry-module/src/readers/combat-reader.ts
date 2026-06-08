@@ -34,7 +34,7 @@ import type { Combatant, CombatSnapshot } from '@evf/shared-protocol';
  * @see RDATA-05, D-23.4
  */
 function extractCombatantAc(actor: FoundryActor | null): number | undefined {
-  const val = actor?.system.attributes.ac?.value;
+  const val = actor?.system?.attributes?.ac?.value;
   if (typeof val !== 'number' || !Number.isFinite(val)) {
     return undefined;
   }
@@ -61,7 +61,7 @@ function extractCombatantAc(actor: FoundryActor | null): number | undefined {
 export function getCombatSnapshot(): CombatSnapshot | null {
   const combat = game.combat;
 
-  if (combat === null) {
+  if (!combat) {
     return null;
   }
 
