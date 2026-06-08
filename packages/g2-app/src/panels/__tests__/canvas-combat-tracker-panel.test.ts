@@ -410,6 +410,48 @@ describe('CanvasCombatTrackerPanel — 5-window + highlight (RCOMB-WIN)', () => 
     // The highlight seam calls fillRect for the current-turn row band
     expect(fillRects().length).toBeGreaterThan(0);
   });
+
+  it('RCOMB-WIN-3: CR-01 — QA bar [▶X] marker does NOT produce highlight when current-turn is scrolled out', async () => {
+    // Regression test for CR-01: _findCurrentTurnRowIndex must match "▶ " (with trailing
+    // space) and NOT "[▶X]" (QA bar slot — no trailing space).
+    // Reproduction: >6 combatants, QA handler set (enables bar), scroll down until
+    // current-turn combatant (index 0) leaves the visible window.
+    const CanvasCombatTrackerPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCombatTrackerPanel(bridge as never, bus as never, 'it');
+    const wsEvents = makeMockWsEventBus();
+
+    panel.setWsEventBus(wsEvents as never);
+    // Inject a QA handler so the bar renders with [▶X] slot when qaSelectedIdx >= 0.
+    panel.setQuickActionHandler((_key) => undefined);
+    await panel.onMount();
+
+    // 7 combatants → maxOff = max(0, 7-3) = 4; combatant 0 is currentTurn.
+    wsEvents.emit('combat.turn', makeLargeCombatSnapshot());
+
+    // Advance QA selection so selectedIdx is 1 (renders "[▶S]" in the QA bar).
+    bus.publish({ kind: 'tap' });
+
+    // Scroll down enough to move current-turn combatant out of the visible window.
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    bus.publish({ kind: 'scroll', direction: 'down' });
+    bus.publish({ kind: 'scroll', direction: 'down' });
+
+    const { ctx, fillRects } = makeFakeCtx();
+    const fakeCanvas = { getContext: vi.fn(() => ctx) } as unknown as HTMLCanvasElement;
+    await panel.attachCanvas(fakeCanvas);
+    panel.paint();
+
+    // With the current-turn combatant scrolled out and no "▶ " row visible,
+    // _findCurrentTurnRowIndex should return -1 → no highlight fillRect call
+    // (beyond the chrome background clearRect/fillRect from chrome draw).
+    // The chrome _drawStaticChrome calls fillRect once (background) — any additional
+    // fillRect would be the highlight band. With the fix, only 1 fillRect should be
+    // emitted (chrome background); with the bug, 2 would be emitted (chrome + wrong row).
+    // We assert ≤1 fillRect (accounts for environments where chrome is a bitmap blit).
+    expect(fillRects().length).toBeLessThanOrEqual(1);
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

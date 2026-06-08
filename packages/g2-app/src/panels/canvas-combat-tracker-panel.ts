@@ -697,14 +697,20 @@ export default class CanvasCombatTrackerPanel implements CanvasLayer, OverlayPan
   /**
    * Find the row index (in `rows`) that corresponds to the current-turn combatant.
    *
-   * The current-turn combatant row contains the `▶ ` marker (col 6-7 of the glyph row).
-   * Returns -1 if no row contains the marker (empty state or no current turn).
+   * Matches `'▶ '` (U+25B6 + trailing space) exclusively. This distinguishes the
+   * combatant-row marker from the QA-bar `[▶X]` slot (no trailing space), which
+   * would cause a false-positive when the current-turn combatant is scrolled out of
+   * the visible window and a QA key is selected (CR-01 fix).
+   *
+   * Returns -1 if no row contains the marker (empty state, no current turn, or
+   * current-turn combatant scrolled out of the visible window).
    *
    * @param rows Content rows from `renderCombatTrackerContent`.
    */
   private _findCurrentTurnRowIndex(rows: string[]): number {
     for (let i = 0; i < rows.length; i++) {
-      if ((rows[i] ?? '').includes('▶')) {
+      // Match "▶ " (marker + space) to avoid false-positive on "[▶X]" QA bar (CR-01).
+      if ((rows[i] ?? '').includes('▶ ')) {
         return i;
       }
     }
