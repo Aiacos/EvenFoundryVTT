@@ -1410,10 +1410,45 @@ export async function _bootEngineCore(
   //
   //     The glyph layers (mapBase, idleInfill, statusHud, toastQueue) are still
   //     constructed above and destroyed in teardown. They are preserved for the
-  //     gesture-opened map-mode path (Phase 20, §7.4) and future glyph fallback
+  //     gesture-opened map-mode path (Phase 20, §7.4) and the glyph fallback
   //     (Phase 25, `renderMode='glyph'` path). Their subscription wiring
   //     (WS channels, WsReconnectController, R1 event source, etc.) is intact.
-  await layerManager.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud }]);
+  //
+  //     CR-01 fix (Phase 25 review): the step-12 mount MUST be gated on
+  //     `getRenderMode()`. When the effective verdict flipped renderMode to
+  //     'glyph' at step 9d, mounting `canvasStatusHud` is WRONG:
+  //       - `canvasStatusHud.getCaptureContainer()` returns 'hud-capture', which
+  //         does NOT exist in the glyph status-view schema (header/footer/status-hud)
+  //         emitted by `_flushPage()` — a phantom capture provider.
+  //       - `canvasStatusHud` is a CanvasLayer, not the glyph HUD renderer; the
+  //         glyph `StatusHudLayer` (constructed at step 10 under the same
+  //         `getRenderMode() === 'glyph'` guard) is the correct id=6 renderer.
+  //     The glyph branch restores the pre-v0.10.0 mounted layer set (D-25.3
+  //     "glyph fallback byte-identica pre-v0.10.0"): mapBase (z=0, provides the
+  //     `map-capture` capture provider — the sole capture-invariant satisfier in
+  //     glyph mode), statusHud (z=1, the id=6 text HUD renderer), idleInfill
+  //     (z=0.5). In glyph mode `_assertContainerBudget` uses the per-layer SUM
+  //     (mapBase {0,1} + statusHud {0,1} + idleInfill {0,1} = 0 image / 3 text,
+  //     within the 4/8 cap) and `_assertCaptureInvariant` passes because only
+  //     mapBase reports a capture container. The canvas-mode assertion is NOT
+  //     weakened — the canvas branch is unchanged.
+  if (layerManager.getRenderMode() === 'canvas') {
+    await layerManager.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud }]);
+  } else {
+    // Glyph fallback: statusHud is guaranteed non-null here — it is constructed
+    // at step 10 under the identical `getRenderMode() === 'glyph'` guard.
+    if (statusHud === null) {
+      throw new Error(
+        '[boot-engine-core] glyph fallback invariant violated: statusHud is null while ' +
+          'renderMode is glyph (step-10 construction guard out of sync with step-12 mount gate)',
+      );
+    }
+    await layerManager.bundle([
+      { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
+      { type: 'mount', z: ZIndex.Z0_5_IDLE_INFILL, layer: idleInfill },
+      { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
+    ]);
+  }
 
   // 12a. Paint persistent frame chrome — header (id4) + footer (id5).
   //
