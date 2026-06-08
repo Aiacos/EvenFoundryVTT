@@ -33,7 +33,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
 ### Raster Combat Tracker (RCOMB)
 
-- [ ] **RCOMB-01**: Il combat tracker / turni è renderizzato come **pannello raster overlay z=2** sulla mappa (ordine iniziativa, highlight turno corrente, HP, concentrazione, quick-action bar), preservando il comportamento gesture esistente (finestra scorrevole 5 combattenti).
+- [x] **RCOMB-01**: Il combat tracker / turni è renderizzato come **pannello raster overlay z=2** sulla mappa (ordine iniziativa, highlight turno corrente, HP, concentrazione, quick-action bar), preservando il comportamento gesture esistente (finestra scorrevole 5 combattenti).
 
 ### Sheet Data Extension (RDATA) — *estese atomicamente coi rispettivi renderer*
 
@@ -104,7 +104,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RDATA-02 | Phase 21 | Complete |
 | RDATA-03 | Phase 22 | Complete |
 | RDATA-04 | Phase 22 | Complete |
-| RCOMB-01 | Phase 23 | Pending |
+| RCOMB-01 | Phase 23 | Complete |
 | RDATA-05 | Phase 23 | Complete |
 | RPROMO-01 | Phase 24 | Pending |
 | RPROMO-02 | Phase 25 | Pending |

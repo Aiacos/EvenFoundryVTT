@@ -62,7 +62,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [x] **Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline** — `CanvasStatusHudLayer` (z=1) · `@fontsource/vt323` con fallback-chain try/catch · chrome statico pre-baked via `ImageBitmap` · dati dinamici re-render only-on-delta · INV-1 raster contract (hash tile PNG da RGBA sintetico) + `inv:all` distingue glyph/raster suite; `map-capture` → `hud-capture` rename (RFONT-01..03, RINV-01) (completed 2026-06-06)
 - [x] **Phase 21: Character Sheet su Canvas + Dati Main-tab** — `CanvasCharacterSheetPanel` z=2 · 6 tab su canvas (Main · Skills · Inventory · Spells · Features · Biography) · navigazione gesture preservata · portrait greyscale-dithered · `class`+`initiative`+`speed` schema+reader (RSHEET-01..03, RDATA-01..02) (completed 2026-06-07)
 - [x] **Phase 22: Features + Biography Schema Extension** — `feats[]` + `biography` in `CharacterSnapshotSchema` + `extractFeats()` + `extractBiography()` readers in `foundry-module` · Features + Biography tab wired su dati reali al posto delle fixture hardcoded (RDATA-03..04) (completed 2026-06-07)
-- [ ] **Phase 23: Combat Tracker su Canvas + Combatant AC** — `CanvasCombatTrackerPanel` z=2 (5-row window · current-turn highlight · HP · concentrazione · quick-action bar) · `CombatantSchema.ac` + reader · gesture preservate (RCOMB-01, RDATA-05)
+- [x] **Phase 23: Combat Tracker su Canvas + Combatant AC** — `CanvasCombatTrackerPanel` z=2 (5-row window · current-turn highlight · HP · concentrazione · quick-action bar) · `CombatantSchema.ac` + reader · gesture preservate (RCOMB-01, RDATA-05) (completed 2026-06-08)
 - [ ] **Phase 24: Delta Loop ~5fps xxhash** — loop `~5fps` + debounce 200ms + `TileDelta` sub-tile xxhash con geometria 200×100 · solo tile CHANGED vengono re-encodati/spediti (serializzati) · HUD idle ≈ banda BLE quasi-zero (RPROMO-01)
 - [ ] **Phase 25: Promozione Raster a Default Boot + Fallback Glyph** — `boot-engine-core.ts` switched a canvas-default · `?hud=raster` guard rimosso (INV-4 dead-code rule) · `renderMode: 'glyph'` attivato da `RasterController.setBleVerdict('glyph')` con switch atomico via `bundle([])` · prerequisiti: delta (Phase 24) + INV-2 re-verify (Phase 19) + capture-container sim test + INV-3 §7 (Phase 26) (RPROMO-02)
 - [ ] **Phase 26: INV-3 Doc Coherence Milestone Close** — `Specs.md §7` raster-HUD substrate section + ASCII mockup glyph-fallback migration + `README.md` Rendering section + `docs/showcase/index.html` stats · commit atomico INV-3 (RINV-03)
@@ -175,7 +175,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 
 - [x] 23-01-PLAN.md — CombatantSchema.ac optional Zod field + tests (RDATA-05 schema, Wave 1)
 - [x] 23-02-PLAN.md — extractCombatantAc reader + getCombatSnapshot wiring + tests (RDATA-05 reader, Wave 2)
-- [ ] 23-03-PLAN.md — CanvasCombatTrackerPanel + real AC render + boot gate/wiring (RCOMB-01, Wave 3)
+- [x] 23-03-PLAN.md — CanvasCombatTrackerPanel + real AC render + boot gate/wiring (RCOMB-01, Wave 3)
 
 **UI hint**: yes
 
@@ -255,7 +255,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
 | 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete    | 2026-06-07 |
-| 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 2/3 | In Progress| - |
+| 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 3/3 | Complete   | 2026-06-08 |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
 | 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 0/? | Not started | - |
