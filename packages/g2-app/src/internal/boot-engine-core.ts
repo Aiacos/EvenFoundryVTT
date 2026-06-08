@@ -891,10 +891,18 @@ export async function _bootEngineCore(
           // The two panels share the same PERSIST_KEY (view.sheet.lastTab) so tab state
           // is preserved across mode switches.
           // Pitfall 2 from 21-RESEARCH.md: do NOT sort panels by id — gate at dispatch time.
+          //
+          // Plan 23-03 — renderMode-gated combat tracker dispatch (RCOMB-01 / D-23.5).
+          // When target='combat-tracker' and renderMode='canvas', open the canvas overlay panel
+          // instead of the glyph panel. panel-router.ts + panel-gesture-bus.ts are NOT modified
+          // (D-23.5 — routing is achieved via this boot-time gate + setPanelInstanceHandler only).
+          // Pitfall 2 (23-RESEARCH.md): gate here at dispatch, never rely on glob/sort order.
           const resolvedTarget =
             target === 'character-sheet' && layerManager.getRenderMode() === 'canvas'
               ? 'canvas-character-sheet'
-              : target;
+              : target === 'combat-tracker' && layerManager.getRenderMode() === 'canvas'
+                ? 'canvas-combat-tracker'
+                : target;
 
           void panelRouter.openPanel(resolvedTarget, {
             bridge,
@@ -1331,6 +1339,26 @@ export async function _bootEngineCore(
     const tracker = panel as unknown as {
       setQuickActionHandler: (h: ((key: 'A' | 'S' | 'I' | 'M') => void) | null) => void;
     };
+    tracker.setQuickActionHandler(quickActionHandler);
+  });
+
+  // Plan 23-03 — canvas-combat-tracker handler injection (RCOMB-01 / D-23.5).
+  //
+  // Injects wsEventBus + quickActionHandler into CanvasCombatTrackerPanel instances
+  // at openPanel time (before onMount). This mirrors the 'combat-tracker' block above.
+  //
+  // Pitfall 5 (23-RESEARCH.md): do NOT subscribe to wsEventBus here — the panel
+  // subscribes in its own onMount (lifecycle-tied). This handler only injects deps
+  // so that onMount has everything it needs when it fires.
+  //
+  // Pitfall 4 (23-RESEARCH.md): no-subscription-in-handler rule — see above.
+  // D-23.5: panel-router.ts and panel-gesture-bus.ts are NOT modified.
+  panelRouter.setPanelInstanceHandler('canvas-combat-tracker', (panel) => {
+    const tracker = panel as unknown as {
+      setWsEventBus: (bus: typeof wsEventBus) => void;
+      setQuickActionHandler: (h: ((key: 'A' | 'S' | 'I' | 'M') => void) | null) => void;
+    };
+    tracker.setWsEventBus(wsEventBus);
     tracker.setQuickActionHandler(quickActionHandler);
   });
 
