@@ -381,6 +381,43 @@ describe('HudDeltaDriver', () => {
     expect(unsubCalls).toContain('combat.state');
   });
 
+  // ── DL-07: start() idempotency — calling start() twice yields exactly 3 subscriptions ──
+
+  it('DL-07 (CR-01): start() called twice yields only 3 active subscriptions and a single debounce cycle per delta', async () => {
+    const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, subs, fire } = makeWsEvents();
+
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents));
+
+    // Call start() twice — the second call must be a no-op.
+    await driver.start();
+    await driver.start();
+
+    // Each channel must have exactly 1 subscriber, not 2.
+    expect(subs.get('character.delta')).toHaveLength(1);
+    expect(subs.get('combat.turn')).toHaveLength(1);
+    expect(subs.get('combat.state')).toHaveLength(1);
+
+    await driver.runFirstFrame();
+
+    // Mutate tile-0 so a change is detectable.
+    const newRgba = makeBlankRgba();
+    mutateTile0(newRgba, 22);
+    rgbaRef.value = newRgba;
+
+    const callsAfterFirstFrame = bridge.updateImageRawData.mock.calls.length;
+
+    // Exactly 1 composite() per debounce cycle, not 2 (no duplicate handler).
+    fire('character.delta');
+    await vi.advanceTimersByTimeAsync(DEFAULT_MIN_REDRAW_INTERVAL_MS);
+
+    const additionalCalls = bridge.updateImageRawData.mock.calls.length - callsAfterFirstFrame;
+    expect(additionalCalls).toBe(1);
+
+    driver.stop();
+  });
+
   // ── First-frame: runFirstFrame pushes all 4 tiles unconditionally ─────────────
 
   it('first-frame: runFirstFrame() pushes all 4 tiles regardless of hash state, and seeds baseline hashes so subsequent identical cycle → 0 pushes', async () => {

@@ -160,7 +160,9 @@ export class HudDeltaDriver {
    * Initialize the xxhash WASM module and subscribe to delta channels.
    *
    * Must be awaited before {@link runFirstFrame} or any delta event is processed.
-   * Safe to call once per driver lifetime — WASM init is a no-op if already done.
+   * Idempotent: subsequent calls after subscriptions are already active are
+   * no-ops (guards against re-entry from `LayerManager._flushPage()` on every
+   * `bundle()` call that reaches the canvas branch — CR-01).
    *
    * Subscribes to:
    *   - `'character.delta'` (CharacterSnapshot updates)
@@ -174,6 +176,14 @@ export class HudDeltaDriver {
     // One-time WASM init — mirrors raster-worker.ts lazy-singleton pattern.
     if (this._xxhash === null) {
       this._xxhash = await xxhash();
+    }
+
+    // Idempotency guard (CR-01): re-entrant calls (e.g. bundle() called
+    // post-boot reaching _flushPage again) must not accumulate duplicate
+    // subscriptions. Earlier unsub closures would leak into the bus Set and
+    // fire until the WebSocket closes.
+    if (this._unsubs.length > 0) {
+      return;
     }
 
     const schedule = (): void => {
