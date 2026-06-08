@@ -193,8 +193,10 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   5. Il chrome statico (pre-baked via `ImageBitmap`, Phase 20) non genera mai tile CHANGED tra frame consecutivi senza dati dinamici mutati — la bitmap statica è deterministica per input identici
 
 **Plans**: 2 plans in 2 waves
-- [ ] 24-01-PLAN.md — HudDeltaDriver class (xxhash h32 per-tile + debounce default 100ms + multi-channel subscribe + runFirstFrame); TDD DL-01..DL-06
+
+- [x] 24-01-PLAN.md — HudDeltaDriver class (xxhash h32 per-tile + debounce default 100ms + multi-channel subscribe + runFirstFrame); TDD DL-01..DL-06
 - [ ] 24-02-PLAN.md — Integrate into LayerManager + REMOVE 3 naive-driver symbols (INV-4) + full-suite regression gate (Phases 20-23 + INV-1)
+
 **UI hint**: no
 
 ### Phase 25: Promozione Raster a Default Boot + Fallback Glyph
@@ -258,7 +260,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
 | 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete    | 2026-06-07 |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
-| 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
+| 24. Delta Loop ~5fps xxhash | v0.10.0 | 1/2 | In Progress|  |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
 | 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 0/? | Not started | - |
 
