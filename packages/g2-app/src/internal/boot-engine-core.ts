@@ -689,6 +689,20 @@ export async function _bootEngineCore(
   const effectiveVerdict: 'auto' | 'raster' | 'glyph' =
     persistedMode === 'raster' || persistedMode === 'glyph' ? persistedMode : verdict;
 
+  // 9d. D-25.3 / RPROMO-02 — Glyph-fallback render-mode wire.
+  //     Step 7 unconditionally flipped renderMode to 'canvas' (the raster default).
+  //     Here, when the effective verdict is 'glyph' (either from the BLE probe at step 9
+  //     or the persisted override at step 9b), we ALSO flip the LayerManager HUD schema
+  //     selector back to 'glyph' so the next bundle([]) emits the 3-container text schema
+  //     (header id4 + footer id5 + status-hud id6) instead of buildHudRasterPageSchema().
+  //     This covers BOTH the BLE-degraded path and the persisted-glyph override in one
+  //     single wire site keyed on effectiveVerdict (Pitfall 3 in 25-RESEARCH.md).
+  //     setMapMode calls at steps 9/9b are LEFT INTACT — they govern the MAP layer render
+  //     mode (raster/glyph map rendering), NOT the HUD schema selector.
+  if (effectiveVerdict === 'glyph') {
+    layerManager.setRenderMode('glyph');
+  }
+
   // 9c. (Phase 5 / I18N-02) Locale override read-back — device-local override from
   //     Even Hub `view.locale.override`. 'auto' (or missing/invalid/read-failure —
   //     all coerce to 'auto' via `loadLocaleOverride`'s defensive fallback) lets the
