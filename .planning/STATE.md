@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: verifying
+status: executing
 stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-06-08T09:48:14.557Z"
-last_activity: 2026-06-08
+last_updated: "2026-06-08T10:26:26.817Z"
+last_activity: 2026-06-08 -- Phase 25 execution started
 progress:
   total_phases: 8
   completed_phases: 6
-  total_plans: 22
-  completed_plans: 22
+  total_plans: 25
+  completed_plans: 23
   percent: 75
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 24 — Delta Loop ~5fps xxhash
+**Current focus:** Phase 25 — Promozione Raster a Default Boot + Fallback Glyph
 
 ## Current Position
 
-Phase: 25
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-06-08
+Phase: 25 (Promozione Raster a Default Boot + Fallback Glyph) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-06-08 -- Phase 25 execution started
 
 ## Performance Metrics
 
@@ -106,6 +106,7 @@ Last activity: 2026-06-08
 | Phase 23 P03 | 15 | 3 tasks | 4 files |
 | Phase 24 P01 | 6 | 2 tasks | 2 files |
 | Phase 24 P02 | 14 | 3 tasks | 5 files |
+| Phase 25 P01 | 6 min | - tasks | - files |
 
 ## Quick Tasks Completed
 
@@ -250,6 +251,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase ?]: Tab-aware scroll: bio+feats tabs scroll content via _scrollOffset; tap stays tab-cycle; _scrollOffset resets on tab change
 - [Phase ?]: isAtTopBoundary()=_scrollOffset===0 contract frozen — ADR-0012 over-scroll gate depends on this (Pitfall 5)
 - [Phase ?]: HudDeltaDriver wired into LayerManager as 4th constructor arg; naive driver symbols removed (INV-4)
+- [Phase ?]: pushHudTiles extracted to hud/push-hud-tiles.ts; INV-4 warn prefix updated from hud-poc to push-hud-tiles
 
 ### Pending Todos
 
@@ -311,7 +313,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-08T09:31:06.291Z
+Last session: 2026-06-08T10:25:51.880Z
 Stopped at: Completed 24-02-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)

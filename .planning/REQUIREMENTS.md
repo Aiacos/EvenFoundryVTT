@@ -46,7 +46,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 ### Delta Loop & Promotion (RPROMO) — *delta DEVE precedere la promozione (vincolo BLE)*
 
 - [x] **RPROMO-01**: La HUD raster è guidata da un loop **~5fps con delta sub-tile xxhash** (riusa `RasterController`) + debounce, così solo i tile **CHANGED** vengono ri-encodati/spediti; HUD idle ≈ banda BLE quasi-zero.
-- [ ] **RPROMO-02**: La **regione raster 400×200** (4 tile + 1 capture/background text container) è il **substrato di boot di default** (sostituisce la status-page text-container); la HUD glyph/text resta il **fallback BLE-degraded** (degrade automatico sotto soglia banda per ADR-0005 Branch A). Nota: lo schermo non è interamente raster — il residuo oltre i 400×200 è il capture/background text container.
+- [x] **RPROMO-02**: La **regione raster 400×200** (4 tile + 1 capture/background text container) è il **substrato di boot di default** (sostituisce la status-page text-container); la HUD glyph/text resta il **fallback BLE-degraded** (degrade automatico sotto soglia banda per ADR-0005 Branch A). Nota: lo schermo non è interamente raster — il residuo oltre i 400×200 è il capture/background text container.
 
 ### Quality Contracts (RINV)
 
@@ -107,6 +107,6 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RCOMB-01 | Phase 23 | Complete |
 | RDATA-05 | Phase 23 | Complete |
 | RPROMO-01 | Phase 24 | Complete |
-| RPROMO-02 | Phase 25 | Pending |
+| RPROMO-02 | Phase 25 | Complete |
 | RINV-02 | Phase 19 | Pending |
 | RINV-03 | Phase 26 | Pending |
