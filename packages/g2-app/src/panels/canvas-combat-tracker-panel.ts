@@ -338,6 +338,25 @@ export default class CanvasCombatTrackerPanel implements CanvasLayer, OverlayPan
     this._quickActionHandler = handler;
   }
 
+  /**
+   * Set or clear the multi-attack chip state, then mark dirty for re-paint.
+   *
+   * Called by `attachMultiAttackProgressHandler` (via `MultiAttackPanelHandle`) on
+   * each validated `r1.multiattack.progress` envelope. Call with `null` to clear the
+   * chip (dispatcher does so when `current === total` — final iteration complete).
+   * Auto-clearing on turn-advance is handled in `_onCombatDelta`.
+   *
+   * Mirrors `CombatTrackerPanel.setMultiAttackState` (combat-tracker-panel.ts:789)
+   * so that `multi-attack-progress-dispatcher.ts` can call this via the shared
+   * `MultiAttackPanelHandle` interface regardless of render mode (CR-02).
+   *
+   * @param state Multi-attack state to display, or null to clear.
+   */
+  public setMultiAttackState(state: MultiAttackState | null): void {
+    this._multiAttackState = state;
+    this._dirty = true;
+  }
+
   // ── CanvasLayer interface ─────────────────────────────────────────────────
 
   /**
