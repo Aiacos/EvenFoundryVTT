@@ -1,8 +1,8 @@
 /**
  * push-hud-tiles.test.ts — isolated unit tests for the pushHudTiles production module.
  *
- * Tests mirror the pushHudTiles cases from hud-poc-page.test.ts and provide
- * standalone coverage that survives the deletion of hud-poc-page.test.ts in Plan 03.
+ * Tests mirror the pushHudTiles cases from the PoC test file and provide
+ * standalone coverage that survives the PoC file deletion in Plan 03.
  *
  * Tests:
  * - 2 tiles, both success → updateImageRawData called twice, no warn.
@@ -91,11 +91,11 @@ describe('pushHudTiles', () => {
     ).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledOnce();
-    // Warn message must NOT contain 'hud-poc' (PoC label removed per INV-4)
+    // Warn prefix must be '[EVF] push-hud-tiles:' (no stale PoC label — INV-4)
     const warnArg = consoleSpy.mock.calls[0]?.[0] as string | undefined;
     expect(typeof warnArg).toBe('string');
-    expect(warnArg).toContain('[EVF] push-hud-tiles:');
-    expect(warnArg).not.toContain('hud-poc');
+    expect(warnArg).toMatch(/^\[EVF\] push-hud-tiles:/);
+    expect(warnArg).not.toMatch(/poc/i);
 
     consoleSpy.mockRestore();
   });
