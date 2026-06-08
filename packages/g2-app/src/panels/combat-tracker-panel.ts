@@ -56,6 +56,7 @@ import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import { DOUBLE_TAP_WINDOW_MS, QA_KEYS } from './combat-tracker-constants.js';
 
 // ─── MultiAttackState ─────────────────────────────────────────────────────────
 
@@ -363,15 +364,8 @@ export function renderCombatantRow(
   return [mainRow, concLine];
 }
 
-// ─── Quick-action constants ───────────────────────────────────────────────────
-
-/**
- * Keys for the quick-action bar in order (Plan 08-05 CTQ-01..08).
- *
- * Index 0=A (Attack), 1=S (Spell), 2=I (Item), 3=M (Move).
- * Matches the `[A][S][I][M]` visual order in UI-SPEC §5.8.
- */
-const QA_KEYS: ReadonlyArray<'A' | 'S' | 'I' | 'M'> = ['A', 'S', 'I', 'M'] as const;
+// ─── Quick-action bar renderer ────────────────────────────────────────────────
+// QA_KEYS and DOUBLE_TAP_WINDOW_MS are imported from combat-tracker-constants.ts (IN-01/IN-02).
 
 /**
  * Render the quick-action bar footer row (COMB-03).
@@ -699,7 +693,7 @@ export default class CombatTrackerPanel implements OverlayPanel {
 
         const now = Date.now();
         const sameIdx = this._lastTapIdx === this.qaSelectedIdx;
-        const withinWindow = now - this._lastTapAt < 600;
+        const withinWindow = now - this._lastTapAt < DOUBLE_TAP_WINDOW_MS;
 
         if (sameIdx && withinWindow) {
           // Double-tap on the currently-selected key: FIRE the action (CTQ-05).

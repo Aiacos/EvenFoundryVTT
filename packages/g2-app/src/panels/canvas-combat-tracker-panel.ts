@@ -80,6 +80,7 @@ import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { ensureVt323Loaded } from '../status-hud/vt323-font-loader.js';
+import { DOUBLE_TAP_WINDOW_MS, QA_KEYS } from './combat-tracker-constants.js';
 import { type MultiAttackState, renderCombatTrackerContent } from './combat-tracker-panel.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -98,16 +99,7 @@ const CONTENT_Y_START = 16;
 
 /** X offset for row text (inside border). */
 const CONTENT_X = 2;
-
-/**
- * Quick-action bar key order (matches glyph CombatTrackerPanel).
- *
- * Index 0=A (Attack), 1=S (Spell), 2=I (Item), 3=M (Move).
- */
-const QA_KEYS: ReadonlyArray<'A' | 'S' | 'I' | 'M'> = ['A', 'S', 'I', 'M'] as const;
-
-/** Double-tap window in milliseconds for QA-bar key fire (CTQ-05). */
-const DOUBLE_TAP_WINDOW_MS = 600;
+// QA_KEYS and DOUBLE_TAP_WINDOW_MS are imported from combat-tracker-constants.ts (IN-01/IN-02).
 
 // ── WS event bus interface ─────────────────────────────────────────────────────
 
