@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: verifying
+status: executing
 stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-06-07T23:45:59.319Z"
-last_activity: 2026-06-07
+last_updated: "2026-06-08T05:43:09.678Z"
+last_activity: 2026-06-08 -- Phase 23 execution started
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 17
-  completed_plans: 17
+  total_plans: 20
+  completed_plans: 18
   percent: 50
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completion + Polish milestone shipped + archived)
 
 **Core value:** Il giocatore di ruolo non distoglie mai lo sguardo dalla scena fisica.
-**Current focus:** Phase 22 — Features + Biography Schema Extension
+**Current focus:** Phase 23 — Combat Tracker su Canvas + Combatant AC
 
 ## Current Position
 
-Phase: 23
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-06-07
+Phase: 23 (Combat Tracker su Canvas + Combatant AC) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-06-08 -- Phase 23 execution started
 
 ## Performance Metrics
 
@@ -303,7 +303,7 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-07T23:20:45.878Z
+Last session: 2026-06-08T05:43:09.672Z
 Stopped at: Completed 22-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)

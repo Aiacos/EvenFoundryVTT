@@ -172,9 +172,11 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   5. `pnpm test` passa con test `CanvasCombatTrackerPanel` (scroll window, current-turn highlight, ac rendering, missing-ac fallback) e test `CombatantSchema.ac` (schema validation + reader mock)
 
 **Plans**: 3 plans
-- [ ] 23-01-PLAN.md — CombatantSchema.ac optional Zod field + tests (RDATA-05 schema, Wave 1)
+
+- [x] 23-01-PLAN.md — CombatantSchema.ac optional Zod field + tests (RDATA-05 schema, Wave 1)
 - [ ] 23-02-PLAN.md — extractCombatantAc reader + getCombatSnapshot wiring + tests (RDATA-05 reader, Wave 2)
 - [ ] 23-03-PLAN.md — CanvasCombatTrackerPanel + real AC render + boot gate/wiring (RCOMB-01, Wave 3)
+
 **UI hint**: yes
 
 ### Phase 24: Delta Loop ~5fps xxhash
@@ -253,7 +255,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 20. Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline | v0.10.0 | 5/5 | Complete   | 2026-06-06 |
 | 21. Character Sheet su Canvas + Dati Main-tab | v0.10.0 | 5/5 | Complete    | 2026-06-07 |
 | 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete    | 2026-06-07 |
-| 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 0/? | Not started | - |
+| 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 1/3 | In Progress|  |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 0/? | Not started | - |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
 | 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 0/? | Not started | - |

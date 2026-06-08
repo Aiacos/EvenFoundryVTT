@@ -41,7 +41,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 - [x] **RDATA-02**: `CharacterSnapshotSchema` porta `initiative` + `speed` (+ reader) — surfacciati nel tab pertinente al posto di placeholder.
 - [x] **RDATA-03**: `CharacterSnapshotSchema` porta `feats[]` (`{category, name, isOrigin, description}`) dal reader `foundry-module` (`actor.items` filtrati) — il tab Features mostra feat reali invece della fixture `DEFAULT_FEATS` hardcoded.
 - [x] **RDATA-04**: `CharacterSnapshotSchema` porta `biography` (personality/ideal/bond/flaw/backstory) dal reader — il tab Biography mostra bio reale invece del testo hardcoded.
-- [ ] **RDATA-05**: `CombatantSchema` porta `ac` (+ read path nel combat reader) — il combat tracker mostra l'AC reale invece del placeholder `' --'`.
+- [x] **RDATA-05**: `CombatantSchema` porta `ac` (+ read path nel combat reader) — il combat tracker mostra l'AC reale invece del placeholder `' --'`.
 
 ### Delta Loop & Promotion (RPROMO) — *delta DEVE precedere la promozione (vincolo BLE)*
 
@@ -105,7 +105,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RDATA-03 | Phase 22 | Complete |
 | RDATA-04 | Phase 22 | Complete |
 | RCOMB-01 | Phase 23 | Pending |
-| RDATA-05 | Phase 23 | Pending |
+| RDATA-05 | Phase 23 | Complete |
 | RPROMO-01 | Phase 24 | Pending |
 | RPROMO-02 | Phase 25 | Pending |
 | RINV-02 | Phase 19 | Pending |
