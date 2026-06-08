@@ -1049,9 +1049,20 @@ export async function _bootEngineCore(
   //         CanvasCharacterSheetPanel.setMapBaseLayer wires the portrait-slot override
   //         (slot 3) on onMount/onUnmount (Plan 21-04 adds portrait fetch — this handler
   //         ensures the mapBase ref is available at panel construction time).
+  //
+  //         BLOCKER-01 fix: also inject wsEventBus so onMount can subscribe to
+  //         character.delta. Without this call all 6 tabs render null/empty at runtime
+  //         because onSnapshot has zero callers. Pattern mirrors the
+  //         'canvas-combat-tracker' handler at step 11j below.
+  //
+  //         Pitfall 5 (21-PATTERNS.md): do NOT subscribe here — injection only.
   panelRouter.setPanelInstanceHandler('canvas-character-sheet', (panel) => {
-    const sheet = panel as unknown as { setMapBaseLayer: (m: typeof mapBase) => void };
+    const sheet = panel as unknown as {
+      setMapBaseLayer: (m: typeof mapBase) => void;
+      setWsEventBus: (bus: typeof wsEventBus) => void;
+    };
     sheet.setMapBaseLayer(mapBase);
+    sheet.setWsEventBus(wsEventBus);
   });
 
   // 11e. Action result dispatcher (Plan 08-01) — listens on `r1.action.result` envelopes

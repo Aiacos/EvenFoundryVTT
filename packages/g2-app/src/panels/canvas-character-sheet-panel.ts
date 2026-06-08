@@ -82,6 +82,22 @@ import {
 /** Background fill color — black (dithered to darkest G2 palette step). */
 const CHROME_BG = '#000000';
 
+// ── WS event bus interface ─────────────────────────────────────────────────────
+
+/**
+ * Minimal WS event bus shape required by `CanvasCharacterSheetPanel`.
+ *
+ * Matches the `wsEventBus.subscribe` API from `boot-engine-core.ts`.
+ * Using a structural interface (not importing the concrete type) keeps this
+ * panel decoupled from the boot module (Pitfall 5 from 21-PATTERNS.md).
+ *
+ * Mirrors the identical interface in `canvas-combat-tracker-panel.ts` — kept
+ * local so neither panel depends on the other.
+ */
+interface WsEventBusLike {
+  subscribe(channel: string, fn: (payload: unknown) => void): () => void;
+}
+
 /**
  * Hard ceiling for `_scrollOffset` on scrollable tabs (bio, feats).
  *
@@ -199,6 +215,22 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   private _unsubscribeGesture: (() => void) | null = null;
 
   /**
+   * Unsubscribe closure returned by `wsEventBus.subscribe('character.delta', ...)`.
+   *
+   * Set in `onMount` when `_wsEventBus` is non-null; invoked and nulled in
+   * `onUnmount`. Null guard makes `onUnmount` idempotent (T-21-LEAK).
+   */
+  private _unsubscribeCharacter: (() => void) | null = null;
+
+  /**
+   * WS event bus injected before `onMount` via `setWsEventBus`.
+   *
+   * `null` until boot-engine-core calls `setPanelInstanceHandler` (Pitfall 5).
+   * If still null at `onMount`, character.delta subscriptions are skipped silently.
+   */
+  private _wsEventBus: WsEventBusLike | null = null;
+
+  /**
    * Optional `MapBaseLayer` instance for portrait slot override (Plan 21-04).
    *
    * Injected by boot-engine-core via `setPanelInstanceHandler` BEFORE `onMount`.
@@ -251,6 +283,23 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    */
   setMapBaseLayer(mapBase: MapBaseLayerLike | null): void {
     this._mapBaseLayer = mapBase;
+  }
+
+  /**
+   * Inject the WS event bus dependency post-construction.
+   *
+   * Called by boot-engine-core via `setPanelInstanceHandler('canvas-character-sheet', ...)`
+   * BEFORE `onMount` — same injection pattern as `CanvasCombatTrackerPanel.setWsEventBus`
+   * (Pitfall 5 from 21-PATTERNS.md: do NOT subscribe here; subscriptions are lifecycle-tied
+   * to `onMount`/`onUnmount`).
+   *
+   * Without this call, `onMount` silently skips character.delta subscriptions and
+   * all 6 tabs render null/empty at runtime (BLOCKER-01).
+   *
+   * @param bus WS event bus exposing `subscribe(channel, fn): () => void`.
+   */
+  setWsEventBus(bus: WsEventBusLike): void {
+    this._wsEventBus = bus;
   }
 
   // ── CanvasLayer interface ─────────────────────────────────────────────────
@@ -381,29 +430,59 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    * Acquire panel resources.
    *
    * 1. Subscribe to the gesture bus (stored for idempotent unsubscription).
-   * 2. Restore last-viewed tab from Even Hub storage.
-   * 3. Fire-and-forget the portrait pipeline (`_fetchPortraitAsync`) — must NOT
+   *    Guard against double-mount without prior `onUnmount`: if `_unsubscribeGesture`
+   *    is non-null, call and clear it before re-subscribing (WR-02 double-mount guard,
+   *    mirrors CanvasCombatTrackerPanel.onMount).
+   * 2. If `_wsEventBus` is set: subscribe to `character.delta` — forwards each raw
+   *    payload to `onSnapshot` which validates via `CharacterSnapshotSchema.safeParse`
+   *    (T-21-01 mitigation). Without this subscription the panel renders null on all
+   *    tabs at runtime (BLOCKER-01 fix).
+   * 3. Restore last-viewed tab from Even Hub storage.
+   * 4. Fire-and-forget the portrait pipeline (`_fetchPortraitAsync`) — must NOT
    *    be awaited here; `LayerManager.bundle` awaits `onMount` and blocking on
    *    a network fetch would delay panel appearance (Pitfall 3 from 21-PATTERNS.md).
-   * 4. Set `_dirty = true` so the first composite paints.
+   * 5. Set `_dirty = true` so the first composite paints.
+   *
+   * NOTE: do NOT subscribe inside `setWsEventBus` — subscriptions must be
+   * lifecycle-tied (onMount/onUnmount), not boot-time (Pitfall 4 from 21-PATTERNS.md).
    */
   async onMount(): Promise<void> {
+    // WR-02: guard against double-mount without prior onUnmount.
+    if (this._unsubscribeGesture !== null) {
+      this._unsubscribeGesture();
+      this._unsubscribeGesture = null;
+    }
     this._unsubscribeGesture = this._gestureBus.subscribe((gesture) => this.onEvent(gesture));
+
+    // BLOCKER-01 fix: subscribe to character.delta so onSnapshot receives live data.
+    if (this._wsEventBus !== null) {
+      this._unsubscribeCharacter = this._wsEventBus.subscribe('character.delta', (raw) =>
+        this.onSnapshot(raw),
+      );
+    }
+
     await this._restoreLastTab();
     void this._fetchPortraitAsync();
     this._dirty = true;
   }
 
   /**
-   * Release gesture bus subscription (T-21-LEAK / T-4b-01-03 mitigation).
+   * Release all subscriptions (T-21-LEAK / T-4b-01-03 mitigation).
    *
-   * Idempotent: calling `onUnmount` twice is safe (null guard prevents double-free).
+   * Idempotent: calling `onUnmount` twice is safe (null guards prevent
+   * double-free for both gesture and character.delta subscriptions).
    * Resets `_portraitFetched` so re-opening the panel re-fetches the portrait.
    */
   async onUnmount(): Promise<void> {
+    // Gesture bus unsubscription
     if (this._unsubscribeGesture !== null) {
       this._unsubscribeGesture();
       this._unsubscribeGesture = null;
+    }
+    // character.delta unsubscription (BLOCKER-01 / T-21-LEAK)
+    if (this._unsubscribeCharacter !== null) {
+      this._unsubscribeCharacter();
+      this._unsubscribeCharacter = null;
     }
     // Always clear portrait override on unmount (idempotent — null-safe).
     this._mapBaseLayer?.setPortraitOverride(this._portraitSlot, null);
