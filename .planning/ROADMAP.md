@@ -212,7 +212,10 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   4. La HUD glyph in modalità BLE-degraded è byte-identica al comportamento pre-v0.10.0 (le ~60 ASCII fixture INV-1 esistenti passano invariate — validazione della backward-compatibility del fallback)
   5. `pnpm test` + `pnpm typecheck` + `pnpm lint:ci` passano tutti; CI Gate 8 socketlib count rimane a 17 (nessun nuovo handler — questo milestone è read-path + render only)
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 25-01-PLAN.md — Extract `pushHudTiles` to `hud/push-hud-tiles.ts`; re-point production importers (behavior-preserving)
+- [ ] 25-02-PLAN.md — Wire glyph fallback (`effectiveVerdict`→`setRenderMode(glyph)`) + canvas→glyph atomic-switch e2e test
+- [ ] 25-03-PLAN.md — Remove `?hud=raster` PoC (delete 3 files + 2 tests, strip launch branch) + full regression gate (INV-4 grep-zero, INV-1 byte-identical, socketlib==17)
 **UI hint**: no
 
 ### Phase 26: INV-3 Doc Coherence Milestone Close
@@ -261,7 +264,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 22. Features + Biography Schema Extension | v0.10.0 | 3/3 | Complete    | 2026-06-07 |
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 2/2 | Complete    | 2026-06-08 |
-| 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/? | Not started | - |
+| 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 0/3 | Planned | - |
 | 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 0/? | Not started | - |
 
 ---
