@@ -287,11 +287,12 @@ export class HudDeltaDriver {
    * output → identical PNG bytes → identical hash → no push.
    */
   private async _runCycle(): Promise<void> {
-    if (this._xxhash === null) {
-      // Should not happen after start() — log and return gracefully.
-      console.warn('[EVF] HudDeltaDriver._runCycle: xxhash not initialized; skipping cycle');
-      return;
-    }
+    // _runCycle is only reachable via _schedule(), which is only wired by
+    // start(). start() initialises _xxhash before adding any subscriptions,
+    // so _xxhash is guaranteed non-null here. The non-null assertion surfaces
+    // a loud TypeError if the invariant is ever broken (IN-01, INV-4).
+    // biome-ignore lint/style/noNonNullAssertion: start() init guarantee — see above
+    const { h32Raw } = this._xxhash!;
 
     const rgba = this._opts.compositor.composite();
     const tiles = buildHudTiles(rgba);
@@ -304,7 +305,7 @@ export class HudDeltaDriver {
       // biome-ignore lint/style/noNonNullAssertion: buildHudTiles contract — tile at index i exists
       const tile = tiles[i]!;
       // h32Raw requires Uint8Array; tile.bytes is already Uint8Array (no cast needed).
-      const h = this._xxhash.h32Raw(tile.bytes);
+      const h = h32Raw(tile.bytes);
       // biome-ignore lint/style/noNonNullAssertion: _prevHashes pre-allocated to TILE_COUNT
       if (h !== this._prevHashes[i]!) {
         this._prevHashes[i] = h;
