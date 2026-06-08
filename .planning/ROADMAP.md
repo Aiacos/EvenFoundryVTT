@@ -171,7 +171,10 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
   4. `CombatantSchema.ac` è esteso con Zod + reader nel `foundry-module`; l'estensione è atomica con il renderer (schema + reader + canvas panel in scope di questo phase)
   5. `pnpm test` passa con test `CanvasCombatTrackerPanel` (scroll window, current-turn highlight, ac rendering, missing-ac fallback) e test `CombatantSchema.ac` (schema validation + reader mock)
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 23-01-PLAN.md — CombatantSchema.ac optional Zod field + tests (RDATA-05 schema, Wave 1)
+- [ ] 23-02-PLAN.md — extractCombatantAc reader + getCombatSnapshot wiring + tests (RDATA-05 reader, Wave 2)
+- [ ] 23-03-PLAN.md — CanvasCombatTrackerPanel + real AC render + boot gate/wiring (RCOMB-01, Wave 3)
 **UI hint**: yes
 
 ### Phase 24: Delta Loop ~5fps xxhash
