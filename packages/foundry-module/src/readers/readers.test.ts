@@ -1674,6 +1674,167 @@ describe('getCombatSnapshot', () => {
     expect(ghost).toBeDefined();
     expect(ghost?.concentration).toBeUndefined();
   });
+
+  // ── Phase 23: AC extraction (RDATA-05) ────────────────────────────────────
+
+  describe('ac extraction (RDATA-05)', () => {
+    it('RDATA-05-AC-R1: combatant with ac.value === 18 → snapshot ac === 18', () => {
+      const actor = makeActor({ id: 'actor-ac-1', acValue: 18 });
+      const combatant = {
+        id: 'cbt-ac-1',
+        name: 'Paladin',
+        actorId: 'actor-ac-1',
+        actor,
+        initiative: 14,
+      };
+      const combat = {
+        id: 'combat-ac-1',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([actor], combat));
+
+      const snap = getCombatSnapshot();
+      const paladin = snap?.combatants.find((c) => c.id === 'cbt-ac-1');
+      expect(paladin?.ac).toBe(18);
+    });
+
+    it('RDATA-05-AC-R2: unlinked combatant (actor === null) → ac key absent', () => {
+      const combatant = {
+        id: 'cbt-ac-2',
+        name: 'UnlinkedToken',
+        actorId: null,
+        actor: null,
+        initiative: 10,
+      };
+      const combat = {
+        id: 'combat-ac-2',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const unlinked = snap?.combatants.find((c) => c.id === 'cbt-ac-2');
+      expect(unlinked).toBeDefined();
+      expect('ac' in (unlinked ?? {})).toBe(false);
+    });
+
+    it('RDATA-05-AC-R3: ac.value is undefined/string/NaN → ac key absent', () => {
+      // Construct an actor whose ac.value is not a number (string '18')
+      const actorWithStringAc = {
+        id: 'actor-ac-3',
+        name: 'StringAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 30, max: 30, temp: 0, tempmax: 0 },
+            ac: { value: '18' as unknown as number }, // non-numeric: string
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 5 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const combatant = {
+        id: 'cbt-ac-3',
+        name: 'StringAc',
+        actorId: 'actor-ac-3',
+        actor: actorWithStringAc,
+        initiative: 10,
+      };
+      const combat = {
+        id: 'combat-ac-3',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const c3 = snap?.combatants.find((c) => c.id === 'cbt-ac-3');
+      expect(c3).toBeDefined();
+      expect('ac' in (c3 ?? {})).toBe(false);
+    });
+
+    it('RDATA-05-AC-R4: ac.value 18.6 rounds to 19; negative clamps to 0', () => {
+      // Two combatants: one with 18.6, one with -5
+      const actorFloat = {
+        id: 'actor-ac-4a',
+        name: 'FloatAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 40, max: 40, temp: 0, tempmax: 0 },
+            ac: { value: 18.6 },
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 5 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const actorNeg = {
+        id: 'actor-ac-4b',
+        name: 'NegAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 10, max: 10, temp: 0, tempmax: 0 },
+            ac: { value: -5 },
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 1 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const cbtFloat = {
+        id: 'cbt-ac-4a',
+        name: 'FloatAc',
+        actorId: 'actor-ac-4a',
+        actor: actorFloat,
+        initiative: 12,
+      };
+      const cbtNeg = {
+        id: 'cbt-ac-4b',
+        name: 'NegAc',
+        actorId: 'actor-ac-4b',
+        actor: actorNeg,
+        initiative: 5,
+      };
+      const combat = {
+        id: 'combat-ac-4',
+        round: 1,
+        turn: 0,
+        combatant: cbtFloat,
+        combatants: { contents: [cbtFloat, cbtNeg] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const floatAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4a');
+      expect(floatAc?.ac).toBe(19); // Math.round(18.6) = 19
+
+      const negAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4b');
+      expect(negAc?.ac).toBe(0); // Math.max(0, Math.round(-5)) = 0
+    });
+  });
 });
 
 // ─── Scene reader tests ────────────────────────────────────────────────────────
