@@ -261,7 +261,11 @@ export class HudDeltaDriver {
     }
     this._timer = setTimeout(() => {
       this._timer = null;
-      void this._runCycle();
+      // WR-01: propagate _runCycle rejections to console so render-loop death
+      // is visible (compositor throws, buildHudTiles length mismatch, etc.).
+      this._runCycle().catch((err: unknown) => {
+        console.warn('[EVF] HudDeltaDriver._runCycle error:', err);
+      });
     }, this._opts.minRedrawIntervalMs);
   }
 
