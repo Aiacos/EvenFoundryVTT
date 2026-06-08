@@ -65,7 +65,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 - [x] **Phase 23: Combat Tracker su Canvas + Combatant AC** — `CanvasCombatTrackerPanel` z=2 (5-row window · current-turn highlight · HP · concentrazione · quick-action bar) · `CombatantSchema.ac` + reader · gesture preservate (RCOMB-01, RDATA-05) (completed 2026-06-08)
 - [x] **Phase 24: Delta Loop ~5fps xxhash** — loop `~5fps` + debounce 200ms + `TileDelta` sub-tile xxhash con geometria 200×100 · solo tile CHANGED vengono re-encodati/spediti (serializzati) · HUD idle ≈ banda BLE quasi-zero (RPROMO-01) (completed 2026-06-08)
 - [x] **Phase 25: Promozione Raster a Default Boot + Fallback Glyph** — `boot-engine-core.ts` switched a canvas-default · `?hud=raster` guard rimosso (INV-4 dead-code rule) · `renderMode: 'glyph'` attivato da `RasterController.setBleVerdict('glyph')` con switch atomico via `bundle([])` · prerequisiti: delta (Phase 24) + INV-2 re-verify (Phase 19) + capture-container sim test + INV-3 §7 (Phase 26) (RPROMO-02) (completed 2026-06-08)
-- [ ] **Phase 26: INV-3 Doc Coherence Milestone Close** — `Specs.md §7` raster-HUD substrate section + ASCII mockup glyph-fallback migration + `README.md` Rendering section + `docs/showcase/index.html` stats · commit atomico INV-3 (RINV-03)
+- [x] **Phase 26: INV-3 Doc Coherence Milestone Close** — `Specs.md §7` raster-HUD substrate section + ASCII mockup glyph-fallback migration + `README.md` Rendering section + `docs/showcase/index.html` stats · commit atomico INV-3 (RINV-03) (completed 2026-06-08)
 
 ## Phase Details
 
@@ -267,7 +267,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 2/2 | Complete    | 2026-06-08 |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
-| 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 0/? | Not started | - |
+| 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 1/1 | Complete   | 2026-06-08 |
 
 ---
 *Last updated: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created. v0.9.14 parked (phases cleared). Prior: 2026-05-18 v0.9.13 ARCHIVED.*

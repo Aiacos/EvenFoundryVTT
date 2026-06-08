@@ -52,7 +52,7 @@ Requirements for milestone v0.10.0. Each maps to exactly one roadmap phase.
 
 - [x] **RINV-01**: **Contratto INV-1 raster** — snapshot deterministici via **hash dei byte PNG dei tile** prodotti da input RGBA sintetico (NON canvas text, non-deterministico/untestabile in happy-dom); le funzioni pure di content-logic (`formatConditions`, `formatSlots`, …) testate a parte; `inv:all` separa glyph vs raster. ✅ Phase 20 Plan 02
 - [ ] **RINV-02**: **INV-2 — geometria tile corretta (verificata 2026-06-05)**: il cap ufficiale è **200×100 per image-container, max 4 → regione 400×200**; il 288×144 del PoC è respinto (passava solo in sim, che non applica i limiti). Il piano è già corretto a 200×100/400×200. Verifica hardware residua su G2 reale (`human_needed` sotto ADR-0005 Branch A): che la regione 400×200 a 4 tile renderizzi correttamente e che il pattern capture-container (text full-screen con `isEventCapture:1` dietro i tile) funzioni e instradi le gesture.
-- [ ] **RINV-03**: **INV-3 doc coherence** — `Specs.md` §7 (layout raster-HUD) + `README.md` + `docs/showcase/index.html` aggiornati atomicamente nello stesso commit; i mockup ASCII 27px stantii riconciliati (annotati come path glyph-fallback).
+- [x] **RINV-03**: **INV-3 doc coherence** — `Specs.md` §7 (layout raster-HUD) + `README.md` + `docs/showcase/index.html` aggiornati atomicamente nello stesso commit; i mockup ASCII 27px stantii riconciliati (annotati come path glyph-fallback).
 
 ## v2 Requirements
 
@@ -109,4 +109,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RPROMO-01 | Phase 24 | Complete |
 | RPROMO-02 | Phase 25 | Complete |
 | RINV-02 | Phase 19 | Pending |
-| RINV-03 | Phase 26 | Pending |
+| RINV-03 | Phase 26 | Complete |
