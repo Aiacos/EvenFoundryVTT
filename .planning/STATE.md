@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: verifying
+status: Awaiting next milestone
 stopped_at: Completed 25-03-PLAN.md
-last_updated: "2026-06-08T12:35:27.727Z"
-last_activity: 2026-06-08
+last_updated: "2026-06-08T13:43:21.538Z"
+last_activity: 2026-06-08 — Milestone v0.10.0 completed and archived
 progress:
   total_phases: 8
   completed_phases: 8
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-06-08
+Phase: Milestone v0.10.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-08 — Milestone v0.10.0 completed and archived
 
 ## Performance Metrics
 
@@ -691,6 +691,19 @@ Source: `gsd-sdk query audit-open` (4 items). Acknowledged via `/gsd-complete-mi
 | quick_task | 260517-k2g (entity recognition pipeline) | shipped — consumed by Phase 15 EntityPackCache | Already implemented; frontmatter updated `status: complete` |
 
 All 4 items represent real shipped work; the audit-open detector uses signals beyond `status: complete` frontmatter (likely a SUMMARY.md convention or completion marker). Tracked but non-blocking for milestone close.
+
+### Items acknowledged at v0.10.0 milestone close (2026-06-08)
+
+Source: `gsd-tools query audit-open` (37 items). Acknowledged via `/gsd-autonomous` lifecycle decision *Acknowledge + chiudi v0.10.0*. None block the v0.10.0 software definition of done — all are hardware-gated (ADR-0005 Branch A) or pre-existing stale tracking.
+
+| Category | Item | Status | Resolution path |
+|----------|------|--------|-----------------|
+| verification | EVF-19..25 (7 phases) `*-VERIFICATION.md` | human_needed | Hardware UAT on G2/R1 (ADR-0005 Branch A); software fully verified |
+| uat | EVF-21..25 (5 phases) `*-HUMAN-UAT.md` | partial (11 pending scenarios) | On-device testing per phase HUMAN-UAT files when G2 available |
+| requirement | RINV-02 (tile geometry 400×200 on-device) | partial | Software geometry correct + INV-2 limits verified 2026-06-05; on-device confirmation pending |
+| quick_task | 25 pre-existing quick-tasks (mostly `unknown` status) | stale tracking | Pre-existing from v0.9.x real-pairing/debug work; most shipped & released (see git/STATE history). Triage separately — NOT v0.10.0 scope |
+
+Hardware-gated items resume via `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 available. Quick-task triage is independent of this milestone.
 
 ## Operator Next Steps
 
