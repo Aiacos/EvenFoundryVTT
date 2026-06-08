@@ -506,6 +506,8 @@ export default class CanvasCombatTrackerPanel implements CanvasLayer, OverlayPan
    * Acquire panel resources.
    *
    * 1. Subscribe to gesture bus (stored for idempotent unsubscription).
+   *    Guard against double-mount without prior `onUnmount`: if `_unsubscribeGesture`
+   *    is non-null, call and clear it before re-subscribing (WR-02 double-mount guard).
    * 2. If `_wsEventBus` is set: subscribe to BOTH `COMBAT_TURN_DELTA_TYPE` and
    *    `COMBAT_STATE_DELTA_TYPE` channels — both deliver `CombatSnapshot` payloads
    *    (Open Question 1/A4 resolution: both channels share the same handler).
@@ -515,6 +517,13 @@ export default class CanvasCombatTrackerPanel implements CanvasLayer, OverlayPan
    * be lifecycle-tied (onMount/onUnmount), not boot-time (Pitfall 4 from 23-RESEARCH.md).
    */
   async onMount(): Promise<void> {
+    // WR-02: guard against double-mount without prior onUnmount (panel-router bug,
+    // test harness, or future hot-reload). Call and clear the previous subscription
+    // before re-subscribing so the PanelGestureBus never holds two stale callbacks.
+    if (this._unsubscribeGesture !== null) {
+      this._unsubscribeGesture();
+      this._unsubscribeGesture = null;
+    }
     this._unsubscribeGesture = this._gestureBus.subscribe((gesture) => this.onEvent(gesture));
 
     if (this._wsEventBus !== null) {

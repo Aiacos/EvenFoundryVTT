@@ -648,6 +648,31 @@ describe('CanvasCombatTrackerPanel — subscription lifecycle (RCOMB-LIFECYCLE)'
     // Second unmount must not throw
     await expect(panel.onUnmount()).resolves.toBeUndefined();
   });
+
+  it('RCOMB-LIFECYCLE-DOUBLE-MOUNT: WR-02 — second onMount without prior onUnmount does NOT create duplicate gesture subscription', async () => {
+    // Regression test for WR-02: double-mount guard must call the previous
+    // unsubscribe before re-subscribing, so the PanelGestureBus never retains
+    // two stale callbacks that both fire on every gesture.
+    const CanvasCombatTrackerPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const bridge = makeMockBridge();
+    const panel = new CanvasCombatTrackerPanel(bridge as never, bus as never, 'it');
+
+    expect(bus.size()).toBe(0);
+
+    // First mount
+    await panel.onMount();
+    expect(bus.size()).toBe(1);
+
+    // Second mount WITHOUT onUnmount — must remove the first sub before adding a new one
+    await panel.onMount();
+    // Bus should still have exactly 1 subscriber (old sub removed, new sub added)
+    expect(bus.size()).toBe(1);
+
+    // Clean up
+    await panel.onUnmount();
+    expect(bus.size()).toBe(0);
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
