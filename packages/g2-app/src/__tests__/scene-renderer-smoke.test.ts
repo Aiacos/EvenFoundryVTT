@@ -335,12 +335,17 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
     expect(ws.close).toHaveBeenCalled();
   });
 
-  it('SR-8: character.delta WS event → event-driven recomposite triggers updateImageRawData (canvas mode)', async () => {
+  it('SR-8: character.delta WS event → HudDeltaDriver debounce runs without error (canvas mode)', async () => {
     // Boot boots in canvas mode (Phase 20: renderMode defaults to 'canvas').
-    // StatusHudLayer is NOT constructed in canvas mode (CR-03 fix) — no
-    // textContainerUpgrade to 'status-hud' is expected. Instead, character.delta
-    // makes CanvasStatusHudLayer dirty; the LayerManager event-driven recomposite
-    // subscriber (CR-01 fix) calls _compositeAndPush() → updateImageRawData ×4.
+    // Phase 24: HudDeltaDriver owns the event-driven loop. A character.delta event
+    // schedules a debounced _runCycle() (DEFAULT_MIN_REDRAW_INTERVAL_MS = 100ms).
+    //
+    // In the happy-dom test environment, CanvasCompositor.composite() returns a
+    // zero RGBA buffer (masterCtx=null path). runFirstFrame() seeds baselines from
+    // the same zero tiles, so _runCycle() after a delta detects no hash change and
+    // issues 0 tile pushes (D-24.3 zero-push-on-idle). This is correct behavior —
+    // the smoke test verifies the event path does not crash; tile-push correctness
+    // is covered by hud-delta-driver.test.ts DL-01..DL-06.
     const { handle, bridgeSpies, ws } = await bootWithMocks();
     const tileCallsBefore = bridgeSpies.updateImageRawData.mock.calls.length;
     // Fire a valid CharacterSnapshot wrapped in the ws-event-bus envelope
@@ -394,13 +399,14 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       },
     });
     ws.fireMessage(snapshotEvent);
-    // Canvas recomposite is event-driven (no debounce timer) — flush microtasks
-    // so the void _compositeAndPush() Promise resolves through the bridge call.
-    await Promise.resolve();
-    await Promise.resolve();
+    // Advance fake timers past the debounce window so _runCycle() fires.
+    // Must not throw — the driver is running and the event is processed.
+    await vi.advanceTimersByTimeAsync(150);
     const tileCallsAfter = bridgeSpies.updateImageRawData.mock.calls.length;
-    // _compositeAndPush() pushes 4 tiles (one per HUD image container).
-    expect(tileCallsAfter).toBeGreaterThan(tileCallsBefore);
+    // Zero-push-on-idle (D-24.3): in happy-dom compositor returns zero RGBA for
+    // both runFirstFrame seeding and _runCycle; hashes are identical → no push.
+    // The call count is stable (no extra calls, no crash).
+    expect(tileCallsAfter).toBe(tileCallsBefore);
     handle.teardown();
   });
 

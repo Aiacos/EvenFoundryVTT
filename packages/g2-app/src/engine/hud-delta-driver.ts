@@ -1,8 +1,8 @@
 /**
  * HudDeltaDriver — event-driven, per-tile xxhash delta loop for the HUD raster path.
  *
- * Replaces the Phase 20 naive `_startDeltaRecomposite` / `_compositeAndPush`
- * mechanism inside `LayerManager` with a standalone, injectable class that owns:
+ * Replaces the Phase 20 naive event-driven recomposite mechanism inside `LayerManager`
+ * with a standalone, injectable class that owns:
  *
  *   - A one-time `await xxhash()` WASM init (lazy-singleton, mirrors raster-worker.ts).
  *   - A 4-slot `prevHashes` table (one h32 per HUD tile, updated on every changed push).
@@ -13,17 +13,16 @@
  *   - `runFirstFrame()` — pushes all 4 tiles unconditionally and seeds baseline hashes.
  *   - `_runCycle()` — compares per-tile h32 and pushes only changed tiles (D-24.3 zero-push-on-idle).
  *
- * This module is NOT yet wired into `LayerManager` — that is Plan 24-02 (Wave 2).
- * Inject the driver at `LayerManager` construction time and call:
- *   - `await driver.runFirstFrame()` instead of `_compositeAndPush()` in `_flushPage()`.
- *   - `driver.stop()` instead of `_stopDeltaRecomposite()` in `disposeSubscriptions()`.
+ * Wired into `LayerManager` at construction time (Plan 24-02 Wave 2):
+ *   - `await driver.runFirstFrame()` + `await driver.start()` in `_flushPage()` canvas branch.
+ *   - `driver.stop()` in `disposeSubscriptions()`.
  *
  * INV-4 compliance: JSDoc/TSDoc on every public API; zero bare `// TODO`; no dead code.
  * CM-01 serialization: pushes use `pushHudTiles` which iterates `for...of` + `await`
  * — do NOT replace with `Promise.all` (Even Hub SDK rejects concurrent calls).
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
- * @see packages/g2-app/src/engine/layer-manager.ts (_startDeltaRecomposite — naive predecessor)
+ * @see packages/g2-app/src/engine/layer-manager.ts (LayerManager._flushPage canvas branch)
  * @see packages/g2-app/src/raster/raster-worker.ts (xxhash lazy-singleton init pattern)
  * @see packages/g2-app/src/hud/hud-poc-page.ts (pushHudTiles CM-01 serialization)
  * @see .planning/phases/EVF-24-delta-loop-5fps-xxhash/24-01-PLAN.md

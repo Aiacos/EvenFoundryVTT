@@ -62,6 +62,7 @@ import { CanvasCompositor } from '../engine/canvas-compositor.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { DebugMirror } from '../engine/debug-mirror.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
+import { HudDeltaDriver } from '../engine/hud-delta-driver.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
@@ -605,12 +606,21 @@ export async function _bootEngineCore(
   // @see packages/g2-app/src/engine/canvas-compositor.ts
   // @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
   const compositor = new CanvasCompositor();
-  // CR-01 fix: pass wsEventBus as the 4th constructor argument so LayerManager can
-  // subscribe to character.delta and trigger _compositeAndPush() when any mounted
-  // CanvasLayer becomes dirty. The wsEventBus was created at step 5a (before this
-  // step 7) — it is available here. Phase 24 replaces this trigger with the ~5fps
-  // xxhash sub-tile delta loop. (ADR-0013)
-  const layerManager = new LayerManager(bridge, debugMirror, compositor, wsEventBus);
+  // Phase 24 Plan 02 — construct HudDeltaDriver and inject into LayerManager.
+  //
+  // HudDeltaDriver owns the per-tile xxhash delta loop (D-24.1..D-24.5).
+  // It receives compositor + bridge + wsEventBus; LayerManager forwards the
+  // canvas-mode flush to driver.runFirstFrame() + driver.start() (ADR-0013 Amendment 1).
+  //
+  // wsEventBus was created at step 5a and is available here. The driver subscribes
+  // to character.delta, combat.turn, and combat.state channels in its start() call
+  // (triggered by LayerManager._flushPage on bundle). Teardown via
+  // layerManager.disposeSubscriptions() calls driver.stop() — no extra teardown needed.
+  //
+  // @see packages/g2-app/src/engine/hud-delta-driver.ts
+  // @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
+  const hudDeltaDriver = new HudDeltaDriver({ compositor, bridge, wsEvents: wsEventBus });
+  const layerManager = new LayerManager(bridge, debugMirror, compositor, hudDeltaDriver);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
   // the typed `ServerCap` literal union before handing to LayerManager. The
   // bridge's HandshakeServer producer only emits values from SERVER_CAPS_V1,
@@ -1625,7 +1635,7 @@ export async function _bootEngineCore(
       } catch (err) {
         console.warn('[boot-engine-core] teardown: mapBase.destroy failed', err);
       }
-      // CR-01: release the event-driven recomposite subscription (character.delta listener).
+      // Phase 24: stop HudDeltaDriver (cancel pending debounce timer + release delta channel subscriptions).
       try {
         layerManager.disposeSubscriptions();
       } catch (err) {

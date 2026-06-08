@@ -26,6 +26,7 @@ import type { ServerCap } from '@evf/shared-protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CanvasCompositorLike } from '../canvas-compositor.js';
 import type { DebugMirror } from '../debug-mirror.js';
+import { HudDeltaDriver } from '../hud-delta-driver.js';
 import { LayerManager } from '../layer-manager.js';
 import {
   type Layer,
@@ -1313,5 +1314,130 @@ describe('LayerManager — _assertContainerBudget canvas-mode (RAST-03)', () => 
       lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: dupCapture }]),
     ).rejects.toMatchObject({ code: 'capture_invariant_violated' });
     expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 24 Plan 02 — HudDeltaDriver injection (DL-07)
+// Verifies that:
+//   (a) canvas-mode bundle calls driver.runFirstFrame + driver.start (driver path)
+//   (b) driverless construction (no driver arg) still works via _compositeAndPush fallback
+//   (c) disposeSubscriptions() calls driver.stop()
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a `HudDeltaDriver` test double.
+ *
+ * Uses `vi.spyOn` on the real class prototype so TypeScript accepts the driver
+ * as `HudDeltaDriver` without requiring a full xxhash-wasm WASM environment.
+ * The spy methods resolve immediately (no WASM init, no bridge calls).
+ */
+function makeMockDriver() {
+  const driver = Object.create(HudDeltaDriver.prototype) as HudDeltaDriver;
+  vi.spyOn(driver, 'runFirstFrame').mockResolvedValue(undefined);
+  vi.spyOn(driver, 'start').mockResolvedValue(undefined);
+  vi.spyOn(driver, 'stop').mockReturnValue(undefined);
+  return driver;
+}
+
+describe('LayerManager — HudDeltaDriver injection (DL-07, Phase 24)', () => {
+  it('DL-07-a: canvas-mode bundle calls driver.runFirstFrame() then driver.start() on flush', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    // 4th constructor arg is the driver (Phase 24 signature).
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // Driver's first-frame push and loop start must have been called.
+    expect(driver.runFirstFrame).toHaveBeenCalledTimes(1);
+    expect(driver.start).toHaveBeenCalledTimes(1);
+
+    // runFirstFrame must be awaited BEFORE start (call order).
+    const runOrder = (driver.runFirstFrame as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    const startOrder = (driver.start as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    expect(runOrder[0]).toBeLessThan(startOrder[0] ?? Infinity);
+  });
+
+  it('DL-07-b: driver path — compositor.composite NOT called directly by LayerManager (driver owns it)', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // LayerManager must NOT call compositor.composite() when driver is present —
+    // the driver is the sole compositor owner in canvas mode (D-24 invariant).
+    expect(compositor.composite).not.toHaveBeenCalled();
+    // updateImageRawData is also NOT called directly by LayerManager.
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
+  it('DL-07-c: disposeSubscriptions() calls driver.stop()', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    lm.disposeSubscriptions();
+
+    expect(driver.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('DL-07-d: driverless construction (no driver arg) still works — _compositeAndPush fallback', async () => {
+    // 3-arg construction path: no driver injected. Canvas mode falls back to
+    // _compositeAndPush() so existing schema-select tests remain valid.
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    // Must not throw — driverless path uses _compositeAndPush() which is still present.
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]),
+    ).resolves.not.toThrow();
+
+    // rebuildPageContainer called once (schema rebuilt).
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    // compositor.composite() called once via _compositeAndPush fallback.
+    expect(compositor.composite).toHaveBeenCalledTimes(1);
+  });
+
+  it('DL-07-e: disposeSubscriptions() is a no-op when no driver was injected', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    // Must not throw — no driver present, disposeSubscriptions is a no-op.
+    expect(() => lm.disposeSubscriptions()).not.toThrow();
   });
 });

@@ -45,6 +45,7 @@ import {
   buildStatusViewTextContainers,
 } from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
+import type { HudDeltaDriver } from './hud-delta-driver.js';
 import {
   type CanvasLayer,
   isCanvasLayer,
@@ -110,30 +111,21 @@ export class LayerManager {
   private readonly compositor: CanvasCompositorLike | null;
 
   /**
-   * WS event bus — used by `_startDeltaRecomposite()` to subscribe to
-   * `character.delta` for the event-driven recomposite trigger (CR-01 fix).
+   * Optional HUD delta driver injected at construction (Phase 24, ADR-0013).
    *
-   * Null when no `wsEvents` was passed at construction (default for existing
-   * 3-arg and 2-arg call sites — glyph mode and tests). Phase 20 boot path
-   * passes the live bus as the 4th constructor argument.
+   * When non-null, `_flushPage()` delegates the first-frame push and the
+   * event-driven render loop to the driver via `runFirstFrame()` + `start()`.
+   * When null (2/3/4-arg construction — glyph mode or driver-less tests),
+   * `_flushPage()` falls back to `_compositeAndPush()` for the first-frame
+   * push (schema-select tests that omit a driver remain valid).
+   *
+   * `disposeSubscriptions()` calls `driver.stop()` on teardown so the debounce
+   * timer and all WS channel subscriptions are released cleanly.
+   *
+   * @see packages/g2-app/src/engine/hud-delta-driver.ts
+   * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
    */
-  private readonly _wsEvents: {
-    subscribe(channel: string, fn: (raw: unknown) => void): () => void;
-  } | null;
-
-  /**
-   * Unsubscribe function for the event-driven recomposite trigger (CR-01 fix).
-   *
-   * In canvas mode, `_startDeltaRecomposite()` subscribes to `character.delta`
-   * via the wsEvents bus. On each delta, if any mounted CanvasLayer is dirty,
-   * `_compositeAndPush()` is triggered. Null until `_startDeltaRecomposite()`
-   * is called; released in `_stopDeltaRecomposite()` (called by `destroy()`).
-   *
-   * This is the Phase 20 minimal event-driven driver. The full ~5fps xxhash
-   * sub-tile delta loop lands in Phase 24 and replaces this mechanism.
-   * (ADR-0013)
-   */
-  private _deltaRecompositeUnsub: (() => void) | null = null;
+  private readonly _deltaDriver: HudDeltaDriver | null;
 
   /**
    * Idle infill layer stashed while a z=2 overlay is mounted.
@@ -173,26 +165,25 @@ export class LayerManager {
    * @param compositor  Optional canvas compositor (Phase 19 Plan 04, ADR-0013 Amendment 1).
    *                    Default `undefined` ⇒ `this.compositor = null`; the glyph path
    *                    remains byte-identical. Pass a `CanvasCompositorLike` to enable
-   *                    canvas mode (Phase 20+). All existing 2-arg call sites (boot-engine-core.ts,
-   *                    tests) continue to compile unchanged — the parameter is optional.
-   * @param wsEvents    Optional WS event bus (Phase 20, CR-01 fix).
-   *                    When provided and `renderMode === 'canvas'`, `_startDeltaRecomposite()`
-   *                    subscribes to `character.delta` and triggers `_compositeAndPush()` when
-   *                    any mounted CanvasLayer is dirty. Null ⇒ no event-driven recomposite
-   *                    (first-frame-only behavior, acceptable for tests and glyph mode).
-   *                    Phase 24 replaces this minimal trigger with the ~5fps xxhash sub-tile
-   *                    delta loop. (ADR-0013)
+   *                    canvas mode (Phase 20+). All existing 2-arg call sites continue to
+   *                    compile unchanged — the parameter is optional.
+   * @param driver      Optional HUD delta driver (Phase 24, ADR-0013 Amendment 1).
+   *                    When provided, `_flushPage()` delegates canvas-mode first-frame push
+   *                    and the event-driven loop to `driver.runFirstFrame()` + `driver.start()`.
+   *                    When omitted (2/3-arg construction — glyph mode, schema-select tests),
+   *                    `_flushPage()` falls back to `_compositeAndPush()` so existing tests
+   *                    remain valid. `disposeSubscriptions()` calls `driver.stop()`.
    *
-   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (Open Question #3)
+   * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (ADR-0013)
    */
   constructor(
     private readonly bridge: EvenAppBridge,
     private readonly debugMirror?: DebugMirror,
     compositor?: CanvasCompositorLike,
-    wsEvents?: { subscribe(channel: string, fn: (raw: unknown) => void): () => void },
+    driver?: HudDeltaDriver,
   ) {
     this.compositor = compositor ?? null;
-    this._wsEvents = wsEvents ?? null;
+    this._deltaDriver = driver ?? null;
   }
 
   /**
@@ -447,7 +438,9 @@ export class LayerManager {
    *
    * - `'glyph'` (default): status-view schema (3 text containers; no compositor).
    *   Byte-identical to the pre-Phase-19 behavior.
-   * - `'canvas'`: HUD raster schema (5 containers) followed by `_compositeAndPush()`.
+   * - `'canvas'`: HUD raster schema (5 containers) followed by the HudDeltaDriver
+   *   first-frame push and event-driven loop (Phase 24). Falls back to
+   *   `_compositeAndPush()` when no driver was injected (schema-select tests).
    *
    * No bridge I/O on mode change itself — the mode takes effect on the next `bundle()`.
    *
@@ -639,9 +632,12 @@ export class LayerManager {
    *
    * - `'canvas'`: HUD RASTER schema (4 image tiles hud-tile-0..3 at 200×100 each +
    *   1 text capture container hud-capture; containerTotalNum:5) from
-   *   `buildHudRasterPageSchema()`. Followed immediately by `_compositeAndPush()`
-   *   which composites all registered `CanvasLayer`s and pushes 4 serialized
-   *   `updateImageRawData` calls.
+   *   `buildHudRasterPageSchema()`. Followed immediately by the HudDeltaDriver
+   *   first-frame push and event-driven loop (Phase 24, ADR-0013): when a driver
+   *   is injected, `await driver.runFirstFrame()` + `await driver.start()` replace
+   *   the direct `_compositeAndPush()` call. When no driver is present (driverless
+   *   construction — schema-select tests), `_compositeAndPush()` is used as fallback
+   *   so those tests remain valid.
    *
    * map-capture and z05-* remain in the registry for the deferred map-mode
    * page (Phase 20 / Specs §7.4). They MUST NOT be declared in either schema.
@@ -670,11 +666,18 @@ export class LayerManager {
     const payload = new RebuildPageContainer(schema);
     await this.bridge.rebuildPageContainer(payload);
     if (this.renderMode === 'canvas') {
-      await this._compositeAndPush();
-      // CR-01 fix: start the event-driven recomposite trigger so subsequent
-      // character.delta events reach the display. Phase 24 replaces this with
-      // the ~5fps xxhash sub-tile delta loop. (ADR-0013)
-      this._startDeltaRecomposite();
+      if (this._deltaDriver !== null) {
+        // Phase 24: HudDeltaDriver owns the first-frame push and the event-driven
+        // debounced loop. runFirstFrame() pushes all 4 tiles unconditionally and
+        // seeds xxhash baselines; start() subscribes to delta channels. (ADR-0013)
+        await this._deltaDriver.runFirstFrame();
+        await this._deltaDriver.start();
+      } else {
+        // Driverless fallback: direct _compositeAndPush() for schema-select tests
+        // and any construction path that omits a driver (2/3-arg). These callers
+        // do not need the event-driven loop — only the first-frame push.
+        await this._compositeAndPush();
+      }
     }
   }
 
@@ -709,57 +712,20 @@ export class LayerManager {
   }
 
   /**
-   * Release the event-driven recomposite subscription (CR-01 fix).
+   * Stop the HudDeltaDriver (cancel pending timer + release WS subscriptions).
    *
-   * Call from `boot-engine-core` teardown so the `character.delta` listener does
-   * not keep the LayerManager alive in memory after the engine is torn down.
-   * Idempotent — safe to call multiple times.
+   * Call from `boot-engine-core` teardown so all delta channel listeners and
+   * any pending debounce timer are released when the engine is torn down.
+   * Idempotent — safe to call multiple times; `HudDeltaDriver.stop()` is itself
+   * idempotent.
    *
    * Named `disposeSubscriptions` (not `destroy`) to avoid shadowing the existing
    * `destroy(z: ZIndex)` layer-removal method.
+   *
+   * No-op when no driver was injected (driverless / glyph-mode construction).
    */
   disposeSubscriptions(): void {
-    this._stopDeltaRecomposite();
-  }
-
-  /**
-   * Subscribe to `character.delta` on the WS event bus and trigger
-   * `_compositeAndPush()` when any mounted CanvasLayer is dirty.
-   *
-   * This is the Phase 20 minimal event-driven recomposite driver. The full ~5fps
-   * xxhash sub-tile delta loop lands in Phase 24 and replaces this mechanism.
-   * (ADR-0013)
-   *
-   * No-op when `_wsEvents` is null (glyph mode, tests without wsEvents).
-   * Idempotent — calling twice only creates one subscription (the previous
-   * subscription is released before a new one is created).
-   */
-  private _startDeltaRecomposite(): void {
-    if (this._wsEvents === null) return;
-    // Release any existing subscription before creating a new one (idempotency).
-    this._stopDeltaRecomposite();
-    this._deltaRecompositeUnsub = this._wsEvents.subscribe('character.delta', () => {
-      // Check after the delta is dispatched whether any mounted CanvasLayer is dirty.
-      // Because the WS event bus replays cached values synchronously at subscribe time,
-      // and CanvasStatusHudLayer._onDelta sets _dirty=true before this handler fires
-      // (both are synchronous subscribers), the dirty check here is always accurate.
-      const anyDirty = [...this.layers.values()].some((l) => isCanvasLayer(l) && l.isDirty());
-      if (anyDirty && this.compositor !== null) {
-        void this._compositeAndPush();
-      }
-    });
-  }
-
-  /**
-   * Release the event-driven recomposite subscription.
-   *
-   * Idempotent — safe to call when `_deltaRecompositeUnsub` is already null.
-   */
-  private _stopDeltaRecomposite(): void {
-    if (this._deltaRecompositeUnsub !== null) {
-      this._deltaRecompositeUnsub();
-      this._deltaRecompositeUnsub = null;
-    }
+    this._deltaDriver?.stop();
   }
 
   /**
