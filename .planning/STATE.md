@@ -4,8 +4,8 @@ milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: verifying
 stopped_at: Completed 25-03-PLAN.md
-last_updated: "2026-06-08T10:39:45.338Z"
-last_activity: 2026-06-08 -- Phase 25 execution started
+last_updated: "2026-06-08T11:34:38.354Z"
+last_activity: 2026-06-08
 progress:
   total_phases: 8
   completed_phases: 7
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 25 (Promozione Raster a Default Boot + Fallback Glyph) — EXECUTING
-Plan: 3 of 3
+Phase: 26
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-06-08 -- Phase 25 execution started
+Last activity: 2026-06-08
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 29
+- Total plans completed: 32
 - Average duration: 12.33 min
 - Total execution time: 74 min
 
@@ -50,6 +50,7 @@ Last activity: 2026-06-08 -- Phase 25 execution started
 | 22 | 3 | - | - |
 | 23 | 3 | - | - |
 | 24 | 2 | - | - |
+| 25 | 3 | - | - |
 
 **Recent Trend:**
 
