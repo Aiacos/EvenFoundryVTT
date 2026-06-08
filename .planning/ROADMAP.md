@@ -267,7 +267,7 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 | 23. Combat Tracker su Canvas + Combatant AC | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 2/2 | Complete    | 2026-06-08 |
 | 25. Promozione Raster a Default Boot + Fallback Glyph | v0.10.0 | 3/3 | Complete    | 2026-06-08 |
-| 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 1/1 | Complete   | 2026-06-08 |
+| 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 1/1 | Complete    | 2026-06-08 |
 
 ---
 *Last updated: 2026-06-05 — v0.10.0 roadmap Phases 19–26 created. v0.9.14 parked (phases cleared). Prior: 2026-05-18 v0.9.13 ARCHIVED.*
