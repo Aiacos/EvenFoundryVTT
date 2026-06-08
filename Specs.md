@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.15)
+# EvenFoundryVTT — Project Specification (v0.10.0)
 
 ## 0. Executive Summary
 
@@ -1329,6 +1329,14 @@ z=2    Overlay slot          (mounted on demand: 0 or 1 panel at a time)
 
 Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `isEventCapture=1`. The router also owns z=0.5 lifecycle (subscribes to `overlay_mounted` / `overlay_dismissed` from `core/state-store.js`).
 
+**Substrato di rendering predefinito — CanvasCompositor raster (v0.10.0):**
+
+Dal milestone v0.10.0 il **percorso di rendering default** è il substrato canvas composited:
+
+- **z=1 Status HUD** e **z=2 overlay panels** sono disegnati su `OffscreenCanvas` tramite `CanvasCompositor` con font pixel VT323 e chrome statico pre-baked, poi inviati al G2 come 4 sub-tile PNG 4-bit (200×100 ciascuno, regione effettiva 400×200 px) via `updateImageRawData`. Il compositor opera in z-order crescente con dirty-skip: un tile non viene rispedito se il suo xxhash h32 è invariato rispetto al frame precedente. Il loop delta gira a ~5 fps (intervallo minimo 100 ms), con idle near-zero bandwidth quando la scena non cambia.
+- **Percorso glyph/text (fallback BLE-degraded):** quando `view.map.mode = "glyph"` è attivo (impostato dal giocatore via Quick Action `[M] Map ctrl` oppure forzato dal verdetto BLE-degraded al boot), il rendering torna al path text-container SDK: lo schema di pagina usa 3 container (header/footer/status-hud) invece di 5 (4 image tile + 1 hud-capture). Il contratto layout glyph è descritto in §7.4b.7 e il mockup INV-1 è nella subsection "Glyph Fallback Mode" in §7.4.
+- **Invariante:** la scelta del substrato non modifica la z-stack logica (4 layer) né le regole di cattura input. In canvas mode il container `hud-capture` (id=4, `isEventCapture:1`, 576×288) intercetta i gesture R1; in glyph mode il container `map-capture` (id=7) svolge lo stesso ruolo. Il contratto INV-1 si verifica separatamente per le due suite: `inv:all` esegue sia la glyph suite (fixture ASCII) che la raster suite (hash PNG tile SHA-256 committati in `status-hud.raster-hash.json`).
+
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
 **Approssimazione**: il G2 usa font firmware-defined; le metriche reali vanno verificate in Phase 0. I mockup assumono ~96 char × 24 row come riferimento di layout.
@@ -1364,9 +1372,13 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 > **HUD-27PX redesign (v0.9.14, 2026-06-05):** The default always-on glasses view is now the **full-width Character Status Sheet**, NOT the raster map. The G2 LVGL font has a **fixed 27px line height** (no font control per SDK). Screen: 576×288 px → ~10 rows max; full-width line ≈ ~50 chars (variable-width, measured by `@evenrealities/pretext`). The old 28×21 corner card was designed for a ~12px/24-row grid — text appeared ~2.25× too big on real glasses ("scritte troppo grandi"). This section describes the new default view. The raster/glyph map mode is a **DEFERRED gesture-opened overlay** (see §7.4 "Map mode — DEFERRED" below and ADR-0001 Amendment 2).
 
+#### Glyph Fallback Mode — BLE-degraded path (INV-1 contract)
+
+> **Contesto v0.10.0:** questo è il percorso di rendering di **fallback BLE-degraded** (o path glyph esplicito via `view.map.mode = "glyph"`). Il substrato di rendering **default** dal milestone v0.10.0 è il canvas `CanvasCompositor` raster descritto in §7.2. Il mockup qui sotto è il contratto INV-1 per il path text-container SDK; NON va cancellato — è la spec del fallback glyph e rimane il contratto di snapshot per la glyph suite di `inv:all`.
+
 #### Status-default view (27px grid) — IMPLEMENTED (v0.9.14, 8-row layout v0.9.15)
 
-The always-on default view is the Character Status Sheet — 8 rows × ~50 chars, full-width 576px:
+The always-on default view (glyph/text path) is the Character Status Sheet — 8 rows × ~50 chars, full-width 576px:
 
 ```
 Dante Lanzulli            Lv10 —
@@ -2661,7 +2673,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.15                                          ║
+║                              EVENFOUNDRYVTT  v0.10.0                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -4101,6 +4113,19 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-06-08 (v0.10.0 — milestone: substrato raster CanvasCompositor come rendering default)** — Chiusura del milestone v0.10.0 (Phases 19–25). Bump v0.9.15 → v0.10.0. Doc-only (INV-3 atomic commit: Specs §7 + README + showcase).
+  - **Phase 19 — ADR-0013 Amendment 1 + CanvasCompositor core** (Phases EVF-19, 4 piani): ratificato ADR-0013 Amendment 1 (substrato canvas compositor). `CanvasCompositor` implementa z-order compositing con dirty-skip su `OffscreenCanvas`; `CanvasLayer` interface + `isCanvasLayer` guard aggiunti additivamente a `layer-types.ts`; `buildHudRasterPageSchema()` (5 container: 4 image tile 200×100 + 1 `hud-capture` text isEventCapture:1); `LayerManager.renderMode = 'canvas' | 'glyph'` (default `'glyph'` — promozione a v0.10.0). `HUD_TILE_GEOMETRY` = 200×100/tile, 400×200/regione (INV-2 verified `hub.evenrealities.com/docs/guides/display`). Glyph path byte-identico pre/post.
+  - **Phase 20 — Status HUD su canvas + font VT323 + INV-1 raster baseline** (EVF-20, 5 piani): `CanvasStatusHudLayer` renderizza la HUD (z=1) su canvas con font pixel VT323 (`@fontsource/vt323`, fallback `16px monospace`); chrome statico pre-baked in `ImageBitmap` al mount; `_dirty` gate — `paint()` invocato solo su `character.delta`. Contratto INV-1 raster stabilito: `inv:all` esegue glyph suite (fixture ASCII) + raster suite (SHA-256 PNG tile hash in `status-hud.raster-hash.json`); FALSE-PASS guard implementato (IS-09d). `hud-capture` (id=4, 576×288) vs `map-capture` (id=7, 576×234) — architettura dual-container ratificata (fallback FALLBACK rispetto al rename proposto). 3179 workspace test.
+  - **Phase 21 — Character sheet su canvas + dati main-tab** (EVF-21, 5 piani): pannello `CanvasSheetLayer` (z=2 overlay) con 6 tab (Main/Skills/Inventory/Spells/Features/Bio) renderizzati su canvas VT323; navigazione gesture preservata byte-identica al glyph path; portrait greyscale-dithered in slot 3 (100×60). Schema esteso: `CharacterSnapshotSchema` + `extractClass` / `extractInitiativeModifier` / `extractWalkSpeed` reader helpers; tab Main wired con classe, Ini, velocità reali. ~26 literal downstream aggiornati.
+  - **Phase 22 — Features + Biography schema extension** (EVF-22, 3 piani): `CharacterSnapshotSchema` esteso con `feats[]` (array di `{name, description}`) e `biography` (stringa plain-text strip da HTML); reader `extractFeats` + `extractBiography` nel `foundry-module`. Tab Features e Biography della scheda raster mostrano dati reali. Gap CR-BIO-2 chiuso (block-level tag → spazio separatore, assertion allineata). 558/558 foundry-module test green.
+  - **Phase 23 — Combat tracker su canvas + AC combattente** (EVF-23, 3 piani): `CanvasCombatLayer` (z=2 overlay) con finestra scorrevole a 5 combattenti, highlight turno corrente (fillRect inverso), HP e AC reali da `CombatSnapshot`; `extractAc` reader aggiunto. 13/13 must-have verified.
+  - **Phase 24 — Delta loop ~5fps xxhash** (EVF-24, 2 piani): `HudDeltaDriver` guida il rendering canvas a ~5 fps (intervallo minimo configurabile, default 100 ms); sub-tile hashing 200×100 con xxhash h32 — solo i tile CHANGED re-encodati/spediti; idle near-zero bandwidth (0 push se 0 hash cambiati). Debounce configurabile: 3 eventi ravvicinati → 1 cycle.
+  - **Phase 25 — Promozione raster a default boot + fallback glyph** (EVF-25, 3 piani): `boot-engine-core.ts` monta canvas mode come default (`setRenderMode('canvas')`); guard `?hud=raster` rimosso (INV-4 dead-code rule); 5 file PoC eliminati; `setBleVerdict('glyph')` attiva `setRenderMode('glyph')` + schema 3-container atomico. ~60 fixture INV-1 glyph preservate byte-identiche. 3295/3295 workspace test green.
+  - **INV-1 raster contract:** il contratto INV-1 raster è ora formalmente stabilito con hash PNG tile SHA-256 committati; `inv:all` verde su entrambe le suite (glyph + raster).
+  - **§7.2:** paragrafo "Substrato di rendering predefinito — CanvasCompositor raster" aggiunto (questo documento). §7.4: mockup 27px avvolto nella subsection "Glyph Fallback Mode — BLE-degraded path" (INV-1 contract, non cancellato).
+  - **INV-2 Re-verified ✓ 2026-06-08 — no drift** (milestone è architettura di rendering interna, nessun nuovo claim upstream; 4 WebFetch paralleli su domini canonici): G2 display 576×288 4-bit confermato; execution model phone WebView confermato; gestures press/double-press/swipe-up/swipe-down confermati; no speaker/no camera confermati; dnd5e latest release-5.3.3 confermato.
+  - **Bump v0.9.15 → v0.10.0.**
 
 - **2026-06-05 (v0.9.15 — j0t-05: flush status-view schema + 8-row sheet)** — Fix di due artefatti residui dopo il boot real-pairing (j0t tasks precedenti). **Bump v0.9.14 → v0.9.15.**
   - **Bug 1 — "Text" ghosting/overlap (PRIMARY):** `LayerManager._flushPage()` usava `buildBaseTextContainers()` (7 text + 4 image = 11 container), re-dichiarando `map-capture` (id7, stessa rect identica di `status-hud` id6) e `z05-*` (ids 8-10) dopo ogni bundle. Il G2 host renderizzava questi container sovrapposti come placeholder "Text", oscurando il foglio stato. **Fix:** `_flushPage()` ora usa `buildStatusViewTextContainers()` (3 container: header id4, footer id5, status-hud id6; 0 image; `containerTotalNum:3`) — identico schema della boot page (`buildBootPageSchema()`). `map-capture` e `z05-*` restano nel registry per il map-mode DEFERRED (Phase 20) ma NON vengono dichiarati nel flush di default.
