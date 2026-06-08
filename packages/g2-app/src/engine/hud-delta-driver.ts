@@ -24,15 +24,15 @@
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  * @see packages/g2-app/src/engine/layer-manager.ts (LayerManager._flushPage canvas branch)
  * @see packages/g2-app/src/raster/raster-worker.ts (xxhash lazy-singleton init pattern)
- * @see packages/g2-app/src/hud/hud-poc-page.ts (pushHudTiles CM-01 serialization)
+ * @see packages/g2-app/src/hud/push-hud-tiles.ts (pushHudTiles CM-01 serialization)
  * @see .planning/phases/EVF-24-delta-loop-5fps-xxhash/24-01-PLAN.md
  */
 
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { XXHashAPI } from 'xxhash-wasm';
 import xxhash from 'xxhash-wasm';
-import { pushHudTiles } from '../hud/hud-poc-page.js';
 import { buildHudTiles } from '../hud/hud-raster-frame.js';
+import { pushHudTiles } from '../hud/push-hud-tiles.js';
 import type { CanvasCompositorLike } from './canvas-compositor.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────

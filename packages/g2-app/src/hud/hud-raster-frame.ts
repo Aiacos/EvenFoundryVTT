@@ -263,7 +263,7 @@ function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  * @see packages/g2-app/src/raster/raster-worker.ts (source of replicated patterns)
- * @see packages/g2-app/src/hud/hud-poc-page.ts (consumer — pushHudTiles)
+ * @see packages/g2-app/src/hud/push-hud-tiles.ts (consumer — pushHudTiles)
  */
 export function buildHudTiles(rgba: Uint8ClampedArray): HudTile[] {
   const expectedLength = FRAME_W * FRAME_H * 4;

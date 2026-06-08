@@ -36,8 +36,8 @@
 
 import { type EvenAppBridge, RebuildPageContainer } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
-import { pushHudTiles } from '../hud/hud-poc-page.js';
 import { buildHudTiles } from '../hud/hud-raster-frame.js';
+import { pushHudTiles } from '../hud/push-hud-tiles.js';
 import { type CanvasCompositorLike, COMPOSITOR_H, COMPOSITOR_W } from './canvas-compositor.js';
 import {
   BOOT_CONTAINER_TOTAL,
@@ -702,7 +702,7 @@ export class LayerManager {
    * does not crash — it simply produces no tile updates (useful for schema-select
    * tests that only assert `rebuildPageContainer`).
    *
-   * @see packages/g2-app/src/hud/hud-poc-page.ts#pushHudTiles (serialized push)
+   * @see packages/g2-app/src/hud/push-hud-tiles.ts#pushHudTiles (serialized push)
    * @see packages/g2-app/src/hud/hud-raster-frame.ts#buildHudTiles (RGBA → 4 tiles)
    * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-01)
    */

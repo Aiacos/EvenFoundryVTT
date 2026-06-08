@@ -2,8 +2,9 @@
  * PoC page — 4 full-screen 288×144 image containers for the raster HUD PoC.
  *
  * This module defines the EvenHub page schema for the raster HUD PoC: 4 image
- * containers tiling the full 576×288 G2 screen, plus the helpers to create the
- * page and push PNG tiles via `updateImageRawData`.
+ * containers tiling the full 576×288 G2 screen, plus the helpers to build and
+ * create the PoC page. The `pushHudTiles` function has been extracted to
+ * `push-hud-tiles.ts` (Plan 25-01 — D-25.1 extraction).
  *
  * # Container ID contract (qm0 / ADR-0013)
  *
@@ -13,20 +14,14 @@
  * are DISTINCT from the default map-tile-0..3 containers (container-registry.ts)
  * because the PoC page has no text containers at all.
  *
- * Every `ImageRawDataUpdate` and `ImageContainerProperty` carries a numeric
- * `containerID` (required by the EvenHub host per the 2026-06-04 debug probe
- * — see `.planning/debug/glasses-render-blank-containerid.md`).
- *
- * # Fail-soft semantics
- *
- * `pushHudTiles` never throws on a non-success `updateImageRawData` result —
- * it logs a `console.warn` and continues to the next tile (best-effort PoC
- * delivery, mirroring `raster-controller.ts#_dispatchChangedTiles`).
+ * Every `ImageContainerProperty` carries a numeric `containerID` (required by
+ * the EvenHub host per the 2026-06-04 debug probe —
+ * see `.planning/debug/glasses-render-blank-containerid.md`).
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013)
+ * @see packages/g2-app/src/hud/push-hud-tiles.ts (pushHudTiles — extracted)
  * @see packages/g2-app/src/engine/container-registry.ts (default container registry, NOT imported)
  * @see packages/g2-app/src/engine/page-lifecycle.ts (createBootPage pattern)
- * @see packages/g2-app/src/raster/raster-controller.ts (ImageRawDataUpdate push pattern)
  * @see .planning/debug/glasses-render-blank-containerid.md (qm0 numeric-id requirement)
  */
 
@@ -34,11 +29,9 @@ import {
   CreateStartUpPageContainer,
   type EvenAppBridge,
   ImageContainerProperty,
-  ImageRawDataUpdate,
-  ImageRawDataUpdateResult,
   StartUpPageCreateResult,
 } from '@evenrealities/even_hub_sdk';
-import { HUD_TILE_GEOMETRY, type HudTile } from './hud-raster-frame.js';
+import { HUD_TILE_GEOMETRY } from './hud-raster-frame.js';
 
 // ── HUD_POC_CONTAINERS ────────────────────────────────────────────────────────
 
@@ -171,55 +164,5 @@ export async function createHudPocPage(bridge: EvenAppBridge): Promise<void> {
     throw new Error(
       `createHudPocPage: createStartUpPageContainer returned non-success (${String(result)})`,
     );
-  }
-}
-
-// ── pushHudTiles ──────────────────────────────────────────────────────────────
-
-/**
- * Push 4 dithered PNG tiles to the G2 framebuffer via `updateImageRawData`.
- *
- * This is the **production serialized-push path** called from
- * `LayerManager._compositeAndPush()` in canvas mode (ADR-0013 Amendment 1,
- * RAST-01). It is also used directly by the PoC boot path (`?hud=raster`).
- *
- * For each tile, builds an `ImageRawDataUpdate` carrying:
- * - `containerID` — numeric id (required by the host, qm0 requirement)
- * - `containerName` — string name
- * - `imageData` — 4-bit indexed-palette PNG bytes from `buildHudTiles`
- *
- * **Serialization contract (CM-01):** uses `for...of` + `await` per tile — the
- * Even Hub SDK does NOT accept concurrent `updateImageRawData` calls on the same
- * container. Do NOT replace this loop with `Promise.all`.
- *
- * On `!ImageRawDataUpdateResult.isSuccess(result)`: logs a `console.warn` and
- * continues to the next tile (fail-soft best-effort, never throws). Mirrors
- * `raster-controller.ts#_dispatchChangedTiles`.
- *
- * @param bridge The resolved `EvenAppBridge` singleton.
- * @param tiles  4 `HudTile` objects from `buildHudTiles`.
- *
- * @see packages/g2-app/src/engine/layer-manager.ts#_compositeAndPush (production caller)
- * @see packages/g2-app/src/raster/raster-controller.ts#_dispatchChangedTiles (pattern source)
- * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-01)
- * @see .planning/debug/glasses-render-blank-containerid.md (qm0 numeric-id requirement)
- */
-export async function pushHudTiles(
-  bridge: Pick<EvenAppBridge, 'updateImageRawData'>,
-  tiles: ReadonlyArray<HudTile>,
-): Promise<void> {
-  for (const tile of tiles) {
-    const payload = new ImageRawDataUpdate({
-      containerID: tile.containerID,
-      containerName: tile.containerName,
-      imageData: tile.bytes,
-    });
-    const result = await bridge.updateImageRawData(payload);
-    if (!ImageRawDataUpdateResult.isSuccess(result)) {
-      console.warn(
-        `[EVF] hud-poc: updateImageRawData non-success for ${tile.containerName} (id=${tile.containerID}):`,
-        result,
-      );
-    }
   }
 }

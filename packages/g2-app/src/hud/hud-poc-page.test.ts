@@ -15,8 +15,9 @@
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  */
 import { describe, expect, it, vi } from 'vitest';
-import { buildHudPocPageSchema, HUD_POC_CONTAINERS, pushHudTiles } from './hud-poc-page.js';
+import { buildHudPocPageSchema, HUD_POC_CONTAINERS } from './hud-poc-page.js';
 import type { HudTile } from './hud-raster-frame.js';
+import { pushHudTiles } from './push-hud-tiles.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

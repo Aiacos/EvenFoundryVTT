@@ -63,8 +63,9 @@ import { installHubPolyfill } from '../hub-polyfill.js';
 import { createWsEventBus } from '../internal/boot-engine-core.js';
 import { renderHudFrame } from './hud-canvas-renderer.js';
 import { makeSnapshotRenderHandler } from './hud-live-render.js';
-import { createHudPocPage, pushHudTiles } from './hud-poc-page.js';
+import { createHudPocPage } from './hud-poc-page.js';
 import { buildHudTiles } from './hud-raster-frame.js';
+import { pushHudTiles } from './push-hud-tiles.js';
 
 // ── Fallback snapshot (em-dash placeholders) ──────────────────────────────────
 
