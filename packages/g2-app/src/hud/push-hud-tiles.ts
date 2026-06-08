@@ -1,9 +1,9 @@
 /**
  * push-hud-tiles.ts — production serialized tile-push module (CM-01 contract).
  *
- * Extracted from the PoC page module per D-25.1 (Plan 25-01). This is the
- * canonical production home for `pushHudTiles` — the PoC source file
- * is scheduled for deletion in Plan 03.
+ * Extracted from the now-deleted PoC page module (`hud/hud-poc-page.ts`) per
+ * D-25.1 (Plan 25-01). This is the canonical production home for `pushHudTiles`;
+ * the PoC triad was removed in Plan 25-03.
  *
  * # CM-01 Serialization Contract
  *
