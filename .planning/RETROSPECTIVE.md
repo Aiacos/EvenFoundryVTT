@@ -59,6 +59,42 @@
 
 ---
 
+## Milestone: v0.10.0 — Raster UI Substrate
+
+**Shipped:** 2026-06-08
+**Phases:** 8 (19–26) | **Plans:** 26 | **Tests:** 3300 workspace (from 2668)
+
+### What Was Built
+Replaced the 27px text-container HUD with a canvas-composited raster substrate: `CanvasCompositor` (400×200 region → dither → 4×200×100 tiles → serialized SDK push, ADR-0013 Amd1), `CanvasStatusHudLayer` + VT323 + ImageBitmap chrome pre-bake, `CanvasCharacterSheetPanel` (6 tabs, portrait dither) + `CanvasCombatTrackerPanel` (5-row auto-follow, AC), `feats`/`biography`/`ac` schema+reader extensions, `HudDeltaDriver` (~5fps event-driven debounced xxhash h32 sub-tile delta, zero-push-on-idle), raster promoted to default boot with glyph BLE-degraded fallback, INV-1 raster contract, INV-3 docs at v0.10.0.
+
+### What Worked
+- **Mirror-an-established-pattern phases.** Each schema→reader→renderer phase (21/22/23) followed the prior phase's shape; planner+executor moved fast and consistently with sonnet executors.
+- **Per-phase code-review + auto-fix caught real bugs every phase** — including two BLOCKER-class bugs (21 tab-strip frozen highlight, 23 current-turn false-positive, 24 subscription accumulation) that tests missed.
+- **The milestone-audit integration check was decisive.** It found BLOCKER-01 (character.delta → CanvasCharacterSheetPanel never wired at runtime) that all 7 phases' green tests missed because they inject snapshots directly. Without the cross-phase audit, the headline feature would have shipped empty-on-device.
+- **OPTIONAL schema fields** avoided mass-updating ~26-31 downstream test literals (lesson carried from Phase 21-01's REQUIRED pain).
+- **Working-tree isolation held across 6 phases** — pre-existing unrelated uncommitted changes were never swept into any of 119 commits (targeted `git add`, executors instructed never to use `git add -A`).
+
+### What Was Inefficient
+- **Runtime-wiring blind spot.** Phases 21/22 verified the panel *renders given a snapshot* but not that anything *delivers* the snapshot at boot — caught only at milestone audit. A "boot-path E2E wire" check belongs in panel-phase verification, not just the milestone audit.
+- **A review-fix falsely claimed green** (Phase 22 CR-BIO-2) — the fixer didn't run the one affected test. Mitigated by always independently re-running the suite after each fixer.
+- **`pnpm test` teardown flake** (wizard-commands `onUserConsoleLog` rpc race) caused a false exit-1 once; now documented in memory.
+
+### Patterns Established
+- **Audit-time blocker closure**: fixing a cross-phase integration blocker inline during milestone audit (with a regression test) rather than inserting a closure phase, when the fix is small and well-templated.
+- **Hardware-UAT-deferred close**: `human_needed` phases close with `*-HUMAN-UAT.md` persisted; milestone closes by acknowledging the deferral bucket (ADR-0005 Branch A) — same convention as v0.9.11.
+- **INV-2 re-verify gate on major bump**: ran the ≥4-WebFetch round at v0.10.0 close (no drift).
+
+### Key Lessons
+- A green test suite is necessary but not sufficient — **tests that inject inputs directly never exercise the runtime wiring that delivers those inputs**. Verify the wire, not just the consumer.
+- The milestone integration audit earns its cost: one cross-phase check caught a ship-blocker that 26 plans of phase-level verification missed.
+
+### Cost Observations
+- Model mix: planners on Opus, executors/reviewers/fixers/researchers on Sonnet (one opus fixer for the architectural CR-01 glyph-boot mount). Per-phase: research(sonnet) → plan(opus) → execute(sonnet ×N) → review(sonnet) → fix(sonnet) → verify(sonnet).
+- Sessions: single autonomous run (this session) for all 6 phases + lifecycle.
+- Notable: 119 commits in ~1 day; atomic-commit discipline maintained (TDD RED/GREEN per behavior-adding task).
+
+---
+
 ## Cross-Milestone Trends
 
 *Updated after each subsequent milestone.*
@@ -68,12 +104,14 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v0.9.11 | Multi-session autonomous | 15 | Established `defer-hardware-tests` carry pattern; ratified INV-5; ADR-0005 PROVISIONAL Branch A schema; ADR-0011 single-workflow-origin |
+| v0.10.0 | Single autonomous run | 8 | ADR-0013 Amd1 canvas compositor; raster promoted to default boot; milestone-audit integration check caught ship-blocker (BLOCKER-01) that phase tests missed; per-phase code-review+fix found bugs in every phase |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | LOC TypeScript | ADRs Accepted |
 |-----------|-------|----------|----------------|---------------|
 | v0.9.11 | 2,097 | (Vitest --coverage gate 80%) | ~99,642 | 6 (0001, 0005 PROVISIONAL, 0006, 0008, 0009 + Amd1, 0011) |
+| v0.10.0 | 3,300 | (Vitest --coverage gate 80%) | — | +1 (0013 Amd1 canvas compositor) |
 
 ### Top Lessons (Verified Across Milestones)
 
