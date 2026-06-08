@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: executing
-stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-06-08T05:43:09.678Z"
-last_activity: 2026-06-08 -- Phase 23 execution started
+stopped_at: Completed 23-02-PLAN.md
+last_updated: "2026-06-08T05:47:00.000Z"
+last_activity: 2026-06-08 -- Phase 23 Plan 02 complete (extractCombatantAc + RDATA-05 reader)
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
   percent: 50
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 ## Current Position
 
 Phase: 23 (Combat Tracker su Canvas + Combatant AC) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-06-08 -- Phase 23 execution started
+Last activity: 2026-06-08 -- Plan 23-02 complete (extractCombatantAc reader + RDATA-05 GREEN)
 
 ## Performance Metrics
 
@@ -99,6 +99,8 @@ Last activity: 2026-06-08 -- Phase 23 execution started
 | Phase 22 P01 | 5 min | 2 tasks | 2 files |
 | Phase 22 P02 | 4 min | - tasks | - files |
 | Phase 22 P03 | 90min | 2 tasks | 8 files |
+| Phase 23 P01 | 4 min | 2 tasks | 2 files |
+| Phase 23 P02 | 2 min | 2 tasks | 2 files |
 
 ## Quick Tasks Completed
 
