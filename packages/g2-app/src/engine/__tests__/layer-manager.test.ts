@@ -17,14 +17,21 @@
  *   - null-compositor canvas mode: _compositeAndPush returns without throwing
  *   - _assertContainerBudget canvas-mode fixed-budget branch
  *
+ * Phase 25 Plan 02 additions (D-25.3 / RPROMO-02):
+ *   - LMT-ATOMIC-01: canvas→glyph atomic switch via setRenderMode('glyph')+bundle([])
+ *     yields exactly ONE rebuildPageContainer with the 3-container glyph schema and
+ *     ZERO mixed-schema intermediate frame (success criterion #3).
+ *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §layer-manager.test.ts
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-02-PLAN.md Task 1
  * @see .planning/phases/EVF-19-adr-0013-amendment-1-canvas-compositor-core/19-04-PLAN.md
+ * @see .planning/phases/EVF-25-promozione-raster-a-default-boot-fallback-glyph/25-02-PLAN.md Task 1
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CanvasCompositorLike } from '../canvas-compositor.js';
+import { BOOT_CONTAINER_TOTAL } from '../container-registry.js';
 import type { DebugMirror } from '../debug-mirror.js';
 import { HudDeltaDriver } from '../hud-delta-driver.js';
 import { LayerManager } from '../layer-manager.js';
@@ -1441,4 +1448,68 @@ describe('LayerManager — HudDeltaDriver injection (DL-07, Phase 24)', () => {
     // Must not throw — no driver present, disposeSubscriptions is a no-op.
     expect(() => lm.disposeSubscriptions()).not.toThrow();
   });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 25 Plan 02 — canvas→glyph atomic switch (LMT-ATOMIC-01)
+// D-25.3 / RPROMO-02 — success criterion #3
+//
+// Verifies that setRenderMode('glyph') + bundle([]) atomically produces exactly
+// ONE rebuildPageContainer call with the 3-container glyph schema and ZERO
+// mixed-schema intermediate frame after a canvas-mode boot.
+//
+// This is the regression guard for the glyph-fallback switch wired by Task 2
+// in boot-engine-core.ts.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('LayerManager — canvas→glyph atomic switch (LMT-ATOMIC-01, Phase 25 D-25.3)', () => {
+  it(
+    'LMT-ATOMIC-01: setRenderMode(glyph)+bundle([]) after canvas boot yields exactly ONE ' +
+      'rebuildPageContainer with 3-container glyph schema and zero mixed-schema intermediate frame',
+    async () => {
+      // Arrange: boot in canvas mode (mirrors LMT-CF-01 setup)
+      const bridge = makeMockBridge();
+      const compositor = makeFakeCompositor();
+      // 3-arg construction: no driver → driverless _compositeAndPush fallback path.
+      const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+      const captureLayer: Layer = {
+        id: 'canvas-capture',
+        draw: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn(),
+        getCaptureContainer: () => 'hud-capture',
+        getContainerCount: () => ({ image: 0, text: 0 }),
+      };
+
+      // Boot canvas mode: mount capture-providing layer so the capture invariant is satisfied.
+      lm.setRenderMode('canvas');
+      await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+      // Reset spy call history — the canvas-boot rebuildPageContainer is not part of
+      // the atomicity assertion (we are only counting calls AFTER the glyph switch).
+      bridge.rebuildPageContainer.mockClear();
+      bridge.updateImageRawData.mockClear();
+
+      // Act: atomic canvas→glyph switch — setRenderMode then bundle with no ops.
+      lm.setRenderMode('glyph');
+      await lm.bundle([]); // empty ops = schema switch only, no mount/destroy changes
+
+      // Assert 1 — atomicity: exactly ONE rebuildPageContainer call after the switch.
+      // Any value > 1 would indicate a mixed-schema intermediate frame (Pitfall 3 / D-25.3).
+      expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+
+      // Assert 2 — glyph schema shape (D-25.4 byte-identical to pre-v0.10.0 glyph schema):
+      //   containerTotalNum = BOOT_CONTAINER_TOTAL (3)
+      //   textObject.length = 3  (header id4 + footer id5 + status-hud id6)
+      //   imageObject.length = 0 (no image tiles in glyph mode)
+      const schemaArg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+      expect(schemaArg?.containerTotalNum).toBe(BOOT_CONTAINER_TOTAL);
+      expect(schemaArg?.textObject?.length).toBe(3);
+      expect(schemaArg?.imageObject?.length).toBe(0);
+
+      // Assert 3 — zero mixed-schema frame: updateImageRawData must NOT have been called
+      // during the glyph bundle (glyph mode pushes no image tiles — no raster bleed).
+      expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+    },
+  );
 });
