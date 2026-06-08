@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.10.0
 milestone_name: Raster UI Substrate
-status: executing
-stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-06-08T10:32:11.188Z"
+status: verifying
+stopped_at: Completed 25-03-PLAN.md
+last_updated: "2026-06-08T10:39:45.338Z"
 last_activity: 2026-06-08 -- Phase 25 execution started
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 25
-  completed_plans: 24
-  percent: 75
+  completed_plans: 25
+  percent: 88
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 Phase: 25 (Promozione Raster a Default Boot + Fallback Glyph) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-08 -- Phase 25 execution started
 
 ## Performance Metrics
@@ -108,6 +108,7 @@ Last activity: 2026-06-08 -- Phase 25 execution started
 | Phase 24 P02 | 14 | 3 tasks | 5 files |
 | Phase 25 P01 | 6 min | - tasks | - files |
 | Phase 25 P02 | 8 min | 2 tasks | 3 files |
+| Phase 25 P03 | 12 | 3 tasks | 8 files |
 
 ## Quick Tasks Completed
 
@@ -253,6 +254,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase ?]: isAtTopBoundary()=_scrollOffset===0 contract frozen — ADR-0012 over-scroll gate depends on this (Pitfall 5)
 - [Phase ?]: HudDeltaDriver wired into LayerManager as 4th constructor arg; naive driver symbols removed (INV-4)
 - [Phase ?]: pushHudTiles extracted to hud/push-hud-tiles.ts; INV-4 warn prefix updated from hud-poc to push-hud-tiles
+- [Phase ?]: PoC triad deleted unconditionally; launch.ts Branch A = single bootEngine call; stale @see refs fixed inline; pre-existing biome errors in deploy/foundry-mcp out of scope
 
 ### Pending Todos
 
@@ -314,8 +316,8 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-08T10:32:11.181Z
-Stopped at: Completed 24-02-PLAN.md
+Last session: 2026-06-08T10:39:45.332Z
+Stopped at: Completed 25-03-PLAN.md
 Resume file: None
 Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
 
