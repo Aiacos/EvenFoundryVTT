@@ -4,8 +4,8 @@ milestone: v0.10.0
 milestone_name: Raster UI Substrate
 status: verifying
 stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-06-08T06:02:07.788Z"
-last_activity: 2026-06-08 -- Plan 23-02 complete (extractCombatantAc reader + RDATA-05 GREEN)
+last_updated: "2026-06-08T06:25:50.862Z"
+last_activity: 2026-06-08
 progress:
   total_phases: 8
   completed_phases: 5
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 
 ## Current Position
 
-Phase: 23 (Combat Tracker su Canvas + Combatant AC) — EXECUTING
-Plan: 3 of 3
+Phase: 24
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-06-08 -- Plan 23-02 complete (extractCombatantAc reader + RDATA-05 GREEN)
+Last activity: 2026-06-08
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24
+- Total plans completed: 27
 - Average duration: 12.33 min
 - Total execution time: 74 min
 
@@ -48,6 +48,7 @@ Last activity: 2026-06-08 -- Plan 23-02 complete (extractCombatantAc reader + RD
 | 03 | 5 | - | - |
 | 21 | 5 | - | - |
 | 22 | 3 | - | - |
+| 23 | 3 | - | - |
 
 **Recent Trend:**
 
