@@ -288,9 +288,11 @@ export function renderCombatantRow(
   const acLabel = getLabel('combat.ac_label', locale);
 
   // Col 47: space
-  // Cols 48-50: AC value (3 chars, right-justified)
-  // NOTE: AC is not in the CombatantSchema (Phase 5 scope). Use placeholder '--'.
-  const acValue = ' --';
+  // Cols 48-50: AC value (3 chars, right-justified via _rjust(..., 3)).
+  // Phase 23 Plan 23-03 (D-23.2 / RDATA-05): render real ac when present; fall back to ' --'
+  // when absent (combatant has no linked actor or ac.value was not readable). _rjust ensures
+  // the field is always exactly 3 code-points, preserving INV-1 row width at 66.
+  const acValue = c.ac !== undefined ? _rjust(String(c.ac), 3) : ' --';
 
   // Cols 51-52: gap
   const gap2b = '  ';

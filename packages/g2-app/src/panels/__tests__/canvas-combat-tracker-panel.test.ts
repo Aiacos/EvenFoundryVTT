@@ -96,8 +96,10 @@ function makeFakeCtx(): {
 /**
  * Mock wsEventBus implementing `{ subscribe(channel, fn): () => void }`.
  *
- * Records subscribed channels + callbacks; returns per-channel spy unsubscribers
- * so tests can verify unsubscription.
+ * Records subscribed channels + callbacks; returns per-channel spy unsubscribers.
+ * The returned unsubscribe function both records the call (via vi.fn spy) AND
+ * removes the handler from the active map — so post-unmount emit() calls are
+ * truly no-ops (RCOMB-LIFECYCLE-2 requirement).
  */
 function makeMockWsEventBus() {
   const handlers: Map<string, (payload: unknown) => void> = new Map();
@@ -106,7 +108,10 @@ function makeMockWsEventBus() {
   return {
     subscribe: vi.fn((channel: string, fn: (payload: unknown) => void) => {
       handlers.set(channel, fn);
-      const unsub = vi.fn();
+      // The unsubscribe function removes the handler (functional) + records the call (spy).
+      const unsub = vi.fn(() => {
+        handlers.delete(channel);
+      });
       unsubSpies.set(channel, unsub);
       return unsub;
     }),
@@ -115,7 +120,7 @@ function makeMockWsEventBus() {
       const h = handlers.get(channel);
       if (h) h(payload);
     },
-    /** How many times `subscribe` was called for a channel. */
+    /** Active subscribed channels (channels still registered after any unsubs). */
     subscribedChannels: () => [...handlers.keys()],
     /** Get the unsubscribe spy for a specific channel. */
     unsubSpyFor: (channel: string) => unsubSpies.get(channel),
@@ -294,9 +299,9 @@ describe('CanvasCombatTrackerPanel — auto-follow on new turn (RCOMB-AUTOFOL)',
     panel.setWsEventBus(wsEvents as never);
     await panel.onMount();
 
-    // Send an initial snapshot
-    const snap1 = makeCombatSnapshot({ currentCombatantId: 'comb-1' });
-    wsEvents.emit('combat.turn', snap1);
+    // Send an initial snapshot with 7 combatants so maxOff = max(0, 7-3) = 4 (scroll effective)
+    const largSnap1 = makeLargeCombatSnapshot();
+    wsEvents.emit('combat.turn', largSnap1);
 
     // Manually scroll to simulate user scrolled away
     bus.publish({ kind: 'scroll', direction: 'down' });
@@ -309,9 +314,9 @@ describe('CanvasCombatTrackerPanel — auto-follow on new turn (RCOMB-AUTOFOL)',
     panel.paint();
     expect(panel.isDirty()).toBe(false);
 
-    // Now send a NEW combatant turn — should reset scrollOffset + set dirty
-    const snap2 = makeCombatSnapshot({ currentCombatantId: 'comb-2', turn: 1 });
-    wsEvents.emit('combat.turn', snap2);
+    // Now send a NEW combatant turn (different currentCombatantId) — should reset scrollOffset + set dirty
+    const largSnap2 = { ...makeLargeCombatSnapshot(), currentCombatantId: 'comb-3', turn: 3 };
+    wsEvents.emit('combat.turn', largSnap2);
 
     expect(panel.isAtTopBoundary()).toBe(true); // _scrollOffset === 0
     expect(panel.isDirty()).toBe(true);
@@ -380,12 +385,7 @@ describe('CanvasCombatTrackerPanel — 5-window + highlight (RCOMB-WIN)', () => 
     // The total rows includes title, combatant rows, blank rows, effects, QA bar, bottom border
     // but each visible combatant contributes exactly 1 row (no concentration in fixture).
     // The window should contain exactly 5 combatants from the 7 available.
-    // We count rows that contain the combatant marker pattern (init + marker)
-    const combatantRows = rows.filter(
-      (r) =>
-        r.trim().startsWith('') || r.includes('▶') || (r.includes('Fighter') && r.includes('HP')),
-    );
-    // More reliable: count rows that contain 'Fighter' (combatant name field)
+    // Count rows that contain 'Fighter' (combatant name field).
     const namedRows = rows.filter((r) => r.includes('Fighter'));
     expect(namedRows.length).toBe(5);
   });
