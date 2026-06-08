@@ -1580,6 +1580,15 @@ export async function _bootEngineCore(
       } catch (err) {
         console.warn('[boot-engine-core] teardown: perfProbe.dispose failed', err);
       }
+      // Phase 24 WR-03: stop HudDeltaDriver IMMEDIATELY after perfProbe, BEFORE
+      // any layer destroy(). A pending debounce timer can fire compositor.composite()
+      // while layers are being destroyed, racing their async cleanup. Stopping the
+      // driver here guarantees no render cycles run during teardown.
+      try {
+        layerManager.disposeSubscriptions();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: layerManager.disposeSubscriptions failed', err);
+      }
       // Phase 10 Plan 10-01 — dispose WsReconnectController BEFORE unsubSceneInput
       // (reverse-mount order: wsReconnect attached at step 11a, after scene input step 11).
       // dispose() cancels pending backoff timers and removes the 'close' listener from ws.
@@ -1634,12 +1643,6 @@ export async function _bootEngineCore(
         mapBase.destroy();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: mapBase.destroy failed', err);
-      }
-      // Phase 24: stop HudDeltaDriver (cancel pending debounce timer + release delta channel subscriptions).
-      try {
-        layerManager.disposeSubscriptions();
-      } catch (err) {
-        console.warn('[boot-engine-core] teardown: layerManager.disposeSubscriptions failed', err);
       }
       try {
         ws.close();
