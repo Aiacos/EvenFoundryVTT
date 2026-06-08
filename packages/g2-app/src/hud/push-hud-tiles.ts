@@ -38,8 +38,7 @@ import type { HudTile } from './hud-raster-frame.js';
  *
  * This is the **production serialized-push path** called from
  * `LayerManager._compositeAndPush()` and `HudDeltaDriver._runCycle()` in canvas
- * mode (ADR-0013 Amendment 1, RAST-01). It is also used by the PoC boot path
- * (`?hud=raster`).
+ * mode (ADR-0013 Amendment 1, RAST-01).
  *
  * For each tile, builds an `ImageRawDataUpdate` carrying:
  * - `containerID` — numeric id (required by the host, qm0 requirement)

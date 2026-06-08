@@ -90,8 +90,8 @@ export interface HudTile {
 /**
  * Descriptor for a single HUD tile's geometry and container identity.
  *
- * Used by `hud-poc-page.ts` to build the `CreateStartUpPageContainer` schema
- * and by tests to assert the tile layout without calling the dither pipeline.
+ * Used by `push-hud-tiles.ts` (serialized tile push) and by tests to assert
+ * the tile layout without calling the dither pipeline.
  *
  * `x` and `y` are offsets **relative to the 400×200 raster-region origin** —
  * not absolute on-screen positions within the 576×288 G2 display. The raster
