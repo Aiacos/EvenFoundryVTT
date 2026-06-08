@@ -187,12 +187,14 @@ Three software-only phases completed the Character Sheet panel's data wiring (Ma
 **Success Criteria** (what must be TRUE):
 
   1. Un'istanza `TileDelta` con geometria 200×100 (i 4 tile della regione raster 400×200) è usata per hashing sub-tile; solo i tile con hash cambiato vengono re-encodati e spediti via `pushHudTiles` (serializzati); in HUD idle (nessun `character.delta` né `combat.delta`) zero tile vengono respinti dopo il primo frame
-  2. Il loop rispetta un `MIN_REDRAW_INTERVAL_MS = 200` (debounce) — eventi `character.delta` ravvicinati vengono collassati in un singolo render cycle, non spediti individualmente
+  2. Il loop rispetta un debounce `MIN_REDRAW_INTERVAL_MS` **configurabile, default 100ms** (override del literal 200ms per D-24.1) — eventi `character.delta` / `combat.turn` / `combat.state` ravvicinati vengono collassati in un singolo render cycle, non spediti individualmente
   3. Un test di simulazione dimostra che per un RGBA sintetico con 1 tile modificato su 4, solo 1 `updateImageRawData` viene chiamato (verificabile via spy sul bridge mock); per 0 tile modificati, 0 `updateImageRawData` vengono chiamati
   4. `pnpm test` passa con la suite delta-loop (geometria parametrizzata, debounce, dirty-tracking, zero-push-on-idle) senza regressione sui test canvas esistenti (Phases 20–23)
   5. Il chrome statico (pre-baked via `ImageBitmap`, Phase 20) non genera mai tile CHANGED tra frame consecutivi senza dati dinamici mutati — la bitmap statica è deterministica per input identici
 
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
+- [ ] 24-01-PLAN.md — HudDeltaDriver class (xxhash h32 per-tile + debounce default 100ms + multi-channel subscribe + runFirstFrame); TDD DL-01..DL-06
+- [ ] 24-02-PLAN.md — Integrate into LayerManager + REMOVE 3 naive-driver symbols (INV-4) + full-suite regression gate (Phases 20-23 + INV-1)
 **UI hint**: no
 
 ### Phase 25: Promozione Raster a Default Boot + Fallback Glyph
