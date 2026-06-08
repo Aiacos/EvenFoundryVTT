@@ -1341,7 +1341,7 @@ function makeMockDriver() {
 }
 
 describe('LayerManager — HudDeltaDriver injection (DL-07, Phase 24)', () => {
-  it('DL-07-a: canvas-mode bundle calls driver.runFirstFrame() then driver.start() on flush', async () => {
+  it('DL-07-a: canvas-mode bundle calls driver.start() then driver.runFirstFrame() on flush (CR-02 order)', async () => {
     const bridge = makeMockBridge();
     const compositor = makeFakeCompositor();
     const driver = makeMockDriver();
@@ -1364,10 +1364,11 @@ describe('LayerManager — HudDeltaDriver injection (DL-07, Phase 24)', () => {
     expect(driver.runFirstFrame).toHaveBeenCalledTimes(1);
     expect(driver.start).toHaveBeenCalledTimes(1);
 
-    // runFirstFrame must be awaited BEFORE start (call order).
-    const runOrder = (driver.runFirstFrame as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    // CR-02: start() must be awaited BEFORE runFirstFrame() (subscribe first,
+    // then seed hashes) so inbound deltas during the first push are not dropped.
     const startOrder = (driver.start as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
-    expect(runOrder[0]).toBeLessThan(startOrder[0] ?? Infinity);
+    const runOrder = (driver.runFirstFrame as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    expect(startOrder[0]).toBeLessThan(runOrder[0] ?? Infinity);
   });
 
   it('DL-07-b: driver path — compositor.composite NOT called directly by LayerManager (driver owns it)', async () => {

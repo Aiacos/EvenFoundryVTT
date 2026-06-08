@@ -223,10 +223,12 @@ export class HudDeltaDriver {
     }
 
     // Seed baseline hashes from the PNG bytes of each pushed tile.
+    // buildHudTiles returns exactly tiles.length elements or throws — the
+    // non-null assertion is correct at runtime; it satisfies noUncheckedIndexedAccess
+    // without dead-code guards (INV-4, WR-02).
     for (let i = 0; i < tiles.length; i++) {
-      const tile = tiles[i];
-      if (tile === undefined) continue;
-      this._prevHashes[i] = this._xxhash.h32Raw(tile.bytes);
+      // biome-ignore lint/style/noNonNullAssertion: buildHudTiles contract — tile at index i exists (see above)
+      this._prevHashes[i] = this._xxhash.h32Raw(tiles[i]!.bytes);
     }
   }
 
@@ -295,15 +297,16 @@ export class HudDeltaDriver {
     const tiles = buildHudTiles(rgba);
     const changed: typeof tiles = [];
 
+    // buildHudTiles returns exactly TILE_COUNT elements or throws; _prevHashes is
+    // pre-allocated to TILE_COUNT. Non-null assertions satisfy noUncheckedIndexedAccess
+    // without unreachable continue-guards (INV-4, WR-02).
     for (let i = 0; i < TILE_COUNT; i++) {
-      const tile = tiles[i];
-      if (tile === undefined) continue;
-
+      // biome-ignore lint/style/noNonNullAssertion: buildHudTiles contract — tile at index i exists
+      const tile = tiles[i]!;
       // h32Raw requires Uint8Array; tile.bytes is already Uint8Array (no cast needed).
       const h = this._xxhash.h32Raw(tile.bytes);
-
-      // Use `?? 0` guard for noUncheckedIndexedAccess compliance (INV-4).
-      if (h !== (this._prevHashes[i] ?? 0)) {
+      // biome-ignore lint/style/noNonNullAssertion: _prevHashes pre-allocated to TILE_COUNT
+      if (h !== this._prevHashes[i]!) {
         this._prevHashes[i] = h;
         changed.push(tile);
       }
