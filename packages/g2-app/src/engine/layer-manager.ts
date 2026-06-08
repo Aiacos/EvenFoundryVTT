@@ -668,10 +668,12 @@ export class LayerManager {
     if (this.renderMode === 'canvas') {
       if (this._deltaDriver !== null) {
         // Phase 24: HudDeltaDriver owns the first-frame push and the event-driven
-        // debounced loop. runFirstFrame() pushes all 4 tiles unconditionally and
-        // seeds xxhash baselines; start() subscribes to delta channels. (ADR-0013)
-        await this._deltaDriver.runFirstFrame();
+        // debounced loop. start() MUST come first (CR-02): wires subscriptions +
+        // last-value-replay so no inbound delta during the first-frame push is
+        // silently dropped. runFirstFrame() seeds xxhash baselines after subs are
+        // live. (ADR-0013, HudDeltaDriver JSDoc lifecycle steps 2→3)
         await this._deltaDriver.start();
+        await this._deltaDriver.runFirstFrame();
       } else {
         // Driverless fallback: direct _compositeAndPush() for schema-select tests
         // and any construction path that omits a driver (2/3-arg). These callers

@@ -14,7 +14,7 @@
  *   - `_runCycle()` — compares per-tile h32 and pushes only changed tiles (D-24.3 zero-push-on-idle).
  *
  * Wired into `LayerManager` at construction time (Plan 24-02 Wave 2):
- *   - `await driver.runFirstFrame()` + `await driver.start()` in `_flushPage()` canvas branch.
+ *   - `await driver.start()` then `await driver.runFirstFrame()` in `_flushPage()` canvas branch.
  *   - `driver.stop()` in `disposeSubscriptions()`.
  *
  * INV-4 compliance: JSDoc/TSDoc on every public API; zero bare `// TODO`; no dead code.
