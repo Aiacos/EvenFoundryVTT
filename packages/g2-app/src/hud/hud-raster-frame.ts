@@ -26,8 +26,9 @@
  * - `UPNG.encode([rgba.buffer], 200, 100, 16)` — 4-bit indexed-palette PNG
  *   (verbatim call pattern from raster-worker.ts Stage 9)
  *
- * No xxhash/delta/RLE — the PoC encodes all 4 tiles unconditionally (single
- * frame, no delta). Follow-up per ADR-0013 §Scope.
+ * No xxhash/delta/RLE — `buildHudTiles` encodes all 4 tiles unconditionally
+ * (per-call, no delta state). The delta loop is owned by `HudDeltaDriver`
+ * (Phase 24, ADR-0013 Amendment 1).
  *
  * # Container ID contract (qm0)
  *
@@ -279,10 +280,8 @@ export function buildHudTiles(rgba: Uint8ClampedArray): HudTile[] {
   const result: HudTile[] = [];
 
   for (let i = 0; i < TILES_PER_FRAME; i++) {
-    const tileBuf = tileBuffers[i];
-    if (tileBuf === undefined) {
-      continue;
-    }
+    // biome-ignore lint/style/noNonNullAssertion: splitIntoTiles contract — always exactly TILES_PER_FRAME entries
+    const tileBuf = tileBuffers[i]!;
     const dithered = ditherTile(tileBuf, palette);
     // Stage 9 from raster-worker: UPNG.encode([rgba.buffer], W, H, 16) → 4-bit indexed PNG.
     const pngBuf = UPNG.encode([dithered.buffer], TILE_W, TILE_H, 16);
