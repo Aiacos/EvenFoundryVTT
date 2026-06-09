@@ -376,6 +376,18 @@ export class LayerManager {
     // rejection contract (STEP 5 pattern).
     //
     // No-op for plain Layer instances (isCanvasLayer returns false) — glyph path unchanged.
+    //
+    // ORDER IS LOAD-BEARING (debug canvas-sheet-overlay-wont-open, 2026-06-09):
+    // destroys MUST be processed BEFORE mounts. A replace bundle
+    // (`[{destroy z2}, {mount z2}]` — pushOverlay's atomic suspend path) shares
+    // the same z index between both loops; with mounts first, the destroy loop
+    // deregistered the JUST-registered replacement layer from the compositor,
+    // leaving z2 un-composited (the new overlay painted into a canvas the
+    // compositor no longer knew about — invisible menu over a suspended panel).
+    for (const z of destroyedCanvasZIndices) {
+      this.compositor?.deregisterLayer(z);
+      this._layerCanvases.delete(z);
+    }
     for (const { z, layer } of mountedCanvasLayers) {
       const canvas = LayerManager._createLayerCanvas();
       this._layerCanvases.set(z, canvas);
@@ -383,10 +395,6 @@ export class LayerManager {
       // before the first _compositeAndPush() in STEP 6 (Q1 resolution).
       await layer.attachCanvas(canvas);
       this.compositor?.registerLayer(z, canvas, layer);
-    }
-    for (const z of destroyedCanvasZIndices) {
-      this.compositor?.deregisterLayer(z);
-      this._layerCanvases.delete(z);
     }
 
     // STEP 3 — Invariants BEFORE bridge call. Capture first so `_assertContainerBudget`
@@ -462,25 +470,40 @@ export class LayerManager {
   }
 
   /**
-   * Count layers that currently report a capture container.
+   * Count UNIQUE capture container names reported by mounted layers.
+   *
+   * In canvas mode, both `CanvasStatusHudLayer` (z=1) and a z=2 overlay panel
+   * (e.g. `CanvasCharacterSheetPanel`) may return the same `'hud-capture'`
+   * container name. This is intentional — the overlay SHARES the pre-allocated
+   * capture container with the status HUD rather than allocating a second one.
+   * Counting unique names rather than provider layers handles this correctly:
+   * two layers returning the same name count as 1, not 2.
    *
    * Exposed for tests and diagnostics; consumers should rely on the manager
    * enforcing the invariant rather than checking the count themselves.
    */
   getCaptureContainerCount(): number {
-    let count = 0;
+    const names = new Set<string>();
     for (const layer of this.layers.values()) {
       const provider = layer.getCaptureContainer;
-      if (provider !== undefined && provider.call(layer) !== undefined) {
-        count++;
+      if (provider !== undefined) {
+        const name = provider.call(layer);
+        if (name !== undefined) {
+          names.add(name);
+        }
       }
     }
-    return count;
+    return names.size;
   }
 
   /**
    * Throw `LayerManagerError('capture_invariant_violated')` unless EXACTLY one
-   * mounted layer reports a capture container (INV-5 / ADR-0001).
+   * capture container name is reported across all mounted layers (INV-5 / ADR-0001).
+   *
+   * Note: multiple layers returning the SAME container name count as 1 (canvas
+   * mode overlay sharing — `CanvasStatusHudLayer` + canvas overlay panels both
+   * return `'hud-capture'`). Different layers returning DIFFERENT names would
+   * count as 2 and throw.
    */
   private _assertCaptureInvariant(): void {
     const count = this.getCaptureContainerCount();

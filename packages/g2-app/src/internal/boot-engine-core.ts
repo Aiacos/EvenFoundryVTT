@@ -61,6 +61,7 @@ import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { CanvasCompositor } from '../engine/canvas-compositor.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { DebugMirror } from '../engine/debug-mirror.js';
+import { attachGlassesEventSource } from '../engine/glasses-event-source.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
 import { HudDeltaDriver } from '../engine/hud-delta-driver.js';
 import { LayerManager } from '../engine/layer-manager.js';
@@ -852,6 +853,22 @@ export async function _bootEngineCore(
   const gestureBus = new PanelGestureBus();
   let unsubR1 = attachR1EventSource(ws, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
 
+  // 11b+. SDK touch-event gesture source — the PRODUCTION input path.
+  //       Touchpad/ring gestures arrive via `bridge.onEvenHubEvent` textEvent
+  //       (eventType 0-3 on the capture container), NOT as WS `r1.gesture`
+  //       envelopes (those exist only via the bridge /debug/simulate-gesture
+  //       route). Without this producer, real-hardware and simulator touch
+  //       input never reached the PanelGestureBus (debug
+  //       canvas-sheet-overlay-wont-open, 2026-06-09). `onPublish` schedules a
+  //       debounced recomposite so gesture-driven canvas-layer state changes
+  //       (menu selection, sheet tab nav) repaint without waiting for the next
+  //       Foundry delta. Survives WS reconnects (SDK stream, not WS-bound).
+  const unsubGlassesEvents = attachGlassesEventSource(bridge, gestureBus, layerManager, {
+    onPublish: () => {
+      hudDeltaDriver.requestCycle();
+    },
+  });
+
   // 11c. LocaleEventEmitter singleton + QuickActionMenuPanel factory + over-scroll dispatcher.
   //      The `makeMenu` factory is a closure that captures boot-time references (bridge,
   //      bus, locale, localeEvents) and constructs a fresh `QuickActionMenuPanel` on
@@ -946,6 +963,10 @@ export async function _bootEngineCore(
           console.warn('[boot-engine-core] onAction: Phase 7 panel pending (Action panel)');
         },
       },
+      // Pass the live render mode so the menu uses the correct container strategy:
+      // canvas → 'hud-capture' (zero self-declared count, ADR-0013 Amendment 1);
+      // glyph  → 'overlay-block' (one text slot, ADR-0009 Amendment 1).
+      layerManager.getRenderMode(),
     );
   };
 
@@ -1647,6 +1668,12 @@ export async function _bootEngineCore(
         unsubR1();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubR1 failed', err);
+      }
+      // 11b+ counterpart — release the SDK touch-event gesture subscription.
+      try {
+        unsubGlassesEvents();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubGlassesEvents failed', err);
       }
       // Phase 10 Plan 10-02 — dispose PerfProbe BEFORE WsReconnectController
       // (probe holds a sweep interval that should be cleared before WS closes).

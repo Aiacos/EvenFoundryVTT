@@ -46,8 +46,14 @@ const TILE_COUNT = 4;
  * Verified against `bridge/src/ws/delta-emitter.ts` DELTA_CAP_MAP and
  * `canvas-combat-tracker-panel.ts` COMBAT_TURN_DELTA_TYPE / COMBAT_STATE_DELTA_TYPE
  * (resolves Phase 24 Research Open Q1 — `combat.delta` is NOT a real channel name).
+ *
+ * `'r1.gesture'` (debug `canvas-sheet-overlay-wont-open`, 2026-06-09): gesture
+ * envelopes mutate canvas-layer state (menu selection, sheet tab nav) by setting
+ * the layer dirty flag — without a scheduled cycle the repaint would wait for the
+ * next Foundry delta. SDK-delivered gestures (no WS transit) are covered by
+ * {@link HudDeltaDriver.requestCycle} instead.
  */
-const DELTA_CHANNELS = ['character.delta', 'combat.turn', 'combat.state'] as const;
+const DELTA_CHANNELS = ['character.delta', 'combat.turn', 'combat.state', 'r1.gesture'] as const;
 
 // ── Exported API ──────────────────────────────────────────────────────────────
 
@@ -247,6 +253,25 @@ export class HudDeltaDriver {
       unsub();
     }
     this._unsubs.length = 0;
+  }
+
+  /**
+   * Request a debounced render cycle from outside the WS delta path.
+   *
+   * Producers whose events do NOT transit the WS event bus (the SDK
+   * touchpad/ring gesture stream — `glasses-event-source.ts`) call this after
+   * publishing a gesture, so dirty canvas layers repaint without waiting for the
+   * next Foundry delta. No-op until {@link start} has initialized the xxhash
+   * module (a cycle before first-frame baseline seeding would be wasted work —
+   * `runFirstFrame` pushes unconditionally right after).
+   *
+   * @see packages/g2-app/src/engine/glasses-event-source.ts (sole caller)
+   */
+  requestCycle(): void {
+    if (this._xxhash === null) {
+      return;
+    }
+    this._schedule();
   }
 
   // ── Private render loop ──────────────────────────────────────────────────────

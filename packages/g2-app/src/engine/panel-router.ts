@@ -217,6 +217,18 @@ export class PanelRouter {
         const mod = await loader();
         const Cls = mod.default;
 
+        // System overlays (QuickActionMenuPanel, ReactionPromptPanel, SlotPicker,
+        // TargetPicker, TemplatePlacement) are constructed directly by their
+        // dispatchers and exported BY NAME ONLY — no default export by design
+        // (see target-picker-panel.ts header: "opened directly via pushOverlay").
+        // Treat a missing default export as the expected system-overlay marker,
+        // mirroring the empty-navKey silent skip below. Without this guard the
+        // `Cls.meta` access throws and the panel is logged as a load error
+        // (debug `canvas-sheet-overlay-wont-open`, 2026-06-09).
+        if (Cls === undefined) {
+          continue;
+        }
+
         const parseResult = PanelMetaSchema.safeParse((Cls as { meta?: unknown }).meta);
         if (!parseResult.success) {
           console.warn(
@@ -236,7 +248,10 @@ export class PanelRouter {
 
         this.registry.set(meta.id, { meta, Cls });
       } catch (err) {
-        console.warn(`[PanelRouter] panel ${path} excluded: load error`, err);
+        // String(err) — a bare `console.warn(..., err)` serializes Error objects
+        // as `{}` in the WebView console, hiding the actual failure reason
+        // (cost a full debug session: canvas-sheet-overlay-wont-open, 2026-06-09).
+        console.warn(`[PanelRouter] panel ${path} excluded: load error — ${String(err)}`);
       }
     }
 

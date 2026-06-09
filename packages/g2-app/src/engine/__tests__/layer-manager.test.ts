@@ -1116,6 +1116,71 @@ describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
     expect(compositor.composite).toHaveBeenCalledTimes(1);
   });
 
+  it('LMT-CV-REPLACE-01: replace bundle (destroy z2 + mount z2) keeps the NEW canvas layer registered — deregister precedes register', async () => {
+    // Regression for debug canvas-sheet-overlay-wont-open (2026-06-09):
+    // pushOverlay's atomic suspend path issues [{destroy z2}, {mount z2}] in ONE
+    // bundle. STEP 2.5 used to register the new layer FIRST and deregister the
+    // destroyed z afterwards — wiping the just-registered replacement from the
+    // compositor (invisible menu over a suspended panel).
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    const makeCanvasOverlay = (id: string) => ({
+      id,
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getContainerCount: () => ({ image: 0, text: 0 }),
+      onMount: vi.fn().mockResolvedValue(undefined),
+      onUnmount: vi.fn().mockResolvedValue(undefined),
+      onEvent: vi.fn(),
+      attachCanvas: vi.fn().mockResolvedValue(undefined),
+      paint: vi.fn(),
+      isDirty: vi.fn().mockReturnValue(true),
+    });
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    const first = makeCanvasOverlay('first-overlay');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: first as unknown as Layer }]);
+
+    const replacement = makeCanvasOverlay('replacement-overlay');
+    await lm.bundle([
+      { type: 'destroy', z: ZIndex.Z2_OVERLAY },
+      { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: replacement as unknown as Layer },
+    ]);
+
+    // The replacement must be the LAST compositor action on z2 — i.e. the final
+    // registerLayer call for z2 happens AFTER the final deregisterLayer for z2.
+    const registerMock = compositor.registerLayer as ReturnType<typeof vi.fn>;
+    const deregisterMock = compositor.deregisterLayer as ReturnType<typeof vi.fn>;
+    const lastRegisterOrder = Math.max(
+      ...registerMock.mock.invocationCallOrder.filter(
+        (_: number, i: number) => registerMock.mock.calls[i]?.[0] === ZIndex.Z2_OVERLAY,
+      ),
+    );
+    const deregisterOrders = deregisterMock.mock.invocationCallOrder.filter(
+      (_: number, i: number) => deregisterMock.mock.calls[i]?.[0] === ZIndex.Z2_OVERLAY,
+    );
+    expect(deregisterOrders.length).toBeGreaterThan(0);
+    expect(Math.max(...deregisterOrders)).toBeLessThan(lastRegisterOrder);
+
+    // And the last z2 registration carries the replacement layer instance.
+    const z2Registrations = registerMock.mock.calls.filter(
+      (c: unknown[]) => c[0] === ZIndex.Z2_OVERLAY,
+    );
+    expect(z2Registrations.at(-1)?.[2]).toBe(replacement);
+  });
+
   it('LMT-CF-04: glyph mode _flushPage is byte-identical to before (containerTotalNum:3, no compositor call) — j0t-05 preserved', async () => {
     // This is the same as existing Test 8b, re-asserted here for glyph coexistence
     const bridge = makeMockBridge();

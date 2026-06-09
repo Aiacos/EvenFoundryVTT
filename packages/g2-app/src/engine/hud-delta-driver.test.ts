@@ -374,16 +374,17 @@ describe('HudDeltaDriver', () => {
     const callsAfterStop = bridge.updateImageRawData.mock.calls.length;
     expect(callsAfterStop).toBe(callsBeforeStop);
 
-    // All 3 channel unsub closures must have been invoked.
-    expect(unsubCalls).toHaveLength(3);
+    // All 4 channel unsub closures must have been invoked.
+    expect(unsubCalls).toHaveLength(4);
     expect(unsubCalls).toContain('character.delta');
     expect(unsubCalls).toContain('combat.turn');
     expect(unsubCalls).toContain('combat.state');
+    expect(unsubCalls).toContain('r1.gesture');
   });
 
-  // ── DL-07: start() idempotency — calling start() twice yields exactly 3 subscriptions ──
+  // ── DL-07: start() idempotency — calling start() twice yields exactly 4 subscriptions ──
 
-  it('DL-07 (CR-01): start() called twice yields only 3 active subscriptions and a single debounce cycle per delta', async () => {
+  it('DL-07 (CR-01): start() called twice yields only 4 active subscriptions and a single debounce cycle per delta', async () => {
     const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
     const bridge = makeBridge();
     const { wsEvents, subs, fire } = makeWsEvents();
@@ -398,6 +399,7 @@ describe('HudDeltaDriver', () => {
     expect(subs.get('character.delta')).toHaveLength(1);
     expect(subs.get('combat.turn')).toHaveLength(1);
     expect(subs.get('combat.state')).toHaveLength(1);
+    expect(subs.get('r1.gesture')).toHaveLength(1);
 
     await driver.runFirstFrame();
 
