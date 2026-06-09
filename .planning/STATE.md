@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-18 after v0.9.13 Sheet Data Completio
 Phase: Milestone v0.10.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-08 — Milestone v0.10.0 completed and archived
+Last activity: 2026-06-09 - Completed quick task 260609-uzf: Fix CI-gate errors (6 TS errors in canvas-status-hud-layer.test.ts + Biome format on bridge/_seed.ts)
 
 ## Performance Metrics
 
@@ -276,6 +276,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 | 260525-oao | GitFlow CI triggers + Changesets Version-PR release automation + Biome pre-commit auto-fix + INV-3 branch-strategy coherence | 2026-05-25 | be12f28 | [260525-oao-adottare-gitflow-branch-develop-release-](./quick/260525-oao-adottare-gitflow-branch-develop-release-/) |
 | 260525-owx | Vitest branch coverage 78.11% → 80.72% (CI gate green): extract bearerEquals to tested helper + 3 justified boot/worker exclusions + real branch tests | 2026-05-25 | 9917b81 | [260525-owx-branch-coverage-vitest-a-80-gate-verde-t](./quick/260525-owx-branch-coverage-vitest-a-80-gate-verde-t/) |
 | 260530-x2b | Fix 3 G2 SDK-conformance findings from skill audit (sdk-reference/device-features/glasses-ui): **B1** portrait override `map-base-layer.ts` — removed `as unknown as` cast hiding 3 SDK violations (phantom `index` field, text-container `map-capture` → image tile `map-tile-${slot}`, unchecked result) now typed `ImageRawDataUpdate` + `ImageRawDataUpdateResult.isSuccess`; **B2** (prod bug) audio-stream WS bearer dropped in WKWebView (`{headers}` ignored by browser WebSocket) → g2-app appends URL-encoded `?token=`, bridge `audio-stream-route.ts` reads `?token=` query-param fallback (mirrors `/debug/stream` `?secret=`), +test ASR-09; **B3** INV-2 doc — R1 wire kinds are bridge-normalized strings (SDK `OsEventTypeList`+`EventSourceType.TOUCH_EVENT_FROM_RING`), not "flat SDK enums". 2859/2859 tests, CI Gate 8=17 (no socketlib handlers), patch changeset @evf/g2-app+@evf/bridge. | 2026-05-30 | e3c2a58 | [260530-x2b-fix-3-g2-sdk-conformance-findings-from-s](./quick/260530-x2b-fix-3-g2-sdk-conformance-findings-from-s/) |
+| 260609-uzf | Fix CI-gate errors: 6 TS errors (TS2488/TS2532 `noUncheckedIndexedAccess`) in `canvas-status-hud-layer.test.ts` fixed with non-null assertions (sibling-test idiom, guarded by `calls.length` checks); untracked `bridge/_seed.ts` formatted via Biome (not committed). `pnpm typecheck` + `pnpm lint:ci` back to exit 0; 23/23 test file green. | 2026-06-09 | 25cf04f | [260609-uzf-fix-ci-gate-errors-6-ts-errors-in-canvas](./quick/260609-uzf-fix-ci-gate-errors-6-ts-errors-in-canvas/) |
 | 260606-condense-claude-md | Condense CLAUDE.md 419→232 lines (42.7KB→20.9KB, −51%): collapsed the `<!-- GSD:stack -->` Technology Stack research-dump (~213 lines duplicating `.planning/research/STACK.md`) into a "Key pins by package" summary + the full "Hard do NOT use" decision list + a STACK.md pointer. All load-bearing specs preserved verbatim (INV-1..4, architecture mental model + 4-boundary diagram, Even Hub canonical docs, Project/Core-Value/Constraints, drift-corrected pins TS 5.8.3 / pnpm 10.33.4); all 7 GSD marker pairs intact. | 2026-06-06 | 90c17c1 | [260606-condense-claude-md](./quick/260606-condense-claude-md/) |
 
 > **GitFlow status (2026-05-25):** `develop` is the permanent integration branch. Branch protection on `main` + `develop`: PR-only, no force-push/delete, conversation-resolution, **`quality-gates` required status check (strict:false)**, `enforce_admins: false` (admin escape hatch + auto-mirror compatibility). PR #2 (coverage fix, task 260525-owx) merged to `develop` with full green CI — fixed a chain of 3 latent CI gates (coverage, `changeset:status --since=origin/main`, ADR-0011 guard comment false-positive). `develop` CI is green.
@@ -319,10 +320,10 @@ Source: `gsd-sdk query audit-open` (16 items). Acknowledged via `/gsd-complete-m
 
 ## Session Continuity
 
-Last session: 2026-06-08T12:32:59.084Z
-Stopped at: Completed 25-03-PLAN.md
+Last session: 2026-06-08 (evening) — live-sim smoke test + debug of v0.10.0 canvas raster HUD
+Stopped at: v0.10.0 milestone closed/archived. Ran first live-sim smoke test of the new canvas raster HUD → found a doubled status header → `/gsd-debug` RESOLVED it. The "blank body" and "WS drop" were ruled NON-bugs (blank body = expected Phase 20: full sheet is a gesture-opened z=2 overlay; WS persistent, delta pipeline silent on success). Real bug = status header overlap, fixed via CHROME-01 (canvas-mode guard in boot-engine-core.ts) + FIX-DD-01 (measureText positioning in canvas-status-hud-layer.ts) + 6 regression tests. VERIFIED clean: header reads `PF 41/63 CA 18 LV 10`. 3306 tests pass. Debug session: `.planning/debug/resolved/canvas-body-blank-ws-drop.md`. See memory [[g2app-hud-launch-chain-status]].
 Resume file: None
-Resume cmd: `/gsd-audit-milestone` (then `/gsd-complete-milestone v0.9.13` → `/gsd-cleanup` per v0.9.11 + v0.9.12 close pattern)
+Resume cmd: HUD fix COMMITTED `748d304` (fix(g2-app): CHROME-01 + FIX-DD-01 + changeset, biome-clean, 23 status-hud tests green) on branch feat/hud-raster-rendering. Clean screenshot emailed (msg 19eaaab2588c). REMAINING: tidy the still-dirty tree (EVF-19 deletions + quick-260604 planning docs to commit + gitignore _seed.ts/release-artifacts/foundry-module/release). Services bridge :8911 / vite :5173 / sim :9898 still running (stop if not needed).
 
 ## /gsd-autonomous 2026-05-17 run — Phase 10 closure
 
