@@ -1480,16 +1480,31 @@ export async function _bootEngineCore(
   //      already-booted engine. Each writer is awaited inside its own try/catch so
   //      a rejection is logged and execution continues to step 13. This mirrors the
   //      step-12b audio-capture try/catch pattern.
+  //
+  //      Canvas-mode guard (CHROME-01 fix): `writeHeaderChrome` and
+  //      `writeFooterChrome` write to the GLYPH text containers `header` (id=4)
+  //      and `footer` (id=5) via `textContainerUpgrade`. In canvas mode,
+  //      `_flushPage()` issued `rebuildPageContainer` with the HUD raster schema
+  //      (4 image tiles ids 0-3 + 1 text capture id=4). In that schema id=4 is
+  //      `hud-capture` (the gesture-capture text container), NOT the glyph header.
+  //      Calling `writeHeaderChrome` in canvas mode therefore writes the
+  //      "MAP · raster · TURNO" chrome line into `hud-capture`, which renders it
+  //      as a floating text overlay on top of the canvas tiles — producing the
+  //      doubled-header artifact seen in the simulator smoke test (2026-06-08).
+  //      The glyph `header`/`footer` containers simply do NOT exist in the raster
+  //      page schema; skip both writes in canvas mode entirely.
   const chromeMode = effectiveVerdict === 'glyph' ? 'glyph' : 'raster';
-  try {
-    await writeHeaderChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
-  } catch (err) {
-    console.warn('[boot-engine-core] header chrome write failed:', err);
-  }
-  try {
-    await writeFooterChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
-  } catch (err) {
-    console.warn('[boot-engine-core] footer chrome write failed:', err);
+  if (layerManager.getRenderMode() !== 'canvas') {
+    try {
+      await writeHeaderChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
+    } catch (err) {
+      console.warn('[boot-engine-core] header chrome write failed:', err);
+    }
+    try {
+      await writeFooterChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
+    } catch (err) {
+      console.warn('[boot-engine-core] footer chrome write failed:', err);
+    }
   }
 
   // 12b. Phase 12 Plan 12-03 — voice audio capture (zero-cost when voice cap absent).

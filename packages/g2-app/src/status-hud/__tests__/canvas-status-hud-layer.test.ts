@@ -9,6 +9,10 @@
  *   - SC3 (RFONT-03): `paint()` fires ONLY when `isDirty()` is `true`; idle
  *     composites skip paint; a `character.delta` re-sets `isDirty()` to `true`.
  *   - Malformed `character.delta` is dropped without dirtying the layer.
+ *   - FIX-DD-01: `_drawDynamic` status fields (`PF`, `CA`, `LV`) never overlap —
+ *     each field's `fillText` x position is at least STATUS_FIELD_GAP_PX pixels
+ *     after the end of the previous field (regression guard for the doubled-glyph
+ *     canvas bug, canvas-body-blank-ws-drop debug session 2026-06-08).
  *
  * All tests use a `makeFakeCtx` / `makeFakeCanvas` factory — never rely on the
  * happy-dom canvas (absent) or `createImageBitmap` (absent). The test approach
@@ -20,19 +24,31 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { CanvasStatusHudLayer } from '../canvas-status-hud-layer.js';
+import {
+  _drawDynamic,
+  CanvasStatusHudLayer,
+  STATUS_FIELD_GAP_PX,
+} from '../canvas-status-hud-layer.js';
 import type { CharacterDeltaEvents } from '../status-hud-layer.js';
 
 // ── Shared mock factories ─────────────────────────────────────────────────────
 
-/** Build a minimal fake 2D context with all methods that CanvasStatusHudLayer touches. */
-function makeFakeCtx() {
+/**
+ * Build a minimal fake 2D context with all methods that CanvasStatusHudLayer touches.
+ *
+ * `measureText` returns `{ width: measureWidth }` where `measureWidth` defaults to
+ * 50 px — a value deliberately chosen to be larger than any realistic field width at
+ * the font sizes used in tests. FIX-DD-01 tests may override this to verify that
+ * positioning adapts to the measured width.
+ */
+function makeFakeCtx(measureWidth = 50) {
   return {
     drawImage: vi.fn(),
     clearRect: vi.fn(),
     fillRect: vi.fn(),
     strokeRect: vi.fn(),
     fillText: vi.fn(),
+    measureText: vi.fn().mockReturnValue({ width: measureWidth }),
     // biome-ignore lint/suspicious/noExplicitAny: test fake
     canvas: { width: 400, height: 200 } as any,
   };
@@ -41,12 +57,12 @@ function makeFakeCtx() {
 /** Build a fake HTMLCanvasElement that returns the given ctx from getContext('2d'). */
 function makeFakeCanvas(ctx?: ReturnType<typeof makeFakeCtx>) {
   const resolvedCtx = ctx ?? makeFakeCtx();
-  // biome-ignore lint/suspicious/noExplicitAny: test fake
   return {
     canvas: {
       width: 400,
       height: 200,
       getContext: vi.fn().mockReturnValue(resolvedCtx),
+      // biome-ignore lint/suspicious/noExplicitAny: test fake
     } as any as HTMLCanvasElement,
     ctx: resolvedCtx,
   };
@@ -351,6 +367,131 @@ describe('CanvasStatusHudLayer', () => {
       emit('character.delta', makeValidSnapshot());
       // After destroy the subscription is released — isDirty should NOT become true.
       expect(layer.isDirty()).toBe(false);
+    });
+  });
+
+  // ── FIX-DD-01: non-overlapping field positions ───────────────────────────
+
+  describe('FIX-DD-01: _drawDynamic status fields do not overlap (regression guard)', () => {
+    /**
+     * Regression guard for the "doubled status line" canvas bug
+     * (canvas-body-blank-ws-drop debug session, 2026-06-08).
+     *
+     * Root cause: hardcoded x=60 for "CA …" and x=100 for "LV …" caused overlap
+     * with the preceding field when HP values were multi-digit (e.g. "PF 41/63"
+     * extends ~75px at VT323 16px). The two overlapping shapes superimposed to
+     * look like the same string drawn twice with a slight x-offset.
+     *
+     * Fix: _drawDynamic now uses ctx.measureText to position each field
+     * immediately after the previous one ends, plus STATUS_FIELD_GAP_PX.
+     *
+     * These tests verify the contract:
+     *   fillText("CA …", x_ca, 18)  where  x_ca  >= x_pf + width("PF …") + STATUS_FIELD_GAP_PX
+     *   fillText("LV …", x_lv, 18)  where  x_lv  >= x_ca + width("CA …") + STATUS_FIELD_GAP_PX
+     */
+
+    it('FIX-DD-01: CA field x position does not overlap PF field (measured width 50px)', () => {
+      // measureText returns width=50 for every string (uniform fake width).
+      // Expected: PF at x=4, CA at x = 4 + 50 + STATUS_FIELD_GAP_PX = 62.
+      const ctx = makeFakeCtx(50);
+      const snap = makeValidSnapshot(); // hp=45, maxHp=52, ac=18, level=7
+      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
+
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
+        string,
+        number,
+        number,
+      ][];
+      expect(calls.length).toBe(3);
+
+      const [pfCall, caCall, lvCall] = calls;
+      const [, pfX] = pfCall;
+      const [, caX] = caCall;
+      const [, lvX] = lvCall;
+
+      // PF always starts at x=4.
+      expect(pfX).toBe(4);
+
+      // CA must start at least STATUS_FIELD_GAP_PX pixels past the end of PF.
+      // With measureText returning 50 for all: caX = 4 + 50 + STATUS_FIELD_GAP_PX.
+      expect(caX).toBeGreaterThanOrEqual(pfX + 50 + STATUS_FIELD_GAP_PX);
+
+      // LV must start at least STATUS_FIELD_GAP_PX pixels past the end of CA.
+      expect(lvX).toBeGreaterThanOrEqual(caX + 50 + STATUS_FIELD_GAP_PX);
+    });
+
+    it('FIX-DD-01: CA field x position does not overlap PF field (measured width 75px — multi-digit HP)', () => {
+      // Simulate the actual failing case: "PF 41/63" ≈ 75px at VT323 16px.
+      // Old code: caX=60, pfX+75=79 → OVERLAP. New code: caX=4+75+gap=87 → no overlap.
+      const ctx = makeFakeCtx(75);
+      const snap = makeValidSnapshot();
+      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
+
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
+        string,
+        number,
+        number,
+      ][];
+      const [pfCall, caCall, lvCall] = calls;
+      const [, pfX] = pfCall;
+      const [, caX] = caCall;
+      const [, lvX] = lvCall;
+
+      expect(pfX).toBe(4);
+      expect(caX).toBeGreaterThanOrEqual(pfX + 75 + STATUS_FIELD_GAP_PX);
+      expect(lvX).toBeGreaterThanOrEqual(caX + 75 + STATUS_FIELD_GAP_PX);
+    });
+
+    it('FIX-DD-01: field text content is correct (PF/CA/LV labels with snapshot values)', () => {
+      const ctx = makeFakeCtx(50);
+      const snap = makeValidSnapshot(); // hp=45, maxHp=52, ac=18, level=7
+      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
+
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
+        string,
+        number,
+        number,
+      ][];
+      expect(calls[0][0]).toBe('PF 45/52');
+      expect(calls[1][0]).toBe('CA 18');
+      expect(calls[2][0]).toBe('LV 7');
+    });
+
+    it('FIX-DD-01: null snapshot renders idle placeholder at x=4 (no measureText calls)', () => {
+      const ctx = makeFakeCtx(50);
+      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, null, '16px monospace');
+
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
+        string,
+        number,
+        number,
+      ][];
+      // Only one fillText call for the idle placeholder.
+      expect(calls.length).toBe(1);
+      expect(calls[0][0]).toBe('PF — / —');
+      expect(calls[0][1]).toBe(4);
+      // measureText is NOT called for the idle placeholder (no need to compute widths).
+      expect((ctx.measureText as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    });
+
+    it('FIX-DD-01: STATUS_FIELD_GAP_PX constant is a positive number', () => {
+      // Sanity: the exported constant must be positive so gaps are always > 0.
+      expect(STATUS_FIELD_GAP_PX).toBeGreaterThan(0);
+    });
+
+    it('FIX-DD-01: all three fields rendered at the same baseline y=18', () => {
+      const ctx = makeFakeCtx(50);
+      const snap = makeValidSnapshot();
+      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
+
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
+        string,
+        number,
+        number,
+      ][];
+      for (const [, , y] of calls) {
+        expect(y).toBe(18);
+      }
     });
   });
 });

@@ -379,6 +379,21 @@ const CHROME_BG = '#000000';
 const CHROME_FG = '#ffffff';
 
 /**
+ * Minimum gap in pixels between adjacent status fields on the header line.
+ *
+ * `_drawDynamic` draws three fields (`PF …`, `CA …`, `LV …`) using
+ * `ctx.measureText` to position each field immediately after the previous one
+ * with this gap. Without measured positioning the fields overlap when HP values
+ * are multi-digit (e.g. `PF 41/63` extends ~75 px at VT323 16px, past the old
+ * hardcoded `x=60` start for `CA`). Field overlap causes two character shapes
+ * to superimpose, producing the "doubled status line" visual artifact
+ * (canvas-body-blank-ws-drop debug session, 2026-06-08).
+ *
+ * @see _drawDynamic
+ */
+export const STATUS_FIELD_GAP_PX = 8;
+
+/**
  * Draw the static HUD chrome onto `ctx`.
  *
  * "Chrome" = everything that does NOT change with character state: outer frame,
@@ -421,21 +436,35 @@ function _drawChrome(
 }
 
 /**
- * Draw dynamic HUD data (HP, slots, turns, conditions) over the chrome.
+ * Draw dynamic HUD data (HP, AC, level) over the chrome.
  *
  * Called from `paint()` on every dirty cycle. Renders the `snapshot` values
  * in the VT323 pixel font. If `snapshot` is `null` (no delta received yet),
  * renders an idle placeholder.
  *
+ * # Field layout (FIX-DD-01 — measured positioning)
+ *
+ * The three status fields (`PF …`, `CA …`, `LV …`) are drawn left-to-right
+ * with `ctx.measureText` so each field starts immediately after the previous
+ * one ends, plus a fixed {@link STATUS_FIELD_GAP_PX} gap. Hard-coded x
+ * offsets are NOT used for `CA` and `LV` because the rendered width of `PF …`
+ * varies with HP values (e.g. `PF 1/1` ≈ 36 px vs `PF 100/100` ≈ 90 px at
+ * VT323 16 px). Without measured positioning the fields overlap when HP values
+ * are multi-digit, producing the "doubled glyph" artifact (two character shapes
+ * at overlapping x positions look like the same string rendered twice with a
+ * slight offset). `ctx.measureText` is available in all OffscreenCanvas and
+ * HTMLCanvasElement 2D contexts used by this layer (WebView, Web Worker, and
+ * the test environment fake-ctx that now includes a `measureText` stub).
+ *
  * The implementation is intentionally minimal for Phase 20 — it renders a
- * single HP line. Future phases (21/23) will enrich with slots, turns, and
+ * single status line. Future phases (21/23) will enrich with slots, turns, and
  * conditions panels.
  *
  * @param ctx       The 2D rendering context to draw on.
  * @param snapshot  Latest `CharacterSnapshot` or `null` if not yet received.
  * @param fontFamily CSS font string resolved by `ensureVt323Loaded`.
  */
-function _drawDynamic(
+export function _drawDynamic(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
   snapshot: CharacterSnapshot | null,
   fontFamily: string,
@@ -448,11 +477,26 @@ function _drawDynamic(
     ctx.fillText('PF — / —', 4, 18);
     return;
   }
-  // HP line — e.g. "PF 36/52"
+
+  // FIX-DD-01: use measureText for dynamic field positioning so the three
+  // fields never overlap regardless of HP/AC/level value widths.
+  //
+  // The old hardcoded offsets (60, 100) were set for a single HP example but
+  // did not account for VT323's actual glyph widths at 16px. At those widths,
+  // `PF 41/63` renders ~75 px — past the x=60 start of `CA …`, causing both
+  // strings to paint on top of each other and produce superimposed glyphs that
+  // look like "the same status content doubled with a slight x-offset".
+
+  const X_START = 4;
   const hpText = `PF ${snapshot.hp}/${snapshot.maxHp}`;
-  ctx.fillText(hpText, 4, 18);
-  // AC line — e.g. "CA 16"
-  ctx.fillText(`CA ${snapshot.ac}`, 60, 18);
-  // Level line — e.g. "LV 7"
-  ctx.fillText(`LV ${snapshot.level}`, 100, 18);
+  ctx.fillText(hpText, X_START, 18);
+  const hpWidth = ctx.measureText(hpText).width;
+
+  const acX = X_START + hpWidth + STATUS_FIELD_GAP_PX;
+  const acText = `CA ${snapshot.ac}`;
+  ctx.fillText(acText, acX, 18);
+  const acWidth = ctx.measureText(acText).width;
+
+  const lvX = acX + acWidth + STATUS_FIELD_GAP_PX;
+  ctx.fillText(`LV ${snapshot.level}`, lvX, 18);
 }
