@@ -405,9 +405,9 @@ describe('CanvasStatusHudLayer', () => {
       expect(calls.length).toBe(3);
 
       const [pfCall, caCall, lvCall] = calls;
-      const [, pfX] = pfCall;
-      const [, caX] = caCall;
-      const [, lvX] = lvCall;
+      const [, pfX] = pfCall!;
+      const [, caX] = caCall!;
+      const [, lvX] = lvCall!;
 
       // PF always starts at x=4.
       expect(pfX).toBe(4);
@@ -433,9 +433,9 @@ describe('CanvasStatusHudLayer', () => {
         number,
       ][];
       const [pfCall, caCall, lvCall] = calls;
-      const [, pfX] = pfCall;
-      const [, caX] = caCall;
-      const [, lvX] = lvCall;
+      const [, pfX] = pfCall!;
+      const [, caX] = caCall!;
+      const [, lvX] = lvCall!;
 
       expect(pfX).toBe(4);
       expect(caX).toBeGreaterThanOrEqual(pfX + 75 + STATUS_FIELD_GAP_PX);
@@ -452,9 +452,9 @@ describe('CanvasStatusHudLayer', () => {
         number,
         number,
       ][];
-      expect(calls[0][0]).toBe('PF 45/52');
-      expect(calls[1][0]).toBe('CA 18');
-      expect(calls[2][0]).toBe('LV 7');
+      expect(calls[0]![0]).toBe('PF 45/52');
+      expect(calls[1]![0]).toBe('CA 18');
+      expect(calls[2]![0]).toBe('LV 7');
     });
 
     it('FIX-DD-01: null snapshot renders idle placeholder at x=4 (no measureText calls)', () => {
@@ -468,8 +468,8 @@ describe('CanvasStatusHudLayer', () => {
       ][];
       // Only one fillText call for the idle placeholder.
       expect(calls.length).toBe(1);
-      expect(calls[0][0]).toBe('PF — / —');
-      expect(calls[0][1]).toBe(4);
+      expect(calls[0]![0]).toBe('PF — / —');
+      expect(calls[0]![1]).toBe(4);
       // measureText is NOT called for the idle placeholder (no need to compute widths).
       expect((ctx.measureText as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     });
