@@ -78,6 +78,7 @@ import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { WsSender } from '../engine/ws-sender.js';
 import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
+import { createHudTileWorkerClient } from '../hud/hud-tile-worker-client.js';
 import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
@@ -629,10 +630,17 @@ export async function _bootEngineCore(
   //
   // @see packages/g2-app/src/engine/hud-delta-driver.ts
   // @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
+  // Layout B perf lever (2026-06-10): Worker-backed tile building — dither +
+  // PNG encode run off the WebView main thread. Falls back to the synchronous
+  // path automatically when Workers are unavailable.
+  const hudTileWorker = createHudTileWorkerClient();
   const hudDeltaDriver = new HudDeltaDriver({
     compositor,
     bridge,
     wsEvents: wsEventBus,
+    ...(hudTileWorker !== null
+      ? { buildTilesAsync: (rgba: Uint8ClampedArray) => hudTileWorker.buildTiles(rgba) }
+      : {}),
     // 50ms throttle (bench 2026-06-10, full-screen 576×288): 100ms capped the
     // sim at ~6.75 fps; 50ms delivers ~9.5 fps and the cycle cost (~55ms of
     // dither+PNG+hash) becomes the binding limit — lower values gain nothing.
@@ -1817,6 +1825,8 @@ export async function _bootEngineCore(
       } catch (err) {
         console.warn('[boot-engine-core] teardown: canvasStatusHud.destroy failed', err);
       }
+      // Layout B: terminate the HUD tile Worker (no-op when null).
+      hudTileWorker?.destroy();
       // quick-task 260610-d42: destroy MapCanvasLayer (canvas-mode z=0 layer).
       try {
         mapCanvas.destroy();

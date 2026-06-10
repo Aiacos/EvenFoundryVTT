@@ -31,7 +31,7 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { XXHashAPI } from 'xxhash-wasm';
 import xxhash from 'xxhash-wasm';
-import { buildHudTiles } from '../hud/hud-raster-frame.js';
+import { buildHudTiles, type HudTile } from '../hud/hud-raster-frame.js';
 import { pushHudTiles } from '../hud/push-hud-tiles.js';
 import type { CanvasCompositorLike } from './canvas-compositor.js';
 
@@ -98,6 +98,17 @@ export interface HudDeltaDriverOpts {
   };
 
   /**
+   * Optional off-main-thread tile builder (Worker-backed, layout B perf lever).
+   *
+   * When present, `_runCycle`/`runFirstFrame` build tiles via this async
+   * surface (the composite RGBA buffer is transferred to the Worker). On any
+   * rejection the driver falls back to the synchronous `buildHudTiles` for
+   * that cycle (fail-soft). When absent (unit tests, no-Worker hosts), the
+   * synchronous path is used directly — byte-identical output.
+   */
+  readonly buildTilesAsync?: (rgba: Uint8ClampedArray) => Promise<HudTile[]>;
+
+  /**
    * Debounce interval in milliseconds.
    *
    * Defaults to {@link DEFAULT_MIN_REDRAW_INTERVAL_MS} (100ms per D-24.1).
@@ -154,8 +165,8 @@ export class HudDeltaDriver {
   /** Unsub closures for all active WS channel subscriptions. */
   private readonly _unsubs: Array<() => void> = [];
 
-  /** Resolved options with defaults applied. */
-  private readonly _opts: Required<HudDeltaDriverOpts>;
+  /** Resolved options with defaults applied (`buildTilesAsync` stays optional). */
+  private readonly _opts: HudDeltaDriverOpts & { minRedrawIntervalMs: number };
 
   /**
    * Construct a `HudDeltaDriver`.
@@ -232,7 +243,7 @@ export class HudDeltaDriver {
     }
 
     const rgba = this._opts.compositor.composite();
-    const tiles = buildHudTiles(rgba);
+    const tiles = await this._buildTiles(rgba);
 
     if (tiles.length > 0) {
       await pushHudTiles(this._opts.bridge, tiles);
@@ -327,6 +338,24 @@ export class HudDeltaDriver {
    * (static-chrome determinism): identical compositor RGBA → identical dither
    * output → identical PNG bytes → identical hash → no push.
    */
+  /**
+   * Build the 4 HUD tiles — Worker-backed when `opts.buildTilesAsync` is
+   * wired, with synchronous fallback on rejection or absence.
+   */
+  private async _buildTiles(rgba: Uint8ClampedArray): Promise<HudTile[]> {
+    const async = this._opts.buildTilesAsync;
+    if (async !== undefined) {
+      try {
+        // The Worker path TRANSFERS the buffer — pass a copy so the sync
+        // fallback (and any caller-side reuse) never sees a detached buffer.
+        return await async(new Uint8ClampedArray(rgba));
+      } catch (err) {
+        console.warn('[EVF] HudDeltaDriver: worker tile build failed — sync fallback:', err);
+      }
+    }
+    return buildHudTiles(rgba);
+  }
+
   private async _runCycle(): Promise<void> {
     // _runCycle is only reachable via _schedule(), which is only wired by
     // start(). start() initialises _xxhash before adding any subscriptions,
@@ -336,7 +365,7 @@ export class HudDeltaDriver {
     const { h32Raw } = this._xxhash!;
 
     const rgba = this._opts.compositor.composite();
-    const tiles = buildHudTiles(rgba);
+    const tiles = await this._buildTiles(rgba);
     const changed: typeof tiles = [];
 
     // buildHudTiles returns exactly TILE_COUNT elements or throws; _prevHashes is
