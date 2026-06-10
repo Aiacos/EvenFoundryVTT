@@ -475,6 +475,8 @@ export function buildHudRasterPageSchema(): {
       width: captureEntry.width,
       height: captureEntry.height,
       isEventCapture: 1,
+      // content: ' ' required — spec: event-capture container cannot have empty content (protobuf omits absent optional field)
+      content: ' ',
     }),
     // hud-status: 576×27 native text strip at y=0 (top row) for PG status line.
     // isEventCapture:0 — this is a display-only container (gesture capture is hud-capture).
@@ -567,18 +569,36 @@ export function buildStatusViewTextContainers(): TextContainerProperty[] {
   return Object.entries(CONTAINER_REGISTRY)
     .filter(([name, e]) => e.kind === 'text' && STATUS_VIEW_NAMES.has(name))
     .sort(([, a], [, b]) => a.id - b.id)
-    .map(
-      ([name, e]) =>
-        new TextContainerProperty({
+    .map(([name, e]) => {
+      // status-hud is the SINGLE capture target for the glyph fallback page
+      // (G2 spec: exactly one isEventCapture=1 per page). The registry retains
+      // isEventCapture:0 because including map-capture (also isEventCapture:1,
+      // same geometry) in the same schema caused a G2 host capture-conflict in
+      // quick-260605-j0t. The builder overrides per-schema; do NOT change the
+      // registry value.
+      if (name === 'status-hud') {
+        return new TextContainerProperty({
           containerID: e.id,
           containerName: name,
           xPosition: e.xPosition,
           yPosition: e.yPosition,
           width: e.width,
           height: e.height,
-          isEventCapture: e.isEventCapture,
-        }),
-    );
+          isEventCapture: 1,
+          // content: ' ' required — spec: event-capture container cannot have empty content (protobuf omits absent optional field)
+          content: ' ',
+        });
+      }
+      return new TextContainerProperty({
+        containerID: e.id,
+        containerName: name,
+        xPosition: e.xPosition,
+        yPosition: e.yPosition,
+        width: e.width,
+        height: e.height,
+        isEventCapture: e.isEventCapture,
+      });
+    });
 }
 
 /**

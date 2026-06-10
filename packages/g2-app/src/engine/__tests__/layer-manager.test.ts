@@ -202,10 +202,12 @@ describe('LayerManager — bundle() atomic semantics', () => {
     expect(lm.getCaptureContainerCount()).toBe(1);
   });
 
-  it('Test 8b: _flushPage rebuilds the default STATUS-VIEW schema (3 text, 0 image, no isEventCapture=1) — not the full 11-container schema (j0t-05 flush fix)', async () => {
+  it('Test 8b: _flushPage rebuilds the default STATUS-VIEW schema (3 text, 0 image, exactly-one isEventCapture=1) — not the full 11-container schema (j0t-05 flush fix)', async () => {
     // j0t-05 flush fix: _flushPage must use the status-view schema (same as buildBootPageSchema),
     // NOT the full 11-container registry. The full schema re-declares map-capture (id7, same
     // rect as status-hud id6) and z05-* (ids 8-10), causing "Text" ghosting/overlap on the glasses.
+    // FIX-NZL: status-hud is now the per-schema capture target (G2 spec: exactly one
+    // isEventCapture=1 per page). map-capture (id7) remains excluded to avoid capture-conflict.
     const mapLayer = makeMockLayer('map', 'map-capture');
     lm.mount(ZIndex.Z0_MAP, mapLayer);
     await lm.bundle([]);
@@ -216,11 +218,13 @@ describe('LayerManager — bundle() atomic semantics', () => {
     expect(arg?.containerTotalNum).toBe(3);
     expect(arg?.imageObject?.length).toBe(0);
     expect(arg?.textObject?.length).toBe(3);
-    // NO isEventCapture=1 in the status-view schema (map-capture id7 excluded).
+    // EXACTLY ONE isEventCapture=1 in the status-view schema: status-hud (id6).
+    // map-capture (id7) is still excluded to avoid the G2 host capture-conflict.
     const captures = (arg?.textObject ?? []).filter(
       (t: { isEventCapture?: number }) => t.isEventCapture === 1,
     );
-    expect(captures).toHaveLength(0);
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('status-hud');
     // The 3 containers are header(4), footer(5), status-hud(6) in id order.
     const texts = arg?.textObject ?? [];
     expect(texts[0]?.containerName).toBe('header');
@@ -1190,7 +1194,10 @@ describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
   });
 
   it('LMT-CF-04: glyph mode _flushPage is byte-identical to before (containerTotalNum:3, no compositor call) — j0t-05 preserved', async () => {
-    // This is the same as existing Test 8b, re-asserted here for glyph coexistence
+    // This is the same as existing Test 8b, re-asserted here for glyph coexistence.
+    // FIX-NZL: status-hud is now the per-schema capture target (G2 spec: exactly one
+    // isEventCapture=1 per page). The glyph schema is otherwise unchanged (3 containers,
+    // 0 image, map-capture excluded to avoid G2 host capture-conflict).
     const bridge = makeMockBridge();
     const compositor = makeFakeCompositor();
     const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
@@ -1204,11 +1211,13 @@ describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
     expect(arg?.containerTotalNum).toBe(3);
     expect(arg?.imageObject?.length).toBe(0);
     expect(arg?.textObject?.length).toBe(3);
-    // NO isEventCapture:1 in glyph status-view schema
+    // EXACTLY ONE isEventCapture=1 in glyph status-view schema: status-hud (id6).
+    // map-capture (id7) remains excluded to avoid G2 host capture-conflict.
     const captures = (arg?.textObject ?? []).filter(
       (t: { isEventCapture?: number }) => t.isEventCapture === 1,
     );
-    expect(captures).toHaveLength(0);
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('status-hud');
     // compositor.composite must NOT have been called in glyph mode
     expect(compositor.composite).not.toHaveBeenCalled();
   });
