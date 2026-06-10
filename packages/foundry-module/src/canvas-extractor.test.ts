@@ -1,9 +1,10 @@
 /**
  * Unit tests for canvas-extractor — Foundry PIXI canvas → FramePixels dispatch.
  *
- * Covers Plan 4a-06 Task 2 behaviour CE-1..CE-7:
- *   - CE-1   registerCanvasExtractor registers all 4 hooks
- *            (canvasReady, drawCanvas, refreshToken, updateScene)
+ * Covers Plan 4a-06 Task 2 behaviour CE-1..CE-7 and quick-task 260610-d42 Task 1
+ * CE-INT-1..CE-INT-4 (continuous interval capture + canvasPan hook):
+ *   - CE-1   registerCanvasExtractor registers all 5 hooks
+ *            (canvasReady, drawCanvas, refreshToken, updateScene, canvasPan)
  *   - CE-2   On hook fire + debounce expiry, emit is called with a payload
  *            satisfying FramePixelsSchema
  *   - CE-3   Two hook fires within debounce window coalesce to a single emit
@@ -11,12 +12,17 @@
  *   - CE-5   extractCurrentFrame returns FramePixels with clamped dims
  *   - CE-6   Oversized canvas (1920×1080) is fit-downscaled to exactly 400×200, whole scene captured (ADR-0013 Amendment 1)
  *   - CE-7   Idempotency: a second registerCanvasExtractor is a no-op
+ *   - CE-INT-1  Interval fires emit N times (no hooks) at intervalMs cadence
+ *   - CE-INT-2  unregister clears the interval — no additional emits after unregister
+ *   - CE-INT-3  canvasPan hook is registered and triggers debounced extract (200 ms)
+ *   - CE-INT-4  Idempotent singleton — second register installs NO second interval
  *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
  * the established pattern in `module.test.ts` + `readers.test.ts`. No live
  * Foundry runtime required.
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
+ * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md Task 1
  * @see ./canvas-extractor.ts (system under test)
  */
 import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
@@ -104,7 +110,7 @@ describe('registerCanvasExtractor — hook registration (CE-1)', () => {
     _resetCanvasExtractor();
   });
 
-  it('CE-1: registers Hooks.on for canvasReady, drawCanvas, refreshToken, updateScene', () => {
+  it('CE-1: registers Hooks.on for canvasReady, drawCanvas, refreshToken, updateScene, canvasPan', () => {
     const hooks = makeHooksMock();
     vi.stubGlobal('Hooks', hooks);
     vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
@@ -116,11 +122,12 @@ describe('registerCanvasExtractor — hook registration (CE-1)', () => {
     expect(events).toContain('drawCanvas');
     expect(events).toContain('refreshToken');
     expect(events).toContain('updateScene');
-    expect(hooks.on).toHaveBeenCalledTimes(4);
+    expect(events).toContain('canvasPan');
+    expect(hooks.on).toHaveBeenCalledTimes(5);
 
     // Returned unregister calls Hooks.off the same number of times.
     unregister();
-    expect(hooks.off).toHaveBeenCalledTimes(4);
+    expect(hooks.off).toHaveBeenCalledTimes(5);
   });
 });
 
@@ -308,12 +315,124 @@ describe('registerCanvasExtractor — idempotency (CE-7)', () => {
     const unregister1 = registerCanvasExtractor({ emit });
     const unregister2 = registerCanvasExtractor({ emit });
 
-    // Second registration is a no-op: 4 events on the first call, no additional.
-    expect(hooks.on).toHaveBeenCalledTimes(4);
+    // Second registration is a no-op: 5 events on the first call, no additional.
+    expect(hooks.on).toHaveBeenCalledTimes(5);
 
     // Both unregister handles still work without double-off cascade.
     unregister1();
     unregister2();
     expect(hooks.off).toHaveBeenCalled();
+  });
+});
+
+// ── CE-INT: Continuous interval capture (quick-task 260610-d42 Task 1) ──────────
+
+describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-INT-4)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-INT-1: interval fires emit N times at intervalMs cadence with no hooks fired', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
+
+    const emit = vi.fn();
+    const INTERVAL_MS = 1000;
+    registerCanvasExtractor({ emit, intervalMs: INTERVAL_MS });
+
+    // No hooks fired — only the interval drives captures.
+    expect(emit).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(3);
+
+    // Each emission is a valid FramePixels payload.
+    const [payload] = emit.mock.calls[0] as [unknown];
+    const result = FramePixelsSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.width).toBe(400);
+      expect(result.data.height).toBe(200);
+    }
+  });
+
+  it('CE-INT-2: unregister clears the interval — no additional emits after unregister', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
+
+    const emit = vi.fn();
+    const INTERVAL_MS = 500;
+    const unregister = registerCanvasExtractor({ emit, intervalMs: INTERVAL_MS });
+
+    vi.advanceTimersByTime(INTERVAL_MS * 2);
+    const emitCountBeforeUnregister = emit.mock.calls.length;
+    expect(emitCountBeforeUnregister).toBeGreaterThanOrEqual(2);
+
+    unregister();
+
+    // After unregister, advancing timers by 5x interval fires zero additional emits.
+    vi.advanceTimersByTime(INTERVAL_MS * 5);
+    expect(emit.mock.calls.length).toBe(emitCountBeforeUnregister);
+  });
+
+  it('CE-INT-3: canvasPan hook is registered and triggers debounced extract (200 ms)', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
+
+    const emit = vi.fn();
+    // Use a very long interval so only hook fires drive the emit here.
+    registerCanvasExtractor({ emit, debounceMs: 200, intervalMs: 100_000 });
+
+    const events = hooks.on.mock.calls.map((c) => c[0]);
+    expect(events).toContain('canvasPan');
+
+    // Fire canvasPan — should debounce-extract after 200 ms.
+    hooks.fire('canvasPan');
+    expect(emit).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // canvasPan debounces just like the other hooks (two fires coalesce).
+    hooks.fire('canvasPan');
+    vi.advanceTimersByTime(100);
+    hooks.fire('canvasPan');
+    vi.advanceTimersByTime(100);
+    expect(emit).toHaveBeenCalledTimes(1); // debounce not yet expired
+    vi.advanceTimersByTime(100);
+    expect(emit).toHaveBeenCalledTimes(2); // 200 ms past second fire
+  });
+
+  it('CE-INT-4: idempotent singleton — second register installs NO second interval', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
+
+    const emit = vi.fn();
+    const INTERVAL_MS = 1000;
+    registerCanvasExtractor({ emit, intervalMs: INTERVAL_MS });
+    registerCanvasExtractor({ emit, intervalMs: INTERVAL_MS });
+
+    // First register is active; second is no-op (5 hooks only, no duplicate interval).
+    expect(hooks.on).toHaveBeenCalledTimes(5);
+
+    // Advance by interval: emit fires exactly once (single interval, not doubled).
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 });

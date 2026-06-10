@@ -2,9 +2,10 @@
  * Foundry PIXI canvas → FramePixels extractor.
  *
  * Plan 4a-06 Task 2 — closes the B-5 gap by supplying the pixel data that the
- * Plan 03 raster pipeline consumes. Registers four Foundry hooks
- * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`) and on any fire
- * schedules a debounced (default 200 ms) call to {@link extractCurrentFrame},
+ * Plan 03 raster pipeline consumes. Registers five Foundry hooks
+ * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`, `canvasPan`) and
+ * on any fire schedules a debounced (default 200 ms) call to
+ * {@link extractCurrentFrame},
  * which pulls pixels from `canvas.app.renderer.extract.pixels(canvas.stage)`,
  * fit-downscales them (whole scene, aspect preserved, box-average) onto EXACTLY
  * the canonical 400×200 raster region (ADR-0013 Amendment 1, letterboxed) and
@@ -14,6 +15,15 @@
  * Plan 06 does NOT introduce a new envelope schema (NF-1 closure).
  *
  * **Scaling strategy (CE-6)**
+ *
+ * **Continuous capture (T-d42-01 mitigation)**
+ *
+ * In addition to the five Foundry hooks (canvasReady, drawCanvas, refreshToken,
+ * updateScene, canvasPan), a `setInterval` fires `performExtract` at
+ * `intervalMs` (default 1000 ms) independent of hook activity. This guarantees
+ * the map refreshes at ~1 Hz even during idle scenes with no hook events. The
+ * `HudDeltaDriver` zero-push-on-idle gate prevents BLE flooding on unchanged
+ * frames. The interval handle is cleared by the returned `unregister()` fn.
  *
  * Plan 06 documents three options (downscale + smoothing, center-crop,
  * downscale + letterbox). This implementation is **Option C — fit-downscale +
@@ -60,6 +70,15 @@ import { encodeFramePixels, type FramePixels } from '@evf/shared-protocol';
 
 /** Default debounce window — matches Plan 03 RasterController + CONTEXT.md §Area 2. */
 const DEFAULT_DEBOUNCE_MS = 200;
+
+/**
+ * Default periodic capture interval (ms).
+ *
+ * One capture per second independent of Foundry hook fires — ensures the player
+ * always sees a continuously-refreshed map even during idle scenes with no hook
+ * activity (quick-task 260610-d42 T-d42-01 mitigation: ~1 Hz cap).
+ */
+const DEFAULT_INTERVAL_MS = 1000;
 /**
  * Canonical raster-region width (ADR-0013 Amendment 1 — 4 image tiles of
  * 200×100 in a 2×2 layout). `raster-worker.ts` rejects any other frame width,
@@ -91,6 +110,17 @@ export interface CanvasExtractorOpts {
   readonly targetWidth?: number;
   /** Wire-format target height (defaults to {@link MAX_HEIGHT}). */
   readonly targetHeight?: number;
+  /**
+   * Continuous capture interval in milliseconds; default {@link DEFAULT_INTERVAL_MS}.
+   *
+   * Independent of Foundry hook fires — fires `performExtract` at a steady cadence
+   * so the player always sees a live map even during idle scenes. The
+   * `HudDeltaDriver.requestCycle()` zero-push-on-idle gate prevents BLE flooding
+   * when the frame content is unchanged (T-d42-01 mitigation).
+   *
+   * @see {@link DEFAULT_INTERVAL_MS} for the production default (1000 ms).
+   */
+  readonly intervalMs?: number;
 }
 
 /**
@@ -226,14 +256,15 @@ interface RegistrationState {
 let _registered: RegistrationState | null = null;
 
 /**
- * Register the four Foundry hooks that drive canvas extraction.
+ * Register the five Foundry hooks (canvasReady, drawCanvas, refreshToken, updateScene,
+ * canvasPan) and a continuous periodic capture interval that drive canvas extraction.
  *
  * Returns an unregister function that calls `Hooks.off` for each registered
- * handler and resets the internal singleton so a subsequent register call
- * works. A second register call while one is already active is a no-op —
- * the existing registration's unregister is returned unchanged. Idempotency
- * matters because `module.ts` may run the registration code more than once
- * in test scenarios that drive `vi.resetModules()` between assertions.
+ * handler, clears the continuous interval, and resets the internal singleton so a
+ * subsequent register call works. A second register call while one is already active
+ * is a no-op — the existing registration's unregister is returned unchanged.
+ * Idempotency matters because `module.ts` may run the registration code more than
+ * once in test scenarios that drive `vi.resetModules()` between assertions.
  *
  * @param opts - Caller-supplied emit + tuning knobs
  * @returns Unregister function (idempotent on repeat call)
@@ -247,6 +278,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   }
 
   const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const performExtract = (): void => {
@@ -290,17 +322,26 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   };
 
   // Explicit registration calls — each event listed verbatim so static greps
-  // can verify the four-hook contract (plan verify gate + B-5 closure check).
+  // can verify the five-hook contract (plan verify gate + B-5 closure check):
+  // canvasReady, drawCanvas, refreshToken, updateScene, canvasPan.
   Hooks.on('canvasReady', onHookFire);
   Hooks.on('drawCanvas', onHookFire);
   Hooks.on('refreshToken', onHookFire);
   Hooks.on('updateScene', onHookFire);
+  Hooks.on('canvasPan', onHookFire);
   const handlers = [
     { event: 'canvasReady' as const, fn: onHookFire },
     { event: 'drawCanvas' as const, fn: onHookFire },
     { event: 'refreshToken' as const, fn: onHookFire },
     { event: 'updateScene' as const, fn: onHookFire },
+    { event: 'canvasPan' as const, fn: onHookFire },
   ];
+
+  // Continuous periodic capture — fires performExtract at intervalMs cadence
+  // independent of hook activity. Ensures the map refreshes at ~1 Hz even during
+  // idle scenes where no Foundry hooks fire (T-d42-01 mitigation: 1 Hz cap; the
+  // HudDeltaDriver zero-push-on-idle gate prevents BLE flooding on unchanged frames).
+  const intervalHandle = setInterval(performExtract, intervalMs);
 
   _registered = { handlers };
 
@@ -309,6 +350,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       clearTimeout(timer);
       timer = null;
     }
+    clearInterval(intervalHandle);
     for (const { event, fn } of handlers) {
       // The real Foundry Hooks.off signature is `(hookId)` but our type
       // declaration in foundry-globals.d.ts takes the (event, fn) shape that
