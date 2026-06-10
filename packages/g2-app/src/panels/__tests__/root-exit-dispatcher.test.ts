@@ -33,8 +33,8 @@ import { attachRootExit } from '../root-exit-dispatcher.js';
 
 const DOUBLE_TAP: R1Gesture = { kind: 'double-tap' };
 const TAP: R1Gesture = { kind: 'tap' };
-const SCROLL_UP: R1Gesture = { kind: 'scroll-up' };
-const SCROLL_DOWN: R1Gesture = { kind: 'scroll-down' };
+const SCROLL_UP: R1Gesture = { kind: 'scroll', direction: 'up' };
+const SCROLL_DOWN: R1Gesture = { kind: 'scroll', direction: 'down' };
 
 // ─── Mock factories ───────────────────────────────────────────────────────────
 
@@ -93,9 +93,11 @@ describe('attachRootExit — ROOT-* dispatcher tests (260610-d42 Task 3)', () =>
     expect(bridge.shutDownPageContainer).toHaveBeenCalledWith(1);
   });
 
-  it('ROOT-1b: double-tap with glyph root (getTopLayer=map-base) → shutDownPageContainer(1) called', async () => {
-    // Glyph mode: map-base is the top (no overlay) → fire exit.
-    const layerManager = makeLayerManagerMock(makeLayer('map-base'));
+  it('ROOT-1b: double-tap in glyph mode with no overlay (getTopLayer=null) → shutDownPageContainer(1) called', async () => {
+    // Glyph mode with no overlay: getTopLayer() returns null (map-base is NOT an
+    // OverlayPanel → LayerManager.getTopLayer() skips it and returns null).
+    // Root-exit must fire in this case too.
+    const layerManager = makeLayerManagerMock(null);
     const bridge = makeBridgeMock();
     attachRootExit(bus, layerManager, bridge);
 
@@ -129,7 +131,7 @@ describe('attachRootExit — ROOT-* dispatcher tests (260610-d42 Task 3)', () =>
     expect(bridge.shutDownPageContainer).not.toHaveBeenCalled();
   });
 
-  it('ROOT-3: scroll-up gesture → exit NOT fired', async () => {
+  it('ROOT-3: scroll up gesture → exit NOT fired', async () => {
     const layerManager = makeLayerManagerMock(null);
     const bridge = makeBridgeMock();
     attachRootExit(bus, layerManager, bridge);
@@ -140,7 +142,7 @@ describe('attachRootExit — ROOT-* dispatcher tests (260610-d42 Task 3)', () =>
     expect(bridge.shutDownPageContainer).not.toHaveBeenCalled();
   });
 
-  it('ROOT-3: scroll-down gesture → exit NOT fired', async () => {
+  it('ROOT-3: scroll down gesture → exit NOT fired', async () => {
     const layerManager = makeLayerManagerMock(null);
     const bridge = makeBridgeMock();
     attachRootExit(bus, layerManager, bridge);

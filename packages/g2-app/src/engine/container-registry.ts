@@ -213,7 +213,7 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
     kind: 'image',
   },
   // hud-capture: full-screen text capture container (576×288), isEventCapture:1.
-  // Placed last in the HUD raster page schema so image tiles appear on top.
+  // Placed before hud-status in the HUD raster page schema so image tiles appear on top.
   // MUST NOT appear in the default glyph schema — only in buildHudRasterPageSchema().
   'hud-capture': {
     id: 4,
@@ -222,6 +222,22 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
     width: 576,
     height: 288,
     isEventCapture: 1,
+    kind: 'text',
+  },
+  // hud-status: native G2 text container for the status line (PG name, PF/HP, turn/combat).
+  // Occupies the top 27px row (576×27, y=0, isEventCapture:0).
+  // Added in Task 3 (260610-d42): status is relocated from the raster canvas into this
+  // native text container so the z=0 map shows through the HUD layer.
+  // The text renders above the raster tiles on the G2 host (declaration order: hud-capture,
+  // then hud-status — host composites them in order, hud-status text appears on top).
+  // MUST NOT appear in the default glyph schema — only in buildHudRasterPageSchema().
+  'hud-status': {
+    id: 5,
+    xPosition: 0,
+    yPosition: 0,
+    width: 576,
+    height: 27,
+    isEventCapture: 0,
     kind: 'text',
   },
 
@@ -366,30 +382,41 @@ export const BOOT_CONTAINER_TOTAL = 3;
 // ── HUD raster page schema (ADR-0013 Amendment 1 — canvas mode) ──────────────
 
 /**
- * Total container count for the HUD raster page schema: 4 image tiles + 1 text
- * capture container = 5. Fixed at page creation (canvas mode fixed-budget).
+ * Total container count for the HUD raster page schema: 4 image tiles + 2 text
+ * containers (hud-capture + hud-status) = 6. Fixed at page creation (canvas mode
+ * fixed-budget). Bumped from 5→6 in Task 3 (260610-d42) when hud-status was added.
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (Amendment 1 — locked decision #4)
  * @see buildHudRasterPageSchema (schema builder that uses this constant)
  */
-export const HUD_RASTER_CONTAINER_TOTAL = 5;
+export const HUD_RASTER_CONTAINER_TOTAL = 6;
 
 /**
  * Build the production HUD raster page schema: 4 image tiles (hud-tile-0..3)
- * at 200×100 each + 1 full-screen text capture container (hud-capture).
+ * at 200×100 each + 2 text containers (hud-capture + hud-status).
  *
  * # Schema shape
  *
  * ```
- * containerTotalNum: 5   (HUD_RASTER_CONTAINER_TOTAL)
+ * containerTotalNum: 6   (HUD_RASTER_CONTAINER_TOTAL)
  * imageObject: [hud-tile-0, hud-tile-1, hud-tile-2, hud-tile-3]  — 200×100 each
- * textObject:  [hud-capture]  — 576×288, isEventCapture:1
+ * textObject:  [hud-capture, hud-status]
+ *              hud-capture — 576×288, isEventCapture:1 (gesture capture)
+ *              hud-status  — 576×27,  isEventCapture:0 (top-row native status text)
  * ```
  *
  * This schema is selected by `LayerManager._flushPage()` when `renderMode === 'canvas'`.
- * The 5-container budget is FIXED — panel changes (Phase 21+) are accomplished via
+ * The 6-container budget is FIXED — panel changes (Phase 21+) are accomplished via
  * `updateImageRawData` on existing tiles, NOT `rebuildPageContainer` (schema is fixed
  * per ADR-0013 Amendment 1, locked decision #4 — rebuild would flicker).
+ *
+ * # hud-status (added Task 3 — 260610-d42)
+ *
+ * The native `hud-status` container (id 5) receives the status line
+ * (PG name + PF/HP + turn/combat) via `bridge.textContainerUpgrade` from
+ * `CanvasStatusHudLayer`. This relocates status out of the raster canvas so the
+ * z=0 `MapCanvasLayer` map shows through the HUD layer — the full-screen chrome
+ * fill in `_drawChrome` has been removed simultaneously.
  *
  * # Pitfall guard
  *
@@ -403,6 +430,7 @@ export const HUD_RASTER_CONTAINER_TOTAL = 5;
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (Amendment 1 — locked decisions #2-#5)
  * @see packages/g2-app/src/engine/layer-manager.ts (_flushPage canvas mode consumer — plan 19-04)
+ * @see packages/g2-app/src/status-hud/canvas-status-hud-layer.ts (hud-status push on character.delta)
  */
 export function buildHudRasterPageSchema(): {
   containerTotalNum: number;
@@ -431,7 +459,14 @@ export function buildHudRasterPageSchema(): {
     throw new Error("[EVF] buildHudRasterPageSchema: missing registry entry for 'hud-capture'");
   }
 
+  const hudStatusEntry = CONTAINER_REGISTRY['hud-status'];
+  if (hudStatusEntry === undefined) {
+    throw new Error("[EVF] buildHudRasterPageSchema: missing registry entry for 'hud-status'");
+  }
+
   const textObject = [
+    // hud-capture: full-screen gesture-capture container (must be first so image tiles
+    // render visually on top in G2 host declaration order — ADR-0013 Amendment 1 #2).
     new TextContainerProperty({
       containerID: captureEntry.id,
       containerName: 'hud-capture',
@@ -440,6 +475,17 @@ export function buildHudRasterPageSchema(): {
       width: captureEntry.width,
       height: captureEntry.height,
       isEventCapture: 1,
+    }),
+    // hud-status: 576×27 native text strip at y=0 (top row) for PG status line.
+    // isEventCapture:0 — this is a display-only container (gesture capture is hud-capture).
+    new TextContainerProperty({
+      containerID: hudStatusEntry.id,
+      containerName: 'hud-status',
+      xPosition: hudStatusEntry.xPosition,
+      yPosition: hudStatusEntry.yPosition,
+      width: hudStatusEntry.width,
+      height: hudStatusEntry.height,
+      isEventCapture: 0,
     }),
   ];
 

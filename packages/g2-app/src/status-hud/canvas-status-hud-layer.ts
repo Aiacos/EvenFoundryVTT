@@ -44,8 +44,11 @@
  *   (§canvas-status-hud-layer.ts: class skeleton, _initAsync, paint dirty-gate, _onDelta)
  */
 
+import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
+import { TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { CanvasLayer } from '../engine/layer-types.js';
 import type { CharacterDeltaEvents } from './status-hud-layer.js';
 import { ensureVt323Loaded } from './vt323-font-loader.js';
@@ -57,13 +60,24 @@ const CHARACTER_DELTA_CHANNEL = 'character.delta';
 
 /**
  * Constructor options for `CanvasStatusHudLayer`.
- *
- * Intentionally minimal — the canvas layer does not need a `bridge` ref
- * (all output goes to the shared `CanvasCompositor`).
  */
 export interface CanvasStatusHudLayerOpts {
   /** WS event bus — must expose `character.delta`. */
   readonly wsEvents: CharacterDeltaEvents;
+  /**
+   * Optional bridge reference for pushing the status line to the native `hud-status`
+   * text container (id 5 in the HUD raster page schema). When provided, each valid
+   * `character.delta` fires a `bridge.textContainerUpgrade` with a single-line
+   * summary (PG name + PF/HP + turn/combat indicator) so the status is readable as
+   * crisp native G2 text on top of the raster map.
+   *
+   * When absent, the layer works in canvas-only mode (paint() still renders the
+   * status into the HUD raster canvas — backwards-compatible with test environments
+   * that don't pass a bridge).
+   *
+   * Added in Task 3 (260610-d42): status relocation out of the opaque raster chrome.
+   */
+  readonly bridge?: Pick<EvenAppBridge, 'textContainerUpgrade'>;
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────────
@@ -126,6 +140,14 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   /** Unsubscribe closure returned by `wsEvents.subscribe`. */
   private readonly _unsubscribe: () => void;
 
+  /**
+   * Optional bridge reference for pushing status to the native `hud-status` container.
+   *
+   * `undefined` in test environments that don't inject a bridge. In production, wired
+   * via `CanvasStatusHudLayerOpts.bridge` from `boot-engine-core`.
+   */
+  private readonly _bridge: Pick<EvenAppBridge, 'textContainerUpgrade'> | undefined;
+
   // ── Constructor ───────────────────────────────────────────────────────────
 
   /**
@@ -137,6 +159,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    * @param opts Constructor options — must provide `wsEvents`.
    */
   constructor(opts: CanvasStatusHudLayerOpts) {
+    this._bridge = opts.bridge;
     // Subscribe to character.delta (T-20-01: all payloads go through safeParse gate).
     this._unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
       this._onDelta(raw),
@@ -353,7 +376,11 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    *
    * T-20-01 mitigation: `safeParse` gate before caching. On failure: `console.warn`
    * with `[EVF]` prefix + return without touching `_dirty`. On success: cache the
-   * snapshot and set `_dirty = true` so the next composite re-paints.
+   * snapshot, set `_dirty = true`, and (if a bridge is wired) push a status line to
+   * the native `hud-status` text container via `bridge.textContainerUpgrade`.
+   *
+   * The bridge push is fire-and-forget (best-effort, await-guarded try/catch) — a
+   * rejected promise logs a warning and does NOT crash the WS handler.
    *
    * @param raw Untrusted WS payload.
    */
@@ -365,6 +392,25 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     }
     this._snapshot = parsed.data;
     this._dirty = true;
+
+    // Push to the native hud-status text container if a bridge is wired.
+    // Best-effort: fire-and-forget; rejected promise is caught and logged.
+    if (this._bridge !== undefined) {
+      const snap = this._snapshot;
+      const statusLine = `PF ${snap.hp}/${snap.maxHp}  CA ${snap.ac}  LV ${snap.level}`;
+      const idField = resolveContainerIdField('hud-status');
+      void Promise.resolve(
+        this._bridge.textContainerUpgrade(
+          new TextContainerUpgrade({
+            ...idField,
+            containerName: 'hud-status',
+            content: statusLine,
+          }),
+        ),
+      ).catch((err: unknown) => {
+        console.warn('[EVF] canvas-status-hud-layer: hud-status textContainerUpgrade failed', err);
+      });
+    }
   }
 }
 
@@ -419,9 +465,19 @@ function _drawChrome(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
   _fontFamily: string,
 ): void {
-  // Black background fill — ensures chrome is opaque and not transparent (WR-01).
+  // Task 3 (260610-d42): the full-frame opaque black fill
+  //   ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H)
+  // has been REMOVED so the z=0 MapCanvasLayer shows through the HUD layer.
+  // The status line is now pushed to the native hud-status text container instead
+  // (see _onDelta bridge push). Only a minimal top-row strip background is drawn
+  // for legibility of the dynamic text painted by _drawDynamic.
+
+  // Top-row background: fill only the 27px status strip (not the whole frame).
+  // This provides a dark background for the dynamic status text (PF/CA/LV) so it
+  // reads over the map raster, without hiding the rest of the 400×200 map.
   ctx.fillStyle = CHROME_BG;
-  ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+  ctx.fillRect(0, 0, COMPOSITOR_W, 27);
+
   // Outer border — white (brightest palette step → phosphor green on G2).
   ctx.strokeStyle = CHROME_FG;
   ctx.strokeRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
