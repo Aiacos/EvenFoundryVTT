@@ -98,6 +98,8 @@ Scope:
 2. **Layout corner-card** — `CanvasStatusHudLayer` smette di riempire l'intero 400×200 di nero opaco: status card compatta in un angolo (chrome non full-frame), mappa visibile sotto; INV-1 raster baselines rigenerate di conseguenza.
 3. **`[M] Mappa` toggle reale** — sostituisce lo stub no-op "Phase 7" in boot-engine-core (mappa on/off o full-map mode).
 4. **Root-exit in canvas mode** — `root-exit-dispatcher` presuppone top layer id 'map-base'; a root canvas `getTopLayer()` è null e l'exit double-tap non scatta mai. Con la mappa montata a z=0 il contratto torna valido (o si adegua il dispatcher).
+5. **Sorgente di estrazione: viewport vs stage** — oggi l'extractor renderizza l'INTERO `canvas.stage` (su scene world grandi = render texture enorme, perf bomb; include aree fuori fog-of-war). Valutare `extract.pixels()` senza target = viewport corrente ("lo schermo del giocatore" senza chrome DOM): zoom/pan-aware, fog-honest, costo bounded dalla finestra — è la semantica proposta dall'utente 2026-06-10; i token risultano leggibili perché scalano con lo zoom del giocatore.
+6. **Normalizzazione contrasto pre-dither** — le scene Foundry reali sono scure (illuminazione torce): verificato live 2026-06-10 con screenshot reale v14 → leggibile ma sub-ottimale. Uno stage di histogram-stretch/gamma nel worker prima della quantizzazione 4-bit migliorerebbe molto la leggibilità sul phosphor.
 
 **Requirements**: TBD (derivare in plan-phase; evidenze in `.planning/debug/resolved/map-frame-pipeline-dims.md`)
 **Depends on:** Phase 19–26 (v0.10.0 Raster UI Substrate) + fix pipeline frame `edae764`
