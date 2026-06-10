@@ -25,6 +25,8 @@ import {
   buildBaseImageContainers,
   buildBaseTextContainers,
   buildHudRasterPageSchema,
+  buildStatusViewTextContainers,
+  CONTAINER_REGISTRY,
   HUD_RASTER_CONTAINER_TOTAL,
   resolveContainerId,
   resolveContainerIdField,
@@ -257,5 +259,42 @@ describe('buildHudRasterPageSchema', () => {
 
   it('REG-HUDSTATUS-1: resolveContainerId resolves hud-status to id 5', () => {
     expect(resolveContainerId('hud-status')).toBe(5);
+  });
+});
+
+// ── G2 spec compliance — capture content (Quick Task 260610-nzl) ──────────────
+//
+// Validates:
+//   SPEC-CAPTURE-1:       hud-capture in buildHudRasterPageSchema carries content: ' '
+//   SPEC-GLYPH-CAPTURE-1: buildStatusViewTextContainers has exactly one isEventCapture=1
+//                          entry (status-hud, id 6) with content: ' '
+//   SPEC-GLYPH-CAPTURE-2: buildStatusViewTextContainers still returns 3 entries total
+//   SPEC-REGISTRY-UNCHANGED: CONTAINER_REGISTRY['status-hud'].isEventCapture === 0
+//                             (builder overrides per-schema; registry is geometry-only)
+
+describe('G2 spec compliance — capture content', () => {
+  it('SPEC-CAPTURE-1: buildHudRasterPageSchema hud-capture has content single-space', () => {
+    const { textObject } = buildHudRasterPageSchema();
+    const captureContainer = textObject[0];
+    expect(captureContainer?.containerName).toBe('hud-capture');
+    expect(captureContainer?.content).toBe(' ');
+  });
+
+  it('SPEC-GLYPH-CAPTURE-1: buildStatusViewTextContainers has exactly one isEventCapture=1 (status-hud, id 6) with content single-space', () => {
+    const containers = buildStatusViewTextContainers();
+    const captures = containers.filter((c) => c.isEventCapture === 1);
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.containerName).toBe('status-hud');
+    expect(captures[0]?.containerID).toBe(6);
+    expect(captures[0]?.content).toBe(' ');
+  });
+
+  it('SPEC-GLYPH-CAPTURE-2: buildStatusViewTextContainers returns 3 entries total', () => {
+    const containers = buildStatusViewTextContainers();
+    expect(containers).toHaveLength(3);
+  });
+
+  it('SPEC-REGISTRY-UNCHANGED: CONTAINER_REGISTRY status-hud isEventCapture is still 0 (builder overrides per-schema, registry is geometry-only)', () => {
+    expect(CONTAINER_REGISTRY['status-hud']?.isEventCapture).toBe(0);
   });
 });

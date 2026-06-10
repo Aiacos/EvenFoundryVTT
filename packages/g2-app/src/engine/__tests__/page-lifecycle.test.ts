@@ -62,15 +62,20 @@ describe('page-lifecycle.createBootPage', () => {
     expect(arg?.textObject?.length).toBe(3);
   });
 
-  it('PL-2: default boot schema has NO isEventCapture=1 containers (map-capture excluded)', async () => {
+  it('PL-2: default boot schema has EXACTLY ONE isEventCapture=1 container (status-hud)', async () => {
     await createBootPage(bridge as unknown as EvenAppBridge);
     const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
     // map-capture (id7, isEventCapture=1) is NOT in the default boot schema —
     // it overlaps status-hud exactly and caused the G2 host to reject the page.
+    // status-hud is the per-schema capture target for the glyph fallback page
+    // (FIX-NZL: G2 spec compliance — exactly one isEventCapture=1 per page).
     const captures = (arg?.textObject ?? []).filter(
       (t: TextContainerProperty) => t.isEventCapture === 1,
     );
-    expect(captures).toHaveLength(0);
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.containerName).toBe('status-hud');
+    expect(captures[0]?.containerID).toBe(6);
+    expect(captures[0]?.content).toBe(' ');
   });
 
   it('PL-3: default boot schema has 0 image containers (map tiles deferred to Phase 20)', async () => {
