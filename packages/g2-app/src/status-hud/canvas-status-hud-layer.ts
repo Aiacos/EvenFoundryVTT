@@ -92,11 +92,13 @@ export interface CanvasStatusHudLayerOpts {
 }
 
 /**
- * Character budget of the `hud-status` native row (576 px ≈ 50 chars at the
- * G2 fixed 27 px LVGL font). The FPS field occupies the LAST
+ * Character budget of the `hud-status` native row. Live-measured on the
+ * simulator (2026-06-10): the G2 fixed 27 px LVGL font renders ~20 px per
+ * character, so 576 px ≈ 28 chars (the earlier 50-char estimate belonged to
+ * the 16 px VT323 raster font). The FPS field occupies the LAST
  * {@link FPS_FIELD_CHARS} columns; the status text is clipped to the rest.
  */
-const STATUS_LINE_CHARS = 50;
+const STATUS_LINE_CHARS = 28;
 
 /** Fixed width of the right-aligned FPS field (e.g. ` 8fps`, `10fps`). */
 const FPS_FIELD_CHARS = 5;
