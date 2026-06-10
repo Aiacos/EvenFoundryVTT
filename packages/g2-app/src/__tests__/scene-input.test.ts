@@ -158,19 +158,24 @@ describe('attachSceneInputToWs — happy path (SI-2, SI-7)', () => {
     vi.restoreAllMocks();
   });
 
-  it('SI-2: valid envelope → requestFrame called with correct Uint8ClampedArray + dims', () => {
+  it('SI-2: valid envelope → requestFrame called with canonical-padded Uint8ClampedArray + dims', () => {
     const ws = makeMockSocket();
     const ctrl = makeMockController();
     attachSceneInputToWs(ws as unknown as WebSocket, asRasterControllerLike(ctrl));
 
+    // An undersized (288×144) frame is center-padded to the canonical 400×200
+    // raster region (ADR-0013 Amendment 1 — raster-worker rejects other dims;
+    // debug map-frame-pipeline-dims, 2026-06-10).
     ws.fire(JSON.stringify(makeFrameEnvelope({ width: 288, height: 144 })));
 
     expect(ctrl.requestFrame).toHaveBeenCalledTimes(1);
     const args = ctrl.requestFrame.mock.calls[0] as [Uint8ClampedArray, number, number];
     expect(args[0]).toBeInstanceOf(Uint8ClampedArray);
-    expect(args[0].length).toBe(288 * 144 * 4);
-    expect(args[1]).toBe(288);
-    expect(args[2]).toBe(144);
+    expect(args[0].length).toBe(400 * 200 * 4);
+    expect(args[1]).toBe(400);
+    expect(args[2]).toBe(200);
+    // Letterbox padding is opaque black: alpha forced to 255 on the pad bands.
+    expect(args[0][3]).toBe(255);
   });
 
   it('SI-7: dispatched Uint8ClampedArray owns a fresh ArrayBuffer (transferable-prerequisite)', () => {

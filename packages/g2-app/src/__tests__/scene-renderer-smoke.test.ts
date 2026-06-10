@@ -442,9 +442,13 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       height?: number;
       pixelData?: Uint8ClampedArray;
     };
-    expect(sent.width).toBe(width);
-    expect(sent.height).toBe(height);
+    // scene-input pads undersized frames to the canonical 400×200 raster
+    // region before requestFrame (ADR-0013 Amendment 1 — raster-worker
+    // rejects other dims; debug map-frame-pipeline-dims, 2026-06-10).
+    expect(sent.width).toBe(400);
+    expect(sent.height).toBe(200);
     expect(sent.pixelData).toBeInstanceOf(Uint8ClampedArray);
+    expect(sent.pixelData?.length).toBe(400 * 200 * 4);
     handle.teardown();
   });
 

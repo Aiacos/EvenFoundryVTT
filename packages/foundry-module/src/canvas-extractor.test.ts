@@ -9,7 +9,7 @@
  *   - CE-3   Two hook fires within debounce window coalesce to a single emit
  *   - CE-4   canvas.app.renderer undefined → emit NOT called; no throw
  *   - CE-5   extractCurrentFrame returns FramePixels with clamped dims
- *   - CE-6   Oversized canvas (1920×1080) is reduced to fit the 288×144 bound
+ *   - CE-6   Oversized canvas (1920×1080) is center-cropped to exactly 400×200 (ADR-0013 Amendment 1)
  *   - CE-7   Idempotency: a second registerCanvasExtractor is a no-op
  *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
@@ -153,10 +153,10 @@ describe('registerCanvasExtractor — debounced emit (CE-2, CE-3)', () => {
     const result = FramePixelsSchema.safeParse(payload);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.width).toBeGreaterThanOrEqual(20);
-      expect(result.data.width).toBeLessThanOrEqual(288);
-      expect(result.data.height).toBeGreaterThanOrEqual(20);
-      expect(result.data.height).toBeLessThanOrEqual(144);
+      // Canonical-region contract (ADR-0013 Amendment 1): frames are ALWAYS
+      // exactly 400×200 — crop or letterbox-pad, never variable dims.
+      expect(result.data.width).toBe(400);
+      expect(result.data.height).toBe(200);
       expect(result.data.sceneId).toBe('scene1');
       expect(result.data.ts).toBeGreaterThan(0);
     }
@@ -225,27 +225,22 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
     if (fp === null) {
       return;
     }
-    expect(fp.width).toBeLessThanOrEqual(288);
-    expect(fp.height).toBeLessThanOrEqual(144);
-    expect(fp.width).toBeGreaterThanOrEqual(20);
-    expect(fp.height).toBeGreaterThanOrEqual(20);
+    expect(fp.width).toBe(400);
+    expect(fp.height).toBe(200);
     const result = FramePixelsSchema.safeParse(fp);
     expect(result.success).toBe(true);
   });
 
-  it('CE-6: oversized 1920×1080 source is reduced to within the 288×144 bound', () => {
+  it('CE-6: oversized 1920×1080 source is center-cropped to exactly 400×200', () => {
     const fakeCanvas = makeCanvasMock({ width: 1920, height: 1080, fill: 0x10 });
     const fp = extractCurrentFrame(fakeCanvas);
     expect(fp).not.toBeNull();
     if (fp === null) {
       return;
     }
-    // Center-crop strategy preserves aspect: the smaller bound governs both
-    // dims. We require ≤ the SDK polyfill maxima (288×144) and ≥ the minima.
-    expect(fp.width).toBeLessThanOrEqual(288);
-    expect(fp.height).toBeLessThanOrEqual(144);
-    expect(fp.width).toBeGreaterThanOrEqual(20);
-    expect(fp.height).toBeGreaterThanOrEqual(20);
+    // Canonical-region contract: center-crop yields EXACTLY 400×200.
+    expect(fp.width).toBe(400);
+    expect(fp.height).toBe(200);
     // FramePixelsSchema must validate.
     expect(FramePixelsSchema.safeParse(fp).success).toBe(true);
   });

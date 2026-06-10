@@ -6,8 +6,8 @@
  * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`) and on any fire
  * schedules a debounced (default 200 ms) call to {@link extractCurrentFrame},
  * which pulls pixels from `canvas.app.renderer.extract.pixels(canvas.stage)`,
- * crops + center-aligns them to within the 288×144 SDK polyfill bound (per
- * OQ-INV2-4, STATE.md 2026-05-14) and dispatches the typed payload via the
+ * center-crops/letterboxes them to EXACTLY the canonical 400×200 raster region
+ * (ADR-0013 Amendment 1) and dispatches the typed payload via the
  * caller-provided `emit` callback. The caller (`module.ts` ready hook) wraps
  * the payload in the existing Phase 3 `EnvelopeSchema` over the bridge WS —
  * Plan 06 does NOT introduce a new envelope schema (NF-1 closure).
@@ -15,8 +15,8 @@
  * **Cropping strategy (CE-6)**
  *
  * Plan 06 documents three options (downscale + smoothing, center-crop,
- * downscale + letterbox). This implementation picks **Option B (center-crop
- * to 288×144)**. Rationale:
+ * downscale + letterbox). This implementation picks **Option B+C (center-crop
+ * to 400×200, letterbox-pad undersized sources to exactly 400×200)**. Rationale:
  *   - **Lossless within the cropped region** — no smoothing artifacts that
  *     would force the Plan 03 worker to re-quantize against a blurred source.
  *   - **No DOM/OffscreenCanvas dependency** — runs cleanly inside the Foundry
@@ -57,11 +57,17 @@ import { encodeFramePixels, type FramePixels } from '@evf/shared-protocol';
 
 /** Default debounce window — matches Plan 03 RasterController + CONTEXT.md §Area 2. */
 const DEFAULT_DEBOUNCE_MS = 200;
-/** SDK polyfill upper bound for image width (OQ-INV2-4 — STATE.md 2026-05-14). */
-const MAX_WIDTH = 288;
-/** SDK polyfill upper bound for image height (OQ-INV2-4 — STATE.md 2026-05-14). */
-const MAX_HEIGHT = 144;
-/** SDK polyfill lower bound (FramePixelsSchema enforces this; we clamp here too). */
+/**
+ * Canonical raster-region width (ADR-0013 Amendment 1 — 4 image tiles of
+ * 200×100 in a 2×2 layout). `raster-worker.ts` rejects any other frame width,
+ * so the extractor ALWAYS emits exactly this (center-crop larger sources,
+ * center-pad smaller ones). Supersedes the original 288 SDK-polyfill bound
+ * (OQ-INV2-4, superseded by INV-2 re-verification 2026-06-05).
+ */
+const MAX_WIDTH = 400;
+/** Canonical raster-region height — see {@link MAX_WIDTH}. */
+const MAX_HEIGHT = 200;
+/** FramePixelsSchema lower bound (we clamp here too). */
 const MIN_DIM = 20;
 
 /** Function used to unregister the 4 hook listeners installed at register time. */
@@ -108,11 +114,12 @@ export interface CanvasLike {
  * `FramePixels` payload ready to send across the bridge WS. Returns `null`
  * when the canvas is not yet ready (renderer absent).
  *
- * Cropping strategy: **center-crop** to `targetWidth × targetHeight`. The
+ * Cropping strategy: **center-crop + letterbox-pad** to exactly
+ * `targetWidth × targetHeight`. The
  * trade-off vs downscale is documented in the module-level JSDoc.
  *
  * @param canvas - Foundry canvas (or test fixture matching `CanvasLike`)
- * @param opts   - Optional target dimensions (defaults to 288×144)
+ * @param opts   - Optional target dimensions (defaults to the canonical 400×200)
  * @returns Typed FramePixels payload or `null` if the canvas is not ready
  */
 export function extractCurrentFrame(
@@ -152,19 +159,33 @@ export function extractCurrentFrame(
   const xOff = Math.max(0, Math.floor((srcWidth - cropWidth) / 2));
   const yOff = Math.max(0, Math.floor((srcHeight - cropHeight) / 2));
 
-  const cropped = new Uint8ClampedArray(cropWidth * cropHeight * 4);
+  // Emit EXACTLY targetWidth×targetHeight: the cropped source region is
+  // center-aligned onto a black canvas of the target size (letterbox padding
+  // for undersized sources — pure byte copy, no smoothing, no OffscreenCanvas).
+  // `raster-worker.ts` rejects any frame that is not the canonical 400×200,
+  // so a "crop to at-most" frame from a small scene would be silently
+  // unprocessable (debug map-frame-pipeline-dims, 2026-06-10).
+  const out = new Uint8ClampedArray(targetWidth * targetHeight * 4); // zero-filled = opaque-black after alpha set
+  const padX = Math.floor((targetWidth - cropWidth) / 2);
+  const padY = Math.floor((targetHeight - cropHeight) / 2);
   for (let row = 0; row < cropHeight; row++) {
     const srcOffset = ((yOff + row) * srcWidth + xOff) * 4;
-    const dstOffset = row * cropWidth * 4;
+    const dstOffset = ((padY + row) * targetWidth + padX) * 4;
     // `srcBytes.subarray` is a view, not a copy; `set()` copies bytes into our owned buffer.
-    cropped.set(srcBytes.subarray(srcOffset, srcOffset + cropWidth * 4), dstOffset);
+    out.set(srcBytes.subarray(srcOffset, srcOffset + cropWidth * 4), dstOffset);
+  }
+  // Letterbox bands: force alpha=255 so the padding is opaque black, not transparent.
+  for (let i = 3; i < out.length; i += 4) {
+    if (out[i] === 0) {
+      out[i] = 255;
+    }
   }
 
   return {
     sceneId: canvas.scene?.id ?? '',
-    width: cropWidth,
-    height: cropHeight,
-    pixelsB64: encodeFramePixels(cropped),
+    width: targetWidth,
+    height: targetHeight,
+    pixelsB64: encodeFramePixels(out),
     ts: Date.now(),
   };
 }

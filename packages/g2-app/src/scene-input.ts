@@ -67,6 +67,44 @@ import type { RasterControllerLike } from './engine/layer-types.js';
  */
 export type UnsubscribeFn = () => void;
 
+/** Canonical raster-region width (ADR-0013 Amendment 1 — matches raster-worker FRAME_W). */
+const CANONICAL_W = 400;
+
+/** Canonical raster-region height (ADR-0013 Amendment 1 — matches raster-worker FRAME_H). */
+const CANONICAL_H = 200;
+
+/**
+ * Center-pad an RGBA frame onto an opaque-black canonical 400×200 buffer.
+ *
+ * Frames already at 400×200 are returned as-is (no copy — preserves the
+ * transferable-ownership property of `decodeFramePixels`). Smaller frames are
+ * centered on a zero-filled buffer whose padding alpha is forced to 255 so the
+ * letterbox bands dither to solid black, not undefined-transparent.
+ * Oversized frames cannot occur (FramePixelsSchema caps at 400×200).
+ */
+function padFrameToCanonical(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Uint8ClampedArray {
+  if (width === CANONICAL_W && height === CANONICAL_H) {
+    return pixels;
+  }
+  const out = new Uint8ClampedArray(CANONICAL_W * CANONICAL_H * 4);
+  // Opaque-black base: set every alpha byte; RGB stays 0.
+  for (let i = 3; i < out.length; i += 4) {
+    out[i] = 255;
+  }
+  const padX = Math.floor((CANONICAL_W - width) / 2);
+  const padY = Math.floor((CANONICAL_H - height) / 2);
+  for (let row = 0; row < height; row++) {
+    const srcOffset = row * width * 4;
+    const dstOffset = ((padY + row) * CANONICAL_W + padX) * 4;
+    out.set(pixels.subarray(srcOffset, srcOffset + width * 4), dstOffset);
+  }
+  return out;
+}
+
 /**
  * Attach a `frame_pixels` envelope receiver to a WebSocket.
  *
@@ -122,10 +160,19 @@ export function attachSceneInputToWs(
       //    Throws on invalid base64 or length-mismatch → caught by outer try.
       const pixels = decodeFramePixels(fp.data.pixelsB64, fp.data.width, fp.data.height);
 
+      // 4b) Normalize to the canonical 400×200 raster region (ADR-0013
+      //     Amendment 1). `raster-worker.ts` REJECTS any other dims, while
+      //     FramePixelsSchema admits 20..400 × 20..200 — without this pad an
+      //     in-bounds but undersized frame would be silently unprocessable
+      //     (debug map-frame-pipeline-dims, 2026-06-10). The module emitter
+      //     already letterboxes to exactly 400×200; this is the consumer-side
+      //     defence for older module builds and test producers.
+      const framed = padFrameToCanonical(pixels, fp.data.width, fp.data.height);
+
       // 5) Dispatch fire-and-forget — Plan 03 RasterController is the Worker
       //    boundary. Attach a `.catch` so a rejected Promise logs and does
       //    not crash the WS listener.
-      controller.requestFrame(pixels, fp.data.width, fp.data.height).catch((err) => {
+      controller.requestFrame(framed, CANONICAL_W, CANONICAL_H).catch((err) => {
         console.warn('[scene-input] requestFrame rejected', err);
       });
     } catch (err) {
