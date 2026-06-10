@@ -17,12 +17,25 @@
  *   - CE-INT-3  canvasPan hook is registered and triggers debounced extract (200 ms)
  *   - CE-INT-4  Idempotent singleton — second register installs NO second interval
  *
+ * Quick-task 260610-evs Task 1 — CE-NORM-1..CE-NORM-5 (normalize:'auto' levels-stretch):
+ *   - CE-NORM-1  Dark-scene content (narrow luma range ≥ 8) with normalize:'auto' →
+ *                output content median is significantly higher than normalize:'off'
+ *   - CE-NORM-2  Wide-range frame (p98−p2 ≥ 220) with normalize:'auto' → byte-identical
+ *                to normalize:'off' (skip, no clipping)
+ *   - CE-NORM-3  Degenerate near-flat frame (p98−p2 < 8) with normalize:'auto' →
+ *                byte-identical to normalize:'off' (skip, avoid noise blow-up)
+ *   - CE-NORM-4  normalize:'auto' on oversized source → letterbox bands stay pure black
+ *                (R=G=B=0) and alpha stays 255; normalization applied over content only
+ *   - CE-NORM-5  getNormalize evaluated per capture: stub returning 'off' then 'auto' between
+ *                two interval captures changes output without re-registering
+ *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
  * the established pattern in `module.test.ts` + `readers.test.ts`. No live
  * Foundry runtime required.
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
  * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md Task 1
+ * @see .planning/quick/260610-evs-contrast-normalization-setting-for-glass/260610-evs-PLAN.md Task 1
  * @see ./canvas-extractor.ts (system under test)
  */
 import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
@@ -434,5 +447,245 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
     // Advance by interval: emit fires exactly once (single interval, not doubled).
     vi.advanceTimersByTime(INTERVAL_MS);
     expect(emit).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── CE-NORM: Contrast normalization (quick-task 260610-evs Task 1) ────────────
+
+/**
+ * Build a canvas mock whose source pixels represent a dark scene with a modest
+ * bright patch so the luma range is narrow but >= 8 (non-degenerate).
+ *
+ * The majority of pixels have R=G=B=darkVal; a small region has R=G=B=brightVal.
+ * This yields a luma p2 near darkVal and a luma p98 near brightVal, with
+ * range = brightVal − darkVal in the 8..219 band that triggers the stretch.
+ */
+function makeDarkSceneCanvas(
+  width: number,
+  height: number,
+  darkVal: number,
+  brightVal: number,
+): ReturnType<typeof makeCanvasMock> {
+  const pixels = new Uint8Array(width * height * 4);
+  // Fill all with dark value.
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i] = darkVal;
+    pixels[i + 1] = darkVal;
+    pixels[i + 2] = darkVal;
+    pixels[i + 3] = 255;
+  }
+  // Bright patch in the center (roughly 10% of pixels so p98 is influenced).
+  const patchW = Math.max(1, Math.floor(width * 0.15));
+  const patchH = Math.max(1, Math.floor(height * 0.15));
+  const x0 = Math.floor((width - patchW) / 2);
+  const y0 = Math.floor((height - patchH) / 2);
+  for (let y = y0; y < y0 + patchH; y++) {
+    for (let x = x0; x < x0 + patchW; x++) {
+      const i = (y * width + x) * 4;
+      pixels[i] = brightVal;
+      pixels[i + 1] = brightVal;
+      pixels[i + 2] = brightVal;
+      pixels[i + 3] = 255;
+    }
+  }
+  return {
+    scene: { id: 'dark-scene' },
+    stage: { __marker: 'stage' },
+    app: {
+      renderer: {
+        width,
+        height,
+        extract: { pixels: vi.fn(() => pixels) },
+      },
+    },
+  };
+}
+
+/** Compute the median luma of the content region (padX..padX+outW, padY..padY+outH). */
+function contentMedianLuma(
+  decoded: Uint8Array | Uint8ClampedArray,
+  frameWidth: number,
+  outW: number,
+  outH: number,
+  padX: number,
+  padY: number,
+): number {
+  const lumas: number[] = [];
+  for (let dy = 0; dy < outH; dy++) {
+    for (let dx = 0; dx < outW; dx++) {
+      const i = ((padY + dy) * frameWidth + (padX + dx)) * 4;
+      const r = decoded[i] ?? 0;
+      const g = decoded[i + 1] ?? 0;
+      const b = decoded[i + 2] ?? 0;
+      lumas.push(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    }
+  }
+  lumas.sort((a, b) => a - b);
+  const mid = Math.floor(lumas.length / 2);
+  return lumas[mid] ?? 0;
+}
+
+describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5)', () => {
+  beforeEach(() => {
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-NORM-1: dark-scene content with normalize:"auto" has significantly higher median luma than normalize:"off"', () => {
+    // Dark scene: majority pixels at luma ~21, bright patch at ~50 → range ~29 (triggers stretch).
+    const W = 200;
+    const H = 100;
+    const fakeCanvas = makeDarkSceneCanvas(W, H, 21, 50);
+
+    const fpOff = extractCurrentFrame(fakeCanvas, { normalize: 'off' });
+    const fpAuto = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
+
+    expect(fpOff).not.toBeNull();
+    expect(fpAuto).not.toBeNull();
+    if (fpOff === null || fpAuto === null) return;
+
+    const outW = W; // source fits inside 400×200 → no scaling, placed at padX/padY
+    const outH = H;
+    const padX = Math.floor((400 - outW) / 2);
+    const padY = Math.floor((200 - outH) / 2);
+
+    const decodedOff = decodeFramePixels(fpOff.pixelsB64, fpOff.width, fpOff.height);
+    const decodedAuto = decodeFramePixels(fpAuto.pixelsB64, fpAuto.width, fpAuto.height);
+
+    const medianOff = contentMedianLuma(decodedOff, 400, outW, outH, padX, padY);
+    const medianAuto = contentMedianLuma(decodedAuto, 400, outW, outH, padX, padY);
+
+    // The normalized output should lift the median substantially (at least double).
+    expect(medianAuto).toBeGreaterThan(medianOff * 1.5);
+  });
+
+  it('CE-NORM-2: wide-range frame (p98-p2 >= 220) with normalize:"auto" is byte-identical to normalize:"off"', () => {
+    // Wide source: half pixels at 0, half at 255 → range = 255 ≥ 220 → skip.
+    const W = 100;
+    const H = 100;
+    const pixels = new Uint8Array(W * H * 4);
+    for (let i = 0; i < pixels.length; i += 4) {
+      const v = i < pixels.length / 2 ? 0 : 255;
+      pixels[i] = v;
+      pixels[i + 1] = v;
+      pixels[i + 2] = v;
+      pixels[i + 3] = 255;
+    }
+    const fakeCanvas = {
+      scene: { id: 'wide' },
+      stage: {},
+      app: { renderer: { width: W, height: H, extract: { pixels: vi.fn(() => pixels) } } },
+    };
+
+    const fpOff = extractCurrentFrame(fakeCanvas, { normalize: 'off' });
+    const fpAuto = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
+
+    expect(fpOff).not.toBeNull();
+    expect(fpAuto).not.toBeNull();
+    if (fpOff === null || fpAuto === null) return;
+
+    // Byte-identical: pixelsB64 must match.
+    expect(fpAuto.pixelsB64).toBe(fpOff.pixelsB64);
+  });
+
+  it('CE-NORM-3: degenerate near-flat frame (p98-p2 < 8) with normalize:"auto" is byte-identical to normalize:"off"', () => {
+    // Flat source: all pixels at 128 → p98−p2 = 0 < 8 → skip.
+    const W = 100;
+    const H = 100;
+    const pixels = new Uint8Array(W * H * 4).fill(128);
+    // Set alpha to 255.
+    for (let i = 3; i < pixels.length; i += 4) {
+      pixels[i] = 255;
+    }
+    const fakeCanvas = {
+      scene: { id: 'flat' },
+      stage: {},
+      app: { renderer: { width: W, height: H, extract: { pixels: vi.fn(() => pixels) } } },
+    };
+
+    const fpOff = extractCurrentFrame(fakeCanvas, { normalize: 'off' });
+    const fpAuto = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
+
+    expect(fpOff).not.toBeNull();
+    expect(fpAuto).not.toBeNull();
+    if (fpOff === null || fpAuto === null) return;
+
+    expect(fpAuto.pixelsB64).toBe(fpOff.pixelsB64);
+  });
+
+  it('CE-NORM-4: normalize:"auto" on oversized source — letterbox bands stay pure black, alpha stays 255', () => {
+    // 1920×1080 dark source → will be letterboxed horizontally.
+    const W = 1920;
+    const H = 1080;
+    const fakeCanvas = makeDarkSceneCanvas(W, H, 15, 40);
+
+    const fp = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
+    expect(fp).not.toBeNull();
+    if (fp === null) return;
+
+    const decoded = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
+
+    // Compute padX for a 1920×1080 → 400×200 fit (scale = 200/1080).
+    const scale = Math.min(400 / W, 200 / H, 1);
+    const outW = Math.round(W * scale);
+    const padX = Math.floor((400 - outW) / 2);
+
+    // Left letterbox band sample at (0, 100) — must be pure black, alpha 255.
+    if (padX > 0) {
+      const idx = (100 * 400 + 0) * 4;
+      expect(decoded[idx]).toBe(0); // R
+      expect(decoded[idx + 1]).toBe(0); // G
+      expect(decoded[idx + 2]).toBe(0); // B
+      expect(decoded[idx + 3]).toBe(255); // A
+    }
+
+    // Alpha is 255 everywhere.
+    for (let i = 3; i < decoded.length; i += 4) {
+      expect(decoded[i]).toBe(255);
+    }
+  });
+
+  it('CE-NORM-5: getNormalize evaluated per capture — returning "off" then "auto" between interval captures changes output', () => {
+    vi.useFakeTimers();
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+
+    const W = 200;
+    const H = 100;
+    vi.stubGlobal('canvas', makeDarkSceneCanvas(W, H, 15, 45));
+
+    const emittedPayloads: string[] = [];
+    const emit = vi.fn((payload: { pixelsB64: string }) => {
+      emittedPayloads.push(payload.pixelsB64);
+    });
+
+    let callCount = 0;
+    const getNormalize = vi.fn((): 'off' | 'auto' => {
+      callCount++;
+      // First capture: 'off'; second capture: 'auto'.
+      return callCount === 1 ? 'off' : 'auto';
+    });
+
+    const INTERVAL_MS = 500;
+    registerCanvasExtractor({ emit, intervalMs: INTERVAL_MS, getNormalize });
+
+    // First interval tick → 'off'.
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // Second interval tick → 'auto'.
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    // getNormalize must have been called at least twice.
+    expect(getNormalize.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // The two payloads must differ (different normalization produced different pixels).
+    expect(emittedPayloads.length).toBe(2);
+    expect(emittedPayloads[0]).not.toBe(emittedPayloads[1]);
   });
 });
