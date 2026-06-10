@@ -25,6 +25,13 @@
  * registered via a second `registerMenu`. The dialog reliably pre-loads, displays,
  * validates and persists both values on an explicit Save.
  *
+ * Quick Task 260610-evs: registers `mapContrastNormalize` (client scope,
+ * config:true, Boolean, default:true) — enables luminance levels-stretch on
+ * dark map frames before dithering so the G2's 4-bit greyscale shows usable
+ * contrast. Per-client display preference; can be toggled without re-pairing or
+ * reload. Wired into `registerCanvasExtractor` via the `getNormalize` hook in
+ * `module.ts`.
+ *
  * @see Specs.md §7.14.7.3 (pair flow — QR + bearer)
  * @see 02-CONTEXT.md D-2.01 (pair-button location: Settings panel)
  * @see 02-CONTEXT.md D-2.18 (locale detection: game.i18n.lang at boot)
@@ -143,5 +150,19 @@ export function registerSettings(): void {
     icon: 'fas fa-sliders-h',
     type: BridgeConfigModal as unknown as new (...args: unknown[]) => object,
     restricted: true,
+  });
+
+  // Map contrast normalization — per-client display preference (Quick Task 260610-evs).
+  // When enabled (default), luminance levels-stretch is applied to dark map frames
+  // before the 4-bit dither, so the G2's greyscale display shows readable contrast
+  // even in pitch-dark dungeon scenes. Toggle applies live on the next frame capture
+  // without re-pairing or module reload (getNormalize is evaluated per capture).
+  game.settings.register(MODULE_ID, 'mapContrastNormalize', {
+    name: 'evf.settings.map_contrast_normalize.name',
+    hint: 'evf.settings.map_contrast_normalize.hint',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
   });
 }

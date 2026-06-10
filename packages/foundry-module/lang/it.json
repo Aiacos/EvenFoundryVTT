@@ -7,6 +7,8 @@
   "evf.settings.bridge_internal_secret.hint": "Il valore EVF_INTERNAL_SECRET del bridge. Autentica i push di questo mondo verso il bridge. Mantienilo segreto.",
   "evf.settings.bridge_config_button": "EVF — Configurazione bridge",
   "evf.settings.bridge_config_hint": "Imposta e verifica l'URL del bridge e il segreto interno per questo mondo.",
+  "evf.settings.map_contrast_normalize.name": "Normalizzazione contrasto mappa (occhiali)",
+  "evf.settings.map_contrast_normalize.hint": "Esegue un livellamento automatico delle scene scure per un contrasto leggibile sugli occhiali prima del dithering. Disattiva per inviare la luminosità grezza.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Configurazione bridge",
   "evf.bridgecfg.url.label": "URL del bridge",

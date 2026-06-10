@@ -334,7 +334,18 @@ Hooks.once('ready', () => {
   // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
   // server-side (proto / seq / ts / type / session_id / payload — session_id
   // is populated from the pair registry). No new auth surface (T-4a-06-04).
+  // Quick Task 260610-evs: wire getNormalize to the mapContrastNormalize client
+  // setting. Evaluated per-capture so toggling the setting applies live on the
+  // next frame without re-registering. Safe fallback returns 'auto' (default-on)
+  // if the settings read throws (e.g. during startup before settings are ready).
   registerCanvasExtractor({
     emit: (payload) => bridgeDeltaEmitter('frame_pixels', payload),
+    getNormalize: (): 'off' | 'auto' => {
+      try {
+        return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
+      } catch {
+        return 'auto';
+      }
+    },
   });
 });
