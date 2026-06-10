@@ -494,4 +494,91 @@ describe('CanvasStatusHudLayer', () => {
       }
     });
   });
+
+  // ── CSHUD-1: no opaque full-frame fill in _drawChrome (Task 3 — 260610-d42) ──
+
+  describe('CSHUD-1: _drawChrome does NOT fill the full 400×200 canvas (map shows through)', () => {
+    it('CSHUD-1: first paint does NOT call fillRect(0, 0, 400, 200) — full-frame opaque fill removed', async () => {
+      // The full-frame opaque black fill (ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H))
+      // was hiding the z=0 MapCanvasLayer. Task 3 removes it so the map shows through.
+      const { wsEvents } = makeWsEventsMock();
+      const layer = new CanvasStatusHudLayer({ wsEvents });
+      const ctx = makeFakeCtx();
+      const { canvas } = makeFakeCanvas(ctx);
+      await layer.attachCanvas(canvas);
+
+      layer.paint();
+
+      // fillRect calls must NOT include the full-canvas fill (0, 0, 400, 200).
+      const fillRectCalls = (ctx.fillRect as ReturnType<typeof vi.fn>).mock.calls as [
+        number,
+        number,
+        number,
+        number,
+      ][];
+      const fullFrameCall = fillRectCalls.find(
+        ([x, y, w, h]) => x === 0 && y === 0 && w === 400 && h === 200,
+      );
+      expect(fullFrameCall).toBeUndefined();
+    });
+  });
+
+  // ── CSHUD-2: status pushed to hud-status text container via bridge (Task 3 — 260610-d42) ──
+
+  describe('CSHUD-2: character.delta emits status to hud-status native container', () => {
+    it('CSHUD-2: on valid character.delta, textContainerUpgrade is called with hud-status containerID=5', async () => {
+      // Task 3: CanvasStatusHudLayerOpts accepts optional bridge for status push.
+      // On a valid character.delta, the layer calls bridge.textContainerUpgrade with
+      // the resolved hud-status container id (5) so the native G2 text container shows
+      // the status line.
+      const { wsEvents, emit } = makeWsEventsMock();
+      const textContainerUpgrade = vi.fn().mockResolvedValue(true);
+      const bridge = { textContainerUpgrade };
+      const layer = new CanvasStatusHudLayer({ wsEvents, bridge });
+      const { canvas } = makeFakeCanvas();
+      await layer.attachCanvas(canvas);
+
+      const snapshot = makeValidSnapshot();
+      emit('character.delta', snapshot);
+
+      // Wait for any microtasks (the bridge call is fire-and-forget but may be async).
+      await Promise.resolve();
+
+      expect(textContainerUpgrade).toHaveBeenCalledTimes(1);
+      const call = textContainerUpgrade.mock.calls[0] as unknown[];
+      // The TextContainerUpgrade instance must carry containerID=5 (hud-status).
+      const payload = call[0] as { containerID?: number };
+      expect(payload).toBeDefined();
+      // containerID 5 is the hud-status id in the HUD raster page schema.
+      expect(payload?.containerID).toBe(5);
+    });
+
+    it('CSHUD-2: textContainerUpgrade content includes PF (HP) information from the snapshot', async () => {
+      const { wsEvents, emit } = makeWsEventsMock();
+      const textContainerUpgrade = vi.fn().mockResolvedValue(true);
+      const bridge = { textContainerUpgrade };
+      const layer = new CanvasStatusHudLayer({ wsEvents, bridge });
+      await layer.attachCanvas(makeFakeCanvas().canvas);
+
+      const snapshot = makeValidSnapshot(); // hp:45, maxHp:52
+      emit('character.delta', snapshot);
+      await Promise.resolve();
+
+      const call = textContainerUpgrade.mock.calls[0] as unknown[];
+      const payload = call[0] as { content?: string };
+      // Content must mention HP information (PF 45/52).
+      expect(payload?.content).toMatch(/45/);
+      expect(payload?.content).toMatch(/52/);
+    });
+
+    it('CSHUD-2: bridge not provided → no throw, no call (backwards-compatible optional bridge)', async () => {
+      // When bridge is not passed in opts, the layer works as before (canvas-only paint).
+      const { wsEvents, emit } = makeWsEventsMock();
+      const layer = new CanvasStatusHudLayer({ wsEvents }); // no bridge
+      await layer.attachCanvas(makeFakeCanvas().canvas);
+
+      // Must not throw when bridge is absent.
+      expect(() => emit('character.delta', makeValidSnapshot())).not.toThrow();
+    });
+  });
 });

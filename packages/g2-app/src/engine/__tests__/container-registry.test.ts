@@ -122,10 +122,11 @@ describe('container-registry', () => {
 // ── buildHudRasterPageSchema (ADR-0013 Amendment 1 — RAST-02) ─────────────────
 
 describe('buildHudRasterPageSchema', () => {
-  it('returns containerTotalNum === 5 (HUD_RASTER_CONTAINER_TOTAL)', () => {
+  it('returns containerTotalNum === 6 (HUD_RASTER_CONTAINER_TOTAL — 4 image + hud-capture + hud-status)', () => {
+    // Updated for Task 3 (260610-d42): hud-status added → total bumped from 5 to 6.
     const schema = buildHudRasterPageSchema();
-    expect(schema.containerTotalNum).toBe(5);
-    expect(HUD_RASTER_CONTAINER_TOTAL).toBe(5);
+    expect(schema.containerTotalNum).toBe(6);
+    expect(HUD_RASTER_CONTAINER_TOTAL).toBe(6);
   });
 
   it('imageObject has exactly 4 entries named hud-tile-0..3 at 200×100', () => {
@@ -153,9 +154,10 @@ describe('buildHudRasterPageSchema', () => {
     ]);
   });
 
-  it('textObject has exactly 1 entry: hud-capture full-screen with isEventCapture=1', () => {
+  it('textObject first entry is hud-capture full-screen with isEventCapture=1', () => {
+    // Updated for Task 3 (260610-d42): textObject now has 2 entries — hud-capture
+    // and hud-status. This test verifies the first entry (hud-capture) unchanged.
     const { textObject } = buildHudRasterPageSchema();
-    expect(textObject).toHaveLength(1);
     const capture = textObject[0];
     expect(capture?.containerName).toBe('hud-capture');
     expect(capture?.containerID).toBe(4);
@@ -205,5 +207,55 @@ describe('buildHudRasterPageSchema', () => {
     // Regression guard: adding HUD raster entries to CONTAINER_REGISTRY must not
     // change the default boot schema count (glyph path is byte-identical).
     expect(BOOT_CONTAINER_TOTAL).toBe(3);
+  });
+
+  // ── REG-HUDSTATUS-1: hud-status native text container (Task 3 — 260610-d42) ─
+
+  it('REG-HUDSTATUS-1: containerTotalNum === 6 (HUD_RASTER_CONTAINER_TOTAL bumped to 6)', () => {
+    const schema = buildHudRasterPageSchema();
+    expect(schema.containerTotalNum).toBe(6);
+    expect(HUD_RASTER_CONTAINER_TOTAL).toBe(6);
+  });
+
+  it('REG-HUDSTATUS-1: textObject has exactly 2 entries — hud-capture (id 4) and hud-status (id 5)', () => {
+    const { textObject } = buildHudRasterPageSchema();
+    expect(textObject).toHaveLength(2);
+
+    // First entry remains hud-capture (id 4, isEventCapture=1, full-screen).
+    const capture = textObject[0];
+    expect(capture?.containerName).toBe('hud-capture');
+    expect(capture?.containerID).toBe(4);
+    expect(capture?.isEventCapture).toBe(1);
+    expect(capture?.width).toBe(576);
+    expect(capture?.height).toBe(288);
+
+    // Second entry is hud-status (id 5, isEventCapture=0, top 27px row).
+    const hudStatus = textObject[1];
+    expect(hudStatus?.containerName).toBe('hud-status');
+    expect(hudStatus?.containerID).toBe(5);
+    expect(hudStatus?.isEventCapture).toBe(0);
+    expect(hudStatus?.width).toBe(576);
+    expect(hudStatus?.height).toBe(27);
+    expect(hudStatus?.xPosition).toBe(0);
+    expect(hudStatus?.yPosition).toBe(0);
+  });
+
+  it('REG-CAPTURE-INV: exactly ONE container in the whole schema has isEventCapture=1 (with 2 text containers)', () => {
+    // Same invariant as the existing test — verified again with hud-status present.
+    const { imageObject, textObject } = buildHudRasterPageSchema();
+    const imageCaptureCount = imageObject.filter(
+      (c) => (c as { isEventCapture?: number }).isEventCapture === 1,
+    ).length;
+    const textCaptureCount = textObject.filter((c) => c.isEventCapture === 1).length;
+    expect(imageCaptureCount + textCaptureCount).toBe(1);
+    expect(textCaptureCount).toBe(1);
+    expect(imageCaptureCount).toBe(0);
+    // Specifically: hud-status must NOT be a capture container.
+    const hudStatus = textObject.find((c) => c.containerName === 'hud-status');
+    expect(hudStatus?.isEventCapture).toBe(0);
+  });
+
+  it('REG-HUDSTATUS-1: resolveContainerId resolves hud-status to id 5', () => {
+    expect(resolveContainerId('hud-status')).toBe(5);
   });
 });
