@@ -3,7 +3,7 @@
  *
  * Covers Plan 4a-06 Task 1 behaviour FP-1..FP-10 (data-source raster ingress):
  *   - FP-1     happy-path safeParse of a valid FramePixels payload
- *   - FP-2..4  bounds enforcement on width (20-400) + height (20-200) — ADR-0013 Amendment 1 canonical region
+ *   - FP-2..4  bounds enforcement on width (20-576) + height (20-288) — full-screen region (layout B 2026-06-10)
  *   - FP-5     decodeFramePixels rejects non-base64 input with a typed Error
  *   - FP-6     encodeFramePixels → base64 string; decode roundtrip yields a
  *              Uint8ClampedArray of length width × height × 4
@@ -95,10 +95,10 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
     }
   });
 
-  it('FP-3: rejects width above maximum (401)', () => {
+  it('FP-3: rejects width above maximum (577)', () => {
     const r = FramePixelsSchema.safeParse({
       sceneId: 's',
-      width: 401,
+      width: 577,
       height: 20,
       pixelsB64: MIN_B64,
       ts: 1,
@@ -109,11 +109,11 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
     }
   });
 
-  it('FP-4: rejects height above maximum (201)', () => {
+  it('FP-4: rejects height above maximum (289)', () => {
     const r = FramePixelsSchema.safeParse({
       sceneId: 's',
       width: 20,
-      height: 201,
+      height: 289,
       pixelsB64: MIN_B64,
       ts: 1,
     });
