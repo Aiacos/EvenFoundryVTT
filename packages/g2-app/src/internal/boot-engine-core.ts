@@ -820,7 +820,7 @@ export async function _bootEngineCore(
   // `getCaptureContainer()` returns `'hud-capture'` (id=4, 576×288,
   // isEventCapture=1) — satisfies `_assertCaptureInvariant()` which requires
   // exactly 1 capture provider when no glyph MapBaseLayer is mounted.
-  const canvasStatusHud = new CanvasStatusHudLayer({ wsEvents: wsEventBus });
+  const canvasStatusHud = new CanvasStatusHudLayer({ wsEvents: wsEventBus, bridge });
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
   //

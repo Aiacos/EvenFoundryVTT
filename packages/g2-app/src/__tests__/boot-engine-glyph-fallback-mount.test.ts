@@ -256,4 +256,93 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
 
     handle.teardown();
   });
+
+  /**
+   * CR-01d (bridge wired into CanvasStatusHudLayer — gap-fix 260610-d42):
+   *
+   * Regression guard: `boot-engine-core` MUST pass `bridge` to `CanvasStatusHudLayer`
+   * so the native `hud-status` text container (id=5) is updated on each
+   * `character.delta`. Before the gap-fix, the construction was:
+   *
+   *   new CanvasStatusHudLayer({ wsEvents: wsEventBus })   ← missing `bridge`
+   *
+   * This meant `this._bridge === undefined` in production, so
+   * `bridge.textContainerUpgrade` was never called and the hud-status native
+   * container showed nothing despite the canvas raster working fine in tests
+   * (tests inject bridge explicitly).
+   *
+   * Strategy: boot in canvas mode (default), fire a valid `character.delta` WS
+   * message, await microtasks for the fire-and-forget textContainerUpgrade promise,
+   * then assert `bridge.textContainerUpgrade` was called at least once.
+   */
+  it('CR-01d: canvas-mode CanvasStatusHudLayer receives bridge — character.delta triggers textContainerUpgrade', async () => {
+    const { handle, bridge, ws } = await bootWith(); // canvas mode (default)
+
+    expect(handle.layerManager.getRenderMode()).toBe('canvas');
+
+    const textContainerUpgrade = bridge.textContainerUpgrade as unknown as ReturnType<typeof vi.fn>;
+    const callsBefore = textContainerUpgrade.mock.calls.length;
+
+    // Fire a valid character.delta WS envelope so CanvasStatusHudLayer._onDelta fires.
+    const snapshotEvent = JSON.stringify({
+      type: 'character.delta',
+      payload: {
+        actorId: 'pc-test',
+        name: 'Thorin',
+        hp: 45,
+        maxHp: 52,
+        tempHp: 0,
+        ac: 18,
+        level: 7,
+        conditions: [],
+        exhaustion: 0,
+        death: { success: 0, failure: 0 },
+        world: { modernRules: false },
+        inventory: [],
+        spells: { slots: [], spells: [] },
+        abilities: {
+          str: { value: 16, mod: 3, save: 3, proficient: false, dc: 13 },
+          dex: { value: 12, mod: 1, save: 1, proficient: false, dc: 11 },
+          con: { value: 14, mod: 2, save: 2, proficient: false, dc: 12 },
+          int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+          wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+          cha: { value: 8, mod: -1, save: -1, proficient: false, dc: 9 },
+        },
+        skills: {
+          acr: { total: 1, ability: 'dex', proficient: 0, passive: 11 },
+          ani: { total: 0, ability: 'wis', proficient: 0, passive: 10 },
+          arc: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+          ath: { total: 3, ability: 'str', proficient: 0, passive: 13 },
+          dec: { total: -1, ability: 'cha', proficient: 0, passive: 9 },
+          his: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+          ins: { total: 0, ability: 'wis', proficient: 0, passive: 10 },
+          itm: { total: -1, ability: 'cha', proficient: 0, passive: 9 },
+          inv: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+          med: { total: 0, ability: 'wis', proficient: 0, passive: 10 },
+          nat: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+          prc: { total: 0, ability: 'wis', proficient: 0, passive: 10 },
+          prf: { total: -1, ability: 'cha', proficient: 0, passive: 9 },
+          per: { total: -1, ability: 'cha', proficient: 0, passive: 9 },
+          rel: { total: 0, ability: 'int', proficient: 0, passive: 10 },
+          slt: { total: 1, ability: 'dex', proficient: 0, passive: 11 },
+          ste: { total: 1, ability: 'dex', proficient: 0, passive: 11 },
+          sur: { total: 0, ability: 'wis', proficient: 0, passive: 10 },
+        },
+        class: 'Fighter',
+        initiative: 2,
+        speed: 30,
+      },
+    });
+    ws.fireMessage(snapshotEvent);
+
+    // Flush microtasks so the fire-and-forget textContainerUpgrade promise resolves.
+    for (let i = 0; i < 8; i++) {
+      await Promise.resolve();
+    }
+
+    // Bridge MUST have been called at least once after the delta (gap-fix assertion).
+    expect(textContainerUpgrade.mock.calls.length).toBeGreaterThan(callsBefore);
+
+    handle.teardown();
+  });
 });
