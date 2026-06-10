@@ -341,8 +341,14 @@ export function extractCurrentFrame(
   // renderer.width/height when screen is absent (test fixtures, exotic hosts).
   // These dims are used for the RT path (RenderTexture size) and as the effective
   // source dims; both paths return null early if the dims are degenerate (≤ 0).
-  const vw = renderer.screen?.width ?? renderer.width;
-  const vh = renderer.screen?.height ?? renderer.height;
+  //
+  // renderer.screen can be fractional (e.g. Forge: 2348.25×824.25 at DPR 1.3333,
+  // 2026-06-10 live evidence). PIXI.RenderTexture.create floors internally, so
+  // extract.pixels returns floor(vw)×floor(vh)×4 bytes. We floor here so that
+  // RT.create, the byte-length guard, and srcWidth/srcHeight all use the same
+  // integer value — preventing k≈0.9998 non-integer mismatches that skip every frame.
+  const vw = Math.max(1, Math.floor(renderer.screen?.width ?? renderer.width));
+  const vh = Math.max(1, Math.floor(renderer.screen?.height ?? renderer.height));
   if (vw <= 0 || vh <= 0) {
     return null;
   }

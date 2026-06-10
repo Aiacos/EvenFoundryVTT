@@ -44,6 +44,11 @@
  *   - CE-VP-7  Screen dims: RT path with renderer.screen present → RenderTexture created with
  *              width=screen.width, height=screen.height
  *
+ * Quick-task 260610-n8h — CE-VP-8 (fractional renderer.screen dims — Forge DPR 1.3333):
+ *   - CE-VP-8  Fractional screen dims: renderer.screen = {width:2348.25,height:824.25}
+ *              → RT.create called with integer {width:2348,height:824}; frame emitted
+ *              (byte-length guard must not mismatch — root cause 2026-06-10 Forge evidence)
+ *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
  * the established pattern in `module.test.ts` + `readers.test.ts`. No live
  * Foundry runtime required.
@@ -53,6 +58,7 @@
  * @see .planning/quick/260610-evs-contrast-normalization-setting-for-glass/260610-evs-PLAN.md Task 1
  * @see .planning/quick/260610-fw7-fix-canvas-extractor-stage-vs-viewport-s/260610-fw7-PLAN.md Task 2
  * @see .planning/quick/260610-lx5-render-to-texture-viewport-capture-in-ca/260610-lx5-PLAN.md Task 2
+ * @see .planning/quick/260610-n8h-floor-fractional-viewport-dims-in-rt-cap/260610-n8h-PLAN.md Task 1
  * @see ./canvas-extractor.ts (system under test)
  */
 import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
@@ -1031,6 +1037,47 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     // RT.create must have been called with screen dims, NOT renderer.width/height.
     expect(RTCreate).toHaveBeenCalledTimes(1);
     expect(RTCreate).toHaveBeenCalledWith({ width: screenW, height: screenH });
+
+    // rt.destroy(true) still called.
+    expect(rtStub.destroy).toHaveBeenCalledWith(true);
+  });
+
+  it('CE-VP-8: fractional screen dims → RT.create called with integer dims; frame emitted', () => {
+    // Live evidence: Forge client 2026-06-10 — renderer.screen = {width:2348.25, height:824.25}
+    // at devicePixelRatio 1.3333. PIXI floors internally, so the pixel buffer is
+    // 2348×824×4 bytes, but a naive float vw/vh produces k≈0.9998 → frame skip.
+    const screenW = 2348.25;
+    const screenH = 824.25;
+    const floorW = Math.floor(screenW); // 2348
+    const floorH = Math.floor(screenH); // 824
+
+    const { rtStub, RTCreate, rendererExt } = installPIXIStub({ width: screenW, height: screenH });
+
+    // The RT buffer must match the integer-floored dims exactly (what PIXI actually returns).
+    const pixels = new Uint8Array(floorW * floorH * 4).fill(0x80);
+    const pixelsSpy = vi.fn(() => pixels);
+
+    const rtCanvas = {
+      scene: { id: 'fractional-screen-scene' },
+      stage: { __rtStageMarker: true },
+      app: {
+        renderer: {
+          width: 800, // intentionally different from screen dims
+          height: 600,
+          extract: { pixels: pixelsSpy },
+          ...rendererExt,
+        },
+      },
+    };
+
+    const fp = extractCurrentFrame(rtCanvas);
+
+    // Frame must be emitted — byte-length guard must not mismatch.
+    expect(fp).not.toBeNull();
+
+    // RT.create must have been called with integer dims (Math.floor applied).
+    expect(RTCreate).toHaveBeenCalledTimes(1);
+    expect(RTCreate).toHaveBeenCalledWith({ width: floorW, height: floorH });
 
     // rt.destroy(true) still called.
     expect(rtStub.destroy).toHaveBeenCalledWith(true);
