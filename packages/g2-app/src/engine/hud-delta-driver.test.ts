@@ -347,6 +347,38 @@ describe('HudDeltaDriver', () => {
 
   // ── DL-06: stop() cancels timer and releases all subscriptions ────────────────
 
+  it('DL-08: sustained events faster than the interval do NOT starve the cycle (throttle, not debounce)', async () => {
+    const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    const compositeCallsAfterFirstFrame = compositor.composite.mock.calls.length;
+
+    // Storm: an event every 50ms for 1000ms — always faster than the 100ms
+    // interval. With the old clearTimeout+re-arm (debounce) behaviour the timer
+    // was perpetually reset and ZERO cycles fired during the storm (live-measured
+    // 2026-06-10: ≥15fps frame input → ~0.2 fps delivered). Throttle semantics
+    // must fire ~1 cycle per interval: expect ≥8 composites over 1000ms.
+    let seed = 1;
+    for (let t = 0; t < 20; t++) {
+      const rgba = makeBlankRgba();
+      mutateTile0(rgba, seed++);
+      rgbaRef.value = rgba;
+      fire('character.delta');
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    const cyclesDuringStorm =
+      compositor.composite.mock.calls.length - compositeCallsAfterFirstFrame;
+    expect(cyclesDuringStorm).toBeGreaterThanOrEqual(8);
+
+    driver.stop();
+  });
+
   it('DL-06: stop() cancels pending debounce timer and invokes all unsub closures', async () => {
     const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
     const bridge = makeBridge();

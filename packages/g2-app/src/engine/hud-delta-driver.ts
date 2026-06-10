@@ -284,7 +284,13 @@ export class HudDeltaDriver {
    */
   private _schedule(): void {
     if (this._timer !== null) {
-      clearTimeout(this._timer);
+      // THROTTLE, not debounce: a cycle is already pending and will render the
+      // latest layer state when it fires (composite() reads live layers, not a
+      // snapshot). Resetting the timer here (the previous clearTimeout+re-arm
+      // behaviour) starved the render loop whenever events arrived faster than
+      // minRedrawIntervalMs — measured live 2026-06-10: ≥15 fps frame input
+      // collapsed delivered output to ~0.2 fps because the timer never fired.
+      return;
     }
     this._timer = setTimeout(() => {
       this._timer = null;
