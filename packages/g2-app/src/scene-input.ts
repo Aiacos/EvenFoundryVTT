@@ -67,6 +67,32 @@ import type { RasterControllerLike } from './engine/layer-types.js';
  */
 export type UnsubscribeFn = () => void;
 
+/**
+ * Minimal sink interface for the canvas-mode map frame path.
+ *
+ * `MapCanvasLayer` implements this — `attachSceneInputToWs` accepts either a
+ * `RasterControllerLike` (glyph fallback) or a `MapFrameSink` (canvas mode).
+ * When a `MapFrameSink` is provided, incoming `frame_pixels` envelopes are
+ * routed to `setFrame` instead of `RasterController.requestFrame`, bypassing
+ * the Worker + dither pipeline (the compositor ingests RGBA directly).
+ *
+ * The interface is intentionally minimal — only `setFrame` is required so
+ * test doubles can implement it without importing the full `MapCanvasLayer` class.
+ *
+ * T-d42-02: `setFrame` receives pre-validated, padded 400×200 bytes from the
+ * `padFrameToCanonical` step below — malformed bytes never reach `setFrame`.
+ */
+export interface MapFrameSink {
+  /**
+   * Store a new 400×200 RGBA frame.
+   *
+   * @param rgba Pre-validated, canonical 400×200 RGBA bytes from `padFrameToCanonical`.
+   * @param w    Frame width (always `CANONICAL_W = 400`).
+   * @param h    Frame height (always `CANONICAL_H = 200`).
+   */
+  setFrame(rgba: Uint8ClampedArray, w: number, h: number): void;
+}
+
 /** Canonical raster-region width (ADR-0013 Amendment 1 — matches raster-worker FRAME_W). */
 const CANONICAL_W = 400;
 
@@ -106,21 +132,43 @@ function padFrameToCanonical(
 }
 
 /**
+ * Runtime type guard — returns `true` when `sink` is a `MapFrameSink` (canvas
+ * mode) rather than a `RasterControllerLike` (glyph fallback).
+ *
+ * The discriminator is the presence of `setFrame` as a function — this property
+ * exists on `MapCanvasLayer` but NOT on `RasterController`.
+ */
+function isMapFrameSink(sink: RasterControllerLike | MapFrameSink): sink is MapFrameSink {
+  return typeof (sink as MapFrameSink).setFrame === 'function';
+}
+
+/**
  * Attach a `frame_pixels` envelope receiver to a WebSocket.
  *
  * Registers a `ws.addEventListener('message', handler)`; the handler
  * defense-in-depth-parses each incoming envelope and dispatches valid
- * `frame_pixels` payloads to `controller.requestFrame`. Returns an
- * unsubscribe closure that calls `ws.removeEventListener('message', handler)`.
+ * `frame_pixels` payloads to the appropriate sink:
  *
- * @param ws         - Native WebSocket (or test-compatible mock with the
- *                     `addEventListener`/`removeEventListener` surface)
- * @param controller - Raster controller (only `requestFrame` is invoked)
+ *   - **Canvas mode** (when `sink` is a `MapFrameSink`): calls `sink.setFrame`
+ *     synchronously — no Worker round-trip (the compositor ingests RGBA directly).
+ *     This is the canvas-mode path introduced in quick-task 260610-d42 Task 2.
+ *     The legacy `RasterController.requestFrame` map-tile path is explicitly
+ *     canvas-mode-unreachable via this branch — see the rationale comment below.
+ *
+ *   - **Glyph fallback** (when `sink` is a `RasterControllerLike`): calls
+ *     `sink.requestFrame(framed, CANONICAL_W, CANONICAL_H)` fire-and-forget with
+ *     a `.catch` guard — the Worker + dither pipeline path.
+ *
+ * Returns an unsubscribe closure that calls `ws.removeEventListener('message', handler)`.
+ *
+ * @param ws   - Native WebSocket (or test-compatible mock with the
+ *               `addEventListener`/`removeEventListener` surface)
+ * @param sink - MapFrameSink (canvas mode) or RasterControllerLike (glyph fallback)
  * @returns Unsubscribe function (idempotent)
  */
 export function attachSceneInputToWs(
   ws: WebSocket,
-  controller: RasterControllerLike,
+  sink: RasterControllerLike | MapFrameSink,
 ): UnsubscribeFn {
   const handler = (ev: MessageEvent): void => {
     try {
@@ -169,12 +217,19 @@ export function attachSceneInputToWs(
       //     defence for older module builds and test producers.
       const framed = padFrameToCanonical(pixels, fp.data.width, fp.data.height);
 
-      // 5) Dispatch fire-and-forget — Plan 03 RasterController is the Worker
-      //    boundary. Attach a `.catch` so a rejected Promise logs and does
-      //    not crash the WS listener.
-      controller.requestFrame(framed, CANONICAL_W, CANONICAL_H).catch((err) => {
-        console.warn('[scene-input] requestFrame rejected', err);
-      });
+      // 5) Dispatch to the appropriate sink.
+      if (isMapFrameSink(sink)) {
+        // canvas mode routes scene frames to the compositor MapCanvasLayer (z=0);
+        // the RasterController map-tile path is reserved for the glyph fallback only
+        // — see debug map-frame-pipeline-dims, no dual map-tile/HUD contention.
+        sink.setFrame(framed, CANONICAL_W, CANONICAL_H);
+      } else {
+        // Glyph fallback — Plan 03 RasterController is the Worker boundary.
+        // Attach a `.catch` so a rejected Promise logs and does not crash the WS listener.
+        sink.requestFrame(framed, CANONICAL_W, CANONICAL_H).catch((err) => {
+          console.warn('[scene-input] requestFrame rejected', err);
+        });
+      }
     } catch (err) {
       console.warn('[scene-input] message processing failed', err);
     }

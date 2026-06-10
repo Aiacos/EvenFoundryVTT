@@ -18,7 +18,10 @@
  *   - SR-8: character.delta WS event → after 200 ms debounce, StatusHudLayer
  *           re-renders via bridge.textContainerUpgrade on `status-hud`.
  *   - SR-9: frame_pixels WS envelope → attachSceneInputToWs dispatches to
- *           RasterController.requestFrame (verified via worker._sentMessages).
+ *           MapCanvasLayer.setFrame in canvas mode (worker bypassed), with
+ *           canonical 400×200 padding preserved (verified via MapCanvasLayer
+ *           prototype spy — Rule 1 auto-fix 2026-06-10: canvas mode routes
+ *           frame_pixels to MapFrameSink, not RasterController).
  *   - SR-10: bootEngine !== bootEngineForTest (W-4 boundary — distinct symbols).
  *
  * **Worker injection:** The smoke test patches `Worker` in `globalThis` so the
@@ -41,6 +44,7 @@ import {
 import { encodeFramePixels, SERVER_CAPS_V1 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZIndex } from '../engine/layer-types.js';
+import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
 import { bootEngine } from '../index.js';
 import { bootEngineForTest, type TestingDependencies } from '../index.test-support.js';
 import { createMockWorker, type MockWorker } from './test-helpers/worker-mock.js';
@@ -410,47 +414,64 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
     handle.teardown();
   });
 
-  it('SR-9 (Plan 06 wiring): frame_pixels WS envelope → controller.requestFrame', async () => {
-    const { handle, ws } = await bootWithMocks();
-    const worker = installedWorker;
-    if (worker === null) throw new Error('worker mock missing');
-    const beforeSentCount = worker._sentMessages().length;
-    // Build a valid frame_pixels envelope per Plan 06 EnvelopeSchema +
-    // FramePixelsSchema.
-    const width = 288;
-    const height = 144;
-    const rgba = new Uint8ClampedArray(width * height * 4);
-    const pixelsB64 = encodeFramePixels(rgba);
-    const env = {
-      proto: 'evf-v1',
-      seq: 1,
-      ts: Date.now(),
-      type: 'frame_pixels',
-      session_id: VALID_SESSION_UUID,
-      payload: { sceneId: 'scene1', width, height, pixelsB64, ts: Date.now() },
-    };
-    ws.fireMessage(JSON.stringify(env));
-    // attachSceneInputToWs is synchronous up to requestFrame which queues
-    // through a 200 ms debounce inside RasterController. Advance timers to
-    // flush the debounce → worker.postMessage.
-    await vi.advanceTimersByTimeAsync(250);
-    const afterSentCount = worker._sentMessages().length;
-    expect(afterSentCount).toBeGreaterThan(beforeSentCount);
-    // Verify the message shape — should carry width/height + pixelData.
-    const sent = worker._sentMessages()[afterSentCount - 1] as {
-      width?: number;
-      height?: number;
-      pixelData?: Uint8ClampedArray;
-    };
-    // scene-input pads undersized frames to the canonical 400×200 raster
-    // region before requestFrame (ADR-0013 Amendment 1 — raster-worker
-    // rejects other dims; debug map-frame-pipeline-dims, 2026-06-10).
-    expect(sent.width).toBe(400);
-    expect(sent.height).toBe(200);
-    expect(sent.pixelData).toBeInstanceOf(Uint8ClampedArray);
-    expect(sent.pixelData?.length).toBe(400 * 200 * 4);
-    handle.teardown();
-  });
+  it(
+    'SR-9 (canvas-mode wiring): frame_pixels WS envelope → MapCanvasLayer.setFrame ' +
+      '(worker bypassed; Rule 1 auto-fix 2026-06-10)',
+    async () => {
+      // Spy on MapCanvasLayer.prototype.setFrame BEFORE boot so the spy is in
+      // place when bootWithMocks() constructs the MapCanvasLayer instance.
+      const setFrameSpy = vi.spyOn(MapCanvasLayer.prototype, 'setFrame');
+
+      const { handle, ws } = await bootWithMocks();
+      const worker = installedWorker;
+      if (worker === null) throw new Error('worker mock missing');
+
+      // Capture worker send count before firing the envelope — in canvas mode
+      // the worker must NOT receive any new messages (map route bypasses the
+      // RasterController → Worker pipeline).
+      const beforeSentCount = worker._sentMessages().length;
+
+      // Build a valid frame_pixels envelope (288×144 undersized source — padded
+      // to canonical 400×200 by padFrameToCanonical before reaching setFrame).
+      const width = 288;
+      const height = 144;
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      const pixelsB64 = encodeFramePixels(rgba);
+      const env = {
+        proto: 'evf-v1',
+        seq: 1,
+        ts: Date.now(),
+        type: 'frame_pixels',
+        session_id: VALID_SESSION_UUID,
+        payload: { sceneId: 'scene1', width, height, pixelsB64, ts: Date.now() },
+      };
+
+      ws.fireMessage(JSON.stringify(env));
+      // setFrame is synchronous — no timers needed for the dispatch itself.
+      // Flush microtasks so any internal promise chains settle.
+      await vi.advanceTimersByTimeAsync(0);
+
+      // ── Positive assertion: MapCanvasLayer.setFrame was called exactly once.
+      expect(setFrameSpy).toHaveBeenCalledTimes(1);
+
+      // ── Shape assertion: padFrameToCanonical applied → 400×200 canonical dims.
+      const [receivedRgba, receivedW, receivedH] = setFrameSpy.mock.calls[0] as [
+        Uint8ClampedArray,
+        number,
+        number,
+      ];
+      expect(receivedW).toBe(400);
+      expect(receivedH).toBe(200);
+      expect(receivedRgba).toBeInstanceOf(Uint8ClampedArray);
+      expect(receivedRgba.length).toBe(400 * 200 * 4);
+
+      // ── Negative assertion: canvas mode bypasses the Worker pipeline entirely.
+      const afterSentCount = worker._sentMessages().length;
+      expect(afterSentCount).toBe(beforeSentCount);
+
+      handle.teardown();
+    },
+  );
 
   it('SR-10 (W-4 boundary): bootEngine !== bootEngineForTest', () => {
     // Production bootEngine and test-only bootEngineForTest are distinct

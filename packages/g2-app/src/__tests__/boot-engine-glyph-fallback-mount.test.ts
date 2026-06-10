@@ -176,10 +176,16 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
   });
 
   /**
-   * CR-01a (canvas default): renderMode is 'canvas' and ONLY CanvasStatusHudLayer
-   * is mounted at z=1. The glyph layers (map-base, idle-infill) are NOT mounted.
+   * CR-01a (canvas default): renderMode is 'canvas'. The canvas-mode bundle mounts:
+   *   - z=0 (Z0_MAP): MapCanvasLayer (id='map-canvas') — full-screen Foundry map.
+   *   - z=1 (Z1_STATUS_HUD): CanvasStatusHudLayer (id='canvas-status-hud').
+   *
+   * Glyph layers (map-base, idle-infill) are NOT mounted in canvas mode.
+   *
+   * Rule 1 auto-fix 2026-06-10: quick-task 260610-d42 Task 2 wires MapCanvasLayer
+   * at Z0_MAP in the canvas-mode bundle — updated expectation accordingly.
    */
-  it('CR-01a: canvas-verdict boot mounts ONLY CanvasStatusHudLayer at z=1', async () => {
+  it('CR-01a: canvas-verdict boot mounts CanvasStatusHudLayer at z=1 AND MapCanvasLayer at z=0', async () => {
     const { handle } = await bootWith(); // no persisted override → canvas default
 
     expect(handle.layerManager.getRenderMode()).toBe('canvas');
@@ -188,8 +194,12 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
     expect(z1?.id).toBe('canvas-status-hud');
     // The canvas capture provider 'hud-capture' is in the canvas schema → count 1.
     expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
-    // Glyph layers are constructed but NOT mounted in canvas mode.
-    expect(handle.layerManager.getLayer(ZIndex.Z0_MAP)).toBeUndefined();
+
+    // MapCanvasLayer is mounted at z=0 (canvas-mode Task 2 — 260610-d42).
+    const z0 = handle.layerManager.getLayer(ZIndex.Z0_MAP);
+    expect(z0?.id).toBe('map-canvas');
+
+    // Glyph-only layers are NOT mounted in canvas mode.
     expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
 
     handle.teardown();

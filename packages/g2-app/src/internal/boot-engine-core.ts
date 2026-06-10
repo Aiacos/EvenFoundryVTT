@@ -78,6 +78,7 @@ import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { WsSender } from '../engine/ws-sender.js';
 import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
+import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
 import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.js';
@@ -821,11 +822,32 @@ export async function _bootEngineCore(
   // exactly 1 capture provider when no glyph MapBaseLayer is mounted.
   const canvasStatusHud = new CanvasStatusHudLayer({ wsEvents: wsEventBus });
 
+  // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
+  //
+  // Constructed alongside CanvasStatusHudLayer so both are available for the
+  // canvas-mode bundle step below. The onFrame callback triggers
+  // hudDeltaDriver.requestCycle() — each new Foundry frame kicks the debounced
+  // delta loop so only changed sub-tiles are pushed to the glasses.
+  //
+  // canvas mode routes scene frames to this compositor MapCanvasLayer (z=0);
+  // the RasterController map-tile path is reserved for the glyph fallback only
+  // — see debug map-frame-pipeline-dims, no dual map-tile/HUD contention.
+  const mapCanvas = new MapCanvasLayer({
+    onFrame: () => {
+      hudDeltaDriver.requestCycle();
+    },
+  });
+
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
-  //     canvas extractions route through controller.requestFrame.
+  //     canvas extractions route to the appropriate sink:
+  //       - canvas mode: MapCanvasLayer.setFrame (no Worker round-trip)
+  //       - glyph mode:  RasterController.requestFrame (Worker + dither pipeline)
   // quick-task 260529-khy — INBOUND unsubs are `let` so onReconnected can
   // dispose-before-reattach against newWs; the teardown reads the current value.
-  let unsubSceneInput = attachSceneInputToWs(ws, rasterController);
+  let unsubSceneInput = attachSceneInputToWs(
+    ws,
+    layerManager.getRenderMode() === 'canvas' ? mapCanvas : rasterController,
+  );
 
   // 11a. Phase 10 Plan 10-01 — WS reconnect controller (D-Area1 / SC-1 / T-10-01).
   //
@@ -1163,7 +1185,10 @@ export async function _bootEngineCore(
       // (2) INBOUND — dispose-before-reattach all 7 listeners against newWs. reactionPrompt
       //     + portrait are included here (the two sources MISSED in v1 of the rewire).
       unsubSceneInput();
-      unsubSceneInput = attachSceneInputToWs(newWs, rasterController);
+      unsubSceneInput = attachSceneInputToWs(
+        newWs,
+        layerManager.getRenderMode() === 'canvas' ? mapCanvas : rasterController,
+      );
 
       unsubR1();
       unsubR1 = attachR1EventSource(newWs, gestureBus, layerManager, DEFAULT_R1_TIMINGS);
@@ -1473,7 +1498,13 @@ export async function _bootEngineCore(
   //     mapBase reports a capture container. The canvas-mode assertion is NOT
   //     weakened — the canvas branch is unchanged.
   if (layerManager.getRenderMode() === 'canvas') {
-    await layerManager.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud }]);
+    // canvas mode bundle: mount both z=0 MapCanvasLayer and z=1 CanvasStatusHudLayer.
+    // MapCanvasLayer at Z0_MAP is the full-screen map base; CanvasStatusHudLayer at
+    // Z1_STATUS_HUD provides hud-capture (isEventCapture:1) — sole capture provider.
+    await layerManager.bundle([
+      { type: 'mount', z: ZIndex.Z0_MAP, layer: mapCanvas },
+      { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud },
+    ]);
   } else {
     // Glyph fallback: statusHud is guaranteed non-null here — it is constructed
     // at step 10 under the identical `getRenderMode() === 'glyph'` guard.
@@ -1735,6 +1766,12 @@ export async function _bootEngineCore(
         canvasStatusHud.destroy();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: canvasStatusHud.destroy failed', err);
+      }
+      // quick-task 260610-d42: destroy MapCanvasLayer (canvas-mode z=0 layer).
+      try {
+        mapCanvas.destroy();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: mapCanvas.destroy failed', err);
       }
       try {
         toastQueue.destroy();

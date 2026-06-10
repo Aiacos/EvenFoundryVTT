@@ -1,8 +1,9 @@
 /**
  * Unit tests for scene-input — WS message receiver that dispatches valid
- * `frame_pixels` envelopes to the raster controller.
+ * `frame_pixels` envelopes to the raster controller or MapCanvasLayer.
  *
- * Covers Plan 4a-06 Task 3 behaviour SI-1..SI-8:
+ * Covers Plan 4a-06 Task 3 behaviour SI-1..SI-8 and quick-task 260610-d42
+ * Task 2 SI-CANVAS-1..SI-CANVAS-2 (canvas-mode MapCanvasLayer routing):
  *   - SI-1   attachSceneInputToWs returns an unsubscribe function
  *   - SI-2   Valid envelope → controller.requestFrame called with correctly
  *            sized Uint8ClampedArray + width + height
@@ -13,6 +14,9 @@
  *   - SI-7   Dispatched Uint8ClampedArray owns its ArrayBuffer
  *            (transferable-prerequisite; final Worker transfer is Plan 03 RC-2)
  *   - SI-8   unsubscribe() removes the ws message listener
+ *   - SI-CANVAS-1  canvas-mode: valid frame_pixels routed to MapCanvasLayer.setFrame
+ *                  (NOT RasterController.requestFrame)
+ *   - SI-CANVAS-2  canvas-mode: padFrameToCanonical normalization preserved before setFrame
  *
  * NF-1 closure: scene-input.ts uses the real `EnvelopeSchema` export and
  * reads the carrier via the `payload` field; the test fixtures include the
@@ -20,12 +24,13 @@
  * of forbidden drift patterns.
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 3
+ * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md Task 2
  * @see ../scene-input.ts (system under test)
  */
 import { encodeFramePixels } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RasterControllerLike } from '../engine/layer-types.js';
-import { attachSceneInputToWs } from '../scene-input.js';
+import { attachSceneInputToWs, type MapFrameSink } from '../scene-input.js';
 
 // ─── MockSocket pattern (PATTERNS.md §capability-handshake.test.ts analog) ────
 
@@ -295,5 +300,59 @@ describe('attachSceneInputToWs — defense-in-depth parse (SI-3, SI-4, SI-5, SI-
 
     expect(ctrl.requestFrame).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+// ── SI-CANVAS: canvas-mode MapCanvasLayer routing (260610-d42 Task 2) ─────────
+
+/**
+ * Minimal MapFrameSink mock — satisfies the MapFrameSink interface.
+ */
+function makeMockMapSink(): MapFrameSink & {
+  setFrameCalls: Array<[Uint8ClampedArray, number, number]>;
+} {
+  const setFrameCalls: Array<[Uint8ClampedArray, number, number]> = [];
+  return {
+    setFrameCalls,
+    setFrame(rgba: Uint8ClampedArray, w: number, h: number): void {
+      setFrameCalls.push([rgba, w, h]);
+    },
+  };
+}
+
+describe('attachSceneInputToWs — canvas-mode MapCanvasLayer routing (SI-CANVAS-1, SI-CANVAS-2)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('SI-CANVAS-1: canvas-mode sink routes frame_pixels to setFrame (NOT requestFrame)', () => {
+    const ws = makeMockSocket();
+    const ctrl = makeMockController();
+    const sink = makeMockMapSink();
+
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    ws.fire(JSON.stringify(makeFrameEnvelope({ width: 400, height: 200 })));
+
+    // MapCanvasLayer.setFrame is called; RasterController.requestFrame is NOT.
+    expect(sink.setFrameCalls).toHaveLength(1);
+    expect(ctrl.requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('SI-CANVAS-2: padFrameToCanonical normalization preserved — setFrame receives 400×200', () => {
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    // Undersized 288×144 frame is padded to 400×200 before setFrame.
+    ws.fire(JSON.stringify(makeFrameEnvelope({ width: 288, height: 144 })));
+
+    expect(sink.setFrameCalls).toHaveLength(1);
+    const [rgba, w, h] = sink.setFrameCalls[0]!;
+    expect(rgba).toBeInstanceOf(Uint8ClampedArray);
+    expect(rgba.length).toBe(400 * 200 * 4);
+    expect(w).toBe(400);
+    expect(h).toBe(200);
   });
 });
