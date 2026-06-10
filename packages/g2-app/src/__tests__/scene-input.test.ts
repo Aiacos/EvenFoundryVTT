@@ -349,7 +349,9 @@ describe('attachSceneInputToWs — canvas-mode MapCanvasLayer routing (SI-CANVAS
     ws.fire(JSON.stringify(makeFrameEnvelope({ width: 288, height: 144 })));
 
     expect(sink.setFrameCalls).toHaveLength(1);
-    const [rgba, w, h] = sink.setFrameCalls[0]!;
+    const firstCall = sink.setFrameCalls[0];
+    if (firstCall === undefined) throw new Error('setFrameCalls[0] is undefined');
+    const [rgba, w, h] = firstCall;
     expect(rgba).toBeInstanceOf(Uint8ClampedArray);
     expect(rgba.length).toBe(400 * 200 * 4);
     expect(w).toBe(400);

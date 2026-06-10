@@ -32,7 +32,6 @@
  * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md
  */
 
-import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
 import type { CanvasLayer } from '../engine/layer-types.js';
 
 // ── Constructor options ────────────────────────────────────────────────────────
