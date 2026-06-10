@@ -29,6 +29,11 @@
  *   - CE-NORM-5  getNormalize evaluated per capture: stub returning 'off' then 'auto' between
  *                two interval captures changes output without re-registering
  *
+ * Quick-task 260610-fw7 — CE-VP-1..CE-VP-3 (viewport capture + byte-length guard):
+ *   - CE-VP-1  extract.pixels() is called with NO target argument (viewport capture regression guard)
+ *   - CE-VP-2  k=2 buffer inference: renderer returns a 2×-sized buffer → frame produced correctly
+ *   - CE-VP-3  Garbage-length buffer (non-integer k) → returns null + console.warn called
+ *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
  * the established pattern in `module.test.ts` + `readers.test.ts`. No live
  * Foundry runtime required.
@@ -36,6 +41,7 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
  * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md Task 1
  * @see .planning/quick/260610-evs-contrast-normalization-setting-for-glass/260610-evs-PLAN.md Task 1
+ * @see .planning/quick/260610-fw7-fix-canvas-extractor-stage-vs-viewport-s/260610-fw7-PLAN.md Task 2
  * @see ./canvas-extractor.ts (system under test)
  */
 import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
@@ -85,12 +91,28 @@ interface CanvasMockOpts {
   readonly noRenderer?: boolean;
   /** Foundry scene id (defaults to "scene1"). */
   readonly sceneId?: string;
+  /**
+   * Buffer scale factor (default 1). When set to k, the mock returns a buffer
+   * of (width*k) × (height*k) × 4 bytes — simulates high-DPR / resolution-
+   * multiplied renderers that return a larger buffer than renderer.width×height.
+   * CE-VP-2 uses bufferScale:2 to test k=2 integer-resolution inference.
+   */
+  readonly bufferScale?: number;
+  /**
+   * Override the raw pixel buffer returned by extract.pixels() entirely.
+   * Takes precedence over fill and bufferScale. Use for CE-VP-3 garbage-length
+   * tests where the length must be an arbitrary non-k² value.
+   */
+  readonly rawBuffer?: Uint8Array;
 }
 
 /** Build a stub for Foundry's `canvas` global with controllable dimensions. */
 function makeCanvasMock(opts: CanvasMockOpts) {
   const fill = opts.fill ?? 0x80;
-  const pixels = new Uint8Array(opts.width * opts.height * 4).fill(fill);
+  const k = opts.bufferScale ?? 1;
+  const bufW = opts.width * k;
+  const bufH = opts.height * k;
+  const pixels: Uint8Array = opts.rawBuffer ?? new Uint8Array(bufW * bufH * 4).fill(fill);
   const base = {
     scene: { id: opts.sceneId ?? 'scene1' },
     stage: { __marker: 'stage' },
@@ -705,5 +727,121 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     // The two payloads must differ (different normalization produced different pixels).
     expect(emittedPayloads.length).toBe(2);
     expect(emittedPayloads[0]).not.toBe(emittedPayloads[1]);
+  });
+});
+
+// ── CE-VP: Viewport capture + byte-length guard (quick-task 260610-fw7) ──────
+
+describe('extractCurrentFrame — viewport capture & byte-length guard (CE-VP-1..CE-VP-3)', () => {
+  beforeEach(() => {
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-VP-1: extract.pixels() is called with NO target argument (viewport capture regression guard)', () => {
+    // This is the core regression guard for the live Forge corruption:
+    // pixels(canvas.stage) → whole-world buffer → row-stride mismatch → stripe corruption.
+    // After the fix, pixels() must be called with zero arguments.
+    const fakeCanvas = makeCanvasMock({ width: 400, height: 200, fill: 0x80 });
+    extractCurrentFrame(fakeCanvas);
+
+    const pixelsMock = (
+      fakeCanvas as {
+        app: { renderer: { extract: { pixels: ReturnType<typeof vi.fn> } } };
+      }
+    ).app.renderer.extract.pixels;
+
+    expect(pixelsMock).toHaveBeenCalledTimes(1);
+    // The call must have been made with ZERO arguments — no canvas.stage passed.
+    const callArgs = pixelsMock.mock.calls[0] as unknown[];
+    expect(callArgs.length).toBe(0);
+  });
+
+  it('CE-VP-2: k=2 buffer inference — oversized renderer buffer produces a correct frame', () => {
+    // Simulate a high-DPR renderer: renderer reports 400×200 but extract.pixels()
+    // returns a (400*2)×(200*2) = 800×400 buffer with bright 8×8 corner markers
+    // placed in the 800×400 space. The extractor should infer k=2, reinterpret dims
+    // as 800×400, and produce a valid 400×200 frame with visible corner markers.
+    const W = 400;
+    const H = 200;
+    const k = 2;
+    const bufW = W * k;
+    const bufH = H * k;
+    const bufSize = bufW * bufH * 4;
+
+    const buf = new Uint8Array(bufSize).fill(0x10); // dark field
+
+    // Place bright 8×8 markers at the four corners of the 800×400 space.
+    const markBuf = (x0: number, y0: number): void => {
+      for (let y = y0; y < y0 + 8; y++) {
+        for (let x = x0; x < x0 + 8; x++) {
+          const i = (y * bufW + x) * 4;
+          buf[i] = 0xff;
+          buf[i + 1] = 0xff;
+          buf[i + 2] = 0xff;
+          buf[i + 3] = 0xff;
+        }
+      }
+    };
+    markBuf(0, 0);
+    markBuf(bufW - 8, 0);
+    markBuf(0, bufH - 8);
+    markBuf(bufW - 8, bufH - 8);
+
+    const fakeCanvas = makeCanvasMock({ width: W, height: H, rawBuffer: buf });
+    const fp = extractCurrentFrame(fakeCanvas);
+
+    // Must not be null — k=2 inference path.
+    expect(fp).not.toBeNull();
+    if (fp === null) return;
+
+    // Frame dimensions must be the canonical 400×200.
+    expect(fp.width).toBe(400);
+    expect(fp.height).toBe(200);
+    expect(FramePixelsSchema.safeParse(fp).success).toBe(true);
+
+    // The 800×400 source fits exactly in 400×200 (scale = 0.5, no letterbox padding
+    // since 800/400 = 400/200 = 2:1 matches the target aspect ratio exactly, padX=0, padY=0).
+    const out = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
+    const padX = Math.floor((400 - Math.round(bufW * (400 / bufW))) / 2); // = 0
+    const padY = Math.floor((200 - Math.round(bufH * (200 / bufH))) / 2); // = 0
+    const sample = (x: number, y: number): number => out[(y * 400 + x) * 4] ?? 0;
+
+    // The four scaled corners must be brighter than the dark field (0x10).
+    expect(sample(padX + 1, padY)).toBeGreaterThan(0x40); // top-left
+    expect(sample(400 - padX - 2, padY)).toBeGreaterThan(0x40); // top-right
+    expect(sample(padX + 1, 199 - padY)).toBeGreaterThan(0x40); // bottom-left
+    expect(sample(400 - padX - 2, 199 - padY)).toBeGreaterThan(0x40); // bottom-right
+  });
+
+  it('CE-VP-3: garbage-length buffer (non-integer k) returns null and calls console.warn', () => {
+    // A buffer whose length is expected*3 has k = sqrt(3) ≈ 1.732 — non-integer.
+    // The extractor must return null and call console.warn (never emit garbage).
+    const W = 100;
+    const H = 100;
+    const expected = W * H * 4;
+    // Length = expected * 3 → k = sqrt(3), not an integer.
+    const garbageBuffer = new Uint8Array(expected * 3).fill(0xaa);
+
+    const fakeCanvas = makeCanvasMock({ width: W, height: H, rawBuffer: garbageBuffer });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = extractCurrentFrame(fakeCanvas);
+      expect(result).toBeNull();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      // The warning must include the expected and actual lengths.
+      const warnArgs = warnSpy.mock.calls[0] as unknown[];
+      // Some arg should contain the expected length and the actual length.
+      const argsStr = warnArgs.map(String).join(' ');
+      expect(argsStr).toContain(String(expected));
+      expect(argsStr).toContain(String(expected * 3));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
