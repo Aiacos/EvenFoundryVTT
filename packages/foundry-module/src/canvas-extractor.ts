@@ -6,27 +6,30 @@
  * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`) and on any fire
  * schedules a debounced (default 200 ms) call to {@link extractCurrentFrame},
  * which pulls pixels from `canvas.app.renderer.extract.pixels(canvas.stage)`,
- * center-crops/letterboxes them to EXACTLY the canonical 400×200 raster region
- * (ADR-0013 Amendment 1) and dispatches the typed payload via the
+ * fit-downscales them (whole scene, aspect preserved, box-average) onto EXACTLY
+ * the canonical 400×200 raster region (ADR-0013 Amendment 1, letterboxed) and
+ * dispatches the typed payload via the
  * caller-provided `emit` callback. The caller (`module.ts` ready hook) wraps
  * the payload in the existing Phase 3 `EnvelopeSchema` over the bridge WS —
  * Plan 06 does NOT introduce a new envelope schema (NF-1 closure).
  *
- * **Cropping strategy (CE-6)**
+ * **Scaling strategy (CE-6)**
  *
  * Plan 06 documents three options (downscale + smoothing, center-crop,
- * downscale + letterbox). This implementation picks **Option B+C (center-crop
- * to 400×200, letterbox-pad undersized sources to exactly 400×200)**. Rationale:
- *   - **Lossless within the cropped region** — no smoothing artifacts that
- *     would force the Plan 03 worker to re-quantize against a blurred source.
- *   - **No DOM/OffscreenCanvas dependency** — runs cleanly inside the Foundry
- *     desktop runtime (which lacks `OffscreenCanvas` in older Electron builds)
- *     AND inside the happy-dom test environment. A downscale/letterbox version
- *     can land later (Option A/C) once the Foundry desktop runtime is
- *     confirmed to expose `OffscreenCanvas` everywhere — gated by hardware SC
- *     #5 perf verification.
- *   - **Predictable timing** — a fixed-budget byte copy keeps the 200 ms
- *     debounce window from overflowing during heavy-scene draws.
+ * downscale + letterbox). This implementation is **Option C — fit-downscale +
+ * letterbox**, with a pure-JS box-average filter (no canvas API). Rationale:
+ *   - **Whole-scene capture** — the original Option B center-crop kept only a
+ *     400×200 window (~4% of a 1920×1080 render); the player saw a corner of
+ *     the map instead of the map. Fit-downscale preserves the ENTIRE scene
+ *     (debug map-frame-pipeline-dims, 2026-06-10).
+ *   - **No DOM/OffscreenCanvas dependency** — the box filter is a plain typed
+ *     array loop; it runs inside the Foundry desktop runtime (which lacks
+ *     `OffscreenCanvas` in older Electron builds) AND inside happy-dom tests.
+ *   - **Dither-friendly** — box averaging anti-aliases; nearest-neighbour
+ *     sampling would alias grid lines and walls into noise after the worker's
+ *     4-bit dither. Undersized sources are centered 1:1 (never upscaled).
+ *   - **Predictable timing** — ~2M byte reads on 1920×1080, fixed budget,
+ *     inside the 200 ms debounce window.
  *
  * **Debounce + idle scheduling (T-4a-06-01 mitigation)**
  *
@@ -60,9 +63,9 @@ const DEFAULT_DEBOUNCE_MS = 200;
 /**
  * Canonical raster-region width (ADR-0013 Amendment 1 — 4 image tiles of
  * 200×100 in a 2×2 layout). `raster-worker.ts` rejects any other frame width,
- * so the extractor ALWAYS emits exactly this (center-crop larger sources,
- * center-pad smaller ones). Supersedes the original 288 SDK-polyfill bound
- * (OQ-INV2-4, superseded by INV-2 re-verification 2026-06-05).
+ * so the extractor ALWAYS emits exactly this (fit-downscale larger sources,
+ * center 1:1 smaller ones, letterbox both). Supersedes the original 288
+ * SDK-polyfill bound (OQ-INV2-4, superseded by INV-2 re-verification 2026-06-05).
  */
 const MAX_WIDTH = 400;
 /** Canonical raster-region height — see {@link MAX_WIDTH}. */
@@ -114,9 +117,9 @@ export interface CanvasLike {
  * `FramePixels` payload ready to send across the bridge WS. Returns `null`
  * when the canvas is not yet ready (renderer absent).
  *
- * Cropping strategy: **center-crop + letterbox-pad** to exactly
- * `targetWidth × targetHeight`. The
- * trade-off vs downscale is documented in the module-level JSDoc.
+ * Scaling strategy: **fit-downscale (box-average) + letterbox** to exactly
+ * `targetWidth × targetHeight` — the whole scene is captured, aspect preserved.
+ * Trade-offs are documented in the module-level JSDoc.
  *
  * @param canvas - Foundry canvas (or test fixture matching `CanvasLike`)
  * @param opts   - Optional target dimensions (defaults to the canonical 400×200)
@@ -138,10 +141,6 @@ export function extractCurrentFrame(
   const targetWidth = Math.max(MIN_DIM, Math.min(opts.targetWidth ?? MAX_WIDTH, MAX_WIDTH));
   const targetHeight = Math.max(MIN_DIM, Math.min(opts.targetHeight ?? MAX_HEIGHT, MAX_HEIGHT));
 
-  // The cropped region is bounded by both source AND target.
-  const cropWidth = Math.min(srcWidth, targetWidth);
-  const cropHeight = Math.min(srcHeight, targetHeight);
-
   // Source RGBA bytes (PIXI v7 extract.pixels returns Uint8Array, top-left origin).
   let srcBytes: Uint8Array | Uint8ClampedArray;
   try {
@@ -155,30 +154,59 @@ export function extractCurrentFrame(
     return null;
   }
 
-  // Center-crop offsets — `Math.max(0, ...)` guards against undersized sources.
-  const xOff = Math.max(0, Math.floor((srcWidth - cropWidth) / 2));
-  const yOff = Math.max(0, Math.floor((srcHeight - cropHeight) / 2));
+  // Fit-downscale: scale the WHOLE source to fit inside the target, preserving
+  // aspect ratio. `Math.min(..., 1)` never upscales — undersized sources are
+  // centered 1:1 (upscaling adds no detail and blurs the dither input).
+  // This replaced the original center-crop, which on a typical 1920×1080
+  // Foundry render captured only a 400×200 window (~4% of the scene area)
+  // instead of the full map (debug map-frame-pipeline-dims, 2026-06-10).
+  const scale = Math.min(targetWidth / srcWidth, targetHeight / srcHeight, 1);
+  const outWidth = Math.max(1, Math.round(srcWidth * scale));
+  const outHeight = Math.max(1, Math.round(srcHeight * scale));
 
-  // Emit EXACTLY targetWidth×targetHeight: the cropped source region is
-  // center-aligned onto a black canvas of the target size (letterbox padding
-  // for undersized sources — pure byte copy, no smoothing, no OffscreenCanvas).
-  // `raster-worker.ts` rejects any frame that is not the canonical 400×200,
-  // so a "crop to at-most" frame from a small scene would be silently
-  // unprocessable (debug map-frame-pipeline-dims, 2026-06-10).
-  const out = new Uint8ClampedArray(targetWidth * targetHeight * 4); // zero-filled = opaque-black after alpha set
-  const padX = Math.floor((targetWidth - cropWidth) / 2);
-  const padY = Math.floor((targetHeight - cropHeight) / 2);
-  for (let row = 0; row < cropHeight; row++) {
-    const srcOffset = ((yOff + row) * srcWidth + xOff) * 4;
-    const dstOffset = ((padY + row) * targetWidth + padX) * 4;
-    // `srcBytes.subarray` is a view, not a copy; `set()` copies bytes into our owned buffer.
-    out.set(srcBytes.subarray(srcOffset, srcOffset + cropWidth * 4), dstOffset);
-  }
-  // Letterbox bands: force alpha=255 so the padding is opaque black, not transparent.
-  for (let i = 3; i < out.length; i += 4) {
-    if (out[i] === 0) {
-      out[i] = 255;
+  // Emit EXACTLY targetWidth×targetHeight: the scaled source is center-aligned
+  // onto an opaque-black letterbox canvas of the target size. `raster-worker.ts`
+  // rejects any frame that is not the canonical 400×200.
+  const out = new Uint8ClampedArray(targetWidth * targetHeight * 4); // zero-filled; alpha forced below
+  const padX = Math.floor((targetWidth - outWidth) / 2);
+  const padY = Math.floor((targetHeight - outHeight) / 2);
+
+  // Box-average downscale — pure JS, no OffscreenCanvas (Foundry's Electron
+  // runtime is not guaranteed to expose it; see module JSDoc rationale). Each
+  // destination pixel averages its source box: anti-aliased detail survives the
+  // 4-bit dither far better than nearest-neighbour point sampling. Cost on a
+  // 1920×1080 source ≈ 2M byte reads inside a 200 ms debounce window — negligible.
+  const invScale = 1 / scale;
+  for (let dy = 0; dy < outHeight; dy++) {
+    const sy0 = Math.floor(dy * invScale);
+    const sy1 = Math.min(srcHeight, Math.max(sy0 + 1, Math.floor((dy + 1) * invScale)));
+    for (let dx = 0; dx < outWidth; dx++) {
+      const sx0 = Math.floor(dx * invScale);
+      const sx1 = Math.min(srcWidth, Math.max(sx0 + 1, Math.floor((dx + 1) * invScale)));
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let n = 0;
+      for (let sy = sy0; sy < sy1; sy++) {
+        let si = (sy * srcWidth + sx0) * 4;
+        for (let sx = sx0; sx < sx1; sx++) {
+          r += srcBytes[si] ?? 0;
+          g += srcBytes[si + 1] ?? 0;
+          b += srcBytes[si + 2] ?? 0;
+          n++;
+          si += 4;
+        }
+      }
+      const di = ((padY + dy) * targetWidth + (padX + dx)) * 4;
+      out[di] = r / n;
+      out[di + 1] = g / n;
+      out[di + 2] = b / n;
     }
+  }
+  // Opaque alpha everywhere — content pixels AND letterbox bands. The G2
+  // pipeline has no transparency; un-set alpha would dither unpredictably.
+  for (let i = 3; i < out.length; i += 4) {
+    out[i] = 255;
   }
 
   return {

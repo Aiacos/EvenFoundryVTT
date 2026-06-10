@@ -9,7 +9,7 @@
  *   - CE-3   Two hook fires within debounce window coalesce to a single emit
  *   - CE-4   canvas.app.renderer undefined → emit NOT called; no throw
  *   - CE-5   extractCurrentFrame returns FramePixels with clamped dims
- *   - CE-6   Oversized canvas (1920×1080) is center-cropped to exactly 400×200 (ADR-0013 Amendment 1)
+ *   - CE-6   Oversized canvas (1920×1080) is fit-downscaled to exactly 400×200, whole scene captured (ADR-0013 Amendment 1)
  *   - CE-7   Idempotency: a second registerCanvasExtractor is a no-op
  *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
@@ -19,7 +19,7 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
  * @see ./canvas-extractor.ts (system under test)
  */
-import { FramePixelsSchema } from '@evf/shared-protocol';
+import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -231,18 +231,55 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
     expect(result.success).toBe(true);
   });
 
-  it('CE-6: oversized 1920×1080 source is center-cropped to exactly 400×200', () => {
-    const fakeCanvas = makeCanvasMock({ width: 1920, height: 1080, fill: 0x10 });
+  it('CE-6: oversized 1920×1080 source is fit-downscaled to exactly 400×200 — WHOLE scene captured', () => {
+    // Source: dark field with bright 8×8 markers in all four corners. The old
+    // center-crop kept only a 400×200 window — corner markers were lost. The
+    // fit-downscale must preserve them (whole-scene capture, debug
+    // map-frame-pipeline-dims 2026-06-10).
+    const W = 1920;
+    const H = 1080;
+    const fakeCanvas = makeCanvasMock({ width: W, height: H, fill: 0x10 });
+    const src = (
+      fakeCanvas as { app: { renderer: { extract: { pixels(): Uint8Array } } } }
+    ).app.renderer.extract.pixels();
+    const mark = (x0: number, y0: number): void => {
+      for (let y = y0; y < y0 + 8; y++) {
+        for (let x = x0; x < x0 + 8; x++) {
+          const i = (y * W + x) * 4;
+          src[i] = 0xff;
+          src[i + 1] = 0xff;
+          src[i + 2] = 0xff;
+        }
+      }
+    };
+    mark(0, 0);
+    mark(W - 8, 0);
+    mark(0, H - 8);
+    mark(W - 8, H - 8);
+
     const fp = extractCurrentFrame(fakeCanvas);
     expect(fp).not.toBeNull();
     if (fp === null) {
       return;
     }
-    // Canonical-region contract: center-crop yields EXACTLY 400×200.
+    // Canonical-region contract: fit-downscale yields EXACTLY 400×200.
     expect(fp.width).toBe(400);
     expect(fp.height).toBe(200);
-    // FramePixelsSchema must validate.
     expect(FramePixelsSchema.safeParse(fp).success).toBe(true);
+
+    // 1920×1080 fit in 400×200 → scale 200/1080, scaled size ≈ 356×200,
+    // letterboxed horizontally (padX ≈ 22). Sample the four scaled corners and
+    // assert they are markedly brighter than the 0x10 field — proof the source
+    // corners survived into the frame.
+    const out = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
+    const padX = Math.floor((400 - Math.round(W * (200 / H))) / 2);
+    const sample = (x: number, y: number): number => out[(y * 400 + x) * 4] ?? 0;
+    expect(sample(padX + 1, 0)).toBeGreaterThan(0x40); // top-left marker
+    expect(sample(400 - padX - 2, 0)).toBeGreaterThan(0x40); // top-right
+    expect(sample(padX + 1, 199)).toBeGreaterThan(0x40); // bottom-left
+    expect(sample(400 - padX - 2, 199)).toBeGreaterThan(0x40); // bottom-right
+    // Letterbox band is opaque black.
+    expect(sample(0, 100)).toBe(0);
   });
 
   it('returns null when canvas is not ready', () => {

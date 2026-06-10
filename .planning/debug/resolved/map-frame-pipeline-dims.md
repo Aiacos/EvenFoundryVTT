@@ -34,6 +34,9 @@ In canvas mode il percorso scena legacy (RasterController → worker → push su
 - Convivenza: delta hp 13 → tile-0 ripresa dall'HUD (`PF 13/63`), tile 1-3 ancora mappa (`63-hud-reclaim-zoom.png`) — gap di convivenza confermato e documentato.
 - Gate: typecheck 0 · lint:ci 0 errori · 3331/3331 test workspace · changeset `fix-frame-pixels-canonical-400x200`.
 
+### Follow-up (stessa sessione): fit-downscale whole-scene
+Dopo la verifica utente ("prendere proprio tutto il dettaglio"): il center-crop dell'extractor catturava solo una finestra 400×200 (~4% di un render 1920×1080). Sostituito con fit-downscale box-average puro-JS (aspect preservato, letterbox, mai upscale) — 1920×1080 → 400×200 in ~18ms. CE-6 riscritto come test di cattura whole-scene (marker ai 4 angoli del sorgente devono sopravvivere nel frame). Verifica live con l'extractor DI PRODUZIONE via scratch `packages/foundry-module/_scene_e2e.ts` (untracked): battlemap 1920×1080 dettagliata (3 sale, corridoio, laghetto, colonne, token) → intera scena visibile sugli occhiali (`/tmp/evf-shots/71-foundry-like-on-glasses-zoom.png`). NOTA: la mappa mostrata in precedenza (61-*) era sintetica già a 400×200 — il percorso Foundry-specifico (extractor) è ora coperto sia da unit test sia da run reale del codice di produzione.
+
 ## Files changed
 - packages/shared-protocol/src/payloads/frame.ts (+ frame.test.ts)
 - packages/foundry-module/src/canvas-extractor.ts (+ canvas-extractor.test.ts)
