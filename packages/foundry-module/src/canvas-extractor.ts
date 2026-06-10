@@ -121,6 +121,21 @@ export interface CanvasExtractorOpts {
    * @see {@link DEFAULT_INTERVAL_MS} for the production default (1000 ms).
    */
   readonly intervalMs?: number;
+  /**
+   * Per-capture normalize mode supplier.
+   *
+   * Evaluated on EVERY call to `performExtract` (including interval and
+   * hook-debounced captures), so a live toggle of the `mapContrastNormalize`
+   * Foundry setting applies on the next capture without re-registering.
+   *
+   * Return `'auto'` to apply luminance levels-stretch (lifts dark scenes to
+   * usable contrast on the G2's 4-bit display). Return `'off'` to pass frames
+   * through unchanged. Defaults to `'off'` when absent.
+   *
+   * @see {@link extractCurrentFrame} `normalize` option for the algorithm.
+   * @see `mapContrastNormalize` Foundry client setting (settings.ts).
+   */
+  readonly getNormalize?: () => 'off' | 'auto';
 }
 
 /**
@@ -151,13 +166,39 @@ export interface CanvasLike {
  * `targetWidth × targetHeight` — the whole scene is captured, aspect preserved.
  * Trade-offs are documented in the module-level JSDoc.
  *
+ * **Contrast normalization (`normalize: 'auto'`)**
+ *
+ * When `normalize` is `'auto'`, a Rec.709 luminance levels-stretch is applied
+ * to the CONTENT region (the `outWidth × outHeight` rectangle placed at
+ * `padX / padY`) BEFORE the letterbox bands are filled. This ensures:
+ *
+ * - Normalization stats come from real scene pixels only (never from the
+ *   zero-valued padding) so dark dungeons are lifted to readable contrast.
+ * - Letterbox bands stay pure black (R=G=B=0) and alpha stays 255 — they are
+ *   zeroed AFTER the normalization pass.
+ * - Already-bright frames (p98−p2 ≥ 220) and degenerate near-flat frames
+ *   (p98−p2 < 8) are left byte-identical to the `'off'` path.
+ *
+ * Algorithm: compute per-pixel luma = 0.2126·R + 0.7152·G + 0.0722·B; build a
+ * 256-bin histogram over the content region; pick p2/p98 percentile luma values;
+ * if range = p98−p2 is in [8, 219], map each channel uniformly:
+ * `out = clamp(round((c − p2) × 255 / range), 0, 255)`. All arithmetic is pure
+ * JS typed-array loops — no OffscreenCanvas / DOM (matches the no-DOM rationale
+ * in the module JSDoc).
+ *
  * @param canvas - Foundry canvas (or test fixture matching `CanvasLike`)
- * @param opts   - Optional target dimensions (defaults to the canonical 400×200)
+ * @param opts   - Optional target dimensions and normalization mode
+ *                 (defaults to 400×200, normalize:'off')
  * @returns Typed FramePixels payload or `null` if the canvas is not ready
  */
 export function extractCurrentFrame(
   canvas: CanvasLike,
-  opts: { readonly targetWidth?: number; readonly targetHeight?: number } = {},
+  opts: {
+    readonly targetWidth?: number;
+    readonly targetHeight?: number;
+    /** `'auto'` enables luminance levels-stretch; `'off'` (default) passes frames through unchanged. */
+    readonly normalize?: 'off' | 'auto';
+  } = {},
 ): FramePixels | null {
   const renderer = canvas.app?.renderer;
   if (renderer === undefined) {
@@ -233,6 +274,69 @@ export function extractCurrentFrame(
       out[di + 2] = b / n;
     }
   }
+  // ── Contrast normalization (normalize: 'auto') ─────────────────────────
+  // Applied to the CONTENT region only (outWidth × outHeight at padX/padY),
+  // BEFORE alpha-fill and BEFORE letterbox bands are set — so padding bytes
+  // (still zero) never pollute the percentile computation, and bands stay black.
+  //
+  // Algorithm: Rec.709 luma per pixel → 256-bin histogram → p2/p98 percentiles
+  // → linear stretch when range ∈ [8, 219] (skip wide or degenerate frames).
+  if (opts.normalize === 'auto' && outWidth > 0 && outHeight > 0) {
+    // Step 1: build 256-bin luma histogram over content pixels.
+    const hist = new Uint32Array(256);
+    const contentPixelCount = outWidth * outHeight;
+    for (let dy = 0; dy < outHeight; dy++) {
+      for (let dx = 0; dx < outWidth; dx++) {
+        const di = ((padY + dy) * targetWidth + (padX + dx)) * 4;
+        const r = out[di] ?? 0;
+        const g = out[di + 1] ?? 0;
+        const b = out[di + 2] ?? 0;
+        // Rec.709 luma, rounded to [0..255] bin.
+        const luma = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+        const bin = Math.min(255, Math.max(0, luma));
+        hist[bin] = (hist[bin] ?? 0) + 1;
+      }
+    }
+
+    // Step 2: cumulative-count percentile lookup for p2 and p98.
+    const p2Target = Math.round(contentPixelCount * 0.02);
+    const p98Target = Math.round(contentPixelCount * 0.98);
+    let p2 = 0;
+    let p98 = 255;
+    let cumulative = 0;
+    let p2Found = false;
+    for (let bin = 0; bin <= 255; bin++) {
+      cumulative += hist[bin] ?? 0;
+      if (!p2Found && cumulative >= p2Target) {
+        p2 = bin;
+        p2Found = true;
+      }
+      if (cumulative >= p98Target) {
+        p98 = bin;
+        break;
+      }
+    }
+
+    const range = p98 - p2;
+
+    // Step 3: apply stretch only when range is in [8, 219] (skip wide/flat frames).
+    if (range >= 8 && range < 220) {
+      for (let dy = 0; dy < outHeight; dy++) {
+        for (let dx = 0; dx < outWidth; dx++) {
+          const di = ((padY + dy) * targetWidth + (padX + dx)) * 4;
+          const r = out[di] ?? 0;
+          const g = out[di + 1] ?? 0;
+          const b = out[di + 2] ?? 0;
+          // Apply same (p2, range) to all channels — luma-derived endpoints,
+          // per-channel application — preserves hue, lifts overall contrast.
+          out[di] = Math.min(255, Math.max(0, Math.round(((r - p2) * 255) / range)));
+          out[di + 1] = Math.min(255, Math.max(0, Math.round(((g - p2) * 255) / range)));
+          out[di + 2] = Math.min(255, Math.max(0, Math.round(((b - p2) * 255) / range)));
+        }
+      }
+    }
+  }
+
   // Opaque alpha everywhere — content pixels AND letterbox bands. The G2
   // pipeline has no transparency; un-set alpha would dither unpredictably.
   for (let i = 3; i < out.length; i += 4) {
@@ -286,9 +390,14 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       if (typeof canvas === 'undefined' || canvas === null) {
         return;
       }
+      // Evaluate getNormalize on EACH capture so a live settings change
+      // (mapContrastNormalize toggle) takes effect on the next frame without
+      // re-registering the extractor (quick-task 260610-evs EVS-NORM-01).
+      const normalize: 'off' | 'auto' = opts.getNormalize?.() ?? 'off';
       const frame = extractCurrentFrame(canvas as CanvasLike, {
         ...(opts.targetWidth !== undefined ? { targetWidth: opts.targetWidth } : {}),
         ...(opts.targetHeight !== undefined ? { targetHeight: opts.targetHeight } : {}),
+        normalize,
       });
       if (frame !== null) {
         opts.emit(frame);

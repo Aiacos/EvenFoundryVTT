@@ -453,41 +453,58 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
 // ── CE-NORM: Contrast normalization (quick-task 260610-evs Task 1) ────────────
 
 /**
- * Build a canvas mock whose source pixels represent a dark scene with a modest
- * bright patch so the luma range is narrow but >= 8 (non-degenerate).
+ * Build a canvas mock whose source pixels represent a dark scene with three
+ * distinct luma bands, so the levels-stretch visibly lifts the middle band.
  *
- * The majority of pixels have R=G=B=darkVal; a small region has R=G=B=brightVal.
- * This yields a luma p2 near darkVal and a luma p98 near brightVal, with
- * range = brightVal − darkVal in the 8..219 band that triggers the stretch.
+ * Layout (by pixel count):
+ *   2%   very-dark fringe (veryDarkVal) — sets p2 below the majority
+ *  80%   mid-dark content (midVal)      — the pixels we want lifted
+ *  18%   bright accents (brightVal)     — drives p98 high enough for range ≥ 8
+ *
+ * After normalization, midVal is mapped to a much higher output value.
+ * Example: veryDarkVal=3, midVal=21, brightVal=50 → p2≈3, p98≈50,
+ * range=47; midVal maps to (21-3)*255/47 ≈ 98 (vs raw 21 before normalization).
  */
 function makeDarkSceneCanvas(
   width: number,
   height: number,
-  darkVal: number,
+  veryDarkVal: number,
+  midVal: number,
   brightVal: number,
 ): ReturnType<typeof makeCanvasMock> {
-  const pixels = new Uint8Array(width * height * 4);
-  // Fill all with dark value.
+  const totalPixels = width * height;
+  const pixels = new Uint8Array(totalPixels * 4);
+
+  // 80% mid-dark content (majority) — fills most of the frame.
   for (let i = 0; i < pixels.length; i += 4) {
-    pixels[i] = darkVal;
-    pixels[i + 1] = darkVal;
-    pixels[i + 2] = darkVal;
+    pixels[i] = midVal;
+    pixels[i + 1] = midVal;
+    pixels[i + 2] = midVal;
     pixels[i + 3] = 255;
   }
-  // Bright patch in the center (roughly 10% of pixels so p98 is influenced).
-  const patchW = Math.max(1, Math.floor(width * 0.15));
-  const patchH = Math.max(1, Math.floor(height * 0.15));
-  const x0 = Math.floor((width - patchW) / 2);
-  const y0 = Math.floor((height - patchH) / 2);
-  for (let y = y0; y < y0 + patchH; y++) {
-    for (let x = x0; x < x0 + patchW; x++) {
+
+  // 2% very-dark fringe — top rows; sets p2 below midVal.
+  const darkRowCount = Math.max(1, Math.floor(totalPixels * 0.02) / width);
+  for (let y = 0; y < darkRowCount; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      pixels[i] = veryDarkVal;
+      pixels[i + 1] = veryDarkVal;
+      pixels[i + 2] = veryDarkVal;
+    }
+  }
+
+  // 18% bright accents — bottom rows; drives p98 to brightVal.
+  const brightRowCount = Math.max(1, Math.floor(totalPixels * 0.18) / width);
+  for (let y = height - brightRowCount; y < height; y++) {
+    for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       pixels[i] = brightVal;
       pixels[i + 1] = brightVal;
       pixels[i + 2] = brightVal;
-      pixels[i + 3] = 255;
     }
   }
+
   return {
     scene: { id: 'dark-scene' },
     stage: { __marker: 'stage' },
@@ -536,10 +553,11 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
   });
 
   it('CE-NORM-1: dark-scene content with normalize:"auto" has significantly higher median luma than normalize:"off"', () => {
-    // Dark scene: majority pixels at luma ~21, bright patch at ~50 → range ~29 (triggers stretch).
+    // Dark scene: 80% of pixels at midVal=21, p2 near 3 (2% fringe), p98 near 50
+    // → range ≈ 47; midVal maps to (21-3)*255/47 ≈ 98 vs raw 21 (4.7× lift).
     const W = 200;
     const H = 100;
-    const fakeCanvas = makeDarkSceneCanvas(W, H, 21, 50);
+    const fakeCanvas = makeDarkSceneCanvas(W, H, 3, 21, 50);
 
     const fpOff = extractCurrentFrame(fakeCanvas, { normalize: 'off' });
     const fpAuto = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
@@ -621,7 +639,7 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     // 1920×1080 dark source → will be letterboxed horizontally.
     const W = 1920;
     const H = 1080;
-    const fakeCanvas = makeDarkSceneCanvas(W, H, 15, 40);
+    const fakeCanvas = makeDarkSceneCanvas(W, H, 3, 15, 40);
 
     const fp = extractCurrentFrame(fakeCanvas, { normalize: 'auto' });
     expect(fp).not.toBeNull();
@@ -656,7 +674,7 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
 
     const W = 200;
     const H = 100;
-    vi.stubGlobal('canvas', makeDarkSceneCanvas(W, H, 15, 45));
+    vi.stubGlobal('canvas', makeDarkSceneCanvas(W, H, 3, 15, 45));
 
     const emittedPayloads: string[] = [];
     const emit = vi.fn((payload: { pixelsB64: string }) => {
