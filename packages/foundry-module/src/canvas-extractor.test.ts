@@ -10,7 +10,7 @@
  *   - CE-3   Two hook fires within debounce window coalesce to a single emit
  *   - CE-4   canvas.app.renderer undefined → emit NOT called; no throw
  *   - CE-5   extractCurrentFrame returns FramePixels with clamped dims
- *   - CE-6   Oversized canvas (1920×1080) is fit-downscaled to exactly 400×200, whole scene captured (ADR-0013 Amendment 1)
+ *   - CE-6   Oversized canvas (1920×1080) is fit-downscaled to exactly 576×288, whole scene captured (ADR-0013 Amendment 1)
  *   - CE-7   Idempotency: a second registerCanvasExtractor is a no-op
  *   - CE-INT-1  Interval fires emit N times (no hooks) at intervalMs cadence
  *   - CE-INT-2  unregister clears the interval — no additional emits after unregister
@@ -214,8 +214,8 @@ describe('registerCanvasExtractor — debounced emit (CE-2, CE-3)', () => {
     if (result.success) {
       // Canonical-region contract (ADR-0013 Amendment 1): frames are ALWAYS
       // exactly 400×200 — crop or letterbox-pad, never variable dims.
-      expect(result.data.width).toBe(400);
-      expect(result.data.height).toBe(200);
+      expect(result.data.width).toBe(576);
+      expect(result.data.height).toBe(288);
       expect(result.data.sceneId).toBe('scene1');
       expect(result.data.ts).toBeGreaterThan(0);
     }
@@ -284,15 +284,15 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
     if (fp === null) {
       return;
     }
-    expect(fp.width).toBe(400);
-    expect(fp.height).toBe(200);
+    expect(fp.width).toBe(576);
+    expect(fp.height).toBe(288);
     const result = FramePixelsSchema.safeParse(fp);
     expect(result.success).toBe(true);
   });
 
-  it('CE-6: oversized 1920×1080 source is fit-downscaled to exactly 400×200 — WHOLE scene captured', () => {
+  it('CE-6: oversized 1920×1080 source is fit-downscaled to exactly 576×288 — WHOLE scene captured', () => {
     // Source: dark field with bright 8×8 markers in all four corners. The old
-    // center-crop kept only a 400×200 window — corner markers were lost. The
+    // center-crop kept only a 576×288 window — corner markers were lost. The
     // fit-downscale must preserve them (whole-scene capture, debug
     // map-frame-pipeline-dims 2026-06-10).
     const W = 1920;
@@ -321,24 +321,24 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
     if (fp === null) {
       return;
     }
-    // Canonical-region contract: fit-downscale yields EXACTLY 400×200.
-    expect(fp.width).toBe(400);
-    expect(fp.height).toBe(200);
+    // Canonical-region contract: fit-downscale yields EXACTLY 576×288.
+    expect(fp.width).toBe(576);
+    expect(fp.height).toBe(288);
     expect(FramePixelsSchema.safeParse(fp).success).toBe(true);
 
-    // 1920×1080 fit in 400×200 → scale 200/1080, scaled size ≈ 356×200,
+    // 1920×1080 fit in 576×288 → scale 288/1080, scaled size ≈ 356×288,
     // letterboxed horizontally (padX ≈ 22). Sample the four scaled corners and
     // assert they are markedly brighter than the 0x10 field — proof the source
     // corners survived into the frame.
     const out = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
-    const padX = Math.floor((400 - Math.round(W * (200 / H))) / 2);
-    const sample = (x: number, y: number): number => out[(y * 400 + x) * 4] ?? 0;
+    const padX = Math.floor((576 - Math.round(W * (288 / H))) / 2);
+    const sample = (x: number, y: number): number => out[(y * 576 + x) * 4] ?? 0;
     expect(sample(padX + 1, 0)).toBeGreaterThan(0x40); // top-left marker
-    expect(sample(400 - padX - 2, 0)).toBeGreaterThan(0x40); // top-right
-    expect(sample(padX + 1, 199)).toBeGreaterThan(0x40); // bottom-left
-    expect(sample(400 - padX - 2, 199)).toBeGreaterThan(0x40); // bottom-right
+    expect(sample(576 - padX - 2, 0)).toBeGreaterThan(0x40); // top-right
+    expect(sample(padX + 1, 287)).toBeGreaterThan(0x40); // bottom-left
+    expect(sample(576 - padX - 2, 287)).toBeGreaterThan(0x40); // bottom-right
     // Letterbox band is opaque black.
-    expect(sample(0, 100)).toBe(0);
+    expect(sample(0, 144)).toBe(0);
   });
 
   it('returns null when canvas is not ready', () => {
@@ -416,8 +416,8 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
     const result = FramePixelsSchema.safeParse(payload);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.width).toBe(400);
-      expect(result.data.height).toBe(200);
+      expect(result.data.width).toBe(576);
+      expect(result.data.height).toBe(288);
     }
   });
 
@@ -594,8 +594,8 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
   it('CE-NORM-1: dark-scene content with normalize:"auto" has significantly higher median luma than normalize:"off"', () => {
     // Dark scene: 80% of pixels at midVal=21, p2 near 3 (2% fringe), p98 near 50
     // → range ≈ 47; midVal maps to (21-3)*255/47 ≈ 98 vs raw 21 (4.7× lift).
-    const W = 200;
-    const H = 100;
+    const W = 288;
+    const H = 144;
     const fakeCanvas = makeDarkSceneCanvas(W, H, 3, 21, 50);
 
     const fpOff = extractCurrentFrame(fakeCanvas, { normalize: 'off' });
@@ -605,16 +605,16 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     expect(fpAuto).not.toBeNull();
     if (fpOff === null || fpAuto === null) return;
 
-    const outW = W; // source fits inside 400×200 → no scaling, placed at padX/padY
+    const outW = W; // source fits inside 576×288 → no scaling, placed at padX/padY
     const outH = H;
-    const padX = Math.floor((400 - outW) / 2);
-    const padY = Math.floor((200 - outH) / 2);
+    const padX = Math.floor((576 - outW) / 2);
+    const padY = Math.floor((288 - outH) / 2);
 
     const decodedOff = decodeFramePixels(fpOff.pixelsB64, fpOff.width, fpOff.height);
     const decodedAuto = decodeFramePixels(fpAuto.pixelsB64, fpAuto.width, fpAuto.height);
 
-    const medianOff = contentMedianLuma(decodedOff, 400, outW, outH, padX, padY);
-    const medianAuto = contentMedianLuma(decodedAuto, 400, outW, outH, padX, padY);
+    const medianOff = contentMedianLuma(decodedOff, 576, outW, outH, padX, padY);
+    const medianAuto = contentMedianLuma(decodedAuto, 576, outW, outH, padX, padY);
 
     // The normalized output should lift the median substantially (at least double).
     expect(medianAuto).toBeGreaterThan(medianOff * 1.5);
@@ -686,14 +686,14 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
 
     const decoded = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
 
-    // Compute padX for a 1920×1080 → 400×200 fit (scale = 200/1080).
-    const scale = Math.min(400 / W, 200 / H, 1);
+    // Compute padX for a 1920×1080 → 576×288 fit (scale = 288/1080).
+    const scale = Math.min(576 / W, 288 / H, 1);
     const outW = Math.round(W * scale);
-    const padX = Math.floor((400 - outW) / 2);
+    const padX = Math.floor((576 - outW) / 2);
 
-    // Left letterbox band sample at (0, 100) — must be pure black, alpha 255.
+    // Left letterbox band sample at (0, 144) — must be pure black, alpha 255.
     if (padX > 0) {
-      const idx = (100 * 400 + 0) * 4;
+      const idx = (144 * 576 + 0) * 4;
       expect(decoded[idx]).toBe(0); // R
       expect(decoded[idx + 1]).toBe(0); // G
       expect(decoded[idx + 2]).toBe(0); // B
@@ -783,12 +783,12 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
   });
 
   it('CE-VP-2: k=2 buffer inference — oversized renderer buffer produces a correct frame', () => {
-    // Simulate a high-DPR renderer: renderer reports 400×200 but extract.pixels()
-    // returns a (400*2)×(200*2) = 800×400 buffer with bright 8×8 corner markers
-    // placed in the 800×400 space. The extractor should infer k=2, reinterpret dims
-    // as 800×400, and produce a valid 400×200 frame with visible corner markers.
-    const W = 400;
-    const H = 200;
+    // Simulate a high-DPR renderer: renderer reports 576×288 but extract.pixels()
+    // returns a (576*2)×(288*2) = 1152×576 buffer with bright 8×8 corner markers
+    // placed in the 1152×576 space. The extractor should infer k=2, reinterpret dims
+    // as 1152×576, and produce a valid 576×288 frame with visible corner markers.
+    const W = 576;
+    const H = 288;
     const k = 2;
     const bufW = W * k;
     const bufH = H * k;
@@ -796,7 +796,7 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
 
     const buf = new Uint8Array(bufSize).fill(0x10); // dark field
 
-    // Place bright 8×8 markers at the four corners of the 800×400 space.
+    // Place bright 8×8 markers at the four corners of the 1152×576 space.
     const markBuf = (x0: number, y0: number): void => {
       for (let y = y0; y < y0 + 8; y++) {
         for (let x = x0; x < x0 + 8; x++) {
@@ -820,23 +820,23 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     expect(fp).not.toBeNull();
     if (fp === null) return;
 
-    // Frame dimensions must be the canonical 400×200.
-    expect(fp.width).toBe(400);
-    expect(fp.height).toBe(200);
+    // Frame dimensions must be the canonical 576×288.
+    expect(fp.width).toBe(576);
+    expect(fp.height).toBe(288);
     expect(FramePixelsSchema.safeParse(fp).success).toBe(true);
 
-    // The 800×400 source fits exactly in 400×200 (scale = 0.5, no letterbox padding
-    // since 800/400 = 400/200 = 2:1 matches the target aspect ratio exactly, padX=0, padY=0).
+    // The 1152×576 source fits exactly in 576×288 (scale = 0.5, no letterbox padding
+    // since 1152/576 = 576/288 = 2:1 matches the target aspect ratio exactly, padX=0, padY=0).
     const out = decodeFramePixels(fp.pixelsB64, fp.width, fp.height);
-    const padX = Math.floor((400 - Math.round(bufW * (400 / bufW))) / 2); // = 0
-    const padY = Math.floor((200 - Math.round(bufH * (200 / bufH))) / 2); // = 0
-    const sample = (x: number, y: number): number => out[(y * 400 + x) * 4] ?? 0;
+    const padX = Math.floor((576 - Math.round(bufW * (576 / bufW))) / 2); // = 0
+    const padY = Math.floor((288 - Math.round(bufH * (288 / bufH))) / 2); // = 0
+    const sample = (x: number, y: number): number => out[(y * 576 + x) * 4] ?? 0;
 
     // The four scaled corners must be brighter than the dark field (0x10).
     expect(sample(padX + 1, padY)).toBeGreaterThan(0x40); // top-left
-    expect(sample(400 - padX - 2, padY)).toBeGreaterThan(0x40); // top-right
-    expect(sample(padX + 1, 199 - padY)).toBeGreaterThan(0x40); // bottom-left
-    expect(sample(400 - padX - 2, 199 - padY)).toBeGreaterThan(0x40); // bottom-right
+    expect(sample(576 - padX - 2, padY)).toBeGreaterThan(0x40); // top-right
+    expect(sample(padX + 1, 287 - padY)).toBeGreaterThan(0x40); // bottom-left
+    expect(sample(576 - padX - 2, 287 - padY)).toBeGreaterThan(0x40); // bottom-right
   });
 
   it('CE-VP-3: garbage-length buffer (non-integer k) returns null and calls console.warn', () => {

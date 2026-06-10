@@ -112,15 +112,16 @@ const DEFAULT_DEBOUNCE_MS = 200;
  */
 const DEFAULT_INTERVAL_MS = 1000;
 /**
- * Canonical raster-region width (ADR-0013 Amendment 1 — 4 image tiles of
- * 200×100 in a 2×2 layout). `raster-worker.ts` rejects any other frame width,
- * so the extractor ALWAYS emits exactly this (fit-downscale larger sources,
- * center 1:1 smaller ones, letterbox both). Supersedes the original 288
- * SDK-polyfill bound (OQ-INV2-4, superseded by INV-2 re-verification 2026-06-05).
+ * Canonical raster-region width — FULL SCREEN 576×288 (layout B, 2026-06-10:
+ * 4 image tiles of 288×144 in a 2×2 grid; SDK d.ts verbatim caps image
+ * containers at 20–288 × 20–144, so 2×2 covers the whole G2 display — the
+ * earlier 200×100/400×200 region was INV-2 drift). The extractor ALWAYS emits
+ * exactly this (fit-downscale larger sources, center 1:1 smaller ones,
+ * letterbox both); the g2-app canvas pipeline consumes it at the same dims.
  */
-const MAX_WIDTH = 400;
+const MAX_WIDTH = 576;
 /** Canonical raster-region height — see {@link MAX_WIDTH}. */
-const MAX_HEIGHT = 200;
+const MAX_HEIGHT = 288;
 /** FramePixelsSchema lower bound (we clamp here too). */
 const MIN_DIM = 20;
 
