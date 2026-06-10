@@ -922,8 +922,8 @@ describe('RCSP-INV1: canvas sheet panel raster INV-1 SHA-256 tile hashes', () =>
 
     // ── Constants ──────────────────────────────────────────────────────────────
 
-    const FRAME_W = 400;
-    const FRAME_H = 200;
+    const FRAME_W = 576;
+    const FRAME_H = 288;
 
     /**
      * Path to the committed golden fixture.

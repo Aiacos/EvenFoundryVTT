@@ -80,52 +80,65 @@ export type UnsubscribeFn = () => void;
  * test doubles can implement it without importing the full `MapCanvasLayer` class.
  *
  * T-d42-02: `setFrame` receives pre-validated, padded 400×200 bytes from the
- * `padFrameToCanonical` step below — malformed bytes never reach `setFrame`.
+ * `padFrame` step below — malformed bytes never reach `setFrame`.
  */
 export interface MapFrameSink {
   /**
-   * Store a new 400×200 RGBA frame.
+   * Store a new full-screen RGBA frame.
    *
-   * @param rgba Pre-validated, canonical 400×200 RGBA bytes from `padFrameToCanonical`.
-   * @param w    Frame width (always `CANONICAL_W = 400`).
-   * @param h    Frame height (always `CANONICAL_H = 200`).
+   * @param rgba Pre-validated, canonical 576×288 RGBA bytes from `padFrame`.
+   * @param w    Frame width (always `CANVAS_CANONICAL_W = 576`).
+   * @param h    Frame height (always `CANVAS_CANONICAL_H = 288`).
    */
   setFrame(rgba: Uint8ClampedArray, w: number, h: number): void;
 }
 
-/** Canonical raster-region width (ADR-0013 Amendment 1 — matches raster-worker FRAME_W). */
-const CANONICAL_W = 400;
+/** Canvas-mode canonical width — full screen (layout B, 2026-06-10). */
+const CANVAS_CANONICAL_W = 576;
 
-/** Canonical raster-region height (ADR-0013 Amendment 1 — matches raster-worker FRAME_H). */
-const CANONICAL_H = 200;
+/** Canvas-mode canonical height — full screen (layout B, 2026-06-10). */
+const CANVAS_CANONICAL_H = 288;
+
+/** Glyph-mode canonical width (legacy raster-worker contract — exactly 400). */
+const GLYPH_CANONICAL_W = 400;
+
+/** Glyph-mode canonical height (legacy raster-worker contract — exactly 200). */
+const GLYPH_CANONICAL_H = 200;
 
 /**
- * Center-pad an RGBA frame onto an opaque-black canonical 400×200 buffer.
+ * Center-pad an RGBA frame onto an opaque-black canonical buffer.
  *
- * Frames already at 400×200 are returned as-is (no copy — preserves the
+ * Frames already at target size are returned as-is (no copy — preserves the
  * transferable-ownership property of `decodeFramePixels`). Smaller frames are
  * centered on a zero-filled buffer whose padding alpha is forced to 255 so the
  * letterbox bands dither to solid black, not undefined-transparent.
- * Oversized frames cannot occur (FramePixelsSchema caps at 400×200).
+ * Returns `null` for frames LARGER than the target (cannot pad down): the
+ * glyph legacy path (400×200 worker contract) skips full-screen 576×288 frames
+ * from module ≥v0.1.14 — glyph map streaming is superseded by canvas mode.
  */
-function padFrameToCanonical(
+function padFrame(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
-): Uint8ClampedArray {
-  if (width === CANONICAL_W && height === CANONICAL_H) {
+  targetW: number,
+  targetH: number,
+): Uint8ClampedArray | null {
+  if (width === targetW && height === targetH) {
     return pixels;
   }
-  const out = new Uint8ClampedArray(CANONICAL_W * CANONICAL_H * 4);
+  if (width > targetW || height > targetH) {
+    return null;
+  }
+  const out = new Uint8ClampedArray(targetW * targetH * 4);
   // Opaque-black base: set every alpha byte; RGB stays 0.
   for (let i = 3; i < out.length; i += 4) {
     out[i] = 255;
   }
-  const padX = Math.floor((CANONICAL_W - width) / 2);
-  const padY = Math.floor((CANONICAL_H - height) / 2);
+  const padX = Math.floor((targetW - width) / 2);
+  const padY = Math.floor((targetH - height) / 2);
   for (let row = 0; row < height; row++) {
     const srcOffset = row * width * 4;
-    const dstOffset = ((padY + row) * CANONICAL_W + padX) * 4;
+    const dstOffset = ((padY + row) * targetW + padX) * 4;
     out.set(pixels.subarray(srcOffset, srcOffset + width * 4), dstOffset);
   }
   return out;
@@ -156,7 +169,7 @@ function isMapFrameSink(sink: RasterControllerLike | MapFrameSink): sink is MapF
  *     canvas-mode-unreachable via this branch — see the rationale comment below.
  *
  *   - **Glyph fallback** (when `sink` is a `RasterControllerLike`): calls
- *     `sink.requestFrame(framed, CANONICAL_W, CANONICAL_H)` fire-and-forget with
+ *     `sink.requestFrame(framed, 400, 200)` fire-and-forget with
  *     a `.catch` guard — the Worker + dither pipeline path.
  *
  * Returns an unsubscribe closure that calls `ws.removeEventListener('message', handler)`.
@@ -215,18 +228,42 @@ export function attachSceneInputToWs(
       //     (debug map-frame-pipeline-dims, 2026-06-10). The module emitter
       //     already letterboxes to exactly 400×200; this is the consumer-side
       //     defence for older module builds and test producers.
-      const framed = padFrameToCanonical(pixels, fp.data.width, fp.data.height);
-
-      // 5) Dispatch to the appropriate sink.
+      // 4b/5) Mode-specific canonical pad + dispatch.
       if (isMapFrameSink(sink)) {
-        // canvas mode routes scene frames to the compositor MapCanvasLayer (z=0);
-        // the RasterController map-tile path is reserved for the glyph fallback only
-        // — see debug map-frame-pipeline-dims, no dual map-tile/HUD contention.
-        sink.setFrame(framed, CANONICAL_W, CANONICAL_H);
+        // canvas mode routes scene frames to the compositor MapCanvasLayer (z=0)
+        // at the FULL-SCREEN 576×288 canonical (layout B). Old modules (≤v0.1.13)
+        // emit 400×200 — letterbox-centered inside 576×288 (backward compat).
+        const framed = padFrame(
+          pixels,
+          fp.data.width,
+          fp.data.height,
+          CANVAS_CANONICAL_W,
+          CANVAS_CANONICAL_H,
+        );
+        if (framed === null) {
+          // Unreachable while FramePixelsSchema caps at 576×288 — defensive.
+          console.warn('[scene-input] frame larger than canvas canonical — dropped');
+          return;
+        }
+        sink.setFrame(framed, CANVAS_CANONICAL_W, CANVAS_CANONICAL_H);
       } else {
-        // Glyph fallback — Plan 03 RasterController is the Worker boundary.
+        // Glyph fallback — Plan 03 RasterController is the Worker boundary
+        // (exactly 400×200). Full-screen 576×288 frames from module ≥v0.1.14
+        // cannot fit and are skipped: glyph map streaming is superseded by
+        // canvas mode (default boot since Phase 20).
+        const framed = padFrame(
+          pixels,
+          fp.data.width,
+          fp.data.height,
+          GLYPH_CANONICAL_W,
+          GLYPH_CANONICAL_H,
+        );
+        if (framed === null) {
+          console.warn('[scene-input] full-screen frame on glyph path — dropped (canvas-only)');
+          return;
+        }
         // Attach a `.catch` so a rejected Promise logs and does not crash the WS listener.
-        sink.requestFrame(framed, CANONICAL_W, CANONICAL_H).catch((err) => {
+        sink.requestFrame(framed, GLYPH_CANONICAL_W, GLYPH_CANONICAL_H).catch((err) => {
           console.warn('[scene-input] requestFrame rejected', err);
         });
       }

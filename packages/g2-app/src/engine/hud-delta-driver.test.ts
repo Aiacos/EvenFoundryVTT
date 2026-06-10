@@ -50,23 +50,23 @@ vi.mock('xxhash-wasm', () => {
 
 // ── Frame geometry constants ──────────────────────────────────────────────────
 
-const FRAME_W = 400;
-const FRAME_H = 200;
-const TILE_W = 200;
-const TILE_H = 100;
+const FRAME_W = 576;
+const FRAME_H = 288;
+const TILE_W = 288;
+const TILE_H = 144;
 const RGBA_STRIDE = 4;
 
 // ── Test double factories ─────────────────────────────────────────────────────
 
 /**
- * Build a synthetic 400×200×4 RGBA buffer where all pixels are zero (black).
+ * Build a synthetic 576×288×4 RGBA buffer where all pixels are zero (black).
  */
 function makeBlankRgba(): Uint8ClampedArray {
   return new Uint8ClampedArray(FRAME_W * FRAME_H * RGBA_STRIDE);
 }
 
 /**
- * Fill the tile-0 (TL, x=0..199, y=0..99) quadrant with a non-zero byte value
+ * Fill the tile-0 (TL, x=0..287, y=0..143) quadrant with a non-zero byte value
  * so that tile-0 PNG bytes will differ from the blank baseline.
  *
  * @param rgba Mutable 400×200×4 RGBA buffer.

@@ -19,7 +19,7 @@
  *
  * # Geometry coupling
  *
- * `COMPOSITOR_W = 400` and `COMPOSITOR_H = 200` MUST equal `FRAME_W`/`FRAME_H`
+ * `COMPOSITOR_W = 576` and `COMPOSITOR_H = 288` MUST equal `FRAME_W`/`FRAME_H`
  * in `hud-raster-frame.ts`. The master RGBA buffer produced by `composite()` is
  * passed directly to `buildHudTiles()`, which validates
  * `rgba.length === 400*200*4 = 320000`.
@@ -40,7 +40,7 @@ import type { CanvasLayer, ZIndex } from './layer-types.js';
  * MUST equal `FRAME_W` in `hud-raster-frame.ts` (400 px).
  * INV-2 verified 2026-06-05: 4 tiles × 100 px each, 2 columns = 400 px.
  */
-export const COMPOSITOR_W = 400;
+export const COMPOSITOR_W = 576;
 
 /**
  * Master canvas height (pixels).
@@ -48,7 +48,7 @@ export const COMPOSITOR_W = 400;
  * MUST equal `FRAME_H` in `hud-raster-frame.ts` (200 px).
  * INV-2 verified 2026-06-05: 2 rows × 100 px each = 200 px.
  */
-export const COMPOSITOR_H = 200;
+export const COMPOSITOR_H = 288;
 
 // ── Internal types ─────────────────────────────────────────────────────────────
 

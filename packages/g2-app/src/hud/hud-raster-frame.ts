@@ -1,13 +1,15 @@
 /**
- * HUD raster frame assembler — slices a 400×200 RGBA frame into 4 × 200×100
+ * HUD raster frame assembler — slices a 576×288 RGBA frame into 4 × 288×144
  * dithered 4-bit PNG tiles ready for `updateImageRawData`.
  *
  * # Geometry (INV-2 verified 2026-06-05)
  *
- * G2 image containers are capped at 20–200 px wide × 20–100 px tall
+ * G2 image containers are capped at 20–288 px wide × 20–144 px tall (SDK d.ts
+ * verbatim `PB：Width，范围 20~288` / `Height 20~144` — INV-2 re-verified 2026-06-10;
+ * the earlier 200×100 claim was drift)
  * (`hub.evenrealities.com/docs/guides/display`, verified 2026-06-05). The
- * raster surface is therefore 400×200 (4 tiles of 200×100 each), NOT 576×288.
- * On-screen placement of the 400×200 region inside 576×288 is parameterized
+ * raster surface is therefore the FULL SCREEN 576×288 (4 tiles of 288×144 each
+ * in a 2×2 grid — layout B, user decision 2026-06-10). No placement parameter
  * (default deferred to Phase 20).
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
@@ -22,8 +24,8 @@
  * - `buildGreyscalePalette()` — canonical 16-step 0..240 greyscale palette
  *   (verbatim from raster-worker.ts, same algorithm)
  * - `ditherTile()` — Floyd-Steinberg dither via image-q against the palette
- *   (adapted for TILE_W/TILE_H = 200×100)
- * - `UPNG.encode([rgba.buffer], 200, 100, 16)` — 4-bit indexed-palette PNG
+ *   (adapted for TILE_W/TILE_H = 288×144)
+ * - `UPNG.encode([rgba.buffer], 288, 144, 16)` — 4-bit indexed-palette PNG
  *   (verbatim call pattern from raster-worker.ts Stage 9)
  *
  * No xxhash/delta/RLE — `buildHudTiles` encodes all 4 tiles unconditionally
@@ -48,25 +50,25 @@ import * as UPNG from 'upng-js';
 // ── Frame / tile geometry ─────────────────────────────────────────────────────
 
 /**
- * Raster surface width: 4 tiles × 100 px each arranged in 2 columns = 400 px.
+ * Raster surface width: 2 columns × 288 px = 576 px (full screen).
  * INV-2 verified 2026-06-05 (`hub.evenrealities.com/docs/guides/display`).
  */
-const FRAME_W = 400;
+const FRAME_W = 576;
 /**
- * Raster surface height: 2 rows × 100 px each = 200 px.
+ * Raster surface height: 2 rows × 144 px = 288 px (full screen).
  * INV-2 verified 2026-06-05 (`hub.evenrealities.com/docs/guides/display`).
  */
-const FRAME_H = 200;
+const FRAME_H = 288;
 /**
- * Tile width — max per Even Realities image container spec (20–200 px).
+ * Tile width — max per Even Realities image container spec (20–288 px).
  * Source: `hub.evenrealities.com/docs/guides/display`, verified 2026-06-05.
  */
-const TILE_W = 200;
+const TILE_W = 288;
 /**
  * Tile height — max per Even Realities image container spec (20–100 px).
  * Source: `hub.evenrealities.com/docs/guides/display`, verified 2026-06-05.
  */
-const TILE_H = 100;
+const TILE_H = 144;
 /** Number of tiles per frame (2×2 layout). */
 const TILES_PER_FRAME = 4;
 
@@ -271,7 +273,7 @@ export function buildHudTiles(rgba: Uint8ClampedArray): HudTile[] {
   if (rgba.length !== expectedLength) {
     throw new Error(
       `[EVF] buildHudTiles: rgba buffer has wrong length ${rgba.length}; ` +
-        `expected 400*200*4 = ${expectedLength}`,
+        `expected ${FRAME_W}*${FRAME_H}*4 = ${expectedLength}`,
     );
   }
 

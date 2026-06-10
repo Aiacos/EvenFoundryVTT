@@ -7,12 +7,11 @@
  *   1. Subscribes to `character.delta` WS events; validates every payload via
  *      `CharacterSnapshotSchema.safeParse` (T-20-01 mitigation). Malformed
  *      payloads are logged and dropped — the layer does NOT become dirty.
- *   2. **Chrome pre-bake (RFONT-02 / SC2):** `attachCanvas()` fires-and-forgets
- *      an async init (`_initAsync`) that loads VT323 via `ensureVt323Loaded()`
- *      and then tries to pre-bake the static chrome (frames, labels, tab strip,
- *      backgrounds) into an `ImageBitmap` via `createImageBitmap`. In happy-dom
- *      (and iOS 16 WKWebView workers that lack `createImageBitmap`), `_chromeBitmap`
- *      stays `null`; subsequent `paint()` calls fall back to drawing chrome inline.
+ *   2. **Corner card (layout B, 2026-06-10):** `paint()` draws a small
+ *      translucent card in the TOP-RIGHT corner (fps line when the indicator is
+ *      enabled, then PF/CA/LV) over the full-screen 576×288 map. No full-frame
+ *      chrome, no strip — the map owns the screen. `attachCanvas()` async-loads
+ *      VT323 via `ensureVt323Loaded()` for crisp card text.
  *   3. **Dirty-gate (RFONT-03 / SC3):** `isDirty()` returns `true` at construction
  *      and after every valid `character.delta`. `paint()` resets `_dirty = false`
  *      as its LAST statement. The `CanvasCompositor` skips `paint()` for clean
@@ -23,12 +22,8 @@
  * # Async init lifecycle
  *
  * `attachCanvas()` is synchronous (preserving the `CanvasLayer` interface). The
- * async work (font load + chrome pre-bake) is fired and stored in
- * `_chromePrebakePromise`. On every `paint()` call, if `_chromeBitmap` is still
- * `null`, chrome is drawn inline (once per dirty cycle). Once the pre-bake
- * completes and `_chromeBitmap` is non-null, subsequent `paint()` calls GPU-blit
- * the cached bitmap instead. This guarantees correctness in both environments:
- * first-paint fallback in happy-dom tests, and optimal GPU-blit in production.
+ * async font load is fired and stored in `_chromePrebakePromise` so callers
+ * (LayerManager.bundle STEP 2.5) can await it before the first composite.
  *
  * # Threat mitigations
  *
@@ -44,11 +39,8 @@
  *   (§canvas-status-hud-layer.ts: class skeleton, _initAsync, paint dirty-gate, _onDelta)
  */
 
-import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
-import { TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
-import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { CanvasLayer } from '../engine/layer-types.js';
 import type { CharacterDeltaEvents } from './status-hud-layer.js';
 import { ensureVt323Loaded } from './vt323-font-loader.js';
@@ -65,19 +57,14 @@ export interface CanvasStatusHudLayerOpts {
   /** WS event bus — must expose `character.delta`. */
   readonly wsEvents: CharacterDeltaEvents;
   /**
-   * Optional bridge reference for pushing the status line to the native `hud-status`
-   * text container (id 5 in the HUD raster page schema). When provided, each valid
-   * `character.delta` fires a `bridge.textContainerUpgrade` with a single-line
-   * summary (PG name + PF/HP + turn/combat indicator) so the status is readable as
-   * crisp native G2 text on top of the raster map.
+   * Optional repaint trigger (typically `hudDeltaDriver.requestCycle()`).
    *
-   * When absent, the layer works in canvas-only mode (paint() still renders the
-   * status into the HUD raster canvas — backwards-compatible with test environments
-   * that don't pass a bridge).
-   *
-   * Added in Task 3 (260610-d42): status relocation out of the opaque raster chrome.
+   * Called whenever the corner-card CONTENT changes outside a WS delta (the
+   * 1 Hz fps ticker, the [F] toggle) so the debounced delta loop composites
+   * and pushes the changed tiles. WS `character.delta` events do not need it —
+   * the driver already subscribes to that channel.
    */
-  readonly bridge?: Pick<EvenAppBridge, 'textContainerUpgrade'>;
+  readonly onDirty?: () => void;
 
   /**
    * Optional FPS supplier (typically `hudDeltaDriver.getFps()`).
@@ -116,15 +103,6 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   private _fontFamily = '16px monospace';
 
   /**
-   * Pre-baked chrome `ImageBitmap` — null until `_prebakeChrome()` succeeds.
-   *
-   * In environments that lack `createImageBitmap` (happy-dom, some iOS WKWebView
-   * Worker contexts), this stays `null` and `paint()` falls back to `_drawChrome`
-   * inline (SC2 fallback path).
-   */
-  private _chromeBitmap: ImageBitmap | null = null;
-
-  /**
    * Fire-and-forget Promise returned by `_initAsync`.
    *
    * Stored so callers can await it in tests or via `LayerManager.bundle()`.
@@ -157,7 +135,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    * `undefined` in test environments that don't inject a bridge. In production, wired
    * via `CanvasStatusHudLayerOpts.bridge` from `boot-engine-core`.
    */
-  private readonly _bridge: Pick<EvenAppBridge, 'textContainerUpgrade'> | undefined;
+  private readonly _onDirty: (() => void) | undefined;
 
   /** Optional FPS supplier (see {@link CanvasStatusHudLayerOpts.getFps}). */
   private readonly _getFps: (() => number) | undefined;
@@ -168,8 +146,8 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   /** 1 Hz FPS ticker handle — started in `attachCanvas`, cleared in `destroy`. */
   private _fpsTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** Last line actually pushed to hud-status — dedupe gate (zero-push-on-idle). */
-  private _lastPushedLine = '';
+  /** Last composed corner-card content — dedupe gate (zero-repaint-on-idle). */
+  private _lastCardKey = '';
 
   // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -182,7 +160,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    * @param opts Constructor options — must provide `wsEvents`.
    */
   constructor(opts: CanvasStatusHudLayerOpts) {
-    this._bridge = opts.bridge;
+    this._onDirty = opts.onDirty;
     this._getFps = opts.getFps;
     // Subscribe to character.delta (T-20-01: all payloads go through safeParse gate).
     this._unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
@@ -234,13 +212,13 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     this._dirty = true;
 
     // FPS ticker (1 Hz) — refreshes the right-aligned fps field on the
-    // hud-status row. Push is dedupe-gated inside _pushStatusLine, so an idle
+    // corner card. Repaint is dedupe-gated inside _refreshCard, so an idle
     // HUD (fps value unchanged) produces ZERO text pushes. Started here (mount
     // time) rather than in the constructor so unit tests that never attach a
     // canvas get no timer side-effects. Cleared in destroy().
     if (this._getFps !== undefined && this._fpsTimer === null) {
       this._fpsTimer = setInterval(() => {
-        this._pushStatusLine();
+        this._refreshCard();
       }, 1000);
     }
   }
@@ -261,14 +239,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
       return;
     }
     ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
-    if (this._chromeBitmap !== null) {
-      // GPU-blit pre-baked chrome (RFONT-02 / SC2 fast path).
-      ctx.drawImage(this._chromeBitmap, 0, 0);
-    } else {
-      // Fallback: draw chrome inline (happy-dom / pre-bake not yet settled).
-      _drawChrome(ctx, this._fontFamily);
-    }
-    _drawDynamic(ctx, this._snapshot, this._fontFamily);
+    _drawCornerCard(ctx, this._composeCardLines(), this._fontFamily);
     // MUST be the last line — do NOT double-guard isDirty() here.
     this._dirty = false;
   }
@@ -342,10 +313,6 @@ export class CanvasStatusHudLayer implements CanvasLayer {
       clearInterval(this._fpsTimer);
       this._fpsTimer = null;
     }
-    if (this._chromeBitmap !== null) {
-      this._chromeBitmap.close();
-      this._chromeBitmap = null;
-    }
   }
 
   // ── Test-only accessors ───────────────────────────────────────────────────
@@ -378,34 +345,6 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   private async _initAsync(): Promise<void> {
     this._fontFamily = await ensureVt323Loaded();
-    await this._prebakeChrome();
-  }
-
-  /**
-   * Draw static chrome onto a scratch `OffscreenCanvas` and cache as `ImageBitmap`.
-   *
-   * On success: `_chromeBitmap` is set; subsequent `paint()` calls GPU-blit it.
-   * On failure (e.g., `createImageBitmap` or `OffscreenCanvas` absent in happy-dom):
-   * logs a debug message and leaves `_chromeBitmap = null`. `paint()` falls back to
-   * `_drawChrome` inline (SC2 fallback path).
-   */
-  private async _prebakeChrome(): Promise<void> {
-    try {
-      const scratch = new OffscreenCanvas(COMPOSITOR_W, COMPOSITOR_H);
-      const sCtx = scratch.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
-      if (sCtx === null) {
-        console.warn(
-          '[EVF] CanvasStatusHudLayer._prebakeChrome: scratch getContext("2d") returned null — skipping pre-bake',
-        );
-        return;
-      }
-      _drawChrome(sCtx, this._fontFamily);
-      this._chromeBitmap = await createImageBitmap(scratch);
-    } catch {
-      // createImageBitmap absent (happy-dom) or OffscreenCanvas unavailable.
-      // _chromeBitmap stays null; paint() draws chrome inline as fallback.
-      // Silent — this is a normal environment-detection path, not an error.
-    }
   }
 
   // ── Private — delta handler ───────────────────────────────────────────────
@@ -433,7 +372,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     this._dirty = true;
 
     // Update the native hud-status card (dedupe-gated push).
-    this._pushStatusLine();
+    this._refreshCard();
   }
 
   /**
@@ -441,13 +380,13 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    *
    * Default ON. Wired to the Quick Action menu `[F] FPS` toggle in
    * boot-engine-core (persisted in the Even Hub kv store — never localStorage).
-   * Takes effect on the next push (immediate `_pushStatusLine()` call).
+   * Takes effect on the next composite (immediate `_refreshCard()` call).
    *
    * @param enabled `true` to show the FPS field, `false` to hide it.
    */
   setFpsIndicatorEnabled(enabled: boolean): void {
     this._fpsEnabled = enabled;
-    this._pushStatusLine();
+    this._refreshCard();
   }
 
   /**
@@ -458,13 +397,25 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    *
    * Best-effort: fire-and-forget; rejected promise is caught and logged.
    */
-  private _pushStatusLine(): void {
-    if (this._bridge === undefined) {
+  private _refreshCard(): void {
+    const lines = this._composeCardLines();
+    const key = lines.join('\n');
+    if (key === this._lastCardKey) {
       return;
     }
-    // Multi-line right-column card (172 px ≈ 15 chars/line at the ~11.5 px/char
-    // native font). First line: fps indicator (top-right of the screen, user
-    // request 2026-06-10) when enabled; then the status lines.
+    this._lastCardKey = key;
+    this._dirty = true;
+    // Outside-WS triggers (fps ticker, [F] toggle) need an explicit cycle kick;
+    // character.delta events already schedule one via the driver subscription.
+    this._onDirty?.();
+  }
+
+  /**
+   * Compose the corner-card lines: fps first (when the indicator is enabled
+   * and a supplier is wired), then PF/CA/LV from the latest snapshot.
+   * Empty array = no card painted (boot state with indicator off).
+   */
+  private _composeCardLines(): string[] {
     const lines: string[] = [];
     if (this._fpsEnabled && this._getFps !== undefined) {
       const fps = Math.min(99, Math.round(this._getFps()));
@@ -474,23 +425,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
       const snap = this._snapshot;
       lines.push(`PF ${snap.hp}/${snap.maxHp}`, `CA ${snap.ac}`, `LV ${snap.level}`);
     }
-    const line = lines.join('\n');
-    if (line === this._lastPushedLine) {
-      return;
-    }
-    this._lastPushedLine = line;
-    const idField = resolveContainerIdField('hud-status');
-    void Promise.resolve(
-      this._bridge.textContainerUpgrade(
-        new TextContainerUpgrade({
-          ...idField,
-          containerName: 'hud-status',
-          content: line,
-        }),
-      ),
-    ).catch((err: unknown) => {
-      console.warn('[EVF] canvas-status-hud-layer: hud-status textContainerUpgrade failed', err);
-    });
+    return lines;
   }
 }
 
@@ -499,140 +434,49 @@ export class CanvasStatusHudLayer implements CanvasLayer {
 // without needing to reach into private class internals.
 
 /** Background color — black fill (dithered to darkest palette step on G2). */
-const CHROME_BG = '#000000';
+/** Corner-card geometry (layout B): top-right plate over the full-screen map. */
+const CARD_W = 132;
+const CARD_MARGIN = 6;
+const CARD_PAD = 6;
+const CARD_LINE_H = 18;
+
+/** Translucent card plate — dark veil, map remains visible underneath. */
+const CARD_BG = 'rgba(0, 0, 0, 0.55)';
 
 /** Foreground color — white lines/text (quantized to brightest palette step on G2). */
 const CHROME_FG = '#ffffff';
 
 /**
- * Minimum gap in pixels between adjacent status fields on the header line.
+ * Draw the top-right corner card: fps line first (when present), then the
+ * PF/CA/LV status lines, on a translucent dark plate so the text reads over
+ * the full-screen map raster without hiding it (layout B, 2026-06-10).
  *
- * `_drawDynamic` draws three fields (`PF …`, `CA …`, `LV …`) using
- * `ctx.measureText` to position each field immediately after the previous one
- * with this gap. Without measured positioning the fields overlap when HP values
- * are multi-digit (e.g. `PF 41/63` extends ~75 px at VT323 16px, past the old
- * hardcoded `x=60` start for `CA`). Field overlap causes two character shapes
- * to superimpose, producing the "doubled status line" visual artifact
- * (canvas-body-blank-ws-drop debug session, 2026-06-08).
+ * Exported for direct unit testing (SC2 idiom — tests spy on ctx calls).
  *
- * @see _drawDynamic
- */
-export const STATUS_FIELD_GAP_PX = 8;
-
-/**
- * Draw the static HUD chrome onto `ctx`.
- *
- * "Chrome" = everything that does NOT change with character state: outer frame,
- * section dividers, tab strip backgrounds, and static labels. Called:
- *   - During `_prebakeChrome()` onto a scratch OffscreenCanvas (production path).
- *   - Inline from `paint()` when `_chromeBitmap` is null (happy-dom fallback).
- *
- * Sets explicit `fillStyle`/`strokeStyle` so chrome and dynamic text render
- * visibly on the G2 4-bit greyscale phosphor display (WR-01 fix). The color
- * convention mirrors `hud-canvas-renderer.ts`: `#000000` background +
- * `#ffffff` foreground (quantized by the dither pipeline to the darkest/brightest
- * palette steps respectively).
- *
- * The implementation is intentionally minimal for Phase 20 — it draws the outer
- * frame rectangle and a tab-strip separator. Future phases will enrich this
- * (detailed borders, section labels, background fills).
- *
- * @param ctx          The 2D rendering context to draw on.
- * @param _fontFamily  CSS font string — reserved for Phase 21 chrome section labels.
- *                     Currently unused (no text is drawn in chrome for Phase 20).
- */
-function _drawChrome(
-  ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
-  _fontFamily: string,
-): void {
-  // Task 3 (260610-d42): the full-frame opaque black fill
-  //   ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H)
-  // has been REMOVED so the z=0 MapCanvasLayer shows through the HUD layer.
-  // The status line is now pushed to the native hud-status text container instead
-  // (see _onDelta bridge push). Only a minimal top-row strip background is drawn
-  // for legibility of the dynamic text painted by _drawDynamic.
-
-  // Top-row background: fill only the 27px status strip (not the whole frame).
-  // This provides a dark background for the dynamic status text (PF/CA/LV) so it
-  // reads over the map raster, without hiding the rest of the 400×200 map.
-  ctx.fillStyle = CHROME_BG;
-  ctx.fillRect(0, 0, COMPOSITOR_W, 27);
-
-  // Outer border — white (brightest palette step → phosphor green on G2).
-  ctx.strokeStyle = CHROME_FG;
-  ctx.strokeRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
-  // Tab-strip separator line (divides HP/AC header from body).
-  const TAB_H = 24;
-  ctx.fillStyle = CHROME_FG;
-  ctx.fillRect(0, TAB_H, COMPOSITOR_W, 1);
-  // WR-03 fix: the trailing `ctx.font = fontFamily` was a dead no-op — the font
-  // was immediately overwritten by _drawDynamic and no text is drawn here.
-  // Removed. Phase 21 chrome labels will set font at their own draw site.
-  // TODO(ADR-0013): Phase 21 — draw section labels in chrome using fontFamily.
-}
-
-/**
- * Draw dynamic HUD data (HP, AC, level) over the chrome.
- *
- * Called from `paint()` on every dirty cycle. Renders the `snapshot` values
- * in the VT323 pixel font. If `snapshot` is `null` (no delta received yet),
- * renders an idle placeholder.
- *
- * # Field layout (FIX-DD-01 — measured positioning)
- *
- * The three status fields (`PF …`, `CA …`, `LV …`) are drawn left-to-right
- * with `ctx.measureText` so each field starts immediately after the previous
- * one ends, plus a fixed {@link STATUS_FIELD_GAP_PX} gap. Hard-coded x
- * offsets are NOT used for `CA` and `LV` because the rendered width of `PF …`
- * varies with HP values (e.g. `PF 1/1` ≈ 36 px vs `PF 100/100` ≈ 90 px at
- * VT323 16 px). Without measured positioning the fields overlap when HP values
- * are multi-digit, producing the "doubled glyph" artifact (two character shapes
- * at overlapping x positions look like the same string rendered twice with a
- * slight offset). `ctx.measureText` is available in all OffscreenCanvas and
- * HTMLCanvasElement 2D contexts used by this layer (WebView, Web Worker, and
- * the test environment fake-ctx that now includes a `measureText` stub).
- *
- * The implementation is intentionally minimal for Phase 20 — it renders a
- * single status line. Future phases (21/23) will enrich with slots, turns, and
- * conditions panels.
- *
- * @param ctx       The 2D rendering context to draw on.
- * @param snapshot  Latest `CharacterSnapshot` or `null` if not yet received.
+ * @param ctx        The 2D rendering context to draw on.
+ * @param lines      Card lines (already composed; empty array = no card).
  * @param fontFamily CSS font string resolved by `ensureVt323Loaded`.
  */
-export function _drawDynamic(
+export function _drawCornerCard(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
-  snapshot: CharacterSnapshot | null,
+  lines: ReadonlyArray<string>,
   fontFamily: string,
 ): void {
-  // WR-01 fix: set explicit fillStyle so text renders visibly on the G2 greyscale
-  // phosphor display. White (#ffffff) quantizes to the brightest 4-bit palette step.
-  ctx.fillStyle = CHROME_FG;
-  ctx.font = fontFamily;
-  if (snapshot === null) {
-    ctx.fillText('PF — / —', 4, 18);
+  if (lines.length === 0) {
     return;
   }
-
-  // FIX-DD-01: use measureText for dynamic field positioning so the three
-  // fields never overlap regardless of HP/AC/level value widths.
-  //
-  // The old hardcoded offsets (60, 100) were set for a single HP example but
-  // did not account for VT323's actual glyph widths at 16px. At those widths,
-  // `PF 41/63` renders ~75 px — past the x=60 start of `CA …`, causing both
-  // strings to paint on top of each other and produce superimposed glyphs that
-  // look like "the same status content doubled with a slight x-offset".
-
-  const X_START = 4;
-  const hpText = `PF ${snapshot.hp}/${snapshot.maxHp}`;
-  ctx.fillText(hpText, X_START, 18);
-  const hpWidth = ctx.measureText(hpText).width;
-
-  const acX = X_START + hpWidth + STATUS_FIELD_GAP_PX;
-  const acText = `CA ${snapshot.ac}`;
-  ctx.fillText(acText, acX, 18);
-  const acWidth = ctx.measureText(acText).width;
-
-  const lvX = acX + acWidth + STATUS_FIELD_GAP_PX;
-  ctx.fillText(`LV ${snapshot.level}`, lvX, 18);
+  const w = CARD_W;
+  const h = CARD_PAD * 2 + lines.length * CARD_LINE_H;
+  const x = COMPOSITOR_W - w - CARD_MARGIN;
+  const y = CARD_MARGIN;
+  // Translucent plate — dithers to a dark veil, keeps the map readable below.
+  ctx.fillStyle = CARD_BG;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = CHROME_FG;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = CHROME_FG;
+  ctx.font = fontFamily;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i] ?? '', x + CARD_PAD, y + CARD_PAD + (i + 1) * CARD_LINE_H - 4);
+  }
 }

@@ -16,7 +16,7 @@
  *   - SI-8   unsubscribe() removes the ws message listener
  *   - SI-CANVAS-1  canvas-mode: valid frame_pixels routed to MapCanvasLayer.setFrame
  *                  (NOT RasterController.requestFrame)
- *   - SI-CANVAS-2  canvas-mode: padFrameToCanonical normalization preserved before setFrame
+ *   - SI-CANVAS-2  canvas-mode: padFrame normalization preserved before setFrame
  *
  * NF-1 closure: scene-input.ts uses the real `EnvelopeSchema` export and
  * reads the carrier via the `payload` field; the test fixtures include the
@@ -339,13 +339,13 @@ describe('attachSceneInputToWs — canvas-mode MapCanvasLayer routing (SI-CANVAS
     expect(ctrl.requestFrame).not.toHaveBeenCalled();
   });
 
-  it('SI-CANVAS-2: padFrameToCanonical normalization preserved — setFrame receives 400×200', () => {
+  it('SI-CANVAS-2: padFrame normalization preserved — setFrame receives canonical 576×288', () => {
     const ws = makeMockSocket();
     const sink = makeMockMapSink();
 
     attachSceneInputToWs(ws as unknown as WebSocket, sink);
 
-    // Undersized 288×144 frame is padded to 400×200 before setFrame.
+    // Undersized 288×144 frame is padded to the full-screen 576×288 canonical.
     ws.fire(JSON.stringify(makeFrameEnvelope({ width: 288, height: 144 })));
 
     expect(sink.setFrameCalls).toHaveLength(1);
@@ -353,8 +353,8 @@ describe('attachSceneInputToWs — canvas-mode MapCanvasLayer routing (SI-CANVAS
     if (firstCall === undefined) throw new Error('setFrameCalls[0] is undefined');
     const [rgba, w, h] = firstCall;
     expect(rgba).toBeInstanceOf(Uint8ClampedArray);
-    expect(rgba.length).toBe(400 * 200 * 4);
-    expect(w).toBe(400);
-    expect(h).toBe(200);
+    expect(rgba.length).toBe(576 * 288 * 4);
+    expect(w).toBe(576);
+    expect(h).toBe(288);
   });
 });

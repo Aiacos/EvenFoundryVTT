@@ -19,7 +19,7 @@
  *           re-renders via bridge.textContainerUpgrade on `status-hud`.
  *   - SR-9: frame_pixels WS envelope → attachSceneInputToWs dispatches to
  *           MapCanvasLayer.setFrame in canvas mode (worker bypassed), with
- *           canonical 400×200 padding preserved (verified via MapCanvasLayer
+ *           canonical 576×288 padding preserved (verified via MapCanvasLayer
  *           prototype spy — Rule 1 auto-fix 2026-06-10: canvas mode routes
  *           frame_pixels to MapFrameSink, not RasterController).
  *   - SR-10: bootEngine !== bootEngineForTest (W-4 boundary — distinct symbols).
@@ -432,7 +432,7 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       const beforeSentCount = worker._sentMessages().length;
 
       // Build a valid frame_pixels envelope (288×144 undersized source — padded
-      // to canonical 400×200 by padFrameToCanonical before reaching setFrame).
+      // to the canvas canonical 576×288 by padFrame before reaching setFrame).
       const width = 288;
       const height = 144;
       const rgba = new Uint8ClampedArray(width * height * 4);
@@ -454,16 +454,16 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       // ── Positive assertion: MapCanvasLayer.setFrame was called exactly once.
       expect(setFrameSpy).toHaveBeenCalledTimes(1);
 
-      // ── Shape assertion: padFrameToCanonical applied → 400×200 canonical dims.
+      // ── Shape assertion: padFrame applied → 576×288 canvas canonical dims.
       const [receivedRgba, receivedW, receivedH] = setFrameSpy.mock.calls[0] as [
         Uint8ClampedArray,
         number,
         number,
       ];
-      expect(receivedW).toBe(400);
-      expect(receivedH).toBe(200);
+      expect(receivedW).toBe(576);
+      expect(receivedH).toBe(288);
       expect(receivedRgba).toBeInstanceOf(Uint8ClampedArray);
-      expect(receivedRgba.length).toBe(400 * 200 * 4);
+      expect(receivedRgba.length).toBe(576 * 288 * 4);
 
       // ── Negative assertion: canvas mode bypasses the Worker pipeline entirely.
       const afterSentCount = worker._sentMessages().length;

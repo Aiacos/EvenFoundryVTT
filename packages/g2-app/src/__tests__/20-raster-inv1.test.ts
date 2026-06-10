@@ -3,8 +3,8 @@
  *
  * # Contract (INV-1 raster extension, Phase 20)
  *
- * A deterministic synthetic RGBA (400×200 gradient where pixel value at (x,y)
- * = (y*400 + x) mod 256) is fed to `buildHudTiles()`. Each of the 4 resulting
+ * A deterministic synthetic RGBA (576×288 gradient where pixel value at (x,y)
+ * = (y*576 + x) mod 256) is fed to `buildHudTiles()`. Each of the 4 resulting
  * PNG tile `bytes` is SHA-256-hashed (Node `crypto.createHash`, the synchronous
  * API — NOT `crypto.subtle.digest`) and compared against a committed golden
  * fixture at `packages/shared-render/src/fixtures/status-hud.raster-hash.json`.
@@ -43,8 +43,8 @@ import { buildHudTiles } from '../hud/hud-raster-frame.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const FRAME_W = 400;
-const FRAME_H = 200;
+const FRAME_W = 576;
+const FRAME_H = 288;
 
 /**
  * Path to the committed golden fixture file.
@@ -66,7 +66,7 @@ const FIXTURE_PATH = path.resolve(
  * this is the RINV-01 canonical source and must NOT be changed without updating
  * the committed fixture.
  *
- * @returns A 400×200×4 Uint8ClampedArray deterministic gradient.
+ * @returns A 576×288×4 Uint8ClampedArray deterministic gradient.
  */
 function makeSyntheticRgba(): Uint8ClampedArray {
   const buf = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);

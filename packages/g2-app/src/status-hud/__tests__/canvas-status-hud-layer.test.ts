@@ -9,8 +9,7 @@
  *   - SC3 (RFONT-03): `paint()` fires ONLY when `isDirty()` is `true`; idle
  *     composites skip paint; a `character.delta` re-sets `isDirty()` to `true`.
  *   - Malformed `character.delta` is dropped without dirtying the layer.
- *   - FIX-DD-01: `_drawDynamic` status fields (`PF`, `CA`, `LV`) never overlap —
- *     each field's `fillText` x position is at least STATUS_FIELD_GAP_PX pixels
+ *   - CARD-01: `_drawCornerCard` paints the top-right card (fps + PF/CA/LV lines)
  *     after the end of the previous field (regression guard for the doubled-glyph
  *     canvas bug, canvas-body-blank-ws-drop debug session 2026-06-08).
  *
@@ -24,11 +23,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import {
-  _drawDynamic,
-  CanvasStatusHudLayer,
-  STATUS_FIELD_GAP_PX,
-} from '../canvas-status-hud-layer.js';
+import { _drawCornerCard, CanvasStatusHudLayer } from '../canvas-status-hud-layer.js';
 import type { CharacterDeltaEvents } from '../status-hud-layer.js';
 
 // ── Shared mock factories ─────────────────────────────────────────────────────
@@ -372,135 +367,48 @@ describe('CanvasStatusHudLayer', () => {
 
   // ── FIX-DD-01: non-overlapping field positions ───────────────────────────
 
-  describe('FIX-DD-01: _drawDynamic status fields do not overlap (regression guard)', () => {
-    /**
-     * Regression guard for the "doubled status line" canvas bug
-     * (canvas-body-blank-ws-drop debug session, 2026-06-08).
-     *
-     * Root cause: hardcoded x=60 for "CA …" and x=100 for "LV …" caused overlap
-     * with the preceding field when HP values were multi-digit (e.g. "PF 41/63"
-     * extends ~75px at VT323 16px). The two overlapping shapes superimposed to
-     * look like the same string drawn twice with a slight x-offset.
-     *
-     * Fix: _drawDynamic now uses ctx.measureText to position each field
-     * immediately after the previous one ends, plus STATUS_FIELD_GAP_PX.
-     *
-     * These tests verify the contract:
-     *   fillText("CA …", x_ca, 18)  where  x_ca  >= x_pf + width("PF …") + STATUS_FIELD_GAP_PX
-     *   fillText("LV …", x_lv, 18)  where  x_lv  >= x_ca + width("CA …") + STATUS_FIELD_GAP_PX
-     */
-
-    it('FIX-DD-01: CA field x position does not overlap PF field (measured width 50px)', () => {
-      // measureText returns width=50 for every string (uniform fake width).
-      // Expected: PF at x=4, CA at x = 4 + 50 + STATUS_FIELD_GAP_PX = 62.
-      const ctx = makeFakeCtx(50);
-      const snap = makeValidSnapshot(); // hp=45, maxHp=52, ac=18, level=7
-      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
-
-      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
-        string,
-        number,
-        number,
-      ][];
-      expect(calls.length).toBe(3);
-
-      const [pfCall, caCall, lvCall] = calls;
-      const [, pfX] = pfCall!;
-      const [, caX] = caCall!;
-      const [, lvX] = lvCall!;
-
-      // PF always starts at x=4.
-      expect(pfX).toBe(4);
-
-      // CA must start at least STATUS_FIELD_GAP_PX pixels past the end of PF.
-      // With measureText returning 50 for all: caX = 4 + 50 + STATUS_FIELD_GAP_PX.
-      expect(caX).toBeGreaterThanOrEqual(pfX + 50 + STATUS_FIELD_GAP_PX);
-
-      // LV must start at least STATUS_FIELD_GAP_PX pixels past the end of CA.
-      expect(lvX).toBeGreaterThanOrEqual(caX + 50 + STATUS_FIELD_GAP_PX);
+  describe('CARD-01: _drawCornerCard paints the top-right card (layout B)', () => {
+    it('CARD-01a: empty lines → no draw calls at all', () => {
+      const ctx = makeFakeCtx();
+      _drawCornerCard(ctx as unknown as OffscreenCanvasRenderingContext2D, [], '16px monospace');
+      expect((ctx.fillRect as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+      expect((ctx.fillText as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     });
 
-    it('FIX-DD-01: CA field x position does not overlap PF field (measured width 75px — multi-digit HP)', () => {
-      // Simulate the actual failing case: "PF 41/63" ≈ 75px at VT323 16px.
-      // Old code: caX=60, pfX+75=79 → OVERLAP. New code: caX=4+75+gap=87 → no overlap.
-      const ctx = makeFakeCtx(75);
-      const snap = makeValidSnapshot();
-      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
-
-      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
-        string,
+    it('CARD-01b: plate is anchored to the RIGHT edge of the 576px canvas', () => {
+      const ctx = makeFakeCtx();
+      _drawCornerCard(
+        ctx as unknown as OffscreenCanvasRenderingContext2D,
+        ['8fps', 'PF 41/63'],
+        '16px monospace',
+      );
+      const [x, y, w] = (ctx.fillRect as ReturnType<typeof vi.fn>).mock.calls[0] as [
         number,
         number,
-      ][];
-      const [pfCall, caCall, lvCall] = calls;
-      const [, pfX] = pfCall!;
-      const [, caX] = caCall!;
-      const [, lvX] = lvCall!;
-
-      expect(pfX).toBe(4);
-      expect(caX).toBeGreaterThanOrEqual(pfX + 75 + STATUS_FIELD_GAP_PX);
-      expect(lvX).toBeGreaterThanOrEqual(caX + 75 + STATUS_FIELD_GAP_PX);
+        number,
+        number,
+      ];
+      // Right-anchored: x + w + margin === 576; top margin small (corner card).
+      expect(x + w).toBeGreaterThan(400); // beyond the old 400px region — full-screen layout
+      expect(x + w).toBeLessThanOrEqual(576);
+      expect(y).toBeLessThan(27);
     });
 
-    it('FIX-DD-01: field text content is correct (PF/CA/LV labels with snapshot values)', () => {
-      const ctx = makeFakeCtx(50);
-      const snap = makeValidSnapshot(); // hp=45, maxHp=52, ac=18, level=7
-      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
-
-      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
-        string,
-        number,
-        number,
-      ][];
-      expect(calls[0]![0]).toBe('PF 45/52');
-      expect(calls[1]![0]).toBe('CA 18');
-      expect(calls[2]![0]).toBe('LV 7');
-    });
-
-    it('FIX-DD-01: null snapshot renders idle placeholder at x=4 (no measureText calls)', () => {
-      const ctx = makeFakeCtx(50);
-      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, null, '16px monospace');
-
-      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
-        string,
-        number,
-        number,
-      ][];
-      // Only one fillText call for the idle placeholder.
-      expect(calls.length).toBe(1);
-      expect(calls[0]![0]).toBe('PF — / —');
-      expect(calls[0]![1]).toBe(4);
-      // measureText is NOT called for the idle placeholder (no need to compute widths).
-      expect((ctx.measureText as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
-    });
-
-    it('FIX-DD-01: STATUS_FIELD_GAP_PX constant is a positive number', () => {
-      // Sanity: the exported constant must be positive so gaps are always > 0.
-      expect(STATUS_FIELD_GAP_PX).toBeGreaterThan(0);
-    });
-
-    it('FIX-DD-01: all three fields rendered at the same baseline y=18', () => {
-      const ctx = makeFakeCtx(50);
-      const snap = makeValidSnapshot();
-      _drawDynamic(ctx as unknown as OffscreenCanvasRenderingContext2D, snap, '16px monospace');
-
-      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [
-        string,
-        number,
-        number,
-      ][];
-      for (const [, , y] of calls) {
-        expect(y).toBe(18);
-      }
+    it('CARD-01c: one fillText per line, in order', () => {
+      const ctx = makeFakeCtx();
+      const lines = ['8fps', 'PF 41/63', 'CA 18', 'LV 10'];
+      _drawCornerCard(ctx as unknown as OffscreenCanvasRenderingContext2D, lines, '16px monospace');
+      const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls as [string][];
+      expect(calls.map((c) => c[0])).toEqual(lines);
     });
   });
 
   // ── CSHUD-1: no opaque full-frame fill in _drawChrome (Task 3 — 260610-d42) ──
 
-  describe('CSHUD-1: _drawChrome does NOT fill the full 400×200 canvas (map shows through)', () => {
-    it('CSHUD-1: first paint does NOT call fillRect(0, 0, 400, 200) — full-frame opaque fill removed', async () => {
+  describe('CSHUD-1: paint() does NOT fill the full canvas (map shows through)', () => {
+    it('CSHUD-1: first paint does NOT opaque-fill the full 576×288 frame — only the corner card', async () => {
       // The full-frame opaque black fill (ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H))
-      // was hiding the z=0 MapCanvasLayer. Task 3 removes it so the map shows through.
+      // would hide the z=0 MapCanvasLayer. Layout B: only the small corner-card plate fills.
       const { wsEvents } = makeWsEventsMock();
       const layer = new CanvasStatusHudLayer({ wsEvents });
       const ctx = makeFakeCtx();
@@ -517,68 +425,47 @@ describe('CanvasStatusHudLayer', () => {
         number,
       ][];
       const fullFrameCall = fillRectCalls.find(
-        ([x, y, w, h]) => x === 0 && y === 0 && w === 400 && h === 200,
+        ([x, y, w, h]) => x === 0 && y === 0 && w >= 576 && h >= 288,
       );
       expect(fullFrameCall).toBeUndefined();
     });
   });
 
-  // ── CSHUD-2: status pushed to hud-status text container via bridge (Task 3 — 260610-d42) ──
+  // ── CSHUD-2: card content + onDirty kick (layout B — corner card replaces hud-status) ──
 
-  describe('CSHUD-2: character.delta emits status to hud-status native container', () => {
-    it('CSHUD-2: on valid character.delta, textContainerUpgrade is called with hud-status containerID=5', async () => {
-      // Task 3: CanvasStatusHudLayerOpts accepts optional bridge for status push.
-      // On a valid character.delta, the layer calls bridge.textContainerUpgrade with
-      // the resolved hud-status container id (5) so the native G2 text container shows
-      // the status line.
-      const { wsEvents, emit } = makeWsEventsMock();
-      const textContainerUpgrade = vi.fn().mockResolvedValue(true);
-      const bridge = { textContainerUpgrade };
-      const layer = new CanvasStatusHudLayer({ wsEvents, bridge });
-      const { canvas } = makeFakeCanvas();
-      await layer.attachCanvas(canvas);
-
-      const snapshot = makeValidSnapshot();
-      emit('character.delta', snapshot);
-
-      // Wait for any microtasks (the bridge call is fire-and-forget but may be async).
-      await Promise.resolve();
-
-      expect(textContainerUpgrade).toHaveBeenCalledTimes(1);
-      const call = textContainerUpgrade.mock.calls[0] as unknown[];
-      // The TextContainerUpgrade instance must carry containerID=5 (hud-status).
-      const payload = call[0] as { containerID?: number };
-      expect(payload).toBeDefined();
-      // containerID 5 is the hud-status id in the HUD raster page schema.
-      expect(payload?.containerID).toBe(5);
-    });
-
-    it('CSHUD-2: textContainerUpgrade content includes PF (HP) information from the snapshot', async () => {
-      const { wsEvents, emit } = makeWsEventsMock();
-      const textContainerUpgrade = vi.fn().mockResolvedValue(true);
-      const bridge = { textContainerUpgrade };
-      const layer = new CanvasStatusHudLayer({ wsEvents, bridge });
+  describe('CSHUD-2: corner-card content and onDirty wiring', () => {
+    it('CSHUD-2a: setFpsIndicatorEnabled toggling fires onDirty when content changes', async () => {
+      const { wsEvents } = makeWsEventsMock();
+      const onDirty = vi.fn();
+      const layer = new CanvasStatusHudLayer({ wsEvents, onDirty, getFps: () => 8 });
       await layer.attachCanvas(makeFakeCanvas().canvas);
 
-      const snapshot = makeValidSnapshot(); // hp:45, maxHp:52
-      emit('character.delta', snapshot);
-      await Promise.resolve();
-
-      const call = textContainerUpgrade.mock.calls[0] as unknown[];
-      const payload = call[0] as { content?: string };
-      // Content must mention HP information (PF 45/52).
-      expect(payload?.content).toMatch(/45/);
-      expect(payload?.content).toMatch(/52/);
+      layer.setFpsIndicatorEnabled(true); // card gains the fps line → content change
+      expect(onDirty).toHaveBeenCalled();
     });
 
-    it('CSHUD-2: bridge not provided → no throw, no call (backwards-compatible optional bridge)', async () => {
-      // When bridge is not passed in opts, the layer works as before (canvas-only paint).
+    it('CSHUD-2b: paint() after a valid character.delta draws PF info in the card', async () => {
       const { wsEvents, emit } = makeWsEventsMock();
-      const layer = new CanvasStatusHudLayer({ wsEvents }); // no bridge
+      const layer = new CanvasStatusHudLayer({ wsEvents });
+      const ctx = makeFakeCtx();
+      await layer.attachCanvas(makeFakeCanvas(ctx).canvas);
+
+      emit('character.delta', makeValidSnapshot()); // hp:45, maxHp:52
+      layer.paint();
+
+      const texts = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => (c as [string])[0],
+      );
+      expect(texts.join(' ')).toMatch(/45\/52/);
+    });
+
+    it('CSHUD-2c: no onDirty provided → no throw on delta or toggle', async () => {
+      const { wsEvents, emit } = makeWsEventsMock();
+      const layer = new CanvasStatusHudLayer({ wsEvents });
       await layer.attachCanvas(makeFakeCanvas().canvas);
 
-      // Must not throw when bridge is absent.
       expect(() => emit('character.delta', makeValidSnapshot())).not.toThrow();
+      expect(() => layer.setFpsIndicatorEnabled(false)).not.toThrow();
     });
   });
 });

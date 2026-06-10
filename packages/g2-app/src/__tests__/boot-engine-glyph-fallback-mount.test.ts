@@ -258,30 +258,32 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
   });
 
   /**
-   * CR-01d (bridge wired into CanvasStatusHudLayer — gap-fix 260610-d42):
+   * CR-01d (layout B — corner card replaces the native hud-status container):
    *
-   * Regression guard: `boot-engine-core` MUST pass `bridge` to `CanvasStatusHudLayer`
-   * so the native `hud-status` text container (id=5) is updated on each
-   * `character.delta`. Before the gap-fix, the construction was:
-   *
-   *   new CanvasStatusHudLayer({ wsEvents: wsEventBus })   ← missing `bridge`
-   *
-   * This meant `this._bridge === undefined` in production, so
-   * `bridge.textContainerUpgrade` was never called and the hud-status native
-   * container showed nothing despite the canvas raster working fine in tests
-   * (tests inject bridge explicitly).
+   * Regression guard: a valid `character.delta` must reach the canvas-mode
+   * CanvasStatusHudLayer and produce a VISIBLE update on the glasses — in
+   * layout B that means changed tiles are re-pushed via `updateImageRawData`
+   * (the PF/CA/LV card is raster-drawn over the full-screen map; there is no
+   * native hud-status container any more — the host paints images over text).
    *
    * Strategy: boot in canvas mode (default), fire a valid `character.delta` WS
-   * message, await microtasks for the fire-and-forget textContainerUpgrade promise,
-   * then assert `bridge.textContainerUpgrade` was called at least once.
+   * message, flush the debounced delta cycle, then assert that the driver ran
+   * an additional composite cycle. (In happy-dom the layer 2D context is null,
+   * so the composite output is blank and zero-push-on-idle correctly emits no
+   * tile push — the unit suite (CSHUD-2b) covers the actual card pixels.)
    */
-  it('CR-01d: canvas-mode CanvasStatusHudLayer receives bridge — character.delta triggers textContainerUpgrade', async () => {
-    const { handle, bridge, ws } = await bootWith(); // canvas mode (default)
+  it('CR-01d: canvas-mode character.delta triggers a delta-driver composite cycle', async () => {
+    const { handle, ws } = await bootWith(); // canvas mode (default)
 
     expect(handle.layerManager.getRenderMode()).toBe('canvas');
 
-    const textContainerUpgrade = bridge.textContainerUpgrade as unknown as ReturnType<typeof vi.fn>;
-    const callsBefore = textContainerUpgrade.mock.calls.length;
+    // The happy-dom compositor has no master 2D context — every composite()
+    // logs '[EVF] CanvasCompositor.composite(): no 2D context'. Counting those
+    // warns gives a reliable cycle counter without reaching into internals.
+    const warnSpy = vi.spyOn(console, 'warn');
+    const cyclesBefore = warnSpy.mock.calls.filter((c) =>
+      String(c[0]).includes('CanvasCompositor.composite(): no 2D context'),
+    ).length;
 
     // Fire a valid character.delta WS envelope so CanvasStatusHudLayer._onDelta fires.
     const snapshotEvent = JSON.stringify({
@@ -335,13 +337,19 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
     });
     ws.fireMessage(snapshotEvent);
 
-    // Flush microtasks so the fire-and-forget textContainerUpgrade promise resolves.
+    // Flush the debounced delta cycle (driver throttle 100ms) + microtasks.
+    await vi.advanceTimersByTimeAsync?.(150).catch?.(() => undefined);
+    await new Promise((r) => setTimeout(r, 250));
     for (let i = 0; i < 8; i++) {
       await Promise.resolve();
     }
 
-    // Bridge MUST have been called at least once after the delta (gap-fix assertion).
-    expect(textContainerUpgrade.mock.calls.length).toBeGreaterThan(callsBefore);
+    // At least one additional composite cycle after the delta (driver wired).
+    const cyclesAfter = warnSpy.mock.calls.filter((c) =>
+      String(c[0]).includes('CanvasCompositor.composite(): no 2D context'),
+    ).length;
+    expect(cyclesAfter).toBeGreaterThan(cyclesBefore);
+    warnSpy.mockRestore();
 
     handle.teardown();
   });

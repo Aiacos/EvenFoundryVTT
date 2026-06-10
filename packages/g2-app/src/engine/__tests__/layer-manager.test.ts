@@ -12,7 +12,7 @@
  *
  * Phase 19 Plan 04 additions:
  *   - setRenderMode / getRenderMode round-trip (default 'glyph')
- *   - canvas mode _flushPage: containerTotalNum:6 (5→6 after hud-status, Task 3) + _compositeAndPush invoked
+ *   - canvas mode _flushPage: containerTotalNum:5 (layout B — hud-status removed) + _compositeAndPush invoked
  *   - CM-01: updateImageRawData called 4 times sequentially in canvas mode
  *   - null-compositor canvas mode: _compositeAndPush returns without throwing
  *   - _assertContainerBudget canvas-mode fixed-budget branch
@@ -1012,7 +1012,7 @@ describe('LayerManager — debug mirror DI (backward-compat + injected)', () => 
 function makeFakeCompositor(): CanvasCompositorLike & {
   composite: ReturnType<typeof vi.fn>;
 } {
-  const blankRgba = new Uint8ClampedArray(400 * 200 * 4); // 320000 zeros
+  const blankRgba = new Uint8ClampedArray(576 * 288 * 4); // 320000 zeros
   return {
     composite: vi.fn().mockReturnValue(blankRgba),
     registerLayer: vi.fn(),
@@ -1052,7 +1052,7 @@ describe('LayerManager — renderMode (Phase 19 Plan 04, RAST-04)', () => {
 
 describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
   it('LMT-CF-01: canvas mode _flushPage calls rebuildPageContainer with containerTotalNum:6', async () => {
-    // Updated for Task 3 (260610-d42): hud-status added → HUD_RASTER_CONTAINER_TOTAL=6.
+    // Layout B (2026-06-10): full-screen tiles, hud-status removed → HUD_RASTER_CONTAINER_TOTAL=5.
     const bridge = makeMockBridge();
     const compositor = makeFakeCompositor();
     const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
@@ -1072,11 +1072,12 @@ describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
 
     expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
     const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
-    expect(arg?.containerTotalNum).toBe(6);
+    expect(arg?.containerTotalNum).toBe(5);
   });
 
-  it('LMT-CF-02: canvas mode _flushPage schema has 4 image containers + 2 text containers (capture + hud-status)', async () => {
-    // Updated for Task 3 (260610-d42): textObject now has 2 entries (hud-capture + hud-status).
+  it('LMT-CF-02: canvas mode _flushPage schema has 4 image containers + 1 text capture container', async () => {
+    // Layout B (2026-06-10): full-screen 288×144 tiles; the native hud-status container
+    // was removed (the host renders images over text — see container-registry docs).
     const bridge = makeMockBridge();
     const compositor = makeFakeCompositor();
     const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
@@ -1094,18 +1095,17 @@ describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
 
     const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
     expect(arg?.imageObject?.length).toBe(4);
-    expect(arg?.textObject?.length).toBe(2);
+    expect(arg?.textObject?.length).toBe(1);
     // Exactly ONE text container must have isEventCapture:1 (hud-capture).
     const captureContainers = (arg?.textObject ?? []).filter(
       (t: { isEventCapture?: number }) => t.isEventCapture === 1,
     );
     expect(captureContainers).toHaveLength(1);
-    // hud-status must have isEventCapture:0.
-    const statusContainers = (arg?.textObject ?? []).filter(
-      (t: { containerName?: string }) => t.containerName === 'hud-status',
-    );
-    expect(statusContainers).toHaveLength(1);
-    expect((statusContainers[0] as { isEventCapture?: number })?.isEventCapture).toBe(0);
+    // Full-screen tile geometry: every image container is 288×144.
+    for (const img of arg?.imageObject ?? []) {
+      expect((img as { width?: number }).width).toBe(288);
+      expect((img as { height?: number }).height).toBe(144);
+    }
   });
 
   it('LMT-CF-03: canvas mode _flushPage calls _compositeAndPush (compositor.composite invoked)', async () => {

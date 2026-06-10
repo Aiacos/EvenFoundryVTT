@@ -829,10 +829,12 @@ export async function _bootEngineCore(
   // exactly 1 capture provider when no glyph MapBaseLayer is mounted.
   const canvasStatusHud = new CanvasStatusHudLayer({
     wsEvents: wsEventBus,
-    bridge,
     // FPS indicator (user request 2026-06-10): displayed-frame rate from the
-    // delta driver, rendered as a small right-aligned field on hud-status.
+    // delta driver, rendered in the top-right corner card (layout B).
     getFps: () => hudDeltaDriver.getFps(),
+    // Card-content changes outside WS deltas (fps ticker, [F] toggle) kick the
+    // debounced delta loop so the changed tiles reach the glasses.
+    onDirty: () => hudDeltaDriver.requestCycle(),
   });
 
   // FPS indicator enable flag — default ON, persisted in the Even Hub kv store

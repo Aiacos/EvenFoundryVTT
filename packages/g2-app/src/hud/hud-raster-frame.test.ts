@@ -5,11 +5,10 @@
  * logic is verified here. The live sim screenshot (via `pnpm sim shot`) is the
  * real visual gate for the rendered content.
  *
- * Geometry updated from 288×144 / 576×288 (PoC / simulator-only) to
- * 200×100 / 400×200 per INV-2 verification 2026-06-05
- * (`hub.evenrealities.com/docs/guides/display`). This is a deliberate fixture
- * correction, not a regression — the 288×144 geometry exceeded the G2 hardware
- * image-container cap and was rejected by Amendment 1 of ADR-0013.
+ * Geometry: tiles 288×144, frame 576×288 (FULL SCREEN — layout B, 2026-06-10).
+ * The SDK d.ts verbatim caps image containers at 20–288 × 20–144; the earlier
+ * 200×100 limit was INV-2 drift (corrected 2026-06-10). 2×2 tiles of 288×144
+ * cover the whole 576×288 display.
  *
  * @see packages/g2-app/src/hud/hud-raster-frame.ts
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
@@ -17,10 +16,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildHudTiles, HUD_TILE_GEOMETRY } from './hud-raster-frame.js';
 
-const FRAME_W = 400;
-const FRAME_H = 200;
-const TILE_W = 200;
-const TILE_H = 100;
+const FRAME_W = 576;
+const FRAME_H = 288;
+const TILE_W = 288;
+const TILE_H = 144;
 const TILES = 4;
 
 describe('HUD_TILE_GEOMETRY', () => {
@@ -28,7 +27,7 @@ describe('HUD_TILE_GEOMETRY', () => {
     expect(HUD_TILE_GEOMETRY).toHaveLength(TILES);
   });
 
-  it('tile 0 — top-left at (0,0) 200×100', () => {
+  it('tile 0 — top-left at (0,0) 288×144', () => {
     const t = HUD_TILE_GEOMETRY[0];
     expect(t).toBeDefined();
     expect(t?.containerID).toBe(0);
@@ -38,32 +37,32 @@ describe('HUD_TILE_GEOMETRY', () => {
     expect(t?.height).toBe(TILE_H);
   });
 
-  it('tile 1 — top-right at (200,0) 200×100', () => {
+  it('tile 1 — top-right at (288,0) 288×144', () => {
     const t = HUD_TILE_GEOMETRY[1];
     expect(t).toBeDefined();
     expect(t?.containerID).toBe(1);
-    expect(t?.x).toBe(200);
+    expect(t?.x).toBe(288);
     expect(t?.y).toBe(0);
     expect(t?.width).toBe(TILE_W);
     expect(t?.height).toBe(TILE_H);
   });
 
-  it('tile 2 — bottom-left at (0,100) 200×100', () => {
+  it('tile 2 — bottom-left at (0,144) 288×144', () => {
     const t = HUD_TILE_GEOMETRY[2];
     expect(t).toBeDefined();
     expect(t?.containerID).toBe(2);
     expect(t?.x).toBe(0);
-    expect(t?.y).toBe(100);
+    expect(t?.y).toBe(144);
     expect(t?.width).toBe(TILE_W);
     expect(t?.height).toBe(TILE_H);
   });
 
-  it('tile 3 — bottom-right at (200,100) 200×100', () => {
+  it('tile 3 — bottom-right at (288,144) 288×144', () => {
     const t = HUD_TILE_GEOMETRY[3];
     expect(t).toBeDefined();
     expect(t?.containerID).toBe(3);
-    expect(t?.x).toBe(200);
-    expect(t?.y).toBe(100);
+    expect(t?.x).toBe(288);
+    expect(t?.y).toBe(144);
     expect(t?.width).toBe(TILE_W);
     expect(t?.height).toBe(TILE_H);
   });
@@ -121,12 +120,12 @@ describe('buildHudTiles', () => {
 
   it('slices the correct sub-region per tile: TL vs BR origin pixel differs', () => {
     // Make a gradient where pixel value differs across the frame:
-    // pixel at (0,0) → R=0, pixel at (200,100) → R=(100*400+200)%256
+    // pixel at (0,0) → R=0, pixel at (288,144) → R=(144*576+288)%256
     const rgba = makeSyntheticRgba();
     const tiles = buildHudTiles(rgba);
 
     // Tile 0 (TL): origin = (0,0) → first pixel
-    // Tile 3 (BR): origin = (200,100) → should be different
+    // Tile 3 (BR): origin = (288,144) → should be different
     const tile0 = tiles[0];
     const tile3 = tiles[3];
     expect(tile0).toBeDefined();
@@ -142,6 +141,6 @@ describe('buildHudTiles', () => {
 
   it('throws with a clear Error when rgba length is wrong', () => {
     const wrongLength = new Uint8ClampedArray(10); // clearly wrong
-    expect(() => buildHudTiles(wrongLength)).toThrow(/expected 400\*200\*4/);
+    expect(() => buildHudTiles(wrongLength)).toThrow(/expected 576\*288\*4/);
   });
 });
