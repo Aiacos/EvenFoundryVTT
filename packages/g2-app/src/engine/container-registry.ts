@@ -224,19 +224,22 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
     isEventCapture: 1,
     kind: 'text',
   },
-  // hud-status: native G2 text container for the status line (PG name, PF/HP, turn/combat).
-  // Occupies the top 27px row (576×27, y=0, isEventCapture:0).
-  // Added in Task 3 (260610-d42): status is relocated from the raster canvas into this
-  // native text container so the z=0 map shows through the HUD layer.
-  // The text renders above the raster tiles on the G2 host (declaration order: hud-capture,
-  // then hud-status — host composites them in order, hud-status text appears on top).
+  // hud-status: native G2 text container for the status card (PF/CA/LV + fps).
+  // RIGHT COLUMN (x=404, 172×288) — the tile-free zone of the screen. Live-sim
+  // evidence 2026-06-10: the host renders IMAGE containers ON TOP of text
+  // containers regardless of declaration order, so the previous full-width
+  // top-row placement (576×27 at y=0) was entirely covered by the opaque
+  // hud-tile-0/1 bitmaps and never visible. The right column is the only
+  // region the 400×200 tile grid can never cover.
+  // Multi-line content (\n separated): fps indicator first (top-right of the
+  // physical screen, user request 2026-06-10), then PF / CA / LV lines.
   // MUST NOT appear in the default glyph schema — only in buildHudRasterPageSchema().
   'hud-status': {
     id: 5,
-    xPosition: 0,
+    xPosition: 404,
     yPosition: 0,
-    width: 576,
-    height: 27,
+    width: 172,
+    height: 288,
     isEventCapture: 0,
     kind: 'text',
   },

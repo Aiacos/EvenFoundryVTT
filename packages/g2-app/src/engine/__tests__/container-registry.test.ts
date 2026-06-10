@@ -231,14 +231,15 @@ describe('buildHudRasterPageSchema', () => {
     expect(capture?.width).toBe(576);
     expect(capture?.height).toBe(288);
 
-    // Second entry is hud-status (id 5, isEventCapture=0, top 27px row).
+    // Second entry is hud-status (id 5, isEventCapture=0, right column 172×288 at x=404
+    // — tile-free zone; the host renders image containers over text, live-verified 2026-06-10).
     const hudStatus = textObject[1];
     expect(hudStatus?.containerName).toBe('hud-status');
     expect(hudStatus?.containerID).toBe(5);
     expect(hudStatus?.isEventCapture).toBe(0);
-    expect(hudStatus?.width).toBe(576);
-    expect(hudStatus?.height).toBe(27);
-    expect(hudStatus?.xPosition).toBe(0);
+    expect(hudStatus?.width).toBe(172);
+    expect(hudStatus?.height).toBe(288);
+    expect(hudStatus?.xPosition).toBe(404);
     expect(hudStatus?.yPosition).toBe(0);
   });
 

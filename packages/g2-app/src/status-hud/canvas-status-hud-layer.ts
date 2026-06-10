@@ -91,18 +91,6 @@ export interface CanvasStatusHudLayerOpts {
   readonly getFps?: () => number;
 }
 
-/**
- * Character budget of the `hud-status` native row. Live-measured on the
- * simulator (2026-06-10): the G2 fixed 27 px LVGL font renders ~20 px per
- * character, so 576 px ≈ 28 chars (the earlier 50-char estimate belonged to
- * the 16 px VT323 raster font). The FPS field occupies the LAST
- * {@link FPS_FIELD_CHARS} columns; the status text is clipped to the rest.
- */
-const STATUS_LINE_CHARS = 28;
-
-/** Fixed width of the right-aligned FPS field (e.g. ` 8fps`, `10fps`). */
-const FPS_FIELD_CHARS = 5;
-
 // ── Implementation ─────────────────────────────────────────────────────────────
 
 /**
@@ -179,9 +167,6 @@ export class CanvasStatusHudLayer implements CanvasLayer {
 
   /** 1 Hz FPS ticker handle — started in `attachCanvas`, cleared in `destroy`. */
   private _fpsTimer: ReturnType<typeof setInterval> | null = null;
-
-  /** Latest status text (left part of the hud-status row). */
-  private _statusLine = 'PF -- / --';
 
   /** Last line actually pushed to hud-status — dedupe gate (zero-push-on-idle). */
   private _lastPushedLine = '';
@@ -447,9 +432,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     this._snapshot = parsed.data;
     this._dirty = true;
 
-    // Update the native hud-status row (dedupe-gated push).
-    const snap = this._snapshot;
-    this._statusLine = `PF ${snap.hp}/${snap.maxHp}  CA ${snap.ac}  LV ${snap.level}`;
+    // Update the native hud-status card (dedupe-gated push).
     this._pushStatusLine();
   }
 
@@ -468,10 +451,10 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   }
 
   /**
-   * Compose the hud-status line (status text + optional right-aligned FPS
-   * field, {@link STATUS_LINE_CHARS} budget) and push it via
-   * `textContainerUpgrade` — ONLY when the composed line differs from the
-   * last pushed one (text zero-push-on-idle).
+   * Compose the hud-status right-column card (fps line when enabled + PF/CA/LV
+   * lines from the latest snapshot) and push it via `textContainerUpgrade` —
+   * ONLY when the composed content differs from the last pushed one (text
+   * zero-push-on-idle).
    *
    * Best-effort: fire-and-forget; rejected promise is caught and logged.
    */
@@ -479,15 +462,19 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     if (this._bridge === undefined) {
       return;
     }
-    let line = this._statusLine;
+    // Multi-line right-column card (172 px ≈ 15 chars/line at the ~11.5 px/char
+    // native font). First line: fps indicator (top-right of the screen, user
+    // request 2026-06-10) when enabled; then the status lines.
+    const lines: string[] = [];
     if (this._fpsEnabled && this._getFps !== undefined) {
       const fps = Math.min(99, Math.round(this._getFps()));
-      const field = `${String(fps).padStart(2, ' ')}fps`; // FPS_FIELD_CHARS wide
-      line =
-        this._statusLine
-          .slice(0, STATUS_LINE_CHARS - FPS_FIELD_CHARS - 1)
-          .padEnd(STATUS_LINE_CHARS - FPS_FIELD_CHARS, ' ') + field;
+      lines.push(`${String(fps)}fps`);
     }
+    if (this._snapshot !== null) {
+      const snap = this._snapshot;
+      lines.push(`PF ${snap.hp}/${snap.maxHp}`, `CA ${snap.ac}`, `LV ${snap.level}`);
+    }
+    const line = lines.join('\n');
     if (line === this._lastPushedLine) {
       return;
     }
