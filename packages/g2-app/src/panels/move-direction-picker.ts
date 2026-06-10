@@ -197,6 +197,8 @@ export function computeDelta(
 export class MoveDirectionPicker implements OverlayPanel {
   /** Stable id — used by LayerManager + telemetry. */
   public readonly id = 'move-direction-picker';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   private readonly bridge: EvenAppBridge;
   private readonly ws: MoveDirectionPickerWebSocket;

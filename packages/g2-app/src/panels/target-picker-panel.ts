@@ -127,6 +127,8 @@ export interface TargetPickerToolInvocation {
 export class TargetPickerPanel implements OverlayPanel {
   /** Stable id — used by LayerManager + telemetry. */
   public readonly id = 'target-picker';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   /** ZIndex — required by the LayerManager bundle API + tests. */
   public readonly z = ZIndex.Z2_OVERLAY;

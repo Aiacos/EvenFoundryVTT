@@ -135,6 +135,8 @@ export interface SlotPickerRequest {
 export class SlotPickerPanel implements OverlayPanel {
   /** Stable id — used by LayerManager + telemetry. */
   public readonly id = 'slot-picker';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   /** ZIndex — required by the LayerManager bundle API + tests. */
   public readonly z = ZIndex.Z2_OVERLAY;

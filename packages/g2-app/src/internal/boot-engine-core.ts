@@ -85,6 +85,7 @@ import { clearActionEconomyState } from '../panels/action-economy-state.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
+import { attachNavPanelClose } from '../panels/nav-panel-close-dispatcher.js';
 import { attachPortraitHandler } from '../panels/portrait-dispatcher.js';
 import { clearPortraitBytes } from '../panels/portrait-state.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
@@ -984,6 +985,13 @@ export async function _bootEngineCore(
   //           dispatcher only fires at the root. See ADR-0012 D-4.
   const unsubRootExit = attachRootExit(gestureBus, layerManager, bridge);
 
+  // 11c-nav. NAV-CLOSE-01 — nav-panel close dispatcher (ADR-0012 D-3).
+  //          A double-tap while a nav panel (character-sheet, combat-tracker, etc.) is
+  //          the top z=2 layer calls panelRouter.popOverlay(lm). Panels that self-manage
+  //          double-tap (modals, pickers, the Quick Action menu) declare
+  //          handlesDoubleTap=true and are skipped by the dispatcher.
+  const unsubNavPanelClose = attachNavPanelClose(gestureBus, panelRouter, layerManager);
+
   // 11d. Conc-conflict dispatcher — closes the Plan 04b-05 deferred wire.
   //      Subscribes to `conc.conflict` WS envelopes and mounts the concentration-drop
   //      modal at z=2 when a conflict is detected (CONC-01 flow, CCD-3 / ISM-10).
@@ -1657,6 +1665,11 @@ export async function _bootEngineCore(
         unsubRootExit();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubRootExit failed', err);
+      }
+      try {
+        unsubNavPanelClose();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubNavPanelClose failed', err);
       }
       // WR-03: tear down the localeEvents listener that keeps makeMenu locale refs live.
       try {

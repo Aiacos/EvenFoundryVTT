@@ -195,6 +195,35 @@ export interface OverlayPanel extends Layer {
    * in response (no return-value-driven side effects).
    */
   onEvent(gesture: R1Gesture): void;
+  /**
+   * Opt-in marker: panel handles double-tap internally (ADR-0012 D-3 close/back).
+   *
+   * When `true`, `nav-panel-close-dispatcher` skips this panel on double-tap
+   * (the panel's own `onEvent` handles close/back via its injected `onClose`
+   * callback). Panels that do NOT set this property have double-tap handled
+   * externally by the dispatcher, which calls `panelRouter.popOverlay`.
+   *
+   * # Which panels declare this
+   *
+   * - `QuickActionMenuPanel` — double-tap in sub-menu = back; in main = `onClose()`
+   * - `ConcentrationDropModalPanel` — double-tap = cancel + `onCloseCb()`
+   * - `TargetPickerPanel`           — double-tap = cancel + `onCloseCb()`
+   * - `SlotPickerPanel`             — double-tap = cancel + `onCloseCb()`
+   * - `ActionOptionsModal`          — double-tap = cancel + `onCloseCb()`
+   * - `MoveDirectionPicker`         — double-tap = cancel + `onCloseCb()`
+   * - `ReactionPromptPanel`         — double-tap = cancel + `onCloseCb()`
+   * - `TemplatePlacementPanel`      — double-tap = cancel + `onCloseCb()`
+   *
+   * # Which panels do NOT declare this (dispatcher handles close)
+   *
+   * - Nav panels opened from the Quick Action menu (character-sheet, combat-tracker,
+   *   log, inventory, spellbook and their canvas-mode counterparts): these have a
+   *   no-op double-tap stub; the dispatcher calls `popOverlay` to close them.
+   *
+   * @see packages/g2-app/src/panels/nav-panel-close-dispatcher.ts (consumer)
+   * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md (D-3)
+   */
+  readonly handlesDoubleTap?: true;
 }
 
 // ── CanvasLayer (ADR-0013 Amendment 1 — additive extension) ───────────────────
