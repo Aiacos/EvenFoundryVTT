@@ -6,13 +6,28 @@
  * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`, `canvasPan`) and
  * on any fire schedules a debounced (default 200 ms) call to
  * {@link extractCurrentFrame},
- * which pulls pixels from `canvas.app.renderer.extract.pixels(canvas.stage)`,
- * fit-downscales them (whole scene, aspect preserved, box-average) onto EXACTLY
- * the canonical 400×200 raster region (ADR-0013 Amendment 1, letterboxed) and
+ * which pulls pixels via `canvas.app.renderer.extract.pixels()` (no target —
+ * PIXI v7 framebuffer/viewport capture, NOT `canvas.stage`), fit-downscales
+ * them (whole viewport, aspect preserved, box-average) onto EXACTLY the
+ * canonical 400×200 raster region (ADR-0013 Amendment 1, letterboxed) and
  * dispatches the typed payload via the
  * caller-provided `emit` callback. The caller (`module.ts` ready hook) wraps
  * the payload in the existing Phase 3 `EnvelopeSchema` over the bridge WS —
  * Plan 06 does NOT introduce a new envelope schema (NF-1 closure).
+ *
+ * **Phase 27 viewport decision** (quick-task fw7, 2026-06-10)
+ *
+ * Calling `pixels(canvas.stage)` in PIXI v7 re-renders the *whole world stage*
+ * into a temporary texture sized by the object's LOCAL BOUNDS × resolution
+ * (typically 4000–8000 px wide), then returns that oversized buffer. The code
+ * interpreted the buffer with `renderer.width × renderer.height`, producing a
+ * row-stride mismatch → horizontal-stripe corruption on the G2 glasses.
+ *
+ * Calling `pixels()` with NO target reads the existing main framebuffer at
+ * `renderer.screen × resolution`, which is exactly `renderer.width × renderer.height`.
+ * This is the viewport the player already sees (zoom + fog applied) — correct
+ * stride, correct content, zero per-capture re-render cost (T-fw7-02 DoS
+ * mitigation).
  *
  * **Scaling strategy (CE-6)**
  *
@@ -142,6 +157,11 @@ export interface CanvasExtractorOpts {
  * Subset of the Foundry global `canvas` that {@link extractCurrentFrame}
  * reads from. The narrow shape lets tests build cheap fixtures without
  * importing fvtt-types (which is out-of-scope until Phase 2+ stabilises it).
+ *
+ * Note: `stage` is NOT read by the extractor (viewport capture, no target —
+ * see Phase 27 decision in module JSDoc). Test fixtures may still provide the
+ * field; it is declared here so structural subtyping does not reject such
+ * fixtures, but the extractor ignores it entirely (INV-4: no dead read).
  */
 export interface CanvasLike {
   readonly scene?: { readonly id?: string } | null;
@@ -154,6 +174,7 @@ export interface CanvasLike {
       };
     };
   };
+  /** Retained for structural compatibility with test fixtures; not read by the extractor. */
   readonly stage?: unknown;
 }
 
@@ -212,10 +233,17 @@ export function extractCurrentFrame(
   const targetWidth = Math.max(MIN_DIM, Math.min(opts.targetWidth ?? MAX_WIDTH, MAX_WIDTH));
   const targetHeight = Math.max(MIN_DIM, Math.min(opts.targetHeight ?? MAX_HEIGHT, MAX_HEIGHT));
 
-  // Source RGBA bytes (PIXI v7 extract.pixels returns Uint8Array, top-left origin).
+  // Source RGBA bytes — viewport capture: no target argument reads the main
+  // framebuffer at renderer.screen × resolution (= renderer.width × renderer.height).
+  // Passing `canvas.stage` (PIXI v7) re-renders the whole world at stage LOCAL BOUNDS
+  // × resolution (e.g. 4000×3000 px), returns a differently-sized buffer, but the
+  // code uses renderer.width/height as the stride → row-stride mismatch → horizontal
+  // stripe corruption on G2. Viewport capture fixes both the corruption and the
+  // per-capture whole-stage re-render cost (T-fw7-01 + T-fw7-02 mitigations,
+  // quick-task fw7, 2026-06-10).
   let srcBytes: Uint8Array | Uint8ClampedArray;
   try {
-    srcBytes = renderer.extract.pixels(canvas.stage);
+    srcBytes = renderer.extract.pixels();
   } catch (err) {
     // Real-device perf failure or context-lost — log + skip frame; no retry storm.
     console.warn(
@@ -225,15 +253,48 @@ export function extractCurrentFrame(
     return null;
   }
 
+  // ── Byte-length sanity guard (T-fw7-01 mitigation) ────────────────────────
+  // The expected buffer length for viewport capture is srcWidth × srcHeight × 4.
+  // If the length matches, proceed with renderer dims as effective dims.
+  // If the length is a clean integer-square multiple (k ≥ 2 within float epsilon),
+  // reinterpret the dims as (srcWidth×k) × (srcHeight×k) — handles high-DPR /
+  // resolution-multiplied renderers that return a larger-than-expected buffer.
+  // Any other mismatch is logged + skipped: never emit row-stride garbage.
+  const expected = srcWidth * srcHeight * 4;
+  let effWidth = srcWidth;
+  let effHeight = srcHeight;
+  if (srcBytes.length !== expected) {
+    const k = Math.sqrt(srcBytes.length / expected);
+    const kRound = Math.round(k);
+    if (
+      kRound >= 2 &&
+      Math.abs(k - kRound) < 1e-6 &&
+      srcWidth * kRound * (srcHeight * kRound) * 4 === srcBytes.length
+    ) {
+      // High-DPR / resolution-multiplied renderer: reinterpret at k× dims.
+      effWidth = srcWidth * kRound;
+      effHeight = srcHeight * kRound;
+    } else {
+      console.warn(
+        '[EVF canvas-extractor] pixel buffer length mismatch — expected',
+        expected,
+        'got',
+        srcBytes.length,
+        '; skipping frame',
+      );
+      return null;
+    }
+  }
+
   // Fit-downscale: scale the WHOLE source to fit inside the target, preserving
   // aspect ratio. `Math.min(..., 1)` never upscales — undersized sources are
   // centered 1:1 (upscaling adds no detail and blurs the dither input).
   // This replaced the original center-crop, which on a typical 1920×1080
   // Foundry render captured only a 400×200 window (~4% of the scene area)
   // instead of the full map (debug map-frame-pipeline-dims, 2026-06-10).
-  const scale = Math.min(targetWidth / srcWidth, targetHeight / srcHeight, 1);
-  const outWidth = Math.max(1, Math.round(srcWidth * scale));
-  const outHeight = Math.max(1, Math.round(srcHeight * scale));
+  const scale = Math.min(targetWidth / effWidth, targetHeight / effHeight, 1);
+  const outWidth = Math.max(1, Math.round(effWidth * scale));
+  const outHeight = Math.max(1, Math.round(effHeight * scale));
 
   // Emit EXACTLY targetWidth×targetHeight: the scaled source is center-aligned
   // onto an opaque-black letterbox canvas of the target size. `raster-worker.ts`
@@ -250,16 +311,16 @@ export function extractCurrentFrame(
   const invScale = 1 / scale;
   for (let dy = 0; dy < outHeight; dy++) {
     const sy0 = Math.floor(dy * invScale);
-    const sy1 = Math.min(srcHeight, Math.max(sy0 + 1, Math.floor((dy + 1) * invScale)));
+    const sy1 = Math.min(effHeight, Math.max(sy0 + 1, Math.floor((dy + 1) * invScale)));
     for (let dx = 0; dx < outWidth; dx++) {
       const sx0 = Math.floor(dx * invScale);
-      const sx1 = Math.min(srcWidth, Math.max(sx0 + 1, Math.floor((dx + 1) * invScale)));
+      const sx1 = Math.min(effWidth, Math.max(sx0 + 1, Math.floor((dx + 1) * invScale)));
       let r = 0;
       let g = 0;
       let b = 0;
       let n = 0;
       for (let sy = sy0; sy < sy1; sy++) {
-        let si = (sy * srcWidth + sx0) * 4;
+        let si = (sy * effWidth + sx0) * 4;
         for (let sx = sx0; sx < sx1; sx++) {
           r += srcBytes[si] ?? 0;
           g += srcBytes[si + 1] ?? 0;
