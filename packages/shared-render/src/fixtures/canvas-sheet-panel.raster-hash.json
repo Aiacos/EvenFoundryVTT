@@ -5,22 +5,22 @@
     {
       "index": 0,
       "containerName": "hud-tile-0",
-      "sha256": "5cd5df9fa068cd5b2f8ec0b8e7d964e795139e224fc3ccb5d9711d485ab62b00"
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
     },
     {
       "index": 1,
       "containerName": "hud-tile-1",
-      "sha256": "c54e18529956ac2429dedc99b747fa49d68a8d156d3a26c5b6130100b30d7a15"
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
     },
     {
       "index": 2,
       "containerName": "hud-tile-2",
-      "sha256": "5cd5df9fa068cd5b2f8ec0b8e7d964e795139e224fc3ccb5d9711d485ab62b00"
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
     },
     {
       "index": 3,
       "containerName": "hud-tile-3",
-      "sha256": "c54e18529956ac2429dedc99b747fa49d68a8d156d3a26c5b6130100b30d7a15"
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
     }
   ]
 }

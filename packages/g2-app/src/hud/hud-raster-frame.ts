@@ -21,9 +21,8 @@
  * both the test environment and the main thread. Instead, the relevant
  * functions are replicated MINIMALLY:
  *
- * - `buildGreyscalePalette()` — canonical 16-step 0..240 greyscale palette
  *   (verbatim from raster-worker.ts, same algorithm)
- * - `ditherTile()` — Floyd-Steinberg dither via image-q against the palette
+ * - `ditherTile()` — 4×4 Bayer ordered dither to the 16-step greyscale palette
  *   (adapted for TILE_W/TILE_H = 288×144)
  * - `UPNG.encode([rgba.buffer], 288, 144, 16)` — 4-bit indexed-palette PNG
  *   (verbatim call pattern from raster-worker.ts Stage 9)
@@ -44,7 +43,6 @@
  * @see .planning/debug/glasses-render-blank-containerid.md (qm0 numeric-id requirement)
  */
 
-import * as ImageQ from 'image-q';
 import * as UPNG from 'upng-js';
 
 // ── Frame / tile geometry ─────────────────────────────────────────────────────
@@ -171,46 +169,50 @@ export const HUD_TILE_GEOMETRY: ReadonlyArray<HudTileGeometryEntry> = Object.fre
 // ── Private pipeline helpers (replicated from raster-worker.ts) ──────────────
 
 /**
- * Build the canonical 16-step phosphor-green greyscale palette (0..240).
+ * 4×4 Bayer ordered-dither threshold matrix, normalized to ±0.5 around 0
+ * (classic Bayer values 0..15 mapped to (v+0.5)/16 − 0.5).
  *
- * Replicated MINIMALLY from `raster-worker.ts#buildGreyscalePalette`.
- * Cannot import the worker directly — Worker modules are not importable in
- * the main thread or test environment.
- *
- * @returns A `Palette` instance with 16 greyscale entries spaced 16 apart.
- *
- * @see packages/g2-app/src/raster/raster-worker.ts (source pattern, ADR-0006)
+ * Replaces the image-q Floyd–Steinberg pass (perf fix 2026-06-10): FS error
+ * diffusion is inherently serial and cost ~100 ms per 4-tile cycle at 576×288
+ * (86% of the whole render cycle, node micro-bench). For a fixed 16-step
+ * greyscale palette, ordered dithering is a pure per-pixel threshold lookup —
+ * 10–20× faster with comparable legibility on the G2 phosphor (Bayer is part
+ * of the Specs-sanctioned dither set: FS/Atkinson/Bayer, §7.2).
  */
-function buildGreyscalePalette(): ImageQ.utils.Palette {
-  const pal = new ImageQ.utils.Palette();
-  for (let i = 0; i < 16; i++) {
-    const v = i * 16; // 0, 16, 32, ..., 240
-    pal.add(ImageQ.utils.Point.createByRGBA(v, v, v, 255));
-  }
-  return pal;
-}
+const BAYER_4X4: ReadonlyArray<number> = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(
+  (v) => (v + 0.5) / 16 - 0.5,
+);
 
 /**
- * Quantize one 200×100 RGBA tile against the greyscale palette using
- * Floyd-Steinberg dithering.
+ * Ordered-dither a TILE_W×TILE_H RGBA tile to the 16-step greyscale palette.
  *
- * Replicated MINIMALLY from `raster-worker.ts#ditherTile` for the HUD tile
- * dimensions (200×100 — max per Even Realities image container spec,
- * `hub.evenrealities.com/docs/guides/display`, INV-2 verified 2026-06-05).
+ * Per pixel: Rec.709 luma → 0..15 level via Bayer-thresholded rounding →
+ * RGBA grey written back. Pure typed-array loop, no allocations beyond the
+ * output buffer, no library calls.
  *
- * @param rgba   200×100×4 RGBA pixel buffer.
- * @param pal    16-step greyscale palette from `buildGreyscalePalette`.
- * @returns Dithered RGBA Uint8ClampedArray of the same length.
- *
- * @see packages/g2-app/src/raster/raster-worker.ts (source pattern, ADR-0006)
+ * @param rgba Tile pixels (TILE_W×TILE_H×4).
+ * @returns New RGBA buffer quantized to the 16 grey levels.
  */
-function ditherTile(rgba: Uint8ClampedArray, pal: ImageQ.utils.Palette): Uint8ClampedArray {
-  const inContainer = ImageQ.utils.PointContainer.fromUint8Array(rgba, TILE_W, TILE_H);
-  const outContainer = ImageQ.applyPaletteSync(inContainer, pal, {
-    imageQuantization: 'floyd-steinberg',
-    colorDistanceFormula: 'euclidean-bt709',
-  });
-  return new Uint8ClampedArray(outContainer.toUint8Array());
+function ditherTile(rgba: Uint8ClampedArray): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(rgba.length);
+  for (let y = 0; y < TILE_H; y++) {
+    const rowT = (y & 3) << 2;
+    for (let x = 0; x < TILE_W; x++) {
+      const i = (y * TILE_W + x) * 4;
+      const luma =
+        0.2126 * (rgba[i] ?? 0) + 0.7152 * (rgba[i + 1] ?? 0) + 0.0722 * (rgba[i + 2] ?? 0);
+      // Scale to the 0..15 level space, add the Bayer threshold, clamp.
+      let level = Math.floor((luma / 255) * 15 + 0.5 + (BAYER_4X4[rowT | (x & 3)] ?? 0));
+      if (level < 0) level = 0;
+      else if (level > 15) level = 15;
+      const v = Math.round((level * 255) / 15);
+      out[i] = v;
+      out[i + 1] = v;
+      out[i + 2] = v;
+      out[i + 3] = 255;
+    }
+  }
+  return out;
 }
 
 /**
@@ -277,14 +279,13 @@ export function buildHudTiles(rgba: Uint8ClampedArray): HudTile[] {
     );
   }
 
-  const palette = buildGreyscalePalette();
   const tileBuffers = splitIntoTiles(rgba);
   const result: HudTile[] = [];
 
   for (let i = 0; i < TILES_PER_FRAME; i++) {
     // biome-ignore lint/style/noNonNullAssertion: splitIntoTiles contract — always exactly TILES_PER_FRAME entries
     const tileBuf = tileBuffers[i]!;
-    const dithered = ditherTile(tileBuf, palette);
+    const dithered = ditherTile(tileBuf);
     // Stage 9 from raster-worker: UPNG.encode([rgba.buffer], W, H, 16) → 4-bit indexed PNG.
     const pngBuf = UPNG.encode([dithered.buffer], TILE_W, TILE_H, 16);
     const bytes = new Uint8Array(pngBuf);

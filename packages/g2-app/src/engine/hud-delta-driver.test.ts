@@ -35,11 +35,13 @@ import { DEFAULT_MIN_REDRAW_INTERVAL_MS, HudDeltaDriver } from './hud-delta-driv
  */
 vi.mock('xxhash-wasm', () => {
   const h32Raw = (buf: Uint8Array): number => {
-    // Sum first 64 bytes as a cheap deterministic hash.
-    let h = 0;
-    const limit = Math.min(buf.length, 64);
-    for (let i = 0; i < limit; i++) {
-      h = ((h + (buf[i] ?? 0)) & 0xffffffff) >>> 0;
+    // FNV-1a over the WHOLE buffer — cheap but byte-position-sensitive. The old
+    // first-64-bytes sum collided on indexed PNGs whose header+palette prefix is
+    // identical (Bayer-dithered tiles, 2026-06-10).
+    let h = 0x811c9dc5;
+    for (let i = 0; i < buf.length; i++) {
+      h = (h ^ (buf[i] ?? 0)) >>> 0;
+      h = Math.imul(h, 0x01000193) >>> 0;
     }
     return h;
   };
