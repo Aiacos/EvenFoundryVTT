@@ -40,6 +40,9 @@ import type { CanvasCompositorLike } from './canvas-compositor.js';
 /** Number of HUD tiles per frame (2×2 layout, container IDs 0-3). */
 const TILE_COUNT = 4;
 
+/** Sliding window (ms) for the {@link HudDeltaDriver.getFps} indicator. */
+const FPS_WINDOW_MS = 2000;
+
 /**
  * WS channels that trigger a render cycle.
  *
@@ -140,6 +143,13 @@ export class HudDeltaDriver {
 
   /** Pending debounce timer handle — null when no cycle is scheduled. */
   private _timer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Timestamps (ms) of recent cycles that pushed ≥1 tile, pruned to the last
+   * {@link FPS_WINDOW_MS}. Feeds {@link getFps} — the small on-glasses FPS
+   * indicator in the `hud-status` row (user request 2026-06-10).
+   */
+  private readonly _pushTimes: number[] = [];
 
   /** Unsub closures for all active WS channel subscriptions. */
   private readonly _unsubs: Array<() => void> = [];
@@ -349,5 +359,30 @@ export class HudDeltaDriver {
 
     // CM-01: pushHudTiles uses for...of + await (never Promise.all).
     await pushHudTiles(this._opts.bridge, changed);
+
+    // FPS accounting — only cycles that actually pushed tiles count as a
+    // displayed frame (a no-push cycle changes nothing on the glasses).
+    const now = Date.now();
+    this._pushTimes.push(now);
+    while (this._pushTimes.length > 0 && now - (this._pushTimes[0] ?? 0) > FPS_WINDOW_MS) {
+      this._pushTimes.shift();
+    }
+  }
+
+  /**
+   * Displayed frames-per-second over the last {@link FPS_WINDOW_MS}.
+   *
+   * Counts cycles that pushed ≥1 tile (i.e. frames the player actually saw
+   * change). Returns `0` when the HUD is idle — the indicator then shows
+   * `0fps`, which is the truthful idle state (zero-push-on-idle, D-24.3).
+   *
+   * @returns Frames per second, ≥0, fractional.
+   */
+  getFps(): number {
+    const now = Date.now();
+    while (this._pushTimes.length > 0 && now - (this._pushTimes[0] ?? 0) > FPS_WINDOW_MS) {
+      this._pushTimes.shift();
+    }
+    return this._pushTimes.length / (FPS_WINDOW_MS / 1000);
   }
 }

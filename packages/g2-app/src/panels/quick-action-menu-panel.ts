@@ -76,8 +76,8 @@ const CANVAS_FG = '#ffffff';
 /** Canvas-mode first item-row baseline y (px) — below the title row. */
 const CANVAS_ITEMS_TOP_Y = 40;
 
-/** Canvas-mode item-row pitch (px) — 9 rows at 17px end at y=176 < 200. */
-const CANVAS_ROW_PITCH = 17;
+/** Canvas-mode item-row pitch (px) — 10 rows at 15px end at y=175+16 < 200. */
+const CANVAS_ROW_PITCH = 15;
 
 /** Outer width of the menu box in visible code-points (UI-SPEC §1). */
 const MENU_WIDTH = 70;
@@ -115,6 +115,7 @@ const MAIN_ITEMS = [
   { key: 'A', i18nKey: 'quick_item_action', action: 'action-stub', target: undefined },
   { key: 'M', i18nKey: 'quick_item_map', action: 'map-mode-toggle', target: undefined },
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
+  { key: 'F', i18nKey: 'quick_item_fps', action: 'fps-toggle', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
 
@@ -149,6 +150,13 @@ export interface QuickActionMenuCallbacks {
   onMapModeToggle: () => void;
   /** Called when the user selects [A] Action (Phase 7 stub). */
   onAction: () => void;
+  /**
+   * Called when the user selects [F] FPS — toggles the small fps indicator
+   * on the hud-status row (default ON; persisted in the Even Hub kv store).
+   * Optional so existing construction sites compile unchanged; the dispatch
+   * case no-ops when absent.
+   */
+  onFpsToggle?: () => void;
 }
 
 // ─── QuickActionMenuPanel ────────────────────────────────────────────────────
@@ -536,6 +544,10 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       }
       case 'map-mode-toggle':
         this.callbacks.onMapModeToggle();
+        this.callbacks.onClose();
+        break;
+      case 'fps-toggle':
+        this.callbacks.onFpsToggle?.();
         this.callbacks.onClose();
         break;
       case 'action-stub':

@@ -675,6 +675,9 @@ export const HUD_WIDTH_BUDGETS = {
   /** [N] Language picker menu item label. */
   quick_item_language: { it: 'Lingua', en: 'Language', de: 'Sprache', max: 22 },
 
+  /** [F] FPS indicator toggle menu item label (same word in all locales). */
+  quick_item_fps: { it: 'FPS', en: 'FPS', de: 'FPS', max: 22 },
+
   /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
   quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
 

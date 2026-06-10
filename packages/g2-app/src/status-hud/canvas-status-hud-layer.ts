@@ -78,7 +78,28 @@ export interface CanvasStatusHudLayerOpts {
    * Added in Task 3 (260610-d42): status relocation out of the opaque raster chrome.
    */
   readonly bridge?: Pick<EvenAppBridge, 'textContainerUpgrade'>;
+
+  /**
+   * Optional FPS supplier (typically `hudDeltaDriver.getFps()`).
+   *
+   * When provided AND the indicator is enabled (default ON, toggled via
+   * `setFpsIndicatorEnabled` — Quick Action menu `[F] FPS`), a 1 Hz ticker
+   * appends a small right-aligned `NNfps` field to the `hud-status` native
+   * text row. The ticker pushes a `textContainerUpgrade` ONLY when the
+   * composed line actually changed (zero-push-on-idle for text).
+   */
+  readonly getFps?: () => number;
 }
+
+/**
+ * Character budget of the `hud-status` native row (576 px ≈ 50 chars at the
+ * G2 fixed 27 px LVGL font). The FPS field occupies the LAST
+ * {@link FPS_FIELD_CHARS} columns; the status text is clipped to the rest.
+ */
+const STATUS_LINE_CHARS = 50;
+
+/** Fixed width of the right-aligned FPS field (e.g. ` 8fps`, `10fps`). */
+const FPS_FIELD_CHARS = 5;
 
 // ── Implementation ─────────────────────────────────────────────────────────────
 
@@ -148,6 +169,21 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   private readonly _bridge: Pick<EvenAppBridge, 'textContainerUpgrade'> | undefined;
 
+  /** Optional FPS supplier (see {@link CanvasStatusHudLayerOpts.getFps}). */
+  private readonly _getFps: (() => number) | undefined;
+
+  /** FPS indicator enabled flag — default ON (user decision 2026-06-10). */
+  private _fpsEnabled = true;
+
+  /** 1 Hz FPS ticker handle — started in `attachCanvas`, cleared in `destroy`. */
+  private _fpsTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Latest status text (left part of the hud-status row). */
+  private _statusLine = 'PF -- / --';
+
+  /** Last line actually pushed to hud-status — dedupe gate (zero-push-on-idle). */
+  private _lastPushedLine = '';
+
   // ── Constructor ───────────────────────────────────────────────────────────
 
   /**
@@ -160,6 +196,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   constructor(opts: CanvasStatusHudLayerOpts) {
     this._bridge = opts.bridge;
+    this._getFps = opts.getFps;
     // Subscribe to character.delta (T-20-01: all payloads go through safeParse gate).
     this._unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
       this._onDelta(raw),
@@ -208,6 +245,17 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     await this._chromePrebakePromise;
     // Mark dirty after attach so the first composite always paints.
     this._dirty = true;
+
+    // FPS ticker (1 Hz) — refreshes the right-aligned fps field on the
+    // hud-status row. Push is dedupe-gated inside _pushStatusLine, so an idle
+    // HUD (fps value unchanged) produces ZERO text pushes. Started here (mount
+    // time) rather than in the constructor so unit tests that never attach a
+    // canvas get no timer side-effects. Cleared in destroy().
+    if (this._getFps !== undefined && this._fpsTimer === null) {
+      this._fpsTimer = setInterval(() => {
+        this._pushStatusLine();
+      }, 1000);
+    }
   }
 
   /**
@@ -303,6 +351,10 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   destroy(): void {
     this._unsubscribe();
+    if (this._fpsTimer !== null) {
+      clearInterval(this._fpsTimer);
+      this._fpsTimer = null;
+    }
     if (this._chromeBitmap !== null) {
       this._chromeBitmap.close();
       this._chromeBitmap = null;
@@ -393,24 +445,63 @@ export class CanvasStatusHudLayer implements CanvasLayer {
     this._snapshot = parsed.data;
     this._dirty = true;
 
-    // Push to the native hud-status text container if a bridge is wired.
-    // Best-effort: fire-and-forget; rejected promise is caught and logged.
-    if (this._bridge !== undefined) {
-      const snap = this._snapshot;
-      const statusLine = `PF ${snap.hp}/${snap.maxHp}  CA ${snap.ac}  LV ${snap.level}`;
-      const idField = resolveContainerIdField('hud-status');
-      void Promise.resolve(
-        this._bridge.textContainerUpgrade(
-          new TextContainerUpgrade({
-            ...idField,
-            containerName: 'hud-status',
-            content: statusLine,
-          }),
-        ),
-      ).catch((err: unknown) => {
-        console.warn('[EVF] canvas-status-hud-layer: hud-status textContainerUpgrade failed', err);
-      });
+    // Update the native hud-status row (dedupe-gated push).
+    const snap = this._snapshot;
+    this._statusLine = `PF ${snap.hp}/${snap.maxHp}  CA ${snap.ac}  LV ${snap.level}`;
+    this._pushStatusLine();
+  }
+
+  /**
+   * Enable/disable the small FPS field at the right end of the hud-status row.
+   *
+   * Default ON. Wired to the Quick Action menu `[F] FPS` toggle in
+   * boot-engine-core (persisted in the Even Hub kv store — never localStorage).
+   * Takes effect on the next push (immediate `_pushStatusLine()` call).
+   *
+   * @param enabled `true` to show the FPS field, `false` to hide it.
+   */
+  setFpsIndicatorEnabled(enabled: boolean): void {
+    this._fpsEnabled = enabled;
+    this._pushStatusLine();
+  }
+
+  /**
+   * Compose the hud-status line (status text + optional right-aligned FPS
+   * field, {@link STATUS_LINE_CHARS} budget) and push it via
+   * `textContainerUpgrade` — ONLY when the composed line differs from the
+   * last pushed one (text zero-push-on-idle).
+   *
+   * Best-effort: fire-and-forget; rejected promise is caught and logged.
+   */
+  private _pushStatusLine(): void {
+    if (this._bridge === undefined) {
+      return;
     }
+    let line = this._statusLine;
+    if (this._fpsEnabled && this._getFps !== undefined) {
+      const fps = Math.min(99, Math.round(this._getFps()));
+      const field = `${String(fps).padStart(2, ' ')}fps`; // FPS_FIELD_CHARS wide
+      line =
+        this._statusLine
+          .slice(0, STATUS_LINE_CHARS - FPS_FIELD_CHARS - 1)
+          .padEnd(STATUS_LINE_CHARS - FPS_FIELD_CHARS, ' ') + field;
+    }
+    if (line === this._lastPushedLine) {
+      return;
+    }
+    this._lastPushedLine = line;
+    const idField = resolveContainerIdField('hud-status');
+    void Promise.resolve(
+      this._bridge.textContainerUpgrade(
+        new TextContainerUpgrade({
+          ...idField,
+          containerName: 'hud-status',
+          content: line,
+        }),
+      ),
+    ).catch((err: unknown) => {
+      console.warn('[EVF] canvas-status-hud-layer: hud-status textContainerUpgrade failed', err);
+    });
   }
 }
 

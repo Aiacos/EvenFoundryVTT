@@ -8,6 +8,7 @@
 │   [A] Azione                                                       │
 │   [M] Mappa                                                        │
 │   [N] Lingua                                                       │
+│   [F] FPS                                                          │
 │   [X] Chiudi                                                       │
 └────────────────────────────────────────────────────────────────────┘
   scroll = cambia voce attiva                                         

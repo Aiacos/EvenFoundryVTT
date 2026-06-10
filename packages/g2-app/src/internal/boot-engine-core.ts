@@ -114,6 +114,13 @@ import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
 export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 
 /**
+ * Even Hub kv-store key for the FPS indicator toggle (`'0'` = off, anything
+ * else = on; default ON). Device-local — never a Foundry world setting, and
+ * never browser localStorage (sandboxed WebView, CLAUDE.md hard rule).
+ */
+const FPS_INDICATOR_KV_KEY = 'evf.fps.indicator';
+
+/**
  * Production boot-engine options.
  *
  * **NO DI fields here.** Test-only DI lives in {@link TestingDependencies}.
@@ -820,7 +827,27 @@ export async function _bootEngineCore(
   // `getCaptureContainer()` returns `'hud-capture'` (id=4, 576×288,
   // isEventCapture=1) — satisfies `_assertCaptureInvariant()` which requires
   // exactly 1 capture provider when no glyph MapBaseLayer is mounted.
-  const canvasStatusHud = new CanvasStatusHudLayer({ wsEvents: wsEventBus, bridge });
+  const canvasStatusHud = new CanvasStatusHudLayer({
+    wsEvents: wsEventBus,
+    bridge,
+    // FPS indicator (user request 2026-06-10): displayed-frame rate from the
+    // delta driver, rendered as a small right-aligned field on hud-status.
+    getFps: () => hudDeltaDriver.getFps(),
+  });
+
+  // FPS indicator enable flag — default ON, persisted in the Even Hub kv store
+  // (NEVER localStorage — sandboxed WebView, CLAUDE.md hard rule). '0' = off,
+  // anything else (including missing/'' on first run) = on. Fail-soft: a kv
+  // read error keeps the default ON.
+  let fpsIndicatorOn = true;
+  void Promise.resolve(bridge.getLocalStorage(FPS_INDICATOR_KV_KEY))
+    .then((stored: string) => {
+      fpsIndicatorOn = stored !== '0';
+      canvasStatusHud.setFpsIndicatorEnabled(fpsIndicatorOn);
+    })
+    .catch(() => {
+      /* default ON */
+    });
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
   //
@@ -984,6 +1011,18 @@ export async function _bootEngineCore(
         onAction: () => {
           // Phase 7 stub — the [A] Action panel is not yet shipped.
           console.warn('[boot-engine-core] onAction: Phase 7 panel pending (Action panel)');
+        },
+        onFpsToggle: () => {
+          // [F] FPS — flip the indicator, persist to the Even Hub kv store
+          // (fire-and-forget; a failed write only loses persistence, not the
+          // in-session toggle).
+          fpsIndicatorOn = !fpsIndicatorOn;
+          canvasStatusHud.setFpsIndicatorEnabled(fpsIndicatorOn);
+          void Promise.resolve(
+            bridge.setLocalStorage(FPS_INDICATOR_KV_KEY, fpsIndicatorOn ? '1' : '0'),
+          ).catch((err: unknown) => {
+            console.warn('[boot-engine-core] onFpsToggle: kv persist failed', String(err));
+          });
         },
       },
       // Pass the live render mode so the menu uses the correct container strategy:

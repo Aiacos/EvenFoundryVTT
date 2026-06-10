@@ -4,9 +4,9 @@
  * Covers QAM-01..14 + QAM-FIX-01..04 from 06-02-PLAN.md Task 2 <behavior>:
  *   - QAM-01:  static meta parses via PanelMetaSchema with navKey ''
  *   - QAM-02:  isOverlayPanel(instance) === true; getContainerCount === { image: 0, text: 1 }
- *   - QAM-03:  default state renders 9 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
+ *   - QAM-03:  default state renders 10 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
  *   - QAM-04:  scroll down → activeIndex increments → ▶ moves to [C]
- *   - QAM-05:  scroll wrap-around from [X] (index 8) → back to [S] (index 0)
+ *   - QAM-05:  scroll wrap-around from [X] (index 9) → back to [S] (index 0)
  *   - QAM-06:  tap on [N] (index 7) → mode === 'language'; draw shows 7 LOCALE_MENU entries
  *   - QAM-07:  sub-menu nav-keys are A I E D S F P (mutually exclusive modes)
  *   - QAM-08:  sub-menu locale select: scroll to [I] → tap → persistLocaleOverride('it') + localeEvents.emit + mode='main'
@@ -132,14 +132,14 @@ describe('QuickActionMenuPanel — OverlayPanel contract (QAM-02)', () => {
 });
 
 describe('QuickActionMenuPanel — main mode draw (QAM-03)', () => {
-  it('QAM-03: default state renders 9 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
+  it('QAM-03: default state renders 10 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
 
     // Count item rows (lines containing [X] pattern)
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9);
+    expect(itemRows.length).toBe(10);
 
     // [S] row is active (first item)
     const sRow = lines.find((l) => l.includes('[S]'));
@@ -177,11 +177,11 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     expect(cRow).toMatch(/▶/);
   });
 
-  it('QAM-05: scroll wrap-around from [X] (index 8) back to [S] (index 0)', async () => {
+  it('QAM-05: scroll wrap-around from [X] (index 9) back to [S] (index 0)', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [X] (8 times down from [S])
-    for (let i = 0; i < 8; i++) {
+    // Scroll to [X] (9 times down from [S])
+    for (let i = 0; i < 9; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     let content = await drawAndGetContent(panel, bridge);
@@ -270,7 +270,7 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9); // back to 9-item main mode
+    expect(itemRows.length).toBe(10); // back to 10-item main mode
   });
 
   it('QAM-09: tap [A] in language mode → persistLocaleOverride("auto") + emit("auto")', async () => {
@@ -322,7 +322,7 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9);
+    expect(itemRows.length).toBe(10);
   });
 });
 
