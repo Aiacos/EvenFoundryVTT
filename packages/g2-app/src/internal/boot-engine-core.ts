@@ -641,11 +641,12 @@ export async function _bootEngineCore(
     ...(hudTileWorker !== null
       ? { buildTilesAsync: (rgba: Uint8ClampedArray) => hudTileWorker.buildTiles(rgba) }
       : {}),
-    // 50ms throttle (bench 2026-06-10, full-screen 576×288): 100ms capped the
-    // sim at ~6.75 fps; 50ms delivers ~9.5 fps and the cycle cost (~55ms of
-    // dither+PNG+hash) becomes the binding limit — lower values gain nothing.
+    // 33ms throttle (bench ladder 2026-06-10, full-screen 576×288):
+    // FS+100ms = 6.75 fps → 50ms = 9.5 → Bayer = 14.4 → Worker = 15.2 →
+    // 33ms = 20.8 fps. With dither+encode in the Worker the main-thread cycle
+    // cost is ~15ms (composite+hash+push), so 33ms is the sweet spot.
     // On hardware BLE (0.5–2s/image) the adaptive-rate stack governs instead.
-    minRedrawIntervalMs: 50,
+    minRedrawIntervalMs: 33,
   });
   const layerManager = new LayerManager(bridge, debugMirror, compositor, hudDeltaDriver);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
