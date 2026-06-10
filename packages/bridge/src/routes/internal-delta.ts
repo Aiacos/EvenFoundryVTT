@@ -8,6 +8,16 @@
  * The Foundry module reads this secret from bearer registry settings at pair time.
  * This is a server-to-server internal channel — never exposed to clients.
  *
+ * Rate limiting: EXEMPT from the global @fastify/rate-limit limiter via
+ * `{ config: { rateLimit: false } }` on the route registration.
+ * Rationale: the homelab bridge logged 1102 production 429s during the 2026-06-09
+ * game session (before the ~1Hz map stream of v0.1.9 even existed). With v0.1.9
+ * frame pushes (~60/min) plus critical character.delta / combat.* deltas all
+ * sharing the single EVF_INTERNAL_SECRET bearer key, the 100-req/min budget would
+ * throttle gameplay-critical deltas as collateral damage. This is a server-to-server
+ * internal channel, so rate-limiting it provides no abuse protection — only damage.
+ * TODO (#43): restrict /internal/delta to Docker internal network in production.
+ *
  * Security:
  * - T-02-01: internal secret is redacted from pino logs (redact config in server.ts)
  * - TODO (#43): restrict /internal/delta to Docker internal network in production
@@ -75,7 +85,7 @@ export async function registerInternalDeltaRoute(
   deltaEmitter: DeltaEmitter,
   onDelta?: DeltaInterceptFn,
 ): Promise<void> {
-  app.post('/internal/delta', async (request, reply) => {
+  app.post('/internal/delta', { config: { rateLimit: false } }, async (request, reply) => {
     // --- Auth: EVF_INTERNAL_SECRET header check ---
     const internalSecret = process.env.EVF_INTERNAL_SECRET;
     const authHeader = request.headers.authorization;

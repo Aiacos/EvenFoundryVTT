@@ -310,6 +310,16 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // a compromised token can be rate-limited independently from others on the same LAN IP.
   // Falls back to IP if no Authorization header is present (e.g. /v1/health).
   // TODO (#44): lower max to 60 req/min once Phase 3 action endpoints land.
+  //
+  // Route-level exemption: POST /internal/delta opts out via { config: { rateLimit: false } }
+  // in its route registration (see packages/bridge/src/routes/internal-delta.ts).
+  // Rationale: the homelab bridge logged 1102 production 429s during the 2026-06-09 game
+  // session — BEFORE the ~1Hz map stream of v0.1.9 even existed. With v0.1.9 frame pushes
+  // (~60/min) plus critical character.delta / combat.* deltas all sharing the single
+  // EVF_INTERNAL_SECRET bearer key, leaving the limiter on /internal/delta would throttle
+  // gameplay-critical deltas as collateral damage. /internal/delta is a server-to-server
+  // channel guarded by EVF_INTERNAL_SECRET, so rate-limiting it provides no abuse protection.
+  // All other routes keep the 100 req/min budget.
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
