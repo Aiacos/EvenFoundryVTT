@@ -34,6 +34,16 @@
  *   - CE-VP-2  k=2 buffer inference: renderer returns a 2×-sized buffer → frame produced correctly
  *   - CE-VP-3  Garbage-length buffer (non-integer k) → returns null + console.warn called
  *
+ * Quick-task 260610-lx5 — CE-VP-4..CE-VP-7 (render-to-texture primary capture path):
+ *   - CE-VP-4  RT path: with PIXI.RenderTexture + renderer.render + stage → renderer.render called
+ *              with stage and {renderTexture: rt, clear: true}; extract.pixels(rt) called with rt;
+ *              rt.destroy(true) called
+ *   - CE-VP-5  Destroy-on-throw: RT path where extract.pixels throws → null returned, console.warn
+ *              called, rt.destroy(true) STILL called (finally block)
+ *   - CE-VP-6  Fallback: without globalThis.PIXI → extract.pixels called with ZERO args (no RT)
+ *   - CE-VP-7  Screen dims: RT path with renderer.screen present → RenderTexture created with
+ *              width=screen.width, height=screen.height
+ *
  * Foundry globals (Hooks, canvas, game) are stubbed via vi.stubGlobal, matching
  * the established pattern in `module.test.ts` + `readers.test.ts`. No live
  * Foundry runtime required.
@@ -42,6 +52,7 @@
  * @see .planning/quick/260610-d42-full-screen-streamed-map-text-container-/260610-d42-PLAN.md Task 1
  * @see .planning/quick/260610-evs-contrast-normalization-setting-for-glass/260610-evs-PLAN.md Task 1
  * @see .planning/quick/260610-fw7-fix-canvas-extractor-stage-vs-viewport-s/260610-fw7-PLAN.md Task 2
+ * @see .planning/quick/260610-lx5-render-to-texture-viewport-capture-in-ca/260610-lx5-PLAN.md Task 2
  * @see ./canvas-extractor.ts (system under test)
  */
 import { decodeFramePixels, FramePixelsSchema } from '@evf/shared-protocol';
@@ -730,15 +741,19 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
   });
 });
 
-// ── CE-VP: Viewport capture + byte-length guard (quick-task 260610-fw7) ──────
+// ── CE-VP: Viewport capture, byte-length guard, RT path (260610-fw7 + 260610-lx5) ──────
 
-describe('extractCurrentFrame — viewport capture & byte-length guard (CE-VP-1..CE-VP-3)', () => {
+describe('extractCurrentFrame — viewport capture, byte-length guard & RT path (CE-VP-1..CE-VP-7)', () => {
   beforeEach(() => {
     _resetCanvasExtractor();
   });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    // Belt-and-suspenders: remove any PIXI stub that was set without vi.stubGlobal
+    // (e.g. direct property assignment in a test) so CE-NORM / CE-INT suites that
+    // run after this block do NOT accidentally activate the RT primary path.
+    delete (globalThis as { PIXI?: unknown }).PIXI;
     _resetCanvasExtractor();
   });
 
@@ -843,5 +858,181 @@ describe('extractCurrentFrame — viewport capture & byte-length guard (CE-VP-1.
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  // ── CE-VP-4..CE-VP-7: Render-to-texture primary capture path (260610-lx5) ──
+
+  /**
+   * Build a PIXI RenderTexture stub and wire it into globalThis.PIXI via
+   * vi.stubGlobal. Returns spies for RT.create, rtStub.destroy, and a renderer
+   * extension object with `render` spy and optional `screen` override.
+   */
+  function installPIXIStub(screenDims?: { width: number; height: number }) {
+    const rtStub = {
+      destroy: vi.fn(),
+      /** Marker so assertions can verify === identity. */
+      __isRtStub: true as const,
+    };
+    const RTCreate = vi.fn(() => rtStub);
+    vi.stubGlobal('PIXI', { RenderTexture: { create: RTCreate } });
+    const rendererExt = {
+      render: vi.fn(),
+      ...(screenDims !== undefined ? { screen: screenDims } : {}),
+    };
+    return { rtStub, RTCreate, rendererExt };
+  }
+
+  it('CE-VP-4: RT path — renderer.render called with stage+{renderTexture,clear:true}; extract.pixels(rt) called with rt; rt.destroy(true) called', () => {
+    // Install a PIXI.RenderTexture stub so the RT primary path is activated.
+    const { rtStub, RTCreate, rendererExt } = installPIXIStub();
+
+    const W = 400;
+    const H = 200;
+    const pixels = new Uint8Array(W * H * 4).fill(0x80);
+    const pixelsSpy = vi.fn(() => pixels);
+
+    // Build a canvas whose renderer carries the RT-path required fields.
+    const rtCanvas = {
+      scene: { id: 'rt-scene' },
+      stage: { __rtStageMarker: true },
+      app: {
+        renderer: {
+          width: W,
+          height: H,
+          extract: { pixels: pixelsSpy },
+          ...rendererExt,
+        },
+      },
+    };
+
+    const fp = extractCurrentFrame(rtCanvas);
+    expect(fp).not.toBeNull();
+
+    // RT.create must have been called with the viewport dims.
+    expect(RTCreate).toHaveBeenCalledTimes(1);
+    expect(RTCreate).toHaveBeenCalledWith({ width: W, height: H });
+
+    // renderer.render must have been called once with the stage and {renderTexture: rt, clear: true}.
+    expect(rendererExt.render).toHaveBeenCalledTimes(1);
+    const [renderTarget, renderOpts] = rendererExt.render.mock.calls[0] as [
+      unknown,
+      { renderTexture: unknown; clear: boolean },
+    ];
+    expect(renderTarget).toBe(rtCanvas.stage);
+    expect(renderOpts.renderTexture).toBe(rtStub);
+    expect(renderOpts.clear).toBe(true);
+
+    // extract.pixels must have been called with exactly one argument === rtStub (not no-arg).
+    expect(pixelsSpy).toHaveBeenCalledTimes(1);
+    const pixelsCallArgs = pixelsSpy.mock.calls[0] as unknown[];
+    expect(pixelsCallArgs.length).toBe(1);
+    expect(pixelsCallArgs[0]).toBe(rtStub);
+
+    // rt.destroy(true) must have been called (finally block, GPU memory freed).
+    expect(rtStub.destroy).toHaveBeenCalledTimes(1);
+    expect(rtStub.destroy).toHaveBeenCalledWith(true);
+  });
+
+  it('CE-VP-5: destroy-on-throw — extract.pixels throws on RT path → null returned, console.warn called, rt.destroy(true) still called', () => {
+    const { rtStub, rendererExt } = installPIXIStub();
+
+    const W = 400;
+    const H = 200;
+    // extract.pixels throws — simulates GPU context-lost on real device.
+    const pixelsSpy = vi.fn(() => {
+      throw new Error('GPU context lost');
+    });
+
+    const rtCanvas = {
+      scene: { id: 'throw-scene' },
+      stage: { __rtStageMarker: true },
+      app: {
+        renderer: {
+          width: W,
+          height: H,
+          extract: { pixels: pixelsSpy },
+          ...rendererExt,
+        },
+      },
+    };
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = extractCurrentFrame(rtCanvas);
+
+      // Must return null — no retry storm.
+      expect(result).toBeNull();
+
+      // console.warn must have been called once.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const warnMsg = (warnSpy.mock.calls[0] as unknown[]).map(String).join(' ');
+      expect(warnMsg).toContain('[EVF canvas-extractor]');
+
+      // rt.destroy(true) MUST still have been called (finally block protects GPU memory).
+      expect(rtStub.destroy).toHaveBeenCalledTimes(1);
+      expect(rtStub.destroy).toHaveBeenCalledWith(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('CE-VP-6: fallback — without globalThis.PIXI, extract.pixels called with ZERO args', () => {
+    // Explicitly ensure PIXI is NOT on globalThis (afterEach also deletes it, but
+    // be explicit so this test is self-contained and documents the fallback trigger).
+    delete (globalThis as { PIXI?: unknown }).PIXI;
+
+    const W = 400;
+    const H = 200;
+    // makeCanvasMock has no `render` field on the renderer — same as all other tests.
+    const fakeCanvas = makeCanvasMock({ width: W, height: H, fill: 0x80 });
+
+    extractCurrentFrame(fakeCanvas);
+
+    const pixelsMock = (
+      fakeCanvas as {
+        app: { renderer: { extract: { pixels: ReturnType<typeof vi.fn> } } };
+      }
+    ).app.renderer.extract.pixels;
+
+    // On the fallback path, pixels() must be called with ZERO arguments (no rt).
+    expect(pixelsMock).toHaveBeenCalledTimes(1);
+    const callArgs = pixelsMock.mock.calls[0] as unknown[];
+    expect(callArgs.length).toBe(0);
+  });
+
+  it('CE-VP-7: screen dims — RT path with renderer.screen present → RenderTexture created with screen dims', () => {
+    const screenW = 576;
+    const screenH = 288;
+    // renderer.width/height differ from screen to prove screen wins.
+    const rendererW = 400;
+    const rendererH = 200;
+
+    const { rtStub, RTCreate, rendererExt } = installPIXIStub({ width: screenW, height: screenH });
+
+    const pixels = new Uint8Array(screenW * screenH * 4).fill(0x80);
+    const pixelsSpy = vi.fn(() => pixels);
+
+    const rtCanvas = {
+      scene: { id: 'screen-dims-scene' },
+      stage: { __rtStageMarker: true },
+      app: {
+        renderer: {
+          width: rendererW,
+          height: rendererH,
+          extract: { pixels: pixelsSpy },
+          ...rendererExt,
+        },
+      },
+    };
+
+    const fp = extractCurrentFrame(rtCanvas);
+    expect(fp).not.toBeNull();
+
+    // RT.create must have been called with screen dims, NOT renderer.width/height.
+    expect(RTCreate).toHaveBeenCalledTimes(1);
+    expect(RTCreate).toHaveBeenCalledWith({ width: screenW, height: screenH });
+
+    // rt.destroy(true) still called.
+    expect(rtStub.destroy).toHaveBeenCalledWith(true);
   });
 });

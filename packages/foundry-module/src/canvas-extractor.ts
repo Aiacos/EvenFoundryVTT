@@ -256,7 +256,7 @@ function acquireSourceBytes(
       rt = RT.create({ width: vw, height: vh });
       let srcBytes: Uint8Array | Uint8ClampedArray;
       try {
-        renderer.render!(canvas.stage, { renderTexture: rt, clear: true });
+        renderer.render?.(canvas.stage, { renderTexture: rt, clear: true });
         srcBytes = renderer.extract.pixels(rt);
       } finally {
         (rt as { destroy(b: boolean): void }).destroy(true);
