@@ -147,6 +147,10 @@ Last activity: 2026-06-09 - Completed quick task 260609-uzf: Fix CI-gate errors 
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 27 added (2026-06-10): Mappa su canvas substrate + corner-card HUD layout — next-milestone candidate (v0.11.0). Map as compositor CanvasLayer z=0, status HUD corner card (non full-frame), [M] toggle reale, root-exit canvas-mode fix. Evidenze: `.planning/debug/resolved/map-frame-pipeline-dims.md`.
+
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecting current work:

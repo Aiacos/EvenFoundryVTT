@@ -85,6 +85,27 @@ Replaced the HUD render substrate from 27px text-containers to a canvas-composit
 | 24. Delta Loop ~5fps xxhash | v0.10.0 | 2/2 | Complete | 2026-06-08 |
 | 25. Raster Default Boot + Glyph Fallback | v0.10.0 | 3/3 | Complete | 2026-06-08 |
 | 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 1/1 | Complete | 2026-06-08 |
+| 27. Mappa su canvas + corner-card layout | next (v0.11.0 cand.) | 0/? | Not planned | — |
+
+## Next Milestone (in pianificazione — v0.11.0 candidate)
+
+### Phase 27: Mappa su canvas substrate + corner-card HUD layout
+
+**Goal:** La mappa di scena diventa il layer base del compositor canvas e il layout on-glasses passa al design Specs §7.2 (z=0 mappa · z=1 status HUD "corner card" · z=2 overlay) — chiudendo il gap di convivenza per cui il percorso scena legacy e l'HudDeltaDriver si contendono le tile id 0-3 (verificato live 2026-06-10, schermo ibrido).
+
+Scope:
+1. **`CanvasMapLayer` z=0** — consuma i `frame_pixels` decodificati (400×200 canonici, pipeline fixata in commit `edae764`) e dipinge nel compositor; il percorso legacy `RasterController→map-tile-0..3` viene ritirato in canvas mode (INV-4: niente doppio driver sulle stesse tile).
+2. **Layout corner-card** — `CanvasStatusHudLayer` smette di riempire l'intero 400×200 di nero opaco: status card compatta in un angolo (chrome non full-frame), mappa visibile sotto; INV-1 raster baselines rigenerate di conseguenza.
+3. **`[M] Mappa` toggle reale** — sostituisce lo stub no-op "Phase 7" in boot-engine-core (mappa on/off o full-map mode).
+4. **Root-exit in canvas mode** — `root-exit-dispatcher` presuppone top layer id 'map-base'; a root canvas `getTopLayer()` è null e l'exit double-tap non scatta mai. Con la mappa montata a z=0 il contratto torna valido (o si adegua il dispatcher).
+
+**Requirements**: TBD (derivare in plan-phase; evidenze in `.planning/debug/resolved/map-frame-pipeline-dims.md`)
+**Depends on:** Phase 19–26 (v0.10.0 Raster UI Substrate) + fix pipeline frame `edae764`
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 27 to break down)
 
 ---
-*Last updated: 2026-06-08 — v0.10.0 Raster UI Substrate SHIPPED (Phases 19–26, archived). v0.9.14 parked. Prior: 2026-05-18 v0.9.13 ARCHIVED.*
+*Last updated: 2026-06-10 — Phase 27 (Mappa su canvas + corner-card layout) added as next-milestone candidate. Prior: 2026-06-08 v0.10.0 SHIPPED (Phases 19–26, archived); v0.9.14 parked.*
