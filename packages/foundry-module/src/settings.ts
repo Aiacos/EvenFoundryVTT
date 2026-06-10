@@ -153,16 +153,17 @@ export function registerSettings(): void {
   });
 
   // Map contrast normalization — per-client display preference (Quick Task 260610-evs).
-  // When enabled (default), luminance levels-stretch is applied to dark map frames
-  // before the 4-bit dither, so the G2's greyscale display shows readable contrast
-  // even in pitch-dark dungeon scenes. Toggle applies live on the next frame capture
-  // without re-pairing or module reload (getNormalize is evaluated per capture).
+  // When enabled, luminance levels-stretch is applied to dark map frames before the
+  // 4-bit dither, so the G2's greyscale display shows readable contrast even in
+  // pitch-dark dungeon scenes. Default OFF (user decision 2026-06-10: faithful
+  // tones by default, normalization is an opt-in). Toggle applies live on the next
+  // frame capture without re-pairing or module reload (getNormalize per capture).
   game.settings.register(MODULE_ID, 'mapContrastNormalize', {
     name: 'evf.settings.map_contrast_normalize.name',
     hint: 'evf.settings.map_contrast_normalize.hint',
     scope: 'client',
     config: true,
     type: Boolean,
-    default: true,
+    default: false,
   });
 }
