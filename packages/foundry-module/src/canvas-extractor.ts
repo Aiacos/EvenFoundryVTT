@@ -6,14 +6,16 @@
  * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`, `canvasPan`) and
  * on any fire schedules a debounced (default 200 ms) call to
  * {@link extractCurrentFrame},
- * which pulls pixels via `canvas.app.renderer.extract.pixels()` (no target —
- * PIXI v7 framebuffer/viewport capture, NOT `canvas.stage`), fit-downscales
- * them (whole viewport, aspect preserved, box-average) onto EXACTLY the
- * canonical 400×200 raster region (ADR-0013 Amendment 1, letterboxed) and
- * dispatches the typed payload via the
- * caller-provided `emit` callback. The caller (`module.ts` ready hook) wraps
- * the payload in the existing Phase 3 `EnvelopeSchema` over the bridge WS —
- * Plan 06 does NOT introduce a new envelope schema (NF-1 closure).
+ * which pulls pixels via a deterministic render-to-texture (RT) viewport
+ * capture: the stage (which carries Foundry's pan/zoom transform including
+ * fog-of-war) is rendered into a fresh PIXI `RenderTexture`, then
+ * `extract.pixels(rt)` reads the texture — NOT the idle main framebuffer.
+ * The captured pixels are fit-downscaled (whole viewport, aspect preserved,
+ * box-average) onto EXACTLY the canonical 400×200 raster region (ADR-0013
+ * Amendment 1, letterboxed) and dispatched via the caller-provided `emit`
+ * callback. The caller (`module.ts` ready hook) wraps the payload in the
+ * existing Phase 3 `EnvelopeSchema` over the bridge WS — Plan 06 does NOT
+ * introduce a new envelope schema (NF-1 closure).
  *
  * **Phase 27 viewport decision** (quick-task fw7, 2026-06-10)
  *
@@ -23,11 +25,25 @@
  * interpreted the buffer with `renderer.width × renderer.height`, producing a
  * row-stride mismatch → horizontal-stripe corruption on the G2 glasses.
  *
- * Calling `pixels()` with NO target reads the existing main framebuffer at
- * `renderer.screen × resolution`, which is exactly `renderer.width × renderer.height`.
- * This is the viewport the player already sees (zoom + fog applied) — correct
- * stride, correct content, zero per-capture re-render cost (T-fw7-02 DoS
- * mitigation).
+ * Calling `pixels()` with NO target reads the existing MAIN framebuffer at
+ * `renderer.screen × resolution`. However, with `preserveDrawingBuffer:false`
+ * (the Foundry/PIXI default), this buffer is only valid DURING the render pass
+ * — at idle, the driver may have already swapped or cleared it, returning
+ * all-zero bytes. Live evidence (2026-06-10): frames streamed at ~1 Hz with
+ * maxG=0 while the player was idle; content appeared only during active
+ * canvas re-render.
+ *
+ * **Render-to-texture (RT) primary capture path** (quick-task 260610-lx5, 2026-06-10)
+ *
+ * To get deterministic pixel data independent of idle state, the extractor now
+ * creates a viewport-sized `PIXI.RenderTexture`, renders `canvas.stage` into it
+ * (the stage carries the player's current pan/zoom and fog-of-war, so the result
+ * IS the viewport the player sees), and extracts from the texture. The texture
+ * is destroyed in a `finally` block on every capture — including when
+ * `extract.pixels` throws — so no GPU memory leaks across the ~1 Hz interval
+ * (T-lx5-01 DoS mitigation). When `PIXI.RenderTexture`, `renderer.render`, or
+ * `canvas.stage` is unavailable (unit-test fixtures, exotic hosts), the
+ * no-arg `pixels()` fallback from v0.1.10 is used unchanged.
  *
  * **Scaling strategy (CE-6)**
  *
@@ -77,6 +93,7 @@
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04a-CONTEXT.md §Area 2 (debounce)
+ * @see .planning/quick/260610-lx5-render-to-texture-viewport-capture-in-ca/260610-lx5-PLAN.md Task 1
  * @see docs/architecture/0001-layered-ui-model.md §Confirmation (z=0 map consumer)
  * @see docs/architecture/0006-raster-pipeline-library-stack.md (raster pipeline + ADR-0005 SC #5)
  * @see packages/shared-protocol/src/payloads/frame.ts (FramePixelsSchema producer-side reference)
@@ -158,10 +175,11 @@ export interface CanvasExtractorOpts {
  * reads from. The narrow shape lets tests build cheap fixtures without
  * importing fvtt-types (which is out-of-scope until Phase 2+ stabilises it).
  *
- * Note: `stage` is NOT read by the extractor (viewport capture, no target —
- * see Phase 27 decision in module JSDoc). Test fixtures may still provide the
- * field; it is declared here so structural subtyping does not reject such
- * fixtures, but the extractor ignores it entirely (INV-4: no dead read).
+ * The primary RT capture path reads `stage` directly: it is rendered into a
+ * fresh `RenderTexture` so the extracted pixels represent the player viewport
+ * (zoom + fog-of-war from the stage's own pan/zoom transform). The no-arg
+ * fallback ignores `stage` entirely, preserving the v0.1.10 behaviour for
+ * unit-test fixtures and exotic hosts where `PIXI.RenderTexture` is unavailable.
  */
 export interface CanvasLike {
   readonly scene?: { readonly id?: string } | null;
@@ -169,13 +187,102 @@ export interface CanvasLike {
     readonly renderer?: {
       readonly width: number;
       readonly height: number;
+      /**
+       * Logical screen dimensions at the renderer's internal resolution.
+       * Present in PIXI v7 Foundry renderers. When available, `screen.width`
+       * and `screen.height` are used as the RenderTexture size on the RT
+       * primary path so the captured resolution matches the player viewport.
+       * Falls back to `renderer.width` / `renderer.height` when absent.
+       */
+      readonly screen?: { readonly width: number; readonly height: number };
       readonly extract: {
         pixels(target?: unknown): Uint8Array | Uint8ClampedArray;
       };
+      /**
+       * Present on a real PIXI WebGL renderer. Used by the RT primary path to
+       * render `canvas.stage` into the fresh `RenderTexture` before extraction.
+       * Absent in unit-test fixtures that use the no-arg fallback path.
+       */
+      render?(target: unknown, opts: { renderTexture: unknown; clear: boolean }): void;
     };
   };
-  /** Retained for structural compatibility with test fixtures; not read by the extractor. */
+  /**
+   * The PIXI DisplayObject that represents the Foundry canvas scene. Read by
+   * the RT primary path: it is rendered into the RenderTexture using its own
+   * pan/zoom transform, so the extracted pixels ARE the player viewport
+   * (fog-of-war and camera position included). The no-arg fallback path does
+   * not read this field.
+   */
   readonly stage?: unknown;
+}
+
+/** Return shape for {@link acquireSourceBytes}. */
+interface AcquiredBytes {
+  readonly srcBytes: Uint8Array | Uint8ClampedArray;
+  readonly srcWidth: number;
+  readonly srcHeight: number;
+}
+
+/**
+ * Acquire raw RGBA source bytes from the renderer using either the RT primary
+ * path (when PIXI.RenderTexture + renderer.render + canvas.stage are all
+ * present) or the no-arg fallback (for test fixtures / exotic hosts).
+ *
+ * Returns `null` when any error occurs — the caller propagates this as a
+ * skipped frame (no retry storm). The RT primary path guarantees rt.destroy(true)
+ * runs in a `finally` block even on throw, so no GPU memory leaks.
+ *
+ * @internal Not exported — part of {@link extractCurrentFrame}'s implementation.
+ */
+function acquireSourceBytes(
+  RT: { create(o: { width: number; height: number }): unknown } | undefined,
+  renderer: NonNullable<NonNullable<CanvasLike['app']>['renderer']>,
+  canvas: CanvasLike,
+  vw: number,
+  vh: number,
+): AcquiredBytes | null {
+  const useRTPath =
+    RT !== undefined &&
+    typeof renderer.render === 'function' &&
+    canvas.stage !== undefined &&
+    canvas.stage !== null;
+
+  if (useRTPath) {
+    // RT primary path — production path for live Foundry client (T-lx5-01, T-lx5-03).
+    // rt.destroy(true) runs in finally on every capture (including throw) to prevent
+    // GPU memory leaks across the ~1 Hz interval.
+    let rt: unknown;
+    try {
+      rt = RT.create({ width: vw, height: vh });
+      let srcBytes: Uint8Array | Uint8ClampedArray;
+      try {
+        renderer.render!(canvas.stage, { renderTexture: rt, clear: true });
+        srcBytes = renderer.extract.pixels(rt);
+      } finally {
+        (rt as { destroy(b: boolean): void }).destroy(true);
+      }
+      // On the RT path the texture is exactly vw × vh; extract returns vw × vh × 4.
+      return { srcBytes, srcWidth: vw, srcHeight: vh };
+    } catch (err) {
+      console.warn(
+        '[EVF canvas-extractor] extract.pixels threw, skipping frame:',
+        (err as Error).message ?? err,
+      );
+      return null;
+    }
+  } else {
+    // No-arg fallback — v0.1.10 behaviour for test fixtures / exotic hosts.
+    try {
+      const srcBytes = renderer.extract.pixels();
+      return { srcBytes, srcWidth: renderer.width, srcHeight: renderer.height };
+    } catch (err) {
+      console.warn(
+        '[EVF canvas-extractor] extract.pixels threw, skipping frame:',
+        (err as Error).message ?? err,
+      );
+      return null;
+    }
+  }
 }
 
 /**
@@ -225,40 +332,63 @@ export function extractCurrentFrame(
   if (renderer === undefined) {
     return null;
   }
-  const srcWidth = renderer.width;
-  const srcHeight = renderer.height;
-  if (srcWidth <= 0 || srcHeight <= 0) {
-    return null;
-  }
+
   const targetWidth = Math.max(MIN_DIM, Math.min(opts.targetWidth ?? MAX_WIDTH, MAX_WIDTH));
   const targetHeight = Math.max(MIN_DIM, Math.min(opts.targetHeight ?? MAX_HEIGHT, MAX_HEIGHT));
 
-  // Source RGBA bytes — viewport capture: no target argument reads the main
-  // framebuffer at renderer.screen × resolution (= renderer.width × renderer.height).
-  // Passing `canvas.stage` (PIXI v7) re-renders the whole world at stage LOCAL BOUNDS
-  // × resolution (e.g. 4000×3000 px), returns a differently-sized buffer, but the
-  // code uses renderer.width/height as the stride → row-stride mismatch → horizontal
-  // stripe corruption on G2. Viewport capture fixes both the corruption and the
-  // per-capture whole-stage re-render cost (T-fw7-01 + T-fw7-02 mitigations,
-  // quick-task fw7, 2026-06-10).
-  let srcBytes: Uint8Array | Uint8ClampedArray;
-  try {
-    srcBytes = renderer.extract.pixels();
-  } catch (err) {
-    // Real-device perf failure or context-lost — log + skip frame; no retry storm.
-    console.warn(
-      '[EVF canvas-extractor] extract.pixels threw, skipping frame:',
-      (err as Error).message ?? err,
-    );
+  // Determine viewport dimensions. renderer.screen reflects the logical viewport
+  // at the renderer's internal resolution (PIXI v7 WebGL renderer). Falls back to
+  // renderer.width/height when screen is absent (test fixtures, exotic hosts).
+  // These dims are used for the RT path (RenderTexture size) and as the effective
+  // source dims; both paths return null early if the dims are degenerate (≤ 0).
+  const vw = renderer.screen?.width ?? renderer.width;
+  const vh = renderer.screen?.height ?? renderer.height;
+  if (vw <= 0 || vh <= 0) {
     return null;
   }
 
-  // ── Byte-length sanity guard (T-fw7-01 mitigation) ────────────────────────
-  // The expected buffer length for viewport capture is srcWidth × srcHeight × 4.
-  // If the length matches, proceed with renderer dims as effective dims.
-  // If the length is a clean integer-square multiple (k ≥ 2 within float epsilon),
-  // reinterpret the dims as (srcWidth×k) × (srcHeight×k) — handles high-DPR /
-  // resolution-multiplied renderers that return a larger-than-expected buffer.
+  // ── Source RGBA bytes: RT primary path or no-arg fallback ─────────────────
+  //
+  // PRIMARY (RT) PATH — production path for live Foundry client:
+  //   When PIXI.RenderTexture, renderer.render, and canvas.stage are all present,
+  //   render the stage into a fresh viewport-sized RenderTexture and extract from
+  //   it. The stage carries the player's current pan/zoom and fog-of-war, so the
+  //   result is exactly the viewport the player sees — deterministic regardless of
+  //   whether the canvas is idle or actively rendering. rt.destroy(true) runs in a
+  //   finally block on every capture, including when extract.pixels throws, so no
+  //   GPU memory ever leaks (T-lx5-01 DoS mitigation). On this path srcWidth/srcHeight
+  //   = vw/vh (the RenderTexture is exactly vw × vh pixels, extract returns exactly
+  //   vw × vh × 4 bytes at resolution 1).
+  //
+  // FALLBACK PATH — for unit-test fixtures and exotic hosts:
+  //   When PIXI.RenderTexture, renderer.render, or canvas.stage is unavailable,
+  //   fall back to the v0.1.10 no-arg renderer.extract.pixels() read. With
+  //   preserveDrawingBuffer:false this returns all-zero bytes on an idle real
+  //   Foundry client (live evidence: maxG=0 idle frames 2026-06-10), but it is
+  //   the correct path for happy-dom test fixtures that supply a plain pixels mock
+  //   with no PIXI globals. The existing byte-length guard + k-inference remain
+  //   unchanged on this path.
+
+  // Defensive typed accessor for the PIXI RenderTexture class.
+  const RT = (
+    globalThis as {
+      PIXI?: { RenderTexture?: { create(o: { width: number; height: number }): unknown } };
+    }
+  ).PIXI?.RenderTexture;
+
+  // acquireBytes returns the raw RGBA buffer and the effective pixel dimensions,
+  // or null on any failure (GPU error, context-lost). Returning null here means
+  // the outer function returns null (no frame emitted, no retry storm).
+  const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh);
+  if (acquired === null) {
+    return null;
+  }
+  const { srcBytes, srcWidth, srcHeight } = acquired;
+
+  // ── Byte-length sanity guard (T-fw7-01 / T-lx5-02 mitigations) ───────────
+  // Expected buffer length = srcWidth × srcHeight × 4. On the RT path this is
+  // always exact (vw × vh × 4 at resolution 1). On the fallback path a high-DPR
+  // renderer may return a larger buffer; the k-inference handles it.
   // Any other mismatch is logged + skipped: never emit row-stride garbage.
   const expected = srcWidth * srcHeight * 4;
   let effWidth = srcWidth;
