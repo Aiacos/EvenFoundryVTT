@@ -367,6 +367,10 @@ Hooks.once('ready', () => {
       }
     },
     getCaptureIntervalMs: () => getCaptureIntervalMs(),
+    // frame_stats telemetry (≤1 every 5s): capture-phase timings observable
+    // from the bridge WS without access to this client's console. Unknown
+    // envelope types are dropped silently by the g2-app (scene-input 2c).
+    emitStats: (stats) => bridgeDeltaEmitter('frame_stats', stats),
   });
 });
 

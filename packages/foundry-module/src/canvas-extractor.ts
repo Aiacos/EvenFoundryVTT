@@ -116,6 +116,13 @@ export interface CanvasExtractorOpts {
    */
   readonly getCaptureIntervalMs?: () => number;
   /**
+   * Optional telemetry sink for {@link FrameCaptureStats}, called at most
+   * every 5 s (rides the keyframe cadence). The module wires this to a
+   * `frame_stats` envelope on the bridge delta channel so capture-phase
+   * timings are observable remotely without access to the client console.
+   */
+  readonly emitStats?: (stats: FrameCaptureStats) => void;
+  /**
    * Per-capture dither mode supplier (the `mapDither` client setting).
    *
    * `true` applies a Bayer 4×4 ordered dither during the 16-level quantization
@@ -319,10 +326,12 @@ export function extractCurrentFrame(
     }
   ).PIXI?.RenderTexture;
 
+  const tAcquire0 = Date.now();
   const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh, targetWidth, targetHeight);
   if (acquired === null) {
     return null;
   }
+  const tAcquire1 = Date.now();
   const { srcBytes, srcWidth, srcHeight } = acquired;
 
   // ── Byte-length sanity guard (T-fw7-01 / T-lx5-02 mitigations) ───────────
@@ -483,6 +492,8 @@ export function extractCurrentFrame(
     rgbaForPng[pi + 3] = 255;
   }
 
+  const tProcess1 = Date.now();
+
   // forbidPlte=true forces ctype-2 RGB output — the palette path corrupts
   // toRGBA8 under Node (upng-js 2.1.0; see module-level JSDoc API note).
   const pngBuf = UPNG.encode([rgbaForPng.buffer], targetWidth, targetHeight, 0, undefined, true);
@@ -509,16 +520,49 @@ export function extractCurrentFrame(
     pngB64 = btoaFn(binary);
   }
 
+  const tEncode1 = Date.now();
+
   return {
     sceneId: canvas.scene?.id ?? '',
     width: targetWidth,
     height: targetHeight,
     pngB64,
     ts: Date.now(),
-    // Expose the luma hash so the caller can do identical-frame skip.
-    // We attach it as a non-schema field — the caller reads it before emit.
+    // Non-schema diagnostics fields — the caller strips them before emit.
+    // _lumaHash drives the identical-frame skip; _stats feeds the optional
+    // frame_stats telemetry channel (see CanvasExtractorOpts.emitStats).
     _lumaHash: fnv1a32(luma),
-  } as FramePng & { _lumaHash: number };
+    _stats: {
+      acquireMs: tAcquire1 - tAcquire0,
+      processMs: tProcess1 - tAcquire1,
+      encodeMs: tEncode1 - tProcess1,
+      srcWidth,
+      srcHeight,
+      viewportWidth: vw,
+      viewportHeight: vh,
+      pngBytes: pngBytes.length,
+    },
+  } as FramePng & { _lumaHash: number; _stats: FrameCaptureStats };
+}
+
+/**
+ * Per-capture timing/size diagnostics carried on the `frame_stats` telemetry
+ * envelope (emitted at most every 5 s via `CanvasExtractorOpts.emitStats`).
+ *
+ * `acquireMs` = scene render-to-texture + GPU readback; `processMs` =
+ * downscale + normalize + luma + quantize; `encodeMs` = PNG encode + base64.
+ * `srcWidth/srcHeight` reveal whether the downscaled-RT capture (fractional
+ * PIXI `resolution`) was honored by the host PIXI version.
+ */
+export interface FrameCaptureStats {
+  readonly acquireMs: number;
+  readonly processMs: number;
+  readonly encodeMs: number;
+  readonly srcWidth: number;
+  readonly srcHeight: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly pngBytes: number;
 }
 
 /** Internal module state — single registration is enforced (CE-7 idempotency). */
@@ -533,6 +577,9 @@ let _lastEmittedHash: number | null = null;
 
 /** Timestamp of the last emit — drives the {@link KEYFRAME_INTERVAL_MS} keyframe. */
 let _lastEmitTs = 0;
+
+/** Timestamp of the last frame_stats telemetry emit (throttled to every 5 s). */
+let _lastStatsTs = 0;
 
 /** Leading+trailing throttle timer handle for hook-driven captures. */
 let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -586,13 +633,22 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       if (result === null) {
         return;
       }
+      // Telemetry: forward capture-phase timings at most every 5s.
+      const withHash = result as FramePng & { _lumaHash?: number; _stats?: FrameCaptureStats };
+      const now = Date.now();
+      if (
+        opts.emitStats !== undefined &&
+        withHash._stats !== undefined &&
+        now - _lastStatsTs >= 5_000
+      ) {
+        _lastStatsTs = now;
+        opts.emitStats(withHash._stats);
+      }
       // Identical-frame skip with periodic keyframe: unchanged content is not
       // re-sent UNLESS more than KEYFRAME_INTERVAL_MS passed since the last
       // emit — late-joining WS subscribers must receive the current frame even
       // on a static scene (the bridge is push-only, no frame cache).
-      const withHash = result as FramePng & { _lumaHash?: number };
       const hash = withHash._lumaHash;
-      const now = Date.now();
       if (
         hash !== undefined &&
         hash === _lastEmittedHash &&
@@ -698,6 +754,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     _registered = null;
     _lastEmittedHash = null;
     _lastEmitTs = 0;
+    _lastStatsTs = 0;
   };
 }
 
@@ -706,6 +763,7 @@ export function _resetCanvasExtractor(): void {
   _registered = null;
   _lastEmittedHash = null;
   _lastEmitTs = 0;
+  _lastStatsTs = 0;
   _throttleTimer = null;
   _pendingTrailing = false;
   if (_captureLoopTimer !== null) {
