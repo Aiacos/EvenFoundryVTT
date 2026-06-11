@@ -26,6 +26,7 @@
  *   - CE-PNG-6  Continuous pan throttle: firing hook 5× without draining → emit called ≥2 (leading + trailing)
  *   - CE-FPS-1  no scheduler fps cap: 33 ms interval (30 fps) → 10 emits in 330 ms
  *   - CE-FPS-2  live interval change (250→50 ms) applies from the next cycle without re-register
+ *   - CE-KF-1   static scene → keyframe forced every 5 s despite identical-frame skip
  *
  * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md Task 2
  * @see ./canvas-extractor.ts (system under test)
@@ -444,6 +445,30 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
     // From here on the loop runs at 50ms: 4 more cycles in 200ms.
     vi.advanceTimersByTime(200);
     expect(emit).toHaveBeenCalledTimes(6);
+  });
+
+  it('CE-KF-1: static scene → keyframe forced every 5s despite identical-frame skip', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    // Content NEVER changes — every capture produces the same luma hash.
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
+
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 250 });
+
+    // First cycle (t=250ms) emits the initial frame; the next 4.75s of cycles
+    // are identical-content skips until the 5s keyframe window elapses.
+    vi.advanceTimersByTime(250);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(4500);
+    expect(emit).toHaveBeenCalledTimes(1); // still inside the keyframe window — all skipped
+
+    vi.advanceTimersByTime(1000);
+    expect(emit).toHaveBeenCalledTimes(2); // keyframe forced after >=5s idle
+
+    vi.advanceTimersByTime(5250);
+    expect(emit).toHaveBeenCalledTimes(3); // and again on the next window
   });
 });
 

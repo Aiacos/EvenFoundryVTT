@@ -1,57 +1,31 @@
 /**
- * Foundry PIXI canvas → FramePng extractor (v0.1.15).
+ * Foundry PIXI canvas → FramePng extractor.
  *
- * Quick Task 260611-e71 replaces the `frame_pixels` emit pipeline with the
- * lighter `frame_png` wire format: greyscale lossless PNG ~1-5 KB vs ~884 KB
- * RGBA. Changes introduced in this file:
+ * Captures the Foundry scene canvas (RenderTexture path when available, no-arg
+ * `extract.pixels()` fallback), fit-downscales it to the 576×288 glasses
+ * region with letterboxing and optional contrast normalization, converts it to
+ * Rec.601 luma, and emits it as a greyscale lossless PNG (`frame_png` wire
+ * payload, ~1-60 KB vs ~884 KB raw RGBA base64).
  *
- *   1. **PNG encode pipeline** — `extractCurrentFrame` now produces a
- *      `FramePng` payload instead of `FramePixels`. The Rec.601 luma of the
- *      RGBA frame is computed, a FNV-1a hash is taken for identical-frame
- *      skipping, and the result is encoded via:
- *        `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)`
- *      (forbidPlte=true → ctype=2 RGB, exact roundtrip; do NOT use
- *      encodeLL — it does not exist in upng-js 2.1.0).
+ * Scheduling model:
+ *   - A self-rescheduling setTimeout loop captures every
+ *     `getCaptureIntervalMs()` ms (the `captureFps` world setting, read live
+ *     before each wait — 1–60 fps with no scheduler-imposed cap).
+ *   - The five canvas hooks (canvasReady/drawCanvas/refreshToken/updateScene/
+ *     canvasPan) additionally trigger captures through a leading+trailing
+ *     {@link THROTTLE_MS} throttle, so panning produces immediate frames.
+ *   - Identical frames (same FNV-1a luma hash) are skipped, EXCEPT a forced
+ *     keyframe at least every {@link KEYFRAME_INTERVAL_MS} so late-joining WS
+ *     subscribers always receive the current frame (the bridge is push-only
+ *     and keeps no frame cache).
  *
- *   2. **Identical-frame skip** — a module-level `_lastEmittedHash` compares
- *      the FNV-1a 32-bit hash of the luma array between consecutive captures.
- *      If unchanged, `performExtract` returns without calling `opts.emit`.
+ * upng-js 2.1.0 API note: only `encode`/`decode`/`toRGBA8`/`quantize` exist;
+ * `encode(..., forbidPlte=true)` yields a ctype-2 RGB PNG with exact byte
+ * roundtrip (the palette path crashes `toRGBA8` under Node).
  *
- *   3. **Leading+trailing throttle on hook fires** — replaces the trailing-
- *      only debounce. Continuous `canvasPan` fires immediately emit on the
- *      leading edge AND re-arm a 200 ms timer for a trailing emit, so the
- *      glasses see ~5 fps during panning instead of zero. Modelled on
- *      `HudDeltaDriver._schedule` (quick 260611-dg5).
- *
- *   4. **Live capture cadence (`captureFps` world setting)** — replaces the
- *      fixed 1000 ms `setInterval` with a self-rescheduling setTimeout loop
- *      that reads `opts.getCaptureIntervalMs?.() ?? 250` before every wait,
- *      so the DM can change the capture rate (1–60 fps) without reloading
- *      the module and with no scheduler-imposed fps cap.
- *
- * The PIXI canvas extraction, scaling, letterboxing, and contrast normalization
- * logic is unchanged from v0.1.14. The extractor still respects `targetWidth`,
- * `targetHeight`, and `getNormalize` options.
- *
- * **Render-to-texture (RT) primary capture path** (quick-task 260610-lx5, 2026-06-10)
- *
- * See the v0.1.14 module-level JSDoc for the full RT vs no-arg fallback
- * rationale. Short version: `PIXI.RenderTexture` path is used when available
- * (production Foundry), no-arg fallback for test fixtures / exotic hosts.
- *
- * **Debounce + idle scheduling** (T-4a-06-01 mitigation)
- *
- * The leading+trailing throttle replaces the old trailing-only debounce on
- * Foundry hook fires. A separate self-rescheduling timeout loop fires
- * `performExtract` every `getCaptureIntervalMs()` ms (the `captureFps` world
- * setting, read live before each wait), so idle scenes still refresh at the
- * configured rate (default 4 fps) and there is NO artificial scheduler cap —
- * the effective ceiling is GPU readback + upstream bandwidth.
- *
- * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md
- * @see packages/shared-protocol/src/payloads/frame-png.ts (FRAME-PNG-01 wire schema, FRAME_PNG_TYPE)
+ * @see packages/shared-protocol/src/payloads/frame-png.ts (frame_png wire schema)
  * @see docs/architecture/0001-layered-ui-model.md §Confirmation (z=0 map consumer)
- * @see docs/architecture/0006-raster-pipeline-library-stack.md (raster pipeline + ADR-0005 SC #5)
+ * @see docs/architecture/0006-raster-pipeline-library-stack.md (raster pipeline)
  */
 import type { FramePng } from '@evf/shared-protocol';
 import * as UPNG from 'upng-js';
@@ -59,16 +33,23 @@ import * as UPNG from 'upng-js';
 /**
  * Leading+trailing throttle window for hook-driven captures.
  *
- * On hook fire: if no throttle timer is running, run performExtract immediately
- * (leading edge) AND arm a `THROTTLE_MS` timer. If the timer is already
- * running, set `_pendingTrailing = true`. When the timer fires: if
- * `_pendingTrailing` is set, run performExtract and re-arm the timer (trailing).
- *
- * This emits ~5 fps during continuous canvasPan instead of zero emits
- * (the old trailing-only debounce never drained during constant firing).
- * Modelled on `HudDeltaDriver._schedule` (quick 260611-dg5, packages/g2-app).
+ * First hook fire in a window captures immediately (leading edge) and arms the
+ * timer; further fires inside the window coalesce into one trailing capture
+ * when the timer fires. Continuous `canvasPan` therefore emits ~5 fps instead
+ * of starving (the old trailing-only debounce never fired during constant
+ * hook activity).
  */
 const THROTTLE_MS = 200;
+
+/**
+ * Maximum idle time between emits before a keyframe is forced.
+ *
+ * The identical-frame skip would otherwise mean a glasses app that (re)connects
+ * while the scene is static NEVER receives the current frame — the module is
+ * push-only and cannot see WS subscribers. A forced keyframe every 5 s bounds
+ * the blank-map window at ~11 KB / 5 s of idle bandwidth.
+ */
+const KEYFRAME_INTERVAL_MS = 5_000;
 
 /**
  * Canonical raster-region width — FULL SCREEN 576×288 (layout B, 2026-06-10).
@@ -87,9 +68,8 @@ export type UnregisterFn = () => void;
 export interface CanvasExtractorOpts {
   /**
    * Callback fired with the typed `FramePng` payload after each capture that
-   * passes the FNV-1a hash check (changed-content gate). The module emits
-   * ONLY `FramePng` payloads (v0.1.15+); the bridge wraps the payload in
-   * `EnvelopeSchema` server-side with `type: 'frame_png'`.
+   * passes the changed-content gate (or the periodic keyframe). The bridge
+   * wraps the payload in `EnvelopeSchema` server-side with `type: 'frame_png'`.
    */
   readonly emit: (payload: FramePng) => void;
   /** Wire-format target width (defaults to {@link MAX_WIDTH}). */
@@ -121,20 +101,6 @@ export interface CanvasExtractorOpts {
    * @see `getCaptureIntervalMs` in settings.ts (converts the `captureFps` world setting to ms).
    */
   readonly getCaptureIntervalMs?: () => number;
-
-  // ── Legacy / test-compat knobs ─────────────────────────────────────────────
-  /**
-   * @deprecated Kept for test backward-compat only. The production path uses
-   * `getCaptureIntervalMs` instead. When `intervalMs` is provided AND
-   * `getCaptureIntervalMs` is absent, the fixed value is used. Ignored when
-   * `getCaptureIntervalMs` is supplied.
-   */
-  readonly intervalMs?: number;
-  /**
-   * @deprecated Kept for test backward-compat only. The leading+trailing throttle
-   * uses the module constant `THROTTLE_MS = 200`. This option is ignored.
-   */
-  readonly debounceMs?: number;
 }
 
 /**
@@ -409,15 +375,7 @@ export function extractCurrentFrame(
     out[i] = 255;
   }
 
-  // ── v0.1.15: Rec.601 luma → FNV-1a hash + PNG encode ─────────────────────
-  //
-  // (1) Compute per-pixel Rec.601 luma into a Uint8Array (1 byte/px).
-  //     luma = round(0.299*R + 0.587*G + 0.114*B)
-  // (2) Build an R=G=B=luma RGBA buffer for UPNG (greyscale content).
-  // (3) Encode via the VERIFIED recipe:
-  //     UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)
-  //     (forbidPlte=true → ctype=2 RGB, exact roundtrip, no Node crash)
-  // (4) Base64-encode the PNG ArrayBuffer.
+  // ── Rec.601 luma → PNG encode ──────────────────────────────────────────────
   const nPixels = targetWidth * targetHeight;
   const luma = new Uint8Array(nPixels);
   for (let i = 0; i < nPixels; i++) {
@@ -428,7 +386,8 @@ export function extractCurrentFrame(
     luma[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
   }
 
-  // Build R=G=B=luma RGBA for UPNG (greyscale content, exact reconstructable luma).
+  // R=G=B=luma RGBA: upng-js only encodes RGBA input; PNG filters + DEFLATE
+  // compress the channel redundancy, and the decoder gets the luma back exactly.
   const rgbaForPng = new Uint8Array(nPixels * 4);
   for (let i = 0; i < nPixels; i++) {
     const v = luma[i] ?? 0;
@@ -439,8 +398,8 @@ export function extractCurrentFrame(
     rgbaForPng[pi + 3] = 255;
   }
 
-  // PNG encode via the VERIFIED recipe (forbidPlte=true → ctype=2 RGB, exact roundtrip).
-  // Do NOT use UPNG.encodeLL — it does not exist in upng-js 2.1.0.
+  // forbidPlte=true forces ctype-2 RGB output — the palette path corrupts
+  // toRGBA8 under Node (upng-js 2.1.0; see module-level JSDoc API note).
   const pngBuf = UPNG.encode([rgbaForPng.buffer], targetWidth, targetHeight, 0, undefined, true);
   const pngBytes = new Uint8Array(pngBuf);
 
@@ -487,6 +446,9 @@ let _registered: RegistrationState | null = null;
 /** FNV-1a hash of the last emitted luma array (for identical-frame skip). */
 let _lastEmittedHash: number | null = null;
 
+/** Timestamp of the last emit — drives the {@link KEYFRAME_INTERVAL_MS} keyframe. */
+let _lastEmitTs = 0;
+
 /** Leading+trailing throttle timer handle for hook-driven captures. */
 let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -504,12 +466,9 @@ let _captureLoopTimer: ReturnType<typeof setTimeout> | null = null;
  * handler, clears timers, and resets the internal singleton. Idempotent — a
  * second register call while one is active is a no-op.
  *
- * **v0.1.15 behavior changes vs v0.1.14:**
- * - Emits `FramePng` instead of `FramePixels`.
- * - Identical-frame skip via FNV-1a luma hash (no POST when content unchanged).
- * - Hook fires use leading+trailing throttle (continuous pan emits ~5fps).
- * - Self-rescheduling loop at the live `getCaptureIntervalMs()` cadence (the
- *   `captureFps` world setting) — no scheduler-imposed fps cap.
+ * Emits `FramePng` payloads at the live `getCaptureIntervalMs()` cadence plus
+ * hook-driven captures; identical frames are skipped except the periodic
+ * keyframe (see the module-level JSDoc for the full scheduling model).
  *
  * @param opts - Caller-supplied emit + tuning knobs
  * @returns Unregister function (idempotent on repeat call)
@@ -535,15 +494,24 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       if (result === null) {
         return;
       }
-      // Identical-frame skip: compare FNV-1a luma hash.
+      // Identical-frame skip with periodic keyframe: unchanged content is not
+      // re-sent UNLESS more than KEYFRAME_INTERVAL_MS passed since the last
+      // emit — late-joining WS subscribers must receive the current frame even
+      // on a static scene (the bridge is push-only, no frame cache).
       const withHash = result as FramePng & { _lumaHash?: number };
       const hash = withHash._lumaHash;
-      if (hash !== undefined && hash === _lastEmittedHash) {
-        return; // unchanged content — skip POST
+      const now = Date.now();
+      if (
+        hash !== undefined &&
+        hash === _lastEmittedHash &&
+        now - _lastEmitTs < KEYFRAME_INTERVAL_MS
+      ) {
+        return;
       }
       if (hash !== undefined) {
         _lastEmittedHash = hash;
       }
+      _lastEmitTs = now;
       // Emit without the internal _lumaHash field (not part of FramePng schema).
       const payload: FramePng = {
         sceneId: result.sceneId,
@@ -604,14 +572,12 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
 
   // ── Continuous capture loop (self-rescheduling, no fps cap) ────────────────
   //
-  // Each cycle reads the live captureIntervalMs (from opts.getCaptureIntervalMs —
-  // the `captureFps` world setting — or legacy opts.intervalMs) BEFORE arming the
-  // next wait, so a DM setting change applies from the next cycle. setTimeout
-  // chaining (not setInterval) means the cadence is exactly the configured
-  // interval with no scheduler-imposed ceiling: 60 fps → a 17 ms wait.
+  // Each cycle reads the live interval (the `captureFps` world setting) BEFORE
+  // arming the next wait, so a DM setting change applies from the next cycle.
+  // setTimeout chaining (not setInterval) keeps the cadence exactly at the
+  // configured interval with no scheduler-imposed ceiling: 60 fps → 17 ms waits.
   const scheduleNextCapture = (): void => {
-    const interval =
-      opts.getCaptureIntervalMs?.() ?? (opts.intervalMs !== undefined ? opts.intervalMs : 250);
+    const interval = opts.getCaptureIntervalMs?.() ?? 250;
     _captureLoopTimer = setTimeout(
       () => {
         performExtract();
@@ -639,6 +605,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     }
     _registered = null;
     _lastEmittedHash = null;
+    _lastEmitTs = 0;
   };
 }
 
@@ -646,6 +613,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
 export function _resetCanvasExtractor(): void {
   _registered = null;
   _lastEmittedHash = null;
+  _lastEmitTs = 0;
   _throttleTimer = null;
   _pendingTrailing = false;
   if (_captureLoopTimer !== null) {
