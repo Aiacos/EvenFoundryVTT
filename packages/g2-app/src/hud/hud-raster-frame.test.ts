@@ -143,4 +143,75 @@ describe('buildHudTiles', () => {
     const wrongLength = new Uint8ClampedArray(10); // clearly wrong
     expect(() => buildHudTiles(wrongLength)).toThrow(/expected 576\*288\*4/);
   });
+
+  // ── Dither flag tests (CLR-01..CLR-04) ────────────────────────────────────
+
+  it('CLR-01: buildHudTiles(rgba) and buildHudTiles(rgba, true) produce byte-identical output', () => {
+    const rgba1 = makeSyntheticRgba();
+    const rgba2 = makeSyntheticRgba();
+    const tilesDefault = buildHudTiles(rgba1);
+    const tilesExplicitTrue = buildHudTiles(rgba2, true);
+    for (let i = 0; i < TILES; i++) {
+      const t0 = tilesDefault[i];
+      const t1 = tilesExplicitTrue[i];
+      expect(t0).toBeDefined();
+      expect(t1).toBeDefined();
+      expect(Array.from(t0?.bytes ?? [])).toEqual(Array.from(t1?.bytes ?? []));
+    }
+  });
+
+  it('CLR-02: buildHudTiles(rgba, false) on a flat grey region produces uniform output (no checkerboard)', () => {
+    // Create a flat mid-grey RGBA: all pixels = 128,128,128,255
+    const flatGrey = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);
+    for (let i = 0; i < FRAME_W * FRAME_H; i++) {
+      flatGrey[i * 4] = 128;
+      flatGrey[i * 4 + 1] = 128;
+      flatGrey[i * 4 + 2] = 128;
+      flatGrey[i * 4 + 3] = 255;
+    }
+    const tilesNoDither = buildHudTiles(flatGrey, false);
+    // Tiles should still be valid PNG with positive length
+    for (const tile of tilesNoDither) {
+      expect(tile.bytes.length).toBeGreaterThan(0);
+    }
+    // A flat-grey region with no dither should compress better (smaller PNG) than
+    // the same region with Bayer dither (which varies per-pixel).
+    const flatGreyDithered = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);
+    for (let i = 0; i < FRAME_W * FRAME_H; i++) {
+      flatGreyDithered[i * 4] = 128;
+      flatGreyDithered[i * 4 + 1] = 128;
+      flatGreyDithered[i * 4 + 2] = 128;
+      flatGreyDithered[i * 4 + 3] = 255;
+    }
+    const tilesWithDither = buildHudTiles(flatGreyDithered, true);
+    // Dithered flat grey should produce LARGER PNGs (pattern variance) than flat quantized.
+    // Use total byte length sum as proxy.
+    const noDitherTotal = tilesNoDither.reduce((s, t) => s + t.bytes.length, 0);
+    const ditherTotal = tilesWithDither.reduce((s, t) => s + t.bytes.length, 0);
+    expect(noDitherTotal).toBeLessThan(ditherTotal);
+  });
+
+  it('CLR-03: buildHudTiles(rgba, false) and buildHudTiles(rgba, true) differ on a gradient input', () => {
+    const rgba1 = makeSyntheticRgba();
+    const rgba2 = makeSyntheticRgba();
+    const tilesNoDither = buildHudTiles(rgba1, false);
+    const tilesWithDither = buildHudTiles(rgba2, true);
+    // At least one tile must differ between the two modes on a gradient input
+    let anyDiffers = false;
+    for (let i = 0; i < TILES; i++) {
+      const hex0 = Array.from(tilesNoDither[i]?.bytes ?? []).join(',');
+      const hex1 = Array.from(tilesWithDither[i]?.bytes ?? []).join(',');
+      if (hex0 !== hex1) {
+        anyDiffers = true;
+        break;
+      }
+    }
+    expect(anyDiffers).toBe(true);
+  });
+
+  it('CLR-04: dither=false is backward-compatible — signature accepts positional rgba-only call', () => {
+    const rgba = makeSyntheticRgba();
+    // Must not throw — dither defaults to true
+    expect(() => buildHudTiles(rgba)).not.toThrow();
+  });
 });
