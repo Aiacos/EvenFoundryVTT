@@ -9,6 +9,7 @@
 │   [M] Karte                                                        │
 │   [N] Sprache                                                      │
 │   [F] FPS                                                          │
+│   [D] Dither                                                       │
 │   [X] Schließen                                                    │
 └────────────────────────────────────────────────────────────────────┘
   scroll = Eintrag wählen                                             

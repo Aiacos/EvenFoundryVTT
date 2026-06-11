@@ -116,6 +116,7 @@ const MAIN_ITEMS = [
   { key: 'M', i18nKey: 'quick_item_map', action: 'map-mode-toggle', target: undefined },
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
   { key: 'F', i18nKey: 'quick_item_fps', action: 'fps-toggle', target: undefined },
+  { key: 'D', i18nKey: 'quick_item_dither', action: 'dither-toggle', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
 
@@ -157,6 +158,16 @@ export interface QuickActionMenuCallbacks {
    * case no-ops when absent.
    */
   onFpsToggle?: () => void;
+
+  /**
+   * Called when the user selects [D] Dither — toggles the HUD raster dither
+   * mode between Bayer 4×4 ordered-dither (ON, default) and direct
+   * nearest-of-16-level quantization (OFF). The boot engine persists the new
+   * mode to the Even Hub kv store and triggers a render cycle.
+   * Optional so existing construction sites compile unchanged; the dispatch
+   * case no-ops when absent.
+   */
+  onDitherToggle?: () => void;
 }
 
 // ─── QuickActionMenuPanel ────────────────────────────────────────────────────
@@ -548,6 +559,10 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
         break;
       case 'fps-toggle':
         this.callbacks.onFpsToggle?.();
+        this.callbacks.onClose();
+        break;
+      case 'dither-toggle':
+        this.callbacks.onDitherToggle?.();
         this.callbacks.onClose();
         break;
       case 'action-stub':
