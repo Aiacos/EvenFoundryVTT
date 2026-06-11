@@ -45,7 +45,7 @@
  * gated by `captureIntervalMs`, so idle scenes still refresh at ~4 Hz by default.
  *
  * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md
- * @see packages/shared-protocol/src/payloads/frame-png.ts (FRAME-PNG-01 wire schema)
+ * @see packages/shared-protocol/src/payloads/frame-png.ts (FRAME-PNG-01 wire schema, FRAME_PNG_TYPE)
  * @see docs/architecture/0001-layered-ui-model.md §Confirmation (z=0 map consumer)
  * @see docs/architecture/0006-raster-pipeline-library-stack.md (raster pipeline + ADR-0005 SC #5)
  */

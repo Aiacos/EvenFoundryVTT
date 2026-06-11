@@ -4,9 +4,9 @@
  * Plan 4a-06 Task 3 — closes the B-5 gap on the g2-app side. Subscribes to
  * `ws.message` events, parses each incoming envelope via the real
  * `EnvelopeSchema` (defense-in-depth outer parse), narrows on
- * `envelope.type === 'frame_pixels'`, then parses `envelope.payload` via
- * `FramePixelsSchema` (defense-in-depth inner parse) before dispatching the
- * decoded RGBA bytes to `RasterController.requestFrame`.
+ * `envelope.type === 'frame_pixels'` OR `envelope.type === 'frame_png'`, then
+ * parses `envelope.payload` via the appropriate schema before dispatching the
+ * decoded RGBA bytes to `RasterController.requestFrame` or `MapFrameSink.setFrame`.
  *
  * **NF-1 closure (verbatim contract — do NOT alter)**
  *
@@ -26,14 +26,26 @@
  * Every WS message goes through:
  *   1. `JSON.parse` in `try/catch` — non-JSON → log + drop.
  *   2. `EnvelopeSchema.safeParse(raw)` — outer schema failure → log + drop.
- *   3. Narrow on `envelope.type === 'frame_pixels'` — drop other types silently
- *      (they're for other consumers, not bugs).
- *   4. `FramePixelsSchema.safeParse(envelope.payload)` — payload schema
- *      failure → log + drop.
- *   5. `decodeFramePixels` (throws on bad base64 or length mismatch) — caught
- *      via the outer try/catch → log + drop.
+ *   3. Narrow on `envelope.type === 'frame_pixels'` or `'frame_png'` — drop
+ *      other types silently (they're for other consumers, not bugs).
+ *   4. Inner schema parse — payload schema failure → log + drop.
+ *   5. Decode (throws on bad base64/PNG/length mismatch) — caught via outer try/catch.
  *
- * `RasterController.requestFrame` is **never** called with unvalidated input.
+ * Both `RasterController.requestFrame` and `MapFrameSink.setFrame` are
+ * **never** called with unvalidated input.
+ *
+ * **frame_png decode path (v0.1.15+)**
+ *
+ * `frame_png` envelopes carry a greyscale lossless PNG (~1-5KB) produced by the
+ * foundry-module v0.1.15 pipeline. The decoder uses:
+ *   `UPNG.decode(bytes.buffer)` → `UPNG.toRGBA8(img)[0]` → `Uint8ClampedArray`
+ * then routes via the SAME `dispatchRgba` / `padFrame` / sink path as frame_pixels,
+ * so canvas-mode and glyph-fallback routing are shared (INV-4 no duplication).
+ *
+ * **frame_pixels back-compatibility (modules ≤v0.1.14)**
+ *
+ * The `frame_pixels` branch is RETAINED unchanged. Older module builds continue
+ * to work; the scene-input consumer accepts either wire format transparently.
  *
  * **Transferable prerequisite (NF-4 scope)**
  *
@@ -53,12 +65,20 @@
  * and does not crash the WS listener.
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 3
+ * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md Task 3
  * @see docs/architecture/0002-protocol-versioning.md (ADR-0002 envelope versioning)
  * @see docs/architecture/0006-raster-pipeline-library-stack.md (ADR-0006 raster pipeline)
  * @see ./raster/raster-controller.ts (RasterController.requestFrame — Plan 03 sink)
  * @see ./engine/layer-types.ts (RasterControllerLike type-only contract)
  */
-import { decodeFramePixels, EnvelopeSchema, FramePixelsSchema } from '@evf/shared-protocol';
+import {
+  decodeFramePixels,
+  EnvelopeSchema,
+  FRAME_PNG_TYPE,
+  FramePixelsSchema,
+  FramePngSchema,
+} from '@evf/shared-protocol';
+import * as UPNG from 'upng-js';
 import type { RasterControllerLike } from './engine/layer-types.js';
 
 /**
@@ -156,21 +176,96 @@ function isMapFrameSink(sink: RasterControllerLike | MapFrameSink): sink is MapF
 }
 
 /**
- * Attach a `frame_pixels` envelope receiver to a WebSocket.
+ * Decode a base64 string to a Uint8Array.
+ *
+ * Dual-environment: uses `Buffer.from` on Node (available in the bridge test
+ * environment) and `atob` on browser (the Even Hub WebView).
+ *
+ * @internal
+ */
+function b64ToBytes(b64: string): Uint8Array {
+  const BufferCtor = (
+    globalThis as {
+      Buffer?: {
+        from(
+          s: string,
+          enc: string,
+        ): { buffer: ArrayBuffer; byteOffset: number; byteLength: number };
+      };
+    }
+  ).Buffer;
+  if (BufferCtor !== undefined) {
+    const nodeBuf = BufferCtor.from(b64, 'base64');
+    return new Uint8Array(nodeBuf.buffer, nodeBuf.byteOffset, nodeBuf.byteLength);
+  }
+  const btoaFn = (globalThis as { atob?: (s: string) => string }).atob;
+  if (btoaFn === undefined) {
+    throw new Error('[scene-input] no Buffer or atob available for base64 decode');
+  }
+  const binary = btoaFn(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Shared RGBA dispatch — pad to the canonical size for the active mode and
+ * route to the appropriate sink.
+ *
+ * Shared by both `frame_pixels` and `frame_png` branches (INV-4 no duplication).
+ *
+ * @internal
+ */
+function dispatchRgba(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sink: RasterControllerLike | MapFrameSink,
+): void {
+  if (isMapFrameSink(sink)) {
+    // Canvas mode — pad/route to MapCanvasLayer at the FULL-SCREEN 576×288 canonical.
+    // Old modules (≤v0.1.13) emit 400×200 — letterbox-centered inside 576×288 (backward compat).
+    const framed = padFrame(pixels, width, height, CANVAS_CANONICAL_W, CANVAS_CANONICAL_H);
+    if (framed === null) {
+      // Unreachable while FramePixelsSchema caps at 576×288 — defensive.
+      console.warn('[scene-input] frame larger than canvas canonical — dropped');
+      return;
+    }
+    sink.setFrame(framed, CANVAS_CANONICAL_W, CANVAS_CANONICAL_H);
+  } else {
+    // Glyph fallback — Plan 03 RasterController is the Worker boundary (exactly 400×200).
+    // Full-screen 576×288 frames from module ≥v0.1.14 cannot fit and are skipped:
+    // glyph map streaming is superseded by canvas mode (default boot since Phase 20).
+    const framed = padFrame(pixels, width, height, GLYPH_CANONICAL_W, GLYPH_CANONICAL_H);
+    if (framed === null) {
+      console.warn('[scene-input] full-screen frame on glyph path — dropped (canvas-only)');
+      return;
+    }
+    // Attach a `.catch` so a rejected Promise logs and does not crash the WS listener.
+    sink.requestFrame(framed, GLYPH_CANONICAL_W, GLYPH_CANONICAL_H).catch((err) => {
+      console.warn('[scene-input] requestFrame rejected', err);
+    });
+  }
+}
+
+/**
+ * Attach a `frame_pixels` / `frame_png` envelope receiver to a WebSocket.
  *
  * Registers a `ws.addEventListener('message', handler)`; the handler
- * defense-in-depth-parses each incoming envelope and dispatches valid
- * `frame_pixels` payloads to the appropriate sink:
+ * defense-in-depth-parses each incoming envelope and dispatches valid payloads
+ * to the appropriate sink:
  *
  *   - **Canvas mode** (when `sink` is a `MapFrameSink`): calls `sink.setFrame`
  *     synchronously — no Worker round-trip (the compositor ingests RGBA directly).
  *     This is the canvas-mode path introduced in quick-task 260610-d42 Task 2.
- *     The legacy `RasterController.requestFrame` map-tile path is explicitly
- *     canvas-mode-unreachable via this branch — see the rationale comment below.
  *
  *   - **Glyph fallback** (when `sink` is a `RasterControllerLike`): calls
- *     `sink.requestFrame(framed, 400, 200)` fire-and-forget with
- *     a `.catch` guard — the Worker + dither pipeline path.
+ *     `sink.requestFrame(framed, 400, 200)` fire-and-forget with a `.catch` guard.
+ *
+ * Both `frame_pixels` (modules ≤v0.1.14) and `frame_png` (modules v0.1.15+)
+ * are decoded to RGBA and routed via the same `dispatchRgba` helper.
  *
  * Returns an unsubscribe closure that calls `ws.removeEventListener('message', handler)`.
  *
@@ -203,70 +298,45 @@ export function attachSceneInputToWs(
         return;
       }
 
-      // 2) Discriminate on type — drop non-frame_pixels envelopes silently
-      //    (they're targeted at other consumers; not a bug).
-      if (env.data.type !== 'frame_pixels') {
+      // 2a) frame_pixels branch (back-compat for modules ≤v0.1.14).
+      if (env.data.type === 'frame_pixels') {
+        // Inner payload parse — width / height bounds + base64 shape.
+        const fp = FramePixelsSchema.safeParse(env.data.payload);
+        if (!fp.success) {
+          console.warn('[scene-input] FramePixels payload parse failed', fp.error);
+          return;
+        }
+        // Decode base64 → fresh Uint8ClampedArray (own ArrayBuffer; transferable-prerequisite).
+        // Throws on invalid base64 or length-mismatch → caught by outer try.
+        const pixels = decodeFramePixels(fp.data.pixelsB64, fp.data.width, fp.data.height);
+        dispatchRgba(pixels, fp.data.width, fp.data.height, sink);
         return;
       }
 
-      // 3) Inner payload parse — width / height bounds + base64 shape.
-      const fp = FramePixelsSchema.safeParse(env.data.payload);
-      if (!fp.success) {
-        console.warn('[scene-input] FramePixels payload parse failed', fp.error);
+      // 2b) frame_png branch (modules v0.1.15+) — greyscale lossless PNG ~1-5KB.
+      if (env.data.type === FRAME_PNG_TYPE) {
+        // Inner payload parse.
+        const fp = FramePngSchema.safeParse(env.data.payload);
+        if (!fp.success) {
+          console.warn('[scene-input] FramePng payload parse failed', fp.error);
+          return;
+        }
+        // Decode base64 → Uint8Array → UPNG.decode → UPNG.toRGBA8 → Uint8ClampedArray.
+        // Throws on malformed PNG or empty frame list → caught by outer try.
+        const pngBytes = b64ToBytes(fp.data.pngB64);
+        const img = UPNG.decode(pngBytes.buffer);
+        const rgbaFrames = UPNG.toRGBA8(img);
+        const firstFrame = rgbaFrames[0];
+        if (firstFrame === undefined) {
+          console.warn('[scene-input] frame_png toRGBA8 returned no frames — dropped');
+          return;
+        }
+        const pixels = new Uint8ClampedArray(firstFrame);
+        dispatchRgba(pixels, fp.data.width, fp.data.height, sink);
         return;
       }
 
-      // 4) Decode base64 → fresh Uint8ClampedArray (own ArrayBuffer; the
-      //    transferable-prerequisite for the Worker handoff in Plan 03 RC-2).
-      //    Throws on invalid base64 or length-mismatch → caught by outer try.
-      const pixels = decodeFramePixels(fp.data.pixelsB64, fp.data.width, fp.data.height);
-
-      // 4b) Normalize to the canonical 400×200 raster region (ADR-0013
-      //     Amendment 1). `raster-worker.ts` REJECTS any other dims, while
-      //     FramePixelsSchema admits 20..400 × 20..200 — without this pad an
-      //     in-bounds but undersized frame would be silently unprocessable
-      //     (debug map-frame-pipeline-dims, 2026-06-10). The module emitter
-      //     already letterboxes to exactly 400×200; this is the consumer-side
-      //     defence for older module builds and test producers.
-      // 4b/5) Mode-specific canonical pad + dispatch.
-      if (isMapFrameSink(sink)) {
-        // canvas mode routes scene frames to the compositor MapCanvasLayer (z=0)
-        // at the FULL-SCREEN 576×288 canonical (layout B). Old modules (≤v0.1.13)
-        // emit 400×200 — letterbox-centered inside 576×288 (backward compat).
-        const framed = padFrame(
-          pixels,
-          fp.data.width,
-          fp.data.height,
-          CANVAS_CANONICAL_W,
-          CANVAS_CANONICAL_H,
-        );
-        if (framed === null) {
-          // Unreachable while FramePixelsSchema caps at 576×288 — defensive.
-          console.warn('[scene-input] frame larger than canvas canonical — dropped');
-          return;
-        }
-        sink.setFrame(framed, CANVAS_CANONICAL_W, CANVAS_CANONICAL_H);
-      } else {
-        // Glyph fallback — Plan 03 RasterController is the Worker boundary
-        // (exactly 400×200). Full-screen 576×288 frames from module ≥v0.1.14
-        // cannot fit and are skipped: glyph map streaming is superseded by
-        // canvas mode (default boot since Phase 20).
-        const framed = padFrame(
-          pixels,
-          fp.data.width,
-          fp.data.height,
-          GLYPH_CANONICAL_W,
-          GLYPH_CANONICAL_H,
-        );
-        if (framed === null) {
-          console.warn('[scene-input] full-screen frame on glyph path — dropped (canvas-only)');
-          return;
-        }
-        // Attach a `.catch` so a rejected Promise logs and does not crash the WS listener.
-        sink.requestFrame(framed, GLYPH_CANONICAL_W, GLYPH_CANONICAL_H).catch((err) => {
-          console.warn('[scene-input] requestFrame rejected', err);
-        });
-      }
+      // 2c) All other types — drop silently (targeted at other consumers; not a bug).
     } catch (err) {
       console.warn('[scene-input] message processing failed', err);
     }

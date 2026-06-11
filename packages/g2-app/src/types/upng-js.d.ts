@@ -21,12 +21,14 @@ declare module 'upng-js' {
   /**
    * Encode one or more RGBA frame buffers as a PNG (or APNG) byte stream.
    *
-   * @param imgs   Array of RGBA pixel buffers — one per frame.
-   * @param w      Image width in pixels.
-   * @param h      Image height in pixels.
-   * @param cnum   Palette size (0 = lossless; 16 = 4-bit indexed; 256 = 8-bit).
-   * @param dels   Optional per-frame delays in milliseconds.
-   * @returns      PNG byte stream as ArrayBuffer.
+   * @param imgs       Array of RGBA pixel buffers — one per frame.
+   * @param w          Image width in pixels.
+   * @param h          Image height in pixels.
+   * @param cnum       Palette size (0 = lossless; 16 = 4-bit indexed; 256 = 8-bit).
+   * @param dels       Optional per-frame delays in milliseconds.
+   * @param forbidPlte When true, force ctype=2 RGB output (lossless, exact roundtrip via
+   *                   toRGBA8; the palette path crashes toRGBA8 under Node).
+   * @returns          PNG byte stream as ArrayBuffer.
    */
   export function encode(
     imgs: ReadonlyArray<ArrayBuffer>,
@@ -34,5 +36,27 @@ declare module 'upng-js' {
     h: number,
     cnum: number,
     dels?: ReadonlyArray<number>,
+    forbidPlte?: boolean,
   ): ArrayBuffer;
+
+  /**
+   * Decode a PNG byte stream into an image descriptor.
+   *
+   * The returned value is opaque — pass it to {@link toRGBA8} to get pixel data.
+   *
+   * @param buf  PNG byte stream as ArrayBuffer.
+   * @returns    Decoded image descriptor (pass to toRGBA8).
+   */
+  export function decode(buf: ArrayBuffer): unknown;
+
+  /**
+   * Convert a decoded image descriptor to an array of RGBA8 frame buffers.
+   *
+   * For a single-frame PNG, `toRGBA8(img)[0]` contains one ArrayBuffer of
+   * `width * height * 4` bytes (R, G, B, A interleaved, 8 bits per channel).
+   *
+   * @param img  Decoded image descriptor from {@link decode}.
+   * @returns    Array of RGBA8 ArrayBuffers — one per animation frame.
+   */
+  export function toRGBA8(img: unknown): ArrayBuffer[];
 }
