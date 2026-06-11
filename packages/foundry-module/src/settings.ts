@@ -167,39 +167,49 @@ export function registerSettings(): void {
     default: false,
   });
 
-  // Capture interval (ms) — DM-visible world setting controlling how often the
-  // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71).
-  // Default 250 ms (4 fps nominal), range 100–5000 ms, step 50 ms.
-  // Read live via getCaptureIntervalMs() on every tick — no module reload needed.
-  game.settings.register(MODULE_ID, 'captureIntervalMs', {
-    name: 'evf.settings.capture_interval_ms.name',
-    hint: 'evf.settings.capture_interval_ms.hint',
+  // Capture frame rate (fps) — DM-visible world setting controlling how often the
+  // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71,
+  // FPS redesign 2026-06-11: the user configures FRAMES PER SECOND, not ms).
+  // Default 4 fps, range 1–60 fps, step 1. Read live on every capture cycle —
+  // no module reload needed. The real upper bound is the client GPU readback +
+  // upstream bandwidth, not this setting.
+  game.settings.register(MODULE_ID, 'captureFps', {
+    name: 'evf.settings.capture_fps.name',
+    hint: 'evf.settings.capture_fps.hint',
     scope: 'world',
     config: true,
     restricted: true,
     type: Number,
-    default: 250,
-    range: { min: 100, max: 5000, step: 50 },
+    default: 4,
+    range: { min: 1, max: 60, step: 1 },
   });
 }
 
+/** Default capture rate (fps) when the setting is unreadable. */
+const DEFAULT_CAPTURE_FPS = 4;
+
 /**
- * Read the DM-configured `captureIntervalMs` world setting, clamped to [100, 5000].
+ * Read the DM-configured `captureFps` world setting and convert it to the
+ * capture interval in milliseconds expected by the canvas extractor.
  *
- * Evaluated live on EVERY tick of the canvas extractor (like `getNormalize`) so a
- * DM setting change takes effect on the next capture without re-registering or
- * reloading the module.
+ * fps is clamped to [1, 60]; the returned interval is `round(1000 / fps)`
+ * (4 fps → 250 ms, 30 fps → 33 ms, 60 fps → 17 ms).
  *
- * Returns the default (250 ms) on any read error (e.g., called before settings are
- * ready at startup) — defensive try/catch mirrors the `getNormalize` wiring pattern
- * used in `module.ts`.
+ * Evaluated live on EVERY capture cycle (like `getNormalize`) so a DM setting
+ * change takes effect on the next capture without re-registering or reloading
+ * the module.
+ *
+ * Returns the default (250 ms = 4 fps) on any read error (e.g., called before
+ * settings are ready at startup) — defensive try/catch mirrors the
+ * `getNormalize` wiring pattern used in `module.ts`.
  */
 export function getCaptureIntervalMs(): number {
   try {
-    const raw = game.settings.get(MODULE_ID, 'captureIntervalMs') as unknown;
-    const value = typeof raw === 'number' ? raw : 250;
-    return Math.max(100, Math.min(5000, value));
+    const raw = game.settings.get(MODULE_ID, 'captureFps') as unknown;
+    const fps = typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_CAPTURE_FPS;
+    const clamped = Math.max(1, Math.min(60, fps));
+    return Math.round(1000 / clamped);
   } catch {
-    return 250;
+    return Math.round(1000 / DEFAULT_CAPTURE_FPS);
   }
 }

@@ -337,8 +337,9 @@ Hooks.once('ready', () => {
   //
   // getNormalize: mapContrastNormalize client setting — evaluated per-capture so
   //   live toggle applies without re-registering (Quick Task 260610-evs carry-forward).
-  // getCaptureIntervalMs: captureIntervalMs world setting — evaluated per tick
-  //   (100 ms) so the DM can change cadence without module reload (FRAME-PNG-02).
+  // getCaptureIntervalMs: `captureFps` world setting converted to ms (1000/fps) —
+  //   evaluated before every capture-loop wait so the DM can change the rate
+  //   (1–60 fps) without module reload and with no scheduler cap (FRAME-PNG-02).
   registerCanvasExtractor({
     emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
     getNormalize: (): 'off' | 'auto' => {

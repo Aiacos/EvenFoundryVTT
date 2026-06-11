@@ -324,7 +324,15 @@ export function attachSceneInputToWs(
         // Decode base64 → Uint8Array → UPNG.decode → UPNG.toRGBA8 → Uint8ClampedArray.
         // Throws on malformed PNG or empty frame list → caught by outer try.
         const pngBytes = b64ToBytes(fp.data.pngB64);
-        const img = UPNG.decode(pngBytes.buffer);
+        // UPNG.decode reads the WHOLE ArrayBuffer — when pngBytes is a view into
+        // a larger pool (Node Buffer.from pools small allocations, byteOffset≠0)
+        // passing `.buffer` directly hands UPNG garbage ("not a PNG file").
+        // Slice to the exact byte range unless the view already owns its buffer.
+        const pngAb =
+          pngBytes.byteOffset === 0 && pngBytes.byteLength === pngBytes.buffer.byteLength
+            ? pngBytes.buffer
+            : pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength);
+        const img = UPNG.decode(pngAb);
         const rgbaFrames = UPNG.toRGBA8(img);
         const firstFrame = rgbaFrames[0];
         if (firstFrame === undefined) {

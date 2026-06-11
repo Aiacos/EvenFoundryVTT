@@ -9,8 +9,8 @@
   "evf.settings.bridge_config_hint": "Set and review the bridge URL and internal secret for this world.",
   "evf.settings.map_contrast_normalize.name": "Map contrast normalization (glasses)",
   "evf.settings.map_contrast_normalize.hint": "Auto-stretch dark map scenes for readable contrast on the glasses before dithering. Disable to send raw brightness.",
-  "evf.settings.capture_interval_ms.name": "Map capture interval (ms)",
-  "evf.settings.capture_interval_ms.hint": "How often the map canvas is captured and streamed to the glasses (100–5000 ms). Lower = higher frame rate, more bandwidth. Default 250 ms (4 fps). Changes take effect immediately without reload.",
+  "evf.settings.capture_fps.name": "Map capture frame rate (fps)",
+  "evf.settings.capture_fps.hint": "How many map frames per second are captured and streamed to the glasses (1–60). Higher = smoother map, more GPU and bandwidth. Default 4 fps. Changes take effect immediately without reload.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Bridge Configuration",
   "evf.bridgecfg.url.label": "Bridge URL",

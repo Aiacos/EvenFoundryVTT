@@ -23,10 +23,11 @@
  *      glasses see ~5 fps during panning instead of zero. Modelled on
  *      `HudDeltaDriver._schedule` (quick 260611-dg5).
  *
- *   4. **Live captureIntervalMs gating** — replaces the fixed 1000 ms
- *      `setInterval` with a short TICK_MS=100 ms tick that reads
- *      `opts.getCaptureIntervalMs?.() ?? 250` on every tick, so the DM can
- *      change the capture cadence without reloading the module.
+ *   4. **Live capture cadence (`captureFps` world setting)** — replaces the
+ *      fixed 1000 ms `setInterval` with a self-rescheduling setTimeout loop
+ *      that reads `opts.getCaptureIntervalMs?.() ?? 250` before every wait,
+ *      so the DM can change the capture rate (1–60 fps) without reloading
+ *      the module and with no scheduler-imposed fps cap.
  *
  * The PIXI canvas extraction, scaling, letterboxing, and contrast normalization
  * logic is unchanged from v0.1.14. The extractor still respects `targetWidth`,
@@ -41,8 +42,11 @@
  * **Debounce + idle scheduling** (T-4a-06-01 mitigation)
  *
  * The leading+trailing throttle replaces the old trailing-only debounce on
- * Foundry hook fires. A separate TICK_MS=100 setInterval fires `performExtract`
- * gated by `captureIntervalMs`, so idle scenes still refresh at ~4 Hz by default.
+ * Foundry hook fires. A separate self-rescheduling timeout loop fires
+ * `performExtract` every `getCaptureIntervalMs()` ms (the `captureFps` world
+ * setting, read live before each wait), so idle scenes still refresh at the
+ * configured rate (default 4 fps) and there is NO artificial scheduler cap —
+ * the effective ceiling is GPU readback + upstream bandwidth.
  *
  * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md
  * @see packages/shared-protocol/src/payloads/frame-png.ts (FRAME-PNG-01 wire schema, FRAME_PNG_TYPE)
@@ -51,19 +55,6 @@
  */
 import type { FramePng } from '@evf/shared-protocol';
 import * as UPNG from 'upng-js';
-
-/**
- * Fixed tick interval for the continuous capture poll.
- *
- * The tick reads `opts.getCaptureIntervalMs?.() ?? 250` on every fire and
- * skips the capture when `now - _lastCaptureTs < interval`. This makes the
- * effective capture cadence adjustable live (DM changes a world setting,
- * effective on the next tick, no module reload needed).
- *
- * 100 ms was chosen as the smallest meaningful step (matches the minimum
- * captureIntervalMs clamp), so changes take effect within 100 ms.
- */
-const TICK_MS = 100;
 
 /**
  * Leading+trailing throttle window for hook-driven captures.
@@ -119,14 +110,15 @@ export interface CanvasExtractorOpts {
   /**
    * Live capture-interval supplier (ms).
    *
-   * Evaluated on EVERY tick (100 ms) of the continuous-capture timer. When
-   * `now - _lastCaptureTs >= getCaptureIntervalMs()`, `performExtract` fires.
-   * This allows the DM to change the capture cadence via a Foundry world setting
-   * without reloading the module.
+   * Evaluated before EVERY wait of the self-rescheduling capture loop, so the
+   * DM can change the capture cadence (the `captureFps` world setting) without
+   * reloading the module — the new value applies from the next cycle. There is
+   * no scheduler-imposed fps cap: the loop runs at whatever interval this
+   * getter returns (clamped to ≥1 ms).
    *
-   * Defaults to 250 ms when absent or when the getter returns undefined/throws.
+   * Defaults to 250 ms (4 fps) when absent.
    *
-   * @see `getCaptureIntervalMs` in settings.ts for the live-settings-backed implementation.
+   * @see `getCaptureIntervalMs` in settings.ts (converts the `captureFps` world setting to ms).
    */
   readonly getCaptureIntervalMs?: () => number;
 
@@ -501,12 +493,12 @@ let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
 /** Whether a trailing emit is pending (throttle re-arm flag). */
 let _pendingTrailing = false;
 
-/** Timestamp of last interval-gated capture (for live captureIntervalMs). */
-let _lastCaptureTs = 0;
+/** Self-rescheduling capture-loop timer handle (continuous periodic capture). */
+let _captureLoopTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Register the five Foundry hooks (canvasReady, drawCanvas, refreshToken, updateScene,
- * canvasPan) and a continuous TICK_MS=100 ms capture interval that drives canvas extraction.
+ * canvasPan) and a continuous self-rescheduling capture loop that drives canvas extraction.
  *
  * Returns an unregister function that calls `Hooks.off` for each registered
  * handler, clears timers, and resets the internal singleton. Idempotent — a
@@ -516,7 +508,8 @@ let _lastCaptureTs = 0;
  * - Emits `FramePng` instead of `FramePixels`.
  * - Identical-frame skip via FNV-1a luma hash (no POST when content unchanged).
  * - Hook fires use leading+trailing throttle (continuous pan emits ~5fps).
- * - TICK_MS=100 ms interval with live `getCaptureIntervalMs` gating.
+ * - Self-rescheduling loop at the live `getCaptureIntervalMs()` cadence (the
+ *   `captureFps` world setting) — no scheduler-imposed fps cap.
  *
  * @param opts - Caller-supplied emit + tuning knobs
  * @returns Unregister function (idempotent on repeat call)
@@ -609,19 +602,25 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     { event: 'canvasPan' as const, fn: onHookFire },
   ];
 
-  // ── Continuous capture interval (TICK_MS = 100 ms) ────────────────────────
+  // ── Continuous capture loop (self-rescheduling, no fps cap) ────────────────
   //
-  // On each tick: read the live captureIntervalMs (from opts.getCaptureIntervalMs
-  // or legacy opts.intervalMs); if elapsed >= interval, capture.
-  const intervalHandle = setInterval(() => {
+  // Each cycle reads the live captureIntervalMs (from opts.getCaptureIntervalMs —
+  // the `captureFps` world setting — or legacy opts.intervalMs) BEFORE arming the
+  // next wait, so a DM setting change applies from the next cycle. setTimeout
+  // chaining (not setInterval) means the cadence is exactly the configured
+  // interval with no scheduler-imposed ceiling: 60 fps → a 17 ms wait.
+  const scheduleNextCapture = (): void => {
     const interval =
       opts.getCaptureIntervalMs?.() ?? (opts.intervalMs !== undefined ? opts.intervalMs : 250);
-    const now = Date.now();
-    if (now - _lastCaptureTs >= interval) {
-      _lastCaptureTs = now;
-      performExtract();
-    }
-  }, TICK_MS);
+    _captureLoopTimer = setTimeout(
+      () => {
+        performExtract();
+        scheduleNextCapture();
+      },
+      Math.max(1, interval),
+    );
+  };
+  scheduleNextCapture();
 
   _registered = { handlers };
 
@@ -631,13 +630,15 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       _throttleTimer = null;
     }
     _pendingTrailing = false;
-    clearInterval(intervalHandle);
+    if (_captureLoopTimer !== null) {
+      clearTimeout(_captureLoopTimer);
+      _captureLoopTimer = null;
+    }
     for (const { event, fn } of handlers) {
       (Hooks as unknown as { off(e: string, f: () => void): void }).off(event, fn);
     }
     _registered = null;
     _lastEmittedHash = null;
-    _lastCaptureTs = 0;
   };
 }
 
@@ -647,5 +648,8 @@ export function _resetCanvasExtractor(): void {
   _lastEmittedHash = null;
   _throttleTimer = null;
   _pendingTrailing = false;
-  _lastCaptureTs = 0;
+  if (_captureLoopTimer !== null) {
+    clearTimeout(_captureLoopTimer);
+    _captureLoopTimer = null;
+  }
 }

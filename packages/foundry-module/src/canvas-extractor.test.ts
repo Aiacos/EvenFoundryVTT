@@ -22,8 +22,10 @@
  *   - CE-PNG-2  PNG luma roundtrip: pngB64 decoded (UPNG.decode→toRGBA8) R=G=B equals source luma
  *   - CE-PNG-3  Identical-frame skip: same luma → emit called ONCE (second skipped)
  *   - CE-PNG-4  Changed frame → emit called again after hash change
- *   - CE-PNG-5  captureIntervalMs live gating: with getter returning 250, ticks at 100/250 ms emit only when elapsed ≥ interval
+ *   - CE-PNG-5  live capture cadence: with getter returning 250, the loop emits exactly every 250 ms
  *   - CE-PNG-6  Continuous pan throttle: firing hook 5× without draining → emit called ≥2 (leading + trailing)
+ *   - CE-FPS-1  no scheduler fps cap: 33 ms interval (30 fps) → 10 emits in 330 ms
+ *   - CE-FPS-2  live interval change (250→50 ms) applies from the next cycle without re-register
  *
  * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md Task 2
  * @see ./canvas-extractor.ts (system under test)
@@ -206,7 +208,12 @@ describe('registerCanvasExtractor — FramePng emit (CE-PNG-1, CE-PNG-2)', () =>
 
     // Decode the PNG back.
     const pngBytes = Buffer.from(fp.pngB64, 'base64');
-    const decoded = UPNG.decode(pngBytes.buffer as ArrayBuffer);
+    const decoded = UPNG.decode(
+      pngBytes.buffer.slice(
+        pngBytes.byteOffset,
+        pngBytes.byteOffset + pngBytes.byteLength,
+      ) as ArrayBuffer,
+    );
     const rgbaFrames = UPNG.toRGBA8(decoded);
     expect(rgbaFrames.length).toBeGreaterThan(0);
     const rgbaBytes = new Uint8Array(rgbaFrames[0] as ArrayBuffer);
@@ -302,10 +309,10 @@ describe('registerCanvasExtractor — identical-frame skip (CE-PNG-3, CE-PNG-4)'
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CE-PNG: captureIntervalMs live gating
+// CE-PNG: live capture cadence (self-rescheduling loop, captureFps setting)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('registerCanvasExtractor — captureIntervalMs live gating (CE-PNG-5)', () => {
+describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..2)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     _resetCanvasExtractor();
@@ -316,7 +323,7 @@ describe('registerCanvasExtractor — captureIntervalMs live gating (CE-PNG-5)',
     _resetCanvasExtractor();
   });
 
-  it('CE-PNG-5: getCaptureIntervalMs=250ms + TICK=100ms → emit only every 250ms', () => {
+  it('CE-PNG-5: getCaptureIntervalMs=250ms → emit only every 250ms', () => {
     const hooks = makeHooksMock();
     vi.stubGlobal('Hooks', hooks);
 
@@ -346,17 +353,97 @@ describe('registerCanvasExtractor — captureIntervalMs live gating (CE-PNG-5)',
     const emit = vi.fn();
     registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 250 });
 
-    // After 100ms (1 TICK) — interval not elapsed (0 < 250) → no emit
+    // After 100ms — first 250ms wait not elapsed → no emit
     vi.advanceTimersByTime(100);
     expect(emit).toHaveBeenCalledTimes(0);
 
-    // After 250ms total (3 TICKs) — interval elapsed → 1 emit
+    // After 250ms total — first cycle fires → 1 emit
     vi.advanceTimersByTime(150);
     expect(emit).toHaveBeenCalledTimes(1);
 
-    // After 500ms total (5 TICKs) — second interval elapsed → 2 emits
+    // After 500ms total — second cycle fires → 2 emits
     vi.advanceTimersByTime(250);
     expect(emit).toHaveBeenCalledTimes(2);
+  });
+
+  it('CE-FPS-1: 33ms interval (30fps) → 10 emits in 330ms — NO scheduler-imposed fps cap', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+
+    let fillValue = 0x10;
+    const pixelsBuf = new Uint8Array(50 * 30 * 4).fill(fillValue);
+    const fakeCanvas = {
+      scene: { id: 'scene1' },
+      stage: {},
+      app: {
+        renderer: {
+          width: 50,
+          height: 30,
+          extract: {
+            pixels: vi.fn(() => {
+              fillValue = (fillValue + 1) & 0xff;
+              pixelsBuf.fill(fillValue);
+              return pixelsBuf;
+            }),
+          },
+        },
+      },
+    };
+    vi.stubGlobal('canvas', fakeCanvas);
+
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 33 });
+
+    // 330ms = 10 full 33ms cycles. The old TICK_MS=100 gate would have
+    // allowed only 3 captures here (10fps hard cap) — the self-rescheduling
+    // loop must deliver all 10.
+    vi.advanceTimersByTime(330);
+    expect(emit).toHaveBeenCalledTimes(10);
+  });
+
+  it('CE-FPS-2: live interval change 250ms → 50ms applies from the next cycle without re-register', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+
+    let fillValue = 0x10;
+    const pixelsBuf = new Uint8Array(50 * 30 * 4).fill(fillValue);
+    const fakeCanvas = {
+      scene: { id: 'scene1' },
+      stage: {},
+      app: {
+        renderer: {
+          width: 50,
+          height: 30,
+          extract: {
+            pixels: vi.fn(() => {
+              fillValue = (fillValue + 1) & 0xff;
+              pixelsBuf.fill(fillValue);
+              return pixelsBuf;
+            }),
+          },
+        },
+      },
+    };
+    vi.stubGlobal('canvas', fakeCanvas);
+
+    let interval = 250;
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => interval });
+
+    // First cycle at the slow cadence.
+    vi.advanceTimersByTime(250);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // DM changes the captureFps world setting → getter now returns 50ms.
+    // The wait already armed with 250ms still completes once (no mid-wait
+    // interruption), THEN every subsequent wait uses the new value.
+    interval = 50;
+    vi.advanceTimersByTime(250);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    // From here on the loop runs at 50ms: 4 more cycles in 200ms.
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -564,7 +651,12 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
 
     // Verify the PNG decodes to a frame with bright corners (markers preserved).
     const pngBytes = Buffer.from(fp.pngB64, 'base64');
-    const decoded = UPNG.decode(pngBytes.buffer as ArrayBuffer);
+    const decoded = UPNG.decode(
+      pngBytes.buffer.slice(
+        pngBytes.byteOffset,
+        pngBytes.byteOffset + pngBytes.byteLength,
+      ) as ArrayBuffer,
+    );
     const rgbaFrames = UPNG.toRGBA8(decoded);
     const out = new Uint8Array(rgbaFrames[0] as ArrayBuffer);
 
@@ -897,7 +989,12 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     const decodeToRgba = (fp: typeof fpOff & object): Uint8Array => {
       if (fp === null) return new Uint8Array(0);
       const pngBytes = Buffer.from(fp.pngB64, 'base64');
-      const decoded = UPNG.decode(pngBytes.buffer as ArrayBuffer);
+      const decoded = UPNG.decode(
+        pngBytes.buffer.slice(
+          pngBytes.byteOffset,
+          pngBytes.byteOffset + pngBytes.byteLength,
+        ) as ArrayBuffer,
+      );
       const frames = UPNG.toRGBA8(decoded);
       return new Uint8Array(frames[0] as ArrayBuffer);
     };
@@ -976,7 +1073,12 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     if (fp === null) return;
 
     const pngBytes = Buffer.from(fp.pngB64, 'base64');
-    const decoded = UPNG.decode(pngBytes.buffer as ArrayBuffer);
+    const decoded = UPNG.decode(
+      pngBytes.buffer.slice(
+        pngBytes.byteOffset,
+        pngBytes.byteOffset + pngBytes.byteLength,
+      ) as ArrayBuffer,
+    );
     const rgbaFrames = UPNG.toRGBA8(decoded);
     const out = new Uint8Array(rgbaFrames[0] as ArrayBuffer);
 
@@ -1014,7 +1116,7 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     const originalPixels = mockRenderer.pixels;
     mockRenderer.pixels = vi.fn(() => {
       fillValue = (fillValue + 1) & 0xff;
-      const result = (originalPixels as ReturnType<typeof vi.fn>)();
+      const result = (originalPixels as unknown as () => Uint8Array)();
       (result as Uint8Array)[0] = fillValue;
       return result as Uint8Array;
     });

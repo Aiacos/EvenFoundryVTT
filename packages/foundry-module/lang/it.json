@@ -9,8 +9,8 @@
   "evf.settings.bridge_config_hint": "Imposta e verifica l'URL del bridge e il segreto interno per questo mondo.",
   "evf.settings.map_contrast_normalize.name": "Normalizzazione contrasto mappa (occhiali)",
   "evf.settings.map_contrast_normalize.hint": "Esegue un livellamento automatico delle scene scure per un contrasto leggibile sugli occhiali prima del dithering. Disattiva per inviare la luminosità grezza.",
-  "evf.settings.capture_interval_ms.name": "Intervallo di cattura mappa (ms)",
-  "evf.settings.capture_interval_ms.hint": "Ogni quanti ms viene catturato e inviato il canvas della mappa agli occhiali (100–5000 ms). Valore minore = frame rate più alto, più banda. Default 250 ms (4 fps). Le modifiche hanno effetto immediato senza ricaricare.",
+  "evf.settings.capture_fps.name": "Frame rate cattura mappa (fps)",
+  "evf.settings.capture_fps.hint": "Quanti frame al secondo della mappa vengono catturati e inviati agli occhiali (1–60). Più alto = mappa più fluida, più GPU e banda. Default 4 fps. Le modifiche hanno effetto immediato senza ricaricare.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Configurazione bridge",
   "evf.bridgecfg.url.label": "URL del bridge",
