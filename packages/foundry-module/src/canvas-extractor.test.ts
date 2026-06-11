@@ -1366,11 +1366,11 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     };
     const fp = extractCurrentFrame(rtCanvas);
     expect(fp).not.toBeNull();
-    // captureScale = 2*min(576/2348, 288/824) = 1152/2348 (downscaled-RT capture, v0.1.22)
+    // captureScale = 1.5*min(576/2348, 288/824) = 864/2348 (downscaled-RT capture)
     expect(RTCreate).toHaveBeenCalledWith({
       width: floorW,
       height: floorH,
-      resolution: expect.closeTo(1152 / 2348, 5),
+      resolution: expect.closeTo(864 / 2348, 5),
     });
     expect(rtStub.destroy).toHaveBeenCalledWith(true);
   });
@@ -1378,8 +1378,8 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
   it('CE-VP-9: downscaled-RT readback honored — pixels at backing resolution are accepted and emitted', () => {
     const vw = 1920;
     const vh = 1080;
-    // captureScale = 2*min(576/1920, 288/1080) = 2*(288/1080) = 0.5333…
-    const scale = 2 * Math.min(576 / vw, 288 / vh);
+    // captureScale = 1.5*min(576/1920, 288/1080) = 1.5*(288/1080) = 0.4
+    const scale = 1.5 * Math.min(576 / vw, 288 / vh);
     const sw = Math.round(vw * scale);
     const sh = Math.round(vh * scale);
     const { rtStub, RTCreate, rendererExt } = installPIXIStub({ width: vw, height: vh });

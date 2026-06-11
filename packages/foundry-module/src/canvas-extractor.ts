@@ -198,10 +198,10 @@ function acquireSourceBytes(
       // measured live → ~5 fps ceiling). Creating the RT with a fractional
       // `resolution` shrinks the GPU backing store (and therefore the
       // readback + every CPU pass after it) while the stage renders with its
-      // own pan/zoom transform untouched. 2× the final fit-scale keeps the
+      // own pan/zoom transform untouched. 1.5× the final fit-scale keeps the
       // CPU fit-downscale strictly downscaling (quality preserved).
       const fitScale = Math.min(targetWidth / vw, targetHeight / vh);
-      const captureScale = Math.min(1, Math.max(0.1, 2 * fitScale));
+      const captureScale = Math.min(1, Math.max(0.1, 1.5 * fitScale));
       rt = RT.create({ width: vw, height: vh, resolution: captureScale });
       let srcBytes: Uint8Array | Uint8ClampedArray;
       try {
@@ -663,6 +663,22 @@ let _lastEmitTs = 0;
 /** Timestamp of the last frame_stats telemetry emit (throttled to every 5 s). */
 let _lastStatsTs = 0;
 
+/** One quantized frame waiting for (or undergoing) PNG encode. */
+interface EncodeJob {
+  readonly luma: Uint8Array;
+  readonly width: number;
+  readonly height: number;
+  readonly sceneId: string;
+  readonly stats: FrameCaptureStats | undefined;
+  readonly dither: boolean;
+}
+
+/** Whether a native encode is in flight (single-flight encode queue). */
+let _encodeBusy = false;
+
+/** Latest frame queued behind the in-flight encode (latest-wins). */
+let _pendingEncode: EncodeJob | null = null;
+
 /** Leading+trailing throttle timer handle for hook-driven captures. */
 let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -749,55 +765,94 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       if (luma === undefined) {
         return;
       }
-      const tEncode0 = Date.now();
-      const finish = (pngBytes: Uint8Array, encoder: 'upng' | 'native'): void => {
-        const payload: FramePng = {
-          sceneId: result.sceneId,
-          width: result.width,
-          height: result.height,
-          pngB64: bytesToB64(pngBytes),
-          ts: Date.now(),
-        };
-        // Telemetry (≤1 every 5s): real encode timing + which encoder ran +
-        // the dither flag as read on THIS (streaming) client.
-        if (opts.emitStats !== undefined && enriched._stats !== undefined) {
-          const tNow = Date.now();
-          if (tNow - _lastStatsTs >= 5_000) {
-            _lastStatsTs = tNow;
-            opts.emitStats({
-              ...enriched._stats,
-              encodeMs: tNow - tEncode0,
-              pngBytes: pngBytes.length,
-              encoder,
-              dither,
-            });
-          }
-        }
-        opts.emit(payload);
+      const job: EncodeJob = {
+        luma,
+        width: result.width,
+        height: result.height,
+        sceneId: result.sceneId,
+        stats: enriched._stats,
+        dither,
       };
 
-      // Native encoder when available (browser); otherwise the synchronous
-      // upng fallback keeps the whole call stack synchronous (Node tests +
-      // exotic hosts) — feature detection is sync so the sync path never
-      // defers the emit to a microtask.
+      // Synchronous upng fallback (Node tests + exotic hosts) — the whole
+      // call stack stays synchronous so tests observe emits in the same tick.
       if (!hasNativeEncoder()) {
-        finish(encodePngUpng(luma, result.width, result.height), 'upng');
+        const t0 = Date.now();
+        emitEncoded(job, encodePngUpng(luma, result.width, result.height), 'upng', t0);
         return;
       }
-      return encodePngNative(luma, result.width, result.height)
-        .then((bytes) => {
-          if (bytes !== null) {
-            finish(bytes, 'native');
-          } else {
-            finish(encodePngUpng(luma, result.width, result.height), 'upng');
-          }
-        })
-        .catch((err: unknown) => {
-          console.warn('[EVF canvas-extractor] native encode failed:', err);
-        });
+
+      // Native path: hand the frame to the single-flight encode queue and
+      // return WITHOUT awaiting — the capture loop only pays acquire+process
+      // (~20 ms), so the cycle period stays at the configured interval while
+      // the encode overlaps the next capture. Latest-wins: if an encode is
+      // already running, this frame replaces any queued one (the glasses only
+      // ever want the newest frame; order is guaranteed by the single flight).
+      if (_encodeBusy) {
+        _pendingEncode = job;
+        return;
+      }
+      return runEncodeJob(job);
     } catch (err) {
       console.warn('[EVF canvas-extractor] extract failed:', (err as Error).message ?? err);
     }
+  };
+
+  /** Emit one encoded frame + (throttled) telemetry. */
+  const emitEncoded = (
+    job: EncodeJob,
+    pngBytes: Uint8Array,
+    encoder: 'upng' | 'native',
+    tEncode0: number,
+  ): void => {
+    const payload: FramePng = {
+      sceneId: job.sceneId,
+      width: job.width,
+      height: job.height,
+      pngB64: bytesToB64(pngBytes),
+      ts: Date.now(),
+    };
+    // Telemetry (≤1 every 5s): real encode timing + which encoder ran +
+    // the dither flag as read on THIS (streaming) client.
+    if (opts.emitStats !== undefined && job.stats !== undefined) {
+      const tNow = Date.now();
+      if (tNow - _lastStatsTs >= 5_000) {
+        _lastStatsTs = tNow;
+        opts.emitStats({
+          ...job.stats,
+          encodeMs: tNow - tEncode0,
+          pngBytes: pngBytes.length,
+          encoder,
+          dither: job.dither,
+        });
+      }
+    }
+    opts.emit(payload);
+  };
+
+  /** Run one native encode; on completion drain the latest queued frame. */
+  const runEncodeJob = (job: EncodeJob): Promise<void> => {
+    _encodeBusy = true;
+    const t0 = Date.now();
+    return encodePngNative(job.luma, job.width, job.height)
+      .then((bytes) => {
+        if (bytes !== null) {
+          emitEncoded(job, bytes, 'native', t0);
+        } else {
+          emitEncoded(job, encodePngUpng(job.luma, job.width, job.height), 'upng', t0);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[EVF canvas-extractor] native encode failed:', err);
+      })
+      .then(() => {
+        _encodeBusy = false;
+        const next = _pendingEncode;
+        if (next !== null) {
+          _pendingEncode = null;
+          void runEncodeJob(next);
+        }
+      });
   };
 
   // ── Leading+trailing throttle for hook fires ───────────────────────────────
@@ -896,6 +951,8 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     _lastEmittedHash = null;
     _lastEmitTs = 0;
     _lastStatsTs = 0;
+    _encodeBusy = false;
+    _pendingEncode = null;
   };
 }
 
@@ -905,6 +962,8 @@ export function _resetCanvasExtractor(): void {
   _lastEmittedHash = null;
   _lastEmitTs = 0;
   _lastStatsTs = 0;
+  _encodeBusy = false;
+  _pendingEncode = null;
   _throttleTimer = null;
   _pendingTrailing = false;
   if (_captureLoopTimer !== null) {
