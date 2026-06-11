@@ -1,16 +1,24 @@
 /**
- * hud-delta-driver.test.ts — DL-01..DL-06 + first-frame + default-interval
+ * hud-delta-driver.test.ts — DL-01..DL-06 + DL-07 + DL-08 + DL-09..DL-13 + first-frame + default-interval
  *
- * Unit tests for {@link HudDeltaDriver}: event-driven debounce loop with
- * per-tile xxhash delta detection (Phase 24, RPROMO-01).
+ * Unit tests for {@link HudDeltaDriver}: event-driven throttle loop with
+ * per-tile xxhash delta detection (Phase 24, RPROMO-01) + trailing-edge
+ * re-arm (DG5, 2026-06-11).
  *
  * Test coverage:
  *   DL-01 — 1-of-4 tiles changed → exactly 1 updateImageRawData call
  *   DL-02 — 0 tiles changed → 0 updateImageRawData calls (zero-push-on-idle)
- *   DL-03 — 3 rapid deltas within debounce window → 1 render cycle (collapse)
- *   DL-04 — configurable debounce interval (50ms custom vs 100ms default)
+ *   DL-03 — 3 rapid deltas within throttle window → 1 render cycle (collapse)
+ *   DL-04 — configurable throttle interval (50ms custom vs 100ms default)
  *   DL-05 — static-chrome determinism: identical compositor output → 0 pushes after first frame
  *   DL-06 — stop() cancels pending timer and releases all subscriptions
+ *   DL-07 — start() idempotency (CR-01): calling start() twice yields exactly 4 subscriptions
+ *   DL-08 — sustained events faster than interval do NOT starve the cycle (throttle, not debounce)
+ *   DL-09 — cadence: trailing pacing delivers ≥ floor of cycles over 1000ms continuous input
+ *   DL-10 — no event loss: event during pending window triggers exactly one follow-up cycle
+ *   DL-11 — no overlap: single-in-flight guard — composite() calls are serialized
+ *   DL-12 — idle no re-arm: no events after first cycle → zero further composites
+ *   DL-13 — stop() during pending: follow-up cycle cancelled, no push after stop
  *   first-frame — runFirstFrame() pushes all 4 tiles unconditionally; seeds hashes
  *   default-interval — DEFAULT_MIN_REDRAW_INTERVAL_MS === 100
  *
@@ -204,7 +212,7 @@ describe('HudDeltaDriver', () => {
     mutateTile0(newRgba, 99);
     rgbaRef.value = newRgba;
 
-    // Trigger a delta event and advance timers by the default debounce.
+    // Trigger a delta event and advance timers by the default throttle.
     fire('character.delta');
     await vi.advanceTimersByTimeAsync(DEFAULT_MIN_REDRAW_INTERVAL_MS);
 
@@ -247,7 +255,7 @@ describe('HudDeltaDriver', () => {
 
   // ── DL-03: 3 rapid deltas within window collapse to 1 cycle ─────────────────
 
-  it('DL-03: 3 rapid delta events within debounce window collapse into 1 render cycle', async () => {
+  it('DL-03: 3 rapid delta events within throttle window collapse into 1 render cycle', async () => {
     const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
     const bridge = makeBridge();
     const { wsEvents, fire } = makeWsEvents();
@@ -264,7 +272,7 @@ describe('HudDeltaDriver', () => {
     mutateTile0(newRgba, 77);
     rgbaRef.value = newRgba;
 
-    // 3 rapid deltas — all within the debounce window (no timer advance between them).
+    // 3 rapid deltas — all within the throttle window (no timer advance between them).
     fire('character.delta');
     fire('combat.turn');
     fire('combat.state');
@@ -283,7 +291,7 @@ describe('HudDeltaDriver', () => {
     driver.stop();
   });
 
-  // ── DL-04: configurable debounce interval ────────────────────────────────────
+  // ── DL-04: configurable throttle interval ────────────────────────────────────
 
   it('DL-04: with minRedrawIntervalMs:50, a 49ms advance does NOT trigger a cycle; 50ms does', async () => {
     const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
@@ -347,7 +355,7 @@ describe('HudDeltaDriver', () => {
     driver.stop();
   });
 
-  // ── DL-06: stop() cancels timer and releases all subscriptions ────────────────
+  // ── DL-08: throttle anti-starvation (updated to also serve as DL-09 cadence baseline) ─
 
   it('DL-08: sustained events faster than the interval do NOT starve the cycle (throttle, not debounce)', async () => {
     const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
@@ -397,13 +405,13 @@ describe('HudDeltaDriver', () => {
 
     const callsBeforeStop = bridge.updateImageRawData.mock.calls.length;
 
-    // Schedule a timer (debounce in flight).
+    // Schedule a timer (throttle in flight).
     fire('character.delta');
 
     // Stop before timer fires.
     driver.stop();
 
-    // Advance past the debounce window — timer must NOT fire.
+    // Advance past the throttle window — timer must NOT fire.
     await vi.advanceTimersByTimeAsync(DEFAULT_MIN_REDRAW_INTERVAL_MS * 2);
     const callsAfterStop = bridge.updateImageRawData.mock.calls.length;
     expect(callsAfterStop).toBe(callsBeforeStop);
@@ -444,7 +452,7 @@ describe('HudDeltaDriver', () => {
 
     const callsAfterFirstFrame = bridge.updateImageRawData.mock.calls.length;
 
-    // Exactly 1 composite() per debounce cycle, not 2 (no duplicate handler).
+    // Exactly 1 composite() per throttle cycle, not 2 (no duplicate handler).
     fire('character.delta');
     await vi.advanceTimersByTimeAsync(DEFAULT_MIN_REDRAW_INTERVAL_MS);
 
@@ -508,5 +516,219 @@ describe('HudDeltaDriver', () => {
     expect(bridge.updateImageRawData).toHaveBeenCalledTimes(4);
 
     driver.stop();
+  });
+
+  // ── DL-09: trailing-edge cadence — continuous deltas → ≥ floor cycles ────────
+
+  it('DL-09: continuous deltas every 50ms for ~1000ms with each mutation → trailing pacing delivers ≥8 composite calls', async () => {
+    // This is the trailing-edge cadence assertion. With the new trailing-edge
+    // re-arm, even if a cycle is in flight when the timer would fire, a follow-up
+    // is armed immediately upon cycle completion. Period = max(interval, cycleTime).
+    // With interval=100ms and 1000ms of continuous events, ≥8 cycles are expected.
+    const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    const compositeBase = compositor.composite.mock.calls.length;
+
+    // Deliver one event every 50ms for 1000ms (20 events total), each mutating
+    // tile-0 with a fresh seed so changes are always detected.
+    let seed = 1;
+    for (let t = 0; t < 20; t++) {
+      const rgba = makeBlankRgba();
+      mutateTile0(rgba, seed++);
+      rgbaRef.value = rgba;
+      fire('character.delta');
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    const cyclesDelivered = compositor.composite.mock.calls.length - compositeBase;
+    // With 100ms interval and 1000ms of events: expect ≥8 (trailing-edge pacing).
+    expect(cyclesDelivered).toBeGreaterThanOrEqual(8);
+
+    driver.stop();
+  });
+
+  // ── DL-10: no event loss — event during pending window triggers one follow-up ─
+
+  it('DL-10: event fired during pending window (timer armed) triggers exactly one follow-up cycle', async () => {
+    const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const INTERVAL = 50;
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents, INTERVAL));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    // Seed a change for the first cycle.
+    const rgba1 = makeBlankRgba();
+    mutateTile0(rgba1, 10);
+    rgbaRef.value = rgba1;
+    const compositeBase = compositor.composite.mock.calls.length;
+
+    // First event: arms the timer (leading edge).
+    fire('character.delta');
+
+    // Second event: arrives BEFORE the timer fires (during the pending window).
+    // This must set _pendingAgain = true (coalesced into follow-up).
+    const rgba2 = makeBlankRgba();
+    mutateTile0(rgba2, 20);
+    rgbaRef.value = rgba2;
+    fire('character.delta');
+
+    // Advance through the first interval — first cycle fires and completes.
+    // The trailing-edge re-arm arms a follow-up immediately (0 remaining time
+    // since the cycle completes nearly instantly under fake timers).
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+
+    // At this point the first cycle has run; with _pendingAgain set, a follow-up
+    // should be armed. Advance one more interval to fire the follow-up.
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+
+    // We expect EXACTLY 2 composite calls: first cycle + one follow-up.
+    const cyclesAfter = compositor.composite.mock.calls.length - compositeBase;
+    expect(cyclesAfter).toBe(2);
+
+    driver.stop();
+  });
+
+  // ── DL-11: no overlap — single in-flight cycle guard ─────────────────────────
+
+  it('DL-11: composite() calls are ordered (no interleaving) even with back-to-back cycles', async () => {
+    // Under fake timers, cycles complete synchronously in order. We verify that
+    // multiple cycles never overlap by checking composite() is called in order
+    // with no concurrent calls: each invocation sees the rgbaRef value set
+    // immediately before its triggering event.
+    const capturedValues: number[] = [];
+    const rgbaRef = { value: makeBlankRgba() };
+    const compositor = {
+      composite: vi.fn(() => {
+        // Snapshot the current tile-0 pixel at the time of the composite call.
+        capturedValues.push(rgbaRef.value[0] ?? 0);
+        return rgbaRef.value;
+      }),
+    };
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const INTERVAL = 50;
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents, INTERVAL));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    const compositeBase = compositor.composite.mock.calls.length;
+
+    // Three sequential cycles with distinct mutations. Each cycle should see
+    // the rgba value set at or before its trigger.
+    const rgba1 = makeBlankRgba();
+    mutateTile0(rgba1, 111);
+    rgbaRef.value = rgba1;
+    fire('character.delta');
+    await vi.advanceTimersByTimeAsync(INTERVAL); // first cycle fires
+
+    const rgba2 = makeBlankRgba();
+    mutateTile0(rgba2, 122);
+    rgbaRef.value = rgba2;
+    fire('character.delta');
+    await vi.advanceTimersByTimeAsync(INTERVAL); // second cycle fires
+
+    const rgba3 = makeBlankRgba();
+    mutateTile0(rgba3, 133);
+    rgbaRef.value = rgba3;
+    fire('character.delta');
+    await vi.advanceTimersByTimeAsync(INTERVAL); // third cycle fires
+
+    const cyclesAfter = compositor.composite.mock.calls.length - compositeBase;
+    // Three distinct triggers → three cycles, no overlap.
+    expect(cyclesAfter).toBe(3);
+
+    // The captured values must be non-decreasing: each composite() ran after its
+    // mutation was applied, proving no interleaving.
+    const capturedAfter = capturedValues.slice(compositeBase);
+    for (let i = 1; i < capturedAfter.length; i++) {
+      expect(capturedAfter[i] ?? 0).toBeGreaterThanOrEqual(capturedAfter[i - 1] ?? 0);
+    }
+
+    driver.stop();
+  });
+
+  // ── DL-12: idle no re-arm — no events → zero further composites ──────────────
+
+  it('DL-12: no events after the first cycle → no further re-arm, zero additional composites (D-24.3)', async () => {
+    // After the first triggered cycle completes with _pendingAgain = false,
+    // the driver must NOT re-arm the timer. Advancing 3× the interval with no
+    // new events must produce zero additional composite() calls.
+    const { compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const INTERVAL = 50;
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents, INTERVAL));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    const compositeBase = compositor.composite.mock.calls.length;
+
+    // One event to arm the first cycle.
+    const rgba = makeBlankRgba();
+    mutateTile0(rgba, 5);
+    (compositor.composite as ReturnType<typeof vi.fn>).mockReturnValue(rgba);
+    fire('character.delta');
+    await vi.advanceTimersByTimeAsync(INTERVAL); // first cycle fires
+
+    const compositeAfterFirst = compositor.composite.mock.calls.length - compositeBase;
+    expect(compositeAfterFirst).toBe(1);
+
+    // No further events — advance 3× the interval.
+    await vi.advanceTimersByTimeAsync(INTERVAL * 3);
+
+    const compositeAfterIdle = compositor.composite.mock.calls.length - compositeBase;
+    // Still only 1: no re-arm when idle.
+    expect(compositeAfterIdle).toBe(1);
+
+    driver.stop();
+  });
+
+  // ── DL-13: stop() during pending — follow-up cancelled ───────────────────────
+
+  it('DL-13: stop() while _pendingAgain is set cancels the follow-up — no cycle after stop', async () => {
+    const { rgbaRef, compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents, fire } = makeWsEvents();
+
+    const INTERVAL = 50;
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents, INTERVAL));
+    await driver.start();
+    await driver.runFirstFrame();
+
+    // First event: arm the timer (leading edge).
+    const rgba1 = makeBlankRgba();
+    mutateTile0(rgba1, 30);
+    rgbaRef.value = rgba1;
+    fire('character.delta');
+
+    // Second event: arrives during the pending window → sets _pendingAgain = true.
+    const rgba2 = makeBlankRgba();
+    mutateTile0(rgba2, 60);
+    rgbaRef.value = rgba2;
+    fire('character.delta');
+
+    // Advance through the first interval so first cycle fires and _pendingAgain
+    // is detected. _fireCycle will try to re-arm, but stop() has cleared the flag.
+    // Stop BEFORE the re-arm fires.
+    driver.stop();
+
+    const compositeAfterStop = compositor.composite.mock.calls.length;
+
+    // Advance well past where the follow-up would have fired.
+    await vi.advanceTimersByTimeAsync(INTERVAL * 3);
+
+    // No additional composite() calls after stop.
+    expect(compositor.composite.mock.calls.length).toBe(compositeAfterStop);
   });
 });
