@@ -31,8 +31,19 @@ const BAYER_4X4: ReadonlyArray<number> = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9
   (v) => (v + 0.5) / 16 - 0.5,
 );
 
-/** Bayer ordered-dither one tile to 16 grey levels (twin of hud-raster-frame.ts). */
-function ditherTile(rgba: Uint8ClampedArray): Uint8ClampedArray {
+/**
+ * Quantize one tile to the 16-step greyscale palette (twin of hud-raster-frame.ts ditherTile).
+ *
+ * Two modes controlled by `dither`:
+ *   - `true`  (default): Bayer 4×4 ordered-dither path — smooth gradients, per-pixel threshold.
+ *   - `false`: direct nearest-of-16-level quantization — no dither pattern, flat regions
+ *     produce a uniform grey value (no checkerboard); better DEFLATE compression on flat inputs.
+ *
+ * @param rgba Tile pixels (TILE_W×TILE_H×4).
+ * @param dither When `true` applies Bayer dither; when `false` uses direct quantization.
+ * @returns New RGBA buffer quantized to the 16 grey levels.
+ */
+function ditherTile(rgba: Uint8ClampedArray, dither = true): Uint8ClampedArray {
   const out = new Uint8ClampedArray(rgba.length);
   for (let y = 0; y < TILE_H; y++) {
     const rowT = (y & 3) << 2;
@@ -40,7 +51,12 @@ function ditherTile(rgba: Uint8ClampedArray): Uint8ClampedArray {
       const i = (y * TILE_W + x) * 4;
       const luma =
         0.2126 * (rgba[i] ?? 0) + 0.7152 * (rgba[i + 1] ?? 0) + 0.0722 * (rgba[i + 2] ?? 0);
-      let level = Math.floor((luma / 255) * 15 + 0.5 + (BAYER_4X4[rowT | (x & 3)] ?? 0));
+      let level: number;
+      if (dither) {
+        level = Math.floor((luma / 255) * 15 + 0.5 + (BAYER_4X4[rowT | (x & 3)] ?? 0));
+      } else {
+        level = Math.round((luma / 255) * 15);
+      }
       if (level < 0) level = 0;
       else if (level > 15) level = 15;
       const v = Math.round((level * 255) / 15);
@@ -54,7 +70,8 @@ function ditherTile(rgba: Uint8ClampedArray): Uint8ClampedArray {
 }
 
 self.onmessage = (ev: MessageEvent): void => {
-  const { seq, rgba } = ev.data as { seq: number; rgba: ArrayBuffer };
+  const { seq, rgba, dither } = ev.data as { seq: number; rgba: ArrayBuffer; dither?: boolean };
+  const useDither = dither !== false; // default true when absent
   try {
     const frame = new Uint8ClampedArray(rgba);
     if (frame.length !== FRAME_W * FRAME_H * 4) {
@@ -70,8 +87,8 @@ self.onmessage = (ev: MessageEvent): void => {
         const src = ((ty * TILE_H + y) * FRAME_W + tx * TILE_W) * 4;
         tile.set(frame.subarray(src, src + TILE_W * 4), y * TILE_W * 4);
       }
-      const dithered = ditherTile(tile);
-      const png = UPNG.encode([dithered.buffer], TILE_W, TILE_H, 16);
+      const quantized = ditherTile(tile, useDither);
+      const png = UPNG.encode([quantized.buffer], TILE_W, TILE_H, 16);
       const bytes = new Uint8Array(png);
       tiles.push({ id: t, name: TILE_NAMES[t] ?? `hud-tile-${t}`, bytes });
       transfers.push(bytes.buffer);

@@ -639,7 +639,10 @@ export async function _bootEngineCore(
     bridge,
     wsEvents: wsEventBus,
     ...(hudTileWorker !== null
-      ? { buildTilesAsync: (rgba: Uint8ClampedArray) => hudTileWorker.buildTiles(rgba) }
+      ? {
+          buildTilesAsync: (rgba: Uint8ClampedArray, dither: boolean) =>
+            hudTileWorker.buildTiles(rgba, dither),
+        }
       : {}),
     // 33ms throttle (bench ladder 2026-06-10, full-screen 576×288):
     // FS+100ms = 6.75 fps → 50ms = 9.5 → Bayer = 14.4 → Worker = 15.2 →

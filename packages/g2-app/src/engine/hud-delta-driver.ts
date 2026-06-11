@@ -105,8 +105,27 @@ export interface HudDeltaDriverOpts {
    * rejection the driver falls back to the synchronous `buildHudTiles` for
    * that cycle (fail-soft). When absent (unit tests, no-Worker hosts), the
    * synchronous path is used directly — byte-identical output.
+   *
+   * The second parameter `dither` is forwarded from `getDitherMode()` at call
+   * time — the Worker receives the live flag and applies the matching algorithm.
    */
-  readonly buildTilesAsync?: (rgba: Uint8ClampedArray) => Promise<HudTile[]>;
+  readonly buildTilesAsync?: (rgba: Uint8ClampedArray, dither: boolean) => Promise<HudTile[]>;
+
+  /**
+   * Optional live-read dither mode getter.
+   *
+   * Called at the start of every render cycle so a toggle takes effect immediately
+   * without reconstructing the driver. When absent (or returns `undefined`), the
+   * driver defaults to `true` (Bayer ordered-dither, same as pre-feature behaviour).
+   *
+   * The returned boolean is forwarded to both the async Worker path and the
+   * synchronous `buildHudTiles` fallback, ensuring byte-identical output per mode
+   * across both paths.
+   *
+   * @returns `true` for Bayer 4×4 dither; `false` for direct nearest-of-16-level
+   *   quantization with no dither pattern.
+   */
+  readonly getDitherMode?: () => boolean;
 
   /**
    * Debounce interval in milliseconds.
@@ -341,19 +360,24 @@ export class HudDeltaDriver {
   /**
    * Build the 4 HUD tiles — Worker-backed when `opts.buildTilesAsync` is
    * wired, with synchronous fallback on rejection or absence.
+   *
+   * Resolves the live dither mode via `opts.getDitherMode?.() ?? true` and
+   * forwards it to both the async Worker path and the synchronous fallback so
+   * a live toggle takes effect on the very next cycle without reconstruction.
    */
   private async _buildTiles(rgba: Uint8ClampedArray): Promise<HudTile[]> {
-    const async = this._opts.buildTilesAsync;
-    if (async !== undefined) {
+    const dither = this._opts.getDitherMode?.() ?? true;
+    const asyncBuilder = this._opts.buildTilesAsync;
+    if (asyncBuilder !== undefined) {
       try {
         // The Worker path TRANSFERS the buffer — pass a copy so the sync
         // fallback (and any caller-side reuse) never sees a detached buffer.
-        return await async(new Uint8ClampedArray(rgba));
+        return await asyncBuilder(new Uint8ClampedArray(rgba), dither);
       } catch (err) {
         console.warn('[EVF] HudDeltaDriver: worker tile build failed — sync fallback:', err);
       }
     }
-    return buildHudTiles(rgba);
+    return buildHudTiles(rgba, dither);
   }
 
   private async _runCycle(): Promise<void> {
