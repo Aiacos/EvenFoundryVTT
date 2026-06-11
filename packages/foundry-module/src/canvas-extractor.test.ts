@@ -1278,7 +1278,8 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     const fp = extractCurrentFrame(rtCanvas);
     expect(fp).not.toBeNull();
     expect(RTCreate).toHaveBeenCalledTimes(1);
-    expect(RTCreate).toHaveBeenCalledWith({ width: W, height: H });
+    // captureScale = min(1, 2*min(576/400, 288/200)) = 1 (small viewport, no shrink)
+    expect(RTCreate).toHaveBeenCalledWith({ width: W, height: H, resolution: 1 });
     expect(rendererExt.render).toHaveBeenCalledTimes(1);
     const [renderTarget, renderOpts] = rendererExt.render.mock.calls[0] as [
       unknown,
@@ -1343,7 +1344,8 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     };
     const fp = extractCurrentFrame(rtCanvas);
     expect(fp).not.toBeNull();
-    expect(RTCreate).toHaveBeenCalledWith({ width: screenW, height: screenH });
+    // viewport == target -> fitScale 1, captureScale capped at 1
+    expect(RTCreate).toHaveBeenCalledWith({ width: screenW, height: screenH, resolution: 1 });
     expect(rtStub.destroy).toHaveBeenCalledWith(true);
   });
 
@@ -1364,7 +1366,40 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     };
     const fp = extractCurrentFrame(rtCanvas);
     expect(fp).not.toBeNull();
-    expect(RTCreate).toHaveBeenCalledWith({ width: floorW, height: floorH });
+    // captureScale = 2*min(576/2348, 288/824) = 1152/2348 (downscaled-RT capture, v0.1.22)
+    expect(RTCreate).toHaveBeenCalledWith({
+      width: floorW,
+      height: floorH,
+      resolution: expect.closeTo(1152 / 2348, 5),
+    });
+    expect(rtStub.destroy).toHaveBeenCalledWith(true);
+  });
+
+  it('CE-VP-9: downscaled-RT readback honored — pixels at backing resolution are accepted and emitted', () => {
+    const vw = 1920;
+    const vh = 1080;
+    // captureScale = 2*min(576/1920, 288/1080) = 2*(288/1080) = 0.5333…
+    const scale = 2 * Math.min(576 / vw, 288 / vh);
+    const sw = Math.round(vw * scale);
+    const sh = Math.round(vh * scale);
+    const { rtStub, RTCreate, rendererExt } = installPIXIStub({ width: vw, height: vh });
+    // The mock honors `resolution`: returns the SMALL backing-store buffer.
+    const pixels = new Uint8Array(sw * sh * 4).fill(0x80);
+    const pixelsSpy = vi.fn(() => pixels);
+    const rtCanvas = {
+      scene: { id: 'downscaled-rt-scene' },
+      stage: { __rtStageMarker: true },
+      app: { renderer: { width: vw, height: vh, extract: { pixels: pixelsSpy }, ...rendererExt } },
+    };
+    const fp = extractCurrentFrame(rtCanvas);
+    expect(fp).not.toBeNull();
+    expect(fp?.width).toBe(576);
+    expect(fp?.height).toBe(288);
+    expect(RTCreate).toHaveBeenCalledWith({
+      width: vw,
+      height: vh,
+      resolution: expect.closeTo(scale, 5),
+    });
     expect(rtStub.destroy).toHaveBeenCalledWith(true);
   });
 });

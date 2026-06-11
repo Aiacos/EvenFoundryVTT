@@ -148,11 +148,13 @@ interface AcquiredBytes {
  * path or the no-arg fallback. Unchanged from v0.1.14 (RT rationale in JSDoc).
  */
 function acquireSourceBytes(
-  RT: { create(o: { width: number; height: number }): unknown } | undefined,
+  RT: { create(o: { width: number; height: number; resolution?: number }): unknown } | undefined,
   renderer: NonNullable<NonNullable<CanvasLike['app']>['renderer']>,
   canvas: CanvasLike,
   vw: number,
   vh: number,
+  targetWidth: number,
+  targetHeight: number,
 ): AcquiredBytes | null {
   const useRTPath =
     RT !== undefined &&
@@ -163,7 +165,16 @@ function acquireSourceBytes(
   if (useRTPath) {
     let rt: unknown;
     try {
-      rt = RT.create({ width: vw, height: vh });
+      // Downscaled-RT capture (v0.1.22 perf): a full-viewport readback is
+      // ~8.3 MB at 1920×1080 and dominated the per-capture cost (~175 ms
+      // measured live → ~5 fps ceiling). Creating the RT with a fractional
+      // `resolution` shrinks the GPU backing store (and therefore the
+      // readback + every CPU pass after it) while the stage renders with its
+      // own pan/zoom transform untouched. 2× the final fit-scale keeps the
+      // CPU fit-downscale strictly downscaling (quality preserved).
+      const fitScale = Math.min(targetWidth / vw, targetHeight / vh);
+      const captureScale = Math.min(1, Math.max(0.1, 2 * fitScale));
+      rt = RT.create({ width: vw, height: vh, resolution: captureScale });
       let srcBytes: Uint8Array | Uint8ClampedArray;
       try {
         renderer.render?.(canvas.stage, { renderTexture: rt, clear: true });
@@ -171,7 +182,22 @@ function acquireSourceBytes(
       } finally {
         (rt as { destroy(b: boolean): void }).destroy(true);
       }
-      return { srcBytes, srcWidth: vw, srcHeight: vh };
+      // The returned buffer length tells us which resolution the extract
+      // actually honored — PIXI versions differ. Accept either; anything else
+      // is a real mismatch (skip the frame, same policy as v0.1.12 DPR fix).
+      const sw = Math.round(vw * captureScale);
+      const sh = Math.round(vh * captureScale);
+      if (srcBytes.length === sw * sh * 4) {
+        return { srcBytes, srcWidth: sw, srcHeight: sh };
+      }
+      if (srcBytes.length === vw * vh * 4) {
+        return { srcBytes, srcWidth: vw, srcHeight: vh };
+      }
+      console.warn(
+        `[EVF canvas-extractor] RT readback length ${srcBytes.length} matches neither ` +
+          `${sw}x${sh} nor ${vw}x${vh} — skipping frame`,
+      );
+      return null;
     } catch (err) {
       console.warn(
         '[EVF canvas-extractor] extract.pixels threw, skipping frame:',
@@ -262,11 +288,15 @@ export function extractCurrentFrame(
 
   const RT = (
     globalThis as {
-      PIXI?: { RenderTexture?: { create(o: { width: number; height: number }): unknown } };
+      PIXI?: {
+        RenderTexture?: {
+          create(o: { width: number; height: number; resolution?: number }): unknown;
+        };
+      };
     }
   ).PIXI?.RenderTexture;
 
-  const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh);
+  const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh, targetWidth, targetHeight);
   if (acquired === null) {
     return null;
   }
