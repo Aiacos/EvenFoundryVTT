@@ -1,7 +1,7 @@
 ┌─[ AZIONE RAPIDA ]──────────────────────────────────────────────────┐
 │                                                                    │
 │ ▶ [S] Scheda                                                       │
-│   [C] Combatt                                                      │
+│   [C] Combattimento                                                │
 │   [L] Log                                                          │
 │   [B] Libro                                                        │
 │   [I] Inventario                                                   │

@@ -655,7 +655,7 @@ export const HUD_WIDTH_BUDGETS = {
   quick_item_sheet: { it: 'Scheda', en: 'Sheet', de: 'Blatt', max: 22 },
 
   /** [C] Combat Tracker menu item label. */
-  quick_item_combat: { it: 'Combatt', en: 'Combat', de: 'Kampf', max: 22 },
+  quick_item_combat: { it: 'Combattimento', en: 'Combat', de: 'Kampf', max: 22 },
 
   /** [L] Log panel menu item label. */
   quick_item_log: { it: 'Log', en: 'Log', de: 'Log', max: 22 },

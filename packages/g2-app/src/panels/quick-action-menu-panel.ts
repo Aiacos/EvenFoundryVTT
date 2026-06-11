@@ -11,7 +11,7 @@
  * change the display locale.
  *
  * **Two modes:**
- *   - `'main'`     — 9-item menu (`[S][C][L][B][I][A][M][N][X]`)
+ *   - `'main'`     — 11-item menu (`[S][C][L][B][I][A][M][N][F][D][X]`)
  *   - `'language'` — 7-item locale picker (from `LOCALE_MENU` Phase 5 constant)
  *
  * Mode switches without remounting the panel (state-based rendering, same
@@ -119,6 +119,14 @@ const MAIN_ITEMS = [
   { key: 'D', i18nKey: 'quick_item_dither', action: 'dither-toggle', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
+
+/**
+ * Index of the `[N] Language` row in {@link MAIN_ITEMS} — the row re-focused
+ * when returning from the language sub-menu. Derived (not a literal) so that
+ * inserting/removing menu items can never silently break the back-navigation
+ * focus (it did require manual review when `[F]`/`[D]` were added).
+ */
+const LANGUAGE_ITEM_INDEX = MAIN_ITEMS.findIndex((item) => item.key === 'N');
 
 // ─── Callbacks type ───────────────────────────────────────────────────────────
 
@@ -324,7 +332,7 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       if (this.mode === 'language') {
         // Back one level — return to main mode, keep [N] focused.
         this.mode = 'main';
-        this.activeIndex = 7; // [N] Language row
+        this.activeIndex = LANGUAGE_ITEM_INDEX;
         void this.draw();
       } else {
         // Close the menu (popOverlay restores the suspended panel).
@@ -527,7 +535,7 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       this.localeEvents.emit('changed', code);
       // Return to main mode, focus [N] Language row.
       this.mode = 'main';
-      this.activeIndex = 7;
+      this.activeIndex = LANGUAGE_ITEM_INDEX;
       void this.draw();
       return;
     }

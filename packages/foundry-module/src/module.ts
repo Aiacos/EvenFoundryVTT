@@ -340,15 +340,31 @@ Hooks.once('ready', () => {
   // getCaptureIntervalMs: `captureFps` world setting converted to ms (1000/fps) —
   //   evaluated before every capture-loop wait so the DM can change the rate
   //   (1–60 fps) without module reload and with no scheduler cap (FRAME-PNG-02).
-  registerCanvasExtractor({
-    emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
-    getNormalize: (): 'off' | 'auto' => {
-      try {
-        return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
-      } catch {
-        return 'off';
-      }
-    },
-    getCaptureIntervalMs: () => getCaptureIntervalMs(),
-  });
+  // SINGLE-SOURCE gate: only the active-GM client streams frames. Module code
+  // runs on EVERY connected Foundry client — without this gate a DM + a player
+  // with the world open would BOTH stream their own viewport, and the glasses
+  // would flicker between two alternating views at double the bandwidth.
+  // The DM's view is the canonical map source. Fallback: when `activeGM` is
+  // unavailable, any GM client streams (still excludes players).
+  const gameUsers = (game as unknown as { users?: { activeGM?: { id?: string } | null } }).users;
+  const activeGmId = gameUsers?.activeGM?.id;
+  const isStreamSource =
+    game.user?.isGM === true && (activeGmId === undefined || activeGmId === game.user?.id);
+  if (isStreamSource) {
+    registerCanvasExtractor({
+      emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
+      getNormalize: (): 'off' | 'auto' => {
+        try {
+          return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
+        } catch {
+          return 'off';
+        }
+      },
+      getCaptureIntervalMs: () => getCaptureIntervalMs(),
+    });
+  } else {
+    console.warn(
+      '[EVF] canvas extractor NOT registered on this client (map streams from the active-GM client only)',
+    );
+  }
 });
