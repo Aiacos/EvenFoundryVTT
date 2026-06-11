@@ -102,6 +102,18 @@ export interface CanvasExtractorOpts {
    * @see `getCaptureIntervalMs` in settings.ts (converts the `captureFps` world setting to ms).
    */
   readonly getCaptureIntervalMs?: () => number;
+  /**
+   * Live stream-source gate, evaluated at the START of every capture.
+   *
+   * Module code runs on every connected Foundry client; only ONE client should
+   * stream frames (duplicate viewports would alternate on the glasses). The
+   * caller supplies the election logic (active GM preferred, deterministic
+   * fallback otherwise — see `isStreamLeader` in module.ts). Evaluated live so
+   * leadership can migrate (GM joins/leaves) without re-registering.
+   *
+   * Absent → always enabled.
+   */
+  readonly isEnabled?: () => boolean;
 }
 
 /**
@@ -492,6 +504,11 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
 
   const performExtract = (): void => {
     try {
+      // Stream-source election gate — only the elected client captures.
+      // Evaluated per capture so leadership can migrate live.
+      if (opts.isEnabled?.() === false) {
+        return;
+      }
       if (typeof canvas === 'undefined' || canvas === null) {
         return;
       }

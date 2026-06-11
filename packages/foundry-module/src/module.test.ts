@@ -1363,3 +1363,73 @@ describe('scheduleBearerRotation wiring (Plan 07-06)', () => {
     expect(socketlibMock.register).toHaveBeenCalledTimes(17);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isStreamLeader — single-source stream election (v0.1.19)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('isStreamLeader — stream-source election', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Stub `game` with a user + users collection and return isStreamLeader.
+   * The module import is cached (no resetModules needed): isStreamLeader reads
+   * the `game` global at CALL time, so per-test stubbing is sufficient.
+   */
+  async function leaderWith(
+    self: { id: string; active: boolean; isGM: boolean },
+    others: Array<{ id: string; active: boolean; isGM: boolean }>,
+  ): Promise<boolean> {
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', { user: self, users: [self, ...others] });
+    const { isStreamLeader } = await import('./module.js');
+    return isStreamLeader();
+  }
+
+  it('SL-1: the only active GM is the leader', async () => {
+    await expect(
+      leaderWith({ id: 'gm1', active: true, isGM: true }, [
+        { id: 'aaa', active: true, isGM: false },
+      ]),
+    ).resolves.toBe(true);
+  });
+
+  it('SL-2: a player is NOT the leader while a GM is active', async () => {
+    await expect(
+      leaderWith({ id: 'aaa', active: true, isGM: false }, [
+        { id: 'gm1', active: true, isGM: true },
+      ]),
+    ).resolves.toBe(false);
+  });
+
+  it('SL-3: no GM connected → lowest-id active player wins (deterministic)', async () => {
+    await expect(
+      leaderWith({ id: 'aaa', active: true, isGM: false }, [
+        { id: 'bbb', active: true, isGM: false },
+      ]),
+    ).resolves.toBe(true);
+    vi.unstubAllGlobals();
+    await expect(
+      leaderWith({ id: 'bbb', active: true, isGM: false }, [
+        { id: 'aaa', active: true, isGM: false },
+      ]),
+    ).resolves.toBe(false);
+  });
+
+  it('SL-4: inactive GM does not block the active player', async () => {
+    await expect(
+      leaderWith({ id: 'bbb', active: true, isGM: false }, [
+        { id: 'gm1', active: false, isGM: true },
+      ]),
+    ).resolves.toBe(true);
+  });
+
+  it('SL-5: unreadable users collection → fail-open (stream)', async () => {
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', { user: { id: 'x', active: true, isGM: false }, users: undefined });
+    const { isStreamLeader } = await import('./module.js');
+    expect(isStreamLeader()).toBe(true);
+  });
+});

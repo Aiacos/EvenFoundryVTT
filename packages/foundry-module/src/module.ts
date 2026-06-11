@@ -340,31 +340,65 @@ Hooks.once('ready', () => {
   // getCaptureIntervalMs: `captureFps` world setting converted to ms (1000/fps) —
   //   evaluated before every capture-loop wait so the DM can change the rate
   //   (1–60 fps) without module reload and with no scheduler cap (FRAME-PNG-02).
-  // SINGLE-SOURCE gate: only the active-GM client streams frames. Module code
-  // runs on EVERY connected Foundry client — without this gate a DM + a player
-  // with the world open would BOTH stream their own viewport, and the glasses
-  // would flicker between two alternating views at double the bandwidth.
-  // The DM's view is the canonical map source. Fallback: when `activeGM` is
-  // unavailable, any GM client streams (still excludes players).
-  const gameUsers = (game as unknown as { users?: { activeGM?: { id?: string } | null } }).users;
-  const activeGmId = gameUsers?.activeGM?.id;
-  const isStreamSource =
-    game.user?.isGM === true && (activeGmId === undefined || activeGmId === game.user?.id);
-  if (isStreamSource) {
-    registerCanvasExtractor({
-      emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
-      getNormalize: (): 'off' | 'auto' => {
-        try {
-          return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
-        } catch {
-          return 'off';
-        }
-      },
-      getCaptureIntervalMs: () => getCaptureIntervalMs(),
-    });
-  } else {
-    console.warn(
-      '[EVF] canvas extractor NOT registered on this client (map streams from the active-GM client only)',
-    );
-  }
+  // SINGLE-SOURCE election: module code runs on EVERY connected Foundry client —
+  // without a gate a DM + a player with the world open would BOTH stream their
+  // own viewport (alternating views, double bandwidth). The extractor registers
+  // on every client but `isEnabled` (evaluated live per capture) elects exactly
+  // ONE source: the GM when connected (canonical view), otherwise the active
+  // user with the lowest id (deterministic on every client — no coordination
+  // needed). Fail-open: any election error streams rather than blanking the map.
+  registerCanvasExtractor({
+    emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
+    isEnabled: () => isStreamLeader(),
+    getNormalize: (): 'off' | 'auto' => {
+      try {
+        return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
+      } catch {
+        return 'off';
+      }
+    },
+    getCaptureIntervalMs: () => getCaptureIntervalMs(),
+  });
 });
+
+/** Minimal user shape read by {@link isStreamLeader}. */
+interface UserLike {
+  readonly id?: string | null;
+  readonly active?: boolean;
+  readonly isGM?: boolean;
+}
+
+/**
+ * Deterministic stream-source election — `true` when THIS client should
+ * capture and stream map frames.
+ *
+ * All clients evaluate the same synced `game.users` data, so they agree
+ * without coordination: among the active users, GMs win over players, ties
+ * break on lowest id. Evaluated live per capture (see
+ * `CanvasExtractorOpts.isEnabled`) so leadership migrates when the GM joins or
+ * leaves. Fail-open: if the users collection cannot be read, this client
+ * streams — a duplicate stream beats a permanently blank map.
+ */
+export function isStreamLeader(): boolean {
+  try {
+    const g = game as unknown as { user?: UserLike | null; users?: Iterable<UserLike> | null };
+    const self = g.user;
+    if (self?.id === undefined || self.id === null) {
+      return true;
+    }
+    const users = g.users;
+    if (users === undefined || users === null) {
+      return true;
+    }
+    const active = [...users].filter((u) => u.active === true && u.id != null);
+    if (active.length === 0) {
+      return true;
+    }
+    const gms = active.filter((u) => u.isGM === true);
+    const pool = gms.length > 0 ? gms : active;
+    pool.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return pool[0]?.id === self.id;
+  } catch {
+    return true;
+  }
+}

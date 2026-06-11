@@ -1368,3 +1368,58 @@ describe('extractCurrentFrame — viewport capture, byte-length guard & RT path 
     expect(rtStub.destroy).toHaveBeenCalledWith(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CE-EN: live stream-source gate (isEnabled)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('registerCanvasExtractor — isEnabled gate (CE-EN-1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-EN-1: isEnabled=false suppresses captures; flipping to true resumes on the next cycle', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    let fillValue = 0x10;
+    const pixelsBuf = new Uint8Array(50 * 30 * 4).fill(fillValue);
+    const fakeCanvas = {
+      scene: { id: 'scene1' },
+      stage: {},
+      app: {
+        renderer: {
+          width: 50,
+          height: 30,
+          extract: {
+            pixels: vi.fn(() => {
+              fillValue = (fillValue + 32) & 0xff;
+              pixelsBuf.fill(fillValue);
+              return pixelsBuf;
+            }),
+          },
+        },
+      },
+    };
+    vi.stubGlobal('canvas', fakeCanvas);
+
+    let enabled = false;
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, isEnabled: () => enabled, getCaptureIntervalMs: () => 100 });
+
+    // Disabled: neither hook fires nor the capture loop may emit.
+    hooks.fire('canvasPan');
+    vi.advanceTimersByTime(500);
+    expect(emit).toHaveBeenCalledTimes(0);
+
+    // Election flips (e.g. GM leaves, this client becomes leader): next cycle captures.
+    enabled = true;
+    vi.advanceTimersByTime(200);
+    expect(emit.mock.calls.length).toBeGreaterThan(0);
+  });
+});
