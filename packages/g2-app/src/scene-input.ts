@@ -210,6 +210,69 @@ function b64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+/** Synchronous feature detection for the browser-native PNG decoder chain. */
+function hasNativeDecoder(): boolean {
+  const g = globalThis as {
+    createImageBitmap?: unknown;
+    OffscreenCanvas?: unknown;
+    Blob?: unknown;
+  };
+  return (
+    typeof g.createImageBitmap === 'function' &&
+    typeof g.OffscreenCanvas === 'function' &&
+    typeof g.Blob === 'function'
+  );
+}
+
+/**
+ * Decode a PNG via the browser-native decoder:
+ * `Blob → createImageBitmap → OffscreenCanvas.drawImage → getImageData`.
+ *
+ * Mirrors the module-side native-encoder fix (v0.1.25): the UPNG JS inflate
+ * cost ~13ms+ per 576×288 frame on the WebView main thread and capped the
+ * displayed rate. Returns `null` on any failure or dimension mismatch — the
+ * caller drops the frame (next one arrives within `1000/captureFps` ms).
+ *
+ * @internal
+ */
+async function decodePngNative(
+  pngBytes: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Uint8ClampedArray | null> {
+  try {
+    const g = globalThis as unknown as {
+      Blob: new (parts: Uint8Array[], o: { type: string }) => unknown;
+      createImageBitmap: (b: unknown) => Promise<{ width: number; height: number }>;
+      OffscreenCanvas: new (
+        w: number,
+        h: number,
+      ) => {
+        getContext(t: '2d'): {
+          drawImage(img: unknown, x: number, y: number): void;
+          getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray };
+        } | null;
+      };
+    };
+    const bitmap = await g.createImageBitmap(new g.Blob([pngBytes], { type: 'image/png' }));
+    if (bitmap.width !== width || bitmap.height !== height) {
+      console.warn(
+        `[scene-input] frame_png decoded ${bitmap.width}x${bitmap.height}, expected ${width}x${height} — dropped`,
+      );
+      return null;
+    }
+    const oc = new g.OffscreenCanvas(width, height);
+    const ctx = oc.getContext('2d');
+    if (ctx === null) {
+      return null;
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    return ctx.getImageData(0, 0, width, height).data;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Shared RGBA dispatch — pad to the canonical size for the active mode and
  * route to the appropriate sink.
@@ -313,7 +376,7 @@ export function attachSceneInputToWs(
         return;
       }
 
-      // 2b) frame_png branch (modules v0.1.15+) — greyscale lossless PNG ~1-5KB.
+      // 2b) frame_png branch (modules v0.1.15+) — greyscale lossless PNG.
       if (env.data.type === FRAME_PNG_TYPE) {
         // Inner payload parse.
         const fp = FramePngSchema.safeParse(env.data.payload);
@@ -321,9 +384,25 @@ export function attachSceneInputToWs(
           console.warn('[scene-input] FramePng payload parse failed', fp.error);
           return;
         }
-        // Decode base64 → Uint8Array → UPNG.decode → UPNG.toRGBA8 → Uint8ClampedArray.
-        // Throws on malformed PNG or empty frame list → caught by outer try.
         const pngBytes = b64ToBytes(fp.data.pngB64);
+        // Browser-native decode (createImageBitmap) when available — the
+        // UPNG.decode JS inflate cost ~13ms+/frame on the WebView main thread
+        // and capped the displayed rate at ~21fps for 30fps input (A/B
+        // measured 2026-06-11). Fire-and-forget: frames are independent, an
+        // error logs and drops just that frame.
+        if (hasNativeDecoder()) {
+          void decodePngNative(pngBytes, fp.data.width, fp.data.height)
+            .then((pixels) => {
+              if (pixels !== null) {
+                dispatchRgba(pixels, fp.data.width, fp.data.height, sink);
+              }
+            })
+            .catch((err: unknown) => {
+              console.warn('[scene-input] native frame_png decode failed', err);
+            });
+          return;
+        }
+        // Fallback: UPNG.decode (Node tests / hosts without createImageBitmap).
         // UPNG.decode reads the WHOLE ArrayBuffer — when pngBytes is a view into
         // a larger pool (Node Buffer.from pools small allocations, byteOffset≠0)
         // passing `.buffer` directly hands UPNG garbage ("not a PNG file").
