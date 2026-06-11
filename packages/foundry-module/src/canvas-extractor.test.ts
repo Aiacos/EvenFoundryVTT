@@ -230,10 +230,11 @@ describe('registerCanvasExtractor — FramePng emit (CE-PNG-1, CE-PNG-2)', () =>
     const r = rgbaBytes[idx] ?? 0;
     const g = rgbaBytes[idx + 1] ?? 0;
     const b = rgbaBytes[idx + 2] ?? 0;
-    // Expected luma = round(0.299*128 + 0.587*128 + 0.114*128) = round(128) = 128
-    expect(r).toBe(128);
-    expect(g).toBe(128);
-    expect(b).toBe(128);
+    // Rec.601 luma of (128,128,128) = 128, then 16-level quantize:
+    // ((128*15 + 127.5) / 255 | 0) * 17 = 8 * 17 = 136.
+    expect(r).toBe(136);
+    expect(g).toBe(136);
+    expect(b).toBe(136);
   });
 });
 
@@ -341,7 +342,7 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
           extract: {
             pixels: vi.fn(() => {
               // Change content slightly each call to defeat hash skip.
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -382,7 +383,7 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -417,7 +418,7 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -502,7 +503,7 @@ describe('registerCanvasExtractor — leading+trailing throttle (CE-PNG-6)', () 
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -562,7 +563,7 @@ describe('registerCanvasExtractor — throttle window behavior (CE-3)', () => {
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -763,7 +764,7 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -812,7 +813,7 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -851,7 +852,7 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -887,7 +888,7 @@ describe('registerCanvasExtractor — continuous interval capture (CE-INT-1..CE-
           height: 30,
           extract: {
             pixels: vi.fn(() => {
-              fillValue = (fillValue + 1) & 0xff;
+              fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
               pixelsBuf.fill(fillValue);
               return pixelsBuf;
             }),
@@ -1140,7 +1141,7 @@ describe('extractCurrentFrame — normalize levels-stretch (CE-NORM-1..CE-NORM-5
     ).app.renderer.extract;
     const originalPixels = mockRenderer.pixels;
     mockRenderer.pixels = vi.fn(() => {
-      fillValue = (fillValue + 1) & 0xff;
+      fillValue = (fillValue + 32) & 0xff; // step >= 17 so the 16-level quantizer sees a content change
       const result = (originalPixels as unknown as () => Uint8Array)();
       (result as Uint8Array)[0] = fillValue;
       return result as Uint8Array;

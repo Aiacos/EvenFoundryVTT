@@ -4,8 +4,9 @@
  * Captures the Foundry scene canvas (RenderTexture path when available, no-arg
  * `extract.pixels()` fallback), fit-downscales it to the 576×288 glasses
  * region with letterboxing and optional contrast normalization, converts it to
- * Rec.601 luma, and emits it as a greyscale lossless PNG (`frame_png` wire
- * payload, ~1-60 KB vs ~884 KB raw RGBA base64).
+ * Rec.601 luma quantized to the display's 16 grey levels, and emits it as a
+ * lossless PNG (`frame_png` wire payload — real map scenes ~25-40 KB vs
+ * ~884 KB raw RGBA base64).
  *
  * Scheduling model:
  *   - A self-rescheduling setTimeout loop captures every
@@ -375,7 +376,14 @@ export function extractCurrentFrame(
     out[i] = 255;
   }
 
-  // ── Rec.601 luma → PNG encode ──────────────────────────────────────────────
+  // ── Rec.601 luma → 16-level quantize → PNG encode ──────────────────────────
+  //
+  // The G2 display renders 4-bit greyscale (16 levels), so quantizing the luma
+  // to 16 levels HERE is lossless for what the player can see while shrinking
+  // the PNG dramatically (long runs of equal bytes → DEFLATE-friendly; real
+  // map scenes measured ~89 KB full-depth vs ~25-40 KB quantized). It also
+  // stabilizes the FNV-1a hash: sub-level RT-capture noise no longer defeats
+  // the identical-frame skip.
   const nPixels = targetWidth * targetHeight;
   const luma = new Uint8Array(nPixels);
   for (let i = 0; i < nPixels; i++) {
@@ -383,7 +391,9 @@ export function extractCurrentFrame(
     const r = out[oi] ?? 0;
     const g = out[oi + 1] ?? 0;
     const b = out[oi + 2] ?? 0;
-    luma[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    const full = 0.299 * r + 0.587 * g + 0.114 * b;
+    // Map 0..255 → one of 16 levels spread across 0..255 (0, 17, 34, … 255).
+    luma[i] = (((full * 15 + 127.5) / 255) | 0) * 17;
   }
 
   // R=G=B=luma RGBA: upng-js only encodes RGBA input; PNG filters + DEFLATE
