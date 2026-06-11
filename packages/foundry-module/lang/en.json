@@ -10,7 +10,7 @@
   "evf.settings.map_contrast_normalize.name": "Map contrast normalization (glasses)",
   "evf.settings.map_contrast_normalize.hint": "Auto-stretch dark map scenes for readable contrast on the glasses before dithering. Disable to send raw brightness.",
   "evf.settings.capture_fps.name": "Map capture frame rate (fps)",
-  "evf.settings.capture_fps.hint": "How many map frames per second are captured and streamed to the glasses (1–60). Higher = smoother map, more GPU and bandwidth. Default 10 fps. Changes take effect immediately without reload.",
+  "evf.settings.capture_fps.hint": "How many map frames per second are captured and streamed to the glasses (1–60). Higher = smoother map, more GPU and bandwidth. Default 30 fps. Changes take effect immediately without reload.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Bridge Configuration",
   "evf.bridgecfg.url.label": "Bridge URL",
