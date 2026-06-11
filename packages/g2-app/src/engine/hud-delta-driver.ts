@@ -6,7 +6,7 @@
  *
  *   - A one-time `await xxhash()` WASM init (lazy-singleton, mirrors raster-worker.ts).
  *   - A 4-slot `prevHashes` table (one h32 per HUD tile, updated on every changed push).
- *   - A `setTimeout`-based debounce (configurable via `HudDeltaDriverOpts.minRedrawIntervalMs`;
+ *   - A `setTimeout`-based throttle (configurable via `HudDeltaDriverOpts.minRedrawIntervalMs`;
  *     default `DEFAULT_MIN_REDRAW_INTERVAL_MS = 100` per D-24.1 — this overrides the
  *     ROADMAP criterion-#2 literal MIN_REDRAW_INTERVAL_MS = 200).
  *   - Multi-channel WS subscriptions: `character.delta`, `combat.turn`, `combat.state`.
@@ -61,7 +61,7 @@ const DELTA_CHANNELS = ['character.delta', 'combat.turn', 'combat.state', 'r1.ge
 // ── Exported API ──────────────────────────────────────────────────────────────
 
 /**
- * Default debounce interval in milliseconds (D-24.1).
+ * Default throttle interval in milliseconds (D-24.1).
  *
  * Overrides the ROADMAP success-criterion-#2 literal `MIN_REDRAW_INTERVAL_MS = 200`.
  * User-locked decision D-24.1: default is 100ms, configurable via
@@ -128,10 +128,11 @@ export interface HudDeltaDriverOpts {
   readonly getDitherMode?: () => boolean;
 
   /**
-   * Debounce interval in milliseconds.
+   * Throttle interval in milliseconds.
    *
    * Defaults to {@link DEFAULT_MIN_REDRAW_INTERVAL_MS} (100ms per D-24.1).
-   * Near-simultaneous delta events within this window collapse into one render cycle.
+   * The trailing-edge re-arm ensures the real period is `max(interval, cycleTime)`,
+   * never `interval + cycleTime`.
    */
   readonly minRedrawIntervalMs?: number;
 }
@@ -139,14 +140,14 @@ export interface HudDeltaDriverOpts {
 // ── HudDeltaDriver ────────────────────────────────────────────────────────────
 
 /**
- * Event-driven, debounced per-tile xxhash delta driver for the HUD raster path.
+ * Event-driven, throttled per-tile xxhash delta driver for the HUD raster path.
  *
  * Lifecycle:
  * 1. Construct with {@link HudDeltaDriverOpts}.
  * 2. `await driver.start()` — inits WASM, subscribes to delta channels.
  * 3. `await driver.runFirstFrame()` — pushes all 4 tiles, seeds hash baselines.
  * 4. Driver runs automatically on channel events until `driver.stop()`.
- * 5. `driver.stop()` — cancels pending debounce timer, releases all subscriptions.
+ * 5. `driver.stop()` — cancels pending throttle timer, clears trailing-edge flag, releases all subscriptions.
  *
  * @example
  * ```ts
@@ -171,8 +172,34 @@ export class HudDeltaDriver {
    */
   private readonly _prevHashes: number[] = new Array(TILE_COUNT).fill(0);
 
-  /** Pending debounce timer handle — null when no cycle is scheduled. */
+  /** Pending throttle timer handle — null when no cycle is scheduled. */
   private _timer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Trailing-edge re-arm flag.
+   *
+   * Set to `true` when `_schedule()` is called while a timer is pending OR a
+   * cycle is in flight. When the in-flight cycle completes (`.finally`), if this
+   * flag is set the driver re-arms the timer with the remaining interval to
+   * deliver exactly one follow-up cycle — coalescing all events that arrived
+   * during the busy window into a single render. Cleared by `stop()` so no
+   * follow-up fires after teardown.
+   *
+   * This converts the throttle period from `interval + cycleTime` (leading-edge
+   * stall, diagnosed 2026-06-11: ~17 fps delivered under continuous ~30fps input)
+   * to `max(interval, cycleTime)` (≥25 fps target).
+   */
+  private _pendingAgain = false;
+
+  /**
+   * In-flight cycle guard.
+   *
+   * Set to `true` for the duration of `_runCycle()`. `_schedule()` checks this
+   * alongside `_timer !== null` so events arriving between the timer fire and
+   * the cycle's async completion still coalesce into one follow-up (single
+   * in-flight cycle invariant — no overlapping cycles).
+   */
+  private _cycleInFlight = false;
 
   /**
    * Timestamps (ms) of recent cycles that pushed ≥1 tile, pruned to the last
@@ -215,7 +242,7 @@ export class HudDeltaDriver {
    *   - `'combat.turn'` (combat turn advances)
    *   - `'combat.state'` (combat state changes: start/end/initiative-roll)
    *
-   * Each subscription schedules a debounced render cycle via `_schedule()`.
+   * Each subscription schedules a throttled render cycle via `_schedule()`.
    * Unsub closures are stored in `_unsubs` and released on {@link stop}.
    */
   async start(): Promise<void> {
@@ -279,7 +306,11 @@ export class HudDeltaDriver {
   }
 
   /**
-   * Cancel any pending debounce timer and release all WS channel subscriptions.
+   * Cancel any pending throttle timer and release all WS channel subscriptions.
+   *
+   * Clearing `_pendingAgain` ensures no follow-up cycle fires after stop, even if
+   * a cycle was in flight at the moment stop() was called (the `.finally` re-arm
+   * checks the flag after stop() has cleared it).
    *
    * Idempotent: safe to call multiple times. After `stop()` no more render cycles
    * will fire even if delta events arrive (subscriptions are released).
@@ -289,6 +320,9 @@ export class HudDeltaDriver {
       clearTimeout(this._timer);
       this._timer = null;
     }
+    // Clear the trailing-edge flag so the in-flight cycle's .finally does NOT
+    // re-arm after stop() (stop-during-pending invariant).
+    this._pendingAgain = false;
     for (const unsub of this._unsubs) {
       unsub();
     }
@@ -296,7 +330,7 @@ export class HudDeltaDriver {
   }
 
   /**
-   * Request a debounced render cycle from outside the WS delta path.
+   * Request a throttled render cycle from outside the WS delta path.
    *
    * Producers whose events do NOT transit the WS event bus (the SDK
    * touchpad/ring gesture stream — `glasses-event-source.ts`) call this after
@@ -317,29 +351,73 @@ export class HudDeltaDriver {
   // ── Private render loop ──────────────────────────────────────────────────────
 
   /**
-   * Schedule a debounced render cycle.
+   * Schedule a trailing-edge throttled render cycle.
    *
-   * Any pending timer is cleared and restarted (debounce collapse): N rapid
-   * delta events within `minRedrawIntervalMs` collapse into exactly 1 cycle.
+   * TRAILING-EDGE RE-ARM semantics (DG5, 2026-06-11 — fixes ~17 → ≥25 fps):
+   *
+   * The old LEADING-EDGE throttle dropped all events while `_timer !== null`,
+   * meaning the next cycle was only armed by the NEXT event AFTER the timer
+   * fired. Real period = `interval + cycleTime` ≈ 48-60ms → ~17 fps delivered
+   * under continuous ~30fps frame input (measured live 2026-06-11).
+   *
+   * New semantics:
+   *   - If a timer is pending (`_timer !== null`) OR a cycle is in flight
+   *     (`_cycleInFlight`): set `_pendingAgain = true` and return.
+   *     All events within the busy window coalesce into exactly one follow-up.
+   *   - Otherwise: arm the timer for `minRedrawIntervalMs`.
+   *
+   * When the timer fires: `_fireCycle()` clears `_timer`, captures `fireStart`,
+   * sets `_cycleInFlight = true`, and runs exactly one `_runCycle()`.
+   *
+   * On cycle completion (`.finally`): `_cycleInFlight = false`.
+   *   - If `_pendingAgain` is set: clear it and re-arm the timer for
+   *     `Math.max(0, interval - elapsed)` so the period = `max(interval, cycleTime)`.
+   *   - If `_pendingAgain` is NOT set: idle — no re-arm (D-24.3 preserved).
+   *
+   * `stop()` clears `_pendingAgain` so a follow-up after stop is impossible
+   * even when a cycle was in flight at teardown time.
    */
   private _schedule(): void {
-    if (this._timer !== null) {
-      // THROTTLE, not debounce: a cycle is already pending and will render the
-      // latest layer state when it fires (composite() reads live layers, not a
-      // snapshot). Resetting the timer here (the previous clearTimeout+re-arm
-      // behaviour) starved the render loop whenever events arrived faster than
-      // minRedrawIntervalMs — measured live 2026-06-10: ≥15 fps frame input
-      // collapsed delivered output to ~0.2 fps because the timer never fired.
+    if (this._timer !== null || this._cycleInFlight) {
+      // Busy: coalesce into one trailing-edge follow-up.
+      this._pendingAgain = true;
       return;
     }
     this._timer = setTimeout(() => {
-      this._timer = null;
-      // WR-01: propagate _runCycle rejections to console so render-loop death
-      // is visible (compositor throws, buildHudTiles length mismatch, etc.).
-      this._runCycle().catch((err: unknown) => {
-        console.warn('[EVF] HudDeltaDriver._runCycle error:', err);
-      });
+      this._fireCycle();
     }, this._opts.minRedrawIntervalMs);
+  }
+
+  /**
+   * Fire one render cycle.
+   *
+   * Called from the timer callback. Captures the fire-start timestamp so the
+   * trailing-edge re-arm can compensate for elapsed time in the follow-up delay:
+   * `Math.max(0, interval - (Date.now() - fireStart))`.
+   *
+   * WR-01: `.catch` propagates `_runCycle` rejections to console so render-loop
+   * death is visible (compositor throws, buildHudTiles length mismatch, etc.).
+   */
+  private _fireCycle(): void {
+    this._timer = null;
+    const fireStart = Date.now();
+    this._cycleInFlight = true;
+    this._runCycle()
+      .catch((err: unknown) => {
+        console.warn('[EVF] HudDeltaDriver._runCycle error:', err);
+      })
+      .finally(() => {
+        this._cycleInFlight = false;
+        if (this._pendingAgain) {
+          this._pendingAgain = false;
+          const elapsed = Date.now() - fireStart;
+          const remaining = Math.max(0, this._opts.minRedrawIntervalMs - elapsed);
+          this._timer = setTimeout(() => {
+            this._fireCycle();
+          }, remaining);
+        }
+        // _pendingAgain not set → idle, no re-arm (D-24.3 preserved).
+      });
   }
 
   /**
@@ -381,10 +459,11 @@ export class HudDeltaDriver {
   }
 
   private async _runCycle(): Promise<void> {
-    // _runCycle is only reachable via _schedule(), which is only wired by
-    // start(). start() initialises _xxhash before adding any subscriptions,
-    // so _xxhash is guaranteed non-null here. The non-null assertion surfaces
-    // a loud TypeError if the invariant is ever broken (IN-01, INV-4).
+    // _runCycle is only reachable via _fireCycle(), which is only wired by
+    // _schedule() → start(). start() initialises _xxhash before adding any
+    // subscriptions, so _xxhash is guaranteed non-null here. The non-null
+    // assertion surfaces a loud TypeError if the invariant is ever broken
+    // (IN-01, INV-4).
     // biome-ignore lint/style/noNonNullAssertion: start() init guarantee — see above
     const { h32Raw } = this._xxhash!;
 
