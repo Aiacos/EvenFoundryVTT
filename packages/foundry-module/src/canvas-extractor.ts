@@ -1,186 +1,153 @@
 /**
- * Foundry PIXI canvas → FramePixels extractor.
+ * Foundry PIXI canvas → FramePng extractor (v0.1.15).
  *
- * Plan 4a-06 Task 2 — closes the B-5 gap by supplying the pixel data that the
- * Plan 03 raster pipeline consumes. Registers five Foundry hooks
- * (`canvasReady`, `drawCanvas`, `refreshToken`, `updateScene`, `canvasPan`) and
- * on any fire schedules a debounced (default 200 ms) call to
- * {@link extractCurrentFrame},
- * which pulls pixels via a deterministic render-to-texture (RT) viewport
- * capture: the stage (which carries Foundry's pan/zoom transform including
- * fog-of-war) is rendered into a fresh PIXI `RenderTexture`, then
- * `extract.pixels(rt)` reads the texture — NOT the idle main framebuffer.
- * The captured pixels are fit-downscaled (whole viewport, aspect preserved,
- * box-average) onto EXACTLY the canonical 400×200 raster region (ADR-0013
- * Amendment 1, letterboxed) and dispatched via the caller-provided `emit`
- * callback. The caller (`module.ts` ready hook) wraps the payload in the
- * existing Phase 3 `EnvelopeSchema` over the bridge WS — Plan 06 does NOT
- * introduce a new envelope schema (NF-1 closure).
+ * Quick Task 260611-e71 replaces the `frame_pixels` emit pipeline with the
+ * lighter `frame_png` wire format: greyscale lossless PNG ~1-5 KB vs ~884 KB
+ * RGBA. Changes introduced in this file:
  *
- * **Phase 27 viewport decision** (quick-task fw7, 2026-06-10)
+ *   1. **PNG encode pipeline** — `extractCurrentFrame` now produces a
+ *      `FramePng` payload instead of `FramePixels`. The Rec.601 luma of the
+ *      RGBA frame is computed, a FNV-1a hash is taken for identical-frame
+ *      skipping, and the result is encoded via:
+ *        `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)`
+ *      (forbidPlte=true → ctype=2 RGB, exact roundtrip; do NOT use
+ *      encodeLL — it does not exist in upng-js 2.1.0).
  *
- * Calling `pixels(canvas.stage)` in PIXI v7 re-renders the *whole world stage*
- * into a temporary texture sized by the object's LOCAL BOUNDS × resolution
- * (typically 4000–8000 px wide), then returns that oversized buffer. The code
- * interpreted the buffer with `renderer.width × renderer.height`, producing a
- * row-stride mismatch → horizontal-stripe corruption on the G2 glasses.
+ *   2. **Identical-frame skip** — a module-level `_lastEmittedHash` compares
+ *      the FNV-1a 32-bit hash of the luma array between consecutive captures.
+ *      If unchanged, `performExtract` returns without calling `opts.emit`.
  *
- * Calling `pixels()` with NO target reads the existing MAIN framebuffer at
- * `renderer.screen × resolution`. However, with `preserveDrawingBuffer:false`
- * (the Foundry/PIXI default), this buffer is only valid DURING the render pass
- * — at idle, the driver may have already swapped or cleared it, returning
- * all-zero bytes. Live evidence (2026-06-10): frames streamed at ~1 Hz with
- * maxG=0 while the player was idle; content appeared only during active
- * canvas re-render.
+ *   3. **Leading+trailing throttle on hook fires** — replaces the trailing-
+ *      only debounce. Continuous `canvasPan` fires immediately emit on the
+ *      leading edge AND re-arm a 200 ms timer for a trailing emit, so the
+ *      glasses see ~5 fps during panning instead of zero. Modelled on
+ *      `HudDeltaDriver._schedule` (quick 260611-dg5).
+ *
+ *   4. **Live captureIntervalMs gating** — replaces the fixed 1000 ms
+ *      `setInterval` with a short TICK_MS=100 ms tick that reads
+ *      `opts.getCaptureIntervalMs?.() ?? 250` on every tick, so the DM can
+ *      change the capture cadence without reloading the module.
+ *
+ * The PIXI canvas extraction, scaling, letterboxing, and contrast normalization
+ * logic is unchanged from v0.1.14. The extractor still respects `targetWidth`,
+ * `targetHeight`, and `getNormalize` options.
  *
  * **Render-to-texture (RT) primary capture path** (quick-task 260610-lx5, 2026-06-10)
  *
- * To get deterministic pixel data independent of idle state, the extractor now
- * creates a viewport-sized `PIXI.RenderTexture`, renders `canvas.stage` into it
- * (the stage carries the player's current pan/zoom and fog-of-war, so the result
- * IS the viewport the player sees), and extracts from the texture. The texture
- * is destroyed in a `finally` block on every capture — including when
- * `extract.pixels` throws — so no GPU memory leaks across the ~1 Hz interval
- * (T-lx5-01 DoS mitigation). When `PIXI.RenderTexture`, `renderer.render`, or
- * `canvas.stage` is unavailable (unit-test fixtures, exotic hosts), the
- * no-arg `pixels()` fallback from v0.1.10 is used unchanged.
+ * See the v0.1.14 module-level JSDoc for the full RT vs no-arg fallback
+ * rationale. Short version: `PIXI.RenderTexture` path is used when available
+ * (production Foundry), no-arg fallback for test fixtures / exotic hosts.
  *
- * **Scaling strategy (CE-6)**
+ * **Debounce + idle scheduling** (T-4a-06-01 mitigation)
  *
- * **Continuous capture (T-d42-01 mitigation)**
+ * The leading+trailing throttle replaces the old trailing-only debounce on
+ * Foundry hook fires. A separate TICK_MS=100 setInterval fires `performExtract`
+ * gated by `captureIntervalMs`, so idle scenes still refresh at ~4 Hz by default.
  *
- * In addition to the five Foundry hooks (canvasReady, drawCanvas, refreshToken,
- * updateScene, canvasPan), a `setInterval` fires `performExtract` at
- * `intervalMs` (default 1000 ms) independent of hook activity. This guarantees
- * the map refreshes at ~1 Hz even during idle scenes with no hook events. The
- * `HudDeltaDriver` zero-push-on-idle gate prevents BLE flooding on unchanged
- * frames. The interval handle is cleared by the returned `unregister()` fn.
- *
- * Plan 06 documents three options (downscale + smoothing, center-crop,
- * downscale + letterbox). This implementation is **Option C — fit-downscale +
- * letterbox**, with a pure-JS box-average filter (no canvas API). Rationale:
- *   - **Whole-scene capture** — the original Option B center-crop kept only a
- *     400×200 window (~4% of a 1920×1080 render); the player saw a corner of
- *     the map instead of the map. Fit-downscale preserves the ENTIRE scene
- *     (debug map-frame-pipeline-dims, 2026-06-10).
- *   - **No DOM/OffscreenCanvas dependency** — the box filter is a plain typed
- *     array loop; it runs inside the Foundry desktop runtime (which lacks
- *     `OffscreenCanvas` in older Electron builds) AND inside happy-dom tests.
- *   - **Dither-friendly** — box averaging anti-aliases; nearest-neighbour
- *     sampling would alias grid lines and walls into noise after the worker's
- *     4-bit dither. Undersized sources are centered 1:1 (never upscaled).
- *   - **Predictable timing** — ~2M byte reads on 1920×1080, fixed budget,
- *     inside the 200 ms debounce window.
- *
- * **Debounce + idle scheduling (T-4a-06-01 mitigation)**
- *
- * Hook fires schedule a single `setTimeout(_extractAndEmit, debounceMs)`;
- * subsequent fires within the window cancel + reschedule. The actual
- * extraction is wrapped in a try/catch — failures log + skip. We prefer
- * `requestIdleCallback` when the runtime exposes it (browser) and fall back
- * to `setTimeout(0)` (Foundry desktop / happy-dom). The Foundry UI thread is
- * never blocked by a synchronous extract inside a hook callback. Real-device
- * perf is hardware-pending under ADR-0005 SC #5 (Specs §11.5.7 pitfall 11).
- *
- * **Bridge wiring**
- *
- * `module.ts` registers the extractor on `Hooks.once('ready')` and supplies a
- * `frame_pixels`-typed `emit` callback. The callback dispatches via the
- * existing `bridgeDeltaEmitter` (POST to bridge `/internal/delta` with bearer
- * auth), which wraps the payload in `EnvelopeSchema` server-side (proto / seq
- * / ts / type / session_id / payload — `session_id` from the pair registry).
- * Plan 06 reuses the existing channel; no new auth surface (T-4a-06-04).
- *
- * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 2
- * @see .planning/phases/04a-g2-engine-raster-status-hud/04a-CONTEXT.md §Area 2 (debounce)
- * @see .planning/quick/260610-lx5-render-to-texture-viewport-capture-in-ca/260610-lx5-PLAN.md Task 1
+ * @see .planning/quick/260611-e71-modulo-v0-1-15-frame-png-captureinterval/260611-e71-PLAN.md
+ * @see packages/shared-protocol/src/payloads/frame-png.ts (FRAME-PNG-01 wire schema, FRAME_PNG_TYPE)
  * @see docs/architecture/0001-layered-ui-model.md §Confirmation (z=0 map consumer)
  * @see docs/architecture/0006-raster-pipeline-library-stack.md (raster pipeline + ADR-0005 SC #5)
- * @see packages/shared-protocol/src/payloads/frame.ts (FramePixelsSchema producer-side reference)
  */
-import { encodeFramePixels, type FramePixels } from '@evf/shared-protocol';
-
-/** Default debounce window — matches Plan 03 RasterController + CONTEXT.md §Area 2. */
-const DEFAULT_DEBOUNCE_MS = 200;
+import type { FramePng } from '@evf/shared-protocol';
+import * as UPNG from 'upng-js';
 
 /**
- * Default periodic capture interval (ms).
+ * Fixed tick interval for the continuous capture poll.
  *
- * One capture per second independent of Foundry hook fires — ensures the player
- * always sees a continuously-refreshed map even during idle scenes with no hook
- * activity (quick-task 260610-d42 T-d42-01 mitigation: ~1 Hz cap).
+ * The tick reads `opts.getCaptureIntervalMs?.() ?? 250` on every fire and
+ * skips the capture when `now - _lastCaptureTs < interval`. This makes the
+ * effective capture cadence adjustable live (DM changes a world setting,
+ * effective on the next tick, no module reload needed).
+ *
+ * 100 ms was chosen as the smallest meaningful step (matches the minimum
+ * captureIntervalMs clamp), so changes take effect within 100 ms.
  */
-const DEFAULT_INTERVAL_MS = 1000;
+const TICK_MS = 100;
+
 /**
- * Canonical raster-region width — FULL SCREEN 576×288 (layout B, 2026-06-10:
- * 4 image tiles of 288×144 in a 2×2 grid; SDK d.ts verbatim caps image
- * containers at 20–288 × 20–144, so 2×2 covers the whole G2 display — the
- * earlier 200×100/400×200 region was INV-2 drift). The extractor ALWAYS emits
- * exactly this (fit-downscale larger sources, center 1:1 smaller ones,
- * letterbox both); the g2-app canvas pipeline consumes it at the same dims.
+ * Leading+trailing throttle window for hook-driven captures.
+ *
+ * On hook fire: if no throttle timer is running, run performExtract immediately
+ * (leading edge) AND arm a `THROTTLE_MS` timer. If the timer is already
+ * running, set `_pendingTrailing = true`. When the timer fires: if
+ * `_pendingTrailing` is set, run performExtract and re-arm the timer (trailing).
+ *
+ * This emits ~5 fps during continuous canvasPan instead of zero emits
+ * (the old trailing-only debounce never drained during constant firing).
+ * Modelled on `HudDeltaDriver._schedule` (quick 260611-dg5, packages/g2-app).
+ */
+const THROTTLE_MS = 200;
+
+/**
+ * Canonical raster-region width — FULL SCREEN 576×288 (layout B, 2026-06-10).
+ * See the v0.1.14 documentation on the hardware limit and the 2×2 tile grid.
  */
 const MAX_WIDTH = 576;
 /** Canonical raster-region height — see {@link MAX_WIDTH}. */
 const MAX_HEIGHT = 288;
-/** FramePixelsSchema lower bound (we clamp here too). */
+/** FramePngSchema lower bound (we clamp here too). */
 const MIN_DIM = 20;
 
-/** Function used to unregister the 4 hook listeners installed at register time. */
+/** Function used to unregister the hook listeners and intervals installed at register time. */
 export type UnregisterFn = () => void;
 
 /** Options passed to {@link registerCanvasExtractor}. */
 export interface CanvasExtractorOpts {
   /**
-   * Callback fired with the typed `FramePixels` payload after each debounced
-   * extraction. The producer side (this module) emits ONLY the typed payload;
-   * the bridge wraps it in `EnvelopeSchema` server-side with `type:
-   * 'frame_pixels'` and the appropriate `session_id`.
+   * Callback fired with the typed `FramePng` payload after each capture that
+   * passes the FNV-1a hash check (changed-content gate). The module emits
+   * ONLY `FramePng` payloads (v0.1.15+); the bridge wraps the payload in
+   * `EnvelopeSchema` server-side with `type: 'frame_png'`.
    */
-  readonly emit: (payload: FramePixels) => void;
-  /** Debounce window in milliseconds; default {@link DEFAULT_DEBOUNCE_MS}. */
-  readonly debounceMs?: number;
+  readonly emit: (payload: FramePng) => void;
   /** Wire-format target width (defaults to {@link MAX_WIDTH}). */
   readonly targetWidth?: number;
   /** Wire-format target height (defaults to {@link MAX_HEIGHT}). */
   readonly targetHeight?: number;
   /**
-   * Continuous capture interval in milliseconds; default {@link DEFAULT_INTERVAL_MS}.
+   * Per-capture normalize mode supplier.
    *
-   * Independent of Foundry hook fires — fires `performExtract` at a steady cadence
-   * so the player always sees a live map even during idle scenes. The
-   * `HudDeltaDriver.requestCycle()` zero-push-on-idle gate prevents BLE flooding
-   * when the frame content is unchanged (T-d42-01 mitigation).
+   * Evaluated on EVERY call to `performExtract`, so a live toggle of the
+   * `mapContrastNormalize` Foundry setting applies on the next capture without
+   * re-registering.
    *
-   * @see {@link DEFAULT_INTERVAL_MS} for the production default (1000 ms).
+   * Return `'auto'` to apply luminance levels-stretch. Return `'off'` to pass
+   * frames through unchanged. Defaults to `'off'` when absent.
+   */
+  readonly getNormalize?: () => 'off' | 'auto';
+  /**
+   * Live capture-interval supplier (ms).
+   *
+   * Evaluated on EVERY tick (100 ms) of the continuous-capture timer. When
+   * `now - _lastCaptureTs >= getCaptureIntervalMs()`, `performExtract` fires.
+   * This allows the DM to change the capture cadence via a Foundry world setting
+   * without reloading the module.
+   *
+   * Defaults to 250 ms when absent or when the getter returns undefined/throws.
+   *
+   * @see `getCaptureIntervalMs` in settings.ts for the live-settings-backed implementation.
+   */
+  readonly getCaptureIntervalMs?: () => number;
+
+  // ── Legacy / test-compat knobs ─────────────────────────────────────────────
+  /**
+   * @deprecated Kept for test backward-compat only. The production path uses
+   * `getCaptureIntervalMs` instead. When `intervalMs` is provided AND
+   * `getCaptureIntervalMs` is absent, the fixed value is used. Ignored when
+   * `getCaptureIntervalMs` is supplied.
    */
   readonly intervalMs?: number;
   /**
-   * Per-capture normalize mode supplier.
-   *
-   * Evaluated on EVERY call to `performExtract` (including interval and
-   * hook-debounced captures), so a live toggle of the `mapContrastNormalize`
-   * Foundry setting applies on the next capture without re-registering.
-   *
-   * Return `'auto'` to apply luminance levels-stretch (lifts dark scenes to
-   * usable contrast on the G2's 4-bit display). Return `'off'` to pass frames
-   * through unchanged. Defaults to `'off'` when absent.
-   *
-   * @see {@link extractCurrentFrame} `normalize` option for the algorithm.
-   * @see `mapContrastNormalize` Foundry client setting (settings.ts).
+   * @deprecated Kept for test backward-compat only. The leading+trailing throttle
+   * uses the module constant `THROTTLE_MS = 200`. This option is ignored.
    */
-  readonly getNormalize?: () => 'off' | 'auto';
+  readonly debounceMs?: number;
 }
 
 /**
  * Subset of the Foundry global `canvas` that {@link extractCurrentFrame}
- * reads from. The narrow shape lets tests build cheap fixtures without
- * importing fvtt-types (which is out-of-scope until Phase 2+ stabilises it).
- *
- * The primary RT capture path reads `stage` directly: it is rendered into a
- * fresh `RenderTexture` so the extracted pixels represent the player viewport
- * (zoom + fog-of-war from the stage's own pan/zoom transform). The no-arg
- * fallback ignores `stage` entirely, preserving the v0.1.10 behaviour for
- * unit-test fixtures and exotic hosts where `PIXI.RenderTexture` is unavailable.
+ * reads from. See the v0.1.14 documentation for the full RT/fallback rationale.
  */
 export interface CanvasLike {
   readonly scene?: { readonly id?: string } | null;
@@ -188,32 +155,13 @@ export interface CanvasLike {
     readonly renderer?: {
       readonly width: number;
       readonly height: number;
-      /**
-       * Logical screen dimensions at the renderer's internal resolution.
-       * Present in PIXI v7 Foundry renderers. When available, `screen.width`
-       * and `screen.height` are used as the RenderTexture size on the RT
-       * primary path so the captured resolution matches the player viewport.
-       * Falls back to `renderer.width` / `renderer.height` when absent.
-       */
       readonly screen?: { readonly width: number; readonly height: number };
       readonly extract: {
         pixels(target?: unknown): Uint8Array | Uint8ClampedArray;
       };
-      /**
-       * Present on a real PIXI WebGL renderer. Used by the RT primary path to
-       * render `canvas.stage` into the fresh `RenderTexture` before extraction.
-       * Absent in unit-test fixtures that use the no-arg fallback path.
-       */
       render?(target: unknown, opts: { renderTexture: unknown; clear: boolean }): void;
     };
   };
-  /**
-   * The PIXI DisplayObject that represents the Foundry canvas scene. Read by
-   * the RT primary path: it is rendered into the RenderTexture using its own
-   * pan/zoom transform, so the extracted pixels ARE the player viewport
-   * (fog-of-war and camera position included). The no-arg fallback path does
-   * not read this field.
-   */
   readonly stage?: unknown;
 }
 
@@ -226,14 +174,7 @@ interface AcquiredBytes {
 
 /**
  * Acquire raw RGBA source bytes from the renderer using either the RT primary
- * path (when PIXI.RenderTexture + renderer.render + canvas.stage are all
- * present) or the no-arg fallback (for test fixtures / exotic hosts).
- *
- * Returns `null` when any error occurs — the caller propagates this as a
- * skipped frame (no retry storm). The RT primary path guarantees rt.destroy(true)
- * runs in a `finally` block even on throw, so no GPU memory leaks.
- *
- * @internal Not exported — part of {@link extractCurrentFrame}'s implementation.
+ * path or the no-arg fallback. Unchanged from v0.1.14 (RT rationale in JSDoc).
  */
 function acquireSourceBytes(
   RT: { create(o: { width: number; height: number }): unknown } | undefined,
@@ -249,9 +190,6 @@ function acquireSourceBytes(
     canvas.stage !== null;
 
   if (useRTPath) {
-    // RT primary path — production path for live Foundry client (T-lx5-01, T-lx5-03).
-    // rt.destroy(true) runs in finally on every capture (including throw) to prevent
-    // GPU memory leaks across the ~1 Hz interval.
     let rt: unknown;
     try {
       rt = RT.create({ width: vw, height: vh });
@@ -262,7 +200,6 @@ function acquireSourceBytes(
       } finally {
         (rt as { destroy(b: boolean): void }).destroy(true);
       }
-      // On the RT path the texture is exactly vw × vh; extract returns vw × vh × 4.
       return { srcBytes, srcWidth: vw, srcHeight: vh };
     } catch (err) {
       console.warn(
@@ -272,7 +209,6 @@ function acquireSourceBytes(
       return null;
     }
   } else {
-    // No-arg fallback — v0.1.10 behaviour for test fixtures / exotic hosts.
     try {
       const srcBytes = renderer.extract.pixels();
       return { srcBytes, srcWidth: renderer.width, srcHeight: renderer.height };
@@ -287,48 +223,58 @@ function acquireSourceBytes(
 }
 
 /**
- * Pure extractor — given a Foundry canvas-like object, produce a
- * `FramePixels` payload ready to send across the bridge WS. Returns `null`
- * when the canvas is not yet ready (renderer absent).
+ * Compute FNV-1a 32-bit hash over a byte array.
  *
- * Scaling strategy: **fit-downscale (box-average) + letterbox** to exactly
- * `targetWidth × targetHeight` — the whole scene is captured, aspect preserved.
- * Trade-offs are documented in the module-level JSDoc.
+ * Used for identical-frame skip: if the luma hash of the current capture
+ * equals `_lastEmittedHash`, the frame is skipped (no POST to the bridge).
+ * Cost: one pass over the luma array (width × height bytes) — cheap vs. PNG encode.
  *
- * **Contrast normalization (`normalize: 'auto'`)**
+ * @internal
+ */
+function fnv1a32(bytes: Uint8Array): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i] ?? 0;
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Pure extractor — given a Foundry canvas-like object, produce a `FramePng`
+ * payload ready to send across the bridge WS. Returns `null` when the canvas is
+ * not yet ready (renderer absent).
  *
- * When `normalize` is `'auto'`, a Rec.709 luminance levels-stretch is applied
- * to the CONTENT region (the `outWidth × outHeight` rectangle placed at
- * `padX / padY`) BEFORE the letterbox bands are filled. This ensures:
+ * **v0.1.15 changes vs. v0.1.14**
  *
- * - Normalization stats come from real scene pixels only (never from the
- *   zero-valued padding) so dark dungeons are lifted to readable contrast.
- * - Letterbox bands stay pure black (R=G=B=0) and alpha stays 255 — they are
- *   zeroed AFTER the normalization pass.
- * - Already-bright frames (p98−p2 ≥ 220) and degenerate near-flat frames
- *   (p98−p2 < 8) are left byte-identical to the `'off'` path.
+ * The return type changed from `FramePixels` to `FramePng`. The caller
+ * ({@link registerCanvasExtractor}) now maintains the FNV-1a hash and decides
+ * whether to emit; this function always returns the payload (hash skip is in the
+ * caller for clean separation). The PNG encoding step replaces the raw-RGBA step.
  *
- * Algorithm: compute per-pixel luma = 0.2126·R + 0.7152·G + 0.0722·B; build a
- * 256-bin histogram over the content region; pick p2/p98 percentile luma values;
- * if range = p98−p2 is in [8, 219], map each channel uniformly:
- * `out = clamp(round((c − p2) × 255 / range), 0, 255)`. All arithmetic is pure
- * JS typed-array loops — no OffscreenCanvas / DOM (matches the no-DOM rationale
- * in the module JSDoc).
+ * **Encoding recipe (FRAME-PNG-01 CRITICAL)**
+ *
+ * 1. Fit-downscale + letterbox (unchanged from v0.1.14) → `out: Uint8ClampedArray`
+ * 2. Optional contrast normalization (`normalize: 'auto'`) (unchanged)
+ * 3. Alpha set to 255 everywhere (unchanged)
+ * 4. Compute Rec.601 luma per pixel: `luma = round(0.299*R + 0.587*G + 0.114*B)`
+ * 5. Build R=G=B=luma RGBA buffer for UPNG (greyscale content, lossless wire)
+ * 6. Encode: `UPNG.encode([rgbaForPng.buffer], w, h, 0, undefined, true)`
+ *    (forbidPlte=true → ctype=2 RGB; the palette path crashes `toRGBA8` under Node)
+ * 7. Base64-encode the PNG ArrayBuffer (Buffer on Node, btoa+chunk on browser)
  *
  * @param canvas - Foundry canvas (or test fixture matching `CanvasLike`)
  * @param opts   - Optional target dimensions and normalization mode
- *                 (defaults to 400×200, normalize:'off')
- * @returns Typed FramePixels payload or `null` if the canvas is not ready
+ * @returns Typed FramePng payload or `null` if the canvas is not ready
  */
 export function extractCurrentFrame(
   canvas: CanvasLike,
   opts: {
     readonly targetWidth?: number;
     readonly targetHeight?: number;
-    /** `'auto'` enables luminance levels-stretch; `'off'` (default) passes frames through unchanged. */
     readonly normalize?: 'off' | 'auto';
   } = {},
-): FramePixels | null {
+): FramePng | null {
   const renderer = canvas.app?.renderer;
   if (renderer === undefined) {
     return null;
@@ -337,55 +283,18 @@ export function extractCurrentFrame(
   const targetWidth = Math.max(MIN_DIM, Math.min(opts.targetWidth ?? MAX_WIDTH, MAX_WIDTH));
   const targetHeight = Math.max(MIN_DIM, Math.min(opts.targetHeight ?? MAX_HEIGHT, MAX_HEIGHT));
 
-  // Determine viewport dimensions. renderer.screen reflects the logical viewport
-  // at the renderer's internal resolution (PIXI v7 WebGL renderer). Falls back to
-  // renderer.width/height when screen is absent (test fixtures, exotic hosts).
-  // These dims are used for the RT path (RenderTexture size) and as the effective
-  // source dims; both paths return null early if the dims are degenerate (≤ 0).
-  //
-  // renderer.screen can be fractional (e.g. Forge: 2348.25×824.25 at DPR 1.3333,
-  // 2026-06-10 live evidence). PIXI.RenderTexture.create floors internally, so
-  // extract.pixels returns floor(vw)×floor(vh)×4 bytes. We floor here so that
-  // RT.create, the byte-length guard, and srcWidth/srcHeight all use the same
-  // integer value — preventing k≈0.9998 non-integer mismatches that skip every frame.
   const vw = Math.max(1, Math.floor(renderer.screen?.width ?? renderer.width));
   const vh = Math.max(1, Math.floor(renderer.screen?.height ?? renderer.height));
   if (vw <= 0 || vh <= 0) {
     return null;
   }
 
-  // ── Source RGBA bytes: RT primary path or no-arg fallback ─────────────────
-  //
-  // PRIMARY (RT) PATH — production path for live Foundry client:
-  //   When PIXI.RenderTexture, renderer.render, and canvas.stage are all present,
-  //   render the stage into a fresh viewport-sized RenderTexture and extract from
-  //   it. The stage carries the player's current pan/zoom and fog-of-war, so the
-  //   result is exactly the viewport the player sees — deterministic regardless of
-  //   whether the canvas is idle or actively rendering. rt.destroy(true) runs in a
-  //   finally block on every capture, including when extract.pixels throws, so no
-  //   GPU memory ever leaks (T-lx5-01 DoS mitigation). On this path srcWidth/srcHeight
-  //   = vw/vh (the RenderTexture is exactly vw × vh pixels, extract returns exactly
-  //   vw × vh × 4 bytes at resolution 1).
-  //
-  // FALLBACK PATH — for unit-test fixtures and exotic hosts:
-  //   When PIXI.RenderTexture, renderer.render, or canvas.stage is unavailable,
-  //   fall back to the v0.1.10 no-arg renderer.extract.pixels() read. With
-  //   preserveDrawingBuffer:false this returns all-zero bytes on an idle real
-  //   Foundry client (live evidence: maxG=0 idle frames 2026-06-10), but it is
-  //   the correct path for happy-dom test fixtures that supply a plain pixels mock
-  //   with no PIXI globals. The existing byte-length guard + k-inference remain
-  //   unchanged on this path.
-
-  // Defensive typed accessor for the PIXI RenderTexture class.
   const RT = (
     globalThis as {
       PIXI?: { RenderTexture?: { create(o: { width: number; height: number }): unknown } };
     }
   ).PIXI?.RenderTexture;
 
-  // acquireBytes returns the raw RGBA buffer and the effective pixel dimensions,
-  // or null on any failure (GPU error, context-lost). Returning null here means
-  // the outer function returns null (no frame emitted, no retry storm).
   const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh);
   if (acquired === null) {
     return null;
@@ -393,10 +302,6 @@ export function extractCurrentFrame(
   const { srcBytes, srcWidth, srcHeight } = acquired;
 
   // ── Byte-length sanity guard (T-fw7-01 / T-lx5-02 mitigations) ───────────
-  // Expected buffer length = srcWidth × srcHeight × 4. On the RT path this is
-  // always exact (vw × vh × 4 at resolution 1). On the fallback path a high-DPR
-  // renderer may return a larger buffer; the k-inference handles it.
-  // Any other mismatch is logged + skipped: never emit row-stride garbage.
   const expected = srcWidth * srcHeight * 4;
   let effWidth = srcWidth;
   let effHeight = srcHeight;
@@ -408,7 +313,6 @@ export function extractCurrentFrame(
       Math.abs(k - kRound) < 1e-6 &&
       srcWidth * kRound * (srcHeight * kRound) * 4 === srcBytes.length
     ) {
-      // High-DPR / resolution-multiplied renderer: reinterpret at k× dims.
       effWidth = srcWidth * kRound;
       effHeight = srcHeight * kRound;
     } else {
@@ -423,28 +327,15 @@ export function extractCurrentFrame(
     }
   }
 
-  // Fit-downscale: scale the WHOLE source to fit inside the target, preserving
-  // aspect ratio. `Math.min(..., 1)` never upscales — undersized sources are
-  // centered 1:1 (upscaling adds no detail and blurs the dither input).
-  // This replaced the original center-crop, which on a typical 1920×1080
-  // Foundry render captured only a 400×200 window (~4% of the scene area)
-  // instead of the full map (debug map-frame-pipeline-dims, 2026-06-10).
+  // Fit-downscale + letterbox (Option C — unchanged from v0.1.14).
   const scale = Math.min(targetWidth / effWidth, targetHeight / effHeight, 1);
   const outWidth = Math.max(1, Math.round(effWidth * scale));
   const outHeight = Math.max(1, Math.round(effHeight * scale));
 
-  // Emit EXACTLY targetWidth×targetHeight: the scaled source is center-aligned
-  // onto an opaque-black letterbox canvas of the target size. `raster-worker.ts`
-  // rejects any frame that is not the canonical 400×200.
-  const out = new Uint8ClampedArray(targetWidth * targetHeight * 4); // zero-filled; alpha forced below
+  const out = new Uint8ClampedArray(targetWidth * targetHeight * 4);
   const padX = Math.floor((targetWidth - outWidth) / 2);
   const padY = Math.floor((targetHeight - outHeight) / 2);
 
-  // Box-average downscale — pure JS, no OffscreenCanvas (Foundry's Electron
-  // runtime is not guaranteed to expose it; see module JSDoc rationale). Each
-  // destination pixel averages its source box: anti-aliased detail survives the
-  // 4-bit dither far better than nearest-neighbour point sampling. Cost on a
-  // 1920×1080 source ≈ 2M byte reads inside a 200 ms debounce window — negligible.
   const invScale = 1 / scale;
   for (let dy = 0; dy < outHeight; dy++) {
     const sy0 = Math.floor(dy * invScale);
@@ -472,15 +363,9 @@ export function extractCurrentFrame(
       out[di + 2] = b / n;
     }
   }
-  // ── Contrast normalization (normalize: 'auto') ─────────────────────────
-  // Applied to the CONTENT region only (outWidth × outHeight at padX/padY),
-  // BEFORE alpha-fill and BEFORE letterbox bands are set — so padding bytes
-  // (still zero) never pollute the percentile computation, and bands stay black.
-  //
-  // Algorithm: Rec.709 luma per pixel → 256-bin histogram → p2/p98 percentiles
-  // → linear stretch when range ∈ [8, 219] (skip wide or degenerate frames).
+
+  // ── Contrast normalization (unchanged from v0.1.14) ───────────────────────
   if (opts.normalize === 'auto' && outWidth > 0 && outHeight > 0) {
-    // Step 1: build 256-bin luma histogram over content pixels.
     const hist = new Uint32Array(256);
     const contentPixelCount = outWidth * outHeight;
     for (let dy = 0; dy < outHeight; dy++) {
@@ -489,14 +374,11 @@ export function extractCurrentFrame(
         const r = out[di] ?? 0;
         const g = out[di + 1] ?? 0;
         const b = out[di + 2] ?? 0;
-        // Rec.709 luma, rounded to [0..255] bin.
         const luma = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
         const bin = Math.min(255, Math.max(0, luma));
         hist[bin] = (hist[bin] ?? 0) + 1;
       }
     }
-
-    // Step 2: cumulative-count percentile lookup for p2 and p98.
     const p2Target = Math.round(contentPixelCount * 0.02);
     const p98Target = Math.round(contentPixelCount * 0.98);
     let p2 = 0;
@@ -514,10 +396,7 @@ export function extractCurrentFrame(
         break;
       }
     }
-
     const range = p98 - p2;
-
-    // Step 3: apply stretch only when range is in [8, 219] (skip wide/flat frames).
     if (range >= 8 && range < 220) {
       for (let dy = 0; dy < outHeight; dy++) {
         for (let dx = 0; dx < outWidth; dx++) {
@@ -525,8 +404,6 @@ export function extractCurrentFrame(
           const r = out[di] ?? 0;
           const g = out[di + 1] ?? 0;
           const b = out[di + 2] ?? 0;
-          // Apply same (p2, range) to all channels — luma-derived endpoints,
-          // per-channel application — preserves hue, lifts overall contrast.
           out[di] = Math.min(255, Math.max(0, Math.round(((r - p2) * 255) / range)));
           out[di + 1] = Math.min(255, Math.max(0, Math.round(((g - p2) * 255) / range)));
           out[di + 2] = Math.min(255, Math.max(0, Math.round(((b - p2) * 255) / range)));
@@ -535,19 +412,77 @@ export function extractCurrentFrame(
     }
   }
 
-  // Opaque alpha everywhere — content pixels AND letterbox bands. The G2
-  // pipeline has no transparency; un-set alpha would dither unpredictably.
+  // Opaque alpha everywhere.
   for (let i = 3; i < out.length; i += 4) {
     out[i] = 255;
+  }
+
+  // ── v0.1.15: Rec.601 luma → FNV-1a hash + PNG encode ─────────────────────
+  //
+  // (1) Compute per-pixel Rec.601 luma into a Uint8Array (1 byte/px).
+  //     luma = round(0.299*R + 0.587*G + 0.114*B)
+  // (2) Build an R=G=B=luma RGBA buffer for UPNG (greyscale content).
+  // (3) Encode via the VERIFIED recipe:
+  //     UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)
+  //     (forbidPlte=true → ctype=2 RGB, exact roundtrip, no Node crash)
+  // (4) Base64-encode the PNG ArrayBuffer.
+  const nPixels = targetWidth * targetHeight;
+  const luma = new Uint8Array(nPixels);
+  for (let i = 0; i < nPixels; i++) {
+    const oi = i * 4;
+    const r = out[oi] ?? 0;
+    const g = out[oi + 1] ?? 0;
+    const b = out[oi + 2] ?? 0;
+    luma[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+
+  // Build R=G=B=luma RGBA for UPNG (greyscale content, exact reconstructable luma).
+  const rgbaForPng = new Uint8Array(nPixels * 4);
+  for (let i = 0; i < nPixels; i++) {
+    const v = luma[i] ?? 0;
+    const pi = i * 4;
+    rgbaForPng[pi] = v;
+    rgbaForPng[pi + 1] = v;
+    rgbaForPng[pi + 2] = v;
+    rgbaForPng[pi + 3] = 255;
+  }
+
+  // PNG encode via the VERIFIED recipe (forbidPlte=true → ctype=2 RGB, exact roundtrip).
+  // Do NOT use UPNG.encodeLL — it does not exist in upng-js 2.1.0.
+  const pngBuf = UPNG.encode([rgbaForPng.buffer], targetWidth, targetHeight, 0, undefined, true);
+  const pngBytes = new Uint8Array(pngBuf);
+
+  // Base64: dual-environment (Node Buffer / browser btoa+chunk).
+  let pngB64: string;
+  const BufferCtor = (
+    globalThis as { Buffer?: { from(b: ArrayBuffer): { toString(e: string): string } } }
+  ).Buffer;
+  if (BufferCtor !== undefined) {
+    pngB64 = BufferCtor.from(pngBuf).toString('base64');
+  } else {
+    const btoaFn = (globalThis as { btoa?: (s: string) => string }).btoa;
+    if (btoaFn === undefined) {
+      throw new Error('[EVF canvas-extractor] no Buffer or btoa available');
+    }
+    const CHUNK = 0x8000;
+    let binary = '';
+    for (let i = 0; i < pngBytes.length; i += CHUNK) {
+      const slice = pngBytes.subarray(i, Math.min(i + CHUNK, pngBytes.length));
+      binary += String.fromCharCode.apply(null, slice as unknown as number[]);
+    }
+    pngB64 = btoaFn(binary);
   }
 
   return {
     sceneId: canvas.scene?.id ?? '',
     width: targetWidth,
     height: targetHeight,
-    pixelsB64: encodeFramePixels(out),
+    pngB64,
     ts: Date.now(),
-  };
+    // Expose the luma hash so the caller can do identical-frame skip.
+    // We attach it as a non-schema field — the caller reads it before emit.
+    _lumaHash: fnv1a32(luma),
+  } as FramePng & { _lumaHash: number };
 }
 
 /** Internal module state — single registration is enforced (CE-7 idempotency). */
@@ -557,80 +492,110 @@ interface RegistrationState {
 
 let _registered: RegistrationState | null = null;
 
+/** FNV-1a hash of the last emitted luma array (for identical-frame skip). */
+let _lastEmittedHash: number | null = null;
+
+/** Leading+trailing throttle timer handle for hook-driven captures. */
+let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Whether a trailing emit is pending (throttle re-arm flag). */
+let _pendingTrailing = false;
+
+/** Timestamp of last interval-gated capture (for live captureIntervalMs). */
+let _lastCaptureTs = 0;
+
 /**
  * Register the five Foundry hooks (canvasReady, drawCanvas, refreshToken, updateScene,
- * canvasPan) and a continuous periodic capture interval that drive canvas extraction.
+ * canvasPan) and a continuous TICK_MS=100 ms capture interval that drives canvas extraction.
  *
  * Returns an unregister function that calls `Hooks.off` for each registered
- * handler, clears the continuous interval, and resets the internal singleton so a
- * subsequent register call works. A second register call while one is already active
- * is a no-op — the existing registration's unregister is returned unchanged.
- * Idempotency matters because `module.ts` may run the registration code more than
- * once in test scenarios that drive `vi.resetModules()` between assertions.
+ * handler, clears timers, and resets the internal singleton. Idempotent — a
+ * second register call while one is active is a no-op.
+ *
+ * **v0.1.15 behavior changes vs v0.1.14:**
+ * - Emits `FramePng` instead of `FramePixels`.
+ * - Identical-frame skip via FNV-1a luma hash (no POST when content unchanged).
+ * - Hook fires use leading+trailing throttle (continuous pan emits ~5fps).
+ * - TICK_MS=100 ms interval with live `getCaptureIntervalMs` gating.
  *
  * @param opts - Caller-supplied emit + tuning knobs
  * @returns Unregister function (idempotent on repeat call)
  */
 export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn {
   if (_registered !== null) {
-    // Idempotent: hand back a no-op unregister that the caller can safely invoke.
     return () => {
       /* prior registration owns teardown */
     };
   }
-
-  const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-  const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
-  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const performExtract = (): void => {
     try {
       if (typeof canvas === 'undefined' || canvas === null) {
         return;
       }
-      // Evaluate getNormalize on EACH capture so a live settings change
-      // (mapContrastNormalize toggle) takes effect on the next frame without
-      // re-registering the extractor (quick-task 260610-evs EVS-NORM-01).
       const normalize: 'off' | 'auto' = opts.getNormalize?.() ?? 'off';
-      const frame = extractCurrentFrame(canvas as CanvasLike, {
+      const result = extractCurrentFrame(canvas as CanvasLike, {
         ...(opts.targetWidth !== undefined ? { targetWidth: opts.targetWidth } : {}),
         ...(opts.targetHeight !== undefined ? { targetHeight: opts.targetHeight } : {}),
         normalize,
       });
-      if (frame !== null) {
-        opts.emit(frame);
+      if (result === null) {
+        return;
       }
+      // Identical-frame skip: compare FNV-1a luma hash.
+      const withHash = result as FramePng & { _lumaHash?: number };
+      const hash = withHash._lumaHash;
+      if (hash !== undefined && hash === _lastEmittedHash) {
+        return; // unchanged content — skip POST
+      }
+      if (hash !== undefined) {
+        _lastEmittedHash = hash;
+      }
+      // Emit without the internal _lumaHash field (not part of FramePng schema).
+      const payload: FramePng = {
+        sceneId: result.sceneId,
+        width: result.width,
+        height: result.height,
+        pngB64: result.pngB64,
+        ts: result.ts,
+      };
+      opts.emit(payload);
     } catch (err) {
-      // Hook callbacks must NOT throw — Foundry treats a thrown hook as a
-      // module bug and may unload us. Log + drop is the right behaviour.
-      console.warn(
-        '[EVF canvas-extractor] debounced extract failed:',
-        (err as Error).message ?? err,
-      );
+      console.warn('[EVF canvas-extractor] extract failed:', (err as Error).message ?? err);
     }
   };
 
-  // The debounce timer itself is the non-blocking scheduler — by the time it
-  // fires the original hook handler's call stack has already returned. T-4a-06-01
-  // mitigation is satisfied by the debounce window (200 ms); we do NOT need a
-  // secondary `requestIdleCallback`/`setTimeout(0)` indirection (an earlier
-  // iteration tried that and broke happy-dom fake-timer determinism in tests).
-  // If real-device Foundry desktop perf measurement (ADR-0005 SC #5) shows the
-  // synchronous extract inside the 200 ms window still stutters the UI thread,
-  // we can add an idle-scheduled stage in a focused follow-up.
+  // ── Leading+trailing throttle for hook fires ───────────────────────────────
+  //
+  // Replaces the old trailing-only debounce. Continuous canvasPan fires:
+  //   1. First fire: run performExtract immediately (leading), arm THROTTLE_MS timer.
+  //   2. Subsequent fires within the window: set _pendingTrailing = true.
+  //   3. Timer fires: if _pendingTrailing → run performExtract (trailing) + re-arm.
+  //
+  // This emits ~5 fps during continuous panning vs. zero emits from the old debounce.
+  const armThrottle = (): void => {
+    _throttleTimer = setTimeout(() => {
+      _throttleTimer = null;
+      if (_pendingTrailing) {
+        _pendingTrailing = false;
+        performExtract();
+        armThrottle();
+      }
+    }, THROTTLE_MS);
+  };
+
   const onHookFire = (): void => {
-    if (timer !== null) {
-      clearTimeout(timer);
-    }
-    timer = setTimeout(() => {
-      timer = null;
+    if (_throttleTimer === null) {
+      // Leading edge — emit immediately and arm the timer.
       performExtract();
-    }, debounceMs);
+      armThrottle();
+    } else {
+      // Within throttle window — request a trailing emit.
+      _pendingTrailing = true;
+    }
   };
 
-  // Explicit registration calls — each event listed verbatim so static greps
-  // can verify the five-hook contract (plan verify gate + B-5 closure check):
-  // canvasReady, drawCanvas, refreshToken, updateScene, canvasPan.
+  // Register 5 Foundry hooks.
   Hooks.on('canvasReady', onHookFire);
   Hooks.on('drawCanvas', onHookFire);
   Hooks.on('refreshToken', onHookFire);
@@ -644,32 +609,43 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     { event: 'canvasPan' as const, fn: onHookFire },
   ];
 
-  // Continuous periodic capture — fires performExtract at intervalMs cadence
-  // independent of hook activity. Ensures the map refreshes at ~1 Hz even during
-  // idle scenes where no Foundry hooks fire (T-d42-01 mitigation: 1 Hz cap; the
-  // HudDeltaDriver zero-push-on-idle gate prevents BLE flooding on unchanged frames).
-  const intervalHandle = setInterval(performExtract, intervalMs);
+  // ── Continuous capture interval (TICK_MS = 100 ms) ────────────────────────
+  //
+  // On each tick: read the live captureIntervalMs (from opts.getCaptureIntervalMs
+  // or legacy opts.intervalMs); if elapsed >= interval, capture.
+  const intervalHandle = setInterval(() => {
+    const interval =
+      opts.getCaptureIntervalMs?.() ?? (opts.intervalMs !== undefined ? opts.intervalMs : 250);
+    const now = Date.now();
+    if (now - _lastCaptureTs >= interval) {
+      _lastCaptureTs = now;
+      performExtract();
+    }
+  }, TICK_MS);
 
   _registered = { handlers };
 
   return () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
+    if (_throttleTimer !== null) {
+      clearTimeout(_throttleTimer);
+      _throttleTimer = null;
     }
+    _pendingTrailing = false;
     clearInterval(intervalHandle);
     for (const { event, fn } of handlers) {
-      // The real Foundry Hooks.off signature is `(hookId)` but our type
-      // declaration in foundry-globals.d.ts takes the (event, fn) shape that
-      // happy-dom mocks honour. Both signatures are supported by Foundry at
-      // runtime (the source uses `Hooks.off(event, fn)` overloads).
       (Hooks as unknown as { off(e: string, f: () => void): void }).off(event, fn);
     }
     _registered = null;
+    _lastEmittedHash = null;
+    _lastCaptureTs = 0;
   };
 }
 
 /** @internal Test-only reset to clear the singleton between vitest runs. */
 export function _resetCanvasExtractor(): void {
   _registered = null;
+  _lastEmittedHash = null;
+  _throttleTimer = null;
+  _pendingTrailing = false;
+  _lastCaptureTs = 0;
 }

@@ -139,6 +139,9 @@ importers:
       '@evf/shared-protocol':
         specifier: workspace:*
         version: link:../shared-protocol
+      upng-js:
+        specifier: 2.1.0
+        version: 2.1.0
     devDependencies:
       '@types/node':
         specifier: 25.6.2

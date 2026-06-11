@@ -1,5 +1,16 @@
 # @evf/foundry-module
 
+## 0.1.15
+
+### Minor Changes
+
+- Quick Task 260611-e71: frame_png wire format — greyscale lossless PNG (~1-5 KB vs ~884 KB RGBA).
+  - `canvas-extractor.ts` now emits ONLY `frame_png` envelopes (never `frame_pixels`).
+  - PNG encode via `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)` (ctype=2 RGB, exact luma roundtrip, ~100–700× smaller than frame_pixels).
+  - Identical-frame skip: FNV-1a 32-bit luma hash — no POST when content unchanged.
+  - Leading+trailing hook throttle (THROTTLE_MS=200 ms): continuous canvasPan emits ~5 fps.
+  - Live `captureIntervalMs` world setting (default 250 ms, range 100–5000 ms, step 50 ms) via TICK_MS=100 ms poll — DM can change cadence without module reload.
+
 ## 0.1.4
 
 ### Patch Changes

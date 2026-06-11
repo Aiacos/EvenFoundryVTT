@@ -113,6 +113,16 @@ export {
   type FramePixels,
   FramePixelsSchema,
 } from './payloads/frame.js';
+
+// ─── v0.1.15 map-stream format (Quick Task 260611-e71 FRAME-PNG-01) ───────────
+// FramePngSchema: greyscale lossless PNG wire format (~1-5 KB vs ~884 KB RGBA).
+// foundry-module v0.1.15+ exclusively emits frame_png; frame_pixels still exported
+// for back-compat (modules ≤v0.1.14 still emit frame_pixels; g2-app handles both).
+export {
+  FRAME_PNG_TYPE,
+  type FramePng,
+  FramePngSchema,
+} from './payloads/frame-png.js';
 export {
   SCENE_VIEWPORT_DELTA_TYPE,
   type SceneViewport,
