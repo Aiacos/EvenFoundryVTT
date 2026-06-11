@@ -1458,3 +1458,66 @@ describe('registerCanvasExtractor — isEnabled gate (CE-EN-1)', () => {
     expect(emit.mock.calls.length).toBeGreaterThan(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CE-DI: module-side Bayer dither (mapDither client setting)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('extractCurrentFrame — Bayer dither (CE-DI-1..2)', () => {
+  beforeEach(() => {
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  /** Gradient canvas so dithering has bands to break up. */
+  function gradientCanvas(W: number, H: number) {
+    const pixels = new Uint8Array(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const v = Math.round((x / (W - 1)) * 255);
+        const o = (y * W + x) * 4;
+        pixels[o] = v;
+        pixels[o + 1] = v;
+        pixels[o + 2] = v;
+        pixels[o + 3] = 255;
+      }
+    }
+    return {
+      scene: { id: 'dither-scene' },
+      stage: {},
+      app: { renderer: { width: W, height: H, extract: { pixels: vi.fn(() => pixels) } } },
+    };
+  }
+
+  it('CE-DI-1: dither=true output differs from dither=false on a gradient, both deterministic', () => {
+    const c = gradientCanvas(64, 32);
+    const flat1 = extractCurrentFrame(c, { dither: false });
+    const flat2 = extractCurrentFrame(c, { dither: false });
+    const dith1 = extractCurrentFrame(c, { dither: true });
+    const dith2 = extractCurrentFrame(c, { dither: true });
+    expect(flat1?.pngB64).toBe(flat2?.pngB64); // deterministic flat
+    expect(dith1?.pngB64).toBe(dith2?.pngB64); // deterministic dither (hash skip safe)
+    expect(dith1?.pngB64).not.toBe(flat1?.pngB64); // dither actually changes output
+  });
+
+  it('CE-DI-2: dithered output still uses only the 16 display levels (multiples of 17)', () => {
+    const c = gradientCanvas(64, 32);
+    const fp = extractCurrentFrame(c, { dither: true });
+    expect(fp).not.toBeNull();
+    if (fp === null) return;
+    const pngBytes = Buffer.from(fp.pngB64, 'base64');
+    const decoded = UPNG.decode(
+      pngBytes.buffer.slice(
+        pngBytes.byteOffset,
+        pngBytes.byteOffset + pngBytes.byteLength,
+      ) as ArrayBuffer,
+    );
+    const rgba = new Uint8Array(UPNG.toRGBA8(decoded)[0] as ArrayBuffer);
+    for (let i = 0; i < rgba.length; i += 4) {
+      expect((rgba[i] ?? 0) % 17).toBe(0);
+    }
+  });
+});

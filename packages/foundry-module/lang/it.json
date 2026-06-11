@@ -9,6 +9,8 @@
   "evf.settings.bridge_config_hint": "Imposta e verifica l'URL del bridge e il segreto interno per questo mondo.",
   "evf.settings.map_contrast_normalize.name": "Normalizzazione contrasto mappa (occhiali)",
   "evf.settings.map_contrast_normalize.hint": "Esegue un livellamento automatico delle scene scure per un contrasto leggibile sugli occhiali prima del dithering. Disattiva per inviare la luminosità grezza.",
+  "evf.settings.map_dither.name": "Dithering mappa (occhiali)",
+  "evf.settings.map_dither.hint": "Applica un dithering ordinato Bayer 4x4 alla scala di grigi della mappa: i gradienti diventano un pattern puntinato invece di bande piatte. Off = toni piatti puliti (default). Effetto immediato.",
   "evf.settings.capture_fps.name": "Frame rate cattura mappa (fps)",
   "evf.settings.capture_fps.hint": "Quanti frame al secondo della mappa vengono catturati e inviati agli occhiali (1–60). Più alto = mappa più fluida, più GPU e banda. Default 30 fps. Le modifiche hanno effetto immediato senza ricaricare.",
 

@@ -167,6 +167,23 @@ export function registerSettings(): void {
     default: false,
   });
 
+  // Map dithering — per-client display preference (2026-06-11). When enabled,
+  // a Bayer 4×4 ordered dither is applied during the module-side 16-level
+  // quantization, so gradients render as a stippled pattern instead of flat
+  // bands on the glasses. Default OFF (user decision 2026-06-11: clean flat
+  // tones by default). Client scope so EVERY user sees the toggle (no GM
+  // needed). Applies live on the next capture (getDither per capture). The
+  // dither is deterministic (pure function of position+value), so the
+  // identical-frame skip keeps working on static scenes.
+  game.settings.register(MODULE_ID, 'mapDither', {
+    name: 'evf.settings.map_dither.name',
+    hint: 'evf.settings.map_dither.hint',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+
   // Capture frame rate (fps) — DM-visible world setting controlling how often the
   // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71,
   // FPS redesign 2026-06-11: the user configures FRAMES PER SECOND, not ms).

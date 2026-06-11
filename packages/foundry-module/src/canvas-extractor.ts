@@ -43,6 +43,19 @@ import * as UPNG from 'upng-js';
 const THROTTLE_MS = 200;
 
 /**
+ * Bayer 4×4 ordered-dither threshold offsets, normalized to ±~0.47 of one
+ * quantization level (row-major, indexed `((y & 3) << 2) | (x & 3)`).
+ *
+ * Same matrix family as the g2-app HUD dither (quick 260611-clr) — applied
+ * module-side during the 16-level quantize when the `mapDither` client
+ * setting is ON. Deterministic: identical input frames produce identical
+ * dithered output, so the FNV-1a identical-frame skip keeps working.
+ */
+const BAYER_4X4: readonly number[] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(
+  (v) => (v + 0.5) / 16 - 0.5,
+);
+
+/**
  * Maximum idle time between emits before a keyframe is forced.
  *
  * The identical-frame skip would otherwise mean a glasses app that (re)connects
@@ -102,6 +115,14 @@ export interface CanvasExtractorOpts {
    * @see `getCaptureIntervalMs` in settings.ts (converts the `captureFps` world setting to ms).
    */
   readonly getCaptureIntervalMs?: () => number;
+  /**
+   * Per-capture dither mode supplier (the `mapDither` client setting).
+   *
+   * `true` applies a Bayer 4×4 ordered dither during the 16-level quantization
+   * (gradients become a stippled pattern); `false`/absent quantizes to flat
+   * nearest levels. Evaluated on every capture — the toggle applies live.
+   */
+  readonly getDither?: () => boolean;
   /**
    * Live stream-source gate, evaluated at the START of every capture.
    *
@@ -270,6 +291,8 @@ export function extractCurrentFrame(
     readonly targetWidth?: number;
     readonly targetHeight?: number;
     readonly normalize?: 'off' | 'auto';
+    /** Bayer 4×4 ordered dither during the 16-level quantize (default false). */
+    readonly dither?: boolean;
   } = {},
 ): FramePng | null {
   const renderer = canvas.app?.renderer;
@@ -426,16 +449,26 @@ export function extractCurrentFrame(
   // map scenes measured ~89 KB full-depth vs ~25-40 KB quantized). It also
   // stabilizes the FNV-1a hash: sub-level RT-capture noise no longer defeats
   // the identical-frame skip.
+  // Optional Bayer 4×4 ordered dither (the `mapDither` client setting):
+  // a deterministic per-position threshold offset in [-0.5, +0.4375) of one
+  // quantization level. Gradients render as a stippled pattern instead of
+  // flat bands; determinism preserves the identical-frame skip.
+  const dither = opts.dither === true;
   const nPixels = targetWidth * targetHeight;
   const luma = new Uint8Array(nPixels);
-  for (let i = 0; i < nPixels; i++) {
-    const oi = i * 4;
-    const r = out[oi] ?? 0;
-    const g = out[oi + 1] ?? 0;
-    const b = out[oi + 2] ?? 0;
-    const full = 0.299 * r + 0.587 * g + 0.114 * b;
-    // Map 0..255 → one of 16 levels spread across 0..255 (0, 17, 34, … 255).
-    luma[i] = (((full * 15 + 127.5) / 255) | 0) * 17;
+  for (let y = 0; y < targetHeight; y++) {
+    for (let x = 0; x < targetWidth; x++) {
+      const i = y * targetWidth + x;
+      const oi = i * 4;
+      const r = out[oi] ?? 0;
+      const g = out[oi + 1] ?? 0;
+      const b = out[oi + 2] ?? 0;
+      const full = 0.299 * r + 0.587 * g + 0.114 * b;
+      // Map 0..255 → one of 16 levels spread across 0..255 (0, 17, 34, … 255).
+      const offset = dither ? (BAYER_4X4[((y & 3) << 2) | (x & 3)] ?? 0) : 0;
+      const level = Math.min(15, Math.max(0, Math.floor(full / 17 + 0.5 + offset)));
+      luma[i] = level * 17;
+    }
   }
 
   // R=G=B=luma RGBA: upng-js only encodes RGBA input; PNG filters + DEFLATE
@@ -543,10 +576,12 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         return;
       }
       const normalize: 'off' | 'auto' = opts.getNormalize?.() ?? 'off';
+      const dither = opts.getDither?.() === true;
       const result = extractCurrentFrame(canvas as CanvasLike, {
         ...(opts.targetWidth !== undefined ? { targetWidth: opts.targetWidth } : {}),
         ...(opts.targetHeight !== undefined ? { targetHeight: opts.targetHeight } : {}),
         normalize,
+        dither,
       });
       if (result === null) {
         return;

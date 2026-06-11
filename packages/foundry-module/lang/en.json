@@ -9,6 +9,8 @@
   "evf.settings.bridge_config_hint": "Set and review the bridge URL and internal secret for this world.",
   "evf.settings.map_contrast_normalize.name": "Map contrast normalization (glasses)",
   "evf.settings.map_contrast_normalize.hint": "Auto-stretch dark map scenes for readable contrast on the glasses before dithering. Disable to send raw brightness.",
+  "evf.settings.map_dither.name": "Map dithering (glasses)",
+  "evf.settings.map_dither.hint": "Apply a Bayer 4x4 ordered dither to the map greyscale: gradients render as a stippled pattern instead of flat bands. Off = clean flat tones (default). Applies immediately.",
   "evf.settings.capture_fps.name": "Map capture frame rate (fps)",
   "evf.settings.capture_fps.hint": "How many map frames per second are captured and streamed to the glasses (1–60). Higher = smoother map, more GPU and bandwidth. Default 30 fps. Changes take effect immediately without reload.",
 

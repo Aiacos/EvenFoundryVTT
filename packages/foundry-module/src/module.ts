@@ -357,6 +357,15 @@ Hooks.once('ready', () => {
         return 'off';
       }
     },
+    // mapDither client setting — Bayer 4×4 during the 16-level quantize.
+    // Evaluated per capture so the toggle applies live (like getNormalize).
+    getDither: (): boolean => {
+      try {
+        return game.settings.get(MODULE_ID, 'mapDither') === true;
+      } catch {
+        return false;
+      }
+    },
     getCaptureIntervalMs: () => getCaptureIntervalMs(),
   });
 });
