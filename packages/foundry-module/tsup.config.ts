@@ -28,7 +28,7 @@ export default defineConfig({
   // pattern), and Foundry's ESM loader can't resolve npm-style imports anyway —
   // so bundle everything required at runtime. Caught the same way as the bridge
   // image's deploy/smoke.sh first run (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
-  noExternal: ['@evf/shared-protocol', 'qrcode'],
+  noExternal: ['@evf/shared-protocol', 'qrcode', 'upng-js'],
   // Target ES2022 to align with Foundry v13+ baseline (modern browser/Chrome engine)
   target: 'es2022',
   // CRITICAL: Foundry modules run in the BROWSER (Foundry's Electron-wrapped Chromium).

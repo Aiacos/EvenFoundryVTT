@@ -166,4 +166,40 @@ export function registerSettings(): void {
     type: Boolean,
     default: false,
   });
+
+  // Capture interval (ms) — DM-visible world setting controlling how often the
+  // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71).
+  // Default 250 ms (4 fps nominal), range 100–5000 ms, step 50 ms.
+  // Read live via getCaptureIntervalMs() on every tick — no module reload needed.
+  game.settings.register(MODULE_ID, 'captureIntervalMs', {
+    name: 'evf.settings.capture_interval_ms.name',
+    hint: 'evf.settings.capture_interval_ms.hint',
+    scope: 'world',
+    config: true,
+    restricted: true,
+    type: Number,
+    default: 250,
+    range: { min: 100, max: 5000, step: 50 },
+  });
+}
+
+/**
+ * Read the DM-configured `captureIntervalMs` world setting, clamped to [100, 5000].
+ *
+ * Evaluated live on EVERY tick of the canvas extractor (like `getNormalize`) so a
+ * DM setting change takes effect on the next capture without re-registering or
+ * reloading the module.
+ *
+ * Returns the default (250 ms) on any read error (e.g., called before settings are
+ * ready at startup) — defensive try/catch mirrors the `getNormalize` wiring pattern
+ * used in `module.ts`.
+ */
+export function getCaptureIntervalMs(): number {
+  try {
+    const raw = game.settings.get(MODULE_ID, 'captureIntervalMs') as unknown;
+    const value = typeof raw === 'number' ? raw : 250;
+    return Math.max(100, Math.min(5000, value));
+  } catch {
+    return 250;
+  }
 }

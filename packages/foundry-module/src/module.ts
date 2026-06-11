@@ -31,6 +31,7 @@
  */
 
 import {
+  FRAME_PNG_TYPE,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
@@ -56,7 +57,7 @@ import { registerHookSubscribers } from './readers/hook-subscribers.js';
 // Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
 // socketlib count stays 17 (Phase 13 invariant preserved).
 import { registerSpellPackReader } from './readers/spell-pack-reader.js';
-import { registerSettings } from './settings.js';
+import { getCaptureIntervalMs, registerSettings } from './settings.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
 // when the socketlib handlers are invoked.
@@ -329,18 +330,17 @@ Hooks.once('ready', () => {
     bridgeDeltaEmitter(type, payload),
   );
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
-  // Plan 04a-06 — raster pipeline data-source ingress.
-  // The emit callback dispatches the typed FramePixels payload on the
-  // existing `frame_pixels` channel; the bridge wraps it in `EnvelopeSchema`
-  // server-side (proto / seq / ts / type / session_id / payload — session_id
-  // is populated from the pair registry). No new auth surface (T-4a-06-04).
-  // Quick Task 260610-evs: wire getNormalize to the mapContrastNormalize client
-  // setting. Evaluated per-capture so toggling the setting applies live on the
-  // next frame without re-registering. Safe fallback returns 'off' (matches the
-  // default-OFF setting, user decision 2026-06-10) if the settings read throws
-  // (e.g. during startup before settings are ready).
+  // Quick Task 260611-e71 (v0.1.15) — raster pipeline data-source ingress.
+  // Emits ONLY `frame_png` envelopes (greyscale lossless PNG ~1-5 KB via upng-js).
+  // The bridge wraps the payload in `EnvelopeSchema` server-side with type='frame_png'.
+  // No new auth surface (T-4a-06-04 carry-forward).
+  //
+  // getNormalize: mapContrastNormalize client setting — evaluated per-capture so
+  //   live toggle applies without re-registering (Quick Task 260610-evs carry-forward).
+  // getCaptureIntervalMs: captureIntervalMs world setting — evaluated per tick
+  //   (100 ms) so the DM can change cadence without module reload (FRAME-PNG-02).
   registerCanvasExtractor({
-    emit: (payload) => bridgeDeltaEmitter('frame_pixels', payload),
+    emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
     getNormalize: (): 'off' | 'auto' => {
       try {
         return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
@@ -348,5 +348,6 @@ Hooks.once('ready', () => {
         return 'off';
       }
     },
+    getCaptureIntervalMs: () => getCaptureIntervalMs(),
   });
 });
