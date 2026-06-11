@@ -1521,3 +1521,61 @@ describe('extractCurrentFrame — Bayer dither (CE-DI-1..2)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CE-NE: browser-native PNG encoder path
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('registerCanvasExtractor — native PNG encoder (CE-NE-1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-NE-1: with OffscreenCanvas available the emitted PNG comes from convertToBlob', async () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
+
+    const fakePng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    class FakeImageData {
+      constructor(
+        readonly data: Uint8ClampedArray,
+        readonly w: number,
+        readonly h: number,
+      ) {}
+    }
+    class FakeOffscreenCanvas {
+      constructor(
+        readonly w: number,
+        readonly h: number,
+      ) {}
+      getContext(_t: '2d') {
+        return { putImageData: vi.fn() };
+      }
+      convertToBlob(_o: { type: string }) {
+        return Promise.resolve({
+          arrayBuffer: () => Promise.resolve(fakePng.buffer.slice(0, fakePng.byteLength)),
+        });
+      }
+    }
+    vi.stubGlobal('OffscreenCanvas', FakeOffscreenCanvas);
+    vi.stubGlobal('ImageData', FakeImageData);
+
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit });
+
+    hooks.fire('canvasReady');
+    // Native path resolves on microtasks — flush them.
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const [payload] = emit.mock.calls[0] as [{ pngB64: string }];
+    expect(Buffer.from(payload.pngB64, 'base64')).toEqual(Buffer.from(fakePng));
+  });
+});

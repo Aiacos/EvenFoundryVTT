@@ -300,6 +300,12 @@ export function extractCurrentFrame(
     readonly normalize?: 'off' | 'auto';
     /** Bayer 4×4 ordered dither during the 16-level quantize (default false). */
     readonly dither?: boolean;
+    /**
+     * Skip the (expensive) PNG encode: `pngB64` comes back empty and `_luma`
+     * carries the quantized frame. Used by `performExtract` to hash-check
+     * BEFORE paying for the encode and to pick the native encoder.
+     */
+    readonly skipEncode?: boolean;
   } = {},
 ): FramePng | null {
   const renderer = canvas.app?.renderer;
@@ -480,45 +486,11 @@ export function extractCurrentFrame(
     }
   }
 
-  // R=G=B=luma RGBA: upng-js only encodes RGBA input; PNG filters + DEFLATE
-  // compress the channel redundancy, and the decoder gets the luma back exactly.
-  const rgbaForPng = new Uint8Array(nPixels * 4);
-  for (let i = 0; i < nPixels; i++) {
-    const v = luma[i] ?? 0;
-    const pi = i * 4;
-    rgbaForPng[pi] = v;
-    rgbaForPng[pi + 1] = v;
-    rgbaForPng[pi + 2] = v;
-    rgbaForPng[pi + 3] = 255;
-  }
-
   const tProcess1 = Date.now();
 
-  // forbidPlte=true forces ctype-2 RGB output — the palette path corrupts
-  // toRGBA8 under Node (upng-js 2.1.0; see module-level JSDoc API note).
-  const pngBuf = UPNG.encode([rgbaForPng.buffer], targetWidth, targetHeight, 0, undefined, true);
-  const pngBytes = new Uint8Array(pngBuf);
-
-  // Base64: dual-environment (Node Buffer / browser btoa+chunk).
-  let pngB64: string;
-  const BufferCtor = (
-    globalThis as { Buffer?: { from(b: ArrayBuffer): { toString(e: string): string } } }
-  ).Buffer;
-  if (BufferCtor !== undefined) {
-    pngB64 = BufferCtor.from(pngBuf).toString('base64');
-  } else {
-    const btoaFn = (globalThis as { btoa?: (s: string) => string }).btoa;
-    if (btoaFn === undefined) {
-      throw new Error('[EVF canvas-extractor] no Buffer or btoa available');
-    }
-    const CHUNK = 0x8000;
-    let binary = '';
-    for (let i = 0; i < pngBytes.length; i += CHUNK) {
-      const slice = pngBytes.subarray(i, Math.min(i + CHUNK, pngBytes.length));
-      binary += String.fromCharCode.apply(null, slice as unknown as number[]);
-    }
-    pngB64 = btoaFn(binary);
-  }
+  const skipEncode = opts.skipEncode === true;
+  const pngBytes = skipEncode ? new Uint8Array(0) : encodePngUpng(luma, targetWidth, targetHeight);
+  const pngB64 = skipEncode ? '' : bytesToB64(pngBytes);
 
   const tEncode1 = Date.now();
 
@@ -541,8 +513,13 @@ export function extractCurrentFrame(
       viewportWidth: vw,
       viewportHeight: vh,
       pngBytes: pngBytes.length,
+      encoder: 'upng',
+      dither,
     },
-  } as FramePng & { _lumaHash: number; _stats: FrameCaptureStats };
+    // Expose the quantized luma so callers (performExtract) can re-encode
+    // with the native encoder without re-running the capture pipeline.
+    _luma: luma,
+  } as FramePng & { _lumaHash: number; _stats: FrameCaptureStats; _luma: Uint8Array };
 }
 
 /**
@@ -552,7 +529,10 @@ export function extractCurrentFrame(
  * `acquireMs` = scene render-to-texture + GPU readback; `processMs` =
  * downscale + normalize + luma + quantize; `encodeMs` = PNG encode + base64.
  * `srcWidth/srcHeight` reveal whether the downscaled-RT capture (fractional
- * PIXI `resolution`) was honored by the host PIXI version.
+ * PIXI `resolution`) was honored by the host PIXI version. `encoder` says
+ * whether the browser-native OffscreenCanvas PNG encoder or the upng-js
+ * fallback produced the frame; `dither` echoes the `mapDither` setting as
+ * read on the streaming client (remote verification of the toggle).
  */
 export interface FrameCaptureStats {
   readonly acquireMs: number;
@@ -563,6 +543,108 @@ export interface FrameCaptureStats {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
   readonly pngBytes: number;
+  readonly encoder: 'upng' | 'native';
+  readonly dither: boolean;
+}
+
+/** Expand quantized luma to the R=G=B=luma RGBA buffer PNG encoders consume. */
+function lumaToRgba(luma: Uint8Array): Uint8Array {
+  const rgba = new Uint8Array(luma.length * 4);
+  for (let i = 0; i < luma.length; i++) {
+    const v = luma[i] ?? 0;
+    const pi = i * 4;
+    rgba[pi] = v;
+    rgba[pi + 1] = v;
+    rgba[pi + 2] = v;
+    rgba[pi + 3] = 255;
+  }
+  return rgba;
+}
+
+/**
+ * Encode quantized luma to PNG via upng-js (synchronous fallback path).
+ *
+ * forbidPlte=true forces ctype-2 RGB output — the palette path corrupts
+ * toRGBA8 under Node (upng-js 2.1.0; see module-level JSDoc API note).
+ */
+function encodePngUpng(luma: Uint8Array, width: number, height: number): Uint8Array {
+  const rgba = lumaToRgba(luma);
+  return new Uint8Array(UPNG.encode([rgba.buffer], width, height, 0, undefined, true));
+}
+
+/**
+ * Encode quantized luma to PNG via the browser-native encoder
+ * (`OffscreenCanvas.convertToBlob`) — measured ~10× faster than upng-js for
+ * the 576×288 frame (the live telemetry showed encode dominating the capture
+ * cycle at 66-122 ms). Returns `null` when the host has no OffscreenCanvas
+ * (Node test environment) or anything in the chain fails — the caller falls
+ * back to {@link encodePngUpng}.
+ */
+async function encodePngNative(
+  luma: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Uint8Array | null> {
+  try {
+    const g = globalThis as {
+      OffscreenCanvas?: new (
+        w: number,
+        h: number,
+      ) => {
+        getContext(t: '2d'): {
+          putImageData(d: unknown, x: number, y: number): void;
+        } | null;
+        convertToBlob(o: { type: string }): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }>;
+      };
+      ImageData?: new (data: Uint8ClampedArray, w: number, h: number) => unknown;
+    };
+    if (typeof g.OffscreenCanvas !== 'function' || typeof g.ImageData !== 'function') {
+      return null;
+    }
+    const oc = new g.OffscreenCanvas(width, height);
+    const ctx = oc.getContext('2d');
+    if (ctx === null) {
+      return null;
+    }
+    ctx.putImageData(
+      new g.ImageData(new Uint8ClampedArray(lumaToRgba(luma).buffer), width, height),
+      0,
+      0,
+    );
+    const blob = await oc.convertToBlob({ type: 'image/png' });
+    return new Uint8Array(await blob.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+/** Synchronous feature detection for the browser-native PNG encoder. */
+function hasNativeEncoder(): boolean {
+  const g = globalThis as { OffscreenCanvas?: unknown; ImageData?: unknown };
+  return typeof g.OffscreenCanvas === 'function' && typeof g.ImageData === 'function';
+}
+
+/** Base64-encode bytes — dual-environment (Node Buffer / browser btoa+chunk). */
+function bytesToB64(bytes: Uint8Array): string {
+  const BufferCtor = (
+    globalThis as {
+      Buffer?: { from(b: Uint8Array): { toString(e: string): string } };
+    }
+  ).Buffer;
+  if (BufferCtor !== undefined) {
+    return BufferCtor.from(bytes).toString('base64');
+  }
+  const btoaFn = (globalThis as { btoa?: (s: string) => string }).btoa;
+  if (btoaFn === undefined) {
+    throw new Error('[EVF canvas-extractor] no Buffer or btoa available');
+  }
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    binary += String.fromCharCode.apply(null, slice as unknown as number[]);
+  }
+  return btoaFn(binary);
 }
 
 /** Internal module state — single registration is enforced (CE-7 idempotency). */
@@ -612,7 +694,10 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     };
   }
 
-  const performExtract = (): void => {
+  // Returns a Promise only on the native-encoder path (browser); the upng
+  // fallback path is fully synchronous so the Node test environment observes
+  // emits in the same tick.
+  const performExtract = (): void | Promise<void> => {
     try {
       // Stream-source election gate — only the elected client captures.
       // Evaluated per capture so leadership can migrate live.
@@ -624,31 +709,30 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       }
       const normalize: 'off' | 'auto' = opts.getNormalize?.() ?? 'off';
       const dither = opts.getDither?.() === true;
+      // skipEncode: hash-check FIRST, pay for the PNG encode only on frames
+      // that will actually be emitted (live telemetry showed encode dominating
+      // the cycle at 66-122 ms — and it ran even for skipped frames).
       const result = extractCurrentFrame(canvas as CanvasLike, {
         ...(opts.targetWidth !== undefined ? { targetWidth: opts.targetWidth } : {}),
         ...(opts.targetHeight !== undefined ? { targetHeight: opts.targetHeight } : {}),
         normalize,
         dither,
+        skipEncode: true,
       });
       if (result === null) {
         return;
       }
-      // Telemetry: forward capture-phase timings at most every 5s.
-      const withHash = result as FramePng & { _lumaHash?: number; _stats?: FrameCaptureStats };
-      const now = Date.now();
-      if (
-        opts.emitStats !== undefined &&
-        withHash._stats !== undefined &&
-        now - _lastStatsTs >= 5_000
-      ) {
-        _lastStatsTs = now;
-        opts.emitStats(withHash._stats);
-      }
+      const enriched = result as FramePng & {
+        _lumaHash?: number;
+        _stats?: FrameCaptureStats;
+        _luma?: Uint8Array;
+      };
       // Identical-frame skip with periodic keyframe: unchanged content is not
       // re-sent UNLESS more than KEYFRAME_INTERVAL_MS passed since the last
       // emit — late-joining WS subscribers must receive the current frame even
       // on a static scene (the bridge is push-only, no frame cache).
-      const hash = withHash._lumaHash;
+      const hash = enriched._lumaHash;
+      const now = Date.now();
       if (
         hash !== undefined &&
         hash === _lastEmittedHash &&
@@ -660,15 +744,57 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         _lastEmittedHash = hash;
       }
       _lastEmitTs = now;
-      // Emit without the internal _lumaHash field (not part of FramePng schema).
-      const payload: FramePng = {
-        sceneId: result.sceneId,
-        width: result.width,
-        height: result.height,
-        pngB64: result.pngB64,
-        ts: result.ts,
+
+      const luma = enriched._luma;
+      if (luma === undefined) {
+        return;
+      }
+      const tEncode0 = Date.now();
+      const finish = (pngBytes: Uint8Array, encoder: 'upng' | 'native'): void => {
+        const payload: FramePng = {
+          sceneId: result.sceneId,
+          width: result.width,
+          height: result.height,
+          pngB64: bytesToB64(pngBytes),
+          ts: Date.now(),
+        };
+        // Telemetry (≤1 every 5s): real encode timing + which encoder ran +
+        // the dither flag as read on THIS (streaming) client.
+        if (opts.emitStats !== undefined && enriched._stats !== undefined) {
+          const tNow = Date.now();
+          if (tNow - _lastStatsTs >= 5_000) {
+            _lastStatsTs = tNow;
+            opts.emitStats({
+              ...enriched._stats,
+              encodeMs: tNow - tEncode0,
+              pngBytes: pngBytes.length,
+              encoder,
+              dither,
+            });
+          }
+        }
+        opts.emit(payload);
       };
-      opts.emit(payload);
+
+      // Native encoder when available (browser); otherwise the synchronous
+      // upng fallback keeps the whole call stack synchronous (Node tests +
+      // exotic hosts) — feature detection is sync so the sync path never
+      // defers the emit to a microtask.
+      if (!hasNativeEncoder()) {
+        finish(encodePngUpng(luma, result.width, result.height), 'upng');
+        return;
+      }
+      return encodePngNative(luma, result.width, result.height)
+        .then((bytes) => {
+          if (bytes !== null) {
+            finish(bytes, 'native');
+          } else {
+            finish(encodePngUpng(luma, result.width, result.height), 'upng');
+          }
+        })
+        .catch((err: unknown) => {
+          console.warn('[EVF canvas-extractor] native encode failed:', err);
+        });
     } catch (err) {
       console.warn('[EVF canvas-extractor] extract failed:', (err as Error).message ?? err);
     }
@@ -722,19 +848,34 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   //
   // Each cycle reads the live interval (the `captureFps` world setting) BEFORE
   // arming the next wait, so a DM setting change applies from the next cycle.
-  // setTimeout chaining (not setInterval) keeps the cadence exactly at the
-  // configured interval with no scheduler-imposed ceiling: 60 fps → 17 ms waits.
-  const scheduleNextCapture = (): void => {
-    const interval = opts.getCaptureIntervalMs?.() ?? 250;
+  // Trailing re-arm (same fix as HudDeltaDriver, quick 260611-dg5): the next
+  // wait is `interval − cycleCost`, so the period is max(interval, cost) and
+  // NEVER interval + cost. With the async native encoder the re-arm waits for
+  // the cycle to settle — exactly one capture in flight.
+  const scheduleNextCapture = (delayMs: number): void => {
     _captureLoopTimer = setTimeout(
       () => {
-        performExtract();
-        scheduleNextCapture();
+        const t0 = Date.now();
+        const rearm = (): void => {
+          const interval = opts.getCaptureIntervalMs?.() ?? 250;
+          scheduleNextCapture(Math.max(1, interval - (Date.now() - t0)));
+        };
+        let cycle: void | Promise<void>;
+        try {
+          cycle = performExtract();
+        } catch {
+          cycle = undefined;
+        }
+        if (cycle !== undefined && typeof cycle.then === 'function') {
+          cycle.then(rearm, rearm);
+        } else {
+          rearm();
+        }
       },
-      Math.max(1, interval),
+      Math.max(1, delayMs),
     );
   };
-  scheduleNextCapture();
+  scheduleNextCapture(opts.getCaptureIntervalMs?.() ?? 250);
 
   _registered = { handlers };
 
