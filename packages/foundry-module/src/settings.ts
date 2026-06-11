@@ -170,9 +170,11 @@ export function registerSettings(): void {
   // Capture frame rate (fps) — DM-visible world setting controlling how often the
   // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71,
   // FPS redesign 2026-06-11: the user configures FRAMES PER SECOND, not ms).
-  // Default 4 fps, range 1–60 fps, step 1. Read live on every capture cycle —
-  // no module reload needed. The real upper bound is the client GPU readback +
-  // upstream bandwidth, not this setting.
+  // Default 10 fps (v0.1.20 — the 16-level quantized PNG is ~18 KB/frame, so
+  // 10 fps costs ~180 KB/s upstream; raised from 4 since most installs never
+  // touch the GM-only setting). Range 1–60 fps, step 1. Read live on every
+  // capture cycle — no module reload needed. The real upper bound is the
+  // client GPU readback + upstream bandwidth, not this setting.
   game.settings.register(MODULE_ID, 'captureFps', {
     name: 'evf.settings.capture_fps.name',
     hint: 'evf.settings.capture_fps.hint',
@@ -180,13 +182,13 @@ export function registerSettings(): void {
     config: true,
     restricted: true,
     type: Number,
-    default: 4,
+    default: DEFAULT_CAPTURE_FPS,
     range: { min: 1, max: 60, step: 1 },
   });
 }
 
-/** Default capture rate (fps) when the setting is unreadable. */
-const DEFAULT_CAPTURE_FPS = 4;
+/** Default capture rate (fps) — used for the setting default and as the unreadable-setting fallback. */
+const DEFAULT_CAPTURE_FPS = 10;
 
 /**
  * Read the DM-configured `captureFps` world setting and convert it to the
@@ -199,7 +201,7 @@ const DEFAULT_CAPTURE_FPS = 4;
  * change takes effect on the next capture without re-registering or reloading
  * the module.
  *
- * Returns the default (250 ms = 4 fps) on any read error (e.g., called before
+ * Returns the default (100 ms = 10 fps) on any read error (e.g., called before
  * settings are ready at startup) — defensive try/catch mirrors the
  * `getNormalize` wiring pattern used in `module.ts`.
  */
