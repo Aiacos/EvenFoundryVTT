@@ -4,11 +4,11 @@
  * Mirrors the pattern established by locale-override.ts tests.
  *
  * Coverage:
- *   DM-01 — loadDitherMode: missing key ('') → true (default ON)
+ *   DM-01 — loadDitherMode: missing key ('') → false (default OFF, user decision 2026-06-11)
  *   DM-02 — loadDitherMode: '0' → false (OFF)
  *   DM-03 — loadDitherMode: '1' → true (ON)
- *   DM-04 — loadDitherMode: unknown value → true (fail-soft)
- *   DM-05 — loadDitherMode: getLocalStorage throws → true (fail-soft, warns)
+ *   DM-04 — loadDitherMode: unknown value → false (fail-soft to default OFF)
+ *   DM-05 — loadDitherMode: getLocalStorage throws → false (fail-soft, warns)
  *   DM-06 — persistDitherMode: writes '1' when on=true
  *   DM-07 — persistDitherMode: writes '0' when on=false
  *   DM-08 — persistDitherMode: swallows setLocalStorage errors (best-effort)
@@ -46,10 +46,10 @@ describe('DITHER_MODE_KV_KEY', () => {
 });
 
 describe('loadDitherMode', () => {
-  it('DM-01: missing key ("") returns true (default ON)', async () => {
+  it('DM-01: missing key ("") returns false (default OFF)', async () => {
     const bridge = makeBridge('');
     const result = await loadDitherMode(bridge);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(bridge.getLocalStorage).toHaveBeenCalledWith(DITHER_MODE_KV_KEY);
   });
 
@@ -65,17 +65,17 @@ describe('loadDitherMode', () => {
     expect(result).toBe(true);
   });
 
-  it('DM-04: unknown value (e.g. "yes") returns true (fail-soft)', async () => {
+  it('DM-04: unknown value (e.g. "yes") returns false (fail-soft to default OFF)', async () => {
     const bridge = makeBridge('yes');
     const result = await loadDitherMode(bridge);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 
-  it('DM-05: getLocalStorage throws → returns true and emits console.warn', async () => {
+  it('DM-05: getLocalStorage throws → returns false and emits console.warn', async () => {
     const bridge = makeBridge(new Error('kv store unavailable'));
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await loadDitherMode(bridge);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(warnSpy).toHaveBeenCalledOnce();
     warnSpy.mockRestore();
   });

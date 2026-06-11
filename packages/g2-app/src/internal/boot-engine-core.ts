@@ -877,12 +877,12 @@ export async function _bootEngineCore(
     });
 
   // Dither mode flag — default ON (Bayer 4×4), persisted in the Even Hub kv store
-  // via loadDitherMode / persistDitherMode (quick-task 260611-CLR). '0' = dither OFF
-  // (direct nearest-of-16 quantization); anything else = ON. Fail-soft: a kv read
-  // error keeps the default ON (same behaviour as today, no regression).
+  // via loadDitherMode / persistDitherMode (quick-task 260611-CLR). '1' = dither ON
+  // (Bayer 4×4); anything else = OFF (direct nearest-of-16 quantization — DEFAULT,
+  // user decision 2026-06-11). Fail-soft: a kv read error keeps the default OFF.
   // getDitherMode is passed into HudDeltaDriver so every render cycle reads the live
   // value — a toggle takes effect immediately without driver reconstruction.
-  let ditherOn = true;
+  let ditherOn = false;
   void loadDitherMode(bridge).then((on: boolean) => {
     ditherOn = on;
   });
