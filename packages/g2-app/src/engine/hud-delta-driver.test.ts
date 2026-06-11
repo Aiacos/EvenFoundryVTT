@@ -454,6 +454,39 @@ describe('HudDeltaDriver', () => {
     driver.stop();
   });
 
+  // ── DL-DITHER: getDitherMode option is threaded through _buildTiles ────────────
+
+  it('DL-DITHER-01: HudDeltaDriverOpts accepts optional getDitherMode callback', () => {
+    // Should compile and construct without error when getDitherMode is provided
+    const { compositor } = makeCompositor(makeBlankRgba());
+    const bridge = makeBridge();
+    const { wsEvents } = makeWsEvents();
+    const opts: HudDeltaDriverOpts = {
+      compositor: compositor as unknown as HudDeltaDriverOpts['compositor'],
+      bridge: bridge as unknown as HudDeltaDriverOpts['bridge'],
+      wsEvents,
+      getDitherMode: () => true,
+    };
+    const driver = new HudDeltaDriver(opts);
+    expect(driver).toBeDefined();
+    driver.stop();
+  });
+
+  it('DL-DITHER-02: HudDeltaDriverOpts without getDitherMode defaults to dither=true (no regression)', async () => {
+    // No getDitherMode → same as before (dither=true implicitly)
+    const rgba = makeBlankRgba();
+    const { compositor } = makeCompositor(rgba);
+    const bridge = makeBridge();
+    const { wsEvents } = makeWsEvents();
+
+    const driver = new HudDeltaDriver(makeOpts(compositor, bridge, wsEvents));
+    await driver.start();
+    await driver.runFirstFrame();
+    // Must still push all 4 tiles (no regression)
+    expect(bridge.updateImageRawData).toHaveBeenCalledTimes(4);
+    driver.stop();
+  });
+
   // ── First-frame: runFirstFrame pushes all 4 tiles unconditionally ─────────────
 
   it('first-frame: runFirstFrame() pushes all 4 tiles regardless of hash state, and seeds baseline hashes so subsequent identical cycle → 0 pushes', async () => {

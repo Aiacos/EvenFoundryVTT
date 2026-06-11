@@ -678,6 +678,14 @@ export const HUD_WIDTH_BUDGETS = {
   /** [F] FPS indicator toggle menu item label (same word in all locales). */
   quick_item_fps: { it: 'FPS', en: 'FPS', de: 'FPS', max: 22 },
 
+  /**
+   * [D] Dither toggle menu item label.
+   *
+   * Short technical term — same across all three locales because
+   * "dither" is the standard display-engineering term.
+   */
+  quick_item_dither: { it: 'Dither', en: 'Dither', de: 'Dither', max: 22 },
+
   /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
   quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
 

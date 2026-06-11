@@ -132,14 +132,14 @@ describe('QuickActionMenuPanel — OverlayPanel contract (QAM-02)', () => {
 });
 
 describe('QuickActionMenuPanel — main mode draw (QAM-03)', () => {
-  it('QAM-03: default state renders 10 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
+  it('QAM-03: default state renders 11 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
 
     // Count item rows (lines containing [X] pattern)
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10);
+    expect(itemRows.length).toBe(11);
 
     // [S] row is active (first item)
     const sRow = lines.find((l) => l.includes('[S]'));
@@ -177,11 +177,11 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     expect(cRow).toMatch(/▶/);
   });
 
-  it('QAM-05: scroll wrap-around from [X] (index 9) back to [S] (index 0)', async () => {
+  it('QAM-05: scroll wrap-around from [X] (index 10) back to [S] (index 0)', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [X] (9 times down from [S])
-    for (let i = 0; i < 9; i++) {
+    // Scroll to [X] (10 times down from [S])
+    for (let i = 0; i < 10; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     let content = await drawAndGetContent(panel, bridge);
@@ -193,7 +193,9 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     content = await drawAndGetContent(panel, bridge);
     lines = content.split('\n');
     expect(lines.find((l) => l.includes('[S]'))).toMatch(/▶/);
+    // [X] and [D] should not be active after wrap
     expect(lines.find((l) => l.includes('[X]'))).not.toMatch(/▶/);
+    expect(lines.find((l) => l.includes('[D]'))).not.toMatch(/▶/);
   });
 });
 
@@ -270,7 +272,7 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10); // back to 10-item main mode
+    expect(itemRows.length).toBe(11); // back to 11-item main mode
   });
 
   it('QAM-09: tap [A] in language mode → persistLocaleOverride("auto") + emit("auto")', async () => {
@@ -318,11 +320,11 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
 
     expect(callbacks.onClose).not.toHaveBeenCalled();
 
-    // Should be back in main mode — draw shows 9 items
+    // Should be back in main mode — draw shows 11 items
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10);
+    expect(itemRows.length).toBe(11);
   });
 });
 
@@ -396,6 +398,35 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
     expect(callbacks.onNavigate).not.toHaveBeenCalled();
     expect(callbacks.onAction).not.toHaveBeenCalled();
     expect(callbacks.onMapModeToggle).not.toHaveBeenCalled();
+  });
+
+  it('QAM-12i: tap [D] (index 9) → onDitherToggle() + onClose()', () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const localeEvents = new LocaleEventEmitter();
+    const onClose = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onNavigate = vi.fn() as unknown as ReturnType<typeof vi.fn> & ((panelId: string) => void);
+    const onMapModeToggle = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onAction = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onDitherToggle = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+
+    const panel = new QuickActionMenuPanel(bridge, bus, 'it', 'auto', localeEvents, {
+      onClose,
+      onNavigate,
+      onMapModeToggle,
+      onAction,
+      onDitherToggle,
+    });
+
+    // Scroll to [D] (index 9: S=0,C=1,L=2,B=3,I=4,A=5,M=6,N=7,F=8,D=9)
+    for (let i = 0; i < 9; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+
+    expect(onDitherToggle).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onMapModeToggle).not.toHaveBeenCalled();
   });
 });
 

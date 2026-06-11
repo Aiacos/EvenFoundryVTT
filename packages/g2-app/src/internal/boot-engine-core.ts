@@ -78,6 +78,7 @@ import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { WsSender } from '../engine/ws-sender.js';
 import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
+import { loadDitherMode, persistDitherMode } from '../hud/dither-mode.js';
 import { createHudTileWorkerClient } from '../hud/hud-tile-worker-client.js';
 import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
@@ -639,8 +640,14 @@ export async function _bootEngineCore(
     bridge,
     wsEvents: wsEventBus,
     ...(hudTileWorker !== null
-      ? { buildTilesAsync: (rgba: Uint8ClampedArray) => hudTileWorker.buildTiles(rgba) }
+      ? {
+          buildTilesAsync: (rgba: Uint8ClampedArray, dither: boolean) =>
+            hudTileWorker.buildTiles(rgba, dither),
+        }
       : {}),
+    // Live-read dither mode — reads `ditherOn` at cycle time so a menu toggle
+    // takes immediate effect without reconstructing the driver (quick-task 260611-CLR).
+    getDitherMode: () => ditherOn,
     // 33ms throttle (bench ladder 2026-06-10, full-screen 576×288):
     // FS+100ms = 6.75 fps → 50ms = 9.5 → Bayer = 14.4 → Worker = 15.2 →
     // 33ms = 20.8 fps. With dither+encode in the Worker the main-thread cycle
@@ -869,6 +876,17 @@ export async function _bootEngineCore(
       /* default ON */
     });
 
+  // Dither mode flag — default ON (Bayer 4×4), persisted in the Even Hub kv store
+  // via loadDitherMode / persistDitherMode (quick-task 260611-CLR). '0' = dither OFF
+  // (direct nearest-of-16 quantization); anything else = ON. Fail-soft: a kv read
+  // error keeps the default ON (same behaviour as today, no regression).
+  // getDitherMode is passed into HudDeltaDriver so every render cycle reads the live
+  // value — a toggle takes effect immediately without driver reconstruction.
+  let ditherOn = true;
+  void loadDitherMode(bridge).then((on: boolean) => {
+    ditherOn = on;
+  });
+
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
   //
   // Constructed alongside CanvasStatusHudLayer so both are available for the
@@ -1043,6 +1061,15 @@ export async function _bootEngineCore(
           ).catch((err: unknown) => {
             console.warn('[boot-engine-core] onFpsToggle: kv persist failed', String(err));
           });
+        },
+        onDitherToggle: () => {
+          // [D] Dither — flip dither mode, persist to the Even Hub kv store via
+          // dither-mode.ts helpers (fire-and-forget; a failed write only loses
+          // persistence, not the in-session toggle). requestCycle() ensures the
+          // next render uses the new mode immediately.
+          ditherOn = !ditherOn;
+          void persistDitherMode(bridge, ditherOn);
+          hudDeltaDriver.requestCycle();
         },
       },
       // Pass the live render mode so the menu uses the correct container strategy:

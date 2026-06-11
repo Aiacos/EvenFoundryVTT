@@ -35,9 +35,13 @@ export interface HudTileWorkerClient {
    * @param rgba Composited 576×288×4 buffer. The underlying ArrayBuffer is
    *   TRANSFERRED to the Worker — the caller must not reuse it afterwards
    *   (the driver always passes a fresh `composite()` copy).
-   * @returns The 4 dithered 4-bit PNG tiles in container-id order.
+   * @param dither When `true` (default) applies Bayer 4×4 ordered dither; when `false`
+   *   uses direct nearest-of-16-level quantization with no dither pattern.
+   *   The Worker twin (hud-tile.worker.ts) applies the same algorithm — byte-identical
+   *   output for the same (rgba, dither) pair as the synchronous fallback path.
+   * @returns The 4 quantized 4-bit PNG tiles in container-id order.
    */
-  buildTiles(rgba: Uint8ClampedArray): Promise<HudTile[]>;
+  buildTiles(rgba: Uint8ClampedArray, dither?: boolean): Promise<HudTile[]>;
   /** Terminate the underlying Worker (boot teardown). */
   destroy(): void;
 }
@@ -96,7 +100,7 @@ export function createHudTileWorkerClient(): HudTileWorkerClient | null {
   };
 
   return {
-    buildTiles(rgba: Uint8ClampedArray): Promise<HudTile[]> {
+    buildTiles(rgba: Uint8ClampedArray, dither = true): Promise<HudTile[]> {
       if (dead) {
         return Promise.reject(new Error('hud-tile worker marked dead'));
       }
@@ -120,8 +124,8 @@ export function createHudTileWorkerClient(): HudTileWorkerClient | null {
             reject(err);
           },
         });
-        // Transfer the underlying buffer — zero-copy handoff.
-        worker.postMessage({ seq: id, rgba: rgba.buffer }, [rgba.buffer]);
+        // Transfer the underlying buffer — zero-copy handoff; dither flag forwarded to Worker.
+        worker.postMessage({ seq: id, rgba: rgba.buffer, dither }, [rgba.buffer]);
       });
     },
     destroy(): void {

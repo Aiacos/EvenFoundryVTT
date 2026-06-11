@@ -9,6 +9,7 @@
 │   [M] Mappa                                                        │
 │   [N] Lingua                                                       │
 │   [F] FPS                                                          │
+│   [D] Dither                                                       │
 │   [X] Chiudi                                                       │
 └────────────────────────────────────────────────────────────────────┘
   scroll = cambia voce attiva                                         
