@@ -38,9 +38,21 @@
  * @see 02-UI-SPEC.md §UI-A I18N keys table (evf.settings.pair_button)
  */
 
+import type { SettingsDisplay } from '@evf/shared-protocol';
 import { MODULE_ID } from './module.js';
 import { BridgeConfigModal } from './pair/BridgeConfigModal.js';
 import { PairModal } from './pair/PairModal.js';
+
+/** Options for {@link registerSettings}. */
+export interface RegisterSettingsOptions {
+  /**
+   * Called whenever any of the five display settings (dither, brightness, WebP,
+   * captureFps, normalize) changes via Foundry's per-setting `onChange`. Wired
+   * in `module.ts` to push a fresh `settings.display` snapshot downstream so the
+   * glasses menu stays in sync. Optional — absent in tests that don't sync.
+   */
+  readonly onDisplaySettingChange?: () => void;
+}
 
 /**
  * Locale detected from `game.i18n.lang` at module init time.
@@ -74,7 +86,9 @@ export let detectedLocale: string = 'en';
  * });
  * ```
  */
-export function registerSettings(): void {
+export function registerSettings(opts?: RegisterSettingsOptions): void {
+  // Per-setting onChange → notify the display-settings sync (downstream push).
+  const onDisplayChange = (): void => opts?.onDisplaySettingChange?.();
   // I18N-01: detect locale at module boot, normalise to primary tag.
   // Guard against `game.i18n` being undefined at the `init` hook (Foundry v13
   // re-ordered some globals; this function used to throw silently before
@@ -165,6 +179,7 @@ export function registerSettings(): void {
     config: true,
     type: Boolean,
     default: false,
+    onChange: onDisplayChange,
   });
 
   // Map dithering — per-client display preference (2026-06-11). When enabled,
@@ -182,6 +197,24 @@ export function registerSettings(): void {
     config: true,
     type: Boolean,
     default: false,
+    onChange: onDisplayChange,
+  });
+
+  // Map brightness — per-client display preference (2026-06-14). A luma gain in
+  // percent (−100..+100, 0 = neutral) applied module-side just before the
+  // 16-level quantize, so the fixed-brightness G2 phosphor display can be tuned
+  // per viewer without touching scene lighting. Client scope (like mapDither):
+  // each player adjusts their own glasses. Applies live on the next capture
+  // (getBrightness per capture). Deterministic → identical-frame skip survives.
+  game.settings.register(MODULE_ID, 'mapBrightness', {
+    name: 'evf.settings.map_brightness.name',
+    hint: 'evf.settings.map_brightness.hint',
+    scope: 'client',
+    config: true,
+    type: Number,
+    default: DEFAULT_BRIGHTNESS,
+    range: { min: -100, max: 100, step: 5 },
+    onChange: onDisplayChange,
   });
 
   // Capture frame rate (fps) — DM-visible world setting controlling how often the
@@ -202,11 +235,38 @@ export function registerSettings(): void {
     type: Number,
     default: DEFAULT_CAPTURE_FPS,
     range: { min: 1, max: 60, step: 1 },
+    onChange: onDisplayChange,
+  });
+
+  // Frame compression quality — DM-visible world setting (v0.1.27, latency audit
+  // 2026-06-11). 0 = lossless PNG (the pre-v0.1.27 wire format, ~68 KB/frame at
+  // 576×288); 1–100 = lossy WebP at that quality (~10–18 KB/frame at the default
+  // 75). At 30 fps the PNG wire costs ~22 Mbit/s PER HOP (Foundry→bridge AND
+  // bridge→glasses-app) — enough to saturate a home upload link, which showed up
+  // live as bursty 13–25 fps delivery. World scope because the bandwidth belongs
+  // to whoever hosts the stream, not to each viewer; read live on every capture.
+  // Hosts whose canvas encoder cannot produce WebP fall back to PNG transparently.
+  game.settings.register(MODULE_ID, 'mapWebpQuality', {
+    name: 'evf.settings.map_webp_quality.name',
+    hint: 'evf.settings.map_webp_quality.hint',
+    scope: 'world',
+    config: true,
+    restricted: true,
+    type: Number,
+    default: DEFAULT_WEBP_QUALITY,
+    range: { min: 0, max: 100, step: 5 },
+    onChange: onDisplayChange,
   });
 }
 
 /** Default capture rate (fps) — used for the setting default and as the unreadable-setting fallback. */
 const DEFAULT_CAPTURE_FPS = 30;
+
+/** Default WebP quality — used for the setting default and as the unreadable-setting fallback. */
+const DEFAULT_WEBP_QUALITY = 75;
+
+/** Default brightness gain (percent, 0 = neutral) — setting default + unreadable fallback. */
+const DEFAULT_BRIGHTNESS = 0;
 
 /**
  * Read the DM-configured `captureFps` world setting and convert it to the
@@ -232,4 +292,117 @@ export function getCaptureIntervalMs(): number {
   } catch {
     return Math.round(1000 / DEFAULT_CAPTURE_FPS);
   }
+}
+
+/**
+ * Read the DM-configured `mapWebpQuality` world setting (0 = lossless PNG,
+ * 1–100 = lossy WebP quality), clamped to [0, 100].
+ *
+ * Evaluated live on EVERY capture (like `getCaptureIntervalMs`) so a DM
+ * setting change takes effect on the next frame without module reload.
+ * Returns the default (75) on any read error — same defensive pattern as
+ * `getCaptureIntervalMs`.
+ */
+export function getWebpQuality(): number {
+  try {
+    const raw = game.settings.get(MODULE_ID, 'mapWebpQuality') as unknown;
+    const q = typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_WEBP_QUALITY;
+    return Math.max(0, Math.min(100, Math.round(q)));
+  } catch {
+    return DEFAULT_WEBP_QUALITY;
+  }
+}
+
+/**
+ * Read the per-client `mapBrightness` setting (luma gain in percent), clamped
+ * to [−100, 100]. 0 = neutral. Evaluated live on every capture (like
+ * `getWebpQuality`); returns the default (0) on any read error.
+ */
+export function getBrightness(): number {
+  try {
+    const raw = game.settings.get(MODULE_ID, 'mapBrightness') as unknown;
+    const b = typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_BRIGHTNESS;
+    return Math.max(-100, Math.min(100, Math.round(b)));
+  } catch {
+    return DEFAULT_BRIGHTNESS;
+  }
+}
+
+/** Read `captureFps` (1–60) directly; default 30 on any read error. */
+export function getCaptureFps(): number {
+  try {
+    const raw = game.settings.get(MODULE_ID, 'captureFps') as unknown;
+    const fps = typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_CAPTURE_FPS;
+    return Math.max(1, Math.min(60, Math.round(fps)));
+  } catch {
+    return DEFAULT_CAPTURE_FPS;
+  }
+}
+
+/** Read the per-client `mapDither` boolean; false on any read error. */
+export function getDither(): boolean {
+  try {
+    return game.settings.get(MODULE_ID, 'mapDither') === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read the per-client `mapContrastNormalize` boolean; false on any read error. */
+export function getNormalize(): boolean {
+  try {
+    return game.settings.get(MODULE_ID, 'mapContrastNormalize') === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build the FULL display-settings snapshot pushed downstream over the
+ * `settings.display` delta (latency audit 2026-06-14). Reads the five live
+ * settings via their canonical getters so the glasses always reflect Foundry.
+ */
+export function buildDisplaySettingsSnapshot(): SettingsDisplay {
+  return {
+    dither: getDither(),
+    brightness: getBrightness(),
+    webpQuality: getWebpQuality(),
+    captureFps: getCaptureFps(),
+    normalize: getNormalize(),
+  };
+}
+
+/** Maps a {@link SettingsDisplay} key to its Foundry setting id. */
+const DISPLAY_SETTING_KEYS: ReadonlyArray<readonly [keyof SettingsDisplay, string]> = [
+  ['dither', 'mapDither'],
+  ['brightness', 'mapBrightness'],
+  ['webpQuality', 'mapWebpQuality'],
+  ['captureFps', 'captureFps'],
+  ['normalize', 'mapContrastNormalize'],
+];
+
+/**
+ * Apply a PARTIAL display-settings edit received UPSTREAM from the glasses
+ * (latency audit 2026-06-14). Writes each present key via `game.settings.set`,
+ * which fires the setting's `onChange` → re-pushes the downstream snapshot,
+ * confirming the change. Per-set errors are swallowed (a malformed value must
+ * never crash the capture pipeline); the returned promise settles when all
+ * writes complete.
+ *
+ * @param edit - Partial settings from the bridge's frame-POST `pendingSettings`.
+ */
+export async function applyDisplaySettings(edit: SettingsDisplay): Promise<void> {
+  await Promise.all(
+    DISPLAY_SETTING_KEYS.map(async ([key, settingId]) => {
+      const value = edit[key];
+      if (value === undefined) {
+        return;
+      }
+      try {
+        await game.settings.set(MODULE_ID, settingId, value);
+      } catch (err) {
+        console.warn(`[EVF] applyDisplaySettings: failed to set ${settingId}:`, err);
+      }
+    }),
+  );
 }

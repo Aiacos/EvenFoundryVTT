@@ -11,8 +11,12 @@
   "evf.settings.map_contrast_normalize.hint": "Esegue un livellamento automatico delle scene scure per un contrasto leggibile sugli occhiali prima del dithering. Disattiva per inviare la luminosità grezza.",
   "evf.settings.map_dither.name": "Dithering mappa (occhiali)",
   "evf.settings.map_dither.hint": "Applica un dithering ordinato Bayer 4x4 alla scala di grigi della mappa: i gradienti diventano un pattern puntinato invece di bande piatte. Off = toni piatti puliti (default). Effetto immediato.",
+  "evf.settings.map_brightness.name": "Luminosità mappa (occhiali)",
+  "evf.settings.map_brightness.hint": "Guadagno di luminanza da −100 a +100 (0 = neutro). Schiarisce o scurisce la mappa mostrata sugli occhiali senza modificare l'illuminazione della scena — utile per regolare il display G2 a luminosità fissa. Effetto immediato.",
   "evf.settings.capture_fps.name": "Frame rate cattura mappa (fps)",
   "evf.settings.capture_fps.hint": "Quanti frame al secondo della mappa vengono catturati e inviati agli occhiali (1–60). Più alto = mappa più fluida, più GPU e banda. Default 30 fps. Le modifiche hanno effetto immediato senza ricaricare.",
+  "evf.settings.map_webp_quality.name": "Compressione frame mappa (qualità WebP)",
+  "evf.settings.map_webp_quality.hint": "0 = PNG lossless (~68 KB/frame, ~22 Mbit/s a 30 fps); 1–100 = WebP lossy a quella qualità (~10–18 KB/frame col default 75). Valori più bassi risparmiano banda a scapito del dettaglio mappa. Effetto immediato; fallback a PNG sui browser senza encoder WebP.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Configurazione bridge",
   "evf.bridgecfg.url.label": "URL del bridge",

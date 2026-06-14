@@ -403,6 +403,10 @@ export function attachSceneInputToWs(
           return;
         }
         // Fallback: UPNG.decode (Node tests / hosts without createImageBitmap).
+        // PNG-only: lossy WebP frames (module v0.1.27+ `mapWebpQuality` > 0)
+        // throw here and are dropped by the outer catch — acceptable, since
+        // every WebView with a WebP-encoding Foundry host also has
+        // createImageBitmap (the native path above sniffs the container).
         // UPNG.decode reads the WHOLE ArrayBuffer — when pngBytes is a view into
         // a larger pool (Node Buffer.from pools small allocations, byteOffset≠0)
         // passing `.buffer` directly hands UPNG garbage ("not a PNG file").

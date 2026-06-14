@@ -5,8 +5,10 @@
  * creates an Envelope, sends it to all sessions with matching capabilities, and
  * pushes it to the replay buffer for reconnect support.
  *
- * Security (T-02-02): globalSeq is monotonically increasing. Each emitted envelope
- * receives `seq = ++globalSeq`. Bridge rejects client acks with out-of-order seq.
+ * Security (T-02-02): globalSeq is monotonically increasing. Each emitted stateful
+ * envelope receives `seq = ++globalSeq`; ephemeral frame deltas (see
+ * EPHEMERAL_DELTA_TYPES) reuse the current seq without advancing it. Bridge
+ * rejects client acks with out-of-order seq.
  *
  * Capability matching: a session receives a delta only if it has the matching
  * server cap in its `Session.caps` array. Example:
@@ -43,6 +45,42 @@ const DELTA_CAP_MAP: Record<string, string> = {
   'scene.viewport': 'read_scene',
   'event.log.delta': 'subscribe',
 };
+
+// ─── Ephemeral frame deltas (latency audit 2026-06-11) ────────────────────────
+
+/**
+ * Delta types that carry ephemeral map-stream state (full frames + capture
+ * telemetry). These are treated specially in {@link DeltaEmitter.emitDelta}:
+ *
+ * 1. **No replay buffering** — at 30 fps a ~90 KB `frame_png` envelope would
+ *    grow the 60 s replay window to ~160 MB per session, pay an O(1800)
+ *    eviction filter on every push, and replay up to 1800 stale frames in a
+ *    burst on reconnect. A late (re)joiner needs none of that: the module's
+ *    5 s keyframe re-aligns the map automatically.
+ * 2. **No seq advance** — ephemeral envelopes reuse the current `globalSeq`
+ *    instead of incrementing it, so the buffered stateful sequence stays
+ *    consecutive and `ReplayBuffer.hasGap()` cannot misread missing frames
+ *    as real delta loss (which would force a full snapshot on every resume).
+ *    The g2-app `SeqTracker.observe()` is monotonic-only, so a repeated seq
+ *    is a no-op on the client high-water mark.
+ * 3. **Backpressure drop** — see {@link FRAME_BACKPRESSURE_BYTES}.
+ */
+const EPHEMERAL_DELTA_TYPES: ReadonlySet<string> = new Set([
+  'frame_png',
+  'frame_pixels',
+  'frame_stats',
+]);
+
+/**
+ * Per-session socket-buffer threshold for ephemeral frame deltas.
+ *
+ * If a session's `ws.bufferedAmount` exceeds this when a frame delta arrives,
+ * the frame is skipped for that session (latest-wins at the transport layer):
+ * a slow client (phone on a weak WAN link) otherwise accumulates an unbounded
+ * send queue and renders ever-staler frames. ~256 KB ≈ 2–3 PNG frames or
+ * ~15 WebP frames in flight. Stateful deltas are never dropped.
+ */
+const FRAME_BACKPRESSURE_BYTES = 262_144;
 
 // ─── DeltaEmitter ─────────────────────────────────────────────────────────────
 
@@ -115,15 +153,21 @@ export class DeltaEmitter {
    *    the gate does not fire (current broadcast behavior is preserved). This prevents
    *    cross-player character leakage (T-flv-01) while keeping backward compatibility
    *    for sessions without a pin and payloads without an actorId field.
-   * 4. If session has the cap (or no cap is required), sends the envelope
-   * 5. Pushes the per-session envelope to ReplayBuffer
-   * 6. Updates SessionStore lastSeq
+   * 4. If session has the cap (or no cap is required), sends the envelope —
+   *    except ephemeral frame deltas towards a session whose socket buffer is
+   *    over {@link FRAME_BACKPRESSURE_BYTES} (frame skipped, latest-wins)
+   * 5. Pushes the per-session envelope to ReplayBuffer (stateful deltas only —
+   *    ephemeral frame deltas are never buffered, see EPHEMERAL_DELTA_TYPES)
+   * 6. Updates SessionStore lastSeq (stateful deltas only)
    *
    * @param type    - Delta type discriminant (e.g. "character.delta")
    * @param payload - Delta payload (any serialisable value)
    */
   emitDelta(type: string, payload: unknown): void {
-    const seq = ++this.globalSeq;
+    // Ephemeral frame deltas reuse the current seq (no advance) and skip the
+    // replay buffer + lastSeq bookkeeping — see EPHEMERAL_DELTA_TYPES.
+    const ephemeral = EPHEMERAL_DELTA_TYPES.has(type);
+    const seq = ephemeral ? this.globalSeq : ++this.globalSeq;
     const ts = Date.now();
 
     // Extract payload.actorId defensively for the character.delta targeting gate.
@@ -161,6 +205,13 @@ export class DeltaEmitter {
         continue; // This session is pinned to a different actor — skip.
       }
 
+      // Backpressure gate (ephemeral frames only): a slow client whose socket
+      // buffer already holds FRAME_BACKPRESSURE_BYTES gets this frame skipped
+      // instead of queued — newer frames supersede it anyway (latest-wins).
+      if (ephemeral && ws.bufferedAmount > FRAME_BACKPRESSURE_BYTES) {
+        continue;
+      }
+
       const envelope: Envelope = {
         proto: 'evf-v1',
         seq,
@@ -177,6 +228,10 @@ export class DeltaEmitter {
         // Connection error — unregister stale session
         this.connections.delete(sessionId);
         continue;
+      }
+
+      if (ephemeral) {
+        continue; // No replay buffering / lastSeq bookkeeping for frames.
       }
 
       // Push to replay buffer (per-session envelope with correct session_id)

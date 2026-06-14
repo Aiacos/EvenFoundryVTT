@@ -700,6 +700,42 @@ describe('extractCurrentFrame (CE-5, CE-6)', () => {
     const fakeCanvas = makeCanvasMock({ width: 0, height: 0, noRenderer: true });
     expect(extractCurrentFrame(fakeCanvas)).toBeNull();
   });
+
+  // CE-BRIGHT: brightness gain (latency audit follow-up 2026-06-14)
+  /** Decode a frame's centre-pixel luma (0..255) for the given brightness. */
+  function centreLuma(fill: number, brightness: number): number {
+    const fakeCanvas = makeCanvasMock({ width: 288, height: 144, fill });
+    const fp = extractCurrentFrame(fakeCanvas, { brightness });
+    if (fp === null) throw new Error('extract returned null');
+    const pngBytes = Buffer.from(fp.pngB64, 'base64');
+    const decoded = UPNG.decode(
+      pngBytes.buffer.slice(
+        pngBytes.byteOffset,
+        pngBytes.byteOffset + pngBytes.byteLength,
+      ) as ArrayBuffer,
+    );
+    const out = new Uint8Array(UPNG.toRGBA8(decoded)[0] as ArrayBuffer);
+    return out[(144 * 576 + 288) * 4] ?? 0; // centre pixel R (= luma)
+  }
+
+  it('CE-BRIGHT-1: positive brightness lifts a mid-grey frame above neutral', () => {
+    const neutral = centreLuma(0x80, 0);
+    const brighter = centreLuma(0x80, 80);
+    expect(brighter).toBeGreaterThan(neutral);
+  });
+
+  it('CE-BRIGHT-2: negative brightness darkens a mid-grey frame below neutral', () => {
+    const neutral = centreLuma(0x80, 0);
+    const darker = centreLuma(0x80, -80);
+    expect(darker).toBeLessThan(neutral);
+  });
+
+  it('CE-BRIGHT-3: brightness 0 (and out-of-range clamp) leaves the frame neutral', () => {
+    const neutral = centreLuma(0x80, 0);
+    // +9999 clamps to +100 → brighter, never NaN/black; −9999 clamps to −100 → black.
+    expect(centreLuma(0x80, 9999)).toBeGreaterThanOrEqual(neutral);
+    expect(centreLuma(0x80, -9999)).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1577,5 +1613,176 @@ describe('registerCanvasExtractor — native PNG encoder (CE-NE-1)', () => {
     expect(emit).toHaveBeenCalledTimes(1);
     const [payload] = emit.mock.calls[0] as [{ pngB64: string }];
     expect(Buffer.from(payload.pngB64, 'base64')).toEqual(Buffer.from(fakePng));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CE-WEBP: lossy WebP wire format (mapWebpQuality > 0, latency audit 2026-06-11)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('registerCanvasExtractor — WebP encode (CE-WEBP)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  /** Native-encoder stub whose convertToBlob echoes a configurable Blob.type. */
+  function stubNativeEncoder(blobType: string | undefined, bytes: Uint8Array) {
+    const convertToBlobSpy = vi.fn((_o: { type: string; quality?: number }) =>
+      Promise.resolve({
+        type: blobType,
+        arrayBuffer: () => Promise.resolve(bytes.buffer.slice(0, bytes.byteLength)),
+      }),
+    );
+    class FakeImageData {
+      constructor(
+        readonly data: Uint8ClampedArray,
+        readonly w: number,
+        readonly h: number,
+      ) {}
+    }
+    class FakeOffscreenCanvas {
+      constructor(
+        readonly w: number,
+        readonly h: number,
+      ) {}
+      getContext(_t: '2d') {
+        return { putImageData: vi.fn() };
+      }
+      convertToBlob = convertToBlobSpy;
+    }
+    vi.stubGlobal('OffscreenCanvas', FakeOffscreenCanvas);
+    vi.stubGlobal('ImageData', FakeImageData);
+    return convertToBlobSpy;
+  }
+
+  it('CE-WEBP-1: getWebpQuality > 0 requests image/webp with the 0–1 quality and reports encoder webp', async () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
+    const fakeWebp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 9, 9, 9, 9]); // RIFF magic
+    const convertToBlob = stubNativeEncoder('image/webp', fakeWebp);
+
+    const emit = vi.fn();
+    const emitStats = vi.fn();
+    registerCanvasExtractor({ emit, emitStats, getWebpQuality: () => 75 });
+
+    hooks.fire('canvasReady');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(convertToBlob).toHaveBeenCalledWith({ type: 'image/webp', quality: 0.75 });
+    expect(emit).toHaveBeenCalledTimes(1);
+    const [payload] = emit.mock.calls[0] as [{ pngB64: string }];
+    expect(Buffer.from(payload.pngB64, 'base64')).toEqual(Buffer.from(fakeWebp));
+    expect(emitStats).toHaveBeenCalledWith(expect.objectContaining({ encoder: 'webp' }));
+  });
+
+  it('CE-WEBP-2: host without WebP encode (Blob.type stays png) reports encoder native', async () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
+    const fakePng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    stubNativeEncoder('image/png', fakePng);
+
+    const emit = vi.fn();
+    const emitStats = vi.fn();
+    registerCanvasExtractor({ emit, emitStats, getWebpQuality: () => 75 });
+
+    hooks.fire('canvasReady');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emitStats).toHaveBeenCalledWith(expect.objectContaining({ encoder: 'native' }));
+  });
+
+  it('CE-WEBP-3: getWebpQuality 0 (or absent) keeps requesting image/png', async () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
+    const fakePng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const convertToBlob = stubNativeEncoder('image/png', fakePng);
+
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, getWebpQuality: () => 0 });
+
+    hooks.fire('canvasReady');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(convertToBlob).toHaveBeenCalledWith({ type: 'image/png' });
+    expect(emit).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CE-OVL: capture loop overlaps the native encode (latency audit 2026-06-11)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('registerCanvasExtractor — encode overlap (CE-OVL)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-OVL-1: the periodic loop keeps capturing while a native encode is still in flight', async () => {
+    const hooks = makeHooksMock();
+    const canvasMock = makeCanvasMock({ width: 50, height: 30 });
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', canvasMock);
+
+    // Native encoder whose convertToBlob NEVER resolves — pre-v0.1.27 the
+    // capture loop awaited it and would freeze after the first cycle.
+    class FakeImageData {
+      constructor(
+        readonly data: Uint8ClampedArray,
+        readonly w: number,
+        readonly h: number,
+      ) {}
+    }
+    class FakeOffscreenCanvas {
+      constructor(
+        readonly w: number,
+        readonly h: number,
+      ) {}
+      getContext(_t: '2d') {
+        return { putImageData: vi.fn() };
+      }
+      convertToBlob(_o: { type: string }) {
+        return new Promise<never>(() => {
+          /* intentionally never settles */
+        });
+      }
+    }
+    vi.stubGlobal('OffscreenCanvas', FakeOffscreenCanvas);
+    vi.stubGlobal('ImageData', FakeImageData);
+
+    const emit = vi.fn();
+    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 50 });
+
+    const pixelsSpy = (
+      canvasMock as { app: { renderer: { extract: { pixels: ReturnType<typeof vi.fn> } } } }
+    ).app.renderer.extract.pixels;
+
+    // First periodic cycle: capture + start the (stuck) encode.
+    await vi.advanceTimersByTimeAsync(50);
+    const callsAfterFirst = pixelsSpy.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
+
+    // Two more intervals: the loop must keep re-arming and capturing even
+    // though the first encode never settled (encode is fire-and-forget).
+    await vi.advanceTimersByTimeAsync(100);
+    expect(pixelsSpy.mock.calls.length).toBeGreaterThanOrEqual(callsAfterFirst + 2);
+
+    // Nothing emitted — the only encode in flight never finished.
+    expect(emit).not.toHaveBeenCalled();
   });
 });

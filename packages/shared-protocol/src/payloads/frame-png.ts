@@ -77,11 +77,18 @@ export const FRAME_PNG_TYPE = 'frame_png' as const;
  *                  discriminate frames across scene transitions).
  *   - `width`    — Frame width in pixels (20–576, inclusive — full-screen raster region, layout B 2026-06-10).
  *   - `height`   — Frame height in pixels (20–288, inclusive — full-screen raster region, layout B 2026-06-10).
- *   - `pngB64`   — Base64-encoded greyscale-content lossless PNG produced via
- *                  `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)`.
- *                  After base64-decode + UPNG.decode + UPNG.toRGBA8, the R/G/B
- *                  channels equal the Rec.601 luma of the source frame exactly.
- *                  Wire size ~1-5 KB (vs ~884 KB for frame_pixels at full screen).
+ *   - `pngB64`   — Base64-encoded greyscale-content image. Lossless PNG by
+ *                  default (`UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined,
+ *                  true)` or the browser-native encoder); module v0.1.27+ may
+ *                  carry lossy WebP instead when the `mapWebpQuality` world
+ *                  setting is > 0 (~4-7× smaller; latency audit 2026-06-11).
+ *                  The field name stays `pngB64` for wire back-compat — the
+ *                  g2-app native decode path (`createImageBitmap`) sniffs the
+ *                  container from the magic bytes, never from this name.
+ *                  With PNG, after base64-decode + UPNG.decode + UPNG.toRGBA8
+ *                  the R/G/B channels equal the Rec.601 luma of the source
+ *                  frame exactly; with WebP the luma is approximate (lossy)
+ *                  and the consumer re-quantizes to 16 levels anyway.
  *   - `ts`       — Emitter timestamp (ms since epoch) for staleness checks.
  */
 export const FramePngSchema = z.object({

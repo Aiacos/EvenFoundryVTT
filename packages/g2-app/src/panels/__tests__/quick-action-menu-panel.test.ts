@@ -132,14 +132,15 @@ describe('QuickActionMenuPanel — OverlayPanel contract (QAM-02)', () => {
 });
 
 describe('QuickActionMenuPanel — main mode draw (QAM-03)', () => {
-  it('QAM-03: default state renders 11 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
+  it('QAM-03: default state renders 13 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
 
-    // Count item rows (lines containing [X] pattern)
+    // Count item rows (lines containing [X] pattern). 13 = the 11 original items
+    // + [+]/[-] brightness (display-settings sync, 2026-06-14).
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(11);
+    expect(itemRows.length).toBe(13);
 
     // [S] row is active (first item)
     const sRow = lines.find((l) => l.includes('[S]'));
@@ -177,11 +178,12 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     expect(cRow).toMatch(/▶/);
   });
 
-  it('QAM-05: scroll wrap-around from [X] (index 10) back to [S] (index 0)', async () => {
+  it('QAM-05: scroll wrap-around from [X] (index 12) back to [S] (index 0)', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [X] (10 times down from [S])
-    for (let i = 0; i < 10; i++) {
+    // Scroll to [X] (12 times down from [S]) — [X] moved 10→12 after the
+    // [+]/[-] brightness rows were inserted before it.
+    for (let i = 0; i < 12; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     let content = await drawAndGetContent(panel, bridge);
@@ -272,7 +274,7 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(11); // back to 11-item main mode
+    expect(itemRows.length).toBe(13); // back to 13-item main mode
   });
 
   it('QAM-09: tap [A] in language mode → persistLocaleOverride("auto") + emit("auto")', async () => {
@@ -320,11 +322,11 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
 
     expect(callbacks.onClose).not.toHaveBeenCalled();
 
-    // Should be back in main mode — draw shows 11 items
+    // Should be back in main mode — draw shows 13 items
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(11);
+    expect(itemRows.length).toBe(13);
   });
 });
 

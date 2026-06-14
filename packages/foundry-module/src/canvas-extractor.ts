@@ -131,6 +131,24 @@ export interface CanvasExtractorOpts {
    */
   readonly getDither?: () => boolean;
   /**
+   * Per-capture brightness supplier (the `mapBrightness` client setting),
+   * −100..+100 (0 = neutral). Applied as a luma multiplier before the 16-level
+   * quantize — see the `brightness` option of {@link extractCurrentFrame}.
+   * Evaluated on every capture so the slider applies live (like `getDither`).
+   */
+  readonly getBrightness?: () => number;
+  /**
+   * Per-capture WebP quality supplier (the `mapWebpQuality` world setting).
+   *
+   * `0` (or absent) keeps the lossless PNG wire format; `1–100` asks the
+   * native encoder for lossy WebP at that quality — measured ~4–7× smaller
+   * than the equivalent PNG (68 KB → 10–18 KB at q75), which at 30 fps cuts
+   * the per-hop wire cost from ~22 Mbit/s to ~4 Mbit/s. Hosts whose
+   * `convertToBlob` cannot produce WebP (detected via `Blob.type`) fall back
+   * to PNG transparently. Evaluated on every capture — applies live.
+   */
+  readonly getWebpQuality?: () => number;
+  /**
    * Live stream-source gate, evaluated at the START of every capture.
    *
    * Module code runs on every connected Foundry client; only ONE client should
@@ -301,6 +319,14 @@ export function extractCurrentFrame(
     /** Bayer 4×4 ordered dither during the 16-level quantize (default false). */
     readonly dither?: boolean;
     /**
+     * Luma brightness gain in percent, −100..+100 (default 0 = neutral). Applied
+     * multiplicatively to the Rec.601 luma just before the 16-level quantize:
+     * `luma *= 1 + brightness/100` (clamped to 0..255). +100 doubles brightness,
+     * −100 floors to black. Cheap (one mul+clamp per pixel) and lets the G2's
+     * fixed phosphor display be tuned without changing the scene lighting.
+     */
+    readonly brightness?: number;
+    /**
      * Skip the (expensive) PNG encode: `pngB64` comes back empty and `_luma`
      * carries the quantized frame. Used by `performExtract` to hash-check
      * BEFORE paying for the encode and to pick the native encoder.
@@ -469,6 +495,11 @@ export function extractCurrentFrame(
   // quantization level. Gradients render as a stippled pattern instead of
   // flat bands; determinism preserves the identical-frame skip.
   const dither = opts.dither === true;
+  // Brightness gain: −100..+100 → multiplier 0..2 (0 = neutral). Clamped so a
+  // malformed setting cannot invert or explode the luma. A gain of exactly 1
+  // (the common case) is branch-predicted cheap; we still multiply to keep the
+  // loop body branchless.
+  const brightnessGain = 1 + Math.max(-100, Math.min(100, opts.brightness ?? 0)) / 100;
   const nPixels = targetWidth * targetHeight;
   const luma = new Uint8Array(nPixels);
   for (let y = 0; y < targetHeight; y++) {
@@ -478,7 +509,7 @@ export function extractCurrentFrame(
       const r = out[oi] ?? 0;
       const g = out[oi + 1] ?? 0;
       const b = out[oi + 2] ?? 0;
-      const full = 0.299 * r + 0.587 * g + 0.114 * b;
+      const full = Math.min(255, (0.299 * r + 0.587 * g + 0.114 * b) * brightnessGain);
       // Map 0..255 → one of 16 levels spread across 0..255 (0, 17, 34, … 255).
       const offset = dither ? (BAYER_4X4[((y & 3) << 2) | (x & 3)] ?? 0) : 0;
       const level = Math.min(15, Math.max(0, Math.floor(full / 17 + 0.5 + offset)));
@@ -530,9 +561,11 @@ export function extractCurrentFrame(
  * downscale + normalize + luma + quantize; `encodeMs` = PNG encode + base64.
  * `srcWidth/srcHeight` reveal whether the downscaled-RT capture (fractional
  * PIXI `resolution`) was honored by the host PIXI version. `encoder` says
- * whether the browser-native OffscreenCanvas PNG encoder or the upng-js
- * fallback produced the frame; `dither` echoes the `mapDither` setting as
- * read on the streaming client (remote verification of the toggle).
+ * which encoder produced the frame: `'webp'` = native lossy WebP
+ * (`mapWebpQuality` > 0 and the host honored `image/webp`), `'native'` =
+ * browser-native PNG, `'upng'` = upng-js fallback. `dither` echoes the
+ * `mapDither` setting as read on the streaming client (remote verification
+ * of the toggle).
  */
 export interface FrameCaptureStats {
   readonly acquireMs: number;
@@ -543,7 +576,7 @@ export interface FrameCaptureStats {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
   readonly pngBytes: number;
-  readonly encoder: 'upng' | 'native';
+  readonly encoder: 'upng' | 'native' | 'webp';
   readonly dither: boolean;
 }
 
@@ -572,19 +605,32 @@ function encodePngUpng(luma: Uint8Array, width: number, height: number): Uint8Ar
   return new Uint8Array(UPNG.encode([rgba.buffer], width, height, 0, undefined, true));
 }
 
+/** Result of a successful native encode — bytes + which encoder label applies. */
+interface NativeEncodeResult {
+  readonly bytes: Uint8Array;
+  readonly encoder: 'native' | 'webp';
+}
+
 /**
- * Encode quantized luma to PNG via the browser-native encoder
+ * Encode quantized luma via the browser-native encoder
  * (`OffscreenCanvas.convertToBlob`) — measured ~10× faster than upng-js for
  * the 576×288 frame (the live telemetry showed encode dominating the capture
- * cycle at 66-122 ms). Returns `null` when the host has no OffscreenCanvas
- * (Node test environment) or anything in the chain fails — the caller falls
- * back to {@link encodePngUpng}.
+ * cycle at 66-122 ms).
+ *
+ * `webpQuality` > 0 requests lossy `image/webp` at that quality (0–100 scale,
+ * mapped to the 0–1 `quality` option). Hosts that cannot encode WebP return a
+ * PNG blob instead (per spec `convertToBlob` falls back to the default type);
+ * the actual format is detected via `Blob.type` so the `encoder` label in the
+ * telemetry is always truthful. Returns `null` when the host has no
+ * OffscreenCanvas (Node test environment) or anything in the chain fails —
+ * the caller falls back to {@link encodePngUpng}.
  */
-async function encodePngNative(
+async function encodeFrameNative(
   luma: Uint8Array,
   width: number,
   height: number,
-): Promise<Uint8Array | null> {
+  webpQuality: number,
+): Promise<NativeEncodeResult | null> {
   try {
     const g = globalThis as {
       OffscreenCanvas?: new (
@@ -594,7 +640,10 @@ async function encodePngNative(
         getContext(t: '2d'): {
           putImageData(d: unknown, x: number, y: number): void;
         } | null;
-        convertToBlob(o: { type: string }): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }>;
+        convertToBlob(o: {
+          type: string;
+          quality?: number;
+        }): Promise<{ readonly type?: string; arrayBuffer(): Promise<ArrayBuffer> }>;
       };
       ImageData?: new (data: Uint8ClampedArray, w: number, h: number) => unknown;
     };
@@ -611,8 +660,17 @@ async function encodePngNative(
       0,
       0,
     );
-    const blob = await oc.convertToBlob({ type: 'image/png' });
-    return new Uint8Array(await blob.arrayBuffer());
+    const wantWebp = webpQuality > 0;
+    const blob = await oc.convertToBlob(
+      wantWebp
+        ? { type: 'image/webp', quality: Math.min(100, webpQuality) / 100 }
+        : { type: 'image/png' },
+    );
+    const gotWebp = wantWebp && blob.type === 'image/webp';
+    return {
+      bytes: new Uint8Array(await blob.arrayBuffer()),
+      encoder: gotWebp ? 'webp' : 'native',
+    };
   } catch {
     return null;
   }
@@ -663,7 +721,7 @@ let _lastEmitTs = 0;
 /** Timestamp of the last frame_stats telemetry emit (throttled to every 5 s). */
 let _lastStatsTs = 0;
 
-/** One quantized frame waiting for (or undergoing) PNG encode. */
+/** One quantized frame waiting for (or undergoing) native encode. */
 interface EncodeJob {
   readonly luma: Uint8Array;
   readonly width: number;
@@ -671,6 +729,8 @@ interface EncodeJob {
   readonly sceneId: string;
   readonly stats: FrameCaptureStats | undefined;
   readonly dither: boolean;
+  /** WebP quality 1–100 as read at capture time; 0 = lossless PNG. */
+  readonly webpQuality: number;
 }
 
 /** Whether a native encode is in flight (single-flight encode queue). */
@@ -710,10 +770,13 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     };
   }
 
-  // Returns a Promise only on the native-encoder path (browser); the upng
-  // fallback path is fully synchronous so the Node test environment observes
-  // emits in the same tick.
-  const performExtract = (): void | Promise<void> => {
+  // Fully synchronous from the caller's point of view: the native-encoder
+  // path hands the frame to the single-flight encode queue WITHOUT returning
+  // its promise, so the capture loop re-arms after acquire+process only and
+  // the encode genuinely overlaps the next capture (the upng fallback path
+  // stays synchronous so the Node test environment observes emits in the
+  // same tick).
+  const performExtract = (): void => {
     try {
       // Stream-source election gate — only the elected client captures.
       // Evaluated per capture so leadership can migrate live.
@@ -725,6 +788,8 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       }
       const normalize: 'off' | 'auto' = opts.getNormalize?.() ?? 'off';
       const dither = opts.getDither?.() === true;
+      const brightness = opts.getBrightness?.() ?? 0;
+      const webpQuality = opts.getWebpQuality?.() ?? 0;
       // skipEncode: hash-check FIRST, pay for the PNG encode only on frames
       // that will actually be emitted (live telemetry showed encode dominating
       // the cycle at 66-122 ms — and it ran even for skipped frames).
@@ -733,6 +798,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         ...(opts.targetHeight !== undefined ? { targetHeight: opts.targetHeight } : {}),
         normalize,
         dither,
+        brightness,
         skipEncode: true,
       });
       if (result === null) {
@@ -772,6 +838,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         sceneId: result.sceneId,
         stats: enriched._stats,
         dither,
+        webpQuality,
       };
 
       // Synchronous upng fallback (Node tests + exotic hosts) — the whole
@@ -783,16 +850,19 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       }
 
       // Native path: hand the frame to the single-flight encode queue and
-      // return WITHOUT awaiting — the capture loop only pays acquire+process
-      // (~20 ms), so the cycle period stays at the configured interval while
-      // the encode overlaps the next capture. Latest-wins: if an encode is
-      // already running, this frame replaces any queued one (the glasses only
-      // ever want the newest frame; order is guaranteed by the single flight).
+      // return WITHOUT awaiting (fire-and-forget) — the capture loop only
+      // pays acquire+process (~20 ms), so the cycle period stays at the
+      // configured interval while the encode genuinely overlaps the next
+      // capture (safe: `luma` is allocated fresh per frame, nothing is
+      // shared between an in-flight encode and the next acquire).
+      // Latest-wins: if an encode is already running, this frame replaces
+      // any queued one (the glasses only ever want the newest frame; order
+      // is guaranteed by the single flight).
       if (_encodeBusy) {
         _pendingEncode = job;
         return;
       }
-      return runEncodeJob(job);
+      void runEncodeJob(job);
     } catch (err) {
       console.warn('[EVF canvas-extractor] extract failed:', (err as Error).message ?? err);
     }
@@ -802,7 +872,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   const emitEncoded = (
     job: EncodeJob,
     pngBytes: Uint8Array,
-    encoder: 'upng' | 'native',
+    encoder: 'upng' | 'native' | 'webp',
     tEncode0: number,
   ): void => {
     const payload: FramePng = {
@@ -834,10 +904,10 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   const runEncodeJob = (job: EncodeJob): Promise<void> => {
     _encodeBusy = true;
     const t0 = Date.now();
-    return encodePngNative(job.luma, job.width, job.height)
-      .then((bytes) => {
-        if (bytes !== null) {
-          emitEncoded(job, bytes, 'native', t0);
+    return encodeFrameNative(job.luma, job.width, job.height, job.webpQuality)
+      .then((res) => {
+        if (res !== null) {
+          emitEncoded(job, res.bytes, res.encoder, t0);
         } else {
           emitEncoded(job, encodePngUpng(job.luma, job.width, job.height), 'upng', t0);
         }
@@ -905,27 +975,18 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   // arming the next wait, so a DM setting change applies from the next cycle.
   // Trailing re-arm (same fix as HudDeltaDriver, quick 260611-dg5): the next
   // wait is `interval − cycleCost`, so the period is max(interval, cost) and
-  // NEVER interval + cost. With the async native encoder the re-arm waits for
-  // the cycle to settle — exactly one capture in flight.
+  // NEVER interval + cost. cycleCost here is acquire+process ONLY — the
+  // native encode is fire-and-forget behind the single-flight latest-wins
+  // queue (see performExtract), so the loop period no longer absorbs the
+  // encode time (pre-v0.1.27 it did: period = acquire+process+encode, which
+  // capped the live chain at 1000/(25–55 ms) ≈ 18–30 fps on encode spikes).
   const scheduleNextCapture = (delayMs: number): void => {
     _captureLoopTimer = setTimeout(
       () => {
         const t0 = Date.now();
-        const rearm = (): void => {
-          const interval = opts.getCaptureIntervalMs?.() ?? 250;
-          scheduleNextCapture(Math.max(1, interval - (Date.now() - t0)));
-        };
-        let cycle: void | Promise<void>;
-        try {
-          cycle = performExtract();
-        } catch {
-          cycle = undefined;
-        }
-        if (cycle !== undefined && typeof cycle.then === 'function') {
-          cycle.then(rearm, rearm);
-        } else {
-          rearm();
-        }
+        performExtract();
+        const interval = opts.getCaptureIntervalMs?.() ?? 250;
+        scheduleNextCapture(Math.max(1, interval - (Date.now() - t0)));
       },
       Math.max(1, delayMs),
     );

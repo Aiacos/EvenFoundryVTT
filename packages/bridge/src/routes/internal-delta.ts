@@ -34,9 +34,14 @@
  */
 
 import { timingSafeEqual } from 'node:crypto';
+import { SETTINGS_DISPLAY_TYPE, SettingsDisplaySchema } from '@evf/shared-protocol';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { SettingsStore } from '../settings/settings-store.js';
 import type { DeltaEmitter } from '../ws/delta-emitter.js';
+
+/** Delta types that carry a full map frame — the upstream-settings piggyback carrier. */
+const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixels']);
 
 /** Schema for the POST /internal/delta request body. */
 const InternalDeltaBodySchema = z.object({
@@ -79,11 +84,15 @@ export type DeltaInterceptFn = (type: string, payload: unknown) => void;
  * @param app           - Fastify instance
  * @param deltaEmitter  - Shared DeltaEmitter instance (created in server.ts)
  * @param onDelta       - Optional callback for delta interception (e.g. spell-pack-cache update)
+ * @param settingsStore - Optional display-settings store: caches the downstream
+ *                        `settings.display` snapshot and piggybacks any pending
+ *                        upstream edit on the response of a frame POST.
  */
 export async function registerInternalDeltaRoute(
   app: FastifyInstance,
   deltaEmitter: DeltaEmitter,
   onDelta?: DeltaInterceptFn,
+  settingsStore?: SettingsStore,
 ): Promise<void> {
   app.post('/internal/delta', { config: { rateLimit: false } }, async (request, reply) => {
     // --- Auth: EVF_INTERNAL_SECRET header check ---
@@ -112,12 +121,33 @@ export async function registerInternalDeltaRoute(
 
     const { type, payload } = parsed.data;
 
+    // --- Display-settings sync: cache the downstream snapshot ---
+    // The module pushes a FULL `settings.display` snapshot on ready + on change.
+    // Cache the latest so new WS sessions get it on connect (see server.ts /ws).
+    if (settingsStore !== undefined && type === SETTINGS_DISPLAY_TYPE) {
+      const settings = SettingsDisplaySchema.safeParse(payload);
+      if (settings.success) {
+        settingsStore.setLatest(settings.data);
+      }
+    }
+
     // --- Typed delta interception (e.g. spell-pack-cache update) ---
     // Called BEFORE fan-out so caches are warm when WS clients receive the delta.
     onDelta?.(type, payload);
 
     // --- Fan out to all subscribed WS sessions ---
     deltaEmitter.emitDelta(type, payload);
+
+    // --- Upstream-settings piggyback ---
+    // Frame POSTs come only from the stream-leader client, so the frame response
+    // is a leader-only, no-new-connection carrier for glasses-originated setting
+    // edits. Drain the pending box onto the response; the module applies them.
+    if (settingsStore !== undefined && FRAME_DELTA_TYPES.has(type)) {
+      const pendingSettings = settingsStore.drainPending();
+      if (pendingSettings !== null) {
+        return reply.status(200).send({ ok: true, pendingSettings });
+      }
+    }
 
     return reply.status(200).send({ ok: true });
   });

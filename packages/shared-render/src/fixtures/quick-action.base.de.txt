@@ -10,6 +10,8 @@
 │   [N] Sprache                                                      │
 │   [F] FPS                                                          │
 │   [D] Dither                                                       │
+│   [+] Helligkeit +                                                 │
+│   [-] Helligkeit −                                                 │
 │   [X] Schließen                                                    │
 └────────────────────────────────────────────────────────────────────┘
   scroll = Eintrag wählen                                             

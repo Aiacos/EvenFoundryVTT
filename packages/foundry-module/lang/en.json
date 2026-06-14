@@ -11,8 +11,12 @@
   "evf.settings.map_contrast_normalize.hint": "Auto-stretch dark map scenes for readable contrast on the glasses before dithering. Disable to send raw brightness.",
   "evf.settings.map_dither.name": "Map dithering (glasses)",
   "evf.settings.map_dither.hint": "Apply a Bayer 4x4 ordered dither to the map greyscale: gradients render as a stippled pattern instead of flat bands. Off = clean flat tones (default). Applies immediately.",
+  "evf.settings.map_brightness.name": "Map brightness (glasses)",
+  "evf.settings.map_brightness.hint": "Luma gain from −100 to +100 (0 = neutral). Brightens or darkens the map shown on the glasses without changing scene lighting — useful to tune the fixed-brightness G2 display. Applies immediately.",
   "evf.settings.capture_fps.name": "Map capture frame rate (fps)",
   "evf.settings.capture_fps.hint": "How many map frames per second are captured and streamed to the glasses (1–60). Higher = smoother map, more GPU and bandwidth. Default 30 fps. Changes take effect immediately without reload.",
+  "evf.settings.map_webp_quality.name": "Map frame compression (WebP quality)",
+  "evf.settings.map_webp_quality.hint": "0 = lossless PNG (~68 KB/frame, ~22 Mbit/s at 30 fps); 1–100 = lossy WebP at that quality (~10–18 KB/frame at the default 75). Lower values save bandwidth at the cost of map detail. Applies immediately; falls back to PNG on browsers without WebP encoding.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Bridge Configuration",
   "evf.bridgecfg.url.label": "Bridge URL",

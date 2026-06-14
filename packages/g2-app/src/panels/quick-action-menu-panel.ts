@@ -117,6 +117,8 @@ const MAIN_ITEMS = [
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
   { key: 'F', i18nKey: 'quick_item_fps', action: 'fps-toggle', target: undefined },
   { key: 'D', i18nKey: 'quick_item_dither', action: 'dither-toggle', target: undefined },
+  { key: '+', i18nKey: 'quick_item_brightness_up', action: 'brightness-up', target: undefined },
+  { key: '-', i18nKey: 'quick_item_brightness_down', action: 'brightness-down', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
 
@@ -176,6 +178,21 @@ export interface QuickActionMenuCallbacks {
    * case no-ops when absent.
    */
   onDitherToggle?: () => void;
+
+  /**
+   * Called when the user selects [+] Brightness — raises the map luma gain by
+   * one step. Pushed UPSTREAM via the display-settings sync so the Foundry
+   * module's `mapBrightness` follows (in canvas mode the brightness is applied
+   * module-side). The menu stays open so repeated presses stack; press [X] to
+   * close and see the result. Optional — dispatch no-ops when absent.
+   */
+  onBrightnessUp?: () => void;
+
+  /**
+   * Called when the user selects [-] Brightness — lowers the map luma gain by
+   * one step. Mirror of {@link onBrightnessUp}. Optional — no-ops when absent.
+   */
+  onBrightnessDown?: () => void;
 }
 
 // ─── QuickActionMenuPanel ────────────────────────────────────────────────────
@@ -572,6 +589,14 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       case 'dither-toggle':
         this.callbacks.onDitherToggle?.();
         this.callbacks.onClose();
+        break;
+      case 'brightness-up':
+        // Stay open (no onClose) so repeated +/- presses stack — the menu
+        // covers the map, so the user adjusts then presses [X] to see the result.
+        this.callbacks.onBrightnessUp?.();
+        break;
+      case 'brightness-down':
+        this.callbacks.onBrightnessDown?.();
         break;
       case 'action-stub':
         this.callbacks.onAction();

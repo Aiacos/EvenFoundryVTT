@@ -35,6 +35,8 @@ import {
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
+  SETTINGS_DISPLAY_TYPE,
+  SettingsDisplaySchema,
 } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
@@ -57,7 +59,16 @@ import { registerHookSubscribers } from './readers/hook-subscribers.js';
 // Registered in Hooks.once('init') so the vocabulary is available at the earliest point.
 // socketlib count stays 17 (Phase 13 invariant preserved).
 import { registerSpellPackReader } from './readers/spell-pack-reader.js';
-import { getCaptureIntervalMs, registerSettings } from './settings.js';
+import {
+  applyDisplaySettings,
+  buildDisplaySettingsSnapshot,
+  getBrightness,
+  getCaptureIntervalMs,
+  getDither,
+  getNormalize,
+  getWebpQuality,
+  registerSettings,
+} from './settings.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
 // when the socketlib handlers are invoked.
@@ -196,19 +207,107 @@ function getBridgeUrl(): string | null {
 }
 
 /**
+ * Per-POST timeout — a hung bridge connection must release its slot instead
+ * of accumulating in the browser's connection pool (latency audit 2026-06-11).
+ */
+const DELTA_POST_TIMEOUT_MS = 5_000;
+
+/** Whether a frame POST is currently in flight (single-flight frame queue). */
+let _framePostBusy = false;
+
+/** Latest frame delta queued behind the in-flight POST (latest-wins). */
+let _pendingFramePost: { readonly type: string; readonly payload: unknown } | null = null;
+
+/** Delta types carrying full map frames — large + ephemeral, so latest-wins applies. */
+const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixels']);
+
+/**
+ * One POST to bridge /internal/delta with timeout; never throws (T-02-01).
+ *
+ * Returns the parsed JSON response body (or null on any failure). The frame
+ * path reads `pendingSettings` off it for the upstream display-settings sync;
+ * other callers ignore the return.
+ */
+async function postDelta(
+  bridgeUrl: string,
+  internalSecret: string,
+  type: string,
+  payload: unknown,
+): Promise<{ pendingSettings?: unknown } | null> {
+  try {
+    const res = await fetch(`${bridgeUrl}/internal/delta`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${internalSecret}`,
+      },
+      body: JSON.stringify({ type, payload }),
+      signal: AbortSignal.timeout(DELTA_POST_TIMEOUT_MS),
+    });
+    return (await res.json()) as { pendingSettings?: unknown };
+  } catch (err) {
+    // Warning only — bridge unavailability must not crash Foundry session
+    // console.warn allowed per biome.jsonc noConsole allow:[error,warn]
+    console.warn('[EVF] bridgeDeltaEmitter failed:', (err as Error).message ?? err);
+    return null;
+  }
+}
+
+/**
+ * Run one frame POST; apply any glasses-originated settings the bridge
+ * piggybacked on the response, then drain the latest queued frame delta.
+ *
+ * The frame POST is the upstream carrier for the display-settings sync: only
+ * the stream-leader emits frames, so applying `pendingSettings` here writes the
+ * leader's own Foundry settings (whose frames everyone sees). `game.settings.set`
+ * re-fires `onChange` → re-pushes the downstream snapshot, confirming the change.
+ */
+function runFramePost(
+  bridgeUrl: string,
+  internalSecret: string,
+  type: string,
+  payload: unknown,
+): void {
+  _framePostBusy = true;
+  void postDelta(bridgeUrl, internalSecret, type, payload).then((res) => {
+    _framePostBusy = false;
+    const pending = res?.pendingSettings;
+    if (pending !== undefined && pending !== null) {
+      const edit = SettingsDisplaySchema.safeParse(pending);
+      if (edit.success) {
+        void applyDisplaySettings(edit.data);
+      }
+    }
+    const next = _pendingFramePost;
+    if (next !== null) {
+      _pendingFramePost = null;
+      runFramePost(bridgeUrl, internalSecret, next.type, next.payload);
+    }
+  });
+}
+
+/**
  * Fire-and-forget delta emitter — posts to bridge /internal/delta.
  *
  * Logs a warning on failure but NEVER throws (T-02-01).
  * A failed network call must not interrupt the Foundry session.
  *
- * Auth: `Authorization: Bearer <internal_secret>` header.
- * The internal_secret is the per-pair value stored in the bearer registry
- * at pair time (H-1 fix — included in QR payload; see bearer-registry.ts).
+ * Frame deltas ({@link FRAME_DELTA_TYPES}) go through a single-flight
+ * latest-wins queue: at most ONE frame POST is in flight; a frame arriving
+ * while one is in flight replaces any queued frame instead of opening another
+ * connection. Rationale (latency audit 2026-06-11): at 30 fps over a slow WAN
+ * the old unbounded fire-and-forget accumulated in-flight requests without
+ * limit — stale frames kept consuming upload bandwidth that the newest frame
+ * needed. Small stateful deltas (character/combat/…) are NOT queued: they all
+ * must arrive, so each posts independently (with the same timeout).
+ *
+ * Exported for direct unit testing of the latest-wins queue (@internal —
+ * production callers are all within this module).
  *
  * @param type    - Delta type discriminant (e.g. "character.delta")
  * @param payload - Delta payload (typed by caller; serialised as JSON)
  */
-function bridgeDeltaEmitter(type: string, payload: unknown): void {
+export function bridgeDeltaEmitter(type: string, payload: unknown): void {
   const internalSecret = getInternalSecret();
   const bridgeUrl = getBridgeUrl();
 
@@ -217,23 +316,38 @@ function bridgeDeltaEmitter(type: string, payload: unknown): void {
     return;
   }
 
-  // Fire-and-forget
-  void (async () => {
-    try {
-      await fetch(`${bridgeUrl}/internal/delta`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${internalSecret}`,
-        },
-        body: JSON.stringify({ type, payload }),
-      });
-    } catch (err) {
-      // Warning only — bridge unavailability must not crash Foundry session
-      // console.warn allowed per biome.jsonc noConsole allow:[error,warn]
-      console.warn('[EVF] bridgeDeltaEmitter failed:', (err as Error).message ?? err);
+  if (FRAME_DELTA_TYPES.has(type)) {
+    if (_framePostBusy) {
+      _pendingFramePost = { type, payload };
+      return;
     }
-  })();
+    runFramePost(bridgeUrl, internalSecret, type, payload);
+    return;
+  }
+
+  // Non-frame deltas: fire-and-forget (every one must reach the bridge).
+  void postDelta(bridgeUrl, internalSecret, type, payload);
+}
+
+/**
+ * Push the full display-settings snapshot DOWNSTREAM (latency audit 2026-06-14).
+ *
+ * Gated on {@link isStreamLeader} so exactly ONE client publishes the canonical
+ * snapshot — the same client whose frames everyone sees. (Client-scope settings
+ * like dither/brightness differ per client, so the leader's values are the
+ * authoritative ones to mirror on the glasses.) Called on `ready` and from each
+ * display setting's `onChange`, so the bridge cache + every connected glasses
+ * menu stay in sync with Foundry. Fail-open via isStreamLeader on read errors.
+ */
+function emitDisplaySettings(): void {
+  try {
+    if (!isStreamLeader()) {
+      return;
+    }
+  } catch {
+    // isStreamLeader is itself fail-open; if it throws, still publish.
+  }
+  bridgeDeltaEmitter(SETTINGS_DISPLAY_TYPE, buildDisplaySettingsSnapshot());
 }
 
 // Bootstrap: register settings + spell-pack vocabulary reader when Foundry's init hook fires.
@@ -242,7 +356,10 @@ function bridgeDeltaEmitter(type: string, payload: unknown): void {
 // the bridge cache before any MCP tool call could need it.
 // NO new socketlib handler — count stays 17 (Phase 13 invariant).
 Hooks.once('init', () => {
-  registerSettings();
+  // onDisplaySettingChange: push a fresh settings.display snapshot downstream
+  // whenever a DM/player changes a display setting in Foundry (latency audit
+  // 2026-06-14) so the glasses menu reflects it live.
+  registerSettings({ onDisplaySettingChange: emitDisplaySettings });
   // Quick Task 20260517: emit initial spell vocabulary + subscribe to updateCompendium.
   // Wired to bridgeDeltaEmitter so envelopes reach the bridge cache via /internal/delta.
   registerSpellPackReader((type, payload) => bridgeDeltaEmitter(type, payload));
@@ -350,28 +467,28 @@ Hooks.once('ready', () => {
   registerCanvasExtractor({
     emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
     isEnabled: () => isStreamLeader(),
-    getNormalize: (): 'off' | 'auto' => {
-      try {
-        return (game.settings.get(MODULE_ID, 'mapContrastNormalize') as boolean) ? 'auto' : 'off';
-      } catch {
-        return 'off';
-      }
-    },
+    // mapContrastNormalize client setting — evaluated per capture (live toggle).
+    getNormalize: (): 'off' | 'auto' => (getNormalize() ? 'auto' : 'off'),
     // mapDither client setting — Bayer 4×4 during the 16-level quantize.
     // Evaluated per capture so the toggle applies live (like getNormalize).
-    getDither: (): boolean => {
-      try {
-        return game.settings.get(MODULE_ID, 'mapDither') === true;
-      } catch {
-        return false;
-      }
-    },
+    getDither: () => getDither(),
     getCaptureIntervalMs: () => getCaptureIntervalMs(),
+    // mapBrightness client setting — luma gain −100..+100 (0 = neutral).
+    // Evaluated per capture so the slider applies live (like getDither).
+    getBrightness: () => getBrightness(),
+    // mapWebpQuality world setting — 0 = lossless PNG, 1-100 = lossy WebP.
+    // Evaluated per capture so the DM slider applies live (like captureFps).
+    getWebpQuality: () => getWebpQuality(),
     // frame_stats telemetry (≤1 every 5s): capture-phase timings observable
     // from the bridge WS without access to this client's console. Unknown
     // envelope types are dropped silently by the g2-app (scene-input 2c).
     emitStats: (stats) => bridgeDeltaEmitter('frame_stats', stats),
   });
+
+  // Display-settings sync (latency audit 2026-06-14): publish the initial
+  // snapshot so the bridge cache is warm and any glasses connecting later get
+  // the live Foundry values on connect. Gated on isStreamLeader inside.
+  emitDisplaySettings();
 });
 
 /** Minimal user shape read by {@link isStreamLeader}. */

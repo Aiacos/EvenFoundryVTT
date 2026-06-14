@@ -61,6 +61,7 @@ import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { CanvasCompositor } from '../engine/canvas-compositor.js';
 import { performCapabilityHandshake, probeBleThroughput } from '../engine/capability-handshake.js';
 import { DebugMirror } from '../engine/debug-mirror.js';
+import { createDisplaySettingsSync } from '../engine/display-settings-sync.js';
 import { attachGlassesEventSource } from '../engine/glasses-event-source.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
 import { HudDeltaDriver } from '../engine/hud-delta-driver.js';
@@ -123,6 +124,13 @@ export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 const FPS_INDICATOR_KV_KEY = 'evf.fps.indicator';
 
 /**
+ * Per-press brightness step for the `[+]`/`[-]` Quick Action menu items
+ * (display-settings sync, 2026-06-14). 20 = five presses span 0→+100; matches
+ * the Foundry `mapBrightness` slider step granularity.
+ */
+const BRIGHTNESS_STEP = 20;
+
+/**
  * Production boot-engine options.
  *
  * **NO DI fields here.** Test-only DI lives in {@link TestingDependencies}.
@@ -182,6 +190,20 @@ export interface BootEngineOpts {
    *   3. `undefined` (no pin — legacy last-write-wins roster[0] behavior)
    */
   readonly characterId?: string;
+
+  /**
+   * Minimum HUD recompose interval in ms (the HudDeltaDriver throttle).
+   *
+   * Defaults to 33 ms (≈30 fps cap — bench ladder 2026-06-10 sweet spot for
+   * the full-screen 576×288 composite). Lab/sim runs may lower it (e.g. 20 ms
+   * ≈ 50 fps potential) once the rest of the chain sustains the rate; real
+   * hardware is BLE-governed and ignores faster cycles anyway.
+   *
+   * Also settable via the `?hudms=<ms>` URL param in the browser entry path
+   * (same pattern as `?probe=true`); this boot flag takes precedence over the
+   * URL param when both are present. Values are clamped to [8, 1000].
+   */
+  readonly hudMinIntervalMs?: number;
 }
 
 /**
@@ -199,6 +221,43 @@ export interface TestingDependencies {
   readonly wsFactory?: (url: string) => WebSocket;
   /** Replace `waitForEvenAppBridge()` with a test-compatible mock. */
   readonly bridgeFactory?: () => Promise<EvenAppBridge>;
+}
+
+/** Default HudDeltaDriver throttle (ms) — ≈30 fps cap, bench ladder 2026-06-10. */
+const DEFAULT_HUD_MIN_INTERVAL_MS = 33;
+
+/** Clamp bounds for {@link resolveHudMinIntervalMs} — 8 ms (125 fps) to 1 s. */
+const HUD_MIN_INTERVAL_CLAMP: readonly [number, number] = [8, 1000];
+
+/**
+ * Resolve the HudDeltaDriver throttle interval for this boot.
+ *
+ * Priority (same scheme as the perf probe):
+ *   1. `opts.hudMinIntervalMs` — explicit boot flag
+ *   2. `?hudms=<ms>` URL param — browser entry path (sim / lab tuning)
+ *   3. Default 33 ms
+ *
+ * Non-numeric or out-of-range values clamp to [8, 1000] ms; an unparsable
+ * URL param falls through to the default.
+ *
+ * @internal Exported for direct unit testing only.
+ */
+export function resolveHudMinIntervalMs(optValue: number | undefined): number {
+  let raw = optValue;
+  if (raw === undefined && typeof window !== 'undefined') {
+    const param = new URL(window.location.href).searchParams.get('hudms');
+    if (param !== null) {
+      const parsed = Number(param);
+      if (Number.isFinite(parsed)) {
+        raw = parsed;
+      }
+    }
+  }
+  if (raw === undefined || !Number.isFinite(raw)) {
+    return DEFAULT_HUD_MIN_INTERVAL_MS;
+  }
+  const [lo, hi] = HUD_MIN_INTERVAL_CLAMP;
+  return Math.max(lo, Math.min(hi, Math.round(raw)));
 }
 
 /**
@@ -648,12 +707,14 @@ export async function _bootEngineCore(
     // Live-read dither mode — reads `ditherOn` at cycle time so a menu toggle
     // takes immediate effect without reconstructing the driver (quick-task 260611-CLR).
     getDitherMode: () => ditherOn,
-    // 33ms throttle (bench ladder 2026-06-10, full-screen 576×288):
+    // Throttle default 33ms (bench ladder 2026-06-10, full-screen 576×288):
     // FS+100ms = 6.75 fps → 50ms = 9.5 → Bayer = 14.4 → Worker = 15.2 →
     // 33ms = 20.8 fps. With dither+encode in the Worker the main-thread cycle
     // cost is ~15ms (composite+hash+push), so 33ms is the sweet spot.
     // On hardware BLE (0.5–2s/image) the adaptive-rate stack governs instead.
-    minRedrawIntervalMs: 33,
+    // Overridable per boot (opts.hudMinIntervalMs / ?hudms= — latency audit
+    // 2026-06-11): 33ms is a hard ≈30.3 fps delivery cap; lab runs can lower it.
+    minRedrawIntervalMs: resolveHudMinIntervalMs(opts.hudMinIntervalMs),
   });
   const layerManager = new LayerManager(bridge, debugMirror, compositor, hudDeltaDriver);
   // The handshake server_caps wire shape is `string[]` (Zod schema); narrow to
@@ -887,6 +948,20 @@ export async function _bootEngineCore(
     ditherOn = on;
   });
 
+  // Bidirectional display-settings sync (latency audit 2026-06-14). Subscribes
+  // to the `settings.display` channel (the bridge replays the cached snapshot on
+  // connect + fans out changes) so the glasses mirror the live Foundry values,
+  // and exposes `sendEdit()` for the menu to push glasses-originated changes
+  // upstream. onUpdate realigns the local dither mirror to Foundry's canonical
+  // value (Foundry wins) and repaints. `wsSender` + `hudDeltaDriver` are both in
+  // scope here (constructed above).
+  const displaySettingsSync = createDisplaySettingsSync(wsEventBus, wsSender, (settings) => {
+    if (typeof settings.dither === 'boolean' && settings.dither !== ditherOn) {
+      ditherOn = settings.dither;
+      hudDeltaDriver.requestCycle();
+    }
+  });
+
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
   //
   // Constructed alongside CanvasStatusHudLayer so both are available for the
@@ -1063,13 +1138,35 @@ export async function _bootEngineCore(
           });
         },
         onDitherToggle: () => {
-          // [D] Dither — flip dither mode, persist to the Even Hub kv store via
-          // dither-mode.ts helpers (fire-and-forget; a failed write only loses
-          // persistence, not the in-session toggle). requestCycle() ensures the
-          // next render uses the new mode immediately.
+          // [D] Dither — flip dither mode. Two effects:
+          //  1. Local glyph-fallback dither (app-side ditherOn), persisted to the
+          //     Even Hub kv store (fire-and-forget; a failed write only loses
+          //     persistence, not the in-session toggle).
+          //  2. Bidirectional sync (latency audit 2026-06-14): push the new value
+          //     UPSTREAM as a `client_setting` so the Foundry module's `mapDither`
+          //     follows — in canvas mode (the default) the map dither is applied
+          //     module-side, so this is what actually changes the visible map.
+          //     The module echoes it back over `settings.display`, realigning all
+          //     glasses. requestCycle() repaints immediately for the glyph path.
           ditherOn = !ditherOn;
           void persistDitherMode(bridge, ditherOn);
+          displaySettingsSync.sendEdit({ dither: ditherOn });
           hudDeltaDriver.requestCycle();
+        },
+        // [+]/[-] Brightness — adjust the map luma gain by ±BRIGHTNESS_STEP and
+        // push UPSTREAM (the module applies it module-side; in canvas mode this
+        // is what visibly brightens/darkens the map). Clamped to [−100, +100];
+        // the current value comes from the synced Foundry snapshot (default 0).
+        onBrightnessUp: () => {
+          const next = Math.min(100, (displaySettingsSync.get().brightness ?? 0) + BRIGHTNESS_STEP);
+          displaySettingsSync.sendEdit({ brightness: next });
+        },
+        onBrightnessDown: () => {
+          const next = Math.max(
+            -100,
+            (displaySettingsSync.get().brightness ?? 0) - BRIGHTNESS_STEP,
+          );
+          displaySettingsSync.sendEdit({ brightness: next });
         },
       },
       // Pass the live render mode so the menu uses the correct container strategy:
@@ -1777,6 +1874,11 @@ export async function _bootEngineCore(
         unsubOverscroll();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubOverscroll failed', err);
+      }
+      try {
+        displaySettingsSync.dispose();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: displaySettingsSync.dispose failed', err);
       }
       try {
         unsubRootExit();

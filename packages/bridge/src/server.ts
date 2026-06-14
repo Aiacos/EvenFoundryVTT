@@ -45,7 +45,7 @@
 // Quick Task 260605-dog — character-snapshot cache + handler. CharacterSnapshotCache feeds
 // internalSnapshotFn for evf.getCharacterSnapshot; populated by handleCharacterSnapshotEnvelope
 // via the same /internal/delta fan-out. Closes the actor_not_found gap (GET /v1/character/:id).
-import { SPELL_KEYTERMS } from '@evf/shared-protocol';
+import { SETTINGS_DISPLAY_TYPE, SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
@@ -88,6 +88,7 @@ import { registerSceneRoute } from './routes/scene.js';
 import { registerSpellsRoute } from './routes/spells.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
+import { SettingsStore } from './settings/settings-store.js';
 import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
 import { createDeepgramStt } from './voice/deepgram-stt.js';
 // Phase 15 Plan 02 — Deepgram Keyterm Prompting (VOICE-06): bridge feeds the merger
@@ -97,6 +98,7 @@ import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
 import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
 import { handleCharacterSnapshotEnvelope } from './ws/character-snapshot-handler.js';
+import { handleClientSetting } from './ws/client-setting-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
@@ -128,6 +130,16 @@ export interface BuildServerOptions {
    * @see middleware/idempotency.ts
    */
   idempotencyStore?: IdempotencyStore;
+  /**
+   * Inject a custom SettingsStore for test isolation (display-settings sync).
+   *
+   * In production: a fresh `SettingsStore` is created per `buildServer()` call.
+   * In tests: pass an existing store to seed/observe the downstream cache and
+   * the pending upstream box.
+   *
+   * @see settings/settings-store.ts
+   */
+  settingsStore?: SettingsStore;
   /**
    * Inject a custom prom-client Registry for test isolation (Pitfall 2 — T-03-10).
    *
@@ -335,6 +347,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
   // Use injected store for test isolation; production creates a fresh instance.
   const idempotencyStore = opts.idempotencyStore ?? new IdempotencyStore();
+  // Bidirectional display-settings sync (latency audit 2026-06-14): caches the
+  // module's `settings.display` snapshot for connect-push and holds the pending
+  // glasses-originated edit for the frame-POST piggyback.
+  const settingsStore = opts.settingsStore ?? new SettingsStore();
 
   // --- 4 (debug). Dev-only observability taps (Quick Task 260529-h5e) ---
   // `debugEnabled` + `debugBus` are hoisted above (before Fastify) so the pino
@@ -548,13 +564,18 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   //   - character-snapshot (character.delta)        → CharacterSnapshotCache → evf.getCharacterSnapshot (dog)
   //   - spell-pack (r1.spells.available)            → SpellPackCache      → /v1/spells/available
   //   - entity-pack (r1.entities.available)         → EntityPackCache     → /v1/entities/available
-  await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
-    handleBearerRegistryEnvelope(type, payload, bearerRegistryCache);
-    handleCharacterListEnvelope(type, payload, characterListCache);
-    handleCharacterSnapshotEnvelope(type, payload, characterSnapshotCache);
-    handleSpellPackEnvelope(type, payload, spellCache);
-    handleEntityPackEnvelope(type, payload, entityCache);
-  });
+  await registerInternalDeltaRoute(
+    app,
+    deltaEmitter,
+    (type, payload) => {
+      handleBearerRegistryEnvelope(type, payload, bearerRegistryCache);
+      handleCharacterListEnvelope(type, payload, characterListCache);
+      handleCharacterSnapshotEnvelope(type, payload, characterSnapshotCache);
+      handleSpellPackEnvelope(type, payload, spellCache);
+      handleEntityPackEnvelope(type, payload, entityCache);
+    },
+    settingsStore,
+  );
 
   // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---
   // Registered ONLY behind isDebugEnabled() (existence gate — layer 1). When OFF,
@@ -660,6 +681,15 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           logger.error({ err }, 'initial character.delta push failed');
         });
 
+        // On-connect display-settings push (latency audit 2026-06-14): serve the
+        // cached `settings.display` snapshot so the glasses menu reflects the
+        // live Foundry values immediately, even when this app connected after
+        // the module's last change (the replay buffer only covers reconnects).
+        const latestSettings = settingsStore.getLatest();
+        if (latestSettings !== null) {
+          deltaEmitter.sendInitialToSession(sessionId, SETTINGS_DISPLAY_TYPE, latestSettings);
+        }
+
         // Message router: each handler is responsible for its own envelope type.
         // handleResume processes 'client_resume'; handleToolInvoke processes 'tool.invoke'.
         // Both no-op on unrecognised input — ordering does not matter.
@@ -672,6 +702,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           }
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
           void handleToolInvoke(socket, sessionId, sessionStore, wsDispatchFn, rawData, logger);
+          // 'client_setting' → queue a glasses-originated display-settings edit
+          // for the upstream frame-POST piggyback. No-op on other message types.
+          handleClientSetting(settingsStore, rawData, logger);
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees

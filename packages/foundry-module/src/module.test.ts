@@ -1433,3 +1433,120 @@ describe('isStreamLeader — stream-source election', () => {
     expect(isStreamLeader()).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bridgeDeltaEmitter — frame latest-wins POST queue (latency audit 2026-06-11)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('bridgeDeltaEmitter — frame latest-wins POST queue (FPQ)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Stub the Foundry globals module.js touches at import + an active bearer, then import the emitter. */
+  async function importEmitter() {
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
+    });
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', {
+      settings: {
+        get: vi.fn(() => ({
+          entries: {
+            'token-1': {
+              internalSecret: 'secret-abc',
+              bridgeUrl: 'https://bridge.local:8910',
+              revokedAt: null,
+              expiresAt: Date.now() + 86_400_000,
+            },
+          },
+        })),
+      },
+    });
+    const { bridgeDeltaEmitter } = await import('./module.js');
+    return bridgeDeltaEmitter;
+  }
+
+  // Deterministic MICROTASK flush — the latest-wins drain is a pure promise
+  // chain (postDelta await → .then → runFramePost), so draining microtasks is
+  // enough. Crucially it must NOT yield to macrotasks: leaked capture-loop /
+  // rotation setTimeouts from other foundry-module tests would otherwise fire
+  // during the wait and call the global fetch stub, inflating the count
+  // (observed: 7 fetches under the full suite). Microtask-only flushing keeps
+  // those timers dormant, so the assertion sees exactly the drain's own calls.
+  async function flushMicrotasks(ticks = 100): Promise<void> {
+    for (let i = 0; i < ticks; i++) {
+      await Promise.resolve();
+    }
+  }
+
+  it('FPQ-1: at most ONE frame POST in flight — later frames queue latest-wins', async () => {
+    // Each fetch returns a deferred this test resolves on demand. A `.json()`
+    // method matches the real Response shape postDelta now awaits.
+    const resolvers: Array<(v: { ok: boolean; json: () => Promise<unknown> }) => void> = [];
+    const fetchMock = vi.fn(() => new Promise((resolve) => resolvers.push(resolve)));
+    vi.stubGlobal('fetch', fetchMock);
+    const emit = await importEmitter();
+
+    emit('frame_png', { n: 1 });
+    emit('frame_png', { n: 2 });
+    emit('frame_png', { n: 3 });
+
+    // Only the first frame opened a connection; 2 and 3 are queued (3 replaced 2).
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Resolve the in-flight POST → the queue drains the LATEST frame (n:3).
+    resolvers[0]?.({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The drained POST carries the LATEST queued frame (n:3) — n:2 was dropped.
+    const lastCall = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
+    expect(JSON.parse(lastCall[1].body).payload).toEqual({ n: 3 });
+  });
+
+  it('FPQ-2: non-frame deltas are never queued behind an in-flight frame POST', async () => {
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<never>(() => {
+          /* frame POST never settles */
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const emit = await importEmitter();
+
+    emit('frame_png', { n: 1 });
+    emit('character.delta', { hp: 9 });
+
+    // Both POSTs opened — the stateful delta did not wait for the stuck frame.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(
+      (fetchMock.mock.calls[1] as unknown as [string, { body: string }])[1].body,
+    );
+    expect(secondBody.type).toBe('character.delta');
+  });
+
+  it('FPQ-3: every POST carries an abort signal (5s timeout guard)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const emit = await importEmitter();
+
+    emit('frame_png', { n: 1 });
+    emit('character.delta', { hp: 9 });
+
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const call of fetchMock.mock.calls as unknown as Array<[string, { signal?: unknown }]>) {
+      expect(call[1].signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+});

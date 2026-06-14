@@ -128,6 +128,15 @@ export {
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
+// Latency-audit follow-up 2026-06-14 — bidirectional map/display settings sync.
+export {
+  CLIENT_SETTING_TYPE,
+  type ClientSettingMessage,
+  ClientSettingMessageSchema,
+  SETTINGS_DISPLAY_TYPE,
+  type SettingsDisplay,
+  SettingsDisplaySchema,
+} from './payloads/settings-display.js';
 
 // ─── Phase 5 Plan 05-05 — Log payload schema ─────────────────────────────────
 // LogEvent + LogSnapshot + LogEventKind + LOG_DELTA_TYPE for chat log tail.
