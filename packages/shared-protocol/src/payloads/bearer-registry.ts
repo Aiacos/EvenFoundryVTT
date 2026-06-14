@@ -56,6 +56,14 @@ export const R1_BEARERS_AVAILABLE_TYPE = 'r1.bearers.available' as const;
  *                 authorized actor set is derived live from this user's Foundry
  *                 ownership at validation time; the bearer never authorizes more
  *                 than what this user owns.
+ * - `authorizedActorIds` — Live set of actor ids the bound user OWNs, computed
+ *                 Foundry-side at snapshot-build time (ADR-0014 §3). REQUIRED so
+ *                 the bridge's **cached** validate path (`internalValidateFn`,
+ *                 backed by `BearerRegistryCache` — the no-socketlib path) can
+ *                 enforce per-actor read authorization without a Foundry
+ *                 roundtrip. Fail-closed: an empty array authorizes nothing. The
+ *                 set goes stale within one push interval (same window as the
+ *                 token-revocation propagation), which is acceptable per ADR-0014.
  *
  * ## Migration (ADR-0014 §5 — fail-closed)
  *
@@ -85,6 +93,13 @@ export const BearerRegistryEntrySchema = z.object({
    * entries without it fail-close (treated as authorizing no actors → re-pair).
    */
   userId: z.string().min(1),
+  /**
+   * Live set of actor ids the bound user OWNs (ADR-0014 §3), computed Foundry-side
+   * at snapshot-build time. REQUIRED so the bridge's cached (no-socketlib) validate
+   * path can enforce per-actor authorization. Fail-closed: an empty array
+   * authorizes nothing — do NOT make this `.optional()`, that reopens the T8 leak.
+   */
+  authorizedActorIds: z.array(z.string()),
 });
 
 /** TypeScript type inferred from {@link BearerRegistryEntrySchema}. */

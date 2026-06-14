@@ -27,6 +27,7 @@ describe('BearerRegistryEntrySchema', () => {
     expiresAt: 1717000000000,
     worldId: 'my-world',
     userId: 'user-aiacos',
+    authorizedActorIds: ['actor-1', 'actor-2'],
   };
 
   it('accepts a valid entry', () => {
@@ -85,6 +86,30 @@ describe('BearerRegistryEntrySchema', () => {
     const result = BearerRegistryEntrySchema.safeParse({ ...validEntry, expiresAt: 0 });
     expect(result.success).toBe(true);
   });
+
+  // ── ADR-0014: per-bearer authorizedActorIds (cached enforce path) ──
+
+  it('accepts an empty authorizedActorIds (fail-closed — authorizes nothing)', () => {
+    const result = BearerRegistryEntrySchema.safeParse({
+      ...validEntry,
+      authorizedActorIds: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an entry missing authorizedActorIds (ADR-0014 — required for cached enforce)', () => {
+    const { authorizedActorIds: _, ...rest } = validEntry;
+    const result = BearerRegistryEntrySchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-string actor ids in authorizedActorIds', () => {
+    const result = BearerRegistryEntrySchema.safeParse({
+      ...validEntry,
+      authorizedActorIds: ['actor-1', 99],
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('BearerRegistrySnapshotSchema', () => {
@@ -96,6 +121,7 @@ describe('BearerRegistrySnapshotSchema', () => {
         expiresAt: 1717000000000,
         worldId: 'world-xyz',
         userId: 'user-abc',
+        authorizedActorIds: ['actor-abc'],
       },
     ],
     source: 'foundry-registry' as const,
@@ -165,8 +191,22 @@ describe('BearerRegistrySnapshotSchema', () => {
     const result = BearerRegistrySnapshotSchema.safeParse({
       ...validPayload,
       bearers: [
-        { token: 'token-1', alias: 'G2 A', expiresAt: 1000, worldId: 'world-1', userId: 'u1' },
-        { token: 'token-2', alias: 'G2 B', expiresAt: 2000, worldId: 'world-2', userId: 'u2' },
+        {
+          token: 'token-1',
+          alias: 'G2 A',
+          expiresAt: 1000,
+          worldId: 'world-1',
+          userId: 'u1',
+          authorizedActorIds: ['a1'],
+        },
+        {
+          token: 'token-2',
+          alias: 'G2 B',
+          expiresAt: 2000,
+          worldId: 'world-2',
+          userId: 'u2',
+          authorizedActorIds: [],
+        },
       ],
       count: 2,
     });
