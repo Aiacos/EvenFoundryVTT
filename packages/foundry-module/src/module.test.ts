@@ -1549,4 +1549,45 @@ describe('bridgeDeltaEmitter — frame latest-wins POST queue (FPQ)', () => {
       expect(call[1].signal).toBeInstanceOf(AbortSignal);
     }
   });
+
+  it('FPQ-4: a THROW in the post-success callback does NOT wedge the pipeline (T11)', async () => {
+    // First frame's response body has a `pendingSettings` getter that throws
+    // synchronously when read inside the .then callback. Pre-fix this left
+    // _framePostBusy = true forever and silently dropped every later frame.
+    let firstResponse = true;
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => {
+        if (firstResponse) {
+          firstResponse = false;
+          return {
+            get pendingSettings(): unknown {
+              throw new Error('boom: malformed pendingSettings');
+            },
+          };
+        }
+        return { ok: true };
+      },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const emit = await importEmitter();
+
+    // Frame 1 → in-flight POST whose .then will throw; frame 2 queues behind it.
+    emit('frame_png', { n: 1 });
+    emit('frame_png', { n: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Drain: the throw must be caught + .finally must clear busy + drain frame 2.
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const drained = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
+    expect(JSON.parse(drained[1].body).payload).toEqual({ n: 2 });
+
+    // And the pipeline is NOT wedged: a fresh frame after the throw still posts.
+    emit('frame_png', { n: 3 });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const after = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
+    expect(JSON.parse(after[1].body).payload).toEqual({ n: 3 });
+  });
 });

@@ -269,21 +269,33 @@ function runFramePost(
   payload: unknown,
 ): void {
   _framePostBusy = true;
-  void postDelta(bridgeUrl, internalSecret, type, payload).then((res) => {
-    _framePostBusy = false;
-    const pending = res?.pendingSettings;
-    if (pending !== undefined && pending !== null) {
-      const edit = SettingsDisplaySchema.safeParse(pending);
-      if (edit.success) {
-        void applyDisplaySettings(edit.data);
+  void postDelta(bridgeUrl, internalSecret, type, payload)
+    .then((res) => {
+      const pending = res?.pendingSettings;
+      if (pending !== undefined && pending !== null) {
+        const edit = SettingsDisplaySchema.safeParse(pending);
+        if (edit.success) {
+          void applyDisplaySettings(edit.data);
+        }
       }
-    }
-    const next = _pendingFramePost;
-    if (next !== null) {
-      _pendingFramePost = null;
-      runFramePost(bridgeUrl, internalSecret, next.type, next.payload);
-    }
-  });
+    })
+    // A thrown callback (e.g. a malformed pendingSettings getter) or a rejected
+    // postDelta must NOT wedge the single-flight pipeline: log and recover.
+    // Consistent with the file's "never throw" discipline (T-02-01).
+    .catch((err) => {
+      console.warn('[EVF] runFramePost callback failed:', (err as Error).message ?? err);
+    })
+    // ALWAYS clear the busy flag and drain exactly one queued frame, regardless
+    // of success, network rejection, or a thrown success callback — otherwise a
+    // single throw would silently drop every subsequent frame forever.
+    .finally(() => {
+      _framePostBusy = false;
+      const next = _pendingFramePost;
+      if (next !== null) {
+        _pendingFramePost = null;
+        runFramePost(bridgeUrl, internalSecret, next.type, next.payload);
+      }
+    });
 }
 
 /**
