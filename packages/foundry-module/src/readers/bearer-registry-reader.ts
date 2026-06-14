@@ -34,6 +34,7 @@
 
 import type { BearerRegistrySnapshot } from '@evf/shared-protocol';
 import { R1_BEARERS_AVAILABLE_TYPE } from '@evf/shared-protocol';
+import { authorizedActorIdsForUser } from '../pair/actor-authorization.js';
 import { listBearers } from '../pair/bearer-registry.js';
 
 // ─── readBearerRegistry ────────────────────────────────────────────────────────
@@ -69,6 +70,11 @@ export function readBearerRegistry(): BearerRegistrySnapshot {
         // ADR-0014: carry the bound Foundry User id so the bridge can derive the
         // bearer's authorized actor set. Required by BearerRegistryEntrySchema.
         userId: entry.userId,
+        // ADR-0014 §3: compute the live owned-actor set Foundry-side and ship it
+        // with the pushed snapshot so the bridge's CACHED (no-socketlib) validate
+        // path can enforce per-actor read authorization. Fail-closed: an unknown
+        // user / iteration error yields [] (authorizes nothing).
+        authorizedActorIds: authorizedActorIdsForUser(entry.userId),
       }));
 
     return {
