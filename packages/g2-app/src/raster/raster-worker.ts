@@ -256,9 +256,10 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
       }
       // Stage 3 (now per tile): dither (explicit tile dimensions for dither-utils API).
       const ditheredRgba = ditherTile(tileBuf, TILE_W, TILE_H, palette);
-      // Stage 8: (RLE telemetry removed — WR-03 fix: encodeRle4bit result was
-      // immediately voided with no real dependency on rleStats; removed until
-      // telemetry is actually wired through WorkerResponse.)
+      // Stage 8: (RLE telemetry removed — WR-03 fix: the RLE-encoded result was
+      // immediately voided with no real dependency on rleStats; the dead RLE
+      // module was deleted. Re-add only if telemetry is wired through
+      // WorkerResponse.)
       //
       // Stage 9: PNG encode (4-bit indexed via cnum=16).
       const pngBuf = UPNG.encode([ditheredRgba.buffer], TILE_W, TILE_H, 16);
