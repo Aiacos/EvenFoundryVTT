@@ -76,6 +76,8 @@ const CANVAS_FG = '#ffffff';
 /** Canvas-mode item-row pitch (px) — 11 lines (title + 10 items) at 16px fit the box. */
 const CANVAS_ROW_PITCH = 16;
 
+// TODO (#34): the box is fixed-size for 10 items at 13px with no overflow/scroll —
+// adding nav items past ~10 overflows it off-screen. Add in-box pagination first.
 // ─── Canvas-mode menu box geometry (2026-06-14) ──────────────────────────────
 // The menu paints as a centered BOX over the map layer (z=0) instead of an
 // opaque full-screen fill, so the map stays visible around it. The G2 has only

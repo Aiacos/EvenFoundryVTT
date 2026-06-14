@@ -909,6 +909,8 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         if (res !== null) {
           emitEncoded(job, res.bytes, res.encoder, t0);
         } else {
+          // TODO (#37): upng fallback is 50-120ms (~8fps) — emit a one-time warn so
+          // the silent perf cliff on hosts without OffscreenCanvas is visible.
           emitEncoded(job, encodePngUpng(job.luma, job.width, job.height), 'upng', t0);
         }
       })

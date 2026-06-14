@@ -182,6 +182,8 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     onChange: onDisplayChange,
   });
 
+  // TODO (#32): mapDither/mapBrightness/mapContrastNormalize are client-scope, so a
+  // stream-leader change makes the synced glasses values jump. Consider world-scope.
   // Map dithering — per-client display preference (2026-06-11). When enabled,
   // a Bayer 4×4 ordered dither is applied during the module-side 16-level
   // quantization, so gradients render as a stippled pattern instead of flat

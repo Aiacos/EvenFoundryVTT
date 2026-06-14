@@ -223,6 +223,8 @@ export class DeltaEmitter {
 
       // Send to client (ignore send errors — client may have disconnected)
       try {
+        // TODO (#33): per-session stringify (session_id is in the envelope) is a
+        // fan-out scaling cliff at 4+ clients — hoist session_id out to stringify once.
         ws.send(JSON.stringify(envelope));
       } catch {
         // Connection error — unregister stale session

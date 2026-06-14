@@ -34,6 +34,8 @@ import type { SettingsDisplay } from '@evf/shared-protocol';
  * `/internal/delta` route (cache write + pending drain), the `/ws` connect
  * push, and the `client_setting` inbound handler (pending queue).
  */
+// TODO (#36): single-world store (one _latest/_pending). Key by worldId/stream
+// before the cloud multi-tenant stretch (Phase 13) cross-contaminates settings.
 export class SettingsStore {
   /** Latest full snapshot pushed by the module, or null when cold (no push yet). */
   private _latest: SettingsDisplay | null = null;

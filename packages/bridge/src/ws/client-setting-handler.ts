@@ -59,6 +59,8 @@ export function handleClientSetting(
     return;
   }
 
+  // TODO (#31): this edit only reaches the module on its next frame POST — up to
+  // ~5s on a static scene (keyframe interval). Signal a forced keyframe here.
   settingsStore.queuePending(edit);
   logger.debug(
     { keys: Object.keys(edit) },

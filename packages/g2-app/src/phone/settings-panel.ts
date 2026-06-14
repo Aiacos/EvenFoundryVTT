@@ -89,6 +89,8 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
 
   const root = doc.createElement('section');
   root.className = 'evf-settings-panel';
+  // TODO (#35): always-mounted fixed bottom sheet — add a collapse/hide toggle so it
+  // doesn't permanently occupy the phone UI during gameplay.
   Object.assign(root.style, {
     position: 'fixed',
     left: '0',
