@@ -771,6 +771,74 @@ describe('registerCanvasExtractor — idempotency (CE-7)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CE-RESET: _resetCanvasExtractor must Hooks.off all 5 listeners (no leak) — T12
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('registerCanvasExtractor — reset removes all listeners (CE-RESET, T12)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCanvasExtractor();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    _resetCanvasExtractor();
+  });
+
+  it('CE-RESET-1: _resetCanvasExtractor Hooks.off all 5 listeners (register → reset → register has no leak)', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144 }));
+
+    // First registration: 5 listeners on, none off yet.
+    const emitA = vi.fn();
+    registerCanvasExtractor({ emit: emitA });
+    expect(hooks.on).toHaveBeenCalledTimes(5);
+    expect(hooks.off).toHaveBeenCalledTimes(0);
+
+    // Reset MUST Hooks.off all 5 — pre-fix it only nulled _registered.
+    _resetCanvasExtractor();
+    expect(hooks.off).toHaveBeenCalledTimes(5);
+    const offEvents = hooks.off.mock.calls.map((c) => c[0]);
+    expect(offEvents).toEqual(
+      expect.arrayContaining([
+        'canvasReady',
+        'drawCanvas',
+        'refreshToken',
+        'updateScene',
+        'canvasPan',
+      ]),
+    );
+
+    // The OLD emitter must be dead: firing a hook now reaches nobody.
+    emitA.mockClear();
+    hooks.fire('canvasReady');
+    expect(emitA).not.toHaveBeenCalled();
+
+    // Second registration attaches a fresh set; firing reaches ONLY the new
+    // emitter exactly once (no duplicate from a leaked listener).
+    const emitB = vi.fn();
+    registerCanvasExtractor({ emit: emitB });
+    expect(hooks.on).toHaveBeenCalledTimes(10); // 5 + 5
+
+    hooks.fire('canvasReady');
+    expect(emitB).toHaveBeenCalledTimes(1);
+    expect(emitA).not.toHaveBeenCalled();
+  });
+
+  it('CE-RESET-2: _resetCanvasExtractor with no active registration is a safe no-op', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+
+    // No register call — reset must not throw and must not call Hooks.off.
+    expect(() => {
+      _resetCanvasExtractor();
+    }).not.toThrow();
+    expect(hooks.off).toHaveBeenCalledTimes(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CE-INT: Continuous interval capture
 // ─────────────────────────────────────────────────────────────────────────────
 

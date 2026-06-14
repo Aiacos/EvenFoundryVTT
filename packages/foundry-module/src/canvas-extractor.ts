@@ -708,6 +708,14 @@ function bytesToB64(bytes: Uint8Array): string {
 /** Internal module state — single registration is enforced (CE-7 idempotency). */
 interface RegistrationState {
   readonly handlers: ReadonlyArray<{ readonly event: string; readonly fn: () => void }>;
+  /**
+   * Canonical teardown for THIS registration: `Hooks.off`s all 5 listeners,
+   * clears the throttle + capture-loop timers, and resets the singleton state.
+   * Stored so {@link _resetCanvasExtractor} (and any caller) tears down via the
+   * exact same path as the returned unregister fn — preventing listener leaks
+   * across register → reset → register.
+   */
+  readonly teardown: () => void;
 }
 
 let _registered: RegistrationState | null = null;
@@ -1005,9 +1013,14 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
   };
   scheduleNextCapture(opts.getCaptureIntervalMs?.() ?? 250);
 
-  _registered = { handlers };
-
-  return () => {
+  // Canonical teardown — idempotent. `Hooks.off`s all 5 listeners, clears the
+  // throttle + capture-loop timers, and resets the singleton state. Both the
+  // returned unregister fn AND _resetCanvasExtractor route through this so a
+  // reset never leaves the listeners attached (no leak across re-registration).
+  const teardown = (): void => {
+    if (_registered === null) {
+      return;
+    }
     if (_throttleTimer !== null) {
       clearTimeout(_throttleTimer);
       _throttleTimer = null;
@@ -1017,8 +1030,14 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       clearTimeout(_captureLoopTimer);
       _captureLoopTimer = null;
     }
-    for (const { event, fn } of handlers) {
-      (Hooks as unknown as { off(e: string, f: () => void): void }).off(event, fn);
+    // Guard the Hooks global: teardown can run after the Foundry environment is
+    // gone (module reload, test global-unstub), where `Hooks` is undefined —
+    // detaching from an absent registry is a no-op, not an error.
+    const hooksOff = (globalThis as { Hooks?: { off(e: string, f: () => void): void } }).Hooks;
+    if (hooksOff !== undefined) {
+      for (const { event, fn } of handlers) {
+        hooksOff.off(event, fn);
+      }
     }
     _registered = null;
     _lastEmittedHash = null;
@@ -1027,10 +1046,26 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     _encodeBusy = false;
     _pendingEncode = null;
   };
+
+  _registered = { handlers, teardown };
+
+  return teardown;
 }
 
-/** @internal Test-only reset to clear the singleton between vitest runs. */
+/**
+ * @internal Test-only reset to clear the singleton between vitest runs.
+ *
+ * Routes through the live registration's {@link RegistrationState.teardown} so
+ * the 5 hook listeners are actually `Hooks.off`'d (not just nulled) — otherwise
+ * they leak across register → reset → register and keep firing into a stale
+ * closure (double streams / emit to a dead emitter). Safe no-op when nothing is
+ * registered.
+ */
 export function _resetCanvasExtractor(): void {
+  // Tear down the active registration (Hooks.off + timer clears) if present.
+  _registered?.teardown();
+  // Defensive belt-and-braces in case there was no active registration: clear
+  // any orphaned timer/state directly (teardown already did this when present).
   _registered = null;
   _lastEmittedHash = null;
   _lastEmitTs = 0;
