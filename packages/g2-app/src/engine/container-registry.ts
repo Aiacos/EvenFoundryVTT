@@ -114,9 +114,17 @@ export interface ContainerRegistryEntry {
  *
  * `hud-capture` uses `isEventCapture:1` at full-screen dimensions (576×288) as the
  * gesture-capture container behind the 4 image tiles. This is the locked ADR-0013
- * Amendment 1 capture-invariant pattern (locked decision #2): the G2 host renders
- * containers in declaration order; image tiles declared first appear visually on
- * top of the text capture container.
+ * Amendment 1 capture-invariant pattern (locked decision #2): **the G2 host renders
+ * IMAGE containers visually ON TOP of TEXT containers** — a type-based z-order, NOT
+ * declaration order (`imageObject` and `textObject` are SEPARATE payload arrays in
+ * `createStartUpPageContainer`/`rebuildPageContainer`, so there is no single
+ * cross-type declaration order). So a full-screen text container sitting under the
+ * image tiles is invisible — exactly what `hud-capture` wants (gesture capture only,
+ * never shows text). Empirically verified 2026-06-14 with the overlap probe: an
+ * image and a text occupying the same rect → only the image is visible; a text NOT
+ * under any image renders normally. (The generic Even design guideline says
+ * "declaration order determines overlap" — that does not hold for image-vs-text on
+ * this firmware; the image always wins.)
  *
  * The on-screen placement of the 400×200 raster region inside the 576×288 physical
  * screen is parameterized — default deferred to Phase 20.
@@ -170,9 +178,10 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   // these are in the canvas-mode HUD raster page (different rebuildPageContainer call).
   //
   // hud-tile-0..3: 4 image tiles at 288×144 (SDK max 20-288×20-144, INV-2 re-verified 2026-06-10), tiled 2×2 = FULL SCREEN 576×288 (layout B).
-  // hud-capture:   1 full-screen text container (576×288) with isEventCapture:1, declared last so
-  //                image tiles appear visually on top (G2 host renders in declaration order).
-  //                The full-screen capture container routes R1 gestures behind the tiles (INV-5).
+  // hud-capture:   1 full-screen text container (576×288) with isEventCapture:1. The G2 host renders
+  //                IMAGE containers on top of TEXT containers (type-based z-order, NOT declaration
+  //                order — image/text are separate payload arrays; probe-verified 2026-06-14), so the
+  //                image tiles cover this text container: it is invisible and routes R1 gestures only (INV-5).
   //
   // @see docs/architecture/0013-hud-raster-rendering.md (Amendment 1 — locked decisions #2, #3)
   // @see packages/g2-app/src/engine/layer-manager.ts (_flushPage canvas mode consumer)
@@ -424,8 +433,10 @@ export function buildHudRasterPageSchema(): {
   }
 
   const textObject = [
-    // hud-capture: full-screen gesture-capture container (must be first so image tiles
-    // render visually on top in G2 host declaration order — ADR-0013 Amendment 1 #2).
+    // hud-capture: full-screen gesture-capture text container. The G2 host renders image
+    // containers on top of text containers (type-based, probe-verified 2026-06-14 — NOT
+    // declaration order), so the image tiles cover this; it stays invisible by design
+    // and only routes R1 gestures (ADR-0013 Amendment 1 #2).
     new TextContainerProperty({
       containerID: captureEntry.id,
       containerName: 'hud-capture',

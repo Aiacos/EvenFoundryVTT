@@ -299,9 +299,11 @@ export interface QuickActionMenuCallbacks {
  * 2026-06-09): also implements `CanvasLayer` (`attachCanvas`/`paint`/`isDirty`)
  * so `LayerManager.bundle()` registers it with the `CanvasCompositor` at z=2 and
  * the menu is painted INTO the raster tiles. The previous canvas-mode approach
- * (textContainerUpgrade into `hud-capture`) could never be visible: the capture
- * container is declared LAST in the HUD raster page schema, so the G2 host
- * renders the 4 opaque image tiles ON TOP of it (container-registry.ts §hud-capture).
+ * (textContainerUpgrade into `hud-capture`) could never be visible: the G2 host
+ * renders IMAGE containers on top of TEXT containers (type-based z-order,
+ * probe-verified 2026-06-14 — NOT declaration order), so the 4 opaque image tiles
+ * cover any text behind them. A native text menu over the map is therefore
+ * impossible; the menu must be composited into the image raster (container-registry.ts §hud-capture).
  */
 export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
   /**

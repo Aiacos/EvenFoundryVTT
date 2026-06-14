@@ -93,7 +93,9 @@ Rationale: the static/dynamic layer split is first-class at the `CanvasLayer` bo
 
 #### 3. Capture-container re-mapping
 
-**The 5th page container `'hud-capture'` is a full-screen text container (576×288) with `isEventCapture:1`, placed behind the 4 image tiles in declaration order.** It is NOT a zero-size container — that approach is undocumented and untested. The canonical EvenHub first-app example uses a full-screen text container as the gesture-capture target; this is the established pattern.
+**The 5th page container `'hud-capture'` is a full-screen text container (576×288) with `isEventCapture:1`, sitting behind the 4 image tiles.** The G2 host renders **image** containers visually on top of **text** containers — a **type-based z-order, NOT declaration order** (`imageObject` and `textObject` are separate payload arrays, so there is no single cross-type declaration order). This was **empirically verified 2026-06-14** with an overlap probe: an image and a text occupying the same rect render with only the image visible; a text not under any image renders normally (screenshot evidence in the dev log). So the full-screen `hud-capture` text is invisible behind the tiles — exactly the intent (gesture capture only). It is NOT a zero-size container — that approach is undocumented and untested. The canonical EvenHub first-app example uses a full-screen text container as the gesture-capture target; this is the established pattern.
+
+> ⚠️ The generic Even design guideline says "no z-index — declaration order determines overlap." That holds for same-type containers but NOT for image-vs-text on this firmware: the image always wins regardless of array order. Do not assume a text container declared "after" an image will show over it.
 
 INV-5 (gesture determinism) is preserved: the `hud-capture` text container is the sole `isEventCapture:1` container on the HUD raster page, providing unambiguous R1 input routing. `MapBaseLayer.getCaptureContainer()` continues to return `'map-capture'` for the map/glyph path; the HUD raster page uses `'hud-capture'` as its capture target (different page, different container namespace).
 
