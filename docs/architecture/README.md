@@ -12,14 +12,16 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0002](./0002-protocol-versioning.md) | Protocol Versioning — WS envelope + idempotency + replay | accepted | Phase 2 entry |
 | [ADR-0003](./0003-tool-registry-pattern.md) | Tool Registry — shared MVP gestures + V2 MCP | accepted | Phase 3 entry |
 | [ADR-0004](./0004-voice-via-mcp-not-internal.md) | Voice via MCP (NOT internal LLM, NOT EvenAI hijack) | accepted | Phase 11 entry |
-| [ADR-0005](./0005-phase0-go-no-go.md) | Phase 0 GO/NO-GO — Branch A/B/C raster vs glyph default | proposed | Phase 0 closure (Plan 04 fills verdict) |
+| [ADR-0005](./0005-phase0-go-no-go.md) | Phase 0 GO/NO-GO — Branch A/B/C raster vs glyph default | PROVISIONAL-ACCEPTED | Phase 0 closure (Plan 04 fills verdict) |
 | [ADR-0006](./0006-raster-pipeline-library-stack.md) | Raster Pipeline Library Stack | proposed | Phase 0 closure (Plan 04 fills branch path) |
 | [ADR-0008](./0008-code-quality-configuration.md) | Code Quality Configuration — Biome+TS+Vitest+CI gates | accepted | Phase 1+ every commit |
 | [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | accepted | Phase 4a Plan 05 — boot orchestrator wired the contract across 6 plans (606/606 tests) |
 | [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | accepted | Phase 5 entry |
 | [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) | Foundry Write Path — Single-Workflow-Origin Discipline | accepted | Phase 7 entry |
+| [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md) | R1 Gesture Model — Retire Long-Press, Over-Scroll Quick Action, Root Exit, Lifecycle Handlers | accepted | Phase 20 gesture redesign (GEST-01) |
+| [ADR-0013](./0013-hud-raster-rendering.md) | HUD raster rendering (image-based HUD) | accepted (2026-06-05) | HUD raster milestone |
 
-**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
+**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. ADR-0012 retires long-press for the Phase 20 gesture redesign; ADR-0013 moves the always-on HUD onto the raster pipeline. Highest authored ADR is 0013. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
 ## Authoring Process
 
