@@ -79,7 +79,6 @@ import { WsReconnectController } from '../engine/ws-reconnect.js';
 import { WsSender } from '../engine/ws-sender.js';
 import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
-import { loadDitherMode, persistDitherMode } from '../hud/dither-mode.js';
 import { createHudTileWorkerClient } from '../hud/hud-tile-worker-client.js';
 import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
@@ -937,16 +936,14 @@ export async function _bootEngineCore(
       /* default ON */
     });
 
-  // Dither mode flag — default ON (Bayer 4×4), persisted in the Even Hub kv store
-  // via loadDitherMode / persistDitherMode (quick-task 260611-CLR). '1' = dither ON
-  // (Bayer 4×4); anything else = OFF (direct nearest-of-16 quantization — DEFAULT,
-  // user decision 2026-06-11). Fail-soft: a kv read error keeps the default OFF.
-  // getDitherMode is passed into HudDeltaDriver so every render cycle reads the live
-  // value — a toggle takes effect immediately without driver reconstruction.
+  // Dither mode flag — driven SOLELY by the synced Foundry `mapDither` setting
+  // (display-settings sync below), default OFF. 2026-06-14: the old independent
+  // Even Hub kv toggle (`view.hud.dither`) was removed — it could latch dither ON
+  // across reboots regardless of the setting ("always dithering" bug). Now dither
+  // is a single source of truth: the Foundry setting. getDitherMode reads this
+  // live each render cycle, so a settings change (local [D] toggle → upstream →
+  // echo, or a DM change) takes effect on the next cycle without reconstruction.
   let ditherOn = false;
-  void loadDitherMode(bridge).then((on: boolean) => {
-    ditherOn = on;
-  });
 
   // Bidirectional display-settings sync (latency audit 2026-06-14). Subscribes
   // to the `settings.display` channel (the bridge replays the cached snapshot on
@@ -1138,19 +1135,16 @@ export async function _bootEngineCore(
           });
         },
         onDitherToggle: () => {
-          // [D] Dither — flip dither mode. Two effects:
-          //  1. Local glyph-fallback dither (app-side ditherOn), persisted to the
-          //     Even Hub kv store (fire-and-forget; a failed write only loses
-          //     persistence, not the in-session toggle).
-          //  2. Bidirectional sync (latency audit 2026-06-14): push the new value
-          //     UPSTREAM as a `client_setting` so the Foundry module's `mapDither`
-          //     follows — in canvas mode (the default) the map dither is applied
-          //     module-side, so this is what actually changes the visible map.
-          //     The module echoes it back over `settings.display`, realigning all
-          //     glasses. requestCycle() repaints immediately for the glyph path.
-          ditherOn = !ditherOn;
-          void persistDitherMode(bridge, ditherOn);
-          displaySettingsSync.sendEdit({ dither: ditherOn });
+          // [D] Dither — flip the SETTING (single source of truth). Reads the
+          // current synced value, flips it, optimistically mirrors it locally for
+          // immediate feedback, and pushes it UPSTREAM as a `client_setting` so the
+          // Foundry module's `mapDither` follows (in canvas mode the map dither is
+          // applied module-side — this is what changes the visible map). The module
+          // echoes it back over `settings.display`, realigning every glasses. No
+          // local kv persistence — the Foundry setting IS the persisted state.
+          const next = !(displaySettingsSync.get().dither ?? ditherOn);
+          ditherOn = next;
+          displaySettingsSync.sendEdit({ dither: next });
           hudDeltaDriver.requestCycle();
         },
         // [+]/[-] Brightness — adjust the map luma gain by ±BRIGHTNESS_STEP and
