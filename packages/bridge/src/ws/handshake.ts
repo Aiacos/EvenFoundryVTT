@@ -9,7 +9,7 @@
  * 5. Send HandshakeServerSchema response
  *
  * Close codes:
- * - 4400 — invalid/unparseable handshake message
+ * - 4400 — invalid/unparseable handshake message (also: idle handshake timeout)
  * - 4401 — invalid/expired/revoked bearer token
  *
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.13
@@ -35,6 +35,16 @@ export const CLOSE_INVALID_HANDSHAKE = 4400;
 export const CLOSE_INVALID_TOKEN = 4401;
 
 /**
+ * Default idle-handshake timeout in milliseconds.
+ *
+ * An unauthenticated client that connects and never sends the first handshake
+ * frame would otherwise hold a live socket plus an unresolved Promise forever
+ * (slow-loris). After this window with no message the socket is closed with
+ * {@link CLOSE_INVALID_HANDSHAKE} (4400) and the handshake resolves `null`.
+ */
+export const HANDSHAKE_IDLE_TIMEOUT_MS = 10_000;
+
+/**
  * Handle the WS handshake for a newly connected client.
  *
  * Called from the Fastify route handler that wraps `@fastify/websocket`.
@@ -53,6 +63,8 @@ export const CLOSE_INVALID_TOKEN = 4401;
  * @param replayBuffer - Shared ReplayBuffer instance
  * @param sessionStore - Shared SessionStore instance
  * @param logger - pino logger (with redact config applied at server level)
+ * @param idleTimeoutMs - Idle-handshake timeout in ms (defaults to
+ *   {@link HANDSHAKE_IDLE_TIMEOUT_MS}; injectable for testability with fake timers)
  * @returns `sessionId` on success, `null` on failure (socket already closed)
  *
  * @see .planning/phases/03-bridge-service-skeleton/03-01-PLAN.md Task 1
@@ -65,9 +77,24 @@ export async function handleHandshake(
   replayBuffer: ReplayBuffer,
   sessionStore: SessionStore,
   logger: Logger,
+  idleTimeoutMs: number = HANDSHAKE_IDLE_TIMEOUT_MS,
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
+    // Slow-loris guard: if the first handshake frame never arrives within
+    // `idleTimeoutMs`, close the socket (4400) and resolve null so the Promise
+    // never dangles. Cleared the instant the message handler fires (below) so
+    // every success / invalid-handshake / invalid-token path is unaffected.
+    const idleTimer = setTimeout(() => {
+      logger.warn('WS handshake: no message within idle timeout — closing 4400');
+      socket.close(CLOSE_INVALID_HANDSHAKE, 'handshake_timeout');
+      resolve(null);
+    }, idleTimeoutMs);
+
     socket.once('message', async (rawData) => {
+      // Clear the idle timer FIRST — before any parse/branch — so no resolve
+      // path (success, invalid handshake, invalid token, unexpected error)
+      // races a spurious timeout-driven close.
+      clearTimeout(idleTimer);
       try {
         // Parse first message as HandshakeClientSchema
         let parsed: unknown;
