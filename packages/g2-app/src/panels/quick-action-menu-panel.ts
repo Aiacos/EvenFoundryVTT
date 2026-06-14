@@ -73,11 +73,30 @@ const CANVAS_BG = '#000000';
 /** Canvas-mode foreground — white (quantized to brightest G2 palette step). */
 const CANVAS_FG = '#ffffff';
 
-/** Canvas-mode first item-row baseline y (px) — below the title row. */
-const CANVAS_ITEMS_TOP_Y = 40;
-
-/** Canvas-mode item-row pitch (px) — 10 rows at 15px end at y=175+16 < 200. */
+/** Canvas-mode item-row pitch (px) — 14 lines (title + 13 items) at 15px fit the box. */
 const CANVAS_ROW_PITCH = 15;
+
+// ─── Canvas-mode menu box geometry (2026-06-14) ──────────────────────────────
+// The menu paints as a centered BOX over the map layer (z=0) instead of an
+// opaque full-screen fill, so the map stays visible around it. The G2 has only
+// 4 image containers and the full-screen map uses all 4, so a literally-separate
+// menu image is impossible — the compositor instead blits this transparent layer
+// (box opaque, rest cleared) over the map (drawImage is alpha-aware), giving the
+// same visual: map visible on every side of the menu box.
+/** Menu box width (px) — leaves ~98px of map visible on each side. */
+const MENU_BOX_W = 380;
+/** Menu box height (px) — fits title + 13 rows; ~14px of map top/bottom. */
+const MENU_BOX_H = 260;
+/** Menu box top-left x (px) — horizontally centered in the 576px compositor. */
+const MENU_BOX_X = Math.round((COMPOSITOR_W - MENU_BOX_W) / 2);
+/** Menu box top-left y (px) — vertically centered in the 288px compositor. */
+const MENU_BOX_Y = Math.round((COMPOSITOR_H - MENU_BOX_H) / 2);
+/** Left padding (px) for text inside the box. */
+const MENU_BOX_PAD_X = 12;
+/** Title baseline y (px) relative to the box top. */
+const MENU_BOX_TITLE_DY = 22;
+/** First item-row baseline y (px) relative to the box top. */
+const CANVAS_ITEMS_TOP_Y = 42;
 
 /** Outer width of the menu box in visible code-points (UI-SPEC §1). */
 const MENU_WIDTH = 70;
@@ -393,13 +412,20 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
   }
 
   /**
-   * Paint the compact menu box onto the layer canvas (400×200).
+   * Paint the compact menu BOX onto the layer canvas (2026-06-14).
    *
-   * Layout (VT323 16px — the 70-char glyph box from `_buildLines()` would be
-   * ~560px wide and cannot fit the 400px raster region):
-   *   - opaque background fill (modal — covers map/sheet below in z-order)
-   *   - 1px border + title row `[ TITLE ]`
-   *   - 9 (main) or 7 (language) item rows: `▶ [S] Label` / `  [S] Label`
+   * The layer is cleared to transparent first, then only a centered
+   * `MENU_BOX_W × MENU_BOX_H` box is filled opaque — the compositor blits this
+   * over the map (z=0) with alpha-aware drawImage, so the map stays visible on
+   * every side of the box (the G2's 4 image containers are all consumed by the
+   * full-screen map, so a separate menu image container is not available; this
+   * composited box is the visual equivalent).
+   *
+   * Layout (VT323 16px, offset into the box):
+   *   - transparent clear of the full layer (map shows around the box)
+   *   - opaque box fill + 1px border
+   *   - title row `[ TITLE ]`
+   *   - 13 (main) or 7 (language) item rows: `▶ [S] Label` / `  [S] Label`
    *
    * Resets `_dirty = false` as its LAST statement (RFONT-03 pattern).
    */
@@ -409,12 +435,20 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       return;
     }
 
-    // Background + border chrome.
+    // Clear the WHOLE layer to transparent first so the map (compositor z=0)
+    // shows through everywhere outside the menu box (2026-06-14). The compositor
+    // blits this layer over the map with alpha-aware drawImage, so transparent
+    // pixels leave the map intact — the map stays visible around the box.
+    ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+
+    // Opaque box background + border chrome — only inside the menu box region.
     ctx.fillStyle = CANVAS_BG;
-    ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+    ctx.fillRect(MENU_BOX_X, MENU_BOX_Y, MENU_BOX_W, MENU_BOX_H);
     ctx.strokeStyle = CANVAS_FG;
     ctx.lineWidth = 1;
-    ctx.strokeRect(1.5, 1.5, COMPOSITOR_W - 3, COMPOSITOR_H - 3);
+    ctx.strokeRect(MENU_BOX_X + 0.5, MENU_BOX_Y + 0.5, MENU_BOX_W - 1, MENU_BOX_H - 1);
+
+    const textX = MENU_BOX_X + MENU_BOX_PAD_X;
 
     // Title row.
     const isMain = this.mode === 'main';
@@ -422,7 +456,7 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
     ctx.font = this._fontFamily;
     ctx.fillStyle = CANVAS_FG;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`[ ${title} ]`, 12, 22);
+    ctx.fillText(`[ ${title} ]`, textX, MENU_BOX_Y + MENU_BOX_TITLE_DY);
 
     // Item rows — reuse the same source-of-truth item arrays as glyph mode.
     const rows: Array<{ navKey: string; label: string }> = isMain
@@ -433,8 +467,8 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
         }));
     rows.forEach((row, idx) => {
       const marker = idx === this.activeIndex ? '▶ ' : '  ';
-      const y = CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
-      ctx.fillText(`${marker}[${row.navKey}] ${row.label}`, 12, y);
+      const y = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
+      ctx.fillText(`${marker}[${row.navKey}] ${row.label}`, textX, y);
     });
 
     this._dirty = false;
