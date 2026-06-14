@@ -62,10 +62,13 @@ export type SettingsDisplay = z.infer<typeof SettingsDisplaySchema>;
 /**
  * Upstream `client_setting` WS message (glasses → bridge).
  *
- * `z.object` (not strict) for additive forward-compat. The `settings` field
- * carries the partial edit the glasses want applied to the Foundry settings.
+ * `z.strictObject` — extra/unknown top-level fields are REJECTED, so the
+ * upstream write channel cannot leak unexpected keys into the settings-apply
+ * path (mirrors the strict wire payloads r1/combat/action-economy). The
+ * `settings` field carries the partial edit the glasses want applied to the
+ * Foundry settings; the inner `SettingsDisplaySchema` stays `.partial()`.
  */
-export const ClientSettingMessageSchema = z.object({
+export const ClientSettingMessageSchema = z.strictObject({
   type: z.literal(CLIENT_SETTING_TYPE),
   settings: SettingsDisplaySchema,
 });
