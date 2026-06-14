@@ -82,6 +82,13 @@ export interface PairModalData extends Record<string, unknown> {
   expiresAtMs?: number;
   /** Active (non-revoked) bearer entries for the devices table */
   devices: DeviceRow[];
+  /**
+   * Foundry users selectable in the pairing form (ADR-0014). The DM picks which
+   * Foundry `User` a device represents; the selected user's owned-actor set
+   * becomes the bearer's authorization scope. `selected` is precomputed here
+   * (Foundry registers no `eq` Handlebars helper — the template uses the boolean).
+   */
+  users: UserOption[];
   /** Pre-localised string map — keys consumed by pair-modal.hbs template */
   i18n: Record<string, string>;
 }
@@ -92,6 +99,19 @@ export interface DeviceRow {
   alias: string;
   pairedDate: string;
   lastSeenRelative: string;
+}
+
+/**
+ * Single option in the pairing user selector (ADR-0014).
+ *
+ * `selected` is precomputed in `_prepareContext` (default: first non-GM player,
+ * else first user) so the template renders `<option ... {{#if selected}}selected{{/if}}>`
+ * without an `eq` helper.
+ */
+export interface UserOption {
+  id: string;
+  name: string;
+  selected: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -163,6 +183,35 @@ function readWorldId(): string {
 }
 
 /**
+ * Builds the pairing user-selector options from `game.users` (ADR-0014).
+ *
+ * Default selection (precomputed `selected` flag — no `eq` Handlebars helper):
+ * the first non-GM player, else the first user, else none. The DM may override
+ * the selection in the form. Returns `[]` defensively when `game.users` is
+ * unavailable (the form then omits the selector and pairing falls back to no
+ * user — fail-closed at validate time).
+ *
+ * @returns Ordered list of `{ id, name, selected }` options.
+ */
+function buildUserOptions(): UserOption[] {
+  const users = game.users?.contents;
+  if (!Array.isArray(users) || users.length === 0) {
+    return [];
+  }
+
+  // Default to the first non-GM player; fall back to the first user.
+  const firstPlayer = users.find((u) => u.isGM === false);
+  const defaultUser = firstPlayer ?? users[0];
+  const defaultId = defaultUser?.id;
+
+  return users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    selected: u.id === defaultId,
+  }));
+}
+
+/**
  * Builds a DeviceRow from a BearerEntry for template rendering.
  * Token value included as `token` — only rendered in `data-token-id` attribute for revoke,
  * never rendered in visible text.
@@ -206,6 +255,7 @@ function buildI18n(): Record<string, string> {
     copyHide: l('evf.pair.copy.hide'),
     copyButton: l('evf.pair.copy.copy'),
     copyCopied: l('evf.pair.copy.copied'),
+    userSelectLabel: l('evf.pair.user.select_label'),
     refresh: l('evf.pair.qr.refresh'),
     awaiting: l('evf.pair.qr.awaiting'),
     expiresIn: l('evf.pair.qr.expires_in'),
@@ -317,6 +367,9 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   override async _prepareContext(_options: unknown): Promise<PairModalData> {
     const { state, activeEntry } = this._computeState();
     const devices = listBearers().map(toDeviceRow);
+    // ADR-0014: precompute the user-selector options (with default selected flag)
+    // here so the template needs no `eq` helper.
+    const users = buildUserOptions();
     const i18n = buildI18n();
 
     const isEmpty = state === 'empty';
@@ -334,6 +387,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
         isPairing,
         showCredentials,
         devices,
+        users,
         i18n,
       };
     }
@@ -359,6 +413,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       expiresIso,
       expiresAtMs,
       devices,
+      users,
       i18n,
     };
   }
@@ -467,10 +522,36 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
+   * Reads the currently-selected Foundry user id from the pairing form's
+   * `<select data-user-select>` (ADR-0014).
+   *
+   * Falls back to the default selection (first non-GM player, else first user)
+   * when the selector is absent or has no value — mirrors {@link buildUserOptions}
+   * so a refresh that occurs before any explicit DM choice still binds to a sane
+   * default. Returns `''` when no users exist at all (validate-time fail-closed).
+   *
+   * @returns The selected Foundry user id, or the default, or `''`.
+   */
+  private _readSelectedUserId(): string {
+    const select = this.element.querySelector<HTMLSelectElement>('[data-user-select]');
+    const fromDom = select?.value;
+    if (typeof fromDom === 'string' && fromDom.length > 0) {
+      return fromDom;
+    }
+    // Fall back to the precomputed default (first non-GM player else first user).
+    const defaultOption = buildUserOptions().find((u) => u.selected);
+    return defaultOption?.id ?? '';
+  }
+
+  /**
    * Handles click on "Refresh", "New Code" (expired state), or first-code button (empty state).
    *
    * Generates a new bearer (with `refresh=true` to apply 60s grace on the old token),
    * and re-renders the modal in-place. The credentials update without a full modal reload.
+   *
+   * ADR-0014: binds the new bearer to the Foundry user selected in the form
+   * (`_readSelectedUserId`). The bearer's authorized actor set is derived live
+   * from that user's Foundry ownership at validate time.
    *
    * @param event - DOM click event
    */
@@ -479,9 +560,11 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     // Propagate the existing device alias so the refreshed entry keeps its label (WR-04).
     // listBearers() returns non-revoked entries; the first is the active device.
     const currentAlias = listBearers()[0]?.alias ?? '';
+    // ADR-0014: bind to the DM-selected Foundry user (default: first non-GM player).
+    const selectedUserId = this._readSelectedUserId();
     // Generate new bearer with grace period (D-2.11). Bridge URL + world ID are read from
     // settings / game.world at call time (no-arg construction path; see class doc).
-    generateBearer(currentAlias, readBridgeUrl(), readWorldId(), true)
+    generateBearer(currentAlias, readBridgeUrl(), readWorldId(), selectedUserId, true)
       .then(() => {
         void this.render({ force: true });
       })

@@ -56,6 +56,20 @@
     {{!-- active | refresh-needed | pairing-in-progress: show copyable credentials --}}
     <p class="evf-pair-modal__copy-instruction">{{i18n.copyInstruction}}</p>
 
+    {{!-- User selector (ADR-0014): bind the bearer to a Foundry User. The selected
+          user's owned-actor set becomes the device's read authorization scope.
+          `selected` is precomputed in _prepareContext (no `eq` helper). --}}
+    {{#if users.length}}
+    <div class="evf-pair-modal__cred-field evf-pair-modal__user-field">
+      <label class="evf-pair-modal__cred-label" for="evf-pair-user">{{i18n.userSelectLabel}}</label>
+      <select id="evf-pair-user" class="evf-pair-modal__user-select" data-user-select>
+        {{#each users}}
+        <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
+        {{/each}}
+      </select>
+    </div>
+    {{/if}}
+
     {{!-- Bridge URL (always visible, copyable) --}}
     <div class="evf-pair-modal__cred-field">
       <span class="evf-pair-modal__cred-label">{{i18n.copyBridgeUrl}}</span>
@@ -130,6 +144,20 @@
   <section class="evf-pair-modal__empty-state">
     <p class="evf-pair-modal__empty-heading">{{i18n.emptyHeading}}</p>
     <p class="evf-pair-modal__empty-body">{{i18n.emptyBody}}</p>
+
+    {{!-- User selector (ADR-0014): pick which Foundry User this first device
+          represents before generating the pairing code. --}}
+    {{#if users.length}}
+    <div class="evf-pair-modal__cred-field evf-pair-modal__user-field">
+      <label class="evf-pair-modal__cred-label" for="evf-pair-user-empty">{{i18n.userSelectLabel}}</label>
+      <select id="evf-pair-user-empty" class="evf-pair-modal__user-select" data-user-select>
+        {{#each users}}
+        <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
+        {{/each}}
+      </select>
+    </div>
+    {{/if}}
+
     <button type="button" data-action="new-code" class="evf-btn evf-btn--primary">
       {{i18n.expiredCta}}
     </button>

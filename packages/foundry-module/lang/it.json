@@ -39,6 +39,7 @@
   "evf.pair.copy.hide": "Nascondi",
   "evf.pair.copy.copy": "Copia",
   "evf.pair.copy.copied": "Copiato!",
+  "evf.pair.user.select_label": "Associa all'utente Foundry",
   "evf.pair.qr.expires_in": "Scade tra: {time}",
   "evf.pair.qr.refresh": "Rinnova",
   "evf.pair.qr.awaiting": "In attesa di connessione...",

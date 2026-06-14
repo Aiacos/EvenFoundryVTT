@@ -53,7 +53,14 @@ const makeHooksMock = () => ({
   on: vi.fn(),
 });
 
-const makeGameMock = (lang = 'en') => {
+const makeGameMock = (
+  lang = 'en',
+  users: Array<{ id: string; name: string; isGM: boolean }> = [
+    { id: 'user-gm', name: 'Gamemaster', isGM: true },
+    { id: 'user-aiacos', name: 'Aiacos', isGM: false },
+    { id: 'user-bea', name: 'Bea', isGM: false },
+  ],
+) => {
   const store = new Map<string, unknown>();
   // Pre-seed the bridgeUrl world setting so the no-arg PairModal (the real registerMenu
   // path) reads a real value instead of `undefined`. The world ID comes from game.world.id.
@@ -68,6 +75,8 @@ const makeGameMock = (lang = 'en') => {
       registerMenu: vi.fn(),
     },
     world: { id: 'world-abc' },
+    // ADR-0014: PairModal builds the user-selector options from game.users.
+    users: { contents: users },
     i18n: {
       lang,
       localize: vi.fn((k: string) => k),
@@ -142,7 +151,12 @@ describe('PairModal', () => {
 
     it('returns state="active" with copyable token + bridgeUrl when a valid bearer exists', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -158,7 +172,12 @@ describe('PairModal', () => {
     // bridgeUrl from settings + the world ID from game.world.id at render time.
     it('no-arg construction (real registerMenu path) yields the bridgeUrl from settings, not undefined', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       // Construct via the REAL Foundry path: `new PairModal()` with no arguments.
       const { PairModal } = await import('./PairModal.js');
@@ -184,7 +203,7 @@ describe('PairModal', () => {
       });
 
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -197,7 +216,12 @@ describe('PairModal', () => {
 
     it('returns state="expired" when the only bearer is expired', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       // Force expiration by mutating registry via settings
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -234,7 +258,12 @@ describe('PairModal', () => {
 
     it('returns state="refresh-needed" when TTL < 1h', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       // Set expiresAt to now + 30 minutes (< 1h threshold)
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -284,7 +313,7 @@ describe('PairModal', () => {
 
     it('sets isEmpty=false, showCredentials=true for active state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -298,7 +327,12 @@ describe('PairModal', () => {
 
     it('sets isExpired=true and showCredentials=false for expired state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | { entries: Record<string, { expiresAt: number }> }
@@ -332,7 +366,12 @@ describe('PairModal', () => {
 
     it('sets isRefreshNeeded=true and showCredentials=true for refresh-needed state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | { entries: Record<string, { expiresAt: number }> }
@@ -367,7 +406,7 @@ describe('PairModal', () => {
   describe('_prepareContext() expiresAtMs', () => {
     it('provides expiresAtMs as a number (epoch ms) for active state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -495,7 +534,7 @@ describe('PairModal', () => {
   describe('_prepareContext() devices list', () => {
     it('returns devices array from listBearers()', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -506,10 +545,117 @@ describe('PairModal', () => {
     });
   });
 
+  // ── ADR-0014: user selector (bind bearer → Foundry User) ──────────────────────
+
+  describe('_prepareContext() user selector (ADR-0014)', () => {
+    it('returns a users list built from game.users with id + name', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      const users = data.users as Array<{ id: string; name: string; selected: boolean }>;
+      expect(users.map((u) => u.id)).toEqual(['user-gm', 'user-aiacos', 'user-bea']);
+      expect(users.map((u) => u.name)).toEqual(['Gamemaster', 'Aiacos', 'Bea']);
+    });
+
+    it('defaults selection to the first non-GM player (user-aiacos)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      const users = data.users as Array<{ id: string; selected: boolean }>;
+      const selected = users.filter((u) => u.selected);
+      expect(selected).toHaveLength(1);
+      expect(selected[0]?.id).toBe('user-aiacos');
+    });
+
+    it('falls back to the first user when all users are GMs', async () => {
+      vi.stubGlobal('game', makeGameMock('en', [{ id: 'user-gm', name: 'GM', isGM: true }]));
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      const users = data.users as Array<{ id: string; selected: boolean }>;
+      expect(users[0]?.selected).toBe(true);
+      expect(users[0]?.id).toBe('user-gm');
+    });
+
+    it('returns an empty users list when game.users is unavailable (defensive)', async () => {
+      const mock = makeGameMock('en', []);
+      // Simulate game.users absent entirely.
+      (mock as { users?: unknown }).users = undefined;
+      vi.stubGlobal('game', mock);
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      expect(data.users).toEqual([]);
+    });
+  });
+
+  describe('_onClickRefresh() user binding (ADR-0014)', () => {
+    it('passes the DOM-selected userId to generateBearer (no-arg construction path)', async () => {
+      const registry = await import('./bearer-registry.js');
+      const genSpy = vi.spyOn(registry, 'generateBearer');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickRefresh(e: Event): void;
+      };
+
+      // Build a DOM with the user selector set to user-bea (an explicit DM override).
+      const html = document.createElement('div');
+      const select = document.createElement('select');
+      select.dataset.userSelect = '';
+      for (const id of ['user-aiacos', 'user-bea']) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        select.appendChild(opt);
+      }
+      select.value = 'user-bea';
+      html.appendChild(select);
+      modal.element = html;
+
+      modal._onClickRefresh(new Event('click'));
+      // generateBearer is called with (alias, bridgeUrl, worldId, userId, refresh=true).
+      expect(genSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-bea',
+        true,
+      );
+      genSpy.mockRestore();
+    });
+
+    it('falls back to the default user (first non-GM player) when the selector has no value', async () => {
+      const registry = await import('./bearer-registry.js');
+      const genSpy = vi.spyOn(registry, 'generateBearer');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickRefresh(e: Event): void;
+      };
+
+      // DOM has no selector at all → fall back to the precomputed default (user-aiacos).
+      modal.element = document.createElement('div');
+      modal._onClickRefresh(new Event('click'));
+      expect(genSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-aiacos',
+        true,
+      );
+      genSpy.mockRestore();
+    });
+  });
+
   describe('_onRender()', () => {
     it('binds click handler to [data-action="revoke"] buttons', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'Device',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal() as unknown as RenderableModal;
@@ -536,7 +682,7 @@ describe('PairModal', () => {
 
     it('binds click handler to [data-action="refresh"] button', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal() as unknown as RenderableModal;
@@ -559,7 +705,7 @@ describe('PairModal', () => {
 
     it('binds click handler to [data-action="new-code"] button (expired state)', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal() as unknown as RenderableModal;
@@ -603,7 +749,7 @@ describe('PairModal', () => {
   describe('_onClickRevoke()', () => {
     it('does nothing when data-token-id is missing', async () => {
       const { generateBearer, listBearers } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
@@ -633,7 +779,7 @@ describe('PairModal', () => {
   describe('formatLastSeen coverage (via devices list)', () => {
     it('shows "—" for lastSeenAt=null', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
       // lastSeenAt is null on fresh entry
 
       const { PairModal } = await import('./PairModal.js');
@@ -645,7 +791,7 @@ describe('PairModal', () => {
 
     it('shows "Online" for lastSeenAt within 2 minutes', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       // Mutate lastSeenAt to 30s ago via settings
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -681,7 +827,7 @@ describe('PairModal', () => {
 
     it('shows "N min ago" for lastSeenAt 5 minutes ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -716,7 +862,7 @@ describe('PairModal', () => {
 
     it('shows "N h ago" for lastSeenAt 2 hours ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -751,7 +897,7 @@ describe('PairModal', () => {
 
     it('shows ">24 h ago" for lastSeenAt 48 hours ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -788,7 +934,7 @@ describe('PairModal', () => {
   describe('close() with active countdown', () => {
     it('clears countdown interval when interval is active', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal() as unknown as RenderableModal;
