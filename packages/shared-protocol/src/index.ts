@@ -407,6 +407,8 @@ export {
 // Both pipelines push via the existing /internal/delta channel (count stays 17).
 
 export {
+  type BearerAuthorization,
+  BearerAuthorizationSchema,
   type BearerRegistryEntry,
   BearerRegistryEntrySchema,
   type BearerRegistrySnapshot,

@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  BearerAuthorizationSchema,
   BearerRegistryEntrySchema,
   BearerRegistrySnapshotSchema,
   R1_BEARERS_AVAILABLE_TYPE,
@@ -25,11 +26,33 @@ describe('BearerRegistryEntrySchema', () => {
     alias: 'Aiacos G2',
     expiresAt: 1717000000000,
     worldId: 'my-world',
+    userId: 'user-aiacos',
   };
 
   it('accepts a valid entry', () => {
     const result = BearerRegistryEntrySchema.safeParse(validEntry);
     expect(result.success).toBe(true);
+  });
+
+  // ── ADR-0014: bearer ↔ Foundry-User binding (userId required, fail-closed) ──
+
+  it('accepts an entry with userId', () => {
+    const result = BearerRegistryEntrySchema.safeParse({
+      ...validEntry,
+      userId: 'user-xyz',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a legacy entry missing userId (fail-closed migration)', () => {
+    const { userId: _, ...legacy } = validEntry;
+    const result = BearerRegistryEntrySchema.safeParse(legacy);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty userId', () => {
+    const result = BearerRegistryEntrySchema.safeParse({ ...validEntry, userId: '' });
+    expect(result.success).toBe(false);
   });
 
   it('rejects missing token', () => {
@@ -72,6 +95,7 @@ describe('BearerRegistrySnapshotSchema', () => {
         alias: 'G2 Device',
         expiresAt: 1717000000000,
         worldId: 'world-xyz',
+        userId: 'user-abc',
       },
     ],
     source: 'foundry-registry' as const,
@@ -124,7 +148,15 @@ describe('BearerRegistrySnapshotSchema', () => {
   it('rejects bearers entry with missing token', () => {
     const result = BearerRegistrySnapshotSchema.safeParse({
       ...validPayload,
-      bearers: [{ alias: 'G2', expiresAt: 1000, worldId: 'w' }],
+      bearers: [{ alias: 'G2', expiresAt: 1000, worldId: 'w', userId: 'u' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects bearers entry with missing userId (ADR-0014 fail-closed)', () => {
+    const result = BearerRegistrySnapshotSchema.safeParse({
+      ...validPayload,
+      bearers: [{ token: 't', alias: 'G2', expiresAt: 1000, worldId: 'w' }],
     });
     expect(result.success).toBe(false);
   });
@@ -133,11 +165,64 @@ describe('BearerRegistrySnapshotSchema', () => {
     const result = BearerRegistrySnapshotSchema.safeParse({
       ...validPayload,
       bearers: [
-        { token: 'token-1', alias: 'G2 A', expiresAt: 1000, worldId: 'world-1' },
-        { token: 'token-2', alias: 'G2 B', expiresAt: 2000, worldId: 'world-2' },
+        { token: 'token-1', alias: 'G2 A', expiresAt: 1000, worldId: 'world-1', userId: 'u1' },
+        { token: 'token-2', alias: 'G2 B', expiresAt: 2000, worldId: 'world-2', userId: 'u2' },
       ],
       count: 2,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('BearerAuthorizationSchema (ADR-0014)', () => {
+  const validAuth = {
+    userId: 'user-aiacos',
+    authorizedActorIds: ['actor-1', 'actor-2'],
+  };
+
+  it('accepts a valid authorization payload', () => {
+    const result = BearerAuthorizationSchema.safeParse(validAuth);
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips parsed output identically', () => {
+    const result = BearerAuthorizationSchema.safeParse(validAuth);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual(validAuth);
+    }
+  });
+
+  it('accepts an empty authorizedActorIds set (authorizes nothing)', () => {
+    const result = BearerAuthorizationSchema.safeParse({
+      userId: 'user-no-actors',
+      authorizedActorIds: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing userId', () => {
+    const { userId: _, ...rest } = validAuth;
+    const result = BearerAuthorizationSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty userId', () => {
+    const result = BearerAuthorizationSchema.safeParse({ ...validAuth, userId: '' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing authorizedActorIds', () => {
+    const { authorizedActorIds: _, ...rest } = validAuth;
+    const result = BearerAuthorizationSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-string actor ids', () => {
+    const result = BearerAuthorizationSchema.safeParse({
+      ...validAuth,
+      authorizedActorIds: ['actor-1', 42],
+    });
+    expect(result.success).toBe(false);
   });
 });
