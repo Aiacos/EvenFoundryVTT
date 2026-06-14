@@ -66,7 +66,7 @@ describe('buildDisplaySettingsSnapshot', () => {
     expect(buildDisplaySettingsSnapshot()).toEqual({
       dither: false,
       brightness: 0,
-      webpQuality: 75,
+      webpQuality: 0,
       captureFps: 30,
       normalize: false,
     });

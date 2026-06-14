@@ -16,7 +16,7 @@
   "evf.settings.capture_fps.name": "Frame rate cattura mappa (fps)",
   "evf.settings.capture_fps.hint": "Quanti frame al secondo della mappa vengono catturati e inviati agli occhiali (1–60). Più alto = mappa più fluida, più GPU e banda. Default 30 fps. Le modifiche hanno effetto immediato senza ricaricare.",
   "evf.settings.map_webp_quality.name": "Compressione frame mappa (qualità WebP)",
-  "evf.settings.map_webp_quality.hint": "0 = PNG lossless (~68 KB/frame, ~22 Mbit/s a 30 fps); 1–100 = WebP lossy a quella qualità (~10–18 KB/frame col default 75). Valori più bassi risparmiano banda a scapito del dettaglio mappa. Effetto immediato; fallback a PNG sui browser senza encoder WebP.",
+  "evf.settings.map_webp_quality.hint": "0 = PNG lossless (DEFAULT — migliore per la mappa a 16 livelli; ~14 Mbit/s a 30 fps). 1–100 = WebP lossy, ma su frame già quantizzati riduce pochissimo (≈1.1× a 75, più grande del PNG a 90). Usa ≈50 solo se la banda è scarsa. Effetto immediato; fallback a PNG senza encoder WebP.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Configurazione bridge",
   "evf.bridgecfg.url.label": "URL del bridge",

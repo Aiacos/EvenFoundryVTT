@@ -238,13 +238,16 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     onChange: onDisplayChange,
   });
 
-  // Frame compression quality — DM-visible world setting (v0.1.27, latency audit
-  // 2026-06-11). 0 = lossless PNG (the pre-v0.1.27 wire format, ~68 KB/frame at
-  // 576×288); 1–100 = lossy WebP at that quality (~10–18 KB/frame at the default
-  // 75). At 30 fps the PNG wire costs ~22 Mbit/s PER HOP (Foundry→bridge AND
-  // bridge→glasses-app) — enough to saturate a home upload link, which showed up
-  // live as bursty 13–25 fps delivery. World scope because the bandwidth belongs
-  // to whoever hosts the stream, not to each viewer; read live on every capture.
+  // Frame compression quality — DM-visible world setting (v0.1.27).
+  // 0 = lossless PNG (DEFAULT); 1–100 = lossy WebP at that quality.
+  //
+  // Default lowered to 0 after a measured perf audit (2026-06-14): frames are
+  // already quantized to 16 grey levels before encode, so DEFLATE (PNG) packs
+  // the flat regions extremely well. On a real Foundry frame, lossy WebP gave
+  // only ~1.1× at q75 and was LARGER than PNG at q90 — i.e. the worst of both
+  // worlds (lossy artefacts with no size win). PNG (0) is the right default;
+  // q≈50 (~1.4×) is the only WebP setting worth using if bandwidth is tight.
+  // World scope (bandwidth belongs to the stream host); read live every capture.
   // Hosts whose canvas encoder cannot produce WebP fall back to PNG transparently.
   game.settings.register(MODULE_ID, 'mapWebpQuality', {
     name: 'evf.settings.map_webp_quality.name',
@@ -262,8 +265,8 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
 /** Default capture rate (fps) — used for the setting default and as the unreadable-setting fallback. */
 const DEFAULT_CAPTURE_FPS = 30;
 
-/** Default WebP quality — used for the setting default and as the unreadable-setting fallback. */
-const DEFAULT_WEBP_QUALITY = 75;
+/** Default WebP quality — 0 = lossless PNG (perf audit 2026-06-14; WebP barely helps on 16-level frames). */
+const DEFAULT_WEBP_QUALITY = 0;
 
 /** Default brightness gain (percent, 0 = neutral) — setting default + unreadable fallback. */
 const DEFAULT_BRIGHTNESS = 0;
