@@ -89,8 +89,6 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
 
   const root = doc.createElement('section');
   root.className = 'evf-settings-panel';
-  // TODO (#35): always-mounted fixed bottom sheet — add a collapse/hide toggle so it
-  // doesn't permanently occupy the phone UI during gameplay.
   Object.assign(root.style, {
     position: 'fixed',
     left: '0',
@@ -108,14 +106,41 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     zIndex: '2147483646',
   });
 
+  // Collapsible header (issue #35): tap the title to hide/show the controls so
+  // the panel does not permanently occupy the phone UI during gameplay.
+  let collapsed = false;
   const title = doc.createElement('h2');
-  title.textContent = L.title;
   Object.assign(title.style, {
     margin: '0 0 16px',
     font: "600 18px/1.2 'FK Grotesk Neue', system-ui, sans-serif",
     letterSpacing: '-0.02em',
+    cursor: 'pointer',
+    userSelect: 'none',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   });
+  const titleText = doc.createElement('span');
+  titleText.textContent = L.title;
+  const chevron = doc.createElement('span');
+  chevron.style.color = T.textDim;
+  title.appendChild(titleText);
+  title.appendChild(chevron);
   root.appendChild(title);
+
+  // Body holds all the control rows; collapsing hides it (header stays visible).
+  const body = doc.createElement('div');
+  root.appendChild(body);
+
+  const applyCollapsed = (): void => {
+    body.style.display = collapsed ? 'none' : '';
+    title.style.margin = collapsed ? '0' : '0 0 16px';
+    chevron.textContent = collapsed ? '▸' : '▾';
+  };
+  title.addEventListener('click', () => {
+    collapsed = !collapsed;
+    applyCollapsed();
+  });
 
   // ── Control builders ───────────────────────────────────────────────────────
 
@@ -148,7 +173,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
       opts.sendEdit({ [key]: input.checked } as SettingsDisplay);
     });
     r.appendChild(input);
-    root.appendChild(r);
+    body.appendChild(r);
     return input;
   }
 
@@ -191,7 +216,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     wrap.appendChild(input);
     wrap.appendChild(val);
     r.appendChild(wrap);
-    root.appendChild(r);
+    body.appendChild(r);
     return input;
   }
 
@@ -238,6 +263,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   for (const el of [brightnessEl, webpEl, fpsEl]) {
     (el as unknown as { _evfRender?: () => void })._evfRender?.();
   }
+  applyCollapsed(); // set the initial expanded state + chevron (▾)
 
   mount.appendChild(root);
 

@@ -76,4 +76,17 @@ describe('createPhoneSettingsPanel', () => {
     createPhoneSettingsPanel({ sendEdit: vi.fn(), initial: {}, locale: 'en' });
     expect(document.body.textContent).toContain('Map settings');
   });
+
+  it('PSP-08: tapping the title collapses/expands the controls (issue #35)', () => {
+    createPhoneSettingsPanel({ sendEdit: vi.fn(), initial: {} });
+    const titleEl = document.querySelector<HTMLElement>('.evf-settings-panel h2');
+    const body = document.querySelector<HTMLElement>('.evf-settings-panel h2 + div');
+    if (titleEl === null || body === null) throw new Error('title/body not found');
+    // Starts expanded.
+    expect(body.style.display).not.toBe('none');
+    titleEl.dispatchEvent(new Event('click'));
+    expect(body.style.display).toBe('none'); // collapsed
+    titleEl.dispatchEvent(new Event('click'));
+    expect(body.style.display).not.toBe('none'); // expanded again
+  });
 });

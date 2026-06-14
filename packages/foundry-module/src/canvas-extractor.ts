@@ -736,6 +736,9 @@ interface EncodeJob {
 /** Whether a native encode is in flight (single-flight encode queue). */
 let _encodeBusy = false;
 
+/** One-time guard for the upng-fallback perf warning (issue #37). */
+let _upngFallbackWarned = false;
+
 /** Latest frame queued behind the in-flight encode (latest-wins). */
 let _pendingEncode: EncodeJob | null = null;
 
@@ -909,8 +912,15 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         if (res !== null) {
           emitEncoded(job, res.bytes, res.encoder, t0);
         } else {
-          // TODO (#37): upng fallback is 50-120ms (~8fps) — emit a one-time warn so
-          // the silent perf cliff on hosts without OffscreenCanvas is visible.
+          // One-time warn (issue #37): the upng fallback is ~50-120 ms/frame (~8 fps)
+          // vs the native encoder's ~6-8 ms. Surface the silent perf cliff on hosts
+          // without a working OffscreenCanvas so it is diagnosable from the console.
+          if (!_upngFallbackWarned) {
+            _upngFallbackWarned = true;
+            console.warn(
+              '[EVF canvas-extractor] native encoder unavailable — using slow upng fallback (~8 fps cap). frame_stats.encoder=upng.',
+            );
+          }
           emitEncoded(job, encodePngUpng(job.luma, job.width, job.height), 'upng', t0);
         }
       })
@@ -1027,6 +1037,7 @@ export function _resetCanvasExtractor(): void {
   _lastStatsTs = 0;
   _encodeBusy = false;
   _pendingEncode = null;
+  _upngFallbackWarned = false;
   _throttleTimer = null;
   _pendingTrailing = false;
   if (_captureLoopTimer !== null) {
