@@ -175,6 +175,103 @@ describe('createWsEventBus — persistent-listener + last-value-replay bus', () 
     expect(fnA).not.toHaveBeenCalled();
   });
 
+  // ── T9: reconnect rebind ────────────────────────────────────────────────
+  //
+  // In canvas mode (DEFAULT boot, CR-03) statusHud is null, so the reconnect
+  // handler's `statusHud?.rebindWsEvents(...)` is a no-op. The SHARED wsEventBus
+  // consumed by hudDeltaDriver / canvasStatusHud / displaySettingsSync must have
+  // its single persistent listener re-pointed at the new socket via `rebind`,
+  // or the HUD silently stops receiving deltas after a WS drop+resume.
+
+  it('(h) REBIND-LIVE: after rebind(newWs), an envelope on newWs reaches existing subscribers', () => {
+    const oldWs = makeMockSocket();
+    const newWs = makeMockSocket();
+    const bus = createWsEventBus(oldWs as unknown as WebSocket);
+
+    // Subscriber established on the ORIGINAL socket (mirrors hudDeltaDriver /
+    // canvasStatusHud subscribing at boot step 5a/10).
+    const fn = vi.fn();
+    bus.subscribe('character.delta', fn);
+
+    // Reconnect: rebind the shared bus onto the new socket.
+    bus.rebind(newWs as unknown as WebSocket);
+
+    // An envelope on the NEW socket must reach the pre-existing subscriber.
+    newWs.fireMessage(msg('character.delta', { actorId: 'live1', hp: 42 }, 7));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith({ actorId: 'live1', hp: 42 });
+  });
+
+  it('(i) REBIND-DEAD: after rebind(newWs), an envelope on the OLD socket is NOT forwarded', () => {
+    const oldWs = makeMockSocket();
+    const newWs = makeMockSocket();
+    const bus = createWsEventBus(oldWs as unknown as WebSocket);
+
+    const fn = vi.fn();
+    bus.subscribe('character.delta', fn);
+    bus.rebind(newWs as unknown as WebSocket);
+
+    // The dead original socket must no longer drive the bus.
+    oldWs.fireMessage(msg('character.delta', { actorId: 'dead1' }, 8));
+    expect(fn).not.toHaveBeenCalled();
+
+    // Sanity: the new socket still works.
+    newWs.fireMessage(msg('character.delta', { actorId: 'live2' }, 9));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith({ actorId: 'live2' });
+  });
+
+  it('(j) REBIND-PRESERVES-CACHE: last-value cache survives rebind and replays to a post-rebind subscriber', () => {
+    const oldWs = makeMockSocket();
+    const newWs = makeMockSocket();
+    const bus = createWsEventBus(oldWs as unknown as WebSocket);
+
+    // Value cached on the OLD socket (e.g. the on-connect character.delta).
+    oldWs.fireMessage(msg('character.delta', { actorId: 'cached1', hp: 7 }, 3));
+    bus.rebind(newWs as unknown as WebSocket);
+
+    // A consumer subscribing AFTER the rebind still gets last-value-replay.
+    const fn = vi.fn();
+    bus.subscribe('character.delta', fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith({ actorId: 'cached1', hp: 7 });
+  });
+
+  it('(k) REBIND-NOOP: rebinding to the SAME socket does not double-attach the listener', () => {
+    const bus = createWsEventBus(ws as unknown as WebSocket);
+    const fn = vi.fn();
+    bus.subscribe('character.delta', fn);
+
+    // Rebind to the same socket — must be a no-op (no duplicate globalHandler).
+    bus.rebind(ws as unknown as WebSocket);
+
+    ws.fireMessage(msg('character.delta', { actorId: 'noop1' }, 4));
+    // Exactly one delivery — not two from a duplicated listener.
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('(l) REBIND-PERF-HOOKS: seqTracker + perfProbe hooks fire on the new socket after rebind', () => {
+    const oldWs = makeMockSocket();
+    const newWs = makeMockSocket();
+    const seqTracker = new SeqTracker();
+    const perfProbe = new PerfProbe({
+      enabled: true,
+      sessionId: 's',
+      wsSend: vi.fn(),
+      seqProvider: () => 0,
+    });
+    const markSpy = vi.spyOn(perfProbe, 'mark');
+
+    const bus = createWsEventBus(oldWs as unknown as WebSocket, seqTracker, perfProbe);
+    bus.rebind(newWs as unknown as WebSocket);
+
+    const idempotencyKey = 'abcdef0123456789';
+    newWs.fireMessage(msg('r1.action.result', { idempotencyKey }, 11));
+
+    expect(seqTracker.getLastConfirmedSeq()).toBe(11);
+    expect(markSpy).toHaveBeenCalledWith('result_envelope', idempotencyKey);
+  });
+
   it('(g) ORDERING (the bug): pre-subscribe message is captured by persistent listener and replayed', () => {
     // This test directly exercises the race that the plan fixes:
     // the WS opens and a character.delta arrives BEFORE StatusHudLayer.subscribe() is called.

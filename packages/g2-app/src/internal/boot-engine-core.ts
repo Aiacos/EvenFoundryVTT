@@ -390,7 +390,10 @@ export function createWsEventBus(
 ): {
   subscribe: (channel: string, fn: (raw: unknown) => void) => () => void;
   setPerfProbe: (p: PerfProbe) => void;
+  rebind: (newWs: WebSocket) => void;
 } {
+  /** The socket the persistent `globalHandler` is currently attached to. */
+  let boundWs: WebSocket = ws;
   /** Last payload per channel — keyed by envelope `type`. */
   const lastByChannel = new Map<string, unknown>();
   /** Per-channel subscriber sets. */
@@ -522,6 +525,40 @@ export function createWsEventBus(
      */
     setPerfProbe(p: PerfProbe): void {
       perfProbeRef = p;
+    },
+
+    /**
+     * Re-attach the persistent `globalHandler` from the dead socket to `newWs`.
+     *
+     * ## Why (T9 — reconnect bus rebind)
+     *
+     * In canvas mode (the DEFAULT boot, CR-03) `statusHud` is null, so the
+     * reconnect handler's `statusHud?.rebindWsEvents(createWsEventBus(newWs, …))`
+     * call is a no-op and a fresh throwaway bus was created instead of touching
+     * the SHARED `wsEventBus`. The shared bus's canvas-mode consumers —
+     * `hudDeltaDriver` (character.delta / combat.turn / combat.state),
+     * `canvasStatusHud` (character.delta) and `displaySettingsSync`
+     * (settings.display) — keep their subscriptions on THIS bus instance, but the
+     * bus's single `globalHandler` was still listening on the dead original
+     * socket. After any WS drop+resume the HUD silently stopped receiving deltas.
+     *
+     * `rebind(newWs)` detaches `globalHandler` from the old socket and attaches it
+     * to `newWs`, preserving every existing subscriber, the per-channel
+     * last-value cache, the `seqTracker` observe hook and the late-bound
+     * `perfProbeRef`. Consumers keep their unchanged subscription handles — only
+     * the underlying socket the single listener reads from is swapped.
+     *
+     * Idempotent against rebinding to the same socket; a no-op in that case.
+     *
+     * @param newWs The freshly-reconnected WebSocket to source envelopes from.
+     */
+    rebind(newWs: WebSocket): void {
+      if (newWs === boundWs) {
+        return;
+      }
+      boundWs.removeEventListener('message', globalHandler as EventListener);
+      boundWs = newWs;
+      newWs.addEventListener('message', globalHandler as EventListener);
     },
   };
 }
@@ -1391,10 +1428,27 @@ export async function _bootEngineCore(
         currentUserId,
       );
 
-      // (3) HUD wsEvents bus — rebind the 3 status-hud channels onto newWs. seqProvider
-      //     already reads the shared seqTracker (no rebind needed there).
-      // CR-03: statusHud is null in canvas mode — rebind is a no-op in that path.
+      // (3) HUD wsEvents bus — rebind the SHARED wsEventBus's persistent listener
+      //     onto newWs. seqProvider already reads the shared seqTracker (no rebind
+      //     needed there).
+      //
+      //     T9 fix: the canvas-mode consumers (hudDeltaDriver, canvasStatusHud,
+      //     displaySettingsSync) all subscribed to the SHARED `wsEventBus` created at
+      //     step 5a. Re-pointing that bus's single globalHandler at newWs keeps all
+      //     three resumed on the live socket while preserving their subscriptions.
+      //     The previous code built a throwaway bus and handed it ONLY to statusHud,
+      //     which is null in canvas mode (CR-03) — so the shared bus stayed bound to
+      //     the dead socket and the HUD silently stopped receiving deltas/settings.
+      wsEventBus.rebind(newWs);
+
+      // Non-canvas (glyph) path: statusHud owns its OWN bus instance (constructed at
+      // step 10 with `wsEvents: wsEventBus`, but it re-subscribes via rebindWsEvents).
+      // CR-03: statusHud is null in canvas mode — this call is a no-op there.
       statusHud?.rebindWsEvents(createWsEventBus(newWs, seqTracker, perfProbe));
+
+      // Repaint the canvas against the now-live socket so any replayed
+      // last-value (character.delta) lands on the glasses immediately.
+      hudDeltaDriver.requestCycle();
     },
   });
 
