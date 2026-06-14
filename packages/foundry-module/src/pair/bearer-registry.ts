@@ -51,6 +51,12 @@ export interface BearerEntry {
   alias: string;
   /** Foundry world ID at time of pairing. */
   worldId: string;
+  /**
+   * Foundry `User` id this bearer is bound to (ADR-0014). The DM chooses which
+   * Foundry User a device represents in the pair modal; the bearer's authorized
+   * actor set is derived live from this user's Foundry ownership at validate time.
+   */
+  userId: string;
   /** Bridge URL the QR was configured for (e.g. "https://bridge.local:8910"). */
   bridgeUrl: string;
   /** Per-pair internal secret (32-byte base64url). Used for Foundry→Bridge POST auth. */
@@ -160,12 +166,15 @@ function generateOpaqueToken(): string {
  * @param alias - Human-readable device label (up to 40 chars; truncated if longer)
  * @param bridgeUrl - Bridge URL the QR is configured for
  * @param worldId - Foundry world ID (included in QR payload)
+ * @param userId - Foundry `User` id this bearer is bound to (ADR-0014). The
+ *                 authorized actor set is derived live from this user's Foundry
+ *                 ownership at validate time.
  * @param refresh - If true, shorten the TTL of the previous active bearer to 60s
  * @returns The newly created BearerEntry (token value included for QR generation only)
  *
  * @example
  * ```ts
- * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc");
+ * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc", "user-1");
  * // Use entry.token + entry.internalSecret to build the QR payload
  * // NEVER log entry.token (T-02-01)
  * ```
@@ -174,6 +183,7 @@ export async function generateBearer(
   alias: string,
   bridgeUrl: string,
   worldId: string,
+  userId: string,
   refresh = false,
 ): Promise<BearerEntry> {
   const registry = readRegistry();
@@ -204,6 +214,7 @@ export async function generateBearer(
     token,
     alias: safeAlias,
     worldId,
+    userId,
     bridgeUrl,
     internalSecret,
     createdAt: now,

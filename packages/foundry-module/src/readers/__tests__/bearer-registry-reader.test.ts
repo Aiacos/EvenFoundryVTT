@@ -90,11 +90,14 @@ function makeEntry(
   worldId: string,
   expiresAt: number,
   revokedAt: number | null = null,
+  userId = 'user-1',
 ) {
   return {
     token,
     alias,
     worldId,
+    // ADR-0014: bearer is bound to a Foundry User; reader carries this through.
+    userId,
     bridgeUrl: 'https://bridge.local:8910',
     internalSecret: 'internal-secret-abc',
     createdAt: NOW - 100,
@@ -150,8 +153,15 @@ describe('readBearerRegistry', () => {
     settingsStore.set(
       'evenfoundryvtt.bearerRegistry',
       makeRegistry({
-        'token-1': makeEntry('token-1', 'G2 Alice', 'world-xyz', futureExpiry),
-        'token-2': makeEntry('token-2', 'G2 Bob', 'world-xyz', futureExpiry + 1000),
+        'token-1': makeEntry('token-1', 'G2 Alice', 'world-xyz', futureExpiry, null, 'user-alice'),
+        'token-2': makeEntry(
+          'token-2',
+          'G2 Bob',
+          'world-xyz',
+          futureExpiry + 1000,
+          null,
+          'user-bob',
+        ),
       }),
     );
 
@@ -167,6 +177,8 @@ describe('readBearerRegistry', () => {
     expect(alice?.token).toBe('token-1');
     expect(alice?.expiresAt).toBe(futureExpiry);
     expect(alice?.worldId).toBe('world-xyz');
+    // ADR-0014: the snapshot carries the bound Foundry User id.
+    expect(alice?.userId).toBe('user-alice');
   });
 
   it('drops expired entries (expiresAt <= Date.now())', async () => {

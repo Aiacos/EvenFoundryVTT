@@ -739,6 +739,21 @@ interface FoundryActor {
    * @see .planning/phases/13-v2-stretch/13-03-PLAN.md (D-13-05)
    */
   img?: string;
+  /**
+   * Tests whether `user` has at least `permission` on this actor (ADR-0014).
+   *
+   * Canonical Foundry `Document#testUserPermission`. The `permission` argument
+   * accepts the ownership-level name (e.g. `"OWNER"`, `"OBSERVER"`) or its
+   * numeric `CONST.DOCUMENT_OWNERSHIP_LEVELS` value. We always pass the string
+   * `"OWNER"` to derive the bearer's authorized actor set.
+   *
+   * @param user - The Foundry User to test permission for.
+   * @param permission - Ownership level name (e.g. `"OWNER"`) or numeric level.
+   * @returns true when the user holds at least the given permission.
+   * @see https://foundryvtt.com/api/classes/foundry.abstract.Document.html
+   * @see docs/architecture/0014-bearer-actor-authorization.md
+   */
+  testUserPermission(user: FoundryUser, permission: string | number): boolean;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────
@@ -874,6 +889,11 @@ interface FoundryCanvas {
  */
 interface FoundryUser {
   id: string;
+  /**
+   * User display name (e.g. "Aiacos", "Gamemaster"). Used by the PairModal user
+   * selector (ADR-0014) to label each option.
+   */
+  name: string;
   /** Set of currently targeted tokens for this user. */
   targets: Set<FoundryToken>;
   /**

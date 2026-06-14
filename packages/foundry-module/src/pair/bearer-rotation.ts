@@ -17,8 +17,9 @@
  *
  * # Rotation sequence
  *
- * 1. Call `generateBearer(alias, bridgeUrl, worldId, refresh=true)` — silently shortens
- *    the old token's expiresAt to `now + GRACE_60S_MS` (D-2.11).
+ * 1. Call `generateBearer(alias, bridgeUrl, worldId, userId, refresh=true)` — silently
+ *    shortens the old token's expiresAt to `now + GRACE_60S_MS` (D-2.11). The bound
+ *    `userId` (ADR-0014) is read from the active entry and carried through.
  * 2. Emit `bearer.rotated` envelope via the injected `opts.emit` callback (wired to
  *    `bridgeDeltaEmitter` in module.ts).
  * 3. Write an audit-log entry (T-07-04 repudiation mitigation).
@@ -158,8 +159,11 @@ export function scheduleBearerRotation(opts: BearerRotationOptions): () => void 
     if (cancelled) return;
 
     try {
-      // Step 1: generate new bearer with 60s grace on old token (RESEARCH §Q6)
-      await generateBearer(active.alias, active.bridgeUrl, active.worldId, true);
+      // Step 1: generate new bearer with 60s grace on old token (RESEARCH §Q6).
+      // ADR-0014: carry the bound userId from the active entry so the rotated
+      // bearer stays bound to the same Foundry User (authorization is preserved
+      // across rotation).
+      await generateBearer(active.alias, active.bridgeUrl, active.worldId, active.userId, true);
 
       // Step 2: emit bearer.rotated envelope
       const now = clock();

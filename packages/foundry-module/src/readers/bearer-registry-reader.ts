@@ -66,6 +66,9 @@ export function readBearerRegistry(): BearerRegistrySnapshot {
         alias: entry.alias,
         expiresAt: entry.expiresAt,
         worldId: entry.worldId,
+        // ADR-0014: carry the bound Foundry User id so the bridge can derive the
+        // bearer's authorized actor set. Required by BearerRegistryEntrySchema.
+        userId: entry.userId,
       }));
 
     return {
