@@ -483,9 +483,19 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     if (entry.expiresAt <= Date.now()) {
       return { valid: false, reason: 'expired' };
     }
+    // ADR-0014: carry the bearer's Foundry-user binding + live owned-actor set
+    // so the cached (no-socketlib) read path enforces per-actor authorization.
+    // The pushed snapshot ships authorizedActorIds per bearer (computed
+    // Foundry-side); fail-closed if somehow absent (authorizes nothing).
     return {
       valid: true,
-      entry: { alias: entry.alias, expiresAt: entry.expiresAt, worldId: entry.worldId },
+      entry: {
+        alias: entry.alias,
+        expiresAt: entry.expiresAt,
+        worldId: entry.worldId,
+        userId: entry.userId,
+      },
+      authorizedActorIds: entry.authorizedActorIds ?? [],
     };
   };
 
@@ -512,10 +522,28 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       return characterListCache.get()?.characters ?? [];
     }
     // Quick Task 260605-dog: serve cached snapshot for getCharacterSnapshot.
-    // args[0] === actorId (see routes/character.ts line 52 + initial-snapshot.ts line 97).
+    // args[0] === actorId, args[1] === token (see routes/character.ts +
+    // initial-snapshot.ts call sites).
     if (handler === 'evf.getCharacterSnapshot') {
       const actorId = args[0];
-      return typeof actorId === 'string' ? (characterSnapshotCache.get(actorId) ?? null) : null;
+      const token = args[1];
+      if (typeof actorId !== 'string') return null;
+      // ADR-0014 §4 defense-in-depth: re-enforce per-actor authorization HERE,
+      // not only at the REST route. The on-connect initial push and any future
+      // caller route through this fn; a snapshot for a non-owned actor must
+      // never be served. Resolve the bearer's authorized set from the bearer
+      // registry cache (the same source internalValidateFn uses) and deny on
+      // miss. Fail-closed: unknown token / cold cache → authorizes nothing.
+      // (DEV-ONLY isDevNoAuth bypass mirrors the route-level helper.)
+      if (typeof token === 'string' && !isDevNoAuth()) {
+        const authorized = bearerRegistryCache
+          .get()
+          ?.bearers.find((b) => b.token === token)?.authorizedActorIds;
+        if (authorized === undefined || !authorized.includes(actorId)) {
+          return null;
+        }
+      }
+      return characterSnapshotCache.get(actorId) ?? null;
     }
     return null;
   };

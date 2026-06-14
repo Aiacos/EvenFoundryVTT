@@ -55,7 +55,11 @@ function makeMockLogger(): Logger {
 function makeValidResult(): ValidateTokenResult {
   return {
     valid: true,
-    entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'world' },
+    entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'world', userId: 'u' },
+    // ADR-0014: authorize the actor ids these wiring tests pin. The handshake
+    // gates the actorId pin on this set (close 4400 when ∉ set); a dedicated
+    // deny-path test lives in handshake-actor-authz.test.ts.
+    authorizedActorIds: ['actorX', 'actorY', 'actorPinned'],
   };
 }
 

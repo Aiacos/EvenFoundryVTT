@@ -9,7 +9,13 @@ import { TokenCache, type ValidateTokenResult } from './token-cache.js';
 
 const VALID_RESULT: ValidateTokenResult = {
   valid: true,
-  entry: { alias: 'Test G2', expiresAt: Date.now() + 24 * 60 * 60 * 1000, worldId: 'test-world' },
+  entry: {
+    alias: 'Test G2',
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    worldId: 'test-world',
+    userId: 'test-user',
+  },
+  authorizedActorIds: ['test-actor'],
 };
 
 const INVALID_RESULT: ValidateTokenResult = {

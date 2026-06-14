@@ -24,6 +24,8 @@ function makeValidPayload() {
         alias: 'G2 Device',
         expiresAt: NOW + 86_400_000,
         worldId: 'world-xyz',
+        userId: 'user-abc',
+        authorizedActorIds: ['actor-abc'],
       },
     ],
     source: 'foundry-registry' as const,
@@ -77,8 +79,22 @@ describe('handleBearerRegistryEnvelope', () => {
       ...makeValidPayload(),
       count: 2,
       bearers: [
-        { token: 'token-1', alias: 'G2 A', expiresAt: NOW + 1000, worldId: 'w' },
-        { token: 'token-2', alias: 'G2 B', expiresAt: NOW + 2000, worldId: 'w' },
+        {
+          token: 'token-1',
+          alias: 'G2 A',
+          expiresAt: NOW + 1000,
+          worldId: 'w',
+          userId: 'u1',
+          authorizedActorIds: ['a1'],
+        },
+        {
+          token: 'token-2',
+          alias: 'G2 B',
+          expiresAt: NOW + 2000,
+          worldId: 'w',
+          userId: 'u2',
+          authorizedActorIds: [],
+        },
       ],
     };
     handleBearerRegistryEnvelope(R1_BEARERS_AVAILABLE_TYPE, first, cache);

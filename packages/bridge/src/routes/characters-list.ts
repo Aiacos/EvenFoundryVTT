@@ -20,6 +20,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isActorAuthorized } from '../auth/actor-authorization.js';
 import { isDevNoAuth } from '../auth/is-dev-no-auth.js';
 import type { TokenCache } from '../auth/token-cache.js';
 import type { FoundrySnapshotFn } from './character.js';
@@ -92,6 +93,15 @@ export async function registerCharactersListRoute(
       return reply.status(200).send({ characters: [] });
     }
 
-    return reply.status(200).send(parsed.data);
+    // --- Per-actor read authorization (ADR-0014 §4) ---
+    // Scope the roster to the bearer's authorized (owned) set so a device only
+    // ever sees its paired user's characters. Fail-closed: absent/empty set →
+    // empty roster. (isActorAuthorized bypasses under the dev-no-auth gate so
+    // the DEV mock roster still surfaces end-to-end.)
+    const scoped = parsed.data.characters.filter((c) =>
+      isActorAuthorized(validation.authorizedActorIds, c.actorId),
+    );
+
+    return reply.status(200).send({ characters: scoped });
   });
 }

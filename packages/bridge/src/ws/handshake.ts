@@ -25,6 +25,7 @@ import {
 import type { FastifyRequest } from 'fastify';
 import type { Logger } from 'pino';
 import type { WebSocket } from 'ws';
+import { isActorAuthorized } from '../auth/actor-authorization.js';
 import type { TokenCache } from '../auth/token-cache.js';
 import type { ReplayBuffer } from './replay-buffer.js';
 import type { SessionStore } from './session-store.js';
@@ -132,6 +133,26 @@ export async function handleHandshake(
             'WS handshake: token invalid — closing 4401',
           );
           socket.close(CLOSE_INVALID_TOKEN, 'invalid_token');
+          resolve(null);
+          return;
+        }
+
+        // Per-actor pin authorization (ADR-0014 §4). The client may pin this
+        // session to a chosen PC (`client.actorId`). A pin is targeting, not
+        // authorization — reject any pin outside the bearer's authorized (owned)
+        // set with the invalid-handshake close code (4400). Fail-closed: a pin
+        // against an absent/empty authorized set is rejected. (Pin-less
+        // handshakes skip this gate; selection happens later via the roster,
+        // which is itself scoped to the authorized set.)
+        if (
+          client.actorId !== undefined &&
+          !isActorAuthorized(validationResult.authorizedActorIds, client.actorId)
+        ) {
+          logger.warn(
+            { tokenHint },
+            'WS handshake: client.actorId pin not authorized — closing 4400',
+          );
+          socket.close(CLOSE_INVALID_HANDSHAKE, 'actor_not_authorized');
           resolve(null);
           return;
         }

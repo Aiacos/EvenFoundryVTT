@@ -162,7 +162,12 @@ describe('GET /v1/entities/available', () => {
         if (bearer === 'test-token') {
           return {
             valid: true,
-            entry: { alias: 'Test', expiresAt: Date.now() + 86400000, worldId: 'test-world' },
+            entry: {
+              alias: 'Test',
+              expiresAt: Date.now() + 86400000,
+              worldId: 'test-world',
+              userId: 'u1',
+            },
           };
         }
         if (bearer === 'unreachable-token') {

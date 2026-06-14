@@ -46,7 +46,14 @@ function makeValidFn(): (token: string) => Promise<ValidateTokenResult> {
     if (token === VALID_TOKEN) {
       return {
         valid: true,
-        entry: { alias: 'Test G2', expiresAt: Date.now() + 86_400_000, worldId: 'test-world' },
+        entry: {
+          alias: 'Test G2',
+          expiresAt: Date.now() + 86_400_000,
+          worldId: 'test-world',
+          userId: 'test-user',
+        },
+        // ADR-0014: authorize the actor ids exercised by the integration tests.
+        authorizedActorIds: ['actor-1', 'actor-2'],
       };
     }
     return { valid: false, reason: 'unknown_token' };
@@ -58,6 +65,68 @@ function makeUnreachableFn(): (token: string) => Promise<ValidateTokenResult> {
     valid: false,
     reason: 'foundry_unreachable',
   });
+}
+
+/**
+ * Build a full CharacterSnapshotSchema-valid object for `actorId`.
+ *
+ * Used by the ADR-0014 enforcement tests to push a `character.delta` into the
+ * snapshot cache so the read path has something to (potentially) serve — proving
+ * authorization rejects BEFORE the cached snapshot is returned.
+ */
+function buildCharacterSnapshot(actorId: string) {
+  const skill = (ability: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha') => ({
+    total: 0,
+    ability,
+    proficient: 0 as const,
+    passive: 10,
+  });
+  return {
+    actorId,
+    name: 'Owned PC',
+    hp: 10,
+    maxHp: 10,
+    tempHp: 0,
+    ac: 10,
+    level: 1,
+    conditions: [],
+    exhaustion: 0,
+    death: { success: 0, failure: 0 },
+    world: { modernRules: false },
+    inventory: [],
+    spells: { slots: [], spells: [] },
+    abilities: {
+      str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    },
+    skills: {
+      acr: skill('dex'),
+      ani: skill('wis'),
+      arc: skill('int'),
+      ath: skill('str'),
+      dec: skill('cha'),
+      his: skill('int'),
+      ins: skill('wis'),
+      itm: skill('cha'),
+      inv: skill('int'),
+      med: skill('wis'),
+      nat: skill('int'),
+      prc: skill('wis'),
+      prf: skill('cha'),
+      per: skill('cha'),
+      rel: skill('int'),
+      slt: skill('dex'),
+      ste: skill('dex'),
+      sur: skill('wis'),
+    },
+    class: 'Fighter',
+    initiative: 0,
+    speed: 30,
+  };
 }
 
 describe('buildServer integration', () => {
@@ -560,7 +629,14 @@ describe('buildServer integration', () => {
           type: 'r1.bearers.available',
           payload: {
             bearers: [
-              { token: VALID_TOKEN, alias: 'G2 Test', expiresAt: futureExpiry, worldId: 'world-1' },
+              {
+                token: VALID_TOKEN,
+                alias: 'G2 Test',
+                expiresAt: futureExpiry,
+                worldId: 'world-1',
+                userId: 'u',
+                authorizedActorIds: [],
+              },
             ],
             source: 'foundry-registry',
             count: 1,
@@ -600,6 +676,8 @@ describe('buildServer integration', () => {
                 alias: 'Other',
                 expiresAt: Date.now() + 86_400_000,
                 worldId: 'w',
+                userId: 'u',
+                authorizedActorIds: [],
               },
             ],
             source: 'foundry-registry',
@@ -637,7 +715,14 @@ describe('buildServer integration', () => {
           type: 'r1.bearers.available',
           payload: {
             bearers: [
-              { token: VALID_TOKEN, alias: 'Old G2', expiresAt: expiredTime, worldId: 'w' },
+              {
+                token: VALID_TOKEN,
+                alias: 'Old G2',
+                expiresAt: expiredTime,
+                worldId: 'w',
+                userId: 'u',
+                authorizedActorIds: [],
+              },
             ],
             source: 'foundry-registry',
             count: 1,
@@ -688,7 +773,16 @@ describe('buildServer integration', () => {
       const { BearerRegistryCache } = await import('./cache/bearer-registry-cache.js');
       const bearerCache = new BearerRegistryCache();
       bearerCache.set({
-        bearers: [{ token: VALID_TOKEN, alias: 'G2', expiresAt: futureExpiry, worldId: 'w' }],
+        bearers: [
+          {
+            token: VALID_TOKEN,
+            alias: 'G2',
+            expiresAt: futureExpiry,
+            worldId: 'w',
+            userId: 'u',
+            authorizedActorIds: [],
+          },
+        ],
         source: 'foundry-registry',
         count: 1,
         generatedAt: Date.now(),
@@ -715,7 +809,17 @@ describe('buildServer integration', () => {
 
       const bearerCache = new BearerRegistryCache();
       bearerCache.set({
-        bearers: [{ token: VALID_TOKEN, alias: 'G2', expiresAt: futureExpiry, worldId: 'w' }],
+        bearers: [
+          {
+            token: VALID_TOKEN,
+            alias: 'G2',
+            expiresAt: futureExpiry,
+            worldId: 'w',
+            userId: 'u',
+            // ADR-0014: authorize both pushed actors so the roster filter keeps them.
+            authorizedActorIds: ['actor-1', 'actor-2'],
+          },
+        ],
         source: 'foundry-registry',
         count: 1,
         generatedAt: Date.now(),
@@ -772,6 +876,179 @@ describe('buildServer integration', () => {
       const body = res.json<{ characters: typeof mockList }>();
       expect(body.characters).toHaveLength(1);
       expect(body.characters[0]?.name).toBe('Legolas');
+    });
+  });
+
+  // ── ADR-0014 §4: per-actor read authorization end-to-end (T8) ──────────────
+  //
+  // Drives the cached (production) path: a bearer pushed via /internal/delta
+  // carries authorizedActorIds; buildServer({}) (no injected fns) consumes it
+  // through internalValidateFn + internalSnapshotFn. Proves all bridge read
+  // paths enforce set-membership and that a fail-closed bearer reads nothing.
+  describe('ADR-0014 per-actor authorization (cached path, buildServer({}))', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    /** Push a bearer registry with one bearer owning `authorizedActorIds`. */
+    async function pushBearer(app: FastifyInstance, authorizedActorIds: string[]) {
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [
+              {
+                token: VALID_TOKEN,
+                alias: 'G2',
+                expiresAt: Date.now() + 86_400_000,
+                worldId: 'w',
+                userId: 'user-a',
+                authorizedActorIds,
+              },
+            ],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+    }
+
+    /** Push a character.delta so the snapshot cache can serve `actorId`. */
+    async function pushSnapshot(app: FastifyInstance, actorId: string) {
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'character.delta',
+          payload: buildCharacterSnapshot(actorId),
+        }),
+      });
+    }
+
+    it('REST GET /v1/character/:actorId — 404 for a non-owned actor (no enumeration)', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      // Cache a snapshot for the NON-owned actor — enforcement must still 404.
+      await pushSnapshot(app, 'actor-other');
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-other',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json<{ error: string }>().error).toBe('actor_not_found');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('REST GET /v1/character/:actorId — 200 for an owned actor', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      await pushSnapshot(app, 'actor-owned');
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-owned',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ actorId: string }>().actorId).toBe('actor-owned');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('characters-list — roster filtered to the authorized set', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      // Push a roster containing one owned + one non-owned actor.
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.characters.available',
+          payload: {
+            characters: [
+              { actorId: 'actor-owned', name: 'Mine', level: 5 },
+              { actorId: 'actor-other', name: 'NotMine', level: 9 },
+            ],
+            source: 'foundry-world',
+            count: 2,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: Array<{ actorId: string }> }>();
+      expect(body.characters.map((c) => c.actorId)).toEqual(['actor-owned']);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('fail-closed bearer (empty authorizedActorIds) reads nothing', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, []); // authorizes NOTHING
+      await pushSnapshot(app, 'actor-owned');
+      // Push a non-empty roster too.
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.characters.available',
+          payload: {
+            characters: [{ actorId: 'actor-owned', name: 'Mine', level: 5 }],
+            source: 'foundry-world',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      // REST snapshot → 404
+      const charRes = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-owned',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+      expect(charRes.statusCode).toBe(404);
+
+      // Roster → empty
+      const listRes = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+      expect(listRes.statusCode).toBe(200);
+      expect(listRes.json<{ characters: unknown[] }>().characters).toHaveLength(0);
+
+      delete process.env.EVF_INTERNAL_SECRET;
     });
   });
 

@@ -66,7 +66,12 @@ function makeMockLogger(): Logger {
 function makeValidResult(): ValidateTokenResult {
   return {
     valid: true,
-    entry: { alias: 'Test G2', expiresAt: Date.now() + 86_400_000, worldId: 'test-world' },
+    entry: {
+      alias: 'Test G2',
+      expiresAt: Date.now() + 86_400_000,
+      worldId: 'test-world',
+      userId: 'u1',
+    },
   };
 }
 

@@ -27,7 +27,7 @@ function makeValidateFn(mode: 'valid' | 'invalid' | 'foundry_unreachable' = 'val
     if (token === VALID_TOKEN && mode === 'valid') {
       return {
         valid: true as const,
-        entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'w1' },
+        entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'w1', userId: 'u1' },
       };
     }
     return { valid: false as const, reason: 'unknown_token' as const };

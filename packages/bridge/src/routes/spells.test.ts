@@ -144,7 +144,12 @@ describe('GET /v1/spells/available', () => {
         if (bearer === 'test-token') {
           return {
             valid: true,
-            entry: { alias: 'Test', expiresAt: Date.now() + 86400000, worldId: 'test-world' },
+            entry: {
+              alias: 'Test',
+              expiresAt: Date.now() + 86400000,
+              worldId: 'test-world',
+              userId: 'u1',
+            },
           };
         }
         return { valid: false, reason: 'unknown_token' as const };

@@ -26,6 +26,8 @@ function makeSnapshot(name: string): BearerRegistrySnapshot {
         alias: name,
         expiresAt: Date.now() + 86_400_000,
         worldId: 'world-test',
+        userId: `user-${name}`,
+        authorizedActorIds: [`actor-${name}`],
       },
     ],
     source: 'foundry-registry',

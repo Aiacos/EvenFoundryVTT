@@ -11,7 +11,7 @@
  */
 
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TokenCache } from '../auth/token-cache.js';
 import { type FoundrySnapshotFn, registerCharacterRoute } from './character.js';
 
@@ -28,7 +28,9 @@ function makeValidateFn(mode: 'valid' | 'foundry_unreachable' = 'valid') {
     if (token === VALID_TOKEN) {
       return {
         valid: true as const,
-        entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'w1' },
+        entry: { alias: 'G2', expiresAt: Date.now() + 86_400_000, worldId: 'w1', userId: 'u1' },
+        // ADR-0014: the valid bearer owns ACTOR_ID (and only ACTOR_ID).
+        authorizedActorIds: [ACTOR_ID],
       };
     }
     return { valid: false as const, reason: 'unknown_token' as const };
@@ -152,5 +154,24 @@ describe('GET /v1/character/:actorId', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(snapshot);
+  });
+
+  // ── ADR-0014 §4: per-actor read authorization (T8) ──
+
+  it('CHR-ROUTE-06: 404 when actorId is NOT in the bearer’s authorized set (T8)', async () => {
+    // foundryFn would happily return a snapshot — enforcement must reject BEFORE
+    // it is reached, with the SAME 404 as a genuinely-unknown actor (no enumeration).
+    const foundryFn = vi.fn(async () => ({ actorId: 'actor-someone-else', name: 'Secret' }));
+    app = await makeApp('valid', foundryFn);
+    const res = await app.inject({
+      method: 'GET',
+      // VALID_TOKEN owns ACTOR_ID only — this is a different, non-owned actor.
+      url: '/v1/character/actor-someone-else',
+      headers: { authorization: `Bearer ${VALID_TOKEN}` },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json<{ error: string }>().error).toBe('actor_not_found');
+    // The Foundry handler must never be consulted for a non-owned actor.
+    expect(foundryFn).not.toHaveBeenCalled();
   });
 });
