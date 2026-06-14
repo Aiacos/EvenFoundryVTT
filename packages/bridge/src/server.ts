@@ -236,6 +236,14 @@ export interface BuildServerOptions {
    * @see ws/character-snapshot-handler.ts
    */
   characterSnapshotCache?: CharacterSnapshotCache;
+  /**
+   * Override the concurrent WS connection cap (DoS guard — T7).
+   *
+   * In production: omit — defaults to {@link WS_MAX_CONNECTIONS} (64).
+   * In tests: pass a small value (e.g. 1) to exercise the over-cap rejection
+   * path without opening 64 real sockets.
+   */
+  wsMaxConnections?: number;
 }
 
 /**
@@ -262,6 +270,40 @@ const LOGGER_REDACT = [
   '*.deepgramKey',
   '*.token',
 ] as const;
+
+/**
+ * Maximum accepted inbound WS frame size in bytes (DoS guard).
+ *
+ * The g2-app only ever sends small control frames upstream — handshake,
+ * `client_resume`, `tool.invoke`, `client_setting` — all well under a few KB.
+ * The large payloads (frame_png ~90 KB, see {@link FRAME_BACKPRESSURE_BYTES}
+ * in delta-emitter.ts) flow bridge→client, NOT client→bridge. We size the
+ * inbound ceiling generously at 256 KB (≈ the per-session backpressure budget)
+ * so a legitimate oversized control frame is never rejected, while a malicious
+ * client cannot stream an unbounded buffer to exhaust bridge memory.
+ */
+const WS_MAX_PAYLOAD_BYTES = 262_144;
+
+/**
+ * Maximum number of concurrent WS connections accepted by the bridge.
+ *
+ * The MVP is homelab single-tenant (Specs.md §11.5.3): a handful of players
+ * plus a margin for reconnect churn. Beyond this ceiling a new socket is closed
+ * immediately with {@link WS_CLOSE_TRY_AGAIN_LATER} BEFORE the handshake runs,
+ * and is never added to the session store — bounding socket + Promise growth
+ * from a connection-flood (slow-loris sibling of the handshake idle timeout).
+ */
+const WS_MAX_CONNECTIONS = 64;
+
+/**
+ * WS close code for "server overloaded — try again later".
+ *
+ * Mirrors the RFC 6455 1013 "Try Again Later" semantic in the application
+ * close-code range (the 4000–4999 band is reserved for app use, alongside the
+ * existing 4400/4401 handshake codes). Sent when a new connection exceeds
+ * {@link WS_MAX_CONNECTIONS}.
+ */
+const WS_CLOSE_TRY_AGAIN_LATER = 4503;
 
 export async function buildServer(opts: BuildServerOptions = {}): Promise<FastifyInstance> {
   // --- Debug bus (hoisted, Quick Task 260529-icd) ---
@@ -339,7 +381,20 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   });
 
   // --- 3. WebSocket support ---
-  await app.register(fastifyWebsocket);
+  // maxPayload caps inbound frame size (DoS guard — WS_MAX_PAYLOAD_BYTES). Only
+  // small control frames flow client→bridge; large frame_png payloads flow the
+  // other way, so a generous-but-bounded ceiling rejects abusive inbound streams
+  // without ever dropping a legitimate control frame.
+  await app.register(fastifyWebsocket, { options: { maxPayload: WS_MAX_PAYLOAD_BYTES } });
+
+  // Concurrent-connection cap (DoS guard — WS_MAX_CONNECTIONS). Incremented when
+  // a socket is accepted into the handshake path, decremented on close. New
+  // sockets beyond the ceiling are closed immediately with 4503 before the
+  // handshake runs and never reach the session store. Module-scoped to this
+  // server instance (closed over by the /ws handler below). opts.wsMaxConnections
+  // overrides the default cap for tests (small value exercises the reject path).
+  const wsMaxConnections = opts.wsMaxConnections ?? WS_MAX_CONNECTIONS;
+  let wsConnectionCount = 0;
 
   // --- 4. Shared services (singletons per server instance) ---
   const replayBuffer = new ReplayBuffer();
@@ -632,6 +687,31 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
 
   app.get('/ws', { websocket: true }, (socket, req) => {
     const logger = app.log as Logger;
+
+    // Concurrent-connection cap (DoS guard): reject before the handshake runs so
+    // a connection-flood cannot grow the socket/session set unbounded. The new
+    // socket is closed with 4503 and NOT counted nor registered.
+    if (wsConnectionCount >= wsMaxConnections) {
+      logger.warn(
+        { wsConnectionCount, cap: wsMaxConnections },
+        'WS connection cap reached — closing new socket 4503',
+      );
+      socket.close(WS_CLOSE_TRY_AGAIN_LATER, 'too_many_connections');
+      return;
+    }
+
+    // Accepted into the handshake path — count it now and ensure exactly one
+    // decrement on close (guarded so a double 'close' cannot double-decrement).
+    wsConnectionCount += 1;
+    let counted = true;
+    const releaseConnectionSlot = (): void => {
+      if (counted) {
+        counted = false;
+        wsConnectionCount -= 1;
+      }
+    };
+    socket.on('close', releaseConnectionSlot);
+
     // handleHandshake is async and returns sessionId | null. Errors are caught
     // internally and close the socket — we just await for the resolved sessionId.
     handleHandshake(socket, req, tokenCache, replayBuffer, sessionStore, logger)

@@ -1517,6 +1517,152 @@ describe('Quick Task 260605-d0v: WS connect → initial character.delta', () => 
     }));
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// T7: WS maxPayload + concurrent-connection cap (DoS guards)
+// Real-socket integration: build a server with a tiny connection cap, open two
+// sockets, and assert the over-cap socket is closed (4503) and never handshakes.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('T7: WS connection cap + maxPayload (DoS guards)', () => {
+  let savedDevNoAuth: string | undefined;
+
+  beforeEach(() => {
+    savedDevNoAuth = process.env.EVF_DEV_NO_AUTH;
+    process.env.EVF_DEV_NO_AUTH = 'true'; // accept the sentinel bearer in the handshake
+  });
+
+  afterEach(() => {
+    if (savedDevNoAuth === undefined) delete process.env.EVF_DEV_NO_AUTH;
+    else process.env.EVF_DEV_NO_AUTH = savedDevNoAuth;
+  });
+
+  /** Build a real listening server with the given WS connection cap. */
+  async function buildCapServer(
+    wsMaxConnections: number,
+  ): Promise<{ app: FastifyInstance; port: number }> {
+    const app = await buildServer({ langDirOverride: LANG_DIR, wsMaxConnections });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const addr = app.server.address();
+    const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+    return { app, port };
+  }
+
+  /** Send the EVF client hello once the socket opens. */
+  function sendHello(ws: WebSocket): void {
+    ws.once('open', () => {
+      ws.send(
+        JSON.stringify({
+          proto: 'evf-v1',
+          token: 'dev-no-auth',
+          locale: 'it',
+          capabilities: ['read_char'],
+        }),
+      );
+    });
+  }
+
+  it('T7-CAP-01: a connection beyond the cap is closed with 4503 and never handshakes', () =>
+    new Promise<void>((done, fail) => {
+      buildCapServer(1)
+        .then(({ app, port }) => {
+          // Socket 1: occupies the only slot and completes the handshake.
+          const ws1 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+          let ws1HandshakeOk = false;
+
+          ws1.once('message', (raw) => {
+            try {
+              const msg = JSON.parse(raw.toString()) as { proto_chosen?: string };
+              if (msg.proto_chosen === 'evf-v1') ws1HandshakeOk = true;
+            } catch {
+              // ignore — assertion below covers the handshake-ok flag
+            }
+
+            // Socket 2: over the cap → must be closed with 4503 before any handshake.
+            const ws2 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+            let ws2GotMessage = false;
+            ws2.on('message', () => {
+              ws2GotMessage = true;
+            });
+            sendHello(ws2);
+
+            ws2.once('close', (code) => {
+              try {
+                expect(ws1HandshakeOk).toBe(true);
+                expect(code).toBe(4503);
+                expect(ws2GotMessage).toBe(false); // no handshake response was sent
+                ws1.close();
+                app.close().then(done).catch(fail);
+              } catch (err) {
+                ws1.close();
+                app
+                  .close()
+                  .then(() => fail(err))
+                  .catch(fail);
+              }
+            });
+          });
+
+          sendHello(ws1);
+          ws1.once('error', (err) => {
+            app
+              .close()
+              .then(() => fail(err))
+              .catch(fail);
+          });
+        })
+        .catch(fail);
+    }));
+
+  it('T7-CAP-02: closing a capped connection frees a slot for a new one', () =>
+    new Promise<void>((done, fail) => {
+      buildCapServer(1)
+        .then(({ app, port }) => {
+          const ws1 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+          sendHello(ws1);
+
+          ws1.once('message', () => {
+            // Slot is taken — close it, then a fresh socket must handshake fine.
+            ws1.close();
+            ws1.once('close', () => {
+              // Small delay so the server's 'close' handler decrements the counter.
+              setTimeout(() => {
+                const ws2 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+                sendHello(ws2);
+                ws2.once('message', (raw) => {
+                  try {
+                    const msg = JSON.parse(raw.toString()) as { proto_chosen?: string };
+                    expect(msg.proto_chosen).toBe('evf-v1');
+                    ws2.close();
+                    app.close().then(done).catch(fail);
+                  } catch (err) {
+                    ws2.close();
+                    app
+                      .close()
+                      .then(() => fail(err))
+                      .catch(fail);
+                  }
+                });
+                ws2.once('error', (err) => {
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                });
+              }, 50);
+            });
+          });
+
+          ws1.once('error', (err) => {
+            app
+              .close()
+              .then(() => fail(err))
+              .catch(fail);
+          });
+        })
+        .catch(fail);
+    }));
+});
+
 /*
  * ──────────────────────────────────────────────────────────────────────────────
  * Sim smoke (manual) — NOT an automated gate (EvenHub simulator requires
