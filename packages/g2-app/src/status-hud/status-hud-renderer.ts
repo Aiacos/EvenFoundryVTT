@@ -53,7 +53,7 @@
  *
  * `CharacterSnapshot` does NOT carry class label, speed/velocity, or
  * turn/round/your-turn. Per the "never simplify, surface the gap" rule these
- * fields render as `—` (em-dash) with explicit TODO markers. The width-assertion
+ * fields render as `—` (em-dash) with explicit Deferred (HUD-27PX) markers. The width-assertion
  * test still budgets placeholder-bearing lines against 576px.
  *
  * ## Preserved public API
@@ -217,7 +217,7 @@ export class StatusHudRenderer {
    *
    * @see docs/architecture/0001-layered-ui-model.md (Amendment — map-mode deferred)
    */
-  // TODO(HUD-27PX): wire into glyph-badge rendering once map mode is gesture-opened (#issue)
+  // Deferred (HUD-27PX): wire into glyph-badge rendering once map mode is gesture-opened
   private readonly _mapMode: StatusHudMapMode;
 
   /** Current rendering mode (mutable via {@link setMode}). */
@@ -396,7 +396,7 @@ export class StatusHudRenderer {
    *
    * Real fields (name, level, hp/maxHp, ac, conditions, spells.slots, death)
    * render from the snapshot. Missing fields (class, speed, turn/round/your-turn)
-   * render as `—` with TODO markers.
+   * render as `—` with Deferred (HUD-27PX) markers.
    *
    * **Mode dispatch:** when {@link mode} is `'death-saves'` delegates to
    * {@link _buildDeathSavesSheet} which emphasises the death-save trackers.
@@ -419,10 +419,10 @@ export class StatusHudRenderer {
     const locale = this.locale;
 
     // Row 0: Name + "Lv{N}" + class label (— placeholder — no class in snapshot)
-    // TODO(HUD-27PX): wire class into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire class into CharacterSnapshot
     const nameRaw = snapshot.name;
     const levelStr = `Lv${snapshot.level}`;
-    const classLabel = EM_DASH; // TODO(HUD-27PX): wire class into CharacterSnapshot (#issue)
+    const classLabel = EM_DASH; // Deferred (HUD-27PX): wire class into CharacterSnapshot
 
     // HP bar (10-glyph fill)
     const hpBar = buildHpBar(snapshot.hp, snapshot.maxHp);
@@ -432,11 +432,11 @@ export class StatusHudRenderer {
     const acValue = String(snapshot.ac);
 
     // VEL/speed — not in CharacterSnapshot
-    // TODO(HUD-27PX): wire speed/VEL into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire speed/VEL into CharacterSnapshot
     const spdValue = EM_DASH;
 
     // Turn/Round/YourTurn — not in CharacterSnapshot
-    // TODO(HUD-27PX): wire turn/round/your-turn into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire turn/round/your-turn into CharacterSnapshot
     const turnDisplay = EM_DASH;
     const roundDisplay = EM_DASH;
     const yourTurnDisplay = EM_DASH;
@@ -479,7 +479,7 @@ export class StatusHudRenderer {
 
     const nameRaw = snapshot.name;
     const levelStr = `Lv${snapshot.level}`;
-    // TODO(HUD-27PX): wire class into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire class into CharacterSnapshot
     const classLabel = EM_DASH;
 
     // HP=0 display in death-saves
@@ -487,9 +487,9 @@ export class StatusHudRenderer {
     const hpCurMax = `0/${snapshot.maxHp}`;
 
     const acValue = String(snapshot.ac);
-    // TODO(HUD-27PX): wire speed/VEL into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire speed/VEL into CharacterSnapshot
     const spdValue = EM_DASH;
-    // TODO(HUD-27PX): wire turn/round/your-turn into CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): wire turn/round/your-turn into CharacterSnapshot
     const turnDisplay = EM_DASH;
     const roundDisplay = EM_DASH;
     const yourTurnDisplay = EM_DASH;
@@ -572,7 +572,7 @@ export class StatusHudRenderer {
     lines.push(row2);
 
     // Row 3: Turn / Round / [YOUR TURN] — all — placeholders
-    // TODO(HUD-27PX): replace '—' with real turn/round/your-turn from CharacterSnapshot (#issue)
+    // Deferred (HUD-27PX): replace '—' with real turn/round/your-turn from CharacterSnapshot
     // yourTurnLabel is not interpolated when turnDisplay/roundDisplay/yourTurnDisplay are '—';
     // the label IS included in the brackets when data is present: `[${yourTurnLabel}]`.
     const turnLabel = getLabel('hud27_turn_label', locale);

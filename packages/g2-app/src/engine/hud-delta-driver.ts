@@ -17,7 +17,7 @@
  *   - `await driver.start()` then `await driver.runFirstFrame()` in `_flushPage()` canvas branch.
  *   - `driver.stop()` in `disposeSubscriptions()`.
  *
- * INV-4 compliance: JSDoc/TSDoc on every public API; zero bare `// TODO`; no dead code.
+ * INV-4 compliance: JSDoc/TSDoc on every public API; zero bare TODO markers; no dead code.
  * CM-01 serialization: pushes use `pushHudTiles` which iterates `for...of` + `await`
  * — do NOT replace with `Promise.all` (Even Hub SDK rejects concurrent calls).
  *

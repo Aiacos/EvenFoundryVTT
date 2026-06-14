@@ -194,6 +194,6 @@ export function probeBleThroughput(
   }
   const kbps = (bytesObserved * 8) / 1000 / (durationMs / 1000);
   // 100 kbps is the Branch A / Branch B/C boundary (ADR-0005 PROVISIONAL).
-  // TODO(ADR-0005-OQ-INV2-1.b) — re-tune on real G2 hardware measurements.
+  // TODO(ADR-0005): re-tune on real G2 hardware measurements (OQ-INV2-1.b).
   return kbps < 100 ? 'glyph' : 'raster';
 }

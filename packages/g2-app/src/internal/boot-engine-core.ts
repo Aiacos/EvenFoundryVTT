@@ -430,7 +430,7 @@ export function createWsEventBus(
       // happens in flush() which pairs gesture_emit with subsequent stations
       // via idempotencyKey threading.
       //
-      // TODO(SC-10-02): Full gesture_emit wiring requires idempotencyKey
+      // Deferred (SC-10-02): Full gesture_emit wiring requires idempotencyKey
       // threading from the gesture source (ActionOptionsModal) back to the
       // R1EventSource level. For Phase 10 Plan 02, gesture_emit is marked
       // at the r1.gesture receive site with a placeholder key derived from
@@ -441,7 +441,7 @@ export function createWsEventBus(
       // idempotencyKey from the payload. T-10-02: the key is hashed inside
       // PerfProbe.flush() before transmission — never logged or leaked here.
       //
-      // TODO(SC-10-02): handler_invoke (station 3) is server-side and NOT
+      // Deferred (SC-10-02): handler_invoke (station 3) is server-side and NOT
       // measured by g2-app. The PerfProbe approximates it from bridge/result
       // timestamps during flush(). Full measurement requires bridge-log
       // instrumentation in the foundry-module socketlib handler.
@@ -1193,7 +1193,7 @@ export async function _bootEngineCore(
   // original.enqueue is invoked directly (zero overhead wrapper is effectively
   // transparent). The binding ensures `this` context is preserved.
   //
-  // TODO(SC-10-02): gesture_emit (station 1) and bridge_post (station 2) require
+  // Deferred (SC-10-02): gesture_emit (station 1) and bridge_post (station 2) require
   // idempotencyKey threading from the ActionOptionsModal → R1EventSource path.
   // Full wiring deferred to Phase 10 Plan 03 or SC-10-02 hardware field test.
   // For Plan 10-02, gesture_emit and bridge_post are omitted from auto-flush;
@@ -1325,7 +1325,7 @@ export async function _bootEngineCore(
       statusHud?.setSyncLost(null);
     },
     onFullRefreshRequired: () => {
-      // TODO(SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
+      // Deferred (SC-10-01): wire to REST GET /v1/actor for full actor re-fetch.
       // Out of scope for Plan 10-01 (bridge resume protocol is client-side only).
       // T-10-01 mitigation is in place: seqTracker.reset() was already called in
       // WsReconnectController._attachResumeListener before this callback fires.

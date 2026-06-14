@@ -390,7 +390,7 @@ async function checkInv3(repoRoot: string): Promise<InvResult> {
 // -------------------------------------------------------------------------------------
 // INV-4: Code Quality
 // Runs: pnpm lint:ci + pnpm typecheck.
-// Dead-code grep (// TODO without issue/ADR ref) is omitted from the spawn path because
+// Dead-code grep (bare-TODO without issue/ADR ref) is omitted from the spawn path because
 // grep exit code 0 means matches found (opposite of what we want); instead we leave that
 // gate to CI Gate 4 (biome ci catches a broader set of issues). The plan's IS-05 behaviour
 // is fully covered by lint:ci + typecheck spawns.

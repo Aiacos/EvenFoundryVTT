@@ -277,7 +277,7 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   // map-capture: full-width, same geometry as status-hud (isEventCapture=1).
   // PRESERVED for deferred gesture-opened map mode (Specs §7.4, Phase 20).
   // NOT the visible base in the default status-sheet view.
-  // TODO(HUD-27PX): re-activate as visible base when map mode toggle is implemented (#issue)
+  // Deferred (HUD-27PX): re-activate as visible base when map mode toggle is implemented
   'map-capture': {
     id: 7,
     xPosition: 0,
@@ -289,7 +289,7 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   },
   // z05-combat-log: y=189 (7 rows × 27px from top of content area), height=27.
   // PRESERVED for deferred idle-infill (not painted in default status-sheet view).
-  // TODO(HUD-27PX): re-evaluate z05 positions once map-mode is gesture-opened (#issue)
+  // Deferred (HUD-27PX): re-evaluate z05 positions once map-mode is gesture-opened
   'z05-combat-log': {
     id: 8,
     xPosition: 0,
