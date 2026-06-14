@@ -9,9 +9,6 @@
 │   [M] Mappa                                                        │
 │   [N] Lingua                                                       │
 │   [F] FPS                                                          │
-│   [D] Dither                                                       │
-│   [+] Luminosità +                                                 │
-│   [-] Luminosità −                                                 │
 │   [X] Chiudi                                                       │
 └────────────────────────────────────────────────────────────────────┘
   scroll = cambia voce attiva                                         

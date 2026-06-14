@@ -684,19 +684,6 @@ export const HUD_WIDTH_BUDGETS = {
    * Short technical term — same across all three locales because
    * "dither" is the standard display-engineering term.
    */
-  quick_item_dither: { it: 'Dither', en: 'Dither', de: 'Dither', max: 22 },
-
-  /** [+] Brightness up menu item label (raises the map luma gain, synced to Foundry). */
-  quick_item_brightness_up: { it: 'Luminosità +', en: 'Brightness +', de: 'Helligkeit +', max: 22 },
-
-  /** [-] Brightness down menu item label (lowers the map luma gain, synced to Foundry). */
-  quick_item_brightness_down: {
-    it: 'Luminosità −',
-    en: 'Brightness −',
-    de: 'Helligkeit −',
-    max: 22,
-  },
-
   /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
   quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
 

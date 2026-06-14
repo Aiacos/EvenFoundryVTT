@@ -124,13 +124,6 @@ export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 const FPS_INDICATOR_KV_KEY = 'evf.fps.indicator';
 
 /**
- * Per-press brightness step for the `[+]`/`[-]` Quick Action menu items
- * (display-settings sync, 2026-06-14). 20 = five presses span 0→+100; matches
- * the Foundry `mapBrightness` slider step granularity.
- */
-const BRIGHTNESS_STEP = 20;
-
-/**
  * Production boot-engine options.
  *
  * **NO DI fields here.** Test-only DI lives in {@link TestingDependencies}.
@@ -1146,34 +1139,9 @@ export async function _bootEngineCore(
             console.warn('[boot-engine-core] onFpsToggle: kv persist failed', String(err));
           });
         },
-        onDitherToggle: () => {
-          // [D] Dither — flip the SETTING (single source of truth). Reads the
-          // current synced value, flips it, optimistically mirrors it locally for
-          // immediate feedback, and pushes it UPSTREAM as a `client_setting` so the
-          // Foundry module's `mapDither` follows (in canvas mode the map dither is
-          // applied module-side — this is what changes the visible map). The module
-          // echoes it back over `settings.display`, realigning every glasses. No
-          // local kv persistence — the Foundry setting IS the persisted state.
-          const next = !(displaySettingsSync.get().dither ?? ditherOn);
-          ditherOn = next;
-          displaySettingsSync.sendEdit({ dither: next });
-          hudDeltaDriver.requestCycle();
-        },
-        // [+]/[-] Brightness — adjust the map luma gain by ±BRIGHTNESS_STEP and
-        // push UPSTREAM (the module applies it module-side; in canvas mode this
-        // is what visibly brightens/darkens the map). Clamped to [−100, +100];
-        // the current value comes from the synced Foundry snapshot (default 0).
-        onBrightnessUp: () => {
-          const next = Math.min(100, (displaySettingsSync.get().brightness ?? 0) + BRIGHTNESS_STEP);
-          displaySettingsSync.sendEdit({ brightness: next });
-        },
-        onBrightnessDown: () => {
-          const next = Math.max(
-            -100,
-            (displaySettingsSync.get().brightness ?? 0) - BRIGHTNESS_STEP,
-          );
-          displaySettingsSync.sendEdit({ brightness: next });
-        },
+        // Dither + brightness are no longer on the glasses menu — they (and the
+        // other display settings) are adjusted on the phone settings panel
+        // (2026-06-14). displaySettingsSync still drives the live dither value.
       },
       // Pass the live render mode so the menu uses the correct container strategy:
       // canvas → 'hud-capture' (zero self-declared count, ADR-0013 Amendment 1);

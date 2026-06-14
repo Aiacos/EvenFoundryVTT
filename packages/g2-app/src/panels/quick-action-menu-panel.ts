@@ -73,8 +73,8 @@ const CANVAS_BG = '#000000';
 /** Canvas-mode foreground — white (quantized to brightest G2 palette step). */
 const CANVAS_FG = '#ffffff';
 
-/** Canvas-mode item-row pitch (px) — 14 lines (title + 13 items) at 15px fit the box. */
-const CANVAS_ROW_PITCH = 15;
+/** Canvas-mode item-row pitch (px) — 11 lines (title + 10 items) at 16px fit the box. */
+const CANVAS_ROW_PITCH = 16;
 
 // ─── Canvas-mode menu box geometry (2026-06-14) ──────────────────────────────
 // The menu paints as a centered BOX over the map layer (z=0) instead of an
@@ -82,21 +82,27 @@ const CANVAS_ROW_PITCH = 15;
 // 4 image containers and the full-screen map uses all 4, so a literally-separate
 // menu image is impossible — the compositor instead blits this transparent layer
 // (box opaque, rest cleared) over the map (drawImage is alpha-aware), giving the
-// same visual: map visible on every side of the menu box.
-/** Menu box width (px) — leaves ~98px of map visible on each side. */
-const MENU_BOX_W = 380;
-/** Menu box height (px) — fits title + 13 rows; ~14px of map top/bottom. */
-const MENU_BOX_H = 260;
+// same visual: map visible on every side of the menu box. Settings moved to the
+// phone panel; the menu now holds 10 navigation/view items, each with a small
+// pixel icon + smaller font.
+/** Menu box width (px) — leaves ~128px of map visible on each side. */
+const MENU_BOX_W = 320;
+/** Menu box height (px) — fits title + 10 icon rows; ~38px of map top/bottom. */
+const MENU_BOX_H = 212;
 /** Menu box top-left x (px) — horizontally centered in the 576px compositor. */
 const MENU_BOX_X = Math.round((COMPOSITOR_W - MENU_BOX_W) / 2);
 /** Menu box top-left y (px) — vertically centered in the 288px compositor. */
 const MENU_BOX_Y = Math.round((COMPOSITOR_H - MENU_BOX_H) / 2);
-/** Left padding (px) for text inside the box. */
-const MENU_BOX_PAD_X = 12;
+/** Left padding (px) for content inside the box. */
+const MENU_BOX_PAD_X = 14;
 /** Title baseline y (px) relative to the box top. */
-const MENU_BOX_TITLE_DY = 22;
+const MENU_BOX_TITLE_DY = 20;
 /** First item-row baseline y (px) relative to the box top. */
-const CANVAS_ITEMS_TOP_Y = 42;
+const CANVAS_ITEMS_TOP_Y = 40;
+/** Canvas-mode menu font size (px) — smaller than the 16px default for the box. */
+const CANVAS_FONT_PX = 13;
+/** Pixel-icon box size (px) drawn left of each main-menu label. */
+const ICON_SIZE = 14;
 
 /** Outer width of the menu box in visible code-points (UI-SPEC §1). */
 const MENU_WIDTH = 70;
@@ -135,9 +141,6 @@ const MAIN_ITEMS = [
   { key: 'M', i18nKey: 'quick_item_map', action: 'map-mode-toggle', target: undefined },
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
   { key: 'F', i18nKey: 'quick_item_fps', action: 'fps-toggle', target: undefined },
-  { key: 'D', i18nKey: 'quick_item_dither', action: 'dither-toggle', target: undefined },
-  { key: '+', i18nKey: 'quick_item_brightness_up', action: 'brightness-up', target: undefined },
-  { key: '-', i18nKey: 'quick_item_brightness_down', action: 'brightness-down', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
 
@@ -148,6 +151,101 @@ const MAIN_ITEMS = [
  * focus (it did require manual review when `[F]`/`[D]` were added).
  */
 const LANGUAGE_ITEM_INDEX = MAIN_ITEMS.findIndex((item) => item.key === 'N');
+
+/** 2D context shape used by {@link drawMenuIcon} (Offscreen + HTML canvas common subset). */
+type IconCtx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+
+/**
+ * Draw a 14×14 pixel icon for a main-menu item at top-left `(x, y)`, in the
+ * foreground colour (2026-06-14). Canvas-only (the menu is a composited raster,
+ * so we are not limited to firmware-font glyphs) — each icon is a simple
+ * recognizable silhouette per the Even Hub icon-design guidance. The item `key`
+ * selects the icon; the language sub-menu keeps its letter keys (no icons).
+ */
+function drawMenuIcon(ctx: IconCtx, key: string, x: number, y: number): void {
+  ctx.save();
+  ctx.strokeStyle = CANVAS_FG;
+  ctx.fillStyle = CANVAS_FG;
+  ctx.lineWidth = 1.4;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const line = (x1: number, y1: number, x2: number, y2: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(x + x1, y + y1);
+    ctx.lineTo(x + x2, y + y2);
+    ctx.stroke();
+  };
+  switch (key) {
+    case 'S': // character sheet — page with text lines
+      ctx.strokeRect(x + 2, y + 1, 10, 12);
+      line(4, 5, 10, 5);
+      line(4, 8, 10, 8);
+      line(4, 11, 9, 11);
+      break;
+    case 'C': // combat — shield
+      ctx.beginPath();
+      ctx.moveTo(x + 7, y + 1);
+      ctx.lineTo(x + 12, y + 3);
+      ctx.lineTo(x + 12, y + 8);
+      ctx.lineTo(x + 7, y + 13);
+      ctx.lineTo(x + 2, y + 8);
+      ctx.lineTo(x + 2, y + 3);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case 'L': // log — stacked text lines
+      line(2, 3, 11, 3);
+      line(2, 6, 11, 6);
+      line(2, 9, 11, 9);
+      line(2, 12, 8, 12);
+      break;
+    case 'B': // spellbook — book with spine
+      ctx.strokeRect(x + 2, y + 2, 10, 10);
+      line(7, 2, 7, 12);
+      break;
+    case 'I': // inventory — crate with handle
+      ctx.strokeRect(x + 2, y + 4, 10, 8);
+      ctx.beginPath();
+      ctx.arc(x + 7, y + 4, 2.5, Math.PI, 0, false);
+      ctx.stroke();
+      break;
+    case 'A': // action — lightning bolt (filled)
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 1);
+      ctx.lineTo(x + 3, y + 8);
+      ctx.lineTo(x + 6, y + 8);
+      ctx.lineTo(x + 5, y + 13);
+      ctx.lineTo(x + 11, y + 6);
+      ctx.lineTo(x + 7, y + 6);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'M': // map — 2×2 grid
+      ctx.strokeRect(x + 2, y + 2, 10, 10);
+      line(7, 2, 7, 12);
+      line(2, 7, 12, 7);
+      break;
+    case 'N': // language — globe
+      ctx.beginPath();
+      ctx.arc(x + 7, y + 7, 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+      line(1.5, 7, 12.5, 7);
+      ctx.beginPath();
+      ctx.ellipse(x + 7, y + 7, 2.4, 5.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case 'F': // fps — bar meter
+      ctx.fillRect(x + 3, y + 9, 2, 4);
+      ctx.fillRect(x + 6, y + 5, 2, 8);
+      ctx.fillRect(x + 9, y + 2, 2, 11);
+      break;
+    default: // 'X' close — cross
+      line(3, 3, 11, 11);
+      line(11, 3, 3, 11);
+      break;
+  }
+  ctx.restore();
+}
 
 // ─── Callbacks type ───────────────────────────────────────────────────────────
 
@@ -187,31 +285,6 @@ export interface QuickActionMenuCallbacks {
    * case no-ops when absent.
    */
   onFpsToggle?: () => void;
-
-  /**
-   * Called when the user selects [D] Dither — toggles the HUD raster dither
-   * mode between Bayer 4×4 ordered-dither (ON, default) and direct
-   * nearest-of-16-level quantization (OFF). The boot engine persists the new
-   * mode to the Even Hub kv store and triggers a render cycle.
-   * Optional so existing construction sites compile unchanged; the dispatch
-   * case no-ops when absent.
-   */
-  onDitherToggle?: () => void;
-
-  /**
-   * Called when the user selects [+] Brightness — raises the map luma gain by
-   * one step. Pushed UPSTREAM via the display-settings sync so the Foundry
-   * module's `mapBrightness` follows (in canvas mode the brightness is applied
-   * module-side). The menu stays open so repeated presses stack; press [X] to
-   * close and see the result. Optional — dispatch no-ops when absent.
-   */
-  onBrightnessUp?: () => void;
-
-  /**
-   * Called when the user selects [-] Brightness — lowers the map luma gain by
-   * one step. Mirror of {@link onBrightnessUp}. Optional — no-ops when absent.
-   */
-  onBrightnessDown?: () => void;
 }
 
 // ─── QuickActionMenuPanel ────────────────────────────────────────────────────
@@ -449,27 +522,42 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
     ctx.strokeRect(MENU_BOX_X + 0.5, MENU_BOX_Y + 0.5, MENU_BOX_W - 1, MENU_BOX_H - 1);
 
     const textX = MENU_BOX_X + MENU_BOX_PAD_X;
+    // Smaller font for the box: reuse the loaded family (VT323 or monospace
+    // fallback) at CANVAS_FONT_PX by swapping the size prefix.
+    const fontFamily = this._fontFamily.replace(/^\s*[\d.]+px\s*/, '');
+    const menuFont = `${CANVAS_FONT_PX}px ${fontFamily}`;
 
     // Title row.
     const isMain = this.mode === 'main';
     const title = getLabel(isMain ? 'quick_menu_title' : 'quick_lang_submenu_title', this.locale);
-    ctx.font = this._fontFamily;
+    ctx.font = menuFont;
     ctx.fillStyle = CANVAS_FG;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(`[ ${title} ]`, textX, MENU_BOX_Y + MENU_BOX_TITLE_DY);
 
-    // Item rows — reuse the same source-of-truth item arrays as glyph mode.
-    const rows: Array<{ navKey: string; label: string }> = isMain
-      ? MAIN_ITEMS.map((item) => ({ navKey: item.key, label: getLabel(item.i18nKey, this.locale) }))
-      : LOCALE_MENU.map((entry, idx) => ({
-          navKey: SUB_MENU_KEYS[idx] ?? '?',
-          label: entry.nativeLabel,
-        }));
-    rows.forEach((row, idx) => {
-      const marker = idx === this.activeIndex ? '▶ ' : '  ';
-      const y = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
-      ctx.fillText(`${marker}[${row.navKey}] ${row.label}`, textX, y);
-    });
+    // Cursor + icon/label column geometry.
+    const cursorX = textX;
+    const iconX = textX + 10; // after the ▶ cursor glyph
+    const labelX = iconX + ICON_SIZE + 8;
+
+    if (isMain) {
+      // Main mode: pixel icon + label per item (settings moved to the phone).
+      MAIN_ITEMS.forEach((item, idx) => {
+        const rowY = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
+        if (idx === this.activeIndex) {
+          ctx.fillText('▶', cursorX, rowY);
+        }
+        drawMenuIcon(ctx, item.key, iconX, rowY - ICON_SIZE + 2);
+        ctx.fillText(getLabel(item.i18nKey, this.locale), labelX, rowY);
+      });
+    } else {
+      // Language sub-menu: keep the letter keys (locale picker — no icons).
+      LOCALE_MENU.forEach((entry, idx) => {
+        const marker = idx === this.activeIndex ? '▶ ' : '  ';
+        const rowY = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
+        ctx.fillText(`${marker}[${SUB_MENU_KEYS[idx] ?? '?'}] ${entry.nativeLabel}`, textX, rowY);
+      });
+    }
 
     this._dirty = false;
   }
@@ -619,18 +707,6 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
       case 'fps-toggle':
         this.callbacks.onFpsToggle?.();
         this.callbacks.onClose();
-        break;
-      case 'dither-toggle':
-        this.callbacks.onDitherToggle?.();
-        this.callbacks.onClose();
-        break;
-      case 'brightness-up':
-        // Stay open (no onClose) so repeated +/- presses stack — the menu
-        // covers the map, so the user adjusts then presses [X] to see the result.
-        this.callbacks.onBrightnessUp?.();
-        break;
-      case 'brightness-down':
-        this.callbacks.onBrightnessDown?.();
         break;
       case 'action-stub':
         this.callbacks.onAction();
