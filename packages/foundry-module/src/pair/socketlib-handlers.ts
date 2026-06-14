@@ -50,12 +50,13 @@
  */
 
 import { MODULE_ID } from '../module.js';
-import { getCharacterSnapshot, listPlayerCharacters } from '../readers/character-reader.js';
+import { getCharacterSnapshot, listPlayerCharactersForUser } from '../readers/character-reader.js';
 import { getCombatSnapshot } from '../readers/combat-reader.js';
 import { getEventLog } from '../readers/event-log-reader.js';
 import { getSceneViewport } from '../readers/scene-reader.js';
 import type { ToolId, ToolResult } from '../write-path/tool-registry.js';
 import { dispatchTool } from '../write-path/tool-registry.js';
+import { authorizedActorIdsForUser } from './actor-authorization.js';
 import { revokeBearer, validateBearer } from './bearer-registry.js';
 
 // ─── Module-scoped socket holder (Quick Task 260604-lg4) ──────────────────────
@@ -86,23 +87,62 @@ export function getEvfSocket(): SocketlibSocket | null {
 // ─── Handler implementations ─────────────────────────────────────────────────
 
 /**
+ * Result shape of the `evf.validateToken` handler.
+ *
+ * On success (`valid: true`) the result carries the bearer's bound Foundry user
+ * identity and the live owned-actor set (ADR-0014). The bridge caches
+ * `entry.userId` + `authorizedActorIds` (the {@link BearerAuthorization} contract)
+ * and enforces set-membership on every read path. Bearer token values are NEVER
+ * included in the result (T-02-01) — only the bound user id and authorized actors.
+ *
+ * @see packages/shared-protocol/src/payloads/bearer-registry.ts (BearerAuthorization)
+ */
+export interface ValidateTokenResult {
+  valid: boolean;
+  reason?: string;
+  /**
+   * Present only when `valid` is true. Carries the bound Foundry user id
+   * (ADR-0014). The token value itself is never included.
+   */
+  entry?: { userId: string };
+  /**
+   * Present only when `valid` is true. Live set of actor ids the bound user
+   * OWNs, computed by Foundry at validation time. May be empty (authorizes no
+   * actors — e.g. a user that owns nothing, or a fail-closed legacy bearer).
+   */
+  authorizedActorIds?: string[];
+}
+
+/**
  * Validates a bearer token and returns the validation result.
  *
  * Input guard (T-02-04): non-string inputs return `{ valid: false, reason: "invalid_input" }`
  * without touching the registry.
  *
+ * On success (ADR-0014): also returns `entry.userId` (the bound Foundry user) and
+ * `authorizedActorIds` — the live set of actor ids that user OWNs, computed by
+ * Foundry via `actor.testUserPermission(user, "OWNER")`. The bridge consumes these
+ * to enforce per-actor read authorization. Fail-closed: an unknown/missing user
+ * yields an empty `authorizedActorIds` (authorizes nothing).
+ *
  * @param token - The raw bearer token string to validate
- * @returns Serializable validation result
+ * @returns Serializable validation result (see {@link ValidateTokenResult})
  */
-function handleValidateToken(token: unknown): { valid: boolean; reason?: string } {
+function handleValidateToken(token: unknown): ValidateTokenResult {
   if (typeof token !== 'string') {
     return { valid: false, reason: 'invalid_input' };
   }
 
   const result = validateBearer(token);
-  // Return a plain serializable object (no BearerEntry reference — bearer values never leak)
-  if (result.valid) {
-    return { valid: true };
+  if (result.valid && result.entry !== undefined) {
+    // ADR-0014: bind the bearer to its Foundry user + live owned-actor set.
+    // Bearer token value is NEVER leaked — only the bound userId + authorized actors.
+    const userId = result.entry.userId;
+    return {
+      valid: true,
+      entry: { userId },
+      authorizedActorIds: authorizedActorIdsForUser(userId),
+    };
   }
   // exactOptionalPropertyTypes: only include 'reason' key when it has a defined value
   const reason = result.reason;
@@ -135,6 +175,13 @@ function handleRevokeToken(tokenId: unknown): { success: boolean; reason?: strin
  * Token validation: handler validates token before touching game state (T-02-04).
  * Returns null for unknown tokens OR actors not found/not PC.
  *
+ * ADR-0014 (defence in depth): after validating the token, re-checks that
+ * `actorId` is in the bound user's live owned-actor set
+ * (`actor.testUserPermission(user, "OWNER")`). The Foundry handler is the last
+ * line of defence even if the bridge cache is stale — a token bound to a user
+ * who does not OWN `actorId` is denied (returns null), preventing cross-player
+ * character data disclosure (T8).
+ *
  * @param actorId - Foundry actor document ID
  * @param token   - Bearer token for validation (passed by bridge route)
  */
@@ -146,7 +193,12 @@ function handleGetCharacterSnapshot(
     return null;
   }
   const validation = validateBearer(token);
-  if (!validation.valid) {
+  if (!validation.valid || validation.entry === undefined) {
+    return null;
+  }
+  // ADR-0014 defence in depth: deny unless the bound user OWNs this actor.
+  const authorized = authorizedActorIdsForUser(validation.entry.userId);
+  if (!authorized.includes(actorId)) {
     return null;
   }
   return getCharacterSnapshot(actorId);
@@ -209,9 +261,15 @@ function handleGetEventLog(
 }
 
 /**
- * Returns a list of all player characters in the world.
+ * Returns the player-character roster scoped to the bearer's bound user (ADR-0014).
  *
  * Used by bridge `GET /v1/characters?world=` for wizard Step 3 character picker.
+ *
+ * After validating the token, filters the roster to actors the bound user OWNs
+ * (`actor.testUserPermission(user, "OWNER")`) via {@link listPlayerCharactersForUser}.
+ * A device therefore only ever sees its own user's characters — selection UI can no
+ * longer enumerate other players' actors (T8). Fail-closed: a bearer whose user owns
+ * nothing yields an empty roster.
  *
  * @param _worldId - World ID (currently unused — single-world MVP)
  * @param token    - Bearer token for validation
@@ -219,15 +277,17 @@ function handleGetEventLog(
 function handleListCharacters(
   _worldId: unknown,
   token: unknown,
-): ReturnType<typeof listPlayerCharacters> {
+): ReturnType<typeof listPlayerCharactersForUser> {
   if (typeof token !== 'string') {
     return [];
   }
   const validation = validateBearer(token);
-  if (!validation.valid) {
+  if (!validation.valid || validation.entry === undefined) {
     return [];
   }
-  return listPlayerCharacters();
+  // ADR-0014: scope the roster to the bound user's owned actors.
+  const authorized = authorizedActorIdsForUser(validation.entry.userId);
+  return listPlayerCharactersForUser(authorized);
 }
 
 // ─── Plan 07-02: tool dispatch input shape guard ──────────────────────────────

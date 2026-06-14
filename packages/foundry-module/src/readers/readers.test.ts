@@ -2113,3 +2113,51 @@ describe('registerHookSubscribers', () => {
     );
   });
 });
+
+// ─── ADR-0014: per-user roster scoping (listPlayerCharactersForUser) ───────────
+
+describe('listPlayerCharactersForUser (ADR-0014)', () => {
+  let listPlayerCharacters: typeof import('./character-reader.js').listPlayerCharacters;
+  let listPlayerCharactersForUser: typeof import('./character-reader.js').listPlayerCharactersForUser;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.stubGlobal(
+      'game',
+      makeGameMock([
+        makeActor({ id: 'actor-alice', name: 'Alice', type: 'character' }),
+        makeActor({ id: 'actor-bob', name: 'Bob', type: 'character' }),
+        makeActor({ id: 'npc-1', name: 'Goblin', type: 'npc' }),
+      ]),
+    );
+    const mod = await import('./character-reader.js');
+    listPlayerCharacters = mod.listPlayerCharacters;
+    listPlayerCharactersForUser = mod.listPlayerCharactersForUser;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('filters the roster to the authorized actor ids', () => {
+    const roster = listPlayerCharactersForUser(['actor-bob']);
+    expect(roster.map((c) => c.actorId)).toEqual(['actor-bob']);
+  });
+
+  it('returns every owned PC when all ids are authorized (still excludes NPCs)', () => {
+    const roster = listPlayerCharactersForUser(['actor-alice', 'actor-bob', 'npc-1']);
+    // NPCs are never characters, so npc-1 never appears even if "authorized".
+    expect(roster.map((c) => c.actorId).sort()).toEqual(['actor-alice', 'actor-bob']);
+  });
+
+  it('fail-closed: empty authorized set yields an empty roster', () => {
+    expect(listPlayerCharactersForUser([])).toEqual([]);
+  });
+
+  it('is a strict subset of the global listPlayerCharacters roster', () => {
+    const global = listPlayerCharacters().map((c) => c.actorId);
+    const scoped = listPlayerCharactersForUser(['actor-alice']).map((c) => c.actorId);
+    expect(scoped.every((id) => global.includes(id))).toBe(true);
+    expect(scoped).toEqual(['actor-alice']);
+  });
+});

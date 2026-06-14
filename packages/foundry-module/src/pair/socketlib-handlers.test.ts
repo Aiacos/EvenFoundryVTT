@@ -44,8 +44,47 @@ const makeHooksMock = () => ({
   on: vi.fn(),
 });
 
-const makeGameMock = () => {
+/**
+ * Builds a minimal Foundry actor mock with a `testUserPermission` that returns
+ * true only for users in `ownerIds` (ADR-0014 ownership model).
+ */
+function makeActorMock(id: string, name: string, ownerIds: string[]) {
+  return {
+    id,
+    name,
+    type: 'character',
+    // Minimal dnd5e system shape so getCharacterSnapshot can build a snapshot
+    // for an OWNED actor (the ownership re-check must not block reads).
+    system: {
+      attributes: {
+        hp: { value: 10, max: 10, temp: 0 },
+        ac: { value: 12 },
+        exhaustion: 0,
+        death: { success: 0, failure: 0 },
+        init: { total: 0 },
+        movement: { walk: 30 },
+      },
+      details: { level: 1 },
+      abilities: undefined,
+      skills: undefined,
+      spells: {},
+    },
+    img: '',
+    statuses: new Set<string>(),
+    items: { contents: [] },
+    testUserPermission: vi.fn((user: { id: string }, _perm: string) => ownerIds.includes(user.id)),
+  };
+}
+
+const makeGameMock = (
+  opts: {
+    actors?: ReturnType<typeof makeActorMock>[];
+    users?: Array<{ id: string; name: string; isGM: boolean }>;
+  } = {},
+) => {
   const store = new Map<string, unknown>();
+  const actorList = opts.actors ?? [];
+  const userList = opts.users ?? [];
   return {
     settings: {
       get: vi.fn((moduleId: string, key: string) => store.get(`${moduleId}.${key}`)),
@@ -57,8 +96,8 @@ const makeGameMock = () => {
     },
     i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
     actors: {
-      get: vi.fn((_actorId: string) => undefined),
-      contents: [] as unknown[],
+      get: vi.fn((actorId: string) => actorList.find((a) => a.id === actorId)),
+      contents: actorList,
     },
     combat: null,
     scenes: {
@@ -69,7 +108,8 @@ const makeGameMock = () => {
       targets: new Set(),
     },
     users: {
-      get: vi.fn((_userId: string) => undefined),
+      get: vi.fn((userId: string) => userList.find((u) => u.id === userId)),
+      contents: userList,
     },
   };
 };
@@ -164,7 +204,7 @@ describe('registerSocketlibHandlers', () => {
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
 
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       const result = socketlibMock.callHandler('evf.validateToken', entry.token);
       expect(result).toMatchObject({ valid: true });
     });
@@ -200,7 +240,7 @@ describe('registerSocketlibHandlers', () => {
       const { generateBearer, validateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
 
-      const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world', 'user-1');
       const result = socketlibMock.callHandler('evf.revokeToken', entry.token);
       expect(result).toEqual({ success: true });
 
@@ -255,10 +295,201 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       // game.actors.get returns undefined (default mock)
       const result = socketlibMock.callHandler('evf.getCharacterSnapshot', 'actor-1', entry.token);
       expect(result).toBeNull();
+    });
+
+    // ── ADR-0014: per-actor ownership re-check (defence in depth) ──────────────
+
+    it('returns null when the bound user does NOT own the requested actorId (ADR-0014)', async () => {
+      // user-bob is bound to the bearer but only owns actor-bob; requesting
+      // actor-alice (owned by user-alice) must be denied.
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [
+            makeActorMock('actor-alice', 'Alice', ['user-alice']),
+            makeActorMock('actor-bob', 'Bob', ['user-bob']),
+          ],
+          users: [
+            { id: 'user-alice', name: 'Alice', isGM: false },
+            { id: 'user-bob', name: 'Bob', isGM: false },
+          ],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Bob G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-bob',
+      );
+
+      const denied = socketlibMock.callHandler(
+        'evf.getCharacterSnapshot',
+        'actor-alice',
+        entry.token,
+      );
+      expect(denied).toBeNull();
+    });
+
+    it('returns a snapshot when the bound user OWNs the requested actorId (ADR-0014)', async () => {
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [makeActorMock('actor-bob', 'Bob', ['user-bob'])],
+          users: [{ id: 'user-bob', name: 'Bob', isGM: false }],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Bob G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-bob',
+      );
+
+      const allowed = socketlibMock.callHandler(
+        'evf.getCharacterSnapshot',
+        'actor-bob',
+        entry.token,
+      );
+      // Owned + exists → a snapshot object (not null).
+      expect(allowed).not.toBeNull();
+      expect(allowed).toMatchObject({ actorId: 'actor-bob' });
+    });
+  });
+
+  // ── ADR-0014: evf.validateToken returns userId + authorizedActorIds ──────────
+
+  describe('evf.validateToken handler (ADR-0014 authorization)', () => {
+    it('returns entry.userId + authorizedActorIds for a valid bearer', async () => {
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [
+            makeActorMock('actor-bob', 'Bob', ['user-bob']),
+            makeActorMock('actor-bob2', 'Bob Alt', ['user-bob']),
+            makeActorMock('actor-alice', 'Alice', ['user-alice']),
+          ],
+          users: [
+            { id: 'user-bob', name: 'Bob', isGM: false },
+            { id: 'user-alice', name: 'Alice', isGM: false },
+          ],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Bob G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-bob',
+      );
+
+      const result = socketlibMock.callHandler('evf.validateToken', entry.token) as {
+        valid: boolean;
+        entry?: { userId: string };
+        authorizedActorIds?: string[];
+      };
+      expect(result.valid).toBe(true);
+      expect(result.entry).toEqual({ userId: 'user-bob' });
+      // Only the two actors user-bob OWNs, never actor-alice.
+      expect(result.authorizedActorIds?.sort()).toEqual(['actor-bob', 'actor-bob2']);
+    });
+
+    it('NEVER includes the bearer token value in the result (T-02-01)', async () => {
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [makeActorMock('actor-bob', 'Bob', ['user-bob'])],
+          users: [{ id: 'user-bob', name: 'Bob', isGM: false }],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Bob G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-bob',
+      );
+
+      const result = socketlibMock.callHandler('evf.validateToken', entry.token);
+      expect(JSON.stringify(result)).not.toContain(entry.token);
+    });
+
+    it('fail-closed: empty authorizedActorIds when the bound user no longer exists (ADR-0014 §5)', async () => {
+      // Bearer bound to user-ghost, but game.users.get returns undefined for it.
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [makeActorMock('actor-bob', 'Bob', ['user-bob'])],
+          users: [{ id: 'user-bob', name: 'Bob', isGM: false }],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Ghost G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-ghost',
+      );
+
+      const result = socketlibMock.callHandler('evf.validateToken', entry.token) as {
+        valid: boolean;
+        entry?: { userId: string };
+        authorizedActorIds?: string[];
+      };
+      expect(result.valid).toBe(true);
+      expect(result.entry).toEqual({ userId: 'user-ghost' });
+      expect(result.authorizedActorIds).toEqual([]);
+    });
+  });
+
+  // ── ADR-0014: evf.listCharacters scopes the roster to the bound user ─────────
+
+  describe('evf.listCharacters handler (ADR-0014 roster scoping)', () => {
+    it('returns only the bound user OWNed characters', async () => {
+      vi.stubGlobal(
+        'game',
+        makeGameMock({
+          actors: [
+            makeActorMock('actor-bob', 'Bob', ['user-bob']),
+            makeActorMock('actor-alice', 'Alice', ['user-alice']),
+          ],
+          users: [
+            { id: 'user-bob', name: 'Bob', isGM: false },
+            { id: 'user-alice', name: 'Alice', isGM: false },
+          ],
+        }),
+      );
+      const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
+      const { generateBearer } = await import('./bearer-registry.js');
+      registerSocketlibHandlers();
+      const entry = await generateBearer(
+        'Bob G2',
+        'https://bridge.local:8910',
+        'world',
+        'user-bob',
+      );
+
+      const roster = socketlibMock.callHandler(
+        'evf.listCharacters',
+        'world',
+        entry.token,
+      ) as Array<{ actorId: string }>;
+      expect(roster.map((c) => c.actorId)).toEqual(['actor-bob']);
     });
   });
 
@@ -281,7 +512,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       // game.combat is null (default mock)
       const result = socketlibMock.callHandler('evf.getCombatSnapshot', entry.token);
       expect(result).toBeNull();
@@ -307,7 +538,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       // game.scenes.active is null → returns zero-state SceneViewport
       const result = socketlibMock.callHandler('evf.getSceneViewport', entry.token);
       expect(result).not.toBeNull();
@@ -334,7 +565,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       // eventLogBuffer is empty by default; signature is (since, limit, token)
       const result = socketlibMock.callHandler('evf.getEventLog', 0, 200, entry.token);
       expect(Array.isArray(result)).toBe(true);
@@ -360,7 +591,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       const { generateBearer } = await import('./bearer-registry.js');
       registerSocketlibHandlers();
-      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world');
+      const entry = await generateBearer('Test', 'https://bridge.local:8910', 'world', 'user-1');
       // Handler signature is (_worldId, token); pass 'world-1' as worldId, token second
       expect(() =>
         socketlibMock.callHandler('evf.listCharacters', 'world-1', entry.token),

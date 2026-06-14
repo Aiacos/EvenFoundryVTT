@@ -784,3 +784,27 @@ export function listPlayerCharacters(): Array<{ actorId: string; name: string; l
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Returns the player-character roster filtered to actors the given user OWNs
+ * (ADR-0014).
+ *
+ * Same shape/sort as {@link listPlayerCharacters}, but additionally restricts
+ * the result to actors whose ids are in `authorizedActorIds` (the live owned set
+ * computed by Foundry via `actor.testUserPermission(user, "OWNER")`). Used by the
+ * token-validated `evf.listCharacters` socketlib handler so the roster a paired
+ * device receives is already scoped to the bound user — closing the cross-player
+ * roster-enumeration surface (T8) on the pull path. The push-path global cache is
+ * filtered bridge-side (ADR-0014 §4).
+ *
+ * Fail-closed: an empty `authorizedActorIds` yields an empty roster.
+ *
+ * @param authorizedActorIds - Actor ids the bound user owns (possibly empty).
+ * @returns Owned player characters, sorted by name ascending.
+ */
+export function listPlayerCharactersForUser(
+  authorizedActorIds: readonly string[],
+): Array<{ actorId: string; name: string; level: number }> {
+  const allowed = new Set(authorizedActorIds);
+  return listPlayerCharacters().filter((c) => allowed.has(c.actorId));
+}
