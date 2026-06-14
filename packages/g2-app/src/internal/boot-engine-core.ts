@@ -95,6 +95,7 @@ import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
 import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { attachRootExit } from '../panels/root-exit-dispatcher.js';
+import { createPhoneSettingsPanel, type PhoneSettingsPanel } from '../phone/settings-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
@@ -952,11 +953,22 @@ export async function _bootEngineCore(
   // upstream. onUpdate realigns the local dither mirror to Foundry's canonical
   // value (Foundry wins) and repaints. `wsSender` + `hudDeltaDriver` are both in
   // scope here (constructed above).
+  // Phone-side settings panel (2026-06-14): the five display settings are
+  // adjusted on the PHONE (DOM control surface), not via on-glasses gestures.
+  // Late-bound so the sync's onUpdate can refresh it; assigned just below.
+  let phoneSettings: PhoneSettingsPanel | null = null;
   const displaySettingsSync = createDisplaySettingsSync(wsEventBus, wsSender, (settings) => {
     if (typeof settings.dither === 'boolean' && settings.dither !== ditherOn) {
       ditherOn = settings.dither;
       hudDeltaDriver.requestCycle();
     }
+    // Reflect downstream Foundry changes into the phone controls.
+    phoneSettings?.update(settings);
+  });
+  phoneSettings = createPhoneSettingsPanel({
+    sendEdit: (edit) => displaySettingsSync.sendEdit(edit),
+    initial: displaySettingsSync.get(),
+    locale: opts.locale,
   });
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
@@ -1873,6 +1885,11 @@ export async function _bootEngineCore(
         displaySettingsSync.dispose();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: displaySettingsSync.dispose failed', err);
+      }
+      try {
+        phoneSettings?.dispose();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: phoneSettings.dispose failed', err);
       }
       try {
         unsubRootExit();
