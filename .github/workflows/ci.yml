@@ -48,10 +48,13 @@ jobs:
         run: pnpm test:coverage
 
       # D-1.10 gate 5: // TODO discipline (INV-4)
-      # Pattern matches // TODO that is NOT followed by (#NN) or (ADR-NNNN)
+      # Pattern matches // TODO that is NOT followed by (#NN) or (ADR-NNNN).
+      # PCRE (-P) is required for the negative lookahead — ERE (-E) silently never
+      # fires. The optional space lives INSIDE the lookahead (`(?! ?\(...)`) so both
+      # `// TODO (#NN)` and `// TODO(ADR-NNNN)` pass without a backtrack escape.
       - name: TODO discipline grep
         run: |
-          if grep -RnE '// TODO(?!\((#[0-9]+|ADR-[0-9]+)\))' \
+          if grep -RPn '// TODO(?! ?\((#[0-9]+|ADR-[0-9]+)\))' \
               --include='*.ts' --include='*.tsx' --include='*.js' \
               packages/ docs/architecture/ 2>/dev/null; then
             echo "::error::Found // TODO without (#issue) or (ADR-NNNN) reference"
