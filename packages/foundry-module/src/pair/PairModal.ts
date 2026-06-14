@@ -43,6 +43,7 @@
  * @see 02-CONTEXT.md D-2.02 (ApplicationV2 dialog framework), D-2.10 (opaque bearer)
  */
 
+import { MODULE_ID } from '../module.js';
 import type { BearerEntry } from './bearer-registry.js';
 import { generateBearer, listBearers, revokeBearer } from './bearer-registry.js';
 
@@ -143,6 +144,25 @@ function formatDate(epochMs: number): string {
 }
 
 /**
+ * Reads the saved bridge URL from the module's settings store, coercing any non-string
+ * (corrupted / unexpected / unset) value to an empty string so it never leaks `undefined`
+ * into the DOM. Mirrors BridgeConfigModal.readStringSetting('bridgeUrl').
+ */
+function readBridgeUrl(): string {
+  const value = game.settings.get(MODULE_ID, 'bridgeUrl');
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Reads the current Foundry world ID, coercing to an empty string when unavailable.
+ * The world ID is provisioned to the bridge alongside the bearer (D-2.10).
+ */
+function readWorldId(): string {
+  const id = game.world?.id;
+  return typeof id === 'string' ? id : '';
+}
+
+/**
  * Builds a DeviceRow from a BearerEntry for template rendering.
  * Token value included as `token` — only rendered in `data-token-id` attribute for revoke,
  * never rendered in visible text.
@@ -217,6 +237,10 @@ function buildI18n(): Record<string, string> {
  * Opened from Foundry Settings → Module Settings → EvenFoundryVTT →
  * "Pair a G2 device" (registered via `game.settings.registerMenu` in settings.ts).
  *
+ * Construction: `registerMenu` instantiates the class with `new type()` (NO args), so the
+ * modal takes no constructor parameters. The bridge URL is read from the `bridgeUrl` world
+ * setting and the world ID from `game.world.id` at render time (mirrors BridgeConfigModal).
+ *
  * The modal lifecycle:
  * 1. `render(true)` — opens and calls `_prepareContext()` → builds copyable credentials + state
  * 2. `_onRender(context, options)` — binds Revoke/Refresh/NewCode/Reveal/Copy handlers + countdown
@@ -225,8 +249,6 @@ function buildI18n(): Record<string, string> {
  * @see 02-UI-SPEC.md §UI-A for the full wireframe, states, and revoke flow.
  */
 export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
-  private readonly _bridgeUrl: string;
-  private readonly _worldId: string;
   private _countdownInterval: ReturnType<typeof setInterval> | null = null;
 
   /** ApplicationV2 window/position config (replaces the v1 `defaultOptions` getter). */
@@ -242,16 +264,6 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   static override PARTS = {
     main: { template: 'modules/evenfoundryvtt/templates/pair-modal.hbs' },
   };
-
-  /**
-   * @param bridgeUrl - Bridge URL the player pastes into the wizard
-   * @param worldId - Foundry world ID (provisioned to the bridge with the bearer)
-   */
-  constructor(bridgeUrl: string, worldId: string) {
-    super({});
-    this._bridgeUrl = bridgeUrl;
-    this._worldId = worldId;
-  }
 
   /**
    * Computes the modal state from the currently active bearers.
@@ -341,7 +353,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       isRefreshNeeded,
       isPairing,
       showCredentials,
-      bridgeUrl: this._bridgeUrl,
+      bridgeUrl: readBridgeUrl(),
       token: entry.token,
       ttlDisplay,
       expiresIso,
@@ -467,8 +479,9 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     // Propagate the existing device alias so the refreshed entry keeps its label (WR-04).
     // listBearers() returns non-revoked entries; the first is the active device.
     const currentAlias = listBearers()[0]?.alias ?? '';
-    // Generate new bearer with grace period (D-2.11)
-    generateBearer(currentAlias, this._bridgeUrl, this._worldId, true)
+    // Generate new bearer with grace period (D-2.11). Bridge URL + world ID are read from
+    // settings / game.world at call time (no-arg construction path; see class doc).
+    generateBearer(currentAlias, readBridgeUrl(), readWorldId(), true)
       .then(() => {
         void this.render({ force: true });
       })

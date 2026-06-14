@@ -55,6 +55,9 @@ const makeHooksMock = () => ({
 
 const makeGameMock = (lang = 'en') => {
   const store = new Map<string, unknown>();
+  // Pre-seed the bridgeUrl world setting so the no-arg PairModal (the real registerMenu
+  // path) reads a real value instead of `undefined`. The world ID comes from game.world.id.
+  store.set('evenfoundryvtt.bridgeUrl', 'https://bridge.local:8910');
   return {
     settings: {
       get: vi.fn((moduleId: string, key: string) => store.get(`${moduleId}.${key}`)),
@@ -64,6 +67,7 @@ const makeGameMock = (lang = 'en') => {
       register: vi.fn(),
       registerMenu: vi.fn(),
     },
+    world: { id: 'world-abc' },
     i18n: {
       lang,
       localize: vi.fn((k: string) => k),
@@ -129,7 +133,7 @@ describe('PairModal', () => {
   describe('_prepareContext() state machine', () => {
     it('returns state="empty" when no active bearers exist', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('empty');
       expect(data.token).toBeUndefined();
@@ -141,11 +145,54 @@ describe('PairModal', () => {
       const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('active');
       expect(data.token).toBe(entry.token);
       expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+    });
+
+    // Regression (260614 review): registerMenu instantiates PairModal with `new type()`
+    // (NO args). The old `constructor(bridgeUrl, worldId)` left those fields `undefined`,
+    // so the bridge URL rendered as `undefined`. The no-arg modal must read the real
+    // bridgeUrl from settings + the world ID from game.world.id at render time.
+    it('no-arg construction (real registerMenu path) yields the bridgeUrl from settings, not undefined', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      // Construct via the REAL Foundry path: `new PairModal()` with no arguments.
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+
+      // The bridge URL must come from the `bridgeUrl` world setting (seeded in makeGameMock),
+      // never `undefined`.
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+      expect(data.bridgeUrl).not.toBeUndefined();
+      expect(data.token).toBe(entry.token);
+      // game.settings.get must have been consulted for the bridgeUrl key (settings-read path).
+      expect(gameMock.settings.get).toHaveBeenCalledWith('evenfoundryvtt', 'bridgeUrl');
+      // game.world.id is the world identifier surfaced to the bridge (read at render time).
+      expect(gameMock.world.id).toBe('world-abc');
+    });
+
+    it('no-arg construction renders an empty bridgeUrl (not undefined) when the setting is unset', async () => {
+      // Simulate an unset bridgeUrl setting: get() returns undefined for that key.
+      gameMock.settings.get.mockImplementation((moduleId: string, key: string) => {
+        if (key === 'bridgeUrl') return undefined;
+        return gameMock._store.get(`${moduleId}.${key}`);
+      });
+
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+
+      // Graceful fallback: empty string, never the literal `undefined` that the bug produced.
+      expect(data.bridgeUrl).toBe('');
+      expect(data.bridgeUrl).not.toBeUndefined();
     });
 
     it('returns state="expired" when the only bearer is expired', async () => {
@@ -179,7 +226,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
-      const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal2();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('expired');
       expect(data.token).toBeUndefined();
@@ -216,7 +263,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
-      const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal2();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('refresh-needed');
       expect(typeof data.token).toBe('string');
@@ -226,7 +273,7 @@ describe('PairModal', () => {
   describe('_prepareContext() boolean flags', () => {
     it('sets isEmpty=true and showCredentials=false for empty state', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.isEmpty).toBe(true);
       expect(data.isExpired).toBe(false);
@@ -240,7 +287,7 @@ describe('PairModal', () => {
       await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.isEmpty).toBe(false);
       expect(data.isExpired).toBe(false);
@@ -277,7 +324,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       expect(data.isExpired).toBe(true);
       expect(data.isEmpty).toBe(false);
       expect(data.showCredentials).toBe(false);
@@ -311,7 +358,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       expect(data.isRefreshNeeded).toBe(true);
       expect(data.showCredentials).toBe(true);
     });
@@ -323,7 +370,7 @@ describe('PairModal', () => {
       await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(typeof data.expiresAtMs).toBe('number');
       // Must be a future timestamp (epoch ms, not seconds)
@@ -332,7 +379,7 @@ describe('PairModal', () => {
 
     it('expiresAtMs is undefined for empty state', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.expiresAtMs).toBeUndefined();
     });
@@ -341,7 +388,7 @@ describe('PairModal', () => {
   describe('_prepareContext() i18n field', () => {
     it('includes an i18n object with required keys', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.i18n).toBeDefined();
       const i18n = data.i18n as Record<string, string>;
@@ -353,7 +400,7 @@ describe('PairModal', () => {
 
     it('includes expiresIn key in i18n (regression: was missing from buildI18n)', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.expiresIn).toBeDefined();
@@ -363,7 +410,7 @@ describe('PairModal', () => {
 
     it('includes close key in i18n (regression: was missing from buildI18n)', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.close).toBeDefined();
@@ -372,7 +419,7 @@ describe('PairModal', () => {
 
     it('includes copy/reveal i18n keys (no missing-key regression for the copy UX)', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.copyInstruction).toBe('evf.pair.copy.instruction');
@@ -386,7 +433,7 @@ describe('PairModal', () => {
 
     it('does NOT resolve the removed evf.pair.qr.scan_instruction key', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.scanInstruction).toBeUndefined();
@@ -396,10 +443,7 @@ describe('PairModal', () => {
   describe('copyable credentials UX', () => {
     it('_onClickReveal toggles token mask/plain visibility and button label', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal & {
+      const modal = new PairModal() as unknown as RenderableModal & {
         _onClickReveal(event: Event): void;
       };
 
@@ -431,10 +475,7 @@ describe('PairModal', () => {
       vi.stubGlobal('navigator', { clipboard: { writeText } });
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const html = document.createElement('div');
       const copyBtn = document.createElement('button');
@@ -457,7 +498,7 @@ describe('PairModal', () => {
       await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const devices = data.devices as unknown[];
       expect(Array.isArray(devices)).toBe(true);
@@ -471,10 +512,7 @@ describe('PairModal', () => {
       const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       // Build minimal DOM: a div with a revoke button
       const html = document.createElement('div');
@@ -501,10 +539,7 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -527,10 +562,7 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -550,10 +582,7 @@ describe('PairModal', () => {
     it('binds click handler to [data-action="new-code"] button (empty state — first pairing)', async () => {
       // Empty state: no bearers at all. The empty-state section must still wire new-code.
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -577,7 +606,7 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
 
       const btn = document.createElement('button');
       // No dataset.tokenId
@@ -594,7 +623,7 @@ describe('PairModal', () => {
   describe('close()', () => {
     it('clears the countdown interval and calls super.close()', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
 
       // close() should resolve without error even if no interval is running
       await expect(modal.close()).resolves.toBeUndefined();
@@ -608,7 +637,7 @@ describe('PairModal', () => {
       // lastSeenAt is null on fresh entry
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('—');
@@ -645,7 +674,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('Online');
     });
@@ -680,7 +709,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toContain('min ago');
     });
@@ -715,7 +744,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('2 h ago');
     });
@@ -750,7 +779,7 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('>24 h ago');
     });
@@ -762,10 +791,7 @@ describe('PairModal', () => {
       await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       // Start a countdown by rendering with a time element
       const html = document.createElement('div');
