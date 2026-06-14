@@ -1099,11 +1099,29 @@ export async function _bootEngineCore(
   let currentMenuLocale: BootEngineLocale = effectiveLocale;
   let currentMenuOverride: LocaleOverride = localeOverride === 'auto' ? 'auto' : localeOverride;
 
+  // T10: live locale holder for the NAVIGATION construction sites (openPanel,
+  // quick-action [S]/[I], the action-overlay factories). `effectiveLocale` is a
+  // boot-time `const` captured by those closures, so without this mutable holder an
+  // on-glasses [N] Language change only updated the menu chrome — every panel/modal
+  // opened afterwards stayed in the boot locale until reboot. The closures below read
+  // `currentLocale` at OPEN time instead of capturing the const, so the live locale
+  // reaches them. Device-local override only — never writes world settings (§7.16).
+  let currentLocale: BootEngineLocale = effectiveLocale;
+
+  // T10: the live WS socket. Starts as the boot socket `ws`; `onReconnected`
+  // updates it to `newWs`. The locale-change re-attach listener (after the
+  // WsReconnectController) re-binds the locale-dependent message dispatchers
+  // against THIS socket so they pick up a new [N] Language choice without reboot.
+  let liveWs: WebSocket = ws;
+
   const unsubMenuLocale = localeEvents.on('changed', (code) => {
     // 'auto' means revert to the boot-detected locale (opts.locale). Any specific
     // locale code takes effect directly as both the render locale and the stored override.
-    currentMenuLocale = code === 'auto' ? opts.locale : (code as BootEngineLocale);
+    const nextLocale: BootEngineLocale = code === 'auto' ? opts.locale : (code as BootEngineLocale);
+    currentMenuLocale = nextLocale;
     currentMenuOverride = code;
+    // T10: keep the navigation-site locale live alongside the menu chrome.
+    currentLocale = nextLocale;
   });
 
   const makeMenu = (): QuickActionMenuPanel => {
@@ -1152,7 +1170,9 @@ export async function _bootEngineCore(
             layerManager,
             gestureBus,
             negotiatedCaps: negotiatedCaps,
-            locale: effectiveLocale,
+            // T10: read the live locale at open time so a navigated panel renders
+            // in the user's current [N] Language choice, not the boot-time const.
+            locale: currentLocale,
           });
         },
         onMapModeToggle: () => {
@@ -1252,7 +1272,9 @@ export async function _bootEngineCore(
     bridge,
     gestureBus,
     layerManager,
-    effectiveLocale,
+    // T10: currentLocale === effectiveLocale at boot; the locale-change listener
+    // below re-attaches with the live value after an [N] Language change.
+    currentLocale,
     toastQueue, // Plan 09-03: forward for [N] cancel-toast path (CDM-CANCEL-01)
   );
 
@@ -1266,7 +1288,7 @@ export async function _bootEngineCore(
     layerManager,
     bridge,
     gestureBus,
-    locale: effectiveLocale,
+    locale: currentLocale, // T10: live locale (re-attached on [N] change below).
     sessionId: handshake.session_id,
     getPlayerActorId: () => null,
     getPlayerWeaponId: () => null,
@@ -1323,7 +1345,7 @@ export async function _bootEngineCore(
   let unsubActionResult = attachActionResultHandler(
     ws as unknown as Parameters<typeof attachActionResultHandler>[0],
     toastQueue,
-    effectiveLocale,
+    currentLocale, // T10: live locale (re-attached on [N] change below).
     currentUserId,
   );
   // Phase 9 Plan 09-02 — wire action economy dispatcher (BERW-13..16).
@@ -1376,6 +1398,11 @@ export async function _bootEngineCore(
       //     ActionOptionsModal) to the new live socket via the stable holder.
       wsSender.swap(newWs);
 
+      // T10: track the live socket so the locale-change re-attach listener (below)
+      // re-binds the locale-dependent dispatchers against the CURRENT socket, not
+      // the dead original `ws`.
+      liveWs = newWs;
+
       // (2) INBOUND — dispose-before-reattach all 7 listeners against newWs. reactionPrompt
       //     + portrait are included here (the two sources MISSED in v1 of the rewire).
       unsubSceneInput();
@@ -1393,7 +1420,9 @@ export async function _bootEngineCore(
         bridge,
         gestureBus,
         layerManager,
-        effectiveLocale,
+        // T10: re-attach with the live locale (a locale change may have happened
+        // while the socket was down).
+        currentLocale,
         toastQueue,
       );
 
@@ -1403,7 +1432,7 @@ export async function _bootEngineCore(
         layerManager,
         bridge,
         gestureBus,
-        locale: effectiveLocale,
+        locale: currentLocale, // T10: live locale on reconnect re-attach.
         sessionId: handshake.session_id,
         getPlayerActorId: () => null,
         getPlayerWeaponId: () => null,
@@ -1418,7 +1447,7 @@ export async function _bootEngineCore(
       unsubActionResult = attachActionResultHandler(
         newWs as unknown as Parameters<typeof attachActionResultHandler>[0],
         toastQueue,
-        effectiveLocale,
+        currentLocale, // T10: live locale on reconnect re-attach.
         currentUserId,
       );
 
@@ -1450,6 +1479,52 @@ export async function _bootEngineCore(
       // last-value (character.delta) lands on the glasses immediately.
       hudDeltaDriver.requestCycle();
     },
+  });
+
+  // 11e-locale. T10 — live-locale re-attach for the message dispatchers.
+  //
+  // The conc-conflict / reaction-prompt / action-result dispatchers consume the
+  // locale at MESSAGE-RECEIVE time inside their persistent listener (they build a
+  // modal/panel/toast on each inbound envelope). Their attach closures captured the
+  // locale VALUE, so they cannot see an [N] Language change after boot the way the
+  // navigation-site closures can (those read `currentLocale` at open time).
+  //
+  // This listener — registered AFTER `unsubMenuLocale` so `currentLocale` is already
+  // updated when it fires — dispose-then-re-attaches the three dispatchers against the
+  // LIVE socket with the LIVE locale, mirroring the exact re-attach pattern used in
+  // `onReconnected`. This keeps the dispatcher source files untouched (T10 is a
+  // boot-engine-core-only change) while making toasts/modals render in the new locale
+  // without a reboot. Device-local override only — never writes world settings (§7.16).
+  const unsubLocaleReattach = localeEvents.on('changed', () => {
+    unsubConcConflict();
+    unsubConcConflict = attachConcConflictHandler(
+      liveWs,
+      bridge,
+      gestureBus,
+      layerManager,
+      currentLocale,
+      toastQueue,
+    );
+
+    detachReactionPrompt();
+    detachReactionPrompt = attachReactionPromptHandler({
+      ws: liveWs as unknown as Parameters<typeof attachReactionPromptHandler>[0]['ws'],
+      layerManager,
+      bridge,
+      gestureBus,
+      locale: currentLocale,
+      sessionId: handshake.session_id,
+      getPlayerActorId: () => null,
+      getPlayerWeaponId: () => null,
+    });
+
+    unsubActionResult();
+    unsubActionResult = attachActionResultHandler(
+      liveWs as unknown as Parameters<typeof attachActionResultHandler>[0],
+      toastQueue,
+      currentLocale,
+      currentUserId,
+    );
   });
 
   // 11f. Factory closures for Phase 8 action overlays (Plan 08-03 + Plan 08-04).
@@ -1525,7 +1600,8 @@ export async function _bootEngineCore(
                 baseLevel: spellLevel,
                 availableSlots,
               },
-              effectiveLocale,
+              // T10: live locale at construction time (factory closure runs on open).
+              currentLocale,
               handshake.session_id,
               () => {
                 void panelRouter.popOverlay(layerManager);
@@ -1542,7 +1618,8 @@ export async function _bootEngineCore(
           wsSender,
           gestureBus,
           enrichedReq,
-          effectiveLocale,
+          // T10: live locale at modal-construction time (closure runs on open).
+          currentLocale,
           handshake.session_id,
           (reason) => {
             if (reason === 'slot-picker-needed') {
@@ -1572,7 +1649,8 @@ export async function _bootEngineCore(
           wsSender,
           gestureBus,
           req as ConstructorParameters<typeof ActionOptionsModal>[3],
-          effectiveLocale,
+          // T10: live locale at modal-construction time (closure runs on open).
+          currentLocale,
           handshake.session_id,
           (_reason) => {
             // Inventory items never require slot picker — always pop the overlay.
@@ -1610,7 +1688,8 @@ export async function _bootEngineCore(
           layerManager,
           gestureBus,
           negotiatedCaps,
-          locale: effectiveLocale,
+          // T10: live locale at open time (quick-action handler runs on [S] press).
+          locale: currentLocale,
           toastQueue,
         });
         break;
@@ -1621,7 +1700,8 @@ export async function _bootEngineCore(
           layerManager,
           gestureBus,
           negotiatedCaps,
-          locale: effectiveLocale,
+          // T10: live locale at open time (quick-action handler runs on [I] press).
+          locale: currentLocale,
           toastQueue,
         });
         break;
@@ -1928,6 +2008,12 @@ export async function _bootEngineCore(
         unsubMenuLocale();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubMenuLocale failed', err);
+      }
+      // T10: tear down the locale-change dispatcher re-attach listener.
+      try {
+        unsubLocaleReattach();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubLocaleReattach failed', err);
       }
       try {
         unsubR1();
