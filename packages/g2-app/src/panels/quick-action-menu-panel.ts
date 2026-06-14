@@ -526,7 +526,7 @@ export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
     const textX = MENU_BOX_X + MENU_BOX_PAD_X;
     // Smaller font for the box: reuse the loaded family (VT323 or monospace
     // fallback) at CANVAS_FONT_PX by swapping the size prefix.
-    const fontFamily = this._fontFamily.replace(/^\s*[\d.]+px\s*/, '');
+    const fontFamily = this._fontFamily.replace(/^\s*[\d.]+px\s*/, '').trim() || 'monospace';
     const menuFont = `${CANVAS_FONT_PX}px ${fontFamily}`;
 
     // Title row.

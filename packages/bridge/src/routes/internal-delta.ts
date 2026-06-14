@@ -128,6 +128,13 @@ export async function registerInternalDeltaRoute(
       const settings = SettingsDisplaySchema.safeParse(payload);
       if (settings.success) {
         settingsStore.setLatest(settings.data);
+      } else {
+        // A malformed settings.display from the module silently leaves the cache
+        // stale (new clients get old values); warn so the protocol drift is visible.
+        request.log.warn(
+          { reason: settings.error.message },
+          'internal/delta: invalid settings.display payload — cache not updated',
+        );
       }
     }
 

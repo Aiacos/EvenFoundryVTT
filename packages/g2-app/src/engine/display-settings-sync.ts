@@ -79,12 +79,15 @@ export function createDisplaySettingsSync(
     sendEdit: (edit: SettingsDisplay): void => {
       // Optimistically merge so the menu reflects the change before the
       // downstream echo arrives; the module's echo is authoritative.
+      const previous = current;
       current = { ...current, ...edit };
       try {
         sender.send(JSON.stringify({ type: CLIENT_SETTING_TYPE, settings: edit }));
       } catch {
-        // A failed send only loses this edit — the next one (or a downstream
-        // push) re-aligns. Never throw out of a menu callback.
+        // Send failed → the edit never reached the module, so REVERT the
+        // optimistic merge to avoid local/Foundry drift (a stale downstream
+        // echo would otherwise clash). Never throw out of a menu callback.
+        current = previous;
       }
     },
     dispose: unsubscribe,
