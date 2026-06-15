@@ -82,6 +82,18 @@
  * @see packages/g2-app/src/panels/character-sheet-panel.ts (TABS / buildTabStrip)
  * @see packages/g2-app/src/status-hud/i18n-budgets.ts (HUD_WIDTH_BUDGETS keys)
  * @see packages/shared-protocol/src/payloads/character.ts (CharacterSnapshotSchema)
+ *
+ * ## Phase 21 — Additive canvas paint*Tab methods (RSHEET-01)
+ *
+ * Six additive canvas paint methods added alongside the existing string renderers:
+ * `paintMainTab`, `paintSkillsTab`, `paintInventoryTab`, `paintSpellsTab`,
+ * `paintFeatsTab`, `paintBioTab`. These draw tab content directly onto a
+ * `CanvasRenderingContext2D` within the supplied bounds object. The existing
+ * `render*Tab()` string renderers are PRESERVED INTACT — the paint*Tab methods
+ * are purely additive (RSHEET-01 additive canvas path). The Main tab surfaces
+ * real `snapshot.initiative` (signed) and `snapshot.speed` instead of `—`.
+ *
+ * @see .planning/phases/EVF-21-character-sheet-su-canvas-dati-main-tab/21-03-PLAN.md
  */
 
 import { type CharacterSnapshot, SKILL_KEYS, type SkillKey } from '@evf/shared-protocol';
@@ -302,11 +314,10 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
 
   // Ability scores — Phase 16 data binding (snapshot.abilities.<k>).
   // Phase 5 emitted `—` placeholders here; Plan 16-01 + 16-02 + 16-03 land the
-  // full read pipeline (schema → reader → renderer). The em-dash glyph is kept
-  // for the vitals row (INI/VEL) and Senses line per CONTEXT D-Area-3 (out of
-  // scope this phase — those come from `attributes.init.total` /
-  // `attributes.movement.walk` / `skills.<k>.passive`, not the abilities tree).
-  const dash = '—';
+  // full read pipeline (schema → reader → renderer). The em-dash glyph was kept
+  // for the vitals row (INI/VEL) per CONTEXT D-Area-3 (out of scope Phase 16).
+  // Phase 21 Plan 21-05: INI/VEL now use real snapshot.initiative/speed values.
+  const dash = '—'; // retained for Hit Dice placeholder (still pending)
   const abilities = snapshot.abilities;
   const profGlyph = (proficient: boolean): string => (proficient ? '◉' : '○');
 
@@ -339,8 +350,10 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   const hpLine = `♥ ${hpLabel}    ${hpBar}  ${hp}/${maxHp}    ${padRightUnicode(tempStr, 10)}`;
   rows.push(hpLine);
 
-  // Row 6: vitals bar (AC / INI / VEL / INSP / COMP)
-  const vitalsLine = `⛨ ${acLabel} ${ac}    ⚡ ${iniLabel} ${dash}    ⚔ ${velLabel} ${dash}    ${compLabel} ${profStr}`;
+  // Row 6: vitals bar (AC / INI / VEL / COMP)
+  // Phase 21 Plan 21-05: INI uses formatAbilityMod (signed +N/-N/+0); VEL uses
+  // String(snapshot.speed) — replaces the em-dash placeholders (RDATA-01/02).
+  const vitalsLine = `⛨ ${acLabel} ${ac}    ⚡ ${iniLabel} ${formatAbilityMod(snapshot.initiative)}    ⚔ ${velLabel} ${String(snapshot.speed)}    ${compLabel} ${profStr}`;
   rows.push(vitalsLine);
 
   // Row 7: blank separator
@@ -411,7 +424,8 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   const passivePrc = snapshot.skills.prc.passive;
   const passiveIns = snapshot.skills.ins.passive;
   const passiveInv = snapshot.skills.inv.passive;
-  const abbr = PASSIVE_ABBR[locale] ?? PASSIVE_ABBR.en;
+  // PASSIVE_ABBR is Record<HudLocale, ...> — all 6 locale keys present; index is always defined.
+  const abbr = PASSIVE_ABBR[locale];
   const sensesContent = `${abbr.prc} ${passivePrc} · ${abbr.ins} ${passiveIns} · ${abbr.inv} ${passiveInv}`;
   rows.push(`${sensesLabel}  ${sensesContent}`);
 
@@ -667,36 +681,33 @@ export function renderSkillsTab(
  *
  * Each entry: category, name, originFeat (2024 origin feat flag), description (short).
  */
+/**
+ * Internal display record for a single feat/feature row.
+ *
+ * Phase 22 Plan 22-03: `category` widened to `string` (was `'class'|'race'|'background'|'feat'`
+ * union) to match `FeatEntrySchema.category: z.string()` — dnd5e featureTypes is an open
+ * taxonomy (includes 'monster', 'supernaturalGift', 'enchantment', 'vehicle', etc.).
+ * RDATA-03 resolution.
+ */
 interface FeatDef {
-  readonly category: 'class' | 'race' | 'background' | 'feat';
+  readonly category: string;
   readonly name: string;
   readonly isOrigin: boolean; // true = 2024 origin feat (shows [Origine] annotation)
   readonly desc: string; // short description for display
 }
 
-const DEFAULT_FEATS: ReadonlyArray<FeatDef> = [
-  {
-    category: 'class',
-    name: 'Second Wind',
-    isOrigin: false,
-    desc: 'bonus action: recover 1d10+3 HP',
-  },
-  { category: 'class', name: 'Action Surge', isOrigin: false, desc: 'extra action 1/short rest' },
-  { category: 'race', name: 'Stonecunning', isOrigin: false, desc: '+10 History (stonework)' },
-  { category: 'race', name: 'Darkvision', isOrigin: false, desc: '18m dark/dim vision' },
-  {
-    category: 'background',
-    name: 'Military Rank',
-    isOrigin: false,
-    desc: 'authority over soldiers',
-  },
-  {
-    category: 'feat',
-    name: 'War Caster',
-    isOrigin: true,
-    desc: 'conc advantage + somatic w/weapons',
-  },
-  { category: 'feat', name: 'Tough', isOrigin: false, desc: '+16 HP max' },
+/**
+ * Known section categories rendered in display order.
+ *
+ * Categories not in this list are bucketed under the last entry ('feat' / general).
+ * Widened to `string` in Phase 22 per Open Question 1 resolution.
+ */
+const FEAT_SECTION_ORDER: ReadonlyArray<string> = [
+  'class',
+  'race',
+  'background',
+  'feat',
+  'general',
 ];
 
 /**
@@ -738,17 +749,36 @@ export function renderFeatsTab(
   }
   const lines: FeatLine[] = [];
 
-  const categories: Array<{ cat: FeatDef['category']; label: string }> = [
-    { cat: 'class', label: classSection },
-    { cat: 'race', label: raceSection },
-    { cat: 'background', label: bgSection },
-    { cat: 'feat', label: featsSection },
+  // Build FeatDef list from real snapshot.feats (RDATA-03 — INV-4 dead-code rule: no fixture fallback).
+  // Unknown categories (exotic dnd5e featureTypes) are normalised to 'general' for bucketing.
+  const featSource: ReadonlyArray<FeatDef> = (snapshot.feats ?? []).map((f) => ({
+    category: f.category.length > 0 ? f.category : 'general',
+    name: f.name,
+    isOrigin: f.isOrigin,
+    desc: truncateUnicode(f.description, 40),
+  }));
+
+  const sectionLabelMap: ReadonlyMap<string, string> = new Map([
+    ['class', classSection],
+    ['race', raceSection],
+    ['background', bgSection],
+    ['feat', featsSection],
+    ['general', featsSection],
+  ]);
+
+  // Collect all distinct categories in FEAT_SECTION_ORDER, then any remainder
+  const orderedCats = [
+    ...FEAT_SECTION_ORDER.filter((c) => featSource.some((f) => f.category === c)),
+    ...[...new Set(featSource.map((f) => f.category))].filter(
+      (c) => !FEAT_SECTION_ORDER.includes(c),
+    ),
   ];
 
-  for (const { cat, label } of categories) {
-    const featsInCat = DEFAULT_FEATS.filter((f) => f.category === cat);
+  for (const cat of orderedCats) {
+    const featsInCat = featSource.filter((f) => f.category === cat);
     if (featsInCat.length === 0) continue;
 
+    const label = sectionLabelMap.get(cat) ?? featsSection;
     lines.push({ isHeader: true, content: label });
     for (const feat of featsInCat) {
       const prefix = modernRules && feat.isOrigin ? `${originFlag} ` : '  ';
@@ -787,9 +817,18 @@ export function renderFeatsTab(
  *
  * T-05-03-03 (DoS via large biography): word-wrap windowing ensures only 18
  * rows × 66 chars are processed per render call — O(n) but bounded output.
+ *
+ * Block-level tags (`<p>`, `<br>`, `<li>`, `<ul>`, `<ol>`, `<h1>`–`<h6>`, `<div>`,
+ * `<blockquote>`) are replaced with a single space before the generic strip pass to
+ * prevent adjacent sentence content from merging (WR-03 fix; mirrors reader-side
+ * `stripHtml` in `character-reader.ts`).
  */
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '');
+  return html
+    .replace(/<\/?(p|br|li|ul|ol|h[1-6]|div|blockquote)[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**
@@ -848,13 +887,16 @@ function wordWrap(text: string, maxWidth: number): string[] {
 /**
  * Render the Bio tab content per UI-SPEC §5.7.
  *
- * Strips HTML from `actor.system.details.biography.value`, then word-wraps at
- * 66 chars per row. Subsection headers for personality / ideal / bond / flaw /
- * backstory are inserted between sections.
+ * Reads biography fields from `snapshot.biography` (Phase 22 RDATA-04).
+ * Empty/absent biography → graceful empty state (all sections skipped, scroll
+ * hint + blank rows).
  *
- * Since CharacterSnapshot (Phase 2 schema) does not carry biography text, this
- * renderer generates a placeholder structure using the section headers from
- * i18n-budgets. Live data wiring defers to Phase 7+ schema extension.
+ * Sections with empty text are omitted (no header line emitted) per D-22.4.
+ * Backstory is HTML-stripped reader-side; the renderer applies stripHtml as
+ * an additional safety layer (T-05-03-02 defence-in-depth).
+ *
+ * T-05-03-03 (DoS via large biography): word-wrap windowing ensures only 18
+ * rows × 66 chars are processed per render call — O(n) but bounded output.
  *
  * @param snapshot     Character snapshot (null → blank rows)
  * @param locale       Active HUD locale
@@ -877,21 +919,22 @@ export function renderBioTab(
   const backstoryHeader = getLabel('sheet.bio.backstory', locale);
   const scrollHint = getLabel('sheet.bio.scroll_hint', locale);
 
-  // Representative bio text for Thorin Oakenshield (used when snapshot lacks bio data)
-  // HTML-strip + word-wrap used on any real biography value supplied in the snapshot.
-  // CharacterSnapshot schema (Phase 2) doesn't carry biography; we use representative text.
-  const personalityText = 'Sono un guerriero onesto che non si ferma davanti agli ostacoli.';
-  const idealText = 'Lealtà: la fedeltà ai compagni è tutto.';
-  const bondText = 'Difenderò la mia dimora ancestrale costi quel che costi.';
-  const flawText = "L'orgoglio mi rende spesso testardo e chiuso al compromesso.";
-  const backstoryText = 'Ex soldato del reggimento di montagna, veterano di tre campagne.';
+  // Real biography fields from snapshot.biography (RDATA-04).
+  // biography is optional (D-22.1); absent/empty-string → section skipped (D-22.4).
+  // Backstory is HTML-stripped reader-side; stripHtml here is defence-in-depth (T-05-03-02).
+  const personalityText = snapshot.biography?.personality ?? '';
+  const idealText = snapshot.biography?.ideal ?? '';
+  const bondText = snapshot.biography?.bond ?? '';
+  const flawText = snapshot.biography?.flaw ?? '';
+  const backstoryText = snapshot.biography?.backstory ?? '';
 
-  // Build flat lines list
+  // Build flat lines list; sections with empty text are OMITTED (D-22.4).
   const allLines: string[] = [];
 
   const addSection = (header: string, text: string): void => {
+    if (text.length === 0) return; // skip empty fields per D-22.4
     allLines.push(header);
-    const cleaned = stripHtml(text);
+    const cleaned = stripHtml(text); // defence-in-depth; reader already strips
     const wrapped = wordWrap(cleaned, INNER_WIDTH);
     allLines.push(...wrapped);
     allLines.push(''); // blank separator
@@ -916,4 +959,263 @@ export function renderBioTab(
   rows.push(truncateUnicode(scrollHint, INNER_WIDTH));
 
   return padToRowCount(rows);
+}
+
+// ─── Canvas paint bounds type ─────────────────────────────────────────────────
+
+/**
+ * Axis-aligned bounding rectangle for canvas paint*Tab methods (Phase 21 Plan 21-03).
+ *
+ * All coordinates are in canvas pixels. The paint*Tab methods draw within
+ * this rectangle (origin = top-left corner, w/h = width/height in pixels).
+ *
+ * @see Phase 21 Plan 21-03 §Open Q 4 (paintMainTab signature recommendation)
+ * @see packages/g2-app/src/panels/canvas-character-sheet-panel.ts (caller)
+ */
+export interface PaintBounds {
+  /** X coordinate of the top-left corner (pixels). */
+  readonly x: number;
+  /** Y coordinate of the top-left corner (pixels). */
+  readonly y: number;
+  /** Width in pixels. */
+  readonly w: number;
+  /** Height in pixels. */
+  readonly h: number;
+}
+
+/** Phosphor-green foreground color (#ffffff → quantized to brightest G2 palette step). */
+const CANVAS_FG = '#ffffff';
+
+/** Line height (pixels) for the G2 VT323 27px fixed grid (Phase 21). */
+const CANVAS_LINE_H = 27;
+
+// ─── Canvas paint*Tab methods — ADDITIVE (string renderers preserved intact) ──
+
+/**
+ * Paint the Main tab content onto `ctx` within `bounds`.
+ *
+ * Draws real `snapshot.initiative` (signed +N/-N format via {@link formatAbilityMod})
+ * and `snapshot.speed` in the vitals row, replacing the `—` placeholders used
+ * by the glyph path's `renderMainTab`. Also surfaces `snapshot.class` and
+ * `snapshot.level` on the identity line.
+ *
+ * When `snapshot` is `null`, the method is a no-op — the compositor's chrome
+ * is already drawn and the content area is left blank.
+ *
+ * @param ctx      2D rendering context to draw on.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region `{x, y, w, h}` in canvas pixels.
+ * @param font     CSS font string (e.g. `'27px VT323'`) resolved by `ensureVt323Loaded`.
+ *
+ * @see packages/g2-app/src/panels/canvas-character-sheet-panel.ts (caller)
+ * @see Phase 21 Plan 21-03 §Task 1 (RSHEET-01 additive canvas renderers)
+ */
+export function paintMainTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  // Row 0: class + level identity line (real class from snapshot.class)
+  const classLevel =
+    snapshot.class.length > 0 ? `${snapshot.class} Lv ${snapshot.level}` : `Lv ${snapshot.level}`;
+  ctx.fillText(classLevel, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 1: HP bar
+  const hpRatio = snapshot.maxHp > 0 ? Math.max(0, Math.min(1, snapshot.hp / snapshot.maxHp)) : 0;
+  const hpFull = Math.round(hpRatio * 12);
+  const hpBar = `${'█'.repeat(hpFull)}${'░'.repeat(12 - hpFull)}`;
+  ctx.fillText(`PF ${hpBar} ${snapshot.hp}/${snapshot.maxHp}`, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 2: vitals — real initiative (signed) + real speed (plain integer)
+  const ini = formatAbilityMod(snapshot.initiative); // e.g. '+3', '-1', '+0'
+  const vel = String(snapshot.speed); // e.g. '30', '25'
+  ctx.fillText(`CA ${snapshot.ac}  INI ${ini}  VEL ${vel}`, x, lineY);
+  lineY += CANVAS_LINE_H;
+
+  // Row 3: abbreviated ability scores
+  const abs = snapshot.abilities;
+  ctx.fillText(
+    `FOR ${formatAbilityValue(abs.str.value)} DES ${formatAbilityValue(abs.dex.value)}` +
+      ` COS ${formatAbilityValue(abs.con.value)} INT ${formatAbilityValue(abs.int.value)}` +
+      ` SAG ${formatAbilityValue(abs.wis.value)} CAR ${formatAbilityValue(abs.cha.value)}`,
+    x,
+    lineY,
+  );
+}
+
+/**
+ * Paint the Skills tab content onto `ctx` within `bounds`.
+ *
+ * Delegates to `renderSkillsTab` with the supplied `locale` to obtain
+ * localised lines and renders each via `fillText`. Phase 22 may replace
+ * this with a richer layout.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
+ */
+export function paintSkillsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+  locale: HudLocale = 'en',
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderSkillsTab(snapshot, locale, 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Inventory tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
+ */
+export function paintInventoryTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+  locale: HudLocale = 'en',
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderTabContent('inventory', snapshot, locale, 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Spells tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
+ */
+export function paintSpellsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+  locale: HudLocale = 'en',
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderTabContent('spells', snapshot, locale, 0);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Feats tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
+ */
+export function paintFeatsTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+  locale: HudLocale = 'en',
+  scrollOffset = 0,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderFeatsTab(snapshot, locale, scrollOffset);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
+}
+
+/**
+ * Paint the Biography tab content onto `ctx` within `bounds`.
+ *
+ * @param ctx      2D rendering context.
+ * @param snapshot Latest `CharacterSnapshot` or `null`.
+ * @param bounds   Paint region.
+ * @param font     CSS font string.
+ * @param locale   Active HUD locale forwarded to the string renderer.
+ */
+export function paintBioTab(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  snapshot: CharacterSnapshot | null,
+  bounds: PaintBounds,
+  font: string,
+  locale: HudLocale = 'en',
+  scrollOffset = 0,
+): void {
+  if (snapshot === null) return;
+
+  ctx.fillStyle = CANVAS_FG;
+  ctx.font = font;
+
+  const { x, y } = bounds;
+  let lineY = y + CANVAS_LINE_H;
+
+  const rows = renderBioTab(snapshot, locale, scrollOffset);
+  for (const row of rows) {
+    ctx.fillText(row.trimEnd(), x, lineY);
+    lineY += CANVAS_LINE_H;
+    if (lineY > y + bounds.h) break;
+  }
 }

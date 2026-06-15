@@ -1,0 +1,46 @@
+# EvenFoundryVTT — HTTPS overlay (Caddy reverse proxy + static plugin host).
+#
+# Use ON TOP of the base compose so the bridge + Caddy share one project/network:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.https.yml up -d --build
+#
+# Prerequisites:
+#   1. Build the g2-app first:  pnpm --filter @evf/g2-app build   (produces packages/g2-app/dist)
+#   2. deploy/.env sets EVF_BRIDGE_HOST + EVF_PLUGIN_HOST to real, publicly-resolvable hostnames
+#      (DNS A records → this host) and EVF_PLUGIN_HOST_URL=https://<EVF_PLUGIN_HOST> (bridge CORS).
+#   3. Ports 80 + 443 reachable from the internet (or front with a tunnel — see docs).
+#
+# Caddy auto-provisions Let's Encrypt certs for both hostnames on first request.
+
+name: evenfoundryvtt
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: evf-caddy
+    restart: unless-stopped
+    labels:
+      com.evenfoundryvtt.icon: "https://raw.githubusercontent.com/Aiacos/EvenFoundryVTT/main/assets/icon/icon.png"
+      org.opencontainers.image.title: "EvenFoundryVTT Caddy (HTTPS proxy + plugin host)"
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../packages/g2-app/dist:/srv/g2app:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      bridge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  caddy_data:
+  caddy_config:

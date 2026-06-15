@@ -49,12 +49,14 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { Combatant, CombatSnapshot } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
+import { DOUBLE_TAP_WINDOW_MS, QA_KEYS } from './combat-tracker-constants.js';
 
 // ─── MultiAttackState ─────────────────────────────────────────────────────────
 
@@ -287,9 +289,11 @@ export function renderCombatantRow(
   const acLabel = getLabel('combat.ac_label', locale);
 
   // Col 47: space
-  // Cols 48-50: AC value (3 chars, right-justified)
-  // NOTE: AC is not in the CombatantSchema (Phase 5 scope). Use placeholder '--'.
-  const acValue = ' --';
+  // Cols 48-50: AC value (3 chars, right-justified via _rjust(..., 3)).
+  // Phase 23 Plan 23-03 (D-23.2 / RDATA-05): render real ac when present; fall back to ' --'
+  // when absent (combatant has no linked actor or ac.value was not readable). _rjust ensures
+  // the field is always exactly 3 code-points, preserving INV-1 row width at 66.
+  const acValue = c.ac !== undefined ? _rjust(String(c.ac), 3) : ' --';
 
   // Cols 51-52: gap
   const gap2b = '  ';
@@ -360,15 +364,8 @@ export function renderCombatantRow(
   return [mainRow, concLine];
 }
 
-// ─── Quick-action constants ───────────────────────────────────────────────────
-
-/**
- * Keys for the quick-action bar in order (Plan 08-05 CTQ-01..08).
- *
- * Index 0=A (Attack), 1=S (Spell), 2=I (Item), 3=M (Move).
- * Matches the `[A][S][I][M]` visual order in UI-SPEC §5.8.
- */
-const QA_KEYS: ReadonlyArray<'A' | 'S' | 'I' | 'M'> = ['A', 'S', 'I', 'M'] as const;
+// ─── Quick-action bar renderer ────────────────────────────────────────────────
+// QA_KEYS and DOUBLE_TAP_WINDOW_MS are imported from combat-tracker-constants.ts (IN-01/IN-02).
 
 /**
  * Render the quick-action bar footer row (COMB-03).
@@ -696,7 +693,7 @@ export default class CombatTrackerPanel implements OverlayPanel {
 
         const now = Date.now();
         const sameIdx = this._lastTapIdx === this.qaSelectedIdx;
-        const withinWindow = now - this._lastTapAt < 600;
+        const withinWindow = now - this._lastTapAt < DOUBLE_TAP_WINDOW_MS;
 
         if (sameIdx && withinWindow) {
           // Double-tap on the currently-selected key: FIRE the action (CTQ-05).
@@ -808,6 +805,9 @@ export default class CombatTrackerPanel implements OverlayPanel {
 
     const content = rows.join('\n');
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField('overlay-block'),
       containerName: 'overlay-block',
       content,
     });

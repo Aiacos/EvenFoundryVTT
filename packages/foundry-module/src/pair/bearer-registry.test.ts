@@ -111,7 +111,12 @@ describe('generateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
@@ -121,20 +126,30 @@ describe('generateBearer', () => {
 
   it('produces a base64url token of at least 43 chars (32 bytes)', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Test Device', 'https://bridge.local:8910', 'world-abc');
+    const entry = await generateBearer(
+      'Test Device',
+      'https://bridge.local:8910',
+      'world-abc',
+      'user-1',
+    );
     expect(entry.token.length).toBeGreaterThanOrEqual(EXPECTED_MIN_LENGTH);
     expect(BASE64URL_RE.test(entry.token)).toBe(true);
   });
 
   it('token contains NO dots (is NOT a JWT)', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Test Device', 'https://bridge.local:8910', 'world-abc');
+    const entry = await generateBearer(
+      'Test Device',
+      'https://bridge.local:8910',
+      'world-abc',
+      'user-1',
+    );
     expect(entry.token).not.toContain('.');
   });
 
   it('stores the entry in the registry via game.settings.set', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+    await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     expect(settingsMock.set).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'bearerRegistry',
@@ -145,7 +160,7 @@ describe('generateBearer', () => {
   it('sets expiresAt = createdAt + 24h (86400000 ms)', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
     const before = Date.now();
-    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     const after = Date.now();
 
     expect(entry.expiresAt - entry.createdAt).toBe(24 * 3600 * 1000);
@@ -155,20 +170,20 @@ describe('generateBearer', () => {
 
   it('generates a separate internal_secret of at least 43 chars', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     expect(entry.internalSecret.length).toBeGreaterThanOrEqual(EXPECTED_MIN_LENGTH);
     expect(BASE64URL_RE.test(entry.internalSecret)).toBe(true);
   });
 
   it('token and internal_secret are different values', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     expect(entry.token).not.toBe(entry.internalSecret);
   });
 
   it('sets revokedAt = null and lastSeenAt = null on new entry', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+    const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     expect(entry.revokedAt).toBeNull();
     expect(entry.lastSeenAt).toBeNull();
   });
@@ -176,8 +191,25 @@ describe('generateBearer', () => {
   it('truncates alias to 40 chars if longer', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
     const longAlias = 'A'.repeat(50);
-    const entry = await generateBearer(longAlias, 'https://bridge.local:8910', 'world-xyz');
+    const entry = await generateBearer(
+      longAlias,
+      'https://bridge.local:8910',
+      'world-xyz',
+      'user-1',
+    );
     expect(entry.alias.length).toBeLessThanOrEqual(40);
+  });
+
+  // ADR-0014: the bearer is bound to a Foundry User at pairing.
+  it('stores the bound userId on the entry (ADR-0014)', async () => {
+    const { generateBearer } = await import('./bearer-registry.js');
+    const entry = await generateBearer(
+      'My G2',
+      'https://bridge.local:8910',
+      'world-xyz',
+      'user-aiacos',
+    );
+    expect(entry.userId).toBe('user-aiacos');
   });
 
   describe('refresh=true (silent refresh)', () => {
@@ -185,7 +217,7 @@ describe('generateBearer', () => {
       const { generateBearer } = await import('./bearer-registry.js');
 
       // Create initial entry
-      const old = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz');
+      const old = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
       const oldToken = old.token;
       const originalExpiry = old.expiresAt;
 
@@ -194,6 +226,7 @@ describe('generateBearer', () => {
         'My G2',
         'https://bridge.local:8910',
         'world-xyz',
+        'user-1',
         true,
       );
       expect(newEntry.token).not.toBe(oldToken);
@@ -220,7 +253,12 @@ describe('validateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
@@ -237,7 +275,12 @@ describe('validateBearer', () => {
 
   it('returns { valid: true, entry } for a valid non-expired token', async () => {
     const { generateBearer, validateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Valid Device', 'https://bridge.local:8910', 'world-abc');
+    const entry = await generateBearer(
+      'Valid Device',
+      'https://bridge.local:8910',
+      'world-abc',
+      'user-1',
+    );
     const result = validateBearer(entry.token);
     expect(result.valid).toBe(true);
     expect(result.entry).toBeDefined();
@@ -250,6 +293,7 @@ describe('validateBearer', () => {
       'Device to Revoke',
       'https://bridge.local:8910',
       'world-abc',
+      'user-1',
     );
     revokeBearer(entry.token);
     const result = validateBearer(entry.token);
@@ -259,7 +303,12 @@ describe('validateBearer', () => {
 
   it('returns { valid: false, reason: "expired" } for an expired token', async () => {
     const { generateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Expired Device', 'https://bridge.local:8910', 'world-abc');
+    const entry = await generateBearer(
+      'Expired Device',
+      'https://bridge.local:8910',
+      'world-abc',
+      'user-1',
+    );
 
     // Manually set expiresAt to the past via the registry
     const registry = settingsMock.get('evenfoundryvtt', 'bearerRegistry') as BearerRegistry;
@@ -273,7 +322,12 @@ describe('validateBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', { settings: settingsMock });
@@ -290,7 +344,12 @@ describe('revokeBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
@@ -300,7 +359,7 @@ describe('revokeBearer', () => {
 
   it('sets revokedAt to a timestamp on the entry', async () => {
     const { generateBearer, revokeBearer, validateBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world');
+    const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world', 'user-1');
     const before = Date.now();
     revokeBearer(entry.token);
     const after = Date.now();
@@ -317,7 +376,7 @@ describe('revokeBearer', () => {
     const settingsMock2 = makeSettingsMock();
     vi.stubGlobal('game', { settings: settingsMock2 });
     const { generateBearer, revokeBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world');
+    const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world', 'user-1');
     const callsBefore = settingsMock2.set.mock.calls.length;
     revokeBearer(entry.token);
     expect(settingsMock2.set.mock.calls.length).toBeGreaterThan(callsBefore);
@@ -334,7 +393,12 @@ describe('listBearers', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     const settingsMock = makeSettingsMock();
@@ -349,10 +413,10 @@ describe('listBearers', () => {
 
   it('returns non-revoked entries sorted by createdAt descending', async () => {
     const { generateBearer, listBearers } = await import('./bearer-registry.js');
-    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
     // Small delay to guarantee different createdAt timestamps
     await new Promise<void>((r) => setTimeout(r, 5));
-    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world');
+    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world', 'user-1');
 
     const list = listBearers();
     expect(list.length).toBe(2);
@@ -363,8 +427,8 @@ describe('listBearers', () => {
 
   it('excludes revoked entries from the list', async () => {
     const { generateBearer, revokeBearer, listBearers } = await import('./bearer-registry.js');
-    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world');
-    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world');
+    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
+    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world', 'user-1');
     revokeBearer(e1.token);
 
     const list = listBearers();
@@ -382,7 +446,12 @@ describe('getActiveBearer', () => {
     vi.resetModules();
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('Hooks', makeHooksMock());
     settingsMock = makeSettingsMock();
@@ -397,7 +466,7 @@ describe('getActiveBearer', () => {
 
   it('returns the first non-revoked, non-expired entry (newest first)', async () => {
     const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
-    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    const e1 = await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
     const active = getActiveBearer();
     expect(active).not.toBeNull();
     expect(active?.token).toBe(e1.token);
@@ -405,14 +474,14 @@ describe('getActiveBearer', () => {
 
   it('returns null when all entries are revoked', async () => {
     const { generateBearer, revokeBearer, getActiveBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
     revokeBearer(entry.token);
     expect(getActiveBearer()).toBeNull();
   });
 
   it('returns null when the only entry is expired (expiresAt in past)', async () => {
     const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
-    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    const entry = await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
 
     // Manually expire the entry by patching the registry via game.settings
     const registry = settingsMock._store.get('evenfoundryvtt.bearerRegistry') as {
@@ -430,9 +499,9 @@ describe('getActiveBearer', () => {
   it('returns newest entry when multiple non-revoked non-expired entries exist', async () => {
     const { generateBearer, getActiveBearer } = await import('./bearer-registry.js');
     // e1 created first — will be second in the sorted list
-    await generateBearer('Device 1', 'https://b.local:8910', 'world');
+    await generateBearer('Device 1', 'https://b.local:8910', 'world', 'user-1');
     await new Promise<void>((r) => setTimeout(r, 5));
-    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world');
+    const e2 = await generateBearer('Device 2', 'https://b.local:8910', 'world', 'user-1');
 
     const active = getActiveBearer();
     // listBearers() sorts descending by createdAt → first = e2 (newer)

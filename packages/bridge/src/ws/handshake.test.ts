@@ -16,10 +16,15 @@ import { EventEmitter } from 'node:events';
 import type { Envelope } from '@evf/shared-protocol';
 import type { FastifyRequest } from 'fastify';
 import type { Logger } from 'pino';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocket } from 'ws';
 import { TokenCache, type ValidateTokenResult } from '../auth/token-cache.js';
-import { CLOSE_INVALID_HANDSHAKE, CLOSE_INVALID_TOKEN, handleHandshake } from './handshake.js';
+import {
+  CLOSE_INVALID_HANDSHAKE,
+  CLOSE_INVALID_TOKEN,
+  HANDSHAKE_IDLE_TIMEOUT_MS,
+  handleHandshake,
+} from './handshake.js';
 import { ReplayBuffer } from './replay-buffer.js';
 import { SessionStore } from './session-store.js';
 
@@ -61,7 +66,12 @@ function makeMockLogger(): Logger {
 function makeValidResult(): ValidateTokenResult {
   return {
     valid: true,
-    entry: { alias: 'Test G2', expiresAt: Date.now() + 86_400_000, worldId: 'test-world' },
+    entry: {
+      alias: 'Test G2',
+      expiresAt: Date.now() + 86_400_000,
+      worldId: 'test-world',
+      userId: 'u1',
+    },
   };
 }
 
@@ -413,6 +423,117 @@ describe('handleHandshake', () => {
       const session = sessionStore.getSession(sent.session_id);
       expect(session).toBeDefined();
       expect(session?.locale).toBe('it');
+    });
+  });
+
+  // ── Idle-handshake timeout (slow-loris guard) ──────
+
+  describe('idle handshake timeout', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('closes with 4400 and resolves null when no message arrives before the timeout', async () => {
+      vi.useFakeTimers();
+
+      const promise = handleHandshake(
+        socket as unknown as WebSocket,
+        MOCK_REQ,
+        tokenCache,
+        replayBuffer,
+        sessionStore,
+        logger,
+        // Short injected timeout so the test does not wait the real 10s.
+        50,
+      );
+
+      // No message emitted — advance past the idle window to fire the timer.
+      vi.advanceTimersByTime(50);
+      const sessionId = await promise;
+
+      expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_HANDSHAKE, 'handshake_timeout');
+      expect(socket.send).not.toHaveBeenCalled();
+      expect(sessionId).toBeNull();
+      // No session was created for the dangling connection.
+      expect(sessionStore.size).toBe(0);
+    });
+
+    it('clears the timer when a message arrives (no spurious close after success)', async () => {
+      vi.useFakeTimers();
+
+      const promise = handleHandshake(
+        socket as unknown as WebSocket,
+        MOCK_REQ,
+        tokenCache,
+        replayBuffer,
+        sessionStore,
+        logger,
+        50,
+      );
+
+      socket.emit('message', makeValidHandshake());
+      const sessionId = await promise;
+
+      // Advancing past the (now-cleared) idle window must NOT trigger a close.
+      vi.advanceTimersByTime(1_000);
+
+      expect(sessionId).toBeTypeOf('string');
+      expect(sessionId).not.toBeNull();
+      expect(socket.send).toHaveBeenCalledOnce();
+      // The success path must not have closed the socket via the idle timer.
+      expect(socket.close).not.toHaveBeenCalled();
+    });
+
+    it('clears the timer on the invalid-token path (no double close)', async () => {
+      vi.useFakeTimers();
+
+      const invalidCache = new TokenCache(
+        vi.fn().mockResolvedValue(makeInvalidResult('unknown_token')),
+      );
+
+      const promise = handleHandshake(
+        socket as unknown as WebSocket,
+        MOCK_REQ,
+        invalidCache,
+        replayBuffer,
+        sessionStore,
+        logger,
+        50,
+      );
+
+      socket.emit('message', makeValidHandshake({ token: 'bad-token' }));
+      const sessionId = await promise;
+
+      // Past the idle window: the idle timer must not add a second close.
+      vi.advanceTimersByTime(1_000);
+
+      expect(sessionId).toBeNull();
+      expect(socket.close).toHaveBeenCalledTimes(1);
+      expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_TOKEN, 'invalid_token');
+    });
+
+    it('defaults to HANDSHAKE_IDLE_TIMEOUT_MS (10s) when no override is given', async () => {
+      vi.useFakeTimers();
+
+      const promise = handleHandshake(
+        socket as unknown as WebSocket,
+        MOCK_REQ,
+        tokenCache,
+        replayBuffer,
+        sessionStore,
+        logger,
+      );
+
+      // Just before the default window: no close yet.
+      vi.advanceTimersByTime(HANDSHAKE_IDLE_TIMEOUT_MS - 1);
+      expect(socket.close).not.toHaveBeenCalled();
+
+      // Crossing the default window fires the slow-loris guard.
+      vi.advanceTimersByTime(1);
+      const sessionId = await promise;
+
+      expect(socket.close).toHaveBeenCalledWith(CLOSE_INVALID_HANDSHAKE, 'handshake_timeout');
+      expect(sessionId).toBeNull();
     });
   });
 });

@@ -30,7 +30,12 @@ function makeValidFn(): (token: string) => Promise<ValidateTokenResult> {
     if (token === VALID_TOKEN) {
       return {
         valid: true,
-        entry: { alias: 'Test G2', expiresAt: Date.now() + 86_400_000, worldId: 'test-world' },
+        entry: {
+          alias: 'Test G2',
+          expiresAt: Date.now() + 86_400_000,
+          worldId: 'test-world',
+          userId: 'u1',
+        },
       };
     }
     return { valid: false, reason: 'unknown_token' };

@@ -93,6 +93,10 @@ export class HandshakeError extends Error {
  * @param locale     - BCP-47 primary tag (`'it'`, `'en'`, ...)
  * @param sessionId  - Optional UUID v4 for reconnect (resume from replay_seq)
  * @param timeoutMs  - Reject after this many ms with HandshakeError('timeout'); default 10 s
+ * @param actorId    - Optional selected PC actor id (FLV-CHAR-SELECT); when set the bridge
+ *                     pins this session's `character.delta` to that actor so the HUD
+ *                     renders the player's chosen PC instead of always `characters[0]`.
+ *                     Omit entirely (do not pass `""`) to preserve back-compat.
  */
 export async function performCapabilityHandshake(
   ws: WebSocket,
@@ -100,16 +104,17 @@ export async function performCapabilityHandshake(
   locale: string,
   sessionId?: string,
   timeoutMs: number = 10_000,
+  actorId?: string,
 ): Promise<HandshakeServer> {
-  // Build the client payload — only attach session_id when supplied so the
-  // schema's `.optional()` field validates cleanly under
-  // `exactOptionalPropertyTypes`.
+  // Build the client payload — only attach session_id and actorId when supplied so
+  // the schema's `.optional()` fields validate cleanly under `exactOptionalPropertyTypes`.
   const clientMsg = {
     proto: 'evf-v1' as const,
     token,
     locale,
     capabilities: [...SERVER_CAPS_V1] as string[],
     ...(sessionId !== undefined ? { session_id: sessionId } : {}),
+    ...(actorId !== undefined ? { actorId } : {}),
   };
   ws.send(JSON.stringify(clientMsg));
 
@@ -189,6 +194,6 @@ export function probeBleThroughput(
   }
   const kbps = (bytesObserved * 8) / 1000 / (durationMs / 1000);
   // 100 kbps is the Branch A / Branch B/C boundary (ADR-0005 PROVISIONAL).
-  // TODO(ADR-0005-OQ-INV2-1.b) — re-tune on real G2 hardware measurements.
+  // TODO(ADR-0005): re-tune on real G2 hardware measurements (OQ-INV2-1.b).
   return kbps < 100 ? 'glyph' : 'raster';
 }

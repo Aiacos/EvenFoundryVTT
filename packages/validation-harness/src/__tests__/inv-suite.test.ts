@@ -375,6 +375,116 @@ describe('IS-06: INV-5 (gesture determinism)', () => {
 });
 
 // =====================================================================================
+// IS-09: INV-1 raster suite — glyph+raster merge + FALSE-PASS guard
+// =====================================================================================
+describe('IS-09: INV-1 raster suite (glyph+raster merge)', () => {
+  it('IS-09a: INV-1 is green with compound detail when both glyph and raster exit 0', async () => {
+    await makeVersionDocs({ repoRoot: tmpDir });
+    // All spawns exit 0 (default setSpawnExitCode(0) from beforeEach)
+
+    const suite = await runInvSuite({ repoRoot: tmpDir });
+    const inv1 = suite.results.find((r) => r.id === 'INV-1');
+
+    expect(inv1?.status).toBe('green');
+    // Compound detail must reference both suites
+    expect(inv1?.detail).toContain('glyph suite');
+    expect(inv1?.detail).toContain('raster suite');
+  });
+
+  it('IS-09b: INV-1 is red when raster suite exits non-zero (fixture mismatch)', async () => {
+    await makeVersionDocs({ repoRoot: tmpDir });
+    // glyph spawn (args contain '@evf/shared-render') exits 0;
+    // raster spawn (args contain 'RINV-01') exits 1;
+    // all other spawns exit 0.
+    vi.mocked(childProcess.spawn).mockImplementation(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts?: unknown,
+      ): ReturnType<typeof childProcess.spawn> => {
+        const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
+        const stdout = new EventEmitter();
+        const stderr = new EventEmitter();
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = stdout;
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = stderr;
+        const isRasterRun = args.includes('RINV-01');
+        process.nextTick(() => emitter.emit('exit', isRasterRun ? 1 : 0));
+        return emitter;
+      },
+    );
+
+    const suite = await runInvSuite({ repoRoot: tmpDir });
+    const inv1 = suite.results.find((r) => r.id === 'INV-1');
+
+    expect(inv1?.status).toBe('red');
+    expect(suite.allGreen).toBe(false);
+  });
+
+  it('IS-09c: INV-1 is red when glyph suite exits non-zero (fixture mismatch)', async () => {
+    await makeVersionDocs({ repoRoot: tmpDir });
+    // glyph spawn exits 1; raster and all others exit 0.
+    vi.mocked(childProcess.spawn).mockImplementation(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts?: unknown,
+      ): ReturnType<typeof childProcess.spawn> => {
+        const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
+        const stdout = new EventEmitter();
+        const stderr = new EventEmitter();
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = stdout;
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = stderr;
+        const isGlyphRun = args.includes('@evf/shared-render');
+        process.nextTick(() => emitter.emit('exit', isGlyphRun ? 1 : 0));
+        return emitter;
+      },
+    );
+
+    const suite = await runInvSuite({ repoRoot: tmpDir });
+    const inv1 = suite.results.find((r) => r.id === 'INV-1');
+
+    expect(inv1?.status).toBe('red');
+    expect(suite.allGreen).toBe(false);
+  });
+
+  it('IS-09d: INV-1 FALSE-PASS guard — raster exit-0 with zero-tests is not green', async () => {
+    await makeVersionDocs({ repoRoot: tmpDir });
+    // The RINV-01 vitest run exits 0 but emits the "no test files found" signal on
+    // stdout. vitest exits 0 on "no test files found" → must NOT report green.
+    // All other spawns exit 0 normally (glyph suite passes).
+    vi.mocked(childProcess.spawn).mockImplementation(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts?: unknown,
+      ): ReturnType<typeof childProcess.spawn> => {
+        const emitter = new EventEmitter() as ReturnType<typeof childProcess.spawn>;
+        const stdout = new EventEmitter();
+        const stderr = new EventEmitter();
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = stdout;
+        (emitter as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = stderr;
+        const isRasterRun = args.includes('RINV-01');
+        process.nextTick(() => {
+          if (isRasterRun) {
+            stdout.emit('data', Buffer.from('No test files found, exiting with code 0\n'));
+          }
+          emitter.emit('exit', 0);
+        });
+        return emitter;
+      },
+    );
+
+    const suite = await runInvSuite({ repoRoot: tmpDir });
+    const inv1 = suite.results.find((r) => r.id === 'INV-1');
+
+    // FALSE-PASS guard must prevent INV-1 from being green when raster has zero tests
+    expect(inv1?.status).not.toBe('green');
+    // Merged result should be 'skipped' (raster skipped, glyph green → skipped)
+    expect(inv1?.status).toBe('skipped');
+  });
+});
+
+// =====================================================================================
 // IS-07: allGreen semantics
 // =====================================================================================
 describe('IS-07: allGreen semantics', () => {

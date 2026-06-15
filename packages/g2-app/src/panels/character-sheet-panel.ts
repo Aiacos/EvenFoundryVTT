@@ -51,6 +51,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { CharacterSnapshot } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
@@ -412,6 +413,9 @@ export default class CharacterSheetPanel implements OverlayPanel {
 
     const content = [tabStrip, ...bodyRows].join('\n');
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField('overlay-block'),
       containerName: 'overlay-block',
       content,
     });

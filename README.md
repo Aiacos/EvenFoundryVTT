@@ -2,8 +2,8 @@
 
 > Play **Dungeons & Dragons 5e** on **FoundryVTT** through **Even Realities G2** AR glasses, controlled with the **Even R1** smart ring — keep your eyes on the table, not on a laptop.
 
-[![status: v0.9.13 shipped](https://img.shields.io/badge/status-v0.9.13%20shipped-brightgreen)](#status)
-[![spec: v0.9.13](https://img.shields.io/badge/spec-v0.9.13-blue)](Specs.md)
+[![status: v0.10.0 shipped](https://img.shields.io/badge/status-v0.10.0%20shipped-brightgreen)](#status)
+[![spec: v0.10.0](https://img.shields.io/badge/spec-v0.10.0-blue)](Specs.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 [![dnd5e: 5.x](https://img.shields.io/badge/dnd5e-5.3.x-red)](https://github.com/foundryvtt/dnd5e)
 [![Foundry: v13.347+](https://img.shields.io/badge/foundry-v13.347%2B-orange)](https://foundryvtt.com)
@@ -71,35 +71,86 @@ Set `EVF_PLUGIN_HOST_URL` in `deploy/.env` to the origin of your static host
 (e.g. `https://g2app.yourdomain.com`). The bridge uses this value for CORS — it
 must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 
+(The Compose project is named `evenfoundryvtt`; the container is `evf-bridge`.)
+
+### 4. Testing on G2 — dev mode vs the `.ehpk`
+
+Two different paths — don't confuse them (uploading an `.ehpk` as a "trial version" is
+what produces the Even app's **"trial version expired"** error):
+
+- **Dev mode (no expiry, hot reload)** — the right tool for iterating. Run the dev server
+  and load it on the glasses via QR:
+  ```bash
+  pnpm --filter @evf/g2-app dev        # vite dev server on :5173
+  pnpm --filter @evf/g2-app dev:qr     # QR for http://<LAN-IP>:5173 — scan in the Even app
+  ```
+  Phone + machine on the same LAN; the app hot-reloads on every save. Verbatim Even docs:
+  *"Your app loads on the glasses with hot reload support."*
+- **`.ehpk` (for shipping / short-lived private test)** — a portal trial upload **expires**.
+  Regenerate a fresh bundle (CI also attaches one to every Release):
+  ```bash
+  pnpm --filter @evf/g2-app pack:ehpk  # → packages/g2-app/evenfoundryvtt.ehpk
+  ```
+  A **permanent** install only comes from a portal submission Even approves.
+
+Full runbook: [`docs/release/evenhub.md`](docs/release/evenhub.md) ·
+wiki: [Testing & Distribution](https://github.com/Aiacos/EvenFoundryVTT/wiki/Testing-and-Distribution).
+
+### Simulator Testing (local dev loop)
+
+One-command EvenHub simulator dev/test harness — no real glasses required:
+
+```bash
+pnpm sim start               # bridge (no-auth) + seed fixtures + vite + EvenHub simulator
+pnpm sim start --actor 6KWxQXAiJgz4zKlS   # select Dante as the rendered PC
+pnpm sim shot /tmp/glasses.png            # capture a 576x288 glasses screenshot
+pnpm sim stop                             # tear down all three services
+```
+
+Full documentation: **[`docs/simulator-testing.md`](docs/simulator-testing.md)**
+
+### Self-Hosting
+
+The complete end-to-end deployment guide lives at
+**[`docs/self-hosting.md`](docs/self-hosting.md)**.
+
+The stack is: Foundry module → bridge (Docker Compose) → plugin host (static HTTPS, Caddy) →
+G2 glasses (Even Realities App WebView). Each self-hoster must build their own `.ehpk` with
+their own bridge + plugin-host HTTPS origins baked in — the Even Hub WebView enforces the
+network whitelist at runtime with no wildcards (Specs.md §3.3). Portal submission is manual
+(Even Hub CLI has no `publish`/`submit` command; INV-2, re-verified 2026-05-31).
+
 ---
 
 ## In one sentence
 
-**EvenFoundryVTT is a bridge between FoundryVTT and the Even Realities G2 AR glasses.** The D&D 5e player wears the glasses, drives the panels with the R1 ring, and sees their character sheet / combat tracker / map / log right in their field of view — without ever looking away from the table, the DM, the other players. The Foundry-side module reads game state and pushes it to the glasses; a Node.js bridge handles reverse-proxy duties with bearer auth and idempotency; a companion app on the phone owns the pairing.
+**EvenFoundryVTT is a bridge between FoundryVTT and the Even Realities G2 AR glasses.** The D&D 5e player wears the glasses, drives the panels with the R1 ring, and sees their character sheet / combat tracker / map / log right in their field of view — without ever looking away from the table, the DM, the other players. The Foundry-side module reads game state and pushes it to the glasses; a Node.js bridge handles reverse-proxy duties with bearer auth and idempotency; the player pastes the bearer token into the phone-side wizard to pair.
 
-### What's done today (v0.9.13 shipped — 20/20 phases software-complete)
+### What's done today (v0.10.0 shipped — 27/27 phases software-complete)
 
-- ✓ **Full MVP end-to-end** — Phase 0 → 13 (v0.9.11 MVP) + Phase 14 (z=0.5 idle infill) + Phase 15 (Deepgram Keyterm) shipped 2026-05-17 + Phase 16 (Sheet abilities) + Phase 17 (Sheet skills) + Phase 18 (Phase-14.1 polish) shipped 2026-05-18. 9/9 v1 REQ-IDs from the v0.9.13 milestone Resolved (6 SHEET + 3 INFILL-14.1).
-- ✓ **G2 ↔ Foundry pairing** via QR code from the GM settings, bearer 24h, per-pair internal_secret, timing-safe-equal on every secret comparison.
+- ✓ **Full MVP end-to-end** — Phase 0 → 13 (v0.9.11 MVP) + Phase 14 (z=0.5 idle infill) + Phase 15 (Deepgram Keyterm) shipped 2026-05-17 + Phase 16 (Sheet abilities) + Phase 17 (Sheet skills) + Phase 18 (Phase-14.1 polish) shipped 2026-05-18. **v0.10.0 milestone (Phases 19–25, 2026-06-08)**: canvas compositor raster substrate as default rendering path (see below).
+- ✓ **Canvas compositor raster substrate (NEW v0.10.0)** — `CanvasCompositor` composites status HUD (z=1) + overlay panels (z=2) on `OffscreenCanvas` with pixel VT323 font, pushed as 4 PNG sub-tiles 200×100 each (400×200 effective). Delta loop ~5 fps, xxhash h32 sub-tile dirty-skip → idle near-zero BLE bandwidth. Character sheet (6-tab, raster), combat tracker (raster + AC), `feats[]` + `biography` schema, class/initiative/speed readers — all canvas-rendered. Glyph/text path (text-container SDK) is the BLE-degraded fallback.
+- ✓ **G2 ↔ Foundry pairing** via copyable bearer token from the GM settings (PairModal shows bridge URL + token; token masked by default with Reveal/Copy), pasted into the phone wizard — bearer 24h, per-pair internal_secret, timing-safe-equal on every secret comparison. No QR scan: the Even Hub platform exposes no camera/QR-scan API to apps.
 - ✓ **Foundry state reads** (PC, combat, scene, event log, entity-pack of items/weapons/armor/NPCs/monsters) with real-time push via the `/internal/delta` WebSocket multiplex.
 - ✓ **Production-ready bridge** — Fastify + Docker Compose + `/healthz` / `/readyz` / `/metrics` Prometheus + RFC-compliant idempotency-key middleware + full Tool Registry MVP.
 - ✓ **Setup wizard** in vanilla TS on the phone (3-step: bridge URL → token → PC) + Even Realities App per-plugin settings.
-- ✓ **Full layered UI rendering** — 4-bit greyscale raster + glyph fallback + z=0.5 idle content infill (NEW v0.9.12) + persistent Status HUD + overlay panels (6-tab Sheet, Combat tracker, Inventory, Spellbook, Log). **Character sheet Main + Skills tabs fully data-bound from dnd5e (NEW v0.9.13)** — ability scores · saving throws with `◉`/`○` proficiency markers · 18 skills with `○`/`◉`/`★` glyphs (half-prof 0.5 rounds up to `◉`) · senses line passives (Perception/Insight/Investigation).
-- ✓ **Foundry write path** — `activity.use()` via socketlib `executeAsGM` (single-workflow-origin, ADR-0011), 17 socketlib handlers registered (CI Gate 8 invariant preserved end-to-end through v0.9.13 — both Sheet phases are pure read-path extensions), `MidiQOL.completeActivityUse` when present.
+- ✓ **Full layered UI rendering** — canvas compositor raster substrate (default, NEW v0.10.0) + glyph fallback (BLE-degraded) + z=0.5 idle content infill + persistent Status HUD + overlay panels (6-tab Sheet, Combat tracker, Inventory, Spellbook, Log). **Character sheet Main + Skills tabs fully data-bound from dnd5e (v0.9.13)** — ability scores · saving throws with `◉`/`○` proficiency markers · 18 skills with `○`/`◉`/`★` glyphs · senses line passives (Perception/Insight/Investigation). **Features + Biography tabs wired (v0.10.0).**
+- ✓ **Foundry write path** — `activity.use()` via socketlib `executeAsGM` (single-workflow-origin, ADR-0011), 17 socketlib handlers registered (CI Gate 8 invariant), `MidiQOL.completeActivityUse` when present.
 - ✓ **Action economy enforcement** — Action / Bonus / Reaction, spell slot consumption, concentration handling, multi-attack tracker, reaction passive notifications, death saves, AoE templates.
 - ✓ **Manual action UX** — tap-to-cast / attack / use, Quick Action menu, action-result toast queue (FIFO + squash).
 - ✓ **i18n** — IT + EN catalogs + on-glasses language override (Quick Action `[N] Language`); build-time width-budget validation (INV-1).
 - ✓ **R1 integration** — gesture routing (tap / swipe-up / swipe-down / double-tap), INV-5 Gesture Determinism ratified.
 - ✓ **Voice (V2 OPTIONAL shipped)** — `foundry-mcp` Streamable HTTP server, Deepgram Nova-3 Multilingual STT with Keyterm Prompting (+625% recall on esoteric names like Bigby's Hand, Counterspell), vocabulary union of static SRD (70 × IT + EN = 140) + dynamic Foundry-derived entity-pack, hot-updated via WS delta (250 ms debounce + drain-then-restart mutex).
-- ✓ **Quality** — **2668 workspace tests** green, coverage ≥80% in the critical packages, TypeScript strict, Biome lint clean, 7 CI gates green on every PR, INV-1..5 verification suite (`inv:all`) + INV-3 atomic doc-coherence enforced.
+- ✓ **Quality** — **3295 workspace tests** green, coverage ≥80% in the critical packages, TypeScript strict, Biome lint clean, 7 CI gates green on every PR, INV-1..5 verification suite (`inv:all`) with glyph + raster suites + INV-3 atomic doc-coherence enforced.
 
 ### Milestones shipped
 
 - **v0.9.11 MVP (2026-05-17).** Phases 0–13. Full MVP end-to-end software-complete, 35 hardware-pending SCs under ADR-0005 Branch A.
 - **v0.9.12 Quick Wins (2026-05-17).** Phases 14–15. Raster z=0.5 idle content infill + Deepgram Keyterm Prompting / Entity-Pack Integration. 2 phases, 8/8 plans, 9/9 v1 REQ-IDs Resolved. Software-only.
-- **v0.9.13 (2026-05-18) — Sheet Data Completion + Polish.** Character sheet Main + Skills tabs fully data-bound; Phase-14.1 spec-drift polish closes 3 advisory UI-REVIEW findings. Workspace tests **2668/2668** green. 3 phases (16–18), 7 plans, 9/9 v1 REQ-IDs closed. Software-only — zero new hardware-pending SCs.
+- **v0.9.13 (2026-05-18) — Sheet Data Completion + Polish.** Character sheet Main + Skills tabs fully data-bound; Phase-14.1 spec-drift polish. Workspace tests **2668/2668** green. 3 phases (16–18), 7 plans. Software-only.
+- **v0.10.0 (2026-06-08) — Canvas Compositor Raster Substrate.** Phases 19–25. `CanvasCompositor` raster default boot; status HUD + all overlay panels rendered on canvas with VT323 font; delta loop ~5 fps xxhash sub-tile; glyph path promoted to BLE-degraded fallback; INV-1 raster contract established (SHA-256 PNG tile hashes). Workspace tests **3295/3295** green. 7 phases, 18 plans. Software-only.
 
-### What's NOT done yet (deferred beyond v0.9.13)
+### What's NOT done yet (deferred beyond v0.10.0)
 
 - ✗ **Hardware UAT** — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 flagged `human_needed` under ADR-0005 PROVISIONAL Branch A. Software-complete; they need **Even Hub developer access + G2 + R1 + a consenting DM** for end-to-end on-device verification. Closure path: `pnpm --filter @evf/validation-harness validate:all`.
 - ✗ **Picovoice Rhino edge classifier** — conditional on SC-12-01 (Claude Desktop latency p50 > 800 ms). Not measurable without hardware.
@@ -113,7 +164,7 @@ must be an exact origin-complete URL (no wildcards, per Specs.md §3.3).
 
 | Pillar | What it gives you |
 |---|---|
-| **Map base layer** | Live Foundry canvas, rasterized + Floyd-Steinberg dithered into 4-bit green, 400×200 px effective (hardware max — 4 image containers × 200×100). Glyph fallback (text grid) when bandwidth is thin. |
+| **Canvas compositor (default)** | `CanvasCompositor` raster substrate: status HUD + overlay panels composited on `OffscreenCanvas` with pixel VT323 font, sent as 4 PNG sub-tiles 200×100 each (400×200 effective, hardware max). Delta loop ~5 fps, xxhash sub-tile dirty-skip → idle near-zero BLE bandwidth. Glyph/text path (text-container SDK) is the BLE-degraded fallback. |
 | **Idle Content Infill (z=0.5)** | **NEW v0.9.12** — text strips that fill the otherwise-empty rows below the raster tiles when no overlay is active (combat log mini · z=0.5 label · stats: mode / fps / BLE). Auto-demolished when an overlay opens, auto-reborn when it closes. INV-1 layout-preserving. See [§7.4c](Specs.md). Ratified Phase 14 (2026-05-17). |
 | **Persistent Status HUD** | HP / AC / action economy / spell slots / conditions, always in the corner — never hidden by overlays. |
 | **Overlay panels** | Sheet (6 tabs: Main / Skills / Inventory / Spells / Feats / Bio), Combat tracker, Event log, Spellbook, Inventory — all stacked over the map like Foundry desktop windows. |
@@ -140,7 +191,7 @@ Three boundaries, three contracts, every plugin slot versioned. dnd5e v6 lands? 
 - **i18n ready from MVP** — locale auto-detected from Foundry (`game.i18n.lang`), runtime override directly from the glasses via `[N] Language` Quick Action. Device-local override never touches the world setting. See [§7.16](Specs.md).
 - **Voice control hardware-feasible** (V2 OPZIONALE) — the G2 4-mic array streams **PCM 16 kHz s16le mono** to plugins via `bridge.audioControl()` (verified upstream `hub.evenrealities.com/docs/guides/device-apis`). STT/LLM run **off-glasses** via the bridge or an MCP client — the G2 has no speaker (visual-only feedback) and the native EvenAI is opaque to dev apps. See [§3.5 / §3.6](Specs.md).
 - **Deepgram Keyterm Prompting on esoteric D&D 5e terms** (v0.9.12 Phase 15, closed 2026-05-17) — the Deepgram Nova-3 Multilingual session URL now ships a `keyterm=` query param per element of the union of static SRD spells (70 entries × IT + EN) AND the live Foundry-derived entity-pack (items / weapons / armor / NPCs / monsters). Documented **+625% entity-recall lift** on esoteric terms like Bigby's Hand, Counterspell, Vrock (Deepgram learn docs — re-verified ✓ 2026-05-17 alongside the canonical EvenAI no-API constraint, 6 canonical Even Realities domains, evidence in [`.planning/quick/20260517-voice-intent-research/RESEARCH.md`](.planning/quick/20260517-voice-intent-research/RESEARCH.md) §1). Hot-update via existing `/internal/delta` channel — `socketlib.registerComplexHandler` count stays exactly **17** (Phase 13 invariant + CI Gate 8 preserved). Cap **`DEEPGRAM_KEYTERM_LIMIT = 100`** — entity-pack truncated first on overflow; Phase 12 baseline preserved byte-for-byte when `keytermProvider` absent. See [§3.6 / §5.2](Specs.md).
-- **Setup happens on the phone** — Foundry connection bootstrap (bridge URL, auth token, character pick) lives in the **Even Realities App** per-plugin settings UI (verified upstream `support.evenrealities.com`: *"configure each widget individually through the Even App"*). Pairing is a **QR scan** from the Foundry desktop module, never a manual token copy-paste. The G2 stays keyboardless — no virtual keyboard, ever. See [§3.8 / §7.14.7](Specs.md).
+- **Setup happens on the phone** — Foundry connection bootstrap (bridge URL, auth token, character pick) lives in the **Even Realities App** per-plugin settings UI (verified upstream `support.evenrealities.com`: *"configure each widget individually through the Even App"*). The app is installed via Even Hub (dev: `evenhub qr` loads the plugin-host URL into the Even app; prod: `.ehpk` → portal review → store), then the player **pastes** the bearer token copied from the Foundry desktop PairModal — there is no QR scan, because the Even Hub platform exposes no camera/QR-scan API to apps (`hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). The G2 stays keyboardless. See [§3.8 / §7.14.7](Specs.md).
 - **No mocks at the boundary** — Foundry is the single source of truth, every action goes through `Activity#use()` / MidiQOL workflow, GM keeps full veto power.
 - **Phase 0 gating** — every hardware assumption (R1 events, image API format, BLE bandwidth, partial-update API, DLE, audio chunk size) has a written GO/NO-GO test before code lands.
 
@@ -151,13 +202,13 @@ Four rules govern every PR, every audit, every release. They are constraints, no
 | # | Invariant | One-line rule |
 |---|---|---|
 | **INV-1** | **Layout integrity** | Formatting and layout are **dynamic and always perfect** — frame corners, dividers and columns align to the character in every state, every content, every locale. **Never misaligned for any reason.** Verified by snapshot tests (§7.14.4 ck 11–15) and by the `Box` / `TextRun` render contract (§7.1a.7). |
-| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **5 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11), a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint, drift NEUTRO), a v0.9.12 Phase 15 INV-2 re-check (2026-05-17, EvenAI native API closure + Deepgram `keyterm`), and a **v0.9.13 INV-2 cross-check** (2026-05-18, dnd5e 5.3.3 abilities + skills schema re-verified on `github.com/foundryvtt/dnd5e@release-5.3.3` + wiki Roll-Formulas). |
+| **INV-2** | **Online cross-validation** | Every technical claim cites a canonical upstream source (Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing pages). Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed, and logged in the changelog. The current spec is the result of **5 consecutive cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11), a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint, drift NEUTRO), a v0.9.12 Phase 15 INV-2 re-check (2026-05-17, EvenAI native API closure + Deepgram `keyterm`), a **v0.9.13 INV-2 cross-check** (2026-05-18, dnd5e 5.3.3 abilities + skills schema re-verified on `github.com/foundryvtt/dnd5e@release-5.3.3` + wiki Roll-Formulas), and a **v0.10.0 INV-2 re-verify** (2026-06-08, 4 parallel WebFetch — G2 576×288 4-bit · execution model · gestures · dnd5e 5.3.3 — no drift). |
 | **INV-3** | **Documentation coherence** | `Specs.md` (canonical), `README.md` and `docs/showcase/index.html` are **always coherent** and updated **in the same commit** for any change touching cross-cutting claims (version, fps target, phase count, hardware spec, library version, locale set). No half-updated states. |
 | **INV-4** | **Code quality** | Code is **clean, optimized, documented** — and **zero dead or unreachable code** is tolerated. Biome + TypeScript strict + Vitest coverage gate enforce it in CI. `// TODO` without an issue/ADR link is a CI failure. JSDoc/TSDoc on every public API. Hot-path benchmarks gate regressions. See §0.1 INV-4. |
 
 ## Status
 
-**All 20 phases (0 → 18) software-complete; hardware UAT pending Even Hub developer access.** v0.9.11 MVP (Phases 0–13) + v0.9.12 Quick Wins (Phases 14–15) both shipped 2026-05-17; v0.9.13 Sheet Data Completion + Polish (Phases 16–18) shipped 2026-05-18 — 86 plans total, **2668 workspace tests passing**, 7 CI gates green. The current artifact is the **~4400-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.7 → v0.9.8 → v0.9.9 → v0.9.10 → v0.9.11) plus a v0.9.12 INV-2 spot-check (2026-05-14, image-API constraint re-verified, drift NEUTRO), a v0.9.12 Phase 15 INV-2 re-check (2026-05-17, EvenAI native API closure + Deepgram `keyterm` capability re-verified on 6 canonical Even Realities domains, status quo confirmed), and a v0.9.13 INV-2 cross-check (2026-05-18, dnd5e 5.3.3 canonical abilities + skills schema re-verified on `github.com/foundryvtt/dnd5e@release-5.3.3` + dnd5e wiki Roll-Formulas), with four **non-negotiable Project Invariants** ratified in §0.1 and a `z=0.5` Idle Content Infill layer (§7.4c) that fills previously-empty raster-mode rows without violating the 4-image hardware budget. Phase 14 ratified end-to-end 2026-05-17 — INV-1 fixtures + cross-state column equality + LMT-DD-07 race coverage. Phase 15 closed end-to-end 2026-05-17 — Deepgram Keyterm Prompting + Entity-Pack Integration, VOICE-06..09 software-complete. Phases 16–18 closed 2026-05-18 — Sheet Main tab abilities + Skills tab modifiers + Phase-14.1 spec-drift polish; socketlib handler count = **17** preserved end-to-end through v0.9.13 (CI Gate 8 invariant + both Sheet phases are pure read-path extensions). The 35 hardware-pending success criteria carry forward unchanged under ADR-0005 PROVISIONAL Branch A; closure path is `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + a consenting DM are available.
+**All 27 phases (0 → 25) software-complete; hardware UAT pending Even Hub developer access.** v0.9.11 MVP (Phases 0–13) + v0.9.12 Quick Wins (Phases 14–15) both shipped 2026-05-17; v0.9.13 Sheet Data Completion + Polish (Phases 16–18) shipped 2026-05-18; **v0.10.0 Canvas Compositor Raster Substrate (Phases 19–25) shipped 2026-06-08** — 104 plans total, **3295 workspace tests passing**, 7 CI gates green. The current artifact is the **~4500-line spec** in [`Specs.md`](Specs.md) — verified end-to-end against upstream documentation across **5 cross-check rounds** (v0.9.6 → v0.9.11) plus three INV-2 re-checks (v0.9.12 spot-check 2026-05-14, Phase 15 INV-2 re-check 2026-05-17, v0.9.13 INV-2 cross-check 2026-05-18) and a **v0.10.0 INV-2 re-verify 2026-06-08** (no drift — G2 576×288 4-bit · execution model · gestures · dnd5e 5.3.3 all confirmed), with four **non-negotiable Project Invariants** ratified in §0.1. The `CanvasCompositor` raster substrate is the default rendering path from v0.10.0; the glyph/text path is the BLE-degraded fallback (INV-1 glyph + raster suites both green). The 35 hardware-pending success criteria carry forward unchanged under ADR-0005 PROVISIONAL Branch A; closure path is `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + a consenting DM are available.
 
 The spec covers requirements, hardware constraints (Even Hub display + networking + audio + native AI limits + R1 product page), Foundry/dnd5e API surface (with `game.i18n` Localization API), data models, full UI/UX with ASCII mockups, layout integrity rules (§7.1a), i18n architecture with on-glasses language toggle (§7.16), G2 audio surface (§3.5), plugin execution model and 3-hop server-hosted distribution (§3.7), Even Realities App phone-side configuration UI for connection bootstrap (§3.8 / §7.14.7), the 6-layer raster pipeline, the optional MCP voice module, a 13-week MVP roadmap with Phase 0 validation protocol, risk register, library stack research, and failure modes.
 
@@ -167,7 +218,7 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 |---|---|---|
 | 0 | ✅ v0.9.11 | Hardware/SDK validation (R1 events · `updateImageRawData` format · BLE bandwidth · partial-update API · DLE) — ADR-0005 PROVISIONAL Branch A |
 | 1 | ✅ v0.9.11 | Monorepo skeleton · shared protocol · CI · ADR-0001..04 + 0008 |
-| 2 | ✅ v0.9.11 | Foundry module: readers + WS server + capability handshake + QR pairing |
+| 2 | ✅ v0.9.11 | Foundry module: readers + WS server + capability handshake + token-paste pairing |
 | 3 | ✅ v0.9.11 | Bridge: REST + WS + tool registry + Docker + bearer auth + Prometheus |
 | 4a | ✅ v0.9.11 | G2 app: layered UI engine + raster pipeline (6 layers) + glyph fallback + Status HUD; ADR-0009 ACCEPTED |
 | 4b | ✅ v0.9.11 | Overlay panel API + toast queue + boot errors + death-saves + concentration-drop; ADR-0009 Amd 1 |
@@ -188,6 +239,14 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 | 16 | ✅ v0.9.13 | Sheet Ability Scores (CharacterSnapshotSchema.abilities + character-reader.ts wiring + renderMainTab data binding) |
 | 17 | ✅ v0.9.13 | Sheet Skills Tab (CharacterSnapshotSchema.skills + character-reader.ts wiring + renderSkillsTab modifiers + proficiency glyphs) |
 | 18 | ✅ v0.9.13 | Phase-14.1 spec-drift polish (UI-SPEC §2/§10 reconcile + IT locale leak fix + Z05-INV-02b triade extension; single INV-3 atomic commit) |
+| **— v0.10.0 Canvas Compositor Raster Substrate —** | | |
+| 19 | ✅ v0.10.0 | ADR-0013 Amendment 1 + CanvasCompositor core (CanvasLayer interface · buildHudRasterPageSchema · LayerManager.renderMode · glyph path byte-identical) |
+| 20 | ✅ v0.10.0 | Status HUD su canvas + VT323 font + INV-1 raster baseline (CanvasStatusHudLayer · chrome pre-bake · dirty-gate · glyph+raster suites in inv:all) |
+| 21 | ✅ v0.10.0 | Character sheet su canvas + dati main-tab (6-tab CanvasSheetLayer · portrait greyscale · class/ini/speed readers · ~26 literals updated) |
+| 22 | ✅ v0.10.0 | Features + Biography schema extension (feats[] + biography · extractFeats + extractBiography · Features/Bio tabs wired with real data) |
+| 23 | ✅ v0.10.0 | Combat tracker su canvas + AC combattente (CanvasCombatLayer · 5-combatant window · highlight turn · HP+AC reali · extractAc reader) |
+| 24 | ✅ v0.10.0 | Delta loop ~5fps xxhash (HudDeltaDriver · sub-tile h32 hash · dirty-skip · idle near-zero bandwidth · debounce 100ms) |
+| 25 | ✅ v0.10.0 | Promozione raster a default boot + fallback glyph (boot canvas default · PoC guard rimosso · BLE-degraded glyph fallback · ~60 INV-1 glyph fixture invariate) |
 
 ## Hardware
 
@@ -205,7 +264,7 @@ The spec covers requirements, hardware constraints (Even Hub display + networkin
 
 ## Documentation
 
-- **[`Specs.md`](Specs.md)** — single source of truth (v0.9.13, ~4400 lines, fully cross-checked against upstream docs across 5 rounds + v0.9.12 spot-check + v0.9.12 Phase 15 INV-2 re-verification 2026-05-17 + v0.9.13 INV-2 cross-check 2026-05-18 on dnd5e 5.3.3 schema)
+- **[`Specs.md`](Specs.md)** — single source of truth (v0.10.0, ~4500 lines, fully cross-checked across 5 rounds + v0.9.12 spot-check + v0.9.12 Phase 15 INV-2 re-check 2026-05-17 + v0.9.13 INV-2 cross-check 2026-05-18 + **v0.10.0 INV-2 re-verify 2026-06-08** on dnd5e 5.3.3 + G2 hardware + gestures, no drift)
 - **[`docs/showcase/index.html`](docs/showcase/index.html)** — interactive feature showcase (HTML5/JS, animated)
 - **[`.planning/milestones/`](.planning/milestones/)** — milestone archives: `v0.9.11-ROADMAP.md` + `v0.9.11-REQUIREMENTS.md` + `v0.9.11-phases/` (15 phase dirs) · `v0.9.12-ROADMAP.md` + `v0.9.12-REQUIREMENTS.md` + `v0.9.12-phases/` (2 phase dirs). v0.9.13 phases (16–18) live under `.planning/phases/` until next cleanup cycle.
 - **[`docs/architecture/`](docs/architecture/)** — 10 ADRs ACCEPTED: 0001 layered UI (Amendment 1 RATIFIED 2026-05-17 con z=0.5) · 0002 protocol versioning · 0003 tool-registry pattern · 0004 voice via MCP (not internal) · 0005 Phase 0 GO/NO-GO PROVISIONAL Branch A · 0006 raster pipeline library stack · 0008 code-quality configuration · 0009 layer-manager contract (Amendment 1 toast-cohabit) · 0010 panel-plugin registry · 0011 Foundry write-path single-workflow-origin. ADR-0007 reserved (RTL → V2 stretch).

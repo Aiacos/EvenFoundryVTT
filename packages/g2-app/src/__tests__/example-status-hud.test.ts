@@ -21,7 +21,7 @@
  * @see packages/shared-render/src/fixtures/
  */
 import type { CharacterSnapshot } from '@evf/shared-protocol';
-import { matchAsciiFixture } from '@evf/shared-render';
+// matchAsciiFixture replaced by toMatchFileSnapshot for HUD-27PX string output (SE-1)
 import { describe, expect, it } from 'vitest';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 
@@ -74,40 +74,48 @@ const IDLE_SNAPSHOT: CharacterSnapshot = {
     ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
     sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
   },
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
 };
 
 describe('Phase 4a Status HUD INV-1 fixture round-trip (Plan 05 example-status-hud)', () => {
   it('SE-1 (ck 15): renderLoading matches status-hud.loading.txt fixture', async () => {
     const renderer = new StatusHudRenderer({ locale: 'en' });
-    const grid = renderer.renderLoading();
+    // HUD-27PX: renderer returns a string (not AsciiGrid); use toMatchFileSnapshot directly
+    const output = renderer.renderLoading();
     // 3 dirs up from packages/g2-app/src/__tests__/ → packages/ → shared-render/src/fixtures/
-    await matchAsciiFixture(grid, '../../../shared-render/src/fixtures/status-hud.loading.txt');
+    await expect(`${output}\n`).toMatchFileSnapshot(
+      '../../../shared-render/src/fixtures/status-hud.loading.txt',
+    );
   });
 
   it('SE-2 (ck 14): IT-locale render emits Italian width-budget labels', () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
-    const grid = renderer.render(IDLE_SNAPSHOT);
-    const rendered = grid.toString();
+    // HUD-27PX: renderer returns a string directly (no .toString() needed)
+    const rendered = renderer.render(IDLE_SNAPSHOT);
     // IT-locale labels per HUD_WIDTH_BUDGETS (UI-SPEC §i18n Width Budget):
-    //   hp_label='PF', ac_label='CA', speed_label='VEL', move_label='Mov',
-    //   conditions_section='Condizioni'
+    //   hp_label='PF', ac_label='CA', speed_label='VEL',
+    //   conditions_section='Condizioni' (via hud27_cond_prefix: 'Cond:')
+    // Note: move_label='Mov' is preserved in i18n but not rendered in the
+    //   status-sheet default view (it's an overlay-only widget — HUD-27PX)
     expect(rendered).toContain('PF');
     expect(rendered).toContain('CA');
     expect(rendered).toContain('VEL');
-    expect(rendered).toContain('Mov');
-    expect(rendered).toContain('Condizioni');
+    expect(rendered).toContain('Cond:'); // hud27_cond_prefix
   });
 
   it('SE-3 (ck 14): DE-locale render emits German width-budget labels', () => {
     const renderer = new StatusHudRenderer({ locale: 'de' });
-    const grid = renderer.render(IDLE_SNAPSHOT);
-    const rendered = grid.toString();
+    // HUD-27PX: renderer returns a string directly
+    const rendered = renderer.render(IDLE_SNAPSHOT);
     // DE-locale labels: hp_label='TP', ac_label='RK', speed_label='GES',
-    //   move_label='Bew', conditions_section='Zustände'
+    //   hud27_cond_prefix='Zust:' (conditions row prefix)
+    // Note: move_label='Bew', conditions_section='Zustände' are overlay/i18n-budget
+    //   keys not rendered in the status-sheet default view
     expect(rendered).toContain('TP');
     expect(rendered).toContain('RK');
     expect(rendered).toContain('GES');
-    expect(rendered).toContain('Bew');
-    expect(rendered).toContain('Zustände');
+    expect(rendered).toContain('Zust:'); // hud27_cond_prefix for DE
   });
 });

@@ -48,6 +48,7 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { Layer } from '../engine/layer-types.js';
 import {
   SEVERITY_PREFIX,
@@ -349,6 +350,9 @@ export class ToastQueueLayer implements Layer {
     }
     this.renderedContent = content;
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(TOAST_CONTAINER_NAME),
       containerName: TOAST_CONTAINER_NAME,
       content,
     });

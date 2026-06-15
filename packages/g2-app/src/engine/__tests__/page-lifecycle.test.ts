@@ -2,15 +2,19 @@
  * Unit tests for page-lifecycle (Phase 4a Plan 02 Task 2).
  *
  * Covers (per 04A-02-PLAN.md `<behavior>` block, PL-1 .. PL-5):
- *   - createBootPage builds the 4-image + 7-text container schema
- *     (containerTotalNum:11) per UI-SPEC §Container Budget Allocation
- *   - Exactly one isEventCapture=1 text container named `map-capture`
- *   - Image containers are named map-tile-0..3 with 200×100 dims in a 2×2 grid
+ *   - createBootPage builds the default status-view schema — 3 text containers
+ *     (header, footer, status-hud), 0 image, containerTotalNum:3
+ *     (quick-260605-j0t-04: map-capture / z05-* / image tiles EXCLUDED from
+ *     the default boot page to avoid the full-rect overlap that caused the G2
+ *     host to return non-success from createStartUpPageContainer)
+ *   - No isEventCapture=1 container in the default boot schema
+ *   - No image containers in the default boot schema
+ *   - All 3 text containers fit within 576×288, no overlaps, no gaps at seams
  *   - Non-success createStartUpPageContainer result → throw including the value
  *   - rebuildToOverlay forwards exactly one bridge.rebuildPageContainer call
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §page-lifecycle.ts
- * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-UI-SPEC.md §Container Budget Allocation
+ * @see packages/g2-app/src/engine/container-registry.ts (CONTAINER_REGISTRY, buildStatusViewTextContainers)
  */
 import {
   type EvenAppBridge,
@@ -45,47 +49,100 @@ describe('page-lifecycle.createBootPage', () => {
     bridge = makeMockBridge();
   });
 
-  it('PL-1: calls bridge.createStartUpPageContainer with 11 containers (4 image + 7 text)', async () => {
+  it('PL-1: calls bridge.createStartUpPageContainer with 3 containers (0 image + 3 text)', async () => {
     await createBootPage(bridge as unknown as EvenAppBridge);
     expect(bridge.createStartUpPageContainer).toHaveBeenCalledTimes(1);
     const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
     expect(arg).toBeDefined();
-    expect(arg?.containerTotalNum).toBe(11);
+    // Default status-view: 3 text, 0 image (map-capture/z05-*/tiles deferred to Phase 20)
+    expect(arg?.containerTotalNum).toBe(3);
     expect(arg?.imageObject).toBeInstanceOf(Array);
     expect(arg?.textObject).toBeInstanceOf(Array);
-    expect(arg?.imageObject?.length).toBe(4);
-    expect(arg?.textObject?.length).toBe(7);
+    expect(arg?.imageObject?.length).toBe(0);
+    expect(arg?.textObject?.length).toBe(3);
   });
 
-  it('PL-2: exactly one textObject has isEventCapture=1 and is named map-capture', async () => {
+  it('PL-2: default boot schema has EXACTLY ONE isEventCapture=1 container (status-hud)', async () => {
     await createBootPage(bridge as unknown as EvenAppBridge);
     const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    // map-capture (id7, isEventCapture=1) is NOT in the default boot schema —
+    // it overlaps status-hud exactly and caused the G2 host to reject the page.
+    // status-hud is the per-schema capture target for the glyph fallback page
+    // (FIX-NZL: G2 spec compliance — exactly one isEventCapture=1 per page).
     const captures = (arg?.textObject ?? []).filter(
       (t: TextContainerProperty) => t.isEventCapture === 1,
     );
     expect(captures).toHaveLength(1);
-    expect(captures[0]?.containerName).toBe('map-capture');
+    expect(captures[0]?.containerName).toBe('status-hud');
+    expect(captures[0]?.containerID).toBe(6);
+    expect(captures[0]?.content).toBe(' ');
   });
 
-  it('PL-3: image containers are map-tile-0..3 with 200x100 dims in a 2x2 grid', async () => {
+  it('PL-3: default boot schema has 0 image containers (map tiles deferred to Phase 20)', async () => {
     await createBootPage(bridge as unknown as EvenAppBridge);
     const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
     const images = (arg?.imageObject ?? []) as ImageContainerProperty[];
-    expect(images).toHaveLength(4);
-    for (let i = 0; i < 4; i++) {
-      const img = images[i];
-      expect(img?.containerName).toBe(`map-tile-${i}`);
-      expect(img?.width).toBe(200);
-      expect(img?.height).toBe(100);
+    // Image map-tiles are part of the map-mode page (Phase 20), not the default boot page.
+    expect(images).toHaveLength(0);
+  });
+
+  it('PL-3b: default boot text containers are header(4), footer(5), status-hud(6)', async () => {
+    await createBootPage(bridge as unknown as EvenAppBridge);
+    const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    const texts = (arg?.textObject ?? []) as TextContainerProperty[];
+    // Exactly the 3 status-view containers in id order
+    const expectedTextIds: Array<[string, number]> = [
+      ['header', 4],
+      ['footer', 5],
+      ['status-hud', 6],
+    ];
+    expect(texts).toHaveLength(3);
+    expectedTextIds.forEach(([name, id], i) => {
+      expect(texts[i]?.containerName).toBe(name);
+      expect(texts[i]?.containerID).toBe(id);
+    });
+  });
+
+  it('PL-3c: every text container has non-zero width AND height (geometry present)', async () => {
+    await createBootPage(bridge as unknown as EvenAppBridge);
+    const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    const texts = (arg?.textObject ?? []) as TextContainerProperty[];
+    expect(texts).toHaveLength(3);
+    for (const t of texts) {
+      expect(t.width).toBeGreaterThan(0);
+      expect(t.height).toBeGreaterThan(0);
     }
-    // 2x2 grid positions: (0,0) (200,0) (0,100) (200,100)
-    const positions = images.map((i) => [i?.xPosition, i?.yPosition]);
-    expect(positions).toEqual([
-      [0, 0],
-      [200, 0],
-      [0, 100],
-      [200, 100],
-    ]);
+  });
+
+  it('PL-3d: default boot containers fit within 576×288, no two containers overlap', async () => {
+    await createBootPage(bridge as unknown as EvenAppBridge);
+    const arg = bridge.createStartUpPageContainer.mock.calls[0]?.[0];
+    const texts = (arg?.textObject ?? []) as TextContainerProperty[];
+    // All containers must fit within the 576×288 G2 display
+    for (const t of texts) {
+      expect(t.xPosition).toBeGreaterThanOrEqual(0);
+      expect(t.yPosition).toBeGreaterThanOrEqual(0);
+      expect((t.xPosition ?? 0) + (t.width ?? 0)).toBeLessThanOrEqual(576);
+      expect((t.yPosition ?? 0) + (t.height ?? 0)).toBeLessThanOrEqual(288);
+    }
+    // No two containers overlap (for each pair, they must not intersect).
+    // Build typed rects from the container list, then check every pair.
+    const rects = texts.map((t) => ({
+      name: t.containerName ?? '',
+      x1: t.xPosition ?? 0,
+      y1: t.yPosition ?? 0,
+      x2: (t.xPosition ?? 0) + (t.width ?? 0),
+      y2: (t.yPosition ?? 0) + (t.height ?? 0),
+    }));
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i] ?? { name: '', x1: 0, y1: 0, x2: 0, y2: 0 };
+        const b = rects[j] ?? { name: '', x1: 0, y1: 0, x2: 0, y2: 0 };
+        const overlapX = a.x1 < b.x2 && a.x2 > b.x1;
+        const overlapY = a.y1 < b.y2 && a.y2 > b.y1;
+        expect(overlapX && overlapY, `containers ${a.name} and ${b.name} overlap`).toBe(false);
+      }
+    }
   });
 
   it('PL-4: throws Error including the non-success result value', async () => {

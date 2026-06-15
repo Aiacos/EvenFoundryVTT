@@ -18,6 +18,7 @@
 
 import { CharacterSnapshotSchema } from '@evf/shared-protocol';
 import type { FastifyInstance } from 'fastify';
+import { isActorAuthorized } from '../auth/actor-authorization.js';
 import type { TokenCache } from '../auth/token-cache.js';
 
 /**
@@ -47,8 +48,16 @@ export async function registerCharacterRoute(
       return reply.status(401).send({ error: 'invalid_token' });
     }
 
-    // --- Fetch snapshot via socketlib GM handler ---
+    // --- Per-actor read authorization (ADR-0014 §4) ---
+    // Reject any actorId outside the bearer's authorized (owned) set with the
+    // SAME 404 as a genuinely-unknown actor — never 403 — so a caller cannot
+    // enumerate which actor ids exist. Fail-closed on absent/empty set.
     const { actorId } = request.params;
+    if (!isActorAuthorized(validation.authorizedActorIds, actorId)) {
+      return reply.status(404).send({ error: 'actor_not_found' });
+    }
+
+    // --- Fetch snapshot via socketlib GM handler ---
     const snapshot = await foundryFn('evf.getCharacterSnapshot', actorId, token);
 
     if (snapshot === null || snapshot === undefined) {

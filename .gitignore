@@ -45,3 +45,17 @@ Thumbs.db
 # deploy: never commit real secrets (deploy/.env.example is the template)
 deploy/.env
 deploy/.env.local
+
+# Even Hub package bundles — build artifacts, regenerated via `pnpm --filter @evf/g2-app pack:ehpk`
+*.ehpk
+
+# Simulator harness runtime directory — pid files, log files (gitignored, regenerated on start)
+.sim-run/
+
+# Scratch + build dirs (never commit; only ignore — do not delete existing files)
+# _*.ts: ad-hoc scratch scripts (e.g. packages/bridge/_seed.ts, packages/foundry-module/_scene_e2e.ts)
+_*.ts
+# release/: foundry-module staging output (packages/foundry-module/release/)
+release/
+# release-artifacts/: root release staging dir
+release-artifacts/

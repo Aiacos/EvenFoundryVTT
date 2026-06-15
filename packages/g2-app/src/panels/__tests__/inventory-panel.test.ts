@@ -99,6 +99,9 @@ function makeMockBus(): PanelGestureBus {
 
 /** Thorin Oakenshield — PHB 2014, full inventory (4 weapons + 3 consumables + 1 container). */
 const snapshot2014: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'thorin-oakenshield-001',
   name: 'THORIN OAKENSHIELD',
   hp: 45,

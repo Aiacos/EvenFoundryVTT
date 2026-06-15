@@ -60,6 +60,7 @@ function makeActiveEntry(
     alias: string;
     bridgeUrl: string;
     worldId: string;
+    userId: string;
   }> = {},
 ) {
   const now = Date.now();
@@ -67,6 +68,8 @@ function makeActiveEntry(
     token: 'test-bearer-token-abc',
     alias: overrides.alias ?? 'Test Device',
     worldId: overrides.worldId ?? 'world-abc',
+    // ADR-0014: bearer bound to a Foundry User; rotation must carry it through.
+    userId: overrides.userId ?? 'user-1',
     bridgeUrl: overrides.bridgeUrl ?? 'https://bridge.local:8910',
     internalSecret: 'secret-xyz',
     createdAt: overrides.createdAt ?? now,
@@ -91,7 +94,12 @@ describe('scheduleBearerRotation', () => {
     // Stub Foundry globals before importing the module
     vi.stubGlobal('Application', ApplicationStub);
     vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: ApplicationV2Stub } },
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
     });
     vi.stubGlobal('game', {
       settings: {
@@ -189,9 +197,9 @@ describe('scheduleBearerRotation', () => {
 
   // ── T-RR-04: timer fires → generateBearer(refresh=true) called ───────────
 
-  it('T-RR-04: calls generateBearer(alias, bridgeUrl, worldId, true) when timer fires', async () => {
+  it('T-RR-04: calls generateBearer(alias, bridgeUrl, worldId, userId, true) when timer fires', async () => {
     const now = Date.now();
-    const active = makeActiveEntry({ createdAt: now });
+    const active = makeActiveEntry({ createdAt: now, userId: 'user-aiacos' });
     // Return active for initial schedule + rotation read, then null to stop chain
     getActiveBearerMock
       .mockReturnValueOnce(active) // scheduleNext() at boot
@@ -204,10 +212,12 @@ describe('scheduleBearerRotation', () => {
     // Advance to just past the 24h mark
     await vi.advanceTimersByTimeAsync(24 * 3600 * 1000 + 10);
 
+    // ADR-0014: rotation carries the bound userId through (4th positional arg).
     expect(generateBearerMock).toHaveBeenCalledWith(
       active.alias,
       active.bridgeUrl,
       active.worldId,
+      'user-aiacos',
       true,
     );
   });

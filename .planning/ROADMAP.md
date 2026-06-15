@@ -5,7 +5,8 @@
 - ✅ **v0.9.11 MVP** — Phases 0–13 (shipped 2026-05-17). Full details: [`milestones/v0.9.11-ROADMAP.md`](milestones/v0.9.11-ROADMAP.md)
 - ✅ **v0.9.12 Quick Wins** — Phases 14–15 (shipped 2026-05-17 · 2 phases · 8/8 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs). Full details: [`milestones/v0.9.12-ROADMAP.md`](milestones/v0.9.12-ROADMAP.md)
 - ✅ **v0.9.13 Sheet Data Completion + Polish** — Phases 16–18 (shipped 2026-05-18 · 3 phases · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 0 new hardware-pending SCs). Full details: [`milestones/v0.9.13-ROADMAP.md`](milestones/v0.9.13-ROADMAP.md)
-- 🚧 **v0.9.14 Release & Distribution + deferred hardening** — Phases 19–22 (in progress · opened 2026-05-30)
+- ⏸️ **v0.9.14 Release & Distribution + deferred hardening** — PARKED 2026-06-05 (Phases 19–22 dirs cleared; will be re-roadmapped when resumed). Requirements: REL-01..05, LIFE-01..04, REND-01..03, LOC-01.
+- ✅ **v0.10.0 Raster UI Substrate** — Phases 19–26 (shipped 2026-06-08 · 8 phases · 26/26 plans · 13/13 v1 REQ-IDs software-complete · hardware UAT deferred ADR-0005 Branch A). Full details: [`milestones/v0.10.0-ROADMAP.md`](milestones/v0.10.0-ROADMAP.md)
 
 ## Phases
 
@@ -45,101 +46,68 @@ Two atomic software-only phases shipped end-to-end. Zero new hardware-gated SCs 
 <details>
 <summary>✅ v0.9.13 Sheet Data Completion + Polish (Phases 16–18) — SHIPPED 2026-05-18 · 7/7 plans · 9/9 v1 REQ-IDs · software-only · 2668 workspace tests</summary>
 
-Three software-only phases completed the Character Sheet panel's data wiring (Main + Skills tabs) and closed the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closed with a single INV-3 atomic commit (Specs.md + README + showcase + STATE.md + ROADMAP.md + VERIFICATION.md). Phase 14/15 patterns are the canonical examples.
+Three software-only phases completed the Character Sheet panel's data wiring (Main + Skills tabs) and closed the Phase-14.1 spec-prose drift carry-forward. Zero new hardware-gated SCs (35 `human_needed` SCs from v0.9.11 carry under ADR-0005 Branch A unchanged). CI Gate 8 socketlib handler count = **17 preserved end-to-end** — both Sheet phases are pure read-path extensions, no new socketlib handlers. Each phase closed with a single INV-3 atomic commit.
 
-- [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` extension + `extractAbilities()` reader + `renderMainTab()` data binding + 4 INV-1 fixtures — INV-3 atomic commit `d68d7f2`. Workspace tests 2559 → 2648 (+89). CI Gate 8 = 17.
-- [x] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.skills` extension + `extractSkills()` reader + `SKILL_DEFAULT_ABILITY` map + `renderSkillsTab()` dynamic + SKILL_NAMES 3-locale + senses passives + 5 INV-1 fixtures — INV-3 atomic commit `c208d24`. Workspace tests 2645 → 2667 (+22). CI Gate 8 = 17.
-- [x] **Phase 18: Phase-14.1 Spec-Drift Polish** (1/1 plan, 4 commits) — Z05-INV-02b-triade test + IT fixture locale-leak fix (6 rows) + archived 14-UI-SPEC §2/§10 reconciled + INV-3 atomic milestone-close commit `df4ea02`. Workspace tests 2667 → 2668 (+1). CI Gate 8 = 17.
+- [x] **Phase 16: Sheet Ability Scores (Main tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.abilities` + `extractAbilities()` + `renderMainTab()` data binding + 4 INV-1 fixtures — INV-3 atomic commit `d68d7f2`
+- [x] **Phase 17: Sheet Skills Tab (Skills tab data wiring)** (3/3 plans) — `CharacterSnapshotSchema.skills` + `extractSkills()` + `renderSkillsTab()` dynamic + SKILL_NAMES 3-locale + senses passives + 5 INV-1 fixtures — INV-3 atomic commit `c208d24`
+- [x] **Phase 18: Phase-14.1 Spec-Drift Polish** (1/1 plan) — Z05-INV-02b-triade + IT fixture locale-leak fix + archived 14-UI-SPEC §2/§10 reconciled — INV-3 atomic milestone-close commit `df4ea02`
 
 </details>
 
-### 🚧 v0.9.14 Release & Distribution + deferred hardening (In Progress)
+<details>
+<summary>✅ v0.10.0 Raster UI Substrate (Phases 19–26) — SHIPPED 2026-06-08 · 26/26 plans · 3300 workspace tests · 13/13 v1 REQ-IDs software-complete</summary>
 
-**Milestone Goal:** Ship an installable release of all system components via CI/CD, then close the highest-value hardening gaps surfaced by the 2026-05-29/30 deep reviews.
+Replaced the HUD render substrate from 27px text-containers to a canvas-composited raster region (400×200 → dither → 4×200×100 tiles → serialized SDK push), with full typography control, 6-tab character sheet, combat tracker, ~5fps xxhash delta loop, and promotion to default boot with glyph as BLE-degraded fallback. INV-2 image-container limits re-verified (2026-06-05 + 2026-06-08, no drift). Hardware UAT deferred per ADR-0005 Branch A (tracked in archived `*-HUMAN-UAT.md`). A milestone-audit integration check caught + fixed BLOCKER-01 (character.delta → CanvasCharacterSheetPanel runtime wire) before close. Full details in archive.
 
-- [x] **Phase 19: Release & Distribution** — CD pipeline: foundry-module GitHub Release (module.json + zip) · bridge Docker GHCR · g2-app dist zip · Changesets release notes · README Installation section (INV-3) (completed 2026-05-30)
-- [ ] **Phase 20: Background-state & Lifecycle** — INV-2 SDK 0.0.10 lifecycle surface verification · session-state survival across background/foreground · shutDownPageContainer exit gesture · mic-off on background
-- [ ] **Phase 21: Render Correctness** — `_flushPage` real container schema · overlay-block/toast-block hardware rendering · exactly-one isEventCapture:1 · INV-1 LVGL pixel-model reconciliation · HUD/glyph ≤10 rows vertical budget
-- [ ] **Phase 22: Tier-4 Polish** — DE locale support + minor 2026-05-29 deep-review carries
+- [x] **Phase 19: ADR-0013 Amendment 1 + Canvas Compositor Core** (4/4) — geometry 400×200 / 4×200×100 ratified; `CanvasCompositor` + `CanvasLayer` + 5-container page schema; glyph path byte-identical (RAST-01..05, RINV-02)
+- [x] **Phase 20: Status HUD su Canvas + Font VT323 + INV-1 Raster Baseline** (5/5) — `CanvasStatusHudLayer` z=1 + VT323 + ImageBitmap chrome pre-bake + dirty-gate; INV-1 raster contract + `inv:all` glyph/raster split (RFONT-01..03, RINV-01)
+- [x] **Phase 21: Character Sheet su Canvas + Dati Main-tab** (5/5) — `CanvasCharacterSheetPanel` z=2 · 6 tabs · gesture nav preserved · portrait dither · class/initiative/speed schema+reader (RSHEET-01..03, RDATA-01..02)
+- [x] **Phase 22: Features + Biography Schema Extension** (3/3) — `feats[]` + `biography` schema + readers; Features/Bio tabs on real data + Bio scroll (RDATA-03..04)
+- [x] **Phase 23: Combat Tracker su Canvas + Combatant AC** (3/3) — `CanvasCombatTrackerPanel` z=2 (5-row auto-follow window · turn highlight) · `CombatantSchema.ac` + reader (RCOMB-01, RDATA-05)
+- [x] **Phase 24: Delta Loop ~5fps xxhash** (2/2) — `HudDeltaDriver` event-driven debounced (default 100ms) xxhash h32 sub-tile delta; naive driver removed (INV-4); zero-push-on-idle (RPROMO-01)
+- [x] **Phase 25: Promozione Raster a Default Boot + Fallback Glyph** (3/3) — canvas default boot · `?hud=raster` PoC removed (INV-4) · glyph BLE-degraded fallback atomic switch (RPROMO-02)
+- [x] **Phase 26: INV-3 Doc Coherence Milestone Close** (1/1) — atomic Specs §7 + README + showcase bump to v0.10.0; ASCII mockups → "Glyph Fallback Mode" subsection (RINV-03)
 
-
-## Phase Details
-
-### Phase 19: Release & Distribution
-**Goal**: End users can install and run the entire EVF system from publicly-published CI-built artifacts without manual build steps
-**Depends on**: Nothing (independent, sequenced first in milestone)
-**Requirements**: REL-01, REL-02, REL-03, REL-04, REL-05
-**Success Criteria** (what must be TRUE):
-  1. A user can install the Foundry module by pasting the GitHub Release `module.json` manifest URL into Foundry's "Install Module" dialog — no manual file download required
-  2. `docker pull ghcr.io/<owner>/evf-bridge:<version>` succeeds from any machine with Docker installed, producing a runnable bridge container
-  3. A user can download `g2-app-dist.zip` from the GitHub Release page and serve it from a static HTTPS host to run the g2-app plugin
-  4. The GitHub Release page shows human-readable release notes aggregated from the Changesets changelog without any manual copy-paste
-  5. `README.md` "Installation" section documents all three component installation paths (foundry-module manifest URL, bridge docker-compose from GHCR, g2-app static host), coherent with Specs.md + showcase per INV-3
-**Plans**: 2 plans
-- [x] 19-01-PLAN.md — CD workflow: GHCR bridge image + g2-app dist zip + Changesets release notes (REL-01..04)
-- [x] 19-02-PLAN.md — README ## Installation (3 components) + INV-3 atomic close + bridge GHCR runbook (REL-05)
-**UI hint**: no
-
-### Phase 20: Background-state & Lifecycle
-**Goal**: The plugin handles phone background/foreground and exit lifecycle events cleanly — session state survives without reset and hardware capture (mic) is never left hot
-**Depends on**: Nothing (independent of Phase 19)
-**Requirements**: LIFE-01, LIFE-02, LIFE-03, LIFE-04
-**Success Criteria** (what must be TRUE):
-  1. An INV-2 verification round documents the actual `@evenrealities/even_hub_sdk@0.0.10` lifecycle event surface (`onEvenHubEvent` FOREGROUND_ENTER/EXIT/ABNORMAL_EXIT/SYSTEM_EXIT via `OsEventTypeList`) with canonical-source citations, and explicitly confirms that `setBackgroundState`/`onBackgroundRestore` are absent on 0.0.10
-  2. After backgrounding the Even Realities App and returning to foreground, the active panel, effective locale, and map mode are exactly as left — the plugin does not boot-reset [human_needed: on-glasses verification]
-  3. A user can exit the plugin from the glasses/ring via a reserved gesture that calls `bridge.shutDownPageContainer(...)` — the app closes gracefully [human_needed: on-glasses verification]
-  4. On FOREGROUND_EXIT/ABNORMAL_EXIT lifecycle events, `audioControl(false)` is called before teardown — the microphone is no longer capturing after the event fires (verified in unit tests; hardware silence confirmation is human_needed)
-**Plans**: TBD
-
-### Phase 21: Render Correctness
-**Goal**: `LayerManager._flushPage` emits the complete container schema so overlay-block and toast-block actually render on hardware, and the char-grid vs LVGL pixel model is reconciled so INV-1 layout integrity holds against real hardware geometry
-**Depends on**: Nothing (independent of Phases 19 and 20)
-**Requirements**: REND-01, REND-02, REND-03
-**Success Criteria** (what must be TRUE):
-  1. `_flushPage` assembles a container schema that includes non-empty `overlay-block` and `toast-block` containers when those layers are mounted, and exactly one emitted container carries `isEventCapture:1` — verified by unit tests against the full container-schema shape
-  2. INV-1 layout validation is extended to assert alignment-bearing columns against LVGL pixel metrics (proportional-font glyph widths), so the char-grid model and actual pixel rendering stay in sync — any reconciliation deltas are documented in Specs.md (INV-3)
-  3. HUD card and glyph map layouts are validated to fit within 576×288 at 27px/line (≤10 rows for a full-screen container); any 21-row layouts are re-budgeted or scroll-gated so no row is silently clipped [hardware rendering outcome is human_needed]
-**Plans**: TBD
-**UI hint**: yes
-
-### Phase 22: Tier-4 Polish
-**Goal**: DE locale is fully supported and minor hardening items from the 2026-05-29 deep review are addressed or explicitly re-deferred with documented rationale
-**Depends on**: Nothing (independent; can run in parallel with or after any other phase)
-**Requirements**: LOC-01
-**Success Criteria** (what must be TRUE):
-  1. All in-app text strings render correctly in DE locale — no EN/IT fallback leaks visible to a German-speaking player navigating the full panel set [human_needed: on-glasses DE-locale run]
-  2. Every Tier-4 item from the 2026-05-29 deep review is either resolved (with test coverage) or explicitly re-deferred with a documented rationale entry in Specs.md changelog
-**Plans**: TBD
-
+</details>
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 0. Validation Gates | v0.9.11 | 4/4 | Complete | 2026-05-10 |
-| 1. Foundation | v0.9.11 | 3/3 | Complete | 2026-05-11 |
-| 2. Foundry Module Core + Pairing UI | v0.9.11 | 5/5 | Complete | 2026-05-11 |
-| 3. Bridge Service Skeleton | v0.9.11 | 5/5 | Complete | 2026-05-12 |
-| 4a. G2 Engine + Raster + Status HUD | v0.9.11 | 6/6 | Complete | 2026-05-13 |
-| 4b. Overlay Slot + Map Mode + Adversarial UI | v0.9.11 | 6/6 | Complete | 2026-05-14 |
-| 5. Panel Plugin System + Read-Only Panels | v0.9.11 | 6/6 | Complete | 2026-05-14 |
-| 6. R1 Integration + Quick Action + INV-5 | v0.9.11 | 4/4 | Complete | 2026-05-15 |
-| 7. Foundry Module Write Path | v0.9.11 | 6/6 | Complete | 2026-05-15 |
-| 8. Manual Action UX | v0.9.11 | 5/5 | Complete | 2026-05-16 |
-| 9. Action Economy & Edge Cases | v0.9.11 | 5/5 | Complete | 2026-05-16 |
-| 10. Polish & Field Test MVP | v0.9.11 | 5/5 | Complete | 2026-05-17 |
-| 11. V2 foundry-mcp Server | v0.9.11 | 4/4 | Complete | 2026-05-17 |
-| 12. V2 Voice UX Tuning | v0.9.11 | 3/3 | Complete | 2026-05-17 |
-| 13. V2 Stretch | v0.9.11 | 4/4 | Complete | 2026-05-17 |
-| 14. Raster z=0.5 Idle Content Infill | v0.9.12 | 3/3 | Complete | 2026-05-17 |
-| 15. Deepgram Keyterm + Entity-Pack | v0.9.12 | 5/5 | Complete | 2026-05-17 |
-| 16. Sheet Ability Scores | v0.9.13 | 3/3 | Complete | 2026-05-18 |
-| 17. Sheet Skills Tab | v0.9.13 | 3/3 | Complete | 2026-05-18 |
-| 18. Phase-14.1 Spec-Drift Polish | v0.9.13 | 1/1 | Complete | 2026-05-18 |
-| 19. Release & Distribution | v0.9.14 | 2/2 | Complete   | 2026-05-30 |
-| 20. Background-state & Lifecycle | v0.9.14 | 0/? | Not started | - |
-| 21. Render Correctness | v0.9.14 | 0/? | Not started | - |
-| 22. Tier-4 Polish | v0.9.14 | 0/? | Not started | - |
+| 0–13 | v0.9.11 | 71/71 | Complete | 2026-05-17 |
+| 14–15 | v0.9.12 | 8/8 | Complete | 2026-05-17 |
+| 16–18 | v0.9.13 | 7/7 | Complete | 2026-05-18 |
+| 19. ADR-0013 + Canvas Compositor Core | v0.10.0 | 4/4 | Complete | 2026-06-06 |
+| 20. Status HUD Canvas + VT323 + INV-1 | v0.10.0 | 5/5 | Complete | 2026-06-06 |
+| 21. Character Sheet su Canvas + Main-tab | v0.10.0 | 5/5 | Complete | 2026-06-07 |
+| 22. Features + Biography Schema | v0.10.0 | 3/3 | Complete | 2026-06-07 |
+| 23. Combat Tracker su Canvas + AC | v0.10.0 | 3/3 | Complete | 2026-06-08 |
+| 24. Delta Loop ~5fps xxhash | v0.10.0 | 2/2 | Complete | 2026-06-08 |
+| 25. Raster Default Boot + Glyph Fallback | v0.10.0 | 3/3 | Complete | 2026-06-08 |
+| 26. INV-3 Doc Coherence Milestone Close | v0.10.0 | 1/1 | Complete | 2026-06-08 |
+| 27. Mappa su canvas + corner-card layout | next (v0.11.0 cand.) | 0/? | Not planned | — |
+
+## Next Milestone (in pianificazione — v0.11.0 candidate)
+
+### Phase 27: Mappa su canvas substrate + corner-card HUD layout
+
+**Goal:** La mappa di scena diventa il layer base del compositor canvas e il layout on-glasses passa al design Specs §7.2 (z=0 mappa · z=1 status HUD "corner card" · z=2 overlay) — chiudendo il gap di convivenza per cui il percorso scena legacy e l'HudDeltaDriver si contendono le tile id 0-3 (verificato live 2026-06-10, schermo ibrido).
+
+Scope:
+1. **`CanvasMapLayer` z=0** — consuma i `frame_pixels` decodificati (400×200 canonici, pipeline fixata in commit `edae764`) e dipinge nel compositor; il percorso legacy `RasterController→map-tile-0..3` viene ritirato in canvas mode (INV-4: niente doppio driver sulle stesse tile).
+2. **Layout corner-card** — `CanvasStatusHudLayer` smette di riempire l'intero 400×200 di nero opaco: status card compatta in un angolo (chrome non full-frame), mappa visibile sotto; INV-1 raster baselines rigenerate di conseguenza.
+3. **`[M] Mappa` toggle reale** — sostituisce lo stub no-op "Phase 7" in boot-engine-core (mappa on/off o full-map mode).
+4. **Root-exit in canvas mode** — `root-exit-dispatcher` presuppone top layer id 'map-base'; a root canvas `getTopLayer()` è null e l'exit double-tap non scatta mai. Con la mappa montata a z=0 il contratto torna valido (o si adegua il dispatcher).
+5. **Sorgente di estrazione: viewport vs stage** — oggi l'extractor renderizza l'INTERO `canvas.stage` (su scene world grandi = render texture enorme, perf bomb; include aree fuori fog-of-war). Valutare `extract.pixels()` senza target = viewport corrente ("lo schermo del giocatore" senza chrome DOM): zoom/pan-aware, fog-honest, costo bounded dalla finestra — è la semantica proposta dall'utente 2026-06-10; i token risultano leggibili perché scalano con lo zoom del giocatore.
+6. **Normalizzazione contrasto pre-dither** — le scene Foundry reali sono scure (illuminazione torce): verificato live 2026-06-10 con screenshot reale v14 → leggibile ma sub-ottimale. Uno stage di histogram-stretch/gamma nel worker prima della quantizzazione 4-bit migliorerebbe molto la leggibilità sul phosphor.
+
+**Requirements**: TBD (derivare in plan-phase; evidenze in `.planning/debug/resolved/map-frame-pipeline-dims.md`)
+**Depends on:** Phase 19–26 (v0.10.0 Raster UI Substrate) + fix pipeline frame `edae764`
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 27 to break down)
 
 ---
-*Last updated: 2026-05-30 — v0.9.14 roadmap Phases 19–22 created. Prior: 2026-05-18 v0.9.13 ARCHIVED.*
+*Last updated: 2026-06-10 — Phase 27 (Mappa su canvas + corner-card layout) added as next-milestone candidate. Prior: 2026-06-08 v0.10.0 SHIPPED (Phases 19–26, archived); v0.9.14 parked.*

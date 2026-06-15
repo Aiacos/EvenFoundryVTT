@@ -50,6 +50,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { SpellSlot } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import { ZIndex } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
@@ -134,6 +135,8 @@ export interface SlotPickerRequest {
 export class SlotPickerPanel implements OverlayPanel {
   /** Stable id — used by LayerManager + telemetry. */
   public readonly id = 'slot-picker';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   /** ZIndex — required by the LayerManager bundle API + tests. */
   public readonly z = ZIndex.Z2_OVERLAY;
@@ -295,6 +298,9 @@ export class SlotPickerPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(SLOT_PICKER_CONTAINER_NAME),
       containerName: SLOT_PICKER_CONTAINER_NAME,
       content: lines.join('\n'),
     });

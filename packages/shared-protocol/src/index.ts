@@ -43,11 +43,15 @@ export {
   AbilityKeySchema,
   type AbilityScore,
   AbilityScoreSchema,
+  type BiographySnapshot,
+  BiographySnapshotSchema,
   CHARACTER_DELTA_TYPE,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
   DeathSavesSchema,
+  type FeatEntry,
+  FeatEntrySchema,
   INVENTORY_ITEM_TYPES,
   type InventoryItem,
   InventoryItemSchema,
@@ -109,11 +113,32 @@ export {
   type FramePixels,
   FramePixelsSchema,
 } from './payloads/frame.js';
+
+// ─── v0.1.15 map-stream format (Quick Task 260611-e71 FRAME-PNG-01) ───────────
+// FramePngSchema: greyscale lossless PNG wire format (~1-5 KB vs ~884 KB RGBA).
+// foundry-module v0.1.15+ exclusively emits frame_png; frame_pixels still exported
+// for back-compat (modules ≤v0.1.14 still emit frame_pixels; g2-app handles both).
+export {
+  FRAME_PNG_TYPE,
+  type FramePng,
+  FramePngSchema,
+} from './payloads/frame-png.js';
 export {
   SCENE_VIEWPORT_DELTA_TYPE,
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
+// Latency-audit follow-up 2026-06-14 — bidirectional map/display settings sync.
+export {
+  CLIENT_SETTING_TYPE,
+  type ClientSettingMessage,
+  ClientSettingMessageSchema,
+  SETTINGS_DISPLAY_TYPE,
+  type SettingsDisplay,
+  type SettingsDisplayEdit,
+  SettingsDisplayEditSchema,
+  SettingsDisplaySchema,
+} from './payloads/settings-display.js';
 
 // ─── Phase 5 Plan 05-05 — Log payload schema ─────────────────────────────────
 // LogEvent + LogSnapshot + LogEventKind + LOG_DELTA_TYPE for chat log tail.
@@ -375,3 +400,53 @@ export {
   DisplayOpPayloadSchema,
   R1_DEBUG_DISPLAYOP_TYPE,
 } from './debug/debug-events.js';
+
+// ─── Quick Task 260604-eyf — bearer-registry + character-list push schemas ───────
+// BearerRegistrySnapshotSchema pushed by foundry-module bearer-registry-reader.ts.
+// Bridge caches via bearer-registry-cache.ts + builds internal foundryValidateFn.
+// CharacterListSnapshotSchema pushed by foundry-module character-list-reader.ts.
+// Bridge caches via character-list-cache.ts + serves GET /v1/characters from cache.
+// Both pipelines push via the existing /internal/delta channel (count stays 17).
+
+export {
+  type BearerAuthorization,
+  BearerAuthorizationSchema,
+  type BearerRegistryEntry,
+  BearerRegistryEntrySchema,
+  type BearerRegistrySnapshot,
+  BearerRegistrySnapshotSchema,
+  R1_BEARERS_AVAILABLE_TYPE,
+} from './payloads/bearer-registry.js';
+
+export {
+  type CharacterListEntry,
+  CharacterListEntrySchema,
+  type CharacterListSnapshot,
+  CharacterListSnapshotSchema,
+  R1_CHARACTERS_AVAILABLE_TYPE,
+} from './payloads/character-list.js';
+
+// ─── Quick Task 260604-cwa — Agent control-channel schemas (dev-only) ──────────
+// Wire-protocol contracts for the debug agent control channel: a WS endpoint
+// where the g2-app connects AS a named agent, a relay (POST /debug/cmd) that
+// routes commands and correlates results by id, /debug/agents roster, and
+// aggregated /debug/logs reader with newest-id tracking.
+
+export {
+  type AgentClientFrame,
+  AgentClientFrameSchema,
+  type AgentCommand,
+  AgentCommandSchema,
+  type AgentLog,
+  AgentLogSchema,
+  type AgentRegister,
+  AgentRegisterSchema,
+  type AgentResult,
+  AgentResultSchema,
+  type AgentRole,
+  AgentRoleSchema,
+  DEBUG_AGENT_LOG_DIRECTION,
+  DEBUG_AGENT_RESULT_DIRECTION,
+  type DebugCmdBody,
+  DebugCmdBodySchema,
+} from './debug/agent-protocol.js';

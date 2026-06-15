@@ -20,6 +20,8 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isActorAuthorized } from '../auth/actor-authorization.js';
+import { isDevNoAuth } from '../auth/is-dev-no-auth.js';
 import type { TokenCache } from '../auth/token-cache.js';
 import type { FoundrySnapshotFn } from './character.js';
 
@@ -29,6 +31,12 @@ const CharacterListEntrySchema = z.object({
   name: z.string().min(1),
   level: z.number().int().min(1).max(20),
 });
+
+/** DEV-ONLY mock roster served when {@link isDevNoAuth} is active and no world is connected. */
+const DEV_MOCK_CHARACTERS = [
+  { actorId: 'dev-pc-1', name: 'Aelar Brightwood (DEV)', level: 5 },
+  { actorId: 'dev-pc-2', name: 'Lyra Stormborn (DEV)', level: 3 },
+] as const;
 
 /** Schema for the full character list response. */
 const CharacterListResponseSchema = z.object({
@@ -64,7 +72,19 @@ export async function registerCharactersListRoute(
 
     // --- Fetch character list via socketlib GM handler ---
     const worldId = request.query.world ?? '';
-    const result = await foundryFn('evf.listCharacters', worldId, token);
+    let result: unknown;
+    try {
+      result = await foundryFn('evf.listCharacters', worldId, token);
+    } catch {
+      result = null;
+    }
+
+    // DEV-ONLY: with the auth bypass active there is usually no Foundry behind the
+    // bridge, so the list is empty. Serve a small mock roster so the wizard's Step 3
+    // is exercisable end-to-end without a live world. Never reached in prod.
+    if (isDevNoAuth() && (!Array.isArray(result) || result.length === 0)) {
+      result = DEV_MOCK_CHARACTERS;
+    }
 
     // --- Validate shape ---
     const parsed = CharacterListResponseSchema.safeParse({ characters: result ?? [] });
@@ -73,6 +93,15 @@ export async function registerCharactersListRoute(
       return reply.status(200).send({ characters: [] });
     }
 
-    return reply.status(200).send(parsed.data);
+    // --- Per-actor read authorization (ADR-0014 §4) ---
+    // Scope the roster to the bearer's authorized (owned) set so a device only
+    // ever sees its paired user's characters. Fail-closed: absent/empty set →
+    // empty roster. (isActorAuthorized bypasses under the dev-no-auth gate so
+    // the DEV mock roster still surfaces end-to-end.)
+    const scoped = parsed.data.characters.filter((c) =>
+      isActorAuthorized(validation.authorizedActorIds, c.actorId),
+    );
+
+    return reply.status(200).send({ characters: scoped });
   });
 }

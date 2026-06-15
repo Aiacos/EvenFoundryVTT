@@ -176,6 +176,17 @@ function makeActor(
     // `system.skills` is omitted entirely (per-field defaults still apply
     // when a partial subset is provided).
     skills: Partial<Record<SkillMockKey, SkillMockShape>> | undefined;
+    // Phase 21 Plan 21-01: initiative modifier override.
+    // When absent from overrides, `system.attributes.init` is omitted entirely
+    // so CR-INI-2 can test the missing-field defensive-default branch.
+    initTotal: number | undefined;
+    // Phase 21 Plan 21-01: walking speed override.
+    // When absent from overrides, `system.attributes.movement` is omitted
+    // entirely so CR-SPD-2 can test the missing-field defensive-default branch.
+    movementWalk: number | undefined;
+    // Phase 21 Plan 21-01: class item names.
+    // When absent from overrides, items has no type==='class' entries.
+    classNames: string[];
   }> = {},
 ) {
   const death =
@@ -201,6 +212,31 @@ function makeActor(
   // at all, system.skills is omitted entirely.
   const skillsField = 'skills' in overrides ? { skills: overrides.skills } : {};
 
+  // Phase 21 Plan 21-01: initiative total — only present when `initTotal` is
+  // explicitly set in overrides (exercises the missing-field branch when absent).
+  const initField =
+    'initTotal' in overrides && overrides.initTotal !== undefined
+      ? { init: { total: overrides.initTotal } }
+      : {};
+
+  // Phase 21 Plan 21-01: movement walk speed — only present when `movementWalk`
+  // is explicitly set in overrides (exercises the missing-field branch when absent).
+  const movementField =
+    'movementWalk' in overrides && overrides.movementWalk !== undefined
+      ? { movement: { walk: overrides.movementWalk } }
+      : {};
+
+  // Phase 21 Plan 21-01: class items — injected into the items.contents array
+  // alongside any inventory/spell items passed in `overrides.items`.
+  const classItems = (overrides.classNames ?? []).map((name, idx) => ({
+    id: `class-${idx}`,
+    name,
+    type: 'class',
+    system: {},
+  }));
+
+  const allItems = [...classItems, ...(overrides.items ?? [])];
+
   return {
     id: overrides.id ?? 'actor-1',
     name: overrides.name ?? 'Aragorn',
@@ -211,6 +247,8 @@ function makeActor(
         ac: { value: overrides.acValue ?? 18 },
         exhaustion: overrides.exhaustion ?? 0,
         death,
+        ...initField,
+        ...movementField,
       },
       details: {
         level: overrides.level ?? 5,
@@ -221,7 +259,7 @@ function makeActor(
     },
     statuses: overrides.statuses ?? new Set<string>(),
     effects: { contents: overrides.effects ?? [] },
-    items: { contents: overrides.items ?? [] },
+    items: { contents: allItems },
     // img is optional — omit key entirely if undefined to exercise the absence guard
     ...('img' in overrides && overrides.img !== undefined ? { img: overrides.img } : {}),
   };
@@ -477,6 +515,64 @@ describe('getCharacterSnapshot', () => {
     const snap = getCharacterSnapshot('pc-inv-5');
     // Spells should NOT appear in inventory
     expect(snap?.inventory).toHaveLength(0);
+  });
+
+  // ── CR-STABLE-ID: id-less items get a STABLE deterministic fallback id ─────
+  // Regression: the old `String(Math.random())` fallback gave the same id-less
+  // item a different id on every snapshot, defeating g2-app diff/dedup.
+
+  it('CR-STABLE-ID-1: id-less inventory item yields the SAME id across two extractions', () => {
+    // makeItem always injects an id; build the id-less item inline. Cast to the
+    // mock item shape (the reader reads `id` defensively as `string | undefined`).
+    const makeIdless = () =>
+      ({
+        name: 'Torcia',
+        type: 'consumable',
+        system: { quantity: 1, damage: { parts: [] }, properties: new Set<string>() },
+      }) as unknown as ReturnType<typeof makeItem>;
+
+    const actorA = makeActor({ id: 'pc-stable-1', items: [makeIdless()] });
+    vi.stubGlobal('game', makeGameMock([actorA]));
+    const snapA = getCharacterSnapshot('pc-stable-1');
+
+    const actorB = makeActor({ id: 'pc-stable-1', items: [makeIdless()] });
+    vi.stubGlobal('game', makeGameMock([actorB]));
+    const snapB = getCharacterSnapshot('pc-stable-1');
+
+    const idA = snapA?.inventory[0]?.id;
+    const idB = snapB?.inventory[0]?.id;
+    expect(idA).toBeDefined();
+    expect(idA).toBe(idB);
+    expect(idA).toMatch(/^evf-[0-9a-f]{8}$/);
+  });
+
+  it('CR-STABLE-ID-2: id-less spell yields the SAME id across two extractions', () => {
+    const makeIdlessSpell = () =>
+      ({
+        name: 'Dardo Incantato',
+        type: 'spell',
+        system: {
+          level: 1,
+          school: 'evocation',
+          activation: { type: 'action' },
+          range: { value: 36, units: 'ft' },
+          damage: { parts: [['1d4+1', 'force']] },
+          components: { concentration: false },
+          preparation: { mode: 'prepared', prepared: true },
+        },
+      }) as unknown as ReturnType<typeof makeSpellItem>;
+
+    const actorA = makeActor({ id: 'pc-stable-2', items: [makeIdlessSpell()] });
+    vi.stubGlobal('game', makeGameMock([actorA]));
+    const idA = getCharacterSnapshot('pc-stable-2')?.spells.spells[0]?.id;
+
+    const actorB = makeActor({ id: 'pc-stable-2', items: [makeIdlessSpell()] });
+    vi.stubGlobal('game', makeGameMock([actorB]));
+    const idB = getCharacterSnapshot('pc-stable-2')?.spells.spells[0]?.id;
+
+    expect(idA).toBeDefined();
+    expect(idA).toBe(idB);
+    expect(idA).toMatch(/^evf-[0-9a-f]{8}$/);
   });
 
   // ── CR-02 regression: damage-formula ternary fix ──────────────────────────
@@ -1051,6 +1147,401 @@ describe('getCharacterSnapshot', () => {
     expect(snap).not.toBeNull();
     expect(snap?.portrait).toBeUndefined();
   });
+
+  // ── Phase 21 Plan 21-01: class reader (CR-CLS-1..4) ───────────────────────
+
+  it('CR-CLS-1: single class item → snapshot.class = class name', () => {
+    // Standard single-class actor: one item with type==='class'.
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-cls-1', classNames: ['Fighter'] })]));
+
+    const snap = getCharacterSnapshot('pc-cls-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Fighter');
+  });
+
+  it('CR-CLS-2: two class items → snapshot.class = "Fighter / Wizard" (multiclass)', () => {
+    // Multiclass: two type==='class' items joined by ' / '.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-cls-2', classNames: ['Fighter', 'Wizard'] })]),
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Fighter / Wizard');
+  });
+
+  it('CR-CLS-3: no class items → snapshot.class = "" (classless / fresh actor)', () => {
+    // Fresh actor with no items of type==='class': empty string.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-cls-3' })]), // no classNames
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('');
+  });
+
+  it('CR-CLS-4: items array has non-class items — only class items contribute', () => {
+    // Verify filter: weapon items are not counted as class names.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([
+        makeActor({
+          id: 'pc-cls-4',
+          classNames: ['Ranger'],
+          items: [makeItem({ name: 'Longbow', type: 'weapon' })],
+        }),
+      ]),
+    );
+
+    const snap = getCharacterSnapshot('pc-cls-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.class).toBe('Ranger');
+  });
+
+  // ── Phase 21 Plan 21-01: initiative reader (CR-INI-1..4) ──────────────────
+
+  it('CR-INI-1: actor.system.attributes.init.total = 3 → snapshot.initiative = 3', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-1', initTotal: 3 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(3);
+  });
+
+  it('CR-INI-2: missing actor.system.attributes.init → defaults to 0', () => {
+    // Actor without init field: defensive default of 0.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-ini-2' })]), // no initTotal
+    );
+
+    const snap = getCharacterSnapshot('pc-ini-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(0);
+  });
+
+  it('CR-INI-3: negative initiative modifier (DEX penalty) → preserved verbatim', () => {
+    // D&D 5e: negative DEX modifier reduces initiative. Must not be clamped.
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-3', initTotal: -1 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(-1);
+  });
+
+  it('CR-INI-4: initiative = 0 → preserved (not treated as falsy/missing)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-4', initTotal: 0 })]));
+
+    const snap = getCharacterSnapshot('pc-ini-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.initiative).toBe(0);
+  });
+
+  // ── Phase 21 Plan 21-01: walk speed reader (CR-SPD-1..4) ──────────────────
+
+  it('CR-SPD-1: actor.system.attributes.movement.walk = 25 → snapshot.speed = 25 (dwarf)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-1', movementWalk: 25 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-1');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(25);
+  });
+
+  it('CR-SPD-2: missing actor.system.attributes.movement → defaults to 30 (D&D standard)', () => {
+    // Actor without movement field: D&D 5e standard walk speed of 30 ft.
+    vi.stubGlobal(
+      'game',
+      makeGameMock([makeActor({ id: 'pc-spd-2' })]), // no movementWalk
+    );
+
+    const snap = getCharacterSnapshot('pc-spd-2');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(30);
+  });
+
+  it('CR-SPD-3: movement.walk = 0 → preserved (immobilised actor, not treated as missing)', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-3', movementWalk: 0 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-3');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(0);
+  });
+
+  it('CR-SPD-4: movement.walk = 60 (fast actor) → preserved', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-4', movementWalk: 60 })]));
+
+    const snap = getCharacterSnapshot('pc-spd-4');
+    expect(snap).not.toBeNull();
+    expect(snap?.speed).toBe(60);
+  });
+});
+
+// ─── extractFeats reader tests (Phase 22 Plan 22-02; RDATA-03) ────────────────
+
+describe('extractFeats', () => {
+  let extractFeats: typeof import('./character-reader.js').extractFeats;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    extractFeats = mod.extractFeats;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Helper: build a minimal feat item mock.
+   * `systemType` controls the type/subtype object; omit for PHB 2014 fallback path.
+   */
+  function makeFeatItem(
+    overrides: {
+      name?: string;
+      systemType?: { value?: string; subtype?: string };
+      description?: string;
+    } = {},
+  ) {
+    return {
+      id: 'feat-1',
+      name: overrides.name ?? 'War Caster',
+      type: 'feat',
+      system: {
+        ...(overrides.systemType !== undefined ? { type: overrides.systemType } : {}),
+        description: { value: overrides.description ?? '' },
+      },
+    };
+  }
+
+  /**
+   * Helper: build a minimal actor mock with given feat items.
+   * Non-feat items are excluded from extractFeats output.
+   */
+  function makeActorWithFeats(featItems: ReturnType<typeof makeFeatItem>[]) {
+    return {
+      id: 'actor-feats',
+      name: 'Tester',
+      type: 'character',
+      items: { contents: featItems },
+    };
+  }
+
+  it('CR-FT-1: PHB 2024 origin feat → category:feat, isOrigin:true, HTML stripped', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({
+        name: 'War Caster',
+        systemType: { value: 'feat', subtype: 'origin' },
+        description: '<p>conc adv</p>',
+      }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'feat',
+      name: 'War Caster',
+      isOrigin: true,
+      description: 'conc adv',
+    });
+  });
+
+  it('CR-FT-2: PHB 2014 feat (no system.type) → category:general, isOrigin:false, no throw', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({ name: 'Alert', description: 'Always alert.' }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'general',
+      name: 'Alert',
+      isOrigin: false,
+      description: 'Always alert.',
+    });
+  });
+
+  it('CR-FT-3: actor with zero feat items → returns []', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toEqual([]);
+  });
+
+  it('CR-FT-4: background feat → category:background, isOrigin:false', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithFeats([
+      makeFeatItem({
+        name: 'Acolyte Feature',
+        systemType: { value: 'background' },
+        description: 'You gain a benefit.',
+      }),
+    ]);
+    const result = extractFeats(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      category: 'background',
+      isOrigin: false,
+    });
+  });
+
+  it('CR-FT-5: actor === undefined → returns [] (mirrors extractClass null-safety)', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const result = extractFeats(undefined as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toEqual([]);
+  });
+});
+
+// ─── extractBiography reader tests (Phase 22 Plan 22-02; RDATA-04) ────────────
+
+describe('extractBiography', () => {
+  let extractBiography: typeof import('./character-reader.js').extractBiography;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    extractBiography = mod.extractBiography;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Helper: build a minimal actor mock with given details overrides. */
+  function makeActorWithDetails(details: Record<string, unknown>) {
+    return {
+      id: 'actor-bio',
+      name: 'Tester',
+      type: 'character',
+      items: { contents: [] },
+      system: { details },
+    };
+  }
+
+  it('CR-BIO-1: all fields present → maps trait→personality, HTML-strips backstory', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({
+      trait: 'brave',
+      ideal: 'loyalty',
+      bond: 'home',
+      flaw: 'pride',
+      biography: { value: '<p>veteran</p>' },
+    });
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: 'brave',
+      ideal: 'loyalty',
+      bond: 'home',
+      flaw: 'pride',
+      backstory: 'veteran',
+    });
+  });
+
+  it('CR-BIO-2: HTML-stripping — complex HTML tags stripped from backstory', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({
+      biography: { value: '<h2>Hi</h2><strong>x</strong>' },
+    });
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    // Block-level tags (<h2>) inject a separating space so adjacent runs don't merge;
+    // inline tags (<strong>) strip without one (WR-03 fix). → "Hi" + " " + "x".
+    expect(result.backstory).toBe('Hi x');
+  });
+
+  it('CR-BIO-3: empty/missing details → all five fields are empty strings, no throw', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const actor = makeActorWithDetails({});
+    const result = extractBiography(actor as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: '',
+      ideal: '',
+      bond: '',
+      flaw: '',
+      backstory: '',
+    });
+  });
+
+  it('CR-BIO-4: actor === undefined → all-empty-string BiographySnapshot', () => {
+    vi.stubGlobal('game', makeGameMock([]));
+    const result = extractBiography(undefined as unknown as ReturnType<typeof game.actors.get>);
+    expect(result).toMatchObject({
+      personality: '',
+      ideal: '',
+      bond: '',
+      flaw: '',
+      backstory: '',
+    });
+  });
+});
+
+// ─── Integration: getCharacterSnapshot carries feats + biography (Phase 22) ───
+
+describe('getCharacterSnapshot — feats + biography integration (CR-FT-6 / CR-BIO-5)', () => {
+  let getCharacterSnapshot: typeof import('./character-reader.js').getCharacterSnapshot;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('./character-reader.js');
+    getCharacterSnapshot = mod.getCharacterSnapshot;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('CR-FT-6 / CR-BIO-5: snapshot carries feats[] and biography from real actor details', () => {
+    const actor = {
+      ...makeActor({
+        id: 'pc-bio-ft',
+        classNames: [],
+      }),
+      system: {
+        ...makeActor({ id: 'pc-bio-ft' }).system,
+        details: {
+          level: 5,
+          trait: 'bold',
+          ideal: 'justice',
+          bond: 'family',
+          flaw: 'reckless',
+          biography: { value: '<p>A veteran warrior.</p>' },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: 'feat-war',
+            name: 'War Caster',
+            type: 'feat',
+            system: {
+              type: { value: 'feat', subtype: 'origin' },
+              description: { value: '<b>Advantage</b> on concentration checks.' },
+            },
+          },
+        ],
+      },
+    };
+
+    vi.stubGlobal('game', makeGameMock([actor as unknown as ReturnType<typeof makeActor>]));
+
+    const snap = getCharacterSnapshot('pc-bio-ft');
+    expect(snap).not.toBeNull();
+
+    // CR-FT-6: feats array populated from actor.items
+    expect(snap?.feats).toBeDefined();
+    expect(snap?.feats).toHaveLength(1);
+    expect(snap?.feats?.[0]).toMatchObject({
+      category: 'feat',
+      name: 'War Caster',
+      isOrigin: true,
+    });
+
+    // CR-BIO-5: biography.personality sourced from details.trait (NOT details.personality)
+    expect(snap?.biography).toBeDefined();
+    expect(snap?.biography?.personality).toBe('bold');
+    expect(snap?.biography?.backstory).toBe('A veteran warrior.');
+  });
 });
 
 // ─── Combat reader tests ───────────────────────────────────────────────────────
@@ -1241,6 +1732,167 @@ describe('getCombatSnapshot', () => {
     expect(ghost).toBeDefined();
     expect(ghost?.concentration).toBeUndefined();
   });
+
+  // ── Phase 23: AC extraction (RDATA-05) ────────────────────────────────────
+
+  describe('ac extraction (RDATA-05)', () => {
+    it('RDATA-05-AC-R1: combatant with ac.value === 18 → snapshot ac === 18', () => {
+      const actor = makeActor({ id: 'actor-ac-1', acValue: 18 });
+      const combatant = {
+        id: 'cbt-ac-1',
+        name: 'Paladin',
+        actorId: 'actor-ac-1',
+        actor,
+        initiative: 14,
+      };
+      const combat = {
+        id: 'combat-ac-1',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([actor], combat));
+
+      const snap = getCombatSnapshot();
+      const paladin = snap?.combatants.find((c) => c.id === 'cbt-ac-1');
+      expect(paladin?.ac).toBe(18);
+    });
+
+    it('RDATA-05-AC-R2: unlinked combatant (actor === null) → ac key absent', () => {
+      const combatant = {
+        id: 'cbt-ac-2',
+        name: 'UnlinkedToken',
+        actorId: null,
+        actor: null,
+        initiative: 10,
+      };
+      const combat = {
+        id: 'combat-ac-2',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const unlinked = snap?.combatants.find((c) => c.id === 'cbt-ac-2');
+      expect(unlinked).toBeDefined();
+      expect('ac' in (unlinked ?? {})).toBe(false);
+    });
+
+    it('RDATA-05-AC-R3: ac.value is undefined/string/NaN → ac key absent', () => {
+      // Construct an actor whose ac.value is not a number (string '18')
+      const actorWithStringAc = {
+        id: 'actor-ac-3',
+        name: 'StringAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 30, max: 30, temp: 0, tempmax: 0 },
+            ac: { value: '18' as unknown as number }, // non-numeric: string
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 5 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const combatant = {
+        id: 'cbt-ac-3',
+        name: 'StringAc',
+        actorId: 'actor-ac-3',
+        actor: actorWithStringAc,
+        initiative: 10,
+      };
+      const combat = {
+        id: 'combat-ac-3',
+        round: 1,
+        turn: 0,
+        combatant,
+        combatants: { contents: [combatant] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const c3 = snap?.combatants.find((c) => c.id === 'cbt-ac-3');
+      expect(c3).toBeDefined();
+      expect('ac' in (c3 ?? {})).toBe(false);
+    });
+
+    it('RDATA-05-AC-R4: ac.value 18.6 rounds to 19; negative clamps to 0', () => {
+      // Two combatants: one with 18.6, one with -5
+      const actorFloat = {
+        id: 'actor-ac-4a',
+        name: 'FloatAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 40, max: 40, temp: 0, tempmax: 0 },
+            ac: { value: 18.6 },
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 5 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const actorNeg = {
+        id: 'actor-ac-4b',
+        name: 'NegAc',
+        type: 'character',
+        system: {
+          attributes: {
+            hp: { value: 10, max: 10, temp: 0, tempmax: 0 },
+            ac: { value: -5 },
+            exhaustion: 0,
+            death: { success: 0, failure: 0 },
+          },
+          details: { level: 1 },
+          spells: {},
+        },
+        statuses: new Set<string>(),
+        effects: { contents: [] },
+        items: { contents: [] },
+      };
+      const cbtFloat = {
+        id: 'cbt-ac-4a',
+        name: 'FloatAc',
+        actorId: 'actor-ac-4a',
+        actor: actorFloat,
+        initiative: 12,
+      };
+      const cbtNeg = {
+        id: 'cbt-ac-4b',
+        name: 'NegAc',
+        actorId: 'actor-ac-4b',
+        actor: actorNeg,
+        initiative: 5,
+      };
+      const combat = {
+        id: 'combat-ac-4',
+        round: 1,
+        turn: 0,
+        combatant: cbtFloat,
+        combatants: { contents: [cbtFloat, cbtNeg] },
+      };
+      vi.stubGlobal('game', makeGameMock([], combat));
+
+      const snap = getCombatSnapshot();
+      const floatAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4a');
+      expect(floatAc?.ac).toBe(19); // Math.round(18.6) = 19
+
+      const negAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4b');
+      expect(negAc?.ac).toBe(0); // Math.max(0, Math.round(-5)) = 0
+    });
+  });
 });
 
 // ─── Scene reader tests ────────────────────────────────────────────────────────
@@ -1422,6 +2074,24 @@ describe('registerHookSubscribers', () => {
     expect(emitFn).toHaveBeenCalledWith('character.delta', expect.anything());
   });
 
+  it('updateActor does NOT emit on a non-attribute system change with no status change', () => {
+    // Guard-rewrite regression: a `system` change that does NOT touch
+    // `system.attributes` (HP/AC/exhaustion) and has no status change must skip.
+    // The previous nested guard had an effectively-dead `&& !statusesChanged`
+    // term; this asserts the single-predicate rewrite still skips correctly.
+    const emitFn = vi.fn();
+    const actor = makeActor({ id: 'a1' });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    registerHookSubscribers(emitFn);
+
+    // system changed, but only currency (not under attributes), no statuses key.
+    const changes = { system: { currency: { gp: 5 } } };
+    fireHook('updateActor', actor, changes);
+
+    expect(emitFn).not.toHaveBeenCalled();
+  });
+
   it('createChatMessage pushes to ring buffer and emits event.log.delta', () => {
     const emitFn = vi.fn();
     registerHookSubscribers(emitFn);
@@ -1517,5 +2187,53 @@ describe('registerHookSubscribers', () => {
         combatId: 'combat-new',
       }),
     );
+  });
+});
+
+// ─── ADR-0014: per-user roster scoping (listPlayerCharactersForUser) ───────────
+
+describe('listPlayerCharactersForUser (ADR-0014)', () => {
+  let listPlayerCharacters: typeof import('./character-reader.js').listPlayerCharacters;
+  let listPlayerCharactersForUser: typeof import('./character-reader.js').listPlayerCharactersForUser;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.stubGlobal(
+      'game',
+      makeGameMock([
+        makeActor({ id: 'actor-alice', name: 'Alice', type: 'character' }),
+        makeActor({ id: 'actor-bob', name: 'Bob', type: 'character' }),
+        makeActor({ id: 'npc-1', name: 'Goblin', type: 'npc' }),
+      ]),
+    );
+    const mod = await import('./character-reader.js');
+    listPlayerCharacters = mod.listPlayerCharacters;
+    listPlayerCharactersForUser = mod.listPlayerCharactersForUser;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('filters the roster to the authorized actor ids', () => {
+    const roster = listPlayerCharactersForUser(['actor-bob']);
+    expect(roster.map((c) => c.actorId)).toEqual(['actor-bob']);
+  });
+
+  it('returns every owned PC when all ids are authorized (still excludes NPCs)', () => {
+    const roster = listPlayerCharactersForUser(['actor-alice', 'actor-bob', 'npc-1']);
+    // NPCs are never characters, so npc-1 never appears even if "authorized".
+    expect(roster.map((c) => c.actorId).sort()).toEqual(['actor-alice', 'actor-bob']);
+  });
+
+  it('fail-closed: empty authorized set yields an empty roster', () => {
+    expect(listPlayerCharactersForUser([])).toEqual([]);
+  });
+
+  it('is a strict subset of the global listPlayerCharacters roster', () => {
+    const global = listPlayerCharacters().map((c) => c.actorId);
+    const scoped = listPlayerCharactersForUser(['actor-alice']).map((c) => c.actorId);
+    expect(scoped.every((id) => global.includes(id))).toBe(true);
+    expect(scoped).toEqual(['actor-alice']);
   });
 });

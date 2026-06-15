@@ -1,13 +1,14 @@
 ┌─[ AZIONE RAPIDA ]──────────────────────────────────────────────────┐
 │                                                                    │
 │ ▶ [S] Scheda                                                       │
-│   [C] Combatt                                                      │
+│   [C] Combattimento                                                │
 │   [L] Log                                                          │
 │   [B] Libro                                                        │
 │   [I] Inventario                                                   │
 │   [A] Azione                                                       │
 │   [M] Mappa                                                        │
 │   [N] Lingua                                                       │
+│   [F] FPS                                                          │
 │   [X] Chiudi                                                       │
 └────────────────────────────────────────────────────────────────────┘
   scroll = cambia voce attiva                                         

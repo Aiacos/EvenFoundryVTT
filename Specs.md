@@ -6,7 +6,7 @@ status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.13)
+# EvenFoundryVTT — Project Specification (v0.10.0)
 
 ## 0. Executive Summary
 
@@ -482,7 +482,7 @@ Verbatim upstream `support.evenrealities.com`: *"You can configure each widget i
 | Campo | Tipo | Esempio | Note |
 |---|---|---|---|
 | Bridge URL | URL string | `https://homelab.lan:8910` | Endpoint REST/WS verso Foundry. HTTPS prod, HTTP solo dev. Whitelist app.json richiesta. |
-| Auth token | password (paste) | `evf_a3b2c1...` | Bearer 24h dal Foundry module §11.5.4. Pasted dal client Foundry del player o scansionato via QR (§7.14.7.3). |
+| Auth token | password (paste) | `evf_a3b2c1...` | Bearer 24h dal Foundry module §11.5.4. Copiato dal DM nel PairModal Foundry e **incollato** dal player (la piattaforma Even Hub non espone fotocamera/QR-scan alle app — vedi §7.14.7.3). |
 | Player / character | enum (post-handshake) | `Thorin (multi)` | Lista popolata via bridge `/v1/actor` dopo connessione. Selezione via tap sul phone. |
 | World identifier (opt) | string | `homebrew-2024` | Auto-detected via handshake; override manuale se più world condivisi. |
 | Connection profile | enum | `homelab / cloud / dev` | Multi-profile per chi gioca su più server (es. Linux homelab + remote VPS). |
@@ -492,10 +492,10 @@ Verbatim upstream `support.evenrealities.com`: *"You can configure each widget i
 
 **Discovery & bootstrap flow** (worked example §7.14.7.2):
 
-1. User installa plugin via QR scan (verbatim tutorial *"deployment involves scanning a QR code with the Even Realities App on your phone"*).
+1. User installa l'app EVF via Even Hub. **Dev**: `evenhub qr` genera un QR che codifica l'**URL del plugin-host** (verbatim CLI reference: *"deployment involves scanning a QR code with the Even Realities App on your phone"* — il QR carica l'app, NON un token). **Prod**: `evenhub pack` → `.ehpk` → review manuale sul portale → install dall'app store dentro l'Even Realities App.
 2. Plugin host URL diventa available in Even Realities App.
 3. User apre il plugin → Even Realities App carica WebView → plugin detecta first-run (no settings) → mostra **on-phone setup wizard** (HTML form rendered nel WebView phone-side, **non** sul G2).
-4. User paste/scan bridge URL + auth token via QR generato dal Foundry module Settings.
+4. User incolla bridge URL + auth token (il token è **copiato** dal PairModal del Foundry module; nessuno scan QR — la piattaforma non espone fotocamera alle app, §3.1).
 5. Plugin chiama handshake `GET /v1/actor` → riceve lista character → user seleziona → settings persistite.
 6. User mette G2 → plugin auto-connecta con settings persistite → render HUD (§7.4).
 
@@ -1329,6 +1329,14 @@ z=2    Overlay slot          (mounted on demand: 0 or 1 panel at a time)
 
 Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `isEventCapture=1`. The router also owns z=0.5 lifecycle (subscribes to `overlay_mounted` / `overlay_dismissed` from `core/state-store.js`).
 
+**Substrato di rendering predefinito — CanvasCompositor raster (v0.10.0):**
+
+Dal milestone v0.10.0 il **percorso di rendering default** è il substrato canvas composited:
+
+- **z=1 Status HUD** e **z=2 overlay panels** sono disegnati su `OffscreenCanvas` tramite `CanvasCompositor` con font pixel VT323 e chrome statico pre-baked, poi inviati al G2 come 4 sub-tile PNG 4-bit (200×100 ciascuno, regione effettiva 400×200 px) via `updateImageRawData`. Il compositor opera in z-order crescente con dirty-skip: un tile non viene rispedito se il suo xxhash h32 è invariato rispetto al frame precedente. Il loop delta gira a ~5 fps (intervallo minimo 100 ms), con idle near-zero bandwidth quando la scena non cambia.
+- **Percorso glyph/text (fallback BLE-degraded):** quando `view.map.mode = "glyph"` è attivo (impostato dal giocatore via Quick Action `[M] Map ctrl` oppure forzato dal verdetto BLE-degraded al boot), il rendering torna al path text-container SDK: lo schema di pagina usa 3 container (header/footer/status-hud) invece di 5 (4 image tile + 1 hud-capture). Il contratto layout glyph è descritto in §7.4b.7 e il mockup INV-1 è nella subsection "Glyph Fallback Mode" in §7.4.
+- **Invariante:** la scelta del substrato non modifica la z-stack logica (4 layer) né le regole di cattura input. In canvas mode il container `hud-capture` (id=4, `isEventCapture:1`, 576×288) intercetta i gesture R1; in glyph mode il container `map-capture` (id=7) svolge lo stesso ruolo. Il contratto INV-1 si verifica separatamente per le due suite: `inv:all` esegue sia la glyph suite (fixture ASCII) che la raster suite (hash PNG tile SHA-256 committati in `status-hud.raster-hash.json`).
+
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
 **Approssimazione**: il G2 usa font firmware-defined; le metriche reali vanno verificate in Phase 0. I mockup assumono ~96 char × 24 row come riferimento di layout.
@@ -1360,16 +1368,74 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 **z=0.5 placement**: occupa le ultime ~3 row del map-area (idle state). Quando un overlay z=2 viene montato, z=0.5 è demolito e quelle row tornano disponibili al z=2 layout. Vedi §7.4c per il contratto completo.
 
-### 7.4 Default View — Map + Persistent Status HUD
+### 7.4 Default View — Character Status Sheet (27px grid)
 
-> **Mode selector** (v0.7+): la mappa supporta due rendering mode mutuamente esclusivi, selezionabili runtime via Quick Action `[M] Map ctrl`:
->
-> - **`raster` (DEFAULT MVP)** — canvas Foundry rasterizzato 4-bit greyscale, 4 image container 2×2 = **400×200 px effective** (massimo possibile sull'hardware G2). **Faithful al canvas Foundry** (texture, lighting, walls, decorazioni). Pipeline §7.4b.4.
-> - **`glyph` (FALLBACK ALTERNATIVA)** — text-based glyph synthesis 66×21 char con `░▒▓` per terreno e lettere per token. Usato come fallback quando BLE saturato, canvas extract fallisce, o utente preferisce. Pipeline §7.4a. Mockup §7.4b.7.
->
-> Setting hot-swappable: `view.map.mode = "raster" | "glyph"` (default `"raster"`). Toggle gesture-friendly via Quick Action menu.
+> **HUD-27PX redesign (v0.9.14, 2026-06-05):** The default always-on glasses view is now the **full-width Character Status Sheet**, NOT the raster map. The G2 LVGL font has a **fixed 27px line height** (no font control per SDK). Screen: 576×288 px → ~10 rows max; full-width line ≈ ~50 chars (variable-width, measured by `@evenrealities/pretext`). The old 28×21 corner card was designed for a ~12px/24-row grid — text appeared ~2.25× too big on real glasses ("scritte troppo grandi"). This section describes the new default view. The raster/glyph map mode is a **DEFERRED gesture-opened overlay** (see §7.4 "Map mode — DEFERRED" below and ADR-0001 Amendment 2).
 
-#### Default view in **RASTER mode** (MVP default)
+#### Glyph Fallback Mode — BLE-degraded path (INV-1 contract)
+
+> **Contesto v0.10.0:** questo è il percorso di rendering di **fallback BLE-degraded** (o path glyph esplicito via `view.map.mode = "glyph"`). Il substrato di rendering **default** dal milestone v0.10.0 è il canvas `CanvasCompositor` raster descritto in §7.2. Il mockup qui sotto è il contratto INV-1 per il path text-container SDK; NON va cancellato — è la spec del fallback glyph e rimane il contratto di snapshot per la glyph suite di `inv:all`.
+
+#### Status-default view (27px grid) — IMPLEMENTED (v0.9.14, 8-row layout v0.9.15)
+
+The always-on default view (glyph/text path) is the Character Status Sheet — 8 rows × ~50 chars, full-width 576px:
+
+```
+Dante Lanzulli            Lv10 —
+────────────────────────────────────────────
+PF ██████████ 41/63   CA 16   VEL —
+Turno —   Round —   [—]
+Cond: concentrato, benedetto
+────────────────────────────────────────────
+Slot 1●●●○  2●●○  3●○
+TS morte  ○○○ / ○○○
+```
+
+**Lettura (8 righe):**
+
+- **Riga 0**: nome personaggio · `Lv{N}` · classe (placeholder `—` finché non wired)
+- **Riga 1**: divisore `────` (full-width)
+- **Riga 2**: `{hpLabel} {barra HP} {cur}/{max}   {acLabel} {ac}   {velLabel} {vel}`
+  - HP bar: 10 glifi `█▓░`; CA e VEL da snapshot; VEL placeholder `—` (campo non ancora in CharacterSnapshot)
+- **Riga 3**: `Turno —   Round —   [—]` — placeholder `—` finché non wired (turn/round non in snapshot)
+- **Riga 4**: `Cond: {condizioni, ...}` — lista condizioni attive; troncata con `…+N` se troppo larga per 576px
+- **Riga 5**: divisore `────`
+- **Riga 6**: `Slot {1●●●○  2●●○  ...}` — spell slot (livelli da snapshot); `●` = disponibile, `○` = usato
+- **Riga 7**: `TS morte  ●●○ / ○○○` (IT) / `Death saves  ●●○ / ○○○` (EN) — tiri salvezza dalla morte
+
+> **Nota (j0t-05):** la riga R1 gesture hint (`R1: ^v scorri  tap ping  oo menu`) è stata RIMOSSA dal corpo del foglio stato: 9×27=243px supera h=234px del container status-hud (id6), causando overflow nel footer. L'hint R1 è già nel footer container (id5) via `renderContextChip` / hud-chrome — ridondante nel corpo. Layout finale: 8×27=216px ≤ 234px — nessun overflow.
+
+**Width budget (INV-1):** ogni riga è misurata con `getTextWidth()` da `@evenrealities/pretext` e troncata con `…` se supera 576px. Il test `WIDTH-ASSERTION` in `status-hud-renderer.test.ts` fallisce la build se qualsiasi riga supera il budget.
+
+**Data-gap placeholder (HUD-27PX):** `CharacterSnapshot` non porta ancora classe, velocità, o turno/round. Questi campi renderizzano come `—` con marcatori `// TODO(HUD-27PX): wire <field>`. La veridicità del dato è prioritaria rispetto alla completezza visiva.
+
+**Locales:** tutti i label (PF/HP, CA/AC, VEL/SPD, Turno/Turn, TS morte/Death saves, Cond:/Cond:) sono in `HUD_WIDTH_BUDGETS` (i18n-budgets.ts) con chiavi `hud27_*`. MVP canonical: IT; fallback: EN; third: DE.
+
+**Containerizzazione (27px grid):**
+
+| Container | ID | x | y | w | h | Note |
+|-----------|----|---|---|---|---|------|
+| header | 4 | 0 | 0 | 576 | 27 | 1 riga header |
+| status-hud | 6 | 0 | 27 | 576 | 234 | 8 righe × 27px=216px ≤ 234px — **base visibile** |
+| footer | 5 | 0 | 261 | 576 | 27 | 1 riga footer |
+| map-capture | 7 | 0 | 27 | 576 | 234 | PRESERVATO per map-mode DEFERRED |
+| z05-* | 8-10 | 0 | 189/216/243 | 576 | 27 | PRESERVATI per idle-infill DEFERRED |
+
+**Seguono deferred feature**:
+- Map-mode gesture-opened (Phase 20 / GEST-01)
+- Wiring di classe, velocità, turno/round in CharacterSnapshot
+- Overlay 27px density rework (tutti i pannelli attuali usano ancora la griglia 12px — "g2-app UI 27px density rework" come fase dedicata)
+
+#### Map mode (gesture-opened) — DEFERRED (future phase)
+
+> **Nota:** prima di v0.9.14, la mappa raster/glyph era il layer base z=0 della default view. Dal v0.9.14 la mappa è un overlay aperto via gesture — non la base di default. Vedi ADR-0001 Amendment 2.
+>
+> **Mode selector** (DEFERRED — Phase 20): la mappa supporterà due rendering mode mutuamente esclusivi, selezionabili via Quick Action `[M] Map ctrl`:
+>
+> - **`raster`** — canvas Foundry rasterizzato 4-bit greyscale, 4 image container 2×2 = **400×200 px effective**. Pipeline §7.4b.4.
+> - **`glyph` (FALLBACK)** — text-based glyph synthesis. Pipeline §7.4a. Mockup §7.4b.7.
+
+#### Default view in **RASTER mode** (MVP — DEFERRED, was pre-v0.9.14 default)
 
 Stato di default (nessun overlay aperto). La mappa cattura input.
 
@@ -1405,7 +1471,7 @@ Stato di default (nessun overlay aperto). La mappa cattura input.
 
 - **Header** (top, 1 row text container): nome scena · indicatore mode · round/turno · batteria R1
 - **Map area** (left): **4 image container** 200×100 ciascuno, tiled 2×2, totale **400×200 px effective**, contenuto = canvas Foundry rasterizzato + ditherato (vedi §7.4b.4 pipeline)
-- **Status HUD** (right, ~28 char × 21 row, text container): scheda mini sempre visibile (HP/AC/azioni/slot/condizioni)
+- **Status HUD** (right, ~28 char × 21 row, text container — DEFERRED: questo era il layout pre-v0.9.14. Dal v0.9.14, il default è il full-width status sheet §7.4 sopra): scheda mini sempre visibile (HP/AC/azioni/slot/condizioni)
 - **Footer** (bottom, 1-2 row text container): hint gesture + mode toggle + chip nav overlay
 - **Refresh rate**: **5 fps standard event-based** (token movement, template placement, scene change), **8 fps burst** durante combat attivo, **15 fps aspirational** se Phase 0 conferma Layer 2+5 unlock. Idle 0.3 fps heartbeat (Layer 6 adaptive). Strategia stratificata in §7.4b.6.1.
 
@@ -2607,7 +2673,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.13                                          ║
+║                              EVENFOUNDRYVTT  v0.10.0                                          ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -2848,21 +2914,22 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 │  │ evf_•••••••••••••••••••••••••                          │      │
 │  └─────────────────────────────────────────────────────────┘      │
 │                                                                   │
-│  [ 📷 Scan QR from Foundry module ]   [ 📋 Paste from clipboard ] │
+│  [ Paste from clipboard ]                                         │
 │                                                                   │
-│  ⓘ Generate the QR in Foundry: Settings → EvenFoundryVTT →       │
-│    "Pair G2 device" (24h validity).                              │
+│  i  Copy the token in Foundry: Settings -> EvenFoundryVTT ->      │
+│     "Pair a G2 device", then paste it here (24h validity).        │
 │                                                                   │
 │  ─────────────────────────────────────────────────────────────    │
 │                                                                   │
 │  STEP 3 / 3 · Character                                           │
 │                                                                   │
-│  ✓ Connected to Foundry world "Homebrew 2024"                    │
+│  ✓ Connected to "Homebrew 2024" · paired as user "aiacos"         │
 │                                                                   │
-│  Select your character:                                           │
-│  ◉ Thorin Mountainforge   (Fighter 3 / Wizard 5, multi)           │
-│  ○ Lyra Brightleaf        (Cleric 7)                              │
-│  ○ Drak'val               (Barbarian 6)                           │
+│  Your characters (scoped to your Foundry user — ADR-0014):        │
+│  ◉ Artemis            (Ranger 10)                                 │
+│  ○ Dante Lanzulli     (Wizard 10)                                 │
+│  ○ Karius Frede       (Paladin 10)                                │
+│  ○ Shin               (Rogue 10)                                  │
 │                                                                   │
 │  ☑ Auto-connect when G2 is worn                                   │
 │                                                                   │
@@ -2877,22 +2944,22 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 - Layout responsive standard (no constraint 96×24 char). Può usare HTML/CSS/flex normale.
 - Stile coerente con resto del plugin (phosphor-green su sfondo scuro) per continuità visiva con il G2 HUD, ma free-form.
 - Testo input via tastiera virtuale del phone (iOS/Android native).
-- QR scan tramite Web API del WebView (`navigator.mediaDevices.getUserMedia`) — richiede permission camera, dichiarata in `app.json`.
+- **Nessuno scan QR**: la piattaforma Even Hub non espone API fotocamera/QR-scan alle app (canonica `hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). Il token si trasferisce via **copia** (PairModal Foundry) → **incolla** (questo wizard). Resta disponibile la tastiera virtuale per l'inserimento manuale.
 
 ##### 7.14.7.2 Worked example bootstrap (zero → connesso)
 
-1. **User**: scansiona QR `evenfoundryvtt-g2/install` con Even Realities App → plugin URL aggiunto.
+1. **User**: installa l'app EVF via Even Hub (dev: `evenhub qr` → l'Even Realities App carica l'**URL del plugin-host**; prod: install dall'app store Even Hub dopo review del `.ehpk`).
 2. **User**: apre "EvenFoundryVTT" dalla home dell'Even App → WebView fetcha plugin URL.
 3. **Plugin**: detect first-run (`localStorage["evf:bridge_url"] == null`) → render setup wizard §7.14.7.1.
 4. **User**: seleziona profilo "Homelab", incolla `https://homelab.lan:8910`.
-5. **User**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair G2 device"** → genera token 24h → mostra QR.
-6. **User**: tap "📷 Scan QR" sul phone → camera leggi QR → token autocompila.
-7. **Plugin**: chiama `GET /v1/actor` con bearer → bridge risponde con lista character.
-8. **User**: seleziona "Thorin", checkbox "Auto-connect when G2 worn".
+5. **User (DM)**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair a G2 device"** → genera token 24h → il PairModal mostra **bridge URL + token copiabili** (token nascosto di default, con toggle Mostra/Copia).
+6. **User**: copia il token dal PairModal e lo **incolla** nel wizard sul phone (tap "Paste from clipboard").
+7. **Plugin**: chiama `GET /v1/characters` con bearer → bridge risponde con la lista **filtrata agli attori di cui l'utente accoppiato è OWNER** (ADR-0014: niente più roster globale).
+8. **User**: seleziona "Shin", checkbox "Auto-connect when G2 worn".
 9. **Plugin**: persiste settings phone-side, dismissa wizard, mostra status "Pronto. Indossa il G2 per iniziare".
 10. **User**: indossa G2 → Even Realities App detecta wear (via `bridge.onWear`) → riapre plugin auto → handshake completo → render HUD §7.4.
 
-**Latenza target end-to-end** primo setup: ≤90 sec dalla scansione QR install al primo HUD on-glasses.
+**Latenza target end-to-end** primo setup: ≤90 sec dall'apertura dell'app (post-install) al primo HUD on-glasses.
 
 ##### 7.14.7.3 Foundry module — pair-G2 flow
 
@@ -2905,15 +2972,14 @@ Foundry — Game Settings → Module Settings → EvenFoundryVTT
 
 When clicked:
   1. Generate opaque bearer token (32 byte random, 24h TTL)
-  2. Persist token in user's foundry profile (server-side)
-  3. Render QR with payload:
-     {
-       "bridge_url": "<auto-detected from settings>",
-       "token": "evf_<...>",
-       "world": "<id>",
-       "expires": <iso8601>
-     }
-  4. Display QR for 60 sec; auto-dismiss after scan or timeout
+  2. Persist token in user's foundry profile (server-side); the
+     bridge_url + world are provisioned to the bridge with the token
+  3. Display the credentials as COPYABLE TEXT (no QR — the Even Hub
+     platform exposes no camera/QR-scan API to apps):
+       Bridge URL : https://homelab.lan:8910   [ Copy ]
+       Token      : ••••••••••••••••••••••••   [ Reveal ] [ Copy ]
+     (token masked by default; revealed only on explicit Reveal)
+  4. Countdown shows remaining TTL; Refresh regenerates with 60s grace
   5. Log pairing event in module event-log (audit trail)
 
 Existing pairings:
@@ -2923,7 +2989,7 @@ Existing pairings:
     [ Revoke ]
 ```
 
-Auth token in §11.5.4 si arricchisce: il bearer è **provisioned via QR scan**, non via copy-paste manuale (ridotto attack surface — nessuna esposizione del token in clipboard non sicura). Il foundry-module mantiene un registro pairing per revoca.
+Auth token in §11.5.4: il bearer è trasferito via **copia (PairModal Foundry) → incolla (wizard phone)**. Il QR-provisioning è irrealizzabile perché la piattaforma Even Hub non espone fotocamera/QR-scan alle app (`hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). Per compromesso sicurezza il token è **nascosto di default** nel PairModal con toggle Mostra/Copia; non viene mai loggato. Il foundry-module mantiene un registro pairing per revoca.
 
 ##### 7.14.7.4 Edge cases
 
@@ -2933,8 +2999,8 @@ Auth token in §11.5.4 si arricchisce: il bearer è **provisioned via QR scan**,
 | Token expired/revoked | Plugin runtime mostra `⌁ AUTH EXPIRED` in header HUD G2 + toast on phone "Re-pair from Foundry". Auto-reopen wizard al prossimo open plugin. |
 | Token whitelist mismatch | Foundry bridge restituisce 403 → wizard mostra "Token not authorized for this world. Re-pair from Foundry." |
 | Multi-device same character | Foundry module registra pairing distinte; nessun conflitto. Però **HP/state** sono shared → due G2 mostrano stessa view. |
-| QR scan fallisce (camera permission denied) | Fallback a "📋 Paste from clipboard" sempre disponibile. |
-| User cambia phone | Re-installa plugin, re-scan QR install, re-pair via QR Foundry. Settings phone-side perse. Foundry pairings storiche revocabili da DM. |
+| Clipboard non disponibile (permission denied) | Fallback: il token resta selezionabile nel PairModal per copia manuale; inserimento manuale via tastiera virtuale sempre disponibile. |
+| User cambia phone | Re-installa l'app via Even Hub, re-incolla bridge URL + token dal PairModal Foundry. Settings phone-side perse. Foundry pairings storiche revocabili da DM. |
 | G2 viene tolto durante sessione | `bridge.onWear(false)` → plugin entra in "standby" mode (nessuna BLE op), auto-resume on wear. Settings preservate. |
 
 ---
@@ -3701,15 +3767,16 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 ### 11.5.4 Authentication scheme
 
 - **Decisione**: **Bearer token opaco per-player**, generato server-side dal modulo Foundry. Token derivato da `user.id + secret + timestamp`, hash HMAC-SHA256, expiry 24h con refresh automatico.
-- **Provisioning** (v0.9.11): il bearer è **paired via QR scan** dal Foundry module Settings UI desktop verso l'Even Realities App phone (vedi §7.14.7.3). Riduce attack surface (no token in clipboard non sicura) e rende auditable il pairing dal DM-side. Paste manuale resta fallback per accessibility.
+- **Authorization per-attore (ADR-0014, 2026-06-15)**: il bearer è **legato a uno specifico Foundry `User`** scelto dal DM al pairing (non più solo world-scoped). L'insieme degli attori leggibili = gli attori di cui quell'utente è **OWNER** (`actor.testUserPermission(user,'OWNER')`), calcolato live lato Foundry. Il bridge applica la membership su **ogni** path di lettura: REST `GET /v1/character/:actorId` (+ snapshot cache) → 404 se non autorizzato, `characters-list` filtrata, pin `actorId` dell'handshake WS → close 4400. **Fail-closed**: bearer senza `userId` (legacy) o utente non risolvibile → insieme vuoto → richiede re-pairing. Chiude la falla T8 (un player poteva leggere la scheda di qualsiasi attore). Vedi `docs/architecture/0014-bearer-actor-authorization.md`.
+- **Provisioning** (v0.9.13 corretto, INV-2 re-verified 2026-06-03): il bearer è trasferito via **copia (PairModal Foundry desktop) → incolla (wizard phone)** (vedi §7.14.7.3). Il QR-provisioning della v0.9.11 era irrealizzabile: la piattaforma Even Hub **non espone fotocamera/QR-scan alle app** (`hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*) e `evenhub qr` codifica l'URL del plugin-host, non un token. Compromesso sicurezza: nel PairModal il token è **nascosto di default** con toggle Mostra/Copia, mai loggato; il pairing resta auditable e revocabile dal DM-side.
 - **Lifecycle**:
-  1. DM/player genera QR pairing in Foundry Settings → EvenFoundryVTT → "Pair G2 device" — payload: `{bridge_url, token, world, expires}` (24h TTL)
-  2. Player scansiona QR dall'Even Realities App phone → settings persistite (§3.8)
+  1. DM genera il pairing in Foundry Settings → EvenFoundryVTT → "Pair a G2 device" — il PairModal **seleziona il `User` Foundry** per quel device (ADR-0014) e mostra `bridge_url` + `token` copiabili (24h TTL); `world`/`internal_secret`/`userId` sono provisioned al bridge col token
+  2. Player installa l'app via Even Hub (§3.8), apre il wizard e **incolla** bridge URL + token → settings persistite
   3. Plugin G2 chiama `/v1/handshake` con `Authorization: Bearer <token>` al boot
-  4. Bridge verifica con modulo Foundry: token valido? non revocato? user permission ≥ Player?
+  4. Bridge verifica con modulo Foundry: token valido? non revocato? user permission ≥ Player? + ottiene l'insieme `authorizedActorIds` (attori OWNER dell'utente legato) e lo applica su ogni lettura per-attore (ADR-0014)
   5. Se OK, bridge restituisce session metadata (character list, world id) → boot splash → main HUD
   6. Token rotation a 24h (silent refresh in background); revoca dal Foundry module pairing registry
-- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. QR pairing standardizza il pattern delle phone-side bootstrap (no flusso "trovati il token e copialo").
+- **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. Il copy/paste è l'unico pattern realizzabile per il phone-side bootstrap (nessuna app può scansionare un QR — niente fotocamera).
 
 ### 11.5.5 Storage backend
 
@@ -4048,6 +4115,44 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-06-15 (v0.10.0 — security: ADR-0014 bearer↔Foundry-user binding + per-actor read authz)** — Chiusura della falla **T8** (cross-player character data disclosure) emersa dalla review full-codebase del 2026-06-14: un player autenticato poteva leggere la scheda di *qualsiasi* attore (i bearer erano world-scoped, non actor-scoped). **Decisione [ADR-0014]:** il bearer è legato a uno specifico Foundry `User` al pairing; l'insieme leggibile = attori OWNER di quell'utente (`testUserPermission(user,'OWNER')`, calcolato live lato Foundry); enforcement bridge-side su **ogni** path (REST `/v1/character/:actorId` + snapshot cache → 404, `characters-list` filtrata, pin `actorId` handshake WS → close 4400); **fail-closed** (bearer legacy senza `userId` → re-pairing). Implementato in `shared-protocol` (`userId` required + `authorizedActorIds` nel push), `foundry-module` (PairModal user-picker, `validateToken`/`getCharacterSnapshot`/`listCharacters` ownership-aware), `bridge` (4 enforcement points + cache). Doc: §11.5.4 riscritta; ADR-0014 indicizzato in `docs/architecture/README.md`. Test full suite 3582 verdi. No version bump (security detail interno, nessuna superficie badge/fps/phase) → README/showcase invariati.
+- **2026-06-08 (v0.10.0 — milestone: substrato raster CanvasCompositor come rendering default)** — Chiusura del milestone v0.10.0 (Phases 19–25). Bump v0.9.15 → v0.10.0. Doc-only (INV-3 atomic commit: Specs §7 + README + showcase).
+  - **Phase 19 — ADR-0013 Amendment 1 + CanvasCompositor core** (Phases EVF-19, 4 piani): ratificato ADR-0013 Amendment 1 (substrato canvas compositor). `CanvasCompositor` implementa z-order compositing con dirty-skip su `OffscreenCanvas`; `CanvasLayer` interface + `isCanvasLayer` guard aggiunti additivamente a `layer-types.ts`; `buildHudRasterPageSchema()` (5 container: 4 image tile 200×100 + 1 `hud-capture` text isEventCapture:1); `LayerManager.renderMode = 'canvas' | 'glyph'` (default `'glyph'` — promozione a v0.10.0). `HUD_TILE_GEOMETRY` = 200×100/tile, 400×200/regione (INV-2 verified `hub.evenrealities.com/docs/guides/display`). Glyph path byte-identico pre/post.
+  - **Phase 20 — Status HUD su canvas + font VT323 + INV-1 raster baseline** (EVF-20, 5 piani): `CanvasStatusHudLayer` renderizza la HUD (z=1) su canvas con font pixel VT323 (`@fontsource/vt323`, fallback `16px monospace`); chrome statico pre-baked in `ImageBitmap` al mount; `_dirty` gate — `paint()` invocato solo su `character.delta`. Contratto INV-1 raster stabilito: `inv:all` esegue glyph suite (fixture ASCII) + raster suite (SHA-256 PNG tile hash in `status-hud.raster-hash.json`); FALSE-PASS guard implementato (IS-09d). `hud-capture` (id=4, 576×288) vs `map-capture` (id=7, 576×234) — architettura dual-container ratificata (fallback FALLBACK rispetto al rename proposto). 3179 workspace test.
+  - **Phase 21 — Character sheet su canvas + dati main-tab** (EVF-21, 5 piani): pannello `CanvasSheetLayer` (z=2 overlay) con 6 tab (Main/Skills/Inventory/Spells/Features/Bio) renderizzati su canvas VT323; navigazione gesture preservata byte-identica al glyph path; portrait greyscale-dithered in slot 3 (100×60). Schema esteso: `CharacterSnapshotSchema` + `extractClass` / `extractInitiativeModifier` / `extractWalkSpeed` reader helpers; tab Main wired con classe, Ini, velocità reali. ~26 literal downstream aggiornati.
+  - **Phase 22 — Features + Biography schema extension** (EVF-22, 3 piani): `CharacterSnapshotSchema` esteso con `feats[]` (array di `{name, description}`) e `biography` (stringa plain-text strip da HTML); reader `extractFeats` + `extractBiography` nel `foundry-module`. Tab Features e Biography della scheda raster mostrano dati reali. Gap CR-BIO-2 chiuso (block-level tag → spazio separatore, assertion allineata). 558/558 foundry-module test green.
+  - **Phase 23 — Combat tracker su canvas + AC combattente** (EVF-23, 3 piani): `CanvasCombatLayer` (z=2 overlay) con finestra scorrevole a 5 combattenti, highlight turno corrente (fillRect inverso), HP e AC reali da `CombatSnapshot`; `extractAc` reader aggiunto. 13/13 must-have verified.
+  - **Phase 24 — Delta loop ~5fps xxhash** (EVF-24, 2 piani): `HudDeltaDriver` guida il rendering canvas a ~5 fps (intervallo minimo configurabile, default 100 ms); sub-tile hashing 200×100 con xxhash h32 — solo i tile CHANGED re-encodati/spediti; idle near-zero bandwidth (0 push se 0 hash cambiati). Debounce configurabile: 3 eventi ravvicinati → 1 cycle.
+  - **Phase 25 — Promozione raster a default boot + fallback glyph** (EVF-25, 3 piani): `boot-engine-core.ts` monta canvas mode come default (`setRenderMode('canvas')`); guard `?hud=raster` rimosso (INV-4 dead-code rule); 5 file PoC eliminati; `setBleVerdict('glyph')` attiva `setRenderMode('glyph')` + schema 3-container atomico. ~60 fixture INV-1 glyph preservate byte-identiche. 3295/3295 workspace test green.
+  - **INV-1 raster contract:** il contratto INV-1 raster è ora formalmente stabilito con hash PNG tile SHA-256 committati; `inv:all` verde su entrambe le suite (glyph + raster).
+  - **§7.2:** paragrafo "Substrato di rendering predefinito — CanvasCompositor raster" aggiunto (questo documento). §7.4: mockup 27px avvolto nella subsection "Glyph Fallback Mode — BLE-degraded path" (INV-1 contract, non cancellato).
+  - **INV-2 Re-verified ✓ 2026-06-08 — no drift** (milestone è architettura di rendering interna, nessun nuovo claim upstream; 4 WebFetch paralleli su domini canonici): G2 display 576×288 4-bit confermato; execution model phone WebView confermato; gestures press/double-press/swipe-up/swipe-down confermati; no speaker/no camera confermati; dnd5e latest release-5.3.3 confermato.
+  - **Bump v0.9.15 → v0.10.0.**
+
+- **2026-06-05 (v0.9.15 — j0t-05: flush status-view schema + 8-row sheet)** — Fix di due artefatti residui dopo il boot real-pairing (j0t tasks precedenti). **Bump v0.9.14 → v0.9.15.**
+  - **Bug 1 — "Text" ghosting/overlap (PRIMARY):** `LayerManager._flushPage()` usava `buildBaseTextContainers()` (7 text + 4 image = 11 container), re-dichiarando `map-capture` (id7, stessa rect identica di `status-hud` id6) e `z05-*` (ids 8-10) dopo ogni bundle. Il G2 host renderizzava questi container sovrapposti come placeholder "Text", oscurando il foglio stato. **Fix:** `_flushPage()` ora usa `buildStatusViewTextContainers()` (3 container: header id4, footer id5, status-hud id6; 0 image; `containerTotalNum:3`) — identico schema della boot page (`buildBootPageSchema()`). `map-capture` e `z05-*` restano nel registry per il map-mode DEFERRED (Phase 20) ma NON vengono dichiarati nel flush di default.
+  - **Bug 2 — overflow 234px + hint duplicato:** `SHEET_ROWS=9` → 9×27=243px > h=234px del container `status-hud` (id6) → il 9° riga (R1 hint) trabocca nel footer strip; e il footer (id5) mostra già l'hint R1 via `renderContextChip` / hud-chrome → duplicato. **Fix:** `SHEET_ROWS=8`, riga R1 hint rimossa dal corpo del foglio. 8×27=216px ≤ 234px — nessun overflow.
+  - **INV-3 coerenza:** §7.4 mockup aggiornato da 9 a 8 righe (riga R1 rimossa); tabella container nota `9 righe` → `8 righe × 27px=216px ≤ 234px`; nota j0t-05 aggiunta. Changelog aggiornato.
+  - **Test delta:** `Test 8b` in `layer-manager.test.ts` aggiornato a 3-container status-view schema (da 11-container); `NEW_HUD_ROWS=9→8` + `SHR27-P8` aggiornato in `status-hud-renderer.test.ts`; 5 fixture INV-1 rigenerati a 8 righe (rimossa riga R1). Suite g2-app **1435 test GREEN**.
+
+- **2026-06-05 (v0.9.14 — HUD-27PX: full-width 27px status sheet as default glasses view)** — Fix per "scritte troppo grandi": il font G2 LVGL ha altezza riga fissa 27px, non ~12px come il vecchio layout assumeva. **Bump v0.9.13 → v0.9.14.**
+  - **Root cause:** il renderer `StatusHudRenderer` e la geometria container in `container-registry.ts` erano progettati per una griglia 12px/24-righe (28 char × 21 righe). Sul G2 reale il testo appariva ~2.25× troppo grande, overlappato, e clippato.
+  - **Fix:** `status-hud-renderer.ts` riscritto per emettere 9 righe full-width (~50 chars, ~576px misurate da `@evenrealities/pretext`) al posto della vecchia corner card 28×21. La vista di default è ora il Character Status Sheet (non la mappa raster). Geometria container aggiornata (27px/riga: header h=27, footer y=261 h=27, status-hud x=0 w=576 y=27 h=234). Boot skip di `finalizeIdleRender` per la default view (mappa + idle-infill non dipinte di default, preservate per il deferred map-mode gesture toggle).
+  - **Layout approvato (9 righe):** nome+Lv · divisore · HP bar+cur/max+CA+VEL · Turno/Round · Cond: · divisore · Slot · TS morte · R1 hint. Data-gap: classe/velocità/turno renderizzati come `—` con TODO(HUD-27PX) marker.
+  - **Width budget (INV-1):** ogni riga misurata con `getTextWidth()` da `@evenrealities/pretext`; WIDTH-ASSERTION test fallisce la build su overflow. `pxTruncate` tronca con `…` se necessario.
+  - **DEFERRED:** tutti i pannelli overlay + real map-mode toggle → fase dedicata "g2-app UI 27px density rework" (Phase 20+). I container map-capture + z05-* sono preservati nel registry per il deferred map-mode.
+  - **INV-3 coerenza:** Specs.md §7.4 + ADR-0001 Amendment 2 + README.md + docs/showcase/index.html aggiornati nello stesso commit (questo).
+  - **INV-2 note:** nessuna claim hardware nuova — la rimisurazione 27px/~50 chars cita il finding esistente da `@evenrealities/pretext` (stessa libreria installata e verificata precedentemente).
+  - **Test delta:** +33 nuovi test (`SHR27-*` in `status-hud-renderer.test.ts`); fixture INV-1 aggiornate (`status-hud.loading.txt`, `hp-overflow.txt`, `conditions-overflow.txt`, `sync-lost.{it,en}.txt`); suite g2-app **1401 → 1434** test (pre-Task2 → Task3 finale, inclusi +33 SHR27 + aggiustamenti SHL-3 + IB key-count +6). TypeScript strict + Biome lint:ci clean.
+  - **Code:** `packages/g2-app/src/status-hud/status-hud-renderer.ts` · `status-hud-layer.ts` · `engine/container-registry.ts` · `internal/boot-engine-core.ts` · `status-hud/i18n-budgets.ts` (+6 chiavi `hud27_*`). Dipendenza `@evenrealities/pretext@0.1.4` aggiunta come devDependency.
+  - **Quick task:** `.planning/quick/260605-j0t-redesign-the-g2-hud-for-the-real-27px-fo/260605-j0t-PLAN.md`.
+
+- **2026-06-03 (PAIR-EHUB-01 — pairing reale = install via Even Hub + paste del token; QR-scan ritirato)** — Correzione di design/piattaforma applicata nello stesso PR su codice + doc (INV-3). **No spec version bump** (correzione coerente, no nuovi claim hardware/library/fps/phase/locale).
+  - **Root cause (confermata):** il QR-pairing assunto in v0.9.11 era irrealizzabile. La piattaforma Even Hub **non espone fotocamera/QR-scan alle app** e l'app gira nel WebView del telefono; il PairModal nascondeva inoltre il token (mai reso come testo), quindi il DM non poteva passarlo al player. Path reale: install via Even Hub (dev `evenhub qr` = carica l'URL del plugin-host; prod `.ehpk` → review portale → store) + **paste manuale** del token.
+  - **Codice:** `PairModal` rimuove la generazione QR (dropped `qrcode`/`@types/qrcode` da `@evf/foundry-module`) e mostra **bridge URL + token copiabili** (token mascherato di default con toggle Reveal/Copy — compromesso sicurezza documentato); il wizard g2-app `step2-token` rimuove il dead-code QR-scan (`hub.camera`/`_probeCameraApi`/`scan_qr_btn`, INV-4) lasciando paste/clipboard + inserimento manuale. i18n riallineata (rimosso `evf.pair.qr.scan_instruction`; aggiunte `evf.pair.copy.*`, IT primario + EN). Test aggiornati; suite verde.
+  - **Doc:** §3.8, §7.14.7.1–7.14.7.3, §11.5.4 riscritte sul flusso install-via-Even-Hub + paste; mockup wizard step 2 riallineato a colonna (INV-1, paste-only); ADR-0005 §OQ-INV2-4 risolto.
+  - **Re-verified ✓ 2026-06-03 (INV-2):** `hub.evenrealities.com/docs/guides/device-apis` — *"no camera (there is none)"* (nessuna API fotocamera/QR-scan per le app); `hub.evenrealities.com/docs/reference/cli` — `evenhub qr` codifica l'URL del dev-server (carica l'app, non un token); distribuzione prod via `evenhub pack` → `.ehpk` → review manuale del portale.
 
 - **2026-05-31 (INV-2 full validation round — hub.evenrealities.com/docs/*)** — Whole-development re-verification against the canonical Even Hub developer docs (overview · getting-started/architecture · guides/{display,device-apis,page-lifecycle,input-events,networking,design-guidelines} · reference/packaging). **No spec version bump** (validation + drift log; coherent corrections scheduled to dedicated v0.9.14 work per the §0 drift policy "fixato in PR dedicato").
   - **Re-verified ✓ (no change):** execution model (app logic in phone WebView, glasses = display + native scroll only); container budget 4 image + 8 other = 12 max; exactly one `isEventCapture:1`; canvas 576×288 4-bit greyscale; **image container 20–200 × 20–100 px** (canonical doc CONFIRMS Specs §3.1's 200×100 — supersedes the 2026-05-14 simulator-`index.d.ts` note that suggested 288×144; the docs are authoritative ⇒ our 200×100 tiles are correct); audio PCM 16 kHz s16le mono via `audioControl(true|false)` + `audioEvent`; `imuControl`; `getDeviceInfo`/`getUserInfo`; `getLocalStorage`/`setLocalStorage`; explicit "no audio output, no camera, greyscale only, no animations, no programmatic scroll position"; `shutDownPageContainer(0=immediate, 1=confirm)`; lifecycle events `FOREGROUND_ENTER_EVENT(4)`/`FOREGROUND_EXIT_EVENT(5)`/`ABNORMAL_EXIT_EVENT(6)` via `onEvenHubEvent`; **`setBackgroundState`/`onBackgroundRestore` confirmed ABSENT** (validates v0.9.14 LIFE phase scoping); networking full-origin whitelist (no wildcards), HTTPS-required, CORS not bypassed by whitelist, **WebSocket cannot set request headers from the WebView** (validates the 2026-05-30 audio-stream `?token=` query-param fix, task 260530-x2b).

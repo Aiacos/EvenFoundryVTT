@@ -1,5 +1,41 @@
 # @evf/g2-app
 
+## 0.2.2
+
+### Patch Changes
+
+- e11cf2c: Dev/deploy ergonomics for on-glasses testing and the permanent-install (Even Hub submission) path.
+
+  - `pnpm --filter @evf/g2-app dev` now binds `--host 0.0.0.0 --port 5173` so the Even app can reach
+    the dev server over the LAN (scan the `dev:qr` QR → dev mode, no trial expiry).
+  - Turnkey HTTPS deploy: `deploy/Caddyfile` + `deploy/docker-compose.https.yml` (Caddy reverse
+    proxy with auto Let's Encrypt — fronts the bridge + serves the g2-app plugin host), and
+    `deploy/sync-app-whitelist.mjs` to fill `app.json`'s network whitelist from `deploy/.env`.
+    Documented in `docs/release/evenhub.md` (incl. Cloudflare/Tailscale tunnel alternatives for
+    homelabs without a public IP).
+
+- be05f4b: Fix the phone-setup wizard showing raw i18n key names (e.g. `evf.wizard.step1.title`) instead
+  of labels. The wizard fetched all strings from the bridge (`/v1/i18n/{lang}`), but Step 1 is
+  where you enter the bridge URL — so there is no bridge to fetch from yet (chicken-and-egg), and
+  the catalog also never defined the wizard keys. Adds a bundled IT/EN wizard catalog
+  (`wizard/i18n-catalog.ts`, all 44 keys) used as the base, with the bridge catalog merged on top
+  when connected. Every wizard step is now readable with no bridge.
+
+## 0.2.1
+
+### Patch Changes
+
+- cf4330d: Add an Even Hub-compatible app icon and a `description` to the plugin manifest, and document the
+  dev-mode test flow (fixing the "trial version expired" trap).
+
+  - `app.json` now carries `description` + `icon` (`icon.png`), bundled into the `.ehpk` (the Even
+    Hub `pack` accepts both fields). The icon is a greyscale d20 (Even Hub requires monochrome
+    foreground + background), regenerable via `assets/generate-icon.py`; the same icon is reused as
+    the Docker image / Compose icon (OCI label).
+  - New scripts: `pack:ehpk` (fresh build + pack) and `dev:qr` (`evenhub qr` for on-device dev mode
+    with hot reload — the no-expiry path; `.ehpk` portal trials expire). Documented in README, the
+    Even Hub runbook, and the wiki (`docs/wiki/Testing-and-Distribution.md`).
+
 ## 0.2.0
 
 ### Minor Changes

@@ -7,6 +7,11 @@
  * Hub is mocked for tier3-storage calls.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { detectLocale } from './i18n.js';
+import { defaultWizardCatalog } from './i18n-catalog.js';
+
+/** Bundled wizard strings for the test locale — step titles render translated now, not raw keys. */
+const WIZ = defaultWizardCatalog(detectLocale());
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,9 +100,9 @@ describe('wizard.ts — checkRequiredKeys', () => {
 });
 
 describe('wizard.ts — ALL_I18N_KEYS', () => {
-  it('contains exactly 44 keys', async () => {
+  it('contains exactly 43 keys', async () => {
     const { ALL_I18N_KEYS } = await import('./wizard.js');
-    expect(ALL_I18N_KEYS).toHaveLength(44);
+    expect(ALL_I18N_KEYS).toHaveLength(43);
   });
 
   it('includes all required step keys', async () => {
@@ -164,7 +169,7 @@ describe('wizard.ts — initWizard()', () => {
 
     const stepTitle = document.getElementById('evf-step-title');
     // defaultI18n returns key when bridge URL is empty (no i18n loaded)
-    expect(stepTitle?.textContent).toBe('evf.wizard.step1.title');
+    expect(stepTitle?.textContent).toBe(WIZ['evf.wizard.step1.title']);
   });
 
   it('step indicator marks step 1 as current', async () => {
@@ -282,7 +287,9 @@ describe('wizard.ts — state machine transitions via DOM', () => {
     );
 
     expect(document.getElementById('evf-token-input')).toBeTruthy();
-    expect(document.getElementById('evf-step-title')?.textContent).toBe('evf.wizard.step2.title');
+    expect(document.getElementById('evf-step-title')?.textContent).toBe(
+      WIZ['evf.wizard.step2.title'],
+    );
   });
 
   it('step indicator updates when advancing to Step 2', async () => {
@@ -346,13 +353,15 @@ describe('wizard.ts — state machine transitions via DOM', () => {
     await vi.waitFor(
       () => {
         const stepTitle = document.getElementById('evf-step-title');
-        if (stepTitle?.textContent !== 'evf.wizard.step3.title')
+        if (stepTitle?.textContent !== WIZ['evf.wizard.step3.title'])
           throw new Error('not on step 3 yet');
       },
       { timeout: 3000 },
     );
 
-    expect(document.getElementById('evf-step-title')?.textContent).toBe('evf.wizard.step3.title');
+    expect(document.getElementById('evf-step-title')?.textContent).toBe(
+      WIZ['evf.wizard.step3.title'],
+    );
   });
 });
 
@@ -429,7 +438,7 @@ describe('wizard.ts — COMPLETION step rendering (step indicator + title)', () 
     await vi.waitFor(
       () => {
         const t = document.getElementById('evf-step-title');
-        if (t?.textContent !== 'evf.wizard.step3.title') throw new Error('no step3');
+        if (t?.textContent !== WIZ['evf.wizard.step3.title']) throw new Error('no step3');
       },
       { timeout: 3000 },
     );
@@ -453,13 +462,14 @@ describe('wizard.ts — COMPLETION step rendering (step indicator + title)', () 
     await vi.waitFor(
       () => {
         const t = document.getElementById('evf-step-title');
-        if (t?.textContent !== 'evf.wizard.complete.heading') throw new Error('not completion yet');
+        if (t?.textContent !== WIZ['evf.wizard.complete.heading'])
+          throw new Error('not completion yet');
       },
       { timeout: 3000 },
     );
 
     expect(document.getElementById('evf-step-title')?.textContent).toBe(
-      'evf.wizard.complete.heading',
+      WIZ['evf.wizard.complete.heading'],
     );
     // For COMPLETION, _updateStepIndicator returns early (no step number) — leaving prior state.
     // The step title IS updated to the completion heading (verified above).
@@ -553,7 +563,7 @@ describe('wizard.ts — i18n loading when bridgeUrl is set in initial state', ()
     await initWizard();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('missing i18n keys'),
+      expect.stringContaining('not served by bridge'),
       expect.anything(),
     );
   });

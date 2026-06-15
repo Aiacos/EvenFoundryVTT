@@ -25,6 +25,16 @@ export interface Session {
   lastSeq: number;
   /** Unix ms timestamp when the session was created. */
   createdAt: number;
+  /**
+   * Selected PC actor id pinned for this session (FLV-CHAR-SELECT).
+   *
+   * When set, only `character.delta` envelopes for this actor are delivered to
+   * this session — prevents cross-player character leakage (T-flv-01). Set from
+   * the `actorId` field of the client's `HandshakeClient` message.
+   *
+   * `undefined` = no pin; last-write-wins `roster[0]` semantics apply.
+   */
+  readonly selectedActorId?: string;
 }
 
 /**
@@ -39,8 +49,16 @@ export class SessionStore {
    * Create a new session and store it.
    *
    * Returns the full `Session` object (caller passes `session_id` to client).
+   *
+   * @param token          - Opaque bearer token (never logged).
+   * @param locale         - BCP-47 primary tag from the handshake client message.
+   * @param caps           - Capability intersection agreed during handshake.
+   * @param selectedActorId - Optional selected PC actor id (FLV-CHAR-SELECT).
+   *                          When set, only `character.delta` for this actor is
+   *                          delivered to the session. `undefined` means no pin
+   *                          (last-write-wins `roster[0]` semantics).
    */
-  createSession(token: string, locale: string, caps: string[]): Session {
+  createSession(token: string, locale: string, caps: string[], selectedActorId?: string): Session {
     const session: Session = {
       sessionId: randomUUID(),
       token,
@@ -48,6 +66,7 @@ export class SessionStore {
       caps,
       lastSeq: 0,
       createdAt: Date.now(),
+      ...(selectedActorId !== undefined ? { selectedActorId } : {}),
     };
     this.sessions.set(session.sessionId, session);
     return session;

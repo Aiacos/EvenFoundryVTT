@@ -12,7 +12,8 @@
  *   - R1E-05: wire kind 'scroll-up' → internal { kind: 'scroll', direction: 'up' }
  *   - R1E-06: wire kind 'scroll-down' → internal { kind: 'scroll', direction: 'down' }
  *   - R1E-07: retired wire kind 'long-press' → rejected by schema (console.warn + no publish)
- *   - R1E-08: getTopLayer() returns null → console.warn 'no top layer' + publish NOT called (INV-5 no-op)
+ *   - R1E-08: getTopLayer() returns null → console.warn 'no top layer' + publish IS called
+ *             (router-level dispatchers need gestures at root/idle state — Phase 20 fix)
  *   - R1E-09: unsubscribe idempotency — double off() does not throw; removeEventListener called at most once
  *   - R1E-10: after off(), subsequent fireMessage does NOT publish
  *
@@ -214,17 +215,26 @@ describe('attachR1EventSource (R1E-01..R1E-10)', () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
-  it('R1E-08: getTopLayer() returns null → console.warn (INV-5 no-op) + publish NOT called', () => {
+  it('R1E-08: getTopLayer() returns null → console.warn (INV-5 telemetry) + publish IS called', () => {
+    // Phase 20 fix: when no OverlayPanel is mounted (canvas idle state), gestures
+    // must still reach the bus. Router-level dispatchers (quick-action-overscroll,
+    // root-exit) subscribe to the bus and handle gestures at the root/idle state.
+    // The previous behaviour (drop gesture when null) broke the overscroll entry
+    // point to the Quick Action menu in canvas default boot mode.
     const lm = makeMockLayerManager(null);
     attachR1EventSource(ws, bus, lm);
 
     ws.fireMessage(makeR1Envelope('tap'));
 
+    // Telemetry warn is still emitted so the no-panel state is observable.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const warnMsg = String(warnSpy.mock.calls[0]?.[0]);
     expect(warnMsg).toContain('no top layer');
     expect(warnMsg).toContain('INV-5');
-    expect(publishSpy).not.toHaveBeenCalled();
+    // Gesture IS published — router-level dispatchers need it.
+    expect(publishSpy).toHaveBeenCalledTimes(1);
+    const published = publishSpy.mock.calls[0]?.[0] as R1Gesture;
+    expect(published.kind).toBe('tap');
   });
 
   it('R1E-09: unsubscribe idempotency — double off() does not throw; listener removed cleanly', () => {

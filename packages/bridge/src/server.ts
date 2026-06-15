@@ -21,6 +21,7 @@
  * 10. Voice audio stream route: /v1/audio/stream (Phase 12 Deepgram STT)
  * 11. Dev-only debug routes: /debug/* (Quick Task 260529-h5e) — registered ONLY when
  *     isDebugEnabled() (existence gate). Behind EVF_INTERNAL_SECRET (timing-safe).
+ *     @see ./debug/agent-routes.ts (agent control channel — Quick Task 260604-cwa)
  *
  * Environment variables (debug backdoor — Quick Task 260529-h5e):
  *   - EVF_DEBUG='true'            — enable the /debug/* observability + command backend.
@@ -38,17 +39,29 @@
 // Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
 // pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
 // so r1.spells.available and r1.entities.available envelopes are routed to their caches.
-import { SPELL_KEYTERMS } from '@evf/shared-protocol';
+// Quick Task 260604-eyf — bearer-registry + character-list push caches + handlers.
+// BearerRegistryCache feeds internalValidateFn; CharacterListCache feeds internalSnapshotFn.
+// Both multiplexed in the same /internal/delta onDelta callback (no new socketlib handler).
+// Quick Task 260605-dog — character-snapshot cache + handler. CharacterSnapshotCache feeds
+// internalSnapshotFn for evf.getCharacterSnapshot; populated by handleCharacterSnapshotEnvelope
+// via the same /internal/delta fan-out. Closes the actor_not_found gap (GET /v1/character/:id).
+import { SETTINGS_DISPLAY_TYPE, SPELL_KEYTERMS } from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import pino, { type Logger } from 'pino';
 import type { Registry } from 'prom-client';
+import { DEV_NO_AUTH_SENTINEL, isDevNoAuth } from './auth/is-dev-no-auth.js';
 import type { FoundryValidateFn } from './auth/token-cache.js';
 import { TokenCache } from './auth/token-cache.js';
+import { BearerRegistryCache } from './cache/bearer-registry-cache.js';
+import { CharacterListCache } from './cache/character-list-cache.js';
+import { CharacterSnapshotCache } from './cache/character-snapshot-cache.js';
 import { EntityPackCache } from './cache/entity-pack-cache.js';
 import { SpellPackCache } from './cache/spell-pack-cache.js';
+import { AgentRegistry } from './debug/agent-registry.js';
+import { registerAgentRoutes } from './debug/agent-routes.js';
 import { createBusLogStream } from './debug/bus-log-stream.js';
 import { DebugEventBus } from './debug/debug-event-bus.js';
 import { registerDebugRoutes } from './debug/debug-routes.js';
@@ -75,15 +88,21 @@ import { registerSceneRoute } from './routes/scene.js';
 import { registerSpellsRoute } from './routes/spells.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
+import { SettingsStore } from './settings/settings-store.js';
 import { registerAudioStreamRoute } from './voice/audio-stream-route.js';
 import { createDeepgramStt } from './voice/deepgram-stt.js';
 // Phase 15 Plan 02 — Deepgram Keyterm Prompting (VOICE-06): bridge feeds the merger
 // output (SPELL_KEYTERMS ∪ EntityPackCache snapshot) as Deepgram session keyterms.
 import { buildKeytermList } from './voice/keyterm-merger.js';
 import { KeytermRefresher } from './voice/keyterm-refresher.js';
+import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
+import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
+import { handleCharacterSnapshotEnvelope } from './ws/character-snapshot-handler.js';
+import { handleClientSetting } from './ws/client-setting-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
 import { handleHandshake } from './ws/handshake.js';
+import { pushInitialCharacterDelta } from './ws/initial-snapshot.js';
 import { ReplayBuffer } from './ws/replay-buffer.js';
 import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
@@ -111,6 +130,16 @@ export interface BuildServerOptions {
    * @see middleware/idempotency.ts
    */
   idempotencyStore?: IdempotencyStore;
+  /**
+   * Inject a custom SettingsStore for test isolation (display-settings sync).
+   *
+   * In production: a fresh `SettingsStore` is created per `buildServer()` call.
+   * In tests: pass an existing store to seed/observe the downstream cache and
+   * the pending upstream box.
+   *
+   * @see settings/settings-store.ts
+   */
+  settingsStore?: SettingsStore;
   /**
    * Inject a custom prom-client Registry for test isolation (Pitfall 2 — T-03-10).
    *
@@ -167,6 +196,54 @@ export interface BuildServerOptions {
    * @see routes/entities.ts
    */
   entityCache?: EntityPackCache;
+  /**
+   * Inject a custom BearerRegistryCache for test isolation (Quick Task 260604-eyf).
+   *
+   * In production: a fresh `BearerRegistryCache` is created per `buildServer()` call.
+   * The cache feeds the internal `foundryValidateFn` — token lookup without socketlib.
+   * In tests: pass a pre-populated cache to assert `GET /v1/health` validation paths.
+   *
+   * `opts.foundryValidateFn` still overrides the internal validate fn when provided
+   * (existing tests inject their own fn and must not be affected).
+   *
+   * @see cache/bearer-registry-cache.ts
+   * @see ws/bearer-registry-handler.ts
+   */
+  bearerRegistryCache?: BearerRegistryCache;
+  /**
+   * Inject a custom CharacterListCache for test isolation (Quick Task 260604-eyf).
+   *
+   * In production: a fresh `CharacterListCache` is created per `buildServer()` call.
+   * The cache feeds the internal `foundrySnapshotFn` for `GET /v1/characters`.
+   * In tests: pass a pre-populated cache to assert characters are served from cache.
+   *
+   * `opts.foundrySnapshotFn` still overrides the internal snapshot fn when provided
+   * (existing tests inject their own fn and must not be affected).
+   *
+   * @see cache/character-list-cache.ts
+   * @see ws/character-list-handler.ts
+   */
+  characterListCache?: CharacterListCache;
+  /**
+   * Inject a custom CharacterSnapshotCache for test isolation (Quick Task 260605-dog).
+   *
+   * In production: a fresh `CharacterSnapshotCache` is created per `buildServer()` call.
+   * Populated by `handleCharacterSnapshotEnvelope` via the `/internal/delta` push channel;
+   * read back by `internalSnapshotFn` for `evf.getCharacterSnapshot` (backing
+   * `GET /v1/character/:actorId` and the d0v on-connect initial push).
+   *
+   * @see cache/character-snapshot-cache.ts
+   * @see ws/character-snapshot-handler.ts
+   */
+  characterSnapshotCache?: CharacterSnapshotCache;
+  /**
+   * Override the concurrent WS connection cap (DoS guard — T7).
+   *
+   * In production: omit — defaults to {@link WS_MAX_CONNECTIONS} (64).
+   * In tests: pass a small value (e.g. 1) to exercise the over-cap rejection
+   * path without opening 64 real sockets.
+   */
+  wsMaxConnections?: number;
 }
 
 /**
@@ -193,6 +270,40 @@ const LOGGER_REDACT = [
   '*.deepgramKey',
   '*.token',
 ] as const;
+
+/**
+ * Maximum accepted inbound WS frame size in bytes (DoS guard).
+ *
+ * The g2-app only ever sends small control frames upstream — handshake,
+ * `client_resume`, `tool.invoke`, `client_setting` — all well under a few KB.
+ * The large payloads (frame_png ~90 KB, see {@link FRAME_BACKPRESSURE_BYTES}
+ * in delta-emitter.ts) flow bridge→client, NOT client→bridge. We size the
+ * inbound ceiling generously at 256 KB (≈ the per-session backpressure budget)
+ * so a legitimate oversized control frame is never rejected, while a malicious
+ * client cannot stream an unbounded buffer to exhaust bridge memory.
+ */
+const WS_MAX_PAYLOAD_BYTES = 262_144;
+
+/**
+ * Maximum number of concurrent WS connections accepted by the bridge.
+ *
+ * The MVP is homelab single-tenant (Specs.md §11.5.3): a handful of players
+ * plus a margin for reconnect churn. Beyond this ceiling a new socket is closed
+ * immediately with {@link WS_CLOSE_TRY_AGAIN_LATER} BEFORE the handshake runs,
+ * and is never added to the session store — bounding socket + Promise growth
+ * from a connection-flood (slow-loris sibling of the handshake idle timeout).
+ */
+const WS_MAX_CONNECTIONS = 64;
+
+/**
+ * WS close code for "server overloaded — try again later".
+ *
+ * Mirrors the RFC 6455 1013 "Try Again Later" semantic in the application
+ * close-code range (the 4000–4999 band is reserved for app use, alongside the
+ * existing 4400/4401 handshake codes). Sent when a new connection exceeds
+ * {@link WS_MAX_CONNECTIONS}.
+ */
+const WS_CLOSE_TRY_AGAIN_LATER = 4503;
 
 export async function buildServer(opts: BuildServerOptions = {}): Promise<FastifyInstance> {
   // --- Debug bus (hoisted, Quick Task 260529-icd) ---
@@ -240,24 +351,58 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // Dev fallback is 'http://localhost:5173' (Vite default). Never use `true` (allow-all).
   // TODO (#42): enforce EVF_PLUGIN_HOST_URL as required in Docker entrypoint.
   const pluginHostUrl = process.env.EVF_PLUGIN_HOST_URL ?? 'http://localhost:5173';
+  // DEV-ONLY: when the bearer-auth bypass is active (EVF_DEV_NO_AUTH, never prod),
+  // reflect any origin so a local Vite dev server / EvenHub simulator (whose origin
+  // varies) can reach the bridge. Production keeps the strict single-origin whitelist.
   await app.register(cors, {
-    origin: pluginHostUrl,
+    origin: isDevNoAuth() ? true : pluginHostUrl,
     methods: ['GET', 'HEAD', 'OPTIONS', 'POST'],
   });
 
   // --- 2. Rate limit ---
-  // Per-token limiting: key on the bearer token from Authorization header so that
-  // a compromised token can be rate-limited independently from others on the same LAN IP.
-  // Falls back to IP if no Authorization header is present (e.g. /v1/health).
+  // Per-IP limiting: key the limiter on `req.ip`. This is the correct identity for the
+  // homelab single-tenant model (one LAN, a handful of trusted clients) and — crucially —
+  // it is NOT attacker-controlled on the unauthenticated routes.
+  //
+  // SECURITY (do NOT revert to keying on the Authorization header): keying on the RAW,
+  // pre-validation `Authorization` value let an unauthenticated caller mint a FRESH rate
+  // bucket per request simply by rotating `Bearer <random>` values, fully defeating the
+  // limiter on unauthenticated routes; symmetrically, a short/blank header collapsed many
+  // distinct callers into a single shared bucket. The bearer token is untrusted until
+  // tokenCache.validate() runs (inside each route handler), which is AFTER keyGenerator —
+  // so a validated-token identity is not available here. `req.ip` is the robust choice.
   // TODO (#44): lower max to 60 req/min once Phase 3 action endpoints land.
+  //
+  // Route-level exemption: POST /internal/delta opts out via { config: { rateLimit: false } }
+  // in its route registration (see packages/bridge/src/routes/internal-delta.ts).
+  // Rationale: the homelab bridge logged 1102 production 429s during the 2026-06-09 game
+  // session — BEFORE the ~1Hz map stream of v0.1.9 even existed. With v0.1.9 frame pushes
+  // (~60/min) plus critical character.delta / combat.* deltas all sharing the single
+  // EVF_INTERNAL_SECRET bearer key, leaving the limiter on /internal/delta would throttle
+  // gameplay-critical deltas as collateral damage. /internal/delta is a server-to-server
+  // channel guarded by EVF_INTERNAL_SECRET, so rate-limiting it provides no abuse protection.
+  // All other routes keep the 100 req/min budget.
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    keyGenerator: (req) => req.headers.authorization?.slice(7) ?? req.ip ?? 'unknown',
+    keyGenerator: (req) => req.ip ?? 'unknown',
   });
 
   // --- 3. WebSocket support ---
-  await app.register(fastifyWebsocket);
+  // maxPayload caps inbound frame size (DoS guard — WS_MAX_PAYLOAD_BYTES). Only
+  // small control frames flow client→bridge; large frame_png payloads flow the
+  // other way, so a generous-but-bounded ceiling rejects abusive inbound streams
+  // without ever dropping a legitimate control frame.
+  await app.register(fastifyWebsocket, { options: { maxPayload: WS_MAX_PAYLOAD_BYTES } });
+
+  // Concurrent-connection cap (DoS guard — WS_MAX_CONNECTIONS). Incremented when
+  // a socket is accepted into the handshake path, decremented on close. New
+  // sockets beyond the ceiling are closed immediately with 4503 before the
+  // handshake runs and never reach the session store. Module-scoped to this
+  // server instance (closed over by the /ws handler below). opts.wsMaxConnections
+  // overrides the default cap for tests (small value exercises the reject path).
+  const wsMaxConnections = opts.wsMaxConnections ?? WS_MAX_CONNECTIONS;
+  let wsConnectionCount = 0;
 
   // --- 4. Shared services (singletons per server instance) ---
   const replayBuffer = new ReplayBuffer();
@@ -265,6 +410,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
   // Use injected store for test isolation; production creates a fresh instance.
   const idempotencyStore = opts.idempotencyStore ?? new IdempotencyStore();
+  // Bidirectional display-settings sync (latency audit 2026-06-14): caches the
+  // module's `settings.display` snapshot for connect-push and holds the pending
+  // glasses-originated edit for the frame-POST piggyback.
+  const settingsStore = opts.settingsStore ?? new SettingsStore();
 
   // --- 4 (debug). Dev-only observability taps (Quick Task 260529-h5e) ---
   // `debugEnabled` + `debugBus` are hoisted above (before Fastify) so the pino
@@ -303,16 +452,113 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     opts.metricsRegistry,
   );
 
+  // --- 4b-pre. Push caches (Quick Task 260604-eyf + Quick Task 260605-dog) ---
+  // BearerRegistryCache: populated by handleBearerRegistryEnvelope (step 8).
+  //   Feeds internalValidateFn below — token validation without socketlib roundtrip.
+  // CharacterListCache: populated by handleCharacterListEnvelope (step 8).
+  //   Feeds internalSnapshotFn below — /v1/characters served from cache.
+  // CharacterSnapshotCache: populated by handleCharacterSnapshotEnvelope (step 8). (Quick Task 260605-dog)
+  //   Feeds internalSnapshotFn for evf.getCharacterSnapshot — GET /v1/character/:actorId.
+  //
+  // Declared HERE (before TokenCache) so internalValidateFn below can close over them.
+  // opts.bearerRegistryCache / opts.characterListCache / opts.characterSnapshotCache inject
+  // pre-populated caches in tests.
+  const bearerRegistryCache = opts.bearerRegistryCache ?? new BearerRegistryCache();
+  const characterListCache = opts.characterListCache ?? new CharacterListCache();
+  // Quick Task 260605-dog: per-actor snapshot cache; closed over by internalSnapshotFn below.
+  const characterSnapshotCache = opts.characterSnapshotCache ?? new CharacterSnapshotCache();
+
+  // Internal foundryValidateFn built from BearerRegistryCache (Quick Task 260604-eyf).
+  //
+  // Four-way result (T-RFP-03):
+  //   - cache === null (never pushed)   → foundry_unreachable  (503)
+  //   - token absent in pushed registry → unknown_token        (401)
+  //   - token present but expired       → expired              (401)
+  //   - token present + not expired     → valid                (200)
+  //
+  // opts.foundryValidateFn still overrides when provided — existing tests inject their
+  // own fn and continue to work unchanged (backward-compatible).
+  const internalValidateFn: FoundryValidateFn = async (token: string) => {
+    const snapshot = bearerRegistryCache.get();
+    if (snapshot === null) {
+      // Module never connected — distinguish from bad token (T-RFP-03).
+      return { valid: false, reason: 'foundry_unreachable' };
+    }
+    const entry = snapshot.bearers.find((b) => b.token === token);
+    if (entry === undefined) {
+      return { valid: false, reason: 'unknown_token' };
+    }
+    if (entry.expiresAt <= Date.now()) {
+      return { valid: false, reason: 'expired' };
+    }
+    // ADR-0014: carry the bearer's Foundry-user binding + live owned-actor set
+    // so the cached (no-socketlib) read path enforces per-actor authorization.
+    // The pushed snapshot ships authorizedActorIds per bearer (computed
+    // Foundry-side); fail-closed if somehow absent (authorizes nothing).
+    return {
+      valid: true,
+      entry: {
+        alias: entry.alias,
+        expiresAt: entry.expiresAt,
+        worldId: entry.worldId,
+        userId: entry.userId,
+      },
+      authorizedActorIds: entry.authorizedActorIds ?? [],
+    };
+  };
+
   // --- 4b. Token cache (with metrics hooks) ---
-  const tokenCache = new TokenCache(opts.foundryValidateFn, {
+  // opts.foundryValidateFn overrides the internal cache-backed validate fn when provided.
+  // Production buildServer({}) uses internalValidateFn (from BearerRegistryCache).
+  // Tests inject their own foundryValidateFn to remain unaffected.
+  const tokenCache = new TokenCache(opts.foundryValidateFn ?? internalValidateFn, {
     onHit: () => metrics.tokenCacheHitsTotal.inc(),
     onMiss: () => metrics.tokenCacheMissesTotal.inc(),
   });
 
-  // Default no-op snapshot fn — production passes the real socketlib wrapper via opts
-  const foundryFn: FoundrySnapshotFn =
+  // Internal foundrySnapshotFn built from push caches (Quick Task 260604-eyf + 260605-dog).
+  // Serves GET /v1/characters from CharacterListCache ('evf.listCharacters').
+  // Serves GET /v1/character/:actorId from CharacterSnapshotCache ('evf.getCharacterSnapshot').
+  // opts.foundrySnapshotFn overrides when provided (existing tests unchanged).
+  //
+  const internalSnapshotFn: FoundrySnapshotFn = async (
+    handler: string,
+    ...args: unknown[]
     // biome-ignore lint/suspicious/noExplicitAny: FoundrySnapshotFn return type is any (socketlib untyped)
-    opts.foundrySnapshotFn ?? (async (_h: string, ..._a: unknown[]): Promise<any> => null);
+  ): Promise<any> => {
+    if (handler === 'evf.listCharacters') {
+      return characterListCache.get()?.characters ?? [];
+    }
+    // Quick Task 260605-dog: serve cached snapshot for getCharacterSnapshot.
+    // args[0] === actorId, args[1] === token (see routes/character.ts +
+    // initial-snapshot.ts call sites).
+    if (handler === 'evf.getCharacterSnapshot') {
+      const actorId = args[0];
+      const token = args[1];
+      if (typeof actorId !== 'string') return null;
+      // ADR-0014 §4 defense-in-depth: re-enforce per-actor authorization HERE,
+      // not only at the REST route. The on-connect initial push and any future
+      // caller route through this fn; a snapshot for a non-owned actor must
+      // never be served. Resolve the bearer's authorized set from the bearer
+      // registry cache (the same source internalValidateFn uses) and deny on
+      // miss. Fail-closed: unknown token / cold cache → authorizes nothing.
+      // (DEV-ONLY isDevNoAuth bypass mirrors the route-level helper.)
+      if (typeof token === 'string' && !isDevNoAuth()) {
+        const authorized = bearerRegistryCache
+          .get()
+          ?.bearers.find((b) => b.token === token)?.authorizedActorIds;
+        if (authorized === undefined || !authorized.includes(actorId)) {
+          return null;
+        }
+      }
+      return characterSnapshotCache.get(actorId) ?? null;
+    }
+    return null;
+  };
+
+  // Default snapshot fn: opts.foundrySnapshotFn overrides when provided.
+  // Production buildServer({}) uses internalSnapshotFn (from CharacterListCache).
+  const foundryFn: FoundrySnapshotFn = opts.foundrySnapshotFn ?? internalSnapshotFn;
 
   // --- 4c. Idempotency middleware ---
   // Must be registered BEFORE route registration so the preHandler+onSend hooks
@@ -326,6 +572,13 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // onResponse: compute duration, observe with bounded labels only (method, route pattern, status_code).
   app.addHook('onRequest', async (request) => {
     request.evfStartTime = Date.now();
+    // DEV-ONLY: inject a sentinel bearer for token-less requests so routes that
+    // reject a missing Authorization header BEFORE calling TokenCache.validate
+    // (e.g. /v1/health, /v1/characters) proceed; validate() then resolves it to a
+    // synthetic dev session. Never active in prod (EVF_DEV_NO_AUTH + NODE_ENV gate).
+    if (isDevNoAuth() && !request.headers.authorization?.startsWith('Bearer ')) {
+      request.headers.authorization = `Bearer ${DEV_NO_AUTH_SENTINEL}`;
+    }
   });
   app.addHook('onResponse', async (request, reply) => {
     if (request.evfStartTime === undefined) return;
@@ -395,13 +648,25 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await registerEntitiesRoute(app, tokenCache, entityCache);
 
   // --- 8. Internal delta route (module → bridge push) ---
-  // onDelta hook: multiplexed dispatch — intercept r1.spells.available AND r1.entities.available
-  // envelopes to update their respective caches BEFORE fan-out. Each handler returns false when
-  // its type does not match, so calling both in sequence is safe and order-independent.
-  await registerInternalDeltaRoute(app, deltaEmitter, (type, payload) => {
-    handleSpellPackEnvelope(type, payload, spellCache);
-    handleEntityPackEnvelope(type, payload, entityCache);
-  });
+  // onDelta hook: multiplexed dispatch — five envelope handlers, each returning false when
+  // the type does not match. Order is irrelevant; all are safe to call unconditionally.
+  //   - bearer-registry (r1.bearers.available)      → BearerRegistryCache → internalValidateFn
+  //   - character-list (r1.characters.available)    → CharacterListCache  → evf.listCharacters
+  //   - character-snapshot (character.delta)        → CharacterSnapshotCache → evf.getCharacterSnapshot (dog)
+  //   - spell-pack (r1.spells.available)            → SpellPackCache      → /v1/spells/available
+  //   - entity-pack (r1.entities.available)         → EntityPackCache     → /v1/entities/available
+  await registerInternalDeltaRoute(
+    app,
+    deltaEmitter,
+    (type, payload) => {
+      handleBearerRegistryEnvelope(type, payload, bearerRegistryCache);
+      handleCharacterListEnvelope(type, payload, characterListCache);
+      handleCharacterSnapshotEnvelope(type, payload, characterSnapshotCache);
+      handleSpellPackEnvelope(type, payload, spellCache);
+      handleEntityPackEnvelope(type, payload, entityCache);
+    },
+    settingsStore,
+  );
 
   // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---
   // Registered ONLY behind isDebugEnabled() (existence gate — layer 1). When OFF,
@@ -428,6 +693,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       // Lazily forward to the production dispatch fn declared at step 9.
       dispatchToolFn: (payload, bearer) => debugDispatchRef.fn(payload, bearer),
     });
+    // Quick Task 260604-cwa: agent control channel routes.
+    // WS /debug/agent + GET /debug/agents + POST /debug/cmd + GET /debug/logs.
+    // Registered inside the SAME `if (debugEnabled && debugBus !== undefined)` block
+    // so they are genuinely absent (404) when debug is off.
+    const agentRegistry = new AgentRegistry();
+    await registerAgentRoutes(app, { debugBus, agentRegistry });
   }
 
   // --- 9. WS handshake route ---
@@ -452,6 +723,31 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
 
   app.get('/ws', { websocket: true }, (socket, req) => {
     const logger = app.log as Logger;
+
+    // Concurrent-connection cap (DoS guard): reject before the handshake runs so
+    // a connection-flood cannot grow the socket/session set unbounded. The new
+    // socket is closed with 4503 and NOT counted nor registered.
+    if (wsConnectionCount >= wsMaxConnections) {
+      logger.warn(
+        { wsConnectionCount, cap: wsMaxConnections },
+        'WS connection cap reached — closing new socket 4503',
+      );
+      socket.close(WS_CLOSE_TRY_AGAIN_LATER, 'too_many_connections');
+      return;
+    }
+
+    // Accepted into the handshake path — count it now and ensure exactly one
+    // decrement on close (guarded so a double 'close' cannot double-decrement).
+    wsConnectionCount += 1;
+    let counted = true;
+    const releaseConnectionSlot = (): void => {
+      if (counted) {
+        counted = false;
+        wsConnectionCount -= 1;
+      }
+    };
+    socket.on('close', releaseConnectionSlot);
+
     // handleHandshake is async and returns sessionId | null. Errors are caught
     // internally and close the socket — we just await for the resolved sessionId.
     handleHandshake(socket, req, tokenCache, replayBuffer, sessionStore, logger)
@@ -468,6 +764,48 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         // Instrument: increment WS sessions gauge on successful registration.
         metrics.wsSessionsActive.inc();
 
+        // On-connect initial push (Quick Task 260605-d0v): proactively send
+        // character.delta for the first roster actor so the glasses HUD renders
+        // real character data immediately on connect, without waiting for the
+        // next Foundry-triggered delta.
+        //
+        // Fire-and-forget; error-safe. The session token is read from the store
+        // (sessionStore.getSession returns undefined when the session was deleted
+        // between handshake and this point — the empty-token fallback results
+        // in the foundryFn returning null, which is a graceful no-op per IS-05).
+        //
+        // Quick Task 260605-dog: internalSnapshotFn now serves a cached snapshot
+        // for 'evf.getCharacterSnapshot' when the module has pushed a character.delta
+        // for the roster actor. It remains a graceful no-op while the cache is cold
+        // (returns null → IS-05 path) until the first /internal/delta push arrives.
+        const session = sessionStore.getSession(sessionId);
+        // FLV-CHAR-SELECT: conditionally include selectedActorId so the initial push
+        // serves the player's chosen PC instead of always roster[0]. Conditional spread
+        // is required by exactOptionalPropertyTypes (cannot pass undefined explicitly).
+        const initialPushArgs = {
+          sessionId,
+          token: session?.token ?? '',
+          deltaEmitter,
+          characterListCache,
+          foundryFn,
+          logger,
+          ...(session?.selectedActorId !== undefined
+            ? { selectedActorId: session.selectedActorId }
+            : {}),
+        };
+        void pushInitialCharacterDelta(initialPushArgs).catch((err) => {
+          logger.error({ err }, 'initial character.delta push failed');
+        });
+
+        // On-connect display-settings push (latency audit 2026-06-14): serve the
+        // cached `settings.display` snapshot so the glasses menu reflects the
+        // live Foundry values immediately, even when this app connected after
+        // the module's last change (the replay buffer only covers reconnects).
+        const latestSettings = settingsStore.getLatest();
+        if (latestSettings !== null) {
+          deltaEmitter.sendInitialToSession(sessionId, SETTINGS_DISPLAY_TYPE, latestSettings);
+        }
+
         // Message router: each handler is responsible for its own envelope type.
         // handleResume processes 'client_resume'; handleToolInvoke processes 'tool.invoke'.
         // Both no-op on unrecognised input — ordering does not matter.
@@ -479,7 +817,18 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             debugInboundTap(sessionId, rawData);
           }
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
-          void handleToolInvoke(socket, sessionId, sessionStore, wsDispatchFn, rawData, logger);
+          void handleToolInvoke(
+            socket,
+            sessionId,
+            sessionStore,
+            wsDispatchFn,
+            tokenCache,
+            rawData,
+            logger,
+          );
+          // 'client_setting' → queue a glasses-originated display-settings edit
+          // for the upstream frame-POST piggyback. No-op on other message types.
+          handleClientSetting(settingsStore, rawData, logger);
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees
@@ -609,20 +958,14 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
 
   // --- 11. Graceful-shutdown hook (WR-04) ---
   //
-  // Fastify's onClose hook fires from `app.close()` — production Docker
-  // SIGTERM does not currently call this (the bridge exits abruptly), but
-  // every test calls `app.close()` in afterEach. Wire the refresher's
-  // dispose() so subscribers + pending debounce timers are torn down per
-  // test instance. Previously, 67 buildServer() invocations each leaked
-  // a KeytermRefresher subscription that was only freed once GC also
-  // collected the Fastify app reference. With the hook the cleanup is
-  // deterministic; the refresher dispose() is idempotent so calling
-  // app.close() multiple times is safe.
-  //
-  // The hook also serves as the integration point for the future
-  // graceful-shutdown PR (track via TODO in issue tracker): once SIGTERM
-  // handling is added, it just needs to call `app.close()` and the
-  // refresher tear-down is already wired.
+  // Fastify's onClose hook fires from `app.close()`. Production Docker SIGTERM/SIGINT
+  // now calls `app.close()` (see index.ts graceful-shutdown handler), and every test
+  // calls it in afterEach. Wire the refresher's dispose() so subscribers + pending
+  // debounce timers are torn down per instance. Previously, 67 buildServer()
+  // invocations each leaked a KeytermRefresher subscription that was only freed once
+  // GC also collected the Fastify app reference. With the hook the cleanup is
+  // deterministic; the refresher dispose() is idempotent so calling app.close()
+  // multiple times is safe.
   app.addHook('onClose', async () => {
     if (_keytermRefresher !== null) {
       _keytermRefresher.dispose();

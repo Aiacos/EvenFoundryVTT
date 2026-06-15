@@ -41,6 +41,8 @@ export type Concentration = z.infer<typeof ConcentrationSchema>;
  * `hp` / `maxHp` are read from the linked actor (null if combatant has no actor).
  * `concentration` is an optional sub-object present when the combatant is actively
  * concentrating on a spell (Phase 5 Plan 05-01 addition).
+ * `ac` is an optional integer (≥0) present when the combatant has a linked actor with
+ * a readable `system.attributes.ac.value` (Phase 23 Plan 23-01 addition; RDATA-05).
  */
 export const CombatantSchema = z.strictObject({
   /** Combatant ID (foundry combatant document ID). */
@@ -63,6 +65,18 @@ export const CombatantSchema = z.strictObject({
    * `flags.dnd5e.concentrating === true`. Optional — most combatants are not concentrating.
    */
   concentration: ConcentrationSchema.optional(),
+  /**
+   * Armor Class from the linked actor (Phase 23 Plan 23-01 addition; RDATA-05).
+   *
+   * Read from `actor.system.attributes.ac.value` — stable across dnd5e PHB 2014 and 2024.
+   * OPTIONAL: absent when the combatant has no linked actor or `ac.value` is not a number.
+   * Renderer fallback: `' --'` when undefined (mirrors `concentration` optional precedent).
+   * Per D-23.4: do NOT derive from flat+bonus+armor; the single value field is sufficient.
+   *
+   * @see packages/foundry-module/src/readers/combat-reader.ts (producer: extractCombatantAc)
+   * @see .planning/phases/EVF-23-combat-tracker-su-canvas-combatant-ac/23-01-PLAN.md RDATA-05
+   */
+  ac: z.number().int().nonnegative().optional(),
 });
 
 export type Combatant = z.infer<typeof CombatantSchema>;

@@ -126,4 +126,74 @@ describe('createPortraitRenderer', () => {
     const r2 = await renderer.renderPortrait(TEST_URL);
     expect(r1.urlHash).toBe(r2.urlHash);
   });
+
+  // PR-RENDER-06 (SSRF): redirect: 'manual' passed to fetch + redirect responses blocked.
+  it('PR-RENDER-06: passes redirect:manual and rejects a redirect response (SSRF)', async () => {
+    let seenInit: { redirect?: string } | undefined;
+    const redirectResponse = {
+      ok: false,
+      status: 302,
+      type: 'opaqueredirect',
+      headers: { get: () => null },
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+    } as unknown as Response;
+
+    const renderer = createPortraitRenderer({
+      _fetchFn: (_url, init) => {
+        seenInit = init;
+        return Promise.resolve(redirectResponse);
+      },
+    });
+
+    await expect(renderer.renderPortrait(TEST_URL)).rejects.toThrow(PortraitFetchError);
+    // The outbound fetch MUST be invoked with redirect:'manual' so an allowed host
+    // cannot 302 the proxy to an internal target after the route's host/IP check.
+    expect(seenInit).toMatchObject({ redirect: 'manual' });
+  });
+  // PR-RENDER-07 (T-13-02a): an oversized CHUNKED body (no honest content-length)
+  // is aborted early by the running byte counter — it never fully buffers.
+  it('PR-RENDER-07: oversized chunked body is aborted early (running byte counter)', async () => {
+    const CHUNK = new Uint8Array(1024 * 1024); // 1 MB chunks
+    let chunksPulled = 0;
+    let cancelled = false;
+
+    // A streamable body with NO content-length header (chunked) that would emit far
+    // more than MAX_BODY_BYTES (5 MB) if read to completion.
+    const stream = {
+      getReader() {
+        return {
+          read() {
+            chunksPulled += 1;
+            // Emit 100 MB worth if never aborted — the cap must stop us long before.
+            if (chunksPulled > 100) return Promise.resolve({ done: true, value: undefined });
+            return Promise.resolve({ done: false, value: CHUNK });
+          },
+          cancel() {
+            cancelled = true;
+            return Promise.resolve();
+          },
+          releaseLock() {},
+        };
+      },
+    } as unknown as ReadableStream<Uint8Array>;
+
+    const chunkedResponse = {
+      ok: true,
+      status: 200,
+      type: 'basic',
+      headers: { get: () => null }, // NO content-length → header pre-check passes
+      body: stream,
+      arrayBuffer: () => Promise.reject(new Error('arrayBuffer must not be called')),
+    } as unknown as Response;
+
+    const renderer = createPortraitRenderer({
+      _fetchFn: () => Promise.resolve(chunkedResponse),
+    });
+
+    await expect(renderer.renderPortrait(TEST_URL)).rejects.toThrow(PortraitTooLargeError);
+    // Aborted early: at 1 MB/chunk and a 5 MB cap, we must stop after ~6 reads,
+    // far below the 100-chunk (100 MB) full body, and cancel the stream.
+    expect(chunksPulled).toBeLessThanOrEqual(8);
+    expect(cancelled).toBe(true);
+  });
 });

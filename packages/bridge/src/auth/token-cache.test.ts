@@ -2,14 +2,21 @@
  * Unit tests for TokenCache.
  *
  * Covers: cache hit (within TTL), cache miss (expired TTL), explicit invalidation,
- * foundry_unreachable default stub, negative result caching.
+ * foundry_unreachable default stub, negative result caching (short TTL +
+ * foundry_unreachable not cached).
  */
 import { describe, expect, it, vi } from 'vitest';
 import { TokenCache, type ValidateTokenResult } from './token-cache.js';
 
 const VALID_RESULT: ValidateTokenResult = {
   valid: true,
-  entry: { alias: 'Test G2', expiresAt: Date.now() + 24 * 60 * 60 * 1000, worldId: 'test-world' },
+  entry: {
+    alias: 'Test G2',
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    worldId: 'test-world',
+    userId: 'test-user',
+  },
+  authorizedActorIds: ['test-actor'],
 };
 
 const INVALID_RESULT: ValidateTokenResult = {
@@ -145,6 +152,53 @@ describe('TokenCache', () => {
       await cache.validate('bad-token');
 
       expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('expires a negative (invalid) result FASTER than a positive one', async () => {
+      vi.useFakeTimers();
+      try {
+        const invalidFn = vi.fn().mockResolvedValue(INVALID_RESULT);
+        const invalidCache = new TokenCache(invalidFn);
+        const validFn = vi.fn().mockResolvedValue(VALID_RESULT);
+        const validCache = new TokenCache(validFn);
+
+        await invalidCache.validate('bad-token');
+        await validCache.validate('good-token');
+
+        // Advance 11s: past the 10s negative TTL but well within the 5min positive TTL.
+        vi.advanceTimersByTime(11 * 1000);
+
+        await invalidCache.validate('bad-token'); // negative entry expired → re-call
+        await validCache.validate('good-token'); // positive entry still warm → no re-call
+
+        expect(invalidFn).toHaveBeenCalledTimes(2);
+        expect(validFn).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does NOT cache foundry_unreachable (recovery is never pinned)', async () => {
+      const fn = vi
+        .fn<(t: string) => Promise<ValidateTokenResult>>()
+        .mockResolvedValueOnce({ valid: false, reason: 'foundry_unreachable' })
+        .mockResolvedValueOnce({ valid: false, reason: 'foundry_unreachable' })
+        .mockResolvedValue(VALID_RESULT);
+      const cache = new TokenCache(fn);
+
+      // Two unreachable calls must BOTH hit Foundry (no caching of the transient error).
+      const r1 = await cache.validate('tok');
+      const r2 = await cache.validate('tok');
+      expect(r1.reason).toBe('foundry_unreachable');
+      expect(r2.reason).toBe('foundry_unreachable');
+      expect(fn).toHaveBeenCalledTimes(2);
+      // No entry was cached for the unreachable verdicts.
+      expect(cache.size).toBe(0);
+
+      // Once Foundry recovers, the very next call sees the valid result immediately.
+      const r3 = await cache.validate('tok');
+      expect(r3.valid).toBe(true);
+      expect(fn).toHaveBeenCalledTimes(3);
     });
   });
 

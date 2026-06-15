@@ -1,0 +1,58 @@
+# EvenFoundryVTT — full TEST stack overlay: Foundry VTT + bridge wired together.
+#
+# Lets you exercise the phone wizard end-to-end (Step 2 token → Step 3 character → HUD),
+# which needs a live Foundry + the EvenFoundryVTT module + socketlib.
+#
+# ⚠️ Foundry VTT is LICENSED software. The felddy/foundryvtt image downloads it using YOUR
+#    Foundry account credentials — set FOUNDRY_USERNAME + FOUNDRY_PASSWORD in deploy/.env.
+#    (No credentials → Foundry will not start. There is no way around the license.)
+#
+# Usage (from repo root):
+#   cp deploy/.env.example deploy/.env   # set EVF_INTERNAL_SECRET + FOUNDRY_USERNAME/PASSWORD
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.foundry-test.yml up -d
+#   # → Foundry at http://localhost:30000  ·  bridge at http://localhost:8910
+#
+# Then follow docs/release/foundry-test-stack.md (create a dnd5e world → install the module via
+# its manifest URL + socketlib → set the module's bridge URL + secret → "Pair Device" → the QR/token
+# goes into the wizard Step 2).
+
+name: evenfoundryvtt
+
+services:
+  foundry:
+    image: felddy/foundryvtt:13
+    container_name: evf-foundry
+    hostname: evf-foundry
+    init: true
+    restart: unless-stopped
+    ports:
+      - "30000:30000"
+    environment:
+      # Foundry account (https://foundryvtt.com) — required to download the licensed build.
+      - FOUNDRY_USERNAME=${FOUNDRY_USERNAME}
+      - FOUNDRY_PASSWORD=${FOUNDRY_PASSWORD}
+      # Admin password for the Foundry setup screen.
+      - FOUNDRY_ADMIN_KEY=${FOUNDRY_ADMIN_KEY:-evf-admin}
+      - FOUNDRY_MINIFY_STATIC_FILES=true
+      - TIMEZONE=${TZ:-Europe/Rome}
+    volumes:
+      - foundry_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:30000/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # The bridge (defined in docker-compose.yml) needs to resolve Foundry's origin for portrait
+  # image fetching. The module → bridge socketlib link is initiated from the GM's browser, so the
+  # bridge just needs to be reachable on the host (8910, already published).
+  bridge:
+    environment:
+      - EVF_FOUNDRY_ORIGIN_HOST=evf-foundry:30000
+    depends_on:
+      foundry:
+        condition: service_healthy
+
+volumes:
+  foundry_data:

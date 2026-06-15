@@ -13,6 +13,7 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 2
  */
 
+import { isWizardNoAuth } from '../is-dev-no-auth.js';
 import type { WizardState } from '../state.js';
 import { type Store, WizardStep } from '../state.js';
 import { listProfiles } from '../tier3-storage.js';
@@ -224,7 +225,11 @@ export function render(
     if (!BRIDGE_URL_REGEX.test(url)) {
       return;
     }
-    store.set({ bridgeUrl: url, step: WizardStep.STEP2, error: null });
+    // DEV-ONLY: when the access token is removed (isWizardNoAuth), skip Step 2
+    // (token entry) and go straight to Step 3 (character selection). The empty
+    // bearer is accepted by a bridge started with EVF_DEV_NO_AUTH.
+    const nextStep = isWizardNoAuth() ? WizardStep.STEP3 : WizardStep.STEP2;
+    store.set({ bridgeUrl: url, step: nextStep, error: null });
   }
 
   urlInput.addEventListener('blur', onUrlBlur);

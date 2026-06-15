@@ -1,11 +1,44 @@
 # Milestones
 
+## v0.10.0 Raster UI Substrate (Shipped: 2026-06-08)
+
+**Phases completed:** 8 phases, 26 plans, 41 tasks
+
+**Key accomplishments:**
+
+- ADR-0013 Amendment 1 ratified — geometry corrected to 200×100/400×200 (INV-2), 5-container fixed schema, Option B compositor, serialized push, renderMode selector.
+- HUD raster frame constants corrected to INV-2-verified 200×100/400×200 geometry; buildHudTiles validates 320000-byte buffers; all 24 HUD geometry tests pass.
+- Canvas compositor substrate (400×200 master, z-order dirty-skip) + CanvasLayer interface + 5-container HUD raster page schema (4 image tiles + 1 full-screen text capture).
+- None
+- Raster INV-1 contract established: deterministic synthetic RGBA → buildHudTiles() → 4 SHA-256 PNG tile hashes committed as golden fixture in shared-render/src/fixtures/
+- `CanvasStatusHudLayer` implements `CanvasLayer` at z=1 with ImageBitmap chrome pre-bake, `isDirty()` dirty-gate, and `CharacterSnapshotSchema`-validated delta subscription.
+- Added `checkInv1Raster` + `mergeInv1Results` to wire the RINV-01 raster suite into the `inv:all` INV-1 gate alongside the existing glyph suite, with a FALSE-PASS guard mirroring `checkInv5`.
+- `human_needed` — deferred under ADR-0005 Branch A.
+- Floyd-Steinberg dithering extracted from raster-worker.ts into size-parameterized exported dither-utils.ts, enabling portrait pipeline (Plan 21-04) to reuse the exact same greyscale algorithm without duplication.
+- 1. [Rule 1 - Bug] `beforeEach` imported but not used in test file
+- `_fetchPortraitAsync` async-once pipeline: fetch → createImageBitmap 100×60 → dither via reused dither-utils → UPNG.encode 4-bit PNG → MapBaseLayer slot-3 setPortraitOverride; fire-and-forget non-blocking, silent on failure.
+- Wire RDATA-03/RDATA-04 Zod contracts — FeatEntrySchema + BiographySnapshotSchema +
+- extractFeats() (PHB 2024/2014 paths + HTML strip) + extractBiography() (details.trait→personality, HTML-stripped backstory) wired into getCharacterSnapshot(), with full ambient type extensions in foundry-globals.d.ts.
+- 1. [Rule 1 - Bug] RCSP-PAINT-SCROLL test always equal when bio text too short
+- `ac: z.number().int().nonnegative().optional()` added to CombatantSchema in shared-protocol via TDD RED/GREEN — 0 downstream Combatant literals required updating
+- `extractCombatantAc()` reads `actor.system.attributes.ac.value` null-safely; `getCombatSnapshot()` now emits `ac` per linked combatant via conditional spread — RDATA-05 reader half complete
+- `CanvasCombatTrackerPanel` (canvas-combat-tracker) created as dual CanvasLayer+OverlayPanel; shared `renderCombatantRow` updated to real AC via `_rjust`; boot dispatch gate + handler injection wired; D-23.5 GUARD-PASS confirmed
+- HudDeltaDriver standalone class with xxhash-wasm h32Raw per-tile delta detection, configurable 100ms debounce, multi-channel WS subscribe, and zero-push-on-idle semantics.
+- LayerManager canvas mode fully wired to HudDeltaDriver — naive _startDeltaRecomposite/_stopDeltaRecomposite/_deltaRecompositeUnsub removed (INV-4), 5fps xxhash delta loop live at boot.
+- Behavior-preserving TDD extraction of `pushHudTiles` from `hud-poc-page.ts` into a standalone `hud/push-hud-tiles.ts` with 5 isolated tests; all 3 importers re-pointed.
+- Wired `layerManager.setRenderMode('glyph')` at boot step 9d on `effectiveVerdict==='glyph'` and added LMT-ATOMIC-01 e2e atomicity test proving canvas→glyph switch produces exactly one `rebuildPageContainer` with the 3-container glyph schema and zero mixed-schema intermediate frame.
+- Deleted the 5-file ?hud=raster PoC scaffold (boot-hud-raster-poc.ts, hud-poc-page.ts, hud-live-render.ts + 2 test files) and collapsed launch.ts Branch A to a single unconditional bootEngine call — INV-4 zero dead code closure
+- Atomic INV-3 commit upgrades Specs.md/README.md/showcase to v0.10.0, documents the CanvasCompositor raster substrate as the default rendering path, and wraps the §7.4 glyph mockup in a "Glyph Fallback Mode — BLE-degraded path" subsection (INV-1 contract preserved).
+
+---
+
 ## v0.9.11 MVP (Shipped: 2026-05-17)
 
 **Phases completed:** 15 phases, 71 plans, 95 tasks
 **Timeline:** 7 calendar days (2026-05-10 → 2026-05-17), 442 commits, ~99,642 LOC TypeScript across workspace, 2,097 tests passing
 **Branch:** `gsd/v0.9.11-milestone`
 **Archives:**
+
 - Roadmap: [`milestones/v0.9.11-ROADMAP.md`](milestones/v0.9.11-ROADMAP.md)
 - Requirements: [`milestones/v0.9.11-REQUIREMENTS.md`](milestones/v0.9.11-REQUIREMENTS.md)
 - Phases: [`milestones/v0.9.11-phases/`](milestones/v0.9.11-phases/) (15 directories)

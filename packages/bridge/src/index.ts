@@ -31,6 +31,30 @@ if (NODE_ENV === 'production') {
 
 const app = await buildServer({});
 
+// Graceful shutdown: on Docker `stop` / Compose `down` (SIGTERM) and Ctrl-C (SIGINT),
+// run app.close() so Fastify's onClose hooks fire — draining in-flight WS sessions and
+// clearing the debounce/settings timers wired in server.ts. Without this, the process
+// is hard-killed and those resources never drain on container stop.
+// Guarded so a second signal during shutdown does not re-enter close().
+let shuttingDown = false;
+const shutdown = (signal: NodeJS.Signals): void => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, 'bridge received shutdown signal — draining');
+  app
+    .close()
+    .then(() => {
+      app.log.info({ signal }, 'bridge closed cleanly');
+      process.exit(0);
+    })
+    .catch((err) => {
+      app.log.error({ err, signal }, 'bridge close failed during shutdown');
+      process.exit(1);
+    });
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 try {
   await app.listen({ port: PORT, host: '0.0.0.0' });
 } catch (err) {

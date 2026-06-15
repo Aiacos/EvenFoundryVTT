@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "SHA-256 hashes of 4 HUD tile PNGs from canonical synthetic RGBA (Phase 20)",
+  "tiles": [
+    {
+      "index": 0,
+      "containerName": "hud-tile-0",
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
+    },
+    {
+      "index": 1,
+      "containerName": "hud-tile-1",
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
+    },
+    {
+      "index": 2,
+      "containerName": "hud-tile-2",
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
+    },
+    {
+      "index": 3,
+      "containerName": "hud-tile-3",
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
+    }
+  ]
+}

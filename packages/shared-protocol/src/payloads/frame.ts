@@ -34,9 +34,28 @@
  * `envelope.type === 'frame_pixels'`, then parse `envelope.payload` via
  * `FramePixelsSchema.safeParse` (defense-in-depth two-layer parse — T-4a-06-02).
  *
- * **Bounds** (from OQ-INV2-4 SDK polyfill discovery — STATE.md 2026-05-14):
- *   - width:  20 ≤ w ≤ 288
- *   - height: 20 ≤ h ≤ 144
+ * **Bounds** (ADR-0013 Amendment 1 canonical raster region — INV-2 re-verified
+ * 2026-06-05 against `hub.evenrealities.com/docs/guides/display`):
+ *   - width:  20 ≤ w ≤ 576   (4 image tiles of 288×144, 2×2 → 576×288 FULL SCREEN —
+ *     SDK verbatim limits: image container 20–288 × 20–144, INV-2 re-verified 2026-06-10)
+ *   - height: 20 ≤ h ≤ 288
+ *
+ * **Schema bound vs. worker tile layout — not the same thing**
+ *
+ * The SCHEMA permits the full G2 raster region: 20–576 wide × 20–288 high. That
+ * is the wire contract — any producer may send a frame anywhere in that range
+ * and it validates. The legacy `raster-worker.ts` resizes / normalizes the
+ * incoming frame internally to its own 400×200 tile layout; that 400×200 figure
+ * is the worker's INTERNAL working size, NOT a wire bound, and callers never
+ * need to pre-size to it.
+ *
+ * History: the original Plan 4a-06 bounds were 288×144 (OQ-INV2-4 SDK polyfill
+ * typedefs, STATE.md 2026-05-14). The Phase 19 geometry correction (ADR-0013
+ * Amendment 1) widened the region to full-screen and the schema bound moved up
+ * to 576×288 so a canonical full-region frame is expressible on the wire (debug
+ * `map-frame-pipeline-dims`, 2026-06-10; the old 288→144 cap made full-screen
+ * frames un-expressible). The 400×200 internal worker layout predates that
+ * widening and is unrelated to the wire bound documented here.
  *
  * **Wire-size note**
  *
@@ -90,8 +109,8 @@ const FRAME_GLOBALS: FrameGlobals = globalThis as unknown as FrameGlobals;
  * Fields:
  *   - `sceneId`   — Foundry scene `_id` of the captured scene (lets the consumer
  *                   discriminate frames across scene transitions).
- *   - `width`     — Frame width in pixels (20–288, inclusive — SDK polyfill bound).
- *   - `height`    — Frame height in pixels (20–144, inclusive — SDK polyfill bound).
+ *   - `width`     — Frame width in pixels (20–576, inclusive — full-screen raster region, layout B 2026-06-10).
+ *   - `height`    — Frame height in pixels (20–288, inclusive — full-screen raster region, layout B 2026-06-10).
  *   - `pixelsB64` — Base64-encoded RGBA byte array. After decode, length MUST
  *                   equal `width × height × 4` (enforced at decode time by
  *                   `decodeFramePixels`). Encoding is JSON-uniform; binary
@@ -100,9 +119,9 @@ const FRAME_GLOBALS: FrameGlobals = globalThis as unknown as FrameGlobals;
  */
 export const FramePixelsSchema = z.object({
   sceneId: z.string().min(1),
-  width: z.number().int().min(20).max(288),
-  height: z.number().int().min(20).max(144),
-  pixelsB64: z.string(),
+  width: z.number().int().min(20).max(576),
+  height: z.number().int().min(20).max(288),
+  pixelsB64: z.string().min(1),
   ts: z.number().int().positive(),
 });
 

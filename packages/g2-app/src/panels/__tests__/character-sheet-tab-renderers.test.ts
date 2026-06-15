@@ -59,8 +59,17 @@
  *   - CSTR-FIX-FEATS-2024: renderFeatsTab → fixture sheet.feats.2024.it.txt
  *   - CSTR-FIX-BIO:       renderBioTab → fixture sheet.bio.it.txt
  *
+ * Phase 22 real-data bindings (CSTR-FEAT-*, CSTR-BIO-*):
+ *   - CSTR-FEAT-1: renderFeatsTab(snapshotWithFeats, 'en', 0) includes real feat name; no DEFAULT_FEATS name
+ *   - CSTR-FEAT-2: renderFeatsTab(snapshot with feats:[], 'en', 0) → 18 rows (graceful empty)
+ *   - CSTR-FEAT-3: renderFeatsTab still returns ROW_COUNT rows × INNER_WIDTH code-points (width invariant)
+ *   - CSTR-BIO-1:  renderBioTab(snapshotWithRealBio, 'en', 0) includes real personality text; no hardcoded IT text
+ *   - CSTR-BIO-2:  renderBioTab skips section with empty field (no header for empty personality)
+ *   - CSTR-BIO-3:  renderBioTab(snapshot with biography undefined, 'en', 0) → 18 blank-ish rows, no crash
+ *
  * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-03-PLAN.md
  * @see .planning/phases/05-panel-plugin-system-read-only-panels/05-UI-SPEC.md §5.2-§5.7
+ * @see .planning/phases/EVF-22-features-biography-schema-extension/22-03-PLAN.md
  */
 
 import { readFileSync } from 'node:fs';
@@ -100,6 +109,9 @@ function loadFixture(name: string): string {
  *   CHA  8 mod -1 save -1
  */
 const snapshot2014: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'thorin-oakenshield-001',
   name: 'THORIN OAKENSHIELD',
   hp: 45,
@@ -163,9 +175,64 @@ const snapshot2024: CharacterSnapshot = {
   world: { modernRules: true },
 };
 
-/** Snapshot with biography text (for HTML-strip + word-wrap tests) */
+/**
+ * Snapshot with real biography data (Phase 22 RDATA-04).
+ *
+ * Used by CSTR-BIO-STRIP-HTML, CSTR-BIO-WORDWRAP, CSTR-BIO-SCROLL to test
+ * real snapshot.biography data flow. The snapshotWithBio alias is preserved
+ * for test continuity; it now carries a real biography object.
+ */
 const snapshotWithBio: CharacterSnapshot = {
   ...snapshot2014,
+  biography: {
+    personality: 'Sono un guerriero onesto che non si ferma davanti agli ostacoli.',
+    ideal: 'Lealtà: la fedeltà ai compagni è tutto.',
+    bond: 'Difenderò la mia dimora ancestrale costi quel che costi.',
+    flaw: "L'orgoglio mi rende spesso testardo e chiuso al compromesso.",
+    backstory: 'Ex soldato del reggimento di montagna, veterano di tre campagne.',
+  },
+};
+
+/**
+ * Snapshot with real feats array (Phase 22 RDATA-03).
+ *
+ * Used by CSTR-FEAT-1 to verify renderFeatsTab uses snapshot.feats data.
+ * Includes one origin feat (2024 PHB) and one class feature.
+ */
+const snapshotWithFeats: CharacterSnapshot = {
+  ...snapshot2014,
+  world: { modernRules: true },
+  feats: [
+    {
+      category: 'class',
+      name: 'Action Surge',
+      isOrigin: false,
+      description: 'extra action 1/short rest',
+    },
+    {
+      category: 'feat',
+      name: 'Alert',
+      isOrigin: true,
+      description: '+5 initiative; not surprised',
+    },
+  ],
+};
+
+/**
+ * Snapshot with real biography — EN locale text (Phase 22 CSTR-BIO-1/2).
+ *
+ * Used to verify renderBioTab uses snapshot.biography fields and that empty
+ * sections are skipped (CSTR-BIO-2: personality empty → no header emitted).
+ */
+const snapshotWithRealBio: CharacterSnapshot = {
+  ...snapshot2014,
+  biography: {
+    personality: 'A brave and honest warrior.',
+    ideal: '',
+    bond: 'Protect the homeland.',
+    flaw: 'Too stubborn.',
+    backstory: 'Veteran of three mountain campaigns.',
+  },
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -354,20 +421,30 @@ describe('renderSkillsTab', () => {
 
 describe('renderFeatsTab', () => {
   it('CSTR-FEATS-2014: modernRules=false → no [Origine] annotation', () => {
-    const rows = renderFeatsTab(snapshot2014, 'it', 0);
+    // snapshot2014 has no feats → renders graceful empty state; no [Origine] by definition.
+    // snapshotWithFeats has modernRules:true; test uses a PHB-2014 variant without origin feats.
+    const snap2014NoOrigin: CharacterSnapshot = {
+      ...snapshot2014,
+      feats: [
+        { category: 'class', name: 'Second Wind', isOrigin: false, description: 'recover HP' },
+      ],
+    };
+    const rows = renderFeatsTab(snap2014NoOrigin, 'it', 0);
     const joined = rows.join('\n');
     expect(joined).not.toContain('[Origine]');
     expect(joined).not.toContain('[Origin]');
   });
 
   it('CSTR-FEATS-2024: modernRules=true → [Origine] in output (IT locale)', () => {
-    const rows = renderFeatsTab(snapshot2024, 'it', 0);
+    // snapshotWithFeats has modernRules:true + an origin feat (Alert, isOrigin:true)
+    const rows = renderFeatsTab(snapshotWithFeats, 'it', 0);
     const joined = rows.join('\n');
     expect(joined).toContain('[Origine]');
   });
 
-  it('CSTR-FEATS-HEADERS: section header row contains class section label', () => {
-    const rows = renderFeatsTab(snapshot2014, 'it', 0);
+  it('CSTR-FEATS-HEADERS: section header row contains class section label when class feats present', () => {
+    // snapshotWithFeats has an 'Action Surge' class feat → CLASSE section header emitted
+    const rows = renderFeatsTab(snapshotWithFeats, 'it', 0);
     const joined = rows.join('\n');
     // IT locale: sheet.feat.class_section = '◆ CLASSE ·'
     expect(joined).toContain('◆ CLASSE ·');
@@ -484,21 +561,30 @@ describe('INV-1 round-trip fixtures', () => {
     expect(actual).toBe(expected);
   });
 
-  it('CSTR-FIX-FEATS-2014: renderFeatsTab matches sheet.feats.2014.it.txt', () => {
-    const rows = renderFeatsTab(snapshot2014, 'it', 0);
+  it('CSTR-FIX-FEATS-2014: renderFeatsTab(snapshotWithBio, it) matches sheet.feats.2014.it.txt', () => {
+    // Phase 22: feats fixture now reflects the empty-feats graceful state (snapshot has no feats).
+    // snapshotWithBio has no feats field → renderFeatsTab uses snapshot.feats ?? [] → empty state.
+    // The fixture sheet.feats.2014.it.txt was updated byte-aligned in Phase 22 Plan 22-03
+    // to reflect the empty-feats render (scroll hint + blank rows).
+    const rows = renderFeatsTab(snapshotWithBio, 'it', 0);
     const expected = normaliseRows(loadFixture('sheet.feats.2014.it.txt'));
     const actual = normaliseRows(rows.join('\n'));
     expect(actual).toBe(expected);
   });
 
-  it('CSTR-FIX-FEATS-2024: renderFeatsTab matches sheet.feats.2024.it.txt', () => {
-    const rows = renderFeatsTab(snapshot2024, 'it', 0);
+  it('CSTR-FIX-FEATS-2024: renderFeatsTab(snapshotWithBio modernRules:true, it) matches sheet.feats.2024.it.txt', () => {
+    // Phase 22: feats fixture updated to reflect the empty-feats state for a 2024 snapshot.
+    const snap2024NoBio: CharacterSnapshot = { ...snapshotWithBio, world: { modernRules: true } };
+    const rows = renderFeatsTab(snap2024NoBio, 'it', 0);
     const expected = normaliseRows(loadFixture('sheet.feats.2024.it.txt'));
     const actual = normaliseRows(rows.join('\n'));
     expect(actual).toBe(expected);
   });
 
-  it('CSTR-FIX-BIO: renderBioTab matches sheet.bio.it.txt', () => {
+  it('CSTR-FIX-BIO: renderBioTab(snapshotWithBio, it) matches sheet.bio.it.txt', () => {
+    // Phase 22: snapshotWithBio now carries real biography data.
+    // The fixture sheet.bio.it.txt was updated byte-aligned in Phase 22 Plan 22-03
+    // to reflect the real biography render output.
     const rows = renderBioTab(snapshotWithBio, 'it', 0);
     const expected = normaliseRows(loadFixture('sheet.bio.it.txt'));
     const actual = normaliseRows(rows.join('\n'));
@@ -671,6 +757,88 @@ describe('renderSkillsTab — skills data binding (CSTR-SKILLS-DATA)', () => {
     const rowsDe = renderMainTab(snapshot2014, 'de');
     const joinedDe = rowsDe.join('\n');
     expect(joinedDe).toContain('Sinne  WN 11 · EIN 11 · NCH 14');
+  });
+});
+
+// ─── CSTR-FEAT-* Phase 22 real-data binding tests ────────────────────────────
+//
+// RDATA-03: renderFeatsTab must use snapshot.feats instead of DEFAULT_FEATS.
+// These tests are the RED gate for Phase 22 Plan 22-03 Task 1.
+
+describe('renderFeatsTab — Phase 22 real data binding (CSTR-FEAT)', () => {
+  it('CSTR-FEAT-1: renderFeatsTab(snapshotWithFeats, en, 0) includes real feat name; excludes DEFAULT_FEATS-only names', () => {
+    const rows = renderFeatsTab(snapshotWithFeats, 'en', 0);
+    const joined = rows.join('\n');
+    // Real feat names from snapshotWithFeats
+    expect(joined).toContain('Action Surge');
+    expect(joined).toContain('Alert');
+    // DEFAULT_FEATS-only name must be absent (Second Wind not in snapshotWithFeats)
+    expect(joined).not.toContain('Second Wind');
+  });
+
+  it('CSTR-FEAT-2: renderFeatsTab(snapshot with feats:[], en, 0) returns 18 rows (graceful empty state)', () => {
+    const snapEmptyFeats: CharacterSnapshot = { ...snapshot2014, feats: [] };
+    const rows = renderFeatsTab(snapEmptyFeats, 'en', 0);
+    expect(rows).toHaveLength(18);
+  });
+
+  it('CSTR-FEAT-3: renderFeatsTab always returns ROW_COUNT rows × INNER_WIDTH code-points (width invariant)', () => {
+    // With real feats
+    const rowsWithFeats = renderFeatsTab(snapshotWithFeats, 'en', 0);
+    expect(rowsWithFeats).toHaveLength(18);
+    for (const row of rowsWithFeats) {
+      expect(codePointLen(row)).toBe(66);
+    }
+    // Empty feats
+    const rowsEmpty = renderFeatsTab({ ...snapshot2014, feats: [] }, 'en', 0);
+    expect(rowsEmpty).toHaveLength(18);
+    for (const row of rowsEmpty) {
+      expect(codePointLen(row)).toBe(66);
+    }
+    // No feats field (undefined)
+    const rowsUndefined = renderFeatsTab(snapshot2014, 'en', 0);
+    expect(rowsUndefined).toHaveLength(18);
+    for (const row of rowsUndefined) {
+      expect(codePointLen(row)).toBe(66);
+    }
+  });
+});
+
+// ─── CSTR-BIO-* Phase 22 real-data binding tests ─────────────────────────────
+//
+// RDATA-04: renderBioTab must use snapshot.biography fields instead of hardcoded text.
+// These tests are the RED gate for Phase 22 Plan 22-03 Task 1.
+
+describe('renderBioTab — Phase 22 real data binding (CSTR-BIO)', () => {
+  it('CSTR-BIO-1: renderBioTab(snapshotWithRealBio, en, 0) includes real personality text; no hardcoded IT text', () => {
+    const rows = renderBioTab(snapshotWithRealBio, 'en', 0);
+    const joined = rows.join('\n');
+    // Real biography text from snapshotWithRealBio
+    expect(joined).toContain('A brave and honest warrior.');
+    expect(joined).toContain('Protect the homeland.');
+    // The old hardcoded Italian text must NOT appear
+    expect(joined).not.toContain('guerriero onesto');
+    expect(joined).not.toContain('la fedeltà ai compagni');
+  });
+
+  it('CSTR-BIO-2: renderBioTab skips section with empty field (no header line for empty ideal)', () => {
+    // snapshotWithRealBio has ideal:'' → the Ideal section header must be absent
+    const rows = renderBioTab(snapshotWithRealBio, 'en', 0);
+    const joined = rows.join('\n');
+    // Personality is present → its header must appear
+    expect(joined).toContain('Personality');
+    // Ideal is empty → its header must NOT appear
+    expect(joined).not.toContain('Ideal');
+  });
+
+  it('CSTR-BIO-3: renderBioTab(snapshot with biography undefined, en, 0) → 18 blank-ish rows, no crash', () => {
+    // snapshot2014 has no biography field → graceful fallback (all empty sections skipped)
+    const rows = renderBioTab(snapshot2014, 'en', 0);
+    expect(rows).toHaveLength(18);
+    // Should not throw; each row is 66 code-points wide
+    for (const row of rows) {
+      expect(codePointLen(row)).toBe(66);
+    }
   });
 });
 

@@ -18,7 +18,7 @@
  * @see .planning/phases/10-polish-field-test-mvp/10-01-PLAN.md Task 3
  */
 import type { CharacterSnapshot } from '@evf/shared-protocol';
-import { matchAsciiFixture } from '@evf/shared-render';
+// matchAsciiFixture replaced by toMatchFileSnapshot for HUD-27PX string output (SLC-06a/b)
 import { describe, expect, it } from 'vitest';
 import { buildSyncLostChip } from '../engine/sync-lost-chip.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
@@ -26,6 +26,9 @@ import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 // ─── Canonical test snapshot for fixture rendering ────────────────────────────
 
 const IDLE_SNAPSHOT: CharacterSnapshot = {
+  class: 'Fighter',
+  initiative: 2,
+  speed: 30,
   actorId: 'pc-aiacos',
   name: 'Aiacos',
   ac: 16,
@@ -140,18 +143,18 @@ describe('StatusHudRenderer.renderContextChip sync-lost override', () => {
 describe('StatusHudRenderer sync-lost INV-1 fixtures', () => {
   it('SLC-06a: IT sync-lost HUD fixture matches status-hud.sync-lost.it.txt', async () => {
     const renderer = new StatusHudRenderer({ locale: 'it' });
-    const grid = renderer.render(IDLE_SNAPSHOT);
-    await matchAsciiFixture(
-      grid,
+    // HUD-27PX: renderer returns a string (not AsciiGrid); use toMatchFileSnapshot directly
+    const output = renderer.render(IDLE_SNAPSHOT);
+    await expect(`${output}\n`).toMatchFileSnapshot(
       '../../../shared-render/src/fixtures/status-hud.sync-lost.it.txt',
     );
   });
 
   it('SLC-06b: EN sync-lost HUD fixture matches status-hud.sync-lost.en.txt', async () => {
     const renderer = new StatusHudRenderer({ locale: 'en' });
-    const grid = renderer.render(IDLE_SNAPSHOT);
-    await matchAsciiFixture(
-      grid,
+    // HUD-27PX: renderer returns a string (not AsciiGrid)
+    const output = renderer.render(IDLE_SNAPSHOT);
+    await expect(`${output}\n`).toMatchFileSnapshot(
       '../../../shared-render/src/fixtures/status-hud.sync-lost.en.txt',
     );
   });

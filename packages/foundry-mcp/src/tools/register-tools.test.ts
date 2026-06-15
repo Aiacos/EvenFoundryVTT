@@ -194,4 +194,60 @@ describe('registerEvfTools', () => {
     expect(invokeSpy).not.toHaveBeenCalled();
     await client.close();
   });
+
+  it('case 9: a known constant error code passes through unchanged (T-11-08)', async () => {
+    // Constant-shape codes ([a-z0-9_]+) are the contract — they must NOT be rewritten.
+    bridgeStub = makeBridgeStub(async () => ({ success: false, error: 'spell_not_prepared' }));
+    const { client } = await createConnectedPair(bridgeStub);
+
+    const result = await client.callTool({
+      name: 'cast-spell',
+      arguments: { actor_id: 'actor-1', spell_id: 'fireball', slot_level: 3, targets: [] },
+    });
+
+    expect(result.isError).toBe(true);
+    // biome-ignore lint/style/noNonNullAssertion: content[0] always present on tool result
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
+    expect(content.text).toBe('spell_not_prepared');
+    await client.close();
+  });
+
+  it('case 10: an arbitrary internal error string is replaced by internal_error (T-11-08)', async () => {
+    // The bridge dispatch catch path can forward raw dnd5e/Foundry messages like this.
+    // The boundary MUST NOT leak it to the LLM — it maps to the generic code instead.
+    const rawInternal = "Cannot read properties of undefined (reading 'system')";
+    bridgeStub = makeBridgeStub(async () => ({ success: false, error: rawInternal }));
+    const { client } = await createConnectedPair(bridgeStub);
+
+    const result = await client.callTool({
+      name: 'cast-spell',
+      arguments: { actor_id: 'actor-1', spell_id: 'fireball', slot_level: 3, targets: [] },
+    });
+
+    expect(result.isError).toBe(true);
+    // biome-ignore lint/style/noNonNullAssertion: content[0] always present on tool result
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
+    expect(content.text).toBe('internal_error');
+    // The raw internal message must NOT appear anywhere in the LLM-facing content.
+    expect(content.text).not.toContain('system');
+    expect(content.text).not.toContain('Cannot read');
+    await client.close();
+  });
+
+  it('case 11: an undefined error falls back to internal_error (T-11-08)', async () => {
+    // A failure with no error string is also non-constant-shape → generic code.
+    bridgeStub = makeBridgeStub(async () => ({ success: false }));
+    const { client } = await createConnectedPair(bridgeStub);
+
+    const result = await client.callTool({
+      name: 'cast-spell',
+      arguments: { actor_id: 'actor-1', spell_id: 'fireball', slot_level: 3, targets: [] },
+    });
+
+    expect(result.isError).toBe(true);
+    // biome-ignore lint/style/noNonNullAssertion: content[0] always present on tool result
+    const content = (result.content as Array<{ type: string; text: string }>)[0]!;
+    expect(content.text).toBe('internal_error');
+    await client.close();
+  });
 });

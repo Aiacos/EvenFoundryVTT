@@ -452,3 +452,11 @@ label:first-child {
   padding-top: var(--evf-md);
   border-top: 1px solid var(--evf-border);
 }
+
+/* Step 3 scoping note (ADR-0014) — the roster is filtered to the paired
+   Foundry user's owned actors; render as subtle secondary text. */
+.evf-step3-scoped {
+  color: var(--evf-text-subtle);
+  font-size: var(--evf-font-body);
+  margin: 0 0 0.5rem;
+}

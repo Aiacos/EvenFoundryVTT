@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "SHA-256 hashes of 4 HUD tile PNGs from the SHARED canonical synthetic RGBA gradient (Phase 21 canvas sheet panel). NOTE: this golden is intentionally byte-identical to status-hud.raster-hash.json — RCSP-INV1 feeds the same synthetic gradient through the same buildHudTiles() because real sheet-panel text rendering needs OffscreenCanvas (unavailable in happy-dom, non-deterministic). It therefore verifies that the tile-builder is deterministic and produces canonical tile geometry for the sheet-panel path; it does NOT verify the sheet's text content/layout. tile0==tile2 and tile1==tile3 because the 2x2 gradient is column-periodic. See packages/g2-app/src/panels/__tests__/canvas-character-sheet-panel.test.ts (RCSP-INV1).",
+  "tiles": [
+    {
+      "index": 0,
+      "containerName": "hud-tile-0",
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
+    },
+    {
+      "index": 1,
+      "containerName": "hud-tile-1",
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
+    },
+    {
+      "index": 2,
+      "containerName": "hud-tile-2",
+      "sha256": "af97d801f142eaf5f8863046712ab50917152df6ad006939964b4f68bfea5621"
+    },
+    {
+      "index": 3,
+      "containerName": "hud-tile-3",
+      "sha256": "b429e4b486a1a769c58b173830b6f9414fddde23aa5ae7100c271fa7c30722c0"
+    }
+  ]
+}

@@ -1,5 +1,37 @@
 # @evf/foundry-module
 
+## 0.1.15
+
+### Minor Changes
+
+- Quick Task 260611-e71: frame_png wire format — greyscale lossless PNG (~1-5 KB vs ~884 KB RGBA).
+  - `canvas-extractor.ts` now emits ONLY `frame_png` envelopes (never `frame_pixels`).
+  - PNG encode via `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)` (ctype=2 RGB, exact luma roundtrip, ~100–700× smaller than frame_pixels).
+  - Identical-frame skip: FNV-1a 32-bit luma hash — no POST when content unchanged.
+  - Leading+trailing hook throttle (THROTTLE_MS=200 ms): continuous canvasPan emits ~5 fps.
+  - Live `captureIntervalMs` world setting (default 250 ms, range 100–5000 ms, step 50 ms) via TICK_MS=100 ms poll — DM can change cadence without module reload.
+
+## 0.1.4
+
+### Patch Changes
+
+- e5b4a3f: Fix the "Pair Device" dialog crashing on Foundry v13+ with _"PairModal … is not renderable
+  because it does not implement \_renderHTML and \_replaceHTML"_. `PairModal` mixed v1 `Application`
+  patterns (`defaultOptions.template`, `getData`, `_activateListeners`) onto the abstract
+  `ApplicationV2` base. Converted it to the real v13 API: `HandlebarsApplicationMixin(ApplicationV2)`
+  - `static DEFAULT_OPTIONS`/`PARTS`, `_prepareContext()`, `_onRender()` (reads `this.element`),
+    and `render({ force: true })`. The hand-rolled `foundry.applications.api` type declaration gained
+    `HandlebarsApplicationMixin` + the v13 ApplicationV2 surface.
+
+## 0.1.3
+
+### Patch Changes
+
+- 68deaf8: Distribution re-release: bundle the updated g2-app (Even Hub app icon + manifest `description` +
+  dev-mode docs) into the release assets. No module source change — the foundry-module release is the
+  distribution anchor that re-packages `g2-app-dist.zip` + the submission-ready `evenfoundryvtt.ehpk`
+  (now carrying the icon + description) and attaches them to the GitHub Release.
+
 ## 0.1.2
 
 ### Patch Changes

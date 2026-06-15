@@ -46,7 +46,14 @@ function makeValidFn(): (token: string) => Promise<ValidateTokenResult> {
     if (token === VALID_TOKEN) {
       return {
         valid: true,
-        entry: { alias: 'Test G2', expiresAt: Date.now() + 86_400_000, worldId: 'test-world' },
+        entry: {
+          alias: 'Test G2',
+          expiresAt: Date.now() + 86_400_000,
+          worldId: 'test-world',
+          userId: 'test-user',
+        },
+        // ADR-0014: authorize the actor ids exercised by the integration tests.
+        authorizedActorIds: ['actor-1', 'actor-2'],
       };
     }
     return { valid: false, reason: 'unknown_token' };
@@ -58,6 +65,68 @@ function makeUnreachableFn(): (token: string) => Promise<ValidateTokenResult> {
     valid: false,
     reason: 'foundry_unreachable',
   });
+}
+
+/**
+ * Build a full CharacterSnapshotSchema-valid object for `actorId`.
+ *
+ * Used by the ADR-0014 enforcement tests to push a `character.delta` into the
+ * snapshot cache so the read path has something to (potentially) serve — proving
+ * authorization rejects BEFORE the cached snapshot is returned.
+ */
+function buildCharacterSnapshot(actorId: string) {
+  const skill = (ability: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha') => ({
+    total: 0,
+    ability,
+    proficient: 0 as const,
+    passive: 10,
+  });
+  return {
+    actorId,
+    name: 'Owned PC',
+    hp: 10,
+    maxHp: 10,
+    tempHp: 0,
+    ac: 10,
+    level: 1,
+    conditions: [],
+    exhaustion: 0,
+    death: { success: 0, failure: 0 },
+    world: { modernRules: false },
+    inventory: [],
+    spells: { slots: [], spells: [] },
+    abilities: {
+      str: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      con: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      int: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      wis: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+      cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    },
+    skills: {
+      acr: skill('dex'),
+      ani: skill('wis'),
+      arc: skill('int'),
+      ath: skill('str'),
+      dec: skill('cha'),
+      his: skill('int'),
+      ins: skill('wis'),
+      itm: skill('cha'),
+      inv: skill('int'),
+      med: skill('wis'),
+      nat: skill('int'),
+      prc: skill('wis'),
+      prf: skill('cha'),
+      per: skill('cha'),
+      rel: skill('int'),
+      slt: skill('dex'),
+      ste: skill('dex'),
+      sur: skill('wis'),
+    },
+    class: 'Fighter',
+    initiative: 0,
+    speed: 30,
+  };
 }
 
 describe('buildServer integration', () => {
@@ -268,6 +337,9 @@ describe('buildServer integration', () => {
         ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
         sur: { total: 0, ability: 'wis' as const, proficient: 0 as const, passive: 10 },
       },
+      class: 'Fighter',
+      initiative: 2,
+      speed: 30,
     };
 
     it('returns 200 with CharacterSnapshot for valid bearer + actorId', async () => {
@@ -516,6 +588,467 @@ describe('buildServer integration', () => {
       app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
       const res = await app.inject({ method: 'GET', url: '/v1/characters' });
       expect(res.statusCode).toBe(401);
+    });
+  });
+
+  // ── Quick Task 260604-eyf: internal validate fn from BearerRegistryCache ──────
+
+  describe('buildServer({}) — internalValidateFn from BearerRegistryCache', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    it('returns 503 foundry_unreachable when cache is cold (module never connected)', async () => {
+      // buildServer({}) with NO foundryValidateFn → internalValidateFn uses cold cache
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json<{ error: string }>().error).toBe('foundry_unreachable');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 200 for a valid token pushed via /internal/delta', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      const futureExpiry = Date.now() + 86_400_000;
+      // Push a bearer registry snapshot
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [
+              {
+                token: VALID_TOKEN,
+                alias: 'G2 Test',
+                expiresAt: futureExpiry,
+                worldId: 'world-1',
+                userId: 'u',
+                authorizedActorIds: [],
+              },
+            ],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 unknown_token for token absent from pushed registry', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      // Push a registry with a DIFFERENT token (not VALID_TOKEN)
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [
+              {
+                token: 'different-token-xyz',
+                alias: 'Other',
+                expiresAt: Date.now() + 86_400_000,
+                worldId: 'w',
+                userId: 'u',
+                authorizedActorIds: [],
+              },
+            ],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json<{ error: string }>().error).toBe('invalid_token');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns 401 expired for token that is expired in registry', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+
+      // Push a registry with an EXPIRED token
+      const expiredTime = Date.now() - 1000; // already expired
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [
+              {
+                token: VALID_TOKEN,
+                alias: 'Old G2',
+                expiresAt: expiredTime,
+                worldId: 'w',
+                userId: 'u',
+                authorizedActorIds: [],
+              },
+            ],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      // TokenCache caches validations for 5 min, so this goes through to internalValidateFn.
+      // expired → 401 invalid_token
+      expect(res.statusCode).toBe(401);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('opts.foundryValidateFn overrides internalValidateFn when provided', async () => {
+      // Existing tests that inject foundryValidateFn must not be affected
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ foundryValidateFn: makeValidFn(), langDirOverride: LANG_DIR });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/health',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      // makeValidFn() returns valid for VALID_TOKEN even with cold cache
+      expect(res.statusCode).toBe(200);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+  });
+
+  // ── Quick Task 260604-eyf: GET /v1/characters from CharacterListCache ─────────
+
+  describe('GET /v1/characters from CharacterListCache (buildServer({}))', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    it('returns [] when character list cache is cold', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+
+      const futureExpiry = Date.now() + 86_400_000;
+      // Pre-populate bearerRegistryCache so token validates
+      const { BearerRegistryCache } = await import('./cache/bearer-registry-cache.js');
+      const bearerCache = new BearerRegistryCache();
+      bearerCache.set({
+        bearers: [
+          {
+            token: VALID_TOKEN,
+            alias: 'G2',
+            expiresAt: futureExpiry,
+            worldId: 'w',
+            userId: 'u',
+            authorizedActorIds: [],
+          },
+        ],
+        source: 'foundry-registry',
+        count: 1,
+        generatedAt: Date.now(),
+      });
+      app = await buildServer({ langDirOverride: LANG_DIR, bearerRegistryCache: bearerCache });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ characters: unknown[] }>().characters).toHaveLength(0);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('returns pushed roster when character list cache has data', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+
+      const futureExpiry = Date.now() + 86_400_000;
+      const { BearerRegistryCache } = await import('./cache/bearer-registry-cache.js');
+      const { CharacterListCache } = await import('./cache/character-list-cache.js');
+
+      const bearerCache = new BearerRegistryCache();
+      bearerCache.set({
+        bearers: [
+          {
+            token: VALID_TOKEN,
+            alias: 'G2',
+            expiresAt: futureExpiry,
+            worldId: 'w',
+            userId: 'u',
+            // ADR-0014: authorize both pushed actors so the roster filter keeps them.
+            authorizedActorIds: ['actor-1', 'actor-2'],
+          },
+        ],
+        source: 'foundry-registry',
+        count: 1,
+        generatedAt: Date.now(),
+      });
+
+      const charCache = new CharacterListCache();
+      charCache.set({
+        characters: [
+          { actorId: 'actor-1', name: 'Aragorn', level: 10 },
+          { actorId: 'actor-2', name: 'Gimli', level: 7 },
+        ],
+        source: 'foundry-world',
+        count: 2,
+        generatedAt: Date.now(),
+      });
+
+      app = await buildServer({
+        langDirOverride: LANG_DIR,
+        bearerRegistryCache: bearerCache,
+        characterListCache: charCache,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: Array<{ name: string }> }>();
+      expect(body.characters).toHaveLength(2);
+      expect(body.characters.map((c) => c.name)).toContain('Aragorn');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('opts.foundrySnapshotFn overrides internalSnapshotFn when provided', async () => {
+      // Existing tests that inject foundrySnapshotFn must continue to work
+      const mockList = [{ actorId: 'actor-1', name: 'Legolas', level: 8 }];
+      // biome-ignore lint/suspicious/noExplicitAny: test mock
+      const snapshotFn = async (_h: string, ..._args: unknown[]): Promise<any> => mockList;
+      app = await buildServer({
+        foundryValidateFn: makeValidFn(),
+        langDirOverride: LANG_DIR,
+        foundrySnapshotFn: snapshotFn,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: typeof mockList }>();
+      expect(body.characters).toHaveLength(1);
+      expect(body.characters[0]?.name).toBe('Legolas');
+    });
+  });
+
+  // ── ADR-0014 §4: per-actor read authorization end-to-end (T8) ──────────────
+  //
+  // Drives the cached (production) path: a bearer pushed via /internal/delta
+  // carries authorizedActorIds; buildServer({}) (no injected fns) consumes it
+  // through internalValidateFn + internalSnapshotFn. Proves all bridge read
+  // paths enforce set-membership and that a fail-closed bearer reads nothing.
+  describe('ADR-0014 per-actor authorization (cached path, buildServer({}))', () => {
+    const INTERNAL_SECRET = 'test-internal-secret-32bytes!!!';
+
+    /** Push a bearer registry with one bearer owning `authorizedActorIds`. */
+    async function pushBearer(app: FastifyInstance, authorizedActorIds: string[]) {
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.bearers.available',
+          payload: {
+            bearers: [
+              {
+                token: VALID_TOKEN,
+                alias: 'G2',
+                expiresAt: Date.now() + 86_400_000,
+                worldId: 'w',
+                userId: 'user-a',
+                authorizedActorIds,
+              },
+            ],
+            source: 'foundry-registry',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+    }
+
+    /** Push a character.delta so the snapshot cache can serve `actorId`. */
+    async function pushSnapshot(app: FastifyInstance, actorId: string) {
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'character.delta',
+          payload: buildCharacterSnapshot(actorId),
+        }),
+      });
+    }
+
+    it('REST GET /v1/character/:actorId — 404 for a non-owned actor (no enumeration)', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      // Cache a snapshot for the NON-owned actor — enforcement must still 404.
+      await pushSnapshot(app, 'actor-other');
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-other',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json<{ error: string }>().error).toBe('actor_not_found');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('REST GET /v1/character/:actorId — 200 for an owned actor', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      await pushSnapshot(app, 'actor-owned');
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-owned',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ actorId: string }>().actorId).toBe('actor-owned');
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('characters-list — roster filtered to the authorized set', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, ['actor-owned']);
+      // Push a roster containing one owned + one non-owned actor.
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.characters.available',
+          payload: {
+            characters: [
+              { actorId: 'actor-owned', name: 'Mine', level: 5 },
+              { actorId: 'actor-other', name: 'NotMine', level: 9 },
+            ],
+            source: 'foundry-world',
+            count: 2,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ characters: Array<{ actorId: string }> }>();
+      expect(body.characters.map((c) => c.actorId)).toEqual(['actor-owned']);
+      delete process.env.EVF_INTERNAL_SECRET;
+    });
+
+    it('fail-closed bearer (empty authorizedActorIds) reads nothing', async () => {
+      process.env.EVF_INTERNAL_SECRET = INTERNAL_SECRET;
+      app = await buildServer({ langDirOverride: LANG_DIR });
+      await pushBearer(app, []); // authorizes NOTHING
+      await pushSnapshot(app, 'actor-owned');
+      // Push a non-empty roster too.
+      await app.inject({
+        method: 'POST',
+        url: '/internal/delta',
+        headers: {
+          authorization: `Bearer ${INTERNAL_SECRET}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'r1.characters.available',
+          payload: {
+            characters: [{ actorId: 'actor-owned', name: 'Mine', level: 5 }],
+            source: 'foundry-world',
+            count: 1,
+            generatedAt: Date.now(),
+          },
+        }),
+      });
+
+      // REST snapshot → 404
+      const charRes = await app.inject({
+        method: 'GET',
+        url: '/v1/character/actor-owned',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+      expect(charRes.statusCode).toBe(404);
+
+      // Roster → empty
+      const listRes = await app.inject({
+        method: 'GET',
+        url: '/v1/characters',
+        headers: { authorization: `Bearer ${VALID_TOKEN}` },
+      });
+      expect(listRes.statusCode).toBe(200);
+      expect(listRes.json<{ characters: unknown[] }>().characters).toHaveLength(0);
+
+      delete process.env.EVF_INTERNAL_SECRET;
     });
   });
 
@@ -966,3 +1499,467 @@ describe('Quick Task 260529-icd: debug logger tap', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Quick Task 260605-d0v: WS connect → initial character.delta push
+// ---------------------------------------------------------------------------
+// Integration tests assert that a g2-app WS client receives an initial
+// character.delta envelope immediately after completing the handshake when
+// the bridge has a populated CharacterListCache and an injected foundryFn.
+//
+// Strategy: build a real server, call app.listen({ port: 0 }), open a real
+// WebSocket client, complete the EVF handshake, then assert the next message
+// is (or is not) a character.delta envelope.
+// ---------------------------------------------------------------------------
+
+import WebSocket from 'ws';
+import { CharacterListCache } from './cache/character-list-cache.js';
+
+/** Full mock CharacterSnapshot satisfying CharacterSnapshotSchema. */
+const INITIAL_DELTA_SNAPSHOT = {
+  actorId: 'actor-thorin',
+  name: 'Thorin',
+  hp: 45,
+  maxHp: 68,
+  tempHp: 0,
+  ac: 16,
+  level: 5,
+  conditions: [],
+  exhaustion: 0,
+  death: { success: 0, failure: 0 },
+  world: { modernRules: false },
+  inventory: [],
+  spells: { slots: [], spells: [] },
+  abilities: {
+    str: { value: 16, mod: 3, save: 3, proficient: false, dc: 10 },
+    dex: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+    con: { value: 14, mod: 2, save: 2, proficient: false, dc: 10 },
+    int: { value: 8, mod: -1, save: -1, proficient: false, dc: 10 },
+    wis: { value: 12, mod: 1, save: 1, proficient: false, dc: 10 },
+    cha: { value: 10, mod: 0, save: 0, proficient: false, dc: 10 },
+  },
+  skills: {
+    acr: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ani: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    arc: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    ath: { total: 3, ability: 'str' as const, proficient: 0 as const, passive: 13 },
+    dec: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    his: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    ins: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    itm: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    inv: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    med: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    nat: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    prc: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+    prf: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    per: { total: 0, ability: 'cha' as const, proficient: 0 as const, passive: 10 },
+    rel: { total: -1, ability: 'int' as const, proficient: 0 as const, passive: 9 },
+    slt: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    ste: { total: 0, ability: 'dex' as const, proficient: 0 as const, passive: 10 },
+    sur: { total: 1, ability: 'wis' as const, proficient: 0 as const, passive: 11 },
+  },
+  class: 'Fighter',
+  initiative: 2,
+  speed: 25,
+} as const;
+
+describe('Quick Task 260605-d0v: WS connect → initial character.delta', () => {
+  const SECRET = 'd0v-integration-secret';
+  let savedSecret: string | undefined;
+  let savedDevNoAuth: string | undefined;
+
+  beforeEach(() => {
+    savedSecret = process.env.EVF_INTERNAL_SECRET;
+    savedDevNoAuth = process.env.EVF_DEV_NO_AUTH;
+    process.env.EVF_INTERNAL_SECRET = SECRET;
+    process.env.EVF_DEV_NO_AUTH = 'true'; // no-auth so bearer sentinel is accepted
+  });
+
+  afterEach(() => {
+    const restore = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    };
+    restore('EVF_INTERNAL_SECRET', savedSecret);
+    restore('EVF_DEV_NO_AUTH', savedDevNoAuth);
+  });
+
+  /**
+   * Build a server on a random port with:
+   * - A seeded CharacterListCache (roster = [actor-thorin])
+   * - foundrySnapshotFn returning INITIAL_DELTA_SNAPSHOT for 'evf.getCharacterSnapshot'
+   */
+  async function buildD0vServer(): Promise<{ app: FastifyInstance; port: number }> {
+    const characterListCache = new CharacterListCache();
+    characterListCache.set({
+      characters: [{ actorId: 'actor-thorin', name: 'Thorin', level: 5 }],
+      source: 'foundry-world',
+      count: 1,
+      generatedAt: Date.now(),
+    });
+
+    const app = await buildServer({
+      langDirOverride: LANG_DIR,
+      characterListCache,
+      foundrySnapshotFn: async (handler, ..._args) => {
+        if (handler === 'evf.getCharacterSnapshot') return INITIAL_DELTA_SNAPSHOT;
+        return null;
+      },
+    });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const addr = app.server.address();
+    const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+    return { app, port };
+  }
+
+  /**
+   * Complete the EVF WS handshake (send client hello, receive server hello).
+   * Returns the sessionId from the handshake response.
+   */
+  function completeHandshake(ws: WebSocket, token: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      ws.once('open', () => {
+        ws.send(
+          JSON.stringify({
+            proto: 'evf-v1',
+            token,
+            locale: 'it',
+            capabilities: ['read_char', 'read_combat'],
+          }),
+        );
+      });
+      ws.once('message', (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString()) as { session_id?: string; proto_chosen?: string };
+          if (msg.proto_chosen === 'evf-v1' && typeof msg.session_id === 'string') {
+            resolve(msg.session_id);
+          } else {
+            reject(new Error(`Unexpected handshake response: ${raw.toString()}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+      ws.once('error', reject);
+    });
+  }
+
+  it(
+    'D0V-INT-01: WS connect with populated roster → client receives character.delta with actorId',
+    () =>
+      new Promise<void>((done, fail) => {
+        buildD0vServer()
+          .then(({ app, port }) => {
+            const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+            // Collect ALL messages (handshake + initial delta may arrive in quick succession).
+            const received: Array<{ type: string; payload?: { actorId?: string } }> = [];
+            let resolved = false;
+
+            // Timer: allow up to 2s for the character.delta to arrive.
+            const deadline = setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                ws.close();
+                app
+                  .close()
+                  .then(() =>
+                    fail(
+                      new Error(
+                        `No character.delta received within 2s. Got: ${JSON.stringify(received)}`,
+                      ),
+                    ),
+                  )
+                  .catch(fail);
+              }
+            }, 2000);
+
+            ws.on('message', (raw) => {
+              try {
+                const msg = JSON.parse(raw.toString()) as {
+                  type?: string;
+                  proto_chosen?: string;
+                  payload?: { actorId?: string };
+                };
+                if (msg.type !== undefined) {
+                  received.push(msg as { type: string; payload?: { actorId?: string } });
+                }
+                // Handshake response has proto_chosen — send client hello now.
+                if (msg.proto_chosen === undefined && msg.type === undefined) return;
+
+                // Check if character.delta already arrived.
+                const delta = received.find((m) => m.type === 'character.delta');
+                if (delta !== undefined && !resolved) {
+                  resolved = true;
+                  clearTimeout(deadline);
+                  try {
+                    expect(delta.payload?.actorId).toBe('actor-thorin');
+                    ws.close();
+                    app.close().then(done).catch(fail);
+                  } catch (err) {
+                    ws.close();
+                    app
+                      .close()
+                      .then(() => fail(err))
+                      .catch(fail);
+                  }
+                }
+              } catch (err) {
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(deadline);
+                  ws.close();
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                }
+              }
+            });
+
+            ws.once('open', () => {
+              ws.send(
+                JSON.stringify({
+                  proto: 'evf-v1',
+                  token: 'dev-no-auth',
+                  locale: 'it',
+                  capabilities: ['read_char', 'read_combat'],
+                }),
+              );
+            });
+
+            ws.once('error', (err) => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(deadline);
+                app
+                  .close()
+                  .then(() => fail(err))
+                  .catch(fail);
+              }
+            });
+          })
+          .catch(fail);
+      }),
+    5000,
+  );
+
+  it('D0V-INT-02: WS connect with COLD roster → client receives handshake only (no character.delta)', () =>
+    new Promise<void>((done, fail) => {
+      // Build server with cold CharacterListCache (no call to cache.set()).
+      buildServer({
+        langDirOverride: LANG_DIR,
+        // characterListCache not set → buildServer creates a fresh cold one
+        foundrySnapshotFn: async () => INITIAL_DELTA_SNAPSHOT,
+      })
+        .then((app) => {
+          app
+            .listen({ port: 0, host: '127.0.0.1' })
+            .then(() => {
+              const addr = app.server.address();
+              const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+              const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+
+              completeHandshake(ws, 'dev-no-auth')
+                .then(() => {
+                  // Wait 150ms: if no message arrives, cold roster correctly produced no push.
+                  const timer = setTimeout(() => {
+                    // No character.delta received — PASS.
+                    ws.close();
+                    app.close().then(done).catch(fail);
+                  }, 150);
+
+                  ws.once('message', (raw) => {
+                    clearTimeout(timer);
+                    const envelope = JSON.parse(raw.toString()) as { type: string };
+                    ws.close();
+                    app
+                      .close()
+                      .then(() => {
+                        fail(new Error(`Expected no message but received type='${envelope.type}'`));
+                      })
+                      .catch(fail);
+                  });
+                })
+                .catch((err) => {
+                  ws.close();
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                });
+            })
+            .catch(fail);
+        })
+        .catch(fail);
+    }));
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// T7: WS maxPayload + concurrent-connection cap (DoS guards)
+// Real-socket integration: build a server with a tiny connection cap, open two
+// sockets, and assert the over-cap socket is closed (4503) and never handshakes.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('T7: WS connection cap + maxPayload (DoS guards)', () => {
+  let savedDevNoAuth: string | undefined;
+
+  beforeEach(() => {
+    savedDevNoAuth = process.env.EVF_DEV_NO_AUTH;
+    process.env.EVF_DEV_NO_AUTH = 'true'; // accept the sentinel bearer in the handshake
+  });
+
+  afterEach(() => {
+    if (savedDevNoAuth === undefined) delete process.env.EVF_DEV_NO_AUTH;
+    else process.env.EVF_DEV_NO_AUTH = savedDevNoAuth;
+  });
+
+  /** Build a real listening server with the given WS connection cap. */
+  async function buildCapServer(
+    wsMaxConnections: number,
+  ): Promise<{ app: FastifyInstance; port: number }> {
+    const app = await buildServer({ langDirOverride: LANG_DIR, wsMaxConnections });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const addr = app.server.address();
+    const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+    return { app, port };
+  }
+
+  /** Send the EVF client hello once the socket opens. */
+  function sendHello(ws: WebSocket): void {
+    ws.once('open', () => {
+      ws.send(
+        JSON.stringify({
+          proto: 'evf-v1',
+          token: 'dev-no-auth',
+          locale: 'it',
+          capabilities: ['read_char'],
+        }),
+      );
+    });
+  }
+
+  it('T7-CAP-01: a connection beyond the cap is closed with 4503 and never handshakes', () =>
+    new Promise<void>((done, fail) => {
+      buildCapServer(1)
+        .then(({ app, port }) => {
+          // Socket 1: occupies the only slot and completes the handshake.
+          const ws1 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+          let ws1HandshakeOk = false;
+
+          ws1.once('message', (raw) => {
+            try {
+              const msg = JSON.parse(raw.toString()) as { proto_chosen?: string };
+              if (msg.proto_chosen === 'evf-v1') ws1HandshakeOk = true;
+            } catch {
+              // ignore — assertion below covers the handshake-ok flag
+            }
+
+            // Socket 2: over the cap → must be closed with 4503 before any handshake.
+            const ws2 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+            let ws2GotMessage = false;
+            ws2.on('message', () => {
+              ws2GotMessage = true;
+            });
+            sendHello(ws2);
+
+            ws2.once('close', (code) => {
+              try {
+                expect(ws1HandshakeOk).toBe(true);
+                expect(code).toBe(4503);
+                expect(ws2GotMessage).toBe(false); // no handshake response was sent
+                ws1.close();
+                app.close().then(done).catch(fail);
+              } catch (err) {
+                ws1.close();
+                app
+                  .close()
+                  .then(() => fail(err))
+                  .catch(fail);
+              }
+            });
+          });
+
+          sendHello(ws1);
+          ws1.once('error', (err) => {
+            app
+              .close()
+              .then(() => fail(err))
+              .catch(fail);
+          });
+        })
+        .catch(fail);
+    }));
+
+  it('T7-CAP-02: closing a capped connection frees a slot for a new one', () =>
+    new Promise<void>((done, fail) => {
+      buildCapServer(1)
+        .then(({ app, port }) => {
+          const ws1 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+          sendHello(ws1);
+
+          ws1.once('message', () => {
+            // Slot is taken — close it, then a fresh socket must handshake fine.
+            ws1.close();
+            ws1.once('close', () => {
+              // Small delay so the server's 'close' handler decrements the counter.
+              setTimeout(() => {
+                const ws2 = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+                sendHello(ws2);
+                ws2.once('message', (raw) => {
+                  try {
+                    const msg = JSON.parse(raw.toString()) as { proto_chosen?: string };
+                    expect(msg.proto_chosen).toBe('evf-v1');
+                    ws2.close();
+                    app.close().then(done).catch(fail);
+                  } catch (err) {
+                    ws2.close();
+                    app
+                      .close()
+                      .then(() => fail(err))
+                      .catch(fail);
+                  }
+                });
+                ws2.once('error', (err) => {
+                  app
+                    .close()
+                    .then(() => fail(err))
+                    .catch(fail);
+                });
+              }, 50);
+            });
+          });
+
+          ws1.once('error', (err) => {
+            app
+              .close()
+              .then(() => fail(err))
+              .catch(fail);
+          });
+        })
+        .catch(fail);
+    }));
+});
+
+/*
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Sim smoke (manual) — NOT an automated gate (EvenHub simulator requires
+ * xvfb + GTK; the deterministic gate is the Vitest integration test above).
+ *
+ * To verify end-to-end with the real EvenHub simulator:
+ *
+ * 1. Start the bridge in dev-no-auth mode:
+ *      EVF_DEV_NO_AUTH=true EVF_INTERNAL_SECRET=dev pnpm --filter @evf/bridge start
+ *
+ * 2. Seed the roster via POST /internal/delta:
+ *      curl -s -X POST http://localhost:8910/internal/delta \
+ *        -H "Authorization: Bearer dev" \
+ *        -H "Content-Type: application/json" \
+ *        -d '{"type":"r1.characters.available","payload":{"characters":[{"actorId":"actor-1","name":"Thorin","level":5}],"source":"foundry-world","count":1,"generatedAt":0}}'
+ *
+ * 3. Set g2-app bridgeUrl to http://localhost:8910 and launch the EvenHub simulator
+ *    (xvfb headless, drive via :9898 HTTP API per evenhub:simulator-automation skill).
+ *
+ * 4. Confirm: on WS connect the glasses status HUD shows the character name and HP
+ *    (status-hud-layer.ts CHARACTER_DELTA_CHANNEL handler consumes the delta).
+ * ──────────────────────────────────────────────────────────────────────────────
+ */

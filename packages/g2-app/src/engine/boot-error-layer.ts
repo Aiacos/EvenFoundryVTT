@@ -49,6 +49,7 @@ import {
   type BootErrorLocale,
   type BootErrorState,
 } from './boot-error-types.js';
+import { resolveContainerIdField } from './container-registry.js';
 import type { Layer } from './layer-types.js';
 
 /**
@@ -133,6 +134,9 @@ export class BootErrorLayer implements Layer {
       `└${'─'.repeat(PANEL_WIDTH - 2)}┘`,
     ];
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(BOOT_ERROR_CONTAINER_NAME),
       containerName: BOOT_ERROR_CONTAINER_NAME,
       content: lines.join('\n'),
     });

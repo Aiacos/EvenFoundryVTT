@@ -46,6 +46,7 @@ import {
   ImageRawDataUpdate,
   ImageRawDataUpdateResult,
 } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type {
   RasterChangedTile,
   RasterControllerLike,
@@ -89,6 +90,14 @@ const DEFAULT_DEBOUNCE_MS = 200;
 const DEFAULT_IDLE_MS = 3333; // 0.3 fps
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_FAILURE_WINDOW_MS = 5000;
+
+/**
+ * Legacy glyph-fallback frame dimensions — the raster-worker contract is fixed
+ * at exactly 400×200 (matches GLYPH_CANONICAL_W/H in scene-input.ts). Named so
+ * the idle-heartbeat dispatch does not repeat bare literals.
+ */
+const LEGACY_FRAME_W = 400;
+const LEGACY_FRAME_H = 200;
 
 /**
  * Spawn the production raster Worker using the Vite-canonical URL pattern.
@@ -240,7 +249,7 @@ export class RasterController implements RasterControllerLike {
     this.idleTimer = setInterval(() => {
       const scene = this.idleSceneSource?.();
       if (scene !== null && scene !== undefined) {
-        void this.requestFrame(scene, 400, 200);
+        void this.requestFrame(scene, LEGACY_FRAME_W, LEGACY_FRAME_H);
       }
     }, this.idleHeartbeatMs);
   }
@@ -327,18 +336,32 @@ export class RasterController implements RasterControllerLike {
    * RESEARCH.md Pitfall 6 (never bare boolean compare).
    */
   private async _dispatchChangedTiles(tiles: ReadonlyArray<RasterChangedTile>): Promise<void> {
+    // Track whether ANY tile in this whole frame failed. A single successful
+    // tile must NOT reset the failure window mid-frame — otherwise an alternating
+    // fail/success/fail pattern (e.g. a marginal BLE link dropping every other
+    // write) would wipe the counter on each success and never accumulate to the
+    // 3-failure threshold, defeating the fallback entirely. Failures recorded by
+    // `_recordFailure` therefore persist across the dispatch; the window is reset
+    // only when the ENTIRE frame dispatched cleanly (zero failures).
+    let anyFailure = false;
     for (const tile of tiles) {
+      const containerName = `map-tile-${tile.index}`;
       const payload = new ImageRawDataUpdate({
-        containerName: `map-tile-${tile.index}`,
+        ...resolveContainerIdField(containerName),
+        containerName,
         imageData: tile.pngBytes,
       });
       const result = await this.bridge.updateImageRawData(payload);
       if (!ImageRawDataUpdateResult.isSuccess(result)) {
+        anyFailure = true;
         this._recordFailure();
-      } else {
-        // Successful dispatch resets the consecutive-failure window.
-        this.failureTimestamps = [];
       }
+    }
+    // Only a fully clean frame (no failed tiles) resets the failure window. This
+    // preserves the sliding-window time bound in `_recordFailure` while ensuring
+    // an interleaved success within a degraded frame cannot mask the failures.
+    if (!anyFailure) {
+      this.failureTimestamps = [];
     }
   }
 

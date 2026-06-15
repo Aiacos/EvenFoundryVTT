@@ -1,25 +1,29 @@
 {
   "name": "@evf/g2-app",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
   "description": "EVF G2 plugin host bundle — served via static HTTP to Even Realities App WebView (Phase 4a fills real implementation).",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173",
     "test": "vitest --run --project g2-app --root ../..",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:ehpk": "vite build && npx --yes @evenrealities/evenhub-cli pack app.json dist -o evenfoundryvtt.ehpk",
+    "dev:qr": "npx --yes @evenrealities/evenhub-cli qr --port 5173"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.10",
     "@evf/shared-protocol": "workspace:*",
     "@evf/shared-render": "workspace:*",
+    "@fontsource/vt323": "^5.2.7",
     "image-q": "4.0.0",
     "upng-js": "2.1.0",
     "xxhash-wasm": "1.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@evenrealities/pretext": "^0.1.4",
     "vite": "8.0.11"
   }
 }

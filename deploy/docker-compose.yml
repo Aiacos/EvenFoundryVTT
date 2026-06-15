@@ -12,8 +12,18 @@
 #
 # Env file: deploy/.env (gitignored, see deploy/.env.example for template)
 
+# Compose project name → container/network prefix (otherwise Compose defaults to the
+# directory name "deploy"). Containers: evf-bridge, evf-foundry-mcp; network: evenfoundryvtt_default.
+name: evenfoundryvtt
+
 services:
   bridge:
+    container_name: evf-bridge
+    # Same greyscale d20 icon as the Even Hub listing; Compose UIs (Portainer/Dockge/Komodo)
+    # that read a container icon label will pick this up.
+    labels:
+      com.evenfoundryvtt.icon: "https://raw.githubusercontent.com/Aiacos/EvenFoundryVTT/main/assets/icon/icon.png"
+      org.opencontainers.image.title: "EvenFoundryVTT Bridge"
     build:
       context: ..
       dockerfile: deploy/bridge.Dockerfile
@@ -26,7 +36,10 @@ services:
       - LOG_LEVEL=info
       - PORT=8910
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8910/healthz"]
+      # 127.0.0.1 (not localhost): inside the container `localhost` also resolves to ::1 (IPv6),
+      # but the server binds IPv4 0.0.0.0 only → a localhost healthcheck hits ::1 and reports
+      # "connection refused" (false unhealthy). Force IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8910/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -34,6 +47,7 @@ services:
     restart: unless-stopped
 
   foundry-mcp:
+    container_name: evf-foundry-mcp
     build:
       context: ..
       dockerfile: deploy/foundry-mcp.Dockerfile
@@ -49,7 +63,8 @@ services:
       bridge:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8911/healthz"]
+      # Force IPv4 (see bridge healthcheck note).
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8911/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

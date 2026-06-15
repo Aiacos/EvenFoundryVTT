@@ -51,6 +51,12 @@ export interface BearerEntry {
   alias: string;
   /** Foundry world ID at time of pairing. */
   worldId: string;
+  /**
+   * Foundry `User` id this bearer is bound to (ADR-0014). The DM chooses which
+   * Foundry User a device represents in the pair modal; the bearer's authorized
+   * actor set is derived live from this user's Foundry ownership at validate time.
+   */
+  userId: string;
   /** Bridge URL the QR was configured for (e.g. "https://bridge.local:8910"). */
   bridgeUrl: string;
   /** Per-pair internal secret (32-byte base64url). Used for Foundry→Bridge POST auth. */
@@ -108,10 +114,14 @@ function readRegistry(): BearerRegistry {
 /**
  * Persists the bearer registry to Foundry settings.
  *
+ * Awaits `game.settings.set` (async in Foundry): not awaiting risks a stale
+ * read-after-write in the same tick and swallows write errors. Callers must
+ * await this in turn.
+ *
  * @param registry - The registry to persist
  */
-function writeRegistry(registry: BearerRegistry): void {
-  game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
+async function writeRegistry(registry: BearerRegistry): Promise<void> {
+  await game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
 }
 
 /**
@@ -160,12 +170,15 @@ function generateOpaqueToken(): string {
  * @param alias - Human-readable device label (up to 40 chars; truncated if longer)
  * @param bridgeUrl - Bridge URL the QR is configured for
  * @param worldId - Foundry world ID (included in QR payload)
+ * @param userId - Foundry `User` id this bearer is bound to (ADR-0014). The
+ *                 authorized actor set is derived live from this user's Foundry
+ *                 ownership at validate time.
  * @param refresh - If true, shorten the TTL of the previous active bearer to 60s
  * @returns The newly created BearerEntry (token value included for QR generation only)
  *
  * @example
  * ```ts
- * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc");
+ * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc", "user-1");
  * // Use entry.token + entry.internalSecret to build the QR payload
  * // NEVER log entry.token (T-02-01)
  * ```
@@ -174,6 +187,7 @@ export async function generateBearer(
   alias: string,
   bridgeUrl: string,
   worldId: string,
+  userId: string,
   refresh = false,
 ): Promise<BearerEntry> {
   const registry = readRegistry();
@@ -204,6 +218,7 @@ export async function generateBearer(
     token,
     alias: safeAlias,
     worldId,
+    userId,
     bridgeUrl,
     internalSecret,
     createdAt: now,
@@ -213,7 +228,7 @@ export async function generateBearer(
   };
 
   registry.entries[token] = entry;
-  writeRegistry(registry);
+  await writeRegistry(registry);
 
   return entry;
 }
@@ -258,9 +273,13 @@ export function validateBearer(token: string): {
  * The entry is preserved in the registry for audit trail purposes.
  * Is a no-op for unknown tokens (does not throw).
  *
+ * Async: awaits the registry write so callers can guarantee a read-after-write
+ * (e.g. a re-render that lists bearers) observes the revocation, and so write
+ * errors surface rather than being silently dropped.
+ *
  * @param token - The raw bearer token string to revoke
  */
-export function revokeBearer(token: string): void {
+export async function revokeBearer(token: string): Promise<void> {
   const registry = readRegistry();
   const entry = registry.entries[token];
 
@@ -269,7 +288,7 @@ export function revokeBearer(token: string): void {
   }
 
   entry.revokedAt = Date.now();
-  writeRegistry(registry);
+  await writeRegistry(registry);
 }
 
 /**

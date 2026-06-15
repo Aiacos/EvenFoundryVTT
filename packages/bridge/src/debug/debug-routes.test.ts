@@ -156,12 +156,15 @@ describe('GET /debug/state', () => {
     expect(body.uptime_sec).toBeGreaterThanOrEqual(0);
     expect(typeof body.ts).toBe('number');
     expect(typeof body.debug.eventBufferSize).toBe('number');
+    // Quick Task 260604-cwa additively extended byDirection with agent-log + agent-result.
     expect(body.debug.byDirection).toEqual({
       inbound: 0,
       outbound: 0,
       tool: 0,
       log: 0,
       display: 0,
+      'agent-log': 0,
+      'agent-result': 0,
     });
   });
 });

@@ -93,23 +93,20 @@ function handleUpdateActor(actor: FoundryActor, changes: unknown, emitFn: EmitFn
 
   const changesObj = changes as Record<string, unknown>;
 
-  // Only emit when relevant fields changed (D-2.15 performance guard)
-  const systemChanged = typeof changesObj.system === 'object' && changesObj.system !== null;
+  // Emit only when HP/AC/exhaustion or statuses changed (D-2.15 performance guard).
+  // HP, AC and exhaustion all live under `system.attributes`, so a bare
+  // `system` change with no `attributes` sub-key (e.g. a flag or currency tweak)
+  // is NOT relevant and must be skipped.
   const statusesChanged = 'statuses' in changesObj;
+  const systemObj =
+    typeof changesObj.system === 'object' && changesObj.system !== null
+      ? (changesObj.system as Record<string, unknown>)
+      : null;
+  const attributesChanged =
+    systemObj !== null && typeof systemObj.attributes === 'object' && systemObj.attributes !== null;
 
-  if (!systemChanged && !statusesChanged) {
+  if (!attributesChanged && !statusesChanged) {
     return;
-  }
-
-  if (systemChanged) {
-    const systemObj = changesObj.system as Record<string, unknown>;
-    const attributesChanged =
-      typeof systemObj.attributes === 'object' && systemObj.attributes !== null;
-
-    // Only proceed if attributes changed (HP, AC, exhaustion all live under attributes)
-    if (!attributesChanged && !statusesChanged) {
-      return;
-    }
   }
 
   const snapshot = getCharacterSnapshot(actor.id);

@@ -8,6 +8,7 @@
 │   [A] Aktion                                                       │
 │   [M] Karte                                                        │
 │   [N] Sprache                                                      │
+│   [F] FPS                                                          │
 │   [X] Schließen                                                    │
 └────────────────────────────────────────────────────────────────────┘
   scroll = Eintrag wählen                                             

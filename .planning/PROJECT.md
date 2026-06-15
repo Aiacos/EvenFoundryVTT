@@ -18,25 +18,40 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 ## Current State
 
-- **Software**: v0.9.11 MVP + v0.9.12 Quick Wins + v0.9.13 Sheet Data Completion all shipped — 20 phases (0–18), 86 plans, **2668 workspace tests passing** across monorepo (`packages/g2-app`, `packages/bridge`, `packages/foundry-module`, `packages/foundry-mcp`, `packages/shared-protocol`, `packages/shared-render`, `packages/validation-harness`). v0.9.13 closed Sheet Main + Skills tab data wiring (Phase 16 abilities + Phase 17 skills) and Phase-14.1 spec-drift polish (Phase 18).
-- **Hardware verification**: deferred — 35 success criteria across Phases 4a/4b/5/6/7/8/9/10/12/13 marked `human_needed` under ADR-0005 PROVISIONAL Branch A. v0.9.12 + v0.9.13 added zero new SCs. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 + consenting DM available.
-- **Spec**: `Specs.md` v0.9.13 (~4250+ righe; §7.4c z=0.5 layer + §3.6 EvenAI + Sheet Main/Skills data binding all ratified). ADR-0001 Amendment 1 RATIFIED; INV-3 atomic commits `3a0c5cf` (Phase 14) + `dc161d6` (Phase 15) + `d68d7f2` (Phase 16) + `c208d24` (Phase 17) + `df4ea02` (Phase 18 + milestone close).
-- **Carry to next milestone**: minimal — Spells tab DC binding (primed by `abilities.<k>.dc` field) deferred to future Sheet polish cycle; Inventory/Bio/Feats tab data-binding polish out of scope; half-prof narrative glyph (`◐` half-tone) deferred per INV-1 width budget.
-- **CI gates**: 7 quality gates green on every PR (Biome lint, TypeScript strict, Vitest coverage, INV-1..5 verification suite via `inv:all`, no-SSE grep gate, **17**-socketlib-handler invariant (Phase 13 → preserved through v0.9.13), INV-3 atomic doc coherence).
+- **Software**: v0.9.11 MVP + v0.9.12 + v0.9.13 + **v0.10.0 Raster UI Substrate** all shipped — 28 phases (0–26), 112 plans, **3300 workspace tests passing** across the monorepo. v0.10.0 replaced the 27px text-container HUD with a canvas-composited raster substrate (400×200 region → dither → 4×200×100 tiles → serialized SDK push): `CanvasCompositor`, status HUD + 6-tab character sheet + combat tracker on canvas, ~5fps xxhash delta loop, raster promoted to default boot with glyph as BLE-degraded fallback, INV-1 raster contract + INV-3 docs at v0.10.0.
+- **Hardware verification**: deferred — 35 SCs from v0.9.11 + the v0.10.0 raster render/gesture/BLE SCs (phases 19–25 `human_needed` + RINV-02) all carry under ADR-0005 PROVISIONAL Branch A. Closure path: `pnpm --filter @evf/validation-harness validate:all` once Even Hub access + G2 + R1 available. Per-phase items tracked in archived `*-HUMAN-UAT.md`.
+- **Spec**: `Specs.md` **v0.10.0** (~4500 righe; §7.2 raster CanvasCompositor substrate as default + §7.4 "Glyph Fallback Mode — BLE-degraded path" subsection). INV-2 re-verified 2026-06-08 (no drift). INV-3 atomic close commit for v0.10.0.
+- **Milestone-audit catch**: BLOCKER-01 (character.delta → CanvasCharacterSheetPanel runtime wire, missing since Phase 21) found by the integration check and fixed before close (commit `19e02c8`, +5 regression tests).
+- **CI gates**: 7 quality gates green (Biome lint, TS strict, Vitest, INV-1..5 via `inv:all` — now glyph + raster suites, no-SSE grep gate, **17**-socketlib-handler invariant preserved through v0.10.0, INV-3 atomic doc coherence).
 
-## Current Milestone: v0.9.14 Release & Distribution + deferred hardening
+## Next Milestone (planning)
 
-**Goal:** Ship an installable release of all system components via CI/CD (so end users can actually run the system), then close the highest-value hardening gaps surfaced by the 2026-05-30 G2 skill audit + 2026-05-29 deep review.
+The next milestone is open for selection via `/gsd-new-milestone`. Leading candidates (see "Future Milestone Candidates" below): resume **v0.9.14 Release & Distribution** (parked), **raster-worker generalization** (RGEN-01), or **hardware UAT closure** when Even Hub access lands.
+
+<details>
+<summary>Archived: v0.10.0 Raster UI Substrate milestone brief (shipped 2026-06-08)</summary>
+
+**Goal:** Sostituire il substrato di rendering della UI HUD da text-container 27px a **immagini raster compositate** su un singolo canvas **400×200** → dither → **4 tile 200×100** → push ai 4 image-container SDK (regione raster condivisa). La densità e il layout diventano una nostra scelta (full controllo tipografico) invece di subire il font fisso 27px dell'SDK.
+
+> **⚠ Vincolo hardware INV-2 (verificato 2026-06-05, `hub.evenrealities.com/docs/guides/display`):** image-container G2 = **max 4, ognuno 20–200×20–100px** → superficie raster **400×200, NON 576×288** (lo schermo pieno non è riempibile di immagini; il sim non applica i limiti, per questo il PoC 288×144 passava). `updateImageRawData` flicker-free ma **non concorrente** (4 tile serializzati); cambio schema-pagina = `rebuildPageContainer` con flicker → schema FISSO + updateImageRawData per-frame. Vedi memory `g2-image-container-hard-limits`.
 
 **Target features:**
-- **Release & Distribution (headline, sequenced first):** CD pipeline on a GitFlow release (develop→main + version tag) that produces + publishes installable artifacts for every component: `foundry-module` → GitHub Release assets (`module.json` manifest + `evenfoundryvtt.zip`, installable via Foundry "Install Module" manifest URL); `bridge` → Docker image (multi-stage `node:24-alpine`) pushed to GHCR; `g2-app` → static Vite dist bundle zipped + attached to the GitHub Release. Release notes (aggregated Changesets changelog) written to the GitHub Release page. README gains an "Installation" section documenting how to install all 3 components (INV-3 coherent). Changesets stays pre-1.0 no-publish (no npm publish of internal `@evf/shared-*`).
-- **Background-state & Lifecycle:** INV-2 verification round on the actual SDK 0.0.10 lifecycle surface (`onEvenHubEvent` FOREGROUND_ENTER/EXIT/ABNORMAL_EXIT/SYSTEM_EXIT — note `setBackgroundState`/`onBackgroundRestore` do NOT exist on 0.0.10), then session-state survival across phone background→foreground, app exit via `shutDownPageContainer`, hardware-stop (mic-off) on background/exit.
-- **Render correctness:** `LayerManager._flushPage` assembles the real container schema so `overlay-block`/`toast-block` actually render on hardware; INV-1 char-grid vs LVGL-proportional-pixel reconciliation + HUD/glyph vertical overflow (288px @ 27px ≈ 10 rows max) — spec-level, INV-3.
-- **Tier-4 polish:** DE-locale + minor items deferred from the 2026-05-29 deep review.
+- **Canvas compositor (fondamento):** `LayerManager` evolve così che la `draw()` di ogni layer dipinge su una **regione raster condivisa 400×200** (z=0 mappa · z=1 status HUD · z=2 pannelli overlay) invece che su text-container SDK distinti; il compositor poi fa dither (image-q) → **4 tile 200×100** → push serializzato. Gli "overlay container" descritti dall'utente sono **z-layer canvas logici, NON container SDK separati** — forzato dal cap hardware di 4 image-container. Capture-invariant via un container TEXT (full-screen, dietro i tile) con `isEventCapture:1`; budget container ricondotto al modello a regione raster fissa. Il margine schermo oltre i 400×200 = capture/background text container (vuoto/green).
+- **Scheda PG raster (overlay z=2):** scheda D&D completa stile Foundry renderizzata su canvas, tab Main · Skills · Inventory · Spells · Features · Biography, **+ immagine portrait del personaggio** (snapshot ha già `portrait:{url}` opzionale; `MapBaseLayer` ha già infra portrait-override).
+- **Combat tracker / turni raster (overlay z=2):** il pannello turni renderizzato come immagine raster overlay sulla mappa.
+- **Render mix statico + dinamico:** chrome statico (cornici, label, tab strip, sfondi) pre-bakato una volta + cache; dati dinamici (HP, slot, turni) re-renderizzati on-change riusando `hud-live-render.ts` (loop on-data-change di quick-task m4e).
+- **Estensione dati scheda:** estendere `CharacterSnapshotSchema` (`packages/shared-protocol`) + reader nel `foundry-module` per aggiungere `feats[]` + `biography` reali (oggi quei 2 tab usano fixture hardcoded; gli altri 4 hanno già dati nello snapshot).
+- **Delta loop + promozione a default (in scope, deciso 2026-06-05):** implementare il **xxhash sub-tile delta loop** (TODO-hud-raster #2) così che solo i tile CHANGED vengano ri-encodati/spediti (idle ≈ banda zero) — prerequisito BLE per la promozione — e **promuovere la UI raster a boot di default** (sostituendo la status-page text-container), mantenendo il path glyph/text come fallback BLE-degraded (ADR-0005 Branch A). Spingere 4 PNG pieni a ogni delta saturerebbe il BLE: il delta loop DEVE precedere la promozione.
+- **Contratti qualità:** nuovo contratto **INV-1 raster** (hash dei byte PNG dei tile da input RGBA sintetico, sostituisce le fixture ASCII per la HUD) + **INV-2** (geometria tile corretta a 200×100/400×200 il 2026-06-05; verifica hardware residua su G2 reale = regione 400×200 + capture-container, `human_needed` ADR-0005 Branch A) + coerenza **INV-3** (Specs §7 raster-HUD layout, README, `docs/showcase/index.html` nello stesso commit).
 
-**Key context:** Release form per-component confirmed by user (GitHub Release for foundry-module + g2-app, GHCR Docker for bridge; NO npm publish). Headline Release phase is independent of the deferred items and ships first. The deferred hardening items derive from `project_g2_skill_audit_20260530` + `project_full_review_20260529`. Phase numbering continues from v0.9.13 (ended Phase 18) → v0.9.14 starts at Phase 19.
+**Key context:** Decisioni locked dall'utente 2026-06-05 (vedi `.planning/TODO-hud-raster.md`, ADR-0013, memory `raster-ui-milestone-direction` + research `.planning/research/SUMMARY.md`). Compositing su canvas unico confermato (forzato dai 4 image-container). Render = mix statico+dinamico. Feats/Bio: estendere subito schema+reader. Delta loop + promozione a default INCLUSI nello scope (deciso 2026-06-05). Compositor model = per-layer OffscreenCanvas → drawImage composite (richiede **ADR-0013 Amendment 1** PRIMA dell'implementazione). Stack add: font pixel VT323 (`@fontsource/vt323`) + `createImageBitmap` per cache chrome statico; resto platform API, zero dep pesanti. ~90% della content-logic esiste già (6 tab renderer in `character-sheet-tab-renderers.ts`, `combat-tracker-panel.ts`, `LayerManager`/`layer-types.ts`, pipeline raster in `src/hud/*` + `map-base-layer.ts`, R1 gesture bus) — il lavoro è uno swap di substrato verso canvas + un compositor canvas. Branch di lavoro: `feat/hud-raster-rendering`. **v0.9.14 Release & Distribution resta PARCHEGGIATO** (era stato avviato come Phase 19 poi sospeso per il pivot raster; sarà ripreso in un milestone successivo).
 
-## Future Milestone Candidates (beyond v0.9.14)
+</details>
+
+## Future Milestone Candidates (beyond v0.10.0)
+
+0. **v0.9.14 Release & Distribution (parcheggiato)** — CD pipeline GitFlow → artifact installabili (foundry-module GitHub Release, bridge GHCR Docker, g2-app dist zip) + README Installation. Sospeso al pivot raster; riprendere quando la UI raster è stabile.
+1. **Raster pipeline generalization (TODO-hud-raster #7)** — generalizzare `raster-worker` (oggi map-only 400×200/200×100) così map + HUD condividano un worker (entrambi 400×200 / tile 200×100); offload del tiling fuori dal main thread.
 
 1. **Hardware UAT closure** (when Even Hub access becomes available) — execute 35 software-complete SCs against real G2 + R1 hardware; close ADR-0005 PROVISIONAL → ACCEPTED with empirical evidence.
 2. **MCP polish / V2 hardening** — auth flow, multi-client semantics, error UX in `foundry-mcp`. Out of MVP; was Phase 11 follow-up.
@@ -114,7 +129,28 @@ Full traceability and final outcomes archived to [`milestones/v0.9.13-REQUIREMEN
 #### Doc-Coherence Polish
 - ✓ **INFILL-14.1-A..C** — Phase-14.1 spec-drift polish: archived 14-UI-SPEC §2 col-anchors reconciled (col 70 → col 67, content-width 66 → 64) + §10 width-budget re-derived from runtime literals + IT locale leak fix in `glyph-scene.glyph-idle-z05.it.txt` rows 1/5/7/9/12/17 + Z05-INV-02b-triade test extension — v0.9.13 (Phase 18, commit `df4ea02`)
 
-### Active (v0.9.14 Release & Distribution + deferred hardening — opened 2026-05-30)
+### Validated (v0.10.0 Raster UI Substrate — shipped 2026-06-08)
+
+All 13 v1 REQ-IDs software-complete. Hardware UAT deferred (ADR-0005 Branch A). Full traceability archived to [`milestones/v0.10.0-REQUIREMENTS.md`](milestones/v0.10.0-REQUIREMENTS.md).
+
+#### Raster Compositor & Rendering
+- ✓ **RAST-01..05** — `CanvasCompositor` (400×200 region) + `CanvasLayer` interface + 5-container page schema (4×200×100 image tiles + 1 full-screen capture text container) + `LayerManager` renderMode + serialized `_compositeAndPush`; glyph path byte-identical — v0.10.0 (Phase 19, ADR-0013 Amendment 1)
+- ✓ **RFONT-01..03** — VT323 pixel font loader + ImageBitmap chrome pre-bake + dirty-gate `CanvasStatusHudLayer` z=1 — v0.10.0 (Phase 20)
+- ✓ **RPROMO-01** — `HudDeltaDriver` event-driven debounced (default 100ms) xxhash h32 sub-tile delta loop; only CHANGED tiles pushed; zero-push-on-idle; naive driver removed (INV-4) — v0.10.0 (Phase 24)
+- ✓ **RPROMO-02** — raster = default boot substrate; `?hud=raster` PoC removed (INV-4); glyph BLE-degraded fallback via atomic `setRenderMode('glyph')` — v0.10.0 (Phase 25)
+
+#### Character Sheet & Combat Tracker (canvas)
+- ✓ **RSHEET-01..03** — `CanvasCharacterSheetPanel` z=2 · 6 tabs on canvas · gesture nav preserved · greyscale-dithered portrait — v0.10.0 (Phase 21; runtime character.delta wire fixed at audit, commit `19e02c8`)
+- ✓ **RDATA-01..02** — `class` / `initiative` / `speed` schema + readers (Main tab) — v0.10.0 (Phase 21)
+- ✓ **RDATA-03..04** — `feats[]` + `biography` schema + `extractFeats`/`extractBiography` readers (Features/Bio tabs) — v0.10.0 (Phase 22)
+- ✓ **RCOMB-01 + RDATA-05** — `CanvasCombatTrackerPanel` z=2 (5-row auto-follow window · turn highlight) + `CombatantSchema.ac` + reader — v0.10.0 (Phase 23)
+
+#### Invariants
+- ✓ **RINV-01** — INV-1 raster contract (SHA-256 PNG tile hashes from synthetic RGBA); `inv:all` glyph + raster suites — v0.10.0 (Phase 20)
+- ✓ **RINV-03** — INV-3 doc coherence: Specs §7 + README + showcase atomic bump to v0.10.0; ASCII mockups → "Glyph Fallback Mode" subsection — v0.10.0 (Phase 26)
+- ⏳ **RINV-02** — tile geometry 400×200 / 4×200×100: software plan correct + INV-2 limits re-verified (2026-06-05 + 2026-06-08, no drift); **on-device confirmation pending** (ADR-0005 Branch A, hardware-residual)
+
+### Active (v0.9.14 Release & Distribution + deferred hardening — PARKED, re-establish at next /gsd-new-milestone)
 
 Scope confirmed by user 2026-05-30. Requirements in [`.planning/REQUIREMENTS.md`](REQUIREMENTS.md); roadmap Phases 19–22.
 
@@ -184,6 +220,11 @@ Scope confirmed by user 2026-05-30. Requirements in [`.planning/REQUIREMENTS.md`
 | **ADR-0009 Amendment 1 — differential demolish rule** | Toast queue (z=1.5) + overlay panel (z=2) cohabitation senza race condition su mount | ✓ Phase 4b Wave-0 |
 | **Defer-hardware-tests carry pattern** | Phases 4a/4b/5/6/7/8/9/10/12/13 all closed via `human_needed` carry; never block autonomous on hardware UAT | ✓ Established convention |
 | **Phase 13 minimal scope (ACT-04 + 1 stretch only)** | Reject sprawling V2 stretch; ship discriminating subset (REACT execution + portrait) | ✓ Ratified at Phase 13 close |
+| **ADR-0013 Amendment 1 — canvas compositor contract** | Per-layer OffscreenCanvas → drawImage composite onto a shared 400×200 region; fixed page schema + serialized `updateImageRawData` (4 image-container hardware cap) | ✓ Ratified before impl (Phase 19); whole v0.10.0 built on it |
+| **Raster promoted to DEFAULT boot (glyph = BLE-degraded fallback)** | Canvas substrate is the real default; glyph kept as the degraded path, not a parallel mode | ✓ v0.10.0 (Phase 25); `?hud=raster` PoC removed (INV-4) |
+| **Delta loop debounce configurable, default 100ms (override of literal 200ms)** | User decision (D-24.1) — 100ms more responsive; deltas infrequent so idle stays zero-push | ✓ v0.10.0 (Phase 24, `HudDeltaDriver`) |
+| **Milestone-audit integration check is load-bearing** | BLOCKER-01 (character.delta → CanvasCharacterSheetPanel runtime wire) passed all 7 phases' tests (which inject snapshots directly) but would render empty on-device; caught only by the cross-phase audit | ✓ Fixed before v0.10.0 close (commit `19e02c8`); audit gate validated as essential |
+| **OPTIONAL schema fields for additive snapshot extension** | feats/biography/ac added `.optional()` to avoid mass-updating ~26-31 downstream test literals (vs Phase 21-01's REQUIRED pain) | ✓ v0.10.0 (Phases 22-23) |
 
 ## Evolution
 
@@ -205,4 +246,4 @@ This document evolves at phase transitions and milestone boundaries.
 **Specs.md drift policy** (project-specific): se PROJECT.md e Specs.md divergono su un claim tecnico, **Specs.md vince** (è la fonte canonica). Aggiornare PROJECT.md per riallinearsi e committare insieme (INV-3).
 
 ---
-*Last updated: 2026-05-30 — opened milestone v0.9.14 Release & Distribution + deferred hardening (Phases 19–22; headline = CD installable-release pipeline for foundry-module/bridge/g2-app + README install docs; deferred-hardening phases from the 2026-05-30 G2 skill audit). Prior: 2026-05-18 v0.9.13 shipped + archived.*
+*Last updated: 2026-06-08 — v0.10.0 Raster UI Substrate SHIPPED + archived (Phases 19–26: CanvasCompositor 400×200 substrate, canvas status HUD + 6-tab sheet + combat tracker, ~5fps xxhash delta loop, raster default boot + glyph fallback, INV-1 raster contract + INV-3 docs at v0.10.0; 3300 tests; BLOCKER-01 caught+fixed at audit). 13/13 v1 REQ-IDs software-complete; hardware UAT deferred ADR-0005 Branch A. v0.9.14 Release & Distribution remains PARKED. Next: /gsd-new-milestone. Prior: 2026-05-18 v0.9.13 shipped + archived.*

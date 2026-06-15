@@ -340,29 +340,33 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
   });
 
   /**
-   * BERW-03: `handle.localeEvents` is a `LocaleEventEmitter` with `size() === 1`
-   * immediately after boot. The single permanent subscriber is the WR-03 locale-
-   * tracking listener in boot-engine-core.ts step 11c — it keeps the `makeMenu`
-   * factory's `currentMenuLocale` / `currentMenuOverride` mutable refs live so
-   * every subsequent over-scroll produces a menu in the user's current locale, not
-   * the boot-time locale.
+   * BERW-03: `handle.localeEvents` is a `LocaleEventEmitter` with TWO permanent
+   * boot-level subscribers immediately after boot:
+   *   1. WR-03 locale-tracking listener (step 11c) — keeps `makeMenu`'s
+   *      `currentMenuLocale` / `currentMenuOverride` refs (and, T10, `currentLocale`)
+   *      live so over-scroll menus and navigated panels render in the live locale.
+   *   2. T10 dispatcher re-attach listener (step 11e-locale) — dispose-then-re-attaches
+   *      the conc-conflict / reaction-prompt / action-result dispatchers against the
+   *      live socket with the live locale so toasts/modals render in the new locale
+   *      without a reboot.
    *
-   * Panel subscribers (QuickActionMenuPanel etc.) subscribe on `onMount`; this
-   * boot-level subscriber is distinct. It is removed in `teardown()` via
-   * `unsubMenuLocale()` — after teardown, size() drops back to 0.
+   * Panel subscribers (QuickActionMenuPanel etc.) subscribe on `onMount`; these
+   * boot-level subscribers are distinct. Both are removed in `teardown()` via
+   * `unsubMenuLocale()` + `unsubLocaleReattach()` — after teardown, size() drops to 0.
    *
    * @see WR-03 fix — Phase 6 REVIEW.md
+   * @see T10 — live [N] Language change reaches navigated panels/modals/toasts
    */
-  it('BERW-03: handle.localeEvents exposed + size() === 1 after boot (WR-03 locale-tracking subscriber)', async () => {
+  it('BERW-03: handle.localeEvents exposed + size() === 2 after boot (WR-03 + T10 listeners)', async () => {
     const { handle } = await bootWithWiring();
 
     // Verify the field exists and is a LocaleEventEmitter instance.
     expect(handle.localeEvents).toBeInstanceOf(LocaleEventEmitter);
-    // WR-03: one permanent subscriber (the makeMenu locale-tracking listener).
-    expect(handle.localeEvents.size()).toBe(1);
+    // WR-03 menu-locale listener + T10 dispatcher re-attach listener.
+    expect(handle.localeEvents.size()).toBe(2);
 
     handle.teardown();
-    // After teardown, the locale listener is removed.
+    // After teardown, both boot-level locale listeners are removed.
     expect(handle.localeEvents.size()).toBe(0);
   });
 
@@ -531,6 +535,62 @@ describe('boot-engine R1 wiring (BERW-01..08)', () => {
     handle.teardown();
 
     expect(actionResultRecord.unsubSpy).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * T10-01: a localeEvents 'changed' emit re-attaches the message dispatchers
+   * (conc-conflict, action-result) with the NEW locale.
+   *
+   * The dispatchers consume the locale at message-receive time (building a
+   * toast/modal per inbound envelope), so a boot-time captured value would stay
+   * stale after an on-glasses [N] Language change until reboot. The step
+   * 11e-locale listener dispose-then-re-attaches them with the live locale.
+   *
+   * Boot locale is 'it'. After emitting 'changed' → 'en', the second attach call
+   * for each dispatcher must carry 'en'. Device-local override only — no world
+   * settings write (asserted indirectly: emit is a pure in-process signal).
+   */
+  it('T10-01: locale change re-attaches conc-conflict + action-result dispatchers with the new locale', async () => {
+    const { handle } = await bootWithWiring(); // boot locale 'it'
+
+    // Boot attached each dispatcher exactly once with the boot locale.
+    expect(concRecord.callCount).toBe(1);
+    expect(concRecord.callArgs[0]?.[4]).toBe('it'); // (ws, bridge, bus, lm, locale, toastQueue)
+    expect(actionResultRecord.callCount).toBe(1);
+    expect(actionResultRecord.callArgs[0]?.[2]).toBe('it'); // (ws, toastQueue, locale, userId)
+
+    // Simulate an on-glasses [N] Language change to English.
+    handle.localeEvents.emit('changed', 'en');
+
+    // The re-attach listener disposed the boot attach and re-attached with 'en'.
+    expect(concRecord.callCount).toBe(2);
+    expect(concRecord.callArgs[1]?.[4]).toBe('en');
+    expect(concRecord.unsubSpy).toHaveBeenCalled(); // boot attach was disposed
+
+    expect(actionResultRecord.callCount).toBe(2);
+    expect(actionResultRecord.callArgs[1]?.[2]).toBe('en');
+    expect(actionResultRecord.unsubSpy).toHaveBeenCalled();
+
+    handle.teardown();
+  });
+
+  /**
+   * T10-02: a locale change back to 'auto' re-attaches the dispatchers with the
+   * boot-detected locale (opts.locale = 'it'), not the literal 'auto'.
+   *
+   * Mirrors the WR-03 menu-locale resolution: 'auto' restores opts.locale.
+   */
+  it('T10-02: locale change to "auto" re-attaches dispatchers with the boot-detected locale', async () => {
+    const { handle } = await bootWithWiring(); // boot locale 'it'
+
+    handle.localeEvents.emit('changed', 'de');
+    expect(actionResultRecord.callArgs.at(-1)?.[2]).toBe('de');
+
+    handle.localeEvents.emit('changed', 'auto');
+    // 'auto' resolves to opts.locale ('it'), never the literal 'auto'.
+    expect(actionResultRecord.callArgs.at(-1)?.[2]).toBe('it');
+
+    handle.teardown();
   });
 
   /**

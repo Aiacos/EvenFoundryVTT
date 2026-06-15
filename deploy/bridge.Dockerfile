@@ -51,6 +51,16 @@ RUN pnpm --filter @evf/bridge --prod deploy --legacy /app/bridge
 FROM node:24-alpine AS runner
 WORKDIR /app
 
+# OCI image metadata (shown by registries + Compose dashboards like Portainer/Dockge/Komodo).
+# The icon is the same greyscale d20 used for the Even Hub listing (assets/icon/icon.png).
+LABEL org.opencontainers.image.title="EvenFoundryVTT Bridge" \
+      org.opencontainers.image.description="Bridge service projecting a Foundry VTT D&D 5e session onto Even Realities G2 glasses." \
+      org.opencontainers.image.url="https://github.com/Aiacos/EvenFoundryVTT" \
+      org.opencontainers.image.source="https://github.com/Aiacos/EvenFoundryVTT" \
+      org.opencontainers.image.documentation="https://github.com/Aiacos/EvenFoundryVTT/blob/main/docs/release/bridge.md" \
+      org.opencontainers.image.licenses="MIT" \
+      com.evenfoundryvtt.icon="https://raw.githubusercontent.com/Aiacos/EvenFoundryVTT/main/assets/icon/icon.png"
+
 # Set NODE_ENV so the bridge's startup guard activates (T-03-21)
 ENV NODE_ENV=production
 
