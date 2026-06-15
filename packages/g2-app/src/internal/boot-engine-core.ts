@@ -1136,6 +1136,14 @@ export async function _bootEngineCore(
     currentLocale = nextLocale;
   });
 
+  // Quick-task (canvas Log/Inventario/Libro fix) — one-shot tab override for the
+  // canvas character sheet. Set by `onNavigate` when the Quick Action menu routes
+  // `[I] Inventario`/`[B] Libro` to the sheet on a specific tab; read by the
+  // `canvas-character-sheet` instance handler (step 11d-iv) which calls
+  // `setInitialTab` BEFORE onMount, then reset to null. Typed as the literal tab
+  // ids the sheet's `setInitialTab` accepts (structurally a `TabId`).
+  let pendingCanvasSheetTab: 'inventory' | 'spells' | null = null;
+
   const makeMenu = (): QuickActionMenuPanel => {
     return new QuickActionMenuPanel(
       bridge,
@@ -1170,12 +1178,37 @@ export async function _bootEngineCore(
           // instead of the glyph panel. panel-router.ts + panel-gesture-bus.ts are NOT modified
           // (D-23.5 — routing is achieved via this boot-time gate + setPanelInstanceHandler only).
           // Pitfall 2 (23-RESEARCH.md): gate here at dispatch, never rely on glob/sort order.
+          // Quick-task (canvas Log/Inventario/Libro fix) — in canvas mode the glyph
+          // Log/Inventory/Spellbook panels declare {image:0,text:1} and trip
+          // LayerManager._assertContainerBudget (canvas layers MUST be {0,0}). Remap them
+          // to canvas-mode panels here, mirroring the 'character-sheet'/'combat-tracker'
+          // gates above (Pitfall 2: gate at dispatch, never rely on glob/sort order):
+          //   - 'inventory' → canvas-character-sheet on the INV tab (reuses the sheet's
+          //     existing renderInventoryTabContent — the canvas inventory render exists).
+          //   - 'spellbook' → canvas-character-sheet on the SPL tab (reuses renderSpellsTabContent).
+          //   - 'log'       → canvas-log (thin CanvasLayer reusing renderLogContent rows).
+          // The pre-selected tab is recorded so the 'canvas-character-sheet' instance
+          // handler (step 11d-iv) can call setInitialTab BEFORE onMount. This override is
+          // single-use and NOT persisted, so the user's default sheet tab is preserved.
+          const isCanvas = layerManager.getRenderMode() === 'canvas';
+          pendingCanvasSheetTab =
+            isCanvas && target === 'inventory'
+              ? 'inventory'
+              : isCanvas && target === 'spellbook'
+                ? 'spells'
+                : null;
           const resolvedTarget =
-            target === 'character-sheet' && layerManager.getRenderMode() === 'canvas'
+            target === 'character-sheet' && isCanvas
               ? 'canvas-character-sheet'
-              : target === 'combat-tracker' && layerManager.getRenderMode() === 'canvas'
+              : target === 'combat-tracker' && isCanvas
                 ? 'canvas-combat-tracker'
-                : target;
+                : isCanvas && target === 'inventory'
+                  ? 'canvas-character-sheet'
+                  : isCanvas && target === 'spellbook'
+                    ? 'canvas-character-sheet'
+                    : isCanvas && target === 'log'
+                      ? 'canvas-log'
+                      : target;
 
           void panelRouter.openPanel(resolvedTarget, {
             bridge,
@@ -1342,9 +1375,28 @@ export async function _bootEngineCore(
     const sheet = panel as unknown as {
       setMapBaseLayer: (m: typeof mapBase) => void;
       setWsEventBus: (bus: typeof wsEventBus) => void;
+      setInitialTab: (tab: 'inventory' | 'spells' | null) => void;
     };
     sheet.setMapBaseLayer(mapBase);
     sheet.setWsEventBus(wsEventBus);
+    // Quick-task (canvas Inventario/Libro fix) — apply + consume the one-shot tab
+    // override recorded by onNavigate so `[I]` opens the INV tab and `[B]` the SPL
+    // tab. Reset immediately so a later plain `[S] Scheda` open restores the
+    // persisted tab (the override is single-use, never persisted).
+    sheet.setInitialTab(pendingCanvasSheetTab);
+    pendingCanvasSheetTab = null;
+  });
+
+  // 11d-v. Quick-task (canvas Log fix) — canvas-log wsEventBus injection.
+  //         The canvas-mode log panel (opened when target='log' && renderMode='canvas')
+  //         subscribes to LOG_DELTA_TYPE in onMount to receive live chat-log snapshots.
+  //         Without this injection the panel still mounts (no container-budget throw)
+  //         and renders the empty state, but shows no log entries. Mirrors the
+  //         canvas-character-sheet / canvas-combat-tracker wsEventBus injection.
+  //         Pitfall 5 (21-PATTERNS.md): inject only — do NOT subscribe here.
+  panelRouter.setPanelInstanceHandler('canvas-log', (panel) => {
+    const logPanel = panel as unknown as { setWsEventBus: (bus: typeof wsEventBus) => void };
+    logPanel.setWsEventBus(wsEventBus);
   });
 
   // 11e. Action result dispatcher (Plan 08-01) — listens on `r1.action.result` envelopes

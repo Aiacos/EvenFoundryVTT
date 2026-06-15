@@ -66,6 +66,7 @@ import {
   type MapBaseLayerLike,
   PERSIST_KEY,
   TABS,
+  type TabId,
 } from './character-sheet-panel.js';
 import {
   type PaintBounds,
@@ -200,6 +201,19 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   private _activeTabIndex = 0;
 
   /**
+   * One-shot initial tab override set by boot-engine-core via {@link setInitialTab}.
+   *
+   * When non-null, `_restoreLastTab` selects this tab instead of the persisted
+   * `view.sheet.lastTab` value, then clears it (single-use). This lets the Quick
+   * Action menu open the sheet directly on a specific tab — e.g. `[I] Inventario`
+   * → INV tab, `[B] Libro` → SPL tab — without persisting that choice as the
+   * user's default sheet tab (the override is NOT written to kv storage).
+   *
+   * `null` = no override (restore persisted tab, the pre-existing behaviour).
+   */
+  private _initialTab: TabId | null = null;
+
+  /**
    * Scroll offset within the active tab's content area.
    *
    * Reset to 0 on every tab change (T-05-02-02 mitigation).
@@ -300,6 +314,23 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    */
   setWsEventBus(bus: WsEventBusLike): void {
     this._wsEventBus = bus;
+  }
+
+  /**
+   * Pre-select the tab shown on the next `onMount`, overriding the persisted tab.
+   *
+   * Called by boot-engine-core via `setPanelInstanceHandler('canvas-character-sheet', ...)`
+   * BEFORE `onMount` when the Quick Action menu routes a tab-specific entry to the
+   * sheet — `[I] Inventario` → `'inventory'`, `[B] Libro` → `'spells'`. The override
+   * is consumed once by `_restoreLastTab` and is NOT persisted to kv storage, so it
+   * never clobbers the user's default sheet tab.
+   *
+   * Invalid tab ids are ignored (defensive — `TABS.indexOf` would yield -1).
+   *
+   * @param tab Tab id to open on mount, or null to clear (restore persisted tab).
+   */
+  setInitialTab(tab: TabId | null): void {
+    this._initialTab = tab;
   }
 
   // ── CanvasLayer interface ─────────────────────────────────────────────────
@@ -598,6 +629,19 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
     return this._fontFamily;
   }
 
+  /**
+   * Return the currently active tab id (test-only).
+   *
+   * Production code MUST NOT gate behaviour on this getter — it exists so tests can
+   * assert tab selection (e.g. `setInitialTab` routing `[I]`→INV, `[B]`→SPL) without
+   * reaching into the private `_activeTabIndex` field.
+   *
+   * @returns The active tab id, e.g. `'inventory'` or `'spells'`.
+   */
+  getActiveTab(): TabId {
+    return TABS[this._activeTabIndex] ?? 'main';
+  }
+
   // ── Private — async init ──────────────────────────────────────────────────
 
   /**
@@ -693,12 +737,26 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
   }
 
   /**
-   * Restore the last-viewed tab from Even Hub storage.
+   * Restore the last-viewed tab from Even Hub storage, honouring a one-shot
+   * {@link setInitialTab} override.
    *
-   * Valid stored value → restore `_activeTabIndex`.
-   * Invalid / absent / error → leave at 0 (Main).
+   * Order of precedence:
+   *   1. `_initialTab` override (consumed + cleared here) — set by boot-engine-core
+   *      when the Quick Action menu routes `[I]`/`[B]` to a specific tab. NOT
+   *      persisted, so the user's default sheet tab is preserved.
+   *   2. Persisted `view.sheet.lastTab` value from Even Hub storage.
+   *   3. Tab 0 (Main) on invalid / absent / error.
    */
   private async _restoreLastTab(): Promise<void> {
+    // One-shot initial-tab override takes precedence over the persisted tab.
+    if (this._initialTab !== null) {
+      const overrideIdx = TABS.indexOf(this._initialTab);
+      this._initialTab = null; // single-use: consume the override.
+      if (overrideIdx >= 0) {
+        this._activeTabIndex = overrideIdx;
+        return;
+      }
+    }
     try {
       const stored = await this._bridge.getLocalStorage(PERSIST_KEY);
       const idx = TABS.indexOf(stored as (typeof TABS)[number]);

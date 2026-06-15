@@ -676,6 +676,67 @@ describe('Boot dispatch — renderMode-gated panel id', () => {
 
     expect(selectPanelId('glyph')).toBe('character-sheet');
   });
+
+  // ── canvas Log/Inventario/Libro remap (quick-task) ───────────────────────────
+  //
+  // Mirror of the boot-engine-core onNavigate resolution: in canvas mode the glyph
+  // Log/Inventory/Spellbook panels ({image:0,text:1}) trip the container budget, so
+  // they are remapped to canvas panels. Inventory/Spellbook route to the canvas sheet
+  // on a pre-selected tab; Log routes to the dedicated canvas-log panel. Glyph mode is
+  // an exact passthrough (BLE fallback preserved). This pure-logic guard must stay
+  // byte-identical to the `resolvedTarget` / `pendingCanvasSheetTab` expressions in
+  // boot-engine-core.ts onNavigate.
+
+  /** Resolve {target id, pre-selected sheet tab} exactly as boot-engine-core onNavigate does. */
+  function resolveNav(
+    target: string,
+    renderMode: 'canvas' | 'glyph',
+  ): { id: string; tab: 'inventory' | 'spells' | null } {
+    const isCanvas = renderMode === 'canvas';
+    const tab: 'inventory' | 'spells' | null =
+      isCanvas && target === 'inventory'
+        ? 'inventory'
+        : isCanvas && target === 'spellbook'
+          ? 'spells'
+          : null;
+    const id =
+      target === 'character-sheet' && isCanvas
+        ? 'canvas-character-sheet'
+        : target === 'combat-tracker' && isCanvas
+          ? 'canvas-combat-tracker'
+          : isCanvas && target === 'inventory'
+            ? 'canvas-character-sheet'
+            : isCanvas && target === 'spellbook'
+              ? 'canvas-character-sheet'
+              : isCanvas && target === 'log'
+                ? 'canvas-log'
+                : target;
+    return { id, tab };
+  }
+
+  it('RCSP-BOOT-INV: canvas mode remaps inventory → canvas-character-sheet on INV tab', () => {
+    expect(resolveNav('inventory', 'canvas')).toEqual({
+      id: 'canvas-character-sheet',
+      tab: 'inventory',
+    });
+  });
+
+  it('RCSP-BOOT-SPL: canvas mode remaps spellbook → canvas-character-sheet on SPL tab', () => {
+    expect(resolveNav('spellbook', 'canvas')).toEqual({
+      id: 'canvas-character-sheet',
+      tab: 'spells',
+    });
+  });
+
+  it('RCSP-BOOT-LOG: canvas mode remaps log → canvas-log (no sheet tab override)', () => {
+    expect(resolveNav('log', 'canvas')).toEqual({ id: 'canvas-log', tab: null });
+  });
+
+  it('RCSP-BOOT-GLYPH-PASSTHROUGH: glyph mode leaves inventory/spellbook/log unchanged (BLE fallback)', () => {
+    expect(resolveNav('inventory', 'glyph')).toEqual({ id: 'inventory', tab: null });
+    expect(resolveNav('spellbook', 'glyph')).toEqual({ id: 'spellbook', tab: null });
+    expect(resolveNav('log', 'glyph')).toEqual({ id: 'log', tab: null });
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1251,5 +1312,120 @@ describe('CanvasCharacterSheetPanel — character.delta subscription (RCSP-WS)',
     // Must not throw — subscriptions silently skipped
     await expect(panel.onMount()).resolves.toBeUndefined();
     await expect(panel.onUnmount()).resolves.toBeUndefined();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RCSP-INITIAL-TAB — setInitialTab override (canvas Inventario/Libro fix)
+//
+// The Quick Action menu routes [I] Inventario → sheet INV tab and [B] Libro →
+// sheet SPL tab in canvas mode. boot-engine-core calls setInitialTab BEFORE
+// onMount; the override is consumed once by _restoreLastTab and is NOT persisted.
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('CanvasCharacterSheetPanel — setInitialTab override (RCSP-INITIAL-TAB)', () => {
+  async function getPanel() {
+    const m = await import('../canvas-character-sheet-panel.js');
+    return m.default;
+  }
+
+  function makeMockGestureBus() {
+    const subscribers: Array<(g: { kind: string; direction?: string }) => void> = [];
+    return {
+      subscribe: vi.fn((fn: (g: { kind: string; direction?: string }) => void) => {
+        subscribers.push(fn);
+        return () => {
+          const idx = subscribers.indexOf(fn);
+          if (idx >= 0) subscribers.splice(idx, 1);
+        };
+      }),
+      publish: (g: { kind: string; direction?: string }) => {
+        for (const fn of [...subscribers]) fn(g);
+      },
+      size: () => subscribers.length,
+    };
+  }
+
+  function makeMockBridge(storedTab = '') {
+    return {
+      setLocalStorage: vi.fn().mockResolvedValue('true'),
+      getLocalStorage: vi.fn().mockResolvedValue(storedTab),
+      textContainerUpgrade: vi.fn().mockResolvedValue(undefined),
+      updateImageRawData: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('RCSP-INITIAL-TAB-INV: setInitialTab("inventory") opens the INV tab on mount', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const panel = new CanvasCharacterSheetPanel(
+      makeMockBridge() as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+    panel.setInitialTab('inventory');
+    await panel.onMount();
+    expect(panel.getActiveTab()).toBe('inventory');
+  });
+
+  it('RCSP-INITIAL-TAB-SPL: setInitialTab("spells") opens the SPL tab on mount', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const panel = new CanvasCharacterSheetPanel(
+      makeMockBridge() as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+    panel.setInitialTab('spells');
+    await panel.onMount();
+    expect(panel.getActiveTab()).toBe('spells');
+  });
+
+  it('RCSP-INITIAL-TAB-OVERRIDE: initial tab wins over the persisted tab and is NOT persisted', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    // Storage says the user's default tab is 'bio'.
+    const bridge = makeMockBridge('bio');
+    const panel = new CanvasCharacterSheetPanel(
+      bridge as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+    panel.setInitialTab('inventory');
+    await panel.onMount();
+
+    // Override wins over the persisted 'bio'.
+    expect(panel.getActiveTab()).toBe('inventory');
+    // The override must NOT be written back to storage (user default preserved).
+    expect(bridge.setLocalStorage).not.toHaveBeenCalled();
+  });
+
+  it('RCSP-INITIAL-TAB-ONESHOT: override is single-use — a second mount restores the persisted tab', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bridge = makeMockBridge('main');
+    const panel = new CanvasCharacterSheetPanel(
+      bridge as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+
+    panel.setInitialTab('spells');
+    await panel.onMount();
+    expect(panel.getActiveTab()).toBe('spells');
+    await panel.onUnmount();
+
+    // Re-open WITHOUT a fresh setInitialTab → restore persisted 'main'.
+    await panel.onMount();
+    expect(panel.getActiveTab()).toBe('main');
+  });
+
+  it('RCSP-INITIAL-TAB-NULL: setInitialTab(null) restores the persisted tab (default open)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bridge = makeMockBridge('skills');
+    const panel = new CanvasCharacterSheetPanel(
+      bridge as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+    panel.setInitialTab(null);
+    await panel.onMount();
+    expect(panel.getActiveTab()).toBe('skills');
   });
 });
