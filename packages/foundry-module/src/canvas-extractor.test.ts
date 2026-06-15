@@ -308,6 +308,40 @@ describe('registerCanvasExtractor — identical-frame skip (CE-PNG-3, CE-PNG-4)'
     vi.advanceTimersByTime(INTERVAL_MS);
     expect(emit).toHaveBeenCalledTimes(2);
   });
+
+  it('CE-PNG-WEBP-1: webpQuality change on a static scene forces a re-emit (no luma change)', () => {
+    const hooks = makeHooksMock();
+    vi.stubGlobal('Hooks', hooks);
+    // Static canvas — luma identical on every extract, so only webpQuality differs.
+    vi.stubGlobal('canvas', makeCanvasMock({ width: 288, height: 144, fill: 0x50 }));
+
+    const emit = vi.fn();
+    const INTERVAL_MS = 500;
+    let webpQuality = 0; // start lossless
+    registerCanvasExtractor({
+      emit,
+      getCaptureIntervalMs: () => INTERVAL_MS,
+      getWebpQuality: () => webpQuality,
+    });
+
+    // First capture — emitted (lossless).
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // Identical luma + same quality → skipped.
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    // DM toggles lossless → WebP q75. Luma is unchanged but the quality changed,
+    // so the frame MUST re-emit immediately (not wait for the 5 s keyframe).
+    webpQuality = 75;
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    // Same quality again on a static scene → skipped once more.
+    vi.advanceTimersByTime(INTERVAL_MS);
+    expect(emit).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

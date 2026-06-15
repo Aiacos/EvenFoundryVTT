@@ -723,6 +723,18 @@ let _registered: RegistrationState | null = null;
 /** FNV-1a hash of the last emitted luma array (for identical-frame skip). */
 let _lastEmittedHash: number | null = null;
 
+/**
+ * WebP quality of the last emitted frame (for the identical-frame skip).
+ *
+ * The luma hash captures dither + brightness + normalize (they all change
+ * pixel luma) but NOT `webpQuality` — a lossless↔lossy toggle does not alter
+ * luma, so on a static scene the hash-only skip would suppress re-emit until
+ * the 5 s keyframe, contradicting the "applies live on the next capture"
+ * contract. Folding the quality into the skip key forces an immediate re-emit
+ * when only the quality changed.
+ */
+let _lastEmittedWebpQuality: number | null = null;
+
 /** Timestamp of the last emit — drives the {@link KEYFRAME_INTERVAL_MS} keyframe. */
 let _lastEmitTs = 0;
 
@@ -826,9 +838,13 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       // on a static scene (the bridge is push-only, no frame cache).
       const hash = enriched._lumaHash;
       const now = Date.now();
+      // Skip identical frames UNLESS the keyframe interval elapsed OR the
+      // WebP quality changed (a lossless↔lossy toggle does not alter luma, so
+      // the hash alone would wrongly suppress it — see _lastEmittedWebpQuality).
       if (
         hash !== undefined &&
         hash === _lastEmittedHash &&
+        webpQuality === _lastEmittedWebpQuality &&
         now - _lastEmitTs < KEYFRAME_INTERVAL_MS
       ) {
         return;
@@ -836,6 +852,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       if (hash !== undefined) {
         _lastEmittedHash = hash;
       }
+      _lastEmittedWebpQuality = webpQuality;
       _lastEmitTs = now;
 
       const luma = enriched._luma;
@@ -1041,6 +1058,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
     }
     _registered = null;
     _lastEmittedHash = null;
+    _lastEmittedWebpQuality = null;
     _lastEmitTs = 0;
     _lastStatsTs = 0;
     _encodeBusy = false;
@@ -1068,6 +1086,7 @@ export function _resetCanvasExtractor(): void {
   // any orphaned timer/state directly (teardown already did this when present).
   _registered = null;
   _lastEmittedHash = null;
+  _lastEmittedWebpQuality = null;
   _lastEmitTs = 0;
   _lastStatsTs = 0;
   _encodeBusy = false;
