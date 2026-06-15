@@ -166,6 +166,9 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     restricted: true,
   });
 
+  // TODO (#32): mapContrastNormalize/mapDither/mapBrightness are client-scope, so a
+  // stream-leader change makes the synced glasses values jump. Consider world-scope.
+
   // Map contrast normalization — per-client display preference (Quick Task 260610-evs).
   // When enabled, luminance levels-stretch is applied to dark map frames before the
   // 4-bit dither, so the G2's greyscale display shows readable contrast even in
@@ -182,8 +185,6 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     onChange: onDisplayChange,
   });
 
-  // TODO (#32): mapDither/mapBrightness/mapContrastNormalize are client-scope, so a
-  // stream-leader change makes the synced glasses values jump. Consider world-scope.
   // Map dithering — per-client display preference (2026-06-11). When enabled,
   // a Bayer 4×4 ordered dither is applied during the module-side 16-level
   // quantization, so gradients render as a stippled pattern instead of flat
