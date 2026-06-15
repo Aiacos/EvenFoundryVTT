@@ -950,20 +950,14 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
 
   // --- 11. Graceful-shutdown hook (WR-04) ---
   //
-  // Fastify's onClose hook fires from `app.close()` — production Docker
-  // SIGTERM does not currently call this (the bridge exits abruptly), but
-  // every test calls `app.close()` in afterEach. Wire the refresher's
-  // dispose() so subscribers + pending debounce timers are torn down per
-  // test instance. Previously, 67 buildServer() invocations each leaked
-  // a KeytermRefresher subscription that was only freed once GC also
-  // collected the Fastify app reference. With the hook the cleanup is
-  // deterministic; the refresher dispose() is idempotent so calling
-  // app.close() multiple times is safe.
-  //
-  // The hook also serves as the integration point for the future
-  // graceful-shutdown PR (track via TODO in issue tracker): once SIGTERM
-  // handling is added, it just needs to call `app.close()` and the
-  // refresher tear-down is already wired.
+  // Fastify's onClose hook fires from `app.close()`. Production Docker SIGTERM/SIGINT
+  // now calls `app.close()` (see index.ts graceful-shutdown handler), and every test
+  // calls it in afterEach. Wire the refresher's dispose() so subscribers + pending
+  // debounce timers are torn down per instance. Previously, 67 buildServer()
+  // invocations each leaked a KeytermRefresher subscription that was only freed once
+  // GC also collected the Fastify app reference. With the hook the cleanup is
+  // deterministic; the refresher dispose() is idempotent so calling app.close()
+  // multiple times is safe.
   app.addHook('onClose', async () => {
     if (_keytermRefresher !== null) {
       _keytermRefresher.dispose();
