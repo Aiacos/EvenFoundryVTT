@@ -114,10 +114,14 @@ function readRegistry(): BearerRegistry {
 /**
  * Persists the bearer registry to Foundry settings.
  *
+ * Awaits `game.settings.set` (async in Foundry): not awaiting risks a stale
+ * read-after-write in the same tick and swallows write errors. Callers must
+ * await this in turn.
+ *
  * @param registry - The registry to persist
  */
-function writeRegistry(registry: BearerRegistry): void {
-  game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
+async function writeRegistry(registry: BearerRegistry): Promise<void> {
+  await game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
 }
 
 /**
@@ -224,7 +228,7 @@ export async function generateBearer(
   };
 
   registry.entries[token] = entry;
-  writeRegistry(registry);
+  await writeRegistry(registry);
 
   return entry;
 }
@@ -269,9 +273,13 @@ export function validateBearer(token: string): {
  * The entry is preserved in the registry for audit trail purposes.
  * Is a no-op for unknown tokens (does not throw).
  *
+ * Async: awaits the registry write so callers can guarantee a read-after-write
+ * (e.g. a re-render that lists bearers) observes the revocation, and so write
+ * errors surface rather than being silently dropped.
+ *
  * @param token - The raw bearer token string to revoke
  */
-export function revokeBearer(token: string): void {
+export async function revokeBearer(token: string): Promise<void> {
   const registry = readRegistry();
   const entry = registry.entries[token];
 
@@ -280,7 +288,7 @@ export function revokeBearer(token: string): void {
   }
 
   entry.revokedAt = Date.now();
-  writeRegistry(registry);
+  await writeRegistry(registry);
 }
 
 /**

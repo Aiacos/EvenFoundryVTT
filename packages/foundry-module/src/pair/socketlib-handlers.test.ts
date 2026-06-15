@@ -241,7 +241,7 @@ describe('registerSocketlibHandlers', () => {
       registerSocketlibHandlers();
 
       const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world', 'user-1');
-      const result = socketlibMock.callHandler('evf.revokeToken', entry.token);
+      const result = await socketlibMock.callHandler('evf.revokeToken', entry.token);
       expect(result).toEqual({ success: true });
 
       // Verify the bearer was actually revoked
@@ -254,7 +254,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       registerSocketlibHandlers();
 
-      const result = socketlibMock.callHandler('evf.revokeToken', 'unknown-token');
+      const result = await socketlibMock.callHandler('evf.revokeToken', 'unknown-token');
       expect(result).toEqual({ success: true });
     });
 
@@ -262,7 +262,7 @@ describe('registerSocketlibHandlers', () => {
       const { registerSocketlibHandlers } = await import('./socketlib-handlers.js');
       registerSocketlibHandlers();
 
-      const result = socketlibMock.callHandler('evf.revokeToken', { evil: 'object' });
+      const result = await socketlibMock.callHandler('evf.revokeToken', { evil: 'object' });
       expect(result).toMatchObject({ success: false, reason: 'invalid_input' });
     });
   });

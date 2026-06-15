@@ -60,11 +60,17 @@ interface FoundrySettings {
   /**
    * Writes a game setting value.
    *
+   * Foundry's `ClientSettings#set` is async (it persists to the world database
+   * and resolves with the stored value). Callers that need a guaranteed
+   * read-after-write within the same tick — or that must observe write errors —
+   * MUST await the returned promise.
+   *
    * @param module - The module ID
    * @param key - Setting key
    * @param value - Value to store
+   * @returns A promise resolving to the stored value.
    */
-  set(module: string, key: string, value: unknown): void;
+  set(module: string, key: string, value: unknown): Promise<unknown>;
 }
 
 /** Minimal Foundry i18n API for locale detection at module boot. */

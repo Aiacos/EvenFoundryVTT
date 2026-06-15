@@ -156,14 +156,17 @@ function handleValidateToken(token: unknown): ValidateTokenResult {
  * without touching the registry.
  *
  * @param tokenId - The raw bearer token string to revoke
- * @returns `{ success: true }` on success (including no-op for unknown tokens)
+ * @returns A promise resolving to `{ success: true }` on success (including the
+ *          no-op for unknown tokens), once the revocation write has persisted.
  */
-function handleRevokeToken(tokenId: unknown): { success: boolean; reason?: string } {
+async function handleRevokeToken(tokenId: unknown): Promise<{ success: boolean; reason?: string }> {
   if (typeof tokenId !== 'string') {
     return { success: false, reason: 'invalid_input' };
   }
 
-  revokeBearer(tokenId);
+  // revokeBearer is async (awaits the Foundry settings write); await it so the
+  // socketlib caller's promise resolves only after the revocation is persisted.
+  await revokeBearer(tokenId);
   return { success: true };
 }
 

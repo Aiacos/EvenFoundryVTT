@@ -517,8 +517,15 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const tokenId = target?.dataset?.tokenId;
     if (!tokenId) return;
 
-    revokeBearer(tokenId);
-    void this.render({ force: true });
+    // Await the (async) revoke so the re-render observes the revocation
+    // (read-after-write). Fire-and-forget at the DOM-handler boundary.
+    revokeBearer(tokenId)
+      .then(() => {
+        void this.render({ force: true });
+      })
+      .catch((err: unknown) => {
+        console.error('[EVF] PairModal revoke error:', err);
+      });
   }
 
   /**
