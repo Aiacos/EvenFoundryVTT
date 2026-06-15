@@ -958,8 +958,20 @@ export async function _bootEngineCore(
   // anything else (including missing/'' on first run) = on. Fail-soft: a kv
   // read error keeps the default ON.
   let fpsIndicatorOn = true;
+  // Boot-race guard: the kv read below is async, but the [F] toggle handler can
+  // fire during the boot window (R1 source attaches before the read resolves).
+  // Without this flag the late kv apply unconditionally clobbers an early toggle
+  // (stored !== '0' always wins), silently reverting the user's [F] press. Once
+  // the user has toggled, the persisted value is already in sync (the toggle
+  // writes it) so the boot-time read must NOT re-apply.
+  let fpsUserToggled = false;
   void Promise.resolve(bridge.getLocalStorage(FPS_INDICATOR_KV_KEY))
     .then((stored: string) => {
+      if (fpsUserToggled) {
+        // User toggled during the boot window — their choice (and its persisted
+        // value) wins; do not overwrite with the pre-toggle stored value.
+        return;
+      }
       fpsIndicatorOn = stored !== '0';
       canvasStatusHud.setFpsIndicatorEnabled(fpsIndicatorOn);
     })
@@ -1188,6 +1200,9 @@ export async function _bootEngineCore(
           // [F] FPS — flip the indicator, persist to the Even Hub kv store
           // (fire-and-forget; a failed write only loses persistence, not the
           // in-session toggle).
+          // Mark that the user has expressed an explicit preference so a still
+          // in-flight boot-time kv read does not clobber this toggle.
+          fpsUserToggled = true;
           fpsIndicatorOn = !fpsIndicatorOn;
           canvasStatusHud.setFpsIndicatorEnabled(fpsIndicatorOn);
           void Promise.resolve(
