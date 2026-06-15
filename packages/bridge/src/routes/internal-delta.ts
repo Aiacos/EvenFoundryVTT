@@ -16,6 +16,14 @@
  * sharing the single EVF_INTERNAL_SECRET bearer key, the 100-req/min budget would
  * throttle gameplay-critical deltas as collateral damage. This is a server-to-server
  * internal channel, so rate-limiting it provides no abuse protection — only damage.
+ *
+ * Why NOT a high-ceiling limit instead of full exemption: the frame stream is
+ * uncapped (captureFps 1–60, FRAME-PNG-02) → up to 3600 frame POSTs/min PLUS the
+ * stateful deltas. Any fixed per-minute ceiling large enough to never throttle a
+ * legitimate 60fps stream is also large enough to be useless as an abuse limit, while
+ * a smaller ceiling would drop frames. Abuse protection on this route is instead
+ * provided by (a) the EVF_INTERNAL_SECRET gate and (b) the ALLOWED_DELTA_TYPES
+ * allowlist (below) which bounds the fan-out blast radius to known envelope types.
  * TODO (#43): restrict /internal/delta to Docker internal network in production.
  *
  * Security:
@@ -43,9 +51,69 @@ import type { DeltaEmitter } from '../ws/delta-emitter.js';
 /** Delta types that carry a full map frame — the upstream-settings piggyback carrier. */
 const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixels']);
 
+/**
+ * Allowlist of delta `type` discriminants the bridge accepts on POST /internal/delta
+ * and fans out verbatim to all subscribed WS clients.
+ *
+ * SECURITY (cache-poisoning / fan-out abuse): the route formerly accepted ANY
+ * non-empty `type` with a `z.unknown()` payload and broadcast it verbatim to every
+ * WS client. Combined with `rateLimit:false`, that let a caller holding the internal
+ * secret (or, defense-in-depth, any future caller that reaches this route) inject
+ * arbitrary envelope types into every connected glasses client. We now reject any
+ * `type` outside this closed set with 400 BEFORE fan-out.
+ *
+ * The set is derived EXHAUSTIVELY from the types the foundry-module actually pushes
+ * through `bridgeDeltaEmitter` → POST /internal/delta (enumerated from
+ * packages/foundry-module/src — module.ts ready-hook wiring + the readers + the
+ * canvas extractor). Cross-checked against `EPHEMERAL_DELTA_TYPES` (delta-emitter.ts)
+ * and the bridge `onDelta` cache handlers (server.ts: bearer-registry / character-list /
+ * character-snapshot / spell-pack / entity-pack). `frame_pixels` is not currently
+ * emitted but is a recognised frame carrier (EPHEMERAL_DELTA_TYPES + FRAME_DELTA_TYPES),
+ * kept here for forward-compat so a future module that switches carriers is not broken.
+ *
+ * Types deliberately EXCLUDED: client→bridge→Foundry uplink types (`template.placement.*`,
+ * `r1.gesture`, `client_setting`) and debug-only types (`r1.debug.displayop`,
+ * `r1.perf.sample`) — these never arrive on the downlink /internal/delta route.
+ *
+ * @see packages/foundry-module/src/module.ts (ready-hook bridgeDeltaEmitter wiring)
+ * @see packages/bridge/src/ws/delta-emitter.ts (EPHEMERAL_DELTA_TYPES)
+ */
+const ALLOWED_DELTA_TYPES: ReadonlySet<string> = new Set([
+  // Frame carriers (ephemeral) + telemetry
+  'frame_png',
+  'frame_pixels',
+  'frame_stats',
+  // Display-settings sync (bidirectional snapshot carrier)
+  'settings.display',
+  // Hook-subscriber deltas (character + combat + scene + log)
+  'character.delta',
+  'combat.turn',
+  'combat.targets',
+  'combat.state',
+  'scene.viewport',
+  'event.log.delta',
+  // Vocabulary / roster push readers
+  'r1.spells.available',
+  'r1.entities.available',
+  'r1.bearers.available',
+  'r1.characters.available',
+  // Write-path / watcher telemetry
+  'r1.multiattack.progress',
+  'r1.reaction.available',
+  'r1.action.result',
+  'r1.movement.budget',
+  'r1.action.economy',
+  'conc.conflict',
+  // Bearer rotation snapshot
+  'bearer.rotated',
+  // Portrait render push (bridge re-emits this via DeltaEmitter on cache-miss, but the
+  // foundry-module may also relay it; allow it through for symmetry — D-13-07).
+  'r1.portrait.ready',
+]);
+
 /** Schema for the POST /internal/delta request body. */
 const InternalDeltaBodySchema = z.object({
-  /** Delta type discriminant — e.g. "character.delta", "combat.turn" */
+  /** Delta type discriminant — must be a known internal delta type (see ALLOWED_DELTA_TYPES). */
   type: z.string().min(1),
   /** Arbitrary serialisable delta payload — validated by capability-specific handlers. */
   payload: z.unknown(),
@@ -120,6 +188,14 @@ export async function registerInternalDeltaRoute(
     }
 
     const { type, payload } = parsed.data;
+
+    // --- Allowlist the delta type BEFORE any fan-out (cache-poisoning / fan-out abuse) ---
+    // Reject unknown types with 400; do NOT broadcast them to WS clients. The closed set
+    // is enumerated from the types the foundry-module actually pushes (see ALLOWED_DELTA_TYPES).
+    if (!ALLOWED_DELTA_TYPES.has(type)) {
+      request.log.warn({ type }, 'internal/delta: rejected unknown delta type (not in allowlist)');
+      return reply.status(400).send({ error: 'unknown_delta_type' });
+    }
 
     // --- Display-settings sync: cache the downstream snapshot ---
     // The module pushes a FULL `settings.display` snapshot on ready + on change.
