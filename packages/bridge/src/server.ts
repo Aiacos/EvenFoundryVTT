@@ -360,9 +360,17 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   });
 
   // --- 2. Rate limit ---
-  // Per-token limiting: key on the bearer token from Authorization header so that
-  // a compromised token can be rate-limited independently from others on the same LAN IP.
-  // Falls back to IP if no Authorization header is present (e.g. /v1/health).
+  // Per-IP limiting: key the limiter on `req.ip`. This is the correct identity for the
+  // homelab single-tenant model (one LAN, a handful of trusted clients) and — crucially —
+  // it is NOT attacker-controlled on the unauthenticated routes.
+  //
+  // SECURITY (do NOT revert to keying on the Authorization header): keying on the RAW,
+  // pre-validation `Authorization` value let an unauthenticated caller mint a FRESH rate
+  // bucket per request simply by rotating `Bearer <random>` values, fully defeating the
+  // limiter on unauthenticated routes; symmetrically, a short/blank header collapsed many
+  // distinct callers into a single shared bucket. The bearer token is untrusted until
+  // tokenCache.validate() runs (inside each route handler), which is AFTER keyGenerator —
+  // so a validated-token identity is not available here. `req.ip` is the robust choice.
   // TODO (#44): lower max to 60 req/min once Phase 3 action endpoints land.
   //
   // Route-level exemption: POST /internal/delta opts out via { config: { rateLimit: false } }
@@ -377,7 +385,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    keyGenerator: (req) => req.headers.authorization?.slice(7) ?? req.ip ?? 'unknown',
+    keyGenerator: (req) => req.ip ?? 'unknown',
   });
 
   // --- 3. WebSocket support ---
