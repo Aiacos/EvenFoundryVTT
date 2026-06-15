@@ -2923,12 +2923,13 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 │                                                                   │
 │  STEP 3 / 3 · Character                                           │
 │                                                                   │
-│  ✓ Connected to Foundry world "Homebrew 2024"                    │
+│  ✓ Connected to "Homebrew 2024" · paired as user "aiacos"         │
 │                                                                   │
-│  Select your character:                                           │
-│  ◉ Thorin Mountainforge   (Fighter 3 / Wizard 5, multi)           │
-│  ○ Lyra Brightleaf        (Cleric 7)                              │
-│  ○ Drak'val               (Barbarian 6)                           │
+│  Your characters (scoped to your Foundry user — ADR-0014):        │
+│  ◉ Artemis            (Ranger 10)                                 │
+│  ○ Dante Lanzulli     (Wizard 10)                                 │
+│  ○ Karius Frede       (Paladin 10)                                │
+│  ○ Shin               (Rogue 10)                                  │
 │                                                                   │
 │  ☑ Auto-connect when G2 is worn                                   │
 │                                                                   │
@@ -2953,8 +2954,8 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 4. **User**: seleziona profilo "Homelab", incolla `https://homelab.lan:8910`.
 5. **User (DM)**: apre Foundry sul desktop, va in **Settings → EvenFoundryVTT module → "Pair a G2 device"** → genera token 24h → il PairModal mostra **bridge URL + token copiabili** (token nascosto di default, con toggle Mostra/Copia).
 6. **User**: copia il token dal PairModal e lo **incolla** nel wizard sul phone (tap "Paste from clipboard").
-7. **Plugin**: chiama `GET /v1/actor` con bearer → bridge risponde con lista character.
-8. **User**: seleziona "Thorin", checkbox "Auto-connect when G2 worn".
+7. **Plugin**: chiama `GET /v1/characters` con bearer → bridge risponde con la lista **filtrata agli attori di cui l'utente accoppiato è OWNER** (ADR-0014: niente più roster globale).
+8. **User**: seleziona "Shin", checkbox "Auto-connect when G2 worn".
 9. **Plugin**: persiste settings phone-side, dismissa wizard, mostra status "Pronto. Indossa il G2 per iniziare".
 10. **User**: indossa G2 → Even Realities App detecta wear (via `bridge.onWear`) → riapre plugin auto → handshake completo → render HUD §7.4.
 
