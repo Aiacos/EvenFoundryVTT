@@ -121,7 +121,7 @@ export const FramePixelsSchema = z.object({
   sceneId: z.string().min(1),
   width: z.number().int().min(20).max(576),
   height: z.number().int().min(20).max(288),
-  pixelsB64: z.string(),
+  pixelsB64: z.string().min(1),
   ts: z.number().int().positive(),
 });
 

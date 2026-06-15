@@ -95,7 +95,7 @@ export const FramePngSchema = z.object({
   sceneId: z.string().min(1),
   width: z.number().int().min(20).max(576),
   height: z.number().int().min(20).max(288),
-  pngB64: z.string(),
+  pngB64: z.string().min(1),
   ts: z.number().int().positive(),
 });
 

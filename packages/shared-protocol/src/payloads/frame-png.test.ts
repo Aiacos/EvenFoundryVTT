@@ -82,6 +82,17 @@ describe('FramePngSchema — reject', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects empty pngB64 (a frame carrier with no image is never valid)', () => {
+    const result = FramePngSchema.safeParse({
+      sceneId: 'scene1',
+      width: 288,
+      height: 144,
+      pngB64: '',
+      ts: 1000,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects width=19 (below min 20)', () => {
     const result = FramePngSchema.safeParse({
       sceneId: 'scene1',

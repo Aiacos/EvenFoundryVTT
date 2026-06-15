@@ -133,6 +133,20 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it('rejects empty pixelsB64 (a frame carrier with no pixels is never valid)', () => {
+    const r = FramePixelsSchema.safeParse({
+      sceneId: 's',
+      width: 20,
+      height: 20,
+      pixelsB64: '',
+      ts: 1,
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues.some((i) => i.path.includes('pixelsB64'))).toBe(true);
+    }
+  });
 });
 
 describe('decodeFramePixels — failure modes (FP-5, FP-7)', () => {
