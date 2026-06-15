@@ -72,10 +72,6 @@ import { createBootPage } from '../engine/page-lifecycle.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { PanelRouter } from '../engine/panel-router.js';
 import { PerfProbe } from '../engine/perf-probe.js';
-import {
-  buildActionPendingToast,
-  buildMapAlreadyFullscreenToast,
-} from '../engine/quick-action-feedback.js';
 import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
@@ -1227,15 +1223,24 @@ export async function _bootEngineCore(
         onMapModeToggle: () => {
           // [M] Map control. In canvas mode the map is ALREADY the z=0
           // full-screen background (MapCanvasLayer): there is no separate
-          // "map mode" to toggle, and routing into the legacy glyph 400×200
-          // raster path corrupts the canvas tile push (floods
-          // `updateImageRawData ... sendFailed` and blanks the display until
-          // restart). So in canvas mode this MUST be a no-op that gives the
-          // user visible feedback instead of touching the glyph raster path.
+          // "map mode" to toggle. This MUST stay a clean silent no-op.
+          //
+          // It must NOT enqueue a toast: ToastQueueLayer renders via
+          // `bridge.textContainerUpgrade` and declares `{image:0, text:1}` — a
+          // TEXT-container surface that is incompatible with the canvas
+          // image-tile page (see step-12 comment ~line 1848). Calling
+          // `textContainerUpgrade` in canvas mode corrupts the page so the next
+          // `updateImageRawData` tile push fails (`push-hud-tiles ...
+          // sendFailed`) and the display goes BLANK and does NOT recover.
+          //
+          // User feedback in canvas mode is pending the canvas-toast-overlay
+          // layer (TODO(ADR-0013), see boot-engine-core.ts step-12 comment) —
+          // this is intentionally silent, not a missing feature.
+          //
           // The real toggle logic (toggleMapMode) remains reserved for the
           // glyph path (Phase 7); we do not invoke it here.
           if (layerManager.getRenderMode() === 'canvas') {
-            toastQueue.enqueue(buildMapAlreadyFullscreenToast(currentLocale));
+            // canvas: map is already the full-screen z=0 background — nothing to toggle.
             return;
           }
           // Glyph mode: Phase 7 wires the full toggle logic via toggleMapMode.
@@ -1243,10 +1248,15 @@ export async function _bootEngineCore(
           console.warn('[boot-engine-core] onMapModeToggle: glyph-mode Phase 7 stub — no-op');
         },
         onAction: () => {
-          // [A] Azione. The Action panel is not yet shipped (Phase 7). Give the
-          // user a visible, non-blocking toast instead of a silent console.warn
-          // so selecting [A] is never a dead no-feedback gesture.
-          toastQueue.enqueue(buildActionPendingToast(currentLocale));
+          // [A] Azione. The Action panel is not yet shipped (Phase 7).
+          //
+          // This MUST NOT enqueue a toast: in canvas mode ToastQueueLayer's
+          // `textContainerUpgrade` corrupts the canvas image-tile page and
+          // blanks the display until restart (see onMapModeToggle above and the
+          // step-12 comment ~line 1848). User feedback in canvas mode is pending
+          // the canvas-toast-overlay layer (TODO(ADR-0013)). Telemetry-only warn
+          // is fine; no user-facing toast.
+          console.warn('[boot-engine-core] onAction: Action panel Phase 7 stub — no-op');
         },
         onFpsToggle: () => {
           // [F] FPS — flip the indicator, persist to the Even Hub kv store
