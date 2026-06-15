@@ -352,12 +352,18 @@ export function bridgeDeltaEmitter(type: string, payload: unknown): void {
  * menu stay in sync with Foundry. Fail-open via isStreamLeader on read errors.
  */
 function emitDisplaySettings(): void {
+  // Doubled fail-open, intentional: isStreamLeader already catches its own read
+  // errors and returns true (a duplicate publish beats a never-published
+  // snapshot). This outer try/catch is belt-and-braces — if a future change to
+  // isStreamLeader ever lets a throw escape, we still publish rather than go
+  // silent. The only way the catch suppresses the early-return is on a throw,
+  // and a throw means "could not determine non-leadership" → publish anyway.
   try {
     if (!isStreamLeader()) {
       return;
     }
   } catch {
-    // isStreamLeader is itself fail-open; if it throws, still publish.
+    // Fall through to publish (see above).
   }
   bridgeDeltaEmitter(SETTINGS_DISPLAY_TYPE, buildDisplaySettingsSnapshot());
 }
