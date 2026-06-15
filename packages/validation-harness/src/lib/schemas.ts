@@ -105,6 +105,16 @@ export const ImageFormatResult = EvidenceMeta.extend({
 export type ImageFormatResult = z.infer<typeof ImageFormatResult>;
 
 // R1 timing (§10.0.1 + Pitfall 5).
+//
+// NOTE on `long-press-1s` / `long-press-2s` (and `recommended_windows_ms.long_press_min`
+// below): these are EXPLORATORY Phase-0 HARDWARE-PROBE outputs measuring a
+// *hypothesized* long-press gesture. They predate the GEST-01 decision (ADR-0012)
+// which established — from canonical Even Hub docs, INV-2 re-verified 2026-05-31 —
+// that the R1 supports only press / double-press / swipe-up / swipe-down, with NO
+// duration-based / long-press input. They are retained here so a probe run that
+// *attempted* to elicit a long-press can still record its (expected-null) result
+// as evidence; they are NOT a sanctioned runtime gesture. The canonical gesture
+// set lives in `packages/shared-protocol/src/payloads/r1.ts` — use that, never this.
 export const R1TimingResult = EvidenceMeta.extend({
   test_id: z.literal('10-0-1-r1-timing'),
   sessions: z.number().int().positive(),
