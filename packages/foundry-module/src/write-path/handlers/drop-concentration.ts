@@ -6,7 +6,7 @@
  * ADR-0011 single-workflow-origin discipline).
  *
  * This handler REPLACES the `evf.setTargets` stub in socketlib-handlers.ts
- * (registered as `evf.dropConcentration`). Total `registerComplexHandler` call
+ * (registered as `evf.dropConcentration`). Total `socket.register(name, fn)`
  * count stays at 14 — this is a rename, not an addition.
  *
  * # Error codes (constant-shape per T-07-05-01)

@@ -201,7 +201,8 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
    * Plan 07-03: confirm-template-placement maps to `evf.confirmTemplatePlacement`.
    *
    * This handler REPLACES the `evf.skillCheck` stub registration in-place
-   * in `socketlib-handlers.ts`. The total `registerComplexHandler` count stays 14.
+   * in `socketlib-handlers.ts`. The total `socket.register(name, fn)` count
+   * (via the socket from `socketlib.registerModule(MODULE_ID)`) stays 14.
    * Skill-check will be re-registered in Phase 8/9 when ACT-01 ships.
    *
    * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2

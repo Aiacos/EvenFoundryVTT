@@ -16,9 +16,9 @@
  *
  * ## socketlib invariant
  *
- * NO new `registerComplexHandler` call. Emission uses the existing
+ * NO new `socket.register(name, fn)` call. Emission uses the existing
  * `bridgeDeltaEmitter` channel. Count remains **17** (Phase 13 invariant).
- * See also module.ts file-level note on `registerComplexHandler` count.
+ * See also module.ts file-level note on the socketlib handler count.
  *
  * ## Fault tolerance
  *
