@@ -2071,6 +2071,24 @@ describe('registerHookSubscribers', () => {
     expect(emitFn).toHaveBeenCalledWith('character.delta', expect.anything());
   });
 
+  it('updateActor does NOT emit on a non-attribute system change with no status change', () => {
+    // Guard-rewrite regression: a `system` change that does NOT touch
+    // `system.attributes` (HP/AC/exhaustion) and has no status change must skip.
+    // The previous nested guard had an effectively-dead `&& !statusesChanged`
+    // term; this asserts the single-predicate rewrite still skips correctly.
+    const emitFn = vi.fn();
+    const actor = makeActor({ id: 'a1' });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    registerHookSubscribers(emitFn);
+
+    // system changed, but only currency (not under attributes), no statuses key.
+    const changes = { system: { currency: { gp: 5 } } };
+    fireHook('updateActor', actor, changes);
+
+    expect(emitFn).not.toHaveBeenCalled();
+  });
+
   it('createChatMessage pushes to ring buffer and emits event.log.delta', () => {
     const emitFn = vi.fn();
     registerHookSubscribers(emitFn);
