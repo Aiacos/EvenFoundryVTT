@@ -72,7 +72,10 @@ import { createBootPage } from '../engine/page-lifecycle.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { PanelRouter } from '../engine/panel-router.js';
 import { PerfProbe } from '../engine/perf-probe.js';
-import { buildMapAlreadyFullscreenToast } from '../engine/quick-action-feedback.js';
+import {
+  buildActionPendingToast,
+  buildMapAlreadyFullscreenToast,
+} from '../engine/quick-action-feedback.js';
 import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
@@ -1240,8 +1243,10 @@ export async function _bootEngineCore(
           console.warn('[boot-engine-core] onMapModeToggle: glyph-mode Phase 7 stub — no-op');
         },
         onAction: () => {
-          // Phase 7 stub — the [A] Action panel is not yet shipped.
-          console.warn('[boot-engine-core] onAction: Phase 7 panel pending (Action panel)');
+          // [A] Azione. The Action panel is not yet shipped (Phase 7). Give the
+          // user a visible, non-blocking toast instead of a silent console.warn
+          // so selecting [A] is never a dead no-feedback gesture.
+          toastQueue.enqueue(buildActionPendingToast(currentLocale));
         },
         onFpsToggle: () => {
           // [F] FPS — flip the indicator, persist to the Even Hub kv store
