@@ -126,4 +126,28 @@ describe('createPortraitRenderer', () => {
     const r2 = await renderer.renderPortrait(TEST_URL);
     expect(r1.urlHash).toBe(r2.urlHash);
   });
+
+  // PR-RENDER-06 (SSRF): redirect: 'manual' passed to fetch + redirect responses blocked.
+  it('PR-RENDER-06: passes redirect:manual and rejects a redirect response (SSRF)', async () => {
+    let seenInit: { redirect?: string } | undefined;
+    const redirectResponse = {
+      ok: false,
+      status: 302,
+      type: 'opaqueredirect',
+      headers: { get: () => null },
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+    } as unknown as Response;
+
+    const renderer = createPortraitRenderer({
+      _fetchFn: (_url, init) => {
+        seenInit = init;
+        return Promise.resolve(redirectResponse);
+      },
+    });
+
+    await expect(renderer.renderPortrait(TEST_URL)).rejects.toThrow(PortraitFetchError);
+    // The outbound fetch MUST be invoked with redirect:'manual' so an allowed host
+    // cannot 302 the proxy to an internal target after the route's host/IP check.
+    expect(seenInit).toMatchObject({ redirect: 'manual' });
+  });
 });

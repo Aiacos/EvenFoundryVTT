@@ -88,8 +88,15 @@ export interface PortraitRenderResult {
   urlHash: string;
 }
 
-/** Minimal fetch function shape (native fetch or injected test double). */
-export type PortraitFetchFn = (url: string) => Promise<Response>;
+/**
+ * Minimal fetch function shape (native fetch or injected test double).
+ *
+ * The production fetch is invoked with `{ redirect: 'manual' }` (T-13-02) so an
+ * allowed host cannot 3xx-redirect the proxy to an internal target AFTER the
+ * route's SSRF host/IP validation has run against the original URL. Tests may
+ * ignore the `init` argument.
+ */
+export type PortraitFetchFn = (url: string, init?: { redirect?: 'manual' }) => Promise<Response>;
 
 /** Factory options for {@link createPortraitRenderer}. */
 export interface PortraitRendererOpts {
@@ -155,19 +162,35 @@ export function createPortraitRenderer(opts: PortraitRendererOpts = {}): Portrai
   const { logger, _fetchFn } = opts;
   const fetchFn: PortraitFetchFn =
     _fetchFn ??
-    ((url: string) =>
-      (globalThis as unknown as { fetch: (url: string) => Promise<Response> }).fetch(url));
+    ((url: string, init?: { redirect?: 'manual' }) =>
+      (
+        globalThis as unknown as {
+          fetch: (url: string, init?: { redirect?: 'manual' }) => Promise<Response>;
+        }
+      ).fetch(url, init));
 
   const palette = buildGreyscalePalette();
 
   return {
     async renderPortrait(url: string): Promise<PortraitRenderResult> {
-      // Step 1 — fetch
+      // Step 1 — fetch with manual redirect handling (T-13-02 SSRF).
+      // `redirect: 'manual'` makes a 3xx return as an opaque-redirect response
+      // (resp.type === 'opaqueredirect', status 0) instead of being transparently
+      // followed. The route validated host/IP against the ORIGINAL url only; an
+      // allowed host that 302s to an internal target (169.254.169.254, 127.0.0.1,
+      // …) would otherwise bypass that check. We treat ANY redirect as a fetch
+      // failure rather than re-validating + chasing the Location.
       let resp: Response;
       try {
-        resp = await fetchFn(url);
+        resp = await fetchFn(url, { redirect: 'manual' });
       } catch {
         throw new PortraitFetchError(url, 0);
+      }
+
+      // A manual-mode redirect surfaces as an opaque-redirect (type) or a 3xx status.
+      if (resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400)) {
+        logger?.warn({ url, status: resp.status }, '[portrait-renderer] redirect blocked (SSRF)');
+        throw new PortraitFetchError(url, resp.status);
       }
 
       if (!resp.ok) {

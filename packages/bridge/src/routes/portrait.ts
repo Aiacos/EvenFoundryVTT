@@ -64,6 +64,113 @@ const SSRF_DENY_LIST = new Set([
   '::1',
 ]);
 
+// ─── Private / internal IP-literal detection (T-13-02) ──────────────────────────
+
+/**
+ * Normalise a single IPv4 octet/component that may be expressed in decimal, hex
+ * (`0x7f`), or octal (`0177`) form — the obfuscated forms attackers use to slip a
+ * loopback/private literal past a naive string deny-list (e.g. `0x7f.0.0.1`,
+ * `0177.0.0.1`, or the 32-bit decimal `2130706433` for `127.0.0.1`).
+ *
+ * @returns the numeric value, or `null` when the component is not a valid integer form.
+ */
+function parseIpComponent(part: string): number | null {
+  if (part.length === 0) return null;
+  let value: number;
+  if (/^0x[0-9a-f]+$/i.test(part)) {
+    value = Number.parseInt(part, 16);
+  } else if (/^0[0-7]+$/.test(part)) {
+    value = Number.parseInt(part, 8);
+  } else if (/^[0-9]+$/.test(part)) {
+    value = Number.parseInt(part, 10);
+  } else {
+    return null;
+  }
+  return Number.isNaN(value) ? null : value;
+}
+
+/**
+ * Resolve a hostname that is an IPv4 literal (dotted, or any decimal/hex/octal form)
+ * to its 32-bit integer value, supporting the 1-, 2-, 3-, and 4-part `inet_aton`
+ * notations browsers/`fetch` accept (e.g. `2130706433`, `127.1`, `0x7f.0.0.1`).
+ *
+ * @returns the 32-bit unsigned value, or `null` when `host` is not an IPv4 literal.
+ */
+function ipv4LiteralToInt(host: string): number | null {
+  const parts = host.split('.');
+  if (parts.length === 0 || parts.length > 4) return null;
+  const nums = parts.map(parseIpComponent);
+  if (nums.some((n) => n === null)) return null;
+  const vals = nums as number[];
+
+  // inet_aton-style packing: the final part absorbs the remaining low-order bytes.
+  let result = 0;
+  for (let i = 0; i < vals.length - 1; i++) {
+    if (vals[i] > 255) return null;
+    result = (result << 8) | vals[i];
+  }
+  const last = vals[vals.length - 1];
+  const remainingBytes = 4 - (vals.length - 1);
+  const maxLast = 2 ** (8 * remainingBytes);
+  if (last >= maxLast) return null;
+  result = ((result << (8 * remainingBytes)) >>> 0) + last;
+  return result >>> 0;
+}
+
+/**
+ * Returns `true` when `host` is an IP literal that resolves into a private,
+ * loopback, link-local, or otherwise internal range that must never be reachable
+ * via an SSRF (T-13-02). Covers IPv4 (10/8, 172.16/12, 192.168/16, 127/8,
+ * 169.254/16, 0/8, 100.64/10 CGNAT) in decimal/hex/octal/packed forms, and IPv6
+ * loopback (`::1`), link-local (`fe80::/10`), unique-local (`fc00::/7`), and
+ * IPv4-mapped IPv6 (`::ffff:a.b.c.d`).
+ */
+function isPrivateIpLiteral(host: string): boolean {
+  // Strip an IPv6 zone id and surrounding brackets if present.
+  const h = host.replace(/^\[/, '').replace(/\]$/, '').split('%')[0].toLowerCase();
+
+  // IPv4-mapped IPv6 in dotted form (::ffff:127.0.0.1) — extract + recurse.
+  const mappedDotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+  if (mappedDotted) {
+    return isPrivateIpLiteral(mappedDotted[1]);
+  }
+  // IPv4-mapped IPv6 in hex form (::ffff:7f00:1) — the URL parser normalises the
+  // dotted form to this. Reconstruct the embedded 32-bit IPv4 and range-check it.
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (mappedHex) {
+    const hi = Number.parseInt(mappedHex[1], 16);
+    const lo = Number.parseInt(mappedHex[2], 16);
+    const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return isPrivateIpLiteral(v4);
+  }
+
+  // IPv6 literals.
+  if (h.includes(':')) {
+    if (h === '::1' || h === '::') return true; // loopback / unspecified
+    if (h.startsWith('fe80') || h.startsWith('fc') || h.startsWith('fd')) return true; // link-local + ULA
+    return false;
+  }
+
+  // IPv4 (dotted or packed decimal/hex/octal).
+  const asInt = ipv4LiteralToInt(h);
+  if (asInt === null) return false; // not an IP literal → hostname, handled elsewhere
+
+  const inRange = (cidrBase: number, prefix: number): boolean => {
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (asInt & mask) === (cidrBase & mask);
+  };
+
+  return (
+    inRange(0x0a000000, 8) || // 10.0.0.0/8
+    inRange(0xac100000, 12) || // 172.16.0.0/12
+    inRange(0xc0a80000, 16) || // 192.168.0.0/16
+    inRange(0x7f000000, 8) || // 127.0.0.0/8 (loopback)
+    inRange(0xa9fe0000, 16) || // 169.254.0.0/16 (link-local)
+    inRange(0x00000000, 8) || // 0.0.0.0/8 ("this network")
+    inRange(0x64400000, 10) // 100.64.0.0/10 (CGNAT)
+  );
+}
+
 // ─── SHA-256 helper ───────────────────────────────────────────────────────────
 
 async function sha256Hex(str: string): Promise<string> {
@@ -98,7 +205,10 @@ export interface PortraitUrlRejection {
  *
  * @param rawUrl      — Portrait URL string from the character snapshot.
  * @param foundryOrigin — Base origin for resolving relative URLs.
- * @param allowedHosts  — Whitelist of permitted hostnames.
+ * @param allowedHosts  — Whitelist of permitted hostnames. An EMPTY list is a
+ *                        HARD-DENY (fail-safe): with no configured whitelist there
+ *                        is no host the proxy is permitted to reach, so every URL is
+ *                        rejected rather than (accidentally) matching nothing-and-passing.
  */
 export function validatePortraitUrl(
   rawUrl: string,
@@ -117,13 +227,28 @@ export function validatePortraitUrl(
     return { ok: false, statusCode: 400, error: 'portrait_url_scheme_denied' };
   }
 
-  // Hostname deny-list (T-13-02: cloud metadata + loopback)
+  // Empty allowedHosts → HARD-DENY (fail-safe). No configured whitelist means the
+  // proxy may reach nothing; deny before any further checks so a missing config can
+  // never degrade into an open proxy.
+  if (allowedHosts.length === 0) {
+    return { ok: false, statusCode: 403, error: 'portrait_url_no_allowed_hosts' };
+  }
+
+  // Hostname deny-list (T-13-02: cloud metadata + loopback by name)
   if (SSRF_DENY_LIST.has(parsed.hostname)) {
     return { ok: false, statusCode: 403, error: 'portrait_url_hostname_denied' };
   }
 
+  // Private / internal IP-literal deny (T-13-02): block private, loopback,
+  // link-local, CGNAT, and IPv4-mapped-IPv6 literal targets in any decimal/hex/octal
+  // form, regardless of the name-based allowedHosts whitelist. This stops an attacker
+  // pointing the portrait URL at an internal address by literal IP.
+  if (isPrivateIpLiteral(parsed.hostname)) {
+    return { ok: false, statusCode: 403, error: 'portrait_url_private_ip_denied' };
+  }
+
   // allowedHosts check: hostname must match exactly one allowed host
-  if (allowedHosts.length > 0 && !allowedHosts.includes(parsed.hostname)) {
+  if (!allowedHosts.includes(parsed.hostname)) {
     return { ok: false, statusCode: 403, error: 'portrait_url_origin_mismatch' };
   }
 
@@ -183,8 +308,13 @@ export async function registerPortraitRoute(opts: RegisterPortraitRouteOpts): Pr
       ? `https://${process.env.EVF_FOUNDRY_ORIGIN_HOST}`
       : 'http://localhost:30000');
 
-  const effectiveAllowedHosts =
-    allowedHosts.length > 0 ? allowedHosts : [process.env.EVF_FOUNDRY_ORIGIN_HOST ?? ''];
+  // Resolve the effective whitelist: explicit `allowedHosts` wins; otherwise fall
+  // back to EVF_FOUNDRY_ORIGIN_HOST. Filter out empty/blank entries so an UNSET env
+  // collapses to `[]` → HARD-DENY in validatePortraitUrl (fail-safe), never `['']`
+  // which would be a single useless-but-non-empty entry that disables the hard-deny.
+  const effectiveAllowedHosts = (
+    allowedHosts.length > 0 ? allowedHosts : [process.env.EVF_FOUNDRY_ORIGIN_HOST ?? '']
+  ).filter((h) => h.trim().length > 0);
 
   app.get<{ Params: { actorId: string } }>('/v1/portrait/:actorId', async (request, reply) => {
     // Step 1 — Bearer auth
