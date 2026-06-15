@@ -99,17 +99,21 @@ function parseIpComponent(part: string): number | null {
 function ipv4LiteralToInt(host: string): number | null {
   const parts = host.split('.');
   if (parts.length === 0 || parts.length > 4) return null;
-  const nums = parts.map(parseIpComponent);
-  if (nums.some((n) => n === null)) return null;
-  const vals = nums as number[];
+  const vals: number[] = [];
+  for (const part of parts) {
+    const n = parseIpComponent(part);
+    if (n === null) return null;
+    vals.push(n);
+  }
 
   // inet_aton-style packing: the final part absorbs the remaining low-order bytes.
   let result = 0;
   for (let i = 0; i < vals.length - 1; i++) {
-    if (vals[i] > 255) return null;
-    result = (result << 8) | vals[i];
+    const v = vals[i] as number;
+    if (v > 255) return null;
+    result = (result << 8) | v;
   }
-  const last = vals[vals.length - 1];
+  const last = vals[vals.length - 1] as number;
   const remainingBytes = 4 - (vals.length - 1);
   const maxLast = 2 ** (8 * remainingBytes);
   if (last >= maxLast) return null;
@@ -127,17 +131,17 @@ function ipv4LiteralToInt(host: string): number | null {
  */
 function isPrivateIpLiteral(host: string): boolean {
   // Strip an IPv6 zone id and surrounding brackets if present.
-  const h = host.replace(/^\[/, '').replace(/\]$/, '').split('%')[0].toLowerCase();
+  const h = (host.replace(/^\[/, '').replace(/\]$/, '').split('%')[0] ?? '').toLowerCase();
 
   // IPv4-mapped IPv6 in dotted form (::ffff:127.0.0.1) — extract + recurse.
   const mappedDotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
-  if (mappedDotted) {
+  if (mappedDotted?.[1] !== undefined) {
     return isPrivateIpLiteral(mappedDotted[1]);
   }
   // IPv4-mapped IPv6 in hex form (::ffff:7f00:1) — the URL parser normalises the
   // dotted form to this. Reconstruct the embedded 32-bit IPv4 and range-check it.
   const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
-  if (mappedHex) {
+  if (mappedHex?.[1] !== undefined && mappedHex[2] !== undefined) {
     const hi = Number.parseInt(mappedHex[1], 16);
     const lo = Number.parseInt(mappedHex[2], 16);
     const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
