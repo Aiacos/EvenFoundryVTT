@@ -124,7 +124,8 @@ const LABEL_BUDGET = 22;
 const SUB_MENU_KEYS = ['A', 'I', 'E', 'D', 'S', 'F', 'P'] as const;
 
 /**
- * Main menu item definitions (9 items per UI-SPEC §1 + plan spec).
+ * Main menu item definitions (10 items: S, C, L, B, I, A, M, N, F, X — per
+ * UI-SPEC §1 + plan spec).
  *
  * `action` drives the `_activateCurrentItem` dispatch table:
  *   - `'navigate'`       — calls `callbacks.onNavigate(target)` + `callbacks.onClose()`

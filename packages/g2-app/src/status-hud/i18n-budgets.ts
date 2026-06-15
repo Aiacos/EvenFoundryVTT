@@ -555,9 +555,10 @@ export const HUD_WIDTH_BUDGETS = {
   'panel.title.spellbook': { it: 'SPELLBOOK', en: 'SPELLBOOK', de: 'ZAUBERBUCH', max: 11 },
 
   // §8.3 Footer hints (CTA per panel) — 5 keys
-  // Note: DE strings for Combat, Log, Inventory, Spellbook exceed their IT/EN
-  // budget hints slightly — assertWithinBudget warns at runtime; the renderer
-  // falls back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
+  // All three first-class locales (it/en/de) fit within each key's `max` budget
+  // (verified: DE Combat 42≤46, Log 38≤42, Inventory 41≤45, Spellbook 38≤44).
+  // assertWithinBudget warns only if a string exceeds; the renderer still falls
+  // back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
   'footer.hint.sheet': {
     it: 'tap=prossimo tab  scroll=contenuto  tap×2=chiudi  qa=rapida',
     en: 'tap=next tab  scroll=content  tap×2=close  qa=quick',
@@ -678,12 +679,9 @@ export const HUD_WIDTH_BUDGETS = {
   /** [F] FPS indicator toggle menu item label (same word in all locales). */
   quick_item_fps: { it: 'FPS', en: 'FPS', de: 'FPS', max: 22 },
 
-  /**
-   * [D] Dither toggle menu item label.
-   *
-   * Short technical term — same across all three locales because
-   * "dither" is the standard display-engineering term.
-   */
+  // Note: the former [D] Dither menu item moved to the phone settings panel
+  // (2026-06-14); its i18n key was removed along with the glasses menu entry.
+
   /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
   quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
 

@@ -26,10 +26,12 @@
  *
  * # Root-exit interaction
  *
- * `root-exit-dispatcher` fires `shutDownPageContainer(1)` when the top layer is the
- * bare map (`id 'map-base'`). This dispatcher fires `popOverlay` for all OTHER top
- * layers that do not self-manage double-tap. The two dispatchers are mutually exclusive
- * by their top-layer checks.
+ * `root-exit-dispatcher` fires `shutDownPageContainer(1)` when `getTopLayer()` returns
+ * `null` (no z=2 overlay open — the root, whether canvas-mode CanvasStatusHudLayer at
+ * z=1 or glyph-mode MapBaseLayer at z=0, since neither is an OverlayPanel). This
+ * dispatcher fires `popOverlay` only when a z=2 panel IS open. The two dispatchers are
+ * mutually exclusive by their top-layer checks (root-exit: top === null;
+ * nav-close: a z=2 panel present that does not self-manage double-tap).
  *
  * # Canvas mode note
  *
