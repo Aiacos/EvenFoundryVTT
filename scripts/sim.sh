@@ -154,6 +154,30 @@ do_seed() {
     echo "  character-${slug} seeded ok"
   done
 
+  # Seed the map scene (frame_png) so the glasses show a z=0 map background.
+  # On real Foundry this streams from the canvas-extractor; in the sim we seed
+  # a synthetic battle map so the HUD isn't composited over a black void.
+  local map_file="${FIXTURES_DIR}/scene-map.json"
+  if [[ -f "${map_file}" ]]; then
+    echo "  POST scene-map.json → ${endpoint}"
+    local map_resp
+    map_resp=$(curl -fsS \
+      -X POST "${endpoint}" \
+      -H "Authorization: Bearer ${DEV_SECRET}" \
+      -H "Content-Type: application/json" \
+      --data "@${map_file}" \
+      2>&1) || {
+      echo "ERROR: Failed to POST scene-map.json"
+      exit 1
+    }
+    if ! echo "$map_resp" | grep -q '"ok":true'; then
+      echo "ERROR: scene-map.json seed returned unexpected response:"
+      echo "$map_resp"
+      exit 1
+    fi
+    echo "  scene-map seeded ok"
+  fi
+
   echo "All fixtures seeded."
 }
 
