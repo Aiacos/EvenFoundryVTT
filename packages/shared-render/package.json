@@ -10,6 +10,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./ascii-grid": {
+      "types": "./src/ascii-grid.ts",
+      "default": "./src/ascii-grid.ts"
     }
   },
   "scripts": {
