@@ -9,6 +9,8 @@
  *   - All-optional `.partial()`: empty `{}` and single-field objects accept
  *   - Full-snapshot round-trip (parse → infer → re-parse)
  *   - ClientSettingMessageSchema strict-rejection of an unknown extra field
+ *   - SettingsDisplayEditSchema non-empty refinement (empty `{}` rejected on the
+ *     upstream write channel; the downstream snapshot schema stays permissive)
  */
 import { describe, expect, it } from 'vitest';
 
@@ -17,6 +19,7 @@ import {
   ClientSettingMessageSchema,
   SETTINGS_DISPLAY_TYPE,
   type SettingsDisplay,
+  SettingsDisplayEditSchema,
   SettingsDisplaySchema,
 } from './settings-display.js';
 
@@ -164,10 +167,21 @@ describe('ClientSettingMessageSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts a client_setting message with an empty settings partial', () => {
+  it('rejects a client_setting message with an empty settings edit ({})', () => {
+    // The upstream write channel must NOT accept a no-op edit: an empty {} would
+    // still drive the client_setting → pending-box → frame-POST → settings.set
+    // round-trip on the live Foundry world. The non-empty refinement guards it.
     const result = ClientSettingMessageSchema.safeParse({
       type: CLIENT_SETTING_TYPE,
       settings: {},
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a client_setting message with a single-field settings edit', () => {
+    const result = ClientSettingMessageSchema.safeParse({
+      type: CLIENT_SETTING_TYPE,
+      settings: { brightness: 40 },
     });
     expect(result.success).toBe(true);
   });
@@ -194,5 +208,39 @@ describe('ClientSettingMessageSchema', () => {
       type: CLIENT_SETTING_TYPE,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── SettingsDisplayEditSchema — non-empty upstream partial ─────────────────────
+
+describe('SettingsDisplayEditSchema — non-empty upstream edit', () => {
+  it('rejects an empty object {} (no-op edit on a write-capable channel)', () => {
+    expect(SettingsDisplayEditSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts a single-field edit (dither only)', () => {
+    expect(SettingsDisplayEditSchema.safeParse({ dither: true }).success).toBe(true);
+  });
+
+  it('accepts a multi-field edit', () => {
+    expect(SettingsDisplayEditSchema.safeParse({ brightness: 20, captureFps: 30 }).success).toBe(
+      true,
+    );
+  });
+
+  it('still enforces field bounds (rejects out-of-range brightness)', () => {
+    expect(SettingsDisplayEditSchema.safeParse({ brightness: 200 }).success).toBe(false);
+  });
+
+  it('accepts a full snapshot shape (all keys present)', () => {
+    // A full snapshot has ≥1 key, so it satisfies the non-empty edit schema too.
+    const full: SettingsDisplay = {
+      dither: true,
+      brightness: 0,
+      webpQuality: 0,
+      captureFps: 10,
+      normalize: false,
+    };
+    expect(SettingsDisplayEditSchema.safeParse(full).success).toBe(true);
   });
 });

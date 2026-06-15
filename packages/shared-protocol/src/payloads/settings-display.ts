@@ -60,17 +60,42 @@ export const SettingsDisplaySchema = z
 export type SettingsDisplay = z.infer<typeof SettingsDisplaySchema>;
 
 /**
+ * Upstream PARTIAL edit schema (glasses → module write path).
+ *
+ * Identical field shape to {@link SettingsDisplaySchema} but with a
+ * **non-empty** refinement: at least one key MUST be present. This guards the
+ * write-capable channel — an empty `{}` is a meaningless no-op edit that would
+ * still trigger the `client_setting` → pending-box → frame-POST → `game.settings.set`
+ * round-trip on the live Foundry world. The downstream FULL-snapshot path keeps
+ * using the permissive {@link SettingsDisplaySchema} (a snapshot legitimately
+ * carries every key, but must also tolerate a zero-state on first emit).
+ *
+ * @see ClientSettingMessageSchema (upstream WS wrapper — uses this)
+ * @see packages/bridge/src/ws/client-setting-handler.ts (also defends at runtime)
+ * @see packages/foundry-module/src/module.ts (upstream apply — uses this)
+ */
+export const SettingsDisplayEditSchema = SettingsDisplaySchema.refine(
+  (obj) => Object.keys(obj).length > 0,
+  { message: 'settings edit must contain at least one key (empty edit is a no-op)' },
+);
+
+/** Typed upstream partial edit (≥1 key guaranteed). */
+export type SettingsDisplayEdit = z.infer<typeof SettingsDisplayEditSchema>;
+
+/**
  * Upstream `client_setting` WS message (glasses → bridge).
  *
  * `z.strictObject` — extra/unknown top-level fields are REJECTED, so the
  * upstream write channel cannot leak unexpected keys into the settings-apply
  * path (mirrors the strict wire payloads r1/combat/action-economy). The
  * `settings` field carries the partial edit the glasses want applied to the
- * Foundry settings; the inner `SettingsDisplaySchema` stays `.partial()`.
+ * Foundry settings; it uses {@link SettingsDisplayEditSchema} so an empty `{}`
+ * edit is rejected at the schema boundary (a write-capable channel must never
+ * accept a no-op that still drives a live `game.settings.set`).
  */
 export const ClientSettingMessageSchema = z.strictObject({
   type: z.literal(CLIENT_SETTING_TYPE),
-  settings: SettingsDisplaySchema,
+  settings: SettingsDisplayEditSchema,
 });
 
 /** Typed `client_setting` WS message. */

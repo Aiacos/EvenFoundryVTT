@@ -135,6 +135,8 @@ export {
   ClientSettingMessageSchema,
   SETTINGS_DISPLAY_TYPE,
   type SettingsDisplay,
+  type SettingsDisplayEdit,
+  SettingsDisplayEditSchema,
   SettingsDisplaySchema,
 } from './payloads/settings-display.js';
 

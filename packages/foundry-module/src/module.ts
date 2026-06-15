@@ -36,7 +36,7 @@ import {
   R1_ACTION_RESULT_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
   SETTINGS_DISPLAY_TYPE,
-  SettingsDisplaySchema,
+  SettingsDisplayEditSchema,
 } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
@@ -273,7 +273,10 @@ function runFramePost(
     .then((res) => {
       const pending = res?.pendingSettings;
       if (pending !== undefined && pending !== null) {
-        const edit = SettingsDisplaySchema.safeParse(pending);
+        // Upstream apply path: the drained pending edit must carry ≥1 key (an
+        // empty edit is a no-op the bridge already filters; reject it here too
+        // so a malformed/empty pendingSettings never drives a live settings.set).
+        const edit = SettingsDisplayEditSchema.safeParse(pending);
         if (edit.success) {
           void applyDisplaySettings(edit.data);
         }
