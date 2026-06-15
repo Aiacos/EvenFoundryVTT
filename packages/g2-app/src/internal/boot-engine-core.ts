@@ -72,6 +72,7 @@ import { createBootPage } from '../engine/page-lifecycle.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { PanelRouter } from '../engine/panel-router.js';
 import { PerfProbe } from '../engine/perf-probe.js';
+import { buildMapAlreadyFullscreenToast } from '../engine/quick-action-feedback.js';
 import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
@@ -1221,9 +1222,22 @@ export async function _bootEngineCore(
           });
         },
         onMapModeToggle: () => {
-          // Phase 4b map-mode-toggle stub — Phase 7 wires the full toggle logic
-          // via `persistMapMode` + `layerManager.setMapMode`. For now a no-op.
-          console.warn('[boot-engine-core] onMapModeToggle: Phase 7 stub — no-op');
+          // [M] Map control. In canvas mode the map is ALREADY the z=0
+          // full-screen background (MapCanvasLayer): there is no separate
+          // "map mode" to toggle, and routing into the legacy glyph 400×200
+          // raster path corrupts the canvas tile push (floods
+          // `updateImageRawData ... sendFailed` and blanks the display until
+          // restart). So in canvas mode this MUST be a no-op that gives the
+          // user visible feedback instead of touching the glyph raster path.
+          // The real toggle logic (toggleMapMode) remains reserved for the
+          // glyph path (Phase 7); we do not invoke it here.
+          if (layerManager.getRenderMode() === 'canvas') {
+            toastQueue.enqueue(buildMapAlreadyFullscreenToast(currentLocale));
+            return;
+          }
+          // Glyph mode: Phase 7 wires the full toggle logic via toggleMapMode.
+          // For now a no-op (no glyph toggle has shipped yet).
+          console.warn('[boot-engine-core] onMapModeToggle: glyph-mode Phase 7 stub — no-op');
         },
         onAction: () => {
           // Phase 7 stub — the [A] Action panel is not yet shipped.
