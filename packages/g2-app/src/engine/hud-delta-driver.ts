@@ -504,6 +504,19 @@ export class HudDeltaDriver {
     // displayed frame (a no-push cycle changes nothing on the glasses).
     const now = Date.now();
     this._pushTimes.push(now);
+    this._pruneFpsWindow(now);
+  }
+
+  /**
+   * Drop push timestamps older than {@link FPS_WINDOW_MS} relative to `now`.
+   *
+   * Shared sliding-window prune used by both `_runCycle` (after recording a
+   * push) and `getFps` (so an idle reader sees the window decay to empty without
+   * needing a cycle to run). Mutates `_pushTimes` in place.
+   *
+   * @param now Current epoch ms (passed in so caller and prune agree on the clock).
+   */
+  private _pruneFpsWindow(now: number): void {
     while (this._pushTimes.length > 0 && now - (this._pushTimes[0] ?? 0) > FPS_WINDOW_MS) {
       this._pushTimes.shift();
     }
@@ -516,13 +529,15 @@ export class HudDeltaDriver {
    * change). Returns `0` when the HUD is idle — the indicator then shows
    * `0fps`, which is the truthful idle state (zero-push-on-idle, D-24.3).
    *
+   * Prunes the sliding window (via {@link _pruneFpsWindow}) so an idle reader
+   * sees the rate decay to 0 even when no cycle has run since the last push.
+   * This in-place prune is the deliberate, named exception to "getters don't
+   * mutate" — without it the idle fps would never fall off.
+   *
    * @returns Frames per second, ≥0, fractional.
    */
   getFps(): number {
-    const now = Date.now();
-    while (this._pushTimes.length > 0 && now - (this._pushTimes[0] ?? 0) > FPS_WINDOW_MS) {
-      this._pushTimes.shift();
-    }
+    this._pruneFpsWindow(Date.now());
     return this._pushTimes.length / (FPS_WINDOW_MS / 1000);
   }
 }
