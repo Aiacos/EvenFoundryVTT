@@ -910,6 +910,14 @@ describe('character-sheet-tab-renderers — RCSP-PAINT-SCROLL (Plan 22-03)', () 
 //
 // Anti-pattern: do NOT hash canvas-rendered text (non-deterministic in
 // happy-dom). This test hashes only buildHudTiles output from synthetic RGBA.
+//
+// INTENTIONAL DUPLICATE GOLDEN: because the input is the same canonical
+// synthetic gradient as Phase 20 RINV-01, this fixture is byte-identical to
+// status-hud.raster-hash.json (and tile0==tile2, tile1==tile3 since the 2×2
+// gradient is column-periodic). That is by design — this gate proves the
+// tile-builder is deterministic for the sheet-panel path, NOT that the sheet
+// text renders correctly (which would require OffscreenCanvas). See the
+// fixture `description` field for the full does/doesn't-verify rationale.
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('RCSP-INV1: canvas sheet panel raster INV-1 SHA-256 tile hashes', () => {
@@ -996,7 +1004,7 @@ describe('RCSP-INV1: canvas sheet panel raster INV-1 SHA-256 tile hashes', () =>
       const fixture: RasterHashFixture = {
         version: 1,
         description:
-          'SHA-256 hashes of 4 HUD tile PNGs from canonical synthetic RGBA (Phase 21 canvas sheet panel)',
+          'SHA-256 hashes of 4 HUD tile PNGs from the SHARED canonical synthetic RGBA gradient (Phase 21 canvas sheet panel). NOTE: this golden is intentionally byte-identical to status-hud.raster-hash.json — RCSP-INV1 feeds the same synthetic gradient through the same buildHudTiles() because real sheet-panel text rendering needs OffscreenCanvas (unavailable in happy-dom, non-deterministic). It therefore verifies that the tile-builder is deterministic and produces canonical tile geometry for the sheet-panel path; it does NOT verify the sheet text content/layout. tile0==tile2 and tile1==tile3 because the 2x2 gradient is column-periodic. See packages/g2-app/src/panels/__tests__/canvas-character-sheet-panel.test.ts (RCSP-INV1).',
         tiles: tiles.map((t, i) => ({
           index: i,
           containerName: t.containerName,
