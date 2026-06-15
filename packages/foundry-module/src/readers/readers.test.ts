@@ -517,6 +517,61 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.inventory).toHaveLength(0);
   });
 
+  // ── CR-STABLE-ID: id-less items get a STABLE deterministic fallback id ─────
+  // Regression: the old `String(Math.random())` fallback gave the same id-less
+  // item a different id on every snapshot, defeating g2-app diff/dedup.
+
+  it('CR-STABLE-ID-1: id-less inventory item yields the SAME id across two extractions', () => {
+    // makeItem always injects an id; build the id-less item inline.
+    const makeIdless = () => ({
+      name: 'Torcia',
+      type: 'consumable',
+      system: { quantity: 1, damage: { parts: [] }, properties: new Set<string>() },
+    });
+
+    const actorA = makeActor({ id: 'pc-stable-1', items: [makeIdless()] });
+    vi.stubGlobal('game', makeGameMock([actorA]));
+    const snapA = getCharacterSnapshot('pc-stable-1');
+
+    const actorB = makeActor({ id: 'pc-stable-1', items: [makeIdless()] });
+    vi.stubGlobal('game', makeGameMock([actorB]));
+    const snapB = getCharacterSnapshot('pc-stable-1');
+
+    const idA = snapA?.inventory[0]?.id;
+    const idB = snapB?.inventory[0]?.id;
+    expect(idA).toBeDefined();
+    expect(idA).toBe(idB);
+    expect(idA).toMatch(/^evf-[0-9a-f]{8}$/);
+  });
+
+  it('CR-STABLE-ID-2: id-less spell yields the SAME id across two extractions', () => {
+    const makeIdlessSpell = () => ({
+      name: 'Dardo Incantato',
+      type: 'spell',
+      system: {
+        level: 1,
+        school: 'evocation',
+        activation: { type: 'action' },
+        range: { value: 36, units: 'ft' },
+        damage: { parts: [['1d4+1', 'force']] },
+        components: { concentration: false },
+        preparation: { mode: 'prepared', prepared: true },
+      },
+    });
+
+    const actorA = makeActor({ id: 'pc-stable-2', items: [makeIdlessSpell()] });
+    vi.stubGlobal('game', makeGameMock([actorA]));
+    const idA = getCharacterSnapshot('pc-stable-2')?.spells.spells[0]?.id;
+
+    const actorB = makeActor({ id: 'pc-stable-2', items: [makeIdlessSpell()] });
+    vi.stubGlobal('game', makeGameMock([actorB]));
+    const idB = getCharacterSnapshot('pc-stable-2')?.spells.spells[0]?.id;
+
+    expect(idA).toBeDefined();
+    expect(idA).toBe(idB);
+    expect(idA).toMatch(/^evf-[0-9a-f]{8}$/);
+  });
+
   // ── CR-02 regression: damage-formula ternary fix ──────────────────────────
 
   it('CR-02-BASE-FORMULA: base.formula present → damage field uses base.formula value, not parts[0]', () => {
