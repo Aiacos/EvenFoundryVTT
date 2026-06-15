@@ -40,13 +40,22 @@
  *     SDK verbatim limits: image container 20–288 × 20–144, INV-2 re-verified 2026-06-10)
  *   - height: 20 ≤ h ≤ 288
  *
+ * **Schema bound vs. worker tile layout — not the same thing**
+ *
+ * The SCHEMA permits the full G2 raster region: 20–576 wide × 20–288 high. That
+ * is the wire contract — any producer may send a frame anywhere in that range
+ * and it validates. The legacy `raster-worker.ts` resizes / normalizes the
+ * incoming frame internally to its own 400×200 tile layout; that 400×200 figure
+ * is the worker's INTERNAL working size, NOT a wire bound, and callers never
+ * need to pre-size to it.
+ *
  * History: the original Plan 4a-06 bounds were 288×144 (OQ-INV2-4 SDK polyfill
  * typedefs, STATE.md 2026-05-14). The Phase 19 geometry correction (ADR-0013
- * Amendment 1) superseded them with the 400×200 region, and `raster-worker.ts`
- * rejects any frame that is not exactly 400×200 — the schema bound moved up to
- * match so a canonical full-region frame is expressible on the wire (debug
- * `map-frame-pipeline-dims`, 2026-06-10; the old 288 cap made every valid
- * payload un-processable).
+ * Amendment 1) widened the region to full-screen and the schema bound moved up
+ * to 576×288 so a canonical full-region frame is expressible on the wire (debug
+ * `map-frame-pipeline-dims`, 2026-06-10; the old 288→144 cap made full-screen
+ * frames un-expressible). The 400×200 internal worker layout predates that
+ * widening and is unrelated to the wire bound documented here.
  *
  * **Wire-size note**
  *
