@@ -1,11 +1,11 @@
 /**
- * CanvasCompositor — master 400×200 canvas compositor for the HUD raster path.
+ * CanvasCompositor — master 576×288 canvas compositor for the HUD raster path.
  *
- * Owns a master 400×200 OffscreenCanvas (or HTMLCanvasElement fallback in
+ * Owns a master 576×288 OffscreenCanvas (or HTMLCanvasElement fallback in
  * browser main-thread). Composites registered per-layer canvases in ascending
  * ZIndex order via `drawImage`, implements dirty-skip (layers whose state
  * has not changed since the last `composite()` call are blitted from their
- * cached canvas without calling `paint()` again), and returns a 400×200×4
+ * cached canvas without calling `paint()` again), and returns a 576×288×4
  * RGBA `Uint8ClampedArray` consumed by `buildHudTiles` → `pushHudTiles`.
  *
  * # Canvas acquisition (acquireCanvas2d pattern)
@@ -22,7 +22,7 @@
  * `COMPOSITOR_W = 576` and `COMPOSITOR_H = 288` MUST equal `FRAME_W`/`FRAME_H`
  * in `hud-raster-frame.ts`. The master RGBA buffer produced by `composite()` is
  * passed directly to `buildHudTiles()`, which validates
- * `rgba.length === 400*200*4 = 320000`.
+ * `rgba.length === 576*288*4 = 663552`.
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1 — compositor model)
  * @see packages/g2-app/src/hud/hud-raster-frame.ts (FRAME_W/FRAME_H coupling)
@@ -37,16 +37,16 @@ import type { CanvasLayer, ZIndex } from './layer-types.js';
 /**
  * Master canvas width (pixels).
  *
- * MUST equal `FRAME_W` in `hud-raster-frame.ts` (400 px).
- * INV-2 verified 2026-06-05: 4 tiles × 100 px each, 2 columns = 400 px.
+ * MUST equal `FRAME_W` in `hud-raster-frame.ts` (576 px).
+ * INV-2 verified 2026-06-05: 2 columns × 288 px each = 576 px (full screen).
  */
 export const COMPOSITOR_W = 576;
 
 /**
  * Master canvas height (pixels).
  *
- * MUST equal `FRAME_H` in `hud-raster-frame.ts` (200 px).
- * INV-2 verified 2026-06-05: 2 rows × 100 px each = 200 px.
+ * MUST equal `FRAME_H` in `hud-raster-frame.ts` (288 px).
+ * INV-2 verified 2026-06-05: 2 rows × 144 px each = 288 px (full screen).
  */
 export const COMPOSITOR_H = 288;
 
@@ -98,16 +98,16 @@ export interface CanvasCompositorLike {
 
   /**
    * Composite all registered layers in ascending z-order and return the master
-   * 400×200×4 RGBA buffer.
+   * 576×288×4 RGBA buffer.
    *
    * - Dirty layers: `layer.paint()` called first (re-renders to the layer canvas),
    *   then `drawImage(canvas, 0, 0)` onto the master.
    * - Clean layers: `drawImage` only (skip `paint()` — dirty-skip optimisation).
-   * - Returns a new `Uint8ClampedArray` of length `400 * 200 * 4 = 320000` backed
+   * - Returns a new `Uint8ClampedArray` of length `576 * 288 * 4 = 663552` backed
    *   by a copy of the master canvas's ImageData buffer.
-   * - When no layers are registered, returns a blank (all-zero) 320000-byte buffer.
+   * - When no layers are registered, returns a blank (all-zero) 663552-byte buffer.
    *
-   * @returns 400×200×4 RGBA Uint8ClampedArray.
+   * @returns 576×288×4 RGBA Uint8ClampedArray.
    * @see packages/g2-app/src/hud/hud-raster-frame.ts buildHudTiles (consumer)
    */
   composite(): Uint8ClampedArray;
@@ -227,7 +227,7 @@ export class CanvasCompositor implements CanvasCompositorLike {
   // ── Private static helpers ─────────────────────────────────────────────────
 
   /**
-   * Acquire a 2D rendering context for the master 400×200 canvas.
+   * Acquire a 2D rendering context for the master 576×288 canvas.
    *
    * Environment resolution order (mirrors `acquireCanvas2d` in hud-canvas-renderer.ts):
    *   1. `OffscreenCanvas` — Web Worker context.

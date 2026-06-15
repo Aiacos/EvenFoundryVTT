@@ -1,7 +1,7 @@
 /**
  * MapCanvasLayer — z=0 compositor layer for the full-screen Foundry map.
  *
- * Implements `CanvasLayer` at `ZIndex.Z0_MAP`. Holds the latest 400×200 RGBA
+ * Implements `CanvasLayer` at `ZIndex.Z0_MAP`. Holds the latest 576×288 RGBA
  * frame received from the Foundry canvas extractor and paints it via
  * `putImageData` at (0,0) on its layer canvas. Each `setFrame` call triggers
  * the injected `onFrame` callback (typically `hudDeltaDriver.requestCycle()`) so
@@ -148,9 +148,9 @@ export class MapCanvasLayer implements CanvasLayer {
    * schema check needed here.
    *
    * @param rgba  RGBA pixel bytes (length = `w * h * 4`), pre-validated canonical
-   *              400×200 frame produced by `scene-input.ts` / `padFrameToCanonical`.
-   * @param w     Frame width (should be `COMPOSITOR_W = 400`).
-   * @param h     Frame height (should be `COMPOSITOR_H = 200`).
+   *              576×288 frame produced by `scene-input.ts` / `padFrameToCanonical`.
+   * @param w     Frame width (should be `COMPOSITOR_W = 576`).
+   * @param h     Frame height (should be `COMPOSITOR_H = 288`).
    */
   setFrame(rgba: Uint8ClampedArray, w: number, h: number): void {
     // Store raw bytes — ImageData is constructed lazily in paint() where the

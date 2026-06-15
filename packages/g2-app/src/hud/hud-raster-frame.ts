@@ -63,7 +63,7 @@ const FRAME_H = 288;
  */
 const TILE_W = 288;
 /**
- * Tile height — max per Even Realities image container spec (20–100 px).
+ * Tile height — max per Even Realities image container spec (20–144 px).
  * Source: `hub.evenrealities.com/docs/guides/display`, verified 2026-06-05.
  */
 const TILE_H = 144;
@@ -94,10 +94,10 @@ export interface HudTile {
  * Used by `push-hud-tiles.ts` (serialized tile push) and by tests to assert
  * the tile layout without calling the dither pipeline.
  *
- * `x` and `y` are offsets **relative to the 400×200 raster-region origin** —
- * not absolute on-screen positions within the 576×288 G2 display. The raster
- * region's on-screen placement inside 576×288 is parameterized (Phase 20
- * decision). No hard-coded 576×288 on-screen offset is introduced here.
+ * `x` and `y` are offsets **relative to the 576×288 raster-region origin** —
+ * the raster surface is the FULL SCREEN 576×288 (layout B, 2026-06-10), so the
+ * region origin coincides with the G2 display origin. No placement parameter is
+ * introduced here (default deferred to Phase 20).
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1 — geometry)
  */
@@ -106,13 +106,13 @@ export interface HudTileGeometryEntry {
   readonly containerID: number;
   /** Container name (e.g. `"hud-tile-0"`). */
   readonly containerName: string;
-  /** Top-left X offset relative to the 400×200 raster-region origin (pixels). */
+  /** Top-left X offset relative to the 576×288 raster-region origin (pixels). */
   readonly x: number;
-  /** Top-left Y offset relative to the 400×200 raster-region origin (pixels). */
+  /** Top-left Y offset relative to the 576×288 raster-region origin (pixels). */
   readonly y: number;
-  /** Tile width in pixels (always 200 — max per Even Realities image container spec). */
+  /** Tile width in pixels (always 288 — max per Even Realities image container spec). */
   readonly width: number;
-  /** Tile height in pixels (always 100 — max per Even Realities image container spec). */
+  /** Tile height in pixels (always 144 — max per Even Realities image container spec). */
   readonly height: number;
 }
 
@@ -121,23 +121,24 @@ export interface HudTileGeometryEntry {
 /**
  * The 4 HUD tile geometry descriptors in id order (TL, TR, BL, BR).
  *
- * Tile offsets are relative to the **400×200 raster-region origin** (not the
- * 576×288 physical G2 screen). The raster-region's on-screen placement is
- * parameterized — default deferred to Phase 20 (ADR-0013 Amendment 1).
+ * Tile offsets are relative to the **576×288 raster-region origin**, which —
+ * since the raster surface is the FULL SCREEN 576×288 (layout B) — coincides
+ * with the physical G2 screen origin. On-screen placement is parameterized;
+ * default deferred to Phase 20 (ADR-0013 Amendment 1).
  *
  * ```
  *   ┌────────────┬────────────┐
- *   │ hud-tile-0 │ hud-tile-1 │  (0,0)─(200,0)─(400,0)
- *   │   200×100  │   200×100  │
- *   ├────────────┼────────────┤  y=100
+ *   │ hud-tile-0 │ hud-tile-1 │  (0,0)─(288,0)─(576,0)
+ *   │   288×144  │   288×144  │
+ *   ├────────────┼────────────┤  y=144
  *   │ hud-tile-2 │ hud-tile-3 │
- *   │   200×100  │   200×100  │
- *   └────────────┴────────────┘  y=200
+ *   │   288×144  │   288×144  │
+ *   └────────────┴────────────┘  y=288
  * ```
  *
- * Tile size (200×100) is the hardware maximum per Even Realities image container
+ * Tile size (288×144) is the hardware maximum per Even Realities image container
  * spec (`hub.evenrealities.com/docs/guides/display`, INV-2 verified 2026-06-05).
- * 4 tiles at maximum size yield the 400×200 raster surface.
+ * 4 tiles at maximum size yield the 576×288 full-screen raster surface.
  *
  * Container IDs start at 0 and are declared first in the page schema (images
  * before text in the global id namespace).
