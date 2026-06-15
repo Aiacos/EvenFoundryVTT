@@ -51,6 +51,7 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
 
     // Step 3 — character selection
     'evf.wizard.step3.title': 'Scegli il personaggio',
+    'evf.wizard.step3.scoped': 'Solo le schede del tuo utente Foundry.',
     'evf.wizard.step3.loading': 'Caricamento personaggi…',
     'evf.wizard.step3.cta': 'Conferma',
     'evf.wizard.step3.empty': 'Nessun personaggio disponibile su questo bridge.',
@@ -107,6 +108,7 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
     'evf.wizard.step2.error.version_mismatch': 'Incompatible bridge version. Update the bridge.',
 
     'evf.wizard.step3.title': 'Choose your character',
+    'evf.wizard.step3.scoped': "Only your Foundry user's characters.",
     'evf.wizard.step3.loading': 'Loading characters…',
     'evf.wizard.step3.cta': 'Confirm',
     'evf.wizard.step3.empty': 'No characters available on this bridge.',

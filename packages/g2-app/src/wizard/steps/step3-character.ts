@@ -38,6 +38,7 @@ interface CharacterEntry {
  */
 export type Step3Keys =
   | 'evf.wizard.step3.title'
+  | 'evf.wizard.step3.scoped'
   | 'evf.wizard.step3.loading'
   | 'evf.wizard.step3.empty'
   | 'evf.wizard.step3.empty.retry'
@@ -83,6 +84,13 @@ export function render(
   errorRegion.setAttribute('aria-live', 'assertive');
   errorRegion.className = 'evf-error-msg evf-hidden';
 
+  // Scoping note — the roster is filtered to the paired Foundry user's owned
+  // actors bridge-side (ADR-0014); surface that so the player understands why
+  // only their characters appear.
+  const scopedNote = document.createElement('div');
+  scopedNote.className = 'evf-step3-scoped';
+  scopedNote.textContent = t('evf.wizard.step3.scoped');
+
   // Character list area (populated after fetch)
   const charListArea = document.createElement('div');
   charListArea.id = 'evf-char-list';
@@ -107,6 +115,7 @@ export function render(
 
   wrapper.appendChild(statusRegion);
   wrapper.appendChild(errorRegion);
+  wrapper.appendChild(scopedNote);
   wrapper.appendChild(charListArea);
 
   container.innerHTML = '';
