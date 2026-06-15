@@ -817,7 +817,15 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             debugInboundTap(sessionId, rawData);
           }
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
-          void handleToolInvoke(socket, sessionId, sessionStore, wsDispatchFn, rawData, logger);
+          void handleToolInvoke(
+            socket,
+            sessionId,
+            sessionStore,
+            wsDispatchFn,
+            tokenCache,
+            rawData,
+            logger,
+          );
           // 'client_setting' → queue a glasses-originated display-settings edit
           // for the upstream frame-POST piggyback. No-op on other message types.
           handleClientSetting(settingsStore, rawData, logger);
