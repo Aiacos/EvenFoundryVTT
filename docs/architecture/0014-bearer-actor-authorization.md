@@ -82,4 +82,52 @@ Ordered by dependency (schema → Foundry → bridge), atomic commits, tests at 
 
 ## Amendments
 
-_None yet._
+### Amendment 1 — write-path authorization (2026-06-15)
+
+The original decision (§4) enforced per-actor authorization on every **read** path
+(REST `GET /v1/character/:actorId`, `characters-list` roster, WS handshake
+`client.actorId` pin, Foundry `getCharacterSnapshot`). It left the **write** path
+unguarded: write tools are invoked via WS `tool.invoke` → bridge `tool-invoke.ts` →
+Foundry `socket.executeAsGM(...)`, which runs the handler in **GM context** and
+therefore **bypasses Foundry's per-actor ownership check**. The tool `args` carries a
+client-supplied **acting** `actor_id` (the PC performing the action). Nothing verified
+that this acting actor was owned by the bearer's bound user — so a player could invoke a
+write tool acting **as another player's PC** by supplying a foreign `actor_id`.
+
+**Decision:** the acting `args.actor_id` of every write tool is now authorized against
+the bearer's owned-actor set (the same live `authorizedActorIds` derived from
+`actor.testUserPermission(user, "OWNER")` as the read path), exactly mirroring the read
+model. A write whose acting actor is not owned is rejected with the constant error code
+`not_authorized` and is **not executed**.
+
+**Acting actor vs. targets (critical scope boundary).** The check is on the **acting**
+actor only — the PC doing the action. It deliberately does **NOT** restrict
+`args.targets` (the token ids an action is aimed at). Targets may legitimately be
+non-owned (e.g. attacking a monster, casting on an ally's token). Restricting targets
+would break legitimate gameplay. The convention is uniform across every write handler:
+`args.actor_id` = acting actor; `args.targets` = aim points (unrestricted by this gate).
+
+**Tools with no acting actor are unaffected:** `move-token` (keyed by `token_id`, no
+`actor_id`) and `confirm-template-placement` (keyed by `placementId`; the acting actor
+was already authorized at `place-template` time) carry no acting `args.actor_id` and are
+not gated. Handler args that determine the acting actor from a handshake-pinned
+`selectedActorId` rather than `args.actor_id` are already covered by the handshake gate
+(§4).
+
+**Enforcement points (defence in depth):**
+
+| Path | Enforcement |
+|------|-------------|
+| Foundry `socket.executeAsGM` write dispatch (`makeDispatchAdapter` in `pair/socketlib-handlers.ts`) | **Authoritative.** Resolve bearer → bound user → live owned set; reject with `not_authorized` (no dispatch) unless the acting `args.actor_id` is owned. A denied write writes a best-effort audit-log entry (bearer hashed, never logged raw — T-02-01). |
+| Bridge WS `tool.invoke` (`ws/tool-invoke.ts`) | **Fast-reject.** Re-validate the session token via `TokenCache`; when `args.actor_id` is present, reject with `not_authorized` before dispatching if it is not in `authorizedActorIds`. Uses the existing `isActorAuthorized` predicate, which honors the dev-no-auth bypass so the simulator keeps working. |
+
+Foundry remains the authorization **authority**; the bridge check is a defence-in-depth
+fast-reject that avoids a round-trip when the cached owned-set already proves denial.
+Both paths fail closed (invalid/unknown bearer → denied).
+
+**Updated §4 enforcement table** (additive — the write rows complement the read rows):
+
+| Path | Enforcement |
+|------|-------------|
+| Foundry write dispatch (`makeDispatchAdapter`) | acting `args.actor_id ∈ authorizedActorIds(userId)` → else `not_authorized`, not executed |
+| Bridge WS `tool.invoke` | acting `args.actor_id ∈ validatedToken.authorizedActorIds` → else `not_authorized` fast-reject |
