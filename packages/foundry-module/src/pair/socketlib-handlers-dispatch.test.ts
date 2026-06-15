@@ -31,6 +31,20 @@ vi.mock('../write-path/tool-registry.js', () => ({
   extractActorId: vi.fn(() => null),
 }));
 
+// ADR-0014 Amendment 1: the write dispatch now authorizes the acting `args.actor_id`
+// against the bearer's owned set BEFORE forwarding. These forwarding tests use the
+// acting actor `actor-1`, so we stub the bearer → user binding (valid) and the owned
+// set (contains `actor-1`) so the gate passes and the forwarding behaviour under test
+// is exercised. (The gate's own deny/allow logic is tested in
+// socketlib-handlers-write-authz.test.ts.)
+vi.mock('./bearer-registry.js', () => ({
+  validateBearer: vi.fn(() => ({ valid: true, entry: { userId: 'user-1' } })),
+  revokeBearer: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('./actor-authorization.js', () => ({
+  authorizedActorIdsForUser: vi.fn(() => ['actor-1']),
+}));
+
 // ─── Foundry global stubs ─────────────────────────────────────────────────────
 
 class ApplicationStub {
@@ -40,7 +54,6 @@ class ApplicationStub {
 }
 
 class ApplicationV2Stub {
-  constructor(_options?: unknown) {}
   element: HTMLElement =
     globalThis.document?.createElement?.('div') ??
     ({ querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement);
