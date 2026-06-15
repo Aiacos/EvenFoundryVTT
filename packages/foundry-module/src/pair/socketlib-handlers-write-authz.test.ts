@@ -283,6 +283,6 @@ describe('write-path per-actor authorization (ADR-0014 Amendment 1)', () => {
       result: { success: false, error: 'not_authorized' },
     });
     // T-02-01: the raw bearer must never appear — only the hashed prefix.
-    expect(entry.bearer_id).toBe('deadbeef');
+    expect(entry?.bearer_id).toBe('deadbeef');
   });
 });

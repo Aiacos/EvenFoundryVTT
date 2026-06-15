@@ -360,16 +360,11 @@ const NOT_AUTHORIZED = 'not_authorized' as const;
  * @returns The acting `actor_id` string, or `null` when the field is absent / non-string.
  */
 function extractActingActorId(args: unknown): string | null {
-  if (
-    args !== null &&
-    typeof args === 'object' &&
-    'actor_id' in args &&
-    typeof (args as Record<string, unknown>).actor_id === 'string' &&
-    ((args as Record<string, string>).actor_id ?? '').length > 0
-  ) {
-    return (args as Record<string, string>).actor_id;
+  if (args === null || typeof args !== 'object' || !('actor_id' in args)) {
+    return null;
   }
-  return null;
+  const value = (args as Record<string, unknown>).actor_id;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 /**
