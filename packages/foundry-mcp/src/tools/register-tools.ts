@@ -21,8 +21,10 @@
  * - T-11-06: SDK validates args against Phase 7 Zod schemas BEFORE callback.
  *   Bridge re-validates via ToolInvocationEnvelopePayloadSchema at WS-receive boundary.
  *   foundry-module handler.argsSchema validates a 3rd time. Three layers total.
- * - T-11-08: tool error strings from bridge are forwarded verbatim (constant-shape error codes).
- *   LLM never sees Foundry internals beyond these codes.
+ * - T-11-08: tool error codes from the bridge are sanitised at this boundary
+ *   (see sanitizeErrorCode). Constant-shape codes (`[a-z0-9_]+`) pass through;
+ *   any other string (raw dnd5e/Foundry internals forwarded by the bridge catch
+ *   path) is replaced with `internal_error`. LLM never sees Foundry internals.
  *
  * @see packages/shared-protocol/src/tools/ (Phase 7 Zod schemas — single source of truth)
  * @see packages/foundry-mcp/src/tools/bridge-client.ts (WS tool.invoke proxy)
@@ -60,6 +62,43 @@ export const EVF_MCP_TOOL_IDS = [
   'place-template',
   'drop-concentration',
 ] as const;
+
+/**
+ * Generic error code substituted for any non-constant-shape error string.
+ *
+ * T-11-08 promises the LLM only ever sees constant-shape error codes. Typed bridge
+ * handlers return such codes (`actor_not_found`, `bridge_unreachable`, …), but the
+ * bridge's `dispatchToolFn` catch path forwards `err.message` / `String(err)` for
+ * unrecognised dnd5e/Foundry errors (bridge tool-invoke.ts) — an arbitrary internal
+ * message that could leak object shapes, paths, or stack fragments to the LLM.
+ */
+const GENERIC_ERROR_CODE = 'internal_error';
+
+/**
+ * Matches a constant-shape error code: lowercase letters, digits and underscores
+ * only (e.g. `actor_not_found`, `bridge_timeout`). Anything with whitespace,
+ * punctuation, capitals, or unusual length is treated as a leaked internal message.
+ */
+const CONSTANT_CODE_RE = /^[a-z0-9_]+$/;
+/** Upper bound on a legitimate constant code length (defensive — real codes are short). */
+const MAX_CODE_LEN = 64;
+
+/**
+ * Sanitise a bridge error string before it reaches the LLM (T-11-08 boundary).
+ *
+ * Known typed codes pass through verbatim; any string that is not a constant-shape
+ * code (whitespace, punctuation, capitals, over-long, or empty) is replaced with
+ * {@link GENERIC_ERROR_CODE} so raw Foundry/dnd5e internals never leak.
+ *
+ * @param error - The `error` field from a {@link BridgeInvokeResult} failure.
+ * @returns A safe constant error code.
+ */
+function sanitizeErrorCode(error: string | undefined): string {
+  if (error !== undefined && error.length <= MAX_CODE_LEN && CONSTANT_CODE_RE.test(error)) {
+    return error;
+  }
+  return GENERIC_ERROR_CODE;
+}
 
 /**
  * Snake_case → snake_case pass-through for bridge invokeTool.
@@ -134,9 +173,13 @@ export function registerEvfTools(
           };
         }
 
-        logger.warn({ toolId, error: result.error }, 'MCP tool.invoke returned failure');
+        // T-11-08 boundary: map any non-constant-shape error (raw dnd5e/Foundry
+        // internals forwarded by the bridge catch path) to a generic code so raw
+        // internals never reach the LLM. Known typed codes pass through unchanged.
+        const safeCode = sanitizeErrorCode(result.error);
+        logger.warn({ toolId, error: result.error, safeCode }, 'MCP tool.invoke returned failure');
         return {
-          content: [{ type: 'text', text: result.error ?? 'unknown_error' }],
+          content: [{ type: 'text', text: safeCode }],
           isError: true,
         };
       },
