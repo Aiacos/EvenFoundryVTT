@@ -328,6 +328,14 @@ export class RasterController implements RasterControllerLike {
    * RESEARCH.md Pitfall 6 (never bare boolean compare).
    */
   private async _dispatchChangedTiles(tiles: ReadonlyArray<RasterChangedTile>): Promise<void> {
+    // Track whether ANY tile in this whole frame failed. A single successful
+    // tile must NOT reset the failure window mid-frame — otherwise an alternating
+    // fail/success/fail pattern (e.g. a marginal BLE link dropping every other
+    // write) would wipe the counter on each success and never accumulate to the
+    // 3-failure threshold, defeating the fallback entirely. Failures recorded by
+    // `_recordFailure` therefore persist across the dispatch; the window is reset
+    // only when the ENTIRE frame dispatched cleanly (zero failures).
+    let anyFailure = false;
     for (const tile of tiles) {
       const containerName = `map-tile-${tile.index}`;
       const payload = new ImageRawDataUpdate({
@@ -337,11 +345,15 @@ export class RasterController implements RasterControllerLike {
       });
       const result = await this.bridge.updateImageRawData(payload);
       if (!ImageRawDataUpdateResult.isSuccess(result)) {
+        anyFailure = true;
         this._recordFailure();
-      } else {
-        // Successful dispatch resets the consecutive-failure window.
-        this.failureTimestamps = [];
       }
+    }
+    // Only a fully clean frame (no failed tiles) resets the failure window. This
+    // preserves the sliding-window time bound in `_recordFailure` while ensuring
+    // an interleaved success within a degraded frame cannot mask the failures.
+    if (!anyFailure) {
+      this.failureTimestamps = [];
     }
   }
 
