@@ -3,10 +3,10 @@
   "payload": {
     "actorId": "VoNfASW4hQ4dG4cv",
     "name": "Shin",
-    "hp": 12,
-    "maxHp": 48,
+    "hp": 68,
+    "maxHp": 68,
     "tempHp": 0,
-    "ac": 14,
+    "ac": 18,
     "level": 10,
     "class": "Rogue",
     "initiative": 2,
