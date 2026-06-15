@@ -92,6 +92,14 @@ const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_FAILURE_WINDOW_MS = 5000;
 
 /**
+ * Legacy glyph-fallback frame dimensions — the raster-worker contract is fixed
+ * at exactly 400×200 (matches GLYPH_CANONICAL_W/H in scene-input.ts). Named so
+ * the idle-heartbeat dispatch does not repeat bare literals.
+ */
+const LEGACY_FRAME_W = 400;
+const LEGACY_FRAME_H = 200;
+
+/**
  * Spawn the production raster Worker using the Vite-canonical URL pattern.
  *
  * Kept as a module-level factory so it can be stubbed in tests; the body is
@@ -241,7 +249,7 @@ export class RasterController implements RasterControllerLike {
     this.idleTimer = setInterval(() => {
       const scene = this.idleSceneSource?.();
       if (scene !== null && scene !== undefined) {
-        void this.requestFrame(scene, 400, 200);
+        void this.requestFrame(scene, LEGACY_FRAME_W, LEGACY_FRAME_H);
       }
     }, this.idleHeartbeatMs);
   }

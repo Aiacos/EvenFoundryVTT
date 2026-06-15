@@ -209,7 +209,10 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
     const raw =
       pixelData instanceof Uint8ClampedArray
         ? pixelData
-        : new Uint8ClampedArray(pixelData.data.buffer.slice(0));
+        : // `data.slice()` copies the view's LOGICAL range (respecting byteOffset
+          // + length); `data.buffer.slice(0)` would copy the whole backing buffer
+          // and assume `data` spans it fully — wrong if the view is offset/partial.
+          pixelData.data.slice();
     if (width !== FRAME_W || height !== FRAME_H) {
       // Reject mis-shaped input — caller is expected to resize upstream.
       throw new Error(
