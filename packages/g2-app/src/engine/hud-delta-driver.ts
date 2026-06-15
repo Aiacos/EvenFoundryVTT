@@ -448,8 +448,16 @@ export class HudDeltaDriver {
     const asyncBuilder = this._opts.buildTilesAsync;
     if (asyncBuilder !== undefined) {
       try {
-        // The Worker path TRANSFERS the buffer — pass a copy so the sync
-        // fallback (and any caller-side reuse) never sees a detached buffer.
+        // The Worker path TRANSFERS the buffer (hud-tile-worker-client.ts line
+        // ~128: `postMessage({ rgba: rgba.buffer, ... }, [rgba.buffer])`) which
+        // DETACHES whatever buffer we hand it. We MUST pass a copy here: on a
+        // worker rejection the catch below falls through to the synchronous
+        // `buildHudTiles(rgba, dither)` which reads the ORIGINAL `rgba`. Without
+        // this copy the original would be detached and the sync fallback would
+        // operate on a zero-length buffer. This copy is load-bearing — do NOT
+        // remove it (the `rgba` arg is the compositor's owned output, single-use
+        // per cycle, but the worker transfer + sync-fallback dual-read needs two
+        // independent buffers).
         return await asyncBuilder(new Uint8ClampedArray(rgba), dither);
       } catch (err) {
         console.warn('[EVF] HudDeltaDriver: worker tile build failed — sync fallback:', err);

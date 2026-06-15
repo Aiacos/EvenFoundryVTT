@@ -155,7 +155,14 @@ export class MapCanvasLayer implements CanvasLayer {
   setFrame(rgba: Uint8ClampedArray, w: number, h: number): void {
     // Store raw bytes — ImageData is constructed lazily in paint() where the
     // rendering context is available (and ImageData global is guaranteed to exist).
-    this._frame = { rgba: new Uint8ClampedArray(rgba), w, h };
+    //
+    // No defensive copy: the `rgba` buffer is always a fresh, owned, single-use
+    // buffer that `scene-input.ts` does not retain — `padFrame` either allocates
+    // a new padded buffer or returns the freshly-decoded one (decodeFramePixels /
+    // native getImageData / new Uint8ClampedArray(firstFrame)), none of which are
+    // reused after `setFrame` returns. Copying here was a redundant per-frame
+    // hot-path allocation (576×288×4 = 663552 bytes/frame at the capture rate).
+    this._frame = { rgba, w, h };
     this._dirty = true;
     this._opts.onFrame();
   }
@@ -178,11 +185,13 @@ export class MapCanvasLayer implements CanvasLayer {
       // happy-dom tests does not ReferenceError. In production the guard is
       // always true — canvas 2D contexts are only available when ImageData is.
       if (typeof ImageData !== 'undefined') {
-        const imageData = new ImageData(
-          new Uint8ClampedArray(this._frame.rgba),
-          this._frame.w,
-          this._frame.h,
-        );
+        // No defensive copy: the ImageData constructor adopts the array as its
+        // backing store WITHOUT copying, and `putImageData` only READS from it
+        // (it never mutates the source). `_frame.rgba` is never mutated in place
+        // — `setFrame` replaces the whole `_frame` object wholesale — so the
+        // transient alias here is safe. Removing the copy drops a redundant
+        // 663552-byte allocation on every paint() of the same frame.
+        const imageData = new ImageData(this._frame.rgba, this._frame.w, this._frame.h);
         ctx.putImageData(imageData, 0, 0);
       }
     }

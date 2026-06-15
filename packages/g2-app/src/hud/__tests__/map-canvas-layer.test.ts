@@ -180,6 +180,74 @@ describe('MapCanvasLayer — MCL-3: paint() blits frame at (0,0)', () => {
   });
 });
 
+// ── MCL-5: zero-copy hot path correctness (no aliasing corruption) ──────────
+
+describe('MapCanvasLayer — MCL-5: zero-copy frame ingest correctness', () => {
+  it('MCL-5: paint() blits the exact bytes received by setFrame', async () => {
+    const layer = new MapCanvasLayer({ onFrame: vi.fn() });
+    const ctx = makeFakeCtx();
+    const { canvas } = makeFakeCanvas(ctx);
+    await layer.attachCanvas(canvas);
+
+    const rgba = makeRgba();
+    rgba[0] = 0x11;
+    rgba[1] = 0x22;
+    rgba[rgba.length - 1] = 0xff;
+    layer.setFrame(rgba, 400, 200);
+    layer.paint();
+
+    const [imageData] = ctx.putImageData.mock.calls[0] as [{ data: Uint8ClampedArray }];
+    // The blitted ImageData must carry the exact frame bytes (optimization
+    // removed both defensive copies — verify no corruption / off-by-one).
+    expect(imageData.data[0]).toBe(0x11);
+    expect(imageData.data[1]).toBe(0x22);
+    expect(imageData.data[imageData.data.length - 1]).toBe(0xff);
+    expect(imageData.data.length).toBe(400 * 200 * 4);
+  });
+
+  it('MCL-5: re-paint of the same frame blits identical bytes (no in-place mutation)', async () => {
+    const layer = new MapCanvasLayer({ onFrame: vi.fn() });
+    const ctx = makeFakeCtx();
+    const { canvas } = makeFakeCanvas(ctx);
+    await layer.attachCanvas(canvas);
+
+    const rgba = makeRgba();
+    rgba[42] = 0x7e;
+    layer.setFrame(rgba, 400, 200);
+    layer.paint();
+    // Re-dirty + paint the SAME stored frame; bytes must be unchanged (putImageData
+    // does not mutate its source, and we never copy/mutate _frame.rgba in place).
+    layer.setFrame(rgba, 400, 200);
+    layer.paint();
+
+    const lastCall = ctx.putImageData.mock.calls.at(-1) as [{ data: Uint8ClampedArray }];
+    expect(lastCall[0].data[42]).toBe(0x7e);
+  });
+
+  it('MCL-5: a later setFrame replaces the frame wholesale (latest frame wins)', async () => {
+    const layer = new MapCanvasLayer({ onFrame: vi.fn() });
+    const ctx = makeFakeCtx();
+    const { canvas } = makeFakeCanvas(ctx);
+    await layer.attachCanvas(canvas);
+
+    const first = makeRgba();
+    first[0] = 0x01;
+    layer.setFrame(first, 400, 200);
+    layer.paint();
+
+    const second = makeRgba();
+    second[0] = 0x02;
+    layer.setFrame(second, 400, 200);
+    layer.paint();
+
+    const lastCall = ctx.putImageData.mock.calls.at(-1) as [{ data: Uint8ClampedArray }];
+    expect(lastCall[0].data[0]).toBe(0x02);
+    // Mutating the FIRST buffer after handoff must not affect the painted frame.
+    first[0] = 0xee;
+    expect(lastCall[0].data[0]).toBe(0x02);
+  });
+});
+
 // ── MCL-4: isDirty() lifecycle ────────────────────────────────────────────────
 
 describe('MapCanvasLayer — MCL-4: isDirty() lifecycle', () => {
