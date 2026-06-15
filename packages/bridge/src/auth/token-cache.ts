@@ -59,10 +59,27 @@ export type FoundryValidateFn = (token: string) => Promise<ValidateTokenResult>;
 interface CacheEntry {
   result: ValidateTokenResult;
   cachedAt: number;
+  /** Per-entry TTL (positive vs negative results expire on different schedules). */
+  ttlMs: number;
 }
 
-/** Cache TTL: 5 minutes in milliseconds (D-2.12). */
+/** Positive (valid token) cache TTL: 5 minutes in milliseconds (D-2.12). */
 const TTL_MS = 5 * 60 * 1_000;
+
+/**
+ * Negative-result cache TTL: 10 seconds.
+ *
+ * Invalid / expired / unreachable results are cached only briefly so that a
+ * revoked-then-reissued token, or a recovered Foundry, is not pinned to a stale
+ * negative verdict for the full 5-minute positive TTL. 10s still absorbs an
+ * invalid-token hot loop (the abuse the negative cache exists to dampen) without
+ * meaningfully delaying recovery.
+ *
+ * `foundry_unreachable` is handled even more aggressively: it is NOT cached at all
+ * (see {@link TokenCache.validate}) — a transient outage must never suppress the
+ * very next successful validation once Foundry returns.
+ */
+const NEGATIVE_TTL_MS = 10 * 1_000;
 
 /**
  * Optional observability hooks for `TokenCache`.
@@ -111,9 +128,14 @@ export class TokenCache {
   /**
    * Validate a bearer token.
    *
-   * Returns cached result if within TTL; calls Foundry on cache miss.
-   * Negative results (invalid/expired) are also cached to avoid hammering Foundry
-   * with invalid tokens — they will evict on TTL (5 min) or explicit invalidation.
+   * Returns cached result if within its per-entry TTL; calls Foundry on cache miss.
+   *
+   * TTL policy:
+   * - **valid** → {@link TTL_MS} (5 min, D-2.12) — the normal hot-path cache.
+   * - **invalid / expired** → {@link NEGATIVE_TTL_MS} (10 s) — dampens an invalid-token
+   *   hot loop without pinning a revoked-then-reissued token to a stale verdict.
+   * - **foundry_unreachable** → NOT cached — a transient outage must not suppress the
+   *   next successful validation once Foundry recovers.
    *
    * Fires `metricsHooks.onHit` on a cache hit and `metricsHooks.onMiss` on a miss.
    */
@@ -141,14 +163,27 @@ export class TokenCache {
     }
 
     const cached = this.cache.get(token);
-    if (cached !== undefined && Date.now() - cached.cachedAt < TTL_MS) {
+    if (cached !== undefined && Date.now() - cached.cachedAt < cached.ttlMs) {
       this.metricsHooks.onHit?.();
       return cached.result;
     }
 
     this.metricsHooks.onMiss?.();
     const result = await this.foundryValidateFn(token);
-    this.cache.set(token, { result, cachedAt: Date.now() });
+
+    // foundry_unreachable is a transient infrastructure failure, NOT a verdict about
+    // the token — never cache it, so the next call re-probes Foundry immediately.
+    if (result.valid === false && result.reason === 'foundry_unreachable') {
+      // Drop any prior entry so a stale verdict cannot linger under the old TTL.
+      this.cache.delete(token);
+      return result;
+    }
+
+    // Positive results live for the full 5-minute TTL; negative verdicts
+    // (unknown_token / revoked / expired) expire fast so revocation/recovery
+    // is not pinned for 5 minutes.
+    const ttlMs = result.valid ? TTL_MS : NEGATIVE_TTL_MS;
+    this.cache.set(token, { result, cachedAt: Date.now(), ttlMs });
     return result;
   }
 
