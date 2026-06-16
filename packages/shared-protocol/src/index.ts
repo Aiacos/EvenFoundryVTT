@@ -90,6 +90,12 @@ export {
 // Concentration conflict + drop-confirmation envelope schemas + type constants.
 // Plan 05 conc-conflict-dispatcher.ts consumes these at the WS-receive boundary.
 
+// Live character/role selection from the EvenHub app (2026-06-16).
+export {
+  CLIENT_SELECT_ACTOR_TYPE,
+  type ClientSelectActorMessage,
+  ClientSelectActorMessageSchema,
+} from './payloads/client-select-actor.js';
 export {
   CONC_CONFLICT_TYPE,
   CONC_DROP_CONFIRMED_TYPE,
@@ -113,7 +119,6 @@ export {
   type FramePixels,
   FramePixelsSchema,
 } from './payloads/frame.js';
-
 // ─── v0.1.15 map-stream format (Quick Task 260611-e71 FRAME-PNG-01) ───────────
 // FramePngSchema: greyscale lossless PNG wire format (~1-5 KB vs ~884 KB RGBA).
 // foundry-module v0.1.15+ exclusively emits frame_png; frame_pixels still exported
@@ -128,6 +133,7 @@ export {
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
+
 // Latency-audit follow-up 2026-06-14 — bidirectional map/display settings sync.
 export {
   CLIENT_SETTING_TYPE,
