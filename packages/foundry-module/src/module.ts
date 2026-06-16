@@ -39,6 +39,7 @@ import {
   SettingsDisplayEditSchema,
 } from '@evf/shared-protocol';
 import { registerCanvasExtractor } from './canvas-extractor.js';
+import { computePartyFraming, type FramingTokenLike, type WorldRect } from './map-framing.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
@@ -65,6 +66,7 @@ import {
   getBrightness,
   getCaptureIntervalMs,
   getDither,
+  getMapAutoFrame,
   getNormalize,
   getWebpQuality,
   registerSettings,
@@ -212,11 +214,36 @@ function getBridgeUrl(): string | null {
  */
 const DELTA_POST_TIMEOUT_MS = 5_000;
 
-/** Whether a frame POST is currently in flight (single-flight frame queue). */
-let _framePostBusy = false;
+/**
+ * Max concurrent in-flight frame POSTs (bounded pipeline depth).
+ *
+ * Perf audit 2026-06-16 (15 fps stretch): the previous single-flight queue
+ * capped upstream throughput at `1000 / (RTT + upload)` fps — on a remote
+ * Foundry host (e.g. The Forge, ~100 ms RTT) that is ~9-10 fps regardless of
+ * `captureFps`, the measured real-chain ceiling. Allowing TWO concurrent POSTs
+ * lets the second overlap the first's round-trip (HTTP/2 multiplexes them on
+ * one connection), ~2× the WAN frame rate. It stays BOUNDED (max one extra
+ * in-flight) so it does not regress to the old unbounded fire-and-forget that
+ * accumulated stale frames. Frames are full-snapshot + latest-wins, so a rare
+ * completion-order swap shows a ≤1-cycle-old frame that the next frame corrects
+ * — invisible at ≥15 fps. On LAN (RTT ≈ upload time) the POST finishes before
+ * the next capture, so depth-2 is a no-op (no downside).
+ */
+const MAX_INFLIGHT_FRAME_POSTS = 2;
+
+/** Number of frame POSTs currently in flight (bounded by {@link MAX_INFLIGHT_FRAME_POSTS}). */
+let _inflightFramePosts = 0;
 
 /** Latest frame delta queued behind the in-flight POST (latest-wins). */
 let _pendingFramePost: { readonly type: string; readonly payload: unknown } | null = null;
+
+/**
+ * Actor id the glasses currently have selected (the map-framing focus), learned
+ * from the `focusActorId` the bridge piggybacks on each frame-POST response
+ * (see {@link runFramePost}). `null` until the first response arrives — framing
+ * then uses the party centroid with no focus bias.
+ */
+let _focusActorId: string | null = null;
 
 /** Delta types carrying full map frames — large + ephemeral, so latest-wins applies. */
 const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixels']);
@@ -233,7 +260,7 @@ async function postDelta(
   internalSecret: string,
   type: string,
   payload: unknown,
-): Promise<{ pendingSettings?: unknown } | null> {
+): Promise<{ pendingSettings?: unknown; focusActorId?: unknown } | null> {
   try {
     const res = await fetch(`${bridgeUrl}/internal/delta`, {
       method: 'POST',
@@ -244,7 +271,7 @@ async function postDelta(
       body: JSON.stringify({ type, payload }),
       signal: AbortSignal.timeout(DELTA_POST_TIMEOUT_MS),
     });
-    return (await res.json()) as { pendingSettings?: unknown };
+    return (await res.json()) as { pendingSettings?: unknown; focusActorId?: unknown };
   } catch (err) {
     // Warning only — bridge unavailability must not crash Foundry session
     // console.warn allowed per biome.jsonc noConsole allow:[error,warn]
@@ -268,9 +295,14 @@ function runFramePost(
   type: string,
   payload: unknown,
 ): void {
-  _framePostBusy = true;
+  _inflightFramePosts++;
   void postDelta(bridgeUrl, internalSecret, type, payload)
     .then((res) => {
+      // Learn the glasses-selected focus actor (map-framing center bias). The
+      // bridge piggybacks it on the frame response; an empty/absent value
+      // clears the bias back to the party centroid.
+      const focus = res?.focusActorId;
+      _focusActorId = typeof focus === 'string' && focus.length > 0 ? focus : null;
       const pending = res?.pendingSettings;
       if (pending !== undefined && pending !== null) {
         // Upstream apply path: the drained pending edit must carry ≥1 key (an
@@ -283,7 +315,7 @@ function runFramePost(
       }
     })
     // A thrown callback (e.g. a malformed pendingSettings getter) or a rejected
-    // postDelta must NOT wedge the single-flight pipeline: log and recover.
+    // postDelta must NOT wedge the bounded pipeline: log and recover.
     // Consistent with the file's "never throw" discipline (T-02-01).
     .catch((err) => {
       console.warn('[EVF] runFramePost callback failed:', (err as Error).message ?? err);
@@ -292,9 +324,9 @@ function runFramePost(
     // of success, network rejection, or a thrown success callback — otherwise a
     // single throw would silently drop every subsequent frame forever.
     .finally(() => {
-      _framePostBusy = false;
+      _inflightFramePosts--;
       const next = _pendingFramePost;
-      if (next !== null) {
+      if (next !== null && _inflightFramePosts < MAX_INFLIGHT_FRAME_POSTS) {
         _pendingFramePost = null;
         runFramePost(bridgeUrl, internalSecret, next.type, next.payload);
       }
@@ -307,14 +339,16 @@ function runFramePost(
  * Logs a warning on failure but NEVER throws (T-02-01).
  * A failed network call must not interrupt the Foundry session.
  *
- * Frame deltas ({@link FRAME_DELTA_TYPES}) go through a single-flight
- * latest-wins queue: at most ONE frame POST is in flight; a frame arriving
- * while one is in flight replaces any queued frame instead of opening another
- * connection. Rationale (latency audit 2026-06-11): at 30 fps over a slow WAN
- * the old unbounded fire-and-forget accumulated in-flight requests without
- * limit — stale frames kept consuming upload bandwidth that the newest frame
- * needed. Small stateful deltas (character/combat/…) are NOT queued: they all
- * must arrive, so each posts independently (with the same timeout).
+ * Frame deltas ({@link FRAME_DELTA_TYPES}) go through a BOUNDED-pipeline
+ * latest-wins queue: up to {@link MAX_INFLIGHT_FRAME_POSTS} frame POSTs may be
+ * in flight at once (WAN throughput, perf audit 2026-06-16); a frame arriving
+ * while the pipeline is full replaces any queued frame instead of opening more
+ * connections. Rationale (latency audit 2026-06-11 → 2026-06-16): the old
+ * unbounded fire-and-forget accumulated in-flight requests without limit; the
+ * single-flight fix capped WAN throughput at 1000/RTT fps; the bounded depth-2
+ * pipeline keeps the no-unbounded-accumulation guarantee while ~2×-ing the WAN
+ * frame rate. Small stateful deltas (character/combat/…) are NOT queued: they
+ * all must arrive, so each posts independently (with the same timeout).
  *
  * Exported for direct unit testing of the latest-wins queue (@internal —
  * production callers are all within this module).
@@ -332,7 +366,10 @@ export function bridgeDeltaEmitter(type: string, payload: unknown): void {
   }
 
   if (FRAME_DELTA_TYPES.has(type)) {
-    if (_framePostBusy) {
+    // Bounded pipeline: up to MAX_INFLIGHT_FRAME_POSTS concurrent POSTs (WAN
+    // throughput); beyond that, the newest frame replaces any queued one
+    // (latest-wins) and drains when a slot frees. See MAX_INFLIGHT_FRAME_POSTS.
+    if (_inflightFramePosts >= MAX_INFLIGHT_FRAME_POSTS) {
       _pendingFramePost = { type, payload };
       return;
     }
@@ -509,6 +546,10 @@ Hooks.once('ready', () => {
   registerCanvasExtractor({
     emit: (payload) => bridgeDeltaEmitter(FRAME_PNG_TYPE, payload),
     isEnabled: () => isStreamLeader(),
+    // Map auto-framing (party-fit, focus-weighted). Evaluated live per capture
+    // so the frame follows token movement / a changed focus actor. Returns null
+    // when disabled or unframable → the extractor captures the live viewport.
+    getFraming: () => buildMapFraming(),
     // mapContrastNormalize client setting — evaluated per capture (live toggle).
     getNormalize: (): 'off' | 'auto' => (getNormalize() ? 'auto' : 'off'),
     // mapDither client setting — Bayer 4×4 during the 16-level quantize.
@@ -577,5 +618,87 @@ export function isStreamLeader(): boolean {
     return pool[0]?.id === self.id;
   } catch {
     return true;
+  }
+}
+
+/** Minimal Foundry token shapes read by {@link buildMapFraming}. */
+interface TokenDocLike {
+  readonly x?: number;
+  readonly y?: number;
+  /** Footprint in GRID UNITS (multiplied by the grid pixel size). */
+  readonly width?: number;
+  readonly height?: number;
+  readonly hidden?: boolean;
+}
+interface TokenPlaceableLike {
+  readonly document?: TokenDocLike | null;
+  readonly actor?: { readonly id?: string | null; readonly hasPlayerOwner?: boolean } | null;
+}
+interface CanvasGlobalLike {
+  readonly tokens?: { readonly placeables?: readonly TokenPlaceableLike[] | null } | null;
+  readonly grid?: { readonly size?: number } | null;
+  readonly dimensions?: {
+    readonly width?: number;
+    readonly height?: number;
+    readonly size?: number;
+  } | null;
+}
+
+/**
+ * Build the map-framing world rectangle from the live scene tokens (party-fit,
+ * focus-weighted toward {@link _focusActorId}). Returns `null` when auto-framing
+ * is disabled, no tokens are present, or anything is unreadable — the extractor
+ * then captures the GM's live viewport instead. Fully defensive: never throws
+ * into the capture loop.
+ *
+ * @see computePartyFraming (the pure geometry)
+ */
+export function buildMapFraming(): WorldRect | null {
+  try {
+    if (!getMapAutoFrame()) {
+      return null;
+    }
+    const c = (globalThis as { canvas?: CanvasGlobalLike | null }).canvas;
+    const placeables = c?.tokens?.placeables;
+    if (placeables === undefined || placeables === null) {
+      return null;
+    }
+    const gridSize = c?.grid?.size ?? c?.dimensions?.size ?? 100;
+    const safeGrid = typeof gridSize === 'number' && gridSize > 0 ? gridSize : 100;
+
+    const tokens: FramingTokenLike[] = [];
+    for (const t of placeables) {
+      const d = t?.document;
+      if (d === undefined || d === null) {
+        continue;
+      }
+      if (typeof d.x !== 'number' || typeof d.y !== 'number') {
+        continue;
+      }
+      const wUnits = typeof d.width === 'number' ? d.width : 1;
+      const hUnits = typeof d.height === 'number' ? d.height : 1;
+      const actor = t?.actor ?? null;
+      tokens.push({
+        x: d.x,
+        y: d.y,
+        width: wUnits * safeGrid,
+        height: hUnits * safeGrid,
+        isPlayerCharacter: actor?.hasPlayerOwner === true,
+        isFocus: _focusActorId !== null && actor?.id === _focusActorId,
+        hidden: d.hidden === true,
+      });
+    }
+    if (tokens.length === 0) {
+      return null;
+    }
+    const sceneWidth = typeof c?.dimensions?.width === 'number' ? c.dimensions.width : undefined;
+    const sceneHeight = typeof c?.dimensions?.height === 'number' ? c.dimensions.height : undefined;
+    return computePartyFraming(tokens, {
+      ...(sceneWidth !== undefined ? { sceneWidth } : {}),
+      ...(sceneHeight !== undefined ? { sceneHeight } : {}),
+    });
+  } catch (err) {
+    console.warn('[EVF] buildMapFraming failed:', (err as Error).message ?? err);
+    return null;
   }
 }

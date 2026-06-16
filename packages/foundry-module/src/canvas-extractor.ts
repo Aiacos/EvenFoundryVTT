@@ -30,6 +30,15 @@
  */
 import type { FramePng } from '@evf/shared-protocol';
 import * as UPNG from 'upng-js';
+import type { WorldRect } from './map-framing.js';
+
+/**
+ * Supersample factor for the framed (region-render) capture path: the
+ * off-screen RenderTexture is created at `target × FRAMED_SUPERSAMPLE` so the
+ * CPU fit-downscale that follows is strictly downscaling (anti-aliased), the
+ * same quality rationale as the live-viewport RT path's 1.5× capture scale.
+ */
+const FRAMED_SUPERSAMPLE = 2;
 
 /**
  * Leading+trailing throttle window for hook-driven captures.
@@ -160,6 +169,16 @@ export interface CanvasExtractorOpts {
    * Absent → always enabled.
    */
   readonly isEnabled?: () => boolean;
+  /**
+   * Live map-framing supplier, evaluated at the START of every capture.
+   *
+   * Return a world-space rectangle to capture that region (party auto-framing,
+   * focus-weighted — see {@link computePartyFraming}) instead of the GM's live
+   * viewport; the GM's on-screen camera is NOT disturbed. Return `null` (or omit
+   * the option) to capture the live viewport. Evaluated live so the framing
+   * follows token movement / a changed focus actor without re-registering.
+   */
+  readonly getFraming?: () => WorldRect | null;
 }
 
 /**
@@ -187,6 +206,112 @@ interface AcquiredBytes {
   readonly srcBytes: Uint8Array | Uint8ClampedArray;
   readonly srcWidth: number;
   readonly srcHeight: number;
+}
+
+/** Minimal mutable 2D point (PIXI `Point`/`ObservablePoint`) used by the framing path. */
+interface PixiPointLike {
+  x: number;
+  y: number;
+  set?(x: number, y: number): void;
+}
+
+/** Minimal PIXI container transform read/written by {@link acquireFramedBytes}. */
+interface StageTransformLike {
+  position?: PixiPointLike | null;
+  scale?: PixiPointLike | null;
+  pivot?: PixiPointLike | null;
+}
+
+/** Assign a PIXI point via `.set` when available (fires the observable callback), else fields. */
+function setPoint(p: PixiPointLike, x: number, y: number): void {
+  if (typeof p.set === 'function') {
+    p.set(x, y);
+  } else {
+    p.x = x;
+    p.y = y;
+  }
+}
+
+/**
+ * Acquire RGBA bytes for a SPECIFIC world rectangle (map auto-framing) by
+ * rendering `canvas.stage` to an off-screen RenderTexture under a temporary
+ * fit transform, then restoring the live transform in the SAME synchronous tick
+ * so the GM's on-screen camera never visibly moves.
+ *
+ * The stage maps world→screen as `screen = (world − pivot) · scale + position`;
+ * to fit `framing` into an `RW×RH` texture we set `pivot` = rect center,
+ * `position` = texture center, `scale` = `min(RW/w, RH/h)` (letterbox-fit, no
+ * distortion). The original `position`/`scale`/`pivot` are ALWAYS restored in a
+ * `finally`, even on render/extract failure — a botched frame must never strand
+ * the GM's viewport at the framing transform.
+ *
+ * Returns `null` (caller falls back to the live-viewport path) when the host
+ * lacks the RT/`render` primitives or the stage transform is unreadable.
+ */
+function acquireFramedBytes(
+  RT: { create(o: { width: number; height: number; resolution?: number }): unknown } | undefined,
+  renderer: NonNullable<NonNullable<CanvasLike['app']>['renderer']>,
+  canvas: CanvasLike,
+  framing: WorldRect,
+  RW: number,
+  RH: number,
+): AcquiredBytes | null {
+  const stage = canvas.stage as StageTransformLike | undefined | null;
+  const pos = stage?.position;
+  const scl = stage?.scale;
+  const piv = stage?.pivot;
+  if (
+    RT === undefined ||
+    typeof renderer.render !== 'function' ||
+    stage === undefined ||
+    stage === null ||
+    pos === undefined ||
+    pos === null ||
+    scl === undefined ||
+    scl === null ||
+    piv === undefined ||
+    piv === null
+  ) {
+    return null;
+  }
+
+  // Snapshot the live (GM) transform so the finally can restore it exactly.
+  const saved = { px: pos.x, py: pos.y, sx: scl.x, sy: scl.y, vx: piv.x, vy: piv.y };
+  try {
+    const scale = Math.min(RW / framing.width, RH / framing.height);
+    setPoint(piv, framing.x + framing.width / 2, framing.y + framing.height / 2);
+    setPoint(pos, RW / 2, RH / 2);
+    setPoint(scl, scale, scale);
+
+    let rt: unknown;
+    try {
+      rt = RT.create({ width: RW, height: RH, resolution: 1 });
+      renderer.render?.(stage, { renderTexture: rt, clear: true });
+      const srcBytes = renderer.extract.pixels(rt);
+      if (srcBytes.length === RW * RH * 4) {
+        return { srcBytes, srcWidth: RW, srcHeight: RH };
+      }
+      console.warn(
+        `[EVF canvas-extractor] framed readback length ${srcBytes.length} ≠ ${RW}x${RH} — skipping frame`,
+      );
+      return null;
+    } finally {
+      if (rt !== undefined) {
+        (rt as { destroy(b: boolean): void }).destroy(true);
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[EVF canvas-extractor] framed render threw, skipping frame:',
+      (err as Error).message ?? err,
+    );
+    return null;
+  } finally {
+    // ALWAYS restore the GM's on-screen camera transform.
+    setPoint(pos, saved.px, saved.py);
+    setPoint(scl, saved.sx, saved.sy);
+    setPoint(piv, saved.vx, saved.vy);
+  }
 }
 
 /**
@@ -332,6 +457,15 @@ export function extractCurrentFrame(
      * BEFORE paying for the encode and to pick the native encoder.
      */
     readonly skipEncode?: boolean;
+    /**
+     * Optional world-space rectangle to capture (map auto-framing). When set
+     * AND the host supports the RT/`render` path, the stage is rendered to an
+     * off-screen texture under a temporary fit transform for this rect (the
+     * GM's on-screen camera is restored in the same tick — see
+     * {@link acquireFramedBytes}). Absent / unsupported host → the live GM
+     * viewport is captured (legacy behavior).
+     */
+    readonly framing?: WorldRect | null;
   } = {},
 ): FramePng | null {
   const renderer = canvas.app?.renderer;
@@ -359,7 +493,24 @@ export function extractCurrentFrame(
   ).PIXI?.RenderTexture;
 
   const tAcquire0 = Date.now();
-  const acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh, targetWidth, targetHeight);
+  // Map auto-framing: when a world rect is supplied, render that region to an
+  // off-screen RT (GM camera restored in-tick). Falls back to the live-viewport
+  // capture when the host lacks the RT/render primitives or the rect is empty.
+  const framing = opts.framing ?? null;
+  let acquired: AcquiredBytes | null = null;
+  if (framing !== null && framing.width > 0 && framing.height > 0) {
+    acquired = acquireFramedBytes(
+      RT,
+      renderer,
+      canvas,
+      framing,
+      targetWidth * FRAMED_SUPERSAMPLE,
+      targetHeight * FRAMED_SUPERSAMPLE,
+    );
+  }
+  if (acquired === null) {
+    acquired = acquireSourceBytes(RT, renderer, canvas, vw, vh, targetWidth, targetHeight);
+  }
   if (acquired === null) {
     return null;
   }
@@ -813,6 +964,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
       const dither = opts.getDither?.() === true;
       const brightness = opts.getBrightness?.() ?? 0;
       const webpQuality = opts.getWebpQuality?.() ?? 0;
+      const framing = opts.getFraming?.() ?? null;
       // skipEncode: hash-check FIRST, pay for the PNG encode only on frames
       // that will actually be emitted (live telemetry showed encode dominating
       // the cycle at 66-122 ms — and it ran even for skipped frames).
@@ -822,6 +974,7 @@ export function registerCanvasExtractor(opts: CanvasExtractorOpts): UnregisterFn
         normalize,
         dither,
         brightness,
+        framing,
         skipEncode: true,
       });
       if (result === null) {

@@ -263,6 +263,21 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     range: { min: 0, max: 100, step: 5 },
     onChange: onDisplayChange,
   });
+
+  // Map auto-framing (party-fit, focus-weighted). World scope + restricted: the
+  // capture leader (GM) is what reads it, and it governs the canonical stream
+  // everyone sees, so it belongs with `captureFps`/`mapWebpQuality`, NOT the
+  // per-client display knobs. Evaluated live per capture (no onChange needed —
+  // `getFraming` re-reads it every frame). Default ON per the 2026-06-16 design.
+  game.settings.register(MODULE_ID, 'mapAutoFrame', {
+    name: 'evf.settings.map_auto_frame.name',
+    hint: 'evf.settings.map_auto_frame.hint',
+    scope: 'world',
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: true,
+  });
 }
 
 /** Default capture rate (fps) — used for the setting default and as the unreadable-setting fallback. */
@@ -351,6 +366,20 @@ export function getDither(): boolean {
     return game.settings.get(MODULE_ID, 'mapDither') === true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Read the `mapAutoFrame` world boolean (party auto-framing). Default ON — only
+ * an explicit `false` disables it; any read error also defaults ON. Evaluated
+ * live per capture by `getFraming` in module.ts.
+ */
+export function getMapAutoFrame(): boolean {
+  try {
+    // Default ON: only an explicit `false` disables auto-framing.
+    return game.settings.get(MODULE_ID, 'mapAutoFrame') !== false;
+  } catch {
+    return true;
   }
 }
 

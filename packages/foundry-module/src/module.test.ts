@@ -1489,7 +1489,7 @@ describe('bridgeDeltaEmitter — frame latest-wins POST queue (FPQ)', () => {
     }
   }
 
-  it('FPQ-1: at most ONE frame POST in flight — later frames queue latest-wins', async () => {
+  it('FPQ-1: at most TWO frame POSTs in flight (bounded pipeline) — extras queue latest-wins', async () => {
     // Each fetch returns a deferred this test resolves on demand. A `.json()`
     // method matches the real Response shape postDelta now awaits.
     const resolvers: Array<(v: { ok: boolean; json: () => Promise<unknown> }) => void> = [];
@@ -1500,18 +1500,20 @@ describe('bridgeDeltaEmitter — frame latest-wins POST queue (FPQ)', () => {
     emit('frame_png', { n: 1 });
     emit('frame_png', { n: 2 });
     emit('frame_png', { n: 3 });
+    emit('frame_png', { n: 4 });
 
-    // Only the first frame opened a connection; 2 and 3 are queued (3 replaced 2).
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    // Resolve the in-flight POST → the queue drains the LATEST frame (n:3).
-    resolvers[0]?.({ ok: true, json: () => Promise.resolve({ ok: true }) });
-    await flushMicrotasks();
+    // Two frames opened connections (MAX_INFLIGHT_FRAME_POSTS = 2); 3 and 4 are
+    // queued and 4 replaced 3 (latest-wins, single pending slot).
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    // The drained POST carries the LATEST queued frame (n:3) — n:2 was dropped.
+    // Resolve one in-flight POST → a slot frees and the queue drains the LATEST
+    // frame (n:4) — n:3 was dropped.
+    resolvers[0]?.({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
     const lastCall = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
-    expect(JSON.parse(lastCall[1].body).payload).toEqual({ n: 3 });
+    expect(JSON.parse(lastCall[1].body).payload).toEqual({ n: 4 });
   });
 
   it('FPQ-2: non-frame deltas are never queued behind an in-flight frame POST', async () => {
@@ -1551,43 +1553,129 @@ describe('bridgeDeltaEmitter — frame latest-wins POST queue (FPQ)', () => {
   });
 
   it('FPQ-4: a THROW in the post-success callback does NOT wedge the pipeline (T11)', async () => {
-    // First frame's response body has a `pendingSettings` getter that throws
-    // synchronously when read inside the .then callback. Pre-fix this left
-    // _framePostBusy = true forever and silently dropped every later frame.
-    let firstResponse = true;
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => {
-        if (firstResponse) {
-          firstResponse = false;
-          return {
-            get pendingSettings(): unknown {
-              throw new Error('boom: malformed pendingSettings');
-            },
-          };
-        }
-        return { ok: true };
-      },
-    }));
+    // Deferred resolvers so completion order is deterministic under depth-2:
+    // fill both in-flight slots, queue a third, then resolve the first slot with
+    // a response whose `pendingSettings` getter throws when read in the .then.
+    // Pre-fix this left the in-flight counter stuck and silently dropped every
+    // later frame.
+    const resolvers: Array<(v: { ok: boolean; json: () => Promise<unknown> }) => void> = [];
+    const fetchMock = vi.fn(() => new Promise((resolve) => resolvers.push(resolve)));
     vi.stubGlobal('fetch', fetchMock);
     const emit = await importEmitter();
 
-    // Frame 1 → in-flight POST whose .then will throw; frame 2 queues behind it.
     emit('frame_png', { n: 1 });
     emit('frame_png', { n: 2 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    // Drain: the throw must be caught + .finally must clear busy + drain frame 2.
-    await flushMicrotasks();
+    emit('frame_png', { n: 3 }); // queued behind the two in-flight slots
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const drained = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
-    expect(JSON.parse(drained[1].body).payload).toEqual({ n: 2 });
 
-    // And the pipeline is NOT wedged: a fresh frame after the throw still posts.
-    emit('frame_png', { n: 3 });
+    // Resolve slot 0 with a throwing pendingSettings getter.
+    resolvers[0]?.({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          get pendingSettings(): unknown {
+            throw new Error('boom: malformed pendingSettings');
+          },
+        }),
+    });
     await flushMicrotasks();
+
+    // The throw was caught, the .finally freed the slot AND drained queued n:3.
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    const drained = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
+    expect(JSON.parse(drained[1].body).payload).toEqual({ n: 3 });
+
+    // And the pipeline is NOT wedged: drain the rest, a fresh frame still posts.
+    resolvers[1]?.({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    resolvers[2]?.({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    await flushMicrotasks();
+    emit('frame_png', { n: 4 });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     const after = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }];
-    expect(JSON.parse(after[1].body).payload).toEqual({ n: 3 });
+    expect(JSON.parse(after[1].body).payload).toEqual({ n: 4 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildMapFraming — token→framing adapter (map auto-framing, 2026-06-16)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildMapFraming — token adapter + auto-frame gate', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    (globalThis as { canvas?: unknown }).canvas = undefined;
+  });
+
+  /** Stub `game.settings` so getMapAutoFrame returns `autoFrame`, plus a canvas. */
+  async function frameWith(
+    autoFrame: boolean,
+    canvas: unknown,
+  ): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', {
+      settings: {
+        get: vi.fn((_m: string, key: string) => (key === 'mapAutoFrame' ? autoFrame : undefined)),
+      },
+    });
+    (globalThis as { canvas?: unknown }).canvas = canvas;
+    const { buildMapFraming } = await import('./module.js');
+    return buildMapFraming();
+  }
+
+  /** A Foundry-ish token placeable (grid-unit footprint). */
+  function placeable(
+    x: number,
+    y: number,
+    opts: { pc?: boolean; hidden?: boolean; actorId?: string; w?: number; h?: number } = {},
+  ): unknown {
+    return {
+      document: { x, y, width: opts.w ?? 1, height: opts.h ?? 1, hidden: opts.hidden ?? false },
+      actor: { id: opts.actorId ?? 'a', hasPlayerOwner: opts.pc ?? true },
+    };
+  }
+
+  const canvasWith = (placeables: unknown[]): unknown => ({
+    tokens: { placeables },
+    grid: { size: 100 },
+    dimensions: { width: 10000, height: 10000, size: 100 },
+  });
+
+  it('BMF-1: auto-frame OFF → null (live viewport)', async () => {
+    const r = await frameWith(false, canvasWith([placeable(0, 0)]));
+    expect(r).toBeNull();
+  });
+
+  it('BMF-2: no tokens → null', async () => {
+    expect(await frameWith(true, canvasWith([]))).toBeNull();
+    expect(await frameWith(true, { tokens: { placeables: null } })).toBeNull();
+  });
+
+  it('BMF-3: PC tokens drive a rect that contains them (grid units × grid size)', async () => {
+    // Two PC tokens 5 grid-cells apart → 500 px apart in world space.
+    const r = await frameWith(
+      true,
+      canvasWith([placeable(0, 0, { pc: true }), placeable(500, 300, { pc: true })]),
+    );
+    expect(r).not.toBeNull();
+    const rect = r as { x: number; y: number; width: number; height: number };
+    // The far token's footprint (500..600, 300..400) lies inside the frame.
+    expect(rect.x).toBeLessThanOrEqual(0);
+    expect(rect.y).toBeLessThanOrEqual(0);
+    expect(rect.x + rect.width).toBeGreaterThanOrEqual(600);
+    expect(rect.y + rect.height).toBeGreaterThanOrEqual(400);
+  });
+
+  it('BMF-4: hidden + non-PC handling — hidden ignored, falls back to all when no PC', async () => {
+    // Only a hidden token → nothing framable → null.
+    expect(await frameWith(true, canvasWith([placeable(0, 0, { hidden: true })]))).toBeNull();
+    // No PC tokens but a visible NPC → fallback frames it (non-null).
+    const r = await frameWith(true, canvasWith([placeable(100, 100, { pc: false })]));
+    expect(r).not.toBeNull();
+  });
+
+  it('BMF-5: unreadable canvas → null (never throws into the capture loop)', async () => {
+    expect(await frameWith(true, undefined)).toBeNull();
+    expect(await frameWith(true, {})).toBeNull();
   });
 });
