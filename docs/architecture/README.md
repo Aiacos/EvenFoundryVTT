@@ -21,8 +21,9 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md) | R1 Gesture Model — Retire Long-Press, Over-Scroll Quick Action, Root Exit, Lifecycle Handlers | accepted | Phase 20 gesture redesign (GEST-01) |
 | [ADR-0013](./0013-hud-raster-rendering.md) | HUD raster rendering (image-based HUD) | accepted (2026-06-05) | HUD raster milestone |
 | [ADR-0014](./0014-bearer-actor-authorization.md) | Bearer ↔ Foundry-User binding & per-actor read authorization (T8) | accepted (2026-06-15) | Security — actor read authz |
+| [ADR-0015](./0015-player-view-map-capture.md) | Player-view map capture & live character/role selection | proposed (2026-06-16) — A+B done, headless session (C) deferred | Map follows selected PG |
 
-**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. ADR-0012 retires long-press for the Phase 20 gesture redesign; ADR-0013 moves the always-on HUD onto the raster pipeline; ADR-0014 binds bearers to Foundry users for per-actor read authorization (closes T8). Highest authored ADR is 0014. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
+**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. ADR-0012 retires long-press for the Phase 20 gesture redesign; ADR-0013 moves the always-on HUD onto the raster pipeline; ADR-0014 binds bearers to Foundry users for per-actor read authorization (closes T8). ADR-0015 makes the glasses map follow the selected PG (live in-app role selection + synthesized framing now; headless logged-in player session deferred). Highest authored ADR is 0015. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
 ## Authoring Process
 
