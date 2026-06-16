@@ -98,6 +98,7 @@ import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
 import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
 import { handleCharacterSnapshotEnvelope } from './ws/character-snapshot-handler.js';
+import { handleClientSelectActor } from './ws/client-select-actor-handler.js';
 import { handleClientSetting } from './ws/client-setting-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
 import { handleEntityPackEnvelope } from './ws/entity-pack-handler.js';
@@ -830,6 +831,15 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           // 'client_setting' → queue a glasses-originated display-settings edit
           // for the upstream frame-POST piggyback. No-op on other message types.
           handleClientSetting(settingsStore, rawData, logger);
+          // 'client_select_actor' → live, no-reconnect character re-pin. Authorizes
+          // the actor (ADR-0014, fail-closed), re-targets session.selectedActorId,
+          // and pushes the new actor's snapshot to this session. No-op otherwise.
+          void handleClientSelectActor(
+            { sessionStore, tokenCache, deltaEmitter, characterListCache, foundryFn },
+            sessionId,
+            rawData,
+            logger,
+          );
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees

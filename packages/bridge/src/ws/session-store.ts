@@ -95,6 +95,30 @@ export class SessionStore {
   }
 
   /**
+   * Re-pin the session's selected PC actor (FLV-CHAR-SELECT, live switch).
+   *
+   * Called by the `client_select_actor` WS handler after the requested actor has
+   * been authorized against the bearer's owned set (ADR-0014). Updating this in
+   * place re-targets two existing pipes with no extra wiring:
+   * {@link getFocusActorId} (map auto-framing) and the `DeltaEmitter`
+   * `character.delta` filter. Mirrors {@link updateLastSeq}: no-op if the session
+   * is not found.
+   *
+   * `selectedActorId` is `readonly` on the public {@link Session} shape (callers
+   * outside the store must never mutate it); this store owns the field and writes
+   * it through a single narrowly-scoped internal cast.
+   *
+   * @param sessionId - Session to re-pin.
+   * @param actorId   - Newly-selected (already-authorized) actor id.
+   */
+  setSelectedActor(sessionId: string, actorId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session !== undefined) {
+      (session as { selectedActorId?: string }).selectedActorId = actorId;
+    }
+  }
+
+  /**
    * Remove a session from the store.
    *
    * Called when the WS connection is permanently closed (not a reconnect).
