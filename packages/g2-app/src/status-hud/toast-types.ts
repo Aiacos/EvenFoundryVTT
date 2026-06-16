@@ -77,6 +77,18 @@ export const ToastSchema = z.strictObject({
 export type Toast = z.infer<typeof ToastSchema>;
 
 /**
+ * Minimal toast-sink contract shared by both toast layer implementations.
+ *
+ * `ToastQueueLayer` (glyph, text container) and `CanvasToastLayer` (canvas,
+ * drawn-on-canvas) both implement this. Consumers that only enqueue (panels,
+ * dispatchers, the panel router) should depend on `ToastSink` — NOT a concrete
+ * layer — so the right backend can be selected per render mode at boot.
+ */
+export interface ToastSink {
+  enqueue(toast: Toast): void;
+}
+
+/**
  * Language-neutral severity → prefix map.
  *
  * Each prefix is exactly 3 chars: one ASCII alpha + colon + space. The width is

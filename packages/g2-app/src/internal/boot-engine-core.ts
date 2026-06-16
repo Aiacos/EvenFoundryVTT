@@ -72,6 +72,10 @@ import { createBootPage } from '../engine/page-lifecycle.js';
 import { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { PanelRouter } from '../engine/panel-router.js';
 import { PerfProbe } from '../engine/perf-probe.js';
+import {
+  buildActionPendingToast,
+  buildMapAlreadyFullscreenToast,
+} from '../engine/quick-action-feedback.js';
 import { attachR1EventSource } from '../engine/r1-event-source.js';
 import { DEFAULT_R1_TIMINGS } from '../engine/r1-timings.js';
 import { SeqTracker } from '../engine/seq-tracker.js';
@@ -101,10 +105,12 @@ import { MapBaseLayer } from '../raster/map-base-layer.js';
 import { RasterController } from '../raster/raster-controller.js';
 import { attachSceneInputToWs } from '../scene-input.js';
 import { CanvasStatusHudLayer } from '../status-hud/canvas-status-hud-layer.js';
+import { CanvasToastLayer } from '../status-hud/canvas-toast-layer.js';
 import { IdleInfillLayer } from '../status-hud/idle-infill-layer.js';
 import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
+import type { ToastSink } from '../status-hud/toast-types.js';
 
 /**
  * Locale tag for the boot engine. Mirrors the full `HudLocale` union from
@@ -1221,42 +1227,25 @@ export async function _bootEngineCore(
           });
         },
         onMapModeToggle: () => {
-          // [M] Map control. In canvas mode the map is ALREADY the z=0
-          // full-screen background (MapCanvasLayer): there is no separate
-          // "map mode" to toggle. This MUST stay a clean silent no-op.
-          //
-          // It must NOT enqueue a toast: ToastQueueLayer renders via
-          // `bridge.textContainerUpgrade` and declares `{image:0, text:1}` — a
-          // TEXT-container surface that is incompatible with the canvas
-          // image-tile page (see step-12 comment ~line 1848). Calling
-          // `textContainerUpgrade` in canvas mode corrupts the page so the next
-          // `updateImageRawData` tile push fails (`push-hud-tiles ...
-          // sendFailed`) and the display goes BLANK and does NOT recover.
-          //
-          // User feedback in canvas mode is pending the canvas-toast-overlay
-          // layer (TODO(ADR-0013), see boot-engine-core.ts step-12 comment) —
-          // this is intentionally silent, not a missing feature.
-          //
-          // The real toggle logic (toggleMapMode) remains reserved for the
-          // glyph path (Phase 7); we do not invoke it here.
+          // [M] Map control. In canvas mode the map is ALREADY the z=0 full-screen
+          // background (MapCanvasLayer) — there is no separate "map mode" to toggle.
+          // Surface a brief toast as feedback for the intentional no-op. The toast
+          // is now safe: `toastQueue` is the canvas `CanvasToastLayer` in canvas mode
+          // (drawn ON the canvas), so it no longer corrupts the image-tile page.
           if (layerManager.getRenderMode() === 'canvas') {
-            // canvas: map is already the full-screen z=0 background — nothing to toggle.
+            toastQueue.enqueue(buildMapAlreadyFullscreenToast(currentLocale));
             return;
           }
-          // Glyph mode: Phase 7 wires the full toggle logic via toggleMapMode.
-          // For now a no-op (no glyph toggle has shipped yet).
-          console.warn('[boot-engine-core] onMapModeToggle: glyph-mode Phase 7 stub — no-op');
+          // Glyph mode: the real toggle (toggleMapMode) is a Phase 7 stub — no glyph
+          // toggle has shipped yet, so surface the same feedback via the text toast.
+          toastQueue.enqueue(buildMapAlreadyFullscreenToast(currentLocale));
         },
         onAction: () => {
-          // [A] Azione. The Action panel is not yet shipped (Phase 7).
-          //
-          // This MUST NOT enqueue a toast: in canvas mode ToastQueueLayer's
-          // `textContainerUpgrade` corrupts the canvas image-tile page and
-          // blanks the display until restart (see onMapModeToggle above and the
-          // step-12 comment ~line 1848). User feedback in canvas mode is pending
-          // the canvas-toast-overlay layer (TODO(ADR-0013)). Telemetry-only warn
-          // is fine; no user-facing toast.
-          console.warn('[boot-engine-core] onAction: Action panel Phase 7 stub — no-op');
+          // [A] Azione. The Action panel is not yet shipped (Phase 7). Surface a
+          // brief, non-blocking toast so the gesture has feedback instead of a
+          // silent dead-end. Renders on the canvas (CanvasToastLayer) in canvas
+          // mode / via the text container in glyph mode — both safe.
+          toastQueue.enqueue(buildActionPendingToast(currentLocale));
         },
         onFpsToggle: () => {
           // [F] FPS — flip the indicator, persist to the Even Hub kv store
@@ -1313,7 +1302,20 @@ export async function _bootEngineCore(
   //      Plan 09-03: toastQueue is constructed before attaching the dispatcher so the
   //      modal's [N] cancel path can enqueue the concentration-cancelled error toast
   //      (CDM-CANCEL-01). toastQueue declaration moved here from step 11e.
-  const toastQueue = new ToastQueueLayer({ bridge });
+  // Toast sink — canvas mode draws toasts ON the canvas (CanvasToastLayer mounted
+  // at z=1.5, composited with the map/status image tiles); glyph mode uses the
+  // text-container ToastQueueLayer. The glyph layer's `textContainerUpgrade` is
+  // INCOMPATIBLE with the canvas image-tile page (it blanks the display until
+  // restart — the canvas-toast-overlay TODO this resolves), so canvas mode MUST
+  // use the canvas layer. Both expose the same `enqueue(toast)` sink, so every
+  // dispatcher below is wired identically via `toastQueue`. `canvasToast` is the
+  // typed CanvasLayer ref mounted in the canvas bundle (step 12).
+  const canvasToast =
+    layerManager.getRenderMode() === 'canvas'
+      ? new CanvasToastLayer({ onDirty: () => hudDeltaDriver.requestCycle() })
+      : null;
+  const toastQueue: ToastSink & { destroy(): void } =
+    canvasToast ?? new ToastQueueLayer({ bridge });
 
   // Phase 10 Plan 10-02 — perf probe station 5: toast_queued.
   //
@@ -1891,6 +1893,13 @@ export async function _bootEngineCore(
     await layerManager.bundle([
       { type: 'mount', z: ZIndex.Z0_MAP, layer: mapCanvas },
       { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: canvasStatusHud },
+      // z=1.5 toast overlay — draws transient toasts ON the canvas so they
+      // composite with the image tiles (the glyph text-container toast blanks
+      // the canvas; see the toastQueue construction comment). canvasToast is
+      // non-null here (constructed under the same canvas-mode guard).
+      ...(canvasToast !== null
+        ? [{ type: 'mount' as const, z: ZIndex.Z1_5_TOAST, layer: canvasToast }]
+        : []),
     ]);
   } else {
     // Glyph fallback: statusHud is guaranteed non-null here — it is constructed

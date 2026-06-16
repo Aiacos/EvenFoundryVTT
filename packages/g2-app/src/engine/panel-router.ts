@@ -33,7 +33,7 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { z } from 'zod';
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
-import type { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
+import type { ToastSink } from '../status-hud/toast-types.js';
 import type { LayerManager } from './layer-manager.js';
 import type { OverlayPanel } from './layer-types.js';
 import { ZIndex } from './layer-types.js';
@@ -120,7 +120,7 @@ export interface PanelDeps {
   /** Negotiated server capabilities (from capability handshake). */
   readonly negotiatedCaps: ReadonlySet<string>;
   /** Optional toast queue for user-facing cap-denied notifications. */
-  readonly toastQueue?: ToastQueueLayer;
+  readonly toastQueue?: ToastSink;
 }
 
 // ─── Registry entry ───────────────────────────────────────────────────────────
