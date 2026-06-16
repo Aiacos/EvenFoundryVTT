@@ -29,6 +29,14 @@ export interface PhoneSettingsPanel {
   dispose(): void;
 }
 
+/** A roster entry for the character/role selector. */
+export interface RosterEntry {
+  /** Foundry actor id to pin via `client_select_actor`. */
+  readonly actorId: string;
+  /** Display name (rendered via textContent only). */
+  readonly name: string;
+}
+
 /** Options for {@link createPhoneSettingsPanel}. */
 export interface PhoneSettingsPanelOptions {
   /** Push a partial edit upstream (glasses-less → bridge → module). */
@@ -39,6 +47,16 @@ export interface PhoneSettingsPanelOptions {
   readonly locale?: string;
   /** Mount target; defaults to `document.body`. */
   readonly mount?: HTMLElement;
+  /**
+   * Async roster provider for the character/role selector. Injected so the
+   * panel is unit-testable without network. Called once on construction; when
+   * omitted, the selector row is not rendered.
+   */
+  readonly fetchRoster?: () => Promise<ReadonlyArray<RosterEntry>>;
+  /** Called when the user picks a character (live switch via `client_select_actor`). */
+  readonly onSelectActor?: (actorId: string) => void;
+  /** The currently-selected actor id — preselected once the roster resolves. */
+  readonly initialActorId?: string | undefined;
 }
 
 /** Even phone-side dark-theme tokens (design-guidelines.md). */
@@ -61,6 +79,10 @@ const LABELS = {
     fps: 'Frame rate cattura',
     normalize: 'Normalizza contrasto',
     webpLossless: 'PNG lossless',
+    // i18n keys: evf.settings.character.*
+    characterLabel: 'Personaggio / Ruolo',
+    characterLoading: 'Caricamento…',
+    characterError: 'Non disponibile',
   },
   en: {
     title: 'Map settings',
@@ -70,6 +92,10 @@ const LABELS = {
     fps: 'Capture frame rate',
     normalize: 'Contrast normalize',
     webpLossless: 'lossless PNG',
+    // i18n keys: evf.settings.character.*
+    characterLabel: 'Character / Role',
+    characterLoading: 'Loading…',
+    characterError: 'Unavailable',
   },
 } as const;
 
@@ -161,6 +187,78 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     return r;
   }
 
+  // ── Character / Role selector (top of body) ─────────────────────────────────
+  //
+  // Lets the player switch the active actor LIVE from the phone. Independent of
+  // the display-settings (`sendEdit`) path: a change emits the upstream
+  // `client_select_actor` WS message via `opts.onSelectActor`, which the bridge
+  // applies without a reconnect. The selection is NOT persisted across reboots —
+  // TODO(ADR-0015): seed `initialActorId` from the Even Hub kv store so a reboot
+  // keeps the live choice instead of reverting to the wizard-picked `characterId`.
+  function buildCharacterSelector(): void {
+    const r = row(L.characterLabel);
+    const select = doc.createElement('select');
+    select.className = 'evf-character-select';
+    Object.assign(select.style, {
+      maxWidth: '220px',
+      padding: '6px 8px',
+      background: T.inputBg,
+      color: T.text,
+      border: `1px solid ${T.surface}`,
+      borderRadius: '6px',
+      font: 'inherit',
+    });
+
+    // While the roster is pending (or on failure) a single disabled placeholder
+    // is shown; `select.value` then equals '' so `change` handling is a no-op.
+    const placeholder = doc.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.textContent = L.characterLoading;
+    select.appendChild(placeholder);
+
+    select.addEventListener('change', () => {
+      if (suppress) return;
+      const value = select.value;
+      if (!value) return; // guard against the disabled placeholder
+      opts.onSelectActor?.(value);
+    });
+
+    r.appendChild(select);
+    body.appendChild(r);
+
+    const roster = opts.fetchRoster;
+    if (!roster) {
+      // No provider: leave the placeholder as a static disabled option.
+      placeholder.textContent = L.characterError;
+      return;
+    }
+
+    roster()
+      .then((entries) => {
+        suppress = true;
+        try {
+          while (select.firstChild) select.removeChild(select.firstChild);
+          for (const entry of entries) {
+            const opt = doc.createElement('option');
+            opt.value = entry.actorId;
+            opt.textContent = entry.name; // Safe: textContent only (T-02-03).
+            select.appendChild(opt);
+          }
+          if (opts.initialActorId !== undefined) {
+            select.value = opts.initialActorId;
+          }
+        } finally {
+          suppress = false;
+        }
+      })
+      .catch((err: unknown) => {
+        placeholder.textContent = L.characterError;
+        console.warn('[EVF] settings-panel: failed to load character roster —', err);
+      });
+  }
+
   /** Checkbox toggle bound to a boolean setting key. */
   function toggle(labelText: string, key: 'dither' | 'normalize'): HTMLInputElement {
     const r = row(labelText);
@@ -219,6 +317,9 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     body.appendChild(r);
     return input;
   }
+
+  // Character/Role selector first → it is the top-most row in the body.
+  buildCharacterSelector();
 
   const ditherEl = toggle(L.dither, 'dither');
   const brightnessEl = slider(

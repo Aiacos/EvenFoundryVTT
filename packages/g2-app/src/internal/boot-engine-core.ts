@@ -55,7 +55,7 @@
  * @see ../index.test-support.ts (test-only DI wrapper)
  */
 import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
-import type { ServerCap } from '@evf/shared-protocol';
+import { CLIENT_SELECT_ACTOR_TYPE, type ServerCap } from '@evf/shared-protocol';
 import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { CanvasCompositor } from '../engine/canvas-compositor.js';
@@ -1017,6 +1017,25 @@ export async function _bootEngineCore(
     sendEdit: (edit) => displaySettingsSync.sendEdit(edit),
     initial: displaySettingsSync.get(),
     locale: opts.locale,
+    // Character/Role selector — live actor switch from the phone (no reconnect).
+    initialActorId: opts.characterId,
+    onSelectActor: (actorId) => {
+      wsSender.send(JSON.stringify({ type: CLIENT_SELECT_ACTOR_TYPE, actorId }));
+    },
+    fetchRoster: () => {
+      // HTTP base derived from bridgeUrl (ws→http, strip trailing slash) — same
+      // pattern as `displayOpUrl` above; reuses the wizard's GET /v1/characters
+      // contract ({ characters: [{ actorId, name, level }] }).
+      const httpBase = opts.bridgeUrl.replace(/^ws/, 'http').replace(/\/+$/, '');
+      return fetch(`${httpBase}/v1/characters`, {
+        headers: { Authorization: `Bearer ${opts.token}` },
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json() as Promise<{ characters?: Array<{ actorId: string; name: string }> }>;
+        })
+        .then((body) => (body.characters ?? []).map((c) => ({ actorId: c.actorId, name: c.name })));
+    },
   });
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
