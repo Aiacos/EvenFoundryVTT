@@ -355,6 +355,13 @@ export function bridgeDeltaEmitter(type: string, payload: unknown): void {
  * menu stay in sync with Foundry. Fail-open via isStreamLeader on read errors.
  */
 function emitDisplaySettings(): void {
+  // Safety: no-op when the Foundry client is gone (the heartbeat firing during a
+  // page teardown / test global-unstub) — `buildDisplaySettingsSnapshot` reads
+  // `game.settings` and would otherwise throw an unhandled rejection from the
+  // interval callback.
+  if (typeof game === 'undefined' || game === null) {
+    return;
+  }
   // Doubled fail-open, intentional: isStreamLeader already catches its own read
   // errors and returns true (a duplicate publish beats a never-published
   // snapshot). This outer try/catch is belt-and-braces — if a future change to
@@ -370,6 +377,20 @@ function emitDisplaySettings(): void {
   }
   bridgeDeltaEmitter(SETTINGS_DISPLAY_TYPE, buildDisplaySettingsSnapshot());
 }
+
+/**
+ * Heartbeat interval for re-publishing the display-settings snapshot.
+ *
+ * The on-`ready`/on-change pushes warm the bridge cache, but if the BRIDGE
+ * (re)starts AFTER this client's `ready`, the cache predates the last push and a
+ * glasses session connecting to that long-running bridge gets no settings. A
+ * low-frequency re-publish keeps the cache warm so `server.ts`'s on-connect
+ * serve always has a snapshot to send (closes the #32 sync-warmth gap). The
+ * publish is gated on `isStreamLeader` (so only the capture leader emits), the
+ * snapshot is tiny, and the g2-app re-applies it idempotently. 10 s bounds the
+ * post-bridge-restart staleness window without meaningful overhead.
+ */
+const SETTINGS_HEARTBEAT_MS = 10_000;
 
 // Bootstrap: register settings + spell-pack vocabulary reader when Foundry's init hook fires.
 // `init` is the earliest safe point to call game.settings.registerMenu.
@@ -510,6 +531,11 @@ Hooks.once('ready', () => {
   // snapshot so the bridge cache is warm and any glasses connecting later get
   // the live Foundry values on connect. Gated on isStreamLeader inside.
   emitDisplaySettings();
+  // Heartbeat re-publish: keeps the bridge cache warm even when the bridge
+  // (re)starts after this `ready` or when stream leadership migrates — so the
+  // glasses settings panel always reflects Foundry on connect (#32). Page
+  // lifecycle owns this timer (Foundry reload tears down the whole client).
+  setInterval(emitDisplaySettings, SETTINGS_HEARTBEAT_MS);
 });
 
 /** Minimal user shape read by {@link isStreamLeader}. */
