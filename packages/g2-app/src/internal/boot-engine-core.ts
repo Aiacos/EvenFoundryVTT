@@ -111,6 +111,7 @@ import { StatusHudLayer } from '../status-hud/status-hud-layer.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
 import type { ToastSink } from '../status-hud/toast-types.js';
+import { saveFoundryUrl } from '../wizard/tier3-storage.js';
 
 /**
  * Locale tag for the boot engine. Mirrors the full `HudLocale` union from
@@ -1035,6 +1036,12 @@ export async function _bootEngineCore(
           return res.json() as Promise<{ characters?: Array<{ actorId: string; name: string }> }>;
         })
         .then((body) => (body.characters ?? []).map((c) => ({ actorId: c.actorId, name: c.name })));
+    },
+    // Foundry URL field — pre-filled with the configured world; on edit it
+    // persists to the Even Hub kv store (used by the deploy connection
+    // bootstrap; the dev no-auth socket keeps the bridge override). See ADR-0015.
+    onFoundryUrlChange: (url) => {
+      void saveFoundryUrl(url);
     },
   });
 

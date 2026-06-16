@@ -97,6 +97,36 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(onSelectActor).not.toHaveBeenCalled();
   });
 
+  it('renders the Foundry URL field pre-filled and is flat (no collapse chevron)', () => {
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      foundryUrl: 'https://my.foundry',
+    });
+    const url = document.querySelector<HTMLInputElement>('input.evf-foundry-url');
+    expect(url).not.toBeNull();
+    expect(url?.value).toBe('https://my.foundry');
+    // Flat layout: no collapse chevron glyph in the header.
+    expect(document.body.textContent).not.toContain('▾');
+    expect(document.body.textContent).not.toContain('▸');
+  });
+
+  it('defaults the Foundry URL field when no foundryUrl is provided', () => {
+    createPhoneSettingsPanel({ sendEdit: () => {}, initial: EMPTY });
+    const url = document.querySelector<HTMLInputElement>('input.evf-foundry-url');
+    expect(url?.value).toMatch(/^https?:\/\//);
+  });
+
+  it('calls onFoundryUrlChange with the trimmed URL on change', () => {
+    const onFoundryUrlChange = vi.fn();
+    createPhoneSettingsPanel({ sendEdit: () => {}, initial: EMPTY, onFoundryUrlChange });
+    const url = document.querySelector<HTMLInputElement>('input.evf-foundry-url');
+    if (!url) throw new Error('foundry url input not found');
+    url.value = '  https://new.forge  ';
+    url.dispatchEvent(new Event('change'));
+    expect(onFoundryUrlChange).toHaveBeenCalledWith('https://new.forge');
+  });
+
   it('leaves a disabled option and does not throw when fetchRoster rejects', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onSelectActor = vi.fn();

@@ -9,8 +9,10 @@
  * which reaches the Foundry module and echoes back, keeping every surface in
  * sync. `update()` reflects downstream Foundry changes back into the controls.
  *
- * Styling follows the Even Hub phone-side design tokens (dark theme): the glasses
- * green (#3CFA44) is NEVER used here — that colour is glasses-display only.
+ * Styling follows the Even Hub phone-app design guidelines (LIGHT theme): white
+ * surface, near-black / dark-grey text, flat layout (no collapse / dropdown).
+ * The glasses green (#3CFA44) is NEVER used here — that colour is glasses-display
+ * only.
  *
  * No DOM framework (CLAUDE.md): plain `createElement`; user-visible text is set
  * via `textContent` (never `innerHTML`) per the wizard's T-02-03 pattern.
@@ -57,17 +59,34 @@ export interface PhoneSettingsPanelOptions {
   readonly onSelectActor?: (actorId: string) => void;
   /** The currently-selected actor id — preselected once the roster resolves. */
   readonly initialActorId?: string | undefined;
+  /**
+   * Initial value for the Foundry URL field. Defaults to
+   * {@link DEFAULT_FOUNDRY_URL}. In dev (no-auth) the live socket uses the dev
+   * bridge override; this field configures the deploy connection.
+   */
+  readonly foundryUrl?: string | undefined;
+  /** Called when the user edits the Foundry URL (persist for the next connect). */
+  readonly onFoundryUrlChange?: (url: string) => void;
 }
 
-/** Even phone-side dark-theme tokens (design-guidelines.md). */
+/**
+ * Even phone-app LIGHT-theme tokens (official Even Hub app guidelines): white
+ * surface, near-black text, dark-grey secondary text, neutral controls.
+ */
 const T = {
-  bg: '#111111',
-  surface: '#1A1A1A',
-  text: '#FFFFFF',
-  textDim: '#8A8A8A',
-  accent: '#FEF991',
-  inputBg: 'rgba(255,255,255,0.08)',
+  bg: '#FFFFFF',
+  surface: '#E2E2E2',
+  text: '#1A1A1A',
+  textDim: '#555555',
+  accent: '#2D2D2D',
+  inputBg: '#F4F4F4',
 } as const;
+
+/**
+ * Default Foundry/connection URL shown in the settings field. Overridable at
+ * build time via `VITE_EVF_FOUNDRY_URL`; falls back to the configured world.
+ */
+const DEFAULT_FOUNDRY_URL = 'https://aiacos-vecna.eu.forge-vtt.com';
 
 /** Bilingual labels — Italian primary, English fallback. */
 const LABELS = {
@@ -83,6 +102,8 @@ const LABELS = {
     characterLabel: 'Personaggio / Ruolo',
     characterLoading: 'Caricamento…',
     characterError: 'Non disponibile',
+    foundryLabel: 'Link Foundry',
+    foundryHint: 'In sviluppo la connessione usa il bridge locale; questo campo serve al deploy.',
   },
   en: {
     title: 'Map settings',
@@ -96,6 +117,8 @@ const LABELS = {
     characterLabel: 'Character / Role',
     characterLoading: 'Loading…',
     characterError: 'Unavailable',
+    foundryLabel: 'Foundry URL',
+    foundryHint: 'In dev the connection uses the local bridge; this field is for deploy.',
   },
 } as const;
 
@@ -129,44 +152,25 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     font: "400 16px/1.3 'FK Grotesk Neue', system-ui, sans-serif",
     letterSpacing: '-0.01em',
     borderTop: `1px solid ${T.surface}`,
+    boxShadow: '0 -2px 14px rgba(0,0,0,0.10)',
     zIndex: '2147483646',
   });
 
-  // Collapsible header (issue #35): tap the title to hide/show the controls so
-  // the panel does not permanently occupy the phone UI during gameplay.
-  let collapsed = false;
+  // Flat header — settings are ALWAYS visible (no collapse / dropdown / accordion),
+  // per the Even Hub phone-app guidelines.
   const title = doc.createElement('h2');
   Object.assign(title.style, {
     margin: '0 0 16px',
     font: "600 18px/1.2 'FK Grotesk Neue', system-ui, sans-serif",
     letterSpacing: '-0.02em',
-    cursor: 'pointer',
-    userSelect: 'none',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    color: T.text,
   });
-  const titleText = doc.createElement('span');
-  titleText.textContent = L.title;
-  const chevron = doc.createElement('span');
-  chevron.style.color = T.textDim;
-  title.appendChild(titleText);
-  title.appendChild(chevron);
+  title.textContent = L.title;
   root.appendChild(title);
 
-  // Body holds all the control rows; collapsing hides it (header stays visible).
+  // Body holds all the control rows (always shown).
   const body = doc.createElement('div');
   root.appendChild(body);
-
-  const applyCollapsed = (): void => {
-    body.style.display = collapsed ? 'none' : '';
-    title.style.margin = collapsed ? '0' : '0 0 16px';
-    chevron.textContent = collapsed ? '▸' : '▾';
-  };
-  title.addEventListener('click', () => {
-    collapsed = !collapsed;
-    applyCollapsed();
-  });
 
   // ── Control builders ───────────────────────────────────────────────────────
 
@@ -185,6 +189,53 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     lab.style.color = T.textDim;
     r.appendChild(lab);
     return r;
+  }
+
+  // ── Foundry URL field (top of body) ─────────────────────────────────────────
+  //
+  // The connection/Foundry URL, pre-filled with `foundryUrl` (default
+  // {@link DEFAULT_FOUNDRY_URL}). Full-width text input (label above) so the long
+  // URL is readable. On edit it calls `onFoundryUrlChange` to persist the value;
+  // in dev (no-auth) the live socket keeps using the dev bridge override, so the
+  // field configures the deploy connection (where the module-generated bearer
+  // token is also required). See ADR-0015.
+  function buildFoundryUrlField(): void {
+    const wrap = doc.createElement('div');
+    Object.assign(wrap.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+      padding: '8px 0',
+    });
+    const lab = doc.createElement('span');
+    lab.textContent = L.foundryLabel;
+    lab.style.color = T.textDim;
+    const input = doc.createElement('input');
+    input.type = 'url';
+    input.className = 'evf-foundry-url';
+    input.value = opts.foundryUrl ?? DEFAULT_FOUNDRY_URL;
+    input.placeholder = 'https://…';
+    Object.assign(input.style, {
+      width: '100%',
+      boxSizing: 'border-box',
+      padding: '10px 12px',
+      background: T.inputBg,
+      color: T.text,
+      border: `1px solid ${T.surface}`,
+      borderRadius: '8px',
+      font: 'inherit',
+    });
+    input.addEventListener('change', () => {
+      if (suppress) return;
+      opts.onFoundryUrlChange?.(input.value.trim());
+    });
+    const hint = doc.createElement('span');
+    hint.textContent = L.foundryHint;
+    Object.assign(hint.style, { color: T.textDim, font: '400 13px/1.3 inherit' });
+    wrap.appendChild(lab);
+    wrap.appendChild(input);
+    wrap.appendChild(hint);
+    body.appendChild(wrap);
   }
 
   // ── Character / Role selector (top of body) ─────────────────────────────────
@@ -318,7 +369,8 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     return input;
   }
 
-  // Character/Role selector first → it is the top-most row in the body.
+  // Foundry URL first, then the Character/Role selector → top of the body.
+  buildFoundryUrlField();
   buildCharacterSelector();
 
   const ditherEl = toggle(L.dither, 'dither');
@@ -364,7 +416,6 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   for (const el of [brightnessEl, webpEl, fpsEl]) {
     (el as unknown as { _evfRender?: () => void })._evfRender?.();
   }
-  applyCollapsed(); // set the initial expanded state + chevron (▾)
 
   mount.appendChild(root);
 

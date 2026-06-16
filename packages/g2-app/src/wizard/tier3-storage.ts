@@ -134,6 +134,38 @@ export async function listProfiles(): Promise<Session[]> {
   return results;
 }
 
+/** kv key for the user-configured Foundry/connection URL (settings panel). */
+const FOUNDRY_URL_KEY = 'evf.foundryUrl';
+
+/**
+ * Persist the user-edited Foundry/connection URL (settings panel field).
+ *
+ * Stored under a single fixed key (not per-profile). In dev the live socket
+ * still uses the dev bridge override; this value configures the deploy
+ * connection bootstrap. Never throws — a kv failure is logged and swallowed so
+ * an edit cannot crash the panel.
+ *
+ * @param url - The URL the user typed (already trimmed by the caller).
+ */
+export async function saveFoundryUrl(url: string): Promise<void> {
+  try {
+    await hub.setItem(FOUNDRY_URL_KEY, url);
+  } catch (err) {
+    console.warn('[EVF] tier3-storage: failed to persist Foundry URL —', err);
+  }
+}
+
+/**
+ * Load the persisted Foundry/connection URL, or `null` when none is stored.
+ */
+export async function loadFoundryUrl(): Promise<string | null> {
+  try {
+    return await hub.getItem(FOUNDRY_URL_KEY);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers — profile index management
 // ---------------------------------------------------------------------------

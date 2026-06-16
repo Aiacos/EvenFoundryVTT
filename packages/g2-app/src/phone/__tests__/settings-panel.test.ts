@@ -77,16 +77,15 @@ describe('createPhoneSettingsPanel', () => {
     expect(document.body.textContent).toContain('Map settings');
   });
 
-  it('PSP-08: tapping the title collapses/expands the controls (issue #35)', () => {
+  it('PSP-08: the panel is FLAT — the title does not collapse the controls (2026-06-17)', () => {
+    // The collapse/accordion (issue #35) was removed per the Even Hub phone-app
+    // guidelines: settings are always visible. Tapping the title is now inert.
     createPhoneSettingsPanel({ sendEdit: vi.fn(), initial: {} });
     const titleEl = document.querySelector<HTMLElement>('.evf-settings-panel h2');
     const body = document.querySelector<HTMLElement>('.evf-settings-panel h2 + div');
     if (titleEl === null || body === null) throw new Error('title/body not found');
-    // Starts expanded.
     expect(body.style.display).not.toBe('none');
     titleEl.dispatchEvent(new Event('click'));
-    expect(body.style.display).toBe('none'); // collapsed
-    titleEl.dispatchEvent(new Event('click'));
-    expect(body.style.display).not.toBe('none'); // expanded again
+    expect(body.style.display).not.toBe('none'); // still visible — no collapse
   });
 });
