@@ -18,7 +18,7 @@
   "evf.settings.map_webp_quality.name": "Compressione frame mappa (qualità WebP)",
   "evf.settings.map_webp_quality.hint": "0 = PNG lossless (DEFAULT — migliore per la mappa a 16 livelli; ~14 Mbit/s a 30 fps). 1–100 = WebP lossy, ma su frame già quantizzati riduce pochissimo (≈1.1× a 75, più grande del PNG a 90). Usa ≈50 solo se la banda è scarsa. Effetto immediato; fallback a PNG senza encoder WebP.",
   "evf.settings.map_auto_frame.name": "Inquadratura automatica del party (mappa occhiali)",
-  "evf.settings.map_auto_frame.hint": "ON (default): la mappa sugli occhiali inquadra automaticamente tutti i token dei personaggi-giocatore (tenendoli tutti in campo), centrata verso il PG selezionato sugli occhiali — indipendentemente da dove guarda la telecamera del GM. OFF: gli occhiali rispecchiano la vista live del GM. Effetto immediato.",
+  "evf.settings.map_auto_frame.hint": "OFF (default, consigliato): gli occhiali rispecchiano la vista live del GM con illuminazione corretta. ON (sperimentale): inquadra automaticamente tutti i token dei PG centrando sul PG selezionato, MA l'illuminazione/vision/fog di Foundry dipendono dalla vista e risultano DISALLINEATE in questo render fuori-vista — usare solo su scene senza illuminazione dinamica. Inquadratura+luci corrette richiedono la sessione headless (ADR-0015). Effetto immediato.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Configurazione bridge",
   "evf.bridgecfg.url.label": "URL del bridge",

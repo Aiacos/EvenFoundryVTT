@@ -18,7 +18,7 @@
   "evf.settings.map_webp_quality.name": "Map frame compression (WebP quality)",
   "evf.settings.map_webp_quality.hint": "0 = lossless PNG (DEFAULT — best for the 16-level map; ~14 Mbit/s at 30 fps). 1–100 = lossy WebP, but on already-quantized frames it barely shrinks (≈1.1× at 75, larger than PNG at 90). Use ≈50 only if bandwidth is tight. Applies immediately; falls back to PNG without a WebP encoder.",
   "evf.settings.map_auto_frame.name": "Auto-frame the party (glasses map)",
-  "evf.settings.map_auto_frame.hint": "ON (default): the glasses map auto-frames all player-character tokens (keeping everyone on screen), centered toward the PC selected on the glasses — independent of where the GM's camera is looking. OFF: the glasses mirror the GM's live viewport. Applies immediately.",
+  "evf.settings.map_auto_frame.hint": "OFF (default, recommended): the glasses mirror the GM's live viewport with correct lighting. ON (experimental): auto-frames all player-character tokens centered on the selected PC, BUT Foundry's lighting/vision/fog are view-dependent and become MISALIGNED in this off-view render — use only on scenes without dynamic lighting. Correct framing+lighting needs the headless player session (ADR-0015). Applies immediately.",
 
   "evf.bridgecfg.title": "EvenFoundryVTT — Bridge Configuration",
   "evf.bridgecfg.url.label": "Bridge URL",

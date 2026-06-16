@@ -28,9 +28,13 @@ The active character is selectable **live from the EvenHub app settings panel**,
 - `session.selectedActorId` is the single pivot: it already drives `character.delta` filtering (`delta-emitter`) **and** the map-framing focus (`SessionStore.getFocusActorId` → frame-POST piggyback → module `_focusActorId`).
 - g2-app `phone/settings-panel` gains a "Character / Role" `<select>` populated from `GET /v1/characters`; on change it sends `client_select_actor`.
 
-### (B) Synthesized party-fit, focus-weighted framing on the GM client — IMPLEMENTED (module v0.1.29)
+### (B) Synthesized party-fit, focus-weighted framing on the GM client — IMPLEMENTED v0.1.29, DEFAULTED OFF v0.1.30 (lighting-incompatible)
 
 Without a player session, the GM (leader) client synthesizes the framing: a world-rect containing all PC tokens, centered toward the selected actor, rendered to an off-screen RenderTexture without moving the GM camera. See [[map-auto-framing]]. This gives "all characters visible, Shin centered" **but not Shin's fog** (the GM sees all).
+
+**Lighting-incompatibility (confirmed 2026-06-17, INV-2 — Foundry API + Mystler canvas-capture recipe).** Foundry's lighting/vision/fog are NOT scene geometry — they are **view-dependent post-process effects**: `EffectsCanvasGroup` *"modifies the result of the PrimaryCanvasGroup by adding lighting, vision, fog of war"* and `CanvasVisibility` *"consolidates multiple render textures and applies a filter"*, all computed into screen/scene-sized RenderTextures for the **live** view. The framing re-renders `canvas.stage` under a temporary pivot/scale **without** `canvas.pan()`, so the PrimaryCanvasGroup moves but the lighting/vision RTs stay aligned to the original view → **the lighting renders misaligned** (observed live: a bright illumination block offset from the map). The canonical capture recipe (Mystler gist) confirms the only correct way to capture a different view is `canvas.pan({x,y,scale})` (which recomputes the effects) then restore — but `pan` moves the GM's actual screen (flicker) and is async.
+
+**Conclusion:** party-fit framing synthesized on the GM client is *fundamentally incompatible* with correct Foundry lighting. It ships **OFF by default** (v0.1.30); the live, correctly-lit GM viewport is the default capture. Correct framing **with** the player's own lighting/fog is precisely what increment (C) — the headless player session — delivers (a browser logged in as the player renders THEIR view with THEIR effects natively).
 
 ### (C) Real player view via a logged-in player session — DEFERRED (future work to inspect)
 

@@ -268,7 +268,17 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
   // capture leader (GM) is what reads it, and it governs the canonical stream
   // everyone sees, so it belongs with `captureFps`/`mapWebpQuality`, NOT the
   // per-client display knobs. Evaluated live per capture (no onChange needed —
-  // `getFraming` re-reads it every frame). Default ON per the 2026-06-16 design.
+  // `getFraming` re-reads it every frame).
+  //
+  // Default OFF (2026-06-17): the framed region-render re-renders `canvas.stage`
+  // under a temporary transform, but Foundry's lighting/vision/fog are
+  // view-dependent post-process effects (EffectsCanvasGroup + CanvasVisibility)
+  // rendered into screen/scene-sized RenderTextures for the LIVE view — so an
+  // off-view re-render misaligns the lighting (correct capture would need
+  // `canvas.pan`, which moves the GM's screen). Party-fit framing with correct
+  // lighting therefore requires the headless player session (ADR-0015 §C); the
+  // synthesized framing is opt-in and ships OFF so the default capture is the
+  // GM's live, correctly-lit viewport.
   game.settings.register(MODULE_ID, 'mapAutoFrame', {
     name: 'evf.settings.map_auto_frame.name',
     hint: 'evf.settings.map_auto_frame.hint',
@@ -276,7 +286,7 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     config: true,
     restricted: true,
     type: Boolean,
-    default: true,
+    default: false,
   });
 }
 
@@ -370,16 +380,19 @@ export function getDither(): boolean {
 }
 
 /**
- * Read the `mapAutoFrame` world boolean (party auto-framing). Default ON — only
- * an explicit `false` disables it; any read error also defaults ON. Evaluated
- * live per capture by `getFraming` in module.ts.
+ * Read the `mapAutoFrame` world boolean (party auto-framing). Default OFF — only
+ * an explicit `true` enables it; any read error defaults OFF. Evaluated live per
+ * capture by `getFraming` in module.ts.
+ *
+ * OFF by default because the framed region-render misaligns Foundry's
+ * view-dependent lighting/vision (see the registration comment + ADR-0015 §C).
  */
 export function getMapAutoFrame(): boolean {
   try {
-    // Default ON: only an explicit `false` disables auto-framing.
-    return game.settings.get(MODULE_ID, 'mapAutoFrame') !== false;
+    // Default OFF: only an explicit `true` enables auto-framing.
+    return game.settings.get(MODULE_ID, 'mapAutoFrame') === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
