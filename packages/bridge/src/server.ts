@@ -666,6 +666,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       handleEntityPackEnvelope(type, payload, entityCache);
     },
     settingsStore,
+    () => sessionStore.getFocusActorId(),
   );
 
   // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---

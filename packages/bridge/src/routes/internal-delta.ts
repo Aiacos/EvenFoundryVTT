@@ -155,12 +155,17 @@ export type DeltaInterceptFn = (type: string, payload: unknown) => void;
  * @param settingsStore - Optional display-settings store: caches the downstream
  *                        `settings.display` snapshot and piggybacks any pending
  *                        upstream edit on the response of a frame POST.
+ * @param getFocusActorId - Optional getter supplying the focus-actor id piggybacked
+ *                        on the frame-POST response for map auto-framing (the
+ *                        stream-leader Foundry client centers the captured map
+ *                        region on the returned actor). `null` = no pin.
  */
 export async function registerInternalDeltaRoute(
   app: FastifyInstance,
   deltaEmitter: DeltaEmitter,
   onDelta?: DeltaInterceptFn,
   settingsStore?: SettingsStore,
+  getFocusActorId?: () => string | null,
 ): Promise<void> {
   app.post('/internal/delta', { config: { rateLimit: false } }, async (request, reply) => {
     // --- Auth: EVF_INTERNAL_SECRET header check ---
@@ -221,14 +226,18 @@ export async function registerInternalDeltaRoute(
     // --- Fan out to all subscribed WS sessions ---
     deltaEmitter.emitDelta(type, payload);
 
-    // --- Upstream-settings piggyback ---
-    // Frame POSTs come only from the stream-leader client, so the frame response
-    // is a leader-only, no-new-connection carrier for glasses-originated setting
-    // edits. Drain the pending box onto the response; the module applies them.
-    if (settingsStore !== undefined && FRAME_DELTA_TYPES.has(type)) {
-      const pendingSettings = settingsStore.drainPending();
-      if (pendingSettings !== null) {
-        return reply.status(200).send({ ok: true, pendingSettings });
+    // --- Frame-POST reverse channel: piggyback glasses-originated control on
+    // the leader-only frame response (no new connection). Carries pending
+    // display-settings edits AND the focus-actor id for map auto-framing.
+    if (FRAME_DELTA_TYPES.has(type)) {
+      const pendingSettings = settingsStore?.drainPending() ?? null;
+      const focusActorId = getFocusActorId?.() ?? null;
+      if (pendingSettings !== null || focusActorId !== null) {
+        return reply.status(200).send({
+          ok: true,
+          ...(pendingSettings !== null ? { pendingSettings } : {}),
+          ...(focusActorId !== null ? { focusActorId } : {}),
+        });
       }
     }
 

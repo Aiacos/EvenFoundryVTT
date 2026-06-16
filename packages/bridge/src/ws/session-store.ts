@@ -109,6 +109,24 @@ export class SessionStore {
   }
 
   /**
+   * Best-effort "focus actor" for map auto-framing: the `selectedActorId` of the
+   * most-recently-created session that has one, or `null` if none is pinned.
+   *
+   * Single-glasses MVP: there is normally exactly one such session. Deterministic
+   * tie-break: highest `createdAt` wins (the freshest selection). Read by the
+   * frame-POST piggyback (routes/internal-delta.ts) so the stream-leader Foundry
+   * client can center the captured map region on the player's chosen PC.
+   */
+  getFocusActorId(): string | null {
+    let best: Session | null = null;
+    for (const s of this.sessions.values()) {
+      if (s.selectedActorId === undefined) continue;
+      if (best === null || s.createdAt > best.createdAt) best = s;
+    }
+    return best?.selectedActorId ?? null;
+  }
+
+  /**
    * Return a snapshot array of all active sessions.
    *
    * Used by the dev-only debug snapshot route (Quick Task 260529-h5e) to render a
