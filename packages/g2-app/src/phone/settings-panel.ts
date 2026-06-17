@@ -303,17 +303,19 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
       borderRadius: '6px',
       font: 'inherit',
     });
+    // Order: PG selezionato first, Streaming, GM last (per design 2026-06-17).
     for (const [value, label] of [
-      ['off', L.playerViewOff],
-      ['streaming', L.playerViewStreaming],
       ['actor', L.playerViewActor],
+      ['streaming', L.playerViewStreaming],
+      ['off', L.playerViewOff],
     ] as const) {
       const opt = doc.createElement('option');
       opt.value = value;
       opt.textContent = label;
       select.appendChild(opt);
     }
-    select.value = opts.playerViewInitialMode ?? 'off';
+    // Default to streaming (the shared, correctly-lit, auto-framed source).
+    select.value = opts.playerViewInitialMode ?? 'streaming';
     select.addEventListener('change', () => {
       if (suppress) return;
       const mode = select.value as 'off' | 'streaming' | 'actor';

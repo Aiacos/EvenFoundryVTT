@@ -140,14 +140,13 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     await flush();
     const select = document.querySelector<HTMLSelectElement>('select.evf-player-view');
     if (!select) throw new Error('player-view select not found');
-    expect(select.value).toBe('off'); // default
-    select.value = 'streaming';
+    expect(select.value).toBe('streaming'); // default
+    // First option is the selected PC, last is GM (live).
+    expect(select.options[0]?.value).toBe('actor');
+    expect(select.options[2]?.value).toBe('off');
+    select.value = 'off';
     select.dispatchEvent(new Event('change'));
-    expect(onPlayerViewMode).toHaveBeenCalledWith(
-      'streaming',
-      'actor-shin',
-      'https://forge.example',
-    );
+    expect(onPlayerViewMode).toHaveBeenCalledWith('off', 'actor-shin', 'https://forge.example');
     // setPlayerViewStatus updates the status line.
     panel.setPlayerViewStatus({ state: 'unavailable', detail: 'orchestrator P2' });
     const status = document.querySelector<HTMLElement>('.evf-player-view-status');
