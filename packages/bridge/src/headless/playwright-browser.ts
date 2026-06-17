@@ -78,9 +78,15 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
    * @param cfg - Session configuration (URL, mode, actor, credentials).
    */
   async launch(cfg: HeadlessSessionConfig): Promise<HeadlessSession> {
+    // On Alpine (the bridge image) Playwright cannot run its bundled browser
+    // (musl vs glibc); the Docker layer installs the system Chromium and points
+    // here via PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. Absent → Playwright's own
+    // bundled Chromium (dev / non-Alpine hosts).
+    const execPath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
     const browser = await chromium.launch({
       headless: true,
       args: [...DEFAULT_LAUNCH_ARGS],
+      ...(execPath !== undefined && execPath !== '' ? { executablePath: execPath } : {}),
     });
 
     let context: BrowserContext | undefined;

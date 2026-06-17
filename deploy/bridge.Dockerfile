@@ -64,6 +64,24 @@ LABEL org.opencontainers.image.title="EvenFoundryVTT Bridge" \
 # Set NODE_ENV so the bridge's startup guard activates (T-03-21)
 ENV NODE_ENV=production
 
+# ─── Headless player-view (ADR-0015 §C P2) — system Chromium for Playwright ───
+# Playwright cannot run its bundled (glibc) browser on Alpine/musl, so we install
+# Alpine's Chromium + the fonts/libs it needs and point Playwright at it via
+# PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. The browser download is skipped at install
+# time (.npmrc ignore-scripts + the flag below). Software WebGL (swiftshader) is
+# requested via the launch args in playwright-browser.ts so Foundry's PIXI scene
+# renders without a GPU. ~150 MB added; only used when a player-view mode is on.
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont \
+      font-noto-emoji
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Copy the self-contained deployment from builder stage
 COPY --from=builder /app/bridge .
 
