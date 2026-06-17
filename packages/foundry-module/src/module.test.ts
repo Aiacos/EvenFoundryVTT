@@ -1479,6 +1479,28 @@ describe('isStreamLeader — forced leader (?evfLeader=1)', () => {
     ).resolves.toBe(true);
   });
 
+  it('FL-SL-1b: window.__evfForcedLeader (addInitScript flag) → player wins over GM', async () => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: { ApplicationV2: ApplicationV2Stub, HandlebarsApplicationMixin: (B: unknown) => B },
+      },
+    });
+    // No URL param — only the injected window flag (survives The Forge redirect).
+    vi.stubGlobal('window', { __evfForcedLeader: true, location: { search: '' } });
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', {
+      user: { id: 'player', active: true, isGM: false },
+      users: [
+        { id: 'player', active: true, isGM: false },
+        { id: 'gm', active: true, isGM: true },
+      ],
+    });
+    const { isStreamLeader } = await import('./module.js');
+    expect(isStreamLeader()).toBe(true);
+  });
+
   it('FL-SL-2: no flag → the same player still loses to the GM', async () => {
     await expect(
       leaderWithUrl('', { id: 'player', active: true, isGM: false }, [

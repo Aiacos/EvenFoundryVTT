@@ -258,9 +258,21 @@ const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixe
  */
 const _forcedLeader: boolean = (() => {
   try {
-    return (
-      typeof window !== 'undefined' && /[?&]evfLeader=1(?:&|$)/.test(window.location?.search ?? '')
-    );
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const w = window as unknown as {
+      __evfForcedLeader?: boolean;
+      location?: { search?: string };
+    };
+    // Primary: a `window.__evfForcedLeader` flag injected by the orchestrator's
+    // Playwright addInitScript — it survives The Forge redirect to `/game` that
+    // STRIPS the URL query (verified 2026-06-17). The `?evfLeader=1` URL param is
+    // kept only as a fallback for non-Forge / direct-launch hosts.
+    if (w.__evfForcedLeader === true) {
+      return true;
+    }
+    return /[?&]evfLeader=1(?:&|$)/.test(w.location?.search ?? '');
   } catch {
     return false;
   }

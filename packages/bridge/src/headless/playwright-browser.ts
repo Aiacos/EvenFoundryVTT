@@ -129,9 +129,18 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
         ctxOpts.storageState = cfg.storageStatePath;
       }
       context = await browser.newContext(ctxOpts);
+
+      // Forced-leader marker (ADR-0015 §C P2c): set a window flag that the module
+      // reads to force stream-leadership. `addInitScript` re-runs on EVERY page +
+      // navigation, so it SURVIVES The Forge redirect to `/game` that strips the
+      // URL query (verified 2026-06-17 — the `?evfLeader=1` param alone is lost).
+      await context.addInitScript(() => {
+        (globalThis as { __evfForcedLeader?: boolean }).__evfForcedLeader = true;
+      });
+
       page = await context.newPage();
 
-      // 2. Navigate to the game URL with the evfLeader marker.
+      // 2. Navigate to the game URL (keep the param too as a non-Forge fallback).
       const url = `${cfg.foundryUrl}${cfg.foundryUrl.includes('?') ? '&' : '?'}evfLeader=1`;
       await page.goto(url, { waitUntil: 'domcontentloaded' });
 
