@@ -23,15 +23,25 @@ import { z } from 'zod';
 export const CLIENT_PLAYER_VIEW_TYPE = 'client_player_view' as const;
 
 /**
+ * Map-view source modes:
+ * - `off`      — the GM's live, correctly-lit viewport (default; no headless session).
+ * - `streaming` — a shared headless session as the **streaming** Foundry user
+ *   (already auto-framed + correctly lit) — one stream for all glasses.
+ * - `actor`    — a headless session as the **selected PC**'s user → that player's
+ *   real fogged view.
+ */
+export const PLAYER_VIEW_MODES = ['off', 'streaming', 'actor'] as const;
+
+/**
  * Upstream `client_player_view` message (EvenHub app → bridge).
  *
- * `z.strictObject` — no unexpected keys on the control channel. `actorId` /
- * `foundryUrl` are the player to log in as and the Foundry URL to open; both are
- * optional on `enabled:false` (a disable needs neither).
+ * `z.strictObject` — no unexpected keys on the control channel (credentials NEVER
+ * ride here; the bridge holds them). `actorId` is required-ish only for `actor`
+ * mode (the bridge validates per mode); `foundryUrl` overrides the configured URL.
  */
 export const ClientPlayerViewMessageSchema = z.strictObject({
   type: z.literal(CLIENT_PLAYER_VIEW_TYPE),
-  enabled: z.boolean(),
+  mode: z.enum(PLAYER_VIEW_MODES),
   actorId: z.string().min(1).optional(),
   foundryUrl: z.string().url().optional(),
 });

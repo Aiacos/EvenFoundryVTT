@@ -89,11 +89,11 @@ describe('handleClientPlayerView', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
-      JSON.stringify({ type: 'client_player_view', enabled: true }),
+      JSON.stringify({ type: 'client_player_view', mode: 'streaming' }),
       h.logger,
     );
 
-    expect(h.playerViewStore.get()).toEqual({ enabled: true });
+    expect(h.playerViewStore.get()).toEqual({ mode: 'streaming' });
     expect(sentStatus(h.send)).toEqual({
       state: 'unavailable',
       detail: 'Headless orchestrator not yet deployed (ADR-0015 P2)',
@@ -101,22 +101,22 @@ describe('handleClientPlayerView', () => {
     expect(h.warn).not.toHaveBeenCalled();
   });
 
-  it('CPV-02: disable message stores {enabled:false} and emits player_view_status{off}', () => {
+  it('CPV-02: off mode stores {mode:off} and emits player_view_status{off}', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
-      JSON.stringify({ type: 'client_player_view', enabled: false }),
+      JSON.stringify({ type: 'client_player_view', mode: 'off' }),
       h.logger,
     );
 
-    expect(h.playerViewStore.get()).toEqual({ enabled: false });
+    expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
     expect(sentStatus(h.send)).toEqual({ state: 'off' });
     expect(h.warn).not.toHaveBeenCalled();
   });
 
   it('CPV-03: malformed JSON is ignored (no throw, no mutation, no emit)', () => {
     expect(() => handleClientPlayerView(h.deps, h.sessionId, 'not json{', h.logger)).not.toThrow();
-    expect(h.playerViewStore.get()).toEqual({ enabled: false });
+    expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
     expect(h.send).not.toHaveBeenCalled();
     expect(h.warn).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('handleClientPlayerView', () => {
       JSON.stringify({ type: 'client_setting', settings: { brightness: 40 } }),
       h.logger,
     );
-    expect(h.playerViewStore.get()).toEqual({ enabled: false });
+    expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
     expect(h.send).not.toHaveBeenCalled();
     expect(h.warn).not.toHaveBeenCalled();
   });
@@ -139,7 +139,7 @@ describe('handleClientPlayerView', () => {
       h.sessionId,
       JSON.stringify({
         type: 'client_player_view',
-        enabled: true,
+        mode: 'actor',
         actorId: 'actor-b',
         foundryUrl: 'https://forge.example.com/game',
       }),
@@ -147,7 +147,7 @@ describe('handleClientPlayerView', () => {
     );
 
     expect(h.playerViewStore.get()).toEqual({
-      enabled: true,
+      mode: 'actor',
       actorId: 'actor-b',
       foundryUrl: 'https://forge.example.com/game',
     });
@@ -161,10 +161,10 @@ describe('handleClientPlayerView', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
-      Buffer.from(JSON.stringify({ type: 'client_player_view', enabled: true }), 'utf-8'),
+      Buffer.from(JSON.stringify({ type: 'client_player_view', mode: 'streaming' }), 'utf-8'),
       h.logger,
     );
-    expect(h.playerViewStore.get()).toEqual({ enabled: true });
+    expect(h.playerViewStore.get()).toEqual({ mode: 'streaming' });
     expect(sentStatus(h.send)).toEqual({
       state: 'unavailable',
       detail: 'Headless orchestrator not yet deployed (ADR-0015 P2)',

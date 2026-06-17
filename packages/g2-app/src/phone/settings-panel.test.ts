@@ -127,22 +127,27 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(onFoundryUrlChange).toHaveBeenCalledWith('https://new.forge');
   });
 
-  it('player-view toggle fires onPlayerViewToggle with the current actorId + URL', async () => {
-    const onPlayerViewToggle = vi.fn();
+  it('map-view source select fires onPlayerViewMode with the mode + actorId + URL', async () => {
+    const onPlayerViewMode = vi.fn();
     const panel = createPhoneSettingsPanel({
       sendEdit: () => {},
       initial: EMPTY,
       foundryUrl: 'https://forge.example',
       fetchRoster: () => Promise.resolve([{ actorId: 'actor-shin', name: 'Shin' }]),
       initialActorId: 'actor-shin',
-      onPlayerViewToggle,
+      onPlayerViewMode,
     });
     await flush();
-    const toggle = document.querySelector<HTMLInputElement>('input.evf-player-view');
-    if (!toggle) throw new Error('player-view toggle not found');
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event('change'));
-    expect(onPlayerViewToggle).toHaveBeenCalledWith(true, 'actor-shin', 'https://forge.example');
+    const select = document.querySelector<HTMLSelectElement>('select.evf-player-view');
+    if (!select) throw new Error('player-view select not found');
+    expect(select.value).toBe('off'); // default
+    select.value = 'streaming';
+    select.dispatchEvent(new Event('change'));
+    expect(onPlayerViewMode).toHaveBeenCalledWith(
+      'streaming',
+      'actor-shin',
+      'https://forge.example',
+    );
     // setPlayerViewStatus updates the status line.
     panel.setPlayerViewStatus({ state: 'unavailable', detail: 'orchestrator P2' });
     const status = document.querySelector<HTMLElement>('.evf-player-view-status');

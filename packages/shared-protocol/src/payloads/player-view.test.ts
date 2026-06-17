@@ -11,29 +11,37 @@ import {
 } from './player-view.js';
 
 describe('ClientPlayerViewMessageSchema', () => {
-  it('PV-1: accepts enable with actorId + foundryUrl', () => {
+  it('PV-1: accepts actor mode with actorId + foundryUrl', () => {
     const m = ClientPlayerViewMessageSchema.parse({
       type: CLIENT_PLAYER_VIEW_TYPE,
-      enabled: true,
+      mode: 'actor',
       actorId: 'actor-shin',
       foundryUrl: 'https://aiacos-vecna.eu.forge-vtt.com',
     });
-    expect(m.enabled).toBe(true);
+    expect(m.mode).toBe('actor');
     expect(m.actorId).toBe('actor-shin');
   });
 
-  it('PV-2: accepts disable with no actor/url', () => {
+  it('PV-2: accepts streaming and off modes with no actor/url', () => {
     expect(
-      ClientPlayerViewMessageSchema.safeParse({ type: CLIENT_PLAYER_VIEW_TYPE, enabled: false })
+      ClientPlayerViewMessageSchema.safeParse({ type: CLIENT_PLAYER_VIEW_TYPE, mode: 'streaming' })
+        .success,
+    ).toBe(true);
+    expect(
+      ClientPlayerViewMessageSchema.safeParse({ type: CLIENT_PLAYER_VIEW_TYPE, mode: 'off' })
         .success,
     ).toBe(true);
   });
 
-  it('PV-3: rejects a non-URL foundryUrl', () => {
+  it('PV-3: rejects an unknown mode and a non-URL foundryUrl', () => {
+    expect(
+      ClientPlayerViewMessageSchema.safeParse({ type: CLIENT_PLAYER_VIEW_TYPE, mode: 'spectate' })
+        .success,
+    ).toBe(false);
     expect(
       ClientPlayerViewMessageSchema.safeParse({
         type: CLIENT_PLAYER_VIEW_TYPE,
-        enabled: true,
+        mode: 'actor',
         foundryUrl: 'not a url',
       }).success,
     ).toBe(false);
@@ -43,7 +51,7 @@ describe('ClientPlayerViewMessageSchema', () => {
     expect(
       ClientPlayerViewMessageSchema.safeParse({
         type: CLIENT_PLAYER_VIEW_TYPE,
-        enabled: true,
+        mode: 'actor',
         password: 'secret',
       }).success,
     ).toBe(false);

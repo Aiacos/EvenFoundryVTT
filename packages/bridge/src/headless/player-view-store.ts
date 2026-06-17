@@ -25,16 +25,20 @@
  * with those fields set; a disable carries neither.
  */
 export interface PlayerViewIntent {
-  /** Whether the player wants the headless player-view session active. */
-  enabled: boolean;
-  /** Foundry actor to log the headless session in as (P2). */
+  /**
+   * Map-view source mode: `off` (GM live, no headless), `streaming` (shared
+   * headless session as the streaming Foundry user — auto-framed), or `actor`
+   * (headless session as the selected PC → their fogged view).
+   */
+  mode: 'off' | 'streaming' | 'actor';
+  /** Foundry actor to log the headless session in as — `actor` mode (P2). */
   actorId?: string;
   /** Foundry URL the headless session should open (P2). */
   foundryUrl?: string;
 }
 
-/** Default cold-start intent: disabled, no actor / URL. */
-const DEFAULT_INTENT: PlayerViewIntent = { enabled: false };
+/** Default cold-start intent: GM live, no headless. */
+const DEFAULT_INTENT: PlayerViewIntent = { mode: 'off' };
 
 /**
  * In-memory holder for the latest headless player-view intent (one per world).

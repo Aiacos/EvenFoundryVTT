@@ -133,6 +133,7 @@ export {
   CLIENT_PLAYER_VIEW_TYPE,
   type ClientPlayerViewMessage,
   ClientPlayerViewMessageSchema,
+  PLAYER_VIEW_MODES,
   PLAYER_VIEW_STATES,
   PLAYER_VIEW_STATUS_TYPE,
   type PlayerViewStatus,

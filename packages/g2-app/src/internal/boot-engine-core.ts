@@ -1049,17 +1049,17 @@ export async function _bootEngineCore(
     onFoundryUrlChange: (url) => {
       void saveFoundryUrl(url);
     },
-    // Player-view (headless) toggle — sends client_player_view; the bridge
-    // orchestrator (ADR-0015 §C) logs a session in as the player. Status comes
-    // back via the player_view_status subscription below. Credentials are never
-    // sent from here — the bridge holds them.
-    onPlayerViewToggle: (enabled, actorId, foundryUrl) => {
+    // Map-view source select — sends client_player_view{mode}; the bridge
+    // orchestrator (ADR-0015 §C) logs a headless session in for streaming/actor.
+    // Status comes back via the player_view_status subscription below.
+    // Credentials are never sent from here — the bridge holds them.
+    onPlayerViewMode: (mode, actorId, foundryUrl) => {
       // Omit empty actorId/foundryUrl: the message schema is strict (actorId
       // min-1, foundryUrl must be a URL), so empty strings would be rejected.
       wsSender.send(
         JSON.stringify({
           type: CLIENT_PLAYER_VIEW_TYPE,
-          enabled,
+          mode,
           ...(actorId !== '' ? { actorId } : {}),
           ...(foundryUrl !== '' ? { foundryUrl } : {}),
         }),

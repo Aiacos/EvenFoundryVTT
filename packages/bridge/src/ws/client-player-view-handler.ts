@@ -2,15 +2,15 @@
  * WS `client_player_view` handler — records the headless player-view intent and
  * replies with the orchestrator status.
  *
- * The EvenHub settings panel sends `{ type: 'client_player_view', enabled,
- * actorId?, foundryUrl? }` when the player toggles "Player view (headless)". The
+ * The EvenHub settings panel sends `{ type: 'client_player_view', mode,
+ * actorId?, foundryUrl? }` when the player changes the map-view source. The
  * bridge records the intent in the {@link PlayerViewStore} (which the P2 headless
  * orchestrator will read — ADR-0015 §C) and immediately replies to THAT session
  * with a `player_view_status` delta so the panel can reflect what's happening.
  *
  * P1 (this task) has no orchestrator deployed, so:
- * - `enabled: true`  → `{ state: 'unavailable', detail: … }`
- * - `enabled: false` → `{ state: 'off' }`
+ * - `mode: 'streaming' | 'actor'` → `{ state: 'unavailable', detail: … }`
+ * - `mode: 'off'`                 → `{ state: 'off' }`
  *
  * Mirrors the {@link handleClientSetting} / {@link handleClientSelectActor}
  * contract: parse-or-no-op on non-matching input (other message types route to
@@ -94,12 +94,12 @@ export function handleClientPlayerView(
     return;
   }
 
-  const { enabled, actorId, foundryUrl } = result.data;
+  const { mode, actorId, foundryUrl } = result.data;
 
   // ── Step 2: record the intent (P2 orchestrator reads this) ───────────────────
   // Build with only present optional keys — `exactOptionalPropertyTypes` rejects
   // an explicit `undefined` on an optional field.
-  const intent: PlayerViewIntent = { enabled };
+  const intent: PlayerViewIntent = { mode };
   if (actorId !== undefined) {
     intent.actorId = actorId;
   }
@@ -107,17 +107,16 @@ export function handleClientPlayerView(
     intent.foundryUrl = foundryUrl;
   }
   playerViewStore.set(intent);
-  // foundryUrl is potentially noisy / sensitive-ish — info logs the toggle shape;
+  // foundryUrl is potentially noisy / sensitive-ish — info logs the mode + actor;
   // debug carries the full URL.
-  logger.info({ sessionId, enabled, actorId }, 'WS client_player_view: intent recorded');
+  logger.info({ sessionId, mode, actorId }, 'WS client_player_view: intent recorded');
   if (foundryUrl !== undefined) {
     logger.debug({ sessionId, foundryUrl }, 'WS client_player_view: foundryUrl');
   }
 
   // ── Step 3: reply with the P1 orchestrator status to THIS session only ───────
-  const payload: PlayerViewStatus = enabled
-    ? { state: 'unavailable', detail: UNAVAILABLE_DETAIL }
-    : { state: 'off' };
+  const payload: PlayerViewStatus =
+    mode === 'off' ? { state: 'off' } : { state: 'unavailable', detail: UNAVAILABLE_DETAIL };
 
   const validated = PlayerViewStatusSchema.safeParse(payload);
   if (!validated.success) {

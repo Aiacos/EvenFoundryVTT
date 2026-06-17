@@ -77,15 +77,20 @@ export interface PhoneSettingsPanelOptions {
   readonly foundryUrl?: string | undefined;
   /** Called when the user edits the Foundry URL (persist for the next connect). */
   readonly onFoundryUrlChange?: (url: string) => void;
-  /** Initial state of the "Player view (headless)" toggle (default off). */
-  readonly playerViewInitial?: boolean;
+  /** Initial map-view source mode (default `off`). */
+  readonly playerViewInitialMode?: 'off' | 'streaming' | 'actor';
   /**
-   * Called when the user toggles "Player view (headless)" (ADR-0015 §C). Passes
-   * the current actorId (the selected character) + Foundry URL so the boot can
-   * send the `client_player_view` message. The bridge replies with a status the
-   * panel shows via {@link PhoneSettingsPanel.setPlayerViewStatus}.
+   * Called when the user changes the map-view source (ADR-0015 §C): `off` (GM
+   * live), `streaming` (shared headless streaming view), or `actor` (the selected
+   * PC's real fogged view). Passes the current actorId + Foundry URL so the boot
+   * can send the `client_player_view` message. The bridge replies with a status
+   * shown via {@link PhoneSettingsPanel.setPlayerViewStatus}.
    */
-  readonly onPlayerViewToggle?: (enabled: boolean, actorId: string, foundryUrl: string) => void;
+  readonly onPlayerViewMode?: (
+    mode: 'off' | 'streaming' | 'actor',
+    actorId: string,
+    foundryUrl: string,
+  ) => void;
 }
 
 /**
@@ -123,10 +128,13 @@ const LABELS = {
     characterError: 'Non disponibile',
     foundryLabel: 'Link Foundry',
     foundryHint: 'In sviluppo la connessione usa il bridge locale; questo campo serve al deploy.',
-    playerViewLabel: 'Vista player (headless)',
+    playerViewLabel: 'Sorgente vista mappa',
     playerViewHint:
-      'Mostra la vista REALE del PG selezionato (illuminazione + nebbia di guerra). Il bridge logga una sessione come il player.',
+      'GM = vista live del GM. Streaming = sessione condivisa (auto-inquadrata, illuminazione corretta). PG = vista reale del PG selezionato (luci + nebbia di guerra).',
     playerViewStatusPrefix: 'Stato:',
+    playerViewOff: 'GM (live)',
+    playerViewStreaming: 'Streaming (headless)',
+    playerViewActor: 'PG selezionato (headless)',
   },
   en: {
     title: 'Map settings',
@@ -142,10 +150,13 @@ const LABELS = {
     characterError: 'Unavailable',
     foundryLabel: 'Foundry URL',
     foundryHint: 'In dev the connection uses the local bridge; this field is for deploy.',
-    playerViewLabel: 'Player view (headless)',
+    playerViewLabel: 'Map view source',
     playerViewHint:
-      "Shows the selected PC's REAL view (lighting + fog of war). The bridge logs a session in as the player.",
+      "GM = the GM's live view. Streaming = a shared session (auto-framed, correctly lit). PC = the selected PC's real view (lighting + fog of war).",
     playerViewStatusPrefix: 'Status:',
+    playerViewOff: 'GM (live)',
+    playerViewStreaming: 'Streaming (headless)',
+    playerViewActor: 'Selected PC (headless)',
   },
 } as const;
 
@@ -273,26 +284,44 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     foundryUrlEl = input;
   }
 
-  // ── Player view (headless) toggle (ADR-0015 §C) ─────────────────────────────
+  // ── Map-view source select (ADR-0015 §C) ────────────────────────────────────
   //
-  // Enables/disables the bridge's headless player-view session for the selected
-  // PC. Sends `client_player_view` (with the current actorId + Foundry URL) via
-  // `onPlayerViewToggle`; the bridge replies with a status shown below the row.
-  // Credentials are NEVER sent from here — the bridge holds them.
-  function buildPlayerViewToggle(): void {
+  // Chooses the map source: GM live (off), shared streaming headless session, or
+  // the selected PC's headless view. On change it sends `client_player_view`
+  // (with the current actorId + Foundry URL) via `onPlayerViewMode`; the bridge
+  // replies with a status shown below. Credentials are NEVER sent from here.
+  function buildPlayerViewSelect(): void {
     const r = row(L.playerViewLabel);
-    const input = doc.createElement('input');
-    input.type = 'checkbox';
-    input.className = 'evf-player-view';
-    input.checked = opts.playerViewInitial === true;
-    Object.assign(input.style, { width: '22px', height: '22px', accentColor: T.accent });
-    input.addEventListener('change', () => {
+    const select = doc.createElement('select');
+    select.className = 'evf-player-view';
+    Object.assign(select.style, {
+      maxWidth: '220px',
+      padding: '6px 8px',
+      background: T.inputBg,
+      color: T.text,
+      border: `1px solid ${T.surface}`,
+      borderRadius: '6px',
+      font: 'inherit',
+    });
+    for (const [value, label] of [
+      ['off', L.playerViewOff],
+      ['streaming', L.playerViewStreaming],
+      ['actor', L.playerViewActor],
+    ] as const) {
+      const opt = doc.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+    select.value = opts.playerViewInitialMode ?? 'off';
+    select.addEventListener('change', () => {
       if (suppress) return;
+      const mode = select.value as 'off' | 'streaming' | 'actor';
       const actorId = characterSelectEl?.value ?? '';
       const foundryUrl = foundryUrlEl?.value.trim() ?? '';
-      opts.onPlayerViewToggle?.(input.checked, actorId, foundryUrl);
+      opts.onPlayerViewMode?.(mode, actorId, foundryUrl);
     });
-    r.appendChild(input);
+    r.appendChild(select);
     body.appendChild(r);
 
     const hint = doc.createElement('span');
@@ -447,7 +476,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   // Foundry URL, the Character/Role selector, then the player-view toggle → top.
   buildFoundryUrlField();
   buildCharacterSelector();
-  buildPlayerViewToggle();
+  buildPlayerViewSelect();
 
   const ditherEl = toggle(L.dither, 'dither');
   const brightnessEl = slider(
