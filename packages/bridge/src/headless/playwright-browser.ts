@@ -140,6 +140,22 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
 
       page = await context.newPage();
 
+      // Surface the headless page's console + errors to the container logs so the
+      // EVF module's behaviour inside the headless session (forced-leader,
+      // capture/POST warnings) is observable without a conflicting debug browser.
+      // Gated on EVF_PLAYER_VIEW_DEBUG to keep production logs quiet.
+      if (process.env['EVF_PLAYER_VIEW_DEBUG'] === '1') {
+        page.on('console', (m) => {
+          const t = m.text();
+          if (/EVF|evf|leader|bridge|frame|capture/i.test(t)) {
+            console.warn(`[headless-console] ${m.type()}: ${t.slice(0, 200)}`);
+          }
+        });
+        page.on('pageerror', (e) =>
+          console.warn(`[headless-pageerror] ${String(e).slice(0, 200)}`),
+        );
+      }
+
       // 2. Navigate to the game URL (keep the param too as a non-Forge fallback).
       const url = `${cfg.foundryUrl}${cfg.foundryUrl.includes('?') ? '&' : '?'}evfLeader=1`;
       await page.goto(url, { waitUntil: 'domcontentloaded' });
