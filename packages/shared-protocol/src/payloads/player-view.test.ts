@@ -47,12 +47,14 @@ describe('ClientPlayerViewMessageSchema', () => {
     ).toBe(false);
   });
 
-  it('PV-4: rejects unknown keys (strict) — credentials must never ride here', () => {
+  it('PV-4: rejects unknown keys (strict) — NO credentials ride here (password-free)', () => {
+    // The password-free model carries no secrets: any credential-looking key is
+    // rejected by strict mode (actor login is by Foundry username selection).
     expect(
       ClientPlayerViewMessageSchema.safeParse({
         type: CLIENT_PLAYER_VIEW_TYPE,
         mode: 'actor',
-        password: 'secret',
+        forgePassword: 'secret',
       }).success,
     ).toBe(false);
   });

@@ -61,3 +61,4 @@ _*.ts
 release/
 # release-artifacts/: root release staging dir
 release-artifacts/
+/chrome/

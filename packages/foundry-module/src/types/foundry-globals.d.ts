@@ -917,6 +917,18 @@ interface FoundryUser {
    * for GMs or players who have not yet selected a character.
    */
   character?: { id: string } | null;
+  /**
+   * Read a module flag from this User document (world data, readable by any user).
+   * Used by character-reader to check per-user `streamConsent` (ADR-0015 §C).
+   * Canonical Foundry `Document#getFlag`.
+   */
+  getFlag(scope: string, key: string): unknown;
+  /**
+   * Set a module flag on this User document. A user may set flags on their OWN
+   * User (default OWNER permission). Used to persist the player's `streamConsent`
+   * opt-in so the stream leader can read it. Canonical Foundry `Document#setFlag`.
+   */
+  setFlag(scope: string, key: string, value: unknown): Promise<unknown>;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────

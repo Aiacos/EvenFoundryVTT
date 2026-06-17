@@ -307,7 +307,7 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
 
   it('SR-6: WS received HandshakeClient JSON; LayerManager.negotiatedCaps populated', async () => {
     const { handle, ws } = await bootWithMocks();
-    expect(ws.send).toHaveBeenCalledTimes(1);
+    // boot's FIRST send is the capability handshake.
     const sent = ws.send.mock.calls[0]?.[0] as string;
     const parsed = JSON.parse(sent) as {
       proto?: string;
@@ -317,6 +317,20 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
     expect(parsed.proto).toBe('evf-v1');
     expect(parsed.token).toBe('test-token-24h');
     expect(parsed.capabilities).toEqual([...SERVER_CAPS_V1]);
+    // ...then boot auto-activates the configured map-view source (ADR-0015 §C
+    // P2c): a client_player_view{mode:'streaming'} follows the handshake so the
+    // bridge orchestrator spins up the headless session WITHOUT a manual dropdown
+    // change (the symptom this fixes: glasses stuck relaying the GM's live view).
+    const playerView = ws.send.mock.calls
+      .map((call) => {
+        try {
+          return JSON.parse(call[0] as string) as { type?: string; mode?: string };
+        } catch {
+          return null;
+        }
+      })
+      .find((msg) => msg?.type === 'client_player_view');
+    expect(playerView?.mode).toBe('streaming');
     // The LayerManager should now refuse a mount with an unknown required cap.
     // Use a synthetic Layer that requests a cap NOT in the negotiated set.
     // We don't construct one here (would re-trigger capture-invariant); instead

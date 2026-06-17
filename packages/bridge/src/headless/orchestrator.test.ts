@@ -137,13 +137,35 @@ describe('HeadlessOrchestrator', () => {
       mode: 'actor',
       actorId: 'actor-7',
       foundryUrl: 'https://f.example/game',
+      userName: 'Player Seven',
     });
     await flush();
 
     expect(first.close).toHaveBeenCalledTimes(1);
     expect(h.launch).toHaveBeenCalledTimes(2);
-    expect(h.lastCfg()).toMatchObject({ mode: 'actor', actorId: 'actor-7' });
+    // actor mode passes the Forge gate with the STREAMING account (env creds +
+    // storageState) AND selects the player's Foundry user on /join (password-free).
+    expect(h.lastCfg()).toMatchObject({
+      mode: 'actor',
+      actorId: 'actor-7',
+      userName: 'Player Seven',
+    });
     expect(h.orchestrator.getState()).toEqual({ state: 'live' });
+  });
+
+  it('ORC-05b: actor mode without a resolved username (not opted in) → {unavailable}, no launch', async () => {
+    const h = makeHarness();
+    h.orchestrator.applyIntent({
+      mode: 'actor',
+      actorId: 'actor-7',
+      foundryUrl: 'https://f.example/game',
+    });
+    await flush();
+    expect(h.launch).not.toHaveBeenCalled();
+    expect(h.orchestrator.getState()).toEqual({
+      state: 'unavailable',
+      detail: 'Selected player is not available for streaming (opt-in required)',
+    });
   });
 
   it('ORC-06: missing foundryUrl (intent + env) → {unavailable}', async () => {

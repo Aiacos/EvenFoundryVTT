@@ -137,6 +137,18 @@ export type BootEngineLocale = 'it' | 'en' | 'de' | 'es' | 'fr' | 'pt-br';
 const FPS_INDICATOR_KV_KEY = 'evf.fps.indicator';
 
 /**
+ * Map-view source activated automatically on boot (ADR-0015 §C P2c).
+ *
+ * The settings panel only emits `client_player_view` on a dropdown CHANGE, so the
+ * configured source needs an explicit one-shot send on boot or the glasses fall
+ * back to relaying the GM's live view. `'streaming'` (the shared, correctly-lit,
+ * auto-framed headless session) is the design default (2026-06-17); `'off'` would
+ * keep the GM view and skip the auto-send. Kept in sync with the panel's
+ * `playerViewInitialMode` so the dropdown and the live session always agree.
+ */
+const BOOT_PLAYER_VIEW_MODE: 'off' | 'streaming' | 'actor' = 'streaming';
+
+/**
  * Production boot-engine options.
  *
  * **NO DI fields here.** Test-only DI lives in {@link TestingDependencies}.
@@ -1024,6 +1036,9 @@ export async function _bootEngineCore(
     sendEdit: (edit) => displaySettingsSync.sendEdit(edit),
     initial: displaySettingsSync.get(),
     locale: opts.locale,
+    // Map-view source dropdown starts on the same mode this boot auto-activates
+    // below (BOOT_PLAYER_VIEW_MODE), so the panel and the live session agree.
+    playerViewInitialMode: BOOT_PLAYER_VIEW_MODE,
     // Character/Role selector — live actor switch from the phone (no reconnect).
     initialActorId: opts.characterId,
     onSelectActor: (actorId) => {
@@ -1049,19 +1064,19 @@ export async function _bootEngineCore(
     onFoundryUrlChange: (url) => {
       void saveFoundryUrl(url);
     },
-    // Map-view source select — sends client_player_view{mode}; the bridge
-    // orchestrator (ADR-0015 §C) logs a headless session in for streaming/actor.
+    // Map-view source select — emits a PlayerViewRequest; we forward it as a
+    // `client_player_view` message (PASSWORD-FREE: no credentials). For `actor`
+    // mode the bridge resolves the actorId → the player's Foundry user (opt-in).
     // Status comes back via the player_view_status subscription below.
-    // Credentials are never sent from here — the bridge holds them.
-    onPlayerViewMode: (mode, actorId, foundryUrl) => {
-      // Omit empty actorId/foundryUrl: the message schema is strict (actorId
-      // min-1, foundryUrl must be a URL), so empty strings would be rejected.
+    onPlayerViewMode: (req) => {
+      // Omit empty optional fields: the schema is strict (actorId min-1, foundryUrl
+      // must be a URL), so empty strings would be rejected.
       wsSender.send(
         JSON.stringify({
           type: CLIENT_PLAYER_VIEW_TYPE,
-          mode,
-          ...(actorId !== '' ? { actorId } : {}),
-          ...(foundryUrl !== '' ? { foundryUrl } : {}),
+          mode: req.mode,
+          ...(req.actorId ? { actorId: req.actorId } : {}),
+          ...(req.foundryUrl ? { foundryUrl: req.foundryUrl } : {}),
         }),
       );
     },
@@ -1074,6 +1089,32 @@ export async function _bootEngineCore(
       phoneSettings?.setPlayerViewStatus(parsed.data);
     }
   });
+
+  // Auto-activate the configured map-view source on boot (ADR-0015 §C P2c).
+  //
+  // The settings panel only emits `client_player_view` on a dropdown CHANGE, so
+  // without this the configured source never activates: the bridge keeps relaying
+  // the GM's live view and the glasses "follow the GM" even though the panel shows
+  // e.g. "Streaming (headless)". This sends the configured mode once, right after
+  // the handshake, so the bridge orchestrator spins up the headless session
+  // automatically — the "connessione automatica" dev flow (the headless simulator
+  // has no way to click the dropdown). `foundryUrl` is omitted: in dev the bridge
+  // holds it (`EVF_PLAYER_VIEW_FOUNDRY_URL`); the resulting status arrives via the
+  // subscription above. Skipped when the configured default is `off` (GM view).
+  if (BOOT_PLAYER_VIEW_MODE !== 'off') {
+    wsSender.send(
+      JSON.stringify({
+        type: CLIENT_PLAYER_VIEW_TYPE,
+        mode: BOOT_PLAYER_VIEW_MODE,
+        // 'actor' mode needs the selected PC; 'streaming' ignores actorId.
+        ...(BOOT_PLAYER_VIEW_MODE === 'actor' &&
+        opts.characterId !== undefined &&
+        opts.characterId !== ''
+          ? { actorId: opts.characterId }
+          : {}),
+      }),
+    );
+  }
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
   //

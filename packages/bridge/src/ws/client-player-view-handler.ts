@@ -63,6 +63,13 @@ export interface ClientPlayerViewDeps {
   deltaEmitter: DeltaEmitter;
   /** Headless orchestrator driven by each intent (ADR-0015 §C, P2b). */
   orchestrator: PlayerViewOrchestratorLike;
+  /** Roster cache — resolves `actorId` → owning Foundry username for `actor` mode. */
+  characterListCache: CharacterListUserResolver;
+}
+
+/** Minimal cache surface this handler needs: actorId → opted-in owning username. */
+export interface CharacterListUserResolver {
+  getUserName(actorId: string): string | undefined;
 }
 
 /**
@@ -90,7 +97,7 @@ export function handleClientPlayerView(
   rawData: Buffer | ArrayBuffer | Buffer[] | string,
   logger: Logger,
 ): void {
-  const { playerViewStore, deltaEmitter, orchestrator } = deps;
+  const { playerViewStore, deltaEmitter, orchestrator, characterListCache } = deps;
 
   // ── Step 1: parse raw bytes to JSON ──────────────────────────────────────────
   let parsed: unknown;
@@ -126,10 +133,21 @@ export function handleClientPlayerView(
   if (foundryUrl !== undefined) {
     intent.foundryUrl = foundryUrl;
   }
+  // `actor` mode (password-free): resolve the selected PC's owning Foundry username
+  // from the roster cache — present ONLY for players who opted in to streaming. The
+  // headless then selects that user on `/join` (blank password). Absent → the
+  // orchestrator reports `unavailable` (the actor is not streamable).
+  if (mode === 'actor' && actorId !== undefined) {
+    const userName = characterListCache.getUserName(actorId);
+    if (userName !== undefined) {
+      intent.userName = userName;
+    }
+  }
   playerViewStore.set(intent);
-  // foundryUrl is potentially noisy / sensitive-ish — info logs the mode + actor;
-  // debug carries the full URL.
-  logger.info({ sessionId, mode, actorId }, 'WS client_player_view: intent recorded');
+  logger.info(
+    { sessionId, mode, actorId, streamable: intent.userName !== undefined },
+    'WS client_player_view: intent recorded',
+  );
   if (foundryUrl !== undefined) {
     logger.debug({ sessionId, foundryUrl }, 'WS client_player_view: foundryUrl');
   }

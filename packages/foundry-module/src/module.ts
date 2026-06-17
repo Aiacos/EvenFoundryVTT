@@ -559,6 +559,20 @@ Hooks.once('ready', () => {
     bridgeDeltaEmitter(type, payload),
   );
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
+  // Player-view streaming consent (ADR-0015 §C): if THIS client enabled the
+  // opt-in (client-scope setting), re-assert it as a User flag (world data) so the
+  // stream leader's roster reader can read the consent across clients. We only
+  // SET (never clear) here so loading a different browser without the setting does
+  // not silently revoke an existing opt-in. Best-effort; never throws.
+  try {
+    if (game.settings.get(MODULE_ID, 'streamConsent') === true) {
+      void game.user.setFlag(MODULE_ID, 'streamConsent', true).catch(() => {
+        // flag write best-effort — a failure must not affect ready
+      });
+    }
+  } catch {
+    // settings/flag access defensive guard — never block ready
+  }
   // Quick Task 260611-e71 (v0.1.15) — raster pipeline data-source ingress.
   // Emits ONLY `frame_png` envelopes (greyscale lossless PNG ~1-5 KB via upng-js).
   // The bridge wraps the payload in `EnvelopeSchema` server-side with type='frame_png'.

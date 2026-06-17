@@ -80,17 +80,25 @@ export interface PhoneSettingsPanelOptions {
   /** Initial map-view source mode (default `off`). */
   readonly playerViewInitialMode?: 'off' | 'streaming' | 'actor';
   /**
-   * Called when the user changes the map-view source (ADR-0015 §C): `off` (GM
-   * live), `streaming` (shared headless streaming view), or `actor` (the selected
-   * PC's real fogged view). Passes the current actorId + Foundry URL so the boot
-   * can send the `client_player_view` message. The bridge replies with a status
-   * shown via {@link PhoneSettingsPanel.setPlayerViewStatus}.
+   * Called when the user changes the map-view source (ADR-0015 §C). Receives a
+   * {@link PlayerViewRequest}: the mode plus everything the boot needs to send the
+   * `client_player_view` message — the selected actorId, the Foundry URL, and (for
+   * `actor` mode) the selected player's Forge credentials. The bridge replies with
+   * a status shown via {@link PhoneSettingsPanel.setPlayerViewStatus}.
    */
-  readonly onPlayerViewMode?: (
-    mode: 'off' | 'streaming' | 'actor',
-    actorId: string,
-    foundryUrl: string,
-  ) => void;
+  readonly onPlayerViewMode?: (req: PlayerViewRequest) => void;
+}
+
+/**
+ * Map-view source request emitted by the panel (ADR-0015 §C, password-free).
+ *
+ * Carries NO credentials: `actor` mode is resolved to the selected player's
+ * Foundry user on the bridge (the player must have opted in to streaming).
+ */
+export interface PlayerViewRequest {
+  readonly mode: 'off' | 'streaming' | 'actor';
+  readonly actorId: string;
+  readonly foundryUrl: string;
 }
 
 /**
@@ -179,7 +187,19 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   // by `setPlayerViewStatus` (downstream orchestrator status).
   let characterSelectEl: HTMLSelectElement | null = null;
   let foundryUrlEl: HTMLInputElement | null = null;
+  let playerViewSelectEl: HTMLSelectElement | null = null;
   let playerViewStatusEl: HTMLSpanElement | null = null;
+
+  /**
+   * Assemble a {@link PlayerViewRequest} from the live control values. The
+   * password-free model carries no credentials — `actor` mode is resolved to the
+   * player's Foundry user on the bridge side (see ADR-0015 §C).
+   */
+  const buildPlayerViewRequest = (mode: 'off' | 'streaming' | 'actor'): PlayerViewRequest => ({
+    mode,
+    actorId: characterSelectEl?.value ?? '',
+    foundryUrl: foundryUrlEl?.value.trim() ?? '',
+  });
 
   const root = doc.createElement('section');
   root.className = 'evf-settings-panel';
@@ -287,9 +307,10 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   // ── Map-view source select (ADR-0015 §C) ────────────────────────────────────
   //
   // Chooses the map source: GM live (off), shared streaming headless session, or
-  // the selected PC's headless view. On change it sends `client_player_view`
-  // (with the current actorId + Foundry URL) via `onPlayerViewMode`; the bridge
-  // replies with a status shown below. Credentials are NEVER sent from here.
+  // the selected PC's headless view. On change it emits a {@link PlayerViewRequest}
+  // via `onPlayerViewMode` (built by `buildPlayerViewRequest`); for `actor` mode
+  // the request carries the player's Forge credentials so the bridge logs the
+  // headless in as that player. The bridge replies with a status shown below.
   function buildPlayerViewSelect(): void {
     const r = row(L.playerViewLabel);
     const select = doc.createElement('select');
@@ -319,12 +340,11 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     select.addEventListener('change', () => {
       if (suppress) return;
       const mode = select.value as 'off' | 'streaming' | 'actor';
-      const actorId = characterSelectEl?.value ?? '';
-      const foundryUrl = foundryUrlEl?.value.trim() ?? '';
-      opts.onPlayerViewMode?.(mode, actorId, foundryUrl);
+      opts.onPlayerViewMode?.(buildPlayerViewRequest(mode));
     });
     r.appendChild(select);
     body.appendChild(r);
+    playerViewSelectEl = select;
 
     const hint = doc.createElement('span');
     hint.textContent = L.playerViewHint;
@@ -379,6 +399,15 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
       const value = select.value;
       if (!value) return; // guard against the disabled placeholder
       opts.onSelectActor?.(value);
+      // ADR-0015 §C: when the map source is the selected PC's headless view
+      // ('actor'), switching the character must ALSO re-drive the headless to the
+      // new PC. `client_select_actor` only re-pins the character SHEET; the map
+      // source is owned by `client_player_view`, whose actorId is a snapshot taken
+      // at send time. Without this re-send the glasses keep the OLD PC's fogged
+      // view after a character switch (the "different PG in actor mode" bug).
+      if (playerViewSelectEl?.value === 'actor') {
+        opts.onPlayerViewMode?.(buildPlayerViewRequest('actor'));
+      }
     });
 
     r.appendChild(select);
@@ -475,7 +504,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     return input;
   }
 
-  // Foundry URL, the Character/Role selector, then the player-view toggle → top.
+  // Foundry URL, the Character/Role selector, then the player-view source toggle.
   buildFoundryUrlField();
   buildCharacterSelector();
   buildPlayerViewSelect();

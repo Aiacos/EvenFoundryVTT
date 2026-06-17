@@ -53,22 +53,36 @@ import type {
 
 /**
  * Chromium launch flags for the HEADFUL-under-Xvfb path (the production
- * container): Mesa (llvmpipe) software GL from the virtual display provides a
- * working WebGL context — swiftshader headless does NOT (PIXI crashes with
- * `getExtension` on an undefined context). Verified 2026-06-17: with real GL the
- * world loads + canvas.ready in ~43s; with swiftshader it never readies.
+ * container). Foundry's PIXI WebGL needs a real GL context: headless swiftshader
+ * does NOT work (PIXI crashes with `getExtension` on an undefined context), and
+ * software GL (llvmpipe) is too slow to stream a live world (~0.1 fps). The
+ * production path is HARDWARE GL via ANGLE-on-Vulkan (Mesa radv over the
+ * passed-through AMD GPU) — see {@link ANGLE_BACKEND} and the launch-args comment
+ * below for the full rationale. Verified 2026-06-17.
  */
-// WebGL launch combo verified in-container 2026-06-17: `--headless=new` +
-// ANGLE-over-native-GL gives a WORKING WebGL context (Mesa, llvmpipe) — Foundry's
-// PIXI initialises and the world loads. (`--use-gl=egl` and plain swiftshader both
-// FAIL: PIXI crashes on `getExtension` of an undefined context.) The GPU device is
-// still passed through (compose) in case Mesa radeonsi initialises on a given host
-// — then ANGLE picks the hardware automatically; otherwise it is llvmpipe (slower
-// but correct). `--ignore-gpu-blocklist` lets ANGLE consider the GPU at all.
+// WebGL launch combo verified in-container 2026-06-17:
+//
+//   ANGLE-on-Vulkan (`--use-angle=vulkan` + radv) → HARDWARE GL. With the AMD GPU
+//   passed through (compose `/dev/dri`) and Mesa's radv Vulkan driver installed
+//   (`mesa-vulkan-ati`, see bridge.Dockerfile), ANGLE reports the real device —
+//   "ANGLE (AMD, Vulkan … (AMD Radeon 780M Graphics (RADV PHOENIX)), radv)" — and
+//   Foundry's PIXI renders at GPU speed. This is REQUIRED, not an optimisation:
+//   under software GL (llvmpipe) the headless main thread is so saturated by the
+//   WebGL render + PNG encode that the capture loop manages ~0.1 fps AND the frame
+//   POSTs `AbortSignal.timeout` before their resolve callback can run (root cause
+//   of the P2c "bridgeDeltaEmitter signal timed out" / zero-frames-reach-bridge
+//   symptom, diagnosed 2026-06-17). `--use-angle=gl` works but is llvmpipe-only.
+//
+// `EVF_PLAYER_VIEW_GL` selects the ANGLE backend: `vulkan` (default, hardware via
+// radv) or `gl` (llvmpipe software — the slow-but-correct fallback for hosts with
+// no Vulkan driver / no GPU passthrough). `--ignore-gpu-blocklist` +
+// `--enable-features=Vulkan` let ANGLE consider the GPU at all.
+const ANGLE_BACKEND = process.env['EVF_PLAYER_VIEW_GL'] === 'gl' ? 'gl' : 'vulkan';
 const HEADFUL_LAUNCH_ARGS = [
   '--headless=new',
   '--use-gl=angle',
-  '--use-angle=gl',
+  `--use-angle=${ANGLE_BACKEND}`,
+  ...(ANGLE_BACKEND === 'vulkan' ? ['--enable-features=Vulkan'] : []),
   '--ignore-gpu-blocklist',
   '--no-sandbox',
   '--disable-dev-shm-usage',
@@ -224,34 +238,43 @@ async function tryForgeLogin(page: Page, cfg: HeadlessSessionConfig): Promise<vo
  * Best-effort Foundry `/join` user selection + submit. NO-OP when the world is
  * already entered (no join form present).
  *
- * ⚠️ SELECTORS ARE GUESSES — tune during the P2b live bootstrap. For `actor`
- * mode we cannot reliably map an actorId → owning user from the join screen
- * (the actor list is not exposed pre-join), so we pick the configured/default
- * user; precise actor→user binding is a P2b live-tuning item.
+ * The Foundry USER is determined by the LOGIN, not the join screen: `streaming`
+ * mode authenticates as the bridge's streaming account, and `actor` mode
+ * authenticates with the selected player's own Forge credentials
+ * (`cfg.forgeUser`/`cfg.forgePassword`, see {@link doForgeLogin}) so The Forge
+ * routes into the world as that player's user. The join screen — when present —
+ * then carries a single matching user, so picking the first non-empty option is
+ * correct. (⚠️ join selectors are best-effort; tune during a live bootstrap.)
  */
-async function tryFoundryJoin(page: Page, _cfg: HeadlessSessionConfig): Promise<void> {
+async function tryFoundryJoin(page: Page, cfg: HeadlessSessionConfig): Promise<void> {
   // Probe for the Foundry join user-select; absent → already in the world.
   const userSelect = await waitForOptional(page, 'select[name="userid"]');
   if (userSelect === null) {
     return;
   }
   try {
-    // Pick the first non-empty user option (the default/streaming user) via the
-    // option-value attributes — read with the locator API to avoid referencing
-    // DOM types (the bridge tsconfig has no DOM lib). Refining this to the actor's
-    // owning user is a P2b live-tuning item (see JSDoc above).
-    const optionValues = await page
-      .locator('select[name="userid"] > option')
-      .evaluateAll((els) =>
-        (els as Array<{ getAttribute(name: string): string | null }>).map((el) =>
-          el.getAttribute('value'),
-        ),
-      );
-    const optionValue = optionValues.find((v) => v !== null && v !== '');
-    if (optionValue !== undefined && optionValue !== null) {
-      await page.selectOption('select[name="userid"]', optionValue);
+    if (cfg.mode === 'actor' && cfg.userName !== undefined && cfg.userName.length > 0) {
+      // `actor` mode: select the player's user by NAME (the `<option>` label) so we
+      // join AS that player → their fogged view. The bridge resolved this username
+      // from the actorId (only opted-in players are offered).
+      await page.selectOption('select[name="userid"]', { label: cfg.userName });
+    } else {
+      // streaming/default: pick the first non-empty user option (the streaming user).
+      // Read option `value`s via the locator API (the bridge tsconfig has no DOM lib).
+      const optionValues = await page
+        .locator('select[name="userid"] > option')
+        .evaluateAll((els) =>
+          (els as Array<{ getAttribute(name: string): string | null }>).map((el) =>
+            el.getAttribute('value'),
+          ),
+        );
+      const optionValue = optionValues.find((v) => v !== null && v !== '');
+      if (optionValue !== undefined && optionValue !== null) {
+        await page.selectOption('select[name="userid"]', optionValue);
+      }
     }
-    // Submit the join form (button selector is environment-specific).
+    // Leave the password field BLANK (Foundry users have no password by default —
+    // PASSWORD-FREE model) and submit the join form.
     await page.click('button[name="join"], button[type="submit"]:has-text("Join")');
     await page.waitForLoadState('networkidle', { timeout: SELECTOR_PROBE_MS }).catch(() => {});
   } catch {

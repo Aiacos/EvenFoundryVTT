@@ -20,20 +20,29 @@
 /**
  * The latest player-view intent recorded from a `client_player_view` message.
  *
- * `actorId` / `foundryUrl` are present only when the player enabled the toggle
- * with those fields set; a disable carries neither.
+ * PASSWORD-FREE: no credentials are carried. `actor` mode resolves the selected
+ * player's Foundry username (`userName`) from the character-list cache; the
+ * headless passes the Forge gate with the bridge's streaming account, then joins
+ * as that user with a blank password.
  */
 export interface PlayerViewIntent {
   /**
    * Map-view source mode: `off` (GM live, no headless), `streaming` (shared
-   * headless session as the streaming Foundry user — auto-framed), or `actor`
-   * (headless session as the selected PC → their fogged view).
+   * headless session as the bridge's streaming Foundry user — auto-framed), or
+   * `actor` (headless joined as the selected player's Foundry user → their real
+   * fogged view; no per-player credentials).
    */
   mode: 'off' | 'streaming' | 'actor';
-  /** Foundry actor to log the headless session in as — `actor` mode (P2). */
+  /** Selected PC actor id — `actor` mode (focus framing + audit + username resolution). */
   actorId?: string;
-  /** Foundry URL the headless session should open (P2). */
+  /** Foundry game URL the headless session should open (overrides the env default). */
   foundryUrl?: string;
+  /**
+   * Foundry username to SELECT on the `/join` screen — `actor` mode only. Resolved
+   * by the bridge from `actorId` via the character-list cache (only opted-in
+   * players are listed). Absent → the actor is not available for streaming.
+   */
+  userName?: string;
 }
 
 /** Default cold-start intent: GM live, no headless. */

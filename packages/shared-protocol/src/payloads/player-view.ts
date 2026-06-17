@@ -12,8 +12,14 @@
  * orchestrator state back so the panel can show what's happening. In P1 (no
  * orchestrator yet) the bridge replies `unavailable`.
  *
- * Credentials are NEVER carried here — the toggle only signals intent; the
- * bridge holds the Forge + Foundry credentials (ADR-0015 §C AUTH).
+ * Credential model (ADR-0015 §C AUTH, revised 2026-06-17 — PASSWORD-FREE):
+ * NO credentials ever ride on this channel. `streaming` uses the bridge's
+ * configured streaming account; `actor` ALSO uses the streaming account to pass
+ * the Forge gate, then the headless selects the **selected player's Foundry user**
+ * on the `/join` screen and joins with a BLANK password (Foundry users have no
+ * password by default). The bridge resolves `actorId` → that user's Foundry
+ * username from the character-list cache (only actors of players who OPTED IN to
+ * streaming are listed), so the control message carries no secrets.
  *
  * @see docs/architecture/0015-player-view-map-capture.md §C
  */
@@ -27,17 +33,19 @@ export const CLIENT_PLAYER_VIEW_TYPE = 'client_player_view' as const;
  * - `off`      — the GM's live, correctly-lit viewport (default; no headless session).
  * - `streaming` — a shared headless session as the **streaming** Foundry user
  *   (already auto-framed + correctly lit) — one stream for all glasses.
- * - `actor`    — a headless session as the **selected PC**'s user → that player's
- *   real fogged view.
+ * - `actor`    — a headless session joined as the **selected player's Foundry user**
+ *   (blank password) → that player's real fogged view (vision + lighting + fog).
+ *   No per-player credentials: the bridge resolves the actor's Foundry username.
  */
 export const PLAYER_VIEW_MODES = ['off', 'streaming', 'actor'] as const;
 
 /**
  * Upstream `client_player_view` message (EvenHub app → bridge).
  *
- * `z.strictObject` — no unexpected keys on the control channel (credentials NEVER
- * ride here; the bridge holds them). `actorId` is required-ish only for `actor`
- * mode (the bridge validates per mode); `foundryUrl` overrides the configured URL.
+ * `z.strictObject` — no unexpected keys, and NO credentials (password-free model;
+ * see the module header). `actorId` identifies the selected PC — for `actor` mode
+ * the bridge maps it to that player's Foundry username for the `/join` selection;
+ * `foundryUrl` overrides the bridge's configured Foundry game URL.
  */
 export const ClientPlayerViewMessageSchema = z.strictObject({
   type: z.literal(CLIENT_PLAYER_VIEW_TYPE),

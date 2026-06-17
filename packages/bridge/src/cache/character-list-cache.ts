@@ -69,6 +69,19 @@ export class CharacterListCache {
   }
 
   /**
+   * Resolve the owning Foundry USER name for an actor (ADR-0015 §C, password-free
+   * `actor` player-view). Returns the entry's `userName` — present only when that
+   * player opted in to streaming — or `undefined` when the actor is unknown or not
+   * opted in. The orchestrator uses it to select the user on the headless `/join`.
+   *
+   * @param actorId - Foundry actor document id.
+   * @returns The owning user's name, or `undefined` (unknown / not streamable).
+   */
+  getUserName(actorId: string): string | undefined {
+    return this._snapshot?.characters.find((c) => c.actorId === actorId)?.userName;
+  }
+
+  /**
    * Clear the cache (used in tests for isolation).
    *
    * Resets to the cold-cache state (`get()` returns `null` after clearing).

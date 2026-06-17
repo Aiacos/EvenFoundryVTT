@@ -272,12 +272,14 @@ const LOGGER_REDACT = [
   'bearer',
   'deepgramKey',
   'EVF_INTERNAL_SECRET',
+  'forgePassword',
   'headers.authorization',
   'headers.idempotency-key',
   'token',
   '*.apiKey',
   '*.bearer',
   '*.deepgramKey',
+  '*.forgePassword',
   '*.token',
 ] as const;
 
@@ -893,7 +895,12 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
           // reply to THIS session with the current orchestrator state. Subsequent
           // transitions (starting→live/error/off) broadcast via onStatus. No-op otherwise.
           handleClientPlayerView(
-            { playerViewStore, deltaEmitter, orchestrator: playerViewOrchestrator },
+            {
+              playerViewStore,
+              deltaEmitter,
+              orchestrator: playerViewOrchestrator,
+              characterListCache,
+            },
             sessionId,
             rawData,
             logger,

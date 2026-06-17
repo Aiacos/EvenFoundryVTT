@@ -97,6 +97,65 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(onSelectActor).not.toHaveBeenCalled();
   });
 
+  it('re-drives the headless (onPlayerViewMode) on character change when map source is actor', async () => {
+    const onSelectActor = vi.fn();
+    const onPlayerViewMode = vi.fn();
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      fetchRoster: () =>
+        Promise.resolve([
+          { actorId: 'actor-shin', name: 'Shin' },
+          { actorId: 'actor-mira', name: 'Mira' },
+        ]),
+      onSelectActor,
+      onPlayerViewMode,
+      initialActorId: 'actor-shin',
+      playerViewInitialMode: 'actor',
+      foundryUrl: 'https://forge.example',
+    });
+
+    await flush();
+
+    const select = getSelect();
+    select.value = 'actor-mira';
+    select.dispatchEvent(new Event('change'));
+
+    // The sheet re-pin AND the headless re-drive BOTH fire (ADR-0015 §C bug fix).
+    // Password-free: the request carries no credentials.
+    expect(onSelectActor).toHaveBeenCalledWith('actor-mira');
+    expect(onPlayerViewMode).toHaveBeenCalledWith({
+      mode: 'actor',
+      actorId: 'actor-mira',
+      foundryUrl: 'https://forge.example',
+    });
+  });
+
+  it('does NOT re-drive the headless on character change when map source is streaming', async () => {
+    const onPlayerViewMode = vi.fn();
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      fetchRoster: () =>
+        Promise.resolve([
+          { actorId: 'actor-shin', name: 'Shin' },
+          { actorId: 'actor-mira', name: 'Mira' },
+        ]),
+      onSelectActor: () => {},
+      onPlayerViewMode,
+      initialActorId: 'actor-shin',
+      playerViewInitialMode: 'streaming',
+    });
+
+    await flush();
+
+    const select = getSelect();
+    select.value = 'actor-mira';
+    select.dispatchEvent(new Event('change'));
+
+    expect(onPlayerViewMode).not.toHaveBeenCalled();
+  });
+
   it('renders the Foundry URL field pre-filled and is flat (no collapse chevron)', () => {
     createPhoneSettingsPanel({
       sendEdit: () => {},
@@ -146,7 +205,12 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(select.options[2]?.value).toBe('off');
     select.value = 'off';
     select.dispatchEvent(new Event('change'));
-    expect(onPlayerViewMode).toHaveBeenCalledWith('off', 'actor-shin', 'https://forge.example');
+    // off/streaming requests carry NO credentials (only the mode/actor/url).
+    expect(onPlayerViewMode).toHaveBeenCalledWith({
+      mode: 'off',
+      actorId: 'actor-shin',
+      foundryUrl: 'https://forge.example',
+    });
     // setPlayerViewStatus updates the status line.
     panel.setPlayerViewStatus({ state: 'unavailable', detail: 'orchestrator P2' });
     const status = document.querySelector<HTMLElement>('.evf-player-view-status');

@@ -42,7 +42,14 @@ export interface DebugEventFilter {
 }
 
 /** Object field names whose string values are always token-shaped (case-insensitive). */
-const TOKEN_FIELD_NAMES = new Set(['token', 'bearer', 'secret', 'authorization', 'apikey']);
+const TOKEN_FIELD_NAMES = new Set([
+  'token',
+  'bearer',
+  'secret',
+  'authorization',
+  'apikey',
+  'forgepassword',
+]);
 
 /** Minimum length for the token-shaped heuristic to treat a string value as a secret. */
 const TOKEN_SHAPED_MIN_LEN = 16;

@@ -43,6 +43,7 @@ interface Harness {
   send: ReturnType<typeof vi.fn>;
   applyIntent: ReturnType<typeof vi.fn>;
   state: PlayerViewStatus;
+  characterUserNames: Map<string, string>;
 }
 
 /**
@@ -76,8 +77,14 @@ function makeHarness(state: PlayerViewStatus = { state: 'starting' }): Harness {
     getState: () => state,
   };
 
+  // Fake roster cache: actorId → opted-in owning username (tests seed this map).
+  const characterUserNames = new Map<string, string>();
+  const characterListCache = {
+    getUserName: (actorId: string): string | undefined => characterUserNames.get(actorId),
+  };
+
   return {
-    deps: { playerViewStore, deltaEmitter, orchestrator },
+    deps: { playerViewStore, deltaEmitter, orchestrator, characterListCache },
     playerViewStore,
     deltaEmitter,
     sessionId: session.sessionId,
@@ -86,6 +93,7 @@ function makeHarness(state: PlayerViewStatus = { state: 'starting' }): Harness {
     send,
     applyIntent,
     state,
+    characterUserNames,
   };
 }
 

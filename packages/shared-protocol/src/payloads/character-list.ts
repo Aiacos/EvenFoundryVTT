@@ -51,6 +51,12 @@ export const CharacterListEntrySchema = z.object({
   name: z.string().min(1),
   /** Character level (1..20, dnd5e invariant). */
   level: z.number().int().min(1).max(20),
+  /**
+   * Owning Foundry USER name — present only when that player OPTED IN to having
+   * their view streamed (ADR-0015 §C, password-free `actor` mode). The bridge uses
+   * it to select the user on the headless `/join` screen. Absent → not streamable.
+   */
+  userName: z.string().min(1).optional(),
 });
 
 /** TypeScript type inferred from {@link CharacterListEntrySchema}. */

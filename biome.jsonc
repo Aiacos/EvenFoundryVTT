@@ -63,6 +63,17 @@
       }
     },
     {
+      // Dev CLI scripts (tools/) — console IS their output channel.
+      "includes": ["tools/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/shared-render/src/fixtures/**/*.txt"],
       "formatter": { "enabled": false }
     }

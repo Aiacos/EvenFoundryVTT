@@ -83,6 +83,38 @@ describe('readCharacterList', () => {
     expect(names).not.toContain('Goblin');
   });
 
+  it('emits userName for an actor whose owning player opted in to streaming (ADR-0015 §C)', () => {
+    const shin = makeActor('actor-shin', 'Shin', 5) as Record<string, unknown>;
+    // Only the player user 'u-shin' OWNs this actor.
+    shin.testUserPermission = (user: { id: string }) => user.id === 'u-shin';
+    vi.stubGlobal('game', {
+      actors: { contents: [shin] },
+      users: {
+        contents: [
+          { id: 'u-gm', name: 'GM', isGM: true, getFlag: () => true }, // GM skipped
+          { id: 'u-shin', name: 'Shin Player', isGM: false, getFlag: () => true }, // consented
+        ],
+      },
+    });
+
+    const result = readCharacterList();
+    expect(result.characters[0]?.userName).toBe('Shin Player');
+  });
+
+  it('omits userName when the owning player did NOT opt in', () => {
+    const shin = makeActor('actor-shin', 'Shin', 5) as Record<string, unknown>;
+    shin.testUserPermission = () => true;
+    vi.stubGlobal('game', {
+      actors: { contents: [shin] },
+      users: {
+        contents: [{ id: 'u-shin', name: 'Shin Player', isGM: false, getFlag: () => false }],
+      },
+    });
+
+    const result = readCharacterList();
+    expect(result.characters[0]?.userName).toBeUndefined();
+  });
+
   it('returns empty snapshot with source=foundry-world on throw (defensive)', () => {
     vi.stubGlobal('game', {
       actors: {

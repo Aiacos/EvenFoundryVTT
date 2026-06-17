@@ -11,6 +11,8 @@
   "evf.settings.map_contrast_normalize.hint": "Auto-stretch dark map scenes for readable contrast on the glasses before dithering. Disable to send raw brightness.",
   "evf.settings.map_dither.name": "Map dithering (glasses)",
   "evf.settings.map_dither.hint": "Apply a Bayer 4x4 ordered dither to the map greyscale: gradients render as a stippled pattern instead of flat bands. Off = clean flat tones (default). Applies immediately.",
+  "evf.settings.stream_consent.name": "Allow streaming my view (glasses)",
+  "evf.settings.stream_consent.hint": "Opt in to let your character's REAL view (vision + lighting + fog of war) be shown on the glasses in 'Selected PC' mode. A headless session joins as your user with no password. Off by default — only you decide. Manage this in the browser where you enable it.",
   "evf.settings.map_brightness.name": "Map brightness (glasses)",
   "evf.settings.map_brightness.hint": "Luma gain from −100 to +100 (0 = neutral). Brightens or darkens the map shown on the glasses without changing scene lighting — useful to tune the fixed-brightness G2 display. Applies immediately.",
   "evf.settings.capture_fps.name": "Map capture frame rate (fps)",

@@ -93,6 +93,9 @@ export interface HeadlessOrchestratorOptions {
 /** Status detail used when neither the intent nor the env supplies a Foundry URL. */
 const NO_URL_DETAIL = 'Foundry URL not configured';
 
+/** Status detail used when `actor` mode is requested but the actor has no streamable Foundry user (not opted in). */
+const NO_ACTOR_USER_DETAIL = 'Selected player is not available for streaming (opt-in required)';
+
 /**
  * Headless player-view orchestrator — one instance per bridge server.
  *
@@ -181,18 +184,36 @@ export class HeadlessOrchestrator {
       return;
     }
 
+    // `actor` mode joins as the selected player's Foundry user, so it REQUIRES a
+    // resolved Foundry username (the bridge maps actorId → username, and only
+    // players who OPTED IN to streaming are mapped). Missing → unavailable.
+    if (
+      intent.mode === 'actor' &&
+      (intent.userName === undefined || intent.userName.length === 0)
+    ) {
+      await this.teardown();
+      if (gen !== this.generation) return;
+      this.emit({ state: 'unavailable', detail: NO_ACTOR_USER_DETAIL });
+      return;
+    }
+
     // A new session supersedes any prior one — tear the old one down first.
     await this.teardown();
     if (gen !== this.generation) return; // a newer intent already took over
 
     this.emit({ state: 'starting' });
 
-    // Build the launch config from intent (mode/actorId/url) + env (creds/state).
+    // Build the launch config (PASSWORD-FREE model). BOTH `streaming` and `actor`
+    // pass the Forge gate with the bridge's streaming account (env creds + saved
+    // storageState). `actor` ADDITIONALLY selects the player's Foundry user on the
+    // `/join` screen (`userName`) and joins with a blank password — so the glasses
+    // show that player's real fogged view without any per-player secret.
     const cfg: HeadlessSessionConfig = { foundryUrl, mode: intent.mode };
     if (intent.actorId !== undefined) cfg.actorId = intent.actorId;
     if (env.storageStatePath !== undefined) cfg.storageStatePath = env.storageStatePath;
     if (env.forgeUser !== undefined) cfg.forgeUser = env.forgeUser;
     if (env.forgePassword !== undefined) cfg.forgePassword = env.forgePassword;
+    if (intent.mode === 'actor' && intent.userName !== undefined) cfg.userName = intent.userName;
 
     let launched: HeadlessSession;
     try {

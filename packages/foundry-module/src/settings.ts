@@ -203,6 +203,26 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
     onChange: onDisplayChange,
   });
 
+  // Player-view streaming CONSENT (ADR-0015 §C, password-free `actor` mode).
+  // Opt-in (default OFF): when a player enables this, their character becomes
+  // available for headless `actor`-mode viewing on the glasses (the bridge joins
+  // a headless session AS that player to show their real fogged view — no
+  // password). Each player decides for themselves. The toggle persists the choice
+  // as a User FLAG (world data) so the stream leader's roster reader can read it
+  // across clients; the write is best-effort (a flag failure must not crash the
+  // settings load). Manage consent in the browser where you enable it.
+  game.settings.register(MODULE_ID, 'streamConsent', {
+    name: 'evf.settings.stream_consent.name',
+    hint: 'evf.settings.stream_consent.hint',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: (value: unknown) => {
+      void game.user.setFlag(MODULE_ID, 'streamConsent', value === true).catch(() => {});
+    },
+  });
+
   // Map brightness — per-client display preference (2026-06-14). A luma gain in
   // percent (−100..+100, 0 = neutral) applied module-side just before the
   // 16-level quantize, so the fixed-brightness G2 phosphor display can be tuned

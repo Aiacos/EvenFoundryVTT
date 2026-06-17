@@ -89,11 +89,18 @@ RUN apk add --no-cache \
       mesa-gl \
       mesa-egl \
       mesa-dri-gallium \
-      mesa-gbm
-# NB: LIBGL_ALWAYS_SOFTWARE is intentionally NOT set — the compose file passes the
-# host AMD GPU (/dev/dri) into the container so Chromium gets HARDWARE GL via Mesa
-# radeonsi (in mesa-dri-gallium). Software llvmpipe is too slow to load a real
-# Foundry world. If no GPU is passed, Mesa falls back to llvmpipe automatically.
+      mesa-gbm \
+      mesa-vulkan-ati \
+      vulkan-loader
+# HARDWARE GL is REQUIRED (not just an optimisation) for the headless player-view:
+# under software GL (llvmpipe) the headless Chromium renders Foundry's WebGL world
+# at ~0.1 fps and its frame POSTs time out before completing (diagnosed 2026-06-17).
+# The compose file passes the host AMD GPU (/dev/dri) into the container; the path
+# to hardware is ANGLE-on-Vulkan via Mesa's radv driver (`mesa-vulkan-ati` +
+# `vulkan-loader`) — ANGLE then reports the real device (RADV PHOENIX). The launch
+# args (`--use-angle=vulkan`, see playwright-browser.ts) select it; set
+# EVF_PLAYER_VIEW_GL=gl to force the llvmpipe software fallback on GPU-less hosts.
+# LIBGL_ALWAYS_SOFTWARE is intentionally NOT set.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
     EVF_PLAYER_VIEW_HEADFUL=1 \

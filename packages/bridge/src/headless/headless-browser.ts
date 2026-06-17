@@ -26,8 +26,9 @@
  * Everything a single headless Foundry session needs to log in and stream.
  *
  * Built by the orchestrator from the {@link PlayerViewIntent} (`foundryUrl`,
- * `mode`, `actorId`) merged with environment-supplied credentials
- * (`storageStatePath`, `forgeUser`, `forgePassword`).
+ * `mode`, `actorId`, `userName`) merged with the bridge's STREAMING-account
+ * credentials (`storageStatePath`, `forgeUser`, `forgePassword`) — used by BOTH
+ * modes to pass the Forge gate (PASSWORD-FREE per-player model, ADR-0015 §C).
  */
 export interface HeadlessSessionConfig {
   /** Foundry game URL. The launcher appends `?evfLeader=1` (or `&evfLeader=1`). */
@@ -35,16 +36,23 @@ export interface HeadlessSessionConfig {
   /**
    * Map-view source mode:
    * - `streaming` — join as the configured/default streaming user (auto-framed).
-   * - `actor`     — join as the selected PC's owning user (their fogged view).
+   * - `actor`     — join as the selected PC's owning user ({@link userName}) for
+   *   that player's fogged view, with a blank password.
    */
   mode: 'streaming' | 'actor';
-  /** Foundry actor to join as — `actor` mode only (selects the owning user). */
+  /** Foundry actor being viewed — `actor` mode (focus framing + audit). */
   actorId?: string;
+  /**
+   * Foundry USERNAME to select on the `/join` screen — `actor` mode only. The
+   * bridge resolves it from `actorId`; the headless picks this user and joins with
+   * a blank password (Foundry users have no password by default).
+   */
+  userName?: string;
   /** Path to a saved Playwright `storageState` JSON (the reliable login path). */
   storageStatePath?: string;
-  /** Forge account email/username — best-effort native auto-login only. */
+  /** Forge (streaming-account) email/username — best-effort native auto-login only. */
   forgeUser?: string;
-  /** Forge account password — best-effort native auto-login only. NEVER logged. */
+  /** Forge (streaming-account) password — best-effort native auto-login only. NEVER logged. */
   forgePassword?: string;
 }
 
