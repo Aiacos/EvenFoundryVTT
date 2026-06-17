@@ -1,6 +1,6 @@
 # ADR-0015: Player-view map capture & live character/role selection
 
-- **Status:** Proposed (2026-06-16) — increments (A) and (B) below are **implemented**; the headless-session capture (C) is **deferred / future-work to inspect**.
+- **Status:** Proposed (2026-06-16; C design 2026-06-17) — (A) live in-app role selection **implemented**; (B) synthesized framing **implemented, defaulted OFF (lighting-incompatible)**; (C) headless player-view session **designed, EvenHub-toggle activated, phased build pending the AUTH decision**.
 - **Relates to:** ADR-0001 (layered UI — z=0 map), ADR-0014 (bearer ↔ Foundry-user binding — the authorized actor set), [[map-auto-framing]], [[frame-post-depth2-pipeline]].
 - **Driver:** user request 2026-06-16 — *"la mappa deve essere quella del PG selezionato (Shin), non per forza quella del GM"* and *"vorrei che si loggasse con il ruolo selezionato"*.
 
@@ -36,17 +36,53 @@ Without a player session, the GM (leader) client synthesizes the framing: a worl
 
 **Conclusion:** party-fit framing synthesized on the GM client is *fundamentally incompatible* with correct Foundry lighting. It ships **OFF by default** (v0.1.30); the live, correctly-lit GM viewport is the default capture. Correct framing **with** the player's own lighting/fog is precisely what increment (C) — the headless player session — delivers (a browser logged in as the player renders THEIR view with THEIR effects natively).
 
-### (C) Real player view via a logged-in player session — DEFERRED (future work to inspect)
+### (C) Real player view via a headless logged-in player session — DESIGN (2026-06-17, EvenHub-toggle activated)
 
-To get Shin's **real fogged view**, capture a browser **logged in as Shin's Foundry user**. Interim manual form (what the user runs *now*): keep a browser logged in as the player; the stream-leader should then be **that** client. Automated target: a **headless Chromium (Playwright)** the bridge launches, that logs into the world as the selected player's user, loads the module, and becomes the leader.
+To get the selected PC's **real fogged view** (their viewport + lighting + vision + fog), capture a browser **logged in as that player's Foundry user** — the only way Foundry renders those view-dependent effects correctly (see §B). Automated form: the bridge launches a **headless Chromium (Playwright)** that logs into the world as the selected player, loads the EvenFoundryVTT module, and becomes the stream-leader. Activated by an **EvenHub settings toggle**.
 
-This is deferred. Open questions to resolve before building (the "rest to inspect"):
+#### Components
 
-1. **Stream-leader election must follow the focus actor.** Prefer the active client whose user **owns** the selected actor; fall back to GM/lowest-id. *Complication:* the focus actor is currently known only to the **posting (leader)** client (it learns `focusActorId` from frame-POST responses). A non-leader player client never POSTs, so it can't know to take over. Fix options: distribute the focus actor to **all** clients (socketlib broadcast, or a transient world/user flag), with a one-time GM→player leadership handoff. Until this exists, a manually-logged-in player client will **not** automatically become the source.
-2. **Authentication of the headless session.** Foundry user password vs passwordless join; on The Forge, whether the game URL gates behind a Forge account or routes straight to Foundry `/join`. Credentials must be supplied via bridge config (env/settings), never in code.
-3. **Runtime & lifecycle.** Where Chromium runs (preferred: a sidecar in the bridge Docker compose, no third-party service); one session that **follows** the glasses selection (logout/login on PG change — seconds of lag) vs **one persistent session per player** (instant switch, N× RAM/CPU). Spawn/restart/teardown ownership.
-4. **Resource cost.** A persistent headless Chromium rendering a Foundry scene is heavy; quantify before committing the homelab to it.
-5. **Selection persistence.** Persist the live `client_select_actor` choice to the Even Hub kv store and re-seed the next handshake `actorId` (currently the selection reverts to the wizard's `characterId` on reboot). Tracked as `TODO(ADR-0015)` in `g2-app/src/phone/settings-panel.ts`.
+1. **EvenHub toggle (g2-app phone settings panel)** — a new "Player view (headless)" switch. Enabled only when a Character/Role is selected and a Foundry URL is set. On toggle it sends a new upstream control message `client_player_view { enabled, actorId, foundryUrl }`; the bridge echoes a **status** (`off | starting | live | error:<reason>`) back to the panel (via the existing frame-POST piggyback / a status delta) so the user sees what's happening. The toggle does NOT carry credentials.
+
+2. **Bridge: headless-session orchestrator (new `packages/bridge/src/headless/`)** — owns the Playwright lifecycle:
+   - On `enabled:true`: launch a headless Chromium (or reuse a warm one), `goto(foundryUrl)`, pass any Forge gate, complete Foundry `/join` as the selected player's user (auth — see below), wait for `canvas.ready`. The module (installed in the world) loads in this client.
+   - On `enabled:false` / player change / glasses disconnect: tear down (or re-login as the new player).
+   - Health: restart on crash (bounded retries), surface status. Single active session (the selected player) to bound RAM/CPU.
+
+3. **Module: forced stream-leader (foundry-module)** — the headless client must win `isStreamLeader()` so ITS view (not the GM's) is captured. The bridge launches it with a marker (URL query param `?evfLeader=1`, read once at init into a module flag); a client with the marker forces `isStreamLeader()=true` and every other client (incl. the GM) yields when a marked client is active. This sidesteps the "focus-actor distribution" problem entirely — leadership is assigned by the orchestrator, not elected.
+
+#### Data flow
+
+```
+EvenHub toggle ON (player = Shin)
+  g2-app → client_player_view{enabled:true, actorId:Shin, foundryUrl} → bridge
+  bridge → spawn Chromium → login as Shin's user @ foundryUrl (?evfLeader=1)
+         → module loads, forced leader → captures Shin's REAL view (lighting+fog) → frame_png → bridge
+  bridge → broadcast frames → glasses show Shin's real fogged view
+  bridge → status:'live' → EvenHub panel
+EvenHub toggle OFF → bridge tears down Chromium → back to GM-live capture (§B default)
+```
+
+#### Decisions (this design)
+- **Runtime:** Chromium as a **sidecar in the bridge Docker compose** (no third-party service) — the user's stated preference. Needs WebGL: `--use-gl=angle --use-angle=swiftshader` (software GL) or a GPU passthrough; validate Foundry's PIXI scene actually renders headless.
+- **Scope:** **one** headless session at a time = the actor selected in EvenHub (`client_select_actor`). Switching PC re-logins (seconds of lag) — acceptable for MVP vs one-Chromium-per-player (N× RAM).
+- **Credentials:** held **only on the bridge** (env / mounted secret), never in the EvenHub app or git. The toggle triggers; the bridge authenticates.
+- **Leadership:** orchestrator-assigned via `?evfLeader=1` marker (no socketlib focus distribution needed).
+
+#### Open question — AUTH (blocking, needs the user's Forge setup)
+How the headless client authenticates as the player at `foundryUrl`:
+- (a) **Passwordless** Foundry user → select user + Join.
+- (b) **Per-user Foundry password** → stored in bridge config, keyed by Foundry user.
+- (c) **The Forge gate** → the game URL may require a Forge account login before Foundry `/join`; if so, the orchestrator needs Forge credentials too (or a player-invite/direct-join link that bypasses the Forge account).
+
+#### Phasing
+- **P1 — toggle + protocol + status (no Chromium yet):** EvenHub switch + `client_player_view` message + bridge handler that records intent and returns `status:'error:not-configured'`. Wires the UX end-to-end, no dead UI.
+- **P2 — orchestrator:** Playwright sidecar, login flow (auth per the decision above), `canvas.ready` gate, lifecycle/health.
+- **P3 — forced leader:** module `?evfLeader=1` flag + GM yield; confirm the captured frames are the player's fogged view.
+- **P4 — hardening:** resource limits, restart policy, status surfacing, secrets handling, Forge ToS/rate-limit check.
+
+#### Also folded in (was deferred)
+- **Selection persistence:** persist the `client_select_actor` choice to the Even Hub kv store and re-seed the next handshake `actorId` (currently reverts to the wizard `characterId` on reboot). `TODO(ADR-0015)` in `g2-app/src/phone/settings-panel.ts`.
 
 ## Consequences
 
