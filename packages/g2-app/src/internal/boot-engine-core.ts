@@ -55,7 +55,13 @@
  * @see ../index.test-support.ts (test-only DI wrapper)
  */
 import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
-import { CLIENT_SELECT_ACTOR_TYPE, type ServerCap } from '@evf/shared-protocol';
+import {
+  CLIENT_PLAYER_VIEW_TYPE,
+  CLIENT_SELECT_ACTOR_TYPE,
+  PLAYER_VIEW_STATUS_TYPE,
+  PlayerViewStatusSchema,
+  type ServerCap,
+} from '@evf/shared-protocol';
 import { startAudioCapture } from '../engine/audio-capture.js';
 import { type BootStep, showBootSplash } from '../engine/boot-splash.js';
 import { CanvasCompositor } from '../engine/canvas-compositor.js';
@@ -1043,6 +1049,30 @@ export async function _bootEngineCore(
     onFoundryUrlChange: (url) => {
       void saveFoundryUrl(url);
     },
+    // Player-view (headless) toggle — sends client_player_view; the bridge
+    // orchestrator (ADR-0015 §C) logs a session in as the player. Status comes
+    // back via the player_view_status subscription below. Credentials are never
+    // sent from here — the bridge holds them.
+    onPlayerViewToggle: (enabled, actorId, foundryUrl) => {
+      // Omit empty actorId/foundryUrl: the message schema is strict (actorId
+      // min-1, foundryUrl must be a URL), so empty strings would be rejected.
+      wsSender.send(
+        JSON.stringify({
+          type: CLIENT_PLAYER_VIEW_TYPE,
+          enabled,
+          ...(actorId !== '' ? { actorId } : {}),
+          ...(foundryUrl !== '' ? { foundryUrl } : {}),
+        }),
+      );
+    },
+  });
+
+  // Reflect the bridge's player-view orchestrator status into the panel.
+  const unsubPlayerViewStatus = wsEventBus.subscribe(PLAYER_VIEW_STATUS_TYPE, (raw) => {
+    const parsed = PlayerViewStatusSchema.safeParse(raw);
+    if (parsed.success) {
+      phoneSettings?.setPlayerViewStatus(parsed.data);
+    }
   });
 
   // Phase 27 (quick-task 260610-d42) — MapCanvasLayer at z=0 for canvas mode.
@@ -2118,6 +2148,11 @@ export async function _bootEngineCore(
         displaySettingsSync.dispose();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: displaySettingsSync.dispose failed', err);
+      }
+      try {
+        unsubPlayerViewStatus();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: unsubPlayerViewStatus failed', err);
       }
       try {
         phoneSettings?.dispose();

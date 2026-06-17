@@ -127,6 +127,29 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(onFoundryUrlChange).toHaveBeenCalledWith('https://new.forge');
   });
 
+  it('player-view toggle fires onPlayerViewToggle with the current actorId + URL', async () => {
+    const onPlayerViewToggle = vi.fn();
+    const panel = createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      foundryUrl: 'https://forge.example',
+      fetchRoster: () => Promise.resolve([{ actorId: 'actor-shin', name: 'Shin' }]),
+      initialActorId: 'actor-shin',
+      onPlayerViewToggle,
+    });
+    await flush();
+    const toggle = document.querySelector<HTMLInputElement>('input.evf-player-view');
+    if (!toggle) throw new Error('player-view toggle not found');
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    expect(onPlayerViewToggle).toHaveBeenCalledWith(true, 'actor-shin', 'https://forge.example');
+    // setPlayerViewStatus updates the status line.
+    panel.setPlayerViewStatus({ state: 'unavailable', detail: 'orchestrator P2' });
+    const status = document.querySelector<HTMLElement>('.evf-player-view-status');
+    expect(status?.textContent).toContain('unavailable');
+    expect(status?.textContent).toContain('orchestrator P2');
+  });
+
   it('leaves a disabled option and does not throw when fetchRoster rejects', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onSelectActor = vi.fn();

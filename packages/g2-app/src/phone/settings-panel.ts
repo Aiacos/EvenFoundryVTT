@@ -23,10 +23,20 @@
 
 import type { SettingsDisplay } from '@evf/shared-protocol';
 
+/** Minimal structural shape of a player-view status (avoids a hard schema import). */
+export interface PlayerViewStatusLike {
+  /** Orchestrator state: off | starting | live | unavailable | error. */
+  readonly state: string;
+  /** Optional human-readable detail (error reason / note). */
+  readonly detail?: string | undefined;
+}
+
 /** Handle for the mounted panel. */
 export interface PhoneSettingsPanel {
   /** Reflect a downstream Foundry settings snapshot into the controls. */
   update(settings: SettingsDisplay): void;
+  /** Reflect a downstream player-view orchestrator status into the status line. */
+  setPlayerViewStatus(status: PlayerViewStatusLike): void;
   /** Remove the panel from the DOM and release listeners. */
   dispose(): void;
 }
@@ -67,6 +77,15 @@ export interface PhoneSettingsPanelOptions {
   readonly foundryUrl?: string | undefined;
   /** Called when the user edits the Foundry URL (persist for the next connect). */
   readonly onFoundryUrlChange?: (url: string) => void;
+  /** Initial state of the "Player view (headless)" toggle (default off). */
+  readonly playerViewInitial?: boolean;
+  /**
+   * Called when the user toggles "Player view (headless)" (ADR-0015 §C). Passes
+   * the current actorId (the selected character) + Foundry URL so the boot can
+   * send the `client_player_view` message. The bridge replies with a status the
+   * panel shows via {@link PhoneSettingsPanel.setPlayerViewStatus}.
+   */
+  readonly onPlayerViewToggle?: (enabled: boolean, actorId: string, foundryUrl: string) => void;
 }
 
 /**
@@ -104,6 +123,10 @@ const LABELS = {
     characterError: 'Non disponibile',
     foundryLabel: 'Link Foundry',
     foundryHint: 'In sviluppo la connessione usa il bridge locale; questo campo serve al deploy.',
+    playerViewLabel: 'Vista player (headless)',
+    playerViewHint:
+      'Mostra la vista REALE del PG selezionato (illuminazione + nebbia di guerra). Il bridge logga una sessione come il player.',
+    playerViewStatusPrefix: 'Stato:',
   },
   en: {
     title: 'Map settings',
@@ -119,6 +142,10 @@ const LABELS = {
     characterError: 'Unavailable',
     foundryLabel: 'Foundry URL',
     foundryHint: 'In dev the connection uses the local bridge; this field is for deploy.',
+    playerViewLabel: 'Player view (headless)',
+    playerViewHint:
+      "Shows the selected PC's REAL view (lighting + fog of war). The bridge logs a session in as the player.",
+    playerViewStatusPrefix: 'Status:',
   },
 } as const;
 
@@ -135,6 +162,13 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
 
   // `suppress` guards `update()` from re-firing sendEdit while we set control values.
   let suppress = false;
+
+  // Refs captured by the builders so the player-view toggle can read the current
+  // actorId (character select) + Foundry URL when it fires. `statusEl` is updated
+  // by `setPlayerViewStatus` (downstream orchestrator status).
+  let characterSelectEl: HTMLSelectElement | null = null;
+  let foundryUrlEl: HTMLInputElement | null = null;
+  let playerViewStatusEl: HTMLSpanElement | null = null;
 
   const root = doc.createElement('section');
   root.className = 'evf-settings-panel';
@@ -236,6 +270,46 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     wrap.appendChild(input);
     wrap.appendChild(hint);
     body.appendChild(wrap);
+    foundryUrlEl = input;
+  }
+
+  // ── Player view (headless) toggle (ADR-0015 §C) ─────────────────────────────
+  //
+  // Enables/disables the bridge's headless player-view session for the selected
+  // PC. Sends `client_player_view` (with the current actorId + Foundry URL) via
+  // `onPlayerViewToggle`; the bridge replies with a status shown below the row.
+  // Credentials are NEVER sent from here — the bridge holds them.
+  function buildPlayerViewToggle(): void {
+    const r = row(L.playerViewLabel);
+    const input = doc.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'evf-player-view';
+    input.checked = opts.playerViewInitial === true;
+    Object.assign(input.style, { width: '22px', height: '22px', accentColor: T.accent });
+    input.addEventListener('change', () => {
+      if (suppress) return;
+      const actorId = characterSelectEl?.value ?? '';
+      const foundryUrl = foundryUrlEl?.value.trim() ?? '';
+      opts.onPlayerViewToggle?.(input.checked, actorId, foundryUrl);
+    });
+    r.appendChild(input);
+    body.appendChild(r);
+
+    const hint = doc.createElement('span');
+    hint.textContent = L.playerViewHint;
+    Object.assign(hint.style, { display: 'block', color: T.textDim, font: '400 13px/1.3 inherit' });
+    body.appendChild(hint);
+
+    const status = doc.createElement('span');
+    status.className = 'evf-player-view-status';
+    Object.assign(status.style, {
+      display: 'block',
+      color: T.textDim,
+      font: '400 13px/1.3 inherit',
+      paddingBottom: '4px',
+    });
+    body.appendChild(status);
+    playerViewStatusEl = status;
   }
 
   // ── Character / Role selector (top of body) ─────────────────────────────────
@@ -278,6 +352,7 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
 
     r.appendChild(select);
     body.appendChild(r);
+    characterSelectEl = select;
 
     const roster = opts.fetchRoster;
     if (!roster) {
@@ -369,9 +444,10 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     return input;
   }
 
-  // Foundry URL first, then the Character/Role selector → top of the body.
+  // Foundry URL, the Character/Role selector, then the player-view toggle → top.
   buildFoundryUrlField();
   buildCharacterSelector();
+  buildPlayerViewToggle();
 
   const ditherEl = toggle(L.dither, 'dither');
   const brightnessEl = slider(
@@ -417,10 +493,18 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     (el as unknown as { _evfRender?: () => void })._evfRender?.();
   }
 
+  /** Reflect the downstream player-view orchestrator status into the status line. */
+  function setPlayerViewStatus(status: PlayerViewStatusLike): void {
+    if (playerViewStatusEl === null) return;
+    const detail = status.detail !== undefined && status.detail !== '' ? ` — ${status.detail}` : '';
+    playerViewStatusEl.textContent = `${L.playerViewStatusPrefix} ${status.state}${detail}`;
+  }
+
   mount.appendChild(root);
 
   return {
     update: (settings) => applySettings(settings),
+    setPlayerViewStatus,
     dispose: () => {
       root.remove();
     },
