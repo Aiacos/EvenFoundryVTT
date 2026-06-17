@@ -1435,6 +1435,60 @@ describe('isStreamLeader — stream-source election', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// isStreamLeader — forced leader (ADR-0015 §C P2c — ?evfLeader=1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('isStreamLeader — forced leader (?evfLeader=1)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  /** Import isStreamLeader with `window.location.search` set, then evaluate it. */
+  async function leaderWithUrl(
+    search: string,
+    self: { id: string; active: boolean; isGM: boolean },
+    others: Array<{ id: string; active: boolean; isGM: boolean }>,
+  ): Promise<boolean> {
+    vi.resetModules();
+    // A fresh import re-runs module.ts top-level (settings.ts → PairModal extends
+    // ApplicationV2) so the Foundry app globals must be present.
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
+    });
+    // The `_forcedLeader` const reads window.location.search at module load.
+    vi.stubGlobal('window', { location: { search } });
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    vi.stubGlobal('game', { user: self, users: [self, ...others] });
+    const { isStreamLeader } = await import('./module.js');
+    return isStreamLeader();
+  }
+
+  it('FL-SL-1: ?evfLeader=1 → a PLAYER wins even while a GM is active', async () => {
+    // Without the flag a player loses to a GM (see SL-2); the flag forces leadership.
+    await expect(
+      leaderWithUrl('?evfLeader=1', { id: 'player', active: true, isGM: false }, [
+        { id: 'gm', active: true, isGM: true },
+      ]),
+    ).resolves.toBe(true);
+  });
+
+  it('FL-SL-2: no flag → the same player still loses to the GM', async () => {
+    await expect(
+      leaderWithUrl('', { id: 'player', active: true, isGM: false }, [
+        { id: 'gm', active: true, isGM: true },
+      ]),
+    ).resolves.toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // bridgeDeltaEmitter — frame latest-wins POST queue (latency audit 2026-06-11)
 // ─────────────────────────────────────────────────────────────────────────────
 

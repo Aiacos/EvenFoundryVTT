@@ -45,6 +45,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { SETTINGS_DISPLAY_TYPE, SettingsDisplaySchema } from '@evf/shared-protocol';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { ForcedLeaderTracker } from '../headless/forced-leader-tracker.js';
 import type { SettingsStore } from '../settings/settings-store.js';
 import type { DeltaEmitter } from '../ws/delta-emitter.js';
 
@@ -166,6 +167,7 @@ export async function registerInternalDeltaRoute(
   onDelta?: DeltaInterceptFn,
   settingsStore?: SettingsStore,
   getFocusActorId?: () => string | null,
+  forcedLeaderTracker?: ForcedLeaderTracker,
 ): Promise<void> {
   app.post('/internal/delta', { config: { rateLimit: false } }, async (request, reply) => {
     // --- Auth: EVF_INTERNAL_SECRET header check ---
@@ -223,8 +225,26 @@ export async function registerInternalDeltaRoute(
     // Called BEFORE fan-out so caches are warm when WS clients receive the delta.
     onDelta?.(type, payload);
 
+    // --- Forced-leader frame arbitration (ADR-0015 §C P2c) ---
+    // A headless player-view client tags its frame POSTs with X-EVF-Forced-Leader.
+    // While such frames arrive, the GM's (non-tagged) frames are DROPPED from the
+    // broadcast so the glasses show the headless view. The poster still gets the
+    // normal response below (its reverse channel keeps working); only the fan-out
+    // of the superseded GM frame is skipped. Non-frame deltas are never gated.
+    let skipBroadcast = false;
+    if (forcedLeaderTracker !== undefined && FRAME_DELTA_TYPES.has(type)) {
+      const forced = request.headers['x-evf-forced-leader'] === '1';
+      if (forced) {
+        forcedLeaderTracker.mark();
+      } else if (forcedLeaderTracker.isActive()) {
+        skipBroadcast = true;
+      }
+    }
+
     // --- Fan out to all subscribed WS sessions ---
-    deltaEmitter.emitDelta(type, payload);
+    if (!skipBroadcast) {
+      deltaEmitter.emitDelta(type, payload);
+    }
 
     // --- Frame-POST reverse channel: piggyback glasses-originated control on
     // the leader-only frame response (no new connection). Carries pending

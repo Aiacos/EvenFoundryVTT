@@ -72,6 +72,7 @@ import { DebugEventBus } from './debug/debug-event-bus.js';
 import { registerDebugRoutes } from './debug/debug-routes.js';
 import { makeInboundTap } from './debug/inbound-tap.js';
 import { isDebugEnabled } from './debug/is-debug-enabled.js';
+import { ForcedLeaderTracker } from './headless/forced-leader-tracker.js';
 import { HeadlessOrchestrator } from './headless/orchestrator.js';
 import { PlayerViewStore } from './headless/player-view-store.js';
 import { createMetricsRegistry } from './metrics/registry.js';
@@ -426,6 +427,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // Records the latest headless player-view intent from `client_player_view`
   // messages; the P2 headless orchestrator (ADR-0015 §C) reads it.
   const playerViewStore = new PlayerViewStore();
+  // Tracks the headless forced-leader's frames so the internal-delta route drops
+  // the GM's frames while the headless player-view session streams (ADR-0015 §C P2c).
+  const forcedLeaderTracker = new ForcedLeaderTracker();
 
   // Headless player-view orchestrator (ADR-0015 §C, P2b). Drives at most one
   // headless Chromium Foundry session per intent toggle and BROADCASTS its
@@ -711,6 +715,7 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     },
     settingsStore,
     () => sessionStore.getFocusActorId(),
+    forcedLeaderTracker,
   );
 
   // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---

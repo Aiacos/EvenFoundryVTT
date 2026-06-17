@@ -249,6 +249,24 @@ let _focusActorId: string | null = null;
 const FRAME_DELTA_TYPES: ReadonlySet<string> = new Set(['frame_png', 'frame_pixels']);
 
 /**
+ * Forced stream-leader (ADR-0015 §C P2c): true when THIS client was launched by
+ * the bridge's headless player-view orchestrator with `?evfLeader=1` in the URL.
+ * A forced leader ALWAYS wins {@link isStreamLeader} (so it captures even while a
+ * GM is connected) and tags its frame POSTs with the `X-EVF-Forced-Leader` header
+ * so the bridge broadcasts ITS frames and drops the GM's while it streams.
+ * Read once at module load; guarded for the (window-less) test environment.
+ */
+const _forcedLeader: boolean = (() => {
+  try {
+    return (
+      typeof window !== 'undefined' && /[?&]evfLeader=1(?:&|$)/.test(window.location?.search ?? '')
+    );
+  } catch {
+    return false;
+  }
+})();
+
+/**
  * One POST to bridge /internal/delta with timeout; never throws (T-02-01).
  *
  * Returns the parsed JSON response body (or null on any failure). The frame
@@ -267,6 +285,9 @@ async function postDelta(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${internalSecret}`,
+        // Forced-leader tag (ADR-0015 §C P2c): the bridge prefers these frames and
+        // drops the GM's while a headless player-view session streams.
+        ...(_forcedLeader ? { 'X-EVF-Forced-Leader': '1' } : {}),
       },
       body: JSON.stringify({ type, payload }),
       signal: AbortSignal.timeout(DELTA_POST_TIMEOUT_MS),
@@ -598,6 +619,12 @@ interface UserLike {
  * streams — a duplicate stream beats a permanently blank map.
  */
 export function isStreamLeader(): boolean {
+  // Forced leader (ADR-0015 §C P2c): a headless player-view client (?evfLeader=1)
+  // ALWAYS streams, overriding the GM-wins election — its view is the chosen map
+  // source. The bridge drops the GM's frames while these arrive.
+  if (_forcedLeader) {
+    return true;
+  }
   try {
     const g = game as unknown as { user?: UserLike | null; users?: Iterable<UserLike> | null };
     const self = g.user;
