@@ -58,13 +58,20 @@ import type {
  * `getExtension` on an undefined context). Verified 2026-06-17: with real GL the
  * world loads + canvas.ready in ~43s; with swiftshader it never readies.
  */
+// WebGL launch combo verified in-container 2026-06-17: `--headless=new` +
+// ANGLE-over-native-GL gives a WORKING WebGL context (Mesa, llvmpipe) — Foundry's
+// PIXI initialises and the world loads. (`--use-gl=egl` and plain swiftshader both
+// FAIL: PIXI crashes on `getExtension` of an undefined context.) The GPU device is
+// still passed through (compose) in case Mesa radeonsi initialises on a given host
+// — then ANGLE picks the hardware automatically; otherwise it is llvmpipe (slower
+// but correct). `--ignore-gpu-blocklist` lets ANGLE consider the GPU at all.
 const HEADFUL_LAUNCH_ARGS = [
+  '--headless=new',
+  '--use-gl=angle',
+  '--use-angle=gl',
+  '--ignore-gpu-blocklist',
   '--no-sandbox',
   '--disable-dev-shm-usage',
-  // Use the passed-through host GPU (compose `devices: /dev/dri`); the AMD APU is
-  // otherwise on Chromium's GPU blocklist for some driver versions.
-  '--ignore-gpu-blocklist',
-  '--enable-gpu-rasterization',
 ] as const;
 
 /** Fallback flags for the (non-working-for-WebGL) headless path / dev hosts. */
@@ -80,7 +87,7 @@ const HEADLESS_LAUNCH_ARGS = [
  * A fresh, uncached world load over the WAN measured ~43 s; 3 min leaves margin
  * for a large world + the "world seems to take a long time" download phase.
  */
-const WORLD_READY_TIMEOUT_MS = 180_000;
+const WORLD_READY_TIMEOUT_MS = 300_000;
 /** Short per-selector probe timeout — login surfaces are optional, fail fast (ms). */
 const SELECTOR_PROBE_MS = 5_000;
 
