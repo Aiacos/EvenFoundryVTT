@@ -90,11 +90,14 @@ RUN apk add --no-cache \
       mesa-egl \
       mesa-dri-gallium \
       mesa-gbm
+# NB: LIBGL_ALWAYS_SOFTWARE is intentionally NOT set — the compose file passes the
+# host AMD GPU (/dev/dri) into the container so Chromium gets HARDWARE GL via Mesa
+# radeonsi (in mesa-dri-gallium). Software llvmpipe is too slow to load a real
+# Foundry world. If no GPU is passed, Mesa falls back to llvmpipe automatically.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
     EVF_PLAYER_VIEW_HEADFUL=1 \
-    DISPLAY=:99 \
-    LIBGL_ALWAYS_SOFTWARE=1
+    DISPLAY=:99
 
 # Copy the self-contained deployment from builder stage
 COPY --from=builder /app/bridge .

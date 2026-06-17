@@ -58,7 +58,14 @@ import type {
  * `getExtension` on an undefined context). Verified 2026-06-17: with real GL the
  * world loads + canvas.ready in ~43s; with swiftshader it never readies.
  */
-const HEADFUL_LAUNCH_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'] as const;
+const HEADFUL_LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-dev-shm-usage',
+  // Use the passed-through host GPU (compose `devices: /dev/dri`); the AMD APU is
+  // otherwise on Chromium's GPU blocklist for some driver versions.
+  '--ignore-gpu-blocklist',
+  '--enable-gpu-rasterization',
+] as const;
 
 /** Fallback flags for the (non-working-for-WebGL) headless path / dev hosts. */
 const HEADLESS_LAUNCH_ARGS = [
