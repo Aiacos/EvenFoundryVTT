@@ -67,6 +67,7 @@ import { DebugEventBus } from './debug/debug-event-bus.js';
 import { registerDebugRoutes } from './debug/debug-routes.js';
 import { makeInboundTap } from './debug/inbound-tap.js';
 import { isDebugEnabled } from './debug/is-debug-enabled.js';
+import { PlayerViewStore } from './headless/player-view-store.js';
 import { createMetricsRegistry } from './metrics/registry.js';
 import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
 import { PortraitCache } from './portrait/portrait-cache.js';
@@ -98,6 +99,7 @@ import { KeytermRefresher } from './voice/keyterm-refresher.js';
 import { handleBearerRegistryEnvelope } from './ws/bearer-registry-handler.js';
 import { handleCharacterListEnvelope } from './ws/character-list-handler.js';
 import { handleCharacterSnapshotEnvelope } from './ws/character-snapshot-handler.js';
+import { handleClientPlayerView } from './ws/client-player-view-handler.js';
 import { handleClientSelectActor } from './ws/client-select-actor-handler.js';
 import { handleClientSetting } from './ws/client-setting-handler.js';
 import { DeltaEmitter } from './ws/delta-emitter.js';
@@ -415,6 +417,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // module's `settings.display` snapshot for connect-push and holds the pending
   // glasses-originated edit for the frame-POST piggyback.
   const settingsStore = opts.settingsStore ?? new SettingsStore();
+  // Records the latest headless player-view intent from `client_player_view`
+  // messages; the P2 headless orchestrator (ADR-0015 §C) will read it.
+  const playerViewStore = new PlayerViewStore();
 
   // --- 4 (debug). Dev-only observability taps (Quick Task 260529-h5e) ---
   // `debugEnabled` + `debugBus` are hoisted above (before Fastify) so the pino
@@ -840,6 +845,10 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             rawData,
             logger,
           );
+          // 'client_player_view' → record the headless player-view intent (P2
+          // orchestrator reads it) and reply with the `player_view_status` delta
+          // (P1: 'unavailable' on enable, 'off' on disable). No-op otherwise.
+          handleClientPlayerView({ playerViewStore, deltaEmitter }, sessionId, rawData, logger);
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees
