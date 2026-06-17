@@ -1,20 +1,30 @@
 /**
- * handleClientPlayerView unit tests (P1 — intent record + status reply).
+ * handleClientPlayerView unit tests (P2b — intent record + orchestrator drive + reply).
  *
- * CPV-01: enable message → intent stored + `player_view_status{unavailable}` sent
- * CPV-02: disable message → intent {enabled:false} stored + `player_view_status{off}` sent
- * CPV-03: malformed JSON → ignored (no throw, no store mutation, no emit)
- * CPV-04: other message type (client_setting) → ignored (no mutation, no emit)
- * CPV-05: enable with actorId/foundryUrl → fields recorded in intent
+ * CPV-01: enable message → intent stored, orchestrator.applyIntent called,
+ *         current state replied as `player_view_status`
+ * CPV-02: disable message → intent {mode:off} stored + orchestrator driven + state replied
+ * CPV-03: malformed JSON → ignored (no throw, no store mutation, no applyIntent, no emit)
+ * CPV-04: other message type (client_setting) → ignored (no mutation, no applyIntent, no emit)
+ * CPV-05: enable with actorId/foundryUrl → fields recorded in intent + passed to applyIntent
  * CPV-06: Buffer payload accepted (ws binary frame)
+ *
+ * The orchestrator is a fake whose `getState()` returns a fixed status and whose
+ * `applyIntent` is a spy — so the handler's contract (record → drive → reply with
+ * current state) is asserted without a real headless browser.
  *
  * @see ./client-player-view-handler.ts
  */
-import { PLAYER_VIEW_STATUS_TYPE } from '@evf/shared-protocol';
+import { PLAYER_VIEW_STATUS_TYPE, type PlayerViewStatus } from '@evf/shared-protocol';
 import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PlayerViewIntent } from '../headless/player-view-store.js';
 import { PlayerViewStore } from '../headless/player-view-store.js';
-import { type ClientPlayerViewDeps, handleClientPlayerView } from './client-player-view-handler.js';
+import {
+  type ClientPlayerViewDeps,
+  handleClientPlayerView,
+  type PlayerViewOrchestratorLike,
+} from './client-player-view-handler.js';
 import { DeltaEmitter } from './delta-emitter.js';
 import { ReplayBuffer } from './replay-buffer.js';
 import { SessionStore } from './session-store.js';
@@ -31,14 +41,17 @@ interface Harness {
   logger: Logger;
   warn: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
+  applyIntent: ReturnType<typeof vi.fn>;
+  state: PlayerViewStatus;
 }
 
 /**
- * Build a fresh handler harness with one registered, handshaked session. The
- * session's fake ws `send` is captured so the outbound `player_view_status`
- * envelope can be asserted.
+ * Build a fresh handler harness with one registered, handshaked session and a
+ * fake orchestrator. The session's fake ws `send` is captured so the outbound
+ * `player_view_status` envelope can be asserted; `state` is the value the fake
+ * orchestrator reports via `getState()`.
  */
-function makeHarness(): Harness {
+function makeHarness(state: PlayerViewStatus = { state: 'starting' }): Harness {
   const sessionStore = new SessionStore();
   const replayBuffer = new ReplayBuffer();
   const deltaEmitter = new DeltaEmitter(replayBuffer, sessionStore);
@@ -57,14 +70,22 @@ function makeHarness(): Harness {
   const warn = vi.fn();
   const logger = { warn, info: vi.fn(), debug: vi.fn() } as unknown as Logger;
 
+  const applyIntent = vi.fn<(intent: PlayerViewIntent) => void>();
+  const orchestrator: PlayerViewOrchestratorLike = {
+    applyIntent,
+    getState: () => state,
+  };
+
   return {
-    deps: { playerViewStore, deltaEmitter },
+    deps: { playerViewStore, deltaEmitter, orchestrator },
     playerViewStore,
     deltaEmitter,
     sessionId: session.sessionId,
     logger,
     warn,
     send,
+    applyIntent,
+    state,
   };
 }
 
@@ -85,7 +106,7 @@ describe('handleClientPlayerView', () => {
     h = makeHarness();
   });
 
-  it('CPV-01: enable message stores intent and emits player_view_status{unavailable}', () => {
+  it('CPV-01: enable → intent stored, orchestrator driven, current state replied', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
@@ -94,34 +115,36 @@ describe('handleClientPlayerView', () => {
     );
 
     expect(h.playerViewStore.get()).toEqual({ mode: 'streaming' });
-    expect(sentStatus(h.send)).toEqual({
-      state: 'unavailable',
-      detail: 'Headless orchestrator not yet deployed (ADR-0015 P2)',
-    });
+    expect(h.applyIntent).toHaveBeenCalledTimes(1);
+    expect(h.applyIntent).toHaveBeenCalledWith({ mode: 'streaming' });
+    expect(sentStatus(h.send)).toEqual({ state: 'starting' });
     expect(h.warn).not.toHaveBeenCalled();
   });
 
-  it('CPV-02: off mode stores {mode:off} and emits player_view_status{off}', () => {
+  it('CPV-02: off mode stores {mode:off}, drives orchestrator, replies current state', () => {
+    const off = makeHarness({ state: 'off' });
     handleClientPlayerView(
-      h.deps,
-      h.sessionId,
+      off.deps,
+      off.sessionId,
       JSON.stringify({ type: 'client_player_view', mode: 'off' }),
-      h.logger,
+      off.logger,
     );
 
-    expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
-    expect(sentStatus(h.send)).toEqual({ state: 'off' });
-    expect(h.warn).not.toHaveBeenCalled();
+    expect(off.playerViewStore.get()).toEqual({ mode: 'off' });
+    expect(off.applyIntent).toHaveBeenCalledWith({ mode: 'off' });
+    expect(sentStatus(off.send)).toEqual({ state: 'off' });
+    expect(off.warn).not.toHaveBeenCalled();
   });
 
-  it('CPV-03: malformed JSON is ignored (no throw, no mutation, no emit)', () => {
+  it('CPV-03: malformed JSON is ignored (no throw, no mutation, no drive, no emit)', () => {
     expect(() => handleClientPlayerView(h.deps, h.sessionId, 'not json{', h.logger)).not.toThrow();
     expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
+    expect(h.applyIntent).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
     expect(h.warn).not.toHaveBeenCalled();
   });
 
-  it('CPV-04: other message type (client_setting) is ignored, no mutation, no emit', () => {
+  it('CPV-04: other message type (client_setting) is ignored — no mutation, no drive, no emit', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
@@ -129,11 +152,12 @@ describe('handleClientPlayerView', () => {
       h.logger,
     );
     expect(h.playerViewStore.get()).toEqual({ mode: 'off' });
+    expect(h.applyIntent).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
     expect(h.warn).not.toHaveBeenCalled();
   });
 
-  it('CPV-05: enable with actorId/foundryUrl records both fields in the intent', () => {
+  it('CPV-05: enable with actorId/foundryUrl records + passes both fields', () => {
     handleClientPlayerView(
       h.deps,
       h.sessionId,
@@ -146,15 +170,14 @@ describe('handleClientPlayerView', () => {
       h.logger,
     );
 
-    expect(h.playerViewStore.get()).toEqual({
+    const expectedIntent = {
       mode: 'actor',
       actorId: 'actor-b',
       foundryUrl: 'https://forge.example.com/game',
-    });
-    expect(sentStatus(h.send)).toEqual({
-      state: 'unavailable',
-      detail: 'Headless orchestrator not yet deployed (ADR-0015 P2)',
-    });
+    };
+    expect(h.playerViewStore.get()).toEqual(expectedIntent);
+    expect(h.applyIntent).toHaveBeenCalledWith(expectedIntent);
+    expect(sentStatus(h.send)).toEqual({ state: 'starting' });
   });
 
   it('CPV-06: accepts a Buffer payload (ws binary frame)', () => {
@@ -165,9 +188,7 @@ describe('handleClientPlayerView', () => {
       h.logger,
     );
     expect(h.playerViewStore.get()).toEqual({ mode: 'streaming' });
-    expect(sentStatus(h.send)).toEqual({
-      state: 'unavailable',
-      detail: 'Headless orchestrator not yet deployed (ADR-0015 P2)',
-    });
+    expect(h.applyIntent).toHaveBeenCalledWith({ mode: 'streaming' });
+    expect(sentStatus(h.send)).toEqual({ state: 'starting' });
   });
 });

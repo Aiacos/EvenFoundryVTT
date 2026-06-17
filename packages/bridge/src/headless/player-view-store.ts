@@ -3,11 +3,10 @@
  *
  * The EvenHub settings panel sends a `client_player_view` WS message when the
  * player toggles "Player view (headless)". The bridge handler
- * ({@link handleClientPlayerView}) records the latest intent here. In P1 (this
- * task) the store is write-only from the handler's perspective; in P2 the
- * headless Chromium orchestrator (ADR-0015 §C) will READ this store to decide
- * whether to spin a headless Foundry session up/down and which actor + Foundry
- * URL to log in as.
+ * ({@link handleClientPlayerView}) records the latest intent here and drives the
+ * headless Chromium orchestrator (ADR-0015 §C, P2b) with the same intent. The
+ * store provides a stable last-write-wins record (audit / future reconnect
+ * re-drive); the orchestrator owns the actual session lifecycle.
  *
  * Single-tenant homelab scope: one world, one store instance per bridge server.
  * Last-write-wins — a later toggle fully replaces the prior intent. Mirrors the

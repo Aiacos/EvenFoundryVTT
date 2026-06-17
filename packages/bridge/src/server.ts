@@ -45,7 +45,12 @@
 // Quick Task 260605-dog — character-snapshot cache + handler. CharacterSnapshotCache feeds
 // internalSnapshotFn for evf.getCharacterSnapshot; populated by handleCharacterSnapshotEnvelope
 // via the same /internal/delta fan-out. Closes the actor_not_found gap (GET /v1/character/:id).
-import { SETTINGS_DISPLAY_TYPE, SPELL_KEYTERMS } from '@evf/shared-protocol';
+import {
+  PLAYER_VIEW_STATUS_TYPE,
+  type PlayerViewStatus,
+  SETTINGS_DISPLAY_TYPE,
+  SPELL_KEYTERMS,
+} from '@evf/shared-protocol';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
@@ -67,6 +72,7 @@ import { DebugEventBus } from './debug/debug-event-bus.js';
 import { registerDebugRoutes } from './debug/debug-routes.js';
 import { makeInboundTap } from './debug/inbound-tap.js';
 import { isDebugEnabled } from './debug/is-debug-enabled.js';
+import { HeadlessOrchestrator } from './headless/orchestrator.js';
 import { PlayerViewStore } from './headless/player-view-store.js';
 import { createMetricsRegistry } from './metrics/registry.js';
 import { IdempotencyStore, registerIdempotencyHooks } from './middleware/idempotency.js';
@@ -418,8 +424,40 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // glasses-originated edit for the frame-POST piggyback.
   const settingsStore = opts.settingsStore ?? new SettingsStore();
   // Records the latest headless player-view intent from `client_player_view`
-  // messages; the P2 headless orchestrator (ADR-0015 §C) will read it.
+  // messages; the P2 headless orchestrator (ADR-0015 §C) reads it.
   const playerViewStore = new PlayerViewStore();
+
+  // Headless player-view orchestrator (ADR-0015 §C, P2b). Drives at most one
+  // headless Chromium Foundry session per intent toggle and BROADCASTS its
+  // lifecycle (`player_view_status`) to every glasses panel via the DeltaEmitter,
+  // so all sessions see the live state — not just the one that flipped the toggle.
+  //
+  // Degradation: the Playwright-backed browser port is loaded behind a try/catch.
+  // If Playwright (or its browser binary) is unavailable in this deployment, the
+  // orchestrator is constructed with a stub port whose launch() rejects — so the
+  // orchestrator simply reports `error`/`unavailable` rather than crashing the
+  // bridge. The Docker layer (parent task) supplies the real Chromium binary.
+  let playerViewBrowser: import('./headless/headless-browser.js').HeadlessBrowser;
+  try {
+    const { PlaywrightHeadlessBrowser } = await import('./headless/playwright-browser.js');
+    playerViewBrowser = new PlaywrightHeadlessBrowser();
+  } catch (err) {
+    app.log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'player-view: Playwright unavailable — headless orchestrator degraded (launch will report error)',
+    );
+    playerViewBrowser = {
+      launch: () => Promise.reject(new Error('headless browser unavailable in this deployment')),
+    };
+  }
+  const playerViewOrchestrator = new HeadlessOrchestrator({
+    browser: playerViewBrowser,
+    onStatus: (status: PlayerViewStatus) => {
+      // Broadcast to ALL sessions: player_view_status is not in DELTA_CAP_MAP, so
+      // every connected glasses panel receives the transition.
+      deltaEmitter.emitDelta(PLAYER_VIEW_STATUS_TYPE, status);
+    },
+  });
 
   // --- 4 (debug). Dev-only observability taps (Quick Task 260529-h5e) ---
   // `debugEnabled` + `debugBus` are hoisted above (before Fastify) so the pino
@@ -845,10 +883,16 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             rawData,
             logger,
           );
-          // 'client_player_view' → record the headless player-view intent (P2
-          // orchestrator reads it) and reply with the `player_view_status` delta
-          // (P1: 'unavailable' on enable, 'off' on disable). No-op otherwise.
-          handleClientPlayerView({ playerViewStore, deltaEmitter }, sessionId, rawData, logger);
+          // 'client_player_view' → record the headless player-view intent, drive
+          // the orchestrator (launch/teardown the headless Foundry session), and
+          // reply to THIS session with the current orchestrator state. Subsequent
+          // transitions (starting→live/error/off) broadcast via onStatus. No-op otherwise.
+          handleClientPlayerView(
+            { playerViewStore, deltaEmitter, orchestrator: playerViewOrchestrator },
+            sessionId,
+            rawData,
+            logger,
+          );
         });
 
         // Close cleanup: undo every per-session registration so the bridge frees
@@ -991,6 +1035,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       _keytermRefresher.dispose();
       _keytermRefresher = null;
     }
+    // Tear down any live headless player-view session (ADR-0015 §C, P2b) so the
+    // Chromium process does not outlive the bridge. stop() is error-safe.
+    await playerViewOrchestrator.stop();
   });
 
   return app;

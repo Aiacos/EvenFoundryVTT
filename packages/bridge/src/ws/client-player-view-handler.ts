@@ -1,16 +1,20 @@
 /**
- * WS `client_player_view` handler — records the headless player-view intent and
- * replies with the orchestrator status.
+ * WS `client_player_view` handler — records the headless player-view intent,
+ * drives the orchestrator, and replies with the live orchestrator status.
  *
  * The EvenHub settings panel sends `{ type: 'client_player_view', mode,
  * actorId?, foundryUrl? }` when the player changes the map-view source. The
- * bridge records the intent in the {@link PlayerViewStore} (which the P2 headless
- * orchestrator will read — ADR-0015 §C) and immediately replies to THAT session
- * with a `player_view_status` delta so the panel can reflect what's happening.
+ * bridge:
+ * 1. records the intent in the {@link PlayerViewStore} (audit / last-write-wins),
+ * 2. drives the {@link HeadlessOrchestrator} (ADR-0015 §C, P2b) — which launches
+ *    or tears down the headless Foundry session and BROADCASTS each lifecycle
+ *    transition (`starting → live/error/off/unavailable`) to ALL glasses panels,
+ * 3. replies to THIS session immediately with the orchestrator's CURRENT state so
+ *    the panel reflects the toggle without waiting for the first broadcast.
  *
- * P1 (this task) has no orchestrator deployed, so:
- * - `mode: 'streaming' | 'actor'` → `{ state: 'unavailable', detail: … }`
- * - `mode: 'off'`                 → `{ state: 'off' }`
+ * The async transitions (e.g. `starting → live`) arrive later via the
+ * orchestrator's `onStatus` broadcast wired in `server.ts`; this handler only
+ * sends the synchronous current-state reply.
  *
  * Mirrors the {@link handleClientSetting} / {@link handleClientSelectActor}
  * contract: parse-or-no-op on non-matching input (other message types route to
@@ -18,6 +22,7 @@
  *
  * @see packages/shared-protocol/src/payloads/player-view.ts (schemas)
  * @see packages/bridge/src/headless/player-view-store.ts (intent record)
+ * @see packages/bridge/src/headless/orchestrator.ts (state machine)
  * @see packages/bridge/src/ws/delta-emitter.ts (single-session send)
  * @see docs/architecture/0015-player-view-map-capture.md §C
  */
@@ -33,19 +38,32 @@ import type { PlayerViewIntent, PlayerViewStore } from '../headless/player-view-
 import type { DeltaEmitter } from './delta-emitter.js';
 
 /**
- * Dependencies for {@link handleClientPlayerView}.
+ * Minimal orchestrator surface this handler depends on (ADR-0015 §C, P2b).
  *
- * Both singletons are already in scope at the `server.ts` WS message loop.
+ * The handler only needs to push the latest intent in and read the current state
+ * back out; the full {@link HeadlessOrchestrator} satisfies this structurally,
+ * and tests can inject a lightweight fake.
  */
-export interface ClientPlayerViewDeps {
-  /** Store recording the latest player-view intent (P2 orchestrator reads it). */
-  playerViewStore: PlayerViewStore;
-  /** DeltaEmitter — used to push the `player_view_status` reply to this session only. */
-  deltaEmitter: DeltaEmitter;
+export interface PlayerViewOrchestratorLike {
+  /** Drive the state machine with the latest intent (fire-and-forget; never throws). */
+  applyIntent(intent: PlayerViewIntent): void;
+  /** Current orchestrator status — used for the immediate per-session reply. */
+  getState(): PlayerViewStatus;
 }
 
-/** Detail surfaced in P1 when the player enables the toggle (no orchestrator yet). */
-const UNAVAILABLE_DETAIL = 'Headless orchestrator not yet deployed (ADR-0015 P2)';
+/**
+ * Dependencies for {@link handleClientPlayerView}.
+ *
+ * All three singletons are already in scope at the `server.ts` WS message loop.
+ */
+export interface ClientPlayerViewDeps {
+  /** Store recording the latest player-view intent (audit / last-write-wins). */
+  playerViewStore: PlayerViewStore;
+  /** DeltaEmitter — used to push the immediate `player_view_status` reply to this session. */
+  deltaEmitter: DeltaEmitter;
+  /** Headless orchestrator driven by each intent (ADR-0015 §C, P2b). */
+  orchestrator: PlayerViewOrchestratorLike;
+}
 
 /**
  * Handle a parsed-or-not `client_player_view` message on an already-handshaked socket.
@@ -53,9 +71,11 @@ const UNAVAILABLE_DETAIL = 'Headless orchestrator not yet deployed (ADR-0015 P2)
  * Flow (all early-returns are silent no-ops):
  * 1. Defensive parse → ignore non-`client_player_view` messages.
  * 2. Record the intent in the {@link PlayerViewStore}.
- * 3. Compute the P1 status (`unavailable` when enabling, `off` when disabling),
- *    validate it against {@link PlayerViewStatusSchema}, and push it to THIS
- *    session via {@link DeltaEmitter.sendInitialToSession}.
+ * 3. Drive the orchestrator with the intent (it launches/tears down asynchronously
+ *    and broadcasts subsequent transitions).
+ * 4. Read the orchestrator's CURRENT state, validate it against
+ *    {@link PlayerViewStatusSchema}, and push it to THIS session via
+ *    {@link DeltaEmitter.sendInitialToSession}.
  *
  * Never throws.
  *
@@ -70,7 +90,7 @@ export function handleClientPlayerView(
   rawData: Buffer | ArrayBuffer | Buffer[] | string,
   logger: Logger,
 ): void {
-  const { playerViewStore, deltaEmitter } = deps;
+  const { playerViewStore, deltaEmitter, orchestrator } = deps;
 
   // ── Step 1: parse raw bytes to JSON ──────────────────────────────────────────
   let parsed: unknown;
@@ -96,7 +116,7 @@ export function handleClientPlayerView(
 
   const { mode, actorId, foundryUrl } = result.data;
 
-  // ── Step 2: record the intent (P2 orchestrator reads this) ───────────────────
+  // ── Step 2: record the intent (audit / last-write-wins) ──────────────────────
   // Build with only present optional keys — `exactOptionalPropertyTypes` rejects
   // an explicit `undefined` on an optional field.
   const intent: PlayerViewIntent = { mode };
@@ -114,9 +134,12 @@ export function handleClientPlayerView(
     logger.debug({ sessionId, foundryUrl }, 'WS client_player_view: foundryUrl');
   }
 
-  // ── Step 3: reply with the P1 orchestrator status to THIS session only ───────
-  const payload: PlayerViewStatus =
-    mode === 'off' ? { state: 'off' } : { state: 'unavailable', detail: UNAVAILABLE_DETAIL };
+  // ── Step 3: drive the orchestrator (async launch/teardown + broadcast) ───────
+  // applyIntent never throws; lifecycle transitions broadcast via onStatus.
+  orchestrator.applyIntent(intent);
+
+  // ── Step 4: reply with the orchestrator's CURRENT state to THIS session only ─
+  const payload: PlayerViewStatus = orchestrator.getState();
 
   const validated = PlayerViewStatusSchema.safeParse(payload);
   if (!validated.success) {
