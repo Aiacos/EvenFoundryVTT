@@ -137,7 +137,13 @@ jobs:
           NOTES_FILE="/tmp/release-notes.md"
           FOUND=0
 
-          # foundry-module CHANGELOG.md (primary — always include if present)
+          # foundry-module CHANGELOG.md (primary — include if a matching entry exists).
+          # GRACEFUL: versions are bumped manually (not via Changesets), so the
+          # CHANGELOG may have no entry for this version. A missing entry is NOT a
+          # release failure — fall through to the bridge/g2-app blocks and, if
+          # nothing matches anywhere, the `--generate-notes` fallback below. The node
+          # exits non-zero only as a "no match" signal; `&& FOUND=1 || true` keeps the
+          # step green either way (mirrors the bridge/g2-app blocks).
           if test -f "packages/foundry-module/CHANGELOG.md"; then
             node -e "
               const fs = require('node:fs');
@@ -145,10 +151,9 @@ jobs:
               const log = fs.readFileSync('packages/foundry-module/CHANGELOG.md', 'utf-8');
               const escaped = ver.replace(/\\./g, '\\\\.');
               const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
-              if (!m) { console.error('No foundry-module CHANGELOG entry for ' + ver); process.exit(1); }
+              if (!m) { process.exit(1); }
               fs.appendFileSync('${NOTES_FILE}', m[0].trim() + '\\n');
-            "
-            FOUND=1
+            " && FOUND=1 || true
           fi
 
           # bridge CHANGELOG.md (append if present)
