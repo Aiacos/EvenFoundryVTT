@@ -128,6 +128,16 @@ export {
   type FramePng,
   FramePngSchema,
 } from './payloads/frame-png.js';
+// Headless player-view toggle + status (ADR-0015 §C, 2026-06-17).
+export {
+  CLIENT_PLAYER_VIEW_TYPE,
+  type ClientPlayerViewMessage,
+  ClientPlayerViewMessageSchema,
+  PLAYER_VIEW_STATES,
+  PLAYER_VIEW_STATUS_TYPE,
+  type PlayerViewStatus,
+  PlayerViewStatusSchema,
+} from './payloads/player-view.js';
 export {
   SCENE_VIEWPORT_DELTA_TYPE,
   type SceneViewport,
