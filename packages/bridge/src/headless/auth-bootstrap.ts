@@ -27,11 +27,41 @@
  * @see docs/architecture/0015-player-view-map-capture.md §C
  */
 
+import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-/** Block until the user presses Enter on stdin. */
+/**
+ * Resolve when a sentinel file appears (agent/operator-driven save trigger).
+ *
+ * When the bootstrap runs non-interactively (no TTY) and the `game.ready`
+ * auto-detect is unreliable (e.g. The Forge loads the game in a way the poll
+ * misses), `EVF_BOOTSTRAP_SAVE_SIGNAL` names a path; `touch`-ing it tells the
+ * bootstrap to save the current session NOW. Polled every 500 ms.
+ */
+function waitForSignalFile(path: string): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = (): void => {
+      if (existsSync(path)) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, 500);
+    };
+    tick();
+  });
+}
+
+/**
+ * Block until the user presses Enter on stdin — but only when stdin is an
+ * interactive TTY. When launched non-interactively (e.g. by the agent in the
+ * background) there is no TTY, so this never resolves and the world-ready poll
+ * (raced against it) is what completes the bootstrap.
+ */
 function waitForEnter(prompt: string): Promise<void> {
   return new Promise((resolve) => {
+    if (!process.stdin.isTTY) {
+      return; // non-interactive: rely on the world-ready poll instead
+    }
     process.stdout.write(prompt);
     const onData = (): void => {
       process.stdin.off('data', onData);
@@ -41,6 +71,22 @@ function waitForEnter(prompt: string): Promise<void> {
     process.stdin.resume();
     process.stdin.once('data', onData);
   });
+}
+
+/**
+ * Resolve once the Foundry world is loaded in the page (`game.ready === true`),
+ * polled in the page context. Lets the bootstrap auto-save without an Enter
+ * keypress: log in + enter the world in the browser and this fires. Long
+ * timeout (15 min) to allow for a manual Google 2FA login.
+ */
+function waitForWorldReady(page: import('playwright').Page): Promise<void> {
+  return page
+    .waitForFunction(
+      () => (globalThis as { game?: { ready?: boolean } }).game?.ready === true,
+      undefined,
+      { timeout: 15 * 60 * 1000, polling: 1000 },
+    )
+    .then(() => undefined);
 }
 
 /**
@@ -78,12 +124,26 @@ async function main(): Promise<void> {
     ].join('\n'),
   );
 
-  const browser = await chromium.launch({ headless: false });
+  // Honor a system/standalone Chromium when set (e.g. dev hosts where Playwright
+  // can't install its bundled browser — same var the orchestrator launcher uses).
+  const execPath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
+  const browser = await chromium.launch({
+    headless: false,
+    ...(execPath !== undefined && execPath !== '' ? { executablePath: execPath } : {}),
+  });
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(foundryUrl, { waitUntil: 'domcontentloaded' });
 
-  await waitForEnter('Press Enter once you are logged in and the world is loaded… ');
+  // Complete on whichever happens first: the user presses Enter (interactive
+  // TTY), or the Foundry world finishes loading (auto-detected — works when
+  // launched in the background). Either way the authenticated session is saved.
+  const signalPath = process.env['EVF_BOOTSTRAP_SAVE_SIGNAL'];
+  await Promise.race([
+    waitForEnter('Press Enter once you are logged in and the world is loaded… '),
+    waitForWorldReady(page),
+    ...(signalPath !== undefined && signalPath !== '' ? [waitForSignalFile(signalPath)] : []),
+  ]);
 
   await context.storageState({ path: storageStatePath });
   process.stdout.write(`\nSaved session to ${storageStatePath}\n`);

@@ -71,6 +71,12 @@ ENV NODE_ENV=production
 # time (.npmrc ignore-scripts + the flag below). Software WebGL (swiftshader) is
 # requested via the launch args in playwright-browser.ts so Foundry's PIXI scene
 # renders without a GPU. ~150 MB added; only used when a player-view mode is on.
+# Chromium + Xvfb + Mesa software GL. Foundry's PIXI needs a WORKING WebGL
+# context; headless swiftshader does NOT provide one (PIXI crashes on
+# `getExtension` of an undefined context). The fix (verified 2026-06-17) is to
+# run Chromium HEADFUL inside an Xvfb virtual display backed by Mesa llvmpipe —
+# a software GL that renders WebGL correctly. ~250 MB added; only exercised when
+# a player-view mode is enabled.
 RUN apk add --no-cache \
       chromium \
       nss \
@@ -78,18 +84,29 @@ RUN apk add --no-cache \
       harfbuzz \
       ca-certificates \
       ttf-freefont \
-      font-noto-emoji
+      font-noto-emoji \
+      xvfb \
+      mesa-gl \
+      mesa-egl \
+      mesa-dri-gallium \
+      mesa-gbm
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    EVF_PLAYER_VIEW_HEADFUL=1 \
+    DISPLAY=:99 \
+    LIBGL_ALWAYS_SOFTWARE=1
 
 # Copy the self-contained deployment from builder stage
 COPY --from=builder /app/bridge .
+
+# Entrypoint: start the Xvfb virtual display (so the headful Chromium has a GL
+# surface), then run the bridge. Xvfb runs in the background; the bridge owns the
+# foreground process (PID 1 semantics preserved via exec).
+RUN printf '#!/bin/sh\nXvfb :99 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 &\nexec node dist/index.js\n' \
+      > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Expose the bridge HTTP port (default 8910)
 EXPOSE 8910
 
 # wget is included in busybox on Alpine — used by the docker-compose healthcheck.
-# No additional packages needed.
-
-# Real production entrypoint (packages/bridge/src/index.ts → dist/index.js via tsup)
-ENTRYPOINT ["node", "dist/index.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]

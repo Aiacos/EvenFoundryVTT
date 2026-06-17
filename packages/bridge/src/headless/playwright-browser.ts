@@ -51,16 +51,29 @@ import type {
   HeadlessSessionConfig,
 } from './headless-browser.js';
 
-/** Default Chromium launch flags (containerised software-GL headless). */
-const DEFAULT_LAUNCH_ARGS = [
+/**
+ * Chromium launch flags for the HEADFUL-under-Xvfb path (the production
+ * container): Mesa (llvmpipe) software GL from the virtual display provides a
+ * working WebGL context — swiftshader headless does NOT (PIXI crashes with
+ * `getExtension` on an undefined context). Verified 2026-06-17: with real GL the
+ * world loads + canvas.ready in ~43s; with swiftshader it never readies.
+ */
+const HEADFUL_LAUNCH_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'] as const;
+
+/** Fallback flags for the (non-working-for-WebGL) headless path / dev hosts. */
+const HEADLESS_LAUNCH_ARGS = [
   '--use-gl=angle',
   '--use-angle=swiftshader',
   '--no-sandbox',
   '--disable-dev-shm-usage',
 ] as const;
 
-/** Max time to wait for `window.game.ready` + `window.canvas.ready` (ms). */
-const WORLD_READY_TIMEOUT_MS = 60_000;
+/**
+ * Max time to wait for `window.game.ready` + `window.canvas.ready` (ms).
+ * A fresh, uncached world load over the WAN measured ~43 s; 3 min leaves margin
+ * for a large world + the "world seems to take a long time" download phase.
+ */
+const WORLD_READY_TIMEOUT_MS = 180_000;
 /** Short per-selector probe timeout — login surfaces are optional, fail fast (ms). */
 const SELECTOR_PROBE_MS = 5_000;
 
@@ -83,9 +96,13 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
     // here via PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. Absent → Playwright's own
     // bundled Chromium (dev / non-Alpine hosts).
     const execPath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
+    // EVF_PLAYER_VIEW_HEADFUL=1 (set in the container, which runs an Xvfb virtual
+    // display with Mesa GL) → launch HEADFUL so Foundry's PIXI WebGL works.
+    // Software-headless WebGL (swiftshader) does not render Foundry; see args docs.
+    const headful = process.env['EVF_PLAYER_VIEW_HEADFUL'] === '1';
     const browser = await chromium.launch({
-      headless: true,
-      args: [...DEFAULT_LAUNCH_ARGS],
+      headless: !headful,
+      args: headful ? [...HEADFUL_LAUNCH_ARGS] : [...HEADLESS_LAUNCH_ARGS],
       ...(execPath !== undefined && execPath !== '' ? { executablePath: execPath } : {}),
     });
 
