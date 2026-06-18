@@ -1302,21 +1302,20 @@ export async function _bootEngineCore(
           // handler (step 11d-iv) can call setInitialTab BEFORE onMount. This override is
           // single-use and NOT persisted, so the user's default sheet tab is preserved.
           const isCanvas = layerManager.getRenderMode() === 'canvas';
-          pendingCanvasSheetTab =
-            isCanvas && target === 'inventory'
-              ? 'inventory'
-              : isCanvas && target === 'spellbook'
-                ? 'spells'
-                : null;
+          // Feature 001 (Option B): inventory/spellbook open dedicated INTERACTIVE
+          // canvas panels (cursor + tap-to-use), NOT the read-only sheet tabs — so no
+          // pre-selected sheet tab is recorded for them. Only character-sheet itself
+          // (and [B]/[I] routed there before) used pendingCanvasSheetTab.
+          pendingCanvasSheetTab = null;
           const resolvedTarget =
             target === 'character-sheet' && isCanvas
               ? 'canvas-character-sheet'
               : target === 'combat-tracker' && isCanvas
                 ? 'canvas-combat-tracker'
                 : isCanvas && target === 'inventory'
-                  ? 'canvas-character-sheet'
+                  ? 'canvas-inventory'
                   : isCanvas && target === 'spellbook'
-                    ? 'canvas-character-sheet'
+                    ? 'canvas-spellbook'
                     : isCanvas && target === 'log'
                       ? 'canvas-log'
                       : target;
@@ -1865,6 +1864,103 @@ export async function _bootEngineCore(
         void panelRouter.pushOverlay(modal, layerManager);
       });
     });
+  });
+
+  // 11f-bis. Feature 001 (Option B) — canvas INTERACTIVE Inventory/Spellbook panels.
+  //          In canvas mode the Quick Action [I]/[B] open these dedicated panels
+  //          (cursor + tap-to-use) instead of the read-only sheet tabs. Inject the WS
+  //          bus (character.delta) + the same Action-Options dispatch the glyph panels
+  //          use (mirrored here to leave the glyph path untouched). The spell dispatch
+  //          enriches with slot-picker data when a cached snapshot is available
+  //          (statusHud is null in canvas mode → cantrip-safe fallback, as elsewhere).
+  type CanvasSelectablePanel = {
+    setWsEventBus: (b: typeof wsEventBus) => void;
+    setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
+  };
+  const canvasItemDispatch = (req: unknown): void => {
+    void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
+      const modal = new ActionOptionsModal(
+        bridge,
+        wsSender,
+        gestureBus,
+        req as ConstructorParameters<typeof ActionOptionsModal>[3],
+        currentLocale,
+        handshake.session_id,
+        () => {
+          void panelRouter.popOverlay(layerManager);
+        },
+        toastQueue,
+      );
+      void panelRouter.pushOverlay(modal, layerManager);
+    });
+  };
+  const canvasSpellDispatch = (req: unknown): void => {
+    void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
+      const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
+      const snapshot = statusHud?.getCachedSnapshot() ?? null;
+      const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
+      const spellLevel = spellEntry?.level ?? 0;
+      const availableSlots =
+        spellLevel === 0
+          ? []
+          : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
+      const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
+      const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+      const enrichedReq: ConstructorParameters<typeof ActionOptionsModal>[3] = {
+        ...baseReq,
+        requiresSlotPicker,
+        defaultSlotLevel,
+      };
+      const openSlotPicker = (): void => {
+        void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
+          const slotPicker = new SlotPickerPanel(
+            bridge,
+            wsSender,
+            gestureBus,
+            {
+              actorId: enrichedReq.actorId,
+              spellId: enrichedReq.itemId,
+              spellName: enrichedReq.name,
+              baseLevel: spellLevel,
+              availableSlots,
+            },
+            currentLocale,
+            handshake.session_id,
+            () => {
+              void panelRouter.popOverlay(layerManager);
+            },
+          );
+          void panelRouter.pushOverlay(slotPicker, layerManager);
+        });
+      };
+      const modal = new ActionOptionsModal(
+        bridge,
+        wsSender,
+        gestureBus,
+        enrichedReq,
+        currentLocale,
+        handshake.session_id,
+        (reason) => {
+          if (reason === 'slot-picker-needed') {
+            openSlotPicker();
+          } else {
+            void panelRouter.popOverlay(layerManager);
+          }
+        },
+        toastQueue,
+      );
+      void panelRouter.pushOverlay(modal, layerManager);
+    });
+  };
+  panelRouter.setPanelInstanceHandler('canvas-inventory', (panel) => {
+    const p = panel as unknown as CanvasSelectablePanel;
+    p.setWsEventBus(wsEventBus);
+    p.setActionOptionsHandler(canvasItemDispatch);
+  });
+  panelRouter.setPanelInstanceHandler('canvas-spellbook', (panel) => {
+    const p = panel as unknown as CanvasSelectablePanel;
+    p.setWsEventBus(wsEventBus);
+    p.setActionOptionsHandler(canvasSpellDispatch);
   });
 
   // 11g. Quick-action handler for combat-tracker panel (Plan 08-05 step 11i).

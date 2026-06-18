@@ -227,11 +227,11 @@ single swipe-up opens it).
 
 | Entry | Action |
 |---|---|
-| **Scheda** | open the character sheet (Main tab) |
+| **Scheda** | open the character sheet (Main tab) — a glanceable overview; tap cycles the 6 tabs |
 | **Combattimento** | open the combat tracker |
 | **Log** | open the event log |
-| **Libro** | open the sheet on the **Spellbook** tab |
-| **Inventario** | open the sheet on the **Inventory** tab |
+| **Libro** | open the **interactive Spellbook** — swipe to move the cursor, **tap to cast** the highlighted spell |
+| **Inventario** | open the **interactive Inventory** — swipe to move the cursor, **tap to use/equip** the highlighted item |
 | **Azione** | action options |
 | **Mappa** | toggle map render mode (raster ⇄ glyph) |
 | **Lingua** | open the language sub-menu (device-local locale override) |
