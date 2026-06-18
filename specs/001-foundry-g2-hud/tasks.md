@@ -25,12 +25,12 @@ US3 Sheet UI ↔ spec US1 (FR-001/013) · US4 FPS badge ↔ spec US7 (FR-012).
 **Purpose**: shared pure logic + scaffolds the user stories depend on. No user story is complete until
 its own phase, but these unblock several.
 
-- [ ] T004 [P] Create the pure selection→request mapping `toPlayerViewRequest(selection)` in `packages/g2-app/src/phone/player-view-selection.ts` (`"party"` → `{mode:"streaming"}`, `<actorId>` → `{mode:"actor",actorId}`), per contracts/player-view-selection.md.
-- [ ] T005 [P] Unit test the mapping in `packages/g2-app/src/phone/player-view-selection.test.ts` (party, a PC, empty/invalid → no request).
-- [ ] T006 [P] Create the shared icon dictionary scaffold in `packages/g2-app/src/panels/icon-dictionary.ts` (`IconId` enum, `iconToUnicode(id)` re-exporting the existing glyphs de-duplicated, and a `drawIcon(ctx,id,bounds,fill)` stub at a fixed cell size).
-- [ ] T007 [P] Unit test `iconToUnicode` round-trip + completeness in `packages/g2-app/src/panels/icon-dictionary.test.ts` (every IconId resolves; matches the legacy inventory/skill glyphs).
-- [ ] T008 [P] Create the pure FPS-badge geometry `fpsBadgeRect(corner, size)` in `packages/g2-app/src/status-hud/fps-badge-geometry.ts` (4 corners → on-screen `{x,y,w,h}` against 576×288 + margin) per contracts/fps-corner-env.md.
-- [ ] T009 [P] Unit test `fpsBadgeRect` in `packages/g2-app/src/status-hud/fps-badge-geometry.test.ts` (all four corners fully on-screen; default resolution when corner invalid/absent).
+- [X] T004 [P] Create the pure selection→request mapping `toPlayerViewRequest(selection)` in `packages/g2-app/src/phone/player-view-selection.ts` (`"party"` → `{mode:"streaming"}`, `<actorId>` → `{mode:"actor",actorId}`), per contracts/player-view-selection.md.
+- [X] T005 [P] Unit test the mapping in `packages/g2-app/src/phone/player-view-selection.test.ts` (party, a PC, empty/invalid → no request).
+- [X] T006 [P] Create the shared icon dictionary scaffold in `packages/g2-app/src/panels/icon-dictionary.ts` (`IconId` enum, `iconToUnicode(id)` re-exporting the existing glyphs de-duplicated, and a `drawIcon(ctx,id,bounds,fill)` stub at a fixed cell size).
+- [X] T007 [P] Unit test `iconToUnicode` round-trip + completeness in `packages/g2-app/src/panels/icon-dictionary.test.ts` (every IconId resolves; matches the legacy inventory/skill glyphs).
+- [X] T008 [P] Create the pure FPS-badge geometry `fpsBadgeRect(corner, size)` in `packages/g2-app/src/status-hud/fps-badge-geometry.ts` (4 corners → on-screen `{x,y,w,h}` against 576×288 + margin) per contracts/fps-corner-env.md.
+- [X] T009 [P] Unit test `fpsBadgeRect` in `packages/g2-app/src/status-hud/fps-badge-geometry.test.ts` (all four corners fully on-screen; default resolution when corner invalid/absent).
 
 **Checkpoint**: pure logic for US2/US3/US4 exists and is green in isolation.
 
