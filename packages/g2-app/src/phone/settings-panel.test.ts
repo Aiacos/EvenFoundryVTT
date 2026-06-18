@@ -1,5 +1,9 @@
 /**
- * Unit tests for the phone settings panel — character/role selector.
+ * Unit tests for the phone settings panel — unified roster + map-view selector.
+ *
+ * Feature 001 D2: ONE selector (synthetic "Party" entry + each PC) replaces the
+ * old character selector + separate map-view mode dropdown. Selecting Party →
+ * `streaming`; selecting a PC → `actor` (+ live sheet re-pin).
  *
  * Runs in happy-dom (g2-app vitest default environment). `fetchRoster` is
  * injected so no network is touched; the display-settings controls are seeded
@@ -8,10 +12,16 @@
 
 import type { SettingsDisplay } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PARTY_SELECTION } from './player-view-selection.js';
 import { createPhoneSettingsPanel, type RosterEntry } from './settings-panel.js';
 
 /** Empty display snapshot — the selector under test is independent of these. */
 const EMPTY: SettingsDisplay = {};
+
+const ROSTER: RosterEntry[] = [
+  { actorId: 'actor-shin', name: 'Shin' },
+  { actorId: 'actor-mira', name: 'Mira' },
+];
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -30,16 +40,12 @@ function getSelect(): HTMLSelectElement {
   return el;
 }
 
-describe('createPhoneSettingsPanel — character/role selector', () => {
-  it('populates the select from fetchRoster and preselects initialActorId', async () => {
-    const roster: RosterEntry[] = [
-      { actorId: 'actor-shin', name: 'Shin' },
-      { actorId: 'actor-mira', name: 'Mira' },
-    ];
+describe('createPhoneSettingsPanel — unified roster + map-view selector', () => {
+  it('populates the select with a synthetic Party entry then the roster; preselects initialActorId', async () => {
     createPhoneSettingsPanel({
       sendEdit: () => {},
       initial: EMPTY,
-      fetchRoster: () => Promise.resolve(roster),
+      fetchRoster: () => Promise.resolve(ROSTER),
       onSelectActor: () => {},
       initialActorId: 'actor-mira',
     });
@@ -47,24 +53,33 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     await flush();
 
     const select = getSelect();
-    expect(select.options).toHaveLength(2);
-    expect(select.options[0]?.value).toBe('actor-shin');
-    expect(select.options[1]?.value).toBe('actor-mira');
+    expect(select.options).toHaveLength(3);
+    expect(select.options[0]?.value).toBe(PARTY_SELECTION);
+    expect(select.options[1]?.value).toBe('actor-shin');
+    expect(select.options[2]?.value).toBe('actor-mira');
     expect(select.value).toBe('actor-mira');
   });
 
-  it('calls onSelectActor with the new actorId on change', async () => {
-    const onSelectActor = vi.fn();
+  it('defaults the boot selection to Party when no initialActorId is given', async () => {
     createPhoneSettingsPanel({
       sendEdit: () => {},
       initial: EMPTY,
-      fetchRoster: () =>
-        Promise.resolve([
-          { actorId: 'actor-shin', name: 'Shin' },
-          { actorId: 'actor-mira', name: 'Mira' },
-        ]),
+      fetchRoster: () => Promise.resolve(ROSTER),
+    });
+    await flush();
+    expect(getSelect().value).toBe(PARTY_SELECTION);
+  });
+
+  it('selecting a PC re-pins the sheet (onSelectActor) AND drives actor mode (onPlayerViewMode)', async () => {
+    const onSelectActor = vi.fn();
+    const onPlayerViewMode = vi.fn();
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      fetchRoster: () => Promise.resolve(ROSTER),
       onSelectActor,
-      initialActorId: 'actor-shin',
+      onPlayerViewMode,
+      foundryUrl: 'https://forge.example',
     });
 
     await flush();
@@ -75,55 +90,6 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
 
     expect(onSelectActor).toHaveBeenCalledTimes(1);
     expect(onSelectActor).toHaveBeenCalledWith('actor-mira');
-  });
-
-  it('does NOT fire onSelectActor on programmatic preselect', async () => {
-    const onSelectActor = vi.fn();
-    createPhoneSettingsPanel({
-      sendEdit: () => {},
-      initial: EMPTY,
-      fetchRoster: () =>
-        Promise.resolve([
-          { actorId: 'actor-shin', name: 'Shin' },
-          { actorId: 'actor-mira', name: 'Mira' },
-        ]),
-      onSelectActor,
-      initialActorId: 'actor-mira',
-    });
-
-    await flush();
-
-    expect(getSelect().value).toBe('actor-mira');
-    expect(onSelectActor).not.toHaveBeenCalled();
-  });
-
-  it('re-drives the headless (onPlayerViewMode) on character change when map source is actor', async () => {
-    const onSelectActor = vi.fn();
-    const onPlayerViewMode = vi.fn();
-    createPhoneSettingsPanel({
-      sendEdit: () => {},
-      initial: EMPTY,
-      fetchRoster: () =>
-        Promise.resolve([
-          { actorId: 'actor-shin', name: 'Shin' },
-          { actorId: 'actor-mira', name: 'Mira' },
-        ]),
-      onSelectActor,
-      onPlayerViewMode,
-      initialActorId: 'actor-shin',
-      playerViewInitialMode: 'actor',
-      foundryUrl: 'https://forge.example',
-    });
-
-    await flush();
-
-    const select = getSelect();
-    select.value = 'actor-mira';
-    select.dispatchEvent(new Event('change'));
-
-    // The sheet re-pin AND the headless re-drive BOTH fire (ADR-0015 §C bug fix).
-    // Password-free: the request carries no credentials.
-    expect(onSelectActor).toHaveBeenCalledWith('actor-mira');
     expect(onPlayerViewMode).toHaveBeenCalledWith({
       mode: 'actor',
       actorId: 'actor-mira',
@@ -131,37 +97,51 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     });
   });
 
-  it('re-drives the headless on character change when map source is streaming (reuses the PC selector)', async () => {
-    // ADR-0015 §C: streaming now joins as the selected PC's owning Foundry user
-    // (chosen via the character selector), so a character switch must re-drive the
-    // headless just like actor mode.
+  it('selecting Party drives streaming (no actorId) and does NOT re-pin a sheet actor', async () => {
+    const onSelectActor = vi.fn();
     const onPlayerViewMode = vi.fn();
     createPhoneSettingsPanel({
       sendEdit: () => {},
       initial: EMPTY,
-      fetchRoster: () =>
-        Promise.resolve([
-          { actorId: 'actor-shin', name: 'Shin' },
-          { actorId: 'actor-mira', name: 'Mira' },
-        ]),
-      onSelectActor: () => {},
+      fetchRoster: () => Promise.resolve(ROSTER),
+      onSelectActor,
       onPlayerViewMode,
       initialActorId: 'actor-shin',
-      playerViewInitialMode: 'streaming',
       foundryUrl: 'https://forge.example',
     });
 
     await flush();
 
     const select = getSelect();
-    select.value = 'actor-mira';
+    expect(select.value).toBe('actor-shin'); // preselected PC
+    select.value = PARTY_SELECTION;
     select.dispatchEvent(new Event('change'));
 
+    expect(onSelectActor).not.toHaveBeenCalled();
     expect(onPlayerViewMode).toHaveBeenCalledWith({
       mode: 'streaming',
-      actorId: 'actor-mira',
+      actorId: '',
       foundryUrl: 'https://forge.example',
     });
+  });
+
+  it('does NOT fire callbacks on programmatic preselect', async () => {
+    const onSelectActor = vi.fn();
+    const onPlayerViewMode = vi.fn();
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      fetchRoster: () => Promise.resolve(ROSTER),
+      onSelectActor,
+      onPlayerViewMode,
+      initialActorId: 'actor-mira',
+    });
+
+    await flush();
+
+    expect(getSelect().value).toBe('actor-mira');
+    expect(onSelectActor).not.toHaveBeenCalled();
+    expect(onPlayerViewMode).not.toHaveBeenCalled();
   });
 
   it('renders the Foundry URL field pre-filled and is flat (no collapse chevron)', () => {
@@ -194,39 +174,30 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     expect(onFoundryUrlChange).toHaveBeenCalledWith('https://new.forge');
   });
 
-  it('map-view source select fires onPlayerViewMode with the mode + actorId + URL', async () => {
-    const onPlayerViewMode = vi.fn();
+  it('the separate map-view mode dropdown is gone (no .evf-player-view select)', async () => {
+    createPhoneSettingsPanel({
+      sendEdit: () => {},
+      initial: EMPTY,
+      fetchRoster: () => Promise.resolve(ROSTER),
+    });
+    await flush();
+    expect(document.querySelector('select.evf-player-view')).toBeNull();
+  });
+
+  it('setPlayerViewStatus updates the status line', async () => {
     const panel = createPhoneSettingsPanel({
       sendEdit: () => {},
       initial: EMPTY,
-      foundryUrl: 'https://forge.example',
-      fetchRoster: () => Promise.resolve([{ actorId: 'actor-shin', name: 'Shin' }]),
-      initialActorId: 'actor-shin',
-      onPlayerViewMode,
+      fetchRoster: () => Promise.resolve(ROSTER),
     });
     await flush();
-    const select = document.querySelector<HTMLSelectElement>('select.evf-player-view');
-    if (!select) throw new Error('player-view select not found');
-    expect(select.value).toBe('streaming'); // default
-    // First option is the selected PC, last is GM (live).
-    expect(select.options[0]?.value).toBe('actor');
-    expect(select.options[2]?.value).toBe('off');
-    select.value = 'off';
-    select.dispatchEvent(new Event('change'));
-    // off/streaming requests carry NO credentials (only the mode/actor/url).
-    expect(onPlayerViewMode).toHaveBeenCalledWith({
-      mode: 'off',
-      actorId: 'actor-shin',
-      foundryUrl: 'https://forge.example',
-    });
-    // setPlayerViewStatus updates the status line.
     panel.setPlayerViewStatus({ state: 'unavailable', detail: 'orchestrator P2' });
     const status = document.querySelector<HTMLElement>('.evf-player-view-status');
     expect(status?.textContent).toContain('unavailable');
     expect(status?.textContent).toContain('orchestrator P2');
   });
 
-  it('leaves a disabled option and does not throw when fetchRoster rejects', async () => {
+  it('keeps Party selectable and does not throw when fetchRoster rejects', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onSelectActor = vi.fn();
 
@@ -243,8 +214,8 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     await flush();
 
     const select = getSelect();
-    expect(select.options).toHaveLength(1);
-    expect(select.options[0]?.disabled).toBe(true);
+    // Party stays as a usable entry even when the PC list fails to load.
+    expect(select.options[0]?.value).toBe(PARTY_SELECTION);
     expect(warn).toHaveBeenCalled();
     expect(onSelectActor).not.toHaveBeenCalled();
   });

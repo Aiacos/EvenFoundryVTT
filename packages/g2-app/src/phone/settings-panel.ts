@@ -22,6 +22,7 @@
  */
 
 import type { SettingsDisplay } from '@evf/shared-protocol';
+import { PARTY_SELECTION, toPlayerViewRequest } from './player-view-selection.js';
 
 /** Minimal structural shape of a player-view status (avoids a hard schema import). */
 export interface PlayerViewStatusLike {
@@ -47,6 +48,8 @@ export interface RosterEntry {
   readonly actorId: string;
   /** Display name (rendered via textContent only). */
   readonly name: string;
+  /** Owning Foundry user — present only for players who opted in to streaming. */
+  readonly userName?: string;
 }
 
 /** Options for {@link createPhoneSettingsPanel}. */
@@ -77,26 +80,28 @@ export interface PhoneSettingsPanelOptions {
   readonly foundryUrl?: string | undefined;
   /** Called when the user edits the Foundry URL (persist for the next connect). */
   readonly onFoundryUrlChange?: (url: string) => void;
-  /** Initial map-view source mode (default `off`). */
-  readonly playerViewInitialMode?: 'off' | 'streaming' | 'actor';
   /**
-   * Called when the user changes the map-view source (ADR-0015 §C). Receives a
-   * {@link PlayerViewRequest}: the mode plus everything the boot needs to send the
-   * `client_player_view` message — the selected actorId, the Foundry URL, and (for
-   * `actor` mode) the selected player's Forge credentials. The bridge replies with
-   * a status shown via {@link PhoneSettingsPanel.setPlayerViewStatus}.
+   * Called when the unified roster selection changes the map-view source
+   * (Feature 001 D2, ADR-0015 §C). The selection is mapped via
+   * {@link toPlayerViewRequest}: the synthetic "Party" entry maps to `streaming`
+   * (shared overview); a real PC maps to `actor` (that PC's owner-elected view).
+   * Carries NO credentials (the bridge resolves actorId to a Foundry user,
+   * opt-in). The bridge replies with a status shown via
+   * {@link PhoneSettingsPanel.setPlayerViewStatus}.
    */
   readonly onPlayerViewMode?: (req: PlayerViewRequest) => void;
 }
 
 /**
- * Map-view source request emitted by the panel (ADR-0015 §C, password-free).
+ * Map-view source request emitted by the panel (Feature 001 D2, ADR-0015 §C,
+ * password-free).
  *
- * Carries NO credentials: `actor` mode is resolved to the selected player's
- * Foundry user on the bridge (the player must have opted in to streaming).
+ * Derived from the unified roster selection ("Party" to `streaming`, a PC to
+ * `actor`). Carries NO credentials: `actor` mode is resolved to the selected
+ * player's Foundry user on the bridge (the player must have opted in to streaming).
  */
 export interface PlayerViewRequest {
-  readonly mode: 'off' | 'streaming' | 'actor';
+  readonly mode: 'streaming' | 'actor';
   readonly actorId: string;
   readonly foundryUrl: string;
 }
@@ -134,15 +139,12 @@ const LABELS = {
     characterLabel: 'Personaggio / Ruolo',
     characterLoading: 'Caricamento…',
     characterError: 'Non disponibile',
+    partyEntry: 'Party',
     foundryLabel: 'Link Foundry',
     foundryHint: 'In sviluppo la connessione usa il bridge locale; questo campo serve al deploy.',
-    playerViewLabel: 'Sorgente vista mappa',
     playerViewHint:
-      'GM = vista live del GM. Streaming = sessione condivisa (auto-inquadrata, illuminazione corretta). PG = vista reale del PG selezionato (luci + nebbia di guerra).',
+      'Party = vista panoramica condivisa (auto-inquadrata, illuminazione corretta). Un PG = vista reale di quel personaggio (luci + nebbia di guerra).',
     playerViewStatusPrefix: 'Stato:',
-    playerViewOff: 'GM (live)',
-    playerViewStreaming: 'Streaming (headless)',
-    playerViewActor: 'PG selezionato (headless)',
   },
   en: {
     title: 'Map settings',
@@ -156,15 +158,12 @@ const LABELS = {
     characterLabel: 'Character / Role',
     characterLoading: 'Loading…',
     characterError: 'Unavailable',
+    partyEntry: 'Party',
     foundryLabel: 'Foundry URL',
     foundryHint: 'In dev the connection uses the local bridge; this field is for deploy.',
-    playerViewLabel: 'Map view source',
     playerViewHint:
-      "GM = the GM's live view. Streaming = a shared session (auto-framed, correctly lit). PC = the selected PC's real view (lighting + fog of war).",
+      "Party = a shared overview (auto-framed, correctly lit). A PC = that character's real view (lighting + fog of war).",
     playerViewStatusPrefix: 'Status:',
-    playerViewOff: 'GM (live)',
-    playerViewStreaming: 'Streaming (headless)',
-    playerViewActor: 'Selected PC (headless)',
   },
 } as const;
 
@@ -182,24 +181,11 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
   // `suppress` guards `update()` from re-firing sendEdit while we set control values.
   let suppress = false;
 
-  // Refs captured by the builders so the player-view toggle can read the current
-  // actorId (character select) + Foundry URL when it fires. `statusEl` is updated
-  // by `setPlayerViewStatus` (downstream orchestrator status).
-  let characterSelectEl: HTMLSelectElement | null = null;
+  // Refs captured by the builders. The unified roster selector reads the Foundry
+  // URL when it fires; `playerViewStatusEl` is updated by `setPlayerViewStatus`
+  // (downstream orchestrator status).
   let foundryUrlEl: HTMLInputElement | null = null;
-  let playerViewSelectEl: HTMLSelectElement | null = null;
   let playerViewStatusEl: HTMLSpanElement | null = null;
-
-  /**
-   * Assemble a {@link PlayerViewRequest} from the live control values. The
-   * password-free model carries no credentials — `actor` mode is resolved to the
-   * player's Foundry user on the bridge side (see ADR-0015 §C).
-   */
-  const buildPlayerViewRequest = (mode: 'off' | 'streaming' | 'actor'): PlayerViewRequest => ({
-    mode,
-    actorId: characterSelectEl?.value ?? '',
-    foundryUrl: foundryUrlEl?.value.trim() ?? '',
-  });
 
   const root = doc.createElement('section');
   root.className = 'evf-settings-panel';
@@ -304,17 +290,20 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     foundryUrlEl = input;
   }
 
-  // ── Map-view source select (ADR-0015 §C) ────────────────────────────────────
+  // ── Unified roster + map-view selector (Feature 001 D2) ─────────────────────
   //
-  // Chooses the map source: GM live (off), shared streaming headless session, or
-  // the selected PC's headless view. On change it emits a {@link PlayerViewRequest}
-  // via `onPlayerViewMode` (built by `buildPlayerViewRequest`); for `actor` mode
-  // the request carries the player's Forge credentials so the bridge logs the
-  // headless in as that player. The bridge replies with a status shown below.
-  function buildPlayerViewSelect(): void {
-    const r = row(L.playerViewLabel);
+  // ONE selector replaces the old (character selector + separate map-view mode
+  // dropdown). It is populated with a synthetic top **"Party"** entry followed by
+  // each player character. The selection drives the map-view source via
+  // `toPlayerViewRequest` (Party → `streaming` overview; a PC → `actor`), and for
+  // a real PC ALSO re-pins the character SHEET via `client_select_actor`
+  // (`opts.onSelectActor`). Both apply LIVE — no reconnect. The selection is NOT
+  // persisted across reboots — TODO(ADR-0015): seed `initialActorId` from the Even
+  // Hub kv store so a reboot keeps the live choice.
+  function buildCharacterSelector(): void {
+    const r = row(L.characterLabel);
     const select = doc.createElement('select');
-    select.className = 'evf-player-view';
+    select.className = 'evf-character-select';
     Object.assign(select.style, {
       maxWidth: '220px',
       padding: '6px 8px',
@@ -324,28 +313,47 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
       borderRadius: '6px',
       font: 'inherit',
     });
-    // Order: PG selezionato first, Streaming, GM last (per design 2026-06-17).
-    for (const [value, label] of [
-      ['actor', L.playerViewActor],
-      ['streaming', L.playerViewStreaming],
-      ['off', L.playerViewOff],
-    ] as const) {
-      const opt = doc.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      select.appendChild(opt);
-    }
-    // Default to streaming (the shared, correctly-lit, auto-framed source).
-    select.value = opts.playerViewInitialMode ?? 'streaming';
+
+    /** Add the synthetic top "Party" entry (always present, overview/streaming source). */
+    const addPartyOption = (): void => {
+      const partyOpt = doc.createElement('option');
+      partyOpt.value = PARTY_SELECTION;
+      partyOpt.textContent = L.partyEntry; // Safe: textContent only (T-02-03).
+      select.appendChild(partyOpt);
+    };
+
+    // While the roster is pending the Party entry is already selectable and a
+    // disabled placeholder shows the loading state for the PC list.
+    addPartyOption();
+    const placeholder = doc.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.textContent = L.characterLoading;
+    select.appendChild(placeholder);
+    // Default boot selection = Party (the shared overview/streaming source).
+    select.value = PARTY_SELECTION;
+
     select.addEventListener('change', () => {
       if (suppress) return;
-      const mode = select.value as 'off' | 'streaming' | 'actor';
-      opts.onPlayerViewMode?.(buildPlayerViewRequest(mode));
+      const req = toPlayerViewRequest(select.value);
+      if (req === null) return; // empty / placeholder — no-op
+      // A real PC re-pins the character SHEET too (`client_select_actor`). Party
+      // (streaming) carries no actor — only the map-view source changes.
+      if (req.mode === 'actor' && req.actorId) {
+        opts.onSelectActor?.(req.actorId);
+      }
+      opts.onPlayerViewMode?.({
+        mode: req.mode,
+        actorId: req.actorId ?? '',
+        foundryUrl: foundryUrlEl?.value.trim() ?? '',
+      });
     });
+
     r.appendChild(select);
     body.appendChild(r);
-    playerViewSelectEl = select;
 
+    // Hint + downstream orchestrator status line (relocated from the removed
+    // map-view mode dropdown).
     const hint = doc.createElement('span');
     hint.textContent = L.playerViewHint;
     Object.assign(hint.style, { display: 'block', color: T.textDim, font: '400 13px/1.3 inherit' });
@@ -361,65 +369,11 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     });
     body.appendChild(status);
     playerViewStatusEl = status;
-  }
-
-  // ── Character / Role selector (top of body) ─────────────────────────────────
-  //
-  // Lets the player switch the active actor LIVE from the phone. Independent of
-  // the display-settings (`sendEdit`) path: a change emits the upstream
-  // `client_select_actor` WS message via `opts.onSelectActor`, which the bridge
-  // applies without a reconnect. The selection is NOT persisted across reboots —
-  // TODO(ADR-0015): seed `initialActorId` from the Even Hub kv store so a reboot
-  // keeps the live choice instead of reverting to the wizard-picked `characterId`.
-  function buildCharacterSelector(): void {
-    const r = row(L.characterLabel);
-    const select = doc.createElement('select');
-    select.className = 'evf-character-select';
-    Object.assign(select.style, {
-      maxWidth: '220px',
-      padding: '6px 8px',
-      background: T.inputBg,
-      color: T.text,
-      border: `1px solid ${T.surface}`,
-      borderRadius: '6px',
-      font: 'inherit',
-    });
-
-    // While the roster is pending (or on failure) a single disabled placeholder
-    // is shown; `select.value` then equals '' so `change` handling is a no-op.
-    const placeholder = doc.createElement('option');
-    placeholder.value = '';
-    placeholder.disabled = true;
-    placeholder.selected = true;
-    placeholder.textContent = L.characterLoading;
-    select.appendChild(placeholder);
-
-    select.addEventListener('change', () => {
-      if (suppress) return;
-      const value = select.value;
-      if (!value) return; // guard against the disabled placeholder
-      opts.onSelectActor?.(value);
-      // ADR-0015 §C: when the map source is driven by the selected PC — both
-      // 'actor' (that PC's fogged view) AND 'streaming' (which joins as that PC's
-      // owning Foundry user) — switching the character must ALSO re-drive the
-      // headless to the new PC. `client_select_actor` only re-pins the character
-      // SHEET; the map source is owned by `client_player_view`, whose actorId is a
-      // snapshot taken at send time. Without this re-send the glasses keep the OLD
-      // PC's view after a character switch.
-      const pvMode = playerViewSelectEl?.value;
-      if (pvMode === 'actor' || pvMode === 'streaming') {
-        opts.onPlayerViewMode?.(buildPlayerViewRequest(pvMode));
-      }
-    });
-
-    r.appendChild(select);
-    body.appendChild(r);
-    characterSelectEl = select;
 
     const roster = opts.fetchRoster;
     if (!roster) {
-      // No provider: leave the placeholder as a static disabled option.
-      placeholder.textContent = L.characterError;
+      // No provider: drop the loading placeholder; Party stays as the sole entry.
+      placeholder.remove();
       return;
     }
 
@@ -428,20 +382,24 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
         suppress = true;
         try {
           while (select.firstChild) select.removeChild(select.firstChild);
+          addPartyOption();
           for (const entry of entries) {
             const opt = doc.createElement('option');
             opt.value = entry.actorId;
             opt.textContent = entry.name; // Safe: textContent only (T-02-03).
             select.appendChild(opt);
           }
-          if (opts.initialActorId !== undefined) {
-            select.value = opts.initialActorId;
-          }
+          // Default boot selection = Party unless the caller pinned a PC.
+          select.value =
+            opts.initialActorId !== undefined && opts.initialActorId !== ''
+              ? opts.initialActorId
+              : PARTY_SELECTION;
         } finally {
           suppress = false;
         }
       })
       .catch((err: unknown) => {
+        // Roster failed: keep Party as the only selectable entry.
         placeholder.textContent = L.characterError;
         console.warn('[EVF] settings-panel: failed to load character roster —', err);
       });
@@ -506,10 +464,10 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
     return input;
   }
 
-  // Foundry URL, the Character/Role selector, then the player-view source toggle.
+  // Foundry URL, then the unified roster + map-view selector (D2: the separate
+  // map-view mode dropdown is gone — selection drives the source).
   buildFoundryUrlField();
   buildCharacterSelector();
-  buildPlayerViewSelect();
 
   const ditherEl = toggle(L.dither, 'dither');
   const brightnessEl = slider(

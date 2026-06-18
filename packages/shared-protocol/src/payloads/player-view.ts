@@ -49,6 +49,12 @@ export const PLAYER_VIEW_MODES = ['off', 'streaming', 'actor'] as const;
  * and `streaming` mode the bridge maps it to that player's Foundry username for the
  * `/join` selection (streaming falls back to the env stream user when absent);
  * `foundryUrl` overrides the bridge's configured Foundry game URL.
+ *
+ * Feature 001 D2 — unified roster selection (no new wire field): the EvenHub app
+ * now derives this message from ONE roster selector. The synthetic top **"Party"**
+ * entry maps to `{ mode: 'streaming' }`; selecting a real player character maps to
+ * `{ mode: 'actor', actorId }`. The separate off/streaming/actor mode dropdown was
+ * removed; `off` is reached implicitly when no capture source is configured.
  */
 export const ClientPlayerViewMessageSchema = z.strictObject({
   type: z.literal(CLIENT_PLAYER_VIEW_TYPE),

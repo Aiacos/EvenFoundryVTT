@@ -139,12 +139,12 @@ const FPS_INDICATOR_KV_KEY = 'evf.fps.indicator';
 /**
  * Map-view source activated automatically on boot (ADR-0015 §C P2c).
  *
- * The settings panel only emits `client_player_view` on a dropdown CHANGE, so the
- * configured source needs an explicit one-shot send on boot or the glasses fall
- * back to relaying the GM's live view. `'streaming'` (the shared, correctly-lit,
- * auto-framed headless session) is the design default (2026-06-17); `'off'` would
- * keep the GM view and skip the auto-send. Kept in sync with the panel's
- * `playerViewInitialMode` so the dropdown and the live session always agree.
+ * The settings panel only emits `client_player_view` on a roster-selection
+ * CHANGE, so the configured source needs an explicit one-shot send on boot or the
+ * glasses fall back to relaying the GM's live view. `'streaming'` (the shared,
+ * correctly-lit, auto-framed headless session) is the design default (2026-06-17)
+ * and corresponds to the unified selector's default boot selection = **Party**
+ * (Feature 001 D2); `'off'` would keep the GM view and skip the auto-send.
  */
 const BOOT_PLAYER_VIEW_MODE: 'off' | 'streaming' | 'actor' = 'streaming';
 
@@ -1036,11 +1036,12 @@ export async function _bootEngineCore(
     sendEdit: (edit) => displaySettingsSync.sendEdit(edit),
     initial: displaySettingsSync.get(),
     locale: opts.locale,
-    // Map-view source dropdown starts on the same mode this boot auto-activates
-    // below (BOOT_PLAYER_VIEW_MODE), so the panel and the live session agree.
-    playerViewInitialMode: BOOT_PLAYER_VIEW_MODE,
-    // Character/Role selector — live actor switch from the phone (no reconnect).
-    initialActorId: opts.characterId,
+    // Unified roster selector (Feature 001 D2): the default boot selection is
+    // Party (the synthetic top entry → `streaming`, matching the source this boot
+    // auto-activates below). `initialActorId` is deliberately omitted so the
+    // selector boots on Party; the wizard-picked `opts.characterId` still pins the
+    // character SHEET via the handshake. Picking a PC here re-pins the sheet +
+    // switches the map source live (no reconnect).
     onSelectActor: (actorId) => {
       wsSender.send(JSON.stringify({ type: CLIENT_SELECT_ACTOR_TYPE, actorId }));
     },

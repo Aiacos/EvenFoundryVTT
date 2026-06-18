@@ -11,8 +11,10 @@
  * Usage (from repo root):
  *   node tools/pv-doctor.mjs report            # full pipeline snapshot (default)
  *   node tools/pv-doctor.mjs roster            # list selectable PCs (actorId → name)
- *   node tools/pv-doctor.mjs set streaming     # drive map-source = shared headless
- *   node tools/pv-doctor.mjs set actor <id>    # drive map-source = that PC's fogged view
+ *   node tools/pv-doctor.mjs set party         # drive map-source = Party (shared streaming overview)
+ *   node tools/pv-doctor.mjs set pc <id>       # drive map-source = that PC's owner-elected view
+ *   node tools/pv-doctor.mjs set streaming     # (raw) shared headless; 'party' is the D2 alias
+ *   node tools/pv-doctor.mjs set actor <id>    # (raw) that PC's fogged view; 'pc <id>' is the D2 alias
  *   node tools/pv-doctor.mjs set off           # drive map-source = GM live view
  *   node tools/pv-doctor.mjs watch [secs]      # sample fps continuously
  *
@@ -175,10 +177,23 @@ async function cmdRoster() {
 }
 
 async function cmdSet(mode, actorId) {
+  // Feature 001 D2 aliases mirroring the unified roster selector:
+  //   party    → streaming (no actorId — the shared overview)
+  //   pc <id>  → actor <id> (that PC's owner-elected, consent-gated view)
+  let sourceLabel = null;
+  if (mode === 'party') {
+    mode = 'streaming';
+    actorId = undefined;
+    sourceLabel = 'Party (shared streaming overview)';
+  } else if (mode === 'pc') {
+    mode = 'actor';
+    sourceLabel = actorId ? `PC ${actorId} (owner-elected)` : 'PC';
+  }
   if (!['off', 'streaming', 'actor'].includes(mode)) {
-    console.error(`bad mode '${mode}' — use off|streaming|actor`);
+    console.error(`bad mode '${mode}' — use party|pc <id>|off|streaming|actor`);
     process.exit(2);
   }
+  if (sourceLabel) console.log(`  source = ${sourceLabel}`);
   const msg = { type: 'client_player_view', mode };
   if (mode === 'actor') {
     if (!actorId) {

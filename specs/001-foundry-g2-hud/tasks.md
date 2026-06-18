@@ -60,12 +60,12 @@ reaches a live HUD with no dev env var; drop/restore auto-recovers within ~30s.
 test**: selecting Party → streaming source; selecting a consenting PC → that PC's view; a non-consenting
 PC → "unavailable".
 
-- [ ] T017 [US2] Inject the synthetic top **"Party"** entry into the roster selector and remove `buildPlayerViewSelect` (the off/streaming/actor dropdown) in `packages/g2-app/src/phone/settings-panel.ts`.
-- [ ] T018 [US2] Drive the player-view request from the roster `change` handler via `toPlayerViewRequest` (Party→streaming, PC→actor) in `packages/g2-app/src/phone/settings-panel.ts`; keep the live actor re-pin for PCs.
-- [ ] T019 [US2] Update boot-time + change-time emission in `packages/g2-app/src/internal/boot-engine-core.ts` so the unified selection maps to `client_player_view{mode,actorId?}` (default boot selection = Party).
-- [ ] T020 [P] [US2] Confirm/extend the selection semantics doc-comments in `packages/shared-protocol/src/payloads/player-view.ts` (Party→streaming, PC→actor); no new wire field.
-- [ ] T021 [US2] Update `packages/g2-app/src/phone/settings-panel.test.ts` — remove mode-dropdown tests; assert Party + PC selection produce the correct `client_player_view` requests and re-drive on PC change.
-- [ ] T022 [P] [US2] Extend `tools/pv-doctor.mjs` to label/drive "party" vs a PC selection (report which source is active) for live validation (Constitution V).
+- [X] T017 [US2] Inject the synthetic top **"Party"** entry into the roster selector and remove `buildPlayerViewSelect` (the off/streaming/actor dropdown) in `packages/g2-app/src/phone/settings-panel.ts`.
+- [X] T018 [US2] Drive the player-view request from the roster `change` handler via `toPlayerViewRequest` (Party→streaming, PC→actor) in `packages/g2-app/src/phone/settings-panel.ts`; keep the live actor re-pin for PCs.
+- [X] T019 [US2] Update boot-time + change-time emission in `packages/g2-app/src/internal/boot-engine-core.ts` so the unified selection maps to `client_player_view{mode,actorId?}` (default boot selection = Party).
+- [X] T020 [P] [US2] Confirm/extend the selection semantics doc-comments in `packages/shared-protocol/src/payloads/player-view.ts` (Party→streaming, PC→actor); no new wire field.
+- [X] T021 [US2] Update `packages/g2-app/src/phone/settings-panel.test.ts` — remove mode-dropdown tests; assert Party + PC selection produce the correct `client_player_view` requests and re-drive on PC change.
+- [X] T022 [P] [US2] Extend `tools/pv-doctor.mjs` to label/drive "party" vs a PC selection (report which source is active) for live validation (Constitution V).
 
 **Checkpoint**: US2 independently deliverable — single selector chooses Party or a PC; gates green.
 
