@@ -30,6 +30,14 @@ typecheck 0, bridge 593 tests, foundry-module 671 tests + known teardown flake).
   BUG 5 — on WS subscribe, replay cached roster via `sendInitialToSession(
   R1_CHARACTERS_AVAILABLE_TYPE)` (mirrors settings.display replay). WS integration test.
 
+- **d762987** `feat(*): streaming map-view joins the PC chosen in the EvenHub app`
+  Follow-up (user request): the streaming user is chosen FROM THE APP by reusing the
+  "Personaggio / Ruolo" selector — app sends `actorId` in streaming, bridge resolves
+  it to the PC's owning user (opt-in gated), headless joins as that user;
+  `EVF_PLAYER_VIEW_STREAM_USER` is the fallback. App value wins (intent-over-env).
+  Spans shared-protocol (doc) + bridge (handler/orchestrator) + g2-app
+  (settings-panel re-drive, boot actorId) + tests (CPV-07/07b, ORC-09c, panel).
+
 ## Not done here (live re-test required)
 
 - **Bridge image rebuild** (BUG 1/3/5) + set `EVF_PLAYER_VIEW_STREAM_USER` in
