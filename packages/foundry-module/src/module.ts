@@ -34,6 +34,7 @@ import {
   FRAME_PNG_TYPE,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
+  R1_CHARACTERS_AVAILABLE_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
   SETTINGS_DISPLAY_TYPE,
   SettingsDisplayEditSchema,
@@ -48,7 +49,7 @@ import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 // Emits r1.characters.available on ready + actor lifecycle hooks (createActor/updateActor/deleteActor).
 // Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
 import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
-import { registerCharacterListReader } from './readers/character-list-reader.js';
+import { readCharacterList, registerCharacterListReader } from './readers/character-list-reader.js';
 // Quick Task 260517-k2g — entity-pack vocabulary push (parallel additive pipeline, NO new socketlib handler).
 // Emits r1.entities.available envelopes via bridgeDeltaEmitter for non-spell Items + Actors (npc/vehicle).
 // Registered alongside spell-pack so weapon/armor/monster recognition is available at init time too.
@@ -624,6 +625,23 @@ Hooks.once('ready', () => {
   // glasses settings panel always reflects Foundry on connect (#32). Page
   // lifecycle owns this timer (Foundry reload tears down the whole client).
   setInterval(emitDisplaySettings, SETTINGS_HEARTBEAT_MS);
+
+  // Roster heartbeat (ADR-0015 §C, BUG-4): the character-list reader only emits on
+  // ready + actor CRUD hooks, so after a bridge (re)start (or leadership migration)
+  // the bridge CharacterListCache goes COLD until an actor changes — breaking the
+  // g2-app PC selector (GET /v1/characters) AND the actor player-view
+  // (actorId→userName resolution → `unavailable`). Mirror the settings heartbeat:
+  // the stream leader re-publishes the roster on the same cadence so the cache
+  // stays warm. Leader-gated to avoid N× redundant POSTs (the roster is identical
+  // world data on every client). Best-effort; never throws into the timer.
+  setInterval(() => {
+    try {
+      if (!isStreamLeader()) return;
+      bridgeDeltaEmitter(R1_CHARACTERS_AVAILABLE_TYPE, readCharacterList());
+    } catch {
+      // roster heartbeat is best-effort — a read/emit failure must not break the page
+    }
+  }, SETTINGS_HEARTBEAT_MS);
 });
 
 /** Minimal user shape read by {@link isStreamLeader}. */

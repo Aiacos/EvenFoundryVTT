@@ -1,5 +1,17 @@
 # @evf/foundry-module
 
+## 0.1.34
+
+### Patch Changes
+
+- ADR-0015 §C (BUG-4): roster heartbeat. The character-list reader emitted
+  `r1.characters.available` only on `ready` + actor CRUD hooks, so after a bridge
+  (re)start or stream-leadership migration the bridge `CharacterListCache` went
+  cold until an actor changed — breaking the g2-app PC selector (`GET /v1/characters`)
+  and the actor player-view (`actorId → userName` resolution → `unavailable`). The
+  stream leader now re-publishes the roster on the same 10s cadence as the
+  display-settings heartbeat, keeping the cache warm. Leader-gated; best-effort.
+
 ## 0.1.15
 
 ### Minor Changes
