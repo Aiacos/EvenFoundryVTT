@@ -196,6 +196,52 @@ Three boundaries, three contracts, every plugin slot versioned. dnd5e v6 lands? 
 - **No mocks at the boundary** — Foundry is the single source of truth, every action goes through `Activity#use()` / MidiQOL workflow, GM keeps full veto power.
 - **Phase 0 gating** — every hardware assumption (R1 events, image API format, BLE bandwidth, partial-update API, DLE, audio chunk size) has a written GO/NO-GO test before code lands.
 
+## Controls — R1 ring / G2 touchpad
+
+The whole HUD is driven by **four gestures only** (Even Realities hardware exposes no more —
+there is **no long-press**, no side-swipe, no text input). The R1 ring (or the G2 temple
+touchpad) emits them; they travel BLE → phone → G2 → the plugin SDK, which maps each wire event
+to one logical gesture:
+
+| Physical gesture | SDK wire event | Logical gesture |
+|---|---|---|
+| **Press** (single tap) | `CLICK_EVENT (0)` | `tap` |
+| **Double-press** | `DOUBLE_CLICK_EVENT (3)` | `double-tap` |
+| **Swipe-up** | `SCROLL_TOP_EVENT (1)` | `scroll · up` |
+| **Swipe-down** | `SCROLL_BOTTOM_EVENT (2)` | `scroll · down` |
+
+What each gesture does depends on **what is focused** (ADR-0012 — over-scroll model). There is no
+fifth gesture: the **Quick Action menu** is opened by an *over-scroll* — a swipe-up while the
+focused layer is already at its top boundary (non-scrollable layers are always "at the top", so a
+single swipe-up opens it).
+
+| Context | Swipe-up | Swipe-down | Press (tap) | Double-press |
+|---|---|---|---|---|
+| **Map** (root, no overlay) | **open Quick Action menu** (over-scroll) | — | — | **Exit** dialog (`shutDownPageContainer(1)`) |
+| **Quick Action menu** | move cursor ↑ (wraps) | move cursor ↓ (wraps) | **select** the highlighted item | **close** the menu |
+| **Character sheet** | prev tab — or scroll content up on Bio/Feats; at content-top → over-scroll opens the menu | next tab — or scroll content down on Bio/Feats | **next tab** (cycles the 6 tabs) | **close** → back to map |
+| **Combat / Log / Inventory / Spellbook** | scroll / previous | scroll / next | select (per-panel) | **close** → back to map |
+| **Modals & pickers** (spell-slot, target, action options) | move / scroll | move / scroll | **confirm** | **cancel** (panel self-manages) |
+
+**Quick Action menu entries** (open it with an over-scroll on the map):
+
+| Entry | Action |
+|---|---|
+| **Scheda** | open the character sheet (Main tab) |
+| **Combattimento** | open the combat tracker |
+| **Log** | open the event log |
+| **Libro** | open the sheet on the **Spellbook** tab |
+| **Inventario** | open the sheet on the **Inventory** tab |
+| **Azione** | action options |
+| **Mappa** | toggle map render mode (raster ⇄ glyph) |
+| **Lingua** | open the language sub-menu (device-local locale override) |
+| **FPS** | toggle the composited FPS badge on/off |
+| **Chiudi** | close the menu |
+
+> Canonical model: [ADR-0012 — R1 gesture model](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md);
+> per-hardware mapping: [Specs §3.2](Specs.md). The gesture set is INV-2-verified against
+> `hub.evenrealities.com/docs/guides/input-events` (press / double-press / swipe-up / swipe-down).
+
 ## Project Invariants (non-negotiable)
 
 Four rules govern every PR, every audit, every release. They are constraints, not guidelines. See **[§0.1 of `Specs.md`](Specs.md)** for the formal definition.

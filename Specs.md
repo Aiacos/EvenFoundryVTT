@@ -327,6 +327,20 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 
 > **Over-scroll = invocazione Quick Action** (ADR-0012). Non esiste un quinto gesture: il menu si apre quando il layer in focus riceve uno `swipe-up` mentre è già al proprio top boundary. I layer non scrollabili sono sempre "al top", quindi un singolo `swipe-up` apre il menu. Cambio pagina/overlay non avviene più via swipe laterale (l'hardware non espone swipe dx/sx): la navigazione tra panel passa dal Quick Action menu.
 
+**Wire → gesture (SDK):** `CLICK_EVENT(0)`→`tap` · `SCROLL_TOP_EVENT(1)`→`scroll·up` · `SCROLL_BOTTOM_EVENT(2)`→`scroll·down` · `DOUBLE_CLICK_EVENT(3)`→`double-tap`. Gli scroll arrivano come `textEvent` sul container `isEventCapture`, click/double come `sysEvent`; per la default-omission protobuf un `eventType` assente = `0` (CLICK). Vedi `glasses-event-source.ts`.
+
+**Mapping per-contesto** (il significato dipende dal layer in focus — ADR-0012):
+
+| Contesto | Swipe-up | Swipe-down | Tap | Double-tap |
+|---|---|---|---|---|
+| **Mappa** (root, nessun overlay) | apri **Quick Action menu** (over-scroll) | — | — | **EXIT** (`shutDownPageContainer(1)`) |
+| **Quick Action menu** | cursore ↑ (wrap) | cursore ↓ (wrap) | **seleziona** voce | **chiudi** menu |
+| **Scheda PG** | tab prec. — o scroll contenuto su (Bio/Feats); al top → over-scroll apre il menu | tab succ. — o scroll contenuto giù (Bio/Feats) | **tab succ.** (ciclo 6 tab) | **chiudi** → mappa |
+| **Combat / Log / Inventory / Spellbook** | scroll / prec. | scroll / succ. | seleziona (per-panel) | **chiudi** → mappa |
+| **Modal & picker** (slot, target, action-options) | sposta / scroll | sposta / scroll | **conferma** | **annulla** (gestito dal panel) |
+
+I dispatcher router-level che implementano questo: `quick-action-overscroll-dispatcher` (over-scroll → apri menu), `root-exit-dispatcher` (double-tap su root → exit), `nav-panel-close-dispatcher` (double-tap su nav-panel → close); i modal/picker dichiarano `handlesDoubleTap = true` e gestiscono il double-tap da sé. Riferimento completo: ADR-0012 + README §Controls.
+
 ### 3.3 Networking (verificato su `hub.evenrealities.com/docs/guides/networking`)
 
 | Parametro | Valore |
@@ -428,7 +442,7 @@ Il G2 ha **feature AI nativa** controllata da Even Realities. Tutte sono **opaqu
 - **AI on-glasses è IMPOSSIBILE per la nostra app** — non è una scelta di design, è un vincolo di piattaforma.
 - La nostra V2 voice/AI strategy **deve restare external** — è esattamente il pattern §5.7 `foundry-mcp` (LLM gira nel client MCP esterno; il G2 vede solo il risultato come toast/status update). Confermato architettonicamente corretto.
 - **Nessuna dipendenza** da EvenAI nativo: non è dependable surface (proprietary, non-versioned, no SLA dev).
-- **Nessun conflitto UX desiderato**: il nostro `[L]ong-press` apre il nostro Quick Action, non "Hey Even" (l'utente può comunque triggerare EvenAI parallelamente — è una feature OS-level che non blocca i plugin).
+- **Nessun conflitto UX desiderato**: il nostro **over-scroll** (swipe-up al top boundary, ADR-0012) apre il nostro Quick Action, non "Hey Even" (l'utente può comunque triggerare EvenAI parallelamente — è una feature OS-level che non blocca i plugin).
 
 **Phase 15 mitigation (v0.9.12):** Lo status quo è stato **re-verified ✓ 2026-05-17** con una passata INV-2 su 6 domini canonici Even Realities (`hub.evenrealities.com/docs/{getting-started/overview,guides/device-apis,guides/input-events}`, `github.com/even-realities/EvenDemoApp`, `evenrealities.com/ai-glasses`, community Zenn.dev) — evidenze in `.planning/quick/20260517-voice-intent-research/RESEARCH.md` §1. **Nessuna apertura developer di EvenAI**: zero transcript subscription, zero intent hook, zero wake-word API, zero audio-enhancement API. La pipeline Phase 12 (Deepgram Nova-3 + Claude Desktop MCP) resta l'unica architettura praticabile con SDK pubblico. La mitigazione Phase 15 (chiusa 2026-05-17) non aggira il vincolo §3.6 — **estende** Deepgram Nova-3 Multilingual con il parametro `keyterm` (Deepgram learn article: **+625% entity-recall lift** su vocabolario esoterico tipo Bigby's Hand, Counterspell, Vrock), seedato dall'unione dei 70 spell SRD statici (`SPELL_KEYTERMS`) e del vocabolario dinamico Foundry-derived (entity-pack: items/weapons/armor/NPCs/monsters). L'architettura voice resta invariata; `keyterm` è un parametro, non un nuovo sistema. **Picovoice Rhino** edge-classifier (latency p50 ~200ms via Speech-to-Intent on-device, supporta IT) resta deferito condizionalmente all'esito di SC-12-01 (hardware test: se p50 misurato > 800ms, valutare ADR follow-up; ad oggi non misurabile senza hardware, carry-forward sotto ADR-0005 Branch A). Vedi §5.2 per il dettaglio bridge-side.
 
@@ -776,7 +790,7 @@ g2-app/
 
 ### 5.5 R1 Integration
 
-Layer JS dentro G2 app che traduce eventi R1 in azioni applicative. Vedi §3.2 per mapping. Long-press emette anche feedback haptic se il SDK lo supporta.
+Layer JS dentro G2 app che traduce eventi R1 in azioni applicative. Vedi §3.2 per mapping. Le gesture possono emettere feedback haptic se il SDK lo supporta.
 
 ---
 
@@ -2146,7 +2160,7 @@ L'ordine privilegia le viste **frequentemente usate in combat** (Inv e Spells su
 | Tap singolo | Cicla tab successivo (Main → Skills → Inv → Spells → Feats → Bio → Main) |
 | Scroll su/giù | Naviga contenuto del tab corrente |
 | Tap doppio | Chiudi Sheet (torna a map base) |
-| Long-press | Apri Quick Action menu |
+| Over-scroll (swipe-up al top) | Apri Quick Action menu |
 
 Indicatore tab corrente: `[▶XXX ]` (▶ sostituisce lo spazio interno). Le altre voci restano `[ XXX ]`. Larghezza tab preservata grazie al trick spazio↔▶, così la strip non shift-ta mai.
 
@@ -2381,7 +2395,7 @@ Replica fedele del tab Spells di Foundry: **header spellcasting** (DC, atk mod, 
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-Le voci con `░` accanto sono **usabili** (resource pool: Second Wind, Action Surge, Arcane Recovery). Long-press le attiva via `activity.use()`. Le voci `[unlocked at ...]` sono visibili ma disabilitate (preview di feature future per la classe).
+Le voci con `░` accanto sono **usabili** (resource pool: Second Wind, Action Surge, Arcane Recovery). Il **tap** le attiva via `activity.use()`. Le voci `[unlocked at ...]` sono visibili ma disabilitate (preview di feature future per la classe).
 
 #### 7.5.7 Tab 6 — Bio (Background details, personality, backstory)
 
@@ -3109,12 +3123,9 @@ BLE budget: OK (sotto 25 KB/s real-world)
 
 **Regole macro** (in ordine di priorità):
 
-1. **Tap doppio = "indietro"**: chiude qualsiasi overlay/modal e torna a MAIN_MAP.
-2. **Long-press = context-sensitive**:
-   - in MAIN_MAP → apre **Quick Action menu** (§7.13a)
-   - in overlay panel → esegue azione del panel (cast, use, equip, ecc.)
-   - in modal → cancel/dismiss
-3. **Tap singolo = primary cycle**: cicla tab (Sheet), opzione (Quick Action), quick-action (Combat), o attiva l'item highlighted (Spellbook/Inventory).
+1. **Tap doppio = "indietro"**: chiude qualsiasi overlay/modal e torna a MAIN_MAP (sulla root mappa = EXIT dialog).
+2. **Over-scroll (swipe-up al top boundary) = apri Quick Action menu** (§7.13a, ADR-0012): in MAIN_MAP — o in qualunque layer già al proprio top — uno `swipe-up` apre il menu. NON è un long-press (gesture ritirato, ADR-0012): non esiste input duration-based.
+3. **Tap singolo = primary action / cycle**: cicla tab (Sheet), seleziona opzione (Quick Action), o attiva l'item highlighted / esegue l'azione del panel (cast, use, equip via `activity.use()`).
 4. **Scroll = navigazione**: pan mappa, lista item, storia eventi, opzioni modal.
 
 **Footer chip-bar**: visualizza il panel attivo (es. `[▶sheet] [combat] [log] [spell] [inv]`) come breadcrumb **read-only** — non è un'area di tap perché solo 1 container ha capture. Per cambiare panel: tap-doppio per uscire → over-scroll (swipe-up al top) per Quick Action → tap nuovo panel. Cross-overlay rapido: over-scroll dentro un overlay apre Quick Action senza chiudere prima.
