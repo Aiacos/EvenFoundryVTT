@@ -169,7 +169,7 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
 
-> **Condensed decision summary.** Full rationale, per-package "why", alternatives-considered, the version-compatibility matrix, and the INV-2 verification provenance (`npm view` / WebFetch logs) live in **`.planning/research/STACK.md`** (researched 2026-05-10). Consult STACK.md before changing any pin.
+> **Condensed decision summary.** The authoritative pinned versions and the "do NOT use" list are below; the per-package "why", alternatives-considered, and INV-2 verification provenance were captured in the (now-removed) GSD `.planning/research/STACK.md` — recoverable from git history if needed. Re-verify any pin against canonical upstream (INV-2) before changing it.
 >
 > **Drift corrections** (re-verified ✓ 2026-05-11): TypeScript is pinned **5.8.3** (research said 5.8.5 — does not exist on npm); pnpm is pinned **10.33.4** (research said 10.3.1 — does not exist). Authoritative current pins live in repo config (`package.json` `packageManager`, root `devDependencies`, `.changeset/config.json`).
 
@@ -211,18 +211,23 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
+## Planning Workflow — Spec Kit
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+Planning has migrated from GSD to **Spec Kit**. The old GSD `.planning/` directory was removed
+on 2026-06-18 (recoverable from git history); the project constitution lives at
+`.specify/memory/constitution.md` (v1.0.0) and feature specs live under `specs/`.
 
-Use these entry points:
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
+Workflow for substantive features:
+- `/speckit.specify` — write/refresh the feature spec (`specs/<NNN>-<slug>/spec.md`).
+- `/speckit.clarify` — resolve underspecified areas (optional).
+- `/speckit.plan` — produce the implementation plan + design artifacts.
+- `/speckit.tasks` — generate the dependency-ordered task list.
+- `/speckit.implement` — execute the tasks.
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
+The constitution's principles (code quality, test-first, INV-1 layout, performance budgets,
+autonomous debug, source-verified research, doc coherence, repo hygiene, reliable CI/CD,
+disciplined subagent use) are the binding quality gates — `/speckit.plan` runs a Constitution
+Check against them. Trivial fixes may be made directly; keep changes atomic and tested.
 
 <!-- GSD:profile-start -->
 ## Developer Profile
@@ -230,3 +235,12 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+
+<!-- SPECKIT START -->
+Active feature: **001-foundry-g2-hud** — connection simplification (one direct link),
+unified map-view selection (roster "Party" entry; mode dropdown removed), D&D-styled
+sheet UI with icons on the canvas compositor, composited FPS badge (`EVF_FPS_CORNER`),
+code cleanup, and docs refresh. For technologies, structure, and the implementation
+approach, read the current plan: `specs/001-foundry-g2-hud/plan.md`
+(spec: `specs/001-foundry-g2-hud/spec.md`; research/data-model/contracts/quickstart alongside).
+<!-- SPECKIT END -->

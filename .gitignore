@@ -62,3 +62,6 @@ release/
 # release-artifacts/: root release staging dir
 release-artifacts/
 /chrome/
+
+# Claude Code transient worktree state
+.claude/worktrees/
