@@ -12,10 +12,7 @@
     {
       "name": "network",
       "desc": "Connects to the EvenFoundryVTT bridge (WS/REST) and plugin host to stream the Foundry VTT session onto G2.",
-      "whitelist": [
-        "https://bridge.REPLACE-WITH-YOUR-ORIGIN.example",
-        "https://plugin-host.REPLACE-WITH-YOUR-ORIGIN.example"
-      ]
+      "whitelist": ["https://evenfoundry.lucifer-tnas.mywire.org"]
     }
   ],
   "supported_languages": ["it", "en"]
