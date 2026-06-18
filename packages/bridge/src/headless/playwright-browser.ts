@@ -180,31 +180,32 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
       // 4. Best-effort Foundry /join user-select (ENV-SPECIFIC — see module header).
       await tryFoundryJoin(page, cfg);
 
-      // 5. Wait for the world + scene canvas to be ready, then leave the page open.
-      // String-form predicate (evaluated in the BROWSER): the bridge tsconfig has
-      // no DOM lib, so referencing `window`/`game`/`canvas` as TS identifiers here
-      // would not type-check. The string is evaluated in the page context where
-      // those globals exist.
-      await page.waitForFunction(
-        'window.game && window.game.ready === true && window.canvas && window.canvas.ready === true',
-        undefined,
-        { timeout: WORLD_READY_TIMEOUT_MS },
-      );
+      // 5. Wait for the world + scene canvas to be ready.
+      await waitWorldReady(page);
 
-      // 6. Auto-entry guard (BUG-3): when Foundry auto-enters as a stale session
-      // user, the `/join` <select> is absent so our user selection silently
-      // no-ops and we'd stream the WRONG user's view. Assert the joined user
-      // matches the requested one; mismatch → fail (the orchestrator reports
-      // error, not a wrong-view stream). Skipped when no specific user was
-      // requested (streaming with no configured stream user — any user is fine).
+      // 6. Auto-entry guard + re-select (BUG-3): when Foundry auto-enters from the
+      // streaming account's saved session, the `/join` <select> is absent so our
+      // user selection silently no-ops and we'd stream the WRONG user's view (e.g.
+      // the streaming account instead of the requested player). Assert the joined
+      // user; on mismatch, RETURN TO /join (log out of the Foundry user — the Forge
+      // account gate is unaffected), re-select the requested user, and re-wait. A
+      // persistent mismatch fails the launch (the orchestrator reports error rather
+      // than a wrong-view stream). Skipped when no specific user was requested
+      // (streaming with no configured stream user — any user is fine).
       // (Foundry usernames are display names, not secrets — safe to surface.)
       const requestedUser = requestedUserFor(cfg);
       if (requestedUser !== undefined && requestedUser.length > 0) {
-        const joinedRaw = await page.evaluate('window.game?.user?.name ?? null');
-        const joined = typeof joinedRaw === 'string' ? joinedRaw : null;
-        if (joined === null || joined.trim() !== requestedUser.trim()) {
+        let joined = await readJoinedUser(page);
+        if (!userMatches(joined, requestedUser)) {
+          debugLog(`auto-entered as "${joined}", re-selecting "${requestedUser}" via /join`);
+          await foundryReturnToJoin(page, cfg);
+          await tryFoundryJoin(page, cfg);
+          await waitWorldReady(page);
+          joined = await readJoinedUser(page);
+        }
+        if (!userMatches(joined, requestedUser)) {
           throw new Error(
-            `joined Foundry user "${joined ?? '(unknown)'}" does not match requested "${requestedUser}" — Foundry likely auto-entered the world (bypassed /join); clear the saved session or pick the right user`,
+            `joined Foundry user "${joined ?? '(unknown)'}" does not match requested "${requestedUser}" after re-select — the streaming account may not be allowed to join as that user`,
           );
         }
       }
@@ -327,6 +328,59 @@ async function waitForOptional(page: Page, selector: string): Promise<unknown | 
     return await page.waitForSelector(selector, { timeout: SELECTOR_PROBE_MS, state: 'visible' });
   } catch {
     return null;
+  }
+}
+
+/** Wait until `game.ready` AND `canvas.ready` (the scene is rendering). */
+async function waitWorldReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    'window.game && window.game.ready === true && window.canvas && window.canvas.ready === true',
+    undefined,
+    { timeout: WORLD_READY_TIMEOUT_MS },
+  );
+}
+
+/** Read the currently-joined Foundry user's name (or `null` if unavailable). */
+async function readJoinedUser(page: Page): Promise<string | null> {
+  const raw = await page.evaluate('window.game?.user?.name ?? null');
+  return typeof raw === 'string' ? raw : null;
+}
+
+/** True when the joined user matches the requested one (trimmed exact match). */
+function userMatches(joined: string | null, requested: string): boolean {
+  return joined !== null && joined.trim() === requested.trim();
+}
+
+/**
+ * Return to the Foundry `/join` user-selection screen WITHOUT dropping the Forge
+ * account gate (BUG-3 re-select). `game.logOut()` disconnects the socket, clears
+ * the per-user Foundry session, and navigates to the join route — so the user
+ * picker reappears and the caller can re-select the requested user. Falls back to
+ * an explicit `/join` navigation if `logOut` is unavailable or does not surface the
+ * picker. Best-effort: every step is guarded.
+ */
+async function foundryReturnToJoin(page: Page, cfg: HeadlessSessionConfig): Promise<void> {
+  // Auto-accept any Foundry confirm dialog (e.g. a logout confirmation).
+  page.on('dialog', (d) => void d.accept().catch(() => {}));
+  try {
+    await page.evaluate('window.game?.logOut?.()');
+  } catch {
+    // logOut threw / navigated — fall through to the explicit nav guard below.
+  }
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  // Confirm the /join picker surfaced; otherwise navigate to the join route directly.
+  const present = await waitForOptional(page, 'select[name="userid"]');
+  if (present === null) {
+    const base = cfg.foundryUrl.replace(/\/(game|join)\/?(\?.*)?$/, '');
+    await page.goto(`${base}/join`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await tryForgeLogin(page, cfg);
+  }
+}
+
+/** Node-side debug log (bridge container stdout) gated on EVF_PLAYER_VIEW_DEBUG. */
+function debugLog(message: string): void {
+  if (process.env['EVF_PLAYER_VIEW_DEBUG'] === '1') {
+    console.warn(`[headless-launch] ${message}`);
   }
 }
 
