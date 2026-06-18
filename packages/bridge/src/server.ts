@@ -48,6 +48,7 @@
 import {
   PLAYER_VIEW_STATUS_TYPE,
   type PlayerViewStatus,
+  R1_CHARACTERS_AVAILABLE_TYPE,
   SETTINGS_DISPLAY_TYPE,
   SPELL_KEYTERMS,
 } from '@evf/shared-protocol';
@@ -856,6 +857,17 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
         const latestSettings = settingsStore.getLatest();
         if (latestSettings !== null) {
           deltaEmitter.sendInitialToSession(sessionId, SETTINGS_DISPLAY_TYPE, latestSettings);
+        }
+
+        // On-connect roster push (ADR-0015 §C, BUG-5): serve the cached
+        // r1.characters.available snapshot so a client that connected AFTER the
+        // module's last roster push (e.g. after a bridge restart, before the next
+        // roster heartbeat) gets the PC list immediately — mirroring the
+        // settings.display replay above. The g2-app reads PCs via REST too, but
+        // WS-only consumers (e.g. the pv-doctor diagnostic) rely on this replay.
+        const cachedRoster = characterListCache.get();
+        if (cachedRoster !== null) {
+          deltaEmitter.sendInitialToSession(sessionId, R1_CHARACTERS_AVAILABLE_TYPE, cachedRoster);
         }
 
         // Message router: each handler is responsible for its own envelope type.

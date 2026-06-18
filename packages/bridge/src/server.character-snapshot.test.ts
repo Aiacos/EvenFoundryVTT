@@ -312,4 +312,101 @@ describe('Quick Task 260605-dog: CharacterSnapshotCache integration (buildServer
       }),
     5000,
   );
+
+  it(
+    'BUG-5: seeded roster → fresh WS connect receives r1.characters.available on connect',
+    () =>
+      new Promise<void>((done, fail) => {
+        buildServer({ langDirOverride: LANG_DIR })
+          .then((builtApp) => {
+            app = builtApp;
+            return app.listen({ port: 0, host: '127.0.0.1' }).then(async () => {
+              const addr = app.server.address();
+              const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+
+              // Seed the roster so CharacterListCache is warm (simulates the module
+              // having pushed before this client connected — e.g. after a bridge restart).
+              const rosterRes = await pushCharacterRoster(
+                app,
+                VALID_SNAPSHOT.actorId,
+                VALID_SNAPSHOT.name,
+                VALID_SNAPSHOT.level,
+              );
+              if (rosterRes.statusCode !== 200) {
+                fail(new Error(`Failed to push roster: ${rosterRes.statusCode} ${rosterRes.body}`));
+                return;
+              }
+
+              const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+              const received: Array<Record<string, unknown>> = [];
+              let resolved = false;
+
+              const deadline = setTimeout(() => {
+                if (!resolved) {
+                  resolved = true;
+                  ws.close();
+                  fail(
+                    new Error(
+                      `BUG-5: No r1.characters.available received within 2s. Got: ${JSON.stringify(received)}`,
+                    ),
+                  );
+                }
+              }, 2000);
+
+              ws.on('message', (raw) => {
+                try {
+                  const msg = JSON.parse(raw.toString()) as Record<string, unknown>;
+                  if (typeof msg['type'] === 'string') {
+                    received.push(msg);
+                  }
+                  const roster = received.find((m) => m['type'] === 'r1.characters.available');
+                  if (roster !== undefined && !resolved) {
+                    resolved = true;
+                    clearTimeout(deadline);
+                    try {
+                      const payload = roster['payload'] as {
+                        characters?: Array<{ actorId: string }>;
+                      };
+                      expect(payload.characters?.[0]?.actorId).toBe(VALID_SNAPSHOT.actorId);
+                      ws.close();
+                      done();
+                    } catch (err) {
+                      ws.close();
+                      fail(err);
+                    }
+                  }
+                } catch (err) {
+                  if (!resolved) {
+                    resolved = true;
+                    clearTimeout(deadline);
+                    ws.close();
+                    fail(err);
+                  }
+                }
+              });
+
+              ws.once('open', () => {
+                ws.send(
+                  JSON.stringify({
+                    proto: 'evf-v1',
+                    token: DEV_BEARER,
+                    locale: 'it',
+                    capabilities: ['read_char'],
+                  }),
+                );
+              });
+
+              ws.once('error', (err) => {
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(deadline);
+                  fail(err);
+                }
+              });
+            });
+          })
+          .catch(fail);
+      }),
+    5000,
+  );
 });
