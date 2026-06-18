@@ -58,6 +58,18 @@ pnpm test            # workspace; coverage ≥80% held
    `deploy/.env.example` (`EVF_FPS_CORNER`), and `Specs.md`/`README`/showcase reflect the changes in the
    same commits (INV-3).
 
+## Baseline (T001 — recorded 2026-06-18)
+
+Clean-env baseline on `feat/hud-raster-rendering` (no `packages/g2-app/.env.local`):
+`pnpm install --frozen-lockfile` ✓ · `pnpm lint:ci` ✓ · `pnpm typecheck` ✓ ·
+`pnpm test` = **3804 passed** (278 files), gates green.
+
+> Local-only caveat: with the gitignored `packages/g2-app/.env.local`
+> (`VITE_EVF_NO_AUTH=true`, set for on-phone dev testing) present, Vite loads it into the
+> Vitest run and 6 wizard tests fail (the wizard skips the token step → STEP1 advances to
+> STEP3). This is the dev-hack that **T014** demotes out of the default path; in CI (no
+> `.env.local`) the baseline is fully green.
+
 ## Definition of done (slice)
 
 - All five scenarios pass; all gates green; INV-1 snapshots cover every restyled tab + the FPS badge in

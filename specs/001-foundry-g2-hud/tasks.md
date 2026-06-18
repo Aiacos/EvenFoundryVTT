@@ -14,9 +14,9 @@ US3 Sheet UI ↔ spec US1 (FR-001/013) · US4 FPS badge ↔ spec US7 (FR-012).
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm the feature branch + green baseline: on `feat/hud-raster-rendering`, run `pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test` and record the baseline pass counts in `specs/001-foundry-g2-hud/quickstart.md` notes.
-- [ ] T002 [P] Add `EVF_FPS_CORNER` (domain: top-left|top-right|bottom-left|bottom-right, default bottom-right) to `deploy/.env.example` with a one-line description.
-- [ ] T003 [P] Add `VITE_EVF_FPS_CORNER` documentation to the g2-app config section in `docs/release/evenhub.md` (build-time corner selection).
+- [X] T001 Confirm the feature branch + green baseline: on `feat/hud-raster-rendering`, run `pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test` and record the baseline pass counts in `specs/001-foundry-g2-hud/quickstart.md` notes.
+- [X] T002 [P] Add `EVF_FPS_CORNER` (domain: top-left|top-right|bottom-left|bottom-right, default bottom-right) to `deploy/.env.example` with a one-line description.
+- [X] T003 [P] Add `VITE_EVF_FPS_CORNER` documentation to the g2-app config section in `docs/release/evenhub.md` (build-time corner selection).
 
 ---
 
