@@ -106,6 +106,26 @@ The orchestrator (Playwright sidecar, storageState session, Forge gate) + forced
 #### Also folded in (was deferred)
 - **Selection persistence:** persist the `client_select_actor` choice to the Even Hub kv store and re-seed the next handshake `actorId` (currently reverts to the wizard `characterId` on reboot). `TODO(ADR-0015)` in `g2-app/src/phone/settings-panel.ts`.
 
+### (D) Feature 001 — unified view selection + single connection profile (2026-06-18)
+
+Amends the UX of (A)/(C) without changing the wire protocol or the capture pipeline:
+
+- **One selector, no mode dropdown.** The separate map-view **mode** dropdown
+  (`off`/`streaming`/`actor`) is REMOVED. The "Personaggio / Ruolo" roster selector gains a
+  synthetic top **"Party"** entry. Selection maps (pure `toPlayerViewRequest`): **Party →
+  `streaming`** (shared overview); **a PC → `actor`** (that PC's owner-elected, consent-gated
+  view) and also re-pins the character sheet (`client_select_actor`). Default boot selection =
+  Party. `client_player_view { mode, actorId? }` is unchanged — `off` is reached implicitly when
+  no capture source is configured.
+- **Single connection profile (one direct link).** The plugin reaches the bridge via ONE
+  canonical profile. The prior 4-source ambiguity (wizard / dev env var / implicit
+  `localhost:8910` / `.env.local`) is collapsed: a resolver (`is-dev-no-auth.resolveBridgeUrl`)
+  takes the saved `bridgeUrl` first, then an EXPLICITLY-gated dev override, else `''` — **the
+  implicit `localhost` default is removed** (it was the on-phone unreachable-bridge bug). Per the
+  decision recorded here, **only `bridgeUrl` is persisted**; the bearer **token stays in memory**
+  and is re-acquired by the wizard each launch — T-02-01 (never persist the bearer) is upheld, so
+  the connection-profile contract's "kv-persisted token" is intentionally NOT adopted.
+
 ## Consequences
 
 - **Now:** the player picks the role in the app; the map frames the party centered on that PG (synthesized). Character data and framing both retarget live.

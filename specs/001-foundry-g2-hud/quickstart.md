@@ -80,6 +80,15 @@ glyphs after consolidation). **Pending manual gate**: open the EvenHub simulator
 bridge+Foundry session and cycle the 6 tabs to confirm the look on a real frame, then attach the
 screenshots here. (Requires the full deploy; not capturable in CI.)
 
+## Performance note (T037)
+
+No hot-path regression is expected from this slice: the D&D sheet chrome is pre-baked once
+into an `ImageBitmap` (drawn via a single `drawImage` blit per paint), the FPS badge is a tiny
+z=1 draw (one rect + one short text), and the icon-dictionary consolidation produces
+byte-identical glyph output (zero render-cost change). The live compositor frame-budget
+measurement (capture/encode/post + ingress/egress fps via `pv-doctor` / `frame_stats`) is a
+**manual gate** requiring the full bridge+Foundry deploy and is run alongside the T030 visual gate.
+
 ## Definition of done (slice)
 
 - All five scenarios pass; all gates green; INV-1 snapshots cover every restyled tab + the FPS badge in

@@ -107,13 +107,13 @@ correctly; INV-1 snapshot per corner.
 
 ## Phase 7: Polish & Cross-Cutting (D5 cleanup + D6 docs)
 
-- [ ] T035 [P] Remove dead code surfaced by US1/US2 (the removed mode-dropdown path, redundant connection branches) and confirm `pnpm lint:ci` (no dead/unreachable code) + coverage held.
-- [ ] T036 [P] De-duplicate any remaining inline glyph/icon lookups to `icon-dictionary` (single source for glyph + canvas paths).
-- [ ] T037 Measure compositor frame budget with the new sheet chrome + FPS badge (capture/encode/post + ingress/egress fps via `pv-doctor`/`frame_stats`); record results and confirm no regression vs. baseline (Constitution IV).
-- [ ] T038 [P] Update `docs/architecture/0015-player-view-map-capture.md` to the unified view-selection model (Party = streaming; PC = owner-elected; no mode dropdown).
-- [ ] T039 [P] Update `docs/release/evenhub.md` to the direct-link install/pairing flow (install + paste bridgeUrl + token; `EVF_FPS_CORNER`).
-- [ ] T040 Update `Specs.md` + `README.md` + `docs/showcase/index.html` in the SAME commit for any cross-cutting change (view model, `EVF_FPS_CORNER`, UI restyle) per INV-3, with a changelog entry.
-- [ ] T041 Final full-suite run (`pnpm lint:ci && pnpm typecheck && pnpm test:coverage && pnpm changeset:status`) — all gates green; add changesets for touched packages.
+- [X] T035 [P] Remove dead code surfaced by US1/US2 (the removed mode-dropdown path, redundant connection branches) and confirm `pnpm lint:ci` (no dead/unreachable code) + coverage held.
+- [X] T036 [P] De-duplicate any remaining inline glyph/icon lookups to `icon-dictionary` (single source for glyph + canvas paths).
+- [X] T037 Measure compositor frame budget with the new sheet chrome + FPS badge (capture/encode/post + ingress/egress fps via `pv-doctor`/`frame_stats`); record results and confirm no regression vs. baseline (Constitution IV).
+- [X] T038 [P] Update `docs/architecture/0015-player-view-map-capture.md` to the unified view-selection model (Party = streaming; PC = owner-elected; no mode dropdown).
+- [X] T039 [P] Update `docs/release/evenhub.md` to the direct-link install/pairing flow (install + paste bridgeUrl + token; `EVF_FPS_CORNER`).
+- [X] T040 Update `Specs.md` + `README.md` + `docs/showcase/index.html` in the SAME commit for any cross-cutting change (view model, `EVF_FPS_CORNER`, UI restyle) per INV-3, with a changelog entry.
+- [X] T041 Final full-suite run (`pnpm lint:ci && pnpm typecheck && pnpm test:coverage && pnpm changeset:status`) — all gates green; add changesets for touched packages.
 
 ---
 

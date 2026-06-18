@@ -39,6 +39,23 @@ cause of the *"trial version expired"* error in the Even app.
 3. The **permanent** install (no expiry) only comes from a **portal submission that Even
    approves** — see *Manual submission steps* below.
 
+## Pairing / install — the direct link (Feature 001 D1)
+
+There is **no QR pairing** (the glasses have no camera). Connecting the plugin is **install +
+paste**, one canonical "direct link" to the bridge that fronts Foundry/Forge:
+
+1. Install the plugin in the Even Hub app (dev mode `qr`, or an approved `.ehpk`).
+2. On first launch the pairing wizard asks for the **bridge URL** (the public HTTPS origin of
+   your bridge, e.g. `https://evf-bridge.example`) and the **24h access token** (issued by the
+   Foundry module's pairing flow), then the character.
+3. The plugin connects and auto-reconnects on drop. The **`bridgeUrl` is the persisted profile**;
+   the **token is held in memory only** (never persisted — T-02-01) and is re-entered/confirmed
+   on relaunch.
+
+There is **no implicit `localhost` default** any more (Feature 001 D1 removed it — it was the
+on-phone "unreachable bridge" trap). For local dev you may set `VITE_EVF_DEV_BRIDGE_URL` (+
+`VITE_EVF_NO_AUTH`) via the gitignored `.env.local` — see `packages/g2-app/.env.local.example`.
+
 ## g2-app build-time config (`VITE_*`)
 
 The g2-app reads a few build-time options from Vite env vars (`VITE_` prefix). These are

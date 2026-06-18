@@ -1,5 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { devBridgeUrl, isWizardNoAuth, resolveBridgeUrl } from './is-dev-no-auth.js';
+
+// Hermetic baseline: clear the dev env vars before each test so the suite is
+// independent of a developer's gitignored `.env.local` (which Vite also loads into
+// the Vitest run). Individual tests opt INTO a value via vi.stubEnv.
+beforeEach(() => {
+  vi.stubEnv('VITE_EVF_NO_AUTH', '');
+  vi.stubEnv('VITE_EVF_DEV_BRIDGE_URL', '');
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
