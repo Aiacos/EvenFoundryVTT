@@ -971,8 +971,12 @@ export async function _bootEngineCore(
   const canvasStatusHud = new CanvasStatusHudLayer({
     wsEvents: wsEventBus,
     // FPS indicator (user request 2026-06-10): displayed-frame rate from the
-    // delta driver, rendered in the top-right corner card (layout B).
+    // delta driver. Feature 001 D4 — rendered as a small composited badge whose
+    // corner is set by VITE_EVF_FPS_CORNER (default bottom-right; invalid → default).
     getFps: () => hudDeltaDriver.getFps(),
+    ...((import.meta.env.VITE_EVF_FPS_CORNER as string | undefined)
+      ? { fpsCorner: import.meta.env.VITE_EVF_FPS_CORNER as string }
+      : {}),
     // Card-content changes outside WS deltas (fps ticker, [F] toggle) kick the
     // debounced delta loop so the changed tiles reach the glasses.
     onDirty: () => hudDeltaDriver.requestCycle(),

@@ -96,10 +96,10 @@ content extremes and IT/EN.
 **Independent test**: badge renders bottom-right by default; rebuilding with each corner places it
 correctly; INV-1 snapshot per corner.
 
-- [ ] T031 [US4] Read `VITE_EVF_FPS_CORNER` (default bottom-right, invalid→default) and pass it into the status layer options in `packages/g2-app/src/internal/boot-engine-core.ts`.
-- [ ] T032 [US4] Render the small FPS badge (smaller font) at `fpsBadgeRect(corner,size)` in `packages/g2-app/src/status-hud/canvas-status-hud-layer.ts`; separate it from the PF/CA/LV card; keep the `[F] FPS` toggle and 1 Hz refresh.
-- [ ] T033 [US4] Ensure no overlap when the badge and status card share a corner (deterministic stack/yield) in `packages/g2-app/src/status-hud/canvas-status-hud-layer.ts`.
-- [ ] T034 [US4] Add INV-1 snapshot tests for the FPS badge in all four corners in `packages/g2-app/src/status-hud/__tests__/` (each fully on-screen, smaller font, no card overlap).
+- [X] T031 [US4] Read `VITE_EVF_FPS_CORNER` (default bottom-right, invalid→default) and pass it into the status layer options in `packages/g2-app/src/internal/boot-engine-core.ts`.
+- [X] T032 [US4] Render the small FPS badge (smaller font) at `fpsBadgeRect(corner,size)` in `packages/g2-app/src/status-hud/canvas-status-hud-layer.ts`; separate it from the PF/CA/LV card; keep the `[F] FPS` toggle and 1 Hz refresh.
+- [X] T033 [US4] Ensure no overlap when the badge and status card share a corner (deterministic stack/yield) in `packages/g2-app/src/status-hud/canvas-status-hud-layer.ts`.
+- [X] T034 [US4] Add INV-1 snapshot tests for the FPS badge in all four corners in `packages/g2-app/src/status-hud/__tests__/` (each fully on-screen, smaller font, no card overlap).
 
 **Checkpoint**: US4 independently deliverable — corner-configurable composited FPS badge; gates green.
 

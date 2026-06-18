@@ -42,6 +42,13 @@
 import { type CharacterSnapshot, CharacterSnapshotSchema } from '@evf/shared-protocol';
 import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
 import type { CanvasLayer } from '../engine/layer-types.js';
+import {
+  type BadgeRect,
+  DEFAULT_FPS_CORNER,
+  type FpsCorner,
+  fpsBadgeRect,
+  normalizeFpsCorner,
+} from './fps-badge-geometry.js';
 import type { CharacterDeltaEvents } from './status-hud-layer.js';
 import { ensureVt323Loaded } from './vt323-font-loader.js';
 
@@ -76,6 +83,13 @@ export interface CanvasStatusHudLayerOpts {
    * composed line actually changed (zero-push-on-idle for text).
    */
   readonly getFps?: () => number;
+
+  /**
+   * Corner for the composited FPS badge (Feature 001 D4). Default
+   * {@link DEFAULT_FPS_CORNER} (`bottom-right`); an invalid value normalizes to
+   * the default. Wired from `VITE_EVF_FPS_CORNER` by boot-engine-core.
+   */
+  readonly fpsCorner?: FpsCorner | string;
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────────
@@ -143,6 +157,9 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   /** FPS indicator enabled flag — default ON (user decision 2026-06-10). */
   private _fpsEnabled = true;
 
+  /** Corner for the composited FPS badge (Feature 001 D4). */
+  private readonly _fpsCorner: FpsCorner;
+
   /** 1 Hz FPS ticker handle — started in `attachCanvas`, cleared in `destroy`. */
   private _fpsTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -162,6 +179,7 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   constructor(opts: CanvasStatusHudLayerOpts) {
     this._onDirty = opts.onDirty;
     this._getFps = opts.getFps;
+    this._fpsCorner = normalizeFpsCorner(opts.fpsCorner);
     // Subscribe to character.delta (T-20-01: all payloads go through safeParse gate).
     this._unsubscribe = opts.wsEvents.subscribe(CHARACTER_DELTA_CHANNEL, (raw) =>
       this._onDelta(raw),
@@ -239,7 +257,14 @@ export class CanvasStatusHudLayer implements CanvasLayer {
       return;
     }
     ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
-    _drawCornerCard(ctx, this._composeCardLines(), this._fontFamily);
+    const cardLines = this._composeCardLines();
+    _drawCornerCard(ctx, cardLines, this._fontFamily);
+    // FPS badge — composited separately (Feature 001 D4): small font, corner from
+    // EVF_FPS_CORNER, yields below the status card when they share the top-right.
+    const badge = this._composeFpsBadge();
+    if (badge !== null) {
+      _drawFpsBadge(ctx, badge, this._fpsCorner, this._fontFamily, cardLines.length);
+    }
     // MUST be the last line — do NOT double-guard isDirty() here.
     this._dirty = false;
   }
@@ -399,7 +424,9 @@ export class CanvasStatusHudLayer implements CanvasLayer {
    */
   private _refreshCard(): void {
     const lines = this._composeCardLines();
-    const key = lines.join('\n');
+    // Key includes the fps badge so the 1 Hz ticker still triggers a repaint even
+    // though the fps value lives OUTSIDE the PF/CA/LV card now (Feature 001 D4).
+    const key = `${lines.join('\n')}|${this._composeFpsBadge() ?? ''}`;
     if (key === this._lastCardKey) {
       return;
     }
@@ -411,21 +438,29 @@ export class CanvasStatusHudLayer implements CanvasLayer {
   }
 
   /**
-   * Compose the corner-card lines: fps first (when the indicator is enabled
-   * and a supplier is wired), then PF/CA/LV from the latest snapshot.
-   * Empty array = no card painted (boot state with indicator off).
+   * Compose the corner-card lines: PF/CA/LV from the latest snapshot. The fps
+   * value is NO LONGER part of this card (Feature 001 D4 — it is a separate
+   * composited badge; see {@link _composeFpsBadge}). Empty array = no card painted.
    */
   private _composeCardLines(): string[] {
     const lines: string[] = [];
-    if (this._fpsEnabled && this._getFps !== undefined) {
-      const fps = Math.min(99, Math.round(this._getFps()));
-      lines.push(`${String(fps)}fps`);
-    }
     if (this._snapshot !== null) {
       const snap = this._snapshot;
       lines.push(`PF ${snap.hp}/${snap.maxHp}`, `CA ${snap.ac}`, `LV ${snap.level}`);
     }
     return lines;
+  }
+
+  /**
+   * Compose the FPS badge text (`NNfps`, fps clamped 0–99), or `null` when the
+   * indicator is disabled (`[F]` toggle) or no supplier is wired.
+   */
+  private _composeFpsBadge(): string | null {
+    if (!this._fpsEnabled || this._getFps === undefined) {
+      return null;
+    }
+    const fps = Math.max(0, Math.min(99, Math.round(this._getFps())));
+    return `${String(fps)}fps`;
   }
 }
 
@@ -479,4 +514,68 @@ export function _drawCornerCard(
   for (let i = 0; i < lines.length; i++) {
     ctx.fillText(lines[i] ?? '', x + CARD_PAD, y + CARD_PAD + (i + 1) * CARD_LINE_H - 4);
   }
+}
+
+// ── FPS badge (Feature 001 D4) ──────────────────────────────────────────────────
+
+/** FPS badge box size (px) — small, fits `NNfps` at the smaller badge font. */
+const FPS_BADGE_W = 50;
+const FPS_BADGE_H = 18;
+
+/** FPS badge font size (px) — smaller than the PF/CA/LV card font. */
+const FPS_BADGE_FONT_PX = 13;
+
+/**
+ * Status-card footprint used to yield the FPS badge when they share the
+ * top-right corner — must stay in sync with {@link _drawCornerCard}'s geometry.
+ */
+const CARD_TOP_RIGHT_GAP = 2;
+
+/**
+ * Build the badge CSS font from the resolved family (e.g. `'16px VT323'` →
+ * `'13px VT323'`), so the badge uses the same face at a smaller size.
+ */
+function _badgeFont(fontFamily: string): string {
+  const family = fontFamily.replace(/^\s*\d+(?:\.\d+)?px\s*/, '') || 'monospace';
+  return `${FPS_BADGE_FONT_PX}px ${family}`;
+}
+
+/**
+ * Draw the small composited FPS badge at the chosen corner.
+ *
+ * Geometry comes from the pure {@link fpsBadgeRect} (fully on-screen, fixed
+ * margin). When the badge would share the top-right corner with the PF/CA/LV
+ * status card, it yields DOWN below the card (deterministic stack — Feature 001
+ * D4, no overlap). Exported for direct unit/snapshot testing.
+ *
+ * @param ctx        2D rendering context.
+ * @param text       Badge text (e.g. `'30fps'`).
+ * @param corner     Badge corner.
+ * @param fontFamily Resolved card font family (badge uses a smaller size of it).
+ * @param cardLineCount Number of status-card lines currently drawn (0 = no card).
+ */
+export function _drawFpsBadge(
+  ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
+  text: string,
+  corner: FpsCorner,
+  fontFamily: string,
+  cardLineCount: number,
+): BadgeRect {
+  let rect = fpsBadgeRect(corner, { w: FPS_BADGE_W, h: FPS_BADGE_H });
+
+  // No-overlap (T033): the status card occupies the top-right. When the badge
+  // shares that corner and the card is present, push the badge below the card.
+  if (corner === 'top-right' && cardLineCount > 0) {
+    const cardH = CARD_PAD * 2 + cardLineCount * CARD_LINE_H;
+    rect = { ...rect, y: CARD_MARGIN + cardH + CARD_TOP_RIGHT_GAP };
+  }
+
+  ctx.fillStyle = CARD_BG;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.strokeStyle = CHROME_FG;
+  ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+  ctx.fillStyle = CHROME_FG;
+  ctx.font = _badgeFont(fontFamily);
+  ctx.fillText(text, rect.x + 4, rect.y + FPS_BADGE_H - 5);
+  return rect;
 }
