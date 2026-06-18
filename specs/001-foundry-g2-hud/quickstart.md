@@ -64,6 +64,15 @@ Clean-env baseline on `feat/hud-raster-rendering` (no `packages/g2-app/.env.loca
 `pnpm install --frozen-lockfile` ✓ · `pnpm lint:ci` ✓ · `pnpm typecheck` ✓ ·
 `pnpm test` = **3804 passed** (278 files), gates green.
 
+> **Coverage gate (pre-existing branch debt):** `pnpm test:coverage` FAILS the 80% global
+> *branch* threshold on this feature branch — measured **76.69%** at the pre-feature base commit
+> (`0f0821f`) and **76.87%** after feature 001 (a slight *improvement* — the new code is
+> well-tested). The shortfall is dominated by untested WIP feature-001 never touched:
+> `bridge/src/headless/*` (auth-bootstrap 0%, playwright-browser ~7%), `g2-app/src/hud/*` (~29%),
+> and `boot-engine-core.ts`. Lifting it requires tests for that pre-existing headless/hud code,
+> tracked separately from this slice. All other gates are green (lint:ci, typecheck,
+> changeset:status, 3867/3867 tests pass).
+>
 > Local-only caveat: with the gitignored `packages/g2-app/.env.local`
 > (`VITE_EVF_NO_AUTH=true`, set for on-phone dev testing) present, Vite loads it into the
 > Vitest run and 6 wizard tests fail (the wizard skips the token step → STEP1 advances to
