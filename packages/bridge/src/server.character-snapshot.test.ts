@@ -201,6 +201,27 @@ describe('Quick Task 260605-dog: CharacterSnapshotCache integration (buildServer
     expect(getRes.json<{ error: string }>().error).toBe('actor_not_found');
   });
 
+  it('SR-REQ-01: GET /internal/stream-request rejects a wrong secret (401)', async () => {
+    app = await buildServer({ langDirOverride: LANG_DIR });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/internal/stream-request',
+      headers: { authorization: 'Bearer wrong-secret' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('SR-REQ-02: GET /internal/stream-request returns {actorId:null} cold (no intent)', async () => {
+    app = await buildServer({ langDirOverride: LANG_DIR });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/internal/stream-request',
+      headers: { authorization: `Bearer ${INTERNAL_SECRET}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ actorId: string | null }>().actorId).toBeNull();
+  });
+
   // ── Test B (WS end-to-end) ────────────────────────────────────────────────────
 
   it(

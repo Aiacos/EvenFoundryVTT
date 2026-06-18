@@ -63,6 +63,15 @@ export interface EnvConfig {
    * `/join` user option — non-deterministic, so configuring this is strongly advised.
    */
   streamUser?: string;
+  /**
+   * Whether to launch the headless Foundry session at all (`EVF_PLAYER_VIEW_HEADLESS=1`).
+   * DEFAULT OFF — the primary map source is the OWNER's already-open browser (the
+   * Foundry module elects the requested actor's owner as the stream leader, ADR-0015
+   * §C browser-capture). The headless re-login is a fallback that only works on a
+   * self-hosted Foundry (The Forge binds a session to its account's user and refuses
+   * a cross-user `/join`). Enable only when no owner browser will be online.
+   */
+  headlessEnabled?: boolean;
 }
 
 /**
@@ -86,6 +95,7 @@ export function readPlayerViewEnv(): EnvConfig {
   if (forgePassword) cfg.forgePassword = forgePassword;
   if (storageStatePath) cfg.storageStatePath = storageStatePath;
   if (streamUser) cfg.streamUser = streamUser;
+  if (process.env['EVF_PLAYER_VIEW_HEADLESS'] === '1') cfg.headlessEnabled = true;
   return cfg;
 }
 
@@ -104,6 +114,9 @@ const NO_URL_DETAIL = 'Foundry URL not configured';
 
 /** Status detail used when `actor` mode is requested but the actor has no streamable Foundry user (not opted in). */
 const NO_ACTOR_USER_DETAIL = 'Selected player is not available for streaming (opt-in required)';
+
+/** Status detail when the map source is the owner's already-open browser (no headless). */
+const BROWSER_CAPTURE_DETAIL = 'browser capture';
 
 /**
  * Headless player-view orchestrator — one instance per bridge server.
@@ -183,19 +196,12 @@ export class HeadlessOrchestrator {
       return;
     }
 
-    // Resolve the Foundry URL (intent wins over env). Missing → unavailable.
     const env = this.readEnv();
-    const foundryUrl = intent.foundryUrl ?? env.foundryUrl;
-    if (foundryUrl === undefined || foundryUrl.length === 0) {
-      await this.teardown();
-      if (gen !== this.generation) return;
-      this.emit({ state: 'unavailable', detail: NO_URL_DETAIL });
-      return;
-    }
 
-    // `actor` mode joins as the selected player's Foundry user, so it REQUIRES a
-    // resolved Foundry username (the bridge maps actorId → username, and only
-    // players who OPTED IN to streaming are mapped). Missing → unavailable.
+    // `actor` mode shows a SELECTED player's real view, so it REQUIRES a resolved
+    // Foundry username (the bridge maps actorId → username, present only for players
+    // who OPTED IN). Missing → unavailable. Applies to BOTH browser-capture and
+    // headless paths (consent gate).
     if (
       intent.mode === 'actor' &&
       (intent.userName === undefined || intent.userName.length === 0)
@@ -203,6 +209,28 @@ export class HeadlessOrchestrator {
       await this.teardown();
       if (gen !== this.generation) return;
       this.emit({ state: 'unavailable', detail: NO_ACTOR_USER_DETAIL });
+      return;
+    }
+
+    // Browser-capture (DEFAULT): the OWNER's already-open Foundry browser is the map
+    // source (the module elects the requested actor's owner as stream leader). No
+    // headless session — tear down any stale one and report `live` (the module
+    // streams). The bridge exposes the requested actorId via /internal/stream-request
+    // so the owning client self-elects.
+    if (env.headlessEnabled !== true) {
+      await this.teardown();
+      if (gen !== this.generation) return;
+      this.emit({ state: 'live', detail: BROWSER_CAPTURE_DETAIL });
+      return;
+    }
+
+    // Headless path (opt-in fallback, self-hosted Foundry only) — resolve the Foundry
+    // URL (intent wins over env). Missing → unavailable.
+    const foundryUrl = intent.foundryUrl ?? env.foundryUrl;
+    if (foundryUrl === undefined || foundryUrl.length === 0) {
+      await this.teardown();
+      if (gen !== this.generation) return;
+      this.emit({ state: 'unavailable', detail: NO_URL_DETAIL });
       return;
     }
 

@@ -46,7 +46,10 @@ interface Harness {
  */
 function makeHarness(
   launchImpl?: (cfg: HeadlessSessionConfig) => Promise<HeadlessSession>,
-  env: EnvConfig = {},
+  // Default env enables the headless path so the launch-behaviour tests below
+  // exercise it. Browser-capture (the production default) is covered explicitly by
+  // the ORC-BC tests with `headlessEnabled` omitted.
+  env: EnvConfig = { headlessEnabled: true },
 ): Harness {
   const statuses: PlayerViewStatus[] = [];
   const launch = vi.fn(
@@ -169,7 +172,7 @@ describe('HeadlessOrchestrator', () => {
   });
 
   it('ORC-06: missing foundryUrl (intent + env) → {unavailable}', async () => {
-    const h = makeHarness(undefined, {}); // empty env, no intent url
+    const h = makeHarness(undefined, { headlessEnabled: true }); // headless on, no url
     h.orchestrator.applyIntent({ mode: 'streaming' });
     await flush();
     expect(h.launch).not.toHaveBeenCalled();
@@ -178,6 +181,7 @@ describe('HeadlessOrchestrator', () => {
 
   it('ORC-07: intent url overrides env; env creds flow into the launch cfg', async () => {
     const env: EnvConfig = {
+      headlessEnabled: true,
       foundryUrl: 'https://env.example/game',
       forgeUser: 'u@example.com',
       forgePassword: 'secret-pw',
@@ -194,7 +198,10 @@ describe('HeadlessOrchestrator', () => {
   });
 
   it('ORC-07b: falls back to env foundryUrl when the intent omits it', async () => {
-    const h = makeHarness(undefined, { foundryUrl: 'https://env.example/game' });
+    const h = makeHarness(undefined, {
+      headlessEnabled: true,
+      foundryUrl: 'https://env.example/game',
+    });
     h.orchestrator.applyIntent({ mode: 'streaming' });
     await flush();
     expect(h.lastCfg()?.foundryUrl).toBe('https://env.example/game');
@@ -203,6 +210,7 @@ describe('HeadlessOrchestrator', () => {
 
   it('ORC-09: streaming carries env.streamUser into the launch cfg (BUG-1 fix)', async () => {
     const h = makeHarness(undefined, {
+      headlessEnabled: true,
       foundryUrl: 'https://env.example/game',
       streamUser: 'Stream Observer',
     });
@@ -213,6 +221,7 @@ describe('HeadlessOrchestrator', () => {
 
   it('ORC-09c: streaming intent.userName (app-chosen PC) WINS over env.streamUser', async () => {
     const h = makeHarness(undefined, {
+      headlessEnabled: true,
       foundryUrl: 'https://env.example/game',
       streamUser: 'Stream Observer',
     });
@@ -224,6 +233,7 @@ describe('HeadlessOrchestrator', () => {
 
   it('ORC-09b: actor mode does NOT carry streamUser (streaming-only)', async () => {
     const h = makeHarness(undefined, {
+      headlessEnabled: true,
       foundryUrl: 'https://env.example/game',
       streamUser: 'Stream Observer',
     });
@@ -235,6 +245,33 @@ describe('HeadlessOrchestrator', () => {
     await flush();
     expect(h.lastCfg()?.streamUser).toBeUndefined();
     expect(h.lastCfg()?.userName).toBe('Player Seven');
+  });
+
+  it('ORC-BC1: browser-capture default (headless off) → streaming reports {live} without launching', async () => {
+    const h = makeHarness(undefined, {}); // headlessEnabled omitted → browser capture
+    h.orchestrator.applyIntent({ mode: 'streaming', actorId: 'a-shin' });
+    await flush();
+    expect(h.launch).not.toHaveBeenCalled();
+    expect(h.orchestrator.getState()).toEqual({ state: 'live', detail: 'browser capture' });
+  });
+
+  it('ORC-BC2: browser-capture actor (opted in) → {live} without launching', async () => {
+    const h = makeHarness(undefined, {});
+    h.orchestrator.applyIntent({ mode: 'actor', actorId: 'a-shin', userName: 'Shin Player' });
+    await flush();
+    expect(h.launch).not.toHaveBeenCalled();
+    expect(h.orchestrator.getState()).toEqual({ state: 'live', detail: 'browser capture' });
+  });
+
+  it('ORC-BC3: browser-capture actor without a resolved username → {unavailable} (consent gate)', async () => {
+    const h = makeHarness(undefined, {});
+    h.orchestrator.applyIntent({ mode: 'actor', actorId: 'a-shin' });
+    await flush();
+    expect(h.launch).not.toHaveBeenCalled();
+    expect(h.orchestrator.getState()).toEqual({
+      state: 'unavailable',
+      detail: 'Selected player is not available for streaming (opt-in required)',
+    });
   });
 
   it('ORC-08: stop() tears down the live session and reports {off}', async () => {

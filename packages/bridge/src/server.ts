@@ -36,6 +36,7 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-CONTEXT.md § D-2.12
  */
 
+import { timingSafeEqual } from 'node:crypto';
 // Quick Task 260517-k2g — entity-pack vocabulary route + cache + handler (parallel additive
 // pipeline to spell-pack). The /internal/delta onDelta callback multiplexes BOTH handlers
 // so r1.spells.available and r1.entities.available envelopes are routed to their caches.
@@ -317,6 +318,17 @@ const WS_MAX_CONNECTIONS = 64;
  * {@link WS_MAX_CONNECTIONS}.
  */
 const WS_CLOSE_TRY_AGAIN_LATER = 4503;
+
+/** Constant-time string compare (length-mismatch → false). Used for internal-secret checks. */
+function timingSafeStrEqual(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a, 'utf8');
+    const bb = Buffer.from(b, 'utf8');
+    return ba.length === bb.length && timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
 
 export async function buildServer(opts: BuildServerOptions = {}): Promise<FastifyInstance> {
   // --- Debug bus (hoisted, Quick Task 260529-icd) ---
@@ -720,6 +732,35 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
     () => sessionStore.getFocusActorId(),
     forcedLeaderTracker,
   );
+
+  // GET /internal/stream-request (ADR-0015 §C, browser-capture) — the Foundry module
+  // polls this to learn which actor's OWNER should be the stream leader. Returns the
+  // requested actorId (actor mode, or streaming with a selected PC) or null. The
+  // owning client then self-elects as the capture source (no headless). Gated by the
+  // same EVF_INTERNAL_SECRET as /internal/delta (server-to-server, never client-facing).
+  app.get('/internal/stream-request', { config: { rateLimit: false } }, async (request, reply) => {
+    const internalSecret = process.env.EVF_INTERNAL_SECRET;
+    const authHeader = request.headers.authorization;
+    const provided = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : authHeader;
+    if (
+      internalSecret === undefined ||
+      internalSecret === '' ||
+      provided === undefined ||
+      !timingSafeStrEqual(provided, internalSecret)
+    ) {
+      return reply.status(401).send({ error: 'unauthorized' });
+    }
+    const intent = playerViewStore.get();
+    const actorId =
+      (intent.mode === 'actor' || intent.mode === 'streaming') &&
+      intent.actorId !== undefined &&
+      intent.actorId !== ''
+        ? intent.actorId
+        : null;
+    return reply.status(200).send({ actorId });
+  });
 
   // --- 8 (debug). Dev-only debug routes (Quick Task 260529-h5e) ---
   // Registered ONLY behind isDebugEnabled() (existence gate — layer 1). When OFF,
