@@ -16,6 +16,12 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // `.env` / `.env.local` live at the PACKAGE ROOT (packages/g2-app/), not under
+  // src/. Because `root: 'src'` (below), Vite's `envDir` would otherwise default to
+  // src/ and silently ignore them — which is why `VITE_EVF_NO_AUTH` / the dev-bridge
+  // override never took effect (the wizard always showed). Pin envDir to the package
+  // root so `.env.local` (gitignored) + `.env.local.example` are the env source (D1).
+  envDir: import.meta.dirname,
   // `root: 'src'` makes the HTML entries resolve relative to src/, so Vite emits
   // them at the dist ROOT (dist/index.html, dist/wizard/wizard.html) instead of
   // leaking the source path into the bundle (dist/src/index.html). This keeps the
