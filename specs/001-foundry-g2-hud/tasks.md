@@ -42,13 +42,13 @@ its own phase, but these unblock several.
 `localhost` default from the user path. **Independent test**: a plugin with a saved `{bridgeUrl,token}`
 reaches a live HUD with no dev env var; drop/restore auto-recovers within ~30s.
 
-- [ ] T010 [US1] Define the single `ConnectionProfile` source-of-truth (kv-backed `{bridgeUrl,token}`) and its resolver in `packages/g2-app/src/wizard/is-dev-no-auth.ts` (saved profile wins; dev overrides explicitly gated; no implicit `localhost`), per contracts/connection-profile.md.
-- [ ] T011 [US1] Update `packages/g2-app/src/wizard/state.ts` so the wizard state reads/writes the single ConnectionProfile (remove duplicate URL/token sources).
-- [ ] T012 [US1] Simplify the pairing steps in `packages/g2-app/src/wizard/steps/` to the direct-link flow (install + paste bridgeUrl + token; no QR/dev-server detour in the default path).
-- [ ] T013 [US1] Update connection wiring in `packages/g2-app/src/internal/boot-engine-core.ts` to consume the ConnectionProfile (one `bridgeUrl`/`token`), keep auto-reconnect, and remove the redundant default/override branches.
-- [ ] T014 [P] [US1] Remove the `packages/g2-app/.env.local` dev hack from the default path and ensure it is only an explicitly-gated dev escape hatch (documented, gitignored).
-- [ ] T015 [US1] Unit/integration test the resolver precedence in `packages/g2-app/src/wizard/is-dev-no-auth.test.ts` (saved profile used; no `localhost` default in a user build; dev override only when explicitly enabled).
-- [ ] T016 [US1] Adjust the existing settings-panel/boot tests that asserted the old multi-source connection to the single-profile contract (keep them green).
+- [X] T010 [US1] Define the single `ConnectionProfile` source-of-truth (kv-backed `{bridgeUrl,token}`) and its resolver in `packages/g2-app/src/wizard/is-dev-no-auth.ts` (saved profile wins; dev overrides explicitly gated; no implicit `localhost`), per contracts/connection-profile.md.
+- [X] T011 [US1] Update `packages/g2-app/src/wizard/state.ts` so the wizard state reads/writes the single ConnectionProfile (remove duplicate URL/token sources).
+- [X] T012 [US1] Simplify the pairing steps in `packages/g2-app/src/wizard/steps/` to the direct-link flow (install + paste bridgeUrl + token; no QR/dev-server detour in the default path).
+- [X] T013 [US1] Update connection wiring in `packages/g2-app/src/internal/boot-engine-core.ts` to consume the ConnectionProfile (one `bridgeUrl`/`token`), keep auto-reconnect, and remove the redundant default/override branches.
+- [X] T014 [P] [US1] Remove the `packages/g2-app/.env.local` dev hack from the default path and ensure it is only an explicitly-gated dev escape hatch (documented, gitignored).
+- [X] T015 [US1] Unit/integration test the resolver precedence in `packages/g2-app/src/wizard/is-dev-no-auth.test.ts` (saved profile used; no `localhost` default in a user build; dev override only when explicitly enabled).
+- [X] T016 [US1] Adjust the existing settings-panel/boot tests that asserted the old multi-source connection to the single-profile contract (keep them green).
 
 **Checkpoint**: US1 independently deliverable — connect via one profile, auto-recover; gates green.
 

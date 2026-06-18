@@ -9,7 +9,10 @@
  *     A non-empty sentinel is required because the handshake schema enforces
  *     `token.min(1)`; the dev no-auth bridge then accepts it. This is the ONLY path
  *     that can boot from "no usable token". This is what unblocks the EvenHub
- *     simulator (boot sequence + HUD frame instead of a black screen).
+ *     simulator (boot sequence + HUD frame instead of a black screen). The
+ *     `bridgeUrl` here is `devBridgeUrl()` — the EXPLICITLY-gated dev override
+ *     (`VITE_EVF_DEV_BRIDGE_URL`); Feature 001 D1 removed the implicit `localhost`
+ *     default, so an unset override yields `''` rather than an unreachable address.
  *   - **Branch B — paired, non-dev:** `isNoAuth()` is `false` and a stored
  *     `Session` exists. A persisted session carries a `bridgeUrl` but NEVER a
  *     token — `SessionSchema` hard-enforces `tokenObfuscated: z.null()` (T-02-01,
