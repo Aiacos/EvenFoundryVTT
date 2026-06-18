@@ -191,6 +191,24 @@ export class PlaywrightHeadlessBrowser implements HeadlessBrowser {
         { timeout: WORLD_READY_TIMEOUT_MS },
       );
 
+      // 6. Auto-entry guard (BUG-3): when Foundry auto-enters as a stale session
+      // user, the `/join` <select> is absent so our user selection silently
+      // no-ops and we'd stream the WRONG user's view. Assert the joined user
+      // matches the requested one; mismatch → fail (the orchestrator reports
+      // error, not a wrong-view stream). Skipped when no specific user was
+      // requested (streaming with no configured stream user — any user is fine).
+      // (Foundry usernames are display names, not secrets — safe to surface.)
+      const requestedUser = requestedUserFor(cfg);
+      if (requestedUser !== undefined && requestedUser.length > 0) {
+        const joinedRaw = await page.evaluate('window.game?.user?.name ?? null');
+        const joined = typeof joinedRaw === 'string' ? joinedRaw : null;
+        if (joined === null || joined.trim() !== requestedUser.trim()) {
+          throw new Error(
+            `joined Foundry user "${joined ?? '(unknown)'}" does not match requested "${requestedUser}" — Foundry likely auto-entered the world (bypassed /join); clear the saved session or pick the right user`,
+          );
+        }
+      }
+
       return makeSession(browser, context, page);
     } catch (err) {
       // Cleanup on any failure path, then rethrow a secret-free Error.
@@ -235,6 +253,18 @@ async function tryForgeLogin(page: Page, cfg: HeadlessSessionConfig): Promise<vo
 }
 
 /**
+ * The Foundry world USERNAME a session should join as, when a specific one is
+ * required: `actor` → the selected PC's owning user; `streaming` → the configured
+ * stream user (may be undefined → any user acceptable). Used both to drive `/join`
+ * and to assert the joined user post-ready (auto-entry guard).
+ */
+export function requestedUserFor(cfg: HeadlessSessionConfig): string | undefined {
+  if (cfg.mode === 'actor') return cfg.userName;
+  if (cfg.mode === 'streaming') return cfg.streamUser;
+  return undefined;
+}
+
+/**
  * Best-effort Foundry `/join` user selection + submit. NO-OP when the world is
  * already entered (no join form present).
  *
@@ -255,10 +285,7 @@ async function tryFoundryJoin(page: Page, cfg: HeadlessSessionConfig): Promise<v
   if (userSelect === null) {
     return;
   }
-  // The Foundry world USERNAME to select, if a specific one was requested:
-  // `actor` → the selected player's user; `streaming` → the configured stream user.
-  const requestedUser =
-    cfg.mode === 'actor' ? cfg.userName : cfg.mode === 'streaming' ? cfg.streamUser : undefined;
+  const requestedUser = requestedUserFor(cfg);
   try {
     if (requestedUser !== undefined && requestedUser.length > 0) {
       // Select the requested user by NAME (the `<option>` label) and join with a
