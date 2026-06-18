@@ -124,13 +124,23 @@ export async function launchApp(overrides?: Partial<LaunchDeps>): Promise<void> 
     const actorParam = params.get('actor');
     const characterId = actorParam !== null && actorParam.length > 0 ? actorParam : undefined;
 
+    // Feature 001 (Option A) — DEV-ONLY automatic token pass via `?token=`.
+    // This branch only runs when `isNoAuth()` is true (VITE_EVF_NO_AUTH, never prod),
+    // so the param is ignored entirely in a production build. When present it is sent
+    // as the bearer INSTEAD of the 'dev-no-auth' sentinel — so a REAL 24h token (pasted
+    // once into the launch URL / dev QR / simulator) flows to the bridge+module and
+    // yields real character snapshots (the no-auth sentinel maps to no Foundry user →
+    // empty sheets; a real token resolves ownership per ADR-0014). Absent → sentinel.
+    const tokenParam = params.get('token');
+    const token = tokenParam !== null && tokenParam.length > 0 ? tokenParam : 'dev-no-auth';
+
     try {
       // Branch A: canvas default boot — calls bootEngine unconditionally.
       // setRenderMode('canvas') is already wired in boot-engine-core step 7
       // (no ?hud= gate needed here — Phase 25 D-25.1/D-25.2).
       await deps.bootEngine({
         bridgeUrl: deps.devBridgeUrl(),
-        token: 'dev-no-auth',
+        token,
         // The wider LaunchDeps.locale is a string; BootEngineOpts.locale is the
         // narrower HudLocale union. The default 'it' is valid; a caller-supplied
         // override is the caller's responsibility (tests use 'it'/'en').

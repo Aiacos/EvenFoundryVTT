@@ -89,6 +89,35 @@ describe('launchApp', () => {
     );
   });
 
+  it('LAUNCH-A: dev `?token=` overrides the sentinel (Option A — automatic real-token pass)', async () => {
+    const deps = makeDeps({
+      isNoAuth: vi.fn().mockReturnValue(true),
+      devBridgeUrl: vi.fn().mockReturnValue('https://bridge.example'),
+      readUrlSearch: vi.fn().mockReturnValue('?token=real-bearer-xyz&actor=Actor.99'),
+    });
+
+    await launchApp(deps);
+
+    expect(deps.bootEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bridgeUrl: 'https://bridge.example',
+        token: 'real-bearer-xyz',
+        characterId: 'Actor.99',
+      }),
+    );
+  });
+
+  it('LAUNCH-A: empty `?token=` falls back to the sentinel', async () => {
+    const deps = makeDeps({
+      isNoAuth: vi.fn().mockReturnValue(true),
+      readUrlSearch: vi.fn().mockReturnValue('?token='),
+    });
+
+    await launchApp(deps);
+
+    expect(deps.bootEngine).toHaveBeenCalledWith(expect.objectContaining({ token: 'dev-no-auth' }));
+  });
+
   it('LAUNCH-B: paired non-dev (≥1 stored session) → navigates to wizard; never boots', async () => {
     const deps = makeDeps({
       isNoAuth: vi.fn().mockReturnValue(false),
