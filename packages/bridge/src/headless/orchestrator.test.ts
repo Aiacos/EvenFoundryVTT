@@ -16,13 +16,13 @@
  * @see ./orchestrator.ts
  */
 import type { PlayerViewStatus } from '@evf/shared-protocol';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   HeadlessBrowser,
   HeadlessSession,
   HeadlessSessionConfig,
 } from './headless-browser.js';
-import { type EnvConfig, HeadlessOrchestrator } from './orchestrator.js';
+import { type EnvConfig, HeadlessOrchestrator, readPlayerViewEnv } from './orchestrator.js';
 import type { PlayerViewIntent } from './player-view-store.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -283,5 +283,50 @@ describe('HeadlessOrchestrator', () => {
     await h.orchestrator.stop();
     expect(session.close).toHaveBeenCalledTimes(1);
     expect(h.statuses.at(-1)).toEqual({ state: 'off' });
+  });
+});
+
+describe('readPlayerViewEnv', () => {
+  const KEYS = [
+    'EVF_PLAYER_VIEW_FOUNDRY_URL',
+    'EVF_PLAYER_VIEW_FORGE_USER',
+    'EVF_PLAYER_VIEW_FORGE_PASSWORD',
+    'EVF_PLAYER_VIEW_STORAGE_STATE',
+    'EVF_PLAYER_VIEW_STREAM_USER',
+    'EVF_PLAYER_VIEW_HEADLESS',
+  ] as const;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns an empty config when no player-view env vars are set', () => {
+    for (const k of KEYS) vi.stubEnv(k, '');
+    expect(readPlayerViewEnv()).toEqual({});
+  });
+
+  it('maps each present env var into the EnvConfig (and headlessEnabled on "1")', () => {
+    vi.stubEnv('EVF_PLAYER_VIEW_FOUNDRY_URL', 'https://world.example/game');
+    vi.stubEnv('EVF_PLAYER_VIEW_FORGE_USER', 'svc@example.com');
+    vi.stubEnv('EVF_PLAYER_VIEW_FORGE_PASSWORD', 'secret');
+    vi.stubEnv('EVF_PLAYER_VIEW_STORAGE_STATE', '/secrets/s.json');
+    vi.stubEnv('EVF_PLAYER_VIEW_STREAM_USER', 'GM Observer');
+    vi.stubEnv('EVF_PLAYER_VIEW_HEADLESS', '1');
+    expect(readPlayerViewEnv()).toEqual({
+      foundryUrl: 'https://world.example/game',
+      forgeUser: 'svc@example.com',
+      forgePassword: 'secret',
+      storageStatePath: '/secrets/s.json',
+      streamUser: 'GM Observer',
+      headlessEnabled: true,
+    });
+  });
+
+  it('omits headlessEnabled when EVF_PLAYER_VIEW_HEADLESS is not exactly "1"', () => {
+    vi.stubEnv('EVF_PLAYER_VIEW_FOUNDRY_URL', 'https://world.example/game');
+    vi.stubEnv('EVF_PLAYER_VIEW_HEADLESS', 'true');
+    const cfg = readPlayerViewEnv();
+    expect(cfg.headlessEnabled).toBeUndefined();
+    expect(cfg.foundryUrl).toBe('https://world.example/game');
   });
 });

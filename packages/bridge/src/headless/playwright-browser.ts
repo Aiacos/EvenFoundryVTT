@@ -346,8 +346,12 @@ async function readJoinedUser(page: Page): Promise<string | null> {
   return typeof raw === 'string' ? raw : null;
 }
 
-/** True when the joined user matches the requested one (trimmed exact match). */
-function userMatches(joined: string | null, requested: string): boolean {
+/**
+ * True when the joined user matches the requested one (trimmed exact match).
+ *
+ * @internal Exported for unit testing.
+ */
+export function userMatches(joined: string | null, requested: string): boolean {
   return joined !== null && joined.trim() === requested.trim();
 }
 
@@ -407,8 +411,12 @@ async function closeQuietly(
   if (browser !== undefined) await browser.close().catch(() => {});
 }
 
-/** Extract a short, secret-free message from an unknown thrown value. */
-function shortMessage(err: unknown): string {
+/**
+ * Extract a short, secret-free message from an unknown thrown value.
+ *
+ * @internal Exported for unit testing.
+ */
+export function shortMessage(err: unknown): string {
   if (err instanceof Error) {
     // First line only — Playwright errors append verbose call logs that may echo
     // the navigated URL; keep the surfaced detail terse and secret-free.

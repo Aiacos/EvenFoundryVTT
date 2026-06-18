@@ -63,6 +63,12 @@ export default defineConfig({
         // StdioServerTransport on import; un-instrumentable as a unit (mirrors
         // bridge/src/index.ts). The 2 branches are BootError catch arms.
         'packages/foundry-mcp/src/index.ts',
+        // headless player-view auth bootstrap — run-once CLI that calls `main()` on
+        // import, launching a HEADFUL Chromium and blocking on stdin/world-ready;
+        // un-instrumentable as a unit (mirrors bridge/src/index.ts). Its testable
+        // pure helpers (requestedUserFor / userMatches / shortMessage) live in
+        // playwright-browser.ts and ARE unit-tested.
+        'packages/bridge/src/headless/auth-bootstrap.ts',
       ],
     },
   },
