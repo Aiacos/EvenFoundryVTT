@@ -1755,3 +1755,96 @@ describe('buildMapFraming — token adapter + auto-frame gate', () => {
     expect(await frameWith(true, {})).toBeNull();
   });
 });
+
+// ─── ownerElection (ADR-0015 §C browser-capture) ──────────────────────────────
+
+describe('ownerElection', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Stub game with an actor + users; `consent`/`active`/`owner` per user id. */
+  function stubGame(opts: {
+    selfId: string;
+    users: Array<{
+      id: string;
+      isGM?: boolean;
+      active?: boolean;
+      consent?: boolean;
+      owns?: boolean;
+    }>;
+  }): void {
+    // module.ts imports BridgeConfigModal/settings + registers Hooks at module-eval
+    // time — stub `foundry` and `Hooks` so a fresh dynamic import never throws.
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: { ApplicationV2: ApplicationV2Stub, HandlebarsApplicationMixin: (B: unknown) => B },
+      },
+    });
+    vi.stubGlobal('Hooks', { once: vi.fn(), on: vi.fn(), off: vi.fn() });
+    const actor = {
+      testUserPermission: (u: { id?: string | null }, perm: string) => {
+        if (perm !== 'OWNER') return false;
+        return opts.users.find((x) => x.id === u.id)?.owns === true;
+      },
+    };
+    vi.stubGlobal('game', {
+      actors: { get: (id: string) => (id === 'actor-shin' ? actor : undefined) },
+      users: {
+        contents: opts.users.map((u) => ({
+          id: u.id,
+          isGM: u.isGM ?? false,
+          active: u.active ?? true,
+          getFlag: (_s: string, k: string) =>
+            k === 'streamConsent' ? u.consent === true : undefined,
+        })),
+      },
+      user: { id: opts.selfId },
+    });
+  }
+
+  it('OE-1: I am the active consenting non-GM owner → lead', async () => {
+    stubGame({ selfId: 'u-shin', users: [{ id: 'u-shin', consent: true, owns: true }] });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-shin')).toBe('lead');
+  });
+
+  it('OE-2: another active consenting owner (not me) → standdown', async () => {
+    stubGame({
+      selfId: 'u-gm',
+      users: [
+        { id: 'u-gm', isGM: true },
+        { id: 'u-shin', consent: true, owns: true },
+      ],
+    });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-shin')).toBe('standdown');
+  });
+
+  it('OE-3: owner exists but did NOT consent → defer (default election)', async () => {
+    stubGame({ selfId: 'u-gm', users: [{ id: 'u-shin', consent: false, owns: true }] });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-shin')).toBe('defer');
+  });
+
+  it('OE-4: consenting owner is OFFLINE → defer', async () => {
+    stubGame({
+      selfId: 'u-gm',
+      users: [{ id: 'u-shin', consent: true, owns: true, active: false }],
+    });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-shin')).toBe('defer');
+  });
+
+  it('OE-5: GM owner is skipped (GMs never elected via consent) → defer', async () => {
+    stubGame({ selfId: 'u-gm', users: [{ id: 'u-gm', isGM: true, consent: true, owns: true }] });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-shin')).toBe('defer');
+  });
+
+  it('OE-6: unknown actor → defer', async () => {
+    stubGame({ selfId: 'u-shin', users: [{ id: 'u-shin', consent: true, owns: true }] });
+    const { ownerElection } = await import('./module.js');
+    expect(ownerElection('actor-nope')).toBe('defer');
+  });
+});

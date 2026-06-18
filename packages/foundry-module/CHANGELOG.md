@@ -1,5 +1,18 @@
 # @evf/foundry-module
 
+## 0.1.35
+
+### Minor Changes
+
+- ADR-0015 §C browser-capture: show a player's REAL view by capturing from their
+  already-open Foundry browser — no headless re-login (which The Forge blocks by
+  binding a session to its account's user). The module now polls the bridge
+  (`/internal/stream-request`) for the requested actor and elects the actor's
+  ACTIVE, CONSENTING, NON-GM owner as the stream leader; that client captures its
+  own vision/fog/lighting directly. If no consenting owner is online, the default
+  GM-wins election still applies (the map is never blank). Pairs with the bridge's
+  `EVF_PLAYER_VIEW_HEADLESS=0` default (headless becomes a self-hosted-only fallback).
+
 ## 0.1.34
 
 ### Patch Changes

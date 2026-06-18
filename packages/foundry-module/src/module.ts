@@ -642,6 +642,13 @@ Hooks.once('ready', () => {
       // roster heartbeat is best-effort — a read/emit failure must not break the page
     }
   }, SETTINGS_HEARTBEAT_MS);
+
+  // Stream-request poll (ADR-0015 §C, browser-capture): learn which actor's owner
+  // the glasses want as the map source, so the owning client self-elects as the
+  // capture leader (see isStreamLeader / ownerElection). Poll on EVERY client (not
+  // leader-gated) — a NON-leader owner must discover the request to take over.
+  void pollStreamRequest();
+  setInterval(() => void pollStreamRequest(), STREAM_REQUEST_POLL_MS);
 });
 
 /** Minimal user shape read by {@link isStreamLeader}. */
@@ -649,6 +656,92 @@ interface UserLike {
   readonly id?: string | null;
   readonly active?: boolean;
   readonly isGM?: boolean;
+}
+
+// ─── Owner-elected stream leader (ADR-0015 §C, browser-capture) ────────────────
+
+/** Per-user opt-in flag scope/key (mirrors readers/character-reader.ts). */
+const STREAM_CONSENT_FLAG = 'streamConsent';
+/** How often THIS client asks the bridge which actor's owner should be the stream source (ms). */
+const STREAM_REQUEST_POLL_MS = 2_500;
+/**
+ * The actor the glasses currently want the OWNER's view of (actor mode, or
+ * streaming with a selected PC), learned by polling the bridge's
+ * `/internal/stream-request`. `null` → no specific request → default election.
+ */
+let _requestedStreamActorId: string | null = null;
+
+/** Minimal user shape for the consent + ownership check. */
+interface ConsentUserLike {
+  readonly id?: string | null;
+  readonly active?: boolean;
+  readonly isGM?: boolean;
+  getFlag?(scope: string, key: string): unknown;
+}
+/** Minimal actor shape for the permission check. */
+interface ActorPermLike {
+  testUserPermission(user: ConsentUserLike, perm: string): boolean;
+}
+
+/**
+ * Poll the bridge for the requested stream actor (browser-capture leader signal).
+ * Best-effort: a missing pairing, an unreachable bridge, or a non-200 leaves the
+ * last known value. Updates {@link _requestedStreamActorId} for {@link isStreamLeader}.
+ */
+async function pollStreamRequest(): Promise<void> {
+  try {
+    const bridgeUrl = getBridgeUrl();
+    const secret = getInternalSecret();
+    if (bridgeUrl === null || secret === null) return;
+    const res = await fetch(`${bridgeUrl}/internal/stream-request`, {
+      headers: { Authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(DELTA_POST_TIMEOUT_MS),
+    });
+    if (!res.ok) return;
+    const body = (await res.json()) as { actorId?: unknown };
+    _requestedStreamActorId =
+      typeof body.actorId === 'string' && body.actorId.length > 0 ? body.actorId : null;
+  } catch {
+    // best-effort — keep the last known requested actor
+  }
+}
+
+/**
+ * Decide this client's role for an owner-requested actor:
+ * - `lead`     — I am an ACTIVE, CONSENTING, NON-GM owner of the actor → I capture.
+ * - `standdown`— another active consenting owner exists (not me) → I must NOT capture.
+ * - `defer`    — no active consenting owner anywhere → fall through to default election.
+ */
+export function ownerElection(actorId: string): 'lead' | 'standdown' | 'defer' {
+  try {
+    const g = game as unknown as {
+      actors?: { get(id: string): ActorPermLike | undefined };
+      users?: { contents?: ConsentUserLike[] };
+      user?: { id?: string | null };
+    };
+    const actor = g.actors?.get(actorId);
+    if (actor === undefined) return 'defer';
+    const selfId = g.user?.id ?? null;
+    let anyOwner = false;
+    let selfIsOwner = false;
+    for (const u of g.users?.contents ?? []) {
+      if (u.isGM === true || u.active !== true) continue;
+      if (u.getFlag?.(MODULE_ID, STREAM_CONSENT_FLAG) !== true) continue;
+      try {
+        if (actor.testUserPermission(u, 'OWNER')) {
+          anyOwner = true;
+          if (u.id != null && u.id === selfId) selfIsOwner = true;
+        }
+      } catch {
+        // permission probe failed for this user — skip
+      }
+    }
+    if (selfIsOwner) return 'lead';
+    if (anyOwner) return 'standdown';
+    return 'defer';
+  } catch {
+    return 'defer';
+  }
 }
 
 /**
@@ -668,6 +761,18 @@ export function isStreamLeader(): boolean {
   // source. The bridge drops the GM's frames while these arrive.
   if (_forcedLeader) {
     return true;
+  }
+  // Owner-elected leader (ADR-0015 §C, browser-capture): when the glasses request a
+  // specific actor, the active CONSENTING NON-GM owner captures THEIR OWN real view
+  // (vision + fog) directly from their open browser — no headless. If such an owner
+  // is active, only they lead (everyone else stands down); if none is active, fall
+  // through to the default GM-wins election so the map is not blank.
+  const reqActor = _requestedStreamActorId;
+  if (reqActor !== null && reqActor !== '') {
+    const verdict = ownerElection(reqActor);
+    if (verdict === 'lead') return true;
+    if (verdict === 'standdown') return false;
+    // 'defer' → default election below
   }
   try {
     const g = game as unknown as { user?: UserLike | null; users?: Iterable<UserLike> | null };
