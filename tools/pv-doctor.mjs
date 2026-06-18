@@ -186,6 +186,10 @@ async function cmdSet(mode, actorId) {
       process.exit(2);
     }
     msg.actorId = actorId;
+  } else if (mode === 'streaming' && actorId) {
+    // ADR-0015 §C: streaming can join as the selected PC's owning user (app reuses
+    // the character selector). Optional — omit to use the env stream user fallback.
+    msg.actorId = actorId;
   }
   console.log(`→ sending ${JSON.stringify(msg)}; waiting up to 150s for live/error...`);
   const ws = new WebSocket(WS_URL);
