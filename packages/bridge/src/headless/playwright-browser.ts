@@ -238,13 +238,16 @@ async function tryForgeLogin(page: Page, cfg: HeadlessSessionConfig): Promise<vo
  * Best-effort Foundry `/join` user selection + submit. NO-OP when the world is
  * already entered (no join form present).
  *
- * The Foundry USER is determined by the LOGIN, not the join screen: `streaming`
- * mode authenticates as the bridge's streaming account, and `actor` mode
- * authenticates with the selected player's own Forge credentials
- * (`cfg.forgeUser`/`cfg.forgePassword`, see {@link doForgeLogin}) so The Forge
- * routes into the world as that player's user. The join screen — when present —
- * then carries a single matching user, so picking the first non-empty option is
- * correct. (⚠️ join selectors are best-effort; tune during a live bootstrap.)
+ * PASSWORD-FREE model (ADR-0015 §C): the Forge gate is passed with the bridge's
+ * streaming account; the Foundry WORLD user is then chosen on the `/join` screen
+ * and joined with a BLANK password (Foundry users have no password by default).
+ * The user picked depends on the mode:
+ *   - `actor`     → `cfg.userName` (the selected PC's owning user → their fogged view).
+ *   - `streaming` → `cfg.streamUser` when configured (the streamer's map source,
+ *                   e.g. a GM whose viewport frames the party); else the first
+ *                   non-empty option (NON-DETERMINISTIC — pin via
+ *                   `EVF_PLAYER_VIEW_STREAM_USER`).
+ * (⚠️ join selectors are best-effort; tune during a live bootstrap.)
  */
 async function tryFoundryJoin(page: Page, cfg: HeadlessSessionConfig): Promise<void> {
   // Probe for the Foundry join user-select; absent → already in the world.
@@ -252,15 +255,20 @@ async function tryFoundryJoin(page: Page, cfg: HeadlessSessionConfig): Promise<v
   if (userSelect === null) {
     return;
   }
+  // The Foundry world USERNAME to select, if a specific one was requested:
+  // `actor` → the selected player's user; `streaming` → the configured stream user.
+  const requestedUser =
+    cfg.mode === 'actor' ? cfg.userName : cfg.mode === 'streaming' ? cfg.streamUser : undefined;
   try {
-    if (cfg.mode === 'actor' && cfg.userName !== undefined && cfg.userName.length > 0) {
-      // `actor` mode: select the player's user by NAME (the `<option>` label) so we
-      // join AS that player → their fogged view. The bridge resolved this username
-      // from the actorId (only opted-in players are offered).
-      await page.selectOption('select[name="userid"]', { label: cfg.userName });
+    if (requestedUser !== undefined && requestedUser.length > 0) {
+      // Select the requested user by NAME (the `<option>` label) and join with a
+      // blank password. `actor` → that player's fogged view; `streaming` → the
+      // streamer's configured map source (e.g. a GM whose viewport frames the party).
+      await page.selectOption('select[name="userid"]', { label: requestedUser });
     } else {
-      // streaming/default: pick the first non-empty user option (the streaming user).
-      // Read option `value`s via the locator API (the bridge tsconfig has no DOM lib).
+      // streaming with no configured stream user (or unknown mode): pick the first
+      // non-empty user option. NON-DETERMINISTIC — set EVF_PLAYER_VIEW_STREAM_USER to
+      // pin the streaming view. Read option `value`s via the locator API (no DOM lib).
       const optionValues = await page
         .locator('select[name="userid"] > option')
         .evaluateAll((els) =>

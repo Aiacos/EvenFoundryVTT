@@ -48,6 +48,13 @@ export interface HeadlessSessionConfig {
    * a blank password (Foundry users have no password by default).
    */
   userName?: string;
+  /**
+   * Foundry world USERNAME to select on `/join` — `streaming` mode only. The
+   * streamer's intended map source (e.g. a GM or a dedicated observer whose
+   * viewport frames the party). When absent, streaming falls back to the first
+   * non-empty `/join` option (non-deterministic). From `EVF_PLAYER_VIEW_STREAM_USER`.
+   */
+  streamUser?: string;
   /** Path to a saved Playwright `storageState` JSON (the reliable login path). */
   storageStatePath?: string;
   /** Forge (streaming-account) email/username — best-effort native auto-login only. */

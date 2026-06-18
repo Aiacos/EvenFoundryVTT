@@ -78,7 +78,7 @@ Two design iterations were superseded (all-on-bridge; then per-player passwords 
 - The Forge gate is account-level; once inside the world, the Foundry `/join` screen lists ALL users and you pick which to join as ([Forge: how players log in](https://forums.forge-vtt.com/t/how-do-players-log-into-a-game/68554)).
 
 So both modes pass the Forge gate with the **bridge's streaming account** (env creds + saved `storageState`), and:
-- **`streaming`** — joins as the streaming/default user (shared, auto-framed).
+- **`streaming`** — joins as the **configured stream user** `EVF_PLAYER_VIEW_STREAM_USER` (selected by `/join` option label, blank password). This is the streamer's intended map source — pick a user whose live Foundry viewport frames the party (e.g. a GM or a dedicated observer). When unset, the headless falls back to the **first** `/join` option, which is **non-deterministic** (often a fogged player → a single-token view, not the party); configuring the var is strongly advised.
 - **`actor`** — selects the **selected player's Foundry user** on `/join` (resolved from `actorId`) and joins with a **blank password** → that player's real fogged view. No per-player secret travels anywhere.
 
 Resolution + consent:

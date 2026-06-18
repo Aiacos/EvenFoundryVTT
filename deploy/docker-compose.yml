@@ -29,6 +29,8 @@ services:
       dockerfile: deploy/bridge.Dockerfile
     ports:
       - "8910:8910"
+    # Player-view secrets/config (EVF_PLAYER_VIEW_*, incl. EVF_PLAYER_VIEW_STREAM_USER
+    # — the Foundry world user the `streaming` map joins as) are loaded from .env here.
     env_file:
       - .env
     environment:

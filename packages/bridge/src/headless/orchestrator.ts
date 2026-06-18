@@ -56,6 +56,13 @@ export interface EnvConfig {
   forgePassword?: string;
   /** Saved Playwright session path (`EVF_PLAYER_VIEW_STORAGE_STATE`). */
   storageStatePath?: string;
+  /**
+   * Foundry world USERNAME the `streaming` mode joins as (`EVF_PLAYER_VIEW_STREAM_USER`).
+   * Selects which user's live Foundry viewport becomes the shared map (the streamer's
+   * intended "see the party" view). When unset, the headless falls back to the first
+   * `/join` user option — non-deterministic, so configuring this is strongly advised.
+   */
+  streamUser?: string;
 }
 
 /**
@@ -73,10 +80,12 @@ export function readPlayerViewEnv(): EnvConfig {
   const forgeUser = process.env['EVF_PLAYER_VIEW_FORGE_USER'];
   const forgePassword = process.env['EVF_PLAYER_VIEW_FORGE_PASSWORD'];
   const storageStatePath = process.env['EVF_PLAYER_VIEW_STORAGE_STATE'];
+  const streamUser = process.env['EVF_PLAYER_VIEW_STREAM_USER'];
   if (foundryUrl) cfg.foundryUrl = foundryUrl;
   if (forgeUser) cfg.forgeUser = forgeUser;
   if (forgePassword) cfg.forgePassword = forgePassword;
   if (storageStatePath) cfg.storageStatePath = storageStatePath;
+  if (streamUser) cfg.streamUser = streamUser;
   return cfg;
 }
 
@@ -214,6 +223,10 @@ export class HeadlessOrchestrator {
     if (env.forgeUser !== undefined) cfg.forgeUser = env.forgeUser;
     if (env.forgePassword !== undefined) cfg.forgePassword = env.forgePassword;
     if (intent.mode === 'actor' && intent.userName !== undefined) cfg.userName = intent.userName;
+    // `streaming` mode joins as the configured streaming user (its viewport is the
+    // shared map). Carried for streaming only; `actor` mode selects by `userName`.
+    if (intent.mode === 'streaming' && env.streamUser !== undefined)
+      cfg.streamUser = env.streamUser;
 
     let launched: HeadlessSession;
     try {

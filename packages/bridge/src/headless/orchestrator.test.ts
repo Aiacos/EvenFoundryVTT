@@ -201,6 +201,31 @@ describe('HeadlessOrchestrator', () => {
     expect(h.orchestrator.getState()).toEqual({ state: 'live' });
   });
 
+  it('ORC-09: streaming carries env.streamUser into the launch cfg (BUG-1 fix)', async () => {
+    const h = makeHarness(undefined, {
+      foundryUrl: 'https://env.example/game',
+      streamUser: 'Stream Observer',
+    });
+    h.orchestrator.applyIntent({ mode: 'streaming' });
+    await flush();
+    expect(h.lastCfg()?.streamUser).toBe('Stream Observer');
+  });
+
+  it('ORC-09b: actor mode does NOT carry streamUser (streaming-only)', async () => {
+    const h = makeHarness(undefined, {
+      foundryUrl: 'https://env.example/game',
+      streamUser: 'Stream Observer',
+    });
+    h.orchestrator.applyIntent({
+      mode: 'actor',
+      actorId: 'actor-7',
+      userName: 'Player Seven',
+    });
+    await flush();
+    expect(h.lastCfg()?.streamUser).toBeUndefined();
+    expect(h.lastCfg()?.userName).toBe('Player Seven');
+  });
+
   it('ORC-08: stop() tears down the live session and reports {off}', async () => {
     const session = makeSession();
     const h = makeHarness(() => Promise.resolve(session));
