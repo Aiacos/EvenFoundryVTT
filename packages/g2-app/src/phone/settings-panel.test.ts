@@ -131,7 +131,10 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     });
   });
 
-  it('does NOT re-drive the headless on character change when map source is streaming', async () => {
+  it('re-drives the headless on character change when map source is streaming (reuses the PC selector)', async () => {
+    // ADR-0015 §C: streaming now joins as the selected PC's owning Foundry user
+    // (chosen via the character selector), so a character switch must re-drive the
+    // headless just like actor mode.
     const onPlayerViewMode = vi.fn();
     createPhoneSettingsPanel({
       sendEdit: () => {},
@@ -145,6 +148,7 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
       onPlayerViewMode,
       initialActorId: 'actor-shin',
       playerViewInitialMode: 'streaming',
+      foundryUrl: 'https://forge.example',
     });
 
     await flush();
@@ -153,7 +157,11 @@ describe('createPhoneSettingsPanel — character/role selector', () => {
     select.value = 'actor-mira';
     select.dispatchEvent(new Event('change'));
 
-    expect(onPlayerViewMode).not.toHaveBeenCalled();
+    expect(onPlayerViewMode).toHaveBeenCalledWith({
+      mode: 'streaming',
+      actorId: 'actor-mira',
+      foundryUrl: 'https://forge.example',
+    });
   });
 
   it('renders the Foundry URL field pre-filled and is flat (no collapse chevron)', () => {

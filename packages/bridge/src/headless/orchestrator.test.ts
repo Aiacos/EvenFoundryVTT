@@ -211,6 +211,17 @@ describe('HeadlessOrchestrator', () => {
     expect(h.lastCfg()?.streamUser).toBe('Stream Observer');
   });
 
+  it('ORC-09c: streaming intent.userName (app-chosen PC) WINS over env.streamUser', async () => {
+    const h = makeHarness(undefined, {
+      foundryUrl: 'https://env.example/game',
+      streamUser: 'Stream Observer',
+    });
+    // The app reused the character selector → bridge resolved the PC's owning user.
+    h.orchestrator.applyIntent({ mode: 'streaming', actorId: 'a-shin', userName: 'Shin Player' });
+    await flush();
+    expect(h.lastCfg()?.streamUser).toBe('Shin Player');
+  });
+
   it('ORC-09b: actor mode does NOT carry streamUser (streaming-only)', async () => {
     const h = makeHarness(undefined, {
       foundryUrl: 'https://env.example/game',

@@ -38,9 +38,11 @@ export interface PlayerViewIntent {
   /** Foundry game URL the headless session should open (overrides the env default). */
   foundryUrl?: string;
   /**
-   * Foundry username to SELECT on the `/join` screen — `actor` mode only. Resolved
-   * by the bridge from `actorId` via the character-list cache (only opted-in
-   * players are listed). Absent → the actor is not available for streaming.
+   * Foundry username to SELECT on the `/join` screen, resolved by the bridge from
+   * `actorId` via the character-list cache (only opted-in players are listed).
+   * - `actor`     → REQUIRED; absent → the actor is not available for streaming.
+   * - `streaming` → OPTIONAL; the app reuses the character selector to pick whose
+   *   view streams. Absent → the orchestrator falls back to the env stream user.
    */
   userName?: string;
 }

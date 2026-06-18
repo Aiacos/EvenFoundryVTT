@@ -188,6 +188,29 @@ describe('handleClientPlayerView', () => {
     expect(sentStatus(h.send)).toEqual({ state: 'starting' });
   });
 
+  it('CPV-07: streaming + actorId of an opted-in PC → resolves userName (app-chosen stream user)', () => {
+    h.characterUserNames.set('actor-shin', 'Shin Player');
+    handleClientPlayerView(
+      h.deps,
+      h.sessionId,
+      JSON.stringify({ type: 'client_player_view', mode: 'streaming', actorId: 'actor-shin' }),
+      h.logger,
+    );
+    const expectedIntent = { mode: 'streaming', actorId: 'actor-shin', userName: 'Shin Player' };
+    expect(h.playerViewStore.get()).toEqual(expectedIntent);
+    expect(h.applyIntent).toHaveBeenCalledWith(expectedIntent);
+  });
+
+  it('CPV-07b: streaming + actorId NOT opted in → no userName (env fallback handled downstream)', () => {
+    handleClientPlayerView(
+      h.deps,
+      h.sessionId,
+      JSON.stringify({ type: 'client_player_view', mode: 'streaming', actorId: 'actor-x' }),
+      h.logger,
+    );
+    expect(h.playerViewStore.get()).toEqual({ mode: 'streaming', actorId: 'actor-x' });
+  });
+
   it('CPV-06: accepts a Buffer payload (ws binary frame)', () => {
     handleClientPlayerView(
       h.deps,

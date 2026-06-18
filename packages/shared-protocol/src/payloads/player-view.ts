@@ -31,8 +31,10 @@ export const CLIENT_PLAYER_VIEW_TYPE = 'client_player_view' as const;
 /**
  * Map-view source modes:
  * - `off`      — the GM's live, correctly-lit viewport (default; no headless session).
- * - `streaming` — a shared headless session as the **streaming** Foundry user
- *   (already auto-framed + correctly lit) — one stream for all glasses.
+ * - `streaming` — a shared headless session whose joined Foundry user is chosen
+ *   from the app's character selector (`actorId` → that PC's owning user); when no
+ *   PC is selected / the owner has not opted in, the bridge falls back to the
+ *   configured env stream user (`EVF_PLAYER_VIEW_STREAM_USER`). One stream for all glasses.
  * - `actor`    — a headless session joined as the **selected player's Foundry user**
  *   (blank password) → that player's real fogged view (vision + lighting + fog).
  *   No per-player credentials: the bridge resolves the actor's Foundry username.
@@ -43,8 +45,9 @@ export const PLAYER_VIEW_MODES = ['off', 'streaming', 'actor'] as const;
  * Upstream `client_player_view` message (EvenHub app → bridge).
  *
  * `z.strictObject` — no unexpected keys, and NO credentials (password-free model;
- * see the module header). `actorId` identifies the selected PC — for `actor` mode
- * the bridge maps it to that player's Foundry username for the `/join` selection;
+ * see the module header). `actorId` identifies the selected PC — for BOTH `actor`
+ * and `streaming` mode the bridge maps it to that player's Foundry username for the
+ * `/join` selection (streaming falls back to the env stream user when absent);
  * `foundryUrl` overrides the bridge's configured Foundry game URL.
  */
 export const ClientPlayerViewMessageSchema = z.strictObject({

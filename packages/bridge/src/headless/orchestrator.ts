@@ -223,10 +223,15 @@ export class HeadlessOrchestrator {
     if (env.forgeUser !== undefined) cfg.forgeUser = env.forgeUser;
     if (env.forgePassword !== undefined) cfg.forgePassword = env.forgePassword;
     if (intent.mode === 'actor' && intent.userName !== undefined) cfg.userName = intent.userName;
-    // `streaming` mode joins as the configured streaming user (its viewport is the
-    // shared map). Carried for streaming only; `actor` mode selects by `userName`.
-    if (intent.mode === 'streaming' && env.streamUser !== undefined)
-      cfg.streamUser = env.streamUser;
+    // `streaming` joins as the user whose viewport becomes the shared map. The app
+    // reuses the character selector to pick that user (the selected PC's owning
+    // Foundry user, resolved by the bridge into `intent.userName`); when absent
+    // (no PC selected / owner not opted in) it falls back to the configured env
+    // stream user. The app value WINS over the env (intent-over-env, like `foundryUrl`).
+    if (intent.mode === 'streaming') {
+      const streamUser = intent.userName ?? env.streamUser;
+      if (streamUser !== undefined) cfg.streamUser = streamUser;
+    }
 
     let launched: HeadlessSession;
     try {

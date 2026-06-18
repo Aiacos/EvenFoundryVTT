@@ -399,14 +399,16 @@ export function createPhoneSettingsPanel(opts: PhoneSettingsPanelOptions): Phone
       const value = select.value;
       if (!value) return; // guard against the disabled placeholder
       opts.onSelectActor?.(value);
-      // ADR-0015 §C: when the map source is the selected PC's headless view
-      // ('actor'), switching the character must ALSO re-drive the headless to the
-      // new PC. `client_select_actor` only re-pins the character SHEET; the map
-      // source is owned by `client_player_view`, whose actorId is a snapshot taken
-      // at send time. Without this re-send the glasses keep the OLD PC's fogged
-      // view after a character switch (the "different PG in actor mode" bug).
-      if (playerViewSelectEl?.value === 'actor') {
-        opts.onPlayerViewMode?.(buildPlayerViewRequest('actor'));
+      // ADR-0015 §C: when the map source is driven by the selected PC — both
+      // 'actor' (that PC's fogged view) AND 'streaming' (which joins as that PC's
+      // owning Foundry user) — switching the character must ALSO re-drive the
+      // headless to the new PC. `client_select_actor` only re-pins the character
+      // SHEET; the map source is owned by `client_player_view`, whose actorId is a
+      // snapshot taken at send time. Without this re-send the glasses keep the OLD
+      // PC's view after a character switch.
+      const pvMode = playerViewSelectEl?.value;
+      if (pvMode === 'actor' || pvMode === 'streaming') {
+        opts.onPlayerViewMode?.(buildPlayerViewRequest(pvMode));
       }
     });
 

@@ -133,11 +133,14 @@ export function handleClientPlayerView(
   if (foundryUrl !== undefined) {
     intent.foundryUrl = foundryUrl;
   }
-  // `actor` mode (password-free): resolve the selected PC's owning Foundry username
-  // from the roster cache — present ONLY for players who opted in to streaming. The
-  // headless then selects that user on `/join` (blank password). Absent → the
-  // orchestrator reports `unavailable` (the actor is not streamable).
-  if (mode === 'actor' && actorId !== undefined) {
+  // Password-free user resolution: map the selected PC's actorId → its owning
+  // Foundry username from the roster cache — present ONLY for players who opted in
+  // to streaming. The headless then selects that user on `/join` (blank password).
+  // - `actor`     → REQUIRED: absent username → orchestrator reports `unavailable`.
+  // - `streaming` → OPTIONAL: the app reuses the character selector to pick whose
+  //   view streams; absent username (no PC / not opted in) falls back to the
+  //   configured env stream user (EVF_PLAYER_VIEW_STREAM_USER). (ADR-0015 §C)
+  if ((mode === 'actor' || mode === 'streaming') && actorId !== undefined) {
     const userName = characterListCache.getUserName(actorId);
     if (userName !== undefined) {
       intent.userName = userName;

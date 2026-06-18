@@ -1106,8 +1106,11 @@ export async function _bootEngineCore(
       JSON.stringify({
         type: CLIENT_PLAYER_VIEW_TYPE,
         mode: BOOT_PLAYER_VIEW_MODE,
-        // 'actor' mode needs the selected PC; 'streaming' ignores actorId.
-        ...(BOOT_PLAYER_VIEW_MODE === 'actor' &&
+        // Both 'actor' and 'streaming' join as the selected PC's owning Foundry
+        // user (ADR-0015 §C), so both carry the configured actorId at boot. The
+        // bridge resolves it to a username (opt-in); 'streaming' falls back to the
+        // env stream user when absent. 'off' carries nothing.
+        ...((BOOT_PLAYER_VIEW_MODE === 'actor' || BOOT_PLAYER_VIEW_MODE === 'streaming') &&
         opts.characterId !== undefined &&
         opts.characterId !== ''
           ? { actorId: opts.characterId }
