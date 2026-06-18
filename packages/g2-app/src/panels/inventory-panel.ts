@@ -49,6 +49,7 @@ import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import type { ActionOptionsRequest } from './action-options-modal.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
+import { IconId, iconToUnicode } from './icon-dictionary.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
 
@@ -77,23 +78,27 @@ const TAGS_WIDTH = 19;
 
 // ─── Item type glyphs (UI-SPEC §6.2 glyph dictionary) ────────────────────────
 
-/** Map from dnd5e item type to a single display glyph. */
-const ITEM_GLYPHS: Record<string, string> = {
-  weapon: '⚔',
-  armor: '⛨',
-  equipment: '⛨',
-  consumable: '▶',
-  container: '▶',
-  currency: ' ',
-} as const;
+/**
+ * Map from dnd5e item type to the shared {@link IconId}. The glyph itself comes
+ * from the single {@link iconToUnicode} dictionary (Feature 001 D3 — one source for
+ * the glyph + canvas paths; the local glyph table is gone).
+ */
+const ITEM_ICON: Record<string, IconId> = {
+  weapon: IconId.Weapon,
+  armor: IconId.Armor,
+  equipment: IconId.Armor,
+  consumable: IconId.Consumable,
+  container: IconId.Consumable,
+  currency: IconId.Currency,
+};
 
 /**
- * Retrieve the display glyph for an inventory item type.
+ * Retrieve the display glyph for an inventory item type (via the shared dictionary).
  *
  * @internal
  */
 function itemGlyph(type: string): string {
-  return ITEM_GLYPHS[type] ?? ' ';
+  return iconToUnicode(ITEM_ICON[type] ?? IconId.Currency);
 }
 
 // ─── Overlay container name ───────────────────────────────────────────────────

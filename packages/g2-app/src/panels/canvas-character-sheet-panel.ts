@@ -693,7 +693,9 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
    * the `void this._locale` dead-code suppression).
    */
   private _paintActiveTab(ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D): void {
-    const bounds: PaintBounds = { x: 0, y: 30, w: COMPOSITOR_W, h: COMPOSITOR_H - 30 };
+    // Content sits INSIDE the D&D frame inset (Feature 001 D3): x/right padded
+    // past the double-rule border so text no longer runs under the frame.
+    const bounds: PaintBounds = { x: 8, y: 30, w: COMPOSITOR_W - 16, h: COMPOSITOR_H - 36 };
     const tab = TABS[this._activeTabIndex] ?? 'main';
     const font = this._fontFamily;
     const locale = this._locale as HudLocale;
@@ -847,11 +849,19 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
 // ── Module-level helpers ───────────────────────────────────────────────────────
 
 /**
- * Draw the static (non-tab-dependent) chrome onto `ctx`.
+ * Draw the static (non-tab-dependent) D&D-sheet chrome onto `ctx`.
  *
- * Renders the background fill + outer border + horizontal separator line at y=27.
- * The tab strip text is intentionally NOT drawn here so this output can be safely
- * pre-baked into an `ImageBitmap` that remains valid across tab changes (CR-01 fix).
+ * Feature 001 D3 restyle — a parchment-frame look on the 4-bit phosphor display:
+ *   - black background fill
+ *   - a DOUBLE-ruled outer frame (outer + inset border) — the classic character-
+ *     sheet ledger border
+ *   - corner brackets at the four corners (sheet "rivets")
+ *   - a double header rule under the tab strip (y=27 + y=29)
+ *
+ * The content region below y=30 is UNCHANGED so the tab renderers' fixed 27px line
+ * grid (and its INV-1 positions) are preserved. The tab strip text is intentionally
+ * NOT drawn here so this output can be safely pre-baked into an `ImageBitmap` that
+ * stays valid across tab changes (CR-01 fix).
  *
  * Called:
  *   - During `_prebakeChrome()` onto a scratch OffscreenCanvas (production path).
@@ -862,17 +872,70 @@ export default class CanvasCharacterSheetPanel implements CanvasLayer, OverlayPa
 function _drawStaticChrome(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
 ): void {
+  const W = COMPOSITOR_W;
+  const H = COMPOSITOR_H;
+
   // Black background fill.
   ctx.fillStyle = CHROME_BG;
-  ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+  ctx.fillRect(0, 0, W, H);
 
-  // Outer border — white (brightest palette step → phosphor green on G2).
+  // Double-ruled outer frame (D&D ledger border). Outer at the very edge, inner
+  // inset by CHROME_INSET — the two parallel rules read as a character-sheet frame.
   ctx.strokeStyle = CHROME_FG;
-  ctx.strokeRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+  ctx.strokeRect(
+    CHROME_INSET + 0.5,
+    CHROME_INSET + 0.5,
+    W - 1 - 2 * CHROME_INSET,
+    H - 1 - 2 * CHROME_INSET,
+  );
 
-  // Tab strip separator line at y=27 (first line = tab strip).
+  // Corner brackets — short L-strokes just inside each corner ("sheet rivets").
+  _drawCornerBrackets(ctx, W, H);
+
+  // Double header rule under the tab strip (tab strip text sits above y=27).
   ctx.fillStyle = CHROME_FG;
-  ctx.fillRect(0, 27, COMPOSITOR_W, 1);
+  ctx.fillRect(CHROME_INSET, 27, W - 2 * CHROME_INSET, 1);
+  ctx.fillRect(CHROME_INSET, 29, W - 2 * CHROME_INSET, 1);
+}
+
+/** Inset (px) of the inner frame rule from the outer edge — the double-border gap. */
+const CHROME_INSET = 4;
+
+/** Corner-bracket arm length (px). */
+const CHROME_BRACKET = 10;
+
+/**
+ * Draw four corner brackets just inside the frame inset — the small L-shaped
+ * strokes that give the sheet its "ledger corner" look.
+ *
+ * @param ctx 2D rendering context.
+ * @param w   Canvas width.
+ * @param h   Canvas height.
+ */
+function _drawCornerBrackets(
+  ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
+  w: number,
+  h: number,
+): void {
+  const m = CHROME_INSET + 3; // bracket origin, just inside the inner rule
+  const a = CHROME_BRACKET;
+  ctx.fillStyle = CHROME_FG;
+  // Each corner = one horizontal + one vertical 1px arm.
+  const arms: ReadonlyArray<readonly [number, number, number, number]> = [
+    [m, m, a, 1], // top-left  horizontal
+    [m, m, 1, a], // top-left  vertical
+    [w - m - a, m, a, 1], // top-right horizontal
+    [w - m - 1, m, 1, a], // top-right vertical
+    [m, h - m - 1, a, 1], // bottom-left horizontal
+    [m, h - m - a, 1, a], // bottom-left vertical
+    [w - m - a, h - m - 1, a, 1], // bottom-right horizontal
+    [w - m - 1, h - m - a, 1, a], // bottom-right vertical
+  ];
+  for (const [x, y, aw, ah] of arms) {
+    ctx.fillRect(x, y, aw, ah);
+  }
 }
 
 /**
@@ -893,5 +956,6 @@ function _drawTabStrip(
   ctx.fillStyle = CHROME_FG;
   ctx.font = fontFamily;
   const tabStripRow = buildTabStrip(activeTabIdx);
-  ctx.fillText(tabStripRow, 2, 24);
+  // Indent past the double-frame inset so the strip clears the inner rule.
+  ctx.fillText(tabStripRow, 8, 24);
 }

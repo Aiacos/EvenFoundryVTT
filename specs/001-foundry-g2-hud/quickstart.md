@@ -70,6 +70,16 @@ Clean-env baseline on `feat/hud-raster-rendering` (no `packages/g2-app/.env.loca
 > STEP3). This is the dev-hack that **T014** demotes out of the default path; in CI (no
 > `.env.local`) the baseline is fully green.
 
+## US3 D&D-sheet restyle — manual visual gate (T030)
+
+The canvas restyle (D&D double-frame chrome + corner brackets + header rules, content
+inset inside the frame, AC/INI/VEL vitals drawn as shared-dictionary icons) is verified by
+unit tests (`dnd-sheet-restyle.test.ts`: canvas icon path + INV-1 width invariance across
+HP 7/700, long name, condition overflow, IT/EN) and the existing INV-1 fixtures (byte-identical
+glyphs after consolidation). **Pending manual gate**: open the EvenHub simulator against a live
+bridge+Foundry session and cycle the 6 tabs to confirm the look on a real frame, then attach the
+screenshots here. (Requires the full deploy; not capturable in CI.)
+
 ## Definition of done (slice)
 
 - All five scenarios pass; all gates green; INV-1 snapshots cover every restyled tab + the FPS badge in

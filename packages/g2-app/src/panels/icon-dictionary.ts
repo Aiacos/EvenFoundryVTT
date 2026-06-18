@@ -12,8 +12,11 @@
  *  - {@link iconToUnicode} — the existing Unicode glyph (low-bandwidth glyph fallback).
  *  - {@link drawIcon}      — a canvas-path render at a fixed cell size (the compositor).
  *
- * Phase-2 scaffold: `drawIcon` is a Unicode-glyph stub (it fills the glyph as text at
- * the cell baseline). US3 (T023) replaces the stub with vector/text canvas paths per icon.
+ * On the 576×288 4-bit phosphor display the icon set renders as crisp Unicode glyphs
+ * centered in their cell (the canvas "path" for these symbolic icons): one definition
+ * feeds both the glyph fallback and the canvas compositor, so they never drift
+ * (Constitution I). A caller needing a true vector shape can extend {@link drawIcon}
+ * per-id without changing any call site.
  *
  * @see specs/001-foundry-g2-hud/data-model.md (Icon)
  * @see specs/001-foundry-g2-hud/research.md D3

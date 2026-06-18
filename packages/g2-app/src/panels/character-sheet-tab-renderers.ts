@@ -99,6 +99,7 @@
 import { type CharacterSnapshot, SKILL_KEYS, type SkillKey } from '@evf/shared-protocol';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import type { TabId } from './character-sheet-panel.js';
+import { drawIcon, IconId, iconToUnicode } from './icon-dictionary.js';
 import { renderInventoryTabContent } from './inventory-panel.js';
 import { renderSpellsTabContent } from './spellbook-panel.js';
 
@@ -319,7 +320,8 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   // Phase 21 Plan 21-05: INI/VEL now use real snapshot.initiative/speed values.
   const dash = '—'; // retained for Hit Dice placeholder (still pending)
   const abilities = snapshot.abilities;
-  const profGlyph = (proficient: boolean): string => (proficient ? '◉' : '○');
+  const profGlyph = (proficient: boolean): string =>
+    iconToUnicode(proficient ? IconId.ProfProficient : IconId.ProfNone);
 
   // Proficiency bonus (standard 5e progression: 1-4=+2, 5-8=+3, 9-12=+4, 13-16=+5, 17-20=+6)
   const profBonus = Math.ceil(level / 4) + 1;
@@ -353,7 +355,7 @@ export function renderMainTab(snapshot: CharacterSnapshot | null, locale: HudLoc
   // Row 6: vitals bar (AC / INI / VEL / COMP)
   // Phase 21 Plan 21-05: INI uses formatAbilityMod (signed +N/-N/+0); VEL uses
   // String(snapshot.speed) — replaces the em-dash placeholders (RDATA-01/02).
-  const vitalsLine = `⛨ ${acLabel} ${ac}    ⚡ ${iniLabel} ${formatAbilityMod(snapshot.initiative)}    ⚔ ${velLabel} ${String(snapshot.speed)}    ${compLabel} ${profStr}`;
+  const vitalsLine = `${iconToUnicode(IconId.ArmorClass)} ${acLabel} ${ac}    ${iconToUnicode(IconId.Initiative)} ${iniLabel} ${formatAbilityMod(snapshot.initiative)}    ${iconToUnicode(IconId.Speed)} ${velLabel} ${String(snapshot.speed)}    ${compLabel} ${profStr}`;
   rows.push(vitalsLine);
 
   // Row 7: blank separator
@@ -471,11 +473,14 @@ interface SkillDef {
   readonly modifier: number; // total modifier value (e.g. +6, -1)
 }
 
-/** Proficiency level → display glyph mapping (UI-SPEC §5.3). */
+/**
+ * Proficiency level → display glyph (UI-SPEC §5.3). Glyphs come from the shared
+ * {@link iconToUnicode} dictionary (Feature 001 D3 — single source for glyph + canvas).
+ */
 const PROF_GLYPHS: Record<ProfLevel, string> = {
-  0: '○',
-  1: '◉',
-  2: '★',
+  0: iconToUnicode(IconId.ProfNone),
+  1: iconToUnicode(IconId.ProfProficient),
+  2: iconToUnicode(IconId.ProfExpertise),
 } as const;
 
 /**
@@ -1037,10 +1042,27 @@ export function paintMainTab(
   ctx.fillText(`PF ${hpBar} ${snapshot.hp}/${snapshot.maxHp}`, x, lineY);
   lineY += CANVAS_LINE_H;
 
-  // Row 2: vitals — real initiative (signed) + real speed (plain integer)
+  // Row 2: vitals — drawn as D&D-sheet icon+value groups (Feature 001 D3). Each
+  // group draws its icon via the shared icon-dictionary canvas path, then the
+  // value text. Real initiative (signed) + real speed (plain integer).
   const ini = formatAbilityMod(snapshot.initiative); // e.g. '+3', '-1', '+0'
   const vel = String(snapshot.speed); // e.g. '30', '25'
-  ctx.fillText(`CA ${snapshot.ac}  INI ${ini}  VEL ${vel}`, x, lineY);
+  const cell = 22;
+  const iconY = lineY - cell + 4; // align the icon box with the text baseline
+  let vx = x;
+  for (const [icon, value] of [
+    [IconId.ArmorClass, String(snapshot.ac)],
+    [IconId.Initiative, ini],
+    [IconId.Speed, vel],
+  ] as const) {
+    drawIcon(ctx, icon, { x: vx, y: iconY, w: cell, h: cell }, CANVAS_FG);
+    vx += cell;
+    const text = ` ${value}`;
+    ctx.fillText(text, vx, lineY);
+    // Fixed advance (VT323 27px ≈ 14px/char) — avoids ctx.measureText so the
+    // canvas-mock unit tests need no text-metrics shim.
+    vx += text.length * 14 + 16;
+  }
   lineY += CANVAS_LINE_H;
 
   // Row 3: abbreviated ability scores

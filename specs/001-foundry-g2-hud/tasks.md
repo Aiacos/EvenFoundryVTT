@@ -77,14 +77,14 @@ PC → "unavailable".
 preserved. **Independent test**: each tab renders the new chrome + icons; snapshot tests pass across
 content extremes and IT/EN.
 
-- [ ] T023 [US3] Implement `drawIcon` (canvas path) for all `IconId`s in `packages/g2-app/src/panels/icon-dictionary.ts` at the fixed cell size (replace inline glyph lookups behind this module).
-- [ ] T024 [US3] Add D&D-sheet chrome (shared frame/header) to `packages/g2-app/src/panels/canvas-character-sheet-panel.ts` (pre-baked chrome bitmap) and route tab paints through it.
-- [ ] T025 [P] [US3] Restyle Main + Skills tab paints (icons for abilities/proficiency) in `packages/g2-app/src/panels/character-sheet-tab-renderers.ts`.
-- [ ] T026 [P] [US3] Restyle Inventory tab + icons in `packages/g2-app/src/panels/inventory-panel.ts` (use `drawIcon`, drop the local `itemGlyph` map).
-- [ ] T027 [P] [US3] Restyle Spellbook tab + icons (spell slots/levels) in `packages/g2-app/src/panels/spellbook-panel.ts`.
-- [ ] T028 [P] [US3] Restyle Feats + Bio tab paints in `packages/g2-app/src/panels/character-sheet-tab-renderers.ts`.
-- [ ] T029 [US3] Add INV-1 snapshot tests for every restyled tab across states (HP 7/700, long name, condition overflow) and IT/EN in `packages/g2-app/src/panels/__tests__/` (extend the existing sheet snapshot suite).
-- [ ] T030 [US3] Capture simulator screenshots of each tab for visual confirmation and attach to the quickstart notes (manual visual gate alongside snapshots).
+- [X] T023 [US3] Implement `drawIcon` (canvas path) for all `IconId`s in `packages/g2-app/src/panels/icon-dictionary.ts` at the fixed cell size (replace inline glyph lookups behind this module).
+- [X] T024 [US3] Add D&D-sheet chrome (shared frame/header) to `packages/g2-app/src/panels/canvas-character-sheet-panel.ts` (pre-baked chrome bitmap) and route tab paints through it.
+- [X] T025 [P] [US3] Restyle Main + Skills tab paints (icons for abilities/proficiency) in `packages/g2-app/src/panels/character-sheet-tab-renderers.ts`.
+- [X] T026 [P] [US3] Restyle Inventory tab + icons in `packages/g2-app/src/panels/inventory-panel.ts` (use `drawIcon`, drop the local `itemGlyph` map).
+- [X] T027 [P] [US3] Restyle Spellbook tab + icons (spell slots/levels) in `packages/g2-app/src/panels/spellbook-panel.ts`.
+- [X] T028 [P] [US3] Restyle Feats + Bio tab paints in `packages/g2-app/src/panels/character-sheet-tab-renderers.ts`.
+- [X] T029 [US3] Add INV-1 snapshot tests for every restyled tab across states (HP 7/700, long name, condition overflow) and IT/EN in `packages/g2-app/src/panels/__tests__/` (extend the existing sheet snapshot suite).
+- [~] T030 [US3] (manual gate — see quickstart) Capture simulator screenshots of each tab for visual confirmation and attach to the quickstart notes (manual visual gate alongside snapshots).
 
 **Checkpoint**: US3 independently deliverable — sheet tabs look like a D&D sheet with icons; INV-1 green.
 

@@ -49,6 +49,7 @@ import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import type { ActionOptionsRequest } from './action-options-modal.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
+import { IconId, iconToUnicode } from './icon-dictionary.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
 
@@ -71,11 +72,11 @@ const EFFECT_WIDTH = 26;
 
 // ─── Slot bar constants ────────────────────────────────────────────────────────
 
-/** Filled (spent) slot glyph. */
-const SLOT_FILLED = '▓';
+/** Filled (spent) slot glyph — sourced from the shared icon dictionary (Feature 001 D3). */
+const SLOT_FILLED = iconToUnicode(IconId.SlotFilled);
 
-/** Empty (available) slot glyph. */
-const SLOT_EMPTY = '░';
+/** Empty (available) slot glyph — sourced from the shared icon dictionary (Feature 001 D3). */
+const SLOT_EMPTY = iconToUnicode(IconId.SlotEmpty);
 
 /** Maximum bar length in glyphs before we clip (keeps bar readable on G2). */
 const MAX_BAR_LENGTH = 4;
