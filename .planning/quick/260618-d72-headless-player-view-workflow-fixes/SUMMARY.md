@@ -38,6 +38,18 @@ typecheck 0, bridge 593 tests, foundry-module 671 tests + known teardown flake).
   Spans shared-protocol (doc) + bridge (handler/orchestrator) + g2-app
   (settings-panel re-drive, boot actorId) + tests (CPV-07/07b, ORC-09c, panel).
 
+- **ff0ae17** `fix(bridge): headless re-selects the requested user when Foundry auto-enters`
+  BUG-3 follow-on. Live test then proved The Forge BINDS the streaming account to its
+  own user and refuses a cross-user /join → headless cross-user join is impossible on
+  Forge. Kept for self-hosted Foundry.
+- **66d5018 + 27a0b8e** `feat: browser-capture (headless off by default) + owner-elected leader (module v0.1.35)`
+  Pivot (user decision): capture the player's REAL view from their already-open
+  browser. Bridge: `EVF_PLAYER_VIEW_HEADLESS` gates the headless OFF by default
+  (browser-capture → `{live,'browser capture'}`); new `GET /internal/stream-request`.
+  Module: polls it + `ownerElection()` elects the requested actor's active+consenting+
+  non-GM owner as stream leader. Tests ORC-BC1/2/3, SR-REQ-01/02, OE-1..6. Bridge image
+  rebuilt + container recreated (endpoint live); module **v0.1.35** released (Latest).
+
 ## Not done here (live re-test required)
 
 - **Bridge image rebuild** (BUG 1/3/5) + set `EVF_PLAYER_VIEW_STREAM_USER` in
