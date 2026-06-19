@@ -1,5 +1,21 @@
 # @evf/foundry-module
 
+## 0.1.36
+
+### Minor Changes
+
+- Self-service device pairing: every Foundry user can mint their OWN G2 bearer
+  token, bound to their own authenticated identity, with no manual GM action. The
+  pair menu is no longer GM-restricted and the user-picker dropdown is removed —
+  you pair only your own device. Secure by construction (ADR-0014): a user writes
+  a `pendingPair` flag (carrying a client-generated token) on their OWN User
+  document — only that user can write their own user flags — and a GM client
+  auto-ingests it into the world-scope bearer registry, binding the token to the
+  user the flag belongs to (never a client-asserted id), then pushes it to the
+  bridge. socketlib is deliberately NOT used (it cannot authenticate the caller).
+  No new socketlib handler (count stays 17). A GM client must be online to
+  finalize a token (auto-ingested; world-scope writes are GM-only).
+
 ## 0.1.35
 
 ### Minor Changes
