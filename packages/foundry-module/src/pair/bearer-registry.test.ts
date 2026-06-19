@@ -508,3 +508,76 @@ describe('getActiveBearer', () => {
     expect(active?.token).toBe(e2.token);
   });
 });
+
+// ─── ingestBearer (self-service pairing — GM-side write half) ─────────────────
+
+describe('ingestBearer', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
+    });
+    vi.stubGlobal('Hooks', makeHooksMock());
+    vi.stubGlobal('game', { settings: makeSettingsMock() });
+    vi.stubGlobal('crypto', makeCryptoMock());
+  });
+
+  it('binds the passed userId + client-generated token, mints a fresh internalSecret', async () => {
+    const { ingestBearer, validateBearer } = await import('./bearer-registry.js');
+    const entry = await ingestBearer('user-7', {
+      alias: 'Self G2',
+      token: 'client-generated-token-abc',
+      bridgeUrl: 'https://bridge.local:8910',
+      worldId: 'world-abc',
+    });
+    expect(entry.token).toBe('client-generated-token-abc');
+    expect(entry.userId).toBe('user-7');
+    expect(entry.internalSecret.length).toBeGreaterThanOrEqual(EXPECTED_MIN_LENGTH);
+    expect(entry.revokedAt).toBeNull();
+    // The ingested token validates against the registry bound to user-7.
+    const result = validateBearer('client-generated-token-abc');
+    expect(result.valid).toBe(true);
+    expect(result.entry?.userId).toBe('user-7');
+  });
+
+  it('is idempotent — a duplicate token returns the existing entry unchanged', async () => {
+    const { ingestBearer } = await import('./bearer-registry.js');
+    const req = {
+      alias: 'Self G2',
+      token: 'dup-token',
+      bridgeUrl: 'https://bridge.local:8910',
+      worldId: 'world-abc',
+    };
+    const first = await ingestBearer('user-7', req);
+    const second = await ingestBearer('user-7', req);
+    expect(second.internalSecret).toBe(first.internalSecret);
+    expect(second.createdAt).toBe(first.createdAt);
+  });
+
+  it('applies the 60s silent-refresh grace to an active bearer with the same alias+bridge', async () => {
+    const { generateBearer, ingestBearer, listBearers } = await import('./bearer-registry.js');
+    const prev = await generateBearer(
+      'Self G2',
+      'https://bridge.local:8910',
+      'world-abc',
+      'user-7',
+    );
+    const before = prev.expiresAt;
+    await ingestBearer('user-7', {
+      alias: 'Self G2',
+      token: 'new-token',
+      bridgeUrl: 'https://bridge.local:8910',
+      worldId: 'world-abc',
+    });
+    const refreshed = listBearers().find((e) => e.token === prev.token);
+    // The previous bearer's TTL is shortened to a ~60s grace window.
+    expect(refreshed).toBeDefined();
+    expect(refreshed?.expiresAt).toBeLessThan(before);
+  });
+});

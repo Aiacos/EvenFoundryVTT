@@ -43,6 +43,11 @@ import { registerCanvasExtractor } from './canvas-extractor.js';
 import { computePartyFraming, type FramingTokenLike, type WorldRect } from './map-framing.js';
 // Plan 07-06 — bearer rotation scheduler (24h TTL + 60s grace reuse of generateBearer(refresh=true))
 import { BEARER_ROTATED_TYPE, scheduleBearerRotation } from './pair/bearer-rotation.js';
+// Self-service pairing (secure): GM-side ingestion of per-user pending-pair flags.
+// Each user mints their own bearer bound to their authenticated identity; a GM
+// client materialises it into the world-scope registry. NO new socketlib handler
+// (count stays 17) — identity is authenticated by user-flag document ownership.
+import { registerSelfPairIngestion } from './pair/self-pair-ingestion.js';
 import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 // Quick Task 260604-eyf — bearer-registry + character-list push (push-based, no new socketlib handler).
 // Emits r1.bearers.available envelopes when bearers are generated/revoked/rotated.
@@ -559,6 +564,12 @@ Hooks.once('ready', () => {
   bearerRegistryHandle = registerBearerRegistryReader((type, payload) =>
     bridgeDeltaEmitter(type, payload),
   );
+  // Self-service pairing (secure): ingest per-user `pendingPair` flags GM-side and
+  // re-emit the registry to the bridge so a player-minted (or GM-minted) bearer
+  // validates the moment a GM is online. Registered AFTER the registry reader so
+  // `bearerRegistryHandle` exists for the re-emit callback. NO new socketlib handler
+  // (count stays 17); identity is authenticated by user-flag document ownership.
+  registerSelfPairIngestion(() => bearerRegistryHandle?.reEmit());
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Player-view streaming consent (ADR-0015 §C): if THIS client enabled the
   // opt-in (client-scope setting), re-assert it as a User flag (world data) so the

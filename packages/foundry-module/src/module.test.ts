@@ -214,7 +214,9 @@ describe('Hooks.once("init") → registerSettings()', () => {
       expect.objectContaining({
         name: 'evf.settings.pair_button',
         label: 'evf.settings.pair_button',
-        restricted: true,
+        // Self-service pairing: the pair menu is available to ALL users (not GM-only)
+        // so each user can mint a bearer bound to their own authenticated identity.
+        restricted: false,
       }),
     );
   });
@@ -343,7 +345,8 @@ describe('PairModal (registered in settings)', () => {
       'pairDevice',
       expect.objectContaining({
         name: 'evf.settings.pair_button',
-        restricted: true,
+        // Self-service pairing: now available to all users (not GM-restricted).
+        restricted: false,
       }),
     );
     // The registered type should be a constructor (PairModal class)

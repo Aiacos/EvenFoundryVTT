@@ -143,12 +143,16 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
   // Pair button in Module Settings panel — opens PairModal (Wave 1).
   // Cast required: PairModal(bridgeUrl, worldId) has typed args but Foundry's registerMenu
   // type declaration accepts a generic constructor. Runtime call uses no-arg `new type()`.
+  // restricted: false — self-service pairing: the pair menu is now available to ALL
+  // users (not just the GM). Each user mints a bearer bound only to their OWN
+  // authenticated `game.user.id` and pairs only their own device (ADR-0014). Only
+  // bridgeConfig (and its bridgeUrl/bridgeInternalSecret settings) stays GM-restricted.
   game.settings.registerMenu(MODULE_ID, 'pairDevice', {
     name: 'evf.settings.pair_button',
     label: 'evf.settings.pair_button',
     icon: 'fas fa-qrcode',
     type: PairModal as unknown as new (...args: unknown[]) => object,
-    restricted: true,
+    restricted: false,
   });
 
   // Quick Task 260604-mjr: dedicated "EVF — Bridge Configuration" dialog. Opens the

@@ -152,7 +152,7 @@ function bytesToBase64url(bytes: Uint8Array): string {
  *
  * @returns 43+ character base64url string (no dots — NOT a JWT)
  */
-function generateOpaqueToken(): string {
+export function generateOpaqueToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return bytesToBase64url(bytes);
@@ -228,6 +228,93 @@ export async function generateBearer(
   };
 
   registry.entries[token] = entry;
+  await writeRegistry(registry);
+
+  return entry;
+}
+
+/**
+ * Ingests a CLIENT-GENERATED bearer token into the registry — the GM-side write
+ * half of self-service pairing.
+ *
+ * A player (or the GM) mints a high-entropy token client-side via
+ * {@link generateOpaqueToken} and writes a "pending pair" request as a flag on
+ * THEIR OWN `User` document. A GM client picks that flag up and calls this
+ * function to materialise the bearer in the world-scope registry (only a GM may
+ * write a world setting). The bearer becomes valid the instant the entry lands.
+ *
+ * SECURITY (do not relax): the `userId` argument MUST come from an authenticated
+ * source — specifically the `id` of the `User` document the pending-pair flag
+ * lives on. A user can only write their own user flags, so the document owner is
+ * authenticated by Foundry. NEVER pass a client-asserted userId (e.g. a field
+ * inside the flag payload): that would let any player bind a token to another
+ * user and inherit that user's owned-actor read scope (ADR-0014). socketlib's
+ * `executeAsGM` cannot authenticate the caller (it does not pass the caller
+ * identity to the handler), which is why this per-user-flag pattern is used
+ * instead. See `self-pair-ingestion.ts`.
+ *
+ * Idempotent: if a bearer with the same `token` already exists in the registry,
+ * the existing entry is returned UNCHANGED (a re-fired `updateUser` hook or a
+ * `ready` sweep that races the flag clear must not duplicate or reset the bearer).
+ *
+ * Applies the SAME silent-refresh grace as {@link generateBearer}: any active,
+ * non-revoked bearer with the same `alias` + `bridgeUrl` has its TTL shortened to
+ * `now + 60s` so an in-flight session on the previous token can drain.
+ *
+ * @param userId - Authenticated Foundry `User` id (the owning User document's id).
+ *                 The bearer's authorized actor set is derived live from this
+ *                 user's Foundry ownership at validate time (ADR-0014).
+ * @param req - The pending-pair request: the client-generated `token`, the
+ *              human-readable `alias`, the `bridgeUrl`, and the `worldId`.
+ * @returns The materialised (or pre-existing, when idempotent) BearerEntry.
+ */
+export async function ingestBearer(
+  userId: string,
+  req: { alias: string; token: string; bridgeUrl: string; worldId: string },
+): Promise<BearerEntry> {
+  const registry = readRegistry();
+
+  // Idempotent: a duplicate ingest (re-fired hook / ready-sweep race) returns the
+  // existing entry unchanged — never re-rolls the secret or resets the TTL.
+  const existing = registry.entries[req.token];
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const now = Date.now();
+  const safeAlias = req.alias.slice(0, MAX_ALIAS_LENGTH);
+
+  // Silent refresh (same as generateBearer): shorten the TTL of any active bearer
+  // for this alias+bridge to a 60s grace window so in-flight requests drain.
+  for (const entry of Object.values(registry.entries)) {
+    if (
+      entry.alias === safeAlias &&
+      entry.bridgeUrl === req.bridgeUrl &&
+      entry.revokedAt === null &&
+      entry.expiresAt > now
+    ) {
+      entry.expiresAt = now + GRACE_60S_MS;
+    }
+  }
+
+  // The internal secret is server-side only and freshly minted here (never taken
+  // from client input). The bearer token itself is the client-generated value.
+  const internalSecret = generateOpaqueToken();
+
+  const entry: BearerEntry = {
+    token: req.token,
+    alias: safeAlias,
+    worldId: req.worldId,
+    userId,
+    bridgeUrl: req.bridgeUrl,
+    internalSecret,
+    createdAt: now,
+    expiresAt: now + TTL_24H_MS,
+    lastSeenAt: null,
+    revokedAt: null,
+  };
+
+  registry.entries[req.token] = entry;
   await writeRegistry(registry);
 
   return entry;

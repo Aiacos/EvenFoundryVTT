@@ -1,8 +1,19 @@
 /**
  * @evf/foundry-module — PairModal ApplicationV2 implementation.
  *
- * The DM's onboarding entry point. Opens from Foundry Settings → Module Settings →
- * EvenFoundryVTT → "Pair a G2 device" button (registered in settings.ts).
+ * Every user's self-service pairing entry point. Opens from Foundry Settings →
+ * Module Settings → EvenFoundryVTT → "Pair a G2 device" button (registered in
+ * settings.ts, now available to ALL users, not just the GM).
+ *
+ * Self-service pairing (secure, ADR-0014): EVERY user — player or GM — mints a
+ * bearer bound to THEIR OWN `game.user.id`. There is no user-picker; you can only
+ * pair your own device. The token is generated client-side via
+ * `generateOpaqueToken` and written as a `pendingPair` flag on the current user's
+ * own `User` document (only that user can write their own user flags → the bound
+ * identity is authenticated by document ownership). A GM client then ingests the
+ * flag into the world-scope bearer registry (see self-pair-ingestion.ts) — so the
+ * shown token becomes VALID near-instantly when a GM is online, otherwise on the
+ * next GM `ready` sweep ("pairing-in-progress" state until then).
  *
  * Implements 5 UI states (per 02-UI-SPEC.md §UI-A):
  *   - "empty"              — no devices paired yet
@@ -45,7 +56,7 @@
 
 import { MODULE_ID } from '../module.js';
 import type { BearerEntry } from './bearer-registry.js';
-import { generateBearer, listBearers, revokeBearer } from './bearer-registry.js';
+import { generateOpaqueToken, listBearers, revokeBearer } from './bearer-registry.js';
 
 // Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
 // ApplicationV2 is abstract about rendering — a renderable subclass MUST provide `_renderHTML`/
@@ -80,15 +91,8 @@ export interface PairModalData extends Record<string, unknown> {
   expiresIso?: string;
   /** Unix epoch milliseconds for data-expires attribute (countdown JS reads this) */
   expiresAtMs?: number;
-  /** Active (non-revoked) bearer entries for the devices table */
+  /** Current user's active (non-revoked) bearer entries for the devices table */
   devices: DeviceRow[];
-  /**
-   * Foundry users selectable in the pairing form (ADR-0014). The DM picks which
-   * Foundry `User` a device represents; the selected user's owned-actor set
-   * becomes the bearer's authorization scope. `selected` is precomputed here
-   * (Foundry registers no `eq` Handlebars helper — the template uses the boolean).
-   */
-  users: UserOption[];
   /** Pre-localised string map — keys consumed by pair-modal.hbs template */
   i18n: Record<string, string>;
 }
@@ -99,19 +103,6 @@ export interface DeviceRow {
   alias: string;
   pairedDate: string;
   lastSeenRelative: string;
-}
-
-/**
- * Single option in the pairing user selector (ADR-0014).
- *
- * `selected` is precomputed in `_prepareContext` (default: first non-GM player,
- * else first user) so the template renders `<option ... {{#if selected}}selected{{/if}}>`
- * without an `eq` helper.
- */
-export interface UserOption {
-  id: string;
-  name: string;
-  selected: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -182,33 +173,53 @@ function readWorldId(): string {
   return typeof id === 'string' ? id : '';
 }
 
+/** Pending-pair flag shape read for the "pairing-in-progress" state. */
+interface PendingPairFlag {
+  alias: string;
+  token: string;
+  bridgeUrl: string;
+  worldId: string;
+  createdAt: number;
+}
+
 /**
- * Builds the pairing user-selector options from `game.users` (ADR-0014).
- *
- * Default selection (precomputed `selected` flag — no `eq` Handlebars helper):
- * the first non-GM player, else the first user, else none. The DM may override
- * the selection in the form. Returns `[]` defensively when `game.users` is
- * unavailable (the form then omits the selector and pairing falls back to no
- * user — fail-closed at validate time).
- *
- * @returns Ordered list of `{ id, name, selected }` options.
+ * Returns the registry bearers bound to the CURRENT user (everyone is self-only:
+ * a user only ever sees and pairs their own devices, ADR-0014). Newest first
+ * (inherits the `listBearers` sort). Empty when the user has no bearers.
  */
-function buildUserOptions(): UserOption[] {
-  const users = game.users?.contents;
-  if (!Array.isArray(users) || users.length === 0) {
+function currentUserBearers(): BearerEntry[] {
+  const selfId = game.user?.id;
+  if (typeof selfId !== 'string' || selfId.length === 0) {
     return [];
   }
+  return listBearers().filter((e) => e.userId === selfId);
+}
 
-  // Default to the first non-GM player; fall back to the first user.
-  const firstPlayer = users.find((u) => u.isGM === false);
-  const defaultUser = firstPlayer ?? users[0];
-  const defaultId = defaultUser?.id;
-
-  return users.map((u) => ({
-    id: u.id,
-    name: u.name,
-    selected: u.id === defaultId,
-  }));
+/**
+ * Reads the current user's own `pendingPair` flag (the self-service mint awaiting
+ * GM ingestion). Returns `null` when absent or malformed.
+ */
+function readPendingPair(): PendingPairFlag | null {
+  const raw = game.user?.getFlag(MODULE_ID, 'pendingPair');
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  if (
+    typeof o.token !== 'string' ||
+    o.token.length === 0 ||
+    typeof o.bridgeUrl !== 'string' ||
+    typeof o.alias !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    alias: o.alias,
+    token: o.token,
+    bridgeUrl: o.bridgeUrl,
+    worldId: typeof o.worldId === 'string' ? o.worldId : '',
+    createdAt: typeof o.createdAt === 'number' ? o.createdAt : Date.now(),
+  };
 }
 
 /**
@@ -255,7 +266,6 @@ function buildI18n(): Record<string, string> {
     copyHide: l('evf.pair.copy.hide'),
     copyButton: l('evf.pair.copy.copy'),
     copyCopied: l('evf.pair.copy.copied'),
-    userSelectLabel: l('evf.pair.user.select_label'),
     refresh: l('evf.pair.qr.refresh'),
     awaiting: l('evf.pair.qr.awaiting'),
     expiresIn: l('evf.pair.qr.expires_in'),
@@ -316,40 +326,52 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   /**
-   * Computes the modal state from the currently active bearers.
+   * Computes the modal state from the CURRENT USER's bearers (self-service:
+   * everyone is self-only, ADR-0014) plus the user's own `pendingPair` flag.
    *
    * State priority (first match wins):
-   * 1. "empty"           — no non-revoked bearers
-   * 2. "expired"         — all non-revoked bearers are expired
-   * 3. "refresh-needed"  — at least one non-revoked, non-expired bearer with TTL < 1h
-   * 4. "active"          — at least one non-revoked, non-expired bearer with TTL ≥ 1h
+   * 1. "active" / "refresh-needed" — a current-user non-revoked, non-expired
+   *    registry bearer exists (refresh-needed when its TTL < 1h).
+   * 2. "pairing-in-progress" — no registry bearer yet, but the user has a pending
+   *    flag (a freshly-minted token whose value is not yet in the registry — it
+   *    awaits GM ingestion). Credentials come from the flag.
+   * 3. "expired" — the user has bearers but all are expired (and no pending flag).
+   * 4. "empty" — the user has no bearers and no pending flag.
    */
-  private _computeState(): { state: ModalState; activeEntry?: BearerEntry } {
-    const bearers = listBearers(); // already filters revoked entries
-
-    if (bearers.length === 0) {
-      return { state: 'empty' };
-    }
-
+  private _computeState(): {
+    state: ModalState;
+    activeEntry?: BearerEntry;
+    pending?: PendingPairFlag;
+  } {
+    const bearers = currentUserBearers(); // current-user scoped, non-revoked
     const now = Date.now();
     const nonExpired = bearers.filter((e) => e.expiresAt > now);
 
-    if (nonExpired.length === 0) {
-      return { state: 'expired' };
-    }
-
-    // Use the most recently created non-expired entry as the "active" entry for credentials
+    // 1. A live registry bearer for this user wins.
     const active = nonExpired[0];
-    if (!active) {
+    if (active) {
+      const ttlMs = active.expiresAt - now;
+      if (ttlMs < REFRESH_THRESHOLD_MS) {
+        return { state: 'refresh-needed', activeEntry: active };
+      }
+      return { state: 'active', activeEntry: active };
+    }
+
+    // 2. A minted-but-not-yet-ingested token → pairing-in-progress (token from flag).
+    //    Skip when the flag's token already materialised as a registry bearer
+    //    (covered by branch 1 above for THIS user).
+    const pending = readPendingPair();
+    if (pending !== null) {
+      return { state: 'pairing-in-progress', pending };
+    }
+
+    // 3. The user has bearers but they are all expired.
+    if (bearers.length > 0) {
       return { state: 'expired' };
     }
-    const ttlMs = active.expiresAt - now;
 
-    if (ttlMs < REFRESH_THRESHOLD_MS) {
-      return { state: 'refresh-needed', activeEntry: active };
-    }
-
-    return { state: 'active', activeEntry: active };
+    // 4. Nothing for this user.
+    return { state: 'empty' };
   }
 
   /**
@@ -365,11 +387,9 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
    * @returns PairModalData template context
    */
   override async _prepareContext(_options: unknown): Promise<PairModalData> {
-    const { state, activeEntry } = this._computeState();
-    const devices = listBearers().map(toDeviceRow);
-    // ADR-0014: precompute the user-selector options (with default selected flag)
-    // here so the template needs no `eq` helper.
-    const users = buildUserOptions();
+    const { state, activeEntry, pending } = this._computeState();
+    // Self-service: the devices table shows only the CURRENT user's bearers.
+    const devices = currentUserBearers().map(toDeviceRow);
     const i18n = buildI18n();
 
     const isEmpty = state === 'empty';
@@ -387,13 +407,31 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
         isPairing,
         showCredentials,
         devices,
-        users,
         i18n,
       };
     }
 
-    // state: active | refresh-needed | pairing-in-progress
-    // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for non-empty/expired states
+    // pairing-in-progress: the token is the freshly-minted flag value, not yet a
+    // registry bearer — there is NO real TTL yet, so the countdown is omitted
+    // (ttlDisplay/expiresIso/expiresAtMs left undefined). bridgeUrl comes from the
+    // flag (falling back to the saved setting).
+    if (isPairing && pending) {
+      return {
+        state,
+        isEmpty,
+        isExpired,
+        isRefreshNeeded,
+        isPairing,
+        showCredentials,
+        bridgeUrl: pending.bridgeUrl || readBridgeUrl(),
+        token: pending.token,
+        devices,
+        i18n,
+      };
+    }
+
+    // state: active | refresh-needed — credentials + countdown from the live bearer.
+    // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for active/refresh-needed
     const entry = activeEntry!;
     const ttlMs = entry.expiresAt - Date.now();
     const ttlDisplay = formatTtl(ttlMs);
@@ -413,7 +451,6 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       expiresIso,
       expiresAtMs,
       devices,
-      users,
       i18n,
     };
   }
@@ -529,55 +566,53 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
-   * Reads the currently-selected Foundry user id from the pairing form's
-   * `<select data-user-select>` (ADR-0014).
+   * Mints a NEW bearer for the CURRENT user (self-service pairing, ADR-0014).
    *
-   * Falls back to the default selection (first non-GM player, else first user)
-   * when the selector is absent or has no value — mirrors {@link buildUserOptions}
-   * so a refresh that occurs before any explicit DM choice still binds to a sane
-   * default. Returns `''` when no users exist at all (validate-time fail-closed).
+   * Generates a high-entropy token client-side (`generateOpaqueToken`) and writes
+   * it — together with the alias, bridge URL and world id — as a `pendingPair`
+   * flag on the current user's OWN `User` document. A user can only write their
+   * own user flags, so the bound identity is authenticated by document ownership;
+   * a GM client then ingests the flag into the world-scope registry (see
+   * self-pair-ingestion.ts). The token is shown immediately ("pairing-in-progress")
+   * and becomes VALID once a GM ingests it. We never call `generateBearer` here —
+   * a non-GM player cannot write the world-scope registry directly.
    *
-   * @returns The selected Foundry user id, or the default, or `''`.
+   * The alias is propagated from the current user's existing device (WR-04) so a
+   * re-mint keeps the label.
    */
-  private _readSelectedUserId(): string {
-    const select = this.element.querySelector<HTMLSelectElement>('[data-user-select]');
-    const fromDom = select?.value;
-    if (typeof fromDom === 'string' && fromDom.length > 0) {
-      return fromDom;
+  private async _generateForSelf(): Promise<void> {
+    const userId = game.user?.id;
+    if (!userId) {
+      return;
     }
-    // Fall back to the precomputed default (first non-GM player else first user).
-    const defaultOption = buildUserOptions().find((u) => u.selected);
-    return defaultOption?.id ?? '';
+    // Propagate the current user's existing device alias (newest first).
+    const alias = currentUserBearers()[0]?.alias ?? '';
+    const token = generateOpaqueToken();
+    await game.user.setFlag(MODULE_ID, 'pendingPair', {
+      alias,
+      token,
+      bridgeUrl: readBridgeUrl(),
+      worldId: readWorldId(),
+      createdAt: Date.now(),
+    });
+    await this.render({ force: true });
   }
 
   /**
    * Handles click on "Refresh", "New Code" (expired state), or first-code button (empty state).
    *
-   * Generates a new bearer (with `refresh=true` to apply 60s grace on the old token),
-   * and re-renders the modal in-place. The credentials update without a full modal reload.
-   *
-   * ADR-0014: binds the new bearer to the Foundry user selected in the form
-   * (`_readSelectedUserId`). The bearer's authorized actor set is derived live
-   * from that user's Foundry ownership at validate time.
+   * Self-service (ADR-0014): mints a fresh token bound to the CURRENT user via
+   * {@link _generateForSelf} (writes the `pendingPair` flag → GM ingests). The
+   * modal re-renders in place showing the new token (pairing-in-progress until a
+   * GM materialises it).
    *
    * @param event - DOM click event
    */
   _onClickRefresh(event: Event): void {
     event.preventDefault();
-    // Propagate the existing device alias so the refreshed entry keeps its label (WR-04).
-    // listBearers() returns non-revoked entries; the first is the active device.
-    const currentAlias = listBearers()[0]?.alias ?? '';
-    // ADR-0014: bind to the DM-selected Foundry user (default: first non-GM player).
-    const selectedUserId = this._readSelectedUserId();
-    // Generate new bearer with grace period (D-2.11). Bridge URL + world ID are read from
-    // settings / game.world at call time (no-arg construction path; see class doc).
-    generateBearer(currentAlias, readBridgeUrl(), readWorldId(), selectedUserId, true)
-      .then(() => {
-        void this.render({ force: true });
-      })
-      .catch((err: unknown) => {
-        console.error('[EVF] PairModal refresh error:', err);
-      });
+    this._generateForSelf().catch((err: unknown) => {
+      console.error('[EVF] PairModal refresh error:', err);
+    });
   }
 
   /**

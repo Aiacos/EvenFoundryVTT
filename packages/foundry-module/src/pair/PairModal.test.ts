@@ -11,7 +11,8 @@
  * - _prepareContext() populates expiresAtMs (epoch ms, not ISO) for active states
  * - _prepareContext() i18n includes expiresIn and close keys (regression for missing-key defects)
  * - _onClickRevoke extracts token-id and calls revokeBearer
- * - _onClickRefresh calls generateBearer with refresh=true
+ * - _onClickRefresh (self-service) writes a pendingPair flag with a client-generated
+ *   token and does NOT call generateBearer directly (ADR-0014 self-service pairing)
  * - empty state exposes new-code button wiring via _onRender
  *
  * Pairing model: no QR — the token + bridge URL are rendered as copyable text (token masked
@@ -65,6 +66,10 @@ const makeGameMock = (
   // Pre-seed the bridgeUrl world setting so the no-arg PairModal (the real registerMenu
   // path) reads a real value instead of `undefined`. The world ID comes from game.world.id.
   store.set('evenfoundryvtt.bridgeUrl', 'https://bridge.local:8910');
+  // Self-service pairing: the modal is now CURRENT-USER scoped. `game.user.id` is
+  // 'user-1' — the same userId the tests bind their bearers to via generateBearer —
+  // so `currentUserBearers()` sees them. The flag store backs the pendingPair flow.
+  const flagStore = new Map<string, unknown>();
   return {
     settings: {
       get: vi.fn((moduleId: string, key: string) => store.get(`${moduleId}.${key}`)),
@@ -75,13 +80,27 @@ const makeGameMock = (
       registerMenu: vi.fn(),
     },
     world: { id: 'world-abc' },
-    // ADR-0014: PairModal builds the user-selector options from game.users.
+    // Self-service: the current Foundry user (mints bearers bound to their own id).
+    user: {
+      id: 'user-1',
+      name: 'Aiacos',
+      isGM: true,
+      getFlag: vi.fn((scope: string, key: string) => flagStore.get(`${scope}.${key}`)),
+      setFlag: vi.fn(async (scope: string, key: string, value: unknown) => {
+        flagStore.set(`${scope}.${key}`, value);
+      }),
+      unsetFlag: vi.fn(async (scope: string, key: string) => {
+        flagStore.delete(`${scope}.${key}`);
+      }),
+    },
+    // Kept for any roster reads; no longer drives a pairing user-picker (removed).
     users: { contents: users },
     i18n: {
       lang,
       localize: vi.fn((k: string) => k),
     },
     _store: store,
+    _flagStore: flagStore,
   };
 };
 
@@ -545,52 +564,51 @@ describe('PairModal', () => {
     });
   });
 
-  // ── ADR-0014: user selector (bind bearer → Foundry User) ──────────────────────
+  // ── Self-service pairing: no user picker; bind to the CURRENT user ────────────
 
-  describe('_prepareContext() user selector (ADR-0014)', () => {
-    it('returns a users list built from game.users with id + name', async () => {
+  describe('_prepareContext() self-service (ADR-0014)', () => {
+    it('no longer exposes a user-selector list (the dropdown was removed)', async () => {
       const { PairModal } = await import('./PairModal.js');
       const modal = new PairModal();
       const data = await modal._prepareContext({});
-      const users = data.users as Array<{ id: string; name: string; selected: boolean }>;
-      expect(users.map((u) => u.id)).toEqual(['user-gm', 'user-aiacos', 'user-bea']);
-      expect(users.map((u) => u.name)).toEqual(['Gamemaster', 'Aiacos', 'Bea']);
+      expect((data as { users?: unknown }).users).toBeUndefined();
     });
 
-    it('defaults selection to the first non-GM player (user-aiacos)', async () => {
+    it('scopes credentials to the CURRENT user — a bearer bound to another user is ignored', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      // Bearer bound to a DIFFERENT user than game.user.id ('user-1').
+      await generateBearer('Other G2', 'https://bridge.local:8910', 'world-abc', 'user-2');
+
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal();
-      const data = await modal._prepareContext({});
-      const users = data.users as Array<{ id: string; selected: boolean }>;
-      const selected = users.filter((u) => u.selected);
-      expect(selected).toHaveLength(1);
-      expect(selected[0]?.id).toBe('user-aiacos');
+      const data = await new PairModal()._prepareContext({});
+      // No current-user bearer and no pending flag → empty.
+      expect(data.state).toBe('empty');
+      expect(data.devices).toEqual([]);
     });
 
-    it('falls back to the first user when all users are GMs', async () => {
-      vi.stubGlobal('game', makeGameMock('en', [{ id: 'user-gm', name: 'GM', isGM: true }]));
-      const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal();
-      const data = await modal._prepareContext({});
-      const users = data.users as Array<{ id: string; selected: boolean }>;
-      expect(users[0]?.selected).toBe(true);
-      expect(users[0]?.id).toBe('user-gm');
-    });
+    it('surfaces a pending-pair flag as state="pairing-in-progress" with the flag token', async () => {
+      vi.stubGlobal('game', gameMock);
+      // Seed a pending-pair flag on the current user (the self-service mint).
+      await gameMock.user.setFlag('evenfoundryvtt', 'pendingPair', {
+        alias: 'My G2',
+        token: 'pending-token-xyz',
+        bridgeUrl: 'https://bridge.local:8910',
+        worldId: 'world-abc',
+        createdAt: Date.now(),
+      });
 
-    it('returns an empty users list when game.users is unavailable (defensive)', async () => {
-      const mock = makeGameMock('en', []);
-      // Simulate game.users absent entirely.
-      (mock as { users?: unknown }).users = undefined;
-      vi.stubGlobal('game', mock);
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal();
-      const data = await modal._prepareContext({});
-      expect(data.users).toEqual([]);
+      const data = await new PairModal()._prepareContext({});
+      expect(data.state).toBe('pairing-in-progress');
+      expect(data.isPairing).toBe(true);
+      expect(data.showCredentials).toBe(true);
+      expect(data.token).toBe('pending-token-xyz');
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
     });
   });
 
-  describe('_onClickRefresh() user binding (ADR-0014)', () => {
-    it('passes the DOM-selected userId to generateBearer (no-arg construction path)', async () => {
+  describe('_onClickRefresh() self-service mint (ADR-0014)', () => {
+    it('writes a pendingPair flag with a client-generated token and does NOT call generateBearer', async () => {
       const registry = await import('./bearer-registry.js');
       const genSpy = vi.spyOn(registry, 'generateBearer');
 
@@ -598,51 +616,27 @@ describe('PairModal', () => {
       const modal = new PairModal() as unknown as RenderableModal & {
         _onClickRefresh(e: Event): void;
       };
-
-      // Build a DOM with the user selector set to user-bea (an explicit DM override).
-      const html = document.createElement('div');
-      const select = document.createElement('select');
-      select.dataset.userSelect = '';
-      for (const id of ['user-aiacos', 'user-bea']) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        select.appendChild(opt);
-      }
-      select.value = 'user-bea';
-      html.appendChild(select);
-      modal.element = html;
-
-      modal._onClickRefresh(new Event('click'));
-      // generateBearer is called with (alias, bridgeUrl, worldId, userId, refresh=true).
-      expect(genSpy).toHaveBeenCalledWith(
-        expect.any(String),
-        'https://bridge.local:8910',
-        'world-abc',
-        'user-bea',
-        true,
-      );
-      genSpy.mockRestore();
-    });
-
-    it('falls back to the default user (first non-GM player) when the selector has no value', async () => {
-      const registry = await import('./bearer-registry.js');
-      const genSpy = vi.spyOn(registry, 'generateBearer');
-
-      const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal() as unknown as RenderableModal & {
-        _onClickRefresh(e: Event): void;
-      };
-
-      // DOM has no selector at all → fall back to the precomputed default (user-aiacos).
       modal.element = document.createElement('div');
+
       modal._onClickRefresh(new Event('click'));
-      expect(genSpy).toHaveBeenCalledWith(
-        expect.any(String),
-        'https://bridge.local:8910',
-        'world-abc',
-        'user-aiacos',
-        true,
+      // Allow the async _generateForSelf microtasks to flush.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // No direct registry write (a non-GM player cannot write the world setting).
+      expect(genSpy).not.toHaveBeenCalled();
+      // A pendingPair flag was written on the current user with a non-empty token.
+      expect(gameMock.user.setFlag).toHaveBeenCalledWith(
+        'evenfoundryvtt',
+        'pendingPair',
+        expect.objectContaining({
+          token: expect.any(String),
+          bridgeUrl: 'https://bridge.local:8910',
+          worldId: 'world-abc',
+        }),
       );
+      const written = gameMock._flagStore.get('evenfoundryvtt.pendingPair') as { token: string };
+      expect(written.token.length).toBeGreaterThan(0);
       genSpy.mockRestore();
     });
   });
