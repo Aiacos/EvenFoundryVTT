@@ -164,3 +164,27 @@ boundary** (over-scroll). This is implemented WITHOUT a new wire/internal gestur
 - `hub.evenrealities.com/docs/reference/app-submission` — root double-tap → `shutDownPageContainer(1)`; lifecycle handlers (2026-05-31).
 - `@evenrealities/even_hub_sdk@0.0.10` `dist/index.d.ts:1201` (`shutDownPageContainer`), `:707-714` (`OsEventTypeList` 4/5/6 + `fromJson`).
 - Supersedes `layer-types.ts` `// TODO(ADR-0009)` long-press source-channel stub.
+
+## Amendment 2 — Menu opens on TAP from the base view (2026-06-19)
+
+**Change.** The Quick Action menu now opens on a **tap from the base view** (the
+map / status-HUD, when the LayerManager z=2 overlay slot is empty), NOT on the
+swipe-up over-scroll. The over-scroll → menu path (D-2) is **retired**.
+
+**Why.** User-requested: "open the menu with Click, not swipe-up." A tap is a
+single, discoverable gesture and frees swipe-up for in-panel scrolling only.
+
+**Non-conflict with item activation.** `tap` remains the in-panel primary action
+(activate the cursor entry in Inventario/Libro/Skill, cycle the tab in the sheet,
+confirm in a modal). The two are disambiguated by context: the tap dispatcher is
+**gated on the z=2 slot being empty** (`LayerManager.getLayer(Z2_OVERLAY) === undefined`),
+so it fires ONLY on the base view; when any z=2 overlay is mounted the dispatcher
+is inert and the tap is the active panel's own. Checking the LayerManager slot
+(not just PanelRouter state) also covers overlays mounted directly on the
+LayerManager (e.g. the concentration-drop modal), eliminating the old D-2
+modal-replacement/state-loss edge (former ck-13): a tap while the conc-modal is up
+now goes to the modal, not the menu.
+
+**Implementation.** `quick-action-tap-dispatcher.ts` (`attachQuickActionTap`)
+replaces `quick-action-overscroll-dispatcher.ts`. `isAtTopBoundary()` on panels is
+retained (still used for in-panel scroll clamping) but no longer gates menu-open.

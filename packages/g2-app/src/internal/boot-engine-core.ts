@@ -37,7 +37,7 @@
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
  *  11b. attachR1EventSource(ws, gestureBus, lm, DEFAULT_R1_TIMINGS) — R1 gesture bridge (Phase 6)
- *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionOverscroll(bus, router, lm, makeMenu)
+ *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionTap(bus, router, lm, makeMenu) — tap-on-base opens the menu (ADR-0012 Amd 2)
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
  *  11e+. attachActionEconomyHandler(ws, currentUserId) — Plan 09-02 r1.action.economy → StatusHudLayer + AOM preconditioner
@@ -102,7 +102,7 @@ import { attachNavPanelClose } from '../panels/nav-panel-close-dispatcher.js';
 import { attachPortraitHandler } from '../panels/portrait-dispatcher.js';
 import { clearPortraitBytes } from '../panels/portrait-state.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
-import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
+import { attachQuickActionTap } from '../panels/quick-action-tap-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { attachRootExit } from '../panels/root-exit-dispatcher.js';
 import { createPhoneSettingsPanel, type PhoneSettingsPanel } from '../phone/settings-panel.js';
@@ -1377,12 +1377,10 @@ export async function _bootEngineCore(
     );
   };
 
-  const unsubOverscroll = attachQuickActionOverscroll(
-    gestureBus,
-    panelRouter,
-    layerManager,
-    makeMenu,
-  );
+  // ADR-0012 Amendment 2: the Quick Action menu opens on a TAP from the base view
+  // (swipe-up over-scroll retired). hasActiveOverlay() gates it so a tap inside a
+  // panel still activates that panel's entry / cycles its tab.
+  const unsubOverscroll = attachQuickActionTap(gestureBus, panelRouter, layerManager, makeMenu);
 
   // 11c-exit. EXIT-01 / LIFE-03 — root-page exit. A double-tap while the bare map
   //           (id 'map-base', no overlay) is the top layer calls
