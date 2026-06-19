@@ -31,6 +31,7 @@
  */
 
 import {
+  CHARACTER_DELTA_TYPE,
   FRAME_PNG_TYPE,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
@@ -55,6 +56,7 @@ import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 // Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
 import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
 import { readCharacterList, registerCharacterListReader } from './readers/character-list-reader.js';
+import { getCharacterSnapshot } from './readers/character-reader.js';
 // Quick Task 260517-k2g — entity-pack vocabulary push (parallel additive pipeline, NO new socketlib handler).
 // Emits r1.entities.available envelopes via bridgeDeltaEmitter for non-spell Items + Actors (npc/vehicle).
 // Registered alongside spell-pack so weapon/armor/monster recognition is available at init time too.
@@ -672,6 +674,41 @@ Hooks.once('ready', () => {
       bridgeDeltaEmitter(R1_CHARACTERS_AVAILABLE_TYPE, readCharacterList());
     } catch {
       // roster heartbeat is best-effort — a read/emit failure must not break the page
+    }
+  }, SETTINGS_HEARTBEAT_MS);
+
+  // Write-path + sheet re-warm heartbeat (v0.1.42, BUG: bridge restart strands a
+  // non-GM player). Two bridge caches go COLD when the bridge (re)starts after this
+  // client's `ready` and only repopulate on a discrete event:
+  //   1. bearer-registry — only (re)pushed on ready / bearer generate-revoke-rotate /
+  //      self-pair. A cold bearer cache means the bridge resolves `tool.invoke`
+  //      `boundUserId` to null, so a non-GM player's owner-scoped poll never drains
+  //      their own skill check / attack / spell (no GM-fallback for a non-GM) — the
+  //      write silently times out. Re-emitting keeps routing alive.
+  //   2. character snapshots — only pushed on `updateActor` (HP/AC/status change).
+  //      A cold snapshot cache leaves the glasses sheet / skills panel EMPTY, so a
+  //      tap on a skill no-ops (`_snapshot === null`) and nothing is ever sent.
+  // Mirror the settings/roster heartbeats: the stream leader re-publishes both on the
+  // same cadence so a bridge restart self-heals within SETTINGS_HEARTBEAT_MS — no
+  // Foundry reload and no actor "nudge" required. Leader-gated (the bearer registry is
+  // world data; snapshots are identical world reads) to avoid N× redundant POSTs.
+  // Best-effort; never throws into the timer.
+  setInterval(() => {
+    try {
+      if (!isStreamLeader()) return;
+      // 1. Re-push the bearer registry so tool.invoke routing survives a bridge restart.
+      bearerRegistryHandle?.reEmit();
+      // 2. Re-push each player character's full snapshot so the glasses sheet/skills
+      //    panel can populate (and interactive taps can resolve an actor) after a
+      //    cold start, without waiting for an actor change.
+      for (const entry of readCharacterList().characters) {
+        const snapshot = getCharacterSnapshot(entry.actorId);
+        if (snapshot !== null) {
+          bridgeDeltaEmitter(CHARACTER_DELTA_TYPE, snapshot);
+        }
+      }
+    } catch {
+      // re-warm heartbeat is best-effort — a read/emit failure must not break the page
     }
   }, SETTINGS_HEARTBEAT_MS);
 

@@ -1,5 +1,22 @@
 # @evf/foundry-module
 
+## 0.1.42
+
+### Patch Changes
+
+- Bridge-restart self-heal (fixes a non-GM player being stranded after a bridge
+  restart). Two bridge caches only repopulate on discrete events and go cold when the
+  bridge (re)starts after a client's `ready`: the bearer registry (re-pushed on
+  ready / bearer change / self-pair) and the per-actor character snapshot (pushed only
+  on `updateActor`). A cold bearer cache makes `tool.invoke` routing resolve
+  `boundUserId` to null — and since a non-GM has no GM-fallback drain, their own skill
+  check / attack / spell silently times out; a cold snapshot cache leaves the glasses
+  sheet / skills panel empty, so an interactive tap no-ops. A new leader-gated
+  heartbeat (same cadence as the existing settings/roster heartbeats) re-emits BOTH the
+  bearer registry and every player character's full snapshot, so a bridge restart
+  self-heals within ~10s with no Foundry reload and no actor "nudge". Best-effort;
+  never throws into the timer.
+
 ## 0.1.41
 
 ### Patch Changes
