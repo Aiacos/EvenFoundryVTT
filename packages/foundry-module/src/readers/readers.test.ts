@@ -742,6 +742,8 @@ describe('getCharacterSnapshot', () => {
     // dnd5e 5.1 moved SpellData#preparation.{mode,prepared} → SpellData#{method,prepared}.
     // A spell with ONLY the new fields (no `preparation`) must still extract — proving
     // the reader no longer depends on the deprecated getter.
+    // Deliberately the dnd5e 5.1+ shape (method/prepared, NO `preparation`/`damage`);
+    // cast through unknown since it intentionally differs from the legacy mock shape.
     const modernSpell = {
       id: 'sp-51',
       name: 'Misty Step',
@@ -754,9 +756,8 @@ describe('getCharacterSnapshot', () => {
         components: { concentration: false },
         method: 'prepared',
         prepared: true,
-        // NOTE: deliberately NO `preparation` object (5.1+ shape).
       },
-    };
+    } as unknown as ReturnType<typeof makeSpellItem>;
     const actor = makeActor({ id: 'pc-spl-51', items: [modernSpell] });
     vi.stubGlobal('game', makeGameMock([actor]));
 
