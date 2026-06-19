@@ -254,8 +254,10 @@ interface Dnd5eAttributes {
   hp: {
     value: number;
     max: number;
-    temp: number;
-    tempmax: number;
+    // dnd5e leaves `temp`/`tempmax` null (NOT 0) when there is no temporary HP —
+    // character-reader must coerce to a number for CharacterSnapshotSchema.
+    temp: number | null;
+    tempmax: number | null;
   };
   ac: { value: number };
   exhaustion: number;

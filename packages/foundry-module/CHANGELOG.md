@@ -1,5 +1,18 @@
 # @evf/foundry-module
 
+## 0.1.38
+
+### Patch Changes
+
+- Fix: character snapshots were silently dropped by the bridge for any actor with
+  NO temporary HP. dnd5e leaves `actor.system.attributes.hp.temp` as `null` (not 0)
+  when there is no temp HP; character-reader passed it straight through as
+  `tempHp: null`, which fails the bridge's `CharacterSnapshotSchema`
+  (`tempHp: number().nonnegative()`). The bridge still answers `200` to the
+  `/internal/delta` POST but never caches the snapshot, so `GET /v1/character/:id`
+  returns `404` and the glasses sheet/HUD stay empty. Now coerced to `0`. The
+  "active" character (whose temp HP is often set) worked, masking the bug.
+
 ## 0.1.37
 
 ### Patch Changes

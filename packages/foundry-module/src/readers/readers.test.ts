@@ -144,7 +144,7 @@ function makeActor(
     id: string;
     name: string;
     type: string;
-    hp: { value: number; max: number; temp: number; tempmax: number };
+    hp: { value: number; max: number; temp: number | null; tempmax: number | null };
     acValue: number;
     level: number;
     statuses: Set<string>;
@@ -345,6 +345,26 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.exhaustion).toBe(1);
     // Phase 5: world.modernRules defaults to false when rulesVersion is not 'modern'
     expect(snap?.world.modernRules).toBe(false);
+  });
+
+  it('coerces null hp.temp to 0 (dnd5e leaves temp null with no temporary HP)', () => {
+    // Regression: dnd5e sets hp.temp to null (NOT 0) when an actor has no temp HP.
+    // The bridge's CharacterSnapshotSchema requires tempHp: number().nonnegative(),
+    // so a passthrough null made the bridge silently drop the WHOLE snapshot
+    // (POST /internal/delta → 200, but GET /v1/character/:id → 404). character-reader
+    // must coerce null → 0.
+    const actor = makeActor({
+      id: 'hero-null-temp',
+      name: 'Shin',
+      hp: { value: 81, max: 81, temp: null, tempmax: null },
+      acValue: 18,
+      level: 11,
+    });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('hero-null-temp');
+    expect(snap).not.toBeNull();
+    expect(snap?.tempHp).toBe(0);
   });
 
   it('includes multiple conditions from statuses Set', () => {
