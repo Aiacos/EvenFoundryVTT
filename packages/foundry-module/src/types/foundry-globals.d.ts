@@ -621,7 +621,13 @@ interface FoundryItem {
     level?: number;
     /** Spell school identifier (e.g. 'evo', 'ill', 'div'). */
     school?: string;
-    /** Whether the spell is prepared (leveled spells only). */
+    /**
+     * dnd5e 5.1+ spell preparation fields (replaced the deprecated `preparation`
+     * object: `method` ← preparation.mode, `prepared` ← preparation.prepared).
+     */
+    method?: string;
+    prepared?: boolean;
+    /** @deprecated dnd5e < 5.1 only — superseded by `method`/`prepared` above. */
     preparation?: {
       mode?: string;
       prepared?: boolean;

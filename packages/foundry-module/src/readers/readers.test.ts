@@ -738,6 +738,34 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.spells.spells[0]?.level).toBe(3);
   });
 
+  it('CHRD-SPL-DEP51: reads dnd5e 5.1 method/prepared fields (no deprecated `preparation` object)', () => {
+    // dnd5e 5.1 moved SpellData#preparation.{mode,prepared} → SpellData#{method,prepared}.
+    // A spell with ONLY the new fields (no `preparation`) must still extract — proving
+    // the reader no longer depends on the deprecated getter.
+    const modernSpell = {
+      id: 'sp-51',
+      name: 'Misty Step',
+      type: 'spell',
+      system: {
+        level: 2,
+        school: 'con',
+        activation: { type: 'bonus' },
+        range: { value: 0, units: 'self' },
+        components: { concentration: false },
+        method: 'prepared',
+        prepared: true,
+        // NOTE: deliberately NO `preparation` object (5.1+ shape).
+      },
+    };
+    const actor = makeActor({ id: 'pc-spl-51', items: [modernSpell] });
+    vi.stubGlobal('game', makeGameMock([actor]));
+
+    const snap = getCharacterSnapshot('pc-spl-51');
+    expect(snap?.spells.spells).toHaveLength(1);
+    expect(snap?.spells.spells[0]?.name).toBe('Misty Step');
+    expect(snap?.spells.spells[0]?.level).toBe(2);
+  });
+
   it('CHRD-SPL-4: concentration spell carries concentration=true flag (RESEARCH assumption A2)', () => {
     const conc = makeSpellItem({ id: 'conc-sp', name: 'Bless', concentration: true });
     const actor = makeActor({ id: 'pc-spl-4', items: [conc] });
