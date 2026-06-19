@@ -1878,12 +1878,12 @@ export async function _bootEngineCore(
     setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
   };
   const canvasItemDispatch = (req: unknown): void => {
-    void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
-      const modal = new ActionOptionsModal(
+    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
+      const modal = new CanvasActionOptionsModal(
         bridge,
         wsSender,
         gestureBus,
-        req as ConstructorParameters<typeof ActionOptionsModal>[3],
+        req as ConstructorParameters<typeof CanvasActionOptionsModal>[3],
         currentLocale,
         handshake.session_id,
         () => {
@@ -1895,8 +1895,8 @@ export async function _bootEngineCore(
     });
   };
   const canvasSpellDispatch = (req: unknown): void => {
-    void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
-      const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
+    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
+      const baseReq = req as ConstructorParameters<typeof CanvasActionOptionsModal>[3];
       const snapshot = statusHud?.getCachedSnapshot() ?? null;
       const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
       const spellLevel = spellEntry?.level ?? 0;
@@ -1906,7 +1906,7 @@ export async function _bootEngineCore(
           : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
       const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
       const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
-      const enrichedReq: ConstructorParameters<typeof ActionOptionsModal>[3] = {
+      const enrichedReq: ConstructorParameters<typeof CanvasActionOptionsModal>[3] = {
         ...baseReq,
         requiresSlotPicker,
         defaultSlotLevel,
@@ -1933,7 +1933,7 @@ export async function _bootEngineCore(
           void panelRouter.pushOverlay(slotPicker, layerManager);
         });
       };
-      const modal = new ActionOptionsModal(
+      const modal = new CanvasActionOptionsModal(
         bridge,
         wsSender,
         gestureBus,
