@@ -1,5 +1,20 @@
 # @evf/foundry-module
 
+## 0.1.41
+
+### Patch Changes
+
+- Write channel resilience: the tool-invocation poller now performs a GM-fallback
+  unfiltered drain in addition to the owner-scoped poll. When the bridge cannot route
+  a queued write to a bound user — `boundUserId === null`, e.g. its bearer-registry
+  cache went cold after a restart (the registry is only pushed on Foundry `ready`) —
+  the request previously sat unrouted until it timed out, so skill checks / attacks /
+  spells silently did nothing. A GM client now also drains the unfiltered slice and
+  executes those orphaned (and genuinely global) requests. This is ADR-0014-safe: the
+  per-actor write authz (`dispatchToolAuthorized` → `validateBearer` against Foundry's
+  authoritative local registry) still gates execution by the request's own bearer, so a
+  GM executing here cannot act as an actor the bearer does not own.
+
 ## 0.1.40
 
 ### Minor Changes

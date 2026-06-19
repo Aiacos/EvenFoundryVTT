@@ -817,9 +817,11 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
       // Resolve the bearer's bound Foundry user so the queue routes the write to the
       // OWNING user's poll (ADR-0011 Amendment — a player executes their own actor's
       // writes without a GM online). `null` when the bearer is unknown (e.g. dev
-      // sentinel) → served only to an unfiltered/GM-fallback drain.
-      const boundUserId =
-        bearerRegistryCache.get()?.bearers.find((b) => b.token === bearer)?.userId ?? null;
+      // sentinel, or the bearer-registry cache went cold after a bridge restart) →
+      // served to an unfiltered/GM-fallback drain (the poller's GM client picks it up,
+      // and the Foundry-side per-actor authz still gates execution by the bearer).
+      const snap = bearerRegistryCache.get();
+      const boundUserId = snap?.bearers.find((b) => b.token === bearer)?.userId ?? null;
       return toolQueue.enqueue(payload, bearer, boundUserId);
     });
 

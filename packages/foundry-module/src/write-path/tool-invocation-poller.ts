@@ -132,7 +132,43 @@ async function handleOneRequest(
 }
 
 /**
- * One poll tick: GM-gated drain + per-request dispatch. Never throws.
+ * Drain one `/internal/tool-requests` slice and dispatch each invocation. Never throws.
+ *
+ * @param userId         - Bearer-bound user to scope the drain to (`?userId=`), or
+ *                         `null` for the UNFILTERED (GM-fallback) drain that picks up
+ *                         every still-pending request (including unrouted null-bound ones).
+ * @param bridgeUrl      - Resolved bridge base URL.
+ * @param internalSecret - Resolved internal secret (bearer for the drain GET + result POST).
+ */
+async function drainSlice(
+  userId: string | null,
+  bridgeUrl: string,
+  internalSecret: string,
+): Promise<void> {
+  const url =
+    userId === null
+      ? `${bridgeUrl}/internal/tool-requests`
+      : `${bridgeUrl}/internal/tool-requests?userId=${encodeURIComponent(userId)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${internalSecret}` },
+    signal: AbortSignal.timeout(TOOL_POLL_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    return;
+  }
+  const body = (await res.json()) as { requests?: unknown };
+  const requests = Array.isArray(body.requests) ? body.requests : [];
+  for (const raw of requests) {
+    if (!isDrainedToolRequest(raw)) {
+      continue;
+    }
+    // Dispatch each request independently; handleOneRequest never throws.
+    await handleOneRequest(raw, bridgeUrl, internalSecret);
+  }
+}
+
+/**
+ * One poll tick: owner-scoped drain + GM-fallback unfiltered drain. Never throws.
  *
  * @param opts - The resolved poller options.
  */
@@ -154,24 +190,18 @@ async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
       return;
     }
 
-    const res = await fetch(
-      `${bridgeUrl}/internal/tool-requests?userId=${encodeURIComponent(userId)}`,
-      {
-        headers: { Authorization: `Bearer ${internalSecret}` },
-        signal: AbortSignal.timeout(TOOL_POLL_FETCH_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) {
-      return;
-    }
-    const body = (await res.json()) as { requests?: unknown };
-    const requests = Array.isArray(body.requests) ? body.requests : [];
-    for (const raw of requests) {
-      if (!isDrainedToolRequest(raw)) {
-        continue;
-      }
-      // Dispatch each request independently; handleOneRequest never throws.
-      await handleOneRequest(raw, bridgeUrl, internalSecret);
+    // 1. Owner-scoped drain — this user's bearer-bound invocations.
+    await drainSlice(userId, bridgeUrl, internalSecret);
+
+    // 2. GM-fallback drain — a GM also drains the UNFILTERED slice so requests the
+    //    bridge could not route to a bound user (boundUserId === null, e.g. the bridge
+    //    bearer-registry cache went cold after a restart) and genuinely global writes
+    //    still execute instead of timing out. This is SAFE: the per-actor write authz
+    //    (dispatchToolAuthorized → validateBearer against Foundry's authoritative local
+    //    registry) still enforces that the request's bearer OWNS the acting actor, so a
+    //    GM executing here cannot act as an actor the bearer does not own (ADR-0014).
+    if (game.user?.isGM === true) {
+      await drainSlice(null, bridgeUrl, internalSecret);
     }
   } catch (err) {
     // Best-effort: an unreachable bridge / malformed body must not crash the session.
@@ -180,8 +210,9 @@ async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
 }
 
 /**
- * Register the GM-side tool-invocation poller. Safe to call on every client — only a
- * GM client acts (the gate is inside {@link pollOnce}).
+ * Register the tool-invocation poller. Safe to call on every client: each client drains
+ * its OWN bearer-bound invocations, and a GM additionally drains the unfiltered slice as
+ * a fallback for unrouted/global requests (the per-client behaviour lives in {@link pollOnce}).
  *
  * @param opts - URL/secret resolvers + optional cadence override.
  * @returns A teardown function that stops the interval (e.g. for tests / page lifecycle).

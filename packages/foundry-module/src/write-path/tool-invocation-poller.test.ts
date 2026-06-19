@@ -40,8 +40,8 @@ const DRAINED = {
   bearer: 'bearer-xyz',
 };
 
-function setUser(id: string | undefined): void {
-  vi.stubGlobal('game', { user: id === undefined ? undefined : { id } });
+function setUser(id: string | undefined, isGM = false): void {
+  vi.stubGlobal('game', { user: id === undefined ? undefined : { id, isGM } });
 }
 
 /** Run exactly one poll tick: register, fire the interval once, drain microtasks. */
@@ -97,6 +97,48 @@ describe('registerToolInvocationPoller', () => {
     expect(String(postCall?.[0])).toContain('/internal/tool-result');
     const body = JSON.parse((postCall?.[1] as { body: string }).body);
     expect(body).toEqual({ requestId: 'req-1', result: { success: true, data: { rolled: true } } });
+  });
+
+  it('GM also drains the UNFILTERED slice as a fallback for unrouted requests', async () => {
+    // A GM polls its own slice (?userId=) AND the unfiltered slice (no userId) so a
+    // request the bridge could not route (boundUserId === null) still executes. The
+    // per-actor authz inside dispatchToolAuthorized keeps this ADR-0014-safe.
+    setUser('gm-user', true);
+    dispatchToolAuthorized.mockResolvedValue({ success: true, data: { rolled: true } });
+    fetchMock
+      // 1. GET scoped (?userId=gm-user) — empty for the GM's own bound requests.
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ requests: [] }) })
+      // 2. GET unfiltered (no userId) — picks up the unrouted null-bound request.
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ requests: [DRAINED] }) })
+      // 3. POST /internal/tool-result for the dispatched request.
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+
+    await runOneTick();
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      '/internal/tool-requests?userId=gm-user',
+    );
+    // The second drain is the unfiltered slice — NO userId query param.
+    const secondUrl = String(fetchMock.mock.calls[1]?.[0]);
+    expect(secondUrl).toContain('/internal/tool-requests');
+    expect(secondUrl).not.toContain('userId=');
+    expect(dispatchToolAuthorized).toHaveBeenCalledTimes(1);
+    const postCall = fetchMock.mock.calls[2];
+    expect(String(postCall?.[0])).toContain('/internal/tool-result');
+  });
+
+  it('a non-GM player does NOT drain the unfiltered slice (owner-scoped only)', async () => {
+    setUser('player-a', false);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ requests: [] }) });
+
+    await runOneTick();
+
+    // Every drain GET is owner-scoped (?userId=player-a); a player never issues the
+    // unfiltered (no-userId) GM-fallback drain.
+    expect(fetchMock).toHaveBeenCalled();
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).toContain('?userId=player-a');
+    }
   });
 
   it('no current user: does nothing (no fetch, no dispatch)', async () => {
