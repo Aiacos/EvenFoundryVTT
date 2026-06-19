@@ -46,6 +46,24 @@ describe('ToolInvocationQueue', () => {
     expect(queue.drainPending()).toHaveLength(0);
   });
 
+  it("drainPending(userId) drains ONLY that user's requests; others stay pending", () => {
+    // ADR-0011 Amendment: each user's poll drains only its own bound-user invocations.
+    queue.enqueue(PAYLOAD, 'bearer-lorenzo', 'user-lorenzo');
+    queue.enqueue(PAYLOAD, 'bearer-bea', 'user-bea');
+    queue.enqueue(PAYLOAD, 'bearer-sentinel', null); // unknown bearer → null user
+
+    const lorenzo = queue.drainPending('user-lorenzo');
+    expect(lorenzo).toHaveLength(1);
+    expect(lorenzo[0]?.bearer).toBe('bearer-lorenzo');
+
+    // Bea's + the null-user request are untouched by Lorenzo's poll.
+    expect(queue.drainPending('user-bea')).toHaveLength(1);
+    // The unfiltered (GM-fallback) drain still picks up the remaining null-user request.
+    const rest = queue.drainPending();
+    expect(rest).toHaveLength(1);
+    expect(rest[0]?.bearer).toBe('bearer-sentinel');
+  });
+
   it('resolveResult returns false for an unknown / already-settled request id', () => {
     expect(queue.resolveResult('does-not-exist', { success: true, data: null })).toBe(false);
 

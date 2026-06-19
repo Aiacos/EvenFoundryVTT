@@ -1,5 +1,17 @@
 # @evf/foundry-module
 
+## 0.1.40
+
+### Minor Changes
+
+- Player-owned write execution (ADR-0011 Amendment 2): the tool-invocation poller
+  is no longer GM-gated. Each client polls for ITS OWN user's invocations
+  (`GET /internal/tool-requests?userId=<game.user.id>`) and executes them, so a
+  PLAYER rolls their own actor's skill check / attack / spell **without a GM
+  online**. The bridge routes each queued write to the bearer's bound user; the
+  per-actor write authz (ADR-0014) is unchanged (the acting actor must be owned by
+  the bearer's user, and the executing client IS that user).
+
 ## 0.1.39
 
 ### Minor Changes

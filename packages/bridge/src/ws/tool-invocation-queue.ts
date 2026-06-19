@@ -46,12 +46,20 @@ import type { ToolInvokeResult } from './tool-invoke.js';
  */
 export const TOOL_INVOKE_TIMEOUT_MS = 10_000;
 
-/** A pending invocation awaiting a GM-side poll. */
+/** A pending invocation awaiting a poll. */
 interface PendingInvocation {
   /** The wire-validated tool payload (toolId + idempotencyKey + args). */
   readonly payload: ToolInvocationEnvelopePayload;
   /** Session bearer — forwarded to the Foundry-side per-actor write authz (ADR-0014). */
   readonly bearer: string;
+  /**
+   * The Foundry user id the bearer is bound to (resolved bridge-side from the bearer
+   * registry at enqueue), or `null` when it could not be resolved. Used to route the
+   * request to the OWNING user's poll (ADR-0011 Amendment: writes execute on the
+   * owning user's client, not exclusively a GM). A request with `null` is only
+   * served to an unfiltered (GM-fallback) drain.
+   */
+  readonly boundUserId: string | null;
   /** `Date.now()` when enqueued (diagnostics / future TTL sweeps). */
   readonly enqueuedAt: number;
 }
@@ -99,9 +107,13 @@ export class ToolInvocationQueue {
    * @param bearer  - The session bearer for the Foundry-side per-actor write authz.
    * @returns A Promise resolving to the tool result (or `foundry_timeout`).
    */
-  enqueue(payload: ToolInvocationEnvelopePayload, bearer: string): Promise<ToolInvokeResult> {
+  enqueue(
+    payload: ToolInvocationEnvelopePayload,
+    bearer: string,
+    boundUserId: string | null = null,
+  ): Promise<ToolInvokeResult> {
     const requestId = crypto.randomUUID();
-    this.pending.set(requestId, { payload, bearer, enqueuedAt: Date.now() });
+    this.pending.set(requestId, { payload, bearer, boundUserId, enqueuedAt: Date.now() });
     return new Promise<ToolInvokeResult>((resolve) => {
       const timer = setTimeout(() => {
         // Timeout: the GM never polled / never returned. Drop the pending entry (it may
@@ -117,18 +129,28 @@ export class ToolInvocationQueue {
   }
 
   /**
-   * Return AND remove every currently-pending invocation so a single poll dispatches
-   * each exactly once. The resolvers are intentionally LEFT in place — they settle
-   * when {@link resolveResult} (or the timeout) fires.
+   * Return AND remove pending invocations so a single poll dispatches each exactly once.
+   * The resolvers are intentionally LEFT in place — they settle when {@link resolveResult}
+   * (or the timeout) fires.
    *
+   * When `userId` is provided, ONLY invocations whose `boundUserId` matches are drained
+   * (the owning user's poll); others stay pending for their own owner. When `userId` is
+   * omitted (unfiltered / GM-fallback), ALL pending invocations are drained. This routes
+   * each write to the OWNING user's client (ADR-0011 Amendment) so a player executes
+   * their own actor's writes without a GM online.
+   *
+   * @param userId - If set, drain only invocations bound to this user; else drain all.
    * @returns The drained invocations (requestId + payload + bearer); empty when idle.
    */
-  drainPending(): DrainedInvocation[] {
+  drainPending(userId?: string): DrainedInvocation[] {
     const drained: DrainedInvocation[] = [];
     for (const [requestId, entry] of this.pending) {
+      if (userId !== undefined && entry.boundUserId !== userId) {
+        continue; // belongs to another user — leave it for that user's poll.
+      }
       drained.push({ requestId, payload: entry.payload, bearer: entry.bearer });
+      this.pending.delete(requestId);
     }
-    this.pending.clear();
     return drained;
   }
 

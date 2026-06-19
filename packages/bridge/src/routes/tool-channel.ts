@@ -89,13 +89,23 @@ export async function registerToolChannelRoutes(
   app: FastifyInstance,
   queue: ToolInvocationQueue,
 ): Promise<void> {
-  // GET /internal/tool-requests — the module drains all pending invocations to dispatch.
-  app.get('/internal/tool-requests', { config: { rateLimit: false } }, async (request, reply) => {
-    if (!isInternalSecretValid(request.headers.authorization)) {
-      return reply.status(401).send({ error: 'unauthorized' });
-    }
-    return reply.status(200).send({ requests: queue.drainPending() });
-  });
+  // GET /internal/tool-requests[?userId=<id>] — the module drains the invocations it
+  // should execute. With `?userId`, only invocations bound to that user are drained (the
+  // owning user's poll, ADR-0011 Amendment — a player executes their own actor's writes);
+  // without it, all pending are drained (unfiltered / GM-fallback).
+  app.get<{ Querystring: { userId?: string } }>(
+    '/internal/tool-requests',
+    { config: { rateLimit: false } },
+    async (request, reply) => {
+      if (!isInternalSecretValid(request.headers.authorization)) {
+        return reply.status(401).send({ error: 'unauthorized' });
+      }
+      const userId = request.query.userId;
+      return reply
+        .status(200)
+        .send({ requests: userId ? queue.drainPending(userId) : queue.drainPending() });
+    },
+  );
 
   // POST /internal/tool-result — the module returns a dispatched invocation's result.
   app.post('/internal/tool-result', { config: { rateLimit: false } }, async (request, reply) => {

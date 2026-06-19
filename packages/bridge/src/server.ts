@@ -812,7 +812,16 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   const toolQueue = new ToolInvocationQueue();
   await registerToolChannelRoutes(app, toolQueue);
   const wsDispatchFn: DispatchToolFn =
-    opts.wsDispatchToolFn ?? ((payload, bearer) => toolQueue.enqueue(payload, bearer));
+    opts.wsDispatchToolFn ??
+    ((payload, bearer) => {
+      // Resolve the bearer's bound Foundry user so the queue routes the write to the
+      // OWNING user's poll (ADR-0011 Amendment — a player executes their own actor's
+      // writes without a GM online). `null` when the bearer is unknown (e.g. dev
+      // sentinel) → served only to an unfiltered/GM-fallback drain.
+      const boundUserId =
+        bearerRegistryCache.get()?.bearers.find((b) => b.token === bearer)?.userId ?? null;
+      return toolQueue.enqueue(payload, bearer, boundUserId);
+    });
 
   // Late-bind the debug dispatch ref to the SAME production dispatch fn (ADR-0011).
   // /debug/dispatch-tool therefore routes identically to the WS tool.invoke path.

@@ -2,8 +2,9 @@
  * Unit tests for the Phase 8 tool-invocation poller.
  *
  * Tests cover:
- * - GM polls → dispatches via dispatchToolAuthorized → POSTs the result back.
- * - Non-GM client does nothing (no fetch).
+ * - A logged-in user polls for ITS OWN requests (`?userId=`), dispatches via
+ *   dispatchToolAuthorized → POSTs the result back (ADR-0011 Amendment — player executes).
+ * - No current user → does nothing (no fetch).
  * - Deny path: dispatchToolAuthorized returns not_authorized → that result is POSTed.
  * - A drain fetch error is swallowed (no throw out of the tick).
  *
@@ -39,8 +40,8 @@ const DRAINED = {
   bearer: 'bearer-xyz',
 };
 
-function setGm(isGM: boolean): void {
-  vi.stubGlobal('game', { user: { isGM } });
+function setUser(id: string | undefined): void {
+  vi.stubGlobal('game', { user: id === undefined ? undefined : { id } });
 }
 
 /** Run exactly one poll tick: register, fire the interval once, drain microtasks. */
@@ -71,16 +72,19 @@ describe('registerToolInvocationPoller', () => {
     vi.unstubAllGlobals();
   });
 
-  it('GM: drains a request, dispatches it, and POSTs the result back', async () => {
-    setGm(true);
+  it("drains the current user's requests (?userId=), dispatches, and POSTs the result back", async () => {
+    setUser('user-a');
     dispatchToolAuthorized.mockResolvedValue({ success: true, data: { rolled: true } });
     fetchMock
-      // GET /internal/tool-requests
+      // GET /internal/tool-requests?userId=user-a
       .mockResolvedValueOnce({ ok: true, json: async () => ({ requests: [DRAINED] }) })
       // POST /internal/tool-result
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
 
     await runOneTick();
+
+    // GET is scoped to the current user (ADR-0011 Amendment — owning-user execution).
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/internal/tool-requests?userId=user-a');
 
     expect(dispatchToolAuthorized).toHaveBeenCalledWith('skill-check', {
       args: DRAINED.payload.args,
@@ -95,15 +99,15 @@ describe('registerToolInvocationPoller', () => {
     expect(body).toEqual({ requestId: 'req-1', result: { success: true, data: { rolled: true } } });
   });
 
-  it('non-GM: does nothing (no fetch, no dispatch)', async () => {
-    setGm(false);
+  it('no current user: does nothing (no fetch, no dispatch)', async () => {
+    setUser(undefined);
     await runOneTick();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(dispatchToolAuthorized).not.toHaveBeenCalled();
   });
 
   it('deny path: POSTs the not_authorized result from dispatchToolAuthorized', async () => {
-    setGm(true);
+    setUser('user-a');
     dispatchToolAuthorized.mockResolvedValue({ success: false, error: 'not_authorized' });
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ requests: [DRAINED] }) })
@@ -117,7 +121,7 @@ describe('registerToolInvocationPoller', () => {
   });
 
   it('swallows a drain fetch error (no throw out of the tick)', async () => {
-    setGm(true);
+    setUser('user-a');
     fetchMock.mockRejectedValueOnce(new Error('network down'));
     await expect(runOneTick()).resolves.toBeUndefined();
     expect(dispatchToolAuthorized).not.toHaveBeenCalled();

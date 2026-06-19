@@ -187,3 +187,27 @@ registerToolHandler('cast-spell', { argsSchema: CastSpellArgsSchema, handle: han
 ## Amendment 1
 
 _Reserved — not yet authored._
+
+## Amendment 2 — Owning-user execution for the Phase-8 poll channel (2026-06-19)
+
+The original write path assumed bridge→Foundry dispatch over socketlib `executeAsGM`,
+i.e. all writes run in GM context. The external bridge cannot use socketlib, so the
+Phase-8 reverse channel is a poll: the bridge enqueues a `tool.invoke` and a Foundry
+client drains + executes it.
+
+**Change:** writes execute on the **owning user's** client, not exclusively a GM.
+The bridge tags each queued invocation with the bearer's bound Foundry user
+(`boundUserId`, resolved from the bearer registry at enqueue). Each client's poller
+drains only ITS OWN user's invocations (`GET /internal/tool-requests?userId=<game.user.id>`)
+and executes them. So a **player** executes their own actor's skill check / attack /
+spell **without a GM online** — Foundry already permits the owner of an actor to
+`actor.rollSkill()` / `activity.use()`.
+
+**Why still safe (ADR-0014 preserved):** the per-actor write authz
+(`dispatchToolAuthorized`) is unchanged — the acting `args.actor_id` must be owned by
+the bearer's bound user. The executing client IS that user (routing guarantees it), so
+the owner-level write is legitimate. Cross-actor writes are still denied (`not_authorized`).
+
+**GM fallback:** an unfiltered drain (no `?userId`) still returns all pending — for
+global / non-owned writes that genuinely require GM. A request whose bearer is unknown
+(e.g. the dev no-auth sentinel → `boundUserId: null`) is served only to that drain.

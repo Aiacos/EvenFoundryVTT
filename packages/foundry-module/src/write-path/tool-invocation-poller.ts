@@ -8,11 +8,16 @@
  * `GET /internal/tool-requests`, running each invocation through the AUTHORITATIVE
  * write path, and POSTing the result back to `/internal/tool-result`.
  *
- * # GM gate (ADR-0011)
+ * # Owning-user execution (ADR-0011 Amendment)
  *
- * Writes run in GM context (single-workflow-origin). The poller acts ONLY when
- * `game.user?.isGM === true` — mirroring the self-pair-ingestion GM gate. On a
- * non-GM client every poll is a silent no-op (no fetch, no dispatch).
+ * Writes execute on the OWNING user's client, not exclusively a GM. Each client
+ * polls for ITS OWN user's invocations (`GET /internal/tool-requests?userId=<game.user.id>`),
+ * so a PLAYER executes their own actor's skill check / attack / spell without a GM
+ * online. The bridge routes each queued request to the bearer's bound user; the
+ * per-actor write authz (dispatchToolAuthorized) still verifies the bearer owns the
+ * acting actor, and the executing client IS that user — so the owner-level write
+ * (`actor.rollSkill`, `activity.use`) is permitted by Foundry. (Global / non-owned
+ * writes that genuinely need GM remain a GM's to execute via the unfiltered drain.)
  *
  * # Security (ADR-0014)
  *
@@ -133,8 +138,14 @@ async function handleOneRequest(
  */
 async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
   try {
-    // GM gate (ADR-0011): only a GM client executes writes.
-    if (game.user?.isGM !== true) {
+    // ADR-0011 Amendment: writes execute on the OWNING user's client (not exclusively a
+    // GM). Each client polls for ITS OWN user's invocations (`?userId=`), so a player
+    // executes their own actor's skill/attack/spell without a GM online. The bridge
+    // routes each request by the bearer's bound user; the per-actor write authz
+    // (dispatchToolAuthorized) still verifies the bearer owns the acting actor, and the
+    // executing client IS that user, so `actor.rollSkill`/`activity.use` runs as the owner.
+    const userId = game.user?.id;
+    if (typeof userId !== 'string' || userId.length === 0) {
       return;
     }
     const bridgeUrl = opts.getBridgeUrl();
@@ -143,10 +154,13 @@ async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
       return;
     }
 
-    const res = await fetch(`${bridgeUrl}/internal/tool-requests`, {
-      headers: { Authorization: `Bearer ${internalSecret}` },
-      signal: AbortSignal.timeout(TOOL_POLL_FETCH_TIMEOUT_MS),
-    });
+    const res = await fetch(
+      `${bridgeUrl}/internal/tool-requests?userId=${encodeURIComponent(userId)}`,
+      {
+        headers: { Authorization: `Bearer ${internalSecret}` },
+        signal: AbortSignal.timeout(TOOL_POLL_FETCH_TIMEOUT_MS),
+      },
+    );
     if (!res.ok) {
       return;
     }
