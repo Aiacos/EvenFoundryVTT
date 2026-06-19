@@ -1,5 +1,29 @@
 # @evf/foundry-module
 
+## 0.1.39
+
+### Minor Changes
+
+- Phase-8 write channel: write tools now actually EXECUTE in Foundry. Previously
+  the bridge could not reach Foundry for writes (its dispatch was a stub), so
+  `tool.invoke` envelopes (cast-spell / use-item / skill-check) were dropped. A
+  GM-gated poller now drains the bridge's tool-invocation queue
+  (`GET /internal/tool-requests`), runs each invocation through the authoritative
+  write path, and POSTs the result back (`POST /internal/tool-result`). Per-actor
+  write authorization (ADR-0014) is enforced by a single shared
+  `dispatchToolAuthorized` gate used by BOTH the socketlib adapter and the new
+  poller — the acting `actor_id` must be owned by the bearer's bound user. No new
+  socketlib handler (count stays 17). Requires a GM client online (ADR-0011).
+
+### Patch Changes
+
+- New `skill-check` write tool: rolls a skill check via `actor.rollSkill(...)` (as
+  if clicking the skill button on the Foundry sheet). Wired to the g2-app
+  interactive Skill panel + Quick Action `[K]` entry.
+- Stop reading the deprecated dnd5e `SpellData#preparation.{mode,prepared}` getters
+  in `extractSpellbook` (read `system.method`/`system.prepared` on 5.1+; fall back
+  to `preparation` only for < 5.1). Removes the per-spell deprecation-warning flood.
+
 ## 0.1.38
 
 ### Patch Changes
