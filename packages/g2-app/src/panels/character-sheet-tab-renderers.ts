@@ -500,7 +500,7 @@ const PROF_GLYPHS: Record<ProfLevel, string> = {
  * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-UI-SPEC.md §5
  * @see .planning/phases/EVF-17-sheet-skills-tab-skills-tab-data-wiring/17-CONTEXT.md §Area 3
  */
-const SKILL_NAMES: Record<
+export const SKILL_NAMES: Record<
   SkillKey,
   { readonly it: string; readonly en: string; readonly de: string }
 > = {

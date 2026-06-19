@@ -4,10 +4,10 @@
  * Covers QAM-01..14 + QAM-FIX-01..04 from 06-02-PLAN.md Task 2 <behavior>:
  *   - QAM-01:  static meta parses via PanelMetaSchema with navKey ''
  *   - QAM-02:  isOverlayPanel(instance) === true; getContainerCount === { image: 0, text: 1 }
- *   - QAM-03:  default state renders 10 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
+ *   - QAM-03:  default state renders 11 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
  *   - QAM-04:  scroll down → activeIndex increments → ▶ moves to [C]
- *   - QAM-05:  scroll wrap-around from [X] (index 9) → back to [S] (index 0)
- *   - QAM-06:  tap on [N] (index 7) → mode === 'language'; draw shows 7 LOCALE_MENU entries
+ *   - QAM-05:  scroll wrap-around from [X] (index 10) → back to [S] (index 0)
+ *   - QAM-06:  tap on [N] (index 8) → mode === 'language'; draw shows 7 LOCALE_MENU entries
  *   - QAM-07:  sub-menu nav-keys are A I E D S F P (mutually exclusive modes)
  *   - QAM-08:  sub-menu locale select: scroll to [I] → tap → persistLocaleOverride('it') + localeEvents.emit + mode='main'
  *   - QAM-09:  sub-menu Auto: tap [A] → persistLocaleOverride('auto') + localeEvents.emit('auto')
@@ -15,7 +15,7 @@
  *   - QAM-11:  double-tap from language mode → mode returns to 'main', does NOT call onClose()
  *   - QAM-12:  tap actions: [S]→onNavigate('character-sheet') ONLY (no onClose — CR-01 fix),
  *              [C]→'combat-tracker', [L]→'log', [B]→'spellbook', [I]→'inventory',
- *              [M]→onMapModeToggle+onClose, [A]→onAction+onClose, [X]→onClose
+ *              [K]→'canvas-skills', [M]→onMapModeToggle+onClose, [A]→onAction+onClose, [X]→onClose
  *   - QAM-NAV: CR-01 regression — navigate items call onNavigate only, never onClose
  *   - QAM-13:  getR1Hints() in main mode returns locale-aware labels
  *   - QAM-14:  getR1Hints() in language sub-menu mode returns different labels
@@ -132,15 +132,16 @@ describe('QuickActionMenuPanel — OverlayPanel contract (QAM-02)', () => {
 });
 
 describe('QuickActionMenuPanel — main mode draw (QAM-03)', () => {
-  it('QAM-03: default state renders 10 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
+  it('QAM-03: default state renders 11 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
 
-    // Count item rows (lines containing [X] pattern). 10 navigation/view items (dither + brightness moved to phone)
+    // Count item rows (lines containing [X] pattern). 11 navigation/view items
+    // (Phase 8 added [K] Skills; dither + brightness moved to phone).
 
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10);
+    expect(itemRows.length).toBe(11);
 
     // [S] row is active (first item)
     const sRow = lines.find((l) => l.includes('[S]'));
@@ -178,12 +179,11 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     expect(cRow).toMatch(/▶/);
   });
 
-  it('QAM-05: scroll wrap-around from [X] (index 9) back to [S] (index 0)', async () => {
+  it('QAM-05: scroll wrap-around from [X] (index 10) back to [S] (index 0)', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [X] (9 times down from [S]) — 10-item menu after the dither +
-    // brightness settings rows moved to the phone panel (2026-06-14).
-    for (let i = 0; i < 9; i++) {
+    // Scroll to [X] (10 times down from [S]) — 11-item menu (Phase 8 added [K]).
+    for (let i = 0; i < 10; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     let content = await drawAndGetContent(panel, bridge);
@@ -202,11 +202,11 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
 });
 
 describe('QuickActionMenuPanel — language sub-menu (QAM-06, QAM-07)', () => {
-  it('QAM-06: tap on [N] (index 7) switches to language mode; draw shows 7 LOCALE_MENU entries', async () => {
+  it('QAM-06: tap on [N] (index 8) switches to language mode; draw shows 7 LOCALE_MENU entries', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [N] (7 times from [S])
-    for (let i = 0; i < 7; i++) {
+    // Scroll to [N] (8 times from [S] — index 8 after Phase 8 inserted [K] at index 5)
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' });
@@ -229,7 +229,7 @@ describe('QuickActionMenuPanel — language sub-menu (QAM-06, QAM-07)', () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
     // Switch to language mode
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' });
@@ -254,8 +254,8 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     });
     const emitSpy = vi.spyOn(localeEvents, 'emit');
 
-    // Switch to language mode via [N]
-    for (let i = 0; i < 7; i++) {
+    // Switch to language mode via [N] (index 8 after Phase 8 inserted [K])
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' }); // switch to language mode; activeIndex = 0 (Auto)
@@ -274,7 +274,7 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10); // back to 10-item main mode
+    expect(itemRows.length).toBe(11); // back to 11-item main mode
   });
 
   it('QAM-09: tap [A] in language mode → persistLocaleOverride("auto") + emit("auto")', async () => {
@@ -284,8 +284,8 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     });
     const emitSpy = vi.spyOn(localeEvents, 'emit');
 
-    // Switch to language mode
-    for (let i = 0; i < 7; i++) {
+    // Switch to language mode ([N] at index 8 after Phase 8 inserted [K])
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' }); // enter language mode; activeIndex = LOCALE_MENU.findIndex(code==='it') = 1
@@ -311,8 +311,8 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
   it('QAM-11: double-tap from language mode returns to main mode without calling onClose()', async () => {
     const { panel, bridge, callbacks } = makeMenu();
 
-    // Enter language mode
-    for (let i = 0; i < 7; i++) {
+    // Enter language mode ([N] at index 8 after Phase 8 inserted [K])
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' });
@@ -322,11 +322,11 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
 
     expect(callbacks.onClose).not.toHaveBeenCalled();
 
-    // Should be back in main mode — draw shows 13 items
+    // Should be back in main mode — draw shows 11 items (Phase 8 added [K])
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(10);
+    expect(itemRows.length).toBe(11);
   });
 });
 
@@ -376,26 +376,34 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
     expect(callbacks.onClose).not.toHaveBeenCalled();
   });
 
-  it('QAM-12f: tap [A] from main → onAction() + onClose()', () => {
+  it('QAM-12k: tap [K] (index 5) → onNavigate("canvas-skills"); onClose NOT called (CR-01)', () => {
     const { panel, callbacks } = makeMenu();
     for (let i = 0; i < 5; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+    expect(callbacks.onNavigate).toHaveBeenCalledWith('canvas-skills');
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+  });
+
+  it('QAM-12f: tap [A] (index 6) from main → onAction() + onClose()', () => {
+    const { panel, callbacks } = makeMenu();
+    for (let i = 0; i < 6; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onAction).toHaveBeenCalledTimes(1);
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('QAM-12g: tap [M] → onMapModeToggle() + onClose()', () => {
+  it('QAM-12g: tap [M] (index 7) → onMapModeToggle() + onClose()', () => {
     const { panel, callbacks } = makeMenu();
-    for (let i = 0; i < 6; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    for (let i = 0; i < 7; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onMapModeToggle).toHaveBeenCalledTimes(1);
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('QAM-12h: tap [X] (index 9) → onClose() only', () => {
+  it('QAM-12h: tap [X] (index 10) → onClose() only', () => {
     const { panel, callbacks } = makeMenu();
-    // [X] is index 9 in the 10-item menu (S0,C1,L2,B3,I4,A5,M6,N7,F8,X9).
-    for (let i = 0; i < 9; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    // [X] is index 10 in the 11-item menu (S0,C1,L2,B3,I4,K5,A6,M7,N8,F9,X10).
+    for (let i = 0; i < 10; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
     expect(callbacks.onNavigate).not.toHaveBeenCalled();
@@ -403,7 +411,7 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
     expect(callbacks.onMapModeToggle).not.toHaveBeenCalled();
   });
 
-  it('QAM-12i: tap [F] (index 8) → onFpsToggle() + onClose()', () => {
+  it('QAM-12i: tap [F] (index 9) → onFpsToggle() + onClose()', () => {
     const bridge = makeMockBridge();
     const bus = new PanelGestureBus();
     const localeEvents = new LocaleEventEmitter();
@@ -421,8 +429,8 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
       onFpsToggle,
     });
 
-    // Scroll to [F] (index 8: S=0,C=1,L=2,B=3,I=4,A=5,M=6,N=7,F=8)
-    for (let i = 0; i < 8; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    // Scroll to [F] (index 9: S=0,C=1,L=2,B=3,I=4,K=5,A=6,M=7,N=8,F=9)
+    for (let i = 0; i < 9; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
 
     expect(onFpsToggle).toHaveBeenCalledTimes(1);
@@ -445,8 +453,8 @@ describe('QuickActionMenuPanel — getR1Hints (QAM-13, QAM-14)', () => {
 
   it('QAM-14: getR1Hints() in language sub-menu mode returns different hints', () => {
     const { panel } = makeMenu({ locale: 'it' });
-    // Switch to language mode
-    for (let i = 0; i < 7; i++) {
+    // Switch to language mode ([N] at index 8 after Phase 8 inserted [K])
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' });
@@ -503,6 +511,7 @@ describe('QuickActionMenuPanel — CR-01 navigation race regression (QAM-NAV)', 
     { label: '[L] Log', scrolls: 2, panelId: 'log' },
     { label: '[B] Spellbook', scrolls: 3, panelId: 'spellbook' },
     { label: '[I] Inventory', scrolls: 4, panelId: 'inventory' },
+    { label: '[K] Skills', scrolls: 5, panelId: 'canvas-skills' },
   ];
 
   for (const { label, scrolls, panelId } of navItems) {
@@ -555,8 +564,8 @@ describe('QuickActionMenuPanel — INV-1 fixtures (QAM-FIX-*)', () => {
 
   it('QAM-FIX-03: quick-action.language-submenu.it.txt — IT locale, language sub-menu, [A] Auto active', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it', currentLocaleOverride: 'auto' });
-    // Switch to language mode
-    for (let i = 0; i < 7; i++) {
+    // Switch to language mode ([N] at index 8 after Phase 8 inserted [K])
+    for (let i = 0; i < 8; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     panel.onEvent({ kind: 'tap' }); // enter language mode

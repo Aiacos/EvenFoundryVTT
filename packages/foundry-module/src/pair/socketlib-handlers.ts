@@ -54,10 +54,8 @@ import { getCharacterSnapshot, listPlayerCharactersForUser } from '../readers/ch
 import { getCombatSnapshot } from '../readers/combat-reader.js';
 import { getEventLog } from '../readers/event-log-reader.js';
 import { getSceneViewport } from '../readers/scene-reader.js';
-import { writeAuditLog } from '../write-path/audit-log.js';
-import { hashBearer } from '../write-path/idempotency-cache.js';
+import { dispatchToolAuthorized, type NOT_AUTHORIZED } from '../write-path/dispatch-authorized.js';
 import type { ToolId, ToolResult } from '../write-path/tool-registry.js';
-import { dispatchTool } from '../write-path/tool-registry.js';
 import { authorizedActorIdsForUser } from './actor-authorization.js';
 import { revokeBearer, validateBearer } from './bearer-registry.js';
 
@@ -333,123 +331,26 @@ function validateToolPayload(
 }
 
 /**
- * Constant error code returned when the bearer's bound user does not OWN the
- * acting `args.actor_id` of a write tool (ADR-0014 Amendment 1).
+ * Creates a thin dispatch adapter for a given ToolId (socketlib path).
  *
- * Constant-shape (T-07-02-03 discipline carried into the write-authz gate): the
- * value never leaks game-state info — a caller cannot distinguish "actor does not
- * exist" from "actor exists but you do not own it", preventing actor enumeration.
- */
-const NOT_AUTHORIZED = 'not_authorized' as const;
-
-/**
- * Extracts the ACTING actor id from raw write-tool args (ADR-0014 Amendment 1).
- *
- * The write-path convention (verified across every handler) is that `args.actor_id`
- * is the actor PERFORMING the action — the player's own PC. This is distinct from
- * `args.targets` (token ids the action is aimed at), which may legitimately be
- * NON-owned (e.g. attacking a monster). The write-authz gate therefore checks the
- * acting actor ONLY and never touches `args.targets`.
- *
- * Tools without an acting `args.actor_id` — `move-token` (`token_id`) and
- * `confirm-template-placement` (`placementId`; the acting actor was already
- * authorized at `place-template` time) — yield `null` here and are unaffected by
- * the gate (the caller treats `null` as "no acting actor to authorize").
- *
- * @param args - Raw, not-yet-validated tool args object.
- * @returns The acting `actor_id` string, or `null` when the field is absent / non-string.
- */
-function extractActingActorId(args: unknown): string | null {
-  if (args === null || typeof args !== 'object' || !('actor_id' in args)) {
-    return null;
-  }
-  const value = (args as Record<string, unknown>).actor_id;
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-/**
- * Authorizes a write tool's ACTING actor against the bearer's owned-actor set.
- *
- * ADR-0014 Amendment 1 (write-path authorization) — Foundry-side authoritative
- * enforcement. Write tools run in GM context via `socket.executeAsGM`, which
- * bypasses Foundry's per-actor ownership; without this gate a player could invoke
- * a write tool acting AS another player's PC by supplying a foreign `args.actor_id`.
- *
- * Behaviour:
- * - No acting `args.actor_id` (e.g. `move-token`, `confirm-template-placement`) →
- *   authorized (the gate does not apply; `null` acting actor).
- * - Invalid / unknown bearer → DENIED (fail-closed). A non-validatable token never
- *   reaches a write.
- * - Acting `args.actor_id` NOT in the bound user's live owned set
- *   (`actor.testUserPermission(user, "OWNER")` via {@link authorizedActorIdsForUser})
- *   → DENIED. TARGETS are intentionally NOT consulted.
- * - Otherwise → authorized.
- *
- * On denial an audit-log entry is written (best-effort, fault-tolerant) so denied
- * writes are observable; the bearer is hashed (never logged raw, T-02-01).
- *
- * @param toolId  - The ToolId being dispatched (recorded in the denied-write audit entry).
- * @param payload - Validated tool payload (`{ args, idempotencyKey, bearer }`).
- * @returns `true` when the acting actor is authorized (or there is none); `false` to deny.
- */
-async function isActingActorAuthorized(
-  toolId: ToolId,
-  payload: { args: unknown; idempotencyKey: string; bearer: string },
-): Promise<boolean> {
-  const actingActorId = extractActingActorId(payload.args);
-  // Tools with no acting actor (move-token / confirm-template-placement) are unaffected.
-  if (actingActorId === null) {
-    return true;
-  }
-
-  // Resolve bearer → bound user → live owned-actor set (Foundry is authority).
-  const validation = validateBearer(payload.bearer);
-  const owned =
-    validation.valid && validation.entry !== undefined
-      ? authorizedActorIdsForUser(validation.entry.userId)
-      : [];
-
-  if (owned.includes(actingActorId)) {
-    return true;
-  }
-
-  // Denied: write a best-effort audit entry so cross-actor write attempts are
-  // observable. Fault-tolerant — an audit failure must never block the denial.
-  try {
-    const bearerHash = await hashBearer(payload.bearer);
-    await writeAuditLog({
-      tool: toolId,
-      payload: payload.args,
-      idempotencyKey: payload.idempotencyKey,
-      actorId: actingActorId,
-      result: { success: false, error: NOT_AUTHORIZED },
-      timestamp: Date.now(),
-      bearer_id: bearerHash.slice(0, 8), // T-02-01: never the full token
-    });
-  } catch {
-    // writeAuditLog is internally fault-tolerant; this outer catch is a safety net.
-  }
-  return false;
-}
-
-/**
- * Creates a thin dispatchTool adapter for a given ToolId.
- *
- * Each of the 4 replaced handlers uses this factory to:
+ * Each of the replaced handlers uses this factory to:
  * 1. Validate the raw socketlib input shape (invalid_input guard)
- * 2. Authorize the ACTING `args.actor_id` against the bearer's owned set
- *    (ADR-0014 Amendment 1 — `not_authorized` on deny, BEFORE any write)
- * 3. Call dispatchTool with the correct ToolId and payload
- * 4. Return the ToolResult (passed through to socketlib caller)
+ * 2. Run the SHARED authoritative write path {@link dispatchToolAuthorized}, which
+ *    authorizes the ACTING `args.actor_id` against the bearer's owned set
+ *    (ADR-0014 Amendment 1 — `not_authorized` on deny, BEFORE any write) and then
+ *    dispatches. The Phase 8 poll-based poller calls the SAME function, so both
+ *    write channels enforce identical per-actor authorization.
+ * 3. Return the ToolResult (passed through to the socketlib caller)
  *
- * The adapter is `async` because dispatchTool is async (idempotency cache + audit log).
+ * The adapter is `async` because dispatchToolAuthorized is async (authz validate +
+ * dispatchTool's idempotency cache + audit log).
  *
  * @param toolId - The ToolId to dispatch (passed as literal by each handler below)
  * @returns Async socketlib handler function
  *
- * @see packages/foundry-module/src/pair/actor-authorization.ts (authorizedActorIdsForUser)
+ * @see packages/foundry-module/src/write-path/dispatch-authorized.ts (shared authz + dispatch)
+ * @see packages/foundry-module/src/write-path/tool-invocation-poller.ts (poll path — same gate)
  * @see docs/architecture/0014-bearer-actor-authorization.md (Amendment 1)
- * @see packages/foundry-module/src/write-path/tool-registry.ts (dispatchTool)
  * @see .planning/phases/07-foundry-module-write-path/07-02-PLAN.md Task 2
  */
 function makeDispatchAdapter(
@@ -464,13 +365,9 @@ function makeDispatchAdapter(
     if (payload === null) {
       return { success: false, error: 'invalid_input' };
     }
-    // ADR-0014 Amendment 1: authoritative per-actor write authorization. The
-    // acting actor (`args.actor_id`) must be OWNED by the bearer's bound user;
-    // TARGETS (`args.targets`) are intentionally excluded. Denied → no dispatch.
-    if (!(await isActingActorAuthorized(toolId, payload))) {
-      return { success: false, error: NOT_AUTHORIZED };
-    }
-    return dispatchTool(toolId, payload);
+    // ADR-0014 Amendment 1: shared authoritative per-actor write authorization +
+    // dispatch. Denied (acting actor not owned by the bearer's user) → no dispatch.
+    return dispatchToolAuthorized(toolId, payload);
   };
 }
 

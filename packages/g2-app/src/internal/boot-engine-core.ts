@@ -1318,7 +1318,10 @@ export async function _bootEngineCore(
                     ? 'canvas-spellbook'
                     : isCanvas && target === 'log'
                       ? 'canvas-log'
-                      : target;
+                      : // Phase 8 write channel: the menu's [K] Skills item targets
+                        // 'canvas-skills' directly (canvas-only interactive skill-roll
+                        // panel), so it passes through the default branch unchanged.
+                        target;
 
           void panelRouter.openPanel(resolvedTarget, {
             bridge,
@@ -1959,6 +1962,36 @@ export async function _bootEngineCore(
     const p = panel as unknown as CanvasSelectablePanel;
     p.setWsEventBus(wsEventBus);
     p.setActionOptionsHandler(canvasSpellDispatch);
+  });
+
+  // 11f-ter. Phase 8 write channel — canvas INTERACTIVE Skills panel.
+  //          The Quick Action [K] opens it; a tap rolls the highlighted skill DIRECTLY
+  //          (no ActionOptions modal): build the canonical skill-check tool.invoke
+  //          envelope (handshake.session_id + fresh idempotencyKey) and send it via the
+  //          WsSender holder (reconnect-safe). advantage is fixed to 'normal' for the
+  //          direct-roll affordance.
+  const canvasSkillRollDispatch = (req: { actorId: string; skill: string }): void => {
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'skill-check' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: { actor_id: req.actorId, skill: req.skill, advantage: 'normal' as const },
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
+  };
+  panelRouter.setPanelInstanceHandler('canvas-skills', (panel) => {
+    const p = panel as unknown as {
+      setWsEventBus: (b: typeof wsEventBus) => void;
+      setSkillRollHandler: (h: ((req: { actorId: string; skill: string }) => void) | null) => void;
+    };
+    p.setWsEventBus(wsEventBus);
+    p.setSkillRollHandler(canvasSkillRollDispatch);
   });
 
   // 11g. Quick-action handler for combat-tracker panel (Plan 08-05 step 11i).

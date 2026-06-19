@@ -238,14 +238,15 @@ async function flushMicrotasks(iterations = 8): Promise<void> {
  * Then taps to activate. Flushes microtasks after the tap because `_activateCurrentItem`
  * calls fire-and-forget `void router.openPanel(...)` / `void router.popOverlay(...)`.
  *
- * Implementation: MAIN_ITEMS ordering is S/C/L/B/I/A/M/N/X. Scroll DOWN from 0.
+ * Implementation: MAIN_ITEMS ordering is S/C/L/B/I/K/A/M/N/F/X. Scroll DOWN from 0.
  */
 async function tapMenuItemByKey(
   bus: PanelGestureBus,
   _menu: QuickActionMenuPanel,
   key: string,
 ): Promise<void> {
-  const MAIN_KEYS = ['S', 'C', 'L', 'B', 'I', 'A', 'M', 'N', 'X'];
+  // Must mirror MAIN_ITEMS order in quick-action-menu-panel.ts (Phase 8 added [K]).
+  const MAIN_KEYS = ['S', 'C', 'L', 'B', 'I', 'K', 'A', 'M', 'N', 'F', 'X'];
   const targetIdx = MAIN_KEYS.indexOf(key);
   if (targetIdx < 0) throw new Error(`Unknown menu key: ${key}`);
   // Scroll down `targetIdx` times to reach the target (starts at index 0 = [S])

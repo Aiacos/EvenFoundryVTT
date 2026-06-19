@@ -140,6 +140,7 @@ const MAIN_ITEMS = [
   { key: 'L', i18nKey: 'quick_item_log', action: 'navigate', target: 'log' },
   { key: 'B', i18nKey: 'quick_item_book', action: 'navigate', target: 'spellbook' },
   { key: 'I', i18nKey: 'quick_item_inventory', action: 'navigate', target: 'inventory' },
+  { key: 'K', i18nKey: 'quick_item_skills', action: 'navigate', target: 'canvas-skills' },
   { key: 'A', i18nKey: 'quick_item_action', action: 'action-stub', target: undefined },
   { key: 'M', i18nKey: 'quick_item_map', action: 'map-mode-toggle', target: undefined },
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
@@ -222,6 +223,11 @@ function drawMenuIcon(ctx: IconCtx, key: string, x: number, y: number): void {
       ctx.lineTo(x + 7, y + 6);
       ctx.closePath();
       ctx.fill();
+      break;
+    case 'K': // skills — checkmark in a box (a passed/rolled check)
+      ctx.strokeRect(x + 2, y + 2, 10, 10);
+      line(4, 7, 6, 10);
+      line(6, 10, 10, 4);
       break;
     case 'M': // map — 2×2 grid
       ctx.strokeRect(x + 2, y + 2, 10, 10);

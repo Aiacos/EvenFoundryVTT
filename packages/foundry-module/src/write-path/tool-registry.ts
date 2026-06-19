@@ -65,7 +65,12 @@ export type ToolId =
   // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPS 14 → 17)
   | 'cast-shield'
   | 'cast-counterspell'
-  | 'opportunity-attack';
+  | 'opportunity-attack'
+  // Phase 8 write channel — direct skill/ability check roll (ACT-01).
+  // No NEW socketlib handler is registered (the poll-based poller calls
+  // dispatchToolAuthorized directly); TOOL_HANDLER_IDS keeps a mapping entry for
+  // type-completeness only. The socketlib `socket.register` count stays 17.
+  | 'skill-check';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
 
@@ -212,6 +217,17 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
   'cast-shield': 'evf.castShield',
   'cast-counterspell': 'evf.castCounterspell',
   'opportunity-attack': 'evf.opportunityAttack',
+  /**
+   * Phase 8 write channel — `skill-check` maps to `evf.rollSkill` for type-completeness.
+   *
+   * NOTE: NO socketlib handler is registered for this id (the socketlib `socket.register`
+   * count stays 17). The Phase 8 reverse-channel poller calls `dispatchToolAuthorized`
+   * directly in GM context, so the socketlib path is not used for skill-check. This
+   * mapping exists only so `TOOL_HANDLER_IDS` remains a total `Record<ToolId, string>`.
+   *
+   * @see packages/foundry-module/src/write-path/tool-invocation-poller.ts
+   */
+  'skill-check': 'evf.rollSkill',
 };
 
 // ─── Module-level singleton IdempotencyStore ─────────────────────────────────

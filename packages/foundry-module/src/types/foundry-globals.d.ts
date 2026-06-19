@@ -768,6 +768,26 @@ interface FoundryActor {
    * @see docs/architecture/0014-bearer-actor-authorization.md
    */
   testUserPermission(user: FoundryUser, permission: string | number): boolean;
+  /**
+   * Roll a skill (or ability-keyed) check (dnd5e 5.x `Actor5e#rollSkill`).
+   *
+   * dnd5e 4.x/5.x config-object form: `rollSkill(config, dialog?, message?)`, where
+   * `config.skill` is the 3-letter skill key and `config.advantage` /
+   * `config.disadvantage` top-level booleans select the roll mode. Returns the rolled
+   * `D20Roll[]` (or `null` if a suppressed dialog is cancelled). Optional in this
+   * minimal type because non-character actors / older systems may not expose it; the
+   * skill-check handler guards with `actor.rollSkill?.(...)`.
+   *
+   * @param config - `{ skill: string, advantage?: boolean, disadvantage?: boolean, ... }`.
+   * @returns A promise resolving to the roll result (system-specific shape).
+   * @see https://github.com/foundryvtt/dnd5e — Actor5e#rollSkill (5.3.x)
+   * @see packages/foundry-module/src/write-path/handlers/skill-check.ts
+   */
+  rollSkill?(config: {
+    skill: string;
+    advantage?: boolean;
+    disadvantage?: boolean;
+  }): Promise<unknown>;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────

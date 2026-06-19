@@ -77,6 +77,11 @@ import {
   getWebpQuality,
   registerSettings,
 } from './settings.js';
+// Phase 8 write channel — GM-side poller for the reverse channel. Polls the bridge
+// for g2-app tool.invoke writes, runs them through the authoritative write path
+// (dispatchToolAuthorized — ADR-0014), and POSTs the result back. GM-gated; NO new
+// socketlib handler (count stays 17).
+import { registerToolInvocationPoller } from './write-path/tool-invocation-poller.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
 // when the socketlib handlers are invoked.
@@ -129,6 +134,13 @@ export const MODULE_ID = 'evenfoundryvtt' as const;
 let bearerRegistryHandle:
   | import('./readers/bearer-registry-reader.js').BearerRegistryReaderHandle
   | null = null;
+
+/**
+ * Teardown for the Phase 8 tool-invocation poller (clearInterval). Retained at module
+ * scope so a re-fired `ready` hook stops the prior interval before starting a new one,
+ * and so the page lifecycle can stop it. Null until the first `ready`.
+ */
+let _toolInvocationPollerTeardown: (() => void) | null = null;
 
 /**
  * Resolves the internal secret used to authenticate POSTs to /internal/delta.
@@ -570,6 +582,15 @@ Hooks.once('ready', () => {
   // `bearerRegistryHandle` exists for the re-emit callback. NO new socketlib handler
   // (count stays 17); identity is authenticated by user-flag document ownership.
   registerSelfPairIngestion(() => bearerRegistryHandle?.reEmit());
+  // Phase 8 write channel: start the GM-side tool-invocation poller. It reads
+  // bridgeUrl + internalSecret exactly as bridgeDeltaEmitter does (injected getters)
+  // and is GM-gated internally (non-GM clients no-op). The teardown is retained for
+  // the page lifecycle; Foundry reload tears down the whole client.
+  _toolInvocationPollerTeardown?.();
+  _toolInvocationPollerTeardown = registerToolInvocationPoller({
+    getBridgeUrl,
+    getInternalSecret,
+  });
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Player-view streaming consent (ADR-0015 §C): if THIS client enabled the
   // opt-in (client-scope setting), re-assert it as a User flag (world data) so the
