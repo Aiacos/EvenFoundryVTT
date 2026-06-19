@@ -7,7 +7,7 @@
  *   3. Subscribe to the wizard store — render the correct step on each change.
  *   4. Manage step lifecycle: call `step.destroy()` before switching.
  *
- * All 25 UI-B i18n keys from 02-UI-SPEC.md are wired through the `t` function.
+ * All 24 UI-B i18n keys from 02-UI-SPEC.md are wired through the `t` function.
  * Key wiring is validated at load time via `checkRequiredKeys`.
  *
  * Security (T-02-03): step titles rendered via textContent; step indicators via aria attributes.
@@ -25,6 +25,7 @@ import { installHubPolyfill } from '../hub-polyfill.js';
 import { initAutoConnect } from './auto-connect.js';
 import { clearI18nCache, detectLocale, loadI18n, makeT } from './i18n.js';
 import { defaultWizardCatalog } from './i18n-catalog.js';
+import { isWizardNoAuth } from './is-dev-no-auth.js';
 import { createInitialState, createStore, WizardStep } from './state.js';
 import * as Completion from './steps/completion.js';
 import * as Step1 from './steps/step1-profile.js';
@@ -35,7 +36,7 @@ import * as Step3 from './steps/step3-character.js';
 installHubPolyfill();
 
 /**
- * All 25 UI-B i18n keys from 02-UI-SPEC.md.
+ * All 24 UI-B i18n keys from 02-UI-SPEC.md.
  * This array is the compile-time source of truth for key coverage.
  * If a key is missing from the bridge catalog, `t(key)` returns the key itself.
  */
@@ -53,7 +54,6 @@ export const ALL_I18N_KEYS = [
   'evf.wizard.step2.show_toggle',
   'evf.wizard.step2.hide_toggle',
   'evf.wizard.step2.paste_btn',
-  'evf.wizard.step2.scan_qr_btn',
   'evf.wizard.step2.connecting',
   'evf.wizard.step2.error.401',
   'evf.wizard.step2.error.403',
@@ -86,7 +86,7 @@ export const ALL_I18N_KEYS = [
   'evf.btn.edit_url',
 ] as const;
 
-/** Verify that all 25 UI-B keys from 02-UI-SPEC.md are present. Called at init. */
+/** Verify that all 24 UI-B keys from 02-UI-SPEC.md are present. Called at init. */
 export function checkRequiredKeys(catalog: Record<string, string>): string[] {
   return ALL_I18N_KEYS.filter((key) => !(key in catalog));
 }
@@ -116,6 +116,20 @@ export async function initWizard(): Promise<void> {
   const store = createStore(createInitialState());
   const { profileId } = store.get();
 
+  // Quick Task 260604-cwa: dev-only debug agent — wire behind dynamic import gate so
+  // the entire debug-agent module is tree-shaken from the production bundle.
+  // T-cwa-05: the dynamic import is guarded by the SAME boolean flag that the
+  // debug-agent module itself checks, so Rollup sees both branches as dead in prod.
+  if (import.meta.env.DEV || import.meta.env.VITE_EVF_DEBUG) {
+    import('../debug/debug-agent.js')
+      .then(({ installDebugAgent }) => {
+        installDebugAgent({ store });
+      })
+      .catch(() => {
+        // Soft-fail — debug agent unavailable does not break the wizard
+      });
+  }
+
   // Load i18n. The bundled catalog is the BASE so every step (incl. Step 1, which runs
   // before any bridge is known) is readable; the bridge-fetched catalog is merged on top
   // and may override/extend it. Missing-everywhere keys still fall back to the key name.
@@ -139,12 +153,17 @@ export async function initWizard(): Promise<void> {
   // Store i18n fn in state
   store.set({ i18n: t });
 
-  // Initialize auto-connect
-  try {
-    initAutoConnect(store, profileId);
-  } catch {
-    // Even Hub may not be available in dev environment — not fatal
-    console.warn('[EVF] wizard: hub.eventBus not available — auto-connect disabled.');
+  // Initialize auto-connect.
+  // DEV-ONLY: skip it when the token is removed (isWizardNoAuth) — the saved-profile
+  // auto-load would clobber the pre-filled dev bridge URL and re-introduce a stale
+  // (possibly token-bound) session, breaking the clean tokenless dev flow.
+  if (!isWizardNoAuth()) {
+    try {
+      initAutoConnect(store, profileId);
+    } catch {
+      // Even Hub may not be available in dev environment — not fatal
+      console.warn('[EVF] wizard: hub.eventBus not available — auto-connect disabled.');
+    }
   }
 
   // Track current step component for cleanup
@@ -201,9 +220,13 @@ export async function initWizard(): Promise<void> {
         break;
       case WizardStep.COMPLETION: {
         const selected = Step3.getSelectedCharacter();
+        // Quick Task 260604-ovn: hand off to the engine after the success screen.
+        // handoff:true schedules the redirect to ../index.html (engine entry) so
+        // launchApp picks up the freshly-saved session. REPAIR (below) omits it.
         Completion.render(content, store, t, {
           characterName: selected.name || store.get().characterId,
           characterClass: selected.characterClass,
+          handoff: true,
         });
         break;
       }

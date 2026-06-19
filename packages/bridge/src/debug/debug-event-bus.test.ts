@@ -120,14 +120,17 @@ describe('DebugEventBus.size + byDirection (Quick Task 260529-icd)', () => {
     expect(bus.size).toBe(3);
   });
 
-  it('byDirection seeds all 5 directions at 0 and counts pushed events', () => {
+  it('byDirection seeds all 7 directions at 0 and counts pushed events', () => {
     const bus = new DebugEventBus();
+    // Quick Task 260604-cwa additively extended byDirection with agent-log + agent-result.
     expect(bus.byDirection()).toEqual({
       inbound: 0,
       outbound: 0,
       tool: 0,
       log: 0,
       display: 0,
+      'agent-log': 0,
+      'agent-result': 0,
     });
     bus.push(ev({ direction: 'inbound' }));
     bus.push(ev({ direction: 'outbound' }));
@@ -141,6 +144,8 @@ describe('DebugEventBus.size + byDirection (Quick Task 260529-icd)', () => {
       tool: 1,
       log: 1,
       display: 1,
+      'agent-log': 0,
+      'agent-result': 0,
     });
   });
 });

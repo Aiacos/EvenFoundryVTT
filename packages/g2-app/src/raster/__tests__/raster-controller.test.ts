@@ -137,6 +137,83 @@ describe('RasterController — Worker singleton + debounce + heartbeat + failure
     expect(controller.getBleVerdict()).toBe('glyph');
   });
 
+  it('RC-5b: alternating fail/success WITHIN one frame still trips the fallback', async () => {
+    // Regression for the BLE-fallback guard reset bug: a single successful tile
+    // mid-frame used to reset failureTimestamps = [], so an alternating
+    // fail/success/fail/success/fail pattern never reached the 3-failure
+    // threshold. After the fix, an interleaved success no longer resets the
+    // window — the 3 failures in this single degraded frame trip 'glyph'.
+    const { bridge, updateImageRawData } = makeMockBridge();
+    // Five tiles, results alternate: FAIL, OK, FAIL, OK, FAIL → 3 failures.
+    updateImageRawData
+      .mockResolvedValueOnce(ImageRawDataUpdateResult.sendFailed)
+      .mockResolvedValueOnce(ImageRawDataUpdateResult.success)
+      .mockResolvedValueOnce(ImageRawDataUpdateResult.sendFailed)
+      .mockResolvedValueOnce(ImageRawDataUpdateResult.success)
+      .mockResolvedValueOnce(ImageRawDataUpdateResult.sendFailed);
+    const controller = new RasterController(bridge, { workerFactory });
+    const png = new Uint8Array([0xaa]);
+    const promise = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    const frameId = (worker._sentMessages()[0] as { frameId: number }).frameId;
+    worker._dispatchMessage({
+      frameId,
+      changedTiles: [
+        { index: 0, pngBytes: png, subTileCount: 1 },
+        { index: 1, pngBytes: png, subTileCount: 1 },
+        { index: 2, pngBytes: png, subTileCount: 1 },
+        { index: 3, pngBytes: png, subTileCount: 1 },
+        { index: 4, pngBytes: png, subTileCount: 1 },
+      ],
+    } as RasterResponse);
+    await promise;
+    await vi.runOnlyPendingTimersAsync();
+    expect(controller.getBleVerdict()).toBe('glyph');
+  });
+
+  it('RC-5c: a fully-clean frame resets the window (no false fallback)', async () => {
+    // The window MUST still reset when an ENTIRE frame dispatches cleanly, so a
+    // single stray failure followed by clean frames never accumulates to 3.
+    const { bridge, updateImageRawData } = makeMockBridge();
+    const controller = new RasterController(bridge, { workerFactory });
+    const png = new Uint8Array([0xaa]);
+    // Frame 1: one failure (count = 1).
+    updateImageRawData.mockResolvedValueOnce(ImageRawDataUpdateResult.sendFailed);
+    let promise = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    let frameId = (worker._sentMessages()[0] as { frameId: number }).frameId;
+    worker._dispatchMessage({
+      frameId,
+      changedTiles: [{ index: 0, pngBytes: png, subTileCount: 1 }],
+    } as RasterResponse);
+    await promise;
+    await vi.runOnlyPendingTimersAsync();
+    // Frame 2: fully clean (default success) → resets the window.
+    promise = controller.requestFrame(ZERO_PIXELS, 400, 200);
+    await vi.advanceTimersByTimeAsync(200);
+    frameId = (worker._sentMessages()[1] as { frameId: number }).frameId;
+    worker._dispatchMessage({
+      frameId,
+      changedTiles: [{ index: 0, pngBytes: png, subTileCount: 1 }],
+    } as RasterResponse);
+    await promise;
+    await vi.runOnlyPendingTimersAsync();
+    // Frame 3 + 4: one failure each — only 2 since the reset → no fallback.
+    for (let i = 0; i < 2; i++) {
+      updateImageRawData.mockResolvedValueOnce(ImageRawDataUpdateResult.sendFailed);
+      promise = controller.requestFrame(ZERO_PIXELS, 400, 200);
+      await vi.advanceTimersByTimeAsync(200);
+      frameId = (worker._sentMessages()[2 + i] as { frameId: number }).frameId;
+      worker._dispatchMessage({
+        frameId,
+        changedTiles: [{ index: 0, pngBytes: png, subTileCount: 1 }],
+      } as RasterResponse);
+      await promise;
+      await vi.runOnlyPendingTimersAsync();
+    }
+    expect(controller.getBleVerdict()).not.toBe('glyph');
+  });
+
   it('RC-6: startIdleHeartbeat triggers requestFrame at the configured interval', async () => {
     const { bridge } = makeMockBridge();
     const controller = new RasterController(bridge, { workerFactory });

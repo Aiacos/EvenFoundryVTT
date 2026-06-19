@@ -13,12 +13,23 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 2
  */
 
+import { isWizardNoAuth } from '../is-dev-no-auth.js';
 import type { WizardState } from '../state.js';
 import { type Store, WizardStep } from '../state.js';
 import { listProfiles } from '../tier3-storage.js';
 
-/** Bridge URL validation regex from 02-UI-SPEC.md Step 1 Input Affordances. */
-export const BRIDGE_URL_REGEX = /^https?:\/\/[^/]+:\d{1,5}(\/.*)?$/;
+/**
+ * Bridge URL validation (Feature 001 D1 — the "direct link" is a full HTTPS origin).
+ *
+ * Accepts `http(s)://host[:port][/path]` — the **port is OPTIONAL** so a standard
+ * HTTPS origin on 443 (a reverse-proxied bridge, or a Forge/Foundry world URL like
+ * `https://eu.forge-vtt.com/invite/…`) validates, not just an explicit `:8910`
+ * homelab address. No spaces; host required; path optional.
+ *
+ * (Was `…[^/]+:\d{1,5}…` which WRONGLY required a port and rejected every port-less
+ * https origin — the cause of the "URL non valido" on a Forge/443 address.)
+ */
+export const BRIDGE_URL_REGEX = /^https?:\/\/[^\s/:]+(:\d{1,5})?(\/[^\s]*)?$/;
 
 /**
  * All i18n keys used by Step 1.
@@ -224,7 +235,11 @@ export function render(
     if (!BRIDGE_URL_REGEX.test(url)) {
       return;
     }
-    store.set({ bridgeUrl: url, step: WizardStep.STEP2, error: null });
+    // DEV-ONLY: when the access token is removed (isWizardNoAuth), skip Step 2
+    // (token entry) and go straight to Step 3 (character selection). The empty
+    // bearer is accepted by a bridge started with EVF_DEV_NO_AUTH.
+    const nextStep = isWizardNoAuth() ? WizardStep.STEP3 : WizardStep.STEP2;
+    store.set({ bridgeUrl: url, step: nextStep, error: null });
   }
 
   urlInput.addEventListener('blur', onUrlBlur);

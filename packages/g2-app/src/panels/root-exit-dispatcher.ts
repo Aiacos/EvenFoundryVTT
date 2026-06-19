@@ -2,8 +2,8 @@
  * Root-page exit dispatcher — EXIT-01 / LIFE-03 (ADR-0012 D-4).
  *
  * Router-level bus listener that calls `bridge.shutDownPageContainer(1)` (Even Hub
- * Mode 1 = graceful exit dialog) on a `double-tap` while the bare map (`id 'map-base'`,
- * z=0 root, no overlay) is the top layer.
+ * Mode 1 = graceful exit dialog) on a `double-tap` while no overlay is open
+ * (i.e. the root map is the effective top, whether glyph or canvas mode).
  *
  * # Why this exists (Even Hub app-submission requirement)
  *
@@ -12,13 +12,21 @@
  * exit) is unacceptable on the root page; the WebView must show the system exit dialog
  * and close on confirm. Without this the app fails QA step 3.
  *
- * # Why root-only
+ * # Root detection (Rule 1 auto-fix 2026-06-10 — canvas-mode fix)
  *
- * On overlay panels (id !== 'map-base') `double-tap` is the panel's own close/back
- * gesture, handled by the panel's `onEvent`. The dispatcher fires ONLY when the top
- * layer is the bare map — i.e. there is no overlay to close, so double-tap means
- * "exit the app". This mirrors the over-scroll dispatcher's router-level pattern and
- * its documented INV-5 exemption ("a router-level listener, not a panel").
+ * `layerManager.getTopLayer()` returns the TOPMOST OverlayPanel (z=2), or `null` when
+ * no overlay is open. In canvas mode the root layer is `MapCanvasLayer` (id='map-canvas')
+ * at z=0, which is NOT an OverlayPanel — so `getTopLayer()` returns `null` at the root.
+ * In glyph mode the root is `MapBaseLayer` (id='map-base') — also not an OverlayPanel,
+ * so `getTopLayer()` also returns `null` at the root.
+ *
+ * Updated logic: fire exit when `top === null` (no overlay open). When `top !== null`
+ * an overlay IS open; its own `onEvent` handles double-tap as close/back — root-exit
+ * must NOT fire (overlay-open suppression preserved).
+ *
+ * Pre-fix logic (`top === null || top.id !== 'map-base'`) incorrectly returned early
+ * in canvas mode because `top === null` triggered the early-return guard. The early
+ * return is now guarded by `top !== null` only — `null` means "no overlay → exit".
  *
  * # Best-effort
  *
@@ -27,7 +35,7 @@
  * gesture. Mirrors the `map-mode-toggle` best-effort persistence policy.
  *
  * @param gestureBus   Shared in-process gesture bus.
- * @param layerManager LayerManager singleton — `getTopLayer()` identifies the root.
+ * @param layerManager LayerManager singleton — `getTopLayer()` identifies open overlays.
  * @param bridge       Resolved `EvenAppBridge` — `shutDownPageContainer(1)` exit call.
  * @returns Idempotent unsubscribe closure — call in `BootEngineHandle.teardown()`.
  *
@@ -41,9 +49,6 @@ import type { LayerManager } from '../engine/layer-manager.js';
 import type { R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 
-/** The z=0 root map layer id (see `raster/map-base-layer.ts`). */
-const ROOT_LAYER_ID = 'map-base' as const;
-
 /** Even Hub graceful-exit mode (1 = confirm dialog; 0 = immediate is forbidden on root). */
 const EXIT_MODE_CONFIRM = 1 as const;
 
@@ -51,9 +56,10 @@ const EXIT_MODE_CONFIRM = 1 as const;
  * Attach the root-exit dispatcher to the gesture bus.
  *
  * On `double-tap`:
- *   1. `layerManager.getTopLayer()` — if `null` or `id !== 'map-base'` → return
- *      (an overlay is open; its own `onEvent` handles double-tap as close/back).
- *   2. Otherwise call `bridge.shutDownPageContainer(1)` (best-effort, await-guarded).
+ *   1. `layerManager.getTopLayer()` — if NOT `null`, an overlay is open; its own
+ *      `onEvent` handles double-tap as close/back → return without firing exit.
+ *   2. If `null` (no overlay open — root map is the effective top in both glyph and
+ *      canvas mode) → call `bridge.shutDownPageContainer(1)` (best-effort, await-guarded).
  *
  * On any other gesture kind: return immediately.
  *
@@ -69,8 +75,9 @@ export function attachRootExit(
       return;
     }
     const top = layerManager.getTopLayer();
-    // Only the bare map root exits; an open overlay consumes its own double-tap.
-    if (top === null || top.id !== ROOT_LAYER_ID) {
+    // An open overlay (top !== null) handles its own double-tap via onEvent.
+    // `null` means no overlay — root double-tap → graceful exit.
+    if (top !== null) {
       return;
     }
     // Best-effort graceful exit (Mode 1 dialog). Never throw into the bus.

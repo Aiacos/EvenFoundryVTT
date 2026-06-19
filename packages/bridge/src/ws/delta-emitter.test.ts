@@ -288,4 +288,207 @@ describe('DeltaEmitter', () => {
       expect(goodWs.send).toHaveBeenCalledOnce();
     });
   });
+
+  // ─── sendInitialToSession tests (DE-INIT-01..06) ──────────────────────────────
+
+  describe('sendInitialToSession', () => {
+    it('DE-INIT-01: sends to the target session only — other sessions receive nothing', () => {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+
+      const target = sessionStore.createSession('tok-target', 'it', ['read_char']);
+      const other = sessionStore.createSession('tok-other', 'it', ['read_char']);
+      const wsTarget = makeMockWs();
+      const wsOther = makeMockWs();
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(target.sessionId, wsTarget as any);
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(other.sessionId, wsOther as any);
+
+      emitter.sendInitialToSession(target.sessionId, 'character.delta', { hp: 42 });
+
+      expect(wsTarget.send).toHaveBeenCalledOnce();
+      expect(wsOther.send).not.toHaveBeenCalled();
+    });
+
+    it('DE-INIT-02: envelope has proto evf-v1, fresh seq, correct type, session_id = target', () => {
+      const { emitter, session, ws } = setup(['read_char']);
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 7 });
+
+      expect(ws.send).toHaveBeenCalledOnce();
+      const envelope = JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}');
+      expect(envelope.proto).toBe('evf-v1');
+      expect(envelope.seq).toBe(1); // incremented from 0
+      expect(envelope.type).toBe('character.delta');
+      expect(envelope.payload).toEqual({ hp: 7 });
+      expect(envelope.session_id).toBe(session.sessionId);
+      expect(typeof envelope.ts).toBe('number');
+    });
+
+    it('DE-INIT-03: envelope pushed to replay buffer and lastSeq updated', () => {
+      const { emitter, session, replayBuffer, sessionStore } = setup(['read_char']);
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 9 });
+
+      const replayed = replayBuffer.replay(session.sessionId, 0);
+      expect(replayed).toHaveLength(1);
+      expect(replayed[0]?.type).toBe('character.delta');
+
+      const updated = sessionStore.getSession(session.sessionId);
+      expect(updated?.lastSeq).toBe(1);
+    });
+
+    it('DE-INIT-04: cap gate — session without read_char receives nothing and seq stays 0', () => {
+      const { emitter, session, ws } = setup(['read_combat']); // no read_char
+      emitter._resetSeq();
+
+      emitter.sendInitialToSession(session.sessionId, 'character.delta', { hp: 99 });
+
+      expect(ws.send).not.toHaveBeenCalled();
+      expect(emitter.currentSeq).toBe(0); // seq must NOT have incremented
+    });
+
+    it('DE-INIT-05: unknown/unregistered sessionId → no-op, no throw, seq unchanged', () => {
+      const { emitter } = setup(['read_char']);
+      emitter._resetSeq();
+
+      expect(() =>
+        emitter.sendInitialToSession('nonexistent-session-id', 'character.delta', {}),
+      ).not.toThrow();
+      expect(emitter.currentSeq).toBe(0);
+    });
+
+    it('DE-INIT-06: send() throws → stale connection cleaned up, no throw to caller', () => {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+
+      const s = sessionStore.createSession('tok-broken', 'it', ['read_char']);
+      const brokenWs = makeMockWs(true); // throws on send
+      // biome-ignore lint/suspicious/noExplicitAny: mock type
+      emitter.registerSession(s.sessionId, brokenWs as any);
+
+      expect(emitter.connectionCount).toBe(1);
+      expect(() => emitter.sendInitialToSession(s.sessionId, 'character.delta', {})).not.toThrow();
+      expect(emitter.connectionCount).toBe(0); // stale connection cleaned up
+    });
+  });
+
+  // ─── Ephemeral frame deltas (latency audit 2026-06-11) ──────────────────────
+
+  describe('emitDelta — ephemeral frame deltas (DE-EPH)', () => {
+    it.each([
+      'frame_png',
+      'frame_pixels',
+      'frame_stats',
+    ])('DE-EPH-01: %s is sent to subscribers but NOT pushed to the replay buffer', (type) => {
+      const { emitter, session, ws, replayBuffer } = setup();
+
+      emitter.emitDelta(type, { sceneId: 's1' });
+
+      expect(ws.send).toHaveBeenCalledTimes(1);
+      expect(replayBuffer.replay(session.sessionId, 0)).toHaveLength(0);
+    });
+
+    it('DE-EPH-02: frame deltas do NOT advance globalSeq — stateful seqs stay consecutive', () => {
+      const { emitter, session, replayBuffer } = setup();
+
+      emitter.emitDelta('character.delta', { hp: 10 }); // seq 1
+      emitter.emitDelta('frame_png', { sceneId: 's1' }); // reuses seq 1
+      emitter.emitDelta('frame_png', { sceneId: 's1' }); // reuses seq 1
+      emitter.emitDelta('character.delta', { hp: 9 }); // seq 2
+
+      const buffered = replayBuffer.replay(session.sessionId, 0);
+      expect(buffered.map((e) => e.seq)).toEqual([1, 2]);
+      // No seq hole → hasGap must not misread skipped frames as delta loss.
+      expect(replayBuffer.hasGap(session.sessionId, 0)).toBe(false);
+    });
+
+    it('DE-EPH-03: frame envelope carries the CURRENT seq (no advance, monotonic-safe for SeqTracker)', () => {
+      const { emitter, ws } = setup();
+
+      emitter.emitDelta('character.delta', { hp: 10 }); // seq 1
+      emitter.emitDelta('frame_png', { sceneId: 's1' });
+
+      const frameEnvelope = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1]?.[0]);
+      expect(frameEnvelope.type).toBe('frame_png');
+      expect(frameEnvelope.seq).toBe(1);
+    });
+
+    it('DE-EPH-04: frame deltas do NOT update the session lastSeq bookkeeping', () => {
+      const { emitter, session, sessionStore } = setup();
+
+      emitter.emitDelta('character.delta', { hp: 10 }); // seq 1 → lastSeq 1
+      emitter.emitDelta('frame_png', { sceneId: 's1' }); // must not touch lastSeq
+
+      expect(sessionStore.getSession(session.sessionId)?.lastSeq).toBe(1);
+    });
+  });
+
+  describe('emitDelta — frame backpressure (DE-BP)', () => {
+    function setupWithBufferedAmount(bufferedAmount: number) {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+      const session = sessionStore.createSession('tok-slow', 'it', [
+        'read_char',
+        'read_combat',
+        'read_scene',
+        'subscribe',
+      ]);
+      const ws = { send: vi.fn(), readyState: 1, bufferedAmount };
+      // biome-ignore lint/suspicious/noExplicitAny: ws mock type
+      emitter.registerSession(session.sessionId, ws as any);
+      return { emitter, session, ws };
+    }
+
+    it('DE-BP-01: frame delta is SKIPPED when the session socket buffer exceeds the threshold', () => {
+      const { emitter, ws } = setupWithBufferedAmount(300_000); // > 262_144
+
+      emitter.emitDelta('frame_png', { sceneId: 's1' });
+
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it('DE-BP-02: frame delta is sent when the socket buffer is under the threshold', () => {
+      const { emitter, ws } = setupWithBufferedAmount(100_000);
+
+      emitter.emitDelta('frame_png', { sceneId: 's1' });
+
+      expect(ws.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('DE-BP-03: stateful deltas are NEVER dropped, even on a saturated socket', () => {
+      const { emitter, ws } = setupWithBufferedAmount(10_000_000);
+
+      emitter.emitDelta('character.delta', { hp: 1 });
+
+      expect(ws.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('DE-BP-04: a saturated session does not affect delivery to a healthy session', () => {
+      const replayBuffer = new ReplayBuffer();
+      const sessionStore = new SessionStore();
+      const emitter = new DeltaEmitter(replayBuffer, sessionStore);
+      const caps = ['read_char', 'read_combat', 'read_scene', 'subscribe'];
+
+      const slow = sessionStore.createSession('tok-slow', 'it', caps);
+      const slowWs = { send: vi.fn(), readyState: 1, bufferedAmount: 9_999_999 };
+      const fast = sessionStore.createSession('tok-fast', 'it', caps);
+      const fastWs = { send: vi.fn(), readyState: 1, bufferedAmount: 0 };
+      // biome-ignore lint/suspicious/noExplicitAny: ws mock type
+      emitter.registerSession(slow.sessionId, slowWs as any);
+      // biome-ignore lint/suspicious/noExplicitAny: ws mock type
+      emitter.registerSession(fast.sessionId, fastWs as any);
+
+      emitter.emitDelta('frame_png', { sceneId: 's1' });
+
+      expect(slowWs.send).not.toHaveBeenCalled();
+      expect(fastWs.send).toHaveBeenCalledTimes(1);
+    });
+  });
 });

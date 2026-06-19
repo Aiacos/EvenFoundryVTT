@@ -11,7 +11,7 @@
  * change the display locale.
  *
  * **Two modes:**
- *   - `'main'`     — 9-item menu (`[S][C][L][B][I][A][M][N][X]`)
+ *   - `'main'`     — 11-item menu (`[S][C][L][B][I][A][M][N][F][D][X]`)
  *   - `'language'` — 7-item locale picker (from `LOCALE_MENU` Phase 5 constant)
  *
  * Mode switches without remounting the panel (state-based rendering, same
@@ -19,7 +19,10 @@
  * double-tap in main mode calls `callbacks.onClose()` (popOverlay) — ADR-0012 D-3.
  *
  * **Container strategy (Strategy A — ADR-0009 Amendment 1):**
- * Single `'overlay-block'` text container. Reuses the same container name as
+ * Glyph mode: single `'overlay-block'` text container.
+ * Canvas mode: writes to the pre-allocated `'hud-capture'` container
+ * (zero self-declared container count, satisfying ADR-0013 Amendment 1
+ * locked decision #3). Reuses the same container name as
  * `ConcentrationDropModalPanel` (Phase 4b overlay slot design — only one
  * overlay is mounted at z=2 at any time, so no naming collision).
  *
@@ -48,18 +51,60 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
-import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
+import { COMPOSITOR_H, COMPOSITOR_W } from '../engine/canvas-compositor.js';
+import { resolveContainerIdField } from '../engine/container-registry.js';
+import type { CanvasLayer, OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import type { LocaleEventEmitter } from '../locale/locale-events.js';
 import { LOCALE_MENU } from '../locale/locale-menu.js';
 import { type LocaleOverride, persistLocaleOverride } from '../locale/locale-override.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
+import { ensureVt323Loaded } from '../status-hud/vt323-font-loader.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-/** Stable text-container name for the Quick Action menu payload (Strategy A). */
+/** Stable text-container name for the Quick Action menu payload in glyph mode (Strategy A). */
 const QUICK_MENU_CONTAINER_NAME = 'overlay-block' as const;
+
+/** Canvas-mode background fill — black (dithered to darkest G2 palette step). */
+const CANVAS_BG = '#000000';
+
+/** Canvas-mode foreground — white (quantized to brightest G2 palette step). */
+const CANVAS_FG = '#ffffff';
+
+/** Canvas-mode item-row pitch (px) — 11 lines (title + 10 items) at 16px fit the box. */
+const CANVAS_ROW_PITCH = 16;
+
+// TODO (#34): the box is fixed-size for 10 items at 13px with no overflow/scroll —
+// adding nav items past ~10 overflows it off-screen. Add in-box pagination first.
+// ─── Canvas-mode menu box geometry (2026-06-14) ──────────────────────────────
+// The menu paints as a centered BOX over the map layer (z=0) instead of an
+// opaque full-screen fill, so the map stays visible around it. The G2 has only
+// 4 image containers and the full-screen map uses all 4, so a literally-separate
+// menu image is impossible — the compositor instead blits this transparent layer
+// (box opaque, rest cleared) over the map (drawImage is alpha-aware), giving the
+// same visual: map visible on every side of the menu box. Settings moved to the
+// phone panel; the menu now holds 10 navigation/view items, each with a small
+// pixel icon + smaller font.
+/** Menu box width (px) — leaves ~128px of map visible on each side. */
+const MENU_BOX_W = 320;
+/** Menu box height (px) — fits title + 10 icon rows; ~38px of map top/bottom. */
+const MENU_BOX_H = 212;
+/** Menu box top-left x (px) — horizontally centered in the 576px compositor. */
+const MENU_BOX_X = Math.round((COMPOSITOR_W - MENU_BOX_W) / 2);
+/** Menu box top-left y (px) — vertically centered in the 288px compositor. */
+const MENU_BOX_Y = Math.round((COMPOSITOR_H - MENU_BOX_H) / 2);
+/** Left padding (px) for content inside the box. */
+const MENU_BOX_PAD_X = 14;
+/** Title baseline y (px) relative to the box top. */
+const MENU_BOX_TITLE_DY = 20;
+/** First item-row baseline y (px) relative to the box top. */
+const CANVAS_ITEMS_TOP_Y = 40;
+/** Canvas-mode menu font size (px) — smaller than the 16px default for the box. */
+const CANVAS_FONT_PX = 13;
+/** Pixel-icon box size (px) drawn left of each main-menu label. */
+const ICON_SIZE = 14;
 
 /** Outer width of the menu box in visible code-points (UI-SPEC §1). */
 const MENU_WIDTH = 70;
@@ -79,7 +124,8 @@ const LABEL_BUDGET = 22;
 const SUB_MENU_KEYS = ['A', 'I', 'E', 'D', 'S', 'F', 'P'] as const;
 
 /**
- * Main menu item definitions (9 items per UI-SPEC §1 + plan spec).
+ * Main menu item definitions (10 items: S, C, L, B, I, A, M, N, F, X — per
+ * UI-SPEC §1 + plan spec).
  *
  * `action` drives the `_activateCurrentItem` dispatch table:
  *   - `'navigate'`       — calls `callbacks.onNavigate(target)` + `callbacks.onClose()`
@@ -97,8 +143,112 @@ const MAIN_ITEMS = [
   { key: 'A', i18nKey: 'quick_item_action', action: 'action-stub', target: undefined },
   { key: 'M', i18nKey: 'quick_item_map', action: 'map-mode-toggle', target: undefined },
   { key: 'N', i18nKey: 'quick_item_language', action: 'open-sub-menu', target: undefined },
+  { key: 'F', i18nKey: 'quick_item_fps', action: 'fps-toggle', target: undefined },
   { key: 'X', i18nKey: 'quick_item_close', action: 'close', target: undefined },
 ] as const;
+
+/**
+ * Index of the `[N] Language` row in {@link MAIN_ITEMS} — the row re-focused
+ * when returning from the language sub-menu. Derived (not a literal) so that
+ * inserting/removing menu items can never silently break the back-navigation
+ * focus (it did require manual review when `[F]`/`[D]` were added).
+ */
+const LANGUAGE_ITEM_INDEX = MAIN_ITEMS.findIndex((item) => item.key === 'N');
+
+/** 2D context shape used by {@link drawMenuIcon} (Offscreen + HTML canvas common subset). */
+type IconCtx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+
+/**
+ * Draw a 14×14 pixel icon for a main-menu item at top-left `(x, y)`, in the
+ * foreground colour (2026-06-14). Canvas-only (the menu is a composited raster,
+ * so we are not limited to firmware-font glyphs) — each icon is a simple
+ * recognizable silhouette per the Even Hub icon-design guidance. The item `key`
+ * selects the icon; the language sub-menu keeps its letter keys (no icons).
+ */
+function drawMenuIcon(ctx: IconCtx, key: string, x: number, y: number): void {
+  ctx.save();
+  ctx.strokeStyle = CANVAS_FG;
+  ctx.fillStyle = CANVAS_FG;
+  ctx.lineWidth = 1.4;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const line = (x1: number, y1: number, x2: number, y2: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(x + x1, y + y1);
+    ctx.lineTo(x + x2, y + y2);
+    ctx.stroke();
+  };
+  switch (key) {
+    case 'S': // character sheet — page with text lines
+      ctx.strokeRect(x + 2, y + 1, 10, 12);
+      line(4, 5, 10, 5);
+      line(4, 8, 10, 8);
+      line(4, 11, 9, 11);
+      break;
+    case 'C': // combat — shield
+      ctx.beginPath();
+      ctx.moveTo(x + 7, y + 1);
+      ctx.lineTo(x + 12, y + 3);
+      ctx.lineTo(x + 12, y + 8);
+      ctx.lineTo(x + 7, y + 13);
+      ctx.lineTo(x + 2, y + 8);
+      ctx.lineTo(x + 2, y + 3);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case 'L': // log — stacked text lines
+      line(2, 3, 11, 3);
+      line(2, 6, 11, 6);
+      line(2, 9, 11, 9);
+      line(2, 12, 8, 12);
+      break;
+    case 'B': // spellbook — book with spine
+      ctx.strokeRect(x + 2, y + 2, 10, 10);
+      line(7, 2, 7, 12);
+      break;
+    case 'I': // inventory — crate with handle
+      ctx.strokeRect(x + 2, y + 4, 10, 8);
+      ctx.beginPath();
+      ctx.arc(x + 7, y + 4, 2.5, Math.PI, 0, false);
+      ctx.stroke();
+      break;
+    case 'A': // action — lightning bolt (filled)
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 1);
+      ctx.lineTo(x + 3, y + 8);
+      ctx.lineTo(x + 6, y + 8);
+      ctx.lineTo(x + 5, y + 13);
+      ctx.lineTo(x + 11, y + 6);
+      ctx.lineTo(x + 7, y + 6);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'M': // map — 2×2 grid
+      ctx.strokeRect(x + 2, y + 2, 10, 10);
+      line(7, 2, 7, 12);
+      line(2, 7, 12, 7);
+      break;
+    case 'N': // language — globe
+      ctx.beginPath();
+      ctx.arc(x + 7, y + 7, 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+      line(1.5, 7, 12.5, 7);
+      ctx.beginPath();
+      ctx.ellipse(x + 7, y + 7, 2.4, 5.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case 'F': // fps — bar meter
+      ctx.fillRect(x + 3, y + 9, 2, 4);
+      ctx.fillRect(x + 6, y + 5, 2, 8);
+      ctx.fillRect(x + 9, y + 2, 2, 11);
+      break;
+    default: // 'X' close — cross
+      line(3, 3, 11, 11);
+      line(11, 3, 3, 11);
+      break;
+  }
+  ctx.restore();
+}
 
 // ─── Callbacks type ───────────────────────────────────────────────────────────
 
@@ -131,6 +281,13 @@ export interface QuickActionMenuCallbacks {
   onMapModeToggle: () => void;
   /** Called when the user selects [A] Action (Phase 7 stub). */
   onAction: () => void;
+  /**
+   * Called when the user selects [F] FPS — toggles the small fps indicator
+   * on the hud-status row (default ON; persisted in the Even Hub kv store).
+   * Optional so existing construction sites compile unchanged; the dispatch
+   * case no-ops when absent.
+   */
+  onFpsToggle?: () => void;
 }
 
 // ─── QuickActionMenuPanel ────────────────────────────────────────────────────
@@ -140,8 +297,18 @@ export interface QuickActionMenuCallbacks {
  *
  * Constructed directly by the over-scroll dispatcher (Plan 06-04); never
  * discovered via `discoverPanels()` (empty `navKey` filters it out).
+ *
+ * Dual-interface in canvas mode (debug `canvas-sheet-overlay-wont-open`,
+ * 2026-06-09): also implements `CanvasLayer` (`attachCanvas`/`paint`/`isDirty`)
+ * so `LayerManager.bundle()` registers it with the `CanvasCompositor` at z=2 and
+ * the menu is painted INTO the raster tiles. The previous canvas-mode approach
+ * (textContainerUpgrade into `hud-capture`) could never be visible: the G2 host
+ * renders IMAGE containers on top of TEXT containers (type-based z-order,
+ * probe-verified 2026-06-14 — NOT declaration order), so the 4 opaque image tiles
+ * cover any text behind them. A native text menu over the map is therefore
+ * impossible; the menu must be composited into the image raster (container-registry.ts §hud-capture).
  */
-export class QuickActionMenuPanel implements OverlayPanel {
+export class QuickActionMenuPanel implements OverlayPanel, CanvasLayer {
   /**
    * Static meta — `navKey: ''` marks this as a system overlay (Phase 6 Plan 02).
    *
@@ -157,6 +324,8 @@ export class QuickActionMenuPanel implements OverlayPanel {
 
   /** Stable id used by LayerManager + telemetry. */
   public readonly id = 'quick-action-menu';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   private readonly bridge: EvenAppBridge;
   private readonly gestureBus: PanelGestureBus;
@@ -164,6 +333,15 @@ export class QuickActionMenuPanel implements OverlayPanel {
   private readonly currentLocaleOverride: LocaleOverride;
   private readonly localeEvents: LocaleEventEmitter;
   private readonly callbacks: QuickActionMenuCallbacks;
+
+  /**
+   * Render mode passed at construction — `'canvas'` or `'glyph'`.
+   *
+   * In canvas mode the menu writes to the pre-allocated `'hud-capture'`
+   * container (ADR-0013 Amendment 1) and declares zero container count.
+   * In glyph mode it allocates `'overlay-block'` and declares text:1.
+   */
+  private readonly renderMode: 'canvas' | 'glyph';
 
   /**
    * Unsubscribe closure returned by {@link PanelGestureBus.subscribe}.
@@ -179,6 +357,18 @@ export class QuickActionMenuPanel implements OverlayPanel {
   /** Currently highlighted row index within the active mode. */
   private activeIndex = 0;
 
+  /** 2D context of the per-layer canvas — null until `attachCanvas` succeeds. */
+  private _ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
+
+  /** Resolved font string (`'16px VT323'` or monospace fallback). */
+  private _fontFamily = '16px monospace';
+
+  /**
+   * Dirty flag — `true` at construction so the first composite always paints.
+   * Reset to `false` as the LAST statement of `paint()` (RFONT-03 pattern).
+   */
+  private _dirty = true;
+
   /**
    * Construct the Quick Action menu panel.
    *
@@ -189,6 +379,9 @@ export class QuickActionMenuPanel implements OverlayPanel {
    *                              active row in language sub-menu (pre-selects saved locale).
    * @param localeEvents          Locale change emitter — called after locale is persisted.
    * @param callbacks             Dispatcher-injected callbacks for navigation + lifecycle.
+   * @param renderMode            Render mode — `'canvas'` (uses `hud-capture`, zero container count)
+   *                              or `'glyph'` (allocates `overlay-block`, text:1 count).
+   *                              Defaults to `'glyph'` for backward compatibility.
    */
   constructor(
     bridge: EvenAppBridge,
@@ -197,6 +390,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
     currentLocaleOverride: LocaleOverride,
     localeEvents: LocaleEventEmitter,
     callbacks: QuickActionMenuCallbacks,
+    renderMode: 'canvas' | 'glyph' = 'glyph',
   ) {
     this.bridge = bridge;
     this.gestureBus = gestureBus;
@@ -204,6 +398,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
     this.currentLocaleOverride = currentLocaleOverride;
     this.localeEvents = localeEvents;
     this.callbacks = callbacks;
+    this.renderMode = renderMode;
   }
 
   // ─── OverlayPanel lifecycle ───────────────────────────────────────────────
@@ -251,7 +446,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
       if (this.mode === 'language') {
         // Back one level — return to main mode, keep [N] focused.
         this.mode = 'main';
-        this.activeIndex = 7; // [N] Language row
+        this.activeIndex = LANGUAGE_ITEM_INDEX;
         void this.draw();
       } else {
         // Close the menu (popOverlay restores the suspended panel).
@@ -272,15 +467,129 @@ export class QuickActionMenuPanel implements OverlayPanel {
     return this.activeIndex === 0;
   }
 
+  // ─── CanvasLayer interface (canvas mode) ──────────────────────────────────
+
   /**
-   * Render the menu via a single `bridge.textContainerUpgrade` call.
+   * Store the per-layer canvas and resolve the VT323 font.
    *
-   * Builds the row array per `_buildLines()` and flushes in one call.
-   * Resolves once the bridge promise settles.
+   * Called by `LayerManager.bundle()` STEP 2.5 before the first composite.
+   * Awaiting the font load here guarantees the first `paint()` uses VT323
+   * (Q1 resolution — same contract as `CanvasCharacterSheetPanel`).
+   */
+  async attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<void> {
+    this._ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+    this._fontFamily = await ensureVt323Loaded();
+    this._dirty = true;
+  }
+
+  /**
+   * Dirty-gate consumed by `CanvasCompositor` — paint only when state changed.
+   */
+  isDirty(): boolean {
+    return this._dirty;
+  }
+
+  /**
+   * Paint the compact menu BOX onto the layer canvas (2026-06-14).
+   *
+   * The layer is cleared to transparent first, then only a centered
+   * `MENU_BOX_W × MENU_BOX_H` box is filled opaque — the compositor blits this
+   * over the map (z=0) with alpha-aware drawImage, so the map stays visible on
+   * every side of the box (the G2's 4 image containers are all consumed by the
+   * full-screen map, so a separate menu image container is not available; this
+   * composited box is the visual equivalent).
+   *
+   * Layout (VT323 16px, offset into the box):
+   *   - transparent clear of the full layer (map shows around the box)
+   *   - opaque box fill + 1px border
+   *   - title row `[ TITLE ]`
+   *   - 13 (main) or 7 (language) item rows: `▶ [S] Label` / `  [S] Label`
+   *
+   * Resets `_dirty = false` as its LAST statement (RFONT-03 pattern).
+   */
+  paint(): void {
+    const ctx = this._ctx;
+    if (ctx === null) {
+      return;
+    }
+
+    // Clear the WHOLE layer to transparent first so the map (compositor z=0)
+    // shows through everywhere outside the menu box (2026-06-14). The compositor
+    // blits this layer over the map with alpha-aware drawImage, so transparent
+    // pixels leave the map intact — the map stays visible around the box.
+    ctx.clearRect(0, 0, COMPOSITOR_W, COMPOSITOR_H);
+
+    // Opaque box background + border chrome — only inside the menu box region.
+    ctx.fillStyle = CANVAS_BG;
+    ctx.fillRect(MENU_BOX_X, MENU_BOX_Y, MENU_BOX_W, MENU_BOX_H);
+    ctx.strokeStyle = CANVAS_FG;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(MENU_BOX_X + 0.5, MENU_BOX_Y + 0.5, MENU_BOX_W - 1, MENU_BOX_H - 1);
+
+    const textX = MENU_BOX_X + MENU_BOX_PAD_X;
+    // Smaller font for the box: reuse the loaded family (VT323 or monospace
+    // fallback) at CANVAS_FONT_PX by swapping the size prefix.
+    const fontFamily = this._fontFamily.replace(/^\s*[\d.]+px\s*/, '').trim() || 'monospace';
+    const menuFont = `${CANVAS_FONT_PX}px ${fontFamily}`;
+
+    // Title row.
+    const isMain = this.mode === 'main';
+    const title = getLabel(isMain ? 'quick_menu_title' : 'quick_lang_submenu_title', this.locale);
+    ctx.font = menuFont;
+    ctx.fillStyle = CANVAS_FG;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`[ ${title} ]`, textX, MENU_BOX_Y + MENU_BOX_TITLE_DY);
+
+    // Cursor + icon/label column geometry.
+    const cursorX = textX;
+    const iconX = textX + 10; // after the ▶ cursor glyph
+    const labelX = iconX + ICON_SIZE + 8;
+
+    if (isMain) {
+      // Main mode: pixel icon + label per item (settings moved to the phone).
+      MAIN_ITEMS.forEach((item, idx) => {
+        const rowY = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
+        if (idx === this.activeIndex) {
+          ctx.fillText('▶', cursorX, rowY);
+        }
+        drawMenuIcon(ctx, item.key, iconX, rowY - ICON_SIZE + 2);
+        ctx.fillText(getLabel(item.i18nKey, this.locale), labelX, rowY);
+      });
+    } else {
+      // Language sub-menu: keep the letter keys (locale picker — no icons).
+      LOCALE_MENU.forEach((entry, idx) => {
+        const marker = idx === this.activeIndex ? '▶ ' : '  ';
+        const rowY = MENU_BOX_Y + CANVAS_ITEMS_TOP_Y + idx * CANVAS_ROW_PITCH;
+        ctx.fillText(`${marker}[${SUB_MENU_KEYS[idx] ?? '?'}] ${entry.nativeLabel}`, textX, rowY);
+      });
+    }
+
+    this._dirty = false;
+  }
+
+  // ─── Render dispatch ───────────────────────────────────────────────────────
+
+  /**
+   * Render the menu.
+   *
+   * Glyph mode: single `bridge.textContainerUpgrade` call with the 70-char box
+   * rows from `_buildLines()`.
+   *
+   * Canvas mode: set the dirty flag only — the `CanvasCompositor` calls
+   * `paint()` on the next composite cycle (scheduled by `HudDeltaDriver` via
+   * the `'r1.gesture'` channel or `requestCycle()`). No SDK text call is made:
+   * writing into `hud-capture` is invisible behind the opaque image tiles.
    */
   async draw(): Promise<void> {
+    if (this.renderMode === 'canvas') {
+      this._dirty = true;
+      return;
+    }
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerIdField returns {} (no containerId
+      // field); the overlay-block container is addressed by name (Strategy A).
+      ...resolveContainerIdField(QUICK_MENU_CONTAINER_NAME),
       containerName: QUICK_MENU_CONTAINER_NAME,
       content: lines.join('\n'),
     });
@@ -298,12 +607,15 @@ export class QuickActionMenuPanel implements OverlayPanel {
   }
 
   /**
-   * Strategy A container footprint per ADR-0009 Amendment 1.
+   * Container footprint per ADR-0009 Amendment 1 / ADR-0013 Amendment 1.
    *
-   * One text container (`overlay-block`), zero image containers.
+   * Glyph mode: one text container (`overlay-block`), zero image containers.
+   * Canvas mode: zero image, zero text — the pre-allocated `hud-capture`
+   * container is not self-declared by the overlay (ADR-0013 Amendment 1,
+   * locked decision #3).
    */
-  getContainerCount(): { image: 0; text: 1 } {
-    return { image: 0, text: 1 };
+  getContainerCount(): { image: 0; text: 0 } | { image: 0; text: 1 } {
+    return this.renderMode === 'canvas' ? { image: 0, text: 0 } : { image: 0, text: 1 };
   }
 
   /**
@@ -367,7 +679,7 @@ export class QuickActionMenuPanel implements OverlayPanel {
       this.localeEvents.emit('changed', code);
       // Return to main mode, focus [N] Language row.
       this.mode = 'main';
-      this.activeIndex = 7;
+      this.activeIndex = LANGUAGE_ITEM_INDEX;
       void this.draw();
       return;
     }
@@ -395,6 +707,10 @@ export class QuickActionMenuPanel implements OverlayPanel {
       }
       case 'map-mode-toggle':
         this.callbacks.onMapModeToggle();
+        this.callbacks.onClose();
+        break;
+      case 'fps-toggle':
+        this.callbacks.onFpsToggle?.();
         this.callbacks.onClose();
         break;
       case 'action-stub':

@@ -11,7 +11,7 @@
  * - Wave 2 (Plan 07-03): 2 handlers (place-template, confirm-template-placement)
  * - Wave 3 (Plan 07-05): 1 handler (drop-concentration, replacing evf.setTargets stub)
  * - Phase 13 (Plan 13-01): 3 handlers (cast-shield, cast-counterspell, opportunity-attack)
- *   → socketlib registerComplexHandler count FLIPS 14 → 17 (Phase 13 INVARIANT)
+ *   → socketlib `socket.register` count FLIPS 14 → 17 (Phase 13 INVARIANT)
  *
  * # Single-workflow-origin (ADR-0011)
  * All registrations go through `registerToolHandler` — the canonical write-path

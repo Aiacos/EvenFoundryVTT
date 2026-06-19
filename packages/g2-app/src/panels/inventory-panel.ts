@@ -41,6 +41,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { CharacterSnapshot, InventoryItem } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import type { PanelMeta } from '../engine/panel-router.js';
@@ -48,6 +49,7 @@ import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
 import { parseR1HintString } from '../status-hud/r1-hint-parser.js';
 import type { ActionOptionsRequest } from './action-options-modal.js';
 import { padRightUnicode, truncateUnicode } from './character-sheet-tab-renderers.js';
+import { IconId, iconToUnicode } from './icon-dictionary.js';
 
 // ─── Width constants ───────────────────────────────────────────────────────────
 
@@ -76,23 +78,27 @@ const TAGS_WIDTH = 19;
 
 // ─── Item type glyphs (UI-SPEC §6.2 glyph dictionary) ────────────────────────
 
-/** Map from dnd5e item type to a single display glyph. */
-const ITEM_GLYPHS: Record<string, string> = {
-  weapon: '⚔',
-  armor: '⛨',
-  equipment: '⛨',
-  consumable: '▶',
-  container: '▶',
-  currency: ' ',
-} as const;
+/**
+ * Map from dnd5e item type to the shared {@link IconId}. The glyph itself comes
+ * from the single {@link iconToUnicode} dictionary (Feature 001 D3 — one source for
+ * the glyph + canvas paths; the local glyph table is gone).
+ */
+const ITEM_ICON: Record<string, IconId> = {
+  weapon: IconId.Weapon,
+  armor: IconId.Armor,
+  equipment: IconId.Armor,
+  consumable: IconId.Consumable,
+  container: IconId.Consumable,
+  currency: IconId.Currency,
+};
 
 /**
- * Retrieve the display glyph for an inventory item type.
+ * Retrieve the display glyph for an inventory item type (via the shared dictionary).
  *
  * @internal
  */
 function itemGlyph(type: string): string {
-  return ITEM_GLYPHS[type] ?? ' ';
+  return iconToUnicode(ITEM_ICON[type] ?? IconId.Currency);
 }
 
 // ─── Overlay container name ───────────────────────────────────────────────────
@@ -716,6 +722,9 @@ export default class InventoryPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const rows = renderInventoryStandaloneContent(this.snapshot, this.locale, this.scrollOffset);
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(INVENTORY_PANEL_CONTAINER_NAME),
       containerName: INVENTORY_PANEL_CONTAINER_NAME,
       content: rows.join('\n'),
     });

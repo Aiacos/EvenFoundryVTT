@@ -21,8 +21,8 @@
  *      `tileDelta.detectChanges()`
  *   7. Group changed sub-tile indices by tile (0..3) and identify which
  *      tiles need re-encoding
- *   8. For each changed tile: encode the 4-bit indexed buffer via
- *      `encodeRle4bit` (telemetry; wire payload is PNG)
+ *   8. For each changed tile: (RLE telemetry step removed — was dead code
+ *      until wire-telemetry is designed; see WR-03 fix in Phase 21 review)
  *   9. For each changed tile: `UPNG.encode([rgba.buffer], 200, 100, 16)` →
  *      4-bit indexed-palette PNG byte stream
  *   10. `self.postMessage({frameId, changedTiles}, [transferables])`
@@ -58,10 +58,9 @@
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-UI-SPEC.md §Raster Pipeline Visual Contract
  */
 /// <reference lib="webworker" />
-import * as ImageQ from 'image-q';
 import * as UPNG from 'upng-js';
 import xxhash from 'xxhash-wasm';
-import { encodeRle4bit } from './rle-encoder.js';
+import { buildGreyscalePalette, ditherTile } from './dither-utils.js';
 import { TileDelta } from './tile-delta.js';
 
 // Number of 200×100 tiles per frame (4-image-container 2×2 layout per
@@ -105,18 +104,8 @@ interface WorkerResponse {
 // Lazily-initialized singletons (first frame triggers WASM compile).
 // TODO(ADR-0005): verify 200×100 per tile + 16-color palette on real G2 — human_needed.
 let xxhashApi: Awaited<ReturnType<typeof xxhash>> | null = null;
-let palette: ImageQ.utils.Palette | null = null;
+let palette: ReturnType<typeof buildGreyscalePalette> | null = null;
 let tileDelta: TileDelta | null = null;
-
-/** Build the canonical 16-step phosphor-green greyscale palette (0..240). */
-function buildGreyscalePalette(): ImageQ.utils.Palette {
-  const pal = new ImageQ.utils.Palette();
-  for (let i = 0; i < 16; i++) {
-    const v = i * 16; // 0, 16, 32, ..., 240
-    pal.add(ImageQ.utils.Point.createByRGBA(v, v, v, 255));
-  }
-  return pal;
-}
 
 /** Convert RGBA pixel data to greyscale RGBA via luminance (Stage 2). */
 function toGreyscaleRgba(rgba: Uint8ClampedArray): Uint8ClampedArray {
@@ -189,16 +178,6 @@ function hashSubTiles(
   return out;
 }
 
-/** Quantize one 200×100 RGBA tile against the greyscale palette (Stage 3). */
-function ditherTile(rgba: Uint8ClampedArray, pal: ImageQ.utils.Palette): Uint8ClampedArray {
-  const inContainer = ImageQ.utils.PointContainer.fromUint8Array(rgba, TILE_W, TILE_H);
-  const outContainer = ImageQ.applyPaletteSync(inContainer, pal, {
-    imageQuantization: 'floyd-steinberg',
-    colorDistanceFormula: 'euclidean-bt709',
-  });
-  return new Uint8ClampedArray(outContainer.toUint8Array());
-}
-
 self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
   const { frameId, pixelData, width, height, isInitial } = ev.data;
   try {
@@ -230,7 +209,10 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
     const raw =
       pixelData instanceof Uint8ClampedArray
         ? pixelData
-        : new Uint8ClampedArray(pixelData.data.buffer.slice(0));
+        : // `data.slice()` copies the view's LOGICAL range (respecting byteOffset
+          // + length); `data.buffer.slice(0)` would copy the whole backing buffer
+          // and assume `data` spans it fully — wrong if the view is offset/partial.
+          pixelData.data.slice();
     if (width !== FRAME_W || height !== FRAME_H) {
       // Reject mis-shaped input — caller is expected to resize upstream.
       throw new Error(
@@ -275,20 +257,13 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>): Promise<void> => {
       if (tileBuf === undefined) {
         continue;
       }
-      // Stage 3 (now per tile): dither.
-      const ditheredRgba = ditherTile(tileBuf, palette);
-      // Stage 8: RLE telemetry (length is logged via subTileCount, not
-      // shipped — the wire payload is the PNG). Convert RGBA → 4-bit index
-      // approximation by quantizing the R channel into 16 buckets.
-      const indexed = new Uint8Array(TILE_W * TILE_H);
-      for (let p = 0; p < indexed.length; p++) {
-        indexed[p] = ((ditheredRgba[p * 4] ?? 0) / 16) | 0;
-      }
-      // Bounds-safe: clamp to 0..15 since /16 of 0..255 yields 0..15.
-      const rleStats = encodeRle4bit(indexed);
-      // We don't ship `rleStats` over the wire — PNG is the payload — but we
-      // count its length in `subTileCount` for telemetry.
-      void rleStats;
+      // Stage 3 (now per tile): dither (explicit tile dimensions for dither-utils API).
+      const ditheredRgba = ditherTile(tileBuf, TILE_W, TILE_H, palette);
+      // Stage 8: (RLE telemetry removed — WR-03 fix: the RLE-encoded result was
+      // immediately voided with no real dependency on rleStats; the dead RLE
+      // module was deleted. Re-add only if telemetry is wired through
+      // WorkerResponse.)
+      //
       // Stage 9: PNG encode (4-bit indexed via cnum=16).
       const pngBuf = UPNG.encode([ditheredRgba.buffer], TILE_W, TILE_H, 16);
       const pngBytes = new Uint8Array(pngBuf);

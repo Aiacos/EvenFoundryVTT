@@ -102,8 +102,9 @@ export type ToolResult = { success: true; data: unknown } | { success: false; er
  * const castSpellHandler: ToolHandler<CastSpellArgs> = {
  *   argsSchema: CastSpellArgsSchema,
  *   handle: async (args) => {
- *     // args is typed as CastSpellArgs (validated by argsSchema)
- *     await executeAsGM(...);
+ *     // args is typed as CastSpellArgs (validated by argsSchema). The handler
+ *     // already runs in GM context; the bridge reaches it via
+ *     // socket.executeAsGM(handlerId, ...args) using the socketlib socket.
  *     return { success: true, data: { rolled: true } };
  *   },
  * };
@@ -174,8 +175,11 @@ export function registerToolHandler<T>(id: ToolId, handler: ToolHandler<T>): voi
 /**
  * Mapping from kebab-case ToolId to the socketlib handler ID (camelCase prefixed by `evf.`).
  *
- * Used by `dispatchTool` (Task 2) to call `socketlib.executeAsGM(MODULE_ID, handlerId, ...)`.
- * The socketlib handler registrations in `socketlib-handlers.ts` use the same IDs.
+ * The bridge invokes a GM handler via the socketlib socket's
+ * `socket.executeAsGM(handlerId, ...args)` (real farling42/foundryvtt-socketlib
+ * API — name first, NO moduleId argument). The module side dispatches via
+ * `dispatchTool` directly (it already runs in GM context). The socketlib handler
+ * registrations in `socketlib-handlers.ts` use these same IDs.
  *
  * # Forward reference: `evf.dropConcentration` (Plan 07-05)
  *
@@ -197,7 +201,8 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
    * Plan 07-03: confirm-template-placement maps to `evf.confirmTemplatePlacement`.
    *
    * This handler REPLACES the `evf.skillCheck` stub registration in-place
-   * in `socketlib-handlers.ts`. The total `registerComplexHandler` count stays 14.
+   * in `socketlib-handlers.ts`. The total `socket.register(name, fn)` count
+   * (via the socket from `socketlib.registerModule(MODULE_ID)`) stays 14.
    * Skill-check will be re-registered in Phase 8/9 when ACT-01 ships.
    *
    * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2

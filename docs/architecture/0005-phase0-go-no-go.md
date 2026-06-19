@@ -156,6 +156,8 @@ updateImageRawData · textContainerUpgrade · audioControl
 
 ### OQ-INV2-4 — Phase 2 wizard `hub.*` API mismatch (NEW finding, 2026-05-14 PM)
 
+> **RESOLVED — `hub.camera` / QR-scan sub-question (2026-06-03, PAIR-EHUB-01).** The `hub.camera` surface is confirmed **non-existent**: the Even Hub platform exposes no camera / QR-scan API to apps (canonical `hub.evenrealities.com/docs/guides/device-apis`: *"no camera (there is none)"*). The QR-scan path has been **removed** from the g2-app wizard (`step2-token.ts`: `hub.camera` / `_probeCameraApi` / `scan_qr_btn` deleted as dead code, INV-4) and from the `even-hub.d.ts` / `hub-polyfill.ts` surface. Pairing now transfers the bearer token via **copy (Foundry PairModal) → paste (wizard)**; the broader `hub.*` storage/eventBus mismatch remains addressed by `packages/g2-app/src/hub-polyfill.ts`. See Specs.md changelog 2026-06-03 and §11.5.4.
+
 **Severity:** HIGH — Phase 2 was marked complete on 2026-05-13, but the wizard's `hub.setItem` / `hub.getItem` / `hub.removeItem` / `hub.eventBus` / `hub.camera` API surface does NOT exist in the canonical simulator (only `flutterBridge.callHandler('evenAppMessage', ...)` is injected).
 
 **Discovery:** Grep + inspection of `packages/g2-app/src/wizard/` revealed 8+ call sites using a `hub` global that has no matching injection on the simulator. Existing `packages/g2-app/src/types/even-hub.d.ts` (commented as "INV-2 verified 2026-05-11") describes an API surface that is **not present** in the canonical 10-method enum.

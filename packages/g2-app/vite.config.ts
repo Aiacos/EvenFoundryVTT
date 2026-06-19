@@ -13,9 +13,26 @@
  * @see Specs.md §3.7 (static CDN-friendly plugin host)
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 1 (Vite multi-entry)
  */
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
+/**
+ * Absolute path of THIS config's directory (packages/g2-app). Resolved from
+ * `import.meta.url` rather than `import.meta.dirname` because Vite bundles the
+ * config via esbuild before importing it, and `import.meta.dirname` resolves
+ * unreliably through that step — leaving `envDir` undefined and `.env.local`
+ * silently ignored (the no-auth dev flow then never activated). `fileURLToPath`
+ * of the module URL is the canonical, bundling-safe way to get the package dir.
+ */
+const PACKAGE_DIR = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
+  // `.env` / `.env.local` live at the PACKAGE ROOT (packages/g2-app/), not under
+  // src/. Because `root: 'src'` (below), Vite's `envDir` would otherwise default to
+  // src/ and silently ignore them — which is why `VITE_EVF_NO_AUTH` / the dev-bridge
+  // override never took effect (the wizard always showed). Pin envDir to the package
+  // root so `.env.local` (gitignored) + `.env.local.example` are the env source (D1).
+  envDir: PACKAGE_DIR,
   // `root: 'src'` makes the HTML entries resolve relative to src/, so Vite emits
   // them at the dist ROOT (dist/index.html, dist/wizard/wizard.html) instead of
   // leaking the source path into the bundle (dist/src/index.html). This keeps the

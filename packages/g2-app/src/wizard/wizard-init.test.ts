@@ -100,9 +100,9 @@ describe('wizard.ts — checkRequiredKeys', () => {
 });
 
 describe('wizard.ts — ALL_I18N_KEYS', () => {
-  it('contains exactly 44 keys', async () => {
+  it('contains exactly 43 keys', async () => {
     const { ALL_I18N_KEYS } = await import('./wizard.js');
-    expect(ALL_I18N_KEYS).toHaveLength(44);
+    expect(ALL_I18N_KEYS).toHaveLength(43);
   });
 
   it('includes all required step keys', async () => {

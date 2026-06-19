@@ -29,12 +29,19 @@
  *   `{ kind: 'scroll'; direction: 'up' | 'down' }`. Translation lives here —
  *   callers of `PanelGestureBus.subscribe` always see the internal shape.
  *
- * # INV-5 zero-handler rule
+ * # INV-5 root-state telemetry (step 6)
  *
- *   When `layerManager.getTopLayer()` returns `null` (empty stack, boot-error
- *   active), the gesture is an explicit INV-5 no-op: `console.warn` + no publish.
- *   Never a silent drop. The warning message must contain `'no top layer'` and
- *   `'INV-5'` so R1E-08 unit test can assert them.
+ *   When `layerManager.getTopLayer()` returns `null` (no OverlayPanel currently
+ *   mounted — the normal canvas-mode idle state where only z=0/0.5/1 layers are
+ *   active), the gesture is still published to the bus. Router-level bus subscribers
+ *   (`quick-action-overscroll-dispatcher`, `root-exit-dispatcher`) are designed to
+ *   operate in exactly this state: they receive gestures via the bus and check the
+ *   layer state themselves. A `console.warn` is emitted as telemetry so the no-panel
+ *   state is observable, but it no longer drops the gesture.
+ *
+ *   NOTE: The previous behaviour (drop + no-op) was a Phase 20 regression — canvas
+ *   default boot leaves no OverlayPanel at the root, so the over-scroll entry point
+ *   to the Quick Action menu was silently unreachable. R1E-08 test updated accordingly.
  *
  * # Gesture set (ADR-0012)
  *
@@ -84,7 +91,10 @@ export interface R1EventSourceWebSocket {
  *   4. Narrow on `envelope.type === R1_GESTURE_TYPE` — other types → silent skip
  *      (normal: bridge sends many envelope types on the same socket).
  *   5. `R1GesturePayloadSchema.safeParse(envelope.payload)` — reject → warn + ignore.
- *   6. `layerManager.getTopLayer()` — null → `console.warn` INV-5 no-op + return.
+ *   6. `layerManager.getTopLayer()` — when null (no OverlayPanel mounted, i.e. canvas
+ *      idle state), emit a `console.warn` telemetry entry and CONTINUE publishing.
+ *      Router-level dispatchers (overscroll, root-exit) are the intended receivers
+ *      in the root/idle state and rely on bus delivery.
  *   7. Translate wire kind → internal `R1Gesture` shape.
  *   8. `gestureBus.publish(gesture)` — single-receiver architectural contract (INV-5).
  *
@@ -134,15 +144,21 @@ export function attachR1EventSource(
         return;
       }
 
-      // Step 6 — INV-5 zero-handler check.
+      // Step 6 — INV-5 root-state telemetry (no early return).
+      // When no OverlayPanel is mounted (canvas idle state — z=0/0.5/1 only),
+      // getTopLayer() returns null. We emit a telemetry warn so the state is
+      // observable, but we DO NOT drop the gesture: router-level bus subscribers
+      // (quick-action-overscroll-dispatcher, root-exit-dispatcher) are designed
+      // to operate at the root and must receive gestures through the bus.
+      // The previous drop behaviour was a Phase 20 regression (canvas default boot
+      // never mounts a z=2 OverlayPanel at idle, silently killing all gestures).
       const top = layerManager.getTopLayer();
       if (top === null) {
-        // INV-5 zero-handler explicit no-op. Never a silent drop.
         console.warn(
-          '[r1-event-source] no top layer — gesture dropped (INV-5 no-op)',
+          '[r1-event-source] no top layer — routing to bus for router-level dispatchers (INV-5)',
           `wire-kind: ${payloadParse.data.kind}`,
         );
-        return;
+        // CONTINUE — do not return. Fall through to step 7/8.
       }
 
       // Step 7 — wire-to-internal R1Gesture translation.

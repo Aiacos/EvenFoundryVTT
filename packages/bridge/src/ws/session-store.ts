@@ -25,6 +25,16 @@ export interface Session {
   lastSeq: number;
   /** Unix ms timestamp when the session was created. */
   createdAt: number;
+  /**
+   * Selected PC actor id pinned for this session (FLV-CHAR-SELECT).
+   *
+   * When set, only `character.delta` envelopes for this actor are delivered to
+   * this session — prevents cross-player character leakage (T-flv-01). Set from
+   * the `actorId` field of the client's `HandshakeClient` message.
+   *
+   * `undefined` = no pin; last-write-wins `roster[0]` semantics apply.
+   */
+  readonly selectedActorId?: string;
 }
 
 /**
@@ -39,8 +49,16 @@ export class SessionStore {
    * Create a new session and store it.
    *
    * Returns the full `Session` object (caller passes `session_id` to client).
+   *
+   * @param token          - Opaque bearer token (never logged).
+   * @param locale         - BCP-47 primary tag from the handshake client message.
+   * @param caps           - Capability intersection agreed during handshake.
+   * @param selectedActorId - Optional selected PC actor id (FLV-CHAR-SELECT).
+   *                          When set, only `character.delta` for this actor is
+   *                          delivered to the session. `undefined` means no pin
+   *                          (last-write-wins `roster[0]` semantics).
    */
-  createSession(token: string, locale: string, caps: string[]): Session {
+  createSession(token: string, locale: string, caps: string[], selectedActorId?: string): Session {
     const session: Session = {
       sessionId: randomUUID(),
       token,
@@ -48,6 +66,7 @@ export class SessionStore {
       caps,
       lastSeq: 0,
       createdAt: Date.now(),
+      ...(selectedActorId !== undefined ? { selectedActorId } : {}),
     };
     this.sessions.set(session.sessionId, session);
     return session;
@@ -76,6 +95,30 @@ export class SessionStore {
   }
 
   /**
+   * Re-pin the session's selected PC actor (FLV-CHAR-SELECT, live switch).
+   *
+   * Called by the `client_select_actor` WS handler after the requested actor has
+   * been authorized against the bearer's owned set (ADR-0014). Updating this in
+   * place re-targets two existing pipes with no extra wiring:
+   * {@link getFocusActorId} (map auto-framing) and the `DeltaEmitter`
+   * `character.delta` filter. Mirrors {@link updateLastSeq}: no-op if the session
+   * is not found.
+   *
+   * `selectedActorId` is `readonly` on the public {@link Session} shape (callers
+   * outside the store must never mutate it); this store owns the field and writes
+   * it through a single narrowly-scoped internal cast.
+   *
+   * @param sessionId - Session to re-pin.
+   * @param actorId   - Newly-selected (already-authorized) actor id.
+   */
+  setSelectedActor(sessionId: string, actorId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session !== undefined) {
+      (session as { selectedActorId?: string }).selectedActorId = actorId;
+    }
+  }
+
+  /**
    * Remove a session from the store.
    *
    * Called when the WS connection is permanently closed (not a reconnect).
@@ -87,6 +130,24 @@ export class SessionStore {
   /** Visible for testing: number of active sessions. */
   get size(): number {
     return this.sessions.size;
+  }
+
+  /**
+   * Best-effort "focus actor" for map auto-framing: the `selectedActorId` of the
+   * most-recently-created session that has one, or `null` if none is pinned.
+   *
+   * Single-glasses MVP: there is normally exactly one such session. Deterministic
+   * tie-break: highest `createdAt` wins (the freshest selection). Read by the
+   * frame-POST piggyback (routes/internal-delta.ts) so the stream-leader Foundry
+   * client can center the captured map region on the player's chosen PC.
+   */
+  getFocusActorId(): string | null {
+    let best: Session | null = null;
+    for (const s of this.sessions.values()) {
+      if (s.selectedActorId === undefined) continue;
+      if (best === null || s.createdAt > best.createdAt) best = s;
+    }
+    return best?.selectedActorId ?? null;
   }
 
   /**

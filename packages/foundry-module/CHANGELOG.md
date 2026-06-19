@@ -1,19 +1,79 @@
 # @evf/foundry-module
 
-## 0.1.5
+## 0.1.38
 
 ### Patch Changes
 
-- dedc468: fix(foundry-module): PairModal renders QR + token again (remove unregistered `eq` Handlebars helper)
+- Fix: character snapshots were silently dropped by the bridge for any actor with
+  NO temporary HP. dnd5e leaves `actor.system.attributes.hp.temp` as `null` (not 0)
+  when there is no temp HP; character-reader passed it straight through as
+  `tempHp: null`, which fails the bridge's `CharacterSnapshotSchema`
+  (`tempHp: number().nonnegative()`). The bridge still answers `200` to the
+  `/internal/delta` POST but never caches the snapshot, so `GET /v1/character/:id`
+  returns `404` and the glasses sheet/HUD stay empty. Now coerced to `0`. The
+  "active" character (whose temp HP is often set) worked, masking the bug.
 
-  The PairModal template used the `eq` Handlebars helper, which Foundry VTT does not
-  register by default, so every render threw `Missing helper: "eq"` and the modal came up
-  blank — no QR, no token. Replaced `eq` with boolean flags precomputed in `_prepareContext`
-  (`isEmpty`/`isExpired`/`isRefreshNeeded`/`isPairing`/`showQr`). Also fixes four latent
-  defects exposed once rendering worked: empty state now has a "generate code" CTA so a fresh
-  install can mint its first bearer; `expiresAtMs` is passed for the countdown timer; the
-  `expiresIn` and `close` i18n keys are now resolved (added `evf.pair.modal.close` to IT/EN);
-  and tests now exercise the real template render to close the coverage gap.
+## 0.1.37
+
+### Patch Changes
+
+- PairModal UX: the "active" pairing state now shows an explicit **"Generate new
+  token"** button (mints a fresh bearer bound to the current user). Previously the
+  active state offered only "Revoke", so there was no obvious way to re-pair or
+  rotate without first revoking — confusing. Removed the now-dead
+  `evf.pair.user.select_label` i18n string left over from the user-picker dropdown.
+
+## 0.1.36
+
+### Minor Changes
+
+- Self-service device pairing: every Foundry user can mint their OWN G2 bearer
+  token, bound to their own authenticated identity, with no manual GM action. The
+  pair menu is no longer GM-restricted and the user-picker dropdown is removed —
+  you pair only your own device. Secure by construction (ADR-0014): a user writes
+  a `pendingPair` flag (carrying a client-generated token) on their OWN User
+  document — only that user can write their own user flags — and a GM client
+  auto-ingests it into the world-scope bearer registry, binding the token to the
+  user the flag belongs to (never a client-asserted id), then pushes it to the
+  bridge. socketlib is deliberately NOT used (it cannot authenticate the caller).
+  No new socketlib handler (count stays 17). A GM client must be online to
+  finalize a token (auto-ingested; world-scope writes are GM-only).
+
+## 0.1.35
+
+### Minor Changes
+
+- ADR-0015 §C browser-capture: show a player's REAL view by capturing from their
+  already-open Foundry browser — no headless re-login (which The Forge blocks by
+  binding a session to its account's user). The module now polls the bridge
+  (`/internal/stream-request`) for the requested actor and elects the actor's
+  ACTIVE, CONSENTING, NON-GM owner as the stream leader; that client captures its
+  own vision/fog/lighting directly. If no consenting owner is online, the default
+  GM-wins election still applies (the map is never blank). Pairs with the bridge's
+  `EVF_PLAYER_VIEW_HEADLESS=0` default (headless becomes a self-hosted-only fallback).
+
+## 0.1.34
+
+### Patch Changes
+
+- ADR-0015 §C (BUG-4): roster heartbeat. The character-list reader emitted
+  `r1.characters.available` only on `ready` + actor CRUD hooks, so after a bridge
+  (re)start or stream-leadership migration the bridge `CharacterListCache` went
+  cold until an actor changed — breaking the g2-app PC selector (`GET /v1/characters`)
+  and the actor player-view (`actorId → userName` resolution → `unavailable`). The
+  stream leader now re-publishes the roster on the same 10s cadence as the
+  display-settings heartbeat, keeping the cache warm. Leader-gated; best-effort.
+
+## 0.1.15
+
+### Minor Changes
+
+- Quick Task 260611-e71: frame_png wire format — greyscale lossless PNG (~1-5 KB vs ~884 KB RGBA).
+  - `canvas-extractor.ts` now emits ONLY `frame_png` envelopes (never `frame_pixels`).
+  - PNG encode via `UPNG.encode([rgbaLuma.buffer], w, h, 0, undefined, true)` (ctype=2 RGB, exact luma roundtrip, ~100–700× smaller than frame_pixels).
+  - Identical-frame skip: FNV-1a 32-bit luma hash — no POST when content unchanged.
+  - Leading+trailing hook throttle (THROTTLE_MS=200 ms): continuous canvasPan emits ~5 fps.
+  - Live `captureIntervalMs` world setting (default 250 ms, range 100–5000 ms, step 50 ms) via TICK_MS=100 ms poll — DM can change cadence without module reload.
 
 ## 0.1.4
 

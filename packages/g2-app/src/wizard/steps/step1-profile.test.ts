@@ -49,11 +49,19 @@ function makeStore(
 }
 
 describe('step1-profile — BRIDGE_URL_REGEX', () => {
-  it('is exported and matches https URLs with port', async () => {
+  it('matches https URLs with OR without a port (D1 — full origin); rejects no-scheme/host/spaces', async () => {
     const { BRIDGE_URL_REGEX } = await import('./step1-profile.js');
     expect(BRIDGE_URL_REGEX.test('https://bridge.local:8910')).toBe(true);
     expect(BRIDGE_URL_REGEX.test('http://192.168.1.10:8910')).toBe(true);
+    // Feature 001 D1: port-less https origins (443) + Forge world URLs now validate.
+    expect(BRIDGE_URL_REGEX.test('https://evenfoundry.lucifer-tnas.mywire.org')).toBe(true);
+    expect(BRIDGE_URL_REGEX.test('https://eu.forge-vtt.com/invite/aiacos-vecna/dae6a476')).toBe(
+      true,
+    );
+    // Still rejected: no scheme, missing host, embedded space.
     expect(BRIDGE_URL_REGEX.test('bridge.local:8910')).toBe(false);
+    expect(BRIDGE_URL_REGEX.test('https://:8910')).toBe(false);
+    expect(BRIDGE_URL_REGEX.test('https://bridge local')).toBe(false);
   });
 });
 

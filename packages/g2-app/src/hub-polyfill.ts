@@ -30,10 +30,10 @@
  * - `hub.removeItem(k)`      → `bridge.setLocalStorage(k, '')` (no explicit delete in SDK)
  * - `hub.eventBus.on('g2.wear' | 'g2.unwear', cb)` → derived from
  *   `bridge.onDeviceStatusChanged(status => ...)` by comparing `status.isWearing` transitions.
- * - `hub.camera`             → left `undefined`. The wizard already gracefully
- *   degrades when `!hub.camera` (see `step2-token.ts:364`). Camera APIs are
- *   phone-side WebView responsibility (`navigator.mediaDevices`), not in
- *   `EvenAppMethod` — confirmed empirically 2026-05-14.
+ * - `hub.camera`             → not provided. There is NO camera / QR-scan API exposed to
+ *   apps (canonical hub.evenrealities.com/docs/guides/device-apis: "no camera (there is
+ *   none)"); confirmed empirically 2026-05-14 that `EvenAppMethod` has no camera surface.
+ *   ADR-0005 §OQ-INV2-4 resolved — the wizard uses paste / manual token entry only.
  *
  * # When NOT to use this
  *
@@ -64,7 +64,6 @@ type HubLikeGlobal = {
     on(event: 'g2.wear' | 'g2.unwear', callback: () => void): void;
     off(event: string, callback: () => void): void;
   };
-  camera?: undefined;
 };
 
 let installed = false;
@@ -164,8 +163,6 @@ export function installHubPolyfill(): boolean {
         set?.delete(callback);
       },
     },
-    // camera intentionally undefined — wizard graceful-degrades on `!hub.camera`.
-    camera: undefined,
   };
 
   (globalThis as { hub?: HubLikeGlobal }).hub = hub;

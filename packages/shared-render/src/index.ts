@@ -9,5 +9,9 @@
  * @see docs/architecture/0001-layered-ui-model.md
  */
 export { AsciiGrid, type Cell } from './ascii-grid.js';
+// NOTE: `matchAsciiFixture` (snapshot.js) statically imports `node:fs` and is
+// TEST-ONLY (node env). Importing THIS root barrel from BROWSER code (e.g. the
+// g2-app bundle) drags node:fs into the build and throws at boot. Browser code
+// must import AsciiGrid from the `@evf/shared-render/ascii-grid` subpath instead.
 export { matchAsciiFixture } from './snapshot.js';
 export const PACKAGE_NAME = '@evf/shared-render';

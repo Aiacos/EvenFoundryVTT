@@ -195,7 +195,119 @@ export interface OverlayPanel extends Layer {
    * in response (no return-value-driven side effects).
    */
   onEvent(gesture: R1Gesture): void;
+  /**
+   * Opt-in marker: panel handles double-tap internally (ADR-0012 D-3 close/back).
+   *
+   * When `true`, `nav-panel-close-dispatcher` skips this panel on double-tap
+   * (the panel's own `onEvent` handles close/back via its injected `onClose`
+   * callback). Panels that do NOT set this property have double-tap handled
+   * externally by the dispatcher, which calls `panelRouter.popOverlay`.
+   *
+   * # Which panels declare this
+   *
+   * - `QuickActionMenuPanel` — double-tap in sub-menu = back; in main = `onClose()`
+   * - `ConcentrationDropModalPanel` — double-tap = cancel + `onCloseCb()`
+   * - `TargetPickerPanel`           — double-tap = cancel + `onCloseCb()`
+   * - `SlotPickerPanel`             — double-tap = cancel + `onCloseCb()`
+   * - `ActionOptionsModal`          — double-tap = cancel + `onCloseCb()`
+   * - `MoveDirectionPicker`         — double-tap = cancel + `onCloseCb()`
+   * - `ReactionPromptPanel`         — double-tap = cancel + `onCloseCb()`
+   * - `TemplatePlacementPanel`      — double-tap = cancel + `onCloseCb()`
+   *
+   * # Which panels do NOT declare this (dispatcher handles close)
+   *
+   * - Nav panels opened from the Quick Action menu (character-sheet, combat-tracker,
+   *   log, inventory, spellbook and their canvas-mode counterparts): these have a
+   *   no-op double-tap stub; the dispatcher calls `popOverlay` to close them.
+   *
+   * @see packages/g2-app/src/panels/nav-panel-close-dispatcher.ts (consumer)
+   * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md (D-3)
+   */
+  readonly handlesDoubleTap?: true;
 }
+
+// ── CanvasLayer (ADR-0013 Amendment 1 — additive extension) ───────────────────
+
+/**
+ * Canvas-rendering layer — extends Layer with per-layer OffscreenCanvas ownership.
+ *
+ * Implementations (CanvasStatusHudLayer, CanvasCharacterSheetPanel, etc. — Phase 20+)
+ * own their own OffscreenCanvas; `CanvasCompositor` assembles them in z-order via
+ * `drawImage` on a master 400×200 canvas.
+ *
+ * # Container budget contract
+ *
+ * `getContainerCount()` MUST return `{image:0, text:0}` for canvas layers — the
+ * 5-container page schema is declared once at page creation (fixed budget mode);
+ * canvas layers do NOT allocate individual SDK containers. `LayerManager._assertContainerBudget()`
+ * uses a fixed-budget branch in canvas mode that validates each layer returns the
+ * zero-zero count, throwing `panel_mount_budget_exceeded` if a layer claims non-zero
+ * counts (ADR-0013 Amendment 1, locked decision #3).
+ *
+ * @see docs/architecture/0013-hud-raster-rendering.md (Amendment 1 — canvas compositor substrate)
+ * @see packages/g2-app/src/engine/canvas-compositor.ts (compositor counterpart)
+ */
+export interface CanvasLayer extends Layer {
+  /**
+   * Assign the OffscreenCanvas (or HTMLCanvasElement fallback) this layer paints on
+   * and perform any async initialisation (VT323 font load, ImageBitmap chrome pre-bake)
+   * required before the first `composite()` / `paint()` call.
+   *
+   * Called by `LayerManager.bundle()` after the layer is registered and BEFORE the
+   * first `composite()` call. The returned Promise MUST be awaited — the canvas path
+   * guarantees font resolution and chrome pre-bake complete before the first frame
+   * (ADR-0013 Amendment 1, Q1 resolution).
+   *
+   * The canvas is provided by `LayerManager` (created per-layer at mount time) so
+   * ownership of the surface belongs to the layer but lifecycle is managed centrally.
+   *
+   * @see ADR-0013 Amendment 1 §Q1 (async attachCanvas resolution)
+   * @see packages/g2-app/src/status-hud/vt323-font-loader.ts (font load that requires await)
+   */
+  attachCanvas(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<void>;
+
+  /**
+   * Repaint the layer's canvas from current cached state.
+   *
+   * `CanvasCompositor` calls this before blitting a dirty layer onto the master
+   * canvas. The implementation renders to the canvas provided via `attachCanvas`.
+   * Should be a cheap incremental update when the layer has not changed (the
+   * dirty flag ensures `paint()` is only called when the layer declares it is
+   * dirty via `isDirty() === true`).
+   */
+  paint(): void;
+
+  /**
+   * Returns `true` when the layer has un-flushed state changes since the last
+   * `paint()` call.
+   *
+   * `CanvasCompositor` skips `paint()` for clean layers and blits the cached
+   * canvas directly (dirty-skip optimisation — ADR-0013 Amendment 1, §Compositor
+   * model). Implementations MUST return `true` at least once after a state
+   * mutation to ensure the mutation reaches the composited output.
+   */
+  isDirty(): boolean;
+}
+
+/**
+ * Runtime type guard — returns `true` when `layer` implements the full
+ * {@link CanvasLayer} interface (all three methods are functions).
+ *
+ * Used by `LayerManager._assertContainerBudget()` to detect canvas layers
+ * and apply the fixed-budget branch (ADR-0013 Amendment 1, locked decision #4).
+ *
+ * @param layer Any `Layer` instance to inspect.
+ * @returns `true` if `layer` exposes `attachCanvas`, `paint`, and `isDirty` as functions.
+ */
+export function isCanvasLayer(layer: Layer): layer is CanvasLayer {
+  return (
+    typeof (layer as CanvasLayer).attachCanvas === 'function' &&
+    typeof (layer as CanvasLayer).paint === 'function' &&
+    typeof (layer as CanvasLayer).isDirty === 'function'
+  );
+}
+
+// ── LayerOp ────────────────────────────────────────────────────────────────────
 
 /**
  * Atomic mount/destroy operation for `LayerManager.bundle()`.

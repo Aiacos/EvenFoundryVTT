@@ -42,7 +42,14 @@ export interface DebugEventFilter {
 }
 
 /** Object field names whose string values are always token-shaped (case-insensitive). */
-const TOKEN_FIELD_NAMES = new Set(['token', 'bearer', 'secret', 'authorization', 'apikey']);
+const TOKEN_FIELD_NAMES = new Set([
+  'token',
+  'bearer',
+  'secret',
+  'authorization',
+  'apikey',
+  'forgepassword',
+]);
 
 /** Minimum length for the token-shaped heuristic to treat a string value as a secret. */
 const TOKEN_SHAPED_MIN_LEN = 16;
@@ -146,10 +153,13 @@ export class DebugEventBus {
   }
 
   /**
-   * Count retained events by direction, seeding all 5 keys at 0.
+   * Count retained events by direction, seeding all 7 keys at 0.
    *
    * Used by the `/debug/state` snapshot (Quick Task 260529-icd) to summarise the
    * ring buffer without dumping events. O(n) over the bounded buffer.
+   *
+   * Extended in Quick Task 260604-cwa with `'agent-log'` and `'agent-result'`
+   * keys (additive — seeded at 0 so existing consumers see no change).
    *
    * @returns A record with an integer count for each {@link DebugEvent.direction}.
    */
@@ -160,6 +170,8 @@ export class DebugEventBus {
       tool: 0,
       log: 0,
       display: 0,
+      'agent-log': 0,
+      'agent-result': 0,
     };
     for (const e of this.buffer) {
       counts[e.direction] += 1;

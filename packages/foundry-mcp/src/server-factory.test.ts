@@ -18,7 +18,21 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildMcpServer } from './server-factory.js';
+import { buildMcpServer, buildRequestServer, buildSharedDeps } from './server-factory.js';
+import type { BridgeClient, BridgeClientOptions } from './tools/bridge-client.js';
+
+/**
+ * A minimal BridgeClient stub that never opens a real WS connection.
+ * `addMessageListener` is required by subscribeToBridgeDeltas.
+ */
+function makeBridgeClientStub(): BridgeClient {
+  return {
+    ready: Promise.resolve(),
+    invokeTool: vi.fn().mockResolvedValue({ success: true, data: {} }),
+    close: vi.fn().mockResolvedValue(undefined),
+    addMessageListener: vi.fn().mockReturnValue(() => {}),
+  } as unknown as BridgeClient;
+}
 
 describe('buildMcpServer', () => {
   afterEach(() => {
@@ -112,6 +126,104 @@ describe('buildMcpServer', () => {
     expect(serverVersion).toBeDefined();
     expect(serverVersion?.name).toBe('evf-foundry-mcp');
 
+    await client.close();
+  });
+});
+
+describe('stateless per-request servers (buildSharedDeps + buildRequestServer)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('buildSharedDeps constructs the BridgeClient exactly ONCE', () => {
+    const logger = pino({ level: 'silent' });
+    const factory = vi.fn((_o: BridgeClientOptions) => makeBridgeClientStub());
+
+    buildSharedDeps({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+      bridgeClientFactory: factory,
+    });
+
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('buildRequestServer does NOT construct a new BridgeClient (shares the long-lived one)', () => {
+    const logger = pino({ level: 'silent' });
+    const factory = vi.fn((_o: BridgeClientOptions) => makeBridgeClientStub());
+
+    const deps = buildSharedDeps({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+      bridgeClientFactory: factory,
+    });
+
+    // Simulate two concurrent requests: each gets its own server.
+    buildRequestServer(deps);
+    buildRequestServer(deps);
+
+    // The BridgeClient factory must still have run only once — the WS connection
+    // is shared, not recreated per request.
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('two per-request servers are DISTINCT McpServer instances (no shared transport state)', async () => {
+    const logger = pino({ level: 'silent' });
+    const deps = buildSharedDeps({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+      bridgeClientFactory: () => makeBridgeClientStub(),
+    });
+
+    const serverA = buildRequestServer(deps);
+    const serverB = buildRequestServer(deps);
+
+    expect(serverA).toBeInstanceOf(McpServer);
+    expect(serverB).toBeInstanceOf(McpServer);
+    // Distinct instances — each owns its own JSON-RPC/transport state so concurrent
+    // clients cannot interleave responses/notifications.
+    expect(serverA).not.toBe(serverB);
+
+    // Both connect+initialize independently over separate in-memory transport pairs.
+    const [clientTransportA, serverTransportA] = InMemoryTransport.createLinkedPair();
+    const [clientTransportB, serverTransportB] = InMemoryTransport.createLinkedPair();
+    await serverA.connect(serverTransportA);
+    await serverB.connect(serverTransportB);
+
+    const clientA = new Client({ name: 'a', version: '0.0.1' }, { capabilities: {} });
+    const clientB = new Client({ name: 'b', version: '0.0.1' }, { capabilities: {} });
+    await clientA.connect(clientTransportA);
+    await clientB.connect(clientTransportB);
+
+    // Each per-request server independently exposes the 6 tools.
+    const toolsA = await clientA.listTools();
+    const toolsB = await clientB.listTools();
+    expect(toolsA.tools).toHaveLength(6);
+    expect(toolsB.tools).toHaveLength(6);
+
+    await clientA.close();
+    await clientB.close();
+  });
+
+  it('buildMcpServer still returns a fully-registered server (stdio path unchanged)', async () => {
+    const logger = pino({ level: 'silent' });
+    const server = buildMcpServer({
+      logger,
+      bridgeUrl: 'http://localhost:8910',
+      bearer: 'test-token',
+      bridgeClientFactory: () => makeBridgeClientStub(),
+    });
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'test', version: '0.0.1' }, { capabilities: {} });
+    await client.connect(clientTransport);
+
+    const { tools } = await client.listTools();
+    expect(tools).toHaveLength(6);
     await client.close();
   });
 });

@@ -4,7 +4,7 @@
 │ 100×60   │                                                      
 └──────────┘                                                      
 ♥ PF    ████████░░░░  45/68    +10 temp                           
-⛨ CA 18    ⚡ INI —    ⚔ VEL —    COMP +3                          
+⛨ CA 18    ⚡ INI +2    ⚔ VEL 30    COMP +3
                                                                   
 ┌── CARATTERISTICHE ─┐  ┌── TIRI SALVEZZA ──┐                     
 │ FOR 16 +3          │  │ ◉ FOR  +5  DES  +2 │                    

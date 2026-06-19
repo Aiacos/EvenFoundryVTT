@@ -28,6 +28,8 @@ interface FoundrySettings {
     data: {
       name: string;
       label: string;
+      /** Optional tooltip/help text shown beside the menu button (i18n key). */
+      hint?: string;
       icon: string;
       // Foundry accepts any constructor — args vary by runtime context
       type: new (
@@ -58,11 +60,17 @@ interface FoundrySettings {
   /**
    * Writes a game setting value.
    *
+   * Foundry's `ClientSettings#set` is async (it persists to the world database
+   * and resolves with the stored value). Callers that need a guaranteed
+   * read-after-write within the same tick — or that must observe write errors —
+   * MUST await the returned promise.
+   *
    * @param module - The module ID
    * @param key - Setting key
    * @param value - Value to store
+   * @returns A promise resolving to the stored value.
    */
-  set(module: string, key: string, value: unknown): void;
+  set(module: string, key: string, value: unknown): Promise<unknown>;
 }
 
 /** Minimal Foundry i18n API for locale detection at module boot. */
@@ -127,38 +135,72 @@ declare namespace foundry {
 }
 
 /**
+ * A module-scoped socket returned by `socketlib.registerModule(moduleId)`.
+ *
+ * This is the REAL `farling42/foundryvtt-socketlib` API shape. A module first
+ * obtains its socket via `socketlib.registerModule('evenfoundryvtt')`, then
+ * registers each handler on the socket with `socket.register(name, fn)` (no
+ * moduleId argument — the module scope is captured by `registerModule`). The
+ * bridge later invokes a handler on the GM client via
+ * `socket.executeAsGM(name, ...args)`.
+ *
+ * The previously-declared `socketlib.registerComplexHandler(moduleId, ...)`
+ * method DID NOT EXIST in the real library (it was invented here so TS compiled
+ * and mocked in tests so tests passed), and threw
+ * `TypeError: socketlib.registerComplexHandler is not a function` at runtime —
+ * aborting the Foundry "ready" hook (Quick Task 260604-lg4).
+ *
+ * @see https://github.com/farling42/foundryvtt-socketlib (registerModule + socket.register/executeAsGM)
+ */
+interface SocketlibSocket {
+  /**
+   * Registers a named handler on this module's socket.
+   *
+   * @param name - Handler identifier (e.g. "evf.validateToken")
+   * @param fn - Function executed on the GM client; may be sync or async
+   */
+  register(name: string, fn: (...args: unknown[]) => unknown | Promise<unknown>): void;
+
+  /**
+   * Executes a registered handler on the GM client and returns the result.
+   *
+   * The module side never calls this directly today (dispatchTool runs in GM
+   * context); the bridge package owns the real `executeAsGM` call sites. The
+   * method is declared for correctness so any future module-side caller uses
+   * the real API (name first, NO moduleId argument).
+   *
+   * @param name - Handler identifier
+   * @param args - Arguments forwarded to the handler
+   * @returns Promise resolving to the handler's return value
+   */
+  executeAsGM(name: string, ...args: unknown[]): Promise<unknown>;
+}
+
+/**
  * Socketlib global injected by the socketlib Foundry module.
  *
- * Available after Foundry's "ready" hook fires (socketlib loads before "ready").
- * NOT on npm — declared as `relationships.requires.socketlib` in module.json.
+ * Available after socketlib fires its `socketlib.ready` hook — the canonical
+ * registration point for module handlers (registration MUST happen on
+ * `Hooks.once('socketlib.ready', ...)`, NOT inside Foundry's `ready` hook).
+ * socketlib is NOT on npm — declared as `relationships.requires.socketlib`
+ * in module.json.
  *
  * @see https://github.com/farling42/foundryvtt-socketlib
- * @see 02-02-PLAN.md Task 2 (socketlib-handlers.ts)
+ * @see packages/foundry-module/src/pair/socketlib-handlers.ts (registerSocketlibHandlers)
  * @see packages/foundry-module/module.json (relationships.requires)
  */
 declare const socketlib: {
   /**
-   * Registers a complex (async, return-value) socket handler.
+   * Registers this module with socketlib and returns its scoped socket.
+   *
+   * Call once per module (idempotent — returns the same socket for the same id).
+   * All handlers are then registered on the returned socket via
+   * `socket.register(name, fn)`.
    *
    * @param moduleId - The module ID (e.g. "evenfoundryvtt")
-   * @param handlerId - Handler identifier (e.g. "evf.validateToken")
-   * @param handler - Async function executed on the GM client
+   * @returns The module-scoped {@link SocketlibSocket}
    */
-  registerComplexHandler(
-    moduleId: string,
-    handlerId: string,
-    handler: (...args: unknown[]) => unknown | Promise<unknown>,
-  ): void;
-
-  /**
-   * Executes a handler on the GM client and returns the result.
-   *
-   * @param moduleId - The module ID
-   * @param handlerId - Handler identifier
-   * @param args - Arguments forwarded to the handler
-   * @returns Promise resolving to the handler's return value
-   */
-  executeAsGM(moduleId: string, handlerId: string, ...args: unknown[]): Promise<unknown>;
+  registerModule(moduleId: string): SocketlibSocket;
 };
 
 /**
@@ -212,8 +254,10 @@ interface Dnd5eAttributes {
   hp: {
     value: number;
     max: number;
-    temp: number;
-    tempmax: number;
+    // dnd5e leaves `temp`/`tempmax` null (NOT 0) when there is no temporary HP —
+    // character-reader must coerce to a number for CharacterSnapshotSchema.
+    temp: number | null;
+    tempmax: number | null;
   };
   ac: { value: number };
   exhaustion: number;
@@ -226,11 +270,57 @@ interface Dnd5eAttributes {
     success: number;
     failure: number;
   };
+  /**
+   * Initiative modifier — dnd5e prep-time computed total (Phase 21).
+   * Path: `actor.system.attributes.init.total`.
+   * May be undefined on freshly-created actors; reader defends with `?? 0`.
+   */
+  init?: { total?: number };
+  /**
+   * Movement speeds in feet (Phase 21).
+   * Path: `actor.system.attributes.movement.walk` (walk speed).
+   * Other modes (fly/swim/climb) included for completeness; all optional.
+   * May be undefined on freshly-created actors; reader defends with default 30.
+   */
+  movement?: {
+    walk?: number;
+    fly?: number;
+    swim?: number;
+    climb?: number;
+  };
 }
 
 /** Subset of the dnd5e 5.x actor system details used by character-reader. */
 interface Dnd5eDetails {
   level: number;
+  /**
+   * Personality traits (Phase 22 Plan 22-02; RDATA-04).
+   * Field key is 'trait' (NOT 'personality') — labeled "DND5E.PersonalityTraits".
+   * The wire schema exposes this as `biography.personality` (D-22.4 naming).
+   * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/character.mjs
+   *        details.trait StringField label "DND5E.PersonalityTraits"
+   */
+  trait?: string;
+  /** Character ideals (Phase 22 Plan 22-02).
+   * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/actor/templates/details.mjs
+   *        DetailsFields.creature.ideal StringField */
+  ideal?: string;
+  /** Character bonds (Phase 22 Plan 22-02).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.creature.bond */
+  bond?: string;
+  /** Character flaws (Phase 22 Plan 22-02).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.creature.flaw */
+  flaw?: string;
+  /**
+   * Character biography HTML (Phase 22 Plan 22-02).
+   * `value` is an HTMLField — HTML-stripped by extractBiography() before the wire payload
+   * (T-22-03 mitigation). `public` is the public-facing biography (not needed Phase 22).
+   * CITED: dnd5e release-5.3.3 module/data/actor/templates/details.mjs DetailsFields.biography
+   */
+  biography?: {
+    value?: string;
+    public?: string;
+  };
 }
 
 /**
@@ -531,7 +621,13 @@ interface FoundryItem {
     level?: number;
     /** Spell school identifier (e.g. 'evo', 'ill', 'div'). */
     school?: string;
-    /** Whether the spell is prepared (leveled spells only). */
+    /**
+     * dnd5e 5.1+ spell preparation fields (replaced the deprecated `preparation`
+     * object: `method` ← preparation.mode, `prepared` ← preparation.prepared).
+     */
+    method?: string;
+    prepared?: boolean;
+    /** @deprecated dnd5e < 5.1 only — superseded by `method`/`prepared` above. */
     preparation?: {
       mode?: string;
       prepared?: boolean;
@@ -548,6 +644,31 @@ interface FoundryItem {
      */
     activities?: {
       contents: FoundryActivity[];
+    };
+    /**
+     * Feature type classification (Phase 22 Plan 22-02; RDATA-03).
+     * Present on feat items; may be absent on pre-categorisation legacy items (PHB 2014).
+     * `value`: dnd5e featureType key ('background'|'class'|'race'|'feat'|'monster'|etc.)
+     * `subtype`: sub-category ('origin'|'general'|'ki'|'fightingStyle'|etc.)
+     * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/item/feat.mjs
+     *        + module/config.mjs CONFIG.DND5E.featureTypes
+     *
+     * Inline declaration (no @evf/shared-protocol import) — ambient files must be
+     * import-free (script-mode) to preserve global scope (Pitfall 6).
+     */
+    type?: {
+      value?: string;
+      subtype?: string;
+    };
+    /**
+     * Item description (HTML). Present on most dnd5e items.
+     * Phase 22 Plan 22-02: used by extractFeats() to populate FeatEntry.description
+     * (HTML-stripped before entering the wire payload; T-22-03 mitigation).
+     * CITED: github.com/foundryvtt/dnd5e release-5.3.3 module/data/item/fields/
+     *        item-description.mjs (HTMLField labeled "DND5E.DescriptionValue")
+     */
+    description?: {
+      value?: string;
     };
   };
 }
@@ -632,6 +753,21 @@ interface FoundryActor {
    * @see .planning/phases/13-v2-stretch/13-03-PLAN.md (D-13-05)
    */
   img?: string;
+  /**
+   * Tests whether `user` has at least `permission` on this actor (ADR-0014).
+   *
+   * Canonical Foundry `Document#testUserPermission`. The `permission` argument
+   * accepts the ownership-level name (e.g. `"OWNER"`, `"OBSERVER"`) or its
+   * numeric `CONST.DOCUMENT_OWNERSHIP_LEVELS` value. We always pass the string
+   * `"OWNER"` to derive the bearer's authorized actor set.
+   *
+   * @param user - The Foundry User to test permission for.
+   * @param permission - Ownership level name (e.g. `"OWNER"`) or numeric level.
+   * @returns true when the user holds at least the given permission.
+   * @see https://foundryvtt.com/api/classes/foundry.abstract.Document.html
+   * @see docs/architecture/0014-bearer-actor-authorization.md
+   */
+  testUserPermission(user: FoundryUser, permission: string | number): boolean;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────
@@ -767,6 +903,11 @@ interface FoundryCanvas {
  */
 interface FoundryUser {
   id: string;
+  /**
+   * User display name (e.g. "Aiacos", "Gamemaster"). Used by the PairModal user
+   * selector (ADR-0014) to label each option.
+   */
+  name: string;
   /** Set of currently targeted tokens for this user. */
   targets: Set<FoundryToken>;
   /**
@@ -784,6 +925,18 @@ interface FoundryUser {
    * for GMs or players who have not yet selected a character.
    */
   character?: { id: string } | null;
+  /**
+   * Read a module flag from this User document (world data, readable by any user).
+   * Used by character-reader to check per-user `streamConsent` (ADR-0015 §C).
+   * Canonical Foundry `Document#getFlag`.
+   */
+  getFlag(scope: string, key: string): unknown;
+  /**
+   * Set a module flag on this User document. A user may set flags on their OWN
+   * User (default OWNER permission). Used to persist the player's `streamConsent`
+   * opt-in so the stream leader can read it. Canonical Foundry `Document#setFlag`.
+   */
+  setFlag(scope: string, key: string, value: unknown): Promise<unknown>;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
@@ -1093,6 +1246,15 @@ declare const game: {
    * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.ModuleManagement.html
    */
   modules: { get(id: string): { active: boolean } | undefined };
+  /**
+   * The active world descriptor. `world.id` is the world identifier provisioned to the
+   * bridge alongside a bearer (PairModal reads it at render time on the no-arg
+   * registerMenu construction path).
+   *
+   * @see packages/foundry-module/src/pair/PairModal.ts
+   * @see https://foundryvtt.com/api/v13/classes/foundry.packages.BaseWorld.html
+   */
+  world: { id: string };
 };
 
 /**
@@ -1101,6 +1263,29 @@ declare const game: {
  * May be null/undefined before the canvas is initialised.
  */
 declare const canvas: FoundryCanvas | null | undefined;
+
+/**
+ * Foundry UI singleton — global access to interface managers.
+ *
+ * Added Quick Task 260604-mjr for the BridgeConfigModal Save/error feedback.
+ * Only the `notifications` manager is declared (the minimal surface used:
+ * transient toast notifications). `info`/`error`/`warn` post a toast; they are
+ * declared optional-chainable on `ui.notifications` because Foundry may not have
+ * initialised the notifications manager in very early lifecycle phases.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.interaction.Notifications.html
+ * @see packages/foundry-module/src/pair/BridgeConfigModal.ts
+ */
+declare const ui: {
+  notifications?: {
+    /** Post an informational (success) toast. */
+    info(message: string): void;
+    /** Post a warning toast. */
+    warn(message: string): void;
+    /** Post an error toast. */
+    error(message: string): void;
+  };
+};
 
 /**
  * Foundry Hooks registry — global event bus for module lifecycle events.

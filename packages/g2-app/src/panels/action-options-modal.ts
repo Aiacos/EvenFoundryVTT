@@ -62,6 +62,7 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
@@ -202,14 +203,19 @@ export interface ActionOptionsToastQueue {
  * Quick Action menu registry (same pattern as ConcentrationDropModalPanel).
  */
 export class ActionOptionsModal implements OverlayPanel {
-  /** Stable id — used by LayerManager + telemetry. */
-  public readonly id = 'action-options-modal';
+  /** Stable id — used by LayerManager + telemetry. Typed `string` so the canvas
+   *  subclass ({@link CanvasActionOptionsModal}) can override it with its own id. */
+  public readonly id: string = 'action-options-modal';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   private readonly bridge: EvenAppBridge;
   private readonly ws: ActionOptionsWebSocket;
   private readonly gestureBus: PanelGestureBus;
-  private readonly request: ActionOptionsRequest;
-  private readonly locale: HudLocale;
+  /** Action context — `protected` so the canvas subclass can read it when painting. */
+  protected readonly request: ActionOptionsRequest;
+  /** Active HUD locale — `protected` so the canvas subclass can resolve labels when painting. */
+  protected readonly locale: HudLocale;
   private readonly sessionId: string;
   private readonly onCloseCb: ActionOptionsCloseHandler;
   /**
@@ -424,6 +430,9 @@ export class ActionOptionsModal implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(ACTION_OPTIONS_CONTAINER_NAME),
       containerName: ACTION_OPTIONS_CONTAINER_NAME,
       content: lines.join('\n'),
     });
@@ -438,9 +447,14 @@ export class ActionOptionsModal implements OverlayPanel {
   /**
    * Container footprint — Strategy A: one text container, zero image.
    *
-   * @returns `{ image: 0, text: 1 }`
+   * @returns `{ image: 0, text: 1 }` for the glyph (text-container) modal.
+   *
+   * Return type is widened to `{ image: number; text: number }` so the canvas
+   * subclass ({@link CanvasActionOptionsModal}) can override it with the
+   * canvas-mode contract `{ image: 0, text: 0 }` (ADR-0013 Amendment 1, locked
+   * decision #3) — a narrower literal `{ text: 1 }` would be an illegal override.
    */
-  getContainerCount(): { image: 0; text: 1 } {
+  getContainerCount(): { image: number; text: number } {
     return { image: 0, text: 1 };
   }
 

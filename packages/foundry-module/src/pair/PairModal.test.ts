@@ -5,16 +5,18 @@
  * - PairModal class is defined and extends ApplicationV2
  * - _prepareContext() returns correct state based on bearer TTL
  * - All 5 modal states are returned correctly: active, empty, refresh-needed, expired, pairing-in-progress
- * - _prepareContext() includes qrSvg for active/pairing-in-progress states
- * - _prepareContext() excludes qrSvg for expired state (shows banner instead)
- * - _prepareContext() populates boolean flags (isEmpty, isExpired, isRefreshNeeded, isPairing, showQr)
+ * - _prepareContext() includes copyable bridgeUrl + token for active/refresh-needed states
+ * - _prepareContext() excludes credentials for expired/empty state (banner / empty copy instead)
+ * - _prepareContext() populates boolean flags (isEmpty, isExpired, isRefreshNeeded, isPairing, showCredentials)
  * - _prepareContext() populates expiresAtMs (epoch ms, not ISO) for active states
  * - _prepareContext() i18n includes expiresIn and close keys (regression for missing-key defects)
  * - _onClickRevoke extracts token-id and calls revokeBearer
- * - _onClickRefresh calls generateBearer with refresh=true
+ * - _onClickRefresh (self-service) writes a pendingPair flag with a client-generated
+ *   token and does NOT call generateBearer directly (ADR-0014 self-service pairing)
  * - empty state exposes new-code button wiring via _onRender
  *
- * Note: QR SVG generation via qrcode@1.5.4 is mocked to return a sentinel SVG string.
+ * Pairing model: no QR — the token + bridge URL are rendered as copyable text (token masked
+ * by default). The Even Hub platform has no camera/QR-scan API for apps (ADR-0005 §OQ-INV2-4).
  *
  * @see packages/foundry-module/src/pair/PairModal.ts
  * @see 02-02-PLAN.md Task 2 (PairModal ApplicationV2)
@@ -52,8 +54,22 @@ const makeHooksMock = () => ({
   on: vi.fn(),
 });
 
-const makeGameMock = (lang = 'en') => {
+const makeGameMock = (
+  lang = 'en',
+  users: Array<{ id: string; name: string; isGM: boolean }> = [
+    { id: 'user-gm', name: 'Gamemaster', isGM: true },
+    { id: 'user-aiacos', name: 'Aiacos', isGM: false },
+    { id: 'user-bea', name: 'Bea', isGM: false },
+  ],
+) => {
   const store = new Map<string, unknown>();
+  // Pre-seed the bridgeUrl world setting so the no-arg PairModal (the real registerMenu
+  // path) reads a real value instead of `undefined`. The world ID comes from game.world.id.
+  store.set('evenfoundryvtt.bridgeUrl', 'https://bridge.local:8910');
+  // Self-service pairing: the modal is now CURRENT-USER scoped. `game.user.id` is
+  // 'user-1' — the same userId the tests bind their bearers to via generateBearer —
+  // so `currentUserBearers()` sees them. The flag store backs the pendingPair flow.
+  const flagStore = new Map<string, unknown>();
   return {
     settings: {
       get: vi.fn((moduleId: string, key: string) => store.get(`${moduleId}.${key}`)),
@@ -63,11 +79,28 @@ const makeGameMock = (lang = 'en') => {
       register: vi.fn(),
       registerMenu: vi.fn(),
     },
+    world: { id: 'world-abc' },
+    // Self-service: the current Foundry user (mints bearers bound to their own id).
+    user: {
+      id: 'user-1',
+      name: 'Aiacos',
+      isGM: true,
+      getFlag: vi.fn((scope: string, key: string) => flagStore.get(`${scope}.${key}`)),
+      setFlag: vi.fn(async (scope: string, key: string, value: unknown) => {
+        flagStore.set(`${scope}.${key}`, value);
+      }),
+      unsetFlag: vi.fn(async (scope: string, key: string) => {
+        flagStore.delete(`${scope}.${key}`);
+      }),
+    },
+    // Kept for any roster reads; no longer drives a pairing user-picker (removed).
+    users: { contents: users },
     i18n: {
       lang,
       localize: vi.fn((k: string) => k),
     },
     _store: store,
+    _flagStore: flagStore,
   };
 };
 
@@ -83,14 +116,6 @@ function makeCryptoMock() {
     },
   };
 }
-
-// ─── qrcode mock ─────────────────────────────────────────────────────────────
-
-vi.mock('qrcode', () => ({
-  default: {
-    toString: vi.fn().mockResolvedValue('<svg data-testid="mock-qr">MOCK QR SVG</svg>'),
-  },
-}));
 
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
@@ -125,9 +150,6 @@ describe('PairModal', () => {
     gameMock = makeGameMock('it');
     vi.stubGlobal('game', gameMock);
     vi.stubGlobal('crypto', makeCryptoMock());
-    // The top-level vi.mock('qrcode', ...) at module scope is automatically re-applied
-    // after vi.resetModules(). Do NOT call vi.mock() here — it is not hoisted inside
-    // beforeEach and emits a Vitest 4 runtime warning. (WR-03 fix)
   });
 
   it('PairModal class is exported', async () => {
@@ -139,27 +161,86 @@ describe('PairModal', () => {
   describe('_prepareContext() state machine', () => {
     it('returns state="empty" when no active bearers exist', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('empty');
-      expect(data.qrSvg).toBeUndefined();
+      expect(data.token).toBeUndefined();
+      expect(data.bridgeUrl).toBeUndefined();
     });
 
-    it('returns state="active" with qrSvg when a valid bearer exists', async () => {
+    it('returns state="active" with copyable token + bridgeUrl when a valid bearer exists', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('active');
-      expect(typeof data.qrSvg).toBe('string');
-      expect(data.qrSvg).toContain('svg');
+      expect(data.token).toBe(entry.token);
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+    });
+
+    // Regression (260614 review): registerMenu instantiates PairModal with `new type()`
+    // (NO args). The old `constructor(bridgeUrl, worldId)` left those fields `undefined`,
+    // so the bridge URL rendered as `undefined`. The no-arg modal must read the real
+    // bridgeUrl from settings + the world ID from game.world.id at render time.
+    it('no-arg construction (real registerMenu path) yields the bridgeUrl from settings, not undefined', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
+
+      // Construct via the REAL Foundry path: `new PairModal()` with no arguments.
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+
+      // The bridge URL must come from the `bridgeUrl` world setting (seeded in makeGameMock),
+      // never `undefined`.
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+      expect(data.bridgeUrl).not.toBeUndefined();
+      expect(data.token).toBe(entry.token);
+      // game.settings.get must have been consulted for the bridgeUrl key (settings-read path).
+      expect(gameMock.settings.get).toHaveBeenCalledWith('evenfoundryvtt', 'bridgeUrl');
+      // game.world.id is the world identifier surfaced to the bridge (read at render time).
+      expect(gameMock.world.id).toBe('world-abc');
+    });
+
+    it('no-arg construction renders an empty bridgeUrl (not undefined) when the setting is unset', async () => {
+      // Simulate an unset bridgeUrl setting: get() returns undefined for that key.
+      gameMock.settings.get.mockImplementation((moduleId: string, key: string) => {
+        if (key === 'bridgeUrl') return undefined;
+        return gameMock._store.get(`${moduleId}.${key}`);
+      });
+
+      const { generateBearer } = await import('./bearer-registry.js');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+
+      // Graceful fallback: empty string, never the literal `undefined` that the bug produced.
+      expect(data.bridgeUrl).toBe('');
+      expect(data.bridgeUrl).not.toBeUndefined();
     });
 
     it('returns state="expired" when the only bearer is expired', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       // Force expiration by mutating registry via settings
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -188,15 +269,20 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
-      const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal2();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('expired');
-      expect(data.qrSvg).toBeUndefined();
+      expect(data.token).toBeUndefined();
     });
 
     it('returns state="refresh-needed" when TTL < 1h', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       // Set expiresAt to now + 30 minutes (< 1h threshold)
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -225,42 +311,47 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PairModal2 } = await import('./PairModal.js');
-      const modal = new PairModal2('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal2();
       const data = await modal._prepareContext({});
       expect(data.state).toBe('refresh-needed');
-      expect(typeof data.qrSvg).toBe('string');
+      expect(typeof data.token).toBe('string');
     });
   });
 
   describe('_prepareContext() boolean flags', () => {
-    it('sets isEmpty=true and showQr=false for empty state', async () => {
+    it('sets isEmpty=true and showCredentials=false for empty state', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.isEmpty).toBe(true);
       expect(data.isExpired).toBe(false);
       expect(data.isRefreshNeeded).toBe(false);
       expect(data.isPairing).toBe(false);
-      expect(data.showQr).toBe(false);
+      expect(data.showCredentials).toBe(false);
     });
 
-    it('sets isEmpty=false, showQr=true for active state', async () => {
+    it('sets isEmpty=false, showCredentials=true for active state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.isEmpty).toBe(false);
       expect(data.isExpired).toBe(false);
       expect(data.isRefreshNeeded).toBe(false);
       expect(data.isPairing).toBe(false);
-      expect(data.showQr).toBe(true);
+      expect(data.showCredentials).toBe(true);
     });
 
-    it('sets isExpired=true and showQr=false for expired state', async () => {
+    it('sets isExpired=true and showCredentials=false for expired state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | { entries: Record<string, { expiresAt: number }> }
@@ -286,15 +377,20 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       expect(data.isExpired).toBe(true);
       expect(data.isEmpty).toBe(false);
-      expect(data.showQr).toBe(false);
+      expect(data.showCredentials).toBe(false);
     });
 
-    it('sets isRefreshNeeded=true and showQr=true for refresh-needed state', async () => {
+    it('sets isRefreshNeeded=true and showCredentials=true for refresh-needed state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer(
+        'My G2',
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | { entries: Record<string, { expiresAt: number }> }
@@ -320,19 +416,19 @@ describe('PairModal', () => {
       vi.stubGlobal('crypto', makeCryptoMock());
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       expect(data.isRefreshNeeded).toBe(true);
-      expect(data.showQr).toBe(true);
+      expect(data.showCredentials).toBe(true);
     });
   });
 
   describe('_prepareContext() expiresAtMs', () => {
     it('provides expiresAtMs as a number (epoch ms) for active state', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(typeof data.expiresAtMs).toBe('number');
       // Must be a future timestamp (epoch ms, not seconds)
@@ -341,7 +437,7 @@ describe('PairModal', () => {
 
     it('expiresAtMs is undefined for empty state', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.expiresAtMs).toBeUndefined();
     });
@@ -350,7 +446,7 @@ describe('PairModal', () => {
   describe('_prepareContext() i18n field', () => {
     it('includes an i18n object with required keys', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       expect(data.i18n).toBeDefined();
       const i18n = data.i18n as Record<string, string>;
@@ -362,7 +458,7 @@ describe('PairModal', () => {
 
     it('includes expiresIn key in i18n (regression: was missing from buildI18n)', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.expiresIn).toBeDefined();
@@ -372,21 +468,95 @@ describe('PairModal', () => {
 
     it('includes close key in i18n (regression: was missing from buildI18n)', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const i18n = data.i18n as Record<string, string>;
       expect(i18n.close).toBeDefined();
       expect(i18n.close).toBe('evf.pair.modal.close');
+    });
+
+    it('includes copy/reveal i18n keys (no missing-key regression for the copy UX)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.copyInstruction).toBe('evf.pair.copy.instruction');
+      expect(i18n.copyBridgeUrl).toBe('evf.pair.copy.bridge_url');
+      expect(i18n.copyToken).toBe('evf.pair.copy.token');
+      expect(i18n.copyReveal).toBe('evf.pair.copy.reveal');
+      expect(i18n.copyHide).toBe('evf.pair.copy.hide');
+      expect(i18n.copyButton).toBe('evf.pair.copy.copy');
+      expect(i18n.copyCopied).toBe('evf.pair.copy.copied');
+    });
+
+    it('does NOT resolve the removed evf.pair.qr.scan_instruction key', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      const i18n = data.i18n as Record<string, string>;
+      expect(i18n.scanInstruction).toBeUndefined();
+    });
+  });
+
+  describe('copyable credentials UX', () => {
+    it('_onClickReveal toggles token mask/plain visibility and button label', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickReveal(event: Event): void;
+      };
+
+      const html = document.createElement('div');
+      const mask = document.createElement('code');
+      mask.setAttribute('data-token-mask', '');
+      const plain = document.createElement('code');
+      plain.setAttribute('data-token-plain', '');
+      plain.classList.add('evf-hidden');
+      const revealBtn = document.createElement('button');
+      revealBtn.dataset.action = 'reveal-token';
+      html.append(mask, plain, revealBtn);
+
+      modal.element = html;
+      modal._onRender({}, {});
+
+      // Initially hidden
+      expect(plain.classList.contains('evf-hidden')).toBe(true);
+      revealBtn.click();
+      expect(plain.classList.contains('evf-hidden')).toBe(false);
+      expect(mask.classList.contains('evf-hidden')).toBe(true);
+      // Toggle back
+      revealBtn.click();
+      expect(plain.classList.contains('evf-hidden')).toBe(true);
+    });
+
+    it('_onClickCopy writes data-copy-value to the clipboard', async () => {
+      const writeText = vi.fn(async () => undefined);
+      vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal;
+
+      const html = document.createElement('div');
+      const copyBtn = document.createElement('button');
+      copyBtn.dataset.action = 'copy';
+      copyBtn.dataset.copyValue = 'my-secret-token';
+      html.appendChild(copyBtn);
+
+      modal.element = html;
+      modal._onRender({}, {});
+      copyBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(writeText).toHaveBeenCalledWith('my-secret-token');
     });
   });
 
   describe('_prepareContext() devices list', () => {
     it('returns devices array from listBearers()', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device 1', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const devices = data.devices as unknown[];
       expect(Array.isArray(devices)).toBe(true);
@@ -394,16 +564,109 @@ describe('PairModal', () => {
     });
   });
 
+  // ── Self-service pairing: no user picker; bind to the CURRENT user ────────────
+
+  describe('_prepareContext() self-service (ADR-0014)', () => {
+    it('no longer exposes a user-selector list (the dropdown was removed)', async () => {
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal();
+      const data = await modal._prepareContext({});
+      expect((data as { users?: unknown }).users).toBeUndefined();
+    });
+
+    it('scopes credentials to the CURRENT user — a bearer bound to another user is ignored', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      // Bearer bound to a DIFFERENT user than game.user.id ('user-1').
+      await generateBearer('Other G2', 'https://bridge.local:8910', 'world-abc', 'user-2');
+
+      const { PairModal } = await import('./PairModal.js');
+      const data = await new PairModal()._prepareContext({});
+      // No current-user bearer and no pending flag → empty.
+      expect(data.state).toBe('empty');
+      expect(data.devices).toEqual([]);
+    });
+
+    it('active state sets isActive + exposes the regenerate CTA label (generate-new button)', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      // Bearer bound to the current user (user-1) → active state.
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
+
+      const { PairModal } = await import('./PairModal.js');
+      const data = await new PairModal()._prepareContext({});
+      expect(data.state).toBe('active');
+      expect(data.isActive).toBe(true);
+      // The "generate new token" label is resolved (template gates the data-action="new-code"
+      // button on isActive so the active state is no longer Revoke-only).
+      expect((data.i18n as Record<string, string>).regenerate).toBeDefined();
+    });
+
+    it('surfaces a pending-pair flag as state="pairing-in-progress" with the flag token', async () => {
+      vi.stubGlobal('game', gameMock);
+      // Seed a pending-pair flag on the current user (the self-service mint).
+      await gameMock.user.setFlag('evenfoundryvtt', 'pendingPair', {
+        alias: 'My G2',
+        token: 'pending-token-xyz',
+        bridgeUrl: 'https://bridge.local:8910',
+        worldId: 'world-abc',
+        createdAt: Date.now(),
+      });
+
+      const { PairModal } = await import('./PairModal.js');
+      const data = await new PairModal()._prepareContext({});
+      expect(data.state).toBe('pairing-in-progress');
+      expect(data.isPairing).toBe(true);
+      expect(data.showCredentials).toBe(true);
+      expect(data.token).toBe('pending-token-xyz');
+      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+    });
+  });
+
+  describe('_onClickRefresh() self-service mint (ADR-0014)', () => {
+    it('writes a pendingPair flag with a client-generated token and does NOT call generateBearer', async () => {
+      const registry = await import('./bearer-registry.js');
+      const genSpy = vi.spyOn(registry, 'generateBearer');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickRefresh(e: Event): void;
+      };
+      modal.element = document.createElement('div');
+
+      modal._onClickRefresh(new Event('click'));
+      // Allow the async _generateForSelf microtasks to flush.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // No direct registry write (a non-GM player cannot write the world setting).
+      expect(genSpy).not.toHaveBeenCalled();
+      // A pendingPair flag was written on the current user with a non-empty token.
+      expect(gameMock.user.setFlag).toHaveBeenCalledWith(
+        'evenfoundryvtt',
+        'pendingPair',
+        expect.objectContaining({
+          token: expect.any(String),
+          bridgeUrl: 'https://bridge.local:8910',
+          worldId: 'world-abc',
+        }),
+      );
+      const written = gameMock._flagStore.get('evenfoundryvtt.pendingPair') as { token: string };
+      expect(written.token.length).toBeGreaterThan(0);
+      genSpy.mockRestore();
+    });
+  });
+
   describe('_onRender()', () => {
     it('binds click handler to [data-action="revoke"] buttons', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
-
-      const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
+      const entry = await generateBearer(
+        'Device',
         'https://bridge.local:8910',
         'world-abc',
-      ) as unknown as RenderableModal;
+        'user-1',
+      );
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal;
 
       // Build minimal DOM: a div with a revoke button
       const html = document.createElement('div');
@@ -427,13 +690,10 @@ describe('PairModal', () => {
 
     it('binds click handler to [data-action="refresh"] button', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -453,13 +713,10 @@ describe('PairModal', () => {
 
     it('binds click handler to [data-action="new-code"] button (expired state)', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -479,10 +736,7 @@ describe('PairModal', () => {
     it('binds click handler to [data-action="new-code"] button (empty state — first pairing)', async () => {
       // Empty state: no bearers at all. The empty-state section must still wire new-code.
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       const renderSpy = vi.spyOn(modal, 'render').mockReturnValue(modal);
 
@@ -503,10 +757,10 @@ describe('PairModal', () => {
   describe('_onClickRevoke()', () => {
     it('does nothing when data-token-id is missing', async () => {
       const { generateBearer, listBearers } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
 
       const btn = document.createElement('button');
       // No dataset.tokenId
@@ -523,7 +777,7 @@ describe('PairModal', () => {
   describe('close()', () => {
     it('clears the countdown interval and calls super.close()', async () => {
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
 
       // close() should resolve without error even if no interval is running
       await expect(modal.close()).resolves.toBeUndefined();
@@ -533,11 +787,11 @@ describe('PairModal', () => {
   describe('formatLastSeen coverage (via devices list)', () => {
     it('shows "—" for lastSeenAt=null', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
       // lastSeenAt is null on fresh entry
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal('https://bridge.local:8910', 'world-abc');
+      const modal = new PairModal();
       const data = await modal._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('—');
@@ -545,7 +799,7 @@ describe('PairModal', () => {
 
     it('shows "Online" for lastSeenAt within 2 minutes', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       // Mutate lastSeenAt to 30s ago via settings
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
@@ -572,17 +826,16 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('Online');
     });
 
     it('shows "N min ago" for lastSeenAt 5 minutes ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -608,17 +861,16 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toContain('min ago');
     });
 
     it('shows "N h ago" for lastSeenAt 2 hours ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -644,17 +896,16 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('2 h ago');
     });
 
     it('shows ">24 h ago" for lastSeenAt 48 hours ago', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc');
+      const entry = await generateBearer('Dev', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const registry = gameMock.settings.get('evenfoundryvtt', 'bearerRegistry') as
         | {
@@ -680,10 +931,9 @@ describe('PairModal', () => {
       vi.stubGlobal('Hooks', makeHooksMock());
       vi.stubGlobal('game', gameMock);
       vi.stubGlobal('crypto', makeCryptoMock());
-      // top-level vi.mock('qrcode') is re-applied automatically after resetModules() (WR-03)
 
       const { PairModal: PM } = await import('./PairModal.js');
-      const data = await new PM('https://bridge.local:8910', 'world-abc')._prepareContext({});
+      const data = await new PM()._prepareContext({});
       const devices = data.devices as Array<{ lastSeenRelative: string }>;
       expect(devices[0]?.lastSeenRelative).toBe('>24 h ago');
     });
@@ -692,13 +942,10 @@ describe('PairModal', () => {
   describe('close() with active countdown', () => {
     it('clears countdown interval when interval is active', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
-      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc');
+      await generateBearer('Device', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal(
-        'https://bridge.local:8910',
-        'world-abc',
-      ) as unknown as RenderableModal;
+      const modal = new PairModal() as unknown as RenderableModal;
 
       // Start a countdown by rendering with a time element
       const html = document.createElement('div');

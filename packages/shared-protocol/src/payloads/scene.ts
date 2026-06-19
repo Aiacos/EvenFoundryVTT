@@ -19,7 +19,14 @@ import { z } from 'zod';
 export const SceneViewportSchema = z.strictObject({
   /**
    * Foundry scene document ID of the currently active scene.
-   * Empty string `''` is the canonical zero-state when no scene is active.
+   *
+   * Empty string `''` is the canonical zero-state when no scene is active —
+   * intentionally **NOT** `.min(1)` (unlike the `sceneId` in `frame.ts` /
+   * `frame-png.ts`, where a frame ALWAYS belongs to a real scene so empty is
+   * never valid). Here the producer `scene-reader.ts` returns `sceneId: ''`
+   * with no active scene, and `bridge/src/routes/scene.ts` both validates that
+   * zero-state against this schema AND emits it as its own fallback response.
+   * Requiring a non-empty id would reject the legitimate no-scene state.
    */
   sceneId: z.string(),
   /** Display name of the active scene. */

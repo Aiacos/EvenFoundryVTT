@@ -10,13 +10,30 @@
  *   - bundle() applies ops in order; intermediate invariant-violation is tolerated
  *   - setMapMode / getMapMode round-trip without bridge I/O
  *
+ * Phase 19 Plan 04 additions:
+ *   - setRenderMode / getRenderMode round-trip (default 'glyph')
+ *   - canvas mode _flushPage: containerTotalNum:5 (layout B — hud-status removed) + _compositeAndPush invoked
+ *   - CM-01: updateImageRawData called 4 times sequentially in canvas mode
+ *   - null-compositor canvas mode: _compositeAndPush returns without throwing
+ *   - _assertContainerBudget canvas-mode fixed-budget branch
+ *
+ * Phase 25 Plan 02 additions (D-25.3 / RPROMO-02):
+ *   - LMT-ATOMIC-01: canvas→glyph atomic switch via setRenderMode('glyph')+bundle([])
+ *     yields exactly ONE rebuildPageContainer with the 3-container glyph schema and
+ *     ZERO mixed-schema intermediate frame (success criterion #3).
+ *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PATTERNS.md §layer-manager.test.ts
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-02-PLAN.md Task 1
+ * @see .planning/phases/EVF-19-adr-0013-amendment-1-canvas-compositor-core/19-04-PLAN.md
+ * @see .planning/phases/EVF-25-promozione-raster-a-default-boot-fallback-glyph/25-02-PLAN.md Task 1
  */
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { ServerCap } from '@evf/shared-protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CanvasCompositorLike } from '../canvas-compositor.js';
+import { BOOT_CONTAINER_TOTAL } from '../container-registry.js';
 import type { DebugMirror } from '../debug-mirror.js';
+import { HudDeltaDriver } from '../hud-delta-driver.js';
 import { LayerManager } from '../layer-manager.js';
 import {
   type Layer,
@@ -183,6 +200,45 @@ describe('LayerManager — bundle() atomic semantics', () => {
     await lm.bundle(ops);
     expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
     expect(lm.getCaptureContainerCount()).toBe(1);
+  });
+
+  it('Test 8b: _flushPage rebuilds the default STATUS-VIEW schema (3 text, 0 image, exactly-one isEventCapture=1) — not the full 11-container schema (j0t-05 flush fix)', async () => {
+    // j0t-05 flush fix: _flushPage must use the status-view schema (same as buildBootPageSchema),
+    // NOT the full 11-container registry. The full schema re-declares map-capture (id7, same
+    // rect as status-hud id6) and z05-* (ids 8-10), causing "Text" ghosting/overlap on the glasses.
+    // FIX-NZL: status-hud is now the per-schema capture target (G2 spec: exactly one
+    // isEventCapture=1 per page). map-capture (id7) remains excluded to avoid capture-conflict.
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    await lm.bundle([]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    // Default status-view: 3 text (header id4, footer id5, status-hud id6), 0 image.
+    expect(arg?.containerTotalNum).toBe(3);
+    expect(arg?.imageObject?.length).toBe(0);
+    expect(arg?.textObject?.length).toBe(3);
+    // EXACTLY ONE isEventCapture=1 in the status-view schema: status-hud (id6).
+    // map-capture (id7) is still excluded to avoid the G2 host capture-conflict.
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('status-hud');
+    // The 3 containers are header(4), footer(5), status-hud(6) in id order.
+    const texts = arg?.textObject ?? [];
+    expect(texts[0]?.containerName).toBe('header');
+    expect(texts[0]?.containerID).toBe(4);
+    expect(texts[1]?.containerName).toBe('footer');
+    expect(texts[1]?.containerID).toBe(5);
+    expect(texts[2]?.containerName).toBe('status-hud');
+    expect(texts[2]?.containerID).toBe(6);
+    // Every text container has the numeric containerID + geometry.
+    for (const t of texts) {
+      expect(typeof t.containerID).toBe('number');
+      expect(t.width).toBeGreaterThan(0);
+      expect(t.height).toBeGreaterThan(0);
+    }
   });
 
   it('Test 9: bundle applies ops in order; transient invariant violation tolerated when final state is valid', async () => {
@@ -941,4 +997,601 @@ describe('LayerManager — debug mirror DI (backward-compat + injected)', () => 
     expect(ops).toContain('mount');
     expect(ops).toContain('destroy');
   });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 19 Plan 04 — renderMode + canvas-mode _flushPage + _compositeAndPush
+// (RAST-04, RAST-01)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal CanvasCompositorLike stub for testing _compositeAndPush.
+ *
+ * Returns a blank 400×200×4 RGBA buffer (320000 bytes, all zeros).
+ */
+function makeFakeCompositor(): CanvasCompositorLike & {
+  composite: ReturnType<typeof vi.fn>;
+} {
+  const blankRgba = new Uint8ClampedArray(576 * 288 * 4); // 320000 zeros
+  return {
+    composite: vi.fn().mockReturnValue(blankRgba),
+    registerLayer: vi.fn(),
+    deregisterLayer: vi.fn(),
+    markDirty: vi.fn(),
+  };
+}
+
+describe('LayerManager — renderMode (Phase 19 Plan 04, RAST-04)', () => {
+  it('LMT-RM-01: getRenderMode() defaults to glyph', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    expect(lm.getRenderMode()).toBe('glyph');
+  });
+
+  it('LMT-RM-02: setRenderMode/getRenderMode round-trip without bridge I/O', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+
+    lm.setRenderMode('canvas');
+    expect(lm.getRenderMode()).toBe('canvas');
+    lm.setRenderMode('glyph');
+    expect(lm.getRenderMode()).toBe('glyph');
+
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
+  it('LMT-RM-03: 2-arg constructor (no compositor) still compiles and defaults to glyph', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    expect(lm.getRenderMode()).toBe('glyph');
+    // bridge should not be touched by construction
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+  });
+});
+
+describe('LayerManager — canvas-mode _flushPage (RAST-04)', () => {
+  it('LMT-CF-01: canvas mode _flushPage calls rebuildPageContainer with containerTotalNum:6', async () => {
+    // Layout B (2026-06-10): full-screen tiles, hud-status removed → HUD_RASTER_CONTAINER_TOTAL=5.
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    // Mount a capture-providing layer to satisfy capture invariant.
+    // In canvas mode, the capture layer must declare {image:0, text:0} per ADR-0013.
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(5);
+  });
+
+  it('LMT-CF-02: canvas mode _flushPage schema has 4 image containers + 1 text capture container', async () => {
+    // Layout B (2026-06-10): full-screen 288×144 tiles; the native hud-status container
+    // was removed (the host renders images over text — see container-registry docs).
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.imageObject?.length).toBe(4);
+    expect(arg?.textObject?.length).toBe(1);
+    // Exactly ONE text container must have isEventCapture:1 (hud-capture).
+    const captureContainers = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captureContainers).toHaveLength(1);
+    // Full-screen tile geometry: every image container is 288×144.
+    for (const img of arg?.imageObject ?? []) {
+      expect((img as { width?: number }).width).toBe(288);
+      expect((img as { height?: number }).height).toBe(144);
+    }
+  });
+
+  it('LMT-CF-03: canvas mode _flushPage calls _compositeAndPush (compositor.composite invoked)', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // compositor.composite() must have been called once
+    expect(compositor.composite).toHaveBeenCalledTimes(1);
+  });
+
+  it('LMT-CV-REPLACE-01: replace bundle (destroy z2 + mount z2) keeps the NEW canvas layer registered — deregister precedes register', async () => {
+    // Regression for debug canvas-sheet-overlay-wont-open (2026-06-09):
+    // pushOverlay's atomic suspend path issues [{destroy z2}, {mount z2}] in ONE
+    // bundle. STEP 2.5 used to register the new layer FIRST and deregister the
+    // destroyed z afterwards — wiping the just-registered replacement from the
+    // compositor (invisible menu over a suspended panel).
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    const makeCanvasOverlay = (id: string) => ({
+      id,
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getContainerCount: () => ({ image: 0, text: 0 }),
+      onMount: vi.fn().mockResolvedValue(undefined),
+      onUnmount: vi.fn().mockResolvedValue(undefined),
+      onEvent: vi.fn(),
+      attachCanvas: vi.fn().mockResolvedValue(undefined),
+      paint: vi.fn(),
+      isDirty: vi.fn().mockReturnValue(true),
+    });
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    const first = makeCanvasOverlay('first-overlay');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: first as unknown as Layer }]);
+
+    const replacement = makeCanvasOverlay('replacement-overlay');
+    await lm.bundle([
+      { type: 'destroy', z: ZIndex.Z2_OVERLAY },
+      { type: 'mount', z: ZIndex.Z2_OVERLAY, layer: replacement as unknown as Layer },
+    ]);
+
+    // The replacement must be the LAST compositor action on z2 — i.e. the final
+    // registerLayer call for z2 happens AFTER the final deregisterLayer for z2.
+    const registerMock = compositor.registerLayer as ReturnType<typeof vi.fn>;
+    const deregisterMock = compositor.deregisterLayer as ReturnType<typeof vi.fn>;
+    const lastRegisterOrder = Math.max(
+      ...registerMock.mock.invocationCallOrder.filter(
+        (_: number, i: number) => registerMock.mock.calls[i]?.[0] === ZIndex.Z2_OVERLAY,
+      ),
+    );
+    const deregisterOrders = deregisterMock.mock.invocationCallOrder.filter(
+      (_: number, i: number) => deregisterMock.mock.calls[i]?.[0] === ZIndex.Z2_OVERLAY,
+    );
+    expect(deregisterOrders.length).toBeGreaterThan(0);
+    expect(Math.max(...deregisterOrders)).toBeLessThan(lastRegisterOrder);
+
+    // And the last z2 registration carries the replacement layer instance.
+    const z2Registrations = registerMock.mock.calls.filter(
+      (c: unknown[]) => c[0] === ZIndex.Z2_OVERLAY,
+    );
+    expect(z2Registrations.at(-1)?.[2]).toBe(replacement);
+  });
+
+  it('LMT-CF-04: glyph mode _flushPage is byte-identical to before (containerTotalNum:3, no compositor call) — j0t-05 preserved', async () => {
+    // This is the same as existing Test 8b, re-asserted here for glyph coexistence.
+    // FIX-NZL: status-hud is now the per-schema capture target (G2 spec: exactly one
+    // isEventCapture=1 per page). The glyph schema is otherwise unchanged (3 containers,
+    // 0 image, map-capture excluded to avoid G2 host capture-conflict).
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const mapLayer = makeMockLayer('map', 'map-capture');
+    // glyph mode is the default; do NOT call setRenderMode
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(3);
+    expect(arg?.imageObject?.length).toBe(0);
+    expect(arg?.textObject?.length).toBe(3);
+    // EXACTLY ONE isEventCapture=1 in glyph status-view schema: status-hud (id6).
+    // map-capture (id7) remains excluded to avoid G2 host capture-conflict.
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('status-hud');
+    // compositor.composite must NOT have been called in glyph mode
+    expect(compositor.composite).not.toHaveBeenCalled();
+  });
+});
+
+describe('LayerManager — CM-01 serialized updateImageRawData (RAST-01)', () => {
+  it('CM-01: canvas mode _compositeAndPush calls bridge.updateImageRawData exactly 4 times sequentially', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    // Track call order to verify sequential execution
+    const callOrder: string[] = [];
+    bridge.updateImageRawData.mockImplementation(async (payload: { containerName?: string }) => {
+      callOrder.push(`update:${payload.containerName ?? 'unknown'}`);
+      return 'success';
+    });
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // Must be called exactly 4 times (4 HUD tiles)
+    expect(bridge.updateImageRawData).toHaveBeenCalledTimes(4);
+    // All calls recorded in sequence (not concurrent - Promise.all would interleave differently)
+    expect(callOrder).toHaveLength(4);
+    expect(callOrder[0]).toMatch(/^update:/);
+    expect(callOrder[1]).toMatch(/^update:/);
+    expect(callOrder[2]).toMatch(/^update:/);
+    expect(callOrder[3]).toMatch(/^update:/);
+  });
+});
+
+describe('LayerManager — null-compositor guard (Pitfall 2)', () => {
+  it('LMT-NC-01: canvas mode with null compositor (no 3rd arg) does not throw when _compositeAndPush runs', async () => {
+    // Construct without compositor (2-arg call) then set canvas mode
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    // Must not throw even though compositor is null
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]),
+    ).resolves.not.toThrow();
+
+    // rebuildPageContainer still called once (schema built even without compositor)
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    // updateImageRawData NOT called (compositor null → _compositeAndPush returns early)
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 19 Plan 04 — _assertContainerBudget canvas-mode fixed-budget branch
+// (RAST-03)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('LayerManager — _assertContainerBudget canvas-mode (RAST-03)', () => {
+  it('LMT-CB-CV-01: canvas mode — layer with {image:0,text:0} does NOT throw', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const canvasLayer: Layer = {
+      id: 'canvas-layer',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    // Must not throw — {image:0,text:0} is the correct canvas-layer declaration
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: canvasLayer }]),
+    ).resolves.not.toThrow();
+  });
+
+  it('LMT-CB-CV-02: canvas mode — layer with {image:1,text:0} throws panel_mount_budget_exceeded', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const misclassifiedLayer: Layer = {
+      id: 'misclassified',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 1, text: 0 }), // non-zero = mis-classified glyph layer
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: misclassifiedLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-03: canvas mode — layer with {image:0,text:1} throws panel_mount_budget_exceeded', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    const misclassifiedLayer: Layer = {
+      id: 'misclassified-text',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 1 }), // non-zero = mis-classified
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: misclassifiedLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-04: glyph mode budget behavior unchanged (existing LMT-CB-01 pattern)', async () => {
+    // Verify the glyph mode per-layer sum behavior is byte-identical
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    // glyph is default — no setRenderMode call needed
+
+    // A map layer with {image:4, text:1} is OK in glyph mode
+    const mapLayer = makeCountedLayer('map', { image: 4, text: 1 }, 'map-capture');
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: mapLayer }]),
+    ).resolves.not.toThrow();
+
+    // Now add a layer that overflows the text budget
+    const overflowLayer = makeCountedLayer('overflow', { image: 0, text: 8 }); // 1+8 = 9 > 8 cap
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: overflowLayer }]),
+    ).rejects.toMatchObject({ code: 'panel_mount_budget_exceeded' });
+  });
+
+  it('LMT-CB-CV-05: canvas-mode capture-ordering preserved — capture violation throws first (LMT-CB-03 canvas analog)', async () => {
+    // Even in canvas mode, _assertCaptureInvariant runs BEFORE _assertContainerBudget
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    lm.setRenderMode('canvas');
+
+    // Mount a valid capture layer first
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+    bridge.rebuildPageContainer.mockClear();
+
+    // Now mount a SECOND capture layer — capture violation must throw before budget check
+    const dupCapture: Layer = {
+      id: 'dup-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture-dup',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: dupCapture }]),
+    ).rejects.toMatchObject({ code: 'capture_invariant_violated' });
+    expect(bridge.rebuildPageContainer).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 24 Plan 02 — HudDeltaDriver injection (DL-07)
+// Verifies that:
+//   (a) canvas-mode bundle calls driver.runFirstFrame + driver.start (driver path)
+//   (b) driverless construction (no driver arg) still works via _compositeAndPush fallback
+//   (c) disposeSubscriptions() calls driver.stop()
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a `HudDeltaDriver` test double.
+ *
+ * Uses `vi.spyOn` on the real class prototype so TypeScript accepts the driver
+ * as `HudDeltaDriver` without requiring a full xxhash-wasm WASM environment.
+ * The spy methods resolve immediately (no WASM init, no bridge calls).
+ */
+function makeMockDriver() {
+  const driver = Object.create(HudDeltaDriver.prototype) as HudDeltaDriver;
+  vi.spyOn(driver, 'runFirstFrame').mockResolvedValue(undefined);
+  vi.spyOn(driver, 'start').mockResolvedValue(undefined);
+  vi.spyOn(driver, 'stop').mockReturnValue(undefined);
+  return driver;
+}
+
+describe('LayerManager — HudDeltaDriver injection (DL-07, Phase 24)', () => {
+  it('DL-07-a: canvas-mode bundle calls driver.start() then driver.runFirstFrame() on flush (CR-02 order)', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    // 4th constructor arg is the driver (Phase 24 signature).
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // Driver's first-frame push and loop start must have been called.
+    expect(driver.runFirstFrame).toHaveBeenCalledTimes(1);
+    expect(driver.start).toHaveBeenCalledTimes(1);
+
+    // CR-02: start() must be awaited BEFORE runFirstFrame() (subscribe first,
+    // then seed hashes) so inbound deltas during the first push are not dropped.
+    const startOrder = (driver.start as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    const runOrder = (driver.runFirstFrame as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    expect(startOrder[0]).toBeLessThan(runOrder[0] ?? Infinity);
+  });
+
+  it('DL-07-b: driver path — compositor.composite NOT called directly by LayerManager (driver owns it)', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+    // LayerManager must NOT call compositor.composite() when driver is present —
+    // the driver is the sole compositor owner in canvas mode (D-24 invariant).
+    expect(compositor.composite).not.toHaveBeenCalled();
+    // updateImageRawData is also NOT called directly by LayerManager.
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
+  it('DL-07-c: disposeSubscriptions() calls driver.stop()', async () => {
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const driver = makeMockDriver();
+
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor, driver);
+
+    lm.disposeSubscriptions();
+
+    expect(driver.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('DL-07-d: driverless construction (no driver arg) still works — _compositeAndPush fallback', async () => {
+    // 3-arg construction path: no driver injected. Canvas mode falls back to
+    // _compositeAndPush() so existing schema-select tests remain valid.
+    const bridge = makeMockBridge();
+    const compositor = makeFakeCompositor();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+    const captureLayer: Layer = {
+      id: 'canvas-capture',
+      draw: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getCaptureContainer: () => 'hud-capture',
+      getContainerCount: () => ({ image: 0, text: 0 }),
+    };
+
+    lm.setRenderMode('canvas');
+    // Must not throw — driverless path uses _compositeAndPush() which is still present.
+    await expect(
+      lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]),
+    ).resolves.not.toThrow();
+
+    // rebuildPageContainer called once (schema rebuilt).
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    // compositor.composite() called once via _compositeAndPush fallback.
+    expect(compositor.composite).toHaveBeenCalledTimes(1);
+  });
+
+  it('DL-07-e: disposeSubscriptions() is a no-op when no driver was injected', () => {
+    const bridge = makeMockBridge();
+    const lm = new LayerManager(bridge as unknown as EvenAppBridge);
+    // Must not throw — no driver present, disposeSubscriptions is a no-op.
+    expect(() => lm.disposeSubscriptions()).not.toThrow();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 25 Plan 02 — canvas→glyph atomic switch (LMT-ATOMIC-01)
+// D-25.3 / RPROMO-02 — success criterion #3
+//
+// Verifies that setRenderMode('glyph') + bundle([]) atomically produces exactly
+// ONE rebuildPageContainer call with the 3-container glyph schema and ZERO
+// mixed-schema intermediate frame after a canvas-mode boot.
+//
+// This is the regression guard for the glyph-fallback switch wired by Task 2
+// in boot-engine-core.ts.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('LayerManager — canvas→glyph atomic switch (LMT-ATOMIC-01, Phase 25 D-25.3)', () => {
+  it(
+    'LMT-ATOMIC-01: setRenderMode(glyph)+bundle([]) after canvas boot yields exactly ONE ' +
+      'rebuildPageContainer with 3-container glyph schema and zero mixed-schema intermediate frame',
+    async () => {
+      // Arrange: boot in canvas mode (mirrors LMT-CF-01 setup)
+      const bridge = makeMockBridge();
+      const compositor = makeFakeCompositor();
+      // 3-arg construction: no driver → driverless _compositeAndPush fallback path.
+      const lm = new LayerManager(bridge as unknown as EvenAppBridge, undefined, compositor);
+
+      const captureLayer: Layer = {
+        id: 'canvas-capture',
+        draw: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn(),
+        getCaptureContainer: () => 'hud-capture',
+        getContainerCount: () => ({ image: 0, text: 0 }),
+      };
+
+      // Boot canvas mode: mount capture-providing layer so the capture invariant is satisfied.
+      lm.setRenderMode('canvas');
+      await lm.bundle([{ type: 'mount', z: ZIndex.Z0_MAP, layer: captureLayer }]);
+
+      // Reset spy call history — the canvas-boot rebuildPageContainer is not part of
+      // the atomicity assertion (we are only counting calls AFTER the glyph switch).
+      bridge.rebuildPageContainer.mockClear();
+      bridge.updateImageRawData.mockClear();
+
+      // Act: atomic canvas→glyph switch — setRenderMode then bundle with no ops.
+      lm.setRenderMode('glyph');
+      await lm.bundle([]); // empty ops = schema switch only, no mount/destroy changes
+
+      // Assert 1 — atomicity: exactly ONE rebuildPageContainer call after the switch.
+      // Any value > 1 would indicate a mixed-schema intermediate frame (Pitfall 3 / D-25.3).
+      expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+
+      // Assert 2 — glyph schema shape (D-25.4 byte-identical to pre-v0.10.0 glyph schema):
+      //   containerTotalNum = BOOT_CONTAINER_TOTAL (3)
+      //   textObject.length = 3  (header id4 + footer id5 + status-hud id6)
+      //   imageObject.length = 0 (no image tiles in glyph mode)
+      const schemaArg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+      expect(schemaArg?.containerTotalNum).toBe(BOOT_CONTAINER_TOTAL);
+      expect(schemaArg?.textObject?.length).toBe(3);
+      expect(schemaArg?.imageObject?.length).toBe(0);
+
+      // Assert 3 — zero mixed-schema frame: updateImageRawData must NOT have been called
+      // during the glyph bundle (glyph mode pushes no image tiles — no raster bleed).
+      expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -96,12 +96,23 @@ function resolveRepoRoot(opts: RunInvSuiteOpts): string {
 }
 
 // -------------------------------------------------------------------------------------
-// INV-1: Layout Integrity
+// INV-1: Layout Integrity — glyph suite
 // Runs `pnpm --filter @evf/shared-render test --run` (vitest runs matchAsciiFixture tests).
+// Renamed from checkInv1 to checkInv1Glyph to make room for the raster suite (Phase 20).
 // -------------------------------------------------------------------------------------
 
-/** @see docs/architecture/INVARIANTS.md §1 */
-async function checkInv1(repoRoot: string): Promise<InvResult> {
+/**
+ * Glyph-suite half of the INV-1 gate.
+ *
+ * Runs the `@evf/shared-render` vitest suite, which validates every ASCII
+ * `.txt` fixture via `matchAsciiFixture`. A non-zero exit code means at least
+ * one glyph layout has drifted from its committed fixture.
+ *
+ * @param repoRoot Absolute path to the monorepo root.
+ * @returns An `InvResult` with `id: 'INV-1'` prefixed `glyph suite:`.
+ * @see docs/architecture/INVARIANTS.md §1
+ */
+async function checkInv1Glyph(repoRoot: string): Promise<InvResult> {
   const { exitCode, stderr } = await runSpawn(
     'pnpm',
     ['--filter', '@evf/shared-render', 'test', '--', '--run'],
@@ -109,11 +120,115 @@ async function checkInv1(repoRoot: string): Promise<InvResult> {
   );
 
   if (exitCode === 0) {
-    return { id: 'INV-1', status: 'green', detail: 'all matchAsciiFixture snapshots pass' };
+    return {
+      id: 'INV-1',
+      status: 'green',
+      detail: 'glyph suite: all matchAsciiFixture snapshots pass',
+    };
   }
 
   const hint = extractFirstError(stderr) ?? 'fixture mismatch or test failure';
-  return { id: 'INV-1', status: 'red', detail: `vitest exited ${exitCode}: ${hint}` };
+  return { id: 'INV-1', status: 'red', detail: `glyph suite: vitest exited ${exitCode}: ${hint}` };
+}
+
+// -------------------------------------------------------------------------------------
+// INV-1: Layout Integrity — raster suite (Phase 20, RINV-01)
+// Runs `pnpm --filter @evf/g2-app test -- --run --testNamePattern RINV-01`.
+// Applies the FALSE-PASS guard (pattern from checkInv5) so a zero-match
+// --testNamePattern filter never silently passes with exit 0.
+// -------------------------------------------------------------------------------------
+
+/**
+ * Raster-suite half of the INV-1 gate.
+ *
+ * Runs the RINV-01 test in `@evf/g2-app` which validates the SHA-256 hashes
+ * of the 4 dithered PNG tiles produced from a deterministic synthetic RGBA via
+ * `buildHudTiles()`. The committed fixture lives at
+ * `packages/shared-render/src/fixtures/status-hud.raster-hash.json`.
+ *
+ * FALSE-PASS guard (mirrors `checkInv5`): vitest exits 0 when no test files
+ * match the `--testNamePattern` filter. An exit-0-with-zero-tests run proves
+ * nothing, so it must NOT report green. Any output matching
+ * `/no test files found|no tests found|\b0 tests\b/i` triggers `skipped`.
+ *
+ * @param repoRoot Absolute path to the monorepo root.
+ * @returns An `InvResult` with `id: 'INV-1'` prefixed `raster suite:`.
+ * @see packages/g2-app/src/__tests__/20-raster-inv1.test.ts (RINV-01 test)
+ * @see packages/shared-render/src/fixtures/status-hud.raster-hash.json (golden fixture)
+ * @see docs/architecture/INVARIANTS.md §1
+ */
+async function checkInv1Raster(repoRoot: string): Promise<InvResult> {
+  const { exitCode, stdout, stderr } = await runSpawn(
+    'pnpm',
+    ['--filter', '@evf/g2-app', 'test', '--', '--run', '--testNamePattern', 'RINV-01'],
+    { cwd: repoRoot, timeoutMs: 60_000 },
+  );
+
+  // FALSE-PASS GUARD: vitest exits 0 when NO test files / NO tests match the
+  // filter ("no test files found"). An exit-0-with-zero-tests run proves nothing,
+  // so it must NOT report green. Detect the no-tests signal and return 'skipped'.
+  const combined = `${stdout}\n${stderr}`;
+  if (exitCode === 0 && /no test files found|no tests found|\b0 tests\b/i.test(combined)) {
+    return {
+      id: 'INV-1',
+      status: 'skipped',
+      detail: 'raster suite: no RINV-01 tests found — skipped (not green); exit 0 proves nothing',
+    };
+  }
+
+  if (exitCode === 0) {
+    return {
+      id: 'INV-1',
+      status: 'green',
+      detail: 'raster suite: SHA-256 tile hashes match fixture',
+    };
+  }
+
+  const hint = extractFirstError(stderr) ?? 'raster hash fixture mismatch';
+  return { id: 'INV-1', status: 'red', detail: `raster suite: ${hint}` };
+}
+
+// -------------------------------------------------------------------------------------
+// INV-1: merge glyph + raster into a single labelled INV-1 gate
+// -------------------------------------------------------------------------------------
+
+/**
+ * Merges the glyph-suite and raster-suite INV-1 results into a single `INV-1`
+ * entry for the suite table.
+ *
+ * Rules:
+ * - Either sub-suite `red` → merged result is `red`.
+ * - Either sub-suite `skipped` (but not red) → merged result is `skipped`.
+ * - Both `green` → merged result is `green` with a compound detail string.
+ *
+ * @param glyph Result from `checkInv1Glyph`.
+ * @param raster Result from `checkInv1Raster`.
+ * @returns A single `InvResult` with `id: 'INV-1'`.
+ */
+function mergeInv1Results(glyph: InvResult, raster: InvResult): InvResult {
+  // Red takes precedence over all other statuses
+  if (glyph.status === 'red') {
+    return { id: 'INV-1', status: 'red', detail: `${glyph.detail}; ${raster.detail}` };
+  }
+  if (raster.status === 'red') {
+    return { id: 'INV-1', status: 'red', detail: `${glyph.detail}; ${raster.detail}` };
+  }
+
+  // Skipped (e.g. FALSE-PASS guard fired) is not green
+  if (glyph.status === 'skipped' || raster.status === 'skipped') {
+    return {
+      id: 'INV-1',
+      status: 'skipped',
+      detail: `${glyph.detail}; ${raster.detail}`,
+    };
+  }
+
+  // Both green
+  return {
+    id: 'INV-1',
+    status: 'green',
+    detail: 'glyph suite: pass; raster suite: pass',
+  };
 }
 
 // -------------------------------------------------------------------------------------
@@ -275,7 +390,7 @@ async function checkInv3(repoRoot: string): Promise<InvResult> {
 // -------------------------------------------------------------------------------------
 // INV-4: Code Quality
 // Runs: pnpm lint:ci + pnpm typecheck.
-// Dead-code grep (// TODO without issue/ADR ref) is omitted from the spawn path because
+// Dead-code grep (bare-TODO without issue/ADR ref) is omitted from the spawn path because
 // grep exit code 0 means matches found (opposite of what we want); instead we leave that
 // gate to CI Gate 4 (biome ci catches a broader set of issues). The plan's IS-05 behaviour
 // is fully covered by lint:ci + typecheck spawns.
@@ -439,8 +554,16 @@ export async function runInvSuite(opts: RunInvSuiteOpts = {}): Promise<SuiteResu
   const repoRoot = resolveRepoRoot(opts);
   const skipInv2 = opts.skipInv2 ?? false;
 
+  // INV-1 runs two labelled sub-suites (glyph + raster) that are merged into a
+  // single INV-1 result. Both must be green for the gate to pass (Phase 20 RINV-01).
+  const [glyphResult, rasterResult] = await Promise.all([
+    checkInv1Glyph(repoRoot),
+    checkInv1Raster(repoRoot),
+  ]);
+  const inv1Result = mergeInv1Results(glyphResult, rasterResult);
+
   const results: InvResult[] = await Promise.all([
-    checkInv1(repoRoot),
+    Promise.resolve(inv1Result),
     checkInv2(skipInv2),
     checkInv3(repoRoot),
     checkInv4(repoRoot),

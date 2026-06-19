@@ -5,8 +5,10 @@
  * creates an Envelope, sends it to all sessions with matching capabilities, and
  * pushes it to the replay buffer for reconnect support.
  *
- * Security (T-02-02): globalSeq is monotonically increasing. Each emitted envelope
- * receives `seq = ++globalSeq`. Bridge rejects client acks with out-of-order seq.
+ * Security (T-02-02): globalSeq is monotonically increasing. Each emitted stateful
+ * envelope receives `seq = ++globalSeq`; ephemeral frame deltas (see
+ * EPHEMERAL_DELTA_TYPES) reuse the current seq without advancing it. Bridge
+ * rejects client acks with out-of-order seq.
  *
  * Capability matching: a session receives a delta only if it has the matching
  * server cap in its `Session.caps` array. Example:
@@ -43,6 +45,42 @@ const DELTA_CAP_MAP: Record<string, string> = {
   'scene.viewport': 'read_scene',
   'event.log.delta': 'subscribe',
 };
+
+// ─── Ephemeral frame deltas (latency audit 2026-06-11) ────────────────────────
+
+/**
+ * Delta types that carry ephemeral map-stream state (full frames + capture
+ * telemetry). These are treated specially in {@link DeltaEmitter.emitDelta}:
+ *
+ * 1. **No replay buffering** — at 30 fps a ~90 KB `frame_png` envelope would
+ *    grow the 60 s replay window to ~160 MB per session, pay an O(1800)
+ *    eviction filter on every push, and replay up to 1800 stale frames in a
+ *    burst on reconnect. A late (re)joiner needs none of that: the module's
+ *    5 s keyframe re-aligns the map automatically.
+ * 2. **No seq advance** — ephemeral envelopes reuse the current `globalSeq`
+ *    instead of incrementing it, so the buffered stateful sequence stays
+ *    consecutive and `ReplayBuffer.hasGap()` cannot misread missing frames
+ *    as real delta loss (which would force a full snapshot on every resume).
+ *    The g2-app `SeqTracker.observe()` is monotonic-only, so a repeated seq
+ *    is a no-op on the client high-water mark.
+ * 3. **Backpressure drop** — see {@link FRAME_BACKPRESSURE_BYTES}.
+ */
+const EPHEMERAL_DELTA_TYPES: ReadonlySet<string> = new Set([
+  'frame_png',
+  'frame_pixels',
+  'frame_stats',
+]);
+
+/**
+ * Per-session socket-buffer threshold for ephemeral frame deltas.
+ *
+ * If a session's `ws.bufferedAmount` exceeds this when a frame delta arrives,
+ * the frame is skipped for that session (latest-wins at the transport layer):
+ * a slow client (phone on a weak WAN link) otherwise accumulates an unbounded
+ * send queue and renders ever-staler frames. ~256 KB ≈ 2–3 PNG frames or
+ * ~15 WebP frames in flight. Stateful deltas are never dropped.
+ */
+const FRAME_BACKPRESSURE_BYTES = 262_144;
 
 // ─── DeltaEmitter ─────────────────────────────────────────────────────────────
 
@@ -108,16 +146,39 @@ export class DeltaEmitter {
    * For each registered session:
    * 1. Looks up the session in SessionStore to check caps
    * 2. Checks capability requirement for this delta type
-   * 3. If session has the cap (or no cap is required), sends the envelope
-   * 4. Pushes the per-session envelope to ReplayBuffer
-   * 5. Updates SessionStore lastSeq
+   * 3. **character.delta actor gate (FLV-CHAR-SELECT):** when ALL THREE are present —
+   *    `type === 'character.delta'` AND `session.selectedActorId` is set AND
+   *    `payload.actorId` is a string — the delta is only delivered when
+   *    `session.selectedActorId === payload.actorId`. If any of the three is absent,
+   *    the gate does not fire (current broadcast behavior is preserved). This prevents
+   *    cross-player character leakage (T-flv-01) while keeping backward compatibility
+   *    for sessions without a pin and payloads without an actorId field.
+   * 4. If session has the cap (or no cap is required), sends the envelope —
+   *    except ephemeral frame deltas towards a session whose socket buffer is
+   *    over {@link FRAME_BACKPRESSURE_BYTES} (frame skipped, latest-wins)
+   * 5. Pushes the per-session envelope to ReplayBuffer (stateful deltas only —
+   *    ephemeral frame deltas are never buffered, see EPHEMERAL_DELTA_TYPES)
+   * 6. Updates SessionStore lastSeq (stateful deltas only)
    *
    * @param type    - Delta type discriminant (e.g. "character.delta")
    * @param payload - Delta payload (any serialisable value)
    */
   emitDelta(type: string, payload: unknown): void {
-    const seq = ++this.globalSeq;
+    // Ephemeral frame deltas reuse the current seq (no advance) and skip the
+    // replay buffer + lastSeq bookkeeping — see EPHEMERAL_DELTA_TYPES.
+    const ephemeral = EPHEMERAL_DELTA_TYPES.has(type);
+    const seq = ephemeral ? this.globalSeq : ++this.globalSeq;
     const ts = Date.now();
+
+    // Extract payload.actorId defensively for the character.delta targeting gate.
+    const payloadActorId: string | undefined =
+      type === 'character.delta' &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'actorId' in payload &&
+      typeof (payload as { actorId?: unknown }).actorId === 'string'
+        ? (payload as { actorId: string }).actorId
+        : undefined;
 
     for (const [sessionId, ws] of this.connections.entries()) {
       const session = this.sessionStore.getSession(sessionId);
@@ -133,6 +194,24 @@ export class DeltaEmitter {
         continue; // Session does not have the required capability
       }
 
+      // character.delta actor targeting gate (FLV-CHAR-SELECT / T-flv-01).
+      // Gate fires ONLY when all three are present to preserve broadcast back-compat.
+      if (
+        type === 'character.delta' &&
+        session.selectedActorId !== undefined &&
+        payloadActorId !== undefined &&
+        session.selectedActorId !== payloadActorId
+      ) {
+        continue; // This session is pinned to a different actor — skip.
+      }
+
+      // Backpressure gate (ephemeral frames only): a slow client whose socket
+      // buffer already holds FRAME_BACKPRESSURE_BYTES gets this frame skipped
+      // instead of queued — newer frames supersede it anyway (latest-wins).
+      if (ephemeral && ws.bufferedAmount > FRAME_BACKPRESSURE_BYTES) {
+        continue;
+      }
+
       const envelope: Envelope = {
         proto: 'evf-v1',
         seq,
@@ -144,11 +223,17 @@ export class DeltaEmitter {
 
       // Send to client (ignore send errors — client may have disconnected)
       try {
+        // TODO (#33): per-session stringify (session_id is in the envelope) is a
+        // fan-out scaling cliff at 4+ clients — hoist session_id out to stringify once.
         ws.send(JSON.stringify(envelope));
       } catch {
         // Connection error — unregister stale session
         this.connections.delete(sessionId);
         continue;
+      }
+
+      if (ephemeral) {
+        continue; // No replay buffering / lastSeq bookkeeping for frames.
       }
 
       // Push to replay buffer (per-session envelope with correct session_id)
@@ -159,6 +244,77 @@ export class DeltaEmitter {
     }
 
     // ADDITIVE dev-only observability hook — no-op unless set (Quick Task 260529-h5e).
+    this.onEmit?.(type, payload, seq);
+  }
+
+  /**
+   * Send an initial targeted delta to a single newly-connected session.
+   *
+   * This is the on-connect push counterpart to {@link emitDelta}. Where
+   * `emitDelta` fans out to ALL sessions with the matching capability,
+   * `sendInitialToSession` sends to ONE session only — the session that just
+   * completed the WS handshake.
+   *
+   * Behaviour is intentionally identical to a single-session `emitDelta` leg:
+   * - Capability gate via {@link DELTA_CAP_MAP}: if the session lacks the
+   *   required cap, nothing is sent and `globalSeq` is NOT incremented.
+   * - Seq is allocated AFTER the cap check (same ordering as `emitDelta`).
+   * - The envelope is pushed to the {@link ReplayBuffer} and
+   *   `sessionStore.updateLastSeq` is called (mirror of `emitDelta`).
+   * - Send errors remove the stale connection and do NOT propagate.
+   * - Unknown / unregistered `sessionId` is a no-op.
+   *
+   * Security (T-d0v-01): a session without the required cap receives nothing —
+   * no actor data leaks to under-capable clients.
+   *
+   * @param sessionId - UUID v4 of the newly-connected session.
+   * @param type      - Delta type (e.g. `'character.delta'`).
+   * @param payload   - Validated delta payload (any serialisable value).
+   */
+  sendInitialToSession(sessionId: string, type: string, payload: unknown): void {
+    const ws = this.connections.get(sessionId);
+    if (ws === undefined) {
+      // Unknown / unregistered session — no-op (DE-INIT-05).
+      return;
+    }
+
+    const session = this.sessionStore.getSession(sessionId);
+    if (session === undefined) {
+      // Session not found in store — clean up stale connection entry and return.
+      this.connections.delete(sessionId);
+      return;
+    }
+
+    // Capability check (DE-INIT-04) — must happen BEFORE seq allocation.
+    const requiredCap = DELTA_CAP_MAP[type];
+    if (requiredCap !== undefined && !session.caps.includes(requiredCap)) {
+      return; // Session lacks cap — seq must NOT increment.
+    }
+
+    const seq = ++this.globalSeq;
+    const ts = Date.now();
+
+    const envelope: Envelope = {
+      proto: 'evf-v1',
+      seq,
+      ts,
+      type,
+      session_id: sessionId,
+      payload,
+    };
+
+    try {
+      ws.send(JSON.stringify(envelope));
+    } catch {
+      // Send error — remove stale connection (DE-INIT-06).
+      this.connections.delete(sessionId);
+      return;
+    }
+
+    this.replayBuffer.push(envelope);
+    this.sessionStore.updateLastSeq(sessionId, seq);
+
+    // Parity with emitDelta: invoke debug observability hook if set.
     this.onEmit?.(type, payload, seq);
   }
 

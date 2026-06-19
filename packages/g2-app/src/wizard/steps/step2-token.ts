@@ -4,8 +4,14 @@
  * Renders into `#step-content`. Provides:
  *   - Password input (masked by default) with Show/Hide toggle.
  *   - Paste from Clipboard button (graceful degradation if Clipboard API unavailable).
- *   - Optional QR scan toggle (probes `hub.camera?.requestAccess()`; hidden if unavailable).
  *   - "Connect" button fires `GET {bridgeUrl}/v1/health` with 10-second timeout.
+ *
+ * The DM generates the bearer token in the Foundry PairModal (Settings → EvenFoundryVTT →
+ * "Pair a G2 device"), reveals/copies it there, and hands it to the player who pastes it
+ * here. There is NO QR-scan path: the Even Hub platform exposes no camera/QR-scan API to
+ * apps (canonical: hub.evenrealities.com/docs/guides/device-apis — "no camera (there is
+ * none)"), so the only viable token-transfer is paste + manual entry. See ADR-0005
+ * §OQ-INV2-4 (resolved) and Specs.md §11.5.4.
  *
  * Error mapping (T-02-03):
  *   - 200 → STEP3
@@ -38,7 +44,6 @@ export type Step2Keys =
   | 'evf.wizard.step2.show_toggle'
   | 'evf.wizard.step2.hide_toggle'
   | 'evf.wizard.step2.paste_btn'
-  | 'evf.wizard.step2.scan_qr_btn'
   | 'evf.wizard.step2.connecting'
   | 'evf.wizard.step2.error.401'
   | 'evf.wizard.step2.error.403'
@@ -101,16 +106,6 @@ export function render(
   tokenHint.className = 'evf-hint evf-hidden';
   tokenHint.textContent = t('evf.wizard.step2.short_token_hint');
 
-  // QR scan toggle (conditionally shown)
-  const qrRow = document.createElement('div');
-  qrRow.className = 'evf-qr-row evf-hidden';
-
-  const qrBtn = document.createElement('button');
-  qrBtn.type = 'button';
-  qrBtn.className = 'evf-btn evf-btn-ghost';
-  qrBtn.textContent = t('evf.wizard.step2.scan_qr_btn');
-  qrRow.appendChild(qrBtn);
-
   // Error region
   const errorRegion = document.createElement('div');
   errorRegion.id = 'evf-connect-error';
@@ -153,24 +148,12 @@ export function render(
   form.appendChild(showToggle);
   form.appendChild(pasteBtn);
   form.appendChild(tokenHint);
-  form.appendChild(qrRow);
   form.appendChild(errorRegion);
   form.appendChild(statusRegion);
 
   container.innerHTML = '';
   container.appendChild(form);
   container.appendChild(ctaRow);
-
-  // Probe camera API
-  _probeCameraApi()
-    .then((available) => {
-      if (available) {
-        qrRow.classList.remove('evf-hidden');
-      }
-    })
-    .catch(() => {
-      // Camera unavailable — keep hidden
-    });
 
   // --- Event listeners ---
   function onTokenInput() {
@@ -212,31 +195,6 @@ export function render(
       .catch(() => {
         // Clipboard permission denied — hint user to paste manually
         // (no error shown; paste affordance is supplemental)
-      });
-  }
-
-  function onQrScan() {
-    const camera = hub.camera;
-    if (!camera) {
-      return;
-    }
-    camera
-      .requestAccess()
-      .then((granted) => {
-        if (!granted) {
-          return;
-        }
-        return camera.scanQRCode();
-      })
-      .then((decoded) => {
-        if (decoded) {
-          tokenInput.value = decoded.trim();
-          connectBtn.focus();
-          onTokenInput();
-        }
-      })
-      .catch(() => {
-        // QR scan failed or cancelled — not an error, user can paste instead
       });
   }
 
@@ -311,7 +269,6 @@ export function render(
   tokenInput.addEventListener('input', onTokenInput);
   showToggle.addEventListener('click', onShowToggle);
   pasteBtn.addEventListener('click', onPaste);
-  qrBtn.addEventListener('click', onQrScan);
   backBtn.addEventListener('click', onBack);
   connectBtn.addEventListener('click', onConnect);
 
@@ -319,7 +276,6 @@ export function render(
     tokenInput.removeEventListener('input', onTokenInput);
     showToggle.removeEventListener('click', onShowToggle);
     pasteBtn.removeEventListener('click', onPaste);
-    qrBtn.removeEventListener('click', onQrScan);
     backBtn.removeEventListener('click', onBack);
     connectBtn.removeEventListener('click', onConnect);
   };
@@ -357,15 +313,4 @@ function _showError(
   errorRegion.textContent = msg;
   errorRegion.classList.remove('evf-hidden');
   tokenInput.classList.add('evf-input-error');
-}
-
-async function _probeCameraApi(): Promise<boolean> {
-  try {
-    if (typeof hub === 'undefined' || !hub.camera) {
-      return false;
-    }
-    return await hub.camera.requestAccess();
-  } catch {
-    return false;
-  }
 }

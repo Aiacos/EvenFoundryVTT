@@ -1,21 +1,44 @@
 /**
  * @evf/foundry-module — PairModal ApplicationV2 implementation.
  *
- * The DM's onboarding entry point. Opens from Foundry Settings → Module Settings →
- * EvenFoundryVTT → "Pair a G2 device" button (registered in settings.ts).
+ * Every user's self-service pairing entry point. Opens from Foundry Settings →
+ * Module Settings → EvenFoundryVTT → "Pair a G2 device" button (registered in
+ * settings.ts, now available to ALL users, not just the GM).
+ *
+ * Self-service pairing (secure, ADR-0014): EVERY user — player or GM — mints a
+ * bearer bound to THEIR OWN `game.user.id`. There is no user-picker; you can only
+ * pair your own device. The token is generated client-side via
+ * `generateOpaqueToken` and written as a `pendingPair` flag on the current user's
+ * own `User` document (only that user can write their own user flags → the bound
+ * identity is authenticated by document ownership). A GM client then ingests the
+ * flag into the world-scope bearer registry (see self-pair-ingestion.ts) — so the
+ * shown token becomes VALID near-instantly when a GM is online, otherwise on the
+ * next GM `ready` sweep ("pairing-in-progress" state until then).
  *
  * Implements 5 UI states (per 02-UI-SPEC.md §UI-A):
  *   - "empty"              — no devices paired yet
- *   - "active"             — valid bearer, showing QR code
- *   - "pairing-in-progress"— QR shown, awaiting WS handshake confirmation
+ *   - "active"             — valid bearer, showing copyable bridge URL + token
+ *   - "pairing-in-progress"— credentials shown, awaiting WS handshake confirmation
  *   - "refresh-needed"     — valid bearer, TTL < 1h (accent countdown + Refresh CTA)
- *   - "expired"            — bearer TTL elapsed (expired banner, no QR)
+ *   - "expired"            — bearer TTL elapsed (expired banner, no credentials)
+ *
+ * Pairing model (post-GEST/INV-2 correction, ADR-0005 §OQ-INV2-4 resolved):
+ * - The Even Hub platform exposes NO camera / QR-scan API to apps (canonical:
+ *   hub.evenrealities.com/docs/guides/device-apis — "no camera (there is none)"), and the
+ *   app runs in the phone WebView. A QR therefore cannot be scanned by the Even Realities
+ *   app. The only viable token transfer is COPY (here) + PASTE (in the g2-app wizard step 2).
+ * - The user installs the EVF app via Even Hub (dev: `evenhub qr` loads the plugin-host URL
+ *   into the Even app; prod: `.ehpk` → portal review → install from the Even Hub store), then
+ *   opens it → wizard → enters the bridge URL + pastes the token shown here → picks a character.
  *
  * Security:
- * - QR payload: { bridge_url, token, internal_secret, world, expires } — ALL values
- *   are taken from a freshly-generated BearerEntry. Token is NEVER rendered in HTML.
- * - QR SVG is triple-mustached in the template ({{{qrSvg}}}) — trusted server-generated
- *   SVG, not user content.
+ * - The bridge URL and bearer token are rendered into the DOM so the DM can copy them. The
+ *   token is masked by default (dots) and only revealed on explicit user action ("Reveal").
+ *   This is an intentional, scoped relaxation of the previous "token is NEVER rendered" rule:
+ *   without a readable/copyable token, pairing is impossible on real hardware. The token is
+ *   never logged and never leaves the local DM browser except via the user's clipboard.
+ * - `internal_secret` is NOT rendered or copyable here — it is provisioned to the bridge by
+ *   the bearer registry, not handed to the player.
  *
  * Timer behaviour:
  * - A `setInterval` at 60-second granularity updates the countdown `<time>` element.
@@ -24,16 +47,16 @@
  * Template boolean flags:
  * - Foundry VTT does not register an `eq` Handlebars helper. All state comparisons are
  *   resolved in `_prepareContext` and exposed as boolean flags (`isEmpty`, `isExpired`,
- *   `isRefreshNeeded`, `isPairing`, `showQr`) so the template uses `{{#if flag}}` only.
+ *   `isRefreshNeeded`, `isPairing`, `showCredentials`) so the template uses `{{#if flag}}` only.
  *
  * @see 02-02-PLAN.md Task 2 (PairModal specification)
  * @see 02-UI-SPEC.md §UI-A (full layout, states, revoke flow, i18n keys)
  * @see 02-CONTEXT.md D-2.02 (ApplicationV2 dialog framework), D-2.10 (opaque bearer)
  */
 
-import QRCode from 'qrcode';
+import { MODULE_ID } from '../module.js';
 import type { BearerEntry } from './bearer-registry.js';
-import { generateBearer, listBearers, revokeBearer } from './bearer-registry.js';
+import { generateOpaqueToken, listBearers, revokeBearer } from './bearer-registry.js';
 
 // Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
 // ApplicationV2 is abstract about rendering — a renderable subclass MUST provide `_renderHTML`/
@@ -56,17 +79,21 @@ export interface PairModalData extends Record<string, unknown> {
   isRefreshNeeded: boolean;
   /** true when state === "pairing-in-progress"; used in template instead of `eq` helper */
   isPairing: boolean;
-  /** true when QR SVG should be shown (active | pairing-in-progress | refresh-needed) */
-  showQr: boolean;
-  /** SVG string for the QR code; only present when showQr is true */
-  qrSvg?: string;
-  /** Human-readable TTL string e.g. "23h 47m"; present when showQr is true */
+  /** true when state === "active" (a live, non-expiring bearer) — gates the "generate new token" CTA */
+  isActive: boolean;
+  /** true when copyable credentials should be shown (active | pairing-in-progress | refresh-needed) */
+  showCredentials: boolean;
+  /** Bridge URL to paste into the wizard; present when showCredentials is true */
+  bridgeUrl?: string;
+  /** Bearer token to paste into the wizard; present when showCredentials is true */
+  token?: string;
+  /** Human-readable TTL string e.g. "23h 47m"; present when showCredentials is true */
   ttlDisplay?: string;
   /** ISO8601 expiry for <time datetime="..."> semantic element */
   expiresIso?: string;
   /** Unix epoch milliseconds for data-expires attribute (countdown JS reads this) */
   expiresAtMs?: number;
-  /** Active (non-revoked) bearer entries for the devices table */
+  /** Current user's active (non-revoked) bearer entries for the devices table */
   devices: DeviceRow[];
   /** Pre-localised string map — keys consumed by pair-modal.hbs template */
   i18n: Record<string, string>;
@@ -130,6 +157,74 @@ function formatDate(epochMs: number): string {
 }
 
 /**
+ * Reads the saved bridge URL from the module's settings store, coercing any non-string
+ * (corrupted / unexpected / unset) value to an empty string so it never leaks `undefined`
+ * into the DOM. Mirrors BridgeConfigModal.readStringSetting('bridgeUrl').
+ */
+function readBridgeUrl(): string {
+  const value = game.settings.get(MODULE_ID, 'bridgeUrl');
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Reads the current Foundry world ID, coercing to an empty string when unavailable.
+ * The world ID is provisioned to the bridge alongside the bearer (D-2.10).
+ */
+function readWorldId(): string {
+  const id = game.world?.id;
+  return typeof id === 'string' ? id : '';
+}
+
+/** Pending-pair flag shape read for the "pairing-in-progress" state. */
+interface PendingPairFlag {
+  alias: string;
+  token: string;
+  bridgeUrl: string;
+  worldId: string;
+  createdAt: number;
+}
+
+/**
+ * Returns the registry bearers bound to the CURRENT user (everyone is self-only:
+ * a user only ever sees and pairs their own devices, ADR-0014). Newest first
+ * (inherits the `listBearers` sort). Empty when the user has no bearers.
+ */
+function currentUserBearers(): BearerEntry[] {
+  const selfId = game.user?.id;
+  if (typeof selfId !== 'string' || selfId.length === 0) {
+    return [];
+  }
+  return listBearers().filter((e) => e.userId === selfId);
+}
+
+/**
+ * Reads the current user's own `pendingPair` flag (the self-service mint awaiting
+ * GM ingestion). Returns `null` when absent or malformed.
+ */
+function readPendingPair(): PendingPairFlag | null {
+  const raw = game.user?.getFlag(MODULE_ID, 'pendingPair');
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  if (
+    typeof o.token !== 'string' ||
+    o.token.length === 0 ||
+    typeof o.bridgeUrl !== 'string' ||
+    typeof o.alias !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    alias: o.alias,
+    token: o.token,
+    bridgeUrl: o.bridgeUrl,
+    worldId: typeof o.worldId === 'string' ? o.worldId : '',
+    createdAt: typeof o.createdAt === 'number' ? o.createdAt : Date.now(),
+  };
+}
+
+/**
  * Builds a DeviceRow from a BearerEntry for template rendering.
  * Token value included as `token` — only rendered in `data-token-id` attribute for revoke,
  * never rendered in visible text.
@@ -143,24 +238,6 @@ function toDeviceRow(entry: BearerEntry): DeviceRow {
   };
 }
 
-/**
- * Builds the QR payload object per Specs §7.14.7.3 and 02-02-PLAN.md H-1 fix.
- * Includes bridge_url, token, internal_secret, world, expires (unix seconds).
- */
-function buildQrPayload(
-  entry: BearerEntry,
-  bridgeUrl: string,
-  worldId: string,
-): Record<string, unknown> {
-  return {
-    bridge_url: bridgeUrl,
-    token: entry.token,
-    internal_secret: entry.internalSecret,
-    world: worldId,
-    expires: Math.floor(entry.expiresAt / 1000), // unix seconds
-  };
-}
-
 // ─── I18N helper ─────────────────────────────────────────────────────────────
 
 /**
@@ -169,7 +246,9 @@ function buildQrPayload(
  * uses `{{i18n.key}}` (pre-resolved string), never raw key lookup.
  *
  * Keys provided:
- * - title, scanInstruction, refresh, awaiting — QR region
+ * - title, refresh, awaiting — credentials region
+ * - copyInstruction — tells the DM to paste these into the EVF app wizard on the phone
+ * - copyBridgeUrl, copyToken, copyReveal, copyHide, copyCopied — copy/reveal UX
  * - expiresIn — countdown label (maps to evf.pair.qr.expires_in)
  * - expiredTitle, expiredBody, expiredCta — expired banner
  * - tableHeading, colAlias, colPaired, colLastSeen, colAction — devices table header
@@ -182,8 +261,15 @@ function buildI18n(): Record<string, string> {
   const l = (key: string) => game.i18n.localize(key);
   return {
     title: l('evf.pair.modal.title'),
-    scanInstruction: l('evf.pair.qr.scan_instruction'),
+    copyInstruction: l('evf.pair.copy.instruction'),
+    copyBridgeUrl: l('evf.pair.copy.bridge_url'),
+    copyToken: l('evf.pair.copy.token'),
+    copyReveal: l('evf.pair.copy.reveal'),
+    copyHide: l('evf.pair.copy.hide'),
+    copyButton: l('evf.pair.copy.copy'),
+    copyCopied: l('evf.pair.copy.copied'),
     refresh: l('evf.pair.qr.refresh'),
+    regenerate: l('evf.pair.qr.regenerate'),
     awaiting: l('evf.pair.qr.awaiting'),
     expiresIn: l('evf.pair.qr.expires_in'),
     expiredTitle: l('evf.pair.qr.expired.title'),
@@ -214,16 +300,18 @@ function buildI18n(): Record<string, string> {
  * Opened from Foundry Settings → Module Settings → EvenFoundryVTT →
  * "Pair a G2 device" (registered via `game.settings.registerMenu` in settings.ts).
  *
+ * Construction: `registerMenu` instantiates the class with `new type()` (NO args), so the
+ * modal takes no constructor parameters. The bridge URL is read from the `bridgeUrl` world
+ * setting and the world ID from `game.world.id` at render time (mirrors BridgeConfigModal).
+ *
  * The modal lifecycle:
- * 1. `render(true)` — opens and calls `_prepareContext()` → builds QR SVG + state
- * 2. `_onRender(context, options)` — binds Revoke/Refresh/NewCode click handlers + countdown timer
+ * 1. `render(true)` — opens and calls `_prepareContext()` → builds copyable credentials + state
+ * 2. `_onRender(context, options)` — binds Revoke/Refresh/NewCode/Reveal/Copy handlers + countdown
  * 3. `close()` — clears countdown interval, closes modal
  *
  * @see 02-UI-SPEC.md §UI-A for the full wireframe, states, and revoke flow.
  */
 export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
-  private readonly _bridgeUrl: string;
-  private readonly _worldId: string;
   private _countdownInterval: ReturnType<typeof setInterval> | null = null;
 
   /** ApplicationV2 window/position config (replaces the v1 `defaultOptions` getter). */
@@ -241,50 +329,52 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   /**
-   * @param bridgeUrl - Bridge URL to include in the QR payload
-   * @param worldId - Foundry world ID to include in the QR payload
-   */
-  constructor(bridgeUrl: string, worldId: string) {
-    super({});
-    this._bridgeUrl = bridgeUrl;
-    this._worldId = worldId;
-  }
-
-  /**
-   * Computes the modal state from the currently active bearers.
+   * Computes the modal state from the CURRENT USER's bearers (self-service:
+   * everyone is self-only, ADR-0014) plus the user's own `pendingPair` flag.
    *
    * State priority (first match wins):
-   * 1. "empty"           — no non-revoked bearers
-   * 2. "expired"         — all non-revoked bearers are expired
-   * 3. "refresh-needed"  — at least one non-revoked, non-expired bearer with TTL < 1h
-   * 4. "active"          — at least one non-revoked, non-expired bearer with TTL ≥ 1h
+   * 1. "active" / "refresh-needed" — a current-user non-revoked, non-expired
+   *    registry bearer exists (refresh-needed when its TTL < 1h).
+   * 2. "pairing-in-progress" — no registry bearer yet, but the user has a pending
+   *    flag (a freshly-minted token whose value is not yet in the registry — it
+   *    awaits GM ingestion). Credentials come from the flag.
+   * 3. "expired" — the user has bearers but all are expired (and no pending flag).
+   * 4. "empty" — the user has no bearers and no pending flag.
    */
-  private _computeState(): { state: ModalState; activeEntry?: BearerEntry } {
-    const bearers = listBearers(); // already filters revoked entries
-
-    if (bearers.length === 0) {
-      return { state: 'empty' };
-    }
-
+  private _computeState(): {
+    state: ModalState;
+    activeEntry?: BearerEntry;
+    pending?: PendingPairFlag;
+  } {
+    const bearers = currentUserBearers(); // current-user scoped, non-revoked
     const now = Date.now();
     const nonExpired = bearers.filter((e) => e.expiresAt > now);
 
-    if (nonExpired.length === 0) {
-      return { state: 'expired' };
-    }
-
-    // Use the most recently created non-expired entry as the "active" entry for QR
+    // 1. A live registry bearer for this user wins.
     const active = nonExpired[0];
-    if (!active) {
+    if (active) {
+      const ttlMs = active.expiresAt - now;
+      if (ttlMs < REFRESH_THRESHOLD_MS) {
+        return { state: 'refresh-needed', activeEntry: active };
+      }
+      return { state: 'active', activeEntry: active };
+    }
+
+    // 2. A minted-but-not-yet-ingested token → pairing-in-progress (token from flag).
+    //    Skip when the flag's token already materialised as a registry bearer
+    //    (covered by branch 1 above for THIS user).
+    const pending = readPendingPair();
+    if (pending !== null) {
+      return { state: 'pairing-in-progress', pending };
+    }
+
+    // 3. The user has bearers but they are all expired.
+    if (bearers.length > 0) {
       return { state: 'expired' };
     }
-    const ttlMs = active.expiresAt - now;
 
-    if (ttlMs < REFRESH_THRESHOLD_MS) {
-      return { state: 'refresh-needed', activeEntry: active };
-    }
-
-    return { state: 'active', activeEntry: active };
+    // 4. Nothing for this user.
+    return { state: 'empty' };
   }
 
   /**
@@ -293,37 +383,66 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
    * All state comparisons are resolved here as boolean flags to avoid the use of
    * the `eq` Handlebars helper, which Foundry VTT does not register by default.
    *
-   * QR generation (qrcode@1.5.4): only runs for active/pairing-in-progress/refresh-needed
-   * states. The SVG output is trusted (generated server-side, not from user input).
+   * For active/refresh-needed/pairing-in-progress states the bridge URL and bearer token
+   * are placed in the context so the template can render them as copyable fields (the token
+   * masked by default; see the security note in the file header).
    *
    * @returns PairModalData template context
    */
   override async _prepareContext(_options: unknown): Promise<PairModalData> {
-    const { state, activeEntry } = this._computeState();
-    const devices = listBearers().map(toDeviceRow);
+    const { state, activeEntry, pending } = this._computeState();
+    // Self-service: the devices table shows only the CURRENT user's bearers.
+    const devices = currentUserBearers().map(toDeviceRow);
     const i18n = buildI18n();
 
     const isEmpty = state === 'empty';
     const isExpired = state === 'expired';
     const isRefreshNeeded = state === 'refresh-needed';
     const isPairing = state === 'pairing-in-progress';
-    const showQr = !isEmpty && !isExpired;
+    const isActive = state === 'active';
+    const showCredentials = !isEmpty && !isExpired;
 
     if (isEmpty || isExpired) {
-      return { state, isEmpty, isExpired, isRefreshNeeded, isPairing, showQr, devices, i18n };
+      return {
+        state,
+        isEmpty,
+        isExpired,
+        isRefreshNeeded,
+        isPairing,
+        isActive,
+        showCredentials,
+        devices,
+        i18n,
+      };
     }
 
-    // state: active | refresh-needed | pairing-in-progress
-    // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for non-empty/expired states
+    // pairing-in-progress: the token is the freshly-minted flag value, not yet a
+    // registry bearer — there is NO real TTL yet, so the countdown is omitted
+    // (ttlDisplay/expiresIso/expiresAtMs left undefined). bridgeUrl comes from the
+    // flag (falling back to the saved setting).
+    if (isPairing && pending) {
+      return {
+        state,
+        isEmpty,
+        isExpired,
+        isRefreshNeeded,
+        isPairing,
+        isActive,
+        showCredentials,
+        bridgeUrl: pending.bridgeUrl || readBridgeUrl(),
+        token: pending.token,
+        devices,
+        i18n,
+      };
+    }
+
+    // state: active | refresh-needed — credentials + countdown from the live bearer.
+    // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for active/refresh-needed
     const entry = activeEntry!;
     const ttlMs = entry.expiresAt - Date.now();
     const ttlDisplay = formatTtl(ttlMs);
     const expiresIso = new Date(entry.expiresAt).toISOString();
     const expiresAtMs = entry.expiresAt;
-
-    // Generate QR SVG (T-02-01: token value enters only the SVG, not the rendered HTML text)
-    const payload = buildQrPayload(entry, this._bridgeUrl, this._worldId);
-    const qrSvg = await QRCode.toString(JSON.stringify(payload), { type: 'svg' });
 
     return {
       state,
@@ -331,8 +450,10 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       isExpired,
       isRefreshNeeded,
       isPairing,
-      showQr,
-      qrSvg,
+      isActive,
+      showCredentials,
+      bridgeUrl: readBridgeUrl(),
+      token: entry.token,
       ttlDisplay,
       expiresIso,
       expiresAtMs,
@@ -365,10 +486,24 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       refreshBtn.addEventListener('click', (event) => this._onClickRefresh(event));
     }
 
-    // New Code button (expired state or empty state)
-    const newCodeBtn = html.querySelector('[data-action="new-code"]');
-    if (newCodeBtn) {
-      newCodeBtn.addEventListener('click', (event) => this._onClickRefresh(event));
+    // New Code / Generate-new button (empty + expired states, and the active-state
+    // "generate new token" CTA). querySelectorAll: states are mutually exclusive so
+    // there is normally one, but bind them all to be robust.
+    const newCodeButtons = Array.from(html.querySelectorAll('[data-action="new-code"]'));
+    for (const btn of newCodeButtons) {
+      btn.addEventListener('click', (event) => this._onClickRefresh(event));
+    }
+
+    // Reveal/hide token handlers
+    const revealButtons = Array.from(html.querySelectorAll('[data-action="reveal-token"]'));
+    for (const btn of revealButtons) {
+      btn.addEventListener('click', (event) => this._onClickReveal(event));
+    }
+
+    // Copy handlers (bridge URL + token)
+    const copyButtons = Array.from(html.querySelectorAll('[data-action="copy"]'));
+    for (const btn of copyButtons) {
+      btn.addEventListener('click', (event) => this._onClickCopy(event));
     }
 
     // Start countdown timer
@@ -428,31 +563,130 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const tokenId = target?.dataset?.tokenId;
     if (!tokenId) return;
 
-    revokeBearer(tokenId);
-    void this.render({ force: true });
+    // Await the (async) revoke so the re-render observes the revocation
+    // (read-after-write). Fire-and-forget at the DOM-handler boundary.
+    revokeBearer(tokenId)
+      .then(() => {
+        void this.render({ force: true });
+      })
+      .catch((err: unknown) => {
+        console.error('[EVF] PairModal revoke error:', err);
+      });
+  }
+
+  /**
+   * Mints a NEW bearer for the CURRENT user (self-service pairing, ADR-0014).
+   *
+   * Generates a high-entropy token client-side (`generateOpaqueToken`) and writes
+   * it — together with the alias, bridge URL and world id — as a `pendingPair`
+   * flag on the current user's OWN `User` document. A user can only write their
+   * own user flags, so the bound identity is authenticated by document ownership;
+   * a GM client then ingests the flag into the world-scope registry (see
+   * self-pair-ingestion.ts). The token is shown immediately ("pairing-in-progress")
+   * and becomes VALID once a GM ingests it. We never call `generateBearer` here —
+   * a non-GM player cannot write the world-scope registry directly.
+   *
+   * The alias is propagated from the current user's existing device (WR-04) so a
+   * re-mint keeps the label.
+   */
+  private async _generateForSelf(): Promise<void> {
+    const userId = game.user?.id;
+    if (!userId) {
+      return;
+    }
+    // Propagate the current user's existing device alias (newest first).
+    const alias = currentUserBearers()[0]?.alias ?? '';
+    const token = generateOpaqueToken();
+    await game.user.setFlag(MODULE_ID, 'pendingPair', {
+      alias,
+      token,
+      bridgeUrl: readBridgeUrl(),
+      worldId: readWorldId(),
+      createdAt: Date.now(),
+    });
+    await this.render({ force: true });
   }
 
   /**
    * Handles click on "Refresh", "New Code" (expired state), or first-code button (empty state).
    *
-   * Generates a new bearer (with `refresh=true` to apply 60s grace on the old token),
-   * and re-renders the modal in-place. The QR SVG updates without a full modal reload.
+   * Self-service (ADR-0014): mints a fresh token bound to the CURRENT user via
+   * {@link _generateForSelf} (writes the `pendingPair` flag → GM ingests). The
+   * modal re-renders in place showing the new token (pairing-in-progress until a
+   * GM materialises it).
    *
    * @param event - DOM click event
    */
   _onClickRefresh(event: Event): void {
     event.preventDefault();
-    // Propagate the existing device alias so the refreshed entry keeps its label (WR-04).
-    // listBearers() returns non-revoked entries; the first is the active device.
-    const currentAlias = listBearers()[0]?.alias ?? '';
-    // Generate new bearer with grace period (D-2.11)
-    generateBearer(currentAlias, this._bridgeUrl, this._worldId, true)
-      .then(() => {
-        void this.render({ force: true });
-      })
-      .catch((err: unknown) => {
-        console.error('[EVF] PairModal refresh error:', err);
-      });
+    this._generateForSelf().catch((err: unknown) => {
+      console.error('[EVF] PairModal refresh error:', err);
+    });
+  }
+
+  /**
+   * Toggles the token field between masked (dots) and revealed (plain text).
+   *
+   * The masked element (`[data-token-mask]`) and the plain element (`[data-token-plain]`)
+   * both exist in the DOM; this handler flips their visibility and swaps the button label
+   * between "Reveal" and "Hide".
+   *
+   * @param event - DOM click event
+   */
+  _onClickReveal(event: Event): void {
+    event.preventDefault();
+    const html = this.element;
+    const mask = html.querySelector<HTMLElement>('[data-token-mask]');
+    const plain = html.querySelector<HTMLElement>('[data-token-plain]');
+    const btn = event.currentTarget as HTMLElement | null;
+    if (!mask || !plain || !btn) return;
+
+    const i18n = buildI18n();
+    const revealed = plain.classList.contains('evf-hidden') === false;
+    if (revealed) {
+      plain.classList.add('evf-hidden');
+      mask.classList.remove('evf-hidden');
+      btn.textContent = i18n.copyReveal ?? 'Reveal';
+    } else {
+      plain.classList.remove('evf-hidden');
+      mask.classList.add('evf-hidden');
+      btn.textContent = i18n.copyHide ?? 'Hide';
+    }
+  }
+
+  /**
+   * Copies the value from `data-copy-value` on the clicked element to the clipboard and
+   * briefly swaps the button label to a "Copied" confirmation.
+   *
+   * Uses `navigator.clipboard.writeText` with graceful degradation when the Clipboard API
+   * is unavailable (the value remains selectable in the DOM as a fallback).
+   *
+   * @param event - DOM click event
+   */
+  _onClickCopy(event: Event): void {
+    event.preventDefault();
+    const btn = event.currentTarget as HTMLElement | null;
+    const value = btn?.dataset?.copyValue;
+    if (!btn || !value) return;
+
+    const restore = btn.textContent ?? '';
+    const i18n = buildI18n();
+
+    const confirm = () => {
+      btn.textContent = i18n.copyCopied ?? 'Copied';
+      setTimeout(() => {
+        btn.textContent = restore;
+      }, 1500);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(value)
+        .then(confirm)
+        .catch(() => {
+          // Clipboard blocked — the value is still selectable in the DOM.
+        });
+    }
   }
 
   /**

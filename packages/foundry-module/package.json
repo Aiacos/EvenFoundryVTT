@@ -1,6 +1,6 @@
 {
   "name": "@evf/foundry-module",
-  "version": "0.1.5",
+  "version": "0.1.38",
   "private": true,
   "type": "module",
   "description": "EVF Foundry VTT module (evenfoundryvtt) — module skeleton, settings panel, pairing UI, readers.",
@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@evf/shared-protocol": "workspace:*",
-    "qrcode": "1.5.4"
+    "upng-js": "2.1.0"
   },
   "devDependencies": {
-    "@types/qrcode": "1.5.5",
+    "@types/node": "25.6.2",
     "tsup": "8.5.1",
     "typescript": "5.8.3",
     "vitest": "4.1.5",

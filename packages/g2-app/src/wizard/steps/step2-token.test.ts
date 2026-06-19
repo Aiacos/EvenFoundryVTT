@@ -3,7 +3,9 @@
  *
  * Runs in happy-dom environment.
  * `fetch` is mocked via vi.stubGlobal for connection test flows.
- * `hub` global is mocked for camera probe.
+ *
+ * There is no QR-scan path: the Even Hub platform exposes no camera API to apps
+ * (canonical: "no camera (there is none)"). Token transfer is paste / manual entry only.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore, defaultI18n, type WizardState, WizardStep } from '../state.js';
@@ -38,18 +40,10 @@ describe('step2-token — render()', () => {
     vi.resetModules();
     container = document.createElement('div');
     document.body.appendChild(container);
-
-    // Default: no camera API
-    (globalThis as unknown as Record<string, unknown>).hub = {
-      camera: null,
-      eventBus: { on: vi.fn(), off: vi.fn() },
-    };
   });
 
   afterEach(() => {
     document.body.removeChild(container);
-    // biome-ignore lint/suspicious/noExplicitAny: test cleanup
-    delete (globalThis as any).hub;
     vi.restoreAllMocks();
   });
 
@@ -389,7 +383,7 @@ describe('step2-token — render()', () => {
     Step2.render(container, store, defaultI18n);
 
     const ghostBtns = container.querySelectorAll<HTMLButtonElement>('.evf-btn-ghost');
-    const pasteBtn = ghostBtns[1]; // second ghost button (after show/hide, before QR)
+    const pasteBtn = ghostBtns[1]; // second ghost button (after show/hide)
 
     // Should not throw
     expect(() => pasteBtn?.click()).not.toThrow();
@@ -453,106 +447,6 @@ describe('step2-token — render()', () => {
     // After async rejection, state should not change
     await new Promise((r) => setTimeout(r, 20));
     expect(store.get().step).toBe(WizardStep.STEP2);
-
-    Step2.destroy();
-  });
-
-  // ─── QR scan flow ─────────────────────────────────────────────────────────
-
-  it('QR scan: qrRow is revealed when camera is available', async () => {
-    const Step2 = await import('./step2-token.js');
-    const store = makeStore();
-
-    // Mock hub.camera with requestAccess returning true
-    (globalThis as unknown as Record<string, unknown>).hub = {
-      camera: {
-        requestAccess: vi.fn(async () => true),
-        scanQRCode: vi.fn(async () => 'scanned-token-12345678901234567'),
-      },
-      eventBus: { on: vi.fn(), off: vi.fn() },
-    };
-
-    Step2.render(container, store, defaultI18n);
-
-    // Wait for _probeCameraApi to resolve and qrRow to become visible
-    await vi.waitFor(
-      () => {
-        const qrRow = container.querySelector<HTMLElement>('.evf-qr-row');
-        if (qrRow?.classList.contains('evf-hidden')) throw new Error('qrRow still hidden');
-      },
-      { timeout: 2000 },
-    );
-
-    const qrRow = container.querySelector<HTMLElement>('.evf-qr-row');
-    expect(qrRow?.classList.contains('evf-hidden')).toBe(false);
-  });
-
-  it('QR scan: clicking QR button fills token input via scanQRCode', async () => {
-    const Step2 = await import('./step2-token.js');
-    const store = makeStore();
-
-    const scannedToken = 'scanned-qr-token-12345678901234567890';
-    (globalThis as unknown as Record<string, unknown>).hub = {
-      camera: {
-        requestAccess: vi.fn(async () => true),
-        scanQRCode: vi.fn(async () => scannedToken),
-      },
-      eventBus: { on: vi.fn(), off: vi.fn() },
-    };
-
-    Step2.render(container, store, defaultI18n);
-
-    // Wait for qrRow to be revealed
-    await vi.waitFor(
-      () => {
-        const qrRow = container.querySelector<HTMLElement>('.evf-qr-row');
-        if (qrRow?.classList.contains('evf-hidden')) throw new Error('qrRow still hidden');
-      },
-      { timeout: 2000 },
-    );
-
-    // Click the QR button (3rd ghost button)
-    const ghostBtns = container.querySelectorAll<HTMLButtonElement>('.evf-btn-ghost');
-    const qrBtn = ghostBtns[2];
-    qrBtn?.click();
-
-    // Wait for scanQRCode to resolve and input to fill
-    await vi.waitFor(
-      () => {
-        const input = container.querySelector<HTMLInputElement>('#evf-token-input');
-        if (input?.value !== scannedToken) throw new Error('token not filled yet');
-      },
-      { timeout: 2000 },
-    );
-
-    const input = container.querySelector<HTMLInputElement>('#evf-token-input');
-    expect(input?.value).toBe(scannedToken);
-    Step2.destroy();
-  });
-
-  it('QR scan: clicking QR button when requestAccess returns false does not fill token', async () => {
-    const Step2 = await import('./step2-token.js');
-    const store = makeStore();
-
-    const scanQRMock = vi.fn(async () => 'should-not-be-used');
-    (globalThis as unknown as Record<string, unknown>).hub = {
-      camera: {
-        requestAccess: vi.fn(async () => false),
-        scanQRCode: scanQRMock,
-      },
-      eventBus: { on: vi.fn(), off: vi.fn() },
-    };
-
-    Step2.render(container, store, defaultI18n);
-
-    // Wait for probe to finish — qrRow should remain hidden (access denied)
-    await new Promise((r) => setTimeout(r, 50));
-
-    // The qrRow is still hidden because requestAccess returned false during probe
-    // But we can still trigger the QR button via direct handler call (not via UI — covered)
-    // Instead verify _probeCameraApi returned false by checking qrRow stays hidden
-    const qrRow = container.querySelector<HTMLElement>('.evf-qr-row');
-    expect(qrRow?.classList.contains('evf-hidden')).toBe(true);
 
     Step2.destroy();
   });

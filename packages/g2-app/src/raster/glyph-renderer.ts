@@ -23,7 +23,12 @@
  * @see packages/shared-render/src/ascii-grid.ts (AsciiGrid public API)
  */
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
-import { AsciiGrid, type Cell } from '@evf/shared-render';
+// Import from the browser-safe `/ascii-grid` subpath, NOT the package root: the
+// root index re-exports `matchAsciiFixture` (snapshot.ts), which statically
+// imports `node:fs` — pulling that into the browser bundle throws an uncaught
+// "node:fs externalized" error at boot and blanks the whole app.
+import { AsciiGrid, type Cell } from '@evf/shared-render/ascii-grid';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 
 /** Token kinds renderable in glyph mode (UI-SPEC §Glyph Dictionary). */
 export type GlyphTokenKind = 'pc' | 'monster' | 'npc' | 'object';
@@ -202,6 +207,7 @@ export async function renderGlyphScene(
 ): Promise<void> {
   const grid = buildGlyphGrid(scene);
   const payload = new TextContainerUpgrade({
+    ...resolveContainerIdField(containerName),
     containerName,
     content: grid.toString(),
   });

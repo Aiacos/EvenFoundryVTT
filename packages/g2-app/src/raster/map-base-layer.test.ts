@@ -1,5 +1,5 @@
 /**
- * Unit tests for MapBaseLayer (Plan 13-04 — STRETCH-06).
+ * Unit tests for MapBaseLayer (Plan 13-04 — STRETCH-06 + quick-260605-f9s).
  *
  * MBL-PORT-01: setPortraitOverride stores override state
  * MBL-PORT-02: getContainerCount returns {image:4,text:1} in raster mode
@@ -7,8 +7,16 @@
  * MBL-PORT-04: draw() with portrait override calls bridge.updateImageRawData for the override slot
  * MBL-PORT-05: clearing override (setPortraitOverride(slot, null)) removes the override state
  *
+ * MBL-IDLE-01: draw() in raster mode with no scene issues exactly one textContainerUpgrade for
+ *              map-capture with empty-string content (clears SDK "Text" default) — no requestFrame.
+ * MBL-IDLE-02: draw() in glyph mode with no scene does NOT write map-capture
+ *              (glyph map-capture is owned by renderGlyphScene when a scene arrives).
+ * MBL-IDLE-03: draw() in raster mode WITH a scene calls requestFrame as before, no extra
+ *              blank write to map-capture (scene-present path unchanged).
+ *
  * @see packages/g2-app/src/raster/map-base-layer.ts
  * @see .planning/phases/13-v2-stretch/13-04-PLAN.md Task 2
+ * @see .planning/quick/260605-f9s-g2-app-boot-call-idleinfill-draw-after-l/260605-f9s-PLAN.md Task 1
  */
 
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
@@ -129,5 +137,75 @@ describe('MapBaseLayer — portrait override (Plan 13-04)', () => {
 
     // With override cleared, updateImageRawData should NOT be called
     expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Idle (no-frame) path tests (quick-260605-f9s Task 1) ────────────────────
+
+/** Typed bridge mock that exposes vi.fn() for direct assertion. */
+function makeTypedMockBridge() {
+  const textContainerUpgrade = vi.fn().mockResolvedValue(true);
+  const updateImageRawData = vi.fn().mockResolvedValue(true);
+  const bridge = { textContainerUpgrade, updateImageRawData } as unknown as EvenAppBridge & {
+    textContainerUpgrade: ReturnType<typeof vi.fn>;
+    updateImageRawData: ReturnType<typeof vi.fn>;
+  };
+  return { bridge, textContainerUpgrade, updateImageRawData };
+}
+
+describe('MapBaseLayer — idle no-frame draw() (quick-260605-f9s)', () => {
+  // MBL-IDLE-01: raster mode + no scene → blank map-capture, no requestFrame
+  it('MBL-IDLE-01: raster + no scene → textContainerUpgrade("map-capture", "") exactly once; no requestFrame', async () => {
+    const { bridge, textContainerUpgrade } = makeTypedMockBridge();
+    const controller = makeMockController('raster');
+    const lm = makeMockLayerManager('raster');
+    const layer = new MapBaseLayer(bridge, controller, vi.fn(), lm);
+
+    // No setScene() call — currentScene is null
+    await layer.draw();
+
+    // Must write exactly one blank upgrade to map-capture
+    expect(textContainerUpgrade).toHaveBeenCalledTimes(1);
+    const firstCall = textContainerUpgrade.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const arg = (firstCall as unknown[])[0] as { containerName: string; content: string };
+    expect(arg.containerName).toBe('map-capture');
+    expect(arg.content).toBe('');
+
+    // Must NOT call requestFrame — no pixel data available
+    expect(controller.requestFrame).not.toHaveBeenCalled();
+  });
+
+  // MBL-IDLE-02: glyph mode + no scene → no bridge write at all
+  it('MBL-IDLE-02: glyph + no scene → no textContainerUpgrade, no requestFrame', async () => {
+    const { bridge, textContainerUpgrade } = makeTypedMockBridge();
+    const controller = makeMockController('glyph');
+    const lm = makeMockLayerManager('glyph');
+    const layer = new MapBaseLayer(bridge, controller, vi.fn(), lm);
+
+    // No setScene() call — currentScene is null
+    await layer.draw();
+
+    // Glyph map-capture is owned by renderGlyphScene; do NOT pre-blank it
+    expect(textContainerUpgrade).not.toHaveBeenCalled();
+    expect(controller.requestFrame).not.toHaveBeenCalled();
+  });
+
+  // MBL-IDLE-03: raster mode WITH scene → requestFrame called; no extra blank write to map-capture
+  it('MBL-IDLE-03: raster + scene present → requestFrame called; no additional textContainerUpgrade for map-capture', async () => {
+    const { bridge, textContainerUpgrade } = makeTypedMockBridge();
+    const controller = makeMockController('raster');
+    const lm = makeMockLayerManager('raster');
+    const layer = new MapBaseLayer(bridge, controller, vi.fn(), lm);
+
+    const pixelData = new Uint8ClampedArray(576 * 288 * 4).fill(0);
+    await layer.setScene({ pixelData, width: 576, height: 288 });
+
+    await layer.draw();
+
+    // Scene-present path: requestFrame is called
+    expect(controller.requestFrame).toHaveBeenCalledOnce();
+    // No blank textContainerUpgrade for map-capture in the scene-present path
+    expect(textContainerUpgrade).not.toHaveBeenCalled();
   });
 });

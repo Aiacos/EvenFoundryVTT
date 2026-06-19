@@ -29,12 +29,29 @@ services:
       dockerfile: deploy/bridge.Dockerfile
     ports:
       - "8910:8910"
+    # Player-view secrets/config (EVF_PLAYER_VIEW_*, incl. EVF_PLAYER_VIEW_STREAM_USER
+    # — the Foundry world user the `streaming` map joins as) are loaded from .env here.
     env_file:
       - .env
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
       - PORT=8910
+    volumes:
+      # Headless player-view (ADR-0015 §C P2): the saved Forge session
+      # (storageState) produced by the one-time `bootstrap:auth` login. Host dir
+      # `deploy/secrets/` is gitignored; mounted read-only into the container at
+      # the path EVF_PLAYER_VIEW_STORAGE_STATE points to (/app/secrets).
+      - ./secrets:/app/secrets:ro
+    # GPU passthrough for the headless player-view Chromium: the host AMD GPU
+    # gives hardware WebGL (Mesa radeonsi) so Foundry's PIXI world loads fast.
+    # Software GL (llvmpipe) is too slow. Harmless if no player-view mode is used.
+    # group_add: the render(992)/video(44) gids that own /dev/dri on the host.
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "992"
+      - "44"
     healthcheck:
       # 127.0.0.1 (not localhost): inside the container `localhost` also resolves to ::1 (IPv6),
       # but the server binds IPv4 0.0.0.0 only → a localhost healthcheck hits ::1 and reports

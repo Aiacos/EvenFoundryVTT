@@ -31,6 +31,20 @@ vi.mock('../write-path/tool-registry.js', () => ({
   extractActorId: vi.fn(() => null),
 }));
 
+// ADR-0014 Amendment 1: the write dispatch now authorizes the acting `args.actor_id`
+// against the bearer's owned set BEFORE forwarding. These forwarding tests use the
+// acting actor `actor-1`, so we stub the bearer → user binding (valid) and the owned
+// set (contains `actor-1`) so the gate passes and the forwarding behaviour under test
+// is exercised. (The gate's own deny/allow logic is tested in
+// socketlib-handlers-write-authz.test.ts.)
+vi.mock('./bearer-registry.js', () => ({
+  validateBearer: vi.fn(() => ({ valid: true, entry: { userId: 'user-1' } })),
+  revokeBearer: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('./actor-authorization.js', () => ({
+  authorizedActorIdsForUser: vi.fn(() => ['actor-1']),
+}));
+
 // ─── Foundry global stubs ─────────────────────────────────────────────────────
 
 class ApplicationStub {
@@ -40,7 +54,6 @@ class ApplicationStub {
 }
 
 class ApplicationV2Stub {
-  constructor(_options?: unknown) {}
   element: HTMLElement =
     globalThis.document?.createElement?.('div') ??
     ({ querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement);
@@ -58,23 +71,36 @@ class ApplicationV2Stub {
 
 type HandlerFn = (...args: unknown[]) => unknown;
 
+/**
+ * Socketlib mock matching the REAL registerModule/register API (260604-lg4).
+ * `registerModule` returns a module-scoped socket; the `callHandler` helper
+ * resolves and invokes a handler registered via `socket.register(name, fn)`.
+ */
 function makeSocketlibMock() {
   const handlers = new Map<string, HandlerFn>();
-  return {
-    registerComplexHandler: vi.fn((_moduleId: string, handlerId: string, handler: HandlerFn) => {
-      handlers.set(handlerId, handler);
+  const socket = {
+    register: vi.fn((name: string, fn: HandlerFn) => {
+      handlers.set(name, fn);
     }),
-    executeAsGM: vi.fn(async (_moduleId: string, handlerId: string, ...args: unknown[]) => {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    executeAsGM: vi.fn(async (name: string, ...args: unknown[]) => {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     }),
-    callHandler(handlerId: string, ...args: unknown[]): unknown {
-      const handler = handlers.get(handlerId);
-      if (!handler) throw new Error(`No handler: ${handlerId}`);
+    callHandler(name: string, ...args: unknown[]): unknown {
+      const handler = handlers.get(name);
+      if (!handler) throw new Error(`No handler: ${name}`);
       return handler(...args);
     },
     _handlers: handlers,
+  };
+  return {
+    registerModule: vi.fn(() => socket),
+    socket,
+    register: socket.register,
+    callHandler(name: string, ...args: unknown[]): unknown {
+      return socket.callHandler(name, ...args);
+    },
   };
 }
 

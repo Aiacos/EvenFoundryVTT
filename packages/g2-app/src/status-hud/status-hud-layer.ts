@@ -55,6 +55,7 @@ import {
   R1_ACTION_ECONOMY_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
 } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { Layer } from '../engine/layer-types.js';
 import type { LayerManagerLike, StatusHudRenderer } from './status-hud-renderer.js';
 
@@ -496,29 +497,48 @@ export class StatusHudLayer implements Layer {
   /**
    * Render the current snapshot via the renderer + push to the bridge.
    *
-   * Produces two lines of content:
-   *   1. The 28×21 corner card (AsciiGrid.toString()) — always-visible status HUD.
-   *   2. The R1 context chip footer row (Phase 6 Plan 03 — NAV-01 + INV-5 visible
-   *      enforcement). The chip reads `layerManager.getTopLayer()?.getR1Hints?.()`
-   *      on every render so it always names the live Quick-Action (over-scroll) target.
+   * ## HUD-27PX change (quick-260605-j0t)
    *
-   * Both are concatenated into a single `textContainerUpgrade` payload. The
-   * bridge displays them sequentially as the corner-card content + footer chip.
+   * The renderer now returns a **multi-line `string`** (not an AsciiGrid).
+   * The 9-row status sheet is the full content of the `status-hud` container
+   * (now full-width, 576×243 px). The R1 context chip from `renderContextChip`
+   * is preserved as a 10th line below the sheet (StatusHudLayer contract unchanged).
+   *
+   * The chip is the sync-lost/R1-hint row that was previously separate from
+   * the renderer output. In the new full-width layout the renderer's last row
+   * (row 8) IS the R1 hint row — so we no longer double-append a chip row for
+   * normal rendering. However `renderContextChip` still provides the sync-lost
+   * override path (Phase 10 Plan 10-01). When sync is lost, append it as row 9
+   * to replace/supplement the sheet's built-in R1 hint row.
+   *
+   * TODO(HUD-27PX): if the sync-lost chip should REPLACE row 8 rather than
+   * append, refactor `_buildSheet` to accept an optional override row (#issue).
+   * For now, append is safe (slightly over 9 rows, within container height).
    *
    * Never throws — bridge rejections propagate as Promise rejections to the
    * caller (LayerManager handles error logging at the call site).
    */
   private async _renderNow(): Promise<void> {
-    const grid =
+    // Renderer now returns a plain string (HUD-27PX redesign)
+    const sheet: string =
       this.snapshot !== null ? this.renderer.render(this.snapshot) : this.renderer.renderLoading();
-    // Phase 10 Plan 10-01 — pass syncLostState to renderContextChip so the SYNC LOST
-    // chip replaces the R1 hint chip when the WS is disconnected (D-Area1, T-10-01).
-    const chip = this.renderer.renderContextChip(this.layerManager, this.renderer.locale, {
-      syncLost: this.syncLostState,
-    });
+
+    // Phase 10 Plan 10-01 — SYNC LOST chip override.
+    // When syncLostState is non-null, append the sync-lost chip as a 10th row
+    // so the user can see the reconnect status. In normal operation the chip
+    // is already embedded in the renderer's last row (row 8 = R1 hint row).
+    let content = sheet;
+    if (this.syncLostState !== null) {
+      const chip = this.renderer.renderContextChip(this.layerManager, this.renderer.locale, {
+        syncLost: this.syncLostState,
+      });
+      content = `${sheet}\n${chip}`;
+    }
+
     const payload = new TextContainerUpgrade({
+      ...resolveContainerIdField(this.containerName),
       containerName: this.containerName,
-      content: `${grid.toString()}\n${chip}`,
+      content,
     });
     await this.bridge.textContainerUpgrade(payload);
   }

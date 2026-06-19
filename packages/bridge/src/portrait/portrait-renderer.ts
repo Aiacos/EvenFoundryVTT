@@ -88,8 +88,15 @@ export interface PortraitRenderResult {
   urlHash: string;
 }
 
-/** Minimal fetch function shape (native fetch or injected test double). */
-export type PortraitFetchFn = (url: string) => Promise<Response>;
+/**
+ * Minimal fetch function shape (native fetch or injected test double).
+ *
+ * The production fetch is invoked with `{ redirect: 'manual' }` (T-13-02) so an
+ * allowed host cannot 3xx-redirect the proxy to an internal target AFTER the
+ * route's SSRF host/IP validation has run against the original URL. Tests may
+ * ignore the `init` argument.
+ */
+export type PortraitFetchFn = (url: string, init?: { redirect?: 'manual' }) => Promise<Response>;
 
 /** Factory options for {@link createPortraitRenderer}. */
 export interface PortraitRendererOpts {
@@ -131,6 +138,55 @@ async function sha256Hex(str: string): Promise<string> {
     .join('');
 }
 
+// ─── Capped body reader (T-13-02a) ──────────────────────────────────────────────
+
+/**
+ * Read a fetch Response body into a Buffer, aborting as soon as the accumulated
+ * byte count exceeds {@link MAX_BODY_BYTES}.
+ *
+ * Streams via the WHATWG `ReadableStream` reader when available (production native
+ * fetch + chunked responses), so an oversized chunked/streamed body — which carries
+ * no honest `content-length` and would otherwise be fully buffered by
+ * `arrayBuffer()` before any size check — is rejected after reading at most
+ * `MAX_BODY_BYTES + one chunk`. Falls back to `arrayBuffer()` (with a post-read
+ * length check) for response doubles that expose no streamable `body`.
+ *
+ * @throws {PortraitTooLargeError} once the running byte counter exceeds the cap.
+ */
+async function readBodyCapped(resp: Response, url: string): Promise<Buffer> {
+  const body = (resp as { body?: ReadableStream<Uint8Array> | null }).body;
+  if (body !== null && body !== undefined && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value !== undefined) {
+          total += value.byteLength;
+          if (total > MAX_BODY_BYTES) {
+            // Abort the stream early — do not keep pulling an oversized body.
+            await reader.cancel().catch(() => undefined);
+            throw new PortraitTooLargeError(url);
+          }
+          chunks.push(value);
+        }
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)));
+  }
+
+  // Fallback for response doubles without a streamable body.
+  const arrayBuf = await resp.arrayBuffer();
+  if (arrayBuf.byteLength > MAX_BODY_BYTES) {
+    throw new PortraitTooLargeError(url);
+  }
+  return Buffer.from(arrayBuf);
+}
+
 // ─── Palette ──────────────────────────────────────────────────────────────────
 
 /** Build the canonical 16-step phosphor-green greyscale palette (mirrors raster-worker.ts). */
@@ -155,38 +211,57 @@ export function createPortraitRenderer(opts: PortraitRendererOpts = {}): Portrai
   const { logger, _fetchFn } = opts;
   const fetchFn: PortraitFetchFn =
     _fetchFn ??
-    ((url: string) =>
-      (globalThis as unknown as { fetch: (url: string) => Promise<Response> }).fetch(url));
+    ((url: string, init?: { redirect?: 'manual' }) =>
+      (
+        globalThis as unknown as {
+          fetch: (url: string, init?: { redirect?: 'manual' }) => Promise<Response>;
+        }
+      ).fetch(url, init));
 
   const palette = buildGreyscalePalette();
 
   return {
     async renderPortrait(url: string): Promise<PortraitRenderResult> {
-      // Step 1 — fetch
+      // Step 1 — fetch with manual redirect handling (T-13-02 SSRF).
+      // `redirect: 'manual'` makes a 3xx return as an opaque-redirect response
+      // (resp.type === 'opaqueredirect', status 0) instead of being transparently
+      // followed. The route validated host/IP against the ORIGINAL url only; an
+      // allowed host that 302s to an internal target (169.254.169.254, 127.0.0.1,
+      // …) would otherwise bypass that check. We treat ANY redirect as a fetch
+      // failure rather than re-validating + chasing the Location.
       let resp: Response;
       try {
-        resp = await fetchFn(url);
+        resp = await fetchFn(url, { redirect: 'manual' });
       } catch {
         throw new PortraitFetchError(url, 0);
+      }
+
+      // A manual-mode redirect surfaces as an opaque-redirect (type) or a 3xx status.
+      if (resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400)) {
+        logger?.warn({ url, status: resp.status }, '[portrait-renderer] redirect blocked (SSRF)');
+        throw new PortraitFetchError(url, resp.status);
       }
 
       if (!resp.ok) {
         throw new PortraitFetchError(url, resp.status);
       }
 
-      // Step 2 — body size guard (T-13-02a)
+      // Step 2 — body size guard (T-13-02a).
+      // First, a cheap header pre-check: an HONEST content-length over the cap is
+      // rejected before we read a single byte.
       const contentLength = Number(resp.headers.get('content-length') ?? '0');
       if (contentLength > MAX_BODY_BYTES) {
         throw new PortraitTooLargeError(url);
       }
 
+      // Then enforce the cap on the ACTUAL bytes with a running counter. A chunked
+      // response (no content-length, or a lying one) otherwise reaches arrayBuffer()
+      // and buffers the FULL body before any post-hoc length check — a memory-DoS
+      // vector. Streaming with an early-abort counter bounds peak memory to
+      // MAX_BODY_BYTES + one chunk regardless of the declared length.
       let bodyBuffer: Buffer;
       try {
-        const arrayBuf = await resp.arrayBuffer();
-        if (arrayBuf.byteLength > MAX_BODY_BYTES) {
-          throw new PortraitTooLargeError(url);
-        }
-        bodyBuffer = Buffer.from(arrayBuf);
+        bodyBuffer = await readBodyCapped(resp, url);
       } catch (err) {
         if (err instanceof PortraitTooLargeError) throw err;
         throw new PortraitDecodeError(url, err);

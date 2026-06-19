@@ -29,7 +29,7 @@
  * It is NOT measured by g2-app. The station is **still required** in the emitted
  * envelope (PerfSampleEnvelopeSchema requires exactly 5 stations). The probe
  * uses the timestamp of `result_envelope` minus a placeholder offset for this
- * station — marked with TODO(SC-10-02) in the flush logic. This is a known
+ * station — marked with Deferred (SC-10-02) in the flush logic. This is a known
  * approximation until hardware measurements are available.
  *
  * # T-10-02 Mitigation (Information Disclosure)
@@ -248,7 +248,7 @@ export class PerfProbe {
 
     // g2-app measures 4 stations. handler_invoke is server-side.
     // We approximate it from result_envelope for the envelope schema requirement.
-    // TODO(SC-10-02): replace the approximated handler_invoke ts with actual
+    // Deferred (SC-10-02): replace the approximated handler_invoke ts with actual
     // bridge-log-derived value once hardware measurements are available.
     const gestureTs = flow.stations.get('gesture_emit');
     const bridgePostTs = flow.stations.get('bridge_post');
@@ -282,7 +282,7 @@ export class PerfProbe {
 
     // Build the 5-station array. handler_invoke is approximated as midpoint between
     // bridge_post and result_envelope (conservative estimate for schema compliance).
-    // TODO(SC-10-02): wire actual server-side handler_invoke timestamp from bridge logs.
+    // Deferred (SC-10-02): wire actual server-side handler_invoke timestamp from bridge logs.
     const approxHandlerInvoke =
       Math.floor(((bridgePostTs ?? 0) + (resultEnvelopeTs ?? 0)) / 2) || (bridgePostTs ?? 1) + 1;
 

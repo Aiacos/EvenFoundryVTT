@@ -15,7 +15,7 @@
  *
  * ## socketlib invariant
  *
- * NO new `registerComplexHandler` call. Emission uses the existing
+ * NO new `socket.register(name, fn)` call. Emission uses the existing
  * `bridgeDeltaEmitter` channel. Count remains **17** (Phase 13 invariant).
  *
  * ## Hook wiring

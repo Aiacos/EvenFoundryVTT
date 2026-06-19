@@ -4,9 +4,9 @@
  * Covers QAM-01..14 + QAM-FIX-01..04 from 06-02-PLAN.md Task 2 <behavior>:
  *   - QAM-01:  static meta parses via PanelMetaSchema with navKey ''
  *   - QAM-02:  isOverlayPanel(instance) === true; getContainerCount === { image: 0, text: 1 }
- *   - QAM-03:  default state renders 9 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
+ *   - QAM-03:  default state renders 10 rows with ▶ on [S] (activeIndex=0); all rows 70 chars
  *   - QAM-04:  scroll down → activeIndex increments → ▶ moves to [C]
- *   - QAM-05:  scroll wrap-around from [X] (index 8) → back to [S] (index 0)
+ *   - QAM-05:  scroll wrap-around from [X] (index 9) → back to [S] (index 0)
  *   - QAM-06:  tap on [N] (index 7) → mode === 'language'; draw shows 7 LOCALE_MENU entries
  *   - QAM-07:  sub-menu nav-keys are A I E D S F P (mutually exclusive modes)
  *   - QAM-08:  sub-menu locale select: scroll to [I] → tap → persistLocaleOverride('it') + localeEvents.emit + mode='main'
@@ -132,14 +132,15 @@ describe('QuickActionMenuPanel — OverlayPanel contract (QAM-02)', () => {
 });
 
 describe('QuickActionMenuPanel — main mode draw (QAM-03)', () => {
-  it('QAM-03: default state renders 9 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
+  it('QAM-03: default state renders 10 rows with ▶ on [S]; every row exactly 70 visible chars', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
 
-    // Count item rows (lines containing [X] pattern)
+    // Count item rows (lines containing [X] pattern). 10 navigation/view items (dither + brightness moved to phone)
+
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9);
+    expect(itemRows.length).toBe(10);
 
     // [S] row is active (first item)
     const sRow = lines.find((l) => l.includes('[S]'));
@@ -177,11 +178,12 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     expect(cRow).toMatch(/▶/);
   });
 
-  it('QAM-05: scroll wrap-around from [X] (index 8) back to [S] (index 0)', async () => {
+  it('QAM-05: scroll wrap-around from [X] (index 9) back to [S] (index 0)', async () => {
     const { panel, bridge } = makeMenu({ locale: 'it' });
 
-    // Scroll to [X] (8 times down from [S])
-    for (let i = 0; i < 8; i++) {
+    // Scroll to [X] (9 times down from [S]) — 10-item menu after the dither +
+    // brightness settings rows moved to the phone panel (2026-06-14).
+    for (let i = 0; i < 9; i++) {
       panel.onEvent({ kind: 'scroll', direction: 'down' });
     }
     let content = await drawAndGetContent(panel, bridge);
@@ -193,7 +195,9 @@ describe('QuickActionMenuPanel — scroll navigation (QAM-04, QAM-05)', () => {
     content = await drawAndGetContent(panel, bridge);
     lines = content.split('\n');
     expect(lines.find((l) => l.includes('[S]'))).toMatch(/▶/);
+    // [X] and [F] should not be active after wrap
     expect(lines.find((l) => l.includes('[X]'))).not.toMatch(/▶/);
+    expect(lines.find((l) => l.includes('[F]'))).not.toMatch(/▶/);
   });
 });
 
@@ -270,7 +274,7 @@ describe('QuickActionMenuPanel — locale select (QAM-08, QAM-09)', () => {
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9); // back to 9-item main mode
+    expect(itemRows.length).toBe(10); // back to 10-item main mode
   });
 
   it('QAM-09: tap [A] in language mode → persistLocaleOverride("auto") + emit("auto")', async () => {
@@ -318,11 +322,11 @@ describe('QuickActionMenuPanel — double-tap close/back behaviour (QAM-10, QAM-
 
     expect(callbacks.onClose).not.toHaveBeenCalled();
 
-    // Should be back in main mode — draw shows 9 items
+    // Should be back in main mode — draw shows 13 items
     const content = await drawAndGetContent(panel, bridge);
     const lines = content.split('\n');
     const itemRows = lines.filter((l) => /\[.\]/.test(l));
-    expect(itemRows.length).toBe(9);
+    expect(itemRows.length).toBe(10);
   });
 });
 
@@ -388,14 +392,44 @@ describe('QuickActionMenuPanel — tap action dispatch (QAM-12)', () => {
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('QAM-12h: tap [X] → onClose() only', () => {
+  it('QAM-12h: tap [X] (index 9) → onClose() only', () => {
     const { panel, callbacks } = makeMenu();
-    for (let i = 0; i < 8; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    // [X] is index 9 in the 10-item menu (S0,C1,L2,B3,I4,A5,M6,N7,F8,X9).
+    for (let i = 0; i < 9; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
     panel.onEvent({ kind: 'tap' });
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
     expect(callbacks.onNavigate).not.toHaveBeenCalled();
     expect(callbacks.onAction).not.toHaveBeenCalled();
     expect(callbacks.onMapModeToggle).not.toHaveBeenCalled();
+  });
+
+  it('QAM-12i: tap [F] (index 8) → onFpsToggle() + onClose()', () => {
+    const bridge = makeMockBridge();
+    const bus = new PanelGestureBus();
+    const localeEvents = new LocaleEventEmitter();
+    const onClose = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onNavigate = vi.fn() as unknown as ReturnType<typeof vi.fn> & ((panelId: string) => void);
+    const onMapModeToggle = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onAction = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+    const onFpsToggle = vi.fn() as unknown as ReturnType<typeof vi.fn> & (() => void);
+
+    const panel = new QuickActionMenuPanel(bridge, bus, 'it', 'auto', localeEvents, {
+      onClose,
+      onNavigate,
+      onMapModeToggle,
+      onAction,
+      onFpsToggle,
+    });
+
+    // Scroll to [F] (index 8: S=0,C=1,L=2,B=3,I=4,A=5,M=6,N=7,F=8)
+    for (let i = 0; i < 8; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+
+    expect(onFpsToggle).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onMapModeToggle).not.toHaveBeenCalled();
   });
 });
 

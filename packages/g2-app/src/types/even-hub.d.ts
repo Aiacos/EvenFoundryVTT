@@ -21,7 +21,10 @@
  *   - `hub.getItem(k)`         → `bridge.getLocalStorage(k)` (`""` from SDK → `null`)
  *   - `hub.removeItem(k)`      → `bridge.setLocalStorage(k, '')` (no explicit delete in SDK)
  *   - `hub.eventBus.on('g2.wear'|'g2.unwear', cb)` → derived from `bridge.onDeviceStatusChanged`
- *   - `hub.camera`             → `undefined` (camera APIs are phone-side WebView, not in EvenHub SDK)
+ *   - `hub.camera`             → omitted from this surface. There is NO camera / QR-scan API
+ *     exposed to apps (canonical hub.evenrealities.com/docs/guides/device-apis:
+ *     "no camera (there is none)"). ADR-0005 §OQ-INV2-4 resolved; the wizard uses paste /
+ *     manual token entry only — no QR scan path.
  *
  * Tests typically `vi.stubGlobal('hub', mockHub)` to bypass the polyfill;
  * the polyfill is idempotent and respects prior installations.
@@ -59,21 +62,5 @@ declare const hub: {
 
     /** Remove a previously registered callback. */
     off(event: string, callback: () => void): void;
-  };
-
-  /**
-   * Camera API — only present on some OS variants.
-   * Always probe `hub.camera?.requestAccess()` before use.
-   * G2 has no camera (Specs.md §3.1); this API is for the paired phone camera.
-   */
-  camera?: {
-    /** Request camera permission. Returns true if granted. */
-    requestAccess(): Promise<boolean>;
-
-    /**
-     * Open a QR code scanner overlay.
-     * Returns the decoded string content, or rejects on cancel / scan error.
-     */
-    scanQRCode(): Promise<string>;
   };
 };

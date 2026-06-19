@@ -39,7 +39,6 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
     'evf.wizard.step2.show_toggle': 'Mostra',
     'evf.wizard.step2.hide_toggle': 'Nascondi',
     'evf.wizard.step2.paste_btn': 'Incolla',
-    'evf.wizard.step2.scan_qr_btn': 'Scansiona QR',
     'evf.wizard.step2.short_token_hint': 'Il token sembra troppo corto.',
     'evf.wizard.step2.cta': 'Connetti',
     'evf.wizard.step2.connecting': 'Connessione in corso…',
@@ -52,6 +51,7 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
 
     // Step 3 — character selection
     'evf.wizard.step3.title': 'Scegli il personaggio',
+    'evf.wizard.step3.scoped': 'Solo le schede del tuo utente Foundry.',
     'evf.wizard.step3.loading': 'Caricamento personaggi…',
     'evf.wizard.step3.cta': 'Conferma',
     'evf.wizard.step3.empty': 'Nessun personaggio disponibile su questo bridge.',
@@ -98,7 +98,6 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
     'evf.wizard.step2.show_toggle': 'Show',
     'evf.wizard.step2.hide_toggle': 'Hide',
     'evf.wizard.step2.paste_btn': 'Paste',
-    'evf.wizard.step2.scan_qr_btn': 'Scan QR',
     'evf.wizard.step2.short_token_hint': 'That token looks too short.',
     'evf.wizard.step2.cta': 'Connect',
     'evf.wizard.step2.connecting': 'Connecting…',
@@ -109,6 +108,7 @@ export const DEFAULT_WIZARD_CATALOG: Record<'it' | 'en', Record<string, string>>
     'evf.wizard.step2.error.version_mismatch': 'Incompatible bridge version. Update the bridge.',
 
     'evf.wizard.step3.title': 'Choose your character',
+    'evf.wizard.step3.scoped': "Only your Foundry user's characters.",
     'evf.wizard.step3.loading': 'Loading characters…',
     'evf.wizard.step3.cta': 'Confirm',
     'evf.wizard.step3.empty': 'No characters available on this bridge.',

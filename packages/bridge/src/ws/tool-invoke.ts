@@ -31,6 +31,8 @@ import {
 } from '@evf/shared-protocol';
 import type { Logger } from 'pino';
 import type { WebSocket } from 'ws';
+import { isActorAuthorized } from '../auth/actor-authorization.js';
+import type { TokenCache } from '../auth/token-cache.js';
 import type { SessionStore } from './session-store.js';
 
 /**
@@ -62,6 +64,32 @@ export type DispatchToolFn = (
 ) => Promise<ToolInvokeResult>;
 
 /**
+ * Extracts the ACTING actor id from a tool invocation's raw `args` (ADR-0014
+ * Amendment 1).
+ *
+ * The write-path convention is that `args.actor_id` is the actor PERFORMING the
+ * action (the player's own PC). This is distinct from `args.targets` (token ids
+ * the action is aimed at), which may legitimately be NON-owned (e.g. attacking a
+ * monster). The bridge fast-reject therefore consults the acting actor ONLY and
+ * never inspects `args.targets`.
+ *
+ * Tools with no acting `args.actor_id` (`move-token` → `token_id`,
+ * `confirm-template-placement` → `placementId`) yield `null` and are not gated
+ * by the bridge — the authoritative Foundry-side gate is the single source of
+ * truth; this is a defence-in-depth fast-reject only.
+ *
+ * @param args - Raw, not-yet-handler-validated tool args (`z.unknown()` at the envelope layer).
+ * @returns The acting `actor_id`, or `null` when absent / non-string / empty.
+ */
+function extractActingActorId(args: unknown): string | null {
+  if (args === null || typeof args !== 'object' || !('actor_id' in args)) {
+    return null;
+  }
+  const value = (args as Record<string, unknown>).actor_id;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
  * Handle a potential `tool.invoke` WS message on an already-handshaked socket.
  *
  * Non-tool.invoke messages (e.g., `client_resume`) are silently ignored —
@@ -72,6 +100,8 @@ export type DispatchToolFn = (
  * @param sessionId      - Session ID returned by `handleHandshake` (post-auth identity).
  * @param sessionStore   - Session store for looking up the bearer token.
  * @param dispatchToolFn - Injected function that forwards the payload to Foundry dispatchTool.
+ * @param tokenCache     - Shared TokenCache — re-validated to obtain the bearer's live
+ *                         `authorizedActorIds` for the ADR-0014 Amendment 1 write fast-reject.
  * @param rawData        - Raw socket payload (Buffer or string from the `ws` library).
  * @param logger         - pino logger (redaction config applied at server level).
  */
@@ -80,6 +110,7 @@ export async function handleToolInvoke(
   sessionId: string,
   sessionStore: SessionStore,
   dispatchToolFn: DispatchToolFn,
+  tokenCache: TokenCache,
   rawData: Buffer | ArrayBuffer | Buffer[] | string,
   logger: Logger,
 ): Promise<void> {
@@ -145,6 +176,33 @@ export async function handleToolInvoke(
     };
     socket.send(JSON.stringify(errorResponse));
     return;
+  }
+
+  // ── Step 5.5: per-actor write fast-reject (ADR-0014 Amendment 1) ─────────────
+  // Defence in depth: BEFORE dispatching, reject any write whose acting
+  // `args.actor_id` is not OWNED by the bearer's bound user. The authoritative
+  // gate lives Foundry-side (socketlib-handlers.makeDispatchAdapter); this is a
+  // fast-reject that avoids a round-trip when the bridge cache already proves the
+  // actor is not authorized. `isActorAuthorized` honors the dev-no-auth bypass, so
+  // the simulator (synthetic authorized roster) keeps working. TARGETS are NOT
+  // consulted — only the acting actor (attacking a non-owned monster stays legal).
+  const actingActorId = extractActingActorId(toolPayload.args);
+  if (actingActorId !== null) {
+    const validation = await tokenCache.validate(session.token);
+    if (!validation.valid || !isActorAuthorized(validation.authorizedActorIds, actingActorId)) {
+      logger.warn(
+        { sessionId, toolId: toolPayload.toolId },
+        'WS tool.invoke: acting actor not authorized — rejected (not_authorized)',
+      );
+      const errorResponse = {
+        proto: 'evf-v1',
+        type: 'tool.result',
+        session_id: sessionId,
+        payload: { success: false, error: 'not_authorized' },
+      };
+      socket.send(JSON.stringify(errorResponse));
+      return;
+    }
   }
 
   // ── Step 6: dispatch to Foundry via injected dispatchToolFn ──────────────────

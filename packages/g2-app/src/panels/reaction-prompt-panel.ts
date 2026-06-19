@@ -50,6 +50,7 @@
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
 import type { ReactionAvailablePayload } from '@evf/shared-protocol';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
@@ -91,6 +92,8 @@ export type ReactionPanelCloseHandler = () => void;
 export class ReactionPromptPanel implements OverlayPanel {
   /** Stable id used by LayerManager + telemetry. */
   public readonly id = 'reaction-prompt';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   private readonly bridge: EvenAppBridge;
   private readonly ws: ReactionPanelWebSocket;
@@ -169,6 +172,9 @@ export class ReactionPromptPanel implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(REACTION_PROMPT_CONTAINER_NAME),
       containerName: REACTION_PROMPT_CONTAINER_NAME,
       content: lines.join('\n'),
     });

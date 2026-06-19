@@ -455,7 +455,8 @@ describe('Step 1 URL validation regex', () => {
    * Regex from 02-03-PLAN.md Task 2 / 02-UI-SPEC.md Step 1 Input Affordances.
    * Tested here since the regex is a standalone unit.
    */
-  const URL_REGEX = /^https?:\/\/[^/]+:\d{1,5}(\/.*)?$/;
+  // Feature 001 D1: the port is OPTIONAL (a full https origin on 443 is valid).
+  const URL_REGEX = /^https?:\/\/[^\s/:]+(:\d{1,5})?(\/[^\s]*)?$/;
 
   const valid = [
     'https://bridge.local:8910',
@@ -464,16 +465,19 @@ describe('Step 1 URL validation regex', () => {
     'https://bridge.local:8910/',
     'https://my.bridge.host:1234',
     'http://localhost:9000',
+    'https://bridge.local', // port-less https origin (D1 — 443 implied)
+    'https://evenfoundry.lucifer-tnas.mywire.org', // homelab bridge over 443
+    'https://eu.forge-vtt.com/invite/aiacos-vecna/dae6a476', // Forge world URL (no port + path)
   ];
 
   const invalid = [
     'ftp://bridge.local:8910',
-    'https://bridge.local', // missing port
     'bridge.local:8910', // missing scheme
     '',
     'https://:8910', // missing host
     'https://bridge.local:999999', // port > 5 digits (6 digits — exceeds \d{1,5})
     'just-text',
+    'https://bridge local', // contains a space
   ];
 
   for (const url of valid) {

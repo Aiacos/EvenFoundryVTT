@@ -24,9 +24,9 @@
  *
  * @see ./is-debug-enabled.ts
  * @see ./debug-event-bus.ts
- * @see ../routes/internal-delta.ts (secretsEqual pattern — mirrored here)
+ * @see ./debug-secret.ts (secretsEqual / requireSecret — shared helpers, Quick Task 260604-cwa)
  */
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   DebugDispatchBodySchema,
   DebugGestureBodySchema,
@@ -46,6 +46,7 @@ import type { SessionStore } from '../ws/session-store.js';
 import type { DispatchToolFn } from '../ws/tool-invoke.js';
 import { DASHBOARD_HTML } from './dashboard.js';
 import type { DebugEventBus } from './debug-event-bus.js';
+import { checkWsSecret, requireSecret } from './debug-secret.js';
 
 /**
  * Dependencies injected into {@link registerDebugRoutes}.
@@ -71,44 +72,6 @@ export interface DebugRouteDeps {
   metricsAccessors: { connectionCount: () => number };
   /** ADR-0011 dispatch fn — the SAME one the WS loop uses. */
   dispatchToolFn: DispatchToolFn;
-}
-
-/**
- * Constant-time secret comparison (mirrors `secretsEqual` in internal-delta.ts).
- *
- * Duplicated as a tiny private fn to avoid coupling the debug module to the
- * internal-delta route module (per plan — acceptable to duplicate the ~5-line fn).
- */
-function secretsEqual(a: string, b: string): boolean {
-  try {
-    return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
-  } catch {
-    return false;
-  }
-}
-
-/** Extract a candidate secret from `Authorization: Bearer <s>` or raw `<s>`. */
-function secretFromAuthHeader(authHeader: string | undefined): string | undefined {
-  if (authHeader === undefined) return undefined;
-  return authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : authHeader;
-}
-
-/**
- * HTTP secret gate. Replies 401 and returns false when the secret is missing/wrong.
- */
-function requireSecret(request: FastifyRequest, reply: FastifyReply): boolean {
-  const expected = process.env.EVF_INTERNAL_SECRET;
-  const provided = secretFromAuthHeader(request.headers.authorization);
-  if (
-    expected === undefined ||
-    expected === '' ||
-    provided === undefined ||
-    !secretsEqual(provided, expected)
-  ) {
-    void reply.status(401).send({ error: 'unauthorized' });
-    return false;
-  }
-  return true;
 }
 
 /** Reduce a raw token to a ≤8-char hint + ellipsis for the snapshot. */
@@ -306,17 +269,8 @@ export async function registerDebugRoutes(
   // ── WS /debug/stream — live event feed (W-3: unsubscribe on close AND error) ────
   app.get('/debug/stream', { websocket: true }, (socket: WebSocket, req: FastifyRequest) => {
     // Secret may arrive as `?secret=` (browser WS cannot set headers) or Authorization.
-    const url = new URL(req.url ?? '/debug/stream', 'http://localhost');
-    const querySecret = url.searchParams.get('secret') ?? undefined;
-    const headerSecret = secretFromAuthHeader(req.headers.authorization);
-    const provided = querySecret ?? headerSecret;
-    const expected = process.env.EVF_INTERNAL_SECRET;
-    if (
-      expected === undefined ||
-      expected === '' ||
-      provided === undefined ||
-      !secretsEqual(provided, expected)
-    ) {
+    // Delegated to checkWsSecret from debug-secret.ts (shared with agent-routes.ts).
+    if (!checkWsSecret(req.url, req.headers.authorization)) {
       socket.close(1008, 'unauthorized');
       return;
     }

@@ -15,7 +15,7 @@
  * - CAT-09: Hook handlers never return false; defensive try/catch swallows throws with console.warn
  * - CAT-10: recipientUserId resolved from audit.recipientUserId → msg.user → '<unknown>'
  * - MOD-CAT-01: module.ts wires registerCombatActionTracker after registerMovementTracker;
- *               registerComplexHandler count stays 14
+ *               socketlib socket.register count stays 14
  *
  * @see packages/foundry-module/src/write-path/combat-action-tracker.ts
  * @see packages/foundry-module/src/write-path/combat-movement-tracker.ts (pattern reference)

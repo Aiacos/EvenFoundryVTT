@@ -51,6 +51,12 @@ export interface BearerEntry {
   alias: string;
   /** Foundry world ID at time of pairing. */
   worldId: string;
+  /**
+   * Foundry `User` id this bearer is bound to (ADR-0014). The DM chooses which
+   * Foundry User a device represents in the pair modal; the bearer's authorized
+   * actor set is derived live from this user's Foundry ownership at validate time.
+   */
+  userId: string;
   /** Bridge URL the QR was configured for (e.g. "https://bridge.local:8910"). */
   bridgeUrl: string;
   /** Per-pair internal secret (32-byte base64url). Used for Foundry→Bridge POST auth. */
@@ -108,10 +114,14 @@ function readRegistry(): BearerRegistry {
 /**
  * Persists the bearer registry to Foundry settings.
  *
+ * Awaits `game.settings.set` (async in Foundry): not awaiting risks a stale
+ * read-after-write in the same tick and swallows write errors. Callers must
+ * await this in turn.
+ *
  * @param registry - The registry to persist
  */
-function writeRegistry(registry: BearerRegistry): void {
-  game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
+async function writeRegistry(registry: BearerRegistry): Promise<void> {
+  await game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
 }
 
 /**
@@ -142,7 +152,7 @@ function bytesToBase64url(bytes: Uint8Array): string {
  *
  * @returns 43+ character base64url string (no dots — NOT a JWT)
  */
-function generateOpaqueToken(): string {
+export function generateOpaqueToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return bytesToBase64url(bytes);
@@ -160,12 +170,15 @@ function generateOpaqueToken(): string {
  * @param alias - Human-readable device label (up to 40 chars; truncated if longer)
  * @param bridgeUrl - Bridge URL the QR is configured for
  * @param worldId - Foundry world ID (included in QR payload)
+ * @param userId - Foundry `User` id this bearer is bound to (ADR-0014). The
+ *                 authorized actor set is derived live from this user's Foundry
+ *                 ownership at validate time.
  * @param refresh - If true, shorten the TTL of the previous active bearer to 60s
  * @returns The newly created BearerEntry (token value included for QR generation only)
  *
  * @example
  * ```ts
- * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc");
+ * const entry = await generateBearer("Aiacos's G2", "https://bridge.local:8910", "world-abc", "user-1");
  * // Use entry.token + entry.internalSecret to build the QR payload
  * // NEVER log entry.token (T-02-01)
  * ```
@@ -174,6 +187,7 @@ export async function generateBearer(
   alias: string,
   bridgeUrl: string,
   worldId: string,
+  userId: string,
   refresh = false,
 ): Promise<BearerEntry> {
   const registry = readRegistry();
@@ -204,6 +218,7 @@ export async function generateBearer(
     token,
     alias: safeAlias,
     worldId,
+    userId,
     bridgeUrl,
     internalSecret,
     createdAt: now,
@@ -213,7 +228,94 @@ export async function generateBearer(
   };
 
   registry.entries[token] = entry;
-  writeRegistry(registry);
+  await writeRegistry(registry);
+
+  return entry;
+}
+
+/**
+ * Ingests a CLIENT-GENERATED bearer token into the registry — the GM-side write
+ * half of self-service pairing.
+ *
+ * A player (or the GM) mints a high-entropy token client-side via
+ * {@link generateOpaqueToken} and writes a "pending pair" request as a flag on
+ * THEIR OWN `User` document. A GM client picks that flag up and calls this
+ * function to materialise the bearer in the world-scope registry (only a GM may
+ * write a world setting). The bearer becomes valid the instant the entry lands.
+ *
+ * SECURITY (do not relax): the `userId` argument MUST come from an authenticated
+ * source — specifically the `id` of the `User` document the pending-pair flag
+ * lives on. A user can only write their own user flags, so the document owner is
+ * authenticated by Foundry. NEVER pass a client-asserted userId (e.g. a field
+ * inside the flag payload): that would let any player bind a token to another
+ * user and inherit that user's owned-actor read scope (ADR-0014). socketlib's
+ * `executeAsGM` cannot authenticate the caller (it does not pass the caller
+ * identity to the handler), which is why this per-user-flag pattern is used
+ * instead. See `self-pair-ingestion.ts`.
+ *
+ * Idempotent: if a bearer with the same `token` already exists in the registry,
+ * the existing entry is returned UNCHANGED (a re-fired `updateUser` hook or a
+ * `ready` sweep that races the flag clear must not duplicate or reset the bearer).
+ *
+ * Applies the SAME silent-refresh grace as {@link generateBearer}: any active,
+ * non-revoked bearer with the same `alias` + `bridgeUrl` has its TTL shortened to
+ * `now + 60s` so an in-flight session on the previous token can drain.
+ *
+ * @param userId - Authenticated Foundry `User` id (the owning User document's id).
+ *                 The bearer's authorized actor set is derived live from this
+ *                 user's Foundry ownership at validate time (ADR-0014).
+ * @param req - The pending-pair request: the client-generated `token`, the
+ *              human-readable `alias`, the `bridgeUrl`, and the `worldId`.
+ * @returns The materialised (or pre-existing, when idempotent) BearerEntry.
+ */
+export async function ingestBearer(
+  userId: string,
+  req: { alias: string; token: string; bridgeUrl: string; worldId: string },
+): Promise<BearerEntry> {
+  const registry = readRegistry();
+
+  // Idempotent: a duplicate ingest (re-fired hook / ready-sweep race) returns the
+  // existing entry unchanged — never re-rolls the secret or resets the TTL.
+  const existing = registry.entries[req.token];
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const now = Date.now();
+  const safeAlias = req.alias.slice(0, MAX_ALIAS_LENGTH);
+
+  // Silent refresh (same as generateBearer): shorten the TTL of any active bearer
+  // for this alias+bridge to a 60s grace window so in-flight requests drain.
+  for (const entry of Object.values(registry.entries)) {
+    if (
+      entry.alias === safeAlias &&
+      entry.bridgeUrl === req.bridgeUrl &&
+      entry.revokedAt === null &&
+      entry.expiresAt > now
+    ) {
+      entry.expiresAt = now + GRACE_60S_MS;
+    }
+  }
+
+  // The internal secret is server-side only and freshly minted here (never taken
+  // from client input). The bearer token itself is the client-generated value.
+  const internalSecret = generateOpaqueToken();
+
+  const entry: BearerEntry = {
+    token: req.token,
+    alias: safeAlias,
+    worldId: req.worldId,
+    userId,
+    bridgeUrl: req.bridgeUrl,
+    internalSecret,
+    createdAt: now,
+    expiresAt: now + TTL_24H_MS,
+    lastSeenAt: null,
+    revokedAt: null,
+  };
+
+  registry.entries[req.token] = entry;
+  await writeRegistry(registry);
 
   return entry;
 }
@@ -258,9 +360,13 @@ export function validateBearer(token: string): {
  * The entry is preserved in the registry for audit trail purposes.
  * Is a no-op for unknown tokens (does not throw).
  *
+ * Async: awaits the registry write so callers can guarantee a read-after-write
+ * (e.g. a re-render that lists bearers) observes the revocation, and so write
+ * errors surface rather than being silently dropped.
+ *
  * @param token - The raw bearer token string to revoke
  */
-export function revokeBearer(token: string): void {
+export async function revokeBearer(token: string): Promise<void> {
   const registry = readRegistry();
   const entry = registry.entries[token];
 
@@ -269,7 +375,7 @@ export function revokeBearer(token: string): void {
   }
 
   entry.revokedAt = Date.now();
-  writeRegistry(registry);
+  await writeRegistry(registry);
 }
 
 /**

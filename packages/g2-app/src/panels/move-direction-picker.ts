@@ -63,6 +63,7 @@
  */
 
 import { type EvenAppBridge, TextContainerUpgrade } from '@evenrealities/even_hub_sdk';
+import { resolveContainerIdField } from '../engine/container-registry.js';
 import type { OverlayPanel, R1Gesture } from '../engine/layer-types.js';
 import type { PanelGestureBus } from '../engine/panel-gesture-bus.js';
 import { getLabel, type HudLocale } from '../status-hud/i18n-budgets.js';
@@ -196,6 +197,8 @@ export function computeDelta(
 export class MoveDirectionPicker implements OverlayPanel {
   /** Stable id — used by LayerManager + telemetry. */
   public readonly id = 'move-direction-picker';
+  /** Opt-in: this panel handles double-tap internally (ADR-0012 D-3). */
+  public readonly handlesDoubleTap = true as const;
 
   private readonly bridge: EvenAppBridge;
   private readonly ws: MoveDirectionPickerWebSocket;
@@ -346,6 +349,9 @@ export class MoveDirectionPicker implements OverlayPanel {
   async draw(): Promise<void> {
     const lines = this._buildLines();
     const payload = new TextContainerUpgrade({
+      // Overlay-only name → resolveContainerId returns undefined (addressed by
+      // name until the overlay-id rebuild path lands; see container-registry.ts).
+      ...resolveContainerIdField(MOVE_PICKER_CONTAINER_NAME),
       containerName: MOVE_PICKER_CONTAINER_NAME,
       content: lines.join('\n'),
     });

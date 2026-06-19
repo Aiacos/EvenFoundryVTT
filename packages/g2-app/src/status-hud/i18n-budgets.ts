@@ -555,9 +555,10 @@ export const HUD_WIDTH_BUDGETS = {
   'panel.title.spellbook': { it: 'SPELLBOOK', en: 'SPELLBOOK', de: 'ZAUBERBUCH', max: 11 },
 
   // §8.3 Footer hints (CTA per panel) — 5 keys
-  // Note: DE strings for Combat, Log, Inventory, Spellbook exceed their IT/EN
-  // budget hints slightly — assertWithinBudget warns at runtime; the renderer
-  // falls back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
+  // All three first-class locales (it/en/de) fit within each key's `max` budget
+  // (verified: DE Combat 42≤46, Log 38≤42, Inventory 41≤45, Spellbook 38≤44).
+  // assertWithinBudget warns only if a string exceeds; the renderer still falls
+  // back to EN for best-effort locales (es/fr/pt-br) per I18N-05.
   'footer.hint.sheet': {
     it: 'tap=prossimo tab  scroll=contenuto  tap×2=chiudi  qa=rapida',
     en: 'tap=next tab  scroll=content  tap×2=close  qa=quick',
@@ -655,7 +656,7 @@ export const HUD_WIDTH_BUDGETS = {
   quick_item_sheet: { it: 'Scheda', en: 'Sheet', de: 'Blatt', max: 22 },
 
   /** [C] Combat Tracker menu item label. */
-  quick_item_combat: { it: 'Combatt', en: 'Combat', de: 'Kampf', max: 22 },
+  quick_item_combat: { it: 'Combattimento', en: 'Combat', de: 'Kampf', max: 22 },
 
   /** [L] Log panel menu item label. */
   quick_item_log: { it: 'Log', en: 'Log', de: 'Log', max: 22 },
@@ -674,6 +675,12 @@ export const HUD_WIDTH_BUDGETS = {
 
   /** [N] Language picker menu item label. */
   quick_item_language: { it: 'Lingua', en: 'Language', de: 'Sprache', max: 22 },
+
+  /** [F] FPS indicator toggle menu item label (same word in all locales). */
+  quick_item_fps: { it: 'FPS', en: 'FPS', de: 'FPS', max: 22 },
+
+  // Note: the former [D] Dither menu item moved to the phone settings panel
+  // (2026-06-14); its i18n key was removed along with the glasses menu entry.
 
   /** [X] Close menu item label. Longest DE label: 'Schließen' (9 chars) — fits within budget. */
   quick_item_close: { it: 'Chiudi', en: 'Close', de: 'Schließen', max: 22 },
@@ -1522,6 +1529,59 @@ export const HUD_WIDTH_BUDGETS = {
     en: '[N] Cancel',
     de: '[N] Abbrechen',
     max: 14,
+  },
+
+  // ─── HUD-27PX redesign (quick-260605-j0t) — full-width 27px status sheet ──
+  // New keys for the 9-row character status sheet replacing the 28×21 card.
+  // All strings pretext-budgeted against the 576px G2 display.
+
+  /**
+   * Turn number label (row 3 of the status sheet).
+   * IT: `Turno` · EN: `Turn` · DE: `Runde`
+   * TODO(HUD-27PX): wire actual turn data into CharacterSnapshot (#issue)
+   */
+  hud27_turn_label: { it: 'Turno', en: 'Turn', de: 'Runde', max: 6 },
+
+  /**
+   * Round number label (row 3 of the status sheet).
+   * IT: `Round` · EN: `Round` · DE: `Runde`
+   * TODO(HUD-27PX): wire actual round data into CharacterSnapshot (#issue)
+   */
+  hud27_round_label: { it: 'Round', en: 'Round', de: 'Rnd', max: 6 },
+
+  /**
+   * "Your turn" indicator label (row 3, shown in brackets `[…]`).
+   * IT: `TUO TURNO` · EN: `YOUR TURN` · DE: `DEIN ZUG`
+   * Renders as — until turn data is wired into CharacterSnapshot.
+   * TODO(HUD-27PX): wire your-turn flag into CharacterSnapshot (#issue)
+   */
+  hud27_your_turn_label: { it: 'TUO TURNO', en: 'YOUR TURN', de: 'DEIN ZUG', max: 10 },
+
+  /**
+   * Conditions row prefix (row 4 of the status sheet).
+   * IT: `Cond` · EN: `Cond` · DE: `Zust`
+   */
+  hud27_cond_prefix: { it: 'Cond:', en: 'Cond:', de: 'Zust:', max: 5 },
+
+  /**
+   * Death saves row label (row 7 of the status sheet).
+   * IT: `TS morte` · EN: `Death saves` · DE: `Todesrettung`
+   */
+  hud27_death_saves_label: { it: 'TS morte', en: 'Death saves', de: 'Todesrettung', max: 13 },
+
+  /**
+   * R1 hint row (row 8 — bottom row of the status sheet).
+   * Full-width hint string using the over-scroll/double-tap vocabulary agreed in the
+   * approved mockup. Does NOT use `qa=` tokens (GEST-01/ADR-0012 Phase 20 sweep pending).
+   * IT: `R1: ^v scorri  tap ping  oo menu`
+   * EN: `R1: ^v scroll  tap ping  oo menu`
+   * DE: `R1: ^v scrollen  tap ping  oo Menü`
+   */
+  hud27_r1_hint: {
+    it: 'R1: ^v scorri  tap ping  oo menu',
+    en: 'R1: ^v scroll  tap ping  oo menu',
+    de: 'R1: ^v scrollen  tap ping  oo Menü',
+    max: 38,
   },
 } as const satisfies Record<string, WidthBudgetRow>;
 

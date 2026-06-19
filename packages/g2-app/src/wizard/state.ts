@@ -8,6 +8,8 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 1
  */
 
+import { resolveBridgeUrl } from './is-dev-no-auth.js';
+
 /** Steps in the 3-step pairing wizard. */
 export enum WizardStep {
   STEP1 = 'STEP1',
@@ -125,7 +127,12 @@ export function generateProfileId(): string {
 export function createInitialState(): WizardState {
   return {
     step: WizardStep.STEP1,
-    bridgeUrl: '',
+    // Single ConnectionProfile source-of-truth (Feature 001 D1): the initial
+    // bridgeUrl is resolved with no implicit `localhost` — it is empty in
+    // production builds and unit tests, and only pre-filled when an explicit dev
+    // override (`VITE_EVF_DEV_BRIDGE_URL`) is set. A saved-profile bridgeUrl is
+    // applied later in Step 1 when the user picks it. See ./is-dev-no-auth.ts.
+    bridgeUrl: resolveBridgeUrl(),
     token: '',
     characterId: '',
     profileId: generateProfileId(),

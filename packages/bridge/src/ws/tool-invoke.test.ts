@@ -28,6 +28,7 @@ import { EventEmitter } from 'node:events';
 import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocket } from 'ws';
+import type { TokenCache, ValidateTokenResult } from '../auth/token-cache.js';
 import { SessionStore } from './session-store.js';
 import { type DispatchToolFn, handleToolInvoke, type ToolInvokeResult } from './tool-invoke.js';
 
@@ -61,6 +62,26 @@ function makeDispatchFn(
 }
 
 /**
+ * Mock TokenCache whose `validate()` returns the given result.
+ *
+ * Default: a valid token authorizing `actor-owned` (used by the ADR-0014
+ * Amendment 1 write fast-reject). Existing CR-01 tests pass payloads with a
+ * camelCase `actorId` field (not the `actor_id` the extractor reads), so the gate
+ * is a no-op for them and `validate` is never even called — but a TokenCache must
+ * still be injected to satisfy the signature.
+ */
+function makeMockTokenCache(
+  result: ValidateTokenResult = {
+    valid: true,
+    entry: { alias: 'a', expiresAt: Date.now() + 1_000, worldId: 'w', userId: 'user-owner' },
+    authorizedActorIds: ['actor-owned'],
+  },
+): { cache: TokenCache; validate: ReturnType<typeof vi.fn> } {
+  const validate = vi.fn().mockResolvedValue(result);
+  return { cache: { validate } as unknown as TokenCache, validate };
+}
+
+/**
  * Create a session in the store and return its session ID.
  * Uses the public createSession() API and then retrieves the session to get its ID.
  */
@@ -75,6 +96,7 @@ describe('handleToolInvoke', () => {
   let socket: MockSocket;
   let sessionStore: SessionStore;
   let logger: Logger;
+  let tokenCache: TokenCache;
   // Must be a valid UUID v4 to pass EnvelopeSchema.session_id validation
   const SESSION_ID = '00000000-0000-4000-8000-000000000abc';
   const BEARER = 'bearer-token-test';
@@ -83,6 +105,9 @@ describe('handleToolInvoke', () => {
     socket = makeMockSocket();
     sessionStore = new SessionStore();
     logger = makeMockLogger();
+    // Default token cache — never consulted by the CR-01 tests (they use a
+    // camelCase `actorId` arg the gate ignores), but required by the signature.
+    tokenCache = makeMockTokenCache().cache;
   });
 
   // ── CR-01-HAPPY ──────────────────────────────────────────────────────────────
@@ -109,6 +134,7 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -139,6 +165,7 @@ describe('handleToolInvoke', () => {
       SESSION_ID,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -157,6 +184,7 @@ describe('handleToolInvoke', () => {
       SESSION_ID,
       sessionStore,
       dispatchFn,
+      tokenCache,
       'not json {{{',
       logger,
     );
@@ -187,6 +215,7 @@ describe('handleToolInvoke', () => {
       SESSION_ID,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -225,6 +254,7 @@ describe('handleToolInvoke', () => {
       SESSION_ID,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -261,6 +291,7 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -301,6 +332,7 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -335,6 +367,7 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -370,6 +403,7 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
@@ -411,11 +445,198 @@ describe('handleToolInvoke', () => {
       sessionId,
       sessionStore,
       dispatchFn,
+      tokenCache,
       rawData,
       logger,
     );
 
     const [, bearerArg] = dispatchSpy.mock.calls[0]!;
     expect(bearerArg).toBe(specificBearer);
+  });
+
+  // ── ADR-0014 Amendment 1: write-path per-actor fast-reject ───────────────────
+
+  it('AUTHZ-DENY: acting actor_id NOT in authorized set → not_authorized, dispatch NOT called', async () => {
+    const sessionId = createSessionAndGetId(sessionStore, BEARER);
+    // Bearer authorizes only `actor-owned`; the write acts as `actor-foreign`.
+    const { cache } = makeMockTokenCache({
+      valid: true,
+      entry: { alias: 'a', expiresAt: Date.now() + 1_000, worldId: 'w', userId: 'user-owner' },
+      authorizedActorIds: ['actor-owned'],
+    });
+    const rawData = JSON.stringify({
+      proto: 'evf-v1',
+      seq: 1,
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: sessionId,
+      payload: {
+        toolId: 'cast-spell',
+        idempotencyKey: '00000000-0000-4000-8000-000000000010',
+        args: { actor_id: 'actor-foreign', spell_id: 'spell-1', slot_level: 0, targets: [] },
+      },
+    });
+    const dispatchFn = makeDispatchFn();
+
+    await handleToolInvoke(
+      socket as unknown as WebSocket,
+      sessionId,
+      sessionStore,
+      dispatchFn,
+      cache,
+      rawData,
+      logger,
+    );
+
+    expect(dispatchFn).not.toHaveBeenCalled();
+    expect(socket.send).toHaveBeenCalledOnce();
+    const sentMsg = JSON.parse(socket.send.mock.calls[0]?.[0] as string) as {
+      payload: { success: boolean; error: string };
+    };
+    expect(sentMsg.payload.success).toBe(false);
+    expect(sentMsg.payload.error).toBe('not_authorized');
+  });
+
+  it('AUTHZ-ALLOW: acting actor_id IS in authorized set → dispatch called', async () => {
+    const sessionId = createSessionAndGetId(sessionStore, BEARER);
+    const { cache } = makeMockTokenCache({
+      valid: true,
+      entry: { alias: 'a', expiresAt: Date.now() + 1_000, worldId: 'w', userId: 'user-owner' },
+      authorizedActorIds: ['actor-owned'],
+    });
+    const rawData = JSON.stringify({
+      proto: 'evf-v1',
+      seq: 1,
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: sessionId,
+      payload: {
+        toolId: 'cast-spell',
+        idempotencyKey: '00000000-0000-4000-8000-000000000011',
+        args: { actor_id: 'actor-owned', spell_id: 'spell-1', slot_level: 0, targets: [] },
+      },
+    });
+    const dispatchFn = makeDispatchFn({ success: true, data: { ok: true } });
+
+    await handleToolInvoke(
+      socket as unknown as WebSocket,
+      sessionId,
+      sessionStore,
+      dispatchFn,
+      cache,
+      rawData,
+      logger,
+    );
+
+    expect(dispatchFn).toHaveBeenCalledOnce();
+    expect(dispatchFn).toHaveBeenCalledWith(
+      expect.objectContaining({ toolId: 'cast-spell' }),
+      BEARER,
+    );
+  });
+
+  it('AUTHZ-TARGETS: owned acting actor with FOREIGN targets is NOT over-restricted → dispatch called', async () => {
+    const sessionId = createSessionAndGetId(sessionStore, BEARER);
+    const { cache } = makeMockTokenCache({
+      valid: true,
+      entry: { alias: 'a', expiresAt: Date.now() + 1_000, worldId: 'w', userId: 'user-owner' },
+      authorizedActorIds: ['actor-owned'],
+    });
+    const rawData = JSON.stringify({
+      proto: 'evf-v1',
+      seq: 1,
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: sessionId,
+      payload: {
+        toolId: 'weapon-attack',
+        idempotencyKey: '00000000-0000-4000-8000-000000000012',
+        args: {
+          actor_id: 'actor-owned',
+          item_id: 'sword-1',
+          targets: ['actor-foreign', 'monster-9'],
+          advantage: 'normal',
+        },
+      },
+    });
+    const dispatchFn = makeDispatchFn();
+
+    await handleToolInvoke(
+      socket as unknown as WebSocket,
+      sessionId,
+      sessionStore,
+      dispatchFn,
+      cache,
+      rawData,
+      logger,
+    );
+
+    expect(dispatchFn).toHaveBeenCalledOnce();
+  });
+
+  it('AUTHZ-NO-ACTOR: tool without an acting actor_id (move-token) bypasses the gate → dispatch called', async () => {
+    const sessionId = createSessionAndGetId(sessionStore, BEARER);
+    const { cache, validate } = makeMockTokenCache();
+    const rawData = JSON.stringify({
+      proto: 'evf-v1',
+      seq: 1,
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: sessionId,
+      payload: {
+        toolId: 'move-token',
+        idempotencyKey: '00000000-0000-4000-8000-000000000013',
+        args: { token_id: 'tok-1', x: 10, y: 20 },
+      },
+    });
+    const dispatchFn = makeDispatchFn();
+
+    await handleToolInvoke(
+      socket as unknown as WebSocket,
+      sessionId,
+      sessionStore,
+      dispatchFn,
+      cache,
+      rawData,
+      logger,
+    );
+
+    expect(dispatchFn).toHaveBeenCalledOnce();
+    // No acting actor → the gate never even consults the token cache.
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it('AUTHZ-INVALID-TOKEN: acting actor_id present but token invalid → not_authorized, dispatch NOT called', async () => {
+    const sessionId = createSessionAndGetId(sessionStore, BEARER);
+    const { cache } = makeMockTokenCache({ valid: false });
+    const rawData = JSON.stringify({
+      proto: 'evf-v1',
+      seq: 1,
+      ts: Date.now(),
+      type: 'tool.invoke',
+      session_id: sessionId,
+      payload: {
+        toolId: 'cast-spell',
+        idempotencyKey: '00000000-0000-4000-8000-000000000014',
+        args: { actor_id: 'actor-owned', spell_id: 'spell-1', slot_level: 0, targets: [] },
+      },
+    });
+    const dispatchFn = makeDispatchFn();
+
+    await handleToolInvoke(
+      socket as unknown as WebSocket,
+      sessionId,
+      sessionStore,
+      dispatchFn,
+      cache,
+      rawData,
+      logger,
+    );
+
+    expect(dispatchFn).not.toHaveBeenCalled();
+    const sentMsg = JSON.parse(socket.send.mock.calls[0]?.[0] as string) as {
+      payload: { success: boolean; error: string };
+    };
+    expect(sentMsg.payload.error).toBe('not_authorized');
   });
 });

@@ -13,8 +13,13 @@
  * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 2
  */
 
+import { isWizardNoAuth } from '../is-dev-no-auth.js';
 import type { WizardState } from '../state.js';
 import { type Store, WizardStep } from '../state.js';
+
+/** Step to return to from Step 3's "Back": Step 1 when the token step is skipped (dev), else Step 2. */
+const backStep = (): WizardStep => (isWizardNoAuth() ? WizardStep.STEP1 : WizardStep.STEP2);
+
 import { saveSession } from '../tier3-storage.js';
 
 /** Threshold: above this count, use dropdown instead of card grid. */
@@ -33,6 +38,7 @@ interface CharacterEntry {
  */
 export type Step3Keys =
   | 'evf.wizard.step3.title'
+  | 'evf.wizard.step3.scoped'
   | 'evf.wizard.step3.loading'
   | 'evf.wizard.step3.empty'
   | 'evf.wizard.step3.empty.retry'
@@ -78,6 +84,13 @@ export function render(
   errorRegion.setAttribute('aria-live', 'assertive');
   errorRegion.className = 'evf-error-msg evf-hidden';
 
+  // Scoping note — the roster is filtered to the paired Foundry user's owned
+  // actors bridge-side (ADR-0014); surface that so the player understands why
+  // only their characters appear.
+  const scopedNote = document.createElement('div');
+  scopedNote.className = 'evf-step3-scoped';
+  scopedNote.textContent = t('evf.wizard.step3.scoped');
+
   // Character list area (populated after fetch)
   const charListArea = document.createElement('div');
   charListArea.id = 'evf-char-list';
@@ -102,6 +115,7 @@ export function render(
 
   wrapper.appendChild(statusRegion);
   wrapper.appendChild(errorRegion);
+  wrapper.appendChild(scopedNote);
   wrapper.appendChild(charListArea);
 
   container.innerHTML = '';
@@ -160,7 +174,7 @@ export function render(
   // --- Event listeners ---
   function onBack() {
     abortController.abort();
-    store.set({ step: WizardStep.STEP2, error: null });
+    store.set({ step: backStep(), error: null });
   }
 
   async function onConfirm() {
@@ -213,15 +227,26 @@ export function destroy(): void {
 // ---------------------------------------------------------------------------
 
 function _parseCharacters(body: unknown): CharacterEntry[] {
-  if (!Array.isArray(body)) {
-    return [];
-  }
+  // The bridge's GET /v1/characters returns `{ characters: [{ actorId, name, level }] }`.
+  // Accept that envelope; also tolerate a bare array (legacy/test shape). Entries use
+  // `actorId` per the bridge contract — fall back to `id` for backward compatibility.
+  const list: unknown[] = Array.isArray(body)
+    ? body
+    : typeof body === 'object' &&
+        body !== null &&
+        Array.isArray((body as Record<string, unknown>).characters)
+      ? ((body as Record<string, unknown>).characters as unknown[])
+      : [];
   const results: CharacterEntry[] = [];
-  for (const item of body) {
-    if (typeof item === 'object' && item !== null && 'id' in item && 'name' in item) {
+  for (const item of list) {
+    if (typeof item === 'object' && item !== null && 'name' in item) {
       const entry = item as Record<string, unknown>;
+      const rawId = entry.actorId ?? entry.id;
+      if (rawId === undefined || rawId === null) {
+        continue;
+      }
       const charEntry: CharacterEntry = {
-        id: String(entry.id),
+        id: String(rawId),
         name: String(entry.name),
       };
       if (typeof entry.class === 'string') {
@@ -373,7 +398,7 @@ function _renderFetchError(
   goBackBtn.className = 'evf-btn evf-btn-ghost';
   goBackBtn.textContent = t('evf.wizard.step3.error.go_back');
   goBackBtn.addEventListener('click', () => {
-    store.set({ step: WizardStep.STEP2, error: null });
+    store.set({ step: backStep(), error: null });
   });
 
   errorRegion.appendChild(retryBtn);

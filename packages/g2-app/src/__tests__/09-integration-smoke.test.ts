@@ -726,14 +726,18 @@ describe('Phase 9 integration smoke (ISM-W9-01..10) — action-economy + concent
    * ISM-W9-10: 17-socketlib-handler grep gate + EnvelopeSchema round-trip.
    *
    * Phase 13 Plan 13-01 FLIPPED the count from 14 → 17 (ACT-04 reaction handlers).
-   * Verifies that the socketlib-handlers.ts file has EXACTLY 17 calls to
-   * `socketlib.registerComplexHandler`. This is the ADR-0011 invariant gate.
-   * New Phase 13 INVARIANT: 17 handlers.
+   * Verifies that the socketlib-handlers.ts file has EXACTLY 17 handler
+   * registrations. This is the ADR-0011 invariant gate. New Phase 13 INVARIANT:
+   * 17 handlers.
+   *
+   * Quick Task 260604-lg4: the registration MECHANISM changed from the fictional
+   * `socketlib.registerComplexHandler(...)` to the real socket API
+   * (`evfSocket.register('evf.*', handler)`); the count invariant of 17 holds.
    *
    * Also verifies that all Phase 9 envelope types pass EnvelopeSchema.safeParse
    * with canonical field shapes (proto/seq/ts/type/session_id/payload).
    */
-  it('ISM-W9-10: 14-socketlib-handler invariant + Phase 9 EnvelopeSchema round-trip', () => {
+  it('ISM-W9-10: 17-socketlib-handler invariant + Phase 9 EnvelopeSchema round-trip', () => {
     // ── 17-socketlib-handler grep gate ───────────────────────────────────────
     // File read: resolve via __dirname-equivalent from import.meta.url.
     // packages/g2-app/src/__tests__/ → packages/foundry-module/src/pair/
@@ -742,7 +746,7 @@ describe('Phase 9 integration smoke (ISM-W9-01..10) — action-economy + concent
     const content = readFileSync(handlersPath, 'utf-8');
     const callLines = content
       .split('\n')
-      .filter((line) => line.includes('socketlib.registerComplexHandler'));
+      .filter((line) => /evfSocket\.register\('evf\./.test(line));
     expect(callLines.length).toBe(17);
 
     // ── Phase 9 EnvelopeSchema round-trip ────────────────────────────────────

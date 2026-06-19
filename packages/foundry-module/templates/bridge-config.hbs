@@ -1,0 +1,74 @@
+{{!--
+  bridge-config.hbs — EvenFoundryVTT ApplicationV2 bridge-configuration dialog template.
+
+  Rendered by BridgeConfigModal._prepareContext() → ApplicationV2 template engine.
+  All user-facing strings come from {{i18n.*}} (pre-resolved in _prepareContext, never raw keys).
+
+  Purpose (Quick Task 260604-mjr): a dedicated, foolproof dialog that PRE-LOADS and DISPLAYS the
+  currently-saved bridge URL + internal secret, and writes BOTH atomically on an explicit "Save"
+  with a success notification — replacing the easy-to-miss generic "Configure Settings" panel.
+
+  Security:
+    - The internal secret is rendered into a MASKED (type="password") input pre-filled with the
+      current value, revealed only on explicit "Reveal". The secret value is rendered via
+      {{internalSecret}} (escaped) in the value attribute — never via triple-mustache / innerHTML —
+      and is never logged.
+
+  No `eq` helper is used (Foundry does not register one); the only conditional is {{#if hasSecret}},
+  whose boolean is precomputed in _prepareContext.
+
+  @see packages/foundry-module/src/pair/BridgeConfigModal.ts (_prepareContext context shape)
+--}}
+
+<div class="evf-bridge-config">
+  <form class="evf-bridge-config__form">
+
+    {{!-- ── Bridge URL ──────────────────────────────────────────────────────── --}}
+    <div class="evf-bridge-config__field">
+      <label class="evf-bridge-config__label" for="evf-bridge-url">{{i18n.urlLabel}}</label>
+      <input
+        type="text"
+        id="evf-bridge-url"
+        name="bridgeUrl"
+        class="evf-bridge-config__input"
+        value="{{bridgeUrl}}"
+        placeholder="https://bridge.example.com:8910"
+      />
+      <p class="evf-bridge-config__hint">{{i18n.urlHint}}</p>
+    </div>
+
+    {{!-- ── Bridge internal secret (masked; reveal toggle) ──────────────────── --}}
+    <div class="evf-bridge-config__field">
+      <label class="evf-bridge-config__label" for="evf-bridge-secret">{{i18n.secretLabel}}</label>
+      <div class="evf-bridge-config__secret-row">
+        <input
+          type="password"
+          id="evf-bridge-secret"
+          name="bridgeInternalSecret"
+          class="evf-bridge-config__input"
+          value="{{internalSecret}}"
+        />
+        <button
+          type="button"
+          class="evf-btn evf-btn--ghost evf-bridge-config__reveal-btn"
+          data-action="reveal-secret"
+          aria-label="{{i18n.reveal}} {{i18n.secretLabel}}"
+        >
+          {{i18n.reveal}}
+        </button>
+      </div>
+      <p class="evf-bridge-config__hint">{{i18n.secretHint}}</p>
+    </div>
+
+    {{!-- ── Footer ──────────────────────────────────────────────────────────── --}}
+    <footer class="evf-bridge-config__footer">
+      <button type="button" class="evf-btn evf-btn--primary" data-action="save">
+        {{i18n.save}}
+      </button>
+      <button type="button" class="evf-btn" data-action="cancel">
+        {{i18n.cancel}}
+      </button>
+    </footer>
+
+  </form>
+</div>
