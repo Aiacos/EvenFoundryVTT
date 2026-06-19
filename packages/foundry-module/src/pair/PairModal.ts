@@ -79,6 +79,8 @@ export interface PairModalData extends Record<string, unknown> {
   isRefreshNeeded: boolean;
   /** true when state === "pairing-in-progress"; used in template instead of `eq` helper */
   isPairing: boolean;
+  /** true when state === "active" (a live, non-expiring bearer) — gates the "generate new token" CTA */
+  isActive: boolean;
   /** true when copyable credentials should be shown (active | pairing-in-progress | refresh-needed) */
   showCredentials: boolean;
   /** Bridge URL to paste into the wizard; present when showCredentials is true */
@@ -267,6 +269,7 @@ function buildI18n(): Record<string, string> {
     copyButton: l('evf.pair.copy.copy'),
     copyCopied: l('evf.pair.copy.copied'),
     refresh: l('evf.pair.qr.refresh'),
+    regenerate: l('evf.pair.qr.regenerate'),
     awaiting: l('evf.pair.qr.awaiting'),
     expiresIn: l('evf.pair.qr.expires_in'),
     expiredTitle: l('evf.pair.qr.expired.title'),
@@ -396,6 +399,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const isExpired = state === 'expired';
     const isRefreshNeeded = state === 'refresh-needed';
     const isPairing = state === 'pairing-in-progress';
+    const isActive = state === 'active';
     const showCredentials = !isEmpty && !isExpired;
 
     if (isEmpty || isExpired) {
@@ -405,6 +409,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
         isExpired,
         isRefreshNeeded,
         isPairing,
+        isActive,
         showCredentials,
         devices,
         i18n,
@@ -422,6 +427,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
         isExpired,
         isRefreshNeeded,
         isPairing,
+        isActive,
         showCredentials,
         bridgeUrl: pending.bridgeUrl || readBridgeUrl(),
         token: pending.token,
@@ -444,6 +450,7 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       isExpired,
       isRefreshNeeded,
       isPairing,
+      isActive,
       showCredentials,
       bridgeUrl: readBridgeUrl(),
       token: entry.token,
@@ -479,10 +486,12 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       refreshBtn.addEventListener('click', (event) => this._onClickRefresh(event));
     }
 
-    // New Code button (expired state or empty state)
-    const newCodeBtn = html.querySelector('[data-action="new-code"]');
-    if (newCodeBtn) {
-      newCodeBtn.addEventListener('click', (event) => this._onClickRefresh(event));
+    // New Code / Generate-new button (empty + expired states, and the active-state
+    // "generate new token" CTA). querySelectorAll: states are mutually exclusive so
+    // there is normally one, but bind them all to be robust.
+    const newCodeButtons = Array.from(html.querySelectorAll('[data-action="new-code"]'));
+    for (const btn of newCodeButtons) {
+      btn.addEventListener('click', (event) => this._onClickRefresh(event));
     }
 
     // Reveal/hide token handlers

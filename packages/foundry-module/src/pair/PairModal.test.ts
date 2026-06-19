@@ -586,6 +586,20 @@ describe('PairModal', () => {
       expect(data.devices).toEqual([]);
     });
 
+    it('active state sets isActive + exposes the regenerate CTA label (generate-new button)', async () => {
+      const { generateBearer } = await import('./bearer-registry.js');
+      // Bearer bound to the current user (user-1) → active state.
+      await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
+
+      const { PairModal } = await import('./PairModal.js');
+      const data = await new PairModal()._prepareContext({});
+      expect(data.state).toBe('active');
+      expect(data.isActive).toBe(true);
+      // The "generate new token" label is resolved (template gates the data-action="new-code"
+      // button on isActive so the active state is no longer Revoke-only).
+      expect((data.i18n as Record<string, string>).regenerate).toBeDefined();
+    });
+
     it('surfaces a pending-pair flag as state="pairing-in-progress" with the flag token', async () => {
       vi.stubGlobal('game', gameMock);
       // Seed a pending-pair flag on the current user (the self-service mint).

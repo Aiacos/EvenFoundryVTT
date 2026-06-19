@@ -116,6 +116,15 @@
         {{i18n.refresh}}
       </button>
       {{/if}}
+
+      {{!-- Active state: explicit "generate a new token" CTA (mints a fresh bearer
+            bound to the current user). Without this the active state offered only
+            Revoke, with no way to re-pair / rotate. --}}
+      {{#if isActive}}
+      <button type="button" data-action="new-code" class="evf-btn evf-btn--primary">
+        {{i18n.regenerate}}
+      </button>
+      {{/if}}
     </div>
 
     {{#if isPairing}}

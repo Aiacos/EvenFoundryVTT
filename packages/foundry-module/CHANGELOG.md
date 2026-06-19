@@ -1,5 +1,15 @@
 # @evf/foundry-module
 
+## 0.1.37
+
+### Patch Changes
+
+- PairModal UX: the "active" pairing state now shows an explicit **"Generate new
+  token"** button (mints a fresh bearer bound to the current user). Previously the
+  active state offered only "Revoke", so there was no obvious way to re-pair or
+  rotate without first revoking — confusing. Removed the now-dead
+  `evf.pair.user.select_label` i18n string left over from the user-picker dropdown.
+
 ## 0.1.36
 
 ### Minor Changes
