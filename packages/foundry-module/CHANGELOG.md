@@ -1,5 +1,31 @@
 # @evf/foundry-module
 
+## 0.1.43
+
+### Patch Changes
+
+- Skill rolls now actually fire in Foundry (three real bugs fixed end-to-end):
+  - **Bearer-registry poisoning → routing dead for non-GM players.** A self-minted
+    bearer may carry an empty `alias`, but the bridge's `BearerRegistryEntrySchema`
+    requires `alias` min(1); since `bearers` is an array, ONE empty-alias entry failed
+    the WHOLE snapshot's validation and the bridge silently dropped the entire registry
+    push. With an empty bearer cache the bridge resolved `tool.invoke` `boundUserId` to
+    null, so a non-GM player's owner-scoped poll never drained their own skill check /
+    attack / spell (and there is no GM-fallback for a non-GM). The reader now coerces an
+    empty/missing alias to a placeholder before emitting (alias is a display-only label),
+    and the bridge handler defensively does the same — one unlabeled bearer can no longer
+    strand routing for everyone.
+  - **Skill roll blocked on a configuration dialog.** `skill-check` called
+    `actor.rollSkill({...})` without suppressing the dnd5e roll-config dialog. Driven
+    headlessly by the poller, that dialog never gets confirmed, the awaiting bridge
+    Promise times out, and the glasses tap appears to do nothing. Now passes
+    `dialog: { configure: false }` to fast-forward (matching how every `activity.use()`
+    handler already suppresses its dialog).
+  - (g2-app) **Skills panel didn't scroll.** The canvas Abilità list rendered all 18
+    skills from the top with no windowing, so the cursor and every skill past the 9th
+    scrolled off-screen and were unreachable. It now windows to follow the cursor and
+    clamps down-scroll at the last skill (inventory/spellbook already windowed correctly).
+
 ## 0.1.42
 
 ### Patch Changes

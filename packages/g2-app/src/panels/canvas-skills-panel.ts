@@ -45,6 +45,14 @@ export interface SkillRollRequest {
 const ABILITY_ORDER = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
 
 /**
+ * Number of skill rows the canvas list paints before running out of vertical space
+ * (compositor height ÷ line height ≈ 9). The windowing in {@link CanvasSkillsPanel.renderRows}
+ * scrolls so the cursor stays within this many rows. Kept in sync with the base
+ * `CanvasSelectableListPanel.paint` row budget.
+ */
+const VISIBLE_ROWS = 9;
+
+/**
  * Build the ordered skill-key list for a snapshot, grouped by ability column then in
  * canonical {@link SKILL_KEYS} order — the SAME projection the sheet Skills tab uses,
  * so a row index maps to the same skill the player sees there.
@@ -93,8 +101,14 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
   }
 
   /**
-   * Render the windowed skill rows with a cursor marker. Mirrors the sheet ordering:
+   * Render the WINDOWED skill rows with a cursor marker. Mirrors the sheet ordering:
    * `▶ <Name> <mod>` for the highlighted row, two leading spaces otherwise.
+   *
+   * The canvas list paints only {@link VISIBLE_ROWS} rows (compositor height / line
+   * height), but a level-up character can have all 18 D&D skills. Without windowing
+   * the cursor marker (and every skill past the 9th) scrolls off the bottom and is
+   * unreachable. We therefore slice a window that FOLLOWS the cursor — the cursor row
+   * stays visible, becoming the last visible row once it passes the window bottom.
    */
   protected renderRows(
     snapshot: CharacterSnapshot | null,
@@ -105,10 +119,20 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
       return [];
     }
     const keys = orderedSkillKeys(snapshot);
-    return keys.map((key, idx) => {
+    if (keys.length === 0) {
+      return [];
+    }
+    // Clamp the cursor to a real row, then compute a scroll offset that keeps it in
+    // view: 0 while the cursor is within the first window, then advancing so the
+    // cursor sits on the last visible row.
+    const clamped = Math.max(0, Math.min(cursor, keys.length - 1));
+    const maxOffset = Math.max(0, keys.length - VISIBLE_ROWS);
+    const offset = Math.min(Math.max(0, clamped - (VISIBLE_ROWS - 1)), maxOffset);
+    return keys.slice(offset, offset + VISIBLE_ROWS).map((key, i) => {
+      const idx = offset + i;
       const sk = snapshot.skills[key];
       const mod = sk.total >= 0 ? `+${sk.total}` : `${sk.total}`;
-      const marker = idx === cursor ? '▶ ' : '  ';
+      const marker = idx === clamped ? '▶ ' : '  ';
       return `${marker}${skillName(key, locale)} ${mod}`;
     });
   }
@@ -144,8 +168,19 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
       this._skillRollHandler({ actorId: this._snapshot.actorId, skill });
       return;
     }
-    // scroll (cursor move + over-scroll-to-menu) and double-tap (router close) are
-    // handled identically to the base selectable list.
+    if (gesture.kind === 'scroll' && gesture.direction === 'down' && this._snapshot !== null) {
+      // Clamp at the last skill so the ▶ cursor cannot run PAST the windowed list.
+      // The base class increments the cursor unbounded; for a finite skill list that
+      // would scroll the cursor off the bottom (and force extra up-swipes to return),
+      // leaving the lower skills effectively unreachable. Clamp here so down-swipe
+      // stops at the last skill and renderRows can keep it in view.
+      const keys = orderedSkillKeys(this._snapshot);
+      this._cursor = Math.min(this._cursor + 1, Math.max(0, keys.length - 1));
+      this._dirty = true;
+      return;
+    }
+    // scroll-up (incl. over-scroll-to-menu at the top) and double-tap (router close)
+    // are handled identically to the base selectable list.
     super.onEvent(gesture);
   }
 }

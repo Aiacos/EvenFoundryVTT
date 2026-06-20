@@ -64,7 +64,14 @@ export function readBearerRegistry(): BearerRegistrySnapshot {
       .filter((entry) => entry.expiresAt > now)
       .map((entry) => ({
         token: entry.token,
-        alias: entry.alias,
+        // Never emit an empty alias: a self-minted bearer MAY carry `alias: ''`
+        // (self-pair-ingestion accepts it), but the bridge's BearerRegistryEntrySchema
+        // requires `alias` min(1). Because `bearers` is an array, ONE empty-alias entry
+        // fails the WHOLE snapshot's safeParse and the bridge silently drops the entire
+        // registry push — so it can never resolve any bearer's bound user and tool.invoke
+        // routing breaks for every non-GM player. The alias is a display-only label, so
+        // fall back to a placeholder rather than poison the push.
+        alias: entry.alias && entry.alias.length > 0 ? entry.alias : 'G2',
         expiresAt: entry.expiresAt,
         worldId: entry.worldId,
         // ADR-0014: carry the bound Foundry User id so the bridge can derive the

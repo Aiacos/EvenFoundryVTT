@@ -80,21 +80,42 @@ const busStub = { subscribe: vi.fn(() => () => {}) } as unknown as PanelGestureB
 const bridgeStub = {} as never;
 
 describe('CanvasSkillsPanel — cursor + direct skill-roll dispatch', () => {
-  it('renders one row per skill (18 D&D skills)', () => {
+  it('windows the 18 skills to the visible row budget, cursor at the top of the window', () => {
     const panel = new CanvasSkillsPanel(bridgeStub, busStub, 'en');
     panel.onSnapshot(makeSnapshot());
-    // renderRows is protected; reach it via the public paint contract surrogate:
-    // expose through a cast (test-only) to assert row count + content.
-    const rows = (
+    // renderRows is protected; reach it via a test-only cast to assert windowing.
+    const renderRows = (
       panel as unknown as {
         renderRows: (s: CharacterSnapshot, l: 'en', c: number) => string[];
       }
-    ).renderRows(makeSnapshot(), 'en', 0);
-    expect(rows).toHaveLength(18);
+    ).renderRows;
+    const rows = renderRows.call(panel, makeSnapshot(), 'en', 0);
+    // The canvas list paints only ~9 rows, so renderRows windows (does NOT return all 18).
+    expect(rows.length).toBeLessThan(18);
+    expect(rows.length).toBeGreaterThan(0);
     // First ability column is STR → Athletics (ath, total 3 → "+3"), cursor marker on row 0.
     expect(rows[0]).toContain('Athletics');
     expect(rows[0]).toContain('+3');
     expect(rows[0]?.startsWith('▶ ')).toBe(true);
+  });
+
+  it('windowing follows the cursor: a deep cursor reveals otherwise-hidden skills', () => {
+    const panel = new CanvasSkillsPanel(bridgeStub, busStub, 'en');
+    panel.onSnapshot(makeSnapshot());
+    const renderRows = (
+      panel as unknown as {
+        renderRows: (s: CharacterSnapshot, l: 'en', c: number) => string[];
+      }
+    ).renderRows;
+    // At the top, Survival (sur, ordered index 13) is below the 9-row window — hidden.
+    const top = renderRows.call(panel, makeSnapshot(), 'en', 0);
+    expect(top.some((r) => r.includes('Survival'))).toBe(false);
+    // With the cursor on the last skill (index 17 → Persuasion), the window scrolls down
+    // so Survival is now revealed and the cursor marker sits on the last visible row.
+    const deep = renderRows.call(panel, makeSnapshot(), 'en', 17);
+    expect(deep.some((r) => r.includes('Survival'))).toBe(true);
+    const cursorRow = deep.find((r) => r.startsWith('▶ '));
+    expect(cursorRow).toContain('Persuasion');
   });
 
   it('tap dispatches a skill-roll request for the skill under the cursor', () => {

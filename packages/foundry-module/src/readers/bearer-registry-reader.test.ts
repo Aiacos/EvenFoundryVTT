@@ -89,6 +89,35 @@ describe('readBearerRegistry — authorizedActorIds (ADR-0014)', () => {
     expect(snapshot.bearers[0]?.authorizedActorIds).toEqual(['actor-alice']);
   });
 
+  it('coerces an empty alias to a non-empty placeholder (bridge schema requires min(1))', () => {
+    // A self-minted bearer MAY carry alias:'' — but the bridge's BearerRegistryEntrySchema
+    // requires alias min(1), and ONE empty-alias entry fails the whole snapshot's safeParse,
+    // silently dropping the entire registry push (tool.invoke routing then breaks for every
+    // non-GM player). The reader must never emit an empty alias.
+    stubGame(['user-alice'], [makeActor('actor-alice', ['user-alice'])]);
+    listBearersMock.mockReturnValue([
+      makeBearer({ token: 'tok-alice', userId: 'user-alice', alias: '', expiresAt: FUTURE }),
+    ]);
+
+    const snapshot = readBearerRegistry();
+    expect(snapshot.bearers[0]?.alias).toBe('G2');
+    expect(snapshot.bearers[0]?.alias.length).toBeGreaterThan(0);
+  });
+
+  it('preserves a non-empty alias unchanged', () => {
+    stubGame(['user-alice'], [makeActor('actor-alice', ['user-alice'])]);
+    listBearersMock.mockReturnValue([
+      makeBearer({
+        token: 'tok-alice',
+        userId: 'user-alice',
+        alias: "Aiacos's G2",
+        expiresAt: FUTURE,
+      }),
+    ]);
+
+    expect(readBearerRegistry().bearers[0]?.alias).toBe("Aiacos's G2");
+  });
+
   it('fail-closed: unknown user yields an empty authorizedActorIds set', () => {
     stubGame([], [makeActor('actor-x', ['user-ghost'])]);
     listBearersMock.mockReturnValue([

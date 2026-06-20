@@ -72,7 +72,17 @@ export const skillCheckHandler: ToolHandler<(typeof SkillCheckInputSchema)['_inp
     try {
       const advantage = args.advantage === 'advantage';
       const disadvantage = args.advantage === 'disadvantage';
-      const result = await actor.rollSkill?.({ skill: args.skill, advantage, disadvantage });
+      // FAST-FORWARD the roll: this handler is driven HEADLESSLY by the tool-invocation
+      // poller (no human at this client to confirm a roll-configuration dialog). dnd5e's
+      // `rollSkill(config, dialog, message)` opens that dialog by DEFAULT — left open it
+      // blocks forever, the awaiting bridge Promise hits `foundry_timeout`, and the
+      // glasses tap appears to "do nothing". `dialog: { configure: false }` rolls
+      // immediately with the supplied advantage/normal mode (the canonical 5.x way to
+      // suppress the dialog), so a chat message posts and the result returns at once.
+      const result = await actor.rollSkill?.(
+        { skill: args.skill, advantage, disadvantage },
+        { configure: false },
+      );
       return { success: true, data: { skill: args.skill, advantage: args.advantage, result } };
     } catch (err) {
       if (isNoGmError(err)) {

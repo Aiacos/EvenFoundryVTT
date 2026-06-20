@@ -73,6 +73,19 @@ describe('handleBearerRegistryEnvelope', () => {
     expect(cache.get()).toBeNull();
   });
 
+  it('coerces an empty alias and CACHES the snapshot (one unlabeled bearer must not poison the push)', () => {
+    // Regression: a self-minted bearer may carry alias:'' which fails the entry schema's
+    // min(1); because `bearers` is an array, that previously failed the WHOLE snapshot and
+    // silently dropped the entire registry — breaking tool.invoke routing for non-GM players.
+    const payload = makeValidPayload();
+    (payload.bearers[0] as { alias: string }).alias = '';
+    const result = handleBearerRegistryEnvelope(R1_BEARERS_AVAILABLE_TYPE, payload, cache);
+    expect(result).toBe(true);
+    expect(cache.get()).not.toBeNull(); // cached, NOT dropped
+    expect(cache.get()?.bearers[0]?.alias).toBe('G2'); // coerced placeholder
+    expect(cache.get()?.bearers[0]?.userId).toBe('user-abc'); // routing data intact
+  });
+
   it('last-write-wins: second valid push overwrites first', () => {
     const first = makeValidPayload();
     const second = {

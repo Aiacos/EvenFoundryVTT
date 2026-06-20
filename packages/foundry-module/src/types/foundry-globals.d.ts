@@ -783,11 +783,20 @@ interface FoundryActor {
    * @see https://github.com/foundryvtt/dnd5e — Actor5e#rollSkill (5.3.x)
    * @see packages/foundry-module/src/write-path/handlers/skill-check.ts
    */
-  rollSkill?(config: {
-    skill: string;
-    advantage?: boolean;
-    disadvantage?: boolean;
-  }): Promise<unknown>;
+  rollSkill?(
+    config: {
+      skill: string;
+      advantage?: boolean;
+      disadvantage?: boolean;
+    },
+    /**
+     * Dialog config (dnd5e 5.x 2nd positional arg). `{ configure: false }`
+     * fast-forwards the roll, skipping the roll-configuration dialog — required
+     * when the roll is driven headlessly by the tool-invocation poller (no human
+     * at this client to confirm the dialog).
+     */
+    dialog?: { configure?: boolean },
+  ): Promise<unknown>;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────

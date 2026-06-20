@@ -60,11 +60,14 @@ describe('skillCheckHandler', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(actor.rollSkill).toHaveBeenCalledWith({
-      skill: 'prc',
-      advantage: false,
-      disadvantage: false,
-    });
+    expect(actor.rollSkill).toHaveBeenCalledWith(
+      {
+        skill: 'prc',
+        advantage: false,
+        disadvantage: false,
+      },
+      { configure: false },
+    );
   });
 
   it('maps advantage → { advantage: true, disadvantage: false }', async () => {
@@ -74,11 +77,14 @@ describe('skillCheckHandler', () => {
     const { skillCheckHandler } = await import('./skill-check.js');
     await skillCheckHandler.handle({ actor_id: 'actor-a', skill: 'ste', advantage: 'advantage' });
 
-    expect(actor.rollSkill).toHaveBeenCalledWith({
-      skill: 'ste',
-      advantage: true,
-      disadvantage: false,
-    });
+    expect(actor.rollSkill).toHaveBeenCalledWith(
+      {
+        skill: 'ste',
+        advantage: true,
+        disadvantage: false,
+      },
+      { configure: false },
+    );
   });
 
   it('maps disadvantage → { advantage: false, disadvantage: true }', async () => {
@@ -92,11 +98,14 @@ describe('skillCheckHandler', () => {
       advantage: 'disadvantage',
     });
 
-    expect(actor.rollSkill).toHaveBeenCalledWith({
-      skill: 'ath',
-      advantage: false,
-      disadvantage: true,
-    });
+    expect(actor.rollSkill).toHaveBeenCalledWith(
+      {
+        skill: 'ath',
+        advantage: false,
+        disadvantage: true,
+      },
+      { configure: false },
+    );
   });
 
   it('returns actor_not_found when the actor is missing', async () => {
