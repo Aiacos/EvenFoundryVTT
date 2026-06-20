@@ -593,6 +593,16 @@ Hooks.once('ready', () => {
       bearerRegistryHandle?.reEmit();
     }
   });
+  // …and whenever a user's pendingPair FLAG changes (a non-GM player minting or revoking
+  // their own self-service bearer — they cannot write the world setting). The flag is a
+  // first-class bearer now (listPendingFlagBearers), so re-emit so the bridge cache
+  // reflects the new/removed player token within one round-trip.
+  Hooks.on('updateUser', (...args: unknown[]) => {
+    const changes = args[1] as { flags?: Record<string, unknown> } | null;
+    if (changes?.flags?.[MODULE_ID] !== undefined) {
+      bearerRegistryHandle?.reEmit();
+    }
+  });
   // Self-service pairing (secure): ingest per-user `pendingPair` flags GM-side and
   // re-emit the registry to the bridge so a player-minted (or GM-minted) bearer
   // validates the moment a GM is online. Registered AFTER the registry reader so

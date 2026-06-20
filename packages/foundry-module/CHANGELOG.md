@@ -1,5 +1,31 @@
 # @evf/foundry-module
 
+## 0.1.46
+
+### Patch Changes
+
+- A non-GM PLAYER can now pair and roll STANDALONE — no GM client required — and the
+  pairing modal is fixed. The old model wrote a per-user `pendingPair` flag that a GM
+  client had to ingest into the world `bearerRegistry`; a player alone (no GM online)
+  was stranded — the token never reached the registry/bridge, so `boundUserId` was null
+  and every skill check / attack / spell timed out. But a non-GM literally cannot write
+  the world registry, so "pair as GM" was the only workaround — exactly what a player
+  doesn't want.
+  - **The `pendingPair` flag is now a first-class, self-authenticated bearer.** Only the
+    owning user can write their own flag, so the token→user binding is trustworthy
+    without a GM. `validateBearer` and `readBearerRegistry` (the bridge push) both
+    resolve flag tokens, deduped registry-first, so a player's token routes + authorizes
+    immediately. The module re-emits on `updateUser` so a mint reaches the bridge at once.
+    A GM that later ingests the flag simply upgrades it to the persistent registry.
+  - **PairModal fixes (from the user's screenshot):** the flag shows as a live `active`
+    device with a real `createdAt+24h` countdown (no more "Awaiting connection…" / the
+    literal "{time}" placeholder / "No devices paired" shown beside a token). Revoking a
+    player device deletes the user's own flag via `unsetFlag` (works without GM, updates
+    live — fixes "revoke only works after reopening"). The reveal toggle now flips inline
+    `display` instead of a `.evf-hidden` CSS class that did nothing (the module ships no
+    stylesheet) — so the access-token field no longer shows the masked dots AND the plain
+    token at the same time.
+
 ## 0.1.45
 
 ### Patch Changes

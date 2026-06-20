@@ -21,6 +21,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock the bearer source so the reader builds its snapshot from fixtures.
 vi.mock('../pair/bearer-registry.js', () => ({
   listBearers: vi.fn(),
+  // The reader also merges un-ingested pending-pair flags; default to none so these
+  // registry-focused tests are unaffected (flag merge is covered separately).
+  listPendingFlagBearers: vi.fn(() => []),
 }));
 
 import type { BearerEntry } from '../pair/bearer-registry.js';

@@ -43,7 +43,7 @@
   "evf.pair.copy.hide": "Nascondi",
   "evf.pair.copy.copy": "Copia",
   "evf.pair.copy.copied": "Copiato!",
-  "evf.pair.qr.expires_in": "Scade tra: {time}",
+  "evf.pair.qr.expires_in": "Scade tra:",
   "evf.pair.qr.refresh": "Rinnova",
   "evf.pair.qr.regenerate": "Genera nuovo token",
   "evf.pair.qr.awaiting": "In attesa di connessione...",

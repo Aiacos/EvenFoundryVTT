@@ -69,6 +69,7 @@ import {
   generateOpaqueToken,
   listBearers,
   revokeBearer,
+  TTL_24H_MS,
 } from './bearer-registry.js';
 
 // Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
@@ -238,6 +239,42 @@ function readPendingPair(): PendingPairFlag | null {
 }
 
 /**
+ * Converts the current user's `pendingPair` flag into a synthetic {@link BearerEntry}
+ * so it can be treated uniformly with registry bearers. The flag IS a first-class,
+ * self-authenticated bearer (only the user can write their own flag) — it works
+ * standalone without GM ingestion — so the modal shows it as an ACTIVE device, not a
+ * perpetual "awaiting" placeholder. Expiry mirrors the registry default (createdAt + 24h).
+ */
+function flagToBearer(flag: PendingPairFlag): BearerEntry {
+  return {
+    token: flag.token,
+    alias: flag.alias || 'G2',
+    worldId: flag.worldId,
+    userId: game.user?.id ?? '',
+    bridgeUrl: flag.bridgeUrl,
+    internalSecret: '',
+    createdAt: flag.createdAt,
+    expiresAt: flag.createdAt + TTL_24H_MS,
+    lastSeenAt: null,
+    revokedAt: null,
+  };
+}
+
+/**
+ * The CURRENT user's devices, unified across both storage paths: GM-written world
+ * registry bearers ({@link currentUserBearers}) PLUS this user's own self-service
+ * `pendingPair` flag ({@link readPendingPair} → {@link flagToBearer}). Deduped by token
+ * (registry-first, in case a flag was just ingested) and sorted newest-first.
+ */
+function currentUserDevices(): BearerEntry[] {
+  const registry = currentUserBearers();
+  const flag = readPendingPair();
+  const seen = new Set(registry.map((b) => b.token));
+  const flagBearer = flag !== null && !seen.has(flag.token) ? [flagToBearer(flag)] : [];
+  return [...registry, ...flagBearer].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
  * Builds a DeviceRow from a BearerEntry for template rendering.
  * Token value included as `token` — only rendered in `data-token-id` attribute for revoke,
  * never rendered in visible text.
@@ -367,13 +404,16 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   private _computeState(): {
     state: ModalState;
     activeEntry?: BearerEntry;
-    pending?: PendingPairFlag;
   } {
-    const bearers = currentUserBearers(); // current-user scoped, non-revoked
+    // Unified: registry bearers (GM-written) + this user's own pendingPair flag
+    // (player-written, a first-class self-authenticated bearer). The flag is a LIVE
+    // device — it works standalone without GM ingestion — so it participates in the
+    // active/refresh-needed/expired states exactly like a registry bearer.
+    const devices = currentUserDevices();
     const now = Date.now();
-    const nonExpired = bearers.filter((e) => e.expiresAt > now);
+    const nonExpired = devices.filter((e) => e.expiresAt > now); // newest-first
 
-    // 1. A live registry bearer for this user wins.
+    // 1. A live device (registry bearer OR the pending-pair flag) for this user.
     const active = nonExpired[0];
     if (active) {
       const ttlMs = active.expiresAt - now;
@@ -383,20 +423,12 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       return { state: 'active', activeEntry: active };
     }
 
-    // 2. A minted-but-not-yet-ingested token → pairing-in-progress (token from flag).
-    //    Skip when the flag's token already materialised as a registry bearer
-    //    (covered by branch 1 above for THIS user).
-    const pending = readPendingPair();
-    if (pending !== null) {
-      return { state: 'pairing-in-progress', pending };
-    }
-
-    // 3. The user has bearers but they are all expired.
-    if (bearers.length > 0) {
+    // 2. The user has device(s) but they are all expired.
+    if (devices.length > 0) {
       return { state: 'expired' };
     }
 
-    // 4. Nothing for this user.
+    // 3. Nothing for this user.
     return { state: 'empty' };
   }
 
@@ -413,16 +445,20 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
    * @returns PairModalData template context
    */
   override async _prepareContext(_options: unknown): Promise<PairModalData> {
-    const { state, activeEntry, pending } = this._computeState();
-    // Self-service: the devices table shows only the CURRENT user's bearers.
-    const devices = currentUserBearers().map(toDeviceRow);
+    const { state, activeEntry } = this._computeState();
+    // The devices table shows the CURRENT user's devices across BOTH stores (registry
+    // bearers + own pending-pair flag) so a freshly-paired player device is listed
+    // (no more "no devices paired" while a token is shown).
+    const devices = currentUserDevices().map(toDeviceRow);
     const i18n = buildI18n();
 
     const isEmpty = state === 'empty';
     const isExpired = state === 'expired';
     const isRefreshNeeded = state === 'refresh-needed';
-    const isPairing = state === 'pairing-in-progress';
     const isActive = state === 'active';
+    // `isPairing` is retired — a pending-pair flag is now a live `active` device, not a
+    // perpetual "awaiting" placeholder. Kept false for template/type back-compat.
+    const isPairing = false;
     const showCredentials = !isEmpty && !isExpired;
 
     if (isEmpty || isExpired) {
@@ -439,33 +475,11 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       };
     }
 
-    // pairing-in-progress: the token is the freshly-minted flag value, not yet a
-    // registry bearer — there is NO real TTL yet, so the countdown is omitted
-    // (ttlDisplay/expiresIso/expiresAtMs left undefined). bridgeUrl comes from the
-    // flag (falling back to the saved setting).
-    if (isPairing && pending) {
-      return {
-        state,
-        isEmpty,
-        isExpired,
-        isRefreshNeeded,
-        isPairing,
-        isActive,
-        showCredentials,
-        bridgeUrl: pending.bridgeUrl || readBridgeUrl(),
-        token: pending.token,
-        devices,
-        i18n,
-      };
-    }
-
-    // state: active | refresh-needed — credentials + countdown from the live bearer.
+    // active | refresh-needed — credentials + countdown from the live device (a registry
+    // bearer OR the pending-pair flag, both carry a real createdAt+24h expiry).
     // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for active/refresh-needed
     const entry = activeEntry!;
     const ttlMs = entry.expiresAt - Date.now();
-    const ttlDisplay = formatTtl(ttlMs);
-    const expiresIso = new Date(entry.expiresAt).toISOString();
-    const expiresAtMs = entry.expiresAt;
 
     return {
       state,
@@ -475,11 +489,13 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       isPairing,
       isActive,
       showCredentials,
+      // Always the CURRENT bridge URL to paste into the wizard (the live setting), not
+      // the value stored on the bearer (which could be stale if the bridge moved).
       bridgeUrl: readBridgeUrl(),
       token: entry.token,
-      ttlDisplay,
-      expiresIso,
-      expiresAtMs,
+      ttlDisplay: formatTtl(ttlMs),
+      expiresIso: new Date(entry.expiresAt).toISOString(),
+      expiresAtMs: entry.expiresAt,
       devices,
       i18n,
     };
@@ -599,9 +615,21 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     const tokenId = target?.dataset?.tokenId;
     if (!tokenId) return;
 
-    // Await the (async) revoke so the re-render observes the revocation
-    // (read-after-write). Fire-and-forget at the DOM-handler boundary.
-    revokeBearer(tokenId)
+    // Two device stores → two revoke paths (a non-GM player cannot write the world
+    // registry, so revoking a registry bearer that way silently failed — the old
+    // "only works after reopening" bug):
+    //   - the player's OWN pendingPair flag → unsetFlag (they CAN delete their own flag).
+    //   - a world-registry bearer → revokeBearer (GM-written, GM-revoked).
+    // Either write fires the corresponding updateUser/updateSetting hook, which re-emits
+    // to the bridge AND re-renders this modal live (see _onRender registry listener).
+    const flag = readPendingPair();
+    const revoke =
+      flag !== null && flag.token === tokenId
+        ? game.user.unsetFlag(MODULE_ID, 'pendingPair')
+        : revokeBearer(tokenId);
+
+    // Await the (async) revoke so the re-render observes the revocation (read-after-write).
+    revoke
       .then(() => {
         void this.render({ force: true });
       })
@@ -637,9 +665,9 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!userId) {
       return;
     }
-    // Propagate the current user's existing device alias (newest first); default to a
-    // non-empty label so the registry snapshot validates at the bridge.
-    const alias = currentUserBearers()[0]?.alias || 'G2';
+    // Propagate the current user's existing device alias (any store, newest first);
+    // default to a non-empty label so the registry snapshot validates at the bridge.
+    const alias = currentUserDevices()[0]?.alias || 'G2';
     const bridgeUrl = readBridgeUrl();
     const worldId = readWorldId();
 
@@ -647,7 +675,10 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       // GM: write the live registry bearer directly — valid immediately.
       await generateBearer(alias, bridgeUrl, worldId, userId);
     } else {
-      // Non-GM: mint a pending-pair flag for a GM to ingest.
+      // Non-GM player: write a pendingPair flag — a first-class self-authenticated
+      // bearer that works STANDALONE (validateBearer/readBearerRegistry resolve it),
+      // so the device is live at once. A GM that later ingests it just upgrades it to
+      // the persistent world registry.
       await game.user.setFlag(MODULE_ID, 'pendingPair', {
         alias,
         token: generateOpaqueToken(),
@@ -680,8 +711,10 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
    * Toggles the token field between masked (dots) and revealed (plain text).
    *
    * The masked element (`[data-token-mask]`) and the plain element (`[data-token-plain]`)
-   * both exist in the DOM; this handler flips their visibility and swaps the button label
-   * between "Reveal" and "Hide".
+   * both exist in the DOM; this handler flips their `display` and swaps the button label
+   * between "Reveal" and "Hide". Inline `style.display` is used (NOT a CSS class): the
+   * module ships no stylesheet, so the old `.evf-hidden` class was a no-op and BOTH the
+   * dots AND the plain token rendered at once — the "two fields" bug from the screenshot.
    *
    * @param event - DOM click event
    */
@@ -694,14 +727,14 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!mask || !plain || !btn) return;
 
     const i18n = buildI18n();
-    const revealed = plain.classList.contains('evf-hidden') === false;
+    const revealed = plain.style.display !== 'none';
     if (revealed) {
-      plain.classList.add('evf-hidden');
-      mask.classList.remove('evf-hidden');
+      plain.style.display = 'none';
+      mask.style.display = '';
       btn.textContent = i18n.copyReveal ?? 'Reveal';
     } else {
-      plain.classList.remove('evf-hidden');
-      mask.classList.add('evf-hidden');
+      plain.style.display = '';
+      mask.style.display = 'none';
       btn.textContent = i18n.copyHide ?? 'Hide';
     }
   }

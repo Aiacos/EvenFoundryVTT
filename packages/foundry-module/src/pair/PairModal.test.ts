@@ -513,7 +513,9 @@ describe('PairModal', () => {
       mask.setAttribute('data-token-mask', '');
       const plain = document.createElement('code');
       plain.setAttribute('data-token-plain', '');
-      plain.classList.add('evf-hidden');
+      // Plain token hidden by default via inline style (the module ships no CSS, so the
+      // old `.evf-hidden` class was a no-op and both rendered — the "two fields" bug).
+      plain.style.display = 'none';
       const revealBtn = document.createElement('button');
       revealBtn.dataset.action = 'reveal-token';
       html.append(mask, plain, revealBtn);
@@ -522,13 +524,13 @@ describe('PairModal', () => {
       modal._onRender({}, {});
 
       // Initially hidden
-      expect(plain.classList.contains('evf-hidden')).toBe(true);
+      expect(plain.style.display).toBe('none');
       revealBtn.click();
-      expect(plain.classList.contains('evf-hidden')).toBe(false);
-      expect(mask.classList.contains('evf-hidden')).toBe(true);
+      expect(plain.style.display).not.toBe('none'); // revealed
+      expect(mask.style.display).toBe('none'); // masked dots hidden
       // Toggle back
       revealBtn.click();
-      expect(plain.classList.contains('evf-hidden')).toBe(true);
+      expect(plain.style.display).toBe('none');
     });
 
     it('_onClickCopy writes data-copy-value to the clipboard', async () => {
@@ -603,7 +605,7 @@ describe('PairModal', () => {
       expect((data.i18n as Record<string, string>).regenerate).toBeDefined();
     });
 
-    it('surfaces a pending-pair flag as state="pairing-in-progress" with the flag token', async () => {
+    it('surfaces a non-GM player pending-pair flag as a live "active" device (standalone, no GM ingestion)', async () => {
       vi.stubGlobal('game', gameMock);
       // Seed a pending-pair flag on the current user (the self-service mint).
       await gameMock.user.setFlag('evenfoundryvtt', 'pendingPair', {
@@ -616,11 +618,45 @@ describe('PairModal', () => {
 
       const { PairModal } = await import('./PairModal.js');
       const data = await new PairModal()._prepareContext({});
-      expect(data.state).toBe('pairing-in-progress');
-      expect(data.isPairing).toBe(true);
+      // The flag is now a first-class bearer → ACTIVE, not a perpetual "awaiting" state.
+      expect(data.state).toBe('active');
+      expect(data.isActive).toBe(true);
+      expect(data.isPairing).toBe(false);
       expect(data.showCredentials).toBe(true);
       expect(data.token).toBe('pending-token-xyz');
-      expect(data.bridgeUrl).toBe('https://bridge.local:8910');
+      // …with a REAL countdown (createdAt + 24h), not the broken "{time}" placeholder.
+      expect(typeof data.expiresAtMs).toBe('number');
+      expect(data.ttlDisplay).toBeTruthy();
+      // …and it appears as a paired device (no more "no devices paired" while a token shows).
+      expect((data.devices as unknown[]).length).toBe(1);
+    });
+
+    it('revoking a player flag device calls unsetFlag (not the GM-only revokeBearer)', async () => {
+      vi.stubGlobal('game', gameMock);
+      await gameMock.user.setFlag('evenfoundryvtt', 'pendingPair', {
+        alias: 'My G2',
+        token: 'flag-token-123',
+        bridgeUrl: 'https://bridge.local:8910',
+        worldId: 'world-abc',
+        createdAt: Date.now(),
+      });
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickRevoke(e: Event): void;
+      };
+      modal.element = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.dataset.tokenId = 'flag-token-123';
+      const ev = { preventDefault() {}, currentTarget: btn } as unknown as Event;
+
+      modal._onClickRevoke(ev);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The player's own flag is deleted via unsetFlag (they can; revokeBearer is GM-only).
+      expect(gameMock.user.unsetFlag).toHaveBeenCalledWith('evenfoundryvtt', 'pendingPair');
+      expect(gameMock._flagStore.get('evenfoundryvtt.pendingPair')).toBeUndefined();
     });
   });
 

@@ -338,19 +338,30 @@ export function validateBearer(token: string): {
   const registry = readRegistry();
   const entry = registry.entries[token];
 
-  if (!entry) {
-    return { valid: false, reason: 'unknown_token' };
+  if (entry) {
+    if (entry.revokedAt !== null) {
+      return { valid: false, reason: 'revoked', entry };
+    }
+    if (entry.expiresAt < Date.now()) {
+      return { valid: false, reason: 'expired', entry };
+    }
+    return { valid: true, entry };
   }
 
-  if (entry.revokedAt !== null) {
-    return { valid: false, reason: 'revoked', entry };
+  // Self-service standalone: a token a user minted to their OWN pendingPair flag is a
+  // valid bearer WITHOUT GM ingestion — the token→user binding is authenticated by
+  // Foundry flag ownership (see listPendingFlagBearers). This is what lets a non-GM
+  // player's write tools (skill check / attack / spell) authorize against their own
+  // owned actors even when no GM client is online to materialise the flag.
+  const flagEntry = listPendingFlagBearers().find((b) => b.token === token);
+  if (flagEntry) {
+    if (flagEntry.expiresAt < Date.now()) {
+      return { valid: false, reason: 'expired', entry: flagEntry };
+    }
+    return { valid: true, entry: flagEntry };
   }
 
-  if (entry.expiresAt < Date.now()) {
-    return { valid: false, reason: 'expired', entry };
-  }
-
-  return { valid: true, entry };
+  return { valid: false, reason: 'unknown_token' };
 }
 
 /**
@@ -391,6 +402,64 @@ export function listBearers(): BearerEntry[] {
   return Object.values(registry.entries)
     .filter((entry) => entry.revokedAt === null)
     .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Returns each user's un-ingested `pendingPair` flag as a synthetic {@link BearerEntry}.
+ *
+ * A non-GM player CANNOT write the world-scope registry, so they pair by writing a
+ * `pendingPair` flag on their OWN `User` document. Because only that user can write
+ * their own flags, the token→user binding is AUTHENTICATED by document ownership — it
+ * is just as trustworthy as a GM-ingested registry entry, without needing a GM client
+ * online. Treating the flag as a first-class bearer here is what lets a player pair and
+ * roll STANDALONE (no GM ingestion); a GM that later ingests it (self-pair-ingestion)
+ * simply upgrades it to the persistent registry, and the registry copy then wins (the
+ * reader/validate paths dedupe by token, registry-first).
+ *
+ * Expiry mirrors the registry default: `createdAt + 24h`. `internalSecret` is empty
+ * (a flag-derived bearer is used only for token→user routing + per-actor authz, never
+ * for Foundry→bridge POST auth). Best-effort: any read failure yields `[]`.
+ *
+ * @returns Synthetic bearer entries built from every user's pendingPair flag.
+ */
+export function listPendingFlagBearers(): BearerEntry[] {
+  const out: BearerEntry[] = [];
+  try {
+    const g = game as unknown as {
+      users?: { contents?: Array<{ id?: string; getFlag?: (s: string, k: string) => unknown }> };
+    };
+    const users = g.users?.contents ?? [];
+    for (const u of users) {
+      const uid = u?.id;
+      if (typeof uid !== 'string' || uid.length === 0) continue;
+      const flag = u.getFlag?.(MODULE_ID, 'pendingPair') as
+        | {
+            token?: unknown;
+            alias?: unknown;
+            bridgeUrl?: unknown;
+            worldId?: unknown;
+            createdAt?: unknown;
+          }
+        | undefined;
+      if (flag == null || typeof flag.token !== 'string' || flag.token.length === 0) continue;
+      const createdAt = typeof flag.createdAt === 'number' ? flag.createdAt : Date.now();
+      out.push({
+        token: flag.token,
+        alias: typeof flag.alias === 'string' && flag.alias.length > 0 ? flag.alias : 'G2',
+        worldId: typeof flag.worldId === 'string' ? flag.worldId : '',
+        userId: uid,
+        bridgeUrl: typeof flag.bridgeUrl === 'string' ? flag.bridgeUrl : '',
+        internalSecret: '',
+        createdAt,
+        expiresAt: createdAt + TTL_24H_MS,
+        lastSeenAt: null,
+        revokedAt: null,
+      });
+    }
+  } catch {
+    // best-effort — a flag read failure must never break validation or the registry push
+  }
+  return out;
 }
 
 /**

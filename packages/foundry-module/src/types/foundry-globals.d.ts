@@ -966,6 +966,13 @@ interface FoundryUser {
    * opt-in so the stream leader can read it. Canonical Foundry `Document#setFlag`.
    */
   setFlag(scope: string, key: string, value: unknown): Promise<unknown>;
+  /**
+   * Remove a module flag from this User document. A user may unset flags on their OWN
+   * User (default OWNER permission) — used by the PairModal so a non-GM player can
+   * REVOKE their own self-service `pendingPair` device. Canonical Foundry
+   * `Document#unsetFlag`.
+   */
+  unsetFlag(scope: string, key: string): Promise<unknown>;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────

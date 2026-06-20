@@ -35,7 +35,7 @@
 import type { BearerRegistrySnapshot } from '@evf/shared-protocol';
 import { R1_BEARERS_AVAILABLE_TYPE } from '@evf/shared-protocol';
 import { authorizedActorIdsForUser } from '../pair/actor-authorization.js';
-import { listBearers } from '../pair/bearer-registry.js';
+import { listBearers, listPendingFlagBearers } from '../pair/bearer-registry.js';
 
 // ─── readBearerRegistry ────────────────────────────────────────────────────────
 
@@ -56,8 +56,17 @@ import { listBearers } from '../pair/bearer-registry.js';
 export function readBearerRegistry(): BearerRegistrySnapshot {
   try {
     const now = Date.now();
-    // listBearers() returns non-revoked entries (revokedAt === null), newest-first.
-    const rawBearers = listBearers();
+    // listBearers() returns non-revoked registry entries (revokedAt === null).
+    const registryBearers = listBearers();
+    // Self-service standalone: also push each user's un-ingested pendingPair flag as a
+    // bearer so a non-GM player's token routes/authorizes at the bridge WITHOUT a GM
+    // client materialising it. Dedupe by token, registry-first (an ingested flag's
+    // registry copy wins over the still-present flag during the brief overlap).
+    const seen = new Set(registryBearers.map((b) => b.token));
+    const rawBearers = [
+      ...registryBearers,
+      ...listPendingFlagBearers().filter((b) => !seen.has(b.token)),
+    ];
 
     // Filter expired entries — only push tokens that are still valid.
     const bearers = rawBearers
