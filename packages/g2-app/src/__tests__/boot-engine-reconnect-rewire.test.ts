@@ -178,9 +178,13 @@ describe('boot-engine reconnect rewire (R1 FULL — BERR-01..04)', () => {
     // Now use fake timers to drive the reconnect backoff.
     vi.useFakeTimers();
     ws1.fireClose();
-    // First backoff is 1000ms; advance + flush so wsFactory() returns ws2 and the
-    // reconnect handshake message listener is installed on ws2.
+    // First backoff is 1000ms; advance + flush so wsFactory() returns ws2.
     await vi.advanceTimersByTimeAsync(1000);
+    await flush();
+    // The reconnect now awaits ws2 'open' BEFORE handshaking (a real socket is OPEN
+    // before it can send/receive — capability-handshake .send()s immediately). Fire
+    // open so the reconnect handshake can proceed.
+    ws2.fireOpen();
     await flush();
     // ws2 reconnect handshake: fire the server JSON (resolves performCapabilityHandshake).
     ws2.fireMessage(handshakeServerJSON());

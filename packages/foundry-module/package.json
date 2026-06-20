@@ -1,6 +1,6 @@
 {
   "name": "@evf/foundry-module",
-  "version": "0.1.43",
+  "version": "0.1.44",
   "private": true,
   "type": "module",
   "description": "EVF Foundry VTT module (evenfoundryvtt) — module skeleton, settings panel, pairing UI, readers.",

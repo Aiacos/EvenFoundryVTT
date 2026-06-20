@@ -1,5 +1,21 @@
 # @evf/foundry-module
 
+## 0.1.44
+
+### Patch Changes
+
+- (g2-app) WS reconnect no longer strands the outbound channel — fixes the glasses tap
+  silently failing to reach Foundry after any WS drop (e.g. a bridge restart). The
+  reconnect path called `performCapabilityHandshake` on a freshly-created socket that was
+  still in CONNECTING; the handshake `.send()`s immediately and throws on a non-OPEN
+  socket, so every reconnect attempt failed, the bridge idle-timed-out the connection
+  (close 4400), the backoff looped forever, and the `WsSender` was never swapped onto a
+  live socket — so `tool.invoke` writes (skill check / attack / spell) vanished until a
+  full app reload. The reconnect now awaits the socket's `open` before handshaking
+  (mirroring boot's `awaitWsOpen`), so it reconnects cleanly, swaps the sender, and taps
+  reach Foundry again. Verified live: after a bridge restart the sim re-handshakes with
+  zero idle timeouts and a tapped skill's `tool.invoke` is received by the bridge.
+
 ## 0.1.43
 
 ### Patch Changes
