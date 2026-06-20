@@ -68,8 +68,8 @@ import {
   generateBearer,
   generateOpaqueToken,
   listBearers,
+  NO_EXPIRY_MS,
   revokeBearer,
-  TTL_24H_MS,
 } from './bearer-registry.js';
 
 // Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
@@ -97,6 +97,8 @@ export interface PairModalData extends Record<string, unknown> {
   isActive: boolean;
   /** true when copyable credentials should be shown (active | pairing-in-progress | refresh-needed) */
   showCredentials: boolean;
+  /** true when the active bearer never expires (campaign-long) — template shows "never expires", no countdown */
+  isUnlimited?: boolean;
   /** Bridge URL to paste into the wizard; present when showCredentials is true */
   bridgeUrl?: string;
   /** Bearer token to paste into the wizard; present when showCredentials is true */
@@ -254,7 +256,8 @@ function flagToBearer(flag: PendingPairFlag): BearerEntry {
     bridgeUrl: flag.bridgeUrl,
     internalSecret: '',
     createdAt: flag.createdAt,
-    expiresAt: flag.createdAt + TTL_24H_MS,
+    // Campaign-long: self-service player tokens do not expire (operator request).
+    expiresAt: NO_EXPIRY_MS,
     lastSeenAt: null,
     revokedAt: null,
   };
@@ -322,6 +325,7 @@ function buildI18n(): Record<string, string> {
     regenerate: l('evf.pair.qr.regenerate'),
     awaiting: l('evf.pair.qr.awaiting'),
     expiresIn: l('evf.pair.qr.expires_in'),
+    noExpiry: l('evf.pair.qr.no_expiry'),
     expiredTitle: l('evf.pair.qr.expired.title'),
     expiredBody: l('evf.pair.qr.expired.body'),
     expiredCta: l('evf.pair.qr.expired.cta'),
@@ -475,11 +479,20 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       };
     }
 
-    // active | refresh-needed — credentials + countdown from the live device (a registry
-    // bearer OR the pending-pair flag, both carry a real createdAt+24h expiry).
+    // active | refresh-needed — credentials from the live device (registry bearer OR
+    // pending-pair flag). Campaign-long tokens (NO_EXPIRY_MS) show "never expires" with
+    // NO countdown; legacy/finite tokens show the live countdown.
     // biome-ignore lint/style/noNonNullAssertion: activeEntry is guaranteed for active/refresh-needed
     const entry = activeEntry!;
-    const ttlMs = entry.expiresAt - Date.now();
+    const unlimited = entry.expiresAt >= NO_EXPIRY_MS;
+    const ttl = unlimited
+      ? { ttlDisplay: i18n.noExpiry ?? 'Never expires' }
+      : {
+          ttlDisplay: formatTtl(entry.expiresAt - Date.now()),
+          expiresIso: new Date(entry.expiresAt).toISOString(),
+          // Drives the countdown JS (data-expires); omitted for unlimited so it stays static.
+          expiresAtMs: entry.expiresAt,
+        };
 
     return {
       state,
@@ -488,14 +501,13 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       isRefreshNeeded,
       isPairing,
       isActive,
+      isUnlimited: unlimited,
       showCredentials,
       // Always the CURRENT bridge URL to paste into the wizard (the live setting), not
       // the value stored on the bearer (which could be stale if the bridge moved).
       bridgeUrl: readBridgeUrl(),
       token: entry.token,
-      ttlDisplay: formatTtl(ttlMs),
-      expiresIso: new Date(entry.expiresAt).toISOString(),
-      expiresAtMs: entry.expiresAt,
+      ...ttl,
       devices,
       i18n,
     };

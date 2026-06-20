@@ -91,6 +91,19 @@ const REGISTRY_KEY = 'bearerRegistry' as const;
 /** 24-hour TTL in milliseconds. Exported for use by bearer-rotation scheduler. */
 export const TTL_24H_MS = 24 * 3600 * 1000;
 
+/**
+ * Sentinel `expiresAt` for a NON-expiring, campaign-long bearer.
+ *
+ * Tokens are minted to last the whole campaign (operator request): instead of a 24h
+ * TTL they get this far-future timestamp (the maximum value `Date` can represent,
+ * ~year 275760), so every `expiresAt > now` / `expiresAt < now` check treats them as
+ * never-expiring with NO special-casing in the validation/push paths. The UI detects
+ * this value and shows "never expires" instead of a countdown. It is a valid
+ * non-negative integer (< Number.MAX_SAFE_INTEGER) so it passes the bridge's
+ * `BearerRegistryEntrySchema` (`expiresAt: z.number().int().min(0)`) unchanged.
+ */
+export const NO_EXPIRY_MS = 8_640_000_000_000_000;
+
 /** Grace period for old tokens after refresh (D-2.11). Exported for use by bearer-rotation scheduler. */
 export const GRACE_60S_MS = 60 * 1000;
 
@@ -222,7 +235,8 @@ export async function generateBearer(
     bridgeUrl,
     internalSecret,
     createdAt: now,
-    expiresAt: now + TTL_24H_MS,
+    // Campaign-long: tokens do not expire (operator request). See NO_EXPIRY_MS.
+    expiresAt: NO_EXPIRY_MS,
     lastSeenAt: null,
     revokedAt: null,
   };
@@ -309,7 +323,8 @@ export async function ingestBearer(
     bridgeUrl: req.bridgeUrl,
     internalSecret,
     createdAt: now,
-    expiresAt: now + TTL_24H_MS,
+    // Campaign-long: tokens do not expire (operator request). See NO_EXPIRY_MS.
+    expiresAt: NO_EXPIRY_MS,
     lastSeenAt: null,
     revokedAt: null,
   };
@@ -451,7 +466,8 @@ export function listPendingFlagBearers(): BearerEntry[] {
         bridgeUrl: typeof flag.bridgeUrl === 'string' ? flag.bridgeUrl : '',
         internalSecret: '',
         createdAt,
-        expiresAt: createdAt + TTL_24H_MS,
+        // Campaign-long: a player's self-service token does not expire either.
+        expiresAt: NO_EXPIRY_MS,
         lastSeenAt: null,
         revokedAt: null,
       });

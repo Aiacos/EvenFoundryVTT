@@ -1,5 +1,19 @@
 # @evf/foundry-module
 
+## 0.1.47
+
+### Patch Changes
+
+- Tokens no longer expire — campaign-long bearers (operator request). The 24h TTL is
+  what made yesterday's token expire mid-session. New bearers (GM-direct, GM-ingested, or
+  a player's self-service flag) are now minted with a far-future sentinel `expiresAt`
+  (`NO_EXPIRY_MS`), so every `expiresAt > now` validation/push check treats them as
+  never-expiring with no special-casing. Crucially, the rotation scheduler no longer
+  rotates a non-expiring bearer (rotating it would change the token the player already
+  pasted, defeating the purpose). The pair modal shows "Never expires (campaign-long)"
+  with no countdown instead of a TTL. Legacy finite tokens still validate/rotate normally
+  until they age out.
+
 ## 0.1.46
 
 ### Patch Changes

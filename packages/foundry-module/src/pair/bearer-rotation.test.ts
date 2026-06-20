@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./bearer-registry.js', () => ({
   TTL_24H_MS: 24 * 3600 * 1000,
   GRACE_60S_MS: 60 * 1000,
+  NO_EXPIRY_MS: 8_640_000_000_000_000,
   getActiveBearer: vi.fn(),
   generateBearer: vi.fn(),
   listBearers: vi.fn(() => []),
@@ -176,6 +177,26 @@ describe('scheduleBearerRotation', () => {
       expect.any(Function),
       expect.closeTo(expectedDelay, -3), // within 1000ms tolerance
     );
+  });
+
+  // ── T-RR-02b: campaign-long (NO_EXPIRY) bearer never rotates ─────────────
+
+  it('T-RR-02b: does NOT schedule rotation for a non-expiring (campaign-long) bearer', async () => {
+    // A token minted with NO_EXPIRY_MS must stay valid forever — rotating it would
+    // change the bearer the player already pasted. The chain must terminate.
+    const active = makeActiveEntry({ expiresAt: 8_640_000_000_000_000 });
+    getActiveBearerMock.mockReturnValue(active);
+
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { scheduleBearerRotation } = await import('./bearer-rotation.js');
+    const emitSpy = vi.fn();
+    scheduleBearerRotation({ emit: emitSpy });
+
+    // No rotation timer armed, and advancing well past 24h triggers no rotation.
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(48 * 3600 * 1000);
+    expect(generateBearerMock).not.toHaveBeenCalled();
+    expect(emitSpy).not.toHaveBeenCalled();
   });
 
   // ── T-RR-03: elapsed > TTL → delay clamped to 0 ──────────────────────────

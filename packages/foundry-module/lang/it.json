@@ -44,6 +44,7 @@
   "evf.pair.copy.copy": "Copia",
   "evf.pair.copy.copied": "Copiato!",
   "evf.pair.qr.expires_in": "Scade tra:",
+  "evf.pair.qr.no_expiry": "Non scade (tutta la campagna)",
   "evf.pair.qr.refresh": "Rinnova",
   "evf.pair.qr.regenerate": "Genera nuovo token",
   "evf.pair.qr.awaiting": "In attesa di connessione...",

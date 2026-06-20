@@ -426,16 +426,18 @@ describe('PairModal', () => {
   });
 
   describe('_prepareContext() expiresAtMs', () => {
-    it('provides expiresAtMs as a number (epoch ms) for active state', async () => {
+    it('a campaign-long (non-expiring) bearer is shown unlimited: no countdown, "never expires"', async () => {
       const { generateBearer } = await import('./bearer-registry.js');
+      // generateBearer now mints a non-expiring (NO_EXPIRY_MS) bearer.
       await generateBearer('My G2', 'https://bridge.local:8910', 'world-abc', 'user-1');
 
       const { PairModal } = await import('./PairModal.js');
-      const modal = new PairModal();
-      const data = await modal._prepareContext({});
-      expect(typeof data.expiresAtMs).toBe('number');
-      // Must be a future timestamp (epoch ms, not seconds)
-      expect(data.expiresAtMs as number).toBeGreaterThan(Date.now());
+      const data = await new PairModal()._prepareContext({});
+      expect(data.isUnlimited).toBe(true);
+      // No countdown for an unlimited token (the JS countdown is driven by expiresAtMs).
+      expect(data.expiresAtMs).toBeUndefined();
+      // Shows the "never expires" label, not a duration.
+      expect(data.ttlDisplay).toBe((data.i18n as Record<string, string>).noExpiry);
     });
 
     it('expiresAtMs is undefined for empty state', async () => {
@@ -624,8 +626,9 @@ describe('PairModal', () => {
       expect(data.isPairing).toBe(false);
       expect(data.showCredentials).toBe(true);
       expect(data.token).toBe('pending-token-xyz');
-      // …with a REAL countdown (createdAt + 24h), not the broken "{time}" placeholder.
-      expect(typeof data.expiresAtMs).toBe('number');
+      // …non-expiring (campaign-long): shown unlimited, no countdown, not the "{time}" bug.
+      expect(data.isUnlimited).toBe(true);
+      expect(data.expiresAtMs).toBeUndefined();
       expect(data.ttlDisplay).toBeTruthy();
       // …and it appears as a paired device (no more "no devices paired" while a token shows).
       expect((data.devices as unknown[]).length).toBe(1);

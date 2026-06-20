@@ -43,7 +43,13 @@
  */
 
 import { writeAuditLog } from '../write-path/audit-log.js';
-import { GRACE_60S_MS, generateBearer, getActiveBearer, TTL_24H_MS } from './bearer-registry.js';
+import {
+  GRACE_60S_MS,
+  generateBearer,
+  getActiveBearer,
+  NO_EXPIRY_MS,
+  TTL_24H_MS,
+} from './bearer-registry.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -134,6 +140,13 @@ export function scheduleBearerRotation(opts: BearerRotationOptions): () => void 
     const active = getActiveBearer();
     if (active === null) {
       // No active bearer → chain terminates (pairing was revoked)
+      return;
+    }
+
+    // Campaign-long tokens (NO_EXPIRY_MS) never rotate — rotating would change the
+    // bearer every 24h and invalidate the device the player already pasted. The chain
+    // terminates; a non-expiring token stays valid for the whole campaign.
+    if (active.expiresAt >= NO_EXPIRY_MS) {
       return;
     }
 

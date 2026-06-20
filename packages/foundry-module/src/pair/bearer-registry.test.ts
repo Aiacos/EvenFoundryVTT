@@ -157,13 +157,15 @@ describe('generateBearer', () => {
     );
   });
 
-  it('sets expiresAt = createdAt + 24h (86400000 ms)', async () => {
-    const { generateBearer } = await import('./bearer-registry.js');
+  it('mints a non-expiring (campaign-long) bearer: expiresAt = NO_EXPIRY_MS', async () => {
+    const { generateBearer, NO_EXPIRY_MS } = await import('./bearer-registry.js');
     const before = Date.now();
     const entry = await generateBearer('My G2', 'https://bridge.local:8910', 'world-xyz', 'user-1');
     const after = Date.now();
 
-    expect(entry.expiresAt - entry.createdAt).toBe(24 * 3600 * 1000);
+    // Tokens last the whole campaign (operator request) — no 24h TTL.
+    expect(entry.expiresAt).toBe(NO_EXPIRY_MS);
+    expect(entry.expiresAt).toBeGreaterThan(after); // never expired
     expect(entry.createdAt).toBeGreaterThanOrEqual(before);
     expect(entry.createdAt).toBeLessThanOrEqual(after);
   });

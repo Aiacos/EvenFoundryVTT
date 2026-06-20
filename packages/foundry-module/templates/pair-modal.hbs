@@ -100,6 +100,10 @@
     </div>
 
     <div class="evf-pair-modal__ttl-row">
+      {{#if isUnlimited}}
+      {{!-- Campaign-long token: no expiry, no countdown — just a static "never expires". --}}
+      <span class="evf-pair-modal__expires-label">{{ttlDisplay}}</span>
+      {{else}}
       {{!-- Countdown: expiresAtMs (epoch ms) read by JS every 60s; expiresIso for datetime attr --}}
       <span class="evf-pair-modal__expires-label">{{i18n.expiresIn}}</span>
       <time
@@ -110,6 +114,7 @@
       >
         {{ttlDisplay}}
       </time>
+      {{/if}}
 
       {{#if isRefreshNeeded}}
       <button type="button" data-action="refresh" class="evf-btn evf-btn--accent">
