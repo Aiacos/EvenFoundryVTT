@@ -5,15 +5,23 @@
  * Module Settings → EvenFoundryVTT → "Pair a G2 device" button (registered in
  * settings.ts, now available to ALL users, not just the GM).
  *
- * Self-service pairing (secure, ADR-0014): EVERY user — player or GM — mints a
- * bearer bound to THEIR OWN `game.user.id`. There is no user-picker; you can only
- * pair your own device. The token is generated client-side via
- * `generateOpaqueToken` and written as a `pendingPair` flag on the current user's
- * own `User` document (only that user can write their own user flags → the bound
- * identity is authenticated by document ownership). A GM client then ingests the
- * flag into the world-scope bearer registry (see self-pair-ingestion.ts) — so the
- * shown token becomes VALID near-instantly when a GM is online, otherwise on the
- * next GM `ready` sweep ("pairing-in-progress" state until then).
+ * Pairing (secure, ADR-0014): every user pairs a bearer bound to THEIR OWN
+ * `game.user.id` — there is no user-picker; you can only pair your own device.
+ * The mint splits by permission:
+ *   - **GM** → {@link generateBearer} writes the bearer DIRECTLY into the world-scope
+ *     `bearerRegistry`. A GM can write world settings, so the token is a LIVE bearer
+ *     the instant it is generated (no flag, no ingestion wait) and the modal resolves
+ *     straight to `active`. This is the common single-tenant homelab operator path.
+ *   - **Non-GM player** → cannot write the world registry, so the token is generated
+ *     client-side via `generateOpaqueToken` and written as a `pendingPair` flag on the
+ *     player's OWN `User` document (only that user can write their own flags → identity
+ *     authenticated by document ownership). A GM client ingests the flag into the world
+ *     registry (see self-pair-ingestion.ts); the modal shows `pairing-in-progress` and
+ *     auto-flips to `active` the moment a GM materialises it (via the `updateSetting`
+ *     registry-change listener in {@link _onRender}).
+ *
+ * Either way, a `bearerRegistry` change re-emits the registry to the bridge (module.ts
+ * `updateSetting` hook), so a freshly-generated token is recognised within one round-trip.
  *
  * Implements 5 UI states (per 02-UI-SPEC.md §UI-A):
  *   - "empty"              — no devices paired yet
@@ -56,7 +64,12 @@
 
 import { MODULE_ID } from '../module.js';
 import type { BearerEntry } from './bearer-registry.js';
-import { generateOpaqueToken, listBearers, revokeBearer } from './bearer-registry.js';
+import {
+  generateBearer,
+  generateOpaqueToken,
+  listBearers,
+  revokeBearer,
+} from './bearer-registry.js';
 
 // Foundry v13+: ApplicationV2 + HandlebarsApplicationMixin live under foundry.applications.api.
 // ApplicationV2 is abstract about rendering — a renderable subclass MUST provide `_renderHTML`/
@@ -314,6 +327,16 @@ function buildI18n(): Record<string, string> {
 export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   private _countdownInterval: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * `updateSetting` hook id for live `bearerRegistry` changes, or null when not armed.
+   * Lets an OPEN modal re-render the moment the registry changes externally — e.g. a GM
+   * ingests this player's pending pair, or a bearer is rotated/revoked on another client —
+   * so `pairing-in-progress` auto-flips to `active` and the device list stays current
+   * without a manual reopen (fixes the "doesn't update dynamically" stall). Torn down in
+   * {@link close}.
+   */
+  private _registryHookId: number | null = null;
+
   /** ApplicationV2 window/position config (replaces the v1 `defaultOptions` getter). */
   static override DEFAULT_OPTIONS = {
     id: 'evf-pair-modal',
@@ -506,6 +529,19 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
       btn.addEventListener('click', (event) => this._onClickCopy(event));
     }
 
+    // Live registry refresh: arm ONCE (persists across re-renders) so an external
+    // bearerRegistry change re-renders the open modal. A non-GM's pairing-in-progress
+    // flips to active the instant a GM ingests the pending pair; revokes/rotations on
+    // other clients also reflect live. Torn down in close().
+    if (this._registryHookId === null) {
+      this._registryHookId = Hooks.on('updateSetting', (...args: unknown[]) => {
+        const setting = args[0] as { key?: string } | null;
+        if (setting?.key === `${MODULE_ID}.bearerRegistry`) {
+          void this.render({ force: true });
+        }
+      });
+    }
+
     // Start countdown timer
     this._startCountdown(html);
   }
@@ -575,35 +611,51 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
-   * Mints a NEW bearer for the CURRENT user (self-service pairing, ADR-0014).
+   * Mints a NEW bearer for the CURRENT user. Two paths by permission (ADR-0014):
    *
-   * Generates a high-entropy token client-side (`generateOpaqueToken`) and writes
-   * it — together with the alias, bridge URL and world id — as a `pendingPair`
-   * flag on the current user's OWN `User` document. A user can only write their
-   * own user flags, so the bound identity is authenticated by document ownership;
-   * a GM client then ingests the flag into the world-scope registry (see
-   * self-pair-ingestion.ts). The token is shown immediately ("pairing-in-progress")
-   * and becomes VALID once a GM ingests it. We never call `generateBearer` here —
-   * a non-GM player cannot write the world-scope registry directly.
+   * - **GM** → writes the bearer DIRECTLY into the world-scope `bearerRegistry`
+   *   ({@link generateBearer}). A GM can write world settings, so the token is a LIVE
+   *   registry bearer the instant it is generated — no `pendingPair` flag, no waiting
+   *   for ingestion. The world-setting change fires the module's `updateSetting`
+   *   re-emit (module.ts) so the bridge cache is warmed at once and the modal resolves
+   *   straight to the `active` state. This is the common single-tenant homelab path and
+   *   fixes the "token never becomes valid" stall for an operator who IS the GM.
+   *
+   * - **Non-GM player** → cannot write the world registry, so it mints a high-entropy
+   *   token client-side ({@link generateOpaqueToken}) and writes it as a `pendingPair`
+   *   flag on the player's OWN `User` document (bound identity authenticated by document
+   *   ownership). A GM client ingests it (self-pair-ingestion.ts); the modal shows
+   *   `pairing-in-progress` and auto-flips to `active` via the registry-change listener
+   *   ({@link _onRender}) the moment a GM materialises it.
    *
    * The alias is propagated from the current user's existing device (WR-04) so a
-   * re-mint keeps the label.
+   * re-mint keeps the label; a first pairing defaults to a non-empty `'G2'` (the bridge
+   * schema requires a non-empty alias — empty aliases otherwise poison the registry push).
    */
   private async _generateForSelf(): Promise<void> {
     const userId = game.user?.id;
     if (!userId) {
       return;
     }
-    // Propagate the current user's existing device alias (newest first).
-    const alias = currentUserBearers()[0]?.alias ?? '';
-    const token = generateOpaqueToken();
-    await game.user.setFlag(MODULE_ID, 'pendingPair', {
-      alias,
-      token,
-      bridgeUrl: readBridgeUrl(),
-      worldId: readWorldId(),
-      createdAt: Date.now(),
-    });
+    // Propagate the current user's existing device alias (newest first); default to a
+    // non-empty label so the registry snapshot validates at the bridge.
+    const alias = currentUserBearers()[0]?.alias || 'G2';
+    const bridgeUrl = readBridgeUrl();
+    const worldId = readWorldId();
+
+    if (game.user?.isGM === true) {
+      // GM: write the live registry bearer directly — valid immediately.
+      await generateBearer(alias, bridgeUrl, worldId, userId);
+    } else {
+      // Non-GM: mint a pending-pair flag for a GM to ingest.
+      await game.user.setFlag(MODULE_ID, 'pendingPair', {
+        alias,
+        token: generateOpaqueToken(),
+        bridgeUrl,
+        worldId,
+        createdAt: Date.now(),
+      });
+    }
     await this.render({ force: true });
   }
 
@@ -696,6 +748,10 @@ export class PairModal extends HandlebarsApplicationMixin(ApplicationV2) {
    */
   override async close(options?: { animate?: boolean }): Promise<void> {
     this._stopCountdown();
+    if (this._registryHookId !== null) {
+      Hooks.off(this._registryHookId);
+      this._registryHookId = null;
+    }
     return super.close(options);
   }
 }

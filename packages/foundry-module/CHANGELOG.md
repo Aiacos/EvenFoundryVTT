@@ -1,5 +1,28 @@
 # @evf/foundry-module
 
+## 0.1.45
+
+### Patch Changes
+
+- Pairing workflow rework — fixes "the generated token never works" and "the modal
+  doesn't update dynamically".
+  - **GM generates DIRECTLY into the registry.** Previously the PairModal ALWAYS wrote a
+    per-user `pendingPair` flag (even for a GM), which then had to be ingested by a GM
+    client to reach the world `bearerRegistry`. For an operator who IS the GM but plays
+    on a non-GM user — or any setup where no GM client ingests — the token stayed a flag,
+    never reached `listBearers()` / the bridge, and the glasses tap timed out
+    (`boundUserId` null). Now a GM mint calls `generateBearer` directly → the token is a
+    LIVE registry bearer immediately; only a genuine non-GM player uses the flag path.
+  - **Modal auto-updates on registry change.** The open PairModal now listens for the
+    `bearerRegistry` setting change and re-renders, so a non-GM's `pairing-in-progress`
+    flips to `active` the instant a GM ingests it, and revokes/rotations reflect live —
+    no more close-and-reopen.
+  - **Registry changes re-emit to the bridge at once.** A new `updateSetting` hook
+    re-pushes the bearer registry whenever it changes (generate / ingest / revoke /
+    rotate), so a freshly-generated token is recognised within one round-trip instead of
+    waiting up to a full heartbeat. Also defaults a first pairing's alias to a non-empty
+    `'G2'` (empty aliases otherwise fail the bridge schema and drop the whole push).
+
 ## 0.1.44
 
 ### Patch Changes

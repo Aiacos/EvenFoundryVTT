@@ -11,8 +11,9 @@
  * - _prepareContext() populates expiresAtMs (epoch ms, not ISO) for active states
  * - _prepareContext() i18n includes expiresIn and close keys (regression for missing-key defects)
  * - _onClickRevoke extracts token-id and calls revokeBearer
- * - _onClickRefresh (self-service) writes a pendingPair flag with a client-generated
- *   token and does NOT call generateBearer directly (ADR-0014 self-service pairing)
+ * - _onClickRefresh mint splits by permission (ADR-0014): a GM writes the bearer
+ *   DIRECTLY via generateBearer (live at once); a non-GM player writes a pendingPair
+ *   flag with a client-generated token (a GM ingests it later)
  * - empty state exposes new-code button wiring via _onRender
  *
  * Pairing model: no QR — the token + bridge URL are rendered as copyable text (token masked
@@ -51,7 +52,9 @@ class ApplicationStub {
 
 const makeHooksMock = () => ({
   once: vi.fn(),
-  on: vi.fn(),
+  // `on` returns a numeric hook id (PairModal stores it to tear down on close).
+  on: vi.fn(() => 1),
+  off: vi.fn(),
 });
 
 const makeGameMock = (
@@ -621,8 +624,9 @@ describe('PairModal', () => {
     });
   });
 
-  describe('_onClickRefresh() self-service mint (ADR-0014)', () => {
-    it('writes a pendingPair flag with a client-generated token and does NOT call generateBearer', async () => {
+  describe('_onClickRefresh() mint — GM-direct vs non-GM flag (ADR-0014)', () => {
+    it('GM: writes the bearer DIRECTLY via generateBearer (no pendingPair flag, valid at once)', async () => {
+      gameMock.user.isGM = true;
       const registry = await import('./bearer-registry.js');
       const genSpy = vi.spyOn(registry, 'generateBearer');
 
@@ -633,7 +637,33 @@ describe('PairModal', () => {
       modal.element = document.createElement('div');
 
       modal._onClickRefresh(new Event('click'));
-      // Allow the async _generateForSelf microtasks to flush.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // GM writes the world-scope registry directly — token is a live bearer immediately.
+      expect(genSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        'https://bridge.local:8910',
+        'world-abc',
+        'user-1',
+      );
+      // …and NO pending-pair flag is created (no GM-ingestion wait).
+      expect(gameMock.user.setFlag).not.toHaveBeenCalled();
+      genSpy.mockRestore();
+    });
+
+    it('non-GM player: writes a pendingPair flag (client token), does NOT call generateBearer', async () => {
+      gameMock.user.isGM = false;
+      const registry = await import('./bearer-registry.js');
+      const genSpy = vi.spyOn(registry, 'generateBearer');
+
+      const { PairModal } = await import('./PairModal.js');
+      const modal = new PairModal() as unknown as RenderableModal & {
+        _onClickRefresh(e: Event): void;
+      };
+      modal.element = document.createElement('div');
+
+      modal._onClickRefresh(new Event('click'));
       await Promise.resolve();
       await Promise.resolve();
 

@@ -578,6 +578,21 @@ Hooks.once('ready', () => {
   bearerRegistryHandle = registerBearerRegistryReader((type, payload) =>
     bridgeDeltaEmitter(type, payload),
   );
+  // Re-emit the bearer registry to the bridge whenever the world-scope `bearerRegistry`
+  // setting CHANGES — from any cause, on the client that wrote it: a GM generating a
+  // device pairing (PairModal direct path), a GM ingesting a player's pending pair, a
+  // revoke, or a TTL rotation. This is the single, uniform warm-up trigger: the bridge
+  // cache reflects the live registry within one round-trip instead of waiting up to a
+  // full heartbeat (≈10 s) — which is what made a freshly-generated token appear "dead"
+  // (boundUserId null → tool.invoke foundry_timeout) until the next heartbeat. The
+  // emit is idempotent at the bridge, so it composes harmlessly with the existing
+  // self-pair / rotation re-emits.
+  Hooks.on('updateSetting', (...args: unknown[]) => {
+    const setting = args[0] as { key?: string } | null;
+    if (setting?.key === `${MODULE_ID}.bearerRegistry`) {
+      bearerRegistryHandle?.reEmit();
+    }
+  });
   // Self-service pairing (secure): ingest per-user `pendingPair` flags GM-side and
   // re-emit the registry to the bridge so a player-minted (or GM-minted) bearer
   // validates the moment a GM is online. Registered AFTER the registry reader so
