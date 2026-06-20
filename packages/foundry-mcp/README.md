@@ -33,7 +33,7 @@ Only stdio and Streamable HTTP are supported. See CONTEXT D-11-01.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `EVF_BEARER` | YES | — | Opaque 24h bearer token (from Phase 2 QR-pairing flow) |
+| `EVF_BEARER` | YES | — | Opaque non-expiring bearer token (from the self-service PairModal copy/paste) |
 | `EVF_BRIDGE_URL` | YES | — | Bridge HTTP URL, e.g. `http://localhost:8910` |
 | `EVF_ACTOR_ID` | no | (auto) | Foundry actor ID; blank = auto-detect first owned actor |
 | `MCP_HTTP_PORT` | no | 8911 | HTTP transport listen port |
@@ -101,7 +101,7 @@ Quick start: add to `~/Library/Application Support/Claude/claude_desktop_config.
       "command": "node",
       "args": ["/absolute/path/to/EvenFoundryVTT/packages/foundry-mcp/dist/index.js"],
       "env": {
-        "EVF_BEARER": "REPLACE_WITH_24H_BEARER_FROM_QR_PAIRING",
+        "EVF_BEARER": "REPLACE_WITH_BEARER_FROM_PAIRMODAL",
         "EVF_BRIDGE_URL": "http://localhost:8910",
         "LOG_LEVEL": "info"
       }

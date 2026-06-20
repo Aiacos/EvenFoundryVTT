@@ -655,7 +655,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="setup">
     <span class="section-tag">▣ phone-side setup</span>
     <h2>Setup happens on the phone. The G2 stays keyboardless.</h2>
-    <p>The G2 has no virtual keyboard, by design. Foundry connection bootstrap — bridge URL, auth token, character pick — lives in the <strong>Even Realities App</strong> per-plugin settings UI, the same surface Conversate / Translate / Teleprompt use. Pairing is a <strong>QR scan</strong> from the Foundry desktop module: no manual token copy-paste in the clipboard, audit trail kept by the DM. See <a href="../../Specs.md" style="color:var(--g3)">§3.8 / §7.14.7</a>.</p>
+    <p>The G2 has no virtual keyboard, by design. Foundry connection bootstrap — bridge URL, auth token, character pick — lives in the <strong>Even Realities App</strong> per-plugin settings UI, the same surface Conversate / Translate / Teleprompt use. Pairing is <strong>self-service copy/paste</strong>: each user generates a token in the Foundry module and pastes it into the phone wizard — there is no QR scan (the Even Hub platform exposes no camera to apps), and a non-GM player can pair standalone. See <a href="../../Specs.md" style="color:var(--g3)">§3.8 / §7.14.7</a>.</p>
     <div class="hud-sim" style="max-width:720px;margin-top:2rem;">
 <pre style="font-family:var(--mono);color:var(--g3);font-size:0.74rem;line-height:1.25;text-shadow:0 0 6px var(--g2);margin:0;white-space:pre;">
 ┌───────────────────────────────────────────────────────────────────┐
@@ -695,7 +695,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Copy token, paste to pair</h3>
-        <p>Foundry module Settings → "Pair a G2 device" → 24h opaque bearer shown as copyable text (token masked by default, Reveal/Copy). Install the app via Even Hub, then paste the token into the phone wizard. No QR scan — the Even Hub platform exposes no camera to apps. Pairings are listed and revocable from Foundry by the DM.<a href="../../Specs.md" style="color:var(--g3)"> §7.14.7.3 / §11.5.4</a></p>
+        <p>Foundry module Settings → "Pair a G2 device" (self-service, every user pairs their own) → <strong>non-expiring</strong> opaque bearer shown as copyable text (token masked by default, Reveal/Copy). Install the app via Even Hub, then paste the token into the phone wizard. No QR scan — the Even Hub platform exposes no camera to apps; a non-GM player can pair standalone. Pairings are listed and revocable from Foundry.<a href="../../Specs.md" style="color:var(--g3)"> §7.14.7.3 / §11.5.4</a></p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
@@ -948,7 +948,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="phase mvp"><div class="head"><span class="ph">P0</span><span class="wks">Week 0</span></div><div class="ttl">Hardware / SDK validation</div><div class="det">R1 events · <code>updateImageRawData</code> format · BLE bandwidth · partial-update API · DLE 4.2+ · GO/NO-GO decision tree (Branch A / B / C)</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P1</span><span class="wks">Week 1–2</span></div><div class="ttl">Foundation</div><div class="det">monorepo skeleton (pnpm + TypeScript) · shared protocol · CI pipeline · ADR-0001 to ADR-0004</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P2</span><span class="wks">Week 2–3</span></div><div class="ttl">Foundry module core</div><div class="det">readers (character / combat / scene / log) · WS server · capability handshake · contract fixtures</div></div>
-      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · CORS · /healthz /readyz /metrics · Docker</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · non-expiring bearer auth · tool registry · CORS · /healthz /readyz /metrics · Docker</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P4</span><span class="wks">Week 4–7</span></div><div class="ttl">G2 layered engine + map modes</div><div class="det">layer manager · raster pipeline (Layers 1+3+4+6 base, 2+5 conditional) · glyph fallback · boot splash · render primitives</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P5</span><span class="wks">Week 6–8</span></div><div class="ttl">Panel plugin system</div><div class="det">Sheet 6-tab · Combat · Log · Spellbook · Inventory · auto-discovered panels · snapshot fixtures</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P6</span><span class="wks">Week 7–8</span></div><div class="ttl">R1 + event plumbing</div><div class="det">ring-r1 provider · Quick Action menu · gesture latency telemetry</div></div>

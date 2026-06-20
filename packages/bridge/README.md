@@ -11,7 +11,9 @@ EVF Bridge service — Node 24 Fastify + ws CORS-friendly reverse-proxy with bea
 - `zod@4.4.3` (via @evf/shared-protocol workspace:*)
 - `pino@10.3.1` structured logging
 - `prom-client@15.1.3` Prometheus metrics
-- `qrcode@1.5.4` pairing QR generation
+
+> Note: pairing is **copy/paste self-service** (no QR scan — the Even Hub platform has no
+> camera API). Bearer tokens are **non-expiring** (campaign-long). See ADR-0014 Amd 2.
 
 ## Endpoints (Phase 3)
 

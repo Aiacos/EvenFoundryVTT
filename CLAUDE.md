@@ -162,7 +162,7 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 - **D&D edition**: dual-support PHB 2014 + PHB 2024 via `core.modernRules`. Setting MVP. — *§11.5.1.*
 - **License**: MIT su tutti i package del monorepo. — *§11.5.2.*
 - **Deployment MVP**: Docker Compose homelab single-tenant; cloud è stretch Phase 13. — *§11.5.3.*
-- **Auth**: bearer opaque 24h, paired via QR scan dal modulo Foundry desktop. — *§11.5.4.*
+- **Auth**: bearer opaco **non-scadente** (campaign-long; sentinel `NO_EXPIRY_MS`, era 24h — ADR-0014 Amd 2). Pairing **self-service**: ogni utente abbina il proprio device (no user-picker GM); un GM scrive diretto nel `bearerRegistry`, un player scrive un flag `pendingPair` sul proprio User che è un **bearer di prima classe auto-autenticato** (funziona senza GM online). Token transfer = **copia/incolla** (nessuna fotocamera/QR). — *§11.5.4 / ADR-0014.*
 - **Tooling fissato**: TypeScript strict + Biome lint/format + Vitest coverage gate; CI fail su `// TODO` senza issue-link. — *INV-4 §0.1.*
 <!-- GSD:project-end -->
 

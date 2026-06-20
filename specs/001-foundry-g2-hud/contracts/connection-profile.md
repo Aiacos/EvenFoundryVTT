@@ -7,7 +7,7 @@
 - The plugin holds ONE connection profile, persisted in the Even Hub kv store:
 
   ```jsonc
-  { "bridgeUrl": "https://<bridge-origin>", "token": "<24h access token>" }
+  { "bridgeUrl": "https://<bridge-origin>", "token": "<non-expiring access token>" }
   ```
 
 - `bridgeUrl` MUST be a full HTTPS origin of the bridge that fronts Foundry/Forge. The socket URL is

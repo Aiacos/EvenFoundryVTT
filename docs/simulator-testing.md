@@ -205,8 +205,8 @@ simultaneously; production `NODE_ENV` always blocks it.
 The `DEV_SECRET` (`dev-secret`) is a throwaway local value — safe to commit, never used in
 production. Production secrets live in `deploy/.env` (`EVF_INTERNAL_SECRET`).
 
-For the production auth model (bearer token, QR pairing, BridgeConfigDialog), see
-`docs/self-hosting.md`.
+For the production auth model (non-expiring bearer token, self-service copy-and-paste pairing,
+BridgeConfigDialog), see `docs/self-hosting.md`.
 
 ---
 

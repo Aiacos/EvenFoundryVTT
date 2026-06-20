@@ -141,7 +141,7 @@ See `deploy/.env.example` (Phase 11 section) for the 4 MCP-specific variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVF_BEARER` | Yes | 24h bearer from Phase 2 QR-pairing flow |
+| `EVF_BEARER` | Yes | non-expiring bearer from the self-service PairModal (copy/paste) |
 | `EVF_BRIDGE_URL` | Yes | Bridge HTTP URL (default: `http://bridge:8910` in Compose) |
 | `EVF_ACTOR_ID` | No | Specific Foundry actor ID; blank = auto-detect |
 | `MCP_HTTP_PORT` | No | HTTP port for Streamable HTTP transport (default 8911) |

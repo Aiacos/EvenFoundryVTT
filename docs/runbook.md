@@ -121,8 +121,9 @@ curl -X POST \
 ```
 
 The revoked token is immediately invalidated in the in-memory registry and persisted to
-`BEARER_REGISTRY_PATH`. The G2 device will see `TOKEN_EXPIRED` on the next request and display
-a re-pair prompt.
+`BEARER_REGISTRY_PATH`. Bearer tokens are otherwise **non-expiring (campaign-long)**, so this is
+the only way a token stops working: the G2 device will see `TOKEN_EXPIRED` on the next request and
+display a re-pair prompt.
 
 ---
 
@@ -167,7 +168,7 @@ required for homelab MVP.
 |-----------------|-------|----------|
 | `⚠ SYNC LOST` chip on G2 | WS connection to bridge dropped | WS auto-reconnects (exponential backoff 1s→30s, Plan 10-01). Check bridge health via `/healthz`. If bridge is down: `docker compose restart bridge`. |
 | `BOOT_HANDSHAKE_FAIL` | Bridge not ready when plugin loaded | Wait for `/readyz` to return `{ "ready": true }`. Check `FOUNDRY_WS_URL` is reachable from inside the Docker container. |
-| `TOKEN_EXPIRED` | 24-hour bearer expired or revoked | Re-pair via QR (Foundry Settings → Pair a G2 device → scan QR). |
+| `TOKEN_EXPIRED` | Bearer was **revoked** (tokens are non-expiring now, so this no longer means a TTL expiry) | Re-pair: Foundry Settings → Pair a G2 device → copy the new token from the PairModal → paste it into the phone wizard. |
 | `MIDIQOL_AUTO_FAST_FORWARD_OFF` | MidiQOL Workflow setting not configured | Foundry → Module Settings → MidiQOL → Workflow → enable "Auto fast-forward attack". Required for full weapon-attack flow. |
 | `ERR_BRIDGE_WS_CLOSED` on Foundry side | Foundry restarted while bridge was connected | Bridge auto-reconnects to Foundry WS within a few seconds. If it persists, restart the bridge container. |
 | `/healthz` returns 503 | Bridge crashed or unhealthy | `docker compose -f deploy/docker-compose.yml restart bridge` then watch logs for startup errors. |

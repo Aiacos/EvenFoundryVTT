@@ -12,7 +12,7 @@ The single source of truth for how the plugin reaches the bridge.
 | Field | Type | Rules |
 |-------|------|-------|
 | `bridgeUrl` | string (https origin) | REQUIRED; full origin of the bridge that fronts Foundry/Forge (e.g. `https://evf-bridge.example`). Derived to `wss://…/ws` for the socket. |
-| `token` | string | REQUIRED unless the bridge runs in explicit dev-no-auth; the 24h access credential pasted at pairing. |
+| `token` | string | REQUIRED unless the bridge runs in explicit dev-no-auth; the non-expiring (campaign-long) access credential pasted at pairing. |
 
 - **Persistence**: Even Hub kv store (per device). No localStorage.
 - **Precedence (replaces 4-source ambiguity)**: saved profile → (dev-only) explicit dev override,
