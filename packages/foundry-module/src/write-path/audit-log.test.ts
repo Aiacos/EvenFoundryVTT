@@ -12,7 +12,7 @@
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type AuditEntry, writeAuditLog } from './audit-log.js';
+import { AUDIT_WRITE_TIMEOUT_MS, type AuditEntry, writeAuditLog } from './audit-log.js';
 
 // ─── Global mocks ─────────────────────────────────────────────────────────────
 
@@ -184,6 +184,46 @@ describe('writeAuditLog', () => {
     await writeAuditLog(entry);
     expect(warnSpy).toHaveBeenCalledOnce();
     warnSpy.mockRestore();
+  });
+
+  // ── Regression (260621): a HUNG ChatMessage.create must not stall dispatch ───
+  // A player/headless executor can have ChatMessage.create never settle; without a
+  // bound, dispatchTool awaits it forever and the bridge hits its 10s foundry_timeout
+  // even though the action already executed. writeAuditLog must resolve within
+  // AUDIT_WRITE_TIMEOUT_MS regardless.
+  it('resolves (does not hang) when ChatMessage.create never settles — bounded by timeout', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // A create that NEVER resolves (simulates the hung player/headless executor).
+    chatCreateMock.mockReturnValue(new Promise<never>(() => {}));
+
+    const entry: AuditEntry = {
+      tool: 'skill-check',
+      payload: { actor_id: 'actor1' },
+      idempotencyKey: '00000000-0000-4000-8000-000000000099',
+      actorId: 'actor1',
+      result: { success: true, data: { rolled: true } },
+      timestamp: 0,
+      bearer_id: 'deadbeef',
+    };
+
+    let settled = false;
+    const p = writeAuditLog(entry).then(() => {
+      settled = true;
+    });
+
+    // Before the timeout fires, the write is still pending (would stall dispatch).
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    // Advancing past the bound makes it resolve (best-effort give-up) + warn.
+    await vi.advanceTimersByTimeAsync(AUDIT_WRITE_TIMEOUT_MS + 10);
+    await p;
+    expect(settled).toBe(true);
+    expect(warnSpy).toHaveBeenCalledOnce();
+
+    warnSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   // ── whisper array includes only GM users (single GM world) ─────────────────
