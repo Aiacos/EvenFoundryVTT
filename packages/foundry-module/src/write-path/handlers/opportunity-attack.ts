@@ -85,7 +85,8 @@ export const opportunityAttackHandler: ToolHandler<
     // Step 3: locate first attack-type activity on the weapon
     type AttackActivity = {
       type?: string;
-      use: (cfg: unknown, msgCfg?: unknown) => Promise<unknown>;
+      // dnd5e 5.x `use(usage, dialog, message)` — three positional config args.
+      use: (usage: unknown, dialog?: unknown, message?: unknown) => Promise<unknown>;
     };
     const itemSystem = (item as unknown as Record<string, unknown>).system as
       | { activities?: { contents?: AttackActivity[] } }
@@ -95,12 +96,16 @@ export const opportunityAttackHandler: ToolHandler<
       return { success: false, error: 'no_attack_activity' };
     }
 
-    // Step 4: invoke activity.use — two-arg form for opportunityAttack flag
-    // consume.action: false — OA does NOT consume the Action slot (only Reaction).
-    // messageConfig flags.dnd5e.opportunityAttack: true — chat card flavor text.
+    // Step 4: invoke activity.use — three-arg form (dnd5e 5.x `use(usage, dialog, message)`).
+    // consume.action: false — OA does NOT consume the Action slot (only Reaction) → usage arg.
+    // `{ configure: false }` MUST be the dialog arg (INV-2: foundryvtt/dnd5e
+    // module/documents/activity/mixin.mjs); in the usage arg it left the dialog enabled,
+    // hanging the attack until the 10s foundry_timeout. The opportunityAttack chat flag is
+    // a MESSAGE-config field → the third arg (it was wrongly passed as the dialog arg).
     try {
       const result = await activity.use(
-        { configure: false, consume: { action: false } },
+        { consume: { action: false } },
+        { configure: false },
         { flags: { dnd5e: { opportunityAttack: true } } },
       );
       return {

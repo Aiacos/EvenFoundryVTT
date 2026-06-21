@@ -133,8 +133,11 @@ describe('opportunityAttackHandler', () => {
       success: true,
       data: { chatCardId: 'cm-oat-ok', target_id: 'token-fleeing' },
     });
+    // Regression (260621): consume in usage arg, { configure: false } in dialog arg,
+    // opportunityAttack chat flag in the message (3rd) arg — dnd5e 5.x use(usage, dialog, message).
     expect(activity.use).toHaveBeenCalledWith(
-      { configure: false, consume: { action: false } },
+      { consume: { action: false } },
+      { configure: false },
       { flags: { dnd5e: { opportunityAttack: true } } },
     );
   });

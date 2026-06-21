@@ -2,7 +2,7 @@
   "id": "evenfoundryvtt",
   "title": "EvenFoundryVTT",
   "description": "Projects your Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by Even R1 ring gestures.",
-  "version": "0.1.48",
+  "version": "0.1.49",
   "authors": [
     {
       "name": "EvenFoundryVTT",

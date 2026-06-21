@@ -129,13 +129,16 @@ export const castCounterspellHandler: ToolHandler<(typeof CastCounterspellInputS
         return { success: false, error: 'no_activity' };
       }
 
-      // Step 4: invoke activity.use — spell.slot: `spell${slot_level}` (upcast supported)
+      // Step 4: invoke activity.use — spell.slot: `spell${slot_level}` (upcast supported).
+      // dnd5e 5.x `use(usage, dialog, message)`: slot override is the usage arg and
+      // `{ configure: false }` MUST be the dialog arg (INV-2: foundryvtt/dnd5e
+      // module/documents/activity/mixin.mjs). In the usage arg it left the dialog enabled
+      // → the cast hangs until the bridge's 10s foundry_timeout.
       const slotLevel = args.slot_level ?? 3;
       try {
-        const result = await (activity as { use: (cfg: unknown) => Promise<unknown> }).use({
-          configure: false,
-          spell: { slot: `spell${slotLevel}` },
-        });
+        const result = await (
+          activity as { use: (usage: unknown, dialog?: unknown) => Promise<unknown> }
+        ).use({ spell: { slot: `spell${slotLevel}` } }, { configure: false });
         return {
           success: true,
           data: {

@@ -550,17 +550,24 @@ interface FoundryActivity {
    * Resolves when the workflow completes (chat card created, rolls resolved).
    * May reject with a user-facing error string or "No connected GM" signal.
    *
-   * `configure: false` skips the configuration dialog — required for programmatic
-   * invocation from the bridge (no user-facing dialog in glasses UI).
+   * dnd5e 5.x signature is `use(usage, dialog, message)` (INV-2: foundryvtt/dnd5e
+   * `module/documents/activity/mixin.mjs`). The slot/consume overrides go in `usage`;
+   * the dialog-suppression flag `configure: false` MUST go in `dialog` — its default is
+   * `true`, so passing it in `usage` leaves the configuration dialog enabled and the call
+   * hangs awaiting a dialog the glasses cannot answer (bridge 10s `foundry_timeout`).
    *
-   * @param config - Optional use configuration
-   * @param config.configure - Skip configuration dialog (always false for EVF)
-   * @param config.consume - Optional resource consumption overrides
+   * @param usage   - Usage config (slot/scaling/consume overrides)
+   * @param dialog  - Dialog config; `{ configure: false }` to skip the config dialog (EVF default)
+   * @param message - Chat-message config (e.g. `flags`)
    * @returns Resolves with a ChatMessage-like result object (id = chat card ID)
    *
    * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md Pattern 1
    */
-  use(config?: { configure?: boolean; consume?: { action?: boolean } }): Promise<unknown>;
+  use(
+    usage?: { spell?: { slot?: string }; consume?: { action?: boolean } },
+    dialog?: { configure?: boolean },
+    message?: { flags?: Record<string, unknown> },
+  ): Promise<unknown>;
 }
 
 /**

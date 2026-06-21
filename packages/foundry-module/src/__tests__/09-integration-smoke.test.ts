@@ -241,13 +241,12 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
 
     expect(result.success).toBe(true);
 
-    // activity.use called with spell.slot: 'spell4'
+    // activity.use called with spell.slot: 'spell4' in usage arg; configure:false in dialog
+    // arg (dnd5e 5.x use(usage, dialog, message) — regression 260621).
     expect(activityUseMock).toHaveBeenCalledOnce();
     expect(activityUseMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        configure: false,
-        spell: { slot: 'spell4' },
-      }),
+      expect.objectContaining({ spell: { slot: 'spell4' } }),
+      expect.objectContaining({ configure: false }),
     );
 
     // No conc.conflict emitted (non-concentration spell)
@@ -285,11 +284,12 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
 
     expect(result.success).toBe(true);
 
-    // Cantrip: no spell.slot override
+    // Cantrip: no spell.slot override in usage arg [0]; configure:false in dialog arg [1].
     expect(activityUseMock).toHaveBeenCalledOnce();
-    const callArg = activityUseMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(callArg.configure).toBe(false);
-    expect(callArg.spell).toBeUndefined(); // no slot override for cantrips
+    const usageArg = activityUseMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const dialogArg = activityUseMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(dialogArg?.configure).toBe(false);
+    expect(usageArg?.spell).toBeUndefined(); // no slot override for cantrips
 
     // No conc.conflict emitted
     expect(concEmitSpy).not.toHaveBeenCalled();

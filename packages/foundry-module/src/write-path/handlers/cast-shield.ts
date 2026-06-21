@@ -134,12 +134,15 @@ export const castShieldHandler: ToolHandler<(typeof CastShieldInputSchema)['_inp
       return { success: false, error: 'no_activity' };
     }
 
-    // Step 4: invoke activity.use — spell.slot: 'spell1' (Shield is level-1 only)
+    // Step 4: invoke activity.use — spell.slot: 'spell1' (Shield is level-1 only).
+    // dnd5e 5.x `use(usage, dialog, message)`: the slot override is the usage arg and
+    // `{ configure: false }` MUST be the dialog arg (INV-2: foundryvtt/dnd5e
+    // module/documents/activity/mixin.mjs). In the usage arg it left the dialog enabled
+    // → the cast hangs until the bridge's 10s foundry_timeout.
     try {
-      const result = await (activity as { use: (cfg: unknown) => Promise<unknown> }).use({
-        configure: false,
-        spell: { slot: 'spell1' },
-      });
+      const result = await (
+        activity as { use: (usage: unknown, dialog?: unknown) => Promise<unknown> }
+      ).use({ spell: { slot: 'spell1' } }, { configure: false });
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {
