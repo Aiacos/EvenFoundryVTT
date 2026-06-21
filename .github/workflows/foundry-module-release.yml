@@ -90,23 +90,40 @@ jobs:
       - name: Build foundry-module bundle
         run: pnpm --filter @evf/foundry-module build
 
-      - name: Patch module.json (version + download URL)
+      - name: Patch module.json (version + download URL + cache-busting esmodule name)
         working-directory: packages/foundry-module
         env:
           VERSION: ${{ steps.vars.outputs.version }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
           # Use a tiny Node one-liner — robust JSON edit, no jq dependency.
+          #
+          # CACHE-BUSTING (REL-05): Foundry/Forge loads the esmodule by a STABLE URL
+          # (`modules/evenfoundryvtt/dist/module.js`). Across releases the filename never
+          # changed, so a CDN/browser HTTP cache keyed on that URL kept serving the OLD
+          # bundle even after module.json's version bumped — the module reported the new
+          # version while executing stale code (observed v0.1.49: spell casts still hung
+          # with the pre-fix handler). We therefore version-stamp the bundle filename so
+          # every release has a UNIQUE URL no cache can serve stale, and point esmodules
+          # at it. The runtime zip excludes *.map, so the dangling sourceMappingURL
+          # comment is harmless (no .map shipped either way).
           node -e "
             const fs = require('node:fs');
             const path = 'module.json';
             const m = JSON.parse(fs.readFileSync(path, 'utf-8'));
             m.version = process.env.VERSION;
             m.download = 'https://github.com/${{ github.repository }}/releases/download/' + process.env.TAG + '/evenfoundryvtt.zip';
+            const stamped = 'dist/module-' + process.env.VERSION + '.js';
+            if (fs.existsSync('dist/module.js')) {
+              fs.renameSync('dist/module.js', stamped);
+              if (fs.existsSync('dist/module.js.map')) fs.renameSync('dist/module.js.map', 'dist/module-' + process.env.VERSION + '.js.map');
+            }
+            m.esmodules = (m.esmodules || []).map((e) => (e === 'dist/module.js' ? stamped : e));
             fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\\n');
-            console.log('Patched module.json → version=' + m.version + ', download=' + m.download);
+            console.log('Patched module.json → version=' + m.version + ', esmodules=' + JSON.stringify(m.esmodules) + ', download=' + m.download);
           "
-          cat module.json | head -20
+          cat module.json | head -25
+          ls -la dist
 
       - name: Assemble release tree
         working-directory: packages/foundry-module
