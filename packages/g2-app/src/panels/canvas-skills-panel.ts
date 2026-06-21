@@ -25,7 +25,11 @@ import type { R1Gesture } from '../engine/layer-types.js';
 import type { PanelMeta } from '../engine/panel-router.js';
 import type { HudLocale } from '../status-hud/i18n-budgets.js';
 import type { ActionOptionsRequest } from './action-options-modal.js';
-import { CanvasSelectableListPanel } from './canvas-selectable-list.js';
+import {
+  CanvasSelectableListPanel,
+  clampCursorIndex,
+  windowCursorRows,
+} from './canvas-selectable-list.js';
 import { SKILL_NAMES } from './character-sheet-tab-renderers.js';
 
 /**
@@ -43,14 +47,6 @@ export interface SkillRollRequest {
 
 /** Ability column ordering — matches renderSkillsTab's STR→CHA grouping. */
 const ABILITY_ORDER = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
-
-/**
- * Number of skill rows the canvas list paints before running out of vertical space
- * (compositor height ÷ line height ≈ 9). The windowing in {@link CanvasSkillsPanel.renderRows}
- * scrolls so the cursor stays within this many rows. Kept in sync with the base
- * `CanvasSelectableListPanel.paint` row budget.
- */
-const VISIBLE_ROWS = 9;
 
 /**
  * Build the ordered skill-key list for a snapshot, grouped by ability column then in
@@ -119,21 +115,11 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
       return [];
     }
     const keys = orderedSkillKeys(snapshot);
-    if (keys.length === 0) {
-      return [];
-    }
-    // Clamp the cursor to a real row, then compute a scroll offset that keeps it in
-    // view: 0 while the cursor is within the first window, then advancing so the
-    // cursor sits on the last visible row.
-    const clamped = Math.max(0, Math.min(cursor, keys.length - 1));
-    const maxOffset = Math.max(0, keys.length - VISIBLE_ROWS);
-    const offset = Math.min(Math.max(0, clamped - (VISIBLE_ROWS - 1)), maxOffset);
-    return keys.slice(offset, offset + VISIBLE_ROWS).map((key, i) => {
-      const idx = offset + i;
+    // Shared cursor-windowing (▶ marker + scroll-to-keep-visible) — see windowCursorRows.
+    return windowCursorRows(keys, cursor, (key) => {
       const sk = snapshot.skills[key];
       const mod = sk.total >= 0 ? `+${sk.total}` : `${sk.total}`;
-      const marker = idx === clamped ? '▶ ' : '  ';
-      return `${marker}${skillName(key, locale)} ${mod}`;
+      return `${skillName(key, locale)} ${mod}`;
     });
   }
 
@@ -159,8 +145,7 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
         return;
       }
       const keys = orderedSkillKeys(this._snapshot);
-      const idx = Math.max(0, Math.min(this._cursor, keys.length - 1));
-      const skill = keys[idx];
+      const skill = keys[clampCursorIndex(this._cursor, keys.length)];
       if (skill === undefined) {
         console.warn('[EVF] canvas-skills: tap with no skill under cursor — no-op');
         return;
@@ -175,7 +160,7 @@ export default class CanvasSkillsPanel extends CanvasSelectableListPanel {
       // leaving the lower skills effectively unreachable. Clamp here so down-swipe
       // stops at the last skill and renderRows can keep it in view.
       const keys = orderedSkillKeys(this._snapshot);
-      this._cursor = Math.min(this._cursor + 1, Math.max(0, keys.length - 1));
+      this._cursor = clampCursorIndex(this._cursor + 1, keys.length);
       this._dirty = true;
       return;
     }

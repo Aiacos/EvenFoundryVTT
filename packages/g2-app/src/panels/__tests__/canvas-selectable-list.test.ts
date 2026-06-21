@@ -102,20 +102,38 @@ const busStub = { subscribe: vi.fn(() => () => {}) } as unknown as PanelGestureB
 const bridgeStub = {} as never;
 
 describe('CanvasInventoryPanel — cursor + tap dispatch', () => {
-  it('tap dispatches an item request for the entry under the cursor', () => {
+  it('tap dispatches a use-item request for the entry under the cursor', () => {
     const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
     const handler = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(handler);
     panel.onSnapshot(makeSnapshot());
 
+    // Cursor starts on the first item (Spada lunga / w1).
     panel.onEvent({ kind: 'tap' });
 
     expect(handler).toHaveBeenCalledTimes(1);
     const req = handler.mock.calls[0]?.[0];
     expect(req?.kind).toBe('item');
     expect(req?.actorId).toBe('actor-shin');
-    // First inventory row resolves to the weapon → requiresTarget true.
-    expect(req?.requiresTarget).toBe(true);
+    expect(req?.itemId).toBe('w1');
+    expect(req?.name).toBe('Spada lunga');
+    // New flat-list model: Foundry resolves targeting → no glasses target picker.
+    expect(req?.requiresTarget).toBe(false);
+  });
+
+  it('cursor follows scroll-down; tap dispatches the newly highlighted entry', () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const handler = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(handler);
+    panel.onSnapshot(makeSnapshot());
+
+    // Move the ▶ cursor to the second item (Pozione / p1) and activate it.
+    panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+
+    const req = handler.mock.calls[0]?.[0];
+    expect(req?.itemId).toBe('p1');
+    expect(req?.name).toBe('Pozione');
   });
 
   it('scroll moves the cursor off the top boundary; tap with no handler is a safe no-op', () => {
@@ -140,7 +158,7 @@ describe('CanvasInventoryPanel — cursor + tap dispatch', () => {
 });
 
 describe('CanvasSpellbookPanel — cursor + tap dispatch', () => {
-  it('tap dispatches a spell request for the entry under the cursor', () => {
+  it('tap dispatches a cast-spell request for the entry under the cursor', () => {
     const panel = new CanvasSpellbookPanel(bridgeStub, busStub, 'it');
     const handler = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(handler);
@@ -152,8 +170,10 @@ describe('CanvasSpellbookPanel — cursor + tap dispatch', () => {
     const req = handler.mock.calls[0]?.[0];
     expect(req?.kind).toBe('spell');
     expect(req?.actorId).toBe('actor-shin');
-    // Dardo Incantato: range 36m, action → requiresTarget true.
-    expect(req?.requiresTarget).toBe(true);
+    expect(req?.itemId).toBe('s1');
+    expect(req?.name).toBe('Dardo Incantato');
+    // New flat-list model: Foundry resolves targeting → no glasses target picker.
+    expect(req?.requiresTarget).toBe(false);
   });
 
   it('ignores a malformed character.delta payload (T-20-01)', () => {

@@ -1878,80 +1878,59 @@ export async function _bootEngineCore(
     setWsEventBus: (b: typeof wsEventBus) => void;
     setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
   };
+  // Feature: USE inventory items / CAST spells DIRECTLY on tap — the same immediate
+  // "tap → use" flow the Skills panel uses (canvasSkillRollDispatch), NOT the
+  // ActionOptions confirm-modal. The modal path silently swallowed the dispatch for any
+  // item/spell with `requiresTarget` (equipment, weapons, targeted spells) because the
+  // canvas path provides no TargetPicker, so those never executed. A direct dispatch
+  // sends the canonical `tool.invoke` (use-item / cast-spell) with `targets: []` —
+  // activity.use() resolves targeting via Foundry (the player's targeted token / the
+  // activity's self-target), and the write-path authz (ADR-0014) still applies.
   const canvasItemDispatch = (req: unknown): void => {
-    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
-      const modal = new CanvasActionOptionsModal(
-        bridge,
-        wsSender,
-        gestureBus,
-        req as ConstructorParameters<typeof CanvasActionOptionsModal>[3],
-        currentLocale,
-        handshake.session_id,
-        () => {
-          void panelRouter.popOverlay(layerManager);
-        },
-        toastQueue,
-      );
-      void panelRouter.pushOverlay(modal, layerManager);
-    });
+    const r = req as { actorId: string; itemId: string };
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'use-item' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: { actor_id: r.actorId, item_id: r.itemId, targets: [] as string[] },
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
   };
   const canvasSpellDispatch = (req: unknown): void => {
-    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
-      const baseReq = req as ConstructorParameters<typeof CanvasActionOptionsModal>[3];
-      const snapshot = statusHud?.getCachedSnapshot() ?? null;
-      const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
-      const spellLevel = spellEntry?.level ?? 0;
-      const availableSlots =
-        spellLevel === 0
-          ? []
-          : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
-      const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
-      const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
-      const enrichedReq: ConstructorParameters<typeof CanvasActionOptionsModal>[3] = {
-        ...baseReq,
-        requiresSlotPicker,
-        defaultSlotLevel,
-      };
-      const openSlotPicker = (): void => {
-        void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
-          const slotPicker = new SlotPickerPanel(
-            bridge,
-            wsSender,
-            gestureBus,
-            {
-              actorId: enrichedReq.actorId,
-              spellId: enrichedReq.itemId,
-              spellName: enrichedReq.name,
-              baseLevel: spellLevel,
-              availableSlots,
-            },
-            currentLocale,
-            handshake.session_id,
-            () => {
-              void panelRouter.popOverlay(layerManager);
-            },
-          );
-          void panelRouter.pushOverlay(slotPicker, layerManager);
-        });
-      };
-      const modal = new CanvasActionOptionsModal(
-        bridge,
-        wsSender,
-        gestureBus,
-        enrichedReq,
-        currentLocale,
-        handshake.session_id,
-        (reason) => {
-          if (reason === 'slot-picker-needed') {
-            openSlotPicker();
-          } else {
-            void panelRouter.popOverlay(layerManager);
-          }
+    const r = req as { actorId: string; itemId: string };
+    // Cast at the lowest available slot ≥ the spell's level (cantrips → 0); advanced
+    // upcast slot selection is a future enhancement (mirrors skills' fixed 'normal').
+    const snapshot = statusHud?.getCachedSnapshot() ?? null;
+    const spellLevel = snapshot?.spells.spells.find((s) => s.id === r.itemId)?.level ?? 0;
+    const availableSlots =
+      spellLevel === 0
+        ? []
+        : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
+    const slotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'cast-spell' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: {
+          actor_id: r.actorId,
+          spell_id: r.itemId,
+          targets: [] as string[],
+          slot_level: slotLevel,
         },
-        toastQueue,
-      );
-      void panelRouter.pushOverlay(modal, layerManager);
-    });
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
   };
   panelRouter.setPanelInstanceHandler('canvas-inventory', (panel) => {
     const p = panel as unknown as CanvasSelectablePanel;

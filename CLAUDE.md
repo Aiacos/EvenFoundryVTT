@@ -67,6 +67,10 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 # All exit 0 = Phase 1 healthy
 ```
 
+## Constitution (READ FIRST, EVERY CHANGE)
+
+**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus repo hygiene, reliable CI/CD, and disciplined subagent use. When in doubt, the constitution wins; it operationalizes the four invariants below.
+
 ## Project Invariants (NON-NEGOTIABLE)
 
 `Specs.md` §0.1 ratifies four invariants that govern every change to this repo. Read them before doing anything. Short version:
