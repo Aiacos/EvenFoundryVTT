@@ -81,6 +81,17 @@ describe('Phase 8 tool reverse-channel routes', () => {
     expect(res.json()).toEqual({ requests: [] });
   });
 
+  it('TC-BEACON-01: GET accepts the module-version beacon (&mv=) without breaking the drain', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/internal/tool-requests?userId=user-a&mv=0.1.52',
+      headers: { authorization: `Bearer ${INTERNAL_SECRET}` },
+    });
+    // The extra `mv` query param is ignored by the drain (logged on change) — still 200 + empty.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ requests: [] });
+  });
+
   it('TC-RESULT-01: POST /internal/tool-result for an unknown request id → 404', async () => {
     const res = await app.inject({
       method: 'POST',

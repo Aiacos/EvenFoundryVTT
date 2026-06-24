@@ -617,6 +617,11 @@ Hooks.once('ready', () => {
   _toolInvocationPollerTeardown = registerToolInvocationPoller({
     getBridgeUrl,
     getInternalSecret,
+    // Version beacon: the poller tags each drain GET with `&mv=<module version>` so the
+    // bridge access log shows WHICH module build each connected client is actually running
+    // (e.g. the owning player's browser tab vs a stale cache). Resolved live from the
+    // Foundry module registry so it always reflects the loaded bundle, not a build constant.
+    getModuleVersion: () => game.modules.get(MODULE_ID)?.version ?? null,
   });
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Player-view streaming consent (ADR-0015 §C): if THIS client enabled the

@@ -1288,7 +1288,7 @@ declare const game: {
    * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
    * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.ModuleManagement.html
    */
-  modules: { get(id: string): { active: boolean } | undefined };
+  modules: { get(id: string): { active: boolean; version?: string } | undefined };
   /**
    * The active world descriptor. `world.id` is the world identifier provisioned to the
    * bridge alongside a bearer (PairModal reads it at render time on the no-arg

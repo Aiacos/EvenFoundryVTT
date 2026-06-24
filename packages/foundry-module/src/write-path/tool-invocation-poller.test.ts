@@ -99,6 +99,33 @@ describe('registerToolInvocationPoller', () => {
     expect(body).toEqual({ requestId: 'req-1', result: { success: true, data: { rolled: true } } });
   });
 
+  it('tags the drain GET with the module-version beacon (&mv=) when a version resolver is given', async () => {
+    setUser('user-a');
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ requests: [] }) });
+
+    const { registerToolInvocationPoller } = await import('./tool-invocation-poller.js');
+    const teardown = registerToolInvocationPoller({ ...OPTS, getModuleVersion: () => '0.1.52' });
+    await vi.advanceTimersByTimeAsync(OPTS.pollIntervalMs);
+    await vi.runOnlyPendingTimersAsync();
+    teardown();
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain('/internal/tool-requests?');
+    expect(url).toContain('userId=user-a');
+    expect(url).toContain('mv=0.1.52');
+  });
+
+  it('omits the mv beacon when no version resolver is given (back-compat URL)', async () => {
+    setUser('user-a');
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ requests: [] }) });
+
+    await runOneTick(); // OPTS has no getModuleVersion
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toBe('https://bridge.example/internal/tool-requests?userId=user-a');
+    expect(url).not.toContain('mv=');
+  });
+
   it('GM also drains the UNFILTERED slice as a fallback for unrouted requests', async () => {
     // A GM polls its own slice (?userId=) AND the unfiltered slice (no userId) so a
     // request the bridge could not route (boundUserId === null) still executes. The

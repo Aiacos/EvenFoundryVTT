@@ -89,11 +89,18 @@ export async function registerToolChannelRoutes(
   app: FastifyInstance,
   queue: ToolInvocationQueue,
 ): Promise<void> {
-  // GET /internal/tool-requests[?userId=<id>] — the module drains the invocations it
-  // should execute. With `?userId`, only invocations bound to that user are drained (the
-  // owning user's poll, ADR-0011 Amendment — a player executes their own actor's writes);
-  // without it, all pending are drained (unfiltered / GM-fallback).
-  app.get<{ Querystring: { userId?: string } }>(
+  // Version-beacon de-dup: remember the last module version reported per user so the poll
+  // (≈1/s) logs the build only on first-seen or change, not every tick. Module-scoped Map —
+  // process-lifetime, tiny (one entry per connected Foundry user).
+  const lastSeenModuleVersion = new Map<string, string>();
+
+  // GET /internal/tool-requests[?userId=<id>][&mv=<moduleVersion>] — the module drains the
+  // invocations it should execute. With `?userId`, only invocations bound to that user are
+  // drained (the owning user's poll, ADR-0011 Amendment — a player executes their own
+  // actor's writes); without it, all pending are drained (unfiltered / GM-fallback).
+  // `mv` is the module-version beacon (poller-supplied) — logged on change so an operator
+  // can see WHICH module build each connected client runs (stale cache vs current).
+  app.get<{ Querystring: { userId?: string; mv?: string } }>(
     '/internal/tool-requests',
     { config: { rateLimit: false } },
     async (request, reply) => {
@@ -101,6 +108,14 @@ export async function registerToolChannelRoutes(
         return reply.status(401).send({ error: 'unauthorized' });
       }
       const userId = request.query.userId;
+      const moduleVersion = request.query.mv;
+      if (typeof moduleVersion === 'string' && moduleVersion !== '') {
+        const key = userId ?? '(unfiltered)';
+        if (lastSeenModuleVersion.get(key) !== moduleVersion) {
+          lastSeenModuleVersion.set(key, moduleVersion);
+          request.log.info({ userId: key, moduleVersion }, 'EVF client module version beacon');
+        }
+      }
       return reply
         .status(200)
         .send({ requests: userId ? queue.drainPending(userId) : queue.drainPending() });

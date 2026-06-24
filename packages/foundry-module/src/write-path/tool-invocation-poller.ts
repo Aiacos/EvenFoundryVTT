@@ -69,6 +69,12 @@ export interface ToolInvocationPollerOptions {
   getBridgeUrl: () => string | null;
   /** Resolve the shared internal secret (same precedence as bridgeDeltaEmitter). `null` → skip. */
   getInternalSecret: () => string | null;
+  /**
+   * Resolve the running module version for the drain-GET version beacon (`&mv=<version>`).
+   * Optional — when absent (or it returns null) the `mv` param is simply omitted. Lets the
+   * bridge access log reveal which module build each connected client is actually running.
+   */
+  getModuleVersion?: () => string | null;
   /** Test seam: override the poll cadence (defaults to {@link TOOL_REQUEST_POLL_MS}). */
   pollIntervalMs?: number;
 }
@@ -144,11 +150,21 @@ async function drainSlice(
   userId: string | null,
   bridgeUrl: string,
   internalSecret: string,
+  moduleVersion: string | null = null,
 ): Promise<void> {
+  const params = new URLSearchParams();
+  if (userId !== null) {
+    params.set('userId', userId);
+  }
+  // Version beacon (`mv`): an UNVALIDATED extra query param the bridge route ignores, so it
+  // is visible in the bridge's request access log without any bridge-side change — reveals
+  // which module build this connected client is running (stale cache vs current).
+  if (moduleVersion !== null && moduleVersion !== '') {
+    params.set('mv', moduleVersion);
+  }
+  const qs = params.toString();
   const url =
-    userId === null
-      ? `${bridgeUrl}/internal/tool-requests`
-      : `${bridgeUrl}/internal/tool-requests?userId=${encodeURIComponent(userId)}`;
+    qs === '' ? `${bridgeUrl}/internal/tool-requests` : `${bridgeUrl}/internal/tool-requests?${qs}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${internalSecret}` },
     signal: AbortSignal.timeout(TOOL_POLL_FETCH_TIMEOUT_MS),
@@ -189,9 +205,10 @@ async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
     if (bridgeUrl === null || internalSecret === null) {
       return;
     }
+    const moduleVersion = opts.getModuleVersion?.() ?? null;
 
     // 1. Owner-scoped drain — this user's bearer-bound invocations.
-    await drainSlice(userId, bridgeUrl, internalSecret);
+    await drainSlice(userId, bridgeUrl, internalSecret, moduleVersion);
 
     // 2. GM-fallback drain — a GM also drains the UNFILTERED slice so requests the
     //    bridge could not route to a bound user (boundUserId === null, e.g. the bridge
@@ -201,7 +218,7 @@ async function pollOnce(opts: ToolInvocationPollerOptions): Promise<void> {
     //    registry) still enforces that the request's bearer OWNS the acting actor, so a
     //    GM executing here cannot act as an actor the bearer does not own (ADR-0014).
     if (game.user?.isGM === true) {
-      await drainSlice(null, bridgeUrl, internalSecret);
+      await drainSlice(null, bridgeUrl, internalSecret, moduleVersion);
     }
   } catch (err) {
     // Best-effort: an unreachable bridge / malformed body must not crash the session.
