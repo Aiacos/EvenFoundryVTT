@@ -117,8 +117,25 @@ describe('CanvasInventoryPanel — cursor + tap dispatch', () => {
     expect(req?.actorId).toBe('actor-shin');
     expect(req?.itemId).toBe('w1');
     expect(req?.name).toBe('Spada lunga');
-    // A weapon (non-consumable) needs an explicit target → boot opens the TargetPicker.
+    // A weapon opens the TargetPicker; itemType lets boot route it to weapon-attack.
     expect(req?.requiresTarget).toBe(true);
+    expect(req?.itemType).toBe('weapon');
+  });
+
+  it('non-weapon equipment does NOT open the picker (use-item ignores targets)', () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const handler = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(handler);
+    panel.onSnapshot(
+      makeSnapshot({
+        inventory: [{ id: 'e1', name: 'Scudo', type: 'equipment' }],
+      } as Partial<CharacterSnapshot>),
+    );
+    panel.onEvent({ kind: 'tap' });
+    const req = handler.mock.calls[0]?.[0];
+    expect(req?.itemId).toBe('e1');
+    expect(req?.requiresTarget).toBe(false);
+    expect(req?.itemType).toBe('equipment');
   });
 
   it('cursor follows scroll-down; tap dispatches the newly highlighted entry (consumable → no target)', () => {

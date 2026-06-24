@@ -1903,7 +1903,7 @@ export async function _bootEngineCore(
   // picker emits the canonical `tool.invoke` with `targets: [chosen]` on tap and pops
   // itself on tap/cancel via `onClose` (mirrors the QuickActionMenu pushOverlay wiring).
   const openTargetPicker = (
-    toolId: 'cast-spell' | 'use-item',
+    toolId: 'cast-spell' | 'weapon-attack' | 'use-item',
     callerArgs: Record<string, unknown>,
     actorId: string,
   ): void => {
@@ -1933,8 +1933,14 @@ export async function _bootEngineCore(
   const canvasItemDispatch = (req: unknown): void => {
     const r = req as ActionOptionsRequest;
     const callerArgs = { actor_id: r.actorId, item_id: r.itemId };
+    // Weapons route to `weapon-attack` (its MidiQOL branch forwards the picked target as
+    // `targetUuids`, so the attack actually hits + posts a card). `use-item` IGNORES
+    // `targets` (plain `activity.use`), so a weapon used via use-item never strikes the
+    // chosen token — only the audit card appears (the Vampiric-Bite-on-Karius symptom).
+    // Non-weapons that still ask for a target fall back to use-item (no attack activity).
     if (r.requiresTarget) {
-      openTargetPicker('use-item', callerArgs, r.actorId);
+      const itemToolId = r.itemType === 'weapon' ? 'weapon-attack' : 'use-item';
+      openTargetPicker(itemToolId, callerArgs, r.actorId);
       return;
     }
     const envelope = {

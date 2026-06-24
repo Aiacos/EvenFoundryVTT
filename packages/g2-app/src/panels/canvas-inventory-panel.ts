@@ -75,15 +75,18 @@ export default class CanvasInventoryPanel extends CanvasSelectableListPanel {
     if (item === undefined) {
       return null;
     }
-    // Mirror the glyph InventoryPanel heuristic (inventory-panel.ts): consumables
-    // self-target by default (potions, etc.); everything else needs an explicit target.
-    const requiresTarget = item.type !== 'consumable';
+    // Only WEAPONS open the target picker: the boot dispatch routes weapons to the
+    // `weapon-attack` tool, which forwards the picked target to MidiQOL (`targetUuids`)
+    // so the attack actually hits. `use-item` (everything else) IGNORES targets, so a
+    // picker for consumables/equipment would be pointless — they dispatch directly.
+    const requiresTarget = item.type === 'weapon';
     return {
       kind: 'item',
       name: item.name,
       actorId: snapshot.actorId,
       itemId: item.id,
       requiresTarget,
+      itemType: item.type,
     };
   }
 
