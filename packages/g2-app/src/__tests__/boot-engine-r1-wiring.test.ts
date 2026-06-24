@@ -122,8 +122,8 @@ vi.mock('../engine/r1-event-source.js', () => ({
   },
 }));
 
-vi.mock('../panels/quick-action-overscroll-dispatcher.js', () => ({
-  attachQuickActionOverscroll: (...args: unknown[]): (() => void) => {
+vi.mock('../panels/quick-action-tap-dispatcher.js', () => ({
+  attachQuickActionTap: (...args: unknown[]): (() => void) => {
     overscrollRecord.callCount++;
     overscrollRecord.callArgs.push(args);
     return overscrollRecord.unsubSpy as unknown as () => void;

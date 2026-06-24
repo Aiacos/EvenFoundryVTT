@@ -52,9 +52,9 @@ licenses, add `FOUNDRY_LICENSE_KEY=...` to `.env`.)
 1. **Game Settings → Configure Settings → EvenFoundryVTT**: set the **Bridge URL** to
    `http://<your-host-ip>:8910` (use the LAN IP, not `localhost`, if the phone must reach it),
    and the **internal secret** to the **same `EVF_INTERNAL_SECRET`** you put in `deploy/.env`.
-2. **Game Settings → EvenFoundryVTT → "Pair a G2 device"**. This generates a
-   **24h bearer token**; the PairModal shows the bridge URL + token as copyable text
-   (token masked by default — click **Reveal**/**Copy**).
+2. **Game Settings → EvenFoundryVTT → "Pair a G2 device"** (available to all users, not just the
+   GM). This generates a **non-expiring (campaign-long) bearer token**; the PairModal shows the
+   bridge URL + token as copyable text (token masked by default — click **Reveal**/**Copy**).
 
 ## 4. Run the wizard end-to-end
 
@@ -68,8 +68,10 @@ In the phone wizard (or the simulator / a browser at `http://<host>:5173/wizard/
 
 ## Troubleshooting
 
-- **Step 2 "invalid / 401"** — token wrong/expired, or the EvenFoundryVTT module isn't enabled /
-  the GM world isn't open (the bridge can't validate without the module's socketlib link). Re-pair.
+- **Step 2 "invalid / 401"** — token wrong or revoked (tokens are non-expiring, so this is not a TTL
+  expiry), or the EvenFoundryVTT module isn't enabled / the GM world isn't open (the bridge can't
+  validate without the module's socketlib link). Re-pair: copy a fresh token from the PairModal and
+  paste it.
 - **Step 2 "unreachable"** — the phone/simulator can't reach `http://<host>:8910`. Use the LAN IP,
   check the firewall, confirm `curl http://<host>:8910/healthz` works from the device's network.
 - **Step 3 empty** — no player-owned characters in the world; create one (§2.7).

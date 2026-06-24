@@ -111,10 +111,8 @@ describe('castShieldHandler', () => {
     const { castShieldHandler } = await import('./cast-shield.js');
     const result = await castShieldHandler.handle({ actor_id: actor.id, slot_level: 1 });
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-42' } });
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell1' },
-    });
+    // Regression (260621): slot override in usage arg, { configure: false } in dialog arg.
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell1' } }, { configure: false });
   });
 
   // CSH-04: no_gm_connected

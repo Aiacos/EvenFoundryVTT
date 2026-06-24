@@ -20,7 +20,7 @@ EVF action surface is large: cast spell, weapon attack, use item, skill check, m
 
 - INV-2 single source of truth (Specs §0.1) — action surface defined once
 - V2 unblocking (Specs §5.7.2) — MCP tool list mirrors bridge registry 1:1, zero re-impl
-- Single auth gate — bearer 24h validates tool calls regardless of source (gesture or MCP)
+- Single auth gate — the non-expiring (campaign-long) bearer validates tool calls regardless of source (gesture or MCP)
 - Discoverability — `/v1/tools` endpoint enumerates the registry (Phase 3)
 - Type safety — Zod schemas double as JSON Schema for MCP wire (research §5.7.2 — "developer scrive Zod, il client riceve JSON Schema standard")
 

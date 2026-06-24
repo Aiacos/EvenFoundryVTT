@@ -37,7 +37,7 @@ Expected time: < 15 minutes for software smoke; SC-12-01 hardware loop requires 
 
 ```bash
 export DEEPGRAM_API_KEY=<your-deepgram-key>
-export EVF_BEARER=<your-24h-bearer>          # from Phase 2 QR-pairing flow
+export EVF_BEARER=<your-bearer>              # non-expiring token from the Phase 2 self-service copy-and-paste pairing flow
 pnpm --filter @evf/bridge dev
 ```
 

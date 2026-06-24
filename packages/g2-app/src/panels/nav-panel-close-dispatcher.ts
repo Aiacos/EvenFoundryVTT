@@ -14,7 +14,7 @@
  * the gesture-bus-to-router bridge. Nav panels have a synchronous no-op `double-tap`
  * branch in their `onEvent`; this dispatcher calls `popOverlay` once. No double-action.
  *
- * The pattern is identical to `quick-action-overscroll-dispatcher` (ADR-0012 D-2) and
+ * The pattern is identical to `quick-action-tap-dispatcher` (ADR-0012 Amd 2) and
  * `root-exit-dispatcher` (ADR-0012 D-4). Documented here per the INV-5 rule.
  *
  * # Discrimination between nav panels and self-managing panels
@@ -48,7 +48,7 @@
  *
  * @see docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md (D-3)
  * @see packages/g2-app/src/panels/root-exit-dispatcher.ts (D-4 — root double-tap)
- * @see packages/g2-app/src/panels/quick-action-overscroll-dispatcher.ts (D-2 — over-scroll)
+ * @see packages/g2-app/src/panels/quick-action-tap-dispatcher.ts (ADR-0012 Amd 2 — tap opens menu)
  * @see docs/architecture/INVARIANTS.md §5 INV-5 (Gesture Determinism)
  */
 

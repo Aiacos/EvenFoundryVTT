@@ -667,6 +667,9 @@ export const HUD_WIDTH_BUDGETS = {
   /** [I] Inventory panel menu item label. */
   quick_item_inventory: { it: 'Inventario', en: 'Inventory', de: 'Inventar', max: 22 },
 
+  /** [K] Skills panel menu item label (Phase 8 write channel — direct skill-check roll). */
+  quick_item_skills: { it: 'Abilità', en: 'Skills', de: 'Fertigkeiten', max: 22 },
+
   /** [A] Action stub menu item label (Phase 7 wires the real [A] panel). */
   quick_item_action: { it: 'Azione', en: 'Action', de: 'Aktion', max: 22 },
 

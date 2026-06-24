@@ -105,11 +105,12 @@ describe('castSpellHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-42' } });
-    // Plan 09-04: slot_level=3 → spell.slot override included (CS-SLOT-02)
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell3' },
-    });
+    // Plan 09-04: slot_level=3 → spell.slot override included (CS-SLOT-02).
+    // Regression (260621): the slot override is the FIRST (usage) arg and
+    // `{ configure: false }` is the SECOND (dialog) arg — dnd5e 5.x
+    // `use(usage, dialog, message)`. Passing configure in the usage arg left the
+    // usage dialog enabled, hanging every cast until the bridge's 10s foundry_timeout.
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell3' } }, { configure: false });
   });
 
   it('returns actor_not_found when actor is missing', async () => {
@@ -423,8 +424,8 @@ describe('castSpellHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cantrip' } });
-    // No spell.slot override for cantrips
-    expect(activity.use).toHaveBeenCalledWith({ configure: false });
+    // No spell.slot override for cantrips → empty usage arg; configure in the dialog arg.
+    expect(activity.use).toHaveBeenCalledWith({}, { configure: false });
   });
 
   /**
@@ -446,10 +447,7 @@ describe('castSpellHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-3rd' } });
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell3' },
-    });
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell3' } }, { configure: false });
   });
 
   /**
@@ -471,10 +469,7 @@ describe('castSpellHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-5th' } });
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell5' },
-    });
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell5' } }, { configure: false });
   });
 
   /**
@@ -656,7 +651,7 @@ describe('castSpellHandler', () => {
       });
 
       expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cv1' } });
-      expect(activity.use).toHaveBeenCalledWith({ configure: false });
+      expect(activity.use).toHaveBeenCalledWith({}, { configure: false });
       expect(userTargets.size).toBe(0);
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const msg = String(warnSpy.mock.calls[0]?.[0]);
@@ -685,10 +680,10 @@ describe('castSpellHandler', () => {
       });
 
       expect(result).toEqual({ success: true, data: { chatCardId: 'cm-cb1' } });
-      expect(activity.use).toHaveBeenCalledWith({
-        configure: false,
-        spell: { slot: 'spell3' },
-      });
+      expect(activity.use).toHaveBeenCalledWith(
+        { spell: { slot: 'spell3' } },
+        { configure: false },
+      );
       expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();

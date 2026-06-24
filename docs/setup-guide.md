@@ -132,25 +132,30 @@ Even Realities App in Step 4.
 3. Enter the **Plugin URL**: the HTTPS URL of your plugin host (Step 3).
 4. In the plugin's **Settings** UI (loaded from the WebView):
    - **Bridge URL**: your bridge's HTTPS/WSS URL (e.g. `https://bridge.example.com:8910`)
-   - Leave the **Bearer token** field empty for now — it will be filled by the QR-pairing in Step 5.
+   - Leave the **Bearer token** field empty for now — you will paste it during pairing in Step 5.
 5. Save. The app will fetch the plugin and display the EvenFoundryVTT boot splash on the G2.
 
 ---
 
-## Step 5: Pair G2 → Foundry (QR pairing)
+## Step 5: Pair G2 → Foundry (self-service, copy-and-paste)
 
-The DM performs the pairing once per device:
+Pairing is **self-service** — every user pairs their own device, no QR scan (the Even Hub
+platform exposes no camera/QR-scan API to apps). Each user does this once per device:
 
-1. In Foundry (as GM), open **Settings** → **Module Settings** → **EvenFoundryVTT** →
-   **"Pair a G2 device"**.
-2. Foundry displays a **QR code** containing a 24-hour bearer token (Specs.md §11.5.4).
-3. On the phone, open the Even Realities App → EvenFoundryVTT plugin settings → **"Scan pairing QR"**.
-4. Scan the QR code. The bearer token is stored securely on the phone.
+1. In Foundry, open **Settings** → **Module Settings** → **EvenFoundryVTT** →
+   **"Pair a G2 device"** (available to all users, not just the GM — a non-GM player can pair
+   standalone without a GM online).
+2. Foundry shows a **non-expiring (campaign-long) bearer token** as **copyable text**
+   (Specs.md §11.5.4). Click **Reveal**/**Copy**.
+3. On the phone, open the Even Realities App → EvenFoundryVTT plugin wizard and **paste** the
+   token into the bearer-token field.
+4. Save. The token is stored securely on the phone.
 5. The G2 boot splash should advance past `[ ⟳ ] Bridge` to `[ ✓ ] Foundry sync` and then load
    your character's HUD.
 
-> **Token expiry:** the bearer token is valid for **24 hours**. Re-pair via Steps 4–5 after expiry
-> or after using the revoke procedure in `docs/runbook.md §Revoke a bearer token`.
+> **Token lifetime:** the bearer token is **non-expiring (campaign-long)** — it never times out
+> mid-session. You only need to re-pair (re-copy and re-paste) if you explicitly revoke the
+> token via the procedure in `docs/runbook.md §Revoke a bearer token`.
 
 ---
 
@@ -174,4 +179,4 @@ The DM performs the pairing once per device:
 - `docs/firmware-compatibility.md` — Even Hub SDK and hardware compatibility matrix.
 - `Specs.md §3` — hardware constraints canonical (G2 display, R1 ring, BLE, audio).
 - `Specs.md §3.7` — 3-hop deployment architecture.
-- `Specs.md §11.5.4` — bearer auth + QR pairing protocol.
+- `Specs.md §11.5.4` — bearer auth + self-service copy-and-paste pairing protocol.

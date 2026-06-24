@@ -241,6 +241,39 @@ export class WsReconnectController {
   }
 
   /**
+   * Resolve once `ws` reaches OPEN; reject if it errors or closes before opening.
+   *
+   * Mirrors boot-engine-core's `awaitWsOpen` so the reconnect handshake never runs
+   * against a still-CONNECTING socket (whose `.send()` would throw). Static + pure so
+   * it has no dependency on instance state; a rejection here is caught by
+   * {@link _attemptReconnect} and converted into a normal backoff retry.
+   */
+  private static _awaitOpen(ws: WebSocket): Promise<void> {
+    // WebSocket.OPEN === 1 in browsers + the Node `ws` polyfill.
+    if (ws.readyState === 1) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = (): void => {
+        ws.removeEventListener('open', onOpen as EventListener);
+        ws.removeEventListener('error', onFail as EventListener);
+        ws.removeEventListener('close', onFail as EventListener);
+      };
+      const onOpen = (): void => {
+        cleanup();
+        resolve();
+      };
+      const onFail = (ev: Event): void => {
+        cleanup();
+        reject(new Error(`[ws-reconnect] socket ${String(ev.type)} before open`));
+      };
+      ws.addEventListener('open', onOpen as EventListener);
+      ws.addEventListener('error', onFail as EventListener);
+      ws.addEventListener('close', onFail as EventListener);
+    });
+  }
+
+  /**
    * Attempt to reconnect: create new WS + run handshake + send client_resume.
    *
    * On success: sends client_resume, attaches resume response listener.
@@ -255,6 +288,16 @@ export class WsReconnectController {
     const newWs = this.opts.wsFactory(this.opts.url);
 
     try {
+      // A freshly-created reconnect socket starts in CONNECTING. performHandshake
+      // (capability-handshake.ts) REQUIRES an OPEN socket — it `.send()`s the handshake
+      // immediately, which THROWS on a CONNECTING socket. Without awaiting 'open' first
+      // the handshake rejects every attempt, the bridge idle-times-out the connection
+      // (close 4400), the backoff loops forever, and the outbound WsSender is never
+      // swapped — so after ANY bridge restart the glasses tap silently stops reaching
+      // Foundry. Boot already gates on `awaitWsOpen`; the reconnect path must too.
+      await WsReconnectController._awaitOpen(newWs);
+      if (this.disposed) return;
+
       const handshakeResult = await this.opts.performHandshake(newWs, this.opts.sessionId);
 
       if (this.disposed) return;

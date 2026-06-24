@@ -51,6 +51,7 @@ export const TOOL_ID_SCHEMA = z.enum([
   'drop-concentration',
   'place-template',
   'confirm-template-placement', // Plan 07-03 template confirmation flow (CR-05)
+  'skill-check', // Phase 8 write channel — direct skill/ability check roll (ACT-01)
 ]);
 
 /**

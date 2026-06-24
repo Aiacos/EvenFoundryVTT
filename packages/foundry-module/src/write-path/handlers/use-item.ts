@@ -2,7 +2,8 @@
  * useItemHandler — Phase 7 Plan 02 (Wave 1) write-path handler.
  *
  * Resolves an actor + item + first activity, then calls
- * `activity.use({ configure: false })` via the dnd5e 5.x Activity API.
+ * `activity.use({}, { configure: false })` via the dnd5e 5.x Activity API — the
+ * dialog-suppression flag is the SECOND (dialog) arg of `use(usage, dialog, message)`.
  *
  * Use-item covers consumables and other activated items (not spells).
  * Activity lookup: `item.system.activities?.contents[0]` — first activity
@@ -79,9 +80,17 @@ export const useItemHandler: ToolHandler<(typeof UseItemInputSchema)['_input']> 
       return { success: false, error: 'no_activity' };
     }
 
-    // Step 4: invoke activity.use() — wrapped in try/catch for error normalisation
+    // Step 4: invoke activity.use() — wrapped in try/catch for error normalisation.
+    //
+    // dnd5e 5.x signature is `use(usage, dialog, message)` and the dialog-suppression
+    // flag lives in the SECOND (dialog) argument — `dialogConfig.configure` defaults to
+    // true (INV-2: foundryvtt/dnd5e module/documents/activity/mixin.mjs). Passing
+    // `{ configure: false }` as the FIRST (usage) arg leaves the dialog enabled, so
+    // `activity.use` awaits a configuration dialog that no one can answer from the
+    // glasses → the request hangs until the bridge's 10s foundry_timeout. The flag MUST
+    // be the dialog arg, mirroring the working skill-check handler's `rollSkill(cfg, { configure: false })`.
     try {
-      const result = await activity.use({ configure: false });
+      const result = await activity.use({}, { configure: false });
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {

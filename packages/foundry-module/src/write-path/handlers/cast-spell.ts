@@ -9,8 +9,10 @@
  *   { midiOptions: { targetUuids, ...slotOverride } }, { configure:false },
  *   { create:true })` — forwards `args.targets` to the full workflow WITHOUT
  *   mutating `game.user.targets` (research §3-6). cast-spell has NO advantage field.
- * - **MidiQOL ABSENT**: behavior is EXACTLY today's `activity.use({ configure:
- *   false, ...slotOverride })`. Vanilla dnd5e reads ONLY `game.user.targets`
+ * - **MidiQOL ABSENT**: `activity.use({ ...slotOverride }, { configure: false })` —
+ *   dnd5e 5.x `use(usage, dialog, message)`, so the slot override is the usage arg and
+ *   the dialog-suppression flag is the dialog arg (its default is `true`; putting it in
+ *   the usage arg leaves the dialog enabled and hangs the cast). Vanilla dnd5e reads ONLY `game.user.targets`
  *   (the GM here) — mutating it is the documented v13 per-user pitfall (research
  *   §3), so when targets were requested we emit a SINGLE honest `console.warn`
  *   that auto-application requires MidiQOL and NEVER mutate `game.user.targets`.
@@ -49,6 +51,7 @@
 
 import { CastSpellInputSchema, CONC_CONFLICT_TYPE } from '@evf/shared-protocol';
 import { detectActiveConcentration } from '../concentration-detector.js';
+import { traceCurrent } from '../debug-trace.js';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── Injected emitter ─────────────────────────────────────────────────────────
@@ -206,12 +209,16 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       //   ONLY game.user.targets (the GM here) — mutating it is the documented
       //   v13 per-user pitfall (research §3), so we WARN once and NEVER mutate.
       if (isMidiQolActive()) {
+        // Trace beacon: a frozen `…:midi.use:pending` in the bridge log = MidiQOL's
+        // completeActivityUse never resolved (its own target/usage prompt is awaiting input).
+        traceCurrent('cast-spell:midi.completeActivityUse:pending');
         const result = await MidiQOL!.completeActivityUse(
           activity,
           { midiOptions: { targetUuids: args.targets, ...slotOverride } },
           { configure: false },
           { create: true },
         );
+        traceCurrent('cast-spell:midi.completeActivityUse:returned');
         return { success: true, data: { chatCardId: extractChatCardId(result) } };
       }
       if (args.targets.length > 0) {
@@ -220,7 +227,18 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
             'and is not active — targets were not applied to this cast.',
         );
       }
-      const result = await activity.use({ configure: false, ...slotOverride });
+      // dnd5e 5.x signature is `use(usage, dialog, message)`: the slot/scaling override
+      // belongs in the FIRST (usage) arg, and the dialog-suppression flag belongs in the
+      // SECOND (dialog) arg — `dialogConfig.configure` defaults to true (INV-2:
+      // foundryvtt/dnd5e module/documents/activity/mixin.mjs, `if (dialogConfig.configure
+      // && activity._requiresConfigurationDialog(...))`). Passing `configure: false` inside
+      // the usage object left the dialog enabled, so every spell cast awaited a usage
+      // dialog no one could answer from the glasses → 10s foundry_timeout hang.
+      // Trace beacon: a frozen `…:activity.use:pending` in the bridge log = vanilla dnd5e
+      // `activity.use` never resolved (a usage/scaling/consume prompt is awaiting input).
+      traceCurrent('cast-spell:activity.use:pending');
+      const result = await activity.use({ ...slotOverride }, { configure: false });
+      traceCurrent('cast-spell:activity.use:returned');
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {

@@ -32,6 +32,7 @@ import { dropConcentrationHandler } from './drop-concentration.js';
 import { moveTokenHandler } from './move-token.js';
 import { opportunityAttackHandler } from './opportunity-attack.js';
 import { confirmTemplatePlacementHandler, placeTemplateHandler } from './place-template.js';
+import { skillCheckHandler } from './skill-check.js';
 import { useItemHandler } from './use-item.js';
 import { weaponAttackHandler } from './weapon-attack.js';
 
@@ -69,3 +70,9 @@ registerToolHandler('drop-concentration', dropConcentrationHandler);
 registerToolHandler('cast-shield', castShieldHandler);
 registerToolHandler('cast-counterspell', castCounterspellHandler);
 registerToolHandler('opportunity-attack', opportunityAttackHandler);
+
+// ─── Phase 8 write channel (ACT-01) ──────────────────────────────────────────
+// skill-check: resolves actor + calls actor.rollSkill({ skill, advantage, disadvantage }).
+// Reached by the reverse-channel poller via dispatchToolAuthorized (NOT socketlib —
+// the socketlib socket.register count stays 17, no new handler).
+registerToolHandler('skill-check', skillCheckHandler);

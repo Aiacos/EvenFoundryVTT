@@ -58,6 +58,29 @@ export function handleBearerRegistryEnvelope(
     return false;
   }
 
+  // Resilience (write-channel BUG): a self-minted bearer MAY carry an empty `alias`
+  // (self-pair-ingestion accepts `alias: ''`), but BearerRegistryEntrySchema requires
+  // `alias` min(1). Because `bearers` is an array, ONE empty-alias entry fails the
+  // WHOLE snapshot's safeParse — silently dropping the entire registry push, so the
+  // bridge can never resolve any bearer's bound user (tool.invoke routing breaks for
+  // every non-GM player). The alias is a display-only label with NO security role
+  // (authz uses token + userId), so coerce an empty/missing alias to a placeholder
+  // BEFORE validation rather than let one unlabeled bearer strand routing for all.
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    Array.isArray((payload as { bearers?: unknown }).bearers)
+  ) {
+    for (const entry of (payload as { bearers: unknown[] }).bearers) {
+      if (entry !== null && typeof entry === 'object') {
+        const e = entry as { alias?: unknown };
+        if (typeof e.alias !== 'string' || e.alias.length === 0) {
+          e.alias = 'G2';
+        }
+      }
+    }
+  }
+
   // T-RFP-01: Validate before writing to cache — prevents cache poisoning.
   const parsed = BearerRegistrySnapshotSchema.safeParse(payload);
   if (!parsed.success) {

@@ -232,7 +232,9 @@ Click **Save**. The module now knows how to reach your bridge.
 
 ### Pair the player
 
-The module registers a 24-hour bearer token for the player:
+The module registers a non-expiring (campaign-long) bearer token for the player. Pairing is
+self-service — every user can pair their own device (not just the GM), and a non-GM player can
+pair standalone without a GM online:
 
 1. Open the **EVF Pair** dialog (Settings → EvenFoundryVTT → Pair).
 2. Copy the displayed bearer token.

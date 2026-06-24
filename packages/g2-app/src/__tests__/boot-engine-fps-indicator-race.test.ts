@@ -46,8 +46,8 @@ interface OverscrollRecord {
 }
 const overscrollRecord: OverscrollRecord = { callArgs: [] };
 
-vi.mock('../panels/quick-action-overscroll-dispatcher.js', () => ({
-  attachQuickActionOverscroll: (...args: unknown[]): (() => void) => {
+vi.mock('../panels/quick-action-tap-dispatcher.js', () => ({
+  attachQuickActionTap: (...args: unknown[]): (() => void) => {
     overscrollRecord.callArgs.push(args);
     return () => {};
   },

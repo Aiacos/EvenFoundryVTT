@@ -4,6 +4,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #
 # Overrides:
+#   - build from source (base compose pulls the GHCR image for prod auto-deploy;
+#     this override restores the local build so `--build` compiles your working tree)
 #   - LOG_LEVEL=debug for verbose bridge logging
 #   - EVF_PLUGIN_HOST_URL fallback for local Vite dev server (port 5173)
 #   - NODE_ENV kept as production to exercise the real startup guard path
@@ -11,6 +13,11 @@
 
 services:
   bridge:
+    # Restore the source build that the base compose drops in favour of the GHCR image.
+    # `--build` then compiles the local tree and tags it as the base `image:` name.
+    build:
+      context: ..
+      dockerfile: deploy/bridge.Dockerfile
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=debug

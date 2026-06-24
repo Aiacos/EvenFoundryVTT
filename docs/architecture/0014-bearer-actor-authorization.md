@@ -131,3 +131,68 @@ Both paths fail closed (invalid/unknown bearer → denied).
 |------|-------------|
 | Foundry write dispatch (`makeDispatchAdapter`) | acting `args.actor_id ∈ authorizedActorIds(userId)` → else `not_authorized`, not executed |
 | Bridge WS `tool.invoke` | acting `args.actor_id ∈ validatedToken.authorizedActorIds` → else `not_authorized` fast-reject |
+
+## Amendment 2 — self-service standalone pairing + non-expiring tokens (2026-06-21)
+
+Field testing surfaced two problems with the pairing model above. Both are resolved here;
+this amendment supersedes the "user selector" mechanism in §1 and the 24h TTL.
+
+### 2a. Every user pairs their OWN device — no GM user-selector
+
+The §1 "PairModal gains a user selector (the GM pairs a device to any user)" mechanism is
+**retired**. Instead pairing is **self-service**: the "Pair a G2 device" entry is available
+to ALL users, and each user pairs a device bound to **their own** `game.user.id`. There is
+no user picker; you can only pair yourself.
+
+The binding stays authenticated by Foundry's permission model, on TWO storage paths by
+permission:
+
+- **GM** → `generateBearer(...)` writes the bearer **directly** into the world-scope
+  `bearerRegistry` (a GM may write world settings) → live immediately.
+- **Non-GM player** → cannot write the world registry, so the client-minted token is
+  written as a `pendingPair` flag on the player's **own** `User` document. Only that user
+  can write their own flags, so the token→user binding is authenticated by **document
+  ownership** — as trustworthy as a GM-written registry entry.
+
+**Self-service standalone (the key fix):** a `pendingPair` flag is a **first-class bearer**,
+not a request awaiting GM materialisation. `validateBearer` (Foundry-side authz) and
+`readBearerRegistry` (the bridge push) BOTH resolve flag tokens (`listPendingFlagBearers`,
+deduped registry-first), and the module re-emits to the bridge on `updateSetting`
+(registry change) and `updateUser` (flag change). So a non-GM player pairs and rolls
+**without any GM client online** — the previous flag→GM-ingestion step is now an optional
+upgrade to persistent storage, not a requirement. The security argument is unchanged: a
+player can only write their own flag → can only bind tokens to themselves → the per-actor
+authz (this ADR) still confines them to their own owned actors. Revoking a player's device
+deletes their own flag (`unsetFlag`); GM-written registry bearers are revoked via
+`revokeBearer`.
+
+### 2b. Non-expiring, campaign-long tokens (no 24h TTL)
+
+Tokens are minted **without expiry** (`expiresAt = NO_EXPIRY_MS`, a far-future sentinel)
+so a paired device stays valid for the whole campaign — the 24h TTL expired devices
+mid-session for no benefit in the homelab single-tenant trust model. Consequences:
+
+- Every `expiresAt > now` validation/push check treats them as never-expiring with no
+  special-casing; the sentinel is a valid non-negative integer so `BearerRegistryEntrySchema`
+  (`expiresAt: z.number().int().min(0)`) is unchanged.
+- **Bearer rotation is disabled for non-expiring tokens** (`scheduleBearerRotation`
+  short-circuits when `expiresAt >= NO_EXPIRY_MS`): rotating would change the token the
+  player already pasted. Finite legacy tokens still rotate.
+- The PairModal shows "Never expires (campaign-long)" instead of a countdown.
+
+Revocation (delete the flag / `revokeBearer`) remains the way to invalidate a device.
+
+### 2c. Discovered hazards fixed alongside (field-test, 2026-06-20/21)
+
+- **Empty-alias registry poisoning:** `BearerRegistryEntrySchema` requires `alias` min(1);
+  a self-minted bearer could carry `alias: ''`, and because `bearers` is an array, ONE
+  empty-alias entry failed the WHOLE snapshot's `safeParse` — the bridge silently dropped
+  the entire registry push, so `boundUserId` never resolved and writes timed out. Fixed by
+  coercing an empty alias to a placeholder on both the emit (`readBearerRegistry`) and the
+  bridge handler.
+- **WS reconnect stranded the outbound channel:** the g2-app reconnect ran the capability
+  handshake on a still-`CONNECTING` socket (the send threw), so after any drop the
+  `WsSender` never swapped to a live socket and `tool.invoke` writes silently stopped.
+  Fixed by awaiting the socket `open` before the reconnect handshake.
+- **Headless skill-roll dialog:** `skill-check` now passes `dialog: { configure: false }`
+  so a poller-driven roll fast-forwards instead of blocking on an un-confirmable dialog.

@@ -35,7 +35,7 @@
 import type { BearerRegistrySnapshot } from '@evf/shared-protocol';
 import { R1_BEARERS_AVAILABLE_TYPE } from '@evf/shared-protocol';
 import { authorizedActorIdsForUser } from '../pair/actor-authorization.js';
-import { listBearers } from '../pair/bearer-registry.js';
+import { listBearers, listPendingFlagBearers } from '../pair/bearer-registry.js';
 
 // ─── readBearerRegistry ────────────────────────────────────────────────────────
 
@@ -56,15 +56,31 @@ import { listBearers } from '../pair/bearer-registry.js';
 export function readBearerRegistry(): BearerRegistrySnapshot {
   try {
     const now = Date.now();
-    // listBearers() returns non-revoked entries (revokedAt === null), newest-first.
-    const rawBearers = listBearers();
+    // listBearers() returns non-revoked registry entries (revokedAt === null).
+    const registryBearers = listBearers();
+    // Self-service standalone: also push each user's un-ingested pendingPair flag as a
+    // bearer so a non-GM player's token routes/authorizes at the bridge WITHOUT a GM
+    // client materialising it. Dedupe by token, registry-first (an ingested flag's
+    // registry copy wins over the still-present flag during the brief overlap).
+    const seen = new Set(registryBearers.map((b) => b.token));
+    const rawBearers = [
+      ...registryBearers,
+      ...listPendingFlagBearers().filter((b) => !seen.has(b.token)),
+    ];
 
     // Filter expired entries — only push tokens that are still valid.
     const bearers = rawBearers
       .filter((entry) => entry.expiresAt > now)
       .map((entry) => ({
         token: entry.token,
-        alias: entry.alias,
+        // Never emit an empty alias: a self-minted bearer MAY carry `alias: ''`
+        // (self-pair-ingestion accepts it), but the bridge's BearerRegistryEntrySchema
+        // requires `alias` min(1). Because `bearers` is an array, ONE empty-alias entry
+        // fails the WHOLE snapshot's safeParse and the bridge silently drops the entire
+        // registry push — so it can never resolve any bearer's bound user and tool.invoke
+        // routing breaks for every non-GM player. The alias is a display-only label, so
+        // fall back to a placeholder rather than poison the push.
+        alias: entry.alias && entry.alias.length > 0 ? entry.alias : 'G2',
         expiresAt: entry.expiresAt,
         worldId: entry.worldId,
         // ADR-0014: carry the bound Foundry User id so the bridge can derive the

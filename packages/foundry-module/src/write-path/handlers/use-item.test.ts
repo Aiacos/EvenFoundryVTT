@@ -94,7 +94,10 @@ describe('useItemHandler', () => {
     });
 
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-use-7' } });
-    expect(activity.use).toHaveBeenCalledWith({ configure: false });
+    // Regression (260621): configure-false MUST be the SECOND (dialog) arg of dnd5e 5.x
+    // `use(usage, dialog, message)` — in the usage arg it left the usage dialog enabled,
+    // hanging every activity use until the bridge's 10s foundry_timeout.
+    expect(activity.use).toHaveBeenCalledWith({}, { configure: false });
   });
 
   it('returns actor_not_found when actor is missing', async () => {

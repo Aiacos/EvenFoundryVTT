@@ -550,17 +550,24 @@ interface FoundryActivity {
    * Resolves when the workflow completes (chat card created, rolls resolved).
    * May reject with a user-facing error string or "No connected GM" signal.
    *
-   * `configure: false` skips the configuration dialog — required for programmatic
-   * invocation from the bridge (no user-facing dialog in glasses UI).
+   * dnd5e 5.x signature is `use(usage, dialog, message)` (INV-2: foundryvtt/dnd5e
+   * `module/documents/activity/mixin.mjs`). The slot/consume overrides go in `usage`;
+   * the dialog-suppression flag `configure: false` MUST go in `dialog` — its default is
+   * `true`, so passing it in `usage` leaves the configuration dialog enabled and the call
+   * hangs awaiting a dialog the glasses cannot answer (bridge 10s `foundry_timeout`).
    *
-   * @param config - Optional use configuration
-   * @param config.configure - Skip configuration dialog (always false for EVF)
-   * @param config.consume - Optional resource consumption overrides
+   * @param usage   - Usage config (slot/scaling/consume overrides)
+   * @param dialog  - Dialog config; `{ configure: false }` to skip the config dialog (EVF default)
+   * @param message - Chat-message config (e.g. `flags`)
    * @returns Resolves with a ChatMessage-like result object (id = chat card ID)
    *
    * @see .planning/phases/07-foundry-module-write-path/07-RESEARCH.md Pattern 1
    */
-  use(config?: { configure?: boolean; consume?: { action?: boolean } }): Promise<unknown>;
+  use(
+    usage?: { spell?: { slot?: string }; consume?: { action?: boolean } },
+    dialog?: { configure?: boolean },
+    message?: { flags?: Record<string, unknown> },
+  ): Promise<unknown>;
 }
 
 /**
@@ -768,6 +775,35 @@ interface FoundryActor {
    * @see docs/architecture/0014-bearer-actor-authorization.md
    */
   testUserPermission(user: FoundryUser, permission: string | number): boolean;
+  /**
+   * Roll a skill (or ability-keyed) check (dnd5e 5.x `Actor5e#rollSkill`).
+   *
+   * dnd5e 4.x/5.x config-object form: `rollSkill(config, dialog?, message?)`, where
+   * `config.skill` is the 3-letter skill key and `config.advantage` /
+   * `config.disadvantage` top-level booleans select the roll mode. Returns the rolled
+   * `D20Roll[]` (or `null` if a suppressed dialog is cancelled). Optional in this
+   * minimal type because non-character actors / older systems may not expose it; the
+   * skill-check handler guards with `actor.rollSkill?.(...)`.
+   *
+   * @param config - `{ skill: string, advantage?: boolean, disadvantage?: boolean, ... }`.
+   * @returns A promise resolving to the roll result (system-specific shape).
+   * @see https://github.com/foundryvtt/dnd5e — Actor5e#rollSkill (5.3.x)
+   * @see packages/foundry-module/src/write-path/handlers/skill-check.ts
+   */
+  rollSkill?(
+    config: {
+      skill: string;
+      advantage?: boolean;
+      disadvantage?: boolean;
+    },
+    /**
+     * Dialog config (dnd5e 5.x 2nd positional arg). `{ configure: false }`
+     * fast-forwards the roll, skipping the roll-configuration dialog — required
+     * when the roll is driven headlessly by the tool-invocation poller (no human
+     * at this client to confirm the dialog).
+     */
+    dialog?: { configure?: boolean },
+  ): Promise<unknown>;
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────
@@ -796,6 +832,12 @@ interface FoundryCombatant {
   actor: FoundryActor | null;
   /** Initiative roll result (null if not yet rolled). */
   initiative: number | null;
+  /**
+   * The combatant's TokenDocument (null if the combat has no token for it).
+   * `token.uuid` is the canonical Foundry token UUID (e.g. `Scene.X.Token.Y`) that
+   * MidiQOL's `midiOptions.targetUuids` expects — the combatant `id` is NOT a token UUID.
+   */
+  token: { readonly uuid: string } | null;
 }
 
 // ─── Foundry Combat (minimal read shape) ──────────────────────────────────────
@@ -937,6 +979,13 @@ interface FoundryUser {
    * opt-in so the stream leader can read it. Canonical Foundry `Document#setFlag`.
    */
   setFlag(scope: string, key: string, value: unknown): Promise<unknown>;
+  /**
+   * Remove a module flag from this User document. A user may unset flags on their OWN
+   * User (default OWNER permission) — used by the PairModal so a non-GM player can
+   * REVOKE their own self-service `pendingPair` device. Canonical Foundry
+   * `Document#unsetFlag`.
+   */
+  unsetFlag(scope: string, key: string): Promise<unknown>;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
@@ -1245,7 +1294,7 @@ declare const game: {
    * @see packages/foundry-module/src/write-path/handlers/cast-spell.ts
    * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.ModuleManagement.html
    */
-  modules: { get(id: string): { active: boolean } | undefined };
+  modules: { get(id: string): { active: boolean; version?: string } | undefined };
   /**
    * The active world descriptor. `world.id` is the world identifier provisioned to the
    * bridge alongside a bearer (PairModal reads it at render time on the no-arg

@@ -23,7 +23,14 @@ cp .env.example .env
 
 ```bash
 cd deploy/
-docker compose up -d --build
+docker compose up -d        # pulls ghcr.io/aiacos/evf-bridge:latest + starts evf-watchtower
+```
+
+The bridge runs the image the release CD publishes to GHCR (no local build in prod).
+To force the newest release immediately instead of waiting for Watchtower:
+
+```bash
+docker compose pull bridge && docker compose up -d bridge
 ```
 
 Verify the bridge is healthy:
@@ -32,6 +39,23 @@ Verify the bridge is healthy:
 curl http://localhost:8910/healthz
 # → 200 OK: {"status":"ok"}
 ```
+
+### 2a. Automatic updates (Watchtower)
+
+`docker-compose.yml` ships a **project-scoped** Watchtower (`evf-watchtower`) that polls
+GHCR every 5 min and recreates `evf-bridge` whenever the release CD pushes a newer
+`:latest` (i.e. on every `vX.Y.Z` tag). It runs `--label-enable --scope evenfoundryvtt`,
+so it ONLY touches containers labelled both `com.centurylinklabs.watchtower.enable=true`
+and `com.centurylinklabs.watchtower.scope=evenfoundryvtt` (just the bridge) — it cannot
+collide with any other Watchtower already on the host (e.g. one watching a different
+container), and that other Watchtower will not touch the bridge.
+
+> **Why auto-update can silently stop:** Watchtower can only update containers that run a
+> **registry** image. If the bridge is switched back to a local `build:` (e.g. via the dev
+> override, or `docker compose up --build`), the running image has no registry to poll and
+> updates stop until it is recreated from the GHCR `image:` again (`docker compose up -d`
+> with the base file only). The GHCR image is built from the same `deploy/bridge.Dockerfile`,
+> so it includes the headless-player-view Chromium/GPU bits.
 
 ### 3. Development boot (debug logs)
 
@@ -141,7 +165,7 @@ See `deploy/.env.example` (Phase 11 section) for the 4 MCP-specific variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EVF_BEARER` | Yes | 24h bearer from Phase 2 QR-pairing flow |
+| `EVF_BEARER` | Yes | non-expiring bearer from the self-service PairModal (copy/paste) |
 | `EVF_BRIDGE_URL` | Yes | Bridge HTTP URL (default: `http://bridge:8910` in Compose) |
 | `EVF_ACTOR_ID` | No | Specific Foundry actor ID; blank = auto-detect |
 | `MCP_HTTP_PORT` | No | HTTP port for Streamable HTTP transport (default 8911) |

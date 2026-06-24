@@ -33,6 +33,7 @@
 // tool-registry.ts is the assembly point for Task 2: dispatchTool wires these together.
 
 import { type AuditEntry, writeAuditLog } from './audit-log.js';
+import { beginTrace, traceCurrent } from './debug-trace.js';
 import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache.js';
 
 // ─── ToolId union ─────────────────────────────────────────────────────────────
@@ -65,7 +66,12 @@ export type ToolId =
   // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPS 14 → 17)
   | 'cast-shield'
   | 'cast-counterspell'
-  | 'opportunity-attack';
+  | 'opportunity-attack'
+  // Phase 8 write channel — direct skill/ability check roll (ACT-01).
+  // No NEW socketlib handler is registered (the poll-based poller calls
+  // dispatchToolAuthorized directly); TOOL_HANDLER_IDS keeps a mapping entry for
+  // type-completeness only. The socketlib `socket.register` count stays 17.
+  | 'skill-check';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
 
@@ -212,6 +218,17 @@ export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
   'cast-shield': 'evf.castShield',
   'cast-counterspell': 'evf.castCounterspell',
   'opportunity-attack': 'evf.opportunityAttack',
+  /**
+   * Phase 8 write channel — `skill-check` maps to `evf.rollSkill` for type-completeness.
+   *
+   * NOTE: NO socketlib handler is registered for this id (the socketlib `socket.register`
+   * count stays 17). The Phase 8 reverse-channel poller calls `dispatchToolAuthorized`
+   * directly in GM context, so the socketlib path is not used for skill-check. This
+   * mapping exists only so `TOOL_HANDLER_IDS` remains a total `Record<ToolId, string>`.
+   *
+   * @see packages/foundry-module/src/write-path/tool-invocation-poller.ts
+   */
+  'skill-check': 'evf.rollSkill',
 };
 
 // ─── Module-level singleton IdempotencyStore ─────────────────────────────────
@@ -330,6 +347,7 @@ export async function dispatchTool(
   // itself never rejects (step 5 catches handler throws, step 7 catches audit throws),
   // so `await p` below cannot reject — preserving "always resolves, never rejects".
   const run = async (): Promise<ToolResult> => {
+    beginTrace(`${toolId}:start`);
     // Step 3: handler lookup — return error on unknown tool
     const handler = TOOL_REGISTRY[toolId];
     if (handler === undefined) {
@@ -342,11 +360,16 @@ export async function dispatchTool(
       return { success: false, error: parseResult.error.message };
     }
 
-    // Step 5: handler invocation (error isolation)
+    // Step 5: handler invocation (error isolation). Trace the handler boundary so a
+    // remote (browserless) operator can tell a HUNG handler (`…:handler:pending` frozen
+    // in the bridge log) from a slow audit write or a clean failure — see debug-trace.ts.
     let result: ToolResult;
+    traceCurrent(`${toolId}:handler:pending`);
     try {
       result = await handler.handle(parseResult.data);
+      traceCurrent(`${toolId}:handler:done:${result.success}`);
     } catch (err) {
+      traceCurrent(`${toolId}:handler:throw`);
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
 
@@ -394,6 +417,7 @@ export async function dispatchTool(
       // writeAuditLog already catches internally — this outer catch is a safety net
       // in case of unexpected synchronous throws from writeAuditLog itself.
     }
+    traceCurrent(`${toolId}:audit:done`);
 
     return result;
   };

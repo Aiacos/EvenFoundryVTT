@@ -46,8 +46,8 @@ paste**, one canonical "direct link" to the bridge that fronts Foundry/Forge:
 
 1. Install the plugin in the Even Hub app (dev mode `qr`, or an approved `.ehpk`).
 2. On first launch the pairing wizard asks for the **bridge URL** (the public HTTPS origin of
-   your bridge, e.g. `https://evf-bridge.example`) and the **24h access token** (issued by the
-   Foundry module's pairing flow), then the character.
+   your bridge, e.g. `https://evf-bridge.example`) and the **non-expiring (campaign-long) access
+   token** (issued by the Foundry module's self-service pairing flow), then the character.
 3. The plugin connects and auto-reconnects on drop. The **`bridgeUrl` is the persisted profile**;
    the **token is held in memory only** (never persisted — T-02-01) and is re-entered/confirmed
    on relaunch.

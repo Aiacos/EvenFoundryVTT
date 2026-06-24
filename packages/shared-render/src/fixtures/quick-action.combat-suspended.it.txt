@@ -5,6 +5,7 @@
 │   [L] Log                                                          │
 │   [B] Libro                                                        │
 │   [I] Inventario                                                   │
+│   [K] Abilità                                                      │
 │   [A] Azione                                                       │
 │   [M] Mappa                                                        │
 │   [N] Lingua                                                       │

@@ -37,7 +37,7 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
 // ─── ToolId type compile-time tests ──────────────────────────────────────────
 
 describe('ToolId — static type surface', () => {
-  it('TOOL_HANDLER_IDS maps all 10 ToolIds to evf.camelCase handler names', () => {
+  it('TOOL_HANDLER_IDS maps all 11 ToolIds to evf.camelCase handler names', () => {
     const expected: Record<ToolId, string> = {
       'cast-spell': 'evf.castSpell',
       'weapon-attack': 'evf.weaponAttack',
@@ -52,14 +52,18 @@ describe('ToolId — static type surface', () => {
       'cast-shield': 'evf.castShield',
       'cast-counterspell': 'evf.castCounterspell',
       'opportunity-attack': 'evf.opportunityAttack',
+      // Phase 8 write channel: skill-check maps to evf.rollSkill for type-completeness
+      // only — NO socketlib handler is registered for it (socket.register count stays
+      // 17); the reverse-channel poller calls dispatchToolAuthorized directly.
+      'skill-check': 'evf.rollSkill',
     };
     for (const [toolId, handlerId] of Object.entries(expected)) {
       expect(TOOL_HANDLER_IDS[toolId as ToolId]).toBe(handlerId);
     }
   });
 
-  it('TOOL_HANDLER_IDS has exactly 10 entries (Phase 13 Plan 13-01 added 3 ACT-04 handlers)', () => {
-    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(10);
+  it('TOOL_HANDLER_IDS has exactly 11 entries (Phase 8 added skill-check, mapping-only)', () => {
+    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(11);
   });
 });
 

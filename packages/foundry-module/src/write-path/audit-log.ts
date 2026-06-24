@@ -26,6 +26,16 @@
  */
 import type { ToolResult } from './tool-registry.js';
 
+/**
+ * Max time to wait for the audit `ChatMessage.create` before giving up (ms).
+ *
+ * Must stay well under the bridge's `TOOL_INVOKE_TIMEOUT_MS` (10_000) so a hung audit
+ * write cannot push tool dispatch past the bridge's result-wait window. The audit is
+ * best-effort observability — losing an entry to a timeout is acceptable; stalling the
+ * player's action (and the bridge queue slot) for 10s is not.
+ */
+export const AUDIT_WRITE_TIMEOUT_MS = 2_500;
+
 // ─── AuditEntry ───────────────────────────────────────────────────────────────
 
 /**
@@ -125,26 +135,42 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
     return;
   }
 
+  // The audit write must NEVER block tool dispatch. `dispatchTool` awaits this function
+  // before returning its result (and, on the poll path, before POSTing the result back to
+  // the bridge). On a player/headless executor `ChatMessage.create` can HANG indefinitely
+  // (the doc create awaits a server/GM round-trip that may never complete) — observed live:
+  // a skill roll executed (its own card appeared) but the bridge still hit its 10s
+  // `foundry_timeout` because this audit write never resolved. We therefore bound the write
+  // with a timeout: a hung create resolves here (best-effort) instead of stalling dispatch.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await ChatMessage.create({
-      user: game.user?.id ?? '',
-      whisper: gmIds,
-      speaker: { alias: 'EVF Audit' },
-      // Hidden HTML wrapper — the content is not meant for display; flags carry the structured data
-      content: `<div class="evf-audit" style="display:none">${JSON.stringify(entry)}</div>`,
-      flags: {
-        evf: {
-          audit: entry,
+    await Promise.race([
+      ChatMessage.create({
+        user: game.user?.id ?? '',
+        whisper: gmIds,
+        speaker: { alias: 'EVF Audit' },
+        // Hidden HTML wrapper — the content is not meant for display; flags carry the structured data
+        content: `<div class="evf-audit" style="display:none">${JSON.stringify(entry)}</div>`,
+        flags: {
+          evf: {
+            audit: entry,
+          },
         },
-      },
-    });
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('audit_write_timeout')), AUDIT_WRITE_TIMEOUT_MS);
+      }),
+    ]);
   } catch (err) {
-    // Audit failure must NEVER fail the tool dispatch (T-02-01 belt-and-suspenders).
-    // Log at warn level so GMs can diagnose socket issues without breaking the action.
-    console.warn('[EVF] writeAuditLog: ChatMessage.create failed — action was already committed', {
+    // Audit failure (or timeout) must NEVER fail/stall the tool dispatch (T-02-01
+    // belt-and-suspenders). Log at warn level so GMs can diagnose socket issues without
+    // breaking the action — the action has already been committed by the handler.
+    console.warn('[EVF] writeAuditLog: ChatMessage.create failed/timed out — action committed', {
       tool: entry.tool,
       idempotencyKey: entry.idempotencyKey,
       error: err instanceof Error ? err.message : String(err),
     });
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }

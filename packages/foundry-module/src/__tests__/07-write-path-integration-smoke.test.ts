@@ -294,9 +294,13 @@ describe('Phase 7 Write-Path Integration Smoke (ISM-W7)', () => {
       expect((result.data as { chatCardId: string | null }).chatCardId).toBe('cm-fireball-1');
     }
 
-    // Verify activity.use called once with { configure: false }
+    // Verify activity.use called once with { configure: false } in the dialog (2nd) arg
+    // (dnd5e 5.x use(usage, dialog, message) — regression 260621).
     expect(activityUseMock).toHaveBeenCalledOnce();
-    expect(activityUseMock).toHaveBeenCalledWith(expect.objectContaining({ configure: false }));
+    expect(activityUseMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ configure: false }),
+    );
 
     // Verify audit log written (ChatMessage.create called with whisper: gmIds)
     await vi.waitFor(() => chatCreateMock.mock.calls.length > 0, { timeout: 1000 });
@@ -345,16 +349,13 @@ describe('Phase 7 Write-Path Integration Smoke (ISM-W7)', () => {
 
     // activity.use called twice
     expect(attackUseMock).toHaveBeenCalledTimes(2);
-    // First call: consume.action = true (action economy deducted once)
-    expect(attackUseMock.mock.calls[0]?.[0]).toMatchObject({
-      configure: false,
-      consume: { action: true },
-    });
+    // First call: consume.action = true (action economy deducted once) — usage arg [0];
+    // configure:false is the dialog arg [1] (dnd5e 5.x use(usage, dialog, message)).
+    expect(attackUseMock.mock.calls[0]?.[0]).toMatchObject({ consume: { action: true } });
+    expect(attackUseMock.mock.calls[0]?.[1]).toMatchObject({ configure: false });
     // Second call: consume.action = false (Extra Attack)
-    expect(attackUseMock.mock.calls[1]?.[0]).toMatchObject({
-      configure: false,
-      consume: { action: false },
-    });
+    expect(attackUseMock.mock.calls[1]?.[0]).toMatchObject({ consume: { action: false } });
+    expect(attackUseMock.mock.calls[1]?.[1]).toMatchObject({ configure: false });
 
     // Progress envelope emitted twice: current=1/total=2, then current=2/total=2
     expect(progressEmitSpy).toHaveBeenCalledTimes(2);

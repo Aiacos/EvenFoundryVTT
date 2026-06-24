@@ -31,6 +31,7 @@
  */
 
 import {
+  CHARACTER_DELTA_TYPE,
   FRAME_PNG_TYPE,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
@@ -55,6 +56,7 @@ import { registerSocketlibHandlers } from './pair/socketlib-handlers.js';
 // Both registered in Hooks.once('ready') so settings + actors are loaded. Count stays 17.
 import { registerBearerRegistryReader } from './readers/bearer-registry-reader.js';
 import { readCharacterList, registerCharacterListReader } from './readers/character-list-reader.js';
+import { getCharacterSnapshot } from './readers/character-reader.js';
 // Quick Task 260517-k2g — entity-pack vocabulary push (parallel additive pipeline, NO new socketlib handler).
 // Emits r1.entities.available envelopes via bridgeDeltaEmitter for non-spell Items + Actors (npc/vehicle).
 // Registered alongside spell-pack so weapon/armor/monster recognition is available at init time too.
@@ -77,6 +79,12 @@ import {
   getWebpQuality,
   registerSettings,
 } from './settings.js';
+// Phase 8 write channel — GM-side poller for the reverse channel. Polls the bridge
+// for g2-app tool.invoke writes, runs them through the authoritative write path
+// (dispatchToolAuthorized — ADR-0014), and POSTs the result back. GM-gated; NO new
+// socketlib handler (count stays 17).
+import { setEnvSummary } from './write-path/debug-trace.js';
+import { registerToolInvocationPoller } from './write-path/tool-invocation-poller.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
 // when the socketlib handlers are invoked.
@@ -129,6 +137,13 @@ export const MODULE_ID = 'evenfoundryvtt' as const;
 let bearerRegistryHandle:
   | import('./readers/bearer-registry-reader.js').BearerRegistryReaderHandle
   | null = null;
+
+/**
+ * Teardown for the Phase 8 tool-invocation poller (clearInterval). Retained at module
+ * scope so a re-fired `ready` hook stops the prior interval before starting a new one,
+ * and so the page lifecycle can stop it. Null until the first `ready`.
+ */
+let _toolInvocationPollerTeardown: (() => void) | null = null;
 
 /**
  * Resolves the internal secret used to authenticate POSTs to /internal/delta.
@@ -564,12 +579,72 @@ Hooks.once('ready', () => {
   bearerRegistryHandle = registerBearerRegistryReader((type, payload) =>
     bridgeDeltaEmitter(type, payload),
   );
+  // Re-emit the bearer registry to the bridge whenever the world-scope `bearerRegistry`
+  // setting CHANGES — from any cause, on the client that wrote it: a GM generating a
+  // device pairing (PairModal direct path), a GM ingesting a player's pending pair, a
+  // revoke, or a TTL rotation. This is the single, uniform warm-up trigger: the bridge
+  // cache reflects the live registry within one round-trip instead of waiting up to a
+  // full heartbeat (≈10 s) — which is what made a freshly-generated token appear "dead"
+  // (boundUserId null → tool.invoke foundry_timeout) until the next heartbeat. The
+  // emit is idempotent at the bridge, so it composes harmlessly with the existing
+  // self-pair / rotation re-emits.
+  Hooks.on('updateSetting', (...args: unknown[]) => {
+    const setting = args[0] as { key?: string } | null;
+    if (setting?.key === `${MODULE_ID}.bearerRegistry`) {
+      bearerRegistryHandle?.reEmit();
+    }
+  });
+  // …and whenever a user's pendingPair FLAG changes (a non-GM player minting or revoking
+  // their own self-service bearer — they cannot write the world setting). The flag is a
+  // first-class bearer now (listPendingFlagBearers), so re-emit so the bridge cache
+  // reflects the new/removed player token within one round-trip.
+  Hooks.on('updateUser', (...args: unknown[]) => {
+    const changes = args[1] as { flags?: Record<string, unknown> } | null;
+    if (changes?.flags?.[MODULE_ID] !== undefined) {
+      bearerRegistryHandle?.reEmit();
+    }
+  });
   // Self-service pairing (secure): ingest per-user `pendingPair` flags GM-side and
   // re-emit the registry to the bridge so a player-minted (or GM-minted) bearer
   // validates the moment a GM is online. Registered AFTER the registry reader so
   // `bearerRegistryHandle` exists for the re-emit callback. NO new socketlib handler
   // (count stays 17); identity is authenticated by user-flag document ownership.
   registerSelfPairIngestion(() => bearerRegistryHandle?.reEmit());
+  // Phase 8 write channel: start the GM-side tool-invocation poller. It reads
+  // bridgeUrl + internalSecret exactly as bridgeDeltaEmitter does (injected getters)
+  // and is GM-gated internally (non-GM clients no-op). The teardown is retained for
+  // the page lifecycle; Foundry reload tears down the whole client.
+  // Debug env beacon (debug-trace.ts): a one-shot runtime summary the poller appends as
+  // `&env=` so a remote operator sees the dnd5e / MidiQOL / socketlib environment that
+  // governs how write-path `activity.use` / `rollSkill` behave (e.g. whether MidiQOL is
+  // intercepting). Defensive casts — these globals aren't all in our ambient types.
+  try {
+    const g = game as unknown as {
+      version?: string;
+      release?: { version?: string };
+      system?: { id?: string; version?: string };
+      user?: { isGM?: boolean };
+    };
+    const fvtt = g.version ?? g.release?.version ?? '?';
+    const sys = `${g.system?.id ?? '?'}@${g.system?.version ?? '?'}`;
+    const midi = game.modules.get('midi-qol')?.active === true ? '1' : '0';
+    const socketlib = game.modules.get('socketlib')?.active === true ? '1' : '0';
+    const gm = g.user?.isGM === true ? '1' : '0';
+    setEnvSummary(`fvtt:${fvtt};sys:${sys};midi:${midi};socketlib:${socketlib};gm:${gm}`);
+  } catch {
+    // Best-effort telemetry — never block ready on the env summary.
+  }
+
+  _toolInvocationPollerTeardown?.();
+  _toolInvocationPollerTeardown = registerToolInvocationPoller({
+    getBridgeUrl,
+    getInternalSecret,
+    // Version beacon: the poller tags each drain GET with `&mv=<module version>` so the
+    // bridge access log shows WHICH module build each connected client is actually running
+    // (e.g. the owning player's browser tab vs a stale cache). Resolved live from the
+    // Foundry module registry so it always reflects the loaded bundle, not a build constant.
+    getModuleVersion: () => game.modules.get(MODULE_ID)?.version ?? null,
+  });
   registerCharacterListReader((type, payload) => bridgeDeltaEmitter(type, payload));
   // Player-view streaming consent (ADR-0015 §C): if THIS client enabled the
   // opt-in (client-scope setting), re-assert it as a User flag (world data) so the
@@ -651,6 +726,41 @@ Hooks.once('ready', () => {
       bridgeDeltaEmitter(R1_CHARACTERS_AVAILABLE_TYPE, readCharacterList());
     } catch {
       // roster heartbeat is best-effort — a read/emit failure must not break the page
+    }
+  }, SETTINGS_HEARTBEAT_MS);
+
+  // Write-path + sheet re-warm heartbeat (v0.1.42, BUG: bridge restart strands a
+  // non-GM player). Two bridge caches go COLD when the bridge (re)starts after this
+  // client's `ready` and only repopulate on a discrete event:
+  //   1. bearer-registry — only (re)pushed on ready / bearer generate-revoke-rotate /
+  //      self-pair. A cold bearer cache means the bridge resolves `tool.invoke`
+  //      `boundUserId` to null, so a non-GM player's owner-scoped poll never drains
+  //      their own skill check / attack / spell (no GM-fallback for a non-GM) — the
+  //      write silently times out. Re-emitting keeps routing alive.
+  //   2. character snapshots — only pushed on `updateActor` (HP/AC/status change).
+  //      A cold snapshot cache leaves the glasses sheet / skills panel EMPTY, so a
+  //      tap on a skill no-ops (`_snapshot === null`) and nothing is ever sent.
+  // Mirror the settings/roster heartbeats: the stream leader re-publishes both on the
+  // same cadence so a bridge restart self-heals within SETTINGS_HEARTBEAT_MS — no
+  // Foundry reload and no actor "nudge" required. Leader-gated (the bearer registry is
+  // world data; snapshots are identical world reads) to avoid N× redundant POSTs.
+  // Best-effort; never throws into the timer.
+  setInterval(() => {
+    try {
+      if (!isStreamLeader()) return;
+      // 1. Re-push the bearer registry so tool.invoke routing survives a bridge restart.
+      bearerRegistryHandle?.reEmit();
+      // 2. Re-push each player character's full snapshot so the glasses sheet/skills
+      //    panel can populate (and interactive taps can resolve an actor) after a
+      //    cold start, without waiting for an actor change.
+      for (const entry of readCharacterList().characters) {
+        const snapshot = getCharacterSnapshot(entry.actorId);
+        if (snapshot !== null) {
+          bridgeDeltaEmitter(CHARACTER_DELTA_TYPE, snapshot);
+        }
+      }
+    } catch {
+      // re-warm heartbeat is best-effort — a read/emit failure must not break the page
     }
   }, SETTINGS_HEARTBEAT_MS);
 

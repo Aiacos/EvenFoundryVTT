@@ -96,6 +96,7 @@ import { registerPortraitRoute } from './routes/portrait.js';
 import { registerReadyzRoute } from './routes/readyz.js';
 import { registerSceneRoute } from './routes/scene.js';
 import { registerSpellsRoute } from './routes/spells.js';
+import { registerToolChannelRoutes } from './routes/tool-channel.js';
 import { registerToolsRoute } from './routes/tools.js';
 import type { ToolHandler } from './routes/tools-dispatch.js';
 import { SettingsStore } from './settings/settings-store.js';
@@ -119,6 +120,7 @@ import { ReplayBuffer } from './ws/replay-buffer.js';
 import { handleResume } from './ws/resume.js';
 import { SessionStore } from './ws/session-store.js';
 import { handleSpellPackEnvelope } from './ws/spell-pack-handler.js';
+import { ToolInvocationQueue } from './ws/tool-invocation-queue.js';
 import { type DispatchToolFn, handleToolInvoke } from './ws/tool-invoke.js';
 
 export interface BuildServerOptions {
@@ -802,14 +804,26 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
   // metrics.wsSessionsActive is instrumented inline: inc on registerSession, dec on close.
 
   // CR-01: WS tool.invoke dispatch function.
-  // Production default: Phase 7 stub returning 'phase-07-pending' until the Foundry
-  // socketlib socket is plumbed in Phase 8. Tests inject a vi.fn() spy via wsDispatchToolFn.
+  // Phase 8 write channel: the production dispatch ENQUEUES the invocation on the
+  // poll-based reverse channel ({@link ToolInvocationQueue}). The GM-side Foundry
+  // module polls GET /internal/tool-requests, runs the authoritative write, and POSTs
+  // the result to /internal/tool-result — which resolves the awaiting Promise.
+  // Tests still inject a vi.fn() spy via opts.wsDispatchToolFn (override preserved).
+  const toolQueue = new ToolInvocationQueue();
+  await registerToolChannelRoutes(app, toolQueue);
   const wsDispatchFn: DispatchToolFn =
     opts.wsDispatchToolFn ??
-    (async (_payload, _bearer) => ({
-      success: false,
-      error: 'phase-07-stub: real socketlib wiring pending Phase 8',
-    }));
+    ((payload, bearer) => {
+      // Resolve the bearer's bound Foundry user so the queue routes the write to the
+      // OWNING user's poll (ADR-0011 Amendment — a player executes their own actor's
+      // writes without a GM online). `null` when the bearer is unknown (e.g. dev
+      // sentinel, or the bearer-registry cache went cold after a bridge restart) →
+      // served to an unfiltered/GM-fallback drain (the poller's GM client picks it up,
+      // and the Foundry-side per-actor authz still gates execution by the bearer).
+      const snap = bearerRegistryCache.get();
+      const boundUserId = snap?.bearers.find((b) => b.token === bearer)?.userId ?? null;
+      return toolQueue.enqueue(payload, bearer, boundUserId);
+    });
 
   // Late-bind the debug dispatch ref to the SAME production dispatch fn (ADR-0011).
   // /debug/dispatch-tool therefore routes identically to the WS tool.invoke path.

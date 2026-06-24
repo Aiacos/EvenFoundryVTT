@@ -29,6 +29,50 @@ import type { ActionOptionsRequest } from './action-options-modal.js';
 /** Content rows per panel (rows 4-21, below the header — matches the glyph panels). */
 const ROW_COUNT = 18;
 
+/**
+ * Number of content rows the canvas list paints before running out of vertical space
+ * (compositor height ÷ 27px line-height ≈ 9). The cursor-windowed panels (Skills,
+ * Inventory, Spellbook) scroll so the cursor stays within this many rows.
+ */
+export const CANVAS_LIST_VISIBLE_ROWS = 9;
+
+/** Clamp a cursor index into `[0, len-1]` (0 when the list is empty). */
+export function clampCursorIndex(cursor: number, len: number): number {
+  return Math.max(0, Math.min(cursor, Math.max(0, len - 1)));
+}
+
+/**
+ * Window a flat list around a cursor for the canvas list panels (Skills / Inventory /
+ * Spellbook all share this). The canvas paints only {@link CANVAS_LIST_VISIBLE_ROWS}
+ * rows, so the window scrolls to keep the cursor visible — it sits at the top while in
+ * the first window, then becomes the last visible row once it passes the window bottom.
+ * Each entry is prefixed with `▶ ` on the cursor row, two spaces otherwise, so the
+ * selected entry is always visible and unambiguous (the missing-cursor bug fix).
+ *
+ * @param items   Flat list of selectable entries, already in display order.
+ * @param cursor  Current cursor index (clamped into range internally).
+ * @param visible Rows the panel paints (defaults to {@link CANVAS_LIST_VISIBLE_ROWS}).
+ * @param render  Maps an entry to its row text WITHOUT the cursor-marker prefix.
+ * @returns The visible windowed rows, each prefixed with the cursor/blank marker.
+ */
+export function windowCursorRows<T>(
+  items: readonly T[],
+  cursor: number,
+  render: (item: T) => string,
+  visible: number = CANVAS_LIST_VISIBLE_ROWS,
+): string[] {
+  if (items.length === 0) {
+    return [];
+  }
+  const clamped = clampCursorIndex(cursor, items.length);
+  const maxOffset = Math.max(0, items.length - visible);
+  const offset = Math.min(Math.max(0, clamped - (visible - 1)), maxOffset);
+  return items.slice(offset, offset + visible).map((item, i) => {
+    const marker = offset + i === clamped ? '▶ ' : '  ';
+    return `${marker}${render(item)}`;
+  });
+}
+
 /** Canvas 2D context union. */
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 

@@ -67,7 +67,7 @@ import { ConcentrationDropModalPanel } from '../panels/concentration-drop-modal.
 import InventoryPanel from '../panels/inventory-panel.js';
 import LogPanel from '../panels/log-panel.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
-import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
+import { attachQuickActionTap } from '../panels/quick-action-tap-dispatcher.js';
 import SpellbookPanel from '../panels/spellbook-panel.js';
 import { StatusHudRenderer } from '../status-hud/status-hud-renderer.js';
 import { ToastQueueLayer } from '../status-hud/toast-queue-layer.js';
@@ -213,13 +213,12 @@ function simulateGesture(
 }
 
 /**
- * Publish an OVER-SCROLL (swipe-up at the top boundary) — the ADR-0012 D-2 gesture
- * that opens the Quick Action menu. The freshly-mounted production panels report
- * `isAtTopBoundary() === true` at `scrollOffset === 0`, and a null top layer falls
- * back to the dispatcher's `?? true` default, so this reliably triggers the menu.
+ * Publish a TAP — the ADR-0012 Amendment 2 gesture that opens the Quick Action
+ * menu from the base view (when no z=2 overlay is active). When an overlay IS
+ * active the tap dispatcher is inert and the active panel handles the tap instead.
  */
-function simulateOverscroll(bus: PanelGestureBus): void {
-  bus.publish({ kind: 'scroll', direction: 'up' });
+function simulateOpenMenu(bus: PanelGestureBus): void {
+  bus.publish({ kind: 'tap' });
 }
 
 /**
@@ -239,14 +238,15 @@ async function flushMicrotasks(iterations = 8): Promise<void> {
  * Then taps to activate. Flushes microtasks after the tap because `_activateCurrentItem`
  * calls fire-and-forget `void router.openPanel(...)` / `void router.popOverlay(...)`.
  *
- * Implementation: MAIN_ITEMS ordering is S/C/L/B/I/A/M/N/X. Scroll DOWN from 0.
+ * Implementation: MAIN_ITEMS ordering is S/C/L/B/I/K/A/M/N/F/X. Scroll DOWN from 0.
  */
 async function tapMenuItemByKey(
   bus: PanelGestureBus,
   _menu: QuickActionMenuPanel,
   key: string,
 ): Promise<void> {
-  const MAIN_KEYS = ['S', 'C', 'L', 'B', 'I', 'A', 'M', 'N', 'X'];
+  // Must mirror MAIN_ITEMS order in quick-action-menu-panel.ts (Phase 8 added [K]).
+  const MAIN_KEYS = ['S', 'C', 'L', 'B', 'I', 'K', 'A', 'M', 'N', 'F', 'X'];
   const targetIdx = MAIN_KEYS.indexOf(key);
   if (targetIdx < 0) throw new Error(`Unknown menu key: ${key}`);
   // Scroll down `targetIdx` times to reach the target (starts at index 0 = [S])
@@ -328,7 +328,7 @@ async function makeHarness() {
     );
 
   // Wire the over-scroll dispatcher
-  const unsubOverscroll = attachQuickActionOverscroll(gestureBus, router, lm, makeMenu);
+  const unsubOverscroll = attachQuickActionTap(gestureBus, router, lm, makeMenu);
 
   return {
     lm,
@@ -375,7 +375,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     const h = await makeHarness();
 
     // From main HUD (no z=2 overlay) — over-scroll opens the menu
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -399,7 +399,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   it('COR-02: ck 2 — main HUD → CombatTracker in ≤2 gestures (over-scroll → tap [C])', async () => {
     const h = await makeHarness();
 
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -422,7 +422,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   it('COR-03: ck 3 — main HUD → Log in ≤2 gestures (over-scroll → tap [L])', async () => {
     const h = await makeHarness();
 
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -443,7 +443,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   it('COR-04: ck 4 — main HUD → Spellbook in ≤2 gestures (over-scroll → tap [B])', async () => {
     const h = await makeHarness();
 
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -464,7 +464,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   it('COR-05: ck 5 — main HUD → Inventory in ≤2 gestures (over-scroll → tap [I])', async () => {
     const h = await makeHarness();
 
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -491,8 +491,12 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     await h.router.openPanel('character-sheet', h.deps);
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
-    // Long-press → menu opens (CharSheet suspended)
-    simulateOverscroll(h.gestureBus);
+    // ADR-0012 Amendment 2: a tap is the menu-opener ONLY from the base view. To
+    // reach the menu from an open panel the user double-taps to close it back to the
+    // base (modelled here by closeActivePanel), THEN taps to open the menu.
+    await h.router.closeActivePanel();
+    await flushMicrotasks();
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -511,17 +515,22 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
   // ─── COR-07: CharacterSheet → Quick Action menu ───────────────────────────
 
   /**
-   * Maps to Specs §7.14.4 ck 7 — over-scroll from CharacterSheet opens Quick Action menu.
+   * Maps to Specs §7.14.4 ck 7 — the Quick Action menu is reachable from an open
+   * CharacterSheet.
    *
-   * 1 gesture: over-scroll → menu mounted at z=2; CharSheet suspended.
+   * ADR-0012 Amendment 2: the menu opens on a TAP from the base view, so reaching
+   * it from a panel is 2 gestures — double-tap to close the panel (modelled by
+   * closeActivePanel), then tap to open the menu.
    */
-  it('COR-07: ck 7 — CharacterSheet → Quick Action menu via over-scroll (1 gesture)', async () => {
+  it('COR-07: ck 7 — CharacterSheet → close → Quick Action menu (tap on base)', async () => {
     const h = await makeHarness();
 
     await h.router.openPanel('character-sheet', h.deps);
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
-    simulateOverscroll(h.gestureBus);
+    await h.router.closeActivePanel();
+    await flushMicrotasks();
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -543,7 +552,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     const h = await makeHarness();
 
     // Open menu from main HUD
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY);
@@ -571,7 +580,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     const h = await makeHarness();
 
     // From main HUD: over-scroll → menu
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -606,8 +615,12 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     await h.router.openPanel('character-sheet', h.deps);
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(CharacterSheetPanel);
 
-    // Long-press → menu pushes over CharSheet (CharSheet suspended)
-    simulateOverscroll(h.gestureBus);
+    // This case verifies the suspend/restore MECHANISM (pushOverlay → overlayStack →
+    // popOverlay restores). ADR-0012 Amendment 2 made the menu open on a base-view tap,
+    // so the menu is no longer pushed OVER a panel via gesture — but the mechanism is
+    // still exercised by other push paths (e.g. Action Options over the inventory panel),
+    // so we push it directly here to assert suspend/restore.
+    await h.router.pushOverlay(h.makeMenu(), h.lm);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -648,7 +661,7 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     expect(h.toastLayer.getVisibleCount()).toBeGreaterThanOrEqual(1);
 
     // Open menu via over-scroll
-    simulateOverscroll(h.gestureBus);
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
@@ -683,8 +696,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // Open CharSheet
     await h.router.openPanel('character-sheet', h.deps);
 
-    // Long-press → menu
-    simulateOverscroll(h.gestureBus);
+    // ADR-0012 Amendment 2: close the panel to base (double-tap), then tap opens the menu.
+    await h.router.closeActivePanel();
+    await flushMicrotasks();
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     const menu = h.lm.getLayer(ZIndex.Z2_OVERLAY) as QuickActionMenuPanel;
@@ -702,20 +717,19 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     h.toastLayer.destroy();
   });
 
-  // ─── COR-13: conc-modal → over-scroll → menu replaces modal ───────────────
+  // ─── COR-13: conc-modal active → tap does NOT open the menu ───────────────
 
   /**
-   * Maps to Specs §7.14.4 ck 13 — conc-modal active when over-scroll fires.
+   * Maps to Specs §7.14.4 ck 13 — conc-modal active when the menu-open gesture fires.
    *
-   * Edge case: the concentration-drop modal is NOT in the overlayStack (it was
-   * mounted directly by `attachConcConflictHandler`, not via `pushOverlay`).
-   * The dispatcher replaces it with the menu and emits `console.warn` telemetry.
-   * The user's pending conc-modal choice is lost — MVP-accepted per T-06-04-04.
-   *
-   * After menu closes (or any subsequent action), the state returns to main HUD
-   * (overlayStack is empty).
+   * ADR-0012 Amendment 2: the menu now opens on a TAP, and the tap dispatcher is
+   * gated on the LayerManager z=2 slot being EMPTY. The concentration-drop modal
+   * occupies z=2 (mounted directly by `attachConcConflictHandler`), so a tap is
+   * left to the modal's own handler and the dispatcher stays inert — it does NOT
+   * replace the modal. This is strictly better than the old over-scroll behaviour,
+   * which discarded the user's pending concentration choice (T-06-04-04).
    */
-  it('COR-13: ck 13 — conc-modal → over-scroll → console.warn + menu replaces modal', async () => {
+  it('COR-13: ck 13 — conc-modal active → tap stays inert (modal NOT replaced by menu)', async () => {
     const h = await makeHarness();
 
     // Mount a conc-modal directly (simulating conc-conflict-dispatcher)
@@ -742,18 +756,14 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     await h.lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: concModal }]);
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)?.id).toBe('conc-drop-modal');
 
-    // Long-press → dispatcher should warn and replace modal with menu
-    simulateOverscroll(h.gestureBus);
+    // Tap while the conc-modal occupies z=2 → the tap dispatcher is inert (gated on
+    // the z=2 slot), so it does NOT replace the modal with the menu. The tap is the
+    // modal's own (the conc-modal consumes it); either way the Quick Action menu is
+    // NEVER mounted — the old over-scroll state-loss edge (T-06-04-04) is gone.
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
-    // console.warn must have been called with the conc-modal message
-    expect(warnSpy).toHaveBeenCalled();
-    const warnMessages = warnSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-    const concWarn = warnMessages.find((msg: string) => msg.includes('conc-modal'));
-    expect(concWarn).toBeDefined();
-
-    // Menu must now be mounted
-    expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);
+    expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).not.toBeInstanceOf(QuickActionMenuPanel);
 
     h.unsubOverscroll();
     h.toastLayer.destroy();
@@ -828,8 +838,10 @@ describe('Cross-overlay reachability (COR-01..COR-15 → Specs §7.14.4 ck 1-15)
     // CharSheet is a top layer now — chip should reflect sheet hints
     expect(chip2).toContain('tap=');
 
-    // State 3: Long-press → Quick Action menu
-    simulateOverscroll(h.gestureBus);
+    // State 3: close CharSheet to base (ADR-0012 Amd 2), then tap → Quick Action menu
+    await h.router.closeActivePanel();
+    await flushMicrotasks();
+    simulateOpenMenu(h.gestureBus);
     await flushMicrotasks();
 
     expect(h.lm.getLayer(ZIndex.Z2_OVERLAY)).toBeInstanceOf(QuickActionMenuPanel);

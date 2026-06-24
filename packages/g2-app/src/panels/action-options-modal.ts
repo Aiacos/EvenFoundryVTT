@@ -139,6 +139,13 @@ export interface ActionOptionsRequest {
    * Defaults to 0 when not provided (cantrip-safe fallback).
    */
   readonly defaultSlotLevel?: number;
+  /**
+   * The dnd5e item type (`'weapon'`, `'consumable'`, `'equipment'`, …) for
+   * `kind === 'item'`. Boot routes weapons to the `weapon-attack` tool (which forwards
+   * the picked target to MidiQOL as `targetUuids`, so the attack actually hits) and
+   * everything else to `use-item`. Ignored for `kind === 'spell'`.
+   */
+  readonly itemType?: string;
 }
 
 /**

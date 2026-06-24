@@ -10,7 +10,7 @@ Expected time: < 10 minutes per mode.
 - pnpm installed (`pnpm --version` → `10.x.x`)
 - All workspace packages built: `pnpm -r build` from repo root
 - EVF bridge and FoundryVTT running (or use `EVF_BRIDGE_URL=http://localhost:9999` for software-only smoke)
-- `EVF_BEARER` env var set to the 24h bearer from the Phase 2 QR-pairing flow (or any string for software-only)
+- `EVF_BEARER` env var set to the non-expiring (campaign-long) bearer from the Phase 2 self-service copy-and-paste pairing flow (or any string for software-only)
 
 ## 1. Stdio Verification via MCP Inspector
 
@@ -18,7 +18,7 @@ The `@modelcontextprotocol/inspector` CLI opens a local web UI for interactive M
 
 ```bash
 # From repo root
-export EVF_BEARER=<your-24h-bearer>
+export EVF_BEARER=<your-bearer>   # non-expiring (campaign-long) token from the pairing flow
 export EVF_BRIDGE_URL=http://localhost:8910   # or http://localhost:9999 for software-only
 
 npx @modelcontextprotocol/inspector node packages/foundry-mcp/dist/index.js
@@ -130,8 +130,9 @@ automatically in CI (excludes comment lines and the test file itself from the sc
 
 These are explicitly deferred from Phase 11:
 
-- **No OAuth** — bearer is a single opaque 24h token from the Phase 2 QR-pairing flow.
-  OAuth / token rotation is V3+ scope (see 11-CONTEXT.md deferred items).
+- **No OAuth** — bearer is a single opaque non-expiring (campaign-long) token from the Phase 2
+  self-service copy-and-paste pairing flow. OAuth / token rotation is V3+ scope (see 11-CONTEXT.md
+  deferred items).
 - **No multi-tenant** — single actor, single session per bearer. Multi-player isolation
   is Phase 13 stretch.
 - **No legacy HTTP+SSE transport** — deprecated; Streamable HTTP only.

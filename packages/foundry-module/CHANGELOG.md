@@ -1,5 +1,178 @@
 # @evf/foundry-module
 
+## 0.1.47
+
+### Patch Changes
+
+- Tokens no longer expire — campaign-long bearers (operator request). The 24h TTL is
+  what made yesterday's token expire mid-session. New bearers (GM-direct, GM-ingested, or
+  a player's self-service flag) are now minted with a far-future sentinel `expiresAt`
+  (`NO_EXPIRY_MS`), so every `expiresAt > now` validation/push check treats them as
+  never-expiring with no special-casing. Crucially, the rotation scheduler no longer
+  rotates a non-expiring bearer (rotating it would change the token the player already
+  pasted, defeating the purpose). The pair modal shows "Never expires (campaign-long)"
+  with no countdown instead of a TTL. Legacy finite tokens still validate/rotate normally
+  until they age out.
+
+## 0.1.46
+
+### Patch Changes
+
+- A non-GM PLAYER can now pair and roll STANDALONE — no GM client required — and the
+  pairing modal is fixed. The old model wrote a per-user `pendingPair` flag that a GM
+  client had to ingest into the world `bearerRegistry`; a player alone (no GM online)
+  was stranded — the token never reached the registry/bridge, so `boundUserId` was null
+  and every skill check / attack / spell timed out. But a non-GM literally cannot write
+  the world registry, so "pair as GM" was the only workaround — exactly what a player
+  doesn't want.
+  - **The `pendingPair` flag is now a first-class, self-authenticated bearer.** Only the
+    owning user can write their own flag, so the token→user binding is trustworthy
+    without a GM. `validateBearer` and `readBearerRegistry` (the bridge push) both
+    resolve flag tokens, deduped registry-first, so a player's token routes + authorizes
+    immediately. The module re-emits on `updateUser` so a mint reaches the bridge at once.
+    A GM that later ingests the flag simply upgrades it to the persistent registry.
+  - **PairModal fixes (from the user's screenshot):** the flag shows as a live `active`
+    device with a real `createdAt+24h` countdown (no more "Awaiting connection…" / the
+    literal "{time}" placeholder / "No devices paired" shown beside a token). Revoking a
+    player device deletes the user's own flag via `unsetFlag` (works without GM, updates
+    live — fixes "revoke only works after reopening"). The reveal toggle now flips inline
+    `display` instead of a `.evf-hidden` CSS class that did nothing (the module ships no
+    stylesheet) — so the access-token field no longer shows the masked dots AND the plain
+    token at the same time.
+
+## 0.1.45
+
+### Patch Changes
+
+- Pairing workflow rework — fixes "the generated token never works" and "the modal
+  doesn't update dynamically".
+  - **GM generates DIRECTLY into the registry.** Previously the PairModal ALWAYS wrote a
+    per-user `pendingPair` flag (even for a GM), which then had to be ingested by a GM
+    client to reach the world `bearerRegistry`. For an operator who IS the GM but plays
+    on a non-GM user — or any setup where no GM client ingests — the token stayed a flag,
+    never reached `listBearers()` / the bridge, and the glasses tap timed out
+    (`boundUserId` null). Now a GM mint calls `generateBearer` directly → the token is a
+    LIVE registry bearer immediately; only a genuine non-GM player uses the flag path.
+  - **Modal auto-updates on registry change.** The open PairModal now listens for the
+    `bearerRegistry` setting change and re-renders, so a non-GM's `pairing-in-progress`
+    flips to `active` the instant a GM ingests it, and revokes/rotations reflect live —
+    no more close-and-reopen.
+  - **Registry changes re-emit to the bridge at once.** A new `updateSetting` hook
+    re-pushes the bearer registry whenever it changes (generate / ingest / revoke /
+    rotate), so a freshly-generated token is recognised within one round-trip instead of
+    waiting up to a full heartbeat. Also defaults a first pairing's alias to a non-empty
+    `'G2'` (empty aliases otherwise fail the bridge schema and drop the whole push).
+
+## 0.1.44
+
+### Patch Changes
+
+- (g2-app) WS reconnect no longer strands the outbound channel — fixes the glasses tap
+  silently failing to reach Foundry after any WS drop (e.g. a bridge restart). The
+  reconnect path called `performCapabilityHandshake` on a freshly-created socket that was
+  still in CONNECTING; the handshake `.send()`s immediately and throws on a non-OPEN
+  socket, so every reconnect attempt failed, the bridge idle-timed-out the connection
+  (close 4400), the backoff looped forever, and the `WsSender` was never swapped onto a
+  live socket — so `tool.invoke` writes (skill check / attack / spell) vanished until a
+  full app reload. The reconnect now awaits the socket's `open` before handshaking
+  (mirroring boot's `awaitWsOpen`), so it reconnects cleanly, swaps the sender, and taps
+  reach Foundry again. Verified live: after a bridge restart the sim re-handshakes with
+  zero idle timeouts and a tapped skill's `tool.invoke` is received by the bridge.
+
+## 0.1.43
+
+### Patch Changes
+
+- Skill rolls now actually fire in Foundry (three real bugs fixed end-to-end):
+  - **Bearer-registry poisoning → routing dead for non-GM players.** A self-minted
+    bearer may carry an empty `alias`, but the bridge's `BearerRegistryEntrySchema`
+    requires `alias` min(1); since `bearers` is an array, ONE empty-alias entry failed
+    the WHOLE snapshot's validation and the bridge silently dropped the entire registry
+    push. With an empty bearer cache the bridge resolved `tool.invoke` `boundUserId` to
+    null, so a non-GM player's owner-scoped poll never drained their own skill check /
+    attack / spell (and there is no GM-fallback for a non-GM). The reader now coerces an
+    empty/missing alias to a placeholder before emitting (alias is a display-only label),
+    and the bridge handler defensively does the same — one unlabeled bearer can no longer
+    strand routing for everyone.
+  - **Skill roll blocked on a configuration dialog.** `skill-check` called
+    `actor.rollSkill({...})` without suppressing the dnd5e roll-config dialog. Driven
+    headlessly by the poller, that dialog never gets confirmed, the awaiting bridge
+    Promise times out, and the glasses tap appears to do nothing. Now passes
+    `dialog: { configure: false }` to fast-forward (matching how every `activity.use()`
+    handler already suppresses its dialog).
+  - (g2-app) **Skills panel didn't scroll.** The canvas Abilità list rendered all 18
+    skills from the top with no windowing, so the cursor and every skill past the 9th
+    scrolled off-screen and were unreachable. It now windows to follow the cursor and
+    clamps down-scroll at the last skill (inventory/spellbook already windowed correctly).
+
+## 0.1.42
+
+### Patch Changes
+
+- Bridge-restart self-heal (fixes a non-GM player being stranded after a bridge
+  restart). Two bridge caches only repopulate on discrete events and go cold when the
+  bridge (re)starts after a client's `ready`: the bearer registry (re-pushed on
+  ready / bearer change / self-pair) and the per-actor character snapshot (pushed only
+  on `updateActor`). A cold bearer cache makes `tool.invoke` routing resolve
+  `boundUserId` to null — and since a non-GM has no GM-fallback drain, their own skill
+  check / attack / spell silently times out; a cold snapshot cache leaves the glasses
+  sheet / skills panel empty, so an interactive tap no-ops. A new leader-gated
+  heartbeat (same cadence as the existing settings/roster heartbeats) re-emits BOTH the
+  bearer registry and every player character's full snapshot, so a bridge restart
+  self-heals within ~10s with no Foundry reload and no actor "nudge". Best-effort;
+  never throws into the timer.
+
+## 0.1.41
+
+### Patch Changes
+
+- Write channel resilience: the tool-invocation poller now performs a GM-fallback
+  unfiltered drain in addition to the owner-scoped poll. When the bridge cannot route
+  a queued write to a bound user — `boundUserId === null`, e.g. its bearer-registry
+  cache went cold after a restart (the registry is only pushed on Foundry `ready`) —
+  the request previously sat unrouted until it timed out, so skill checks / attacks /
+  spells silently did nothing. A GM client now also drains the unfiltered slice and
+  executes those orphaned (and genuinely global) requests. This is ADR-0014-safe: the
+  per-actor write authz (`dispatchToolAuthorized` → `validateBearer` against Foundry's
+  authoritative local registry) still gates execution by the request's own bearer, so a
+  GM executing here cannot act as an actor the bearer does not own.
+
+## 0.1.40
+
+### Minor Changes
+
+- Player-owned write execution (ADR-0011 Amendment 2): the tool-invocation poller
+  is no longer GM-gated. Each client polls for ITS OWN user's invocations
+  (`GET /internal/tool-requests?userId=<game.user.id>`) and executes them, so a
+  PLAYER rolls their own actor's skill check / attack / spell **without a GM
+  online**. The bridge routes each queued write to the bearer's bound user; the
+  per-actor write authz (ADR-0014) is unchanged (the acting actor must be owned by
+  the bearer's user, and the executing client IS that user).
+
+## 0.1.39
+
+### Minor Changes
+
+- Phase-8 write channel: write tools now actually EXECUTE in Foundry. Previously
+  the bridge could not reach Foundry for writes (its dispatch was a stub), so
+  `tool.invoke` envelopes (cast-spell / use-item / skill-check) were dropped. A
+  GM-gated poller now drains the bridge's tool-invocation queue
+  (`GET /internal/tool-requests`), runs each invocation through the authoritative
+  write path, and POSTs the result back (`POST /internal/tool-result`). Per-actor
+  write authorization (ADR-0014) is enforced by a single shared
+  `dispatchToolAuthorized` gate used by BOTH the socketlib adapter and the new
+  poller — the acting `actor_id` must be owned by the bearer's bound user. No new
+  socketlib handler (count stays 17). Requires a GM client online (ADR-0011).
+
+### Patch Changes
+
+- New `skill-check` write tool: rolls a skill check via `actor.rollSkill(...)` (as
+  if clicking the skill button on the Foundry sheet). Wired to the g2-app
+  interactive Skill panel + Quick Action `[K]` entry.
+- Stop reading the deprecated dnd5e `SpellData#preparation.{mode,prepared}` getters
+  in `extractSpellbook` (read `system.method`/`system.prepared` on 5.1+; fall back
+  to `preparation` only for < 5.1). Removes the per-spell deprecation-warning flood.
+
 ## 0.1.38
 
 ### Patch Changes

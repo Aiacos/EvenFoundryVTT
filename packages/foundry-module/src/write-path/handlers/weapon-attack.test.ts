@@ -125,7 +125,8 @@ describe('weaponAttackHandler', () => {
       expect(data.attacks[0]?.attackIndex).toBe(1);
     }
     // Plan 07-04: first (and only) iteration uses consume.action: true
-    expect(activity.use).toHaveBeenCalledWith({ configure: false, consume: { action: true } });
+    // Regression (260621): consume in usage arg, { configure: false } in dialog arg.
+    expect(activity.use).toHaveBeenCalledWith({ consume: { action: true } }, { configure: false });
   });
 
   it('returns actor_not_found when actor is missing', async () => {
@@ -288,15 +289,17 @@ describe('weaponAttackHandler', () => {
     expect(result.success).toBe(true);
     expect(activity.use).toHaveBeenCalledTimes(2);
     // First call: consume.action = true (action economy deducted once)
-    expect(activity.use).toHaveBeenNthCalledWith(1, {
-      configure: false,
-      consume: { action: true },
-    });
+    expect(activity.use).toHaveBeenNthCalledWith(
+      1,
+      { consume: { action: true } },
+      { configure: false },
+    );
     // Second call: consume.action = false (Extra Attack — no double action cost)
-    expect(activity.use).toHaveBeenNthCalledWith(2, {
-      configure: false,
-      consume: { action: false },
-    });
+    expect(activity.use).toHaveBeenNthCalledWith(
+      2,
+      { consume: { action: false } },
+      { configure: false },
+    );
   });
 
   it('WA-MULTI-3: count: 3 calls activity.use three times', async () => {
@@ -579,10 +582,10 @@ describe('weaponAttackHandler', () => {
       expect(result.success).toBe(true);
       // Vanilla call EXACTLY as today (single call, consume.action:true).
       expect(activity.use).toHaveBeenCalledTimes(1);
-      expect(activity.use).toHaveBeenCalledWith({
-        configure: false,
-        consume: { action: true },
-      });
+      expect(activity.use).toHaveBeenCalledWith(
+        { consume: { action: true } },
+        { configure: false },
+      );
       // CRITICAL: no double-roll — rollAttack must NEVER be invoked.
       expect(activity.rollAttack).not.toHaveBeenCalled();
       // No preRollAttackV2 hook registered in the vanilla branch.
@@ -617,10 +620,10 @@ describe('weaponAttackHandler', () => {
 
       expect(result.success).toBe(true);
       expect(activity.use).toHaveBeenCalledTimes(1);
-      expect(activity.use).toHaveBeenCalledWith({
-        configure: false,
-        consume: { action: true },
-      });
+      expect(activity.use).toHaveBeenCalledWith(
+        { consume: { action: true } },
+        { configure: false },
+      );
       expect(activity.rollAttack).not.toHaveBeenCalled();
       // game.user.targets must NEVER be mutated (v13 per-user pitfall).
       expect(userTargets.size).toBe(0);
@@ -652,10 +655,10 @@ describe('weaponAttackHandler', () => {
 
       expect(result.success).toBe(true);
       expect(activity.use).toHaveBeenCalledTimes(1);
-      expect(activity.use).toHaveBeenCalledWith({
-        configure: false,
-        consume: { action: true },
-      });
+      expect(activity.use).toHaveBeenCalledWith(
+        { consume: { action: true } },
+        { configure: false },
+      );
       expect(activity.rollAttack).not.toHaveBeenCalled();
       expect(warnSpy).not.toHaveBeenCalled();
 

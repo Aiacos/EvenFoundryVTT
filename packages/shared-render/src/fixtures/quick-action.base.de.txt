@@ -5,6 +5,7 @@
 │   [L] Log                                                          │
 │   [B] Buch                                                         │
 │   [I] Inventar                                                     │
+│   [K] Fertigkeiten                                                 │
 │   [A] Aktion                                                       │
 │   [M] Karte                                                        │
 │   [N] Sprache                                                      │

@@ -37,7 +37,7 @@
  *  10. Construct 3 layers: MapBaseLayer (z=0), IdleInfillLayer (z=0.5), StatusHudLayer (z=1)
  *  11. attachSceneInputToWs(ws, controller) — Plan 06 WS frame_pixels receiver
  *  11b. attachR1EventSource(ws, gestureBus, lm, DEFAULT_R1_TIMINGS) — R1 gesture bridge (Phase 6)
- *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionOverscroll(bus, router, lm, makeMenu)
+ *  11c. new LocaleEventEmitter() + makeMenu factory + attachQuickActionTap(bus, router, lm, makeMenu) — tap-on-base opens the menu (ADR-0012 Amd 2)
  *  11d. attachConcConflictHandler(ws, bridge, gestureBus, lm, effectiveLocale) — closes Plan 04b-05 deferred wire
  *  11e. attachActionResultHandler(ws, toastQueue, effectiveLocale, currentUserId) — Plan 08-01 r1.action.result → toast
  *  11e+. attachActionEconomyHandler(ws, currentUserId) — Plan 09-02 r1.action.economy → StatusHudLayer + AOM preconditioner
@@ -58,6 +58,10 @@ import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hu
 import {
   CLIENT_PLAYER_VIEW_TYPE,
   CLIENT_SELECT_ACTOR_TYPE,
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
+  type CombatSnapshot,
+  CombatSnapshotSchema,
   PLAYER_VIEW_STATUS_TYPE,
   PlayerViewStatusSchema,
   type ServerCap,
@@ -95,16 +99,19 @@ import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
 import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.js';
 import { clearActionEconomyState } from '../panels/action-economy-state.js';
+import type { ActionOptionsRequest } from '../panels/action-options-modal.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
+import { CanvasTargetPickerPanel } from '../panels/canvas-target-picker-panel.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
 import { attachNavPanelClose } from '../panels/nav-panel-close-dispatcher.js';
 import { attachPortraitHandler } from '../panels/portrait-dispatcher.js';
 import { clearPortraitBytes } from '../panels/portrait-state.js';
 import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
-import { attachQuickActionOverscroll } from '../panels/quick-action-overscroll-dispatcher.js';
+import { attachQuickActionTap } from '../panels/quick-action-tap-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { attachRootExit } from '../panels/root-exit-dispatcher.js';
+import { resolveValidTargets } from '../panels/target-resolver.js';
 import { createPhoneSettingsPanel, type PhoneSettingsPanel } from '../phone/settings-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
@@ -1318,7 +1325,10 @@ export async function _bootEngineCore(
                     ? 'canvas-spellbook'
                     : isCanvas && target === 'log'
                       ? 'canvas-log'
-                      : target;
+                      : // Phase 8 write channel: the menu's [K] Skills item targets
+                        // 'canvas-skills' directly (canvas-only interactive skill-roll
+                        // panel), so it passes through the default branch unchanged.
+                        target;
 
           void panelRouter.openPanel(resolvedTarget, {
             bridge,
@@ -1377,12 +1387,10 @@ export async function _bootEngineCore(
     );
   };
 
-  const unsubOverscroll = attachQuickActionOverscroll(
-    gestureBus,
-    panelRouter,
-    layerManager,
-    makeMenu,
-  );
+  // ADR-0012 Amendment 2: the Quick Action menu opens on a TAP from the base view
+  // (swipe-up over-scroll retired). hasActiveOverlay() gates it so a tap inside a
+  // panel still activates that panel's entry / cycles its tab.
+  const unsubOverscroll = attachQuickActionTap(gestureBus, panelRouter, layerManager, makeMenu);
 
   // 11c-exit. EXIT-01 / LIFE-03 — root-page exit. A double-tap while the bare map
   //           (id 'map-base', no overlay) is the top layer calls
@@ -1877,80 +1885,107 @@ export async function _bootEngineCore(
     setWsEventBus: (b: typeof wsEventBus) => void;
     setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
   };
+  // Cache the latest CombatSnapshot for the target picker (combatants-only MVP).
+  // `wsEventBus` is a stable instance (it rebinds the socket on reconnect rather than
+  // being recreated — see step 5a), so this boot-level subscription survives reconnects.
+  // Updated on BOTH `combat.turn` and `combat.state` deltas; validated at the trust
+  // boundary (T-23-01 pattern, mirrors canvas-combat-tracker-panel). Torn down below.
+  let cachedCombat: CombatSnapshot | null = null;
+  const cacheCombat = (raw: unknown): void => {
+    const parsed = CombatSnapshotSchema.safeParse(raw);
+    if (parsed.success) cachedCombat = parsed.data;
+  };
+  const unsubCombatTurn = wsEventBus.subscribe(COMBAT_TURN_DELTA_TYPE, cacheCombat);
+  const unsubCombatState = wsEventBus.subscribe(COMBAT_STATE_DELTA_TYPE, cacheCombat);
+
+  // Open the glasses-native target picker (z=2 overlay) for a tool that needs a target.
+  // Candidates are resolved combatants-only (MVP) from the cached CombatSnapshot; the
+  // picker emits the canonical `tool.invoke` with `targets: [chosen]` on tap and pops
+  // itself on tap/cancel via `onClose` (mirrors the QuickActionMenu pushOverlay wiring).
+  const openTargetPicker = (
+    toolId: 'cast-spell' | 'weapon-attack' | 'use-item',
+    callerArgs: Record<string, unknown>,
+    actorId: string,
+  ): void => {
+    const candidates = resolveValidTargets(cachedCombat, undefined, actorId);
+    const picker = new CanvasTargetPickerPanel(
+      gestureBus,
+      currentMenuLocale,
+      candidates,
+      handshake.session_id,
+      { toolId, callerArgs },
+      { send: (d: string) => wsSender.send(d) },
+      () => {
+        void panelRouter.popOverlay(layerManager);
+      },
+    );
+    void panelRouter.pushOverlay(picker, layerManager);
+  };
+
+  // Feature: USE inventory items / CAST spells on tap. When the tapped entry requires a
+  // target (req.requiresTarget — weapons/equipment, ranged non-reaction spells) the
+  // glasses-native TargetPicker opens FIRST (combatants-only) so the use/cast fires on
+  // the chosen token; the picker appends `targets:[chosen]`. Self/area/reaction spells
+  // and consumables dispatch DIRECTLY with `targets: []` (Foundry resolves the
+  // self-target / the player's pre-selected token). The write-path authz (ADR-0014)
+  // applies in both paths. (The earlier flow ALWAYS dispatched `targets: []`, so any
+  // targeted item/spell fired "at nothing" — the picker handoff fixes that.)
   const canvasItemDispatch = (req: unknown): void => {
-    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
-      const modal = new CanvasActionOptionsModal(
-        bridge,
-        wsSender,
-        gestureBus,
-        req as ConstructorParameters<typeof CanvasActionOptionsModal>[3],
-        currentLocale,
-        handshake.session_id,
-        () => {
-          void panelRouter.popOverlay(layerManager);
-        },
-        toastQueue,
-      );
-      void panelRouter.pushOverlay(modal, layerManager);
-    });
+    const r = req as ActionOptionsRequest;
+    const callerArgs = { actor_id: r.actorId, item_id: r.itemId };
+    // Weapons route to `weapon-attack` (its MidiQOL branch forwards the picked target as
+    // `targetUuids`, so the attack actually hits + posts a card). `use-item` IGNORES
+    // `targets` (plain `activity.use`), so a weapon used via use-item never strikes the
+    // chosen token — only the audit card appears (the Vampiric-Bite-on-Karius symptom).
+    // Non-weapons that still ask for a target fall back to use-item (no attack activity).
+    if (r.requiresTarget) {
+      const itemToolId = r.itemType === 'weapon' ? 'weapon-attack' : 'use-item';
+      openTargetPicker(itemToolId, callerArgs, r.actorId);
+      return;
+    }
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'use-item' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: { ...callerArgs, targets: [] as string[] },
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
   };
   const canvasSpellDispatch = (req: unknown): void => {
-    void import('../panels/canvas-action-options-modal.js').then(({ CanvasActionOptionsModal }) => {
-      const baseReq = req as ConstructorParameters<typeof CanvasActionOptionsModal>[3];
-      const snapshot = statusHud?.getCachedSnapshot() ?? null;
-      const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
-      const spellLevel = spellEntry?.level ?? 0;
-      const availableSlots =
-        spellLevel === 0
-          ? []
-          : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
-      const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
-      const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
-      const enrichedReq: ConstructorParameters<typeof CanvasActionOptionsModal>[3] = {
-        ...baseReq,
-        requiresSlotPicker,
-        defaultSlotLevel,
-      };
-      const openSlotPicker = (): void => {
-        void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
-          const slotPicker = new SlotPickerPanel(
-            bridge,
-            wsSender,
-            gestureBus,
-            {
-              actorId: enrichedReq.actorId,
-              spellId: enrichedReq.itemId,
-              spellName: enrichedReq.name,
-              baseLevel: spellLevel,
-              availableSlots,
-            },
-            currentLocale,
-            handshake.session_id,
-            () => {
-              void panelRouter.popOverlay(layerManager);
-            },
-          );
-          void panelRouter.pushOverlay(slotPicker, layerManager);
-        });
-      };
-      const modal = new CanvasActionOptionsModal(
-        bridge,
-        wsSender,
-        gestureBus,
-        enrichedReq,
-        currentLocale,
-        handshake.session_id,
-        (reason) => {
-          if (reason === 'slot-picker-needed') {
-            openSlotPicker();
-          } else {
-            void panelRouter.popOverlay(layerManager);
-          }
-        },
-        toastQueue,
-      );
-      void panelRouter.pushOverlay(modal, layerManager);
-    });
+    const r = req as ActionOptionsRequest;
+    // Cast at the lowest available slot ≥ the spell's level (cantrips → 0); advanced
+    // upcast slot selection is a future enhancement (mirrors skills' fixed 'normal').
+    const snapshot = statusHud?.getCachedSnapshot() ?? null;
+    const spellLevel = snapshot?.spells.spells.find((s) => s.id === r.itemId)?.level ?? 0;
+    const availableSlots =
+      spellLevel === 0
+        ? []
+        : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
+    const slotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+    const callerArgs = { actor_id: r.actorId, spell_id: r.itemId, slot_level: slotLevel };
+    if (r.requiresTarget) {
+      openTargetPicker('cast-spell', callerArgs, r.actorId);
+      return;
+    }
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'cast-spell' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: { ...callerArgs, targets: [] as string[] },
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
   };
   panelRouter.setPanelInstanceHandler('canvas-inventory', (panel) => {
     const p = panel as unknown as CanvasSelectablePanel;
@@ -1961,6 +1996,36 @@ export async function _bootEngineCore(
     const p = panel as unknown as CanvasSelectablePanel;
     p.setWsEventBus(wsEventBus);
     p.setActionOptionsHandler(canvasSpellDispatch);
+  });
+
+  // 11f-ter. Phase 8 write channel — canvas INTERACTIVE Skills panel.
+  //          The Quick Action [K] opens it; a tap rolls the highlighted skill DIRECTLY
+  //          (no ActionOptions modal): build the canonical skill-check tool.invoke
+  //          envelope (handshake.session_id + fresh idempotencyKey) and send it via the
+  //          WsSender holder (reconnect-safe). advantage is fixed to 'normal' for the
+  //          direct-roll affordance.
+  const canvasSkillRollDispatch = (req: { actorId: string; skill: string }): void => {
+    const envelope = {
+      proto: 'evf-v1' as const,
+      seq: 0,
+      ts: Date.now(),
+      type: 'tool.invoke' as const,
+      session_id: handshake.session_id,
+      payload: {
+        toolId: 'skill-check' as const,
+        idempotencyKey: crypto.randomUUID(),
+        args: { actor_id: req.actorId, skill: req.skill, advantage: 'normal' as const },
+      },
+    };
+    wsSender.send(JSON.stringify(envelope));
+  };
+  panelRouter.setPanelInstanceHandler('canvas-skills', (panel) => {
+    const p = panel as unknown as {
+      setWsEventBus: (b: typeof wsEventBus) => void;
+      setSkillRollHandler: (h: ((req: { actorId: string; skill: string }) => void) | null) => void;
+    };
+    p.setWsEventBus(wsEventBus);
+    p.setSkillRollHandler(canvasSkillRollDispatch);
   });
 
   // 11g. Quick-action handler for combat-tracker panel (Plan 08-05 step 11i).
@@ -2298,6 +2363,12 @@ export async function _bootEngineCore(
         unsubPlayerViewStatus();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubPlayerViewStatus failed', err);
+      }
+      try {
+        unsubCombatTurn();
+        unsubCombatState();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: combat cache unsubscribe failed', err);
       }
       try {
         phoneSettings?.dispose();

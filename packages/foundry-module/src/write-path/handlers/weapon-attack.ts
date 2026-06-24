@@ -222,7 +222,10 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
           }
           // consume.action: true only on first iteration (action economy — Extra
           // Attack does NOT double-spend the action; see RESEARCH Pattern 2).
-          result = await activity.use({ configure: false, consume: { action: i === 0 } });
+          // dnd5e 5.x `use(usage, dialog, message)`: `consume` is a usage field and
+          // `{ configure: false }` MUST be the dialog arg (INV-2) — in the usage arg it
+          // left the dialog enabled, hanging every attack until the 10s foundry_timeout.
+          result = await activity.use({ consume: { action: i === 0 } }, { configure: false });
         }
         const chatCardId = extractChatCardId(result);
         attacks.push({ attackIndex: i + 1, chatCardId });

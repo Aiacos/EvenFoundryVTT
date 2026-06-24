@@ -121,10 +121,8 @@ describe('castCounterspellHandler', () => {
       success: true,
       data: { chatCardId: 'cm-cs-ok', target_caster_id: 'enemy-actor' },
     });
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell3' },
-    });
+    // Regression (260621): slot override in usage arg, { configure: false } in dialog arg.
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell3' } }, { configure: false });
   });
 
   // CCSP-04: no_gm_connected
@@ -168,9 +166,6 @@ describe('castCounterspellHandler', () => {
       slot_level: 5,
       target_caster_id: 'enemy',
     });
-    expect(activity.use).toHaveBeenCalledWith({
-      configure: false,
-      spell: { slot: 'spell5' },
-    });
+    expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell5' } }, { configure: false });
   });
 });

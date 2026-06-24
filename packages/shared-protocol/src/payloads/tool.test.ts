@@ -85,6 +85,15 @@ describe('ToolInvocationEnvelopePayloadSchema', () => {
         args: { placementId: TEST_UUID_1, templateIndex: 0, x: 100, y: 200 },
       },
     },
+    {
+      // Phase 8 write channel — skill-check direct roll (ACT-01).
+      name: 'skill-check',
+      input: {
+        toolId: 'skill-check',
+        idempotencyKey: TEST_UUID_2,
+        args: { actor_id: 'actor1', skill: 'prc', advantage: 'normal' },
+      },
+    },
   ];
 
   for (const { name, input } of validCases) {
