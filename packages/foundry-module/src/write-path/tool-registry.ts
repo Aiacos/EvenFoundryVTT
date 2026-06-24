@@ -33,6 +33,7 @@
 // tool-registry.ts is the assembly point for Task 2: dispatchTool wires these together.
 
 import { type AuditEntry, writeAuditLog } from './audit-log.js';
+import { beginTrace, traceCurrent } from './debug-trace.js';
 import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache.js';
 
 // ─── ToolId union ─────────────────────────────────────────────────────────────
@@ -346,6 +347,7 @@ export async function dispatchTool(
   // itself never rejects (step 5 catches handler throws, step 7 catches audit throws),
   // so `await p` below cannot reject — preserving "always resolves, never rejects".
   const run = async (): Promise<ToolResult> => {
+    beginTrace(`${toolId}:start`);
     // Step 3: handler lookup — return error on unknown tool
     const handler = TOOL_REGISTRY[toolId];
     if (handler === undefined) {
@@ -358,11 +360,16 @@ export async function dispatchTool(
       return { success: false, error: parseResult.error.message };
     }
 
-    // Step 5: handler invocation (error isolation)
+    // Step 5: handler invocation (error isolation). Trace the handler boundary so a
+    // remote (browserless) operator can tell a HUNG handler (`…:handler:pending` frozen
+    // in the bridge log) from a slow audit write or a clean failure — see debug-trace.ts.
     let result: ToolResult;
+    traceCurrent(`${toolId}:handler:pending`);
     try {
       result = await handler.handle(parseResult.data);
+      traceCurrent(`${toolId}:handler:done:${result.success}`);
     } catch (err) {
+      traceCurrent(`${toolId}:handler:throw`);
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
 
@@ -410,6 +417,7 @@ export async function dispatchTool(
       // writeAuditLog already catches internally — this outer catch is a safety net
       // in case of unexpected synchronous throws from writeAuditLog itself.
     }
+    traceCurrent(`${toolId}:audit:done`);
 
     return result;
   };

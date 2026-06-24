@@ -51,6 +51,7 @@
 
 import { CastSpellInputSchema, CONC_CONFLICT_TYPE } from '@evf/shared-protocol';
 import { detectActiveConcentration } from '../concentration-detector.js';
+import { traceCurrent } from '../debug-trace.js';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── Injected emitter ─────────────────────────────────────────────────────────
@@ -208,12 +209,16 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       //   ONLY game.user.targets (the GM here) — mutating it is the documented
       //   v13 per-user pitfall (research §3), so we WARN once and NEVER mutate.
       if (isMidiQolActive()) {
+        // Trace beacon: a frozen `…:midi.use:pending` in the bridge log = MidiQOL's
+        // completeActivityUse never resolved (its own target/usage prompt is awaiting input).
+        traceCurrent('cast-spell:midi.completeActivityUse:pending');
         const result = await MidiQOL!.completeActivityUse(
           activity,
           { midiOptions: { targetUuids: args.targets, ...slotOverride } },
           { configure: false },
           { create: true },
         );
+        traceCurrent('cast-spell:midi.completeActivityUse:returned');
         return { success: true, data: { chatCardId: extractChatCardId(result) } };
       }
       if (args.targets.length > 0) {
@@ -229,7 +234,11 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       // && activity._requiresConfigurationDialog(...))`). Passing `configure: false` inside
       // the usage object left the dialog enabled, so every spell cast awaited a usage
       // dialog no one could answer from the glasses → 10s foundry_timeout hang.
+      // Trace beacon: a frozen `…:activity.use:pending` in the bridge log = vanilla dnd5e
+      // `activity.use` never resolved (a usage/scaling/consume prompt is awaiting input).
+      traceCurrent('cast-spell:activity.use:pending');
       const result = await activity.use({ ...slotOverride }, { configure: false });
+      traceCurrent('cast-spell:activity.use:returned');
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {

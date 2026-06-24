@@ -38,6 +38,7 @@
  * @see packages/foundry-module/src/module.ts (Hooks.once('ready') wiring + secret/url resolution)
  */
 
+import { getEnvSummary, getWritePathTrace } from './debug-trace.js';
 import { dispatchToolAuthorized } from './dispatch-authorized.js';
 import type { ToolId } from './tool-registry.js';
 
@@ -161,6 +162,17 @@ async function drainSlice(
   // which module build this connected client is running (stale cache vs current).
   if (moduleVersion !== null && moduleVersion !== '') {
     params.set('mv', moduleVersion);
+  }
+  // Debug beacons (`dbg` = last write-path trace, `env` = runtime summary) — same
+  // access-log-visible mechanism (see debug-trace.ts). The LAST `dbg` before the log goes
+  // quiet pinpoints where a handler hung (e.g. `#7:cast-spell:activity.use:pending`).
+  const dbg = getWritePathTrace();
+  if (dbg !== '') {
+    params.set('dbg', dbg);
+  }
+  const env = getEnvSummary();
+  if (env !== '') {
+    params.set('env', env);
   }
   const qs = params.toString();
   const url =

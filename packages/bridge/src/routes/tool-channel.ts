@@ -89,18 +89,23 @@ export async function registerToolChannelRoutes(
   app: FastifyInstance,
   queue: ToolInvocationQueue,
 ): Promise<void> {
-  // Version-beacon de-dup: remember the last module version reported per user so the poll
-  // (≈1/s) logs the build only on first-seen or change, not every tick. Module-scoped Map —
-  // process-lifetime, tiny (one entry per connected Foundry user).
-  const lastSeenModuleVersion = new Map<string, string>();
+  // Beacon de-dup: remember the last beacon (module version + write-path trace + env) per
+  // user so the ≈1/s poll logs only on first-seen or change, not every tick. Module-scoped
+  // Map — process-lifetime, tiny (one entry per connected Foundry user).
+  const lastSeenBeacon = new Map<string, string>();
 
-  // GET /internal/tool-requests[?userId=<id>][&mv=<moduleVersion>] — the module drains the
+  // GET /internal/tool-requests[?userId=<id>][&mv=][&dbg=][&env=] — the module drains the
   // invocations it should execute. With `?userId`, only invocations bound to that user are
   // drained (the owning user's poll, ADR-0011 Amendment — a player executes their own
   // actor's writes); without it, all pending are drained (unfiltered / GM-fallback).
-  // `mv` is the module-version beacon (poller-supplied) — logged on change so an operator
-  // can see WHICH module build each connected client runs (stale cache vs current).
-  app.get<{ Querystring: { userId?: string; mv?: string } }>(
+  // The poller-supplied debug beacons are logged on change so an operator can diagnose a
+  // browserless client without a console:
+  //   - `mv`  module build (stale cache vs current)
+  //   - `dbg` last write-path trace (a FROZEN `…:handler:pending` pinpoints a hung handler)
+  //   - `env` runtime summary (Foundry / dnd5e / MidiQOL / socketlib / isGM)
+  // All are unvalidated extra params the drain ignores; they also appear verbatim in the
+  // request access log, so they're visible even before this logging code is deployed.
+  app.get<{ Querystring: { userId?: string; mv?: string; dbg?: string; env?: string } }>(
     '/internal/tool-requests',
     { config: { rateLimit: false } },
     async (request, reply) => {
@@ -108,12 +113,20 @@ export async function registerToolChannelRoutes(
         return reply.status(401).send({ error: 'unauthorized' });
       }
       const userId = request.query.userId;
-      const moduleVersion = request.query.mv;
-      if (typeof moduleVersion === 'string' && moduleVersion !== '') {
+      const { mv: moduleVersion, dbg, env } = request.query;
+      if (
+        (typeof moduleVersion === 'string' && moduleVersion !== '') ||
+        (typeof dbg === 'string' && dbg !== '') ||
+        (typeof env === 'string' && env !== '')
+      ) {
         const key = userId ?? '(unfiltered)';
-        if (lastSeenModuleVersion.get(key) !== moduleVersion) {
-          lastSeenModuleVersion.set(key, moduleVersion);
-          request.log.info({ userId: key, moduleVersion }, 'EVF client module version beacon');
+        const composite = `${moduleVersion ?? ''}|${dbg ?? ''}|${env ?? ''}`;
+        if (lastSeenBeacon.get(key) !== composite) {
+          lastSeenBeacon.set(key, composite);
+          request.log.info(
+            { userId: key, moduleVersion, trace: dbg, env },
+            'EVF client debug beacon',
+          );
         }
       }
       return reply

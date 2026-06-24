@@ -83,6 +83,7 @@ import {
 // for g2-app tool.invoke writes, runs them through the authoritative write path
 // (dispatchToolAuthorized — ADR-0014), and POSTs the result back. GM-gated; NO new
 // socketlib handler (count stays 17).
+import { setEnvSummary } from './write-path/debug-trace.js';
 import { registerToolInvocationPoller } from './write-path/tool-invocation-poller.js';
 // Plan 07-02 — side-effect import: registers all 4 Wave 1 ToolHandlers into TOOL_REGISTRY
 // before the Hooks.once('ready') fires. This ensures dispatchTool can route to real handlers
@@ -613,6 +614,27 @@ Hooks.once('ready', () => {
   // bridgeUrl + internalSecret exactly as bridgeDeltaEmitter does (injected getters)
   // and is GM-gated internally (non-GM clients no-op). The teardown is retained for
   // the page lifecycle; Foundry reload tears down the whole client.
+  // Debug env beacon (debug-trace.ts): a one-shot runtime summary the poller appends as
+  // `&env=` so a remote operator sees the dnd5e / MidiQOL / socketlib environment that
+  // governs how write-path `activity.use` / `rollSkill` behave (e.g. whether MidiQOL is
+  // intercepting). Defensive casts — these globals aren't all in our ambient types.
+  try {
+    const g = game as unknown as {
+      version?: string;
+      release?: { version?: string };
+      system?: { id?: string; version?: string };
+      user?: { isGM?: boolean };
+    };
+    const fvtt = g.version ?? g.release?.version ?? '?';
+    const sys = `${g.system?.id ?? '?'}@${g.system?.version ?? '?'}`;
+    const midi = game.modules.get('midi-qol')?.active === true ? '1' : '0';
+    const socketlib = game.modules.get('socketlib')?.active === true ? '1' : '0';
+    const gm = g.user?.isGM === true ? '1' : '0';
+    setEnvSummary(`fvtt:${fvtt};sys:${sys};midi:${midi};socketlib:${socketlib};gm:${gm}`);
+  } catch {
+    // Best-effort telemetry — never block ready on the env summary.
+  }
+
   _toolInvocationPollerTeardown?.();
   _toolInvocationPollerTeardown = registerToolInvocationPoller({
     getBridgeUrl,
