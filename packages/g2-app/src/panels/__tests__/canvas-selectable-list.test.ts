@@ -117,11 +117,11 @@ describe('CanvasInventoryPanel — cursor + tap dispatch', () => {
     expect(req?.actorId).toBe('actor-shin');
     expect(req?.itemId).toBe('w1');
     expect(req?.name).toBe('Spada lunga');
-    // New flat-list model: Foundry resolves targeting → no glasses target picker.
-    expect(req?.requiresTarget).toBe(false);
+    // A weapon (non-consumable) needs an explicit target → boot opens the TargetPicker.
+    expect(req?.requiresTarget).toBe(true);
   });
 
-  it('cursor follows scroll-down; tap dispatches the newly highlighted entry', () => {
+  it('cursor follows scroll-down; tap dispatches the newly highlighted entry (consumable → no target)', () => {
     const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
     const handler = vi.fn<(req: ActionOptionsRequest) => void>();
     panel.setActionOptionsHandler(handler);
@@ -134,6 +134,8 @@ describe('CanvasInventoryPanel — cursor + tap dispatch', () => {
     const req = handler.mock.calls[0]?.[0];
     expect(req?.itemId).toBe('p1');
     expect(req?.name).toBe('Pozione');
+    // Consumables self-target by default → dispatch directly, no target picker.
+    expect(req?.requiresTarget).toBe(false);
   });
 
   it('scroll moves the cursor off the top boundary; tap with no handler is a safe no-op', () => {
@@ -172,8 +174,55 @@ describe('CanvasSpellbookPanel — cursor + tap dispatch', () => {
     expect(req?.actorId).toBe('actor-shin');
     expect(req?.itemId).toBe('s1');
     expect(req?.name).toBe('Dardo Incantato');
-    // New flat-list model: Foundry resolves targeting → no glasses target picker.
-    expect(req?.requiresTarget).toBe(false);
+    // A ranged (range '36m'), non-reaction spell needs a target → boot opens the TargetPicker.
+    expect(req?.requiresTarget).toBe(true);
+  });
+
+  it('self-range and reaction spells dispatch directly (requiresTarget=false)', () => {
+    const panel = new CanvasSpellbookPanel(bridgeStub, busStub, 'it');
+    const handler = vi.fn<(req: ActionOptionsRequest) => void>();
+    panel.setActionOptionsHandler(handler);
+    panel.onSnapshot(
+      makeSnapshot({
+        spells: {
+          slots: [{ level: 1, value: 2, max: 2 }],
+          spells: [
+            {
+              id: 'self1',
+              name: 'Scudo Arcano',
+              level: 1,
+              school: 'abjuration',
+              activation: 'action',
+              range: 'self',
+              effect: '',
+              prepared: true,
+              alwaysPrepared: false,
+              concentration: false,
+            },
+            {
+              id: 'rx1',
+              name: 'Assorbire Elementi',
+              level: 1,
+              school: 'abjuration',
+              activation: 'reaction',
+              range: 'self',
+              effect: '',
+              prepared: true,
+              alwaysPrepared: false,
+              concentration: false,
+            },
+          ],
+        },
+      } as Partial<CharacterSnapshot>),
+    );
+
+    // Cursor on the self spell.
+    panel.onEvent({ kind: 'tap' });
+    expect(handler.mock.calls[0]?.[0]?.requiresTarget).toBe(false);
+    // Scroll to the reaction spell and tap.
+    panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+    expect(handler.mock.calls[1]?.[0]?.requiresTarget).toBe(false);
   });
 
   it('ignores a malformed character.delta payload (T-20-01)', () => {

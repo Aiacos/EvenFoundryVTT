@@ -3,12 +3,14 @@
  *
  * Opened by the Quick Action `[B] Libro`. Mirrors the {@link CanvasSkillsPanel} UX: a
  * flat, cursor-windowed list of the actor's spells with a `▶` marker (swipe-up/down
- * moves the cursor), and a TAP **casts the highlighted spell directly** — it dispatches
- * a `cast-spell` `tool.invoke` (the boot-side `canvasSpellDispatch`) at the lowest
- * available slot ≥ the spell's level (cantrips → slot 0). No Action-Options confirm
- * modal and no target picker: `activity.use()` resolves targeting Foundry-side, and the
- * per-actor write authz (ADR-0014) still applies. (Upcast slot selection is a future
- * enhancement, mirroring skills' fixed `advantage: 'normal'`.)
+ * moves the cursor), and a TAP **casts the highlighted spell** — it dispatches a
+ * `cast-spell` `tool.invoke` (the boot-side `canvasSpellDispatch`) at the lowest
+ * available slot ≥ the spell's level (cantrips → slot 0). When the spell requires a
+ * target (see {@link resolveRequest}'s `requiresTarget` heuristic) the boot dispatch
+ * first opens the {@link TargetPickerPanel} (combatants-only) so the cast fires on the
+ * chosen token; self/area/reaction spells dispatch directly. No Action-Options confirm
+ * modal: the per-actor write authz (ADR-0014) still applies. (Upcast slot selection is
+ * a future enhancement, mirroring skills' fixed `advantage: 'normal'`.)
  *
  * @see packages/g2-app/src/panels/canvas-skills-panel.ts (the shared cursor/tap template)
  * @see packages/g2-app/src/panels/canvas-selectable-list.ts (base + windowCursorRows)
@@ -55,8 +57,15 @@ export default class CanvasSpellbookPanel extends CanvasSelectableListPanel {
   }
 
   /**
-   * The spell under the cursor → a direct `cast-spell` request. `requiresTarget` is
-   * `false` (Foundry resolves targeting); the boot dispatch picks the default slot.
+   * The spell under the cursor → a `cast-spell` request.
+   *
+   * `requiresTarget` is derived from the same heuristic the glyph SpellbookPanel uses
+   * (spellbook-panel.ts): a spell needs an explicit target when it has a real range
+   * (not `self`, not empty) AND is not a reaction. When `true` the boot dispatch opens
+   * the {@link TargetPickerPanel} (combatants-only) so the cast fires on the chosen
+   * token instead of an empty target set; when `false` (self/area/reaction/cantrip with
+   * no range) the boot dispatch sends `cast-spell` directly. Both `range` and
+   * `activation` are required fields on `SpellEntry`, so the heuristic is total.
    */
   protected resolveRequest(
     snapshot: CharacterSnapshot,
@@ -67,12 +76,17 @@ export default class CanvasSpellbookPanel extends CanvasSelectableListPanel {
     if (spell === undefined) {
       return null;
     }
+    // Mirror the glyph SpellbookPanel heuristic (spellbook-panel.ts): spells with a
+    // real range that are not reactions typically need a target. Phase 9 refines this
+    // with actual server-side range data.
+    const requiresTarget =
+      spell.range !== 'self' && spell.range !== '' && spell.activation !== 'reaction';
     return {
       kind: 'spell',
       name: spell.name,
       actorId: snapshot.actorId,
       itemId: spell.id,
-      requiresTarget: false,
+      requiresTarget,
     };
   }
 

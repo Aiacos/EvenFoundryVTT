@@ -5,13 +5,15 @@
  * UX exactly: a flat, cursor-windowed list of the actor's items with a `▶` marker
  * (swipe-up/down moves the cursor), and a TAP **uses the highlighted item directly** —
  * it dispatches a `use-item` `tool.invoke` (the boot-side `canvasItemDispatch`), like
- * clicking the item on the sheet. No Action-Options confirm modal and no target picker:
- * `activity.use()` resolves targeting Foundry-side (the player's targeted token / the
- * activity's self-target), and the per-actor write authz (ADR-0014) still applies.
+ * clicking the item on the sheet. When the item requires a target (see
+ * {@link resolveRequest}'s `requiresTarget` heuristic — weapons, equipment) the boot
+ * dispatch first opens the {@link TargetPickerPanel} (combatants-only) so the use/attack
+ * fires on the chosen token; consumables dispatch directly. No Action-Options confirm
+ * modal: the per-actor write authz (ADR-0014) still applies.
  *
- * (The earlier modal flow silently swallowed the dispatch for any item with
- * `requiresTarget` — equipment, weapons — because the canvas path had no TargetPicker;
- * and the glyph scroll-offset renderer showed no cursor. Both are fixed here.)
+ * (The earlier flat-list flow dispatched every item with `targets: []`, so any
+ * targeted item — equipment, weapons — fired "at nothing"; the TargetPicker handoff
+ * fixes that while keeping the cursor UX.)
  *
  * @see packages/g2-app/src/panels/canvas-skills-panel.ts (the shared cursor/tap template)
  * @see packages/g2-app/src/panels/canvas-selectable-list.ts (base + windowCursorRows)
@@ -56,9 +58,13 @@ export default class CanvasInventoryPanel extends CanvasSelectableListPanel {
   }
 
   /**
-   * The item under the cursor → a direct `use-item` request. `requiresTarget` is `false`
-   * (no glasses target picker — Foundry resolves targeting); the boot dispatch sends the
-   * `use-item` tool.invoke with `targets: []`.
+   * The item under the cursor → a `use-item` request.
+   *
+   * `requiresTarget` mirrors the glyph InventoryPanel heuristic (inventory-panel.ts):
+   * consumables (potions, scrolls, etc.) self-target by default, so they dispatch
+   * directly; everything else (weapons, armour, equipment) needs an explicit target, so
+   * the boot dispatch opens the {@link TargetPickerPanel} (combatants-only) and the
+   * use/attack fires on the chosen token instead of an empty target set.
    */
   protected resolveRequest(
     snapshot: CharacterSnapshot,
@@ -69,12 +75,15 @@ export default class CanvasInventoryPanel extends CanvasSelectableListPanel {
     if (item === undefined) {
       return null;
     }
+    // Mirror the glyph InventoryPanel heuristic (inventory-panel.ts): consumables
+    // self-target by default (potions, etc.); everything else needs an explicit target.
+    const requiresTarget = item.type !== 'consumable';
     return {
       kind: 'item',
       name: item.name,
       actorId: snapshot.actorId,
       itemId: item.id,
-      requiresTarget: false,
+      requiresTarget,
     };
   }
 

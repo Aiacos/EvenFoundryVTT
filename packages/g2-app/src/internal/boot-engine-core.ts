@@ -58,6 +58,10 @@ import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hu
 import {
   CLIENT_PLAYER_VIEW_TYPE,
   CLIENT_SELECT_ACTOR_TYPE,
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
+  type CombatSnapshot,
+  CombatSnapshotSchema,
   PLAYER_VIEW_STATUS_TYPE,
   PlayerViewStatusSchema,
   type ServerCap,
@@ -95,6 +99,7 @@ import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
 import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.js';
 import { clearActionEconomyState } from '../panels/action-economy-state.js';
+import type { ActionOptionsRequest } from '../panels/action-options-modal.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
@@ -105,6 +110,8 @@ import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
 import { attachQuickActionTap } from '../panels/quick-action-tap-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { attachRootExit } from '../panels/root-exit-dispatcher.js';
+import { TargetPickerPanel } from '../panels/target-picker-panel.js';
+import { resolveValidTargets } from '../panels/target-resolver.js';
 import { createPhoneSettingsPanel, type PhoneSettingsPanel } from '../phone/settings-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
 import { MapBaseLayer } from '../raster/map-base-layer.js';
@@ -1878,16 +1885,59 @@ export async function _bootEngineCore(
     setWsEventBus: (b: typeof wsEventBus) => void;
     setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
   };
-  // Feature: USE inventory items / CAST spells DIRECTLY on tap — the same immediate
-  // "tap → use" flow the Skills panel uses (canvasSkillRollDispatch), NOT the
-  // ActionOptions confirm-modal. The modal path silently swallowed the dispatch for any
-  // item/spell with `requiresTarget` (equipment, weapons, targeted spells) because the
-  // canvas path provides no TargetPicker, so those never executed. A direct dispatch
-  // sends the canonical `tool.invoke` (use-item / cast-spell) with `targets: []` —
-  // activity.use() resolves targeting via Foundry (the player's targeted token / the
-  // activity's self-target), and the write-path authz (ADR-0014) still applies.
+  // Cache the latest CombatSnapshot for the target picker (combatants-only MVP).
+  // `wsEventBus` is a stable instance (it rebinds the socket on reconnect rather than
+  // being recreated — see step 5a), so this boot-level subscription survives reconnects.
+  // Updated on BOTH `combat.turn` and `combat.state` deltas; validated at the trust
+  // boundary (T-23-01 pattern, mirrors canvas-combat-tracker-panel). Torn down below.
+  let cachedCombat: CombatSnapshot | null = null;
+  const cacheCombat = (raw: unknown): void => {
+    const parsed = CombatSnapshotSchema.safeParse(raw);
+    if (parsed.success) cachedCombat = parsed.data;
+  };
+  const unsubCombatTurn = wsEventBus.subscribe(COMBAT_TURN_DELTA_TYPE, cacheCombat);
+  const unsubCombatState = wsEventBus.subscribe(COMBAT_STATE_DELTA_TYPE, cacheCombat);
+
+  // Open the glasses-native target picker (z=2 overlay) for a tool that needs a target.
+  // Candidates are resolved combatants-only (MVP) from the cached CombatSnapshot; the
+  // picker emits the canonical `tool.invoke` with `targets: [chosen]` on tap and pops
+  // itself on tap/cancel via `onClose` (mirrors the QuickActionMenu pushOverlay wiring).
+  const openTargetPicker = (
+    toolId: 'cast-spell' | 'use-item',
+    callerArgs: Record<string, unknown>,
+    actorId: string,
+  ): void => {
+    const candidates = resolveValidTargets(cachedCombat, undefined, actorId);
+    const picker = new TargetPickerPanel(
+      bridge,
+      { send: (d: string) => wsSender.send(d) },
+      gestureBus,
+      candidates,
+      currentMenuLocale,
+      handshake.session_id,
+      { toolId, callerArgs },
+      () => {
+        void panelRouter.popOverlay(layerManager);
+      },
+    );
+    void panelRouter.pushOverlay(picker, layerManager);
+  };
+
+  // Feature: USE inventory items / CAST spells on tap. When the tapped entry requires a
+  // target (req.requiresTarget — weapons/equipment, ranged non-reaction spells) the
+  // glasses-native TargetPicker opens FIRST (combatants-only) so the use/cast fires on
+  // the chosen token; the picker appends `targets:[chosen]`. Self/area/reaction spells
+  // and consumables dispatch DIRECTLY with `targets: []` (Foundry resolves the
+  // self-target / the player's pre-selected token). The write-path authz (ADR-0014)
+  // applies in both paths. (The earlier flow ALWAYS dispatched `targets: []`, so any
+  // targeted item/spell fired "at nothing" — the picker handoff fixes that.)
   const canvasItemDispatch = (req: unknown): void => {
-    const r = req as { actorId: string; itemId: string };
+    const r = req as ActionOptionsRequest;
+    const callerArgs = { actor_id: r.actorId, item_id: r.itemId };
+    if (r.requiresTarget) {
+      openTargetPicker('use-item', callerArgs, r.actorId);
+      return;
+    }
     const envelope = {
       proto: 'evf-v1' as const,
       seq: 0,
@@ -1897,13 +1947,13 @@ export async function _bootEngineCore(
       payload: {
         toolId: 'use-item' as const,
         idempotencyKey: crypto.randomUUID(),
-        args: { actor_id: r.actorId, item_id: r.itemId, targets: [] as string[] },
+        args: { ...callerArgs, targets: [] as string[] },
       },
     };
     wsSender.send(JSON.stringify(envelope));
   };
   const canvasSpellDispatch = (req: unknown): void => {
-    const r = req as { actorId: string; itemId: string };
+    const r = req as ActionOptionsRequest;
     // Cast at the lowest available slot ≥ the spell's level (cantrips → 0); advanced
     // upcast slot selection is a future enhancement (mirrors skills' fixed 'normal').
     const snapshot = statusHud?.getCachedSnapshot() ?? null;
@@ -1913,6 +1963,11 @@ export async function _bootEngineCore(
         ? []
         : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
     const slotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+    const callerArgs = { actor_id: r.actorId, spell_id: r.itemId, slot_level: slotLevel };
+    if (r.requiresTarget) {
+      openTargetPicker('cast-spell', callerArgs, r.actorId);
+      return;
+    }
     const envelope = {
       proto: 'evf-v1' as const,
       seq: 0,
@@ -1922,12 +1977,7 @@ export async function _bootEngineCore(
       payload: {
         toolId: 'cast-spell' as const,
         idempotencyKey: crypto.randomUUID(),
-        args: {
-          actor_id: r.actorId,
-          spell_id: r.itemId,
-          targets: [] as string[],
-          slot_level: slotLevel,
-        },
+        args: { ...callerArgs, targets: [] as string[] },
       },
     };
     wsSender.send(JSON.stringify(envelope));
@@ -2308,6 +2358,12 @@ export async function _bootEngineCore(
         unsubPlayerViewStatus();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: unsubPlayerViewStatus failed', err);
+      }
+      try {
+        unsubCombatTurn();
+        unsubCombatState();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: combat cache unsubscribe failed', err);
       }
       try {
         phoneSettings?.dispose();
