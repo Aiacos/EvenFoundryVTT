@@ -92,6 +92,38 @@ describe('resolveValidTargets — TR-01: null combat + empty tokens', () => {
   });
 });
 
+// ─── TR-token-uuid ──────────────────────────────────────────────────────────────
+
+describe('resolveValidTargets — candidate.tokenId carries the token UUID for MidiQOL', () => {
+  it('uses combatant.tokenUuid when present (so cast/attack resolves onto the token)', () => {
+    const combat = makeCombat({
+      currentCombatantId: 'c-orc',
+      combatants: [
+        {
+          id: 'c-orc',
+          tokenUuid: 'Scene.ABC.Token.XYZ',
+          name: 'ORC',
+          actorId: 'actor-orc',
+          initiative: 12,
+          hp: 10,
+          maxHp: 10,
+          isCurrentTurn: true,
+        },
+      ],
+    });
+    const result = resolveValidTargets(combat, undefined, CALLER_ACTOR_ID);
+    expect(result).toHaveLength(1);
+    // NOT the combatant id 'c-orc' — the token UUID MidiQOL needs.
+    expect(result[0]?.tokenId).toBe('Scene.ABC.Token.XYZ');
+  });
+
+  it('falls back to combatant.id when tokenUuid is absent (pre-tokenUuid module build)', () => {
+    const result = resolveValidTargets(makeCombat(), undefined, CALLER_ACTOR_ID);
+    // makeCombat fixtures have no tokenUuid → tokenId is the combatant id (degraded fallback).
+    expect(result.every((c) => c.tokenId.startsWith('c-'))).toBe(true);
+  });
+});
+
 // ─── TR-02 ────────────────────────────────────────────────────────────────────
 
 describe('resolveValidTargets — TR-02: combat filtering + ordering', () => {

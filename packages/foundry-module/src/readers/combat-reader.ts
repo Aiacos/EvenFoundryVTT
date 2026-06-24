@@ -90,6 +90,10 @@ export function getCombatSnapshot(): CombatSnapshot | null {
 
     return {
       id: c.id,
+      // Canonical token UUID for MidiQOL targeting (null for token-less combatants).
+      // The combatant `id` is NOT a token UUID — the glasses target picker forwards this
+      // as `midiOptions.targetUuids`, so without it MidiQOL resolves no target.
+      tokenUuid: c.token?.uuid ?? null,
       name: c.name,
       actorId: c.actorId,
       initiative: c.initiative,

@@ -147,7 +147,10 @@ export function resolveValidTargets(
       addedActorIds.add(actorId);
 
       results.push({
-        tokenId: combatant.id,
+        // Pass the token UUID (what MidiQOL `targetUuids` needs), NOT the combatant id —
+        // a cast/attack on a combatant id resolves no target. Fall back to the combatant
+        // id only for pre-tokenUuid module builds (degraded, but no worse than before).
+        tokenId: combatant.tokenUuid ?? combatant.id,
         actorId,
         name: combatant.name,
         hp: combatant.hp,

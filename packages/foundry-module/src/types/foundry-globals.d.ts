@@ -832,6 +832,12 @@ interface FoundryCombatant {
   actor: FoundryActor | null;
   /** Initiative roll result (null if not yet rolled). */
   initiative: number | null;
+  /**
+   * The combatant's TokenDocument (null if the combat has no token for it).
+   * `token.uuid` is the canonical Foundry token UUID (e.g. `Scene.X.Token.Y`) that
+   * MidiQOL's `midiOptions.targetUuids` expects — the combatant `id` is NOT a token UUID.
+   */
+  token: { readonly uuid: string } | null;
 }
 
 // ─── Foundry Combat (minimal read shape) ──────────────────────────────────────
