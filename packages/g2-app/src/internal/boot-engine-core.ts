@@ -101,6 +101,7 @@ import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.
 import { clearActionEconomyState } from '../panels/action-economy-state.js';
 import type { ActionOptionsRequest } from '../panels/action-options-modal.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
+import { CanvasTargetPickerPanel } from '../panels/canvas-target-picker-panel.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
 import { clearRetryCache } from '../panels/conc-retry-cache.js';
 import { attachNavPanelClose } from '../panels/nav-panel-close-dispatcher.js';
@@ -110,7 +111,6 @@ import { QuickActionMenuPanel } from '../panels/quick-action-menu-panel.js';
 import { attachQuickActionTap } from '../panels/quick-action-tap-dispatcher.js';
 import { attachReactionPromptHandler } from '../panels/reaction-prompt-dispatcher.js';
 import { attachRootExit } from '../panels/root-exit-dispatcher.js';
-import { TargetPickerPanel } from '../panels/target-picker-panel.js';
 import { resolveValidTargets } from '../panels/target-resolver.js';
 import { createPhoneSettingsPanel, type PhoneSettingsPanel } from '../phone/settings-panel.js';
 import { renderGlyphScene } from '../raster/glyph-renderer.js';
@@ -1908,14 +1908,13 @@ export async function _bootEngineCore(
     actorId: string,
   ): void => {
     const candidates = resolveValidTargets(cachedCombat, undefined, actorId);
-    const picker = new TargetPickerPanel(
-      bridge,
-      { send: (d: string) => wsSender.send(d) },
+    const picker = new CanvasTargetPickerPanel(
       gestureBus,
-      candidates,
       currentMenuLocale,
+      candidates,
       handshake.session_id,
       { toolId, callerArgs },
+      { send: (d: string) => wsSender.send(d) },
       () => {
         void panelRouter.popOverlay(layerManager);
       },
