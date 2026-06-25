@@ -67,7 +67,7 @@ describe('buildDisplaySettingsSnapshot', () => {
       dither: false,
       brightness: 0,
       webpQuality: 0,
-      captureFps: 30,
+      captureFps: 5,
       normalize: false,
     });
   });

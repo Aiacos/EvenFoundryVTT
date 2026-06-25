@@ -247,12 +247,11 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
   // Capture frame rate (fps) — DM-visible world setting controlling how often the
   // canvas is captured and emitted as a frame_png envelope (Quick Task 260611-e71,
   // FPS redesign 2026-06-11: the user configures FRAMES PER SECOND, not ms).
-  // Default 30 fps (v0.1.21 — matches the glasses-side 33 ms render cap; the
-  // 16-level quantized PNG is ~18 KB/frame, so 30 fps costs ~540 KB/s upstream
-  // worst-case and far less in practice thanks to the identical-frame skip).
-  // Range 1–60 fps, step 1. Read live on every
-  // capture cycle — no module reload needed. The real upper bound is the
-  // client GPU readback + upstream bandwidth, not this setting.
+  // Default 5 fps (2026-06-25 — the spec's committed target; see DEFAULT_CAPTURE_FPS).
+  // Was 30 (sim-tuned) but that floods real phone→glasses BLE (~540 KB/s vs ~25 KB/s)
+  // and the phone's per-frame decode → HUD lag on physical G2. Range 1–60 fps, step 1.
+  // Read live every capture cycle — no module reload needed; a DM with spare bandwidth
+  // can raise it. The real upper bound is the client GPU readback + BLE, not this setting.
   game.settings.register(MODULE_ID, 'captureFps', {
     name: 'evf.settings.capture_fps.name',
     hint: 'evf.settings.capture_fps.hint',
@@ -314,8 +313,19 @@ export function registerSettings(opts?: RegisterSettingsOptions): void {
   });
 }
 
-/** Default capture rate (fps) — used for the setting default and as the unreadable-setting fallback. */
-const DEFAULT_CAPTURE_FPS = 30;
+/**
+ * Default capture rate (fps) — setting default + unreadable-setting fallback.
+ *
+ * Lowered 30 → 5 (2026-06-25 perf) to match the spec's COMMITTED frame-rate target
+ * (Specs.md §7.4b.6.1 — 5 fps committed / 15 stretch). 30 fps was tuned for the dev
+ * SIMULATOR (powerful CPU, no real BLE): at ~18 KB/frame it costs ~540 KB/s upstream,
+ * which saturates the real phone→glasses BLE link (~25 KB/s sustained) and the phone's
+ * per-frame canvas/raster decode → the HUD lags on physical G2. 5 fps keeps the map
+ * glanceable while leaving BLE + phone CPU headroom. The identical-frame skip means a
+ * static map still costs ~0; this cap only bounds the burst during map motion. DMs who
+ * have spare bandwidth can raise it live (1–60) in the module settings.
+ */
+const DEFAULT_CAPTURE_FPS = 5;
 
 /** Default WebP quality — 0 = lossless PNG (perf audit 2026-06-14; WebP barely helps on 16-level frames). */
 const DEFAULT_WEBP_QUALITY = 0;
