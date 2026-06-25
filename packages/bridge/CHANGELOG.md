@@ -1,5 +1,134 @@
 # @evf/bridge
 
+## 0.2.0
+
+### Minor Changes
+
+- 2d5a35b: On-connect character data delivery + session-scoped character selection (real-pairing session).
+
+  Adds three bridge features shipped in tasks d0v, dog, and flv:
+
+  - `DeltaEmitter.sendInitialToSession` pushes a targeted `character.delta` to a single session
+    on WS connect, reusing `DELTA_CAP_MAP` cap-gating and the replay buffer (d0v).
+  - `CharacterSnapshotCache` (`Map<actorId, CharacterSnapshot>`) stores incoming `character.delta`
+    envelopes from `/internal/delta` so `GET /v1/character/:actorId` and the on-connect push work
+    without a live Foundry roundtrip (dog).
+  - Per-session `selectedActorId` persisted at handshake time; `pushInitialCharacterDelta` uses
+    it to target the correct actor; `emitDelta` applies a three-present AND-guard to prevent
+    `character.delta` from reaching sessions that selected a different PC (flv).
+
+  `buildServer` remains fully backward-compatible (options additive). socketlib handler count
+  unchanged at 17. No new dependencies.
+
+- a823240: Phase-8 write channel + skill-check tool, end-to-end.
+
+  The bridge could receive `tool.invoke` envelopes but had no way to execute write
+  tools in Foundry (it cannot use socketlib; the only bridge↔Foundry channel was the
+  one-way module → `/internal/delta` POST). This adds a poll-based REVERSE channel that
+  mirrors the player-view stream-request pattern:
+
+  - **bridge**: a new in-memory `ToolInvocationQueue` (`enqueue`/`drainPending`/`resolveResult`
+    with a 10s `foundry_timeout`) and two internal-secret-guarded, rate-limit-exempt
+    routes — `GET /internal/tool-requests` (drain pending) and `POST /internal/tool-result`
+    (resolve the awaiting promise). The production WS dispatch now enqueues on this queue
+    (the test override is preserved).
+  - **foundry-module**: a GM-gated `tool-invocation-poller` (≈1s cadence, fault-tolerant)
+    polls the bridge, dispatches each write, and POSTs the result back. The ADR-0014
+    per-actor write authorization was extracted into a single shared
+    `dispatchToolAuthorized` used by BOTH the socketlib adapter and the new poller, so
+    both channels enforce identical authorization. No new socketlib handler is added
+    (the `socket.register` count stays 17).
+  - **skill-check tool**: new `skill-check` write tool — `actor.rollSkill({ skill,
+advantage, disadvantage })` (dnd5e 5.x config-object API). Added to the shared
+    `TOOL_ID_SCHEMA`, the module `ToolId`/`TOOL_HANDLER_IDS`, and a new handler.
+  - **g2-app**: a new interactive canvas Skills panel (Quick Action `[K]`) that, on tap,
+    dispatches a `skill-check` `tool.invoke` directly (no ActionOptions modal), plus the
+    `[K]` menu item, icon, and `quick_item_skills` i18n key (IT/EN/DE).
+
+- 3a72953: Player-owned write execution (ADR-0011 Amendment 2): write tools (skill-check,
+  attack, spell, use-item) now execute on the OWNING user's client — a player rolls
+  their own actor's actions without a GM online. The bridge tags each queued
+  invocation with the bearer's bound Foundry user and serves `GET
+/internal/tool-requests?userId=<id>`; each client's poller drains only its own
+  user's invocations. The per-actor write authz (dispatchToolAuthorized, ADR-0014)
+  is unchanged. Removes the previous GM-only gate on the poller.
+
+### Patch Changes
+
+- ba2c68a: dev-only debug/control harness — /debug/agent control channel + g2-app agent driving the wizard
+- 337584d: feat(dev): DEV-ONLY no-token mode — skip the wizard access-token step + bridge bearer bypass
+
+  A flag-gated developer convenience so the pairing flow can be exercised without a
+  real bearer token (and without Foundry).
+
+  - **bridge** (`EVF_DEV_NO_AUTH=true`, honored only when `NODE_ENV !== 'production'`,
+    with the same prod double-opt-in as the debug harness): `TokenCache.validate`
+    short-circuits to a synthetic 24h dev session, an `onRequest` hook injects a
+    sentinel bearer for token-less requests so per-route 401 guards pass, CORS reflects
+    any origin (so a local Vite/simulator can reach it), and `GET /v1/characters`
+    serves a small mock roster when no Foundry world is connected.
+  - **g2-app** (`VITE_EVF_NO_AUTH=true`): the wizard skips Step 2 (token entry) —
+    Step 1 advances straight to Step 3 — and `VITE_EVF_DEV_BRIDGE_URL`
+    (default `http://localhost:8910` when no-auth is on) pre-fills the bridge URL so the
+    tester never types it. Gated on the explicit flag (NOT `import.meta.env.DEV`) so
+    Vitest keeps exercising the real token flow; absent in production builds.
+
+- 1cd96ec: Exempt POST /internal/delta from the bridge global rate limiter (v0.1.9 continuous map stream blocker; 1102 prod 429s on 2026-06-09).
+- 31bfecf: Add a module-version beacon so an operator can see which module build each connected
+  Foundry client is actually running (stale browser cache vs current). The tool-invocation
+  poller tags its drain GET with `&mv=<module version>` (resolved live from
+  `game.modules.get('evenfoundryvtt').version`); the bridge ignores the param for draining
+  but logs it once per client on change (`EVF client module version beacon`). Because it's
+  an ordinary query param, the running module version is visible in the bridge's request
+  access log even before the bridge itself is updated.
+- c6ce597: Add a write-path debug-trace beacon for autonomous, browserless diagnosis of write tools.
+  The module records a short trace label at each write-path stage (`#<n>:<tool>:handler:pending`,
+  cast-spell additionally marks `…:activity.use:pending`/`:returned`) plus a one-shot runtime
+  env summary (`fvtt/sys/midi/socketlib/gm`); the tool poller appends both to its drain GET as
+  `&dbg=`/`&env=`. Because they're ordinary query params they appear verbatim in the bridge
+  request access log even before the bridge is updated, and the bridge now also logs them on
+  change (`EVF client debug beacon`). The LAST `dbg` before the poll log goes quiet pinpoints
+  exactly where a handler hung — e.g. a frozen `cast-spell:activity.use:pending` proves the
+  dnd5e `activity.use` call itself never resolved (likely a MidiQOL/usage prompt), not the
+  audit log or the bridge.
+- a6c8fc8: Latency-audit follow-up: residual fps fixes + map brightness + bidirectional display-settings sync.
+
+  **Performance (residual latency removed):**
+
+  - foundry-module: the capture loop no longer awaits the native encode — `runEncodeJob` is fire-and-forget behind the single-flight latest-wins queue, so the loop re-arms after acquire+process only (the encode genuinely overlaps the next capture). Raises the producer ceiling well past 30 fps.
+  - foundry-module: lossy WebP wire format via `OffscreenCanvas.convertToBlob` (new `mapWebpQuality` world setting, default 75) — ~4–7× smaller than PNG, cutting the per-hop bandwidth from ~22 to ~4 Mbit/s at 30 fps. Transparent PNG fallback on hosts without WebP encoding.
+  - foundry-module: the `/internal/delta` frame POST is now single-flight latest-wins with a 5 s `AbortSignal.timeout`, so a slow WAN can no longer accumulate unbounded in-flight requests.
+  - bridge: frame deltas (`frame_png`/`frame_pixels`/`frame_stats`) are excluded from the replay buffer (no ~160 MB/session growth, no stale-frame replay burst on reconnect) and reuse the current seq (gap detection stays correct). Per-session `bufferedAmount` backpressure drops frames for a saturated client instead of queuing unbounded.
+  - g2-app: the HudDeltaDriver throttle (33 ms ≈ 30 fps cap) is now configurable per boot via `BootEngineOpts.hudMinIntervalMs` / `?hudms=` for lab tuning.
+
+  **Map brightness:** new `mapBrightness` client setting (−100..+100 luma gain) applied module-side before the 16-level quantize, with on-glasses `[+]`/`[-]` Quick Action menu rows.
+
+  **Bidirectional display-settings sync:** the five map settings (dither, brightness, WebP quality, capture fps, contrast-normalize) stay in sync between Foundry and the glasses and are controllable from both. Downstream over a new `settings.display` delta (cached by the bridge, pushed on connect); upstream over a `client_setting` WS message that the bridge piggybacks on the module's next frame-POST response (no new connection / no polling — the module is push-only). New `@evf/shared-protocol` payload `settings-display.ts`.
+
+- 0038f94: Wire push-based bridge↔Foundry bearer-registry + character-list path enabling real pairing.
+
+  Adds two new push envelopes (`r1.bearers.available`, `r1.characters.available`) that the Foundry
+  module emits on `ready` and on bearer/actor lifecycle events. The bridge caches both and uses
+  them to validate bearer tokens (`GET /v1/health`) and serve the player-character roster
+  (`GET /v1/characters`) without a socketlib roundtrip. `buildServer({})` now works with NO
+  options — real token validation and character listing are wired internally.
+
+  Security: bearer tokens are pushed over the EVF_INTERNAL_SECRET-gated /internal/delta channel
+  (homelab trust model). Tokens are Zod-validated at the handler boundary before cache write and
+  never logged (T-RFP-01 / T-RFP-02). A never-pushed cache returns `foundry_unreachable` (503)
+  distinguishable from `unknown_token` (401) — T-RFP-03.
+
+- Updated dependencies [b385bf8]
+- Updated dependencies [8c4c5e3]
+- Updated dependencies [edae764]
+- Updated dependencies [96d2022]
+- Updated dependencies [2d5a35b]
+- Updated dependencies [a6c8fc8]
+- Updated dependencies [e17065e]
+- Updated dependencies [a823240]
+- Updated dependencies [0038f94]
+  - @evf/shared-protocol@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

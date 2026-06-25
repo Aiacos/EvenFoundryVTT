@@ -1,6 +1,6 @@
 {
   "name": "@evf/shared-protocol",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "EVF shared protocol — TypeScript types + Zod schemas. Single source of truth per ADR-0002.",
