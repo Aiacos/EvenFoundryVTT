@@ -1,5 +1,20 @@
 # @evf/foundry-mcp
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [b385bf8]
+- Updated dependencies [8c4c5e3]
+- Updated dependencies [edae764]
+- Updated dependencies [96d2022]
+- Updated dependencies [2d5a35b]
+- Updated dependencies [a6c8fc8]
+- Updated dependencies [e17065e]
+- Updated dependencies [a823240]
+- Updated dependencies [0038f94]
+  - @evf/shared-protocol@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

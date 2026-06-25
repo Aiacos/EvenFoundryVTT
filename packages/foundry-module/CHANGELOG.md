@@ -1,5 +1,217 @@
 # @evf/foundry-module
 
+## 0.2.0
+
+### Minor Changes
+
+- 31bfecf: Add a module-version beacon so an operator can see which module build each connected
+  Foundry client is actually running (stale browser cache vs current). The tool-invocation
+  poller tags its drain GET with `&mv=<module version>` (resolved live from
+  `game.modules.get('evenfoundryvtt').version`); the bridge ignores the param for draining
+  but logs it once per client on change (`EVF client module version beacon`). Because it's
+  an ordinary query param, the running module version is visible in the bridge's request
+  access log even before the bridge itself is updated.
+- c6ce597: Add a write-path debug-trace beacon for autonomous, browserless diagnosis of write tools.
+  The module records a short trace label at each write-path stage (`#<n>:<tool>:handler:pending`,
+  cast-spell additionally marks `…:activity.use:pending`/`:returned`) plus a one-shot runtime
+  env summary (`fvtt/sys/midi/socketlib/gm`); the tool poller appends both to its drain GET as
+  `&dbg=`/`&env=`. Because they're ordinary query params they appear verbatim in the bridge
+  request access log even before the bridge is updated, and the bridge now also logs them on
+  change (`EVF client debug beacon`). The LAST `dbg` before the poll log goes quiet pinpoints
+  exactly where a handler hung — e.g. a frozen `cast-spell:activity.use:pending` proves the
+  dnd5e `activity.use` call itself never resolved (likely a MidiQOL/usage prompt), not the
+  audit log or the bridge.
+- 96d2022: Add frame_png wire format (greyscale lossless PNG ~1-5KB vs 427KB RGBA) for the map stream: new FramePngSchema in shared-protocol, DM-configurable captureIntervalMs + leading+trailing hook throttle + identical-frame hash-skip + PNG encode in foundry-module v0.1.15, frame_png decode in g2-app (frame_pixels back-compat retained).
+- e17065e: Layout B — full-screen 576×288 map: 4 image tiles of 288×144 (SDK verbatim max, INV-2 drift corrected from 200×100) cover the entire G2 display; the extractor emits 576×288 frames; status/fps move into a translucent raster corner card (top-right) drawn over the map; the native hud-status container is removed (the host renders image containers over text).
+- a823240: Phase-8 write channel + skill-check tool, end-to-end.
+
+  The bridge could receive `tool.invoke` envelopes but had no way to execute write
+  tools in Foundry (it cannot use socketlib; the only bridge↔Foundry channel was the
+  one-way module → `/internal/delta` POST). This adds a poll-based REVERSE channel that
+  mirrors the player-view stream-request pattern:
+
+  - **bridge**: a new in-memory `ToolInvocationQueue` (`enqueue`/`drainPending`/`resolveResult`
+    with a 10s `foundry_timeout`) and two internal-secret-guarded, rate-limit-exempt
+    routes — `GET /internal/tool-requests` (drain pending) and `POST /internal/tool-result`
+    (resolve the awaiting promise). The production WS dispatch now enqueues on this queue
+    (the test override is preserved).
+  - **foundry-module**: a GM-gated `tool-invocation-poller` (≈1s cadence, fault-tolerant)
+    polls the bridge, dispatches each write, and POSTs the result back. The ADR-0014
+    per-actor write authorization was extracted into a single shared
+    `dispatchToolAuthorized` used by BOTH the socketlib adapter and the new poller, so
+    both channels enforce identical authorization. No new socketlib handler is added
+    (the `socket.register` count stays 17).
+  - **skill-check tool**: new `skill-check` write tool — `actor.rollSkill({ skill,
+advantage, disadvantage })` (dnd5e 5.x config-object API). Added to the shared
+    `TOOL_ID_SCHEMA`, the module `ToolId`/`TOOL_HANDLER_IDS`, and a new handler.
+  - **g2-app**: a new interactive canvas Skills panel (Quick Action `[K]`) that, on tap,
+    dispatches a `skill-check` `tool.invoke` directly (no ActionOptions modal), plus the
+    `[K]` menu item, icon, and `quick_item_skills` i18n key (IT/EN/DE).
+
+- 3a72953: Player-owned write execution (ADR-0011 Amendment 2): write tools (skill-check,
+  attack, spell, use-item) now execute on the OWNING user's client — a player rolls
+  their own actor's actions without a GM online. The bridge tags each queued
+  invocation with the bearer's bound Foundry user and serves `GET
+/internal/tool-requests?userId=<id>`; each client's poller drains only its own
+  user's invocations. The per-actor write authz (dispatchToolAuthorized, ADR-0014)
+  is unchanged. Removes the previous GM-only gate on the poller.
+- 74a0e37: Self-service device pairing: every Foundry user can now mint their OWN G2 bearer
+  token, bound to their own authenticated identity, without the GM doing anything
+  manually. The pair menu is no longer GM-restricted (`pairDevice` `restricted:
+false`) and the user-picker dropdown is removed — you can only pair your own
+  device.
+
+  Secure by construction (ADR-0014): the bound userId is authenticated, never
+  client-asserted. A user writes a `pendingPair` flag (with a client-generated
+  token) on their OWN `User` document — only that user can write their own user
+  flags — and a GM client auto-ingests it into the world-scope bearer registry,
+  binding the token to the user the flag belongs to (taken from the User document,
+  never from the payload), then pushes it to the bridge. socketlib's `executeAsGM`
+  is deliberately NOT used here because it cannot authenticate the caller (which
+  would let a player bind a token to another user and read their character). No new
+  socketlib handler is added (handler count stays 17).
+
+  New: `ingestBearer` in bearer-registry (the GM-side write half; idempotent, 60s
+  refresh grace) and `self-pair-ingestion.ts` (the `updateUser` hook + `ready`
+  sweep). Note: finalizing a token requires a GM client to be online (world-scope
+  registry writes are GM-only) — but it is auto-ingested with no manual GM action.
+
+### Patch Changes
+
+- d2e6df4: Add a dedicated EVF — Bridge Configuration dialog that pre-loads, displays, validates and reliably persists the bridge URL + internal secret; demote the two settings to config:false (managed solely via the dialog).
+- b385bf8: Combat snapshots now carry each combatant's **token UUID** (`tokenUuid`, e.g.
+  `Scene.X.Token.Y`) read from `combatant.token?.uuid`. The combatant `id` is the
+  Combatant document id, NOT a token UUID, so the glasses target picker — which forwards
+  the selected target into MidiQOL's `midiOptions.targetUuids` — was passing a value
+  MidiQOL could not resolve, silently producing no attack/cast on the chosen token (only
+  the EVF Audit card appeared). `CombatantSchema` gains an optional+nullable `tokenUuid`
+  field (back-compat with pre-tokenUuid module builds) and the combat reader emits it.
+- a705477: Canvas-mode full-screen streamed map + hud-status native container (quick-task 260610-d42)
+
+  - canvas-extractor: continuous ~1Hz interval capture + canvasPan hook replaces one-shot request model
+  - MapCanvasLayer at z=0: full-screen Foundry viewport stream routed from scene-input in canvas mode, replacing the legacy RasterController scene path
+  - hud-status native G2 text container (id=5): status line (PF/CA/LV) pushed via bridge.textContainerUpgrade on each character.delta; opaque full-frame fill removed so z=0 map shows through
+  - canvas-mode root double-tap exit restored: root-exit-dispatcher now fires on getTopLayer()===null (both canvas and glyph modes)
+
+- 184f172: Fix every write-path handler that called `activity.use({ configure: false, ... })`
+  with the dialog-suppression flag in the WRONG (usage) argument. dnd5e 5.x
+  `Activity#use(usage, dialog, message)` reads `configure` from the **dialog (2nd)**
+  argument and defaults it to `true` (INV-2: foundryvtt/dnd5e
+  `module/documents/activity/mixin.mjs` — `if (dialogConfig.configure && …)`), so the
+  configuration dialog stayed enabled and `activity.use` awaited a dialog no one can
+  answer from the glasses → every spell cast / item use / attack hung until the
+  bridge's 10s `foundry_timeout`. Verified live in the EvenHub simulator: cast-spell
+  timed out at exactly 10s; skill-check (which already used the 2nd arg) worked.
+
+  Corrected `cast-spell`, `use-item`, `cast-shield`, `cast-counterspell`,
+  `weapon-attack`, and `opportunity-attack` to `use(usage, { configure: false }[, message])`
+  (opportunity-attack's `opportunityAttack` chat flag moved to its proper message arg).
+  Widened the `Activity#use` type to the real 3-arg signature. Tests updated to assert
+  the corrected call shape (regression).
+
+- fbb9f83: Stop the audit-log write from stalling tool dispatch. `dispatchTool` awaits
+  `writeAuditLog` before returning its result (and, on the poll path, before POSTing
+  the result back to the bridge). On a player/headless executor `ChatMessage.create`
+  can hang indefinitely — observed live: a skill roll executed (its card appeared in
+  Foundry) yet the bridge still hit its 10s `foundry_timeout` because the audit write
+  never resolved. `writeAuditLog` now bounds the create with `AUDIT_WRITE_TIMEOUT_MS`
+  (2.5s, well under the bridge's 10s), so a hung audit write resolves best-effort
+  instead of stalling the action and the bridge queue slot. Regression test added.
+- 3368eab: `canvas-extractor` now fit-downscales the WHOLE Foundry scene (box-average, aspect preserved, letterboxed) onto the canonical 400×200 frame instead of center-cropping a 400×200 window (~4% of a 1920×1080 render). Pure-JS filter — no OffscreenCanvas dependency; 1920×1080 → 400×200 in ~18 ms. Live-sim verified with the production extractor: full battlemap (3 rooms, corridor, water, columns, tokens) renders on the glasses.
+- edae764: Fix the scene-frame pipeline dimension contradiction that made every `frame_pixels` payload un-processable: `FramePixelsSchema` capped frames at 288×144 (pre-ADR-0013 SDK-polyfill bound) while `raster-worker.ts` rejects anything that is not the canonical 400×200 raster region. Schema bounds now admit 20–400 × 20–200; `canvas-extractor` always emits exactly 400×200 (center-crop + opaque-black letterbox, pure byte copy); `scene-input` center-pads undersized frames to the canonical region as consumer-side defence. Live-sim verified: a real 400×200 scene frame now dithers and renders on the glasses end-to-end.
+- ce30808: fix(foundry-module): use the real socketlib registerModule/register API and register socketlib handlers on socketlib.ready, decoupled from the Foundry ready hook so the /internal/delta push readers always register — restores real Forge pairing.
+- 0ce4322: Stop reading the deprecated dnd5e `SpellData#preparation.{mode,prepared}` getters
+  in `extractSpellbook` (they logged a compatibility-warning flood on every
+  character snapshot for any spellcaster on dnd5e 5.1+). Now read the new top-level
+  `SpellData#method` / `SpellData#prepared` fields, falling back to the legacy
+  `preparation` object only for dnd5e < 5.1. No behavior change to the emitted
+  spellbook; removes the console-warning spam.
+- 448a56c: Fix character snapshots being silently dropped for any actor with no temporary HP.
+  dnd5e leaves `hp.temp` as `null` (not 0) when there is no temp HP; character-reader
+  passed it through as `tempHp: null`, failing the bridge's `CharacterSnapshotSchema`
+  (`tempHp: number().nonnegative()`). The bridge still 200s the `/internal/delta` POST
+  but never caches the snapshot → `GET /v1/character/:id` 404 → empty glasses sheet.
+  Coerced to 0.
+- ff60e90: fix(foundry-module): capture viewport instead of whole stage in canvas-extractor — fixes row-stride frame corruption on Forge; add fail-loud byte-length guard with resolution inference
+- a6c8fc8: Latency-audit follow-up: residual fps fixes + map brightness + bidirectional display-settings sync.
+
+  **Performance (residual latency removed):**
+
+  - foundry-module: the capture loop no longer awaits the native encode — `runEncodeJob` is fire-and-forget behind the single-flight latest-wins queue, so the loop re-arms after acquire+process only (the encode genuinely overlaps the next capture). Raises the producer ceiling well past 30 fps.
+  - foundry-module: lossy WebP wire format via `OffscreenCanvas.convertToBlob` (new `mapWebpQuality` world setting, default 75) — ~4–7× smaller than PNG, cutting the per-hop bandwidth from ~22 to ~4 Mbit/s at 30 fps. Transparent PNG fallback on hosts without WebP encoding.
+  - foundry-module: the `/internal/delta` frame POST is now single-flight latest-wins with a 5 s `AbortSignal.timeout`, so a slow WAN can no longer accumulate unbounded in-flight requests.
+  - bridge: frame deltas (`frame_png`/`frame_pixels`/`frame_stats`) are excluded from the replay buffer (no ~160 MB/session growth, no stale-frame replay burst on reconnect) and reuse the current seq (gap detection stays correct). Per-session `bufferedAmount` backpressure drops frames for a saturated client instead of queuing unbounded.
+  - g2-app: the HudDeltaDriver throttle (33 ms ≈ 30 fps cap) is now configurable per boot via `BootEngineOpts.hudMinIntervalMs` / `?hudms=` for lab tuning.
+
+  **Map brightness:** new `mapBrightness` client setting (−100..+100 luma gain) applied module-side before the 16-level quantize, with on-glasses `[+]`/`[-]` Quick Action menu rows.
+
+  **Bidirectional display-settings sync:** the five map settings (dither, brightness, WebP quality, capture fps, contrast-normalize) stay in sync between Foundry and the glasses and are controllable from both. Downstream over a new `settings.display` delta (cached by the bridge, pushed on connect); upstream over a `client_setting` WS message that the bridge piggybacks on the module's next frame-POST response (no new connection / no polling — the module is push-only). New `@evf/shared-protocol` payload `settings-display.ts`.
+
+- be5167e: Lower the default `captureFps` 30 → **5** (the spec's committed frame-rate target,
+  Specs.md §7.4b.6.1) for real-glasses performance. 30 fps was tuned for the dev simulator
+  (powerful CPU, no real BLE); on physical G2 it floods the phone→glasses BLE link
+  (~540 KB/s vs ~25 KB/s sustained) and the phone's per-frame canvas/raster decode, causing
+  HUD lag. 5 fps keeps the map glanceable with BLE + CPU headroom; the identical-frame skip
+  means a static map still costs ~0, so the cap only bounds the burst during map motion.
+  DMs with spare bandwidth can raise it live (1–60) in the module settings. Bumps the
+  Foundry module to v0.1.55.
+- f86a48f: render-to-texture viewport capture fixes idle all-zero map frames on the real Forge client (no-arg framebuffer read was only valid during the render pass)
+- a5a7406: Add map contrast normalization client setting: auto-stretch dark scenes for readable contrast on the G2 glasses before dithering.
+- e8233b8: Floor fractional renderer.screen dims before RenderTexture.create — at devicePixelRatio 1.333 Foundry reports e.g. 2348.25×824.25; PIXI floors the texture internally, so the fractional expected-length check rejected EVERY frame ("pixel buffer length mismatch"). Live-verified root cause on the real Forge client (2026-06-10).
+- df66691: fix(pairing): install via Even Hub + paste token (remove unrealizable QR-scan path)
+
+  The previous design assumed the player would scan the Foundry PairModal QR with the Even
+  Realities app. This is impossible: the Even Hub platform exposes no camera / QR-scan API to
+  apps (canonical `hub.evenrealities.com/docs/guides/device-apis`: "no camera (there is none)"),
+  the app runs in the phone WebView, and the PairModal hid the token from text so the DM could
+  not hand it over either.
+
+  Real flow: install the EVF app via Even Hub (dev `evenhub qr` loads the plugin-host URL into
+  the Even app; prod `.ehpk` → portal review → store), then open the app → wizard → enter the
+  bridge URL + **paste** the token shown in the Foundry PairModal → pick a character.
+
+  - `@evf/foundry-module` PairModal: removed QR generation (dropped the `qrcode` dependency),
+    now renders the bridge URL + bearer token as copyable text. The token is masked by default
+    with a Reveal/Copy control (scoped security relaxation — pairing is otherwise impossible).
+    i18n realigned: removed `evf.pair.qr.scan_instruction`, added `evf.pair.copy.*` (IT + EN).
+  - `@evf/g2-app` wizard step 2: removed the dead QR-scan path (`hub.camera`, `_probeCameraApi`,
+    `evf.wizard.step2.scan_qr_btn`) per INV-4; the `hub.camera` type and polyfill field are gone.
+    Paste-from-clipboard + manual entry + the `/v1/health` connect check are unchanged.
+
+- 0038f94: Wire push-based bridge↔Foundry bearer-registry + character-list path enabling real pairing.
+
+  Adds two new push envelopes (`r1.bearers.available`, `r1.characters.available`) that the Foundry
+  module emits on `ready` and on bearer/actor lifecycle events. The bridge caches both and uses
+  them to validate bearer tokens (`GET /v1/health`) and serve the player-character roster
+  (`GET /v1/characters`) without a socketlib roundtrip. `buildServer({})` now works with NO
+  options — real token validation and character listing are wired internally.
+
+  Security: bearer tokens are pushed over the EVF_INTERNAL_SECRET-gated /internal/delta channel
+  (homelab trust model). Tokens are Zod-validated at the handler boundary before cache write and
+  never logged (T-RFP-01 / T-RFP-02). A never-pushed cache returns `foundry_unreachable` (503)
+  distinguishable from `unknown_token` (401) — T-RFP-03.
+
+- 7f37b5f: Release CD now version-stamps the Foundry esmodule filename
+  (`dist/module.js` → `dist/module-<version>.js`) and points `module.json` `esmodules`
+  at it. The entry-point URL was stable across releases, so a CDN/browser HTTP cache
+  keyed on `modules/evenfoundryvtt/dist/module.js` kept serving the OLD bundle even
+  after `module.json`'s version bumped — Foundry reported the new version while still
+  executing stale code (v0.1.49 spell casts kept hanging with the pre-fix handler
+  despite the fix shipping in the artifact). A per-version filename guarantees a unique
+  URL no cache can serve stale. The committed `module.json` keeps `dist/module.js` for
+  local dev; the rename happens only in the release artifact.
+- c854bf0: Wire DM-editable bridgeUrl + bridgeInternalSecret world settings so real Forge pairing pushes authenticate against the bridge's static EVF_INTERNAL_SECRET (settings preferred, bearer-entry fallback).
+- Updated dependencies [b385bf8]
+- Updated dependencies [8c4c5e3]
+- Updated dependencies [edae764]
+- Updated dependencies [96d2022]
+- Updated dependencies [2d5a35b]
+- Updated dependencies [a6c8fc8]
+- Updated dependencies [e17065e]
+- Updated dependencies [a823240]
+- Updated dependencies [0038f94]
+  - @evf/shared-protocol@0.3.0
+
 ## 0.1.47
 
 ### Patch Changes
