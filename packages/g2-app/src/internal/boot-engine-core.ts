@@ -1382,8 +1382,9 @@ export async function _bootEngineCore(
       },
       // Pass the live render mode so the menu uses the correct container strategy:
       // canvas → 'hud-capture' (zero self-declared count, ADR-0013 Amendment 1);
-      // glyph  → 'overlay-block' (one text slot, ADR-0009 Amendment 1).
-      layerManager.getRenderMode(),
+      // glyph / hybrid → 'overlay-block' (one text slot, ADR-0009 Amendment 1) —
+      // hybrid renders the menu/overlay via the native text path like glyph (Feature 002).
+      layerManager.getRenderMode() === 'canvas' ? 'canvas' : 'glyph',
     );
   };
 

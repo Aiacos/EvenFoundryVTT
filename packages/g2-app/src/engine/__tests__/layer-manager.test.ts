@@ -241,6 +241,31 @@ describe('LayerManager — bundle() atomic semantics', () => {
     }
   });
 
+  it('Test 8c: hybrid mode _flushPage rebuilds the 8-container hybrid schema (4 image + 4 text, one capture=hybrid-map-capture) — Feature 002', async () => {
+    // Hybrid mode: native chrome/status (text) beside a raster map region (image tiles).
+    // _flushPage must select buildHybridPageSchema() → 4 image + 4 text = 8 containers,
+    // with exactly one isEventCapture=1 (hybrid-map-capture id7). Compositor is null here,
+    // so _compositeAndPush is a no-op (no updateImageRawData) — the rebuild is what we assert.
+    const mapLayer = makeMockLayer('map', 'hybrid-map-capture');
+    lm.mount(ZIndex.Z0_MAP, mapLayer);
+    lm.setRenderMode('hybrid');
+    await lm.bundle([]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(8);
+    expect(arg?.imageObject?.length).toBe(4);
+    expect(arg?.textObject?.length).toBe(4);
+    // Exactly one capture, and it is hybrid-map-capture.
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('hybrid-map-capture');
+    // No updateImageRawData with a null compositor (push path is a no-op).
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
   it('Test 9: bundle applies ops in order; transient invariant violation tolerated when final state is valid', async () => {
     // Start: z=0 holds capture.
     const mapLayer = makeMockLayer('map', 'map-capture');
