@@ -244,8 +244,9 @@ describe('LayerManager — bundle() atomic semantics', () => {
   it('Test 8c: hybrid mode _flushPage rebuilds the 8-container hybrid schema (4 image + 4 text, one capture=hybrid-map-capture) — Feature 002', async () => {
     // Hybrid mode: native chrome/status (text) beside a raster map region (image tiles).
     // _flushPage must select buildHybridPageSchema() → 4 image + 4 text = 8 containers,
-    // with exactly one isEventCapture=1 (hybrid-map-capture id7). Compositor is null here,
-    // so _compositeAndPush is a no-op (no updateImageRawData) — the rebuild is what we assert.
+    // with exactly one isEventCapture=1 (hybrid-map-capture id7). Hybrid does NOT drive the
+    // compositor in _flushPage (the map is RasterController-driven, status is native text),
+    // so updateImageRawData is never called here — only the page rebuild is asserted.
     const mapLayer = makeMockLayer('map', 'hybrid-map-capture');
     lm.mount(ZIndex.Z0_MAP, mapLayer);
     lm.setRenderMode('hybrid');

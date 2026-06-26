@@ -75,6 +75,7 @@ import { createDisplaySettingsSync } from '../engine/display-settings-sync.js';
 import { attachGlassesEventSource } from '../engine/glasses-event-source.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
 import { HudDeltaDriver } from '../engine/hud-delta-driver.js';
+import { loadPersistedRenderMode } from '../engine/hud-render-mode.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
@@ -787,19 +788,26 @@ export async function _bootEngineCore(
   const negotiatedCaps = new Set<ServerCap>(handshake.server_caps as ServerCap[]);
   layerManager.setNegotiatedCaps(negotiatedCaps);
 
-  // Phase 20 Plan 05 — flip the effective boot render mode to canvas.
+  // Feature 002 — flip the effective boot render mode to HYBRID (was 'canvas').
   //
-  // The `LayerManager.renderMode` class field defaults to `'glyph'` (line 99,
-  // layer-manager.ts) — kept so all ~50 existing tests constructed without a
-  // compositor continue to pass unchanged. We flip to `'canvas'` HERE, after
-  // setNegotiatedCaps, so the boot-time page rebuild uses buildHudRasterPageSchema()
-  // (4 image tiles + 1 text capture = 5 containers) instead of the glyph
-  // status-view schema (3 text containers). This is the ONLY place where the
-  // render mode is changed at boot — no class-field edit in layer-manager.ts.
+  // The `LayerManager.renderMode` class field defaults to `'glyph'` (layer-manager.ts)
+  // — kept so all existing tests constructed without a compositor pass unchanged. We
+  // flip HERE, after setNegotiatedCaps, so the boot-time page rebuild uses
+  // buildHybridPageSchema() (4 map image tiles + native header/footer/status-hud +
+  // map-capture = 8 containers). Hybrid renders the status HUD + chrome as native text
+  // (fast textContainerUpgrade) and only the map region as raster (RasterController →
+  // ids 0-3), escaping the full-screen canvas recompose that made the refresh slow.
   //
-  // Research lock (20-RESEARCH.md Q2): flip via setRenderMode here, never via
-  // the private class field — changing the field default breaks ~50 tests.
-  layerManager.setRenderMode('canvas');
+  // 'canvas' (full-screen raster) is retained as a selectable/fallback mode; 'glyph'
+  // remains the BLE-degraded fallback (step 9d flips to it when the effective verdict
+  // is 'glyph'). An optional device-local kv override (`view.hud.render` ∈
+  // canvas|glyph|hybrid) forces a specific substrate for dev/testing and the future
+  // Quick Action; absent/invalid/read-failure → the hybrid default. This is the ONLY
+  // place the boot render mode is set — no class-field edit in layer-manager.ts (flip
+  // via setRenderMode, never the private field — changing the field default breaks the
+  // driverless tests).
+  const renderOverride = await loadPersistedRenderMode(bridge);
+  layerManager.setRenderMode(renderOverride ?? 'hybrid');
 
   // 8. Construct the raster controller (singleton Worker + debounce).
   const rasterController = new RasterController(bridge);
@@ -934,16 +942,16 @@ export async function _bootEngineCore(
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
 
-  // CR-03 fix: only construct StatusHudLayer in glyph mode. In canvas mode the
-  // glyph StatusHudLayer's 30s heartbeat would fire bridge.textContainerUpgrade
-  // calls targeting container id=6 ('status-hud'), which does NOT exist in the
-  // HUD raster page schema (buildHudRasterPageSchema creates only 4 image tiles +
-  // 1 text capture = 5 containers; no id=6). Those calls are silently swallowed by
-  // the `void` operator but produce a background error storm every 30s. Deferring
-  // construction to glyph mode eliminates the spurious write loop entirely.
-  // CanvasStatusHudLayer (constructed below) is the sole HUD renderer in canvas mode.
+  // CR-03 fix: construct StatusHudLayer in every NON-canvas mode (glyph + hybrid).
+  // In canvas mode the glyph StatusHudLayer's 30s heartbeat would fire
+  // bridge.textContainerUpgrade calls targeting container id=6 ('status-hud'),
+  // which does NOT exist in the HUD raster page schema (buildHudRasterPageSchema
+  // creates only 4 image tiles + 1 text capture = 5 containers; no id=6) — a
+  // background error storm. CanvasStatusHudLayer is the sole HUD renderer in canvas.
+  // In hybrid mode (Feature 002) id=6 is 'hybrid-status-hud' (right column), so the
+  // native StatusHudLayer is the correct renderer there too.
   const statusHud =
-    layerManager.getRenderMode() === 'glyph'
+    layerManager.getRenderMode() !== 'canvas'
       ? new StatusHudLayer({
           bridge,
           renderer: new StatusHudRenderer({ locale: effectiveLocale }),
@@ -2168,15 +2176,28 @@ export async function _bootEngineCore(
         ? [{ type: 'mount' as const, z: ZIndex.Z1_5_TOAST, layer: canvasToast }]
         : []),
     ]);
+  } else if (statusHud === null) {
+    // Both non-canvas paths (glyph + hybrid) construct statusHud at step 10 under
+    // the identical `getRenderMode() !== 'canvas'` guard. A null here means the
+    // step-10 construction guard and this step-12 mount gate have drifted.
+    throw new Error(
+      '[boot-engine-core] non-canvas invariant violated: statusHud is null while ' +
+        'renderMode is non-canvas (step-10 construction guard out of sync with step-12 mount gate)',
+    );
+  } else if (layerManager.getRenderMode() === 'hybrid') {
+    // Hybrid (Feature 002): native chrome/status beside a raster map region.
+    // Mount mapBase (z=0, provides the capture container + drives the RasterController
+    // map tiles to ids 0-3) and the native statusHud (z=1, id=6 'hybrid-status-hud').
+    // NO idle-infill: its z05-* containers (ids 8-10) are NOT declared in the hybrid
+    // page schema (buildHybridPageSchema = 4 image + ids 4-7 text), and the map area
+    // is image tiles which paint over any z=0.5 text anyway.
+    await layerManager.bundle([
+      { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
+      { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
+    ]);
   } else {
-    // Glyph fallback: statusHud is guaranteed non-null here — it is constructed
-    // at step 10 under the identical `getRenderMode() === 'glyph'` guard.
-    if (statusHud === null) {
-      throw new Error(
-        '[boot-engine-core] glyph fallback invariant violated: statusHud is null while ' +
-          'renderMode is glyph (step-10 construction guard out of sync with step-12 mount gate)',
-      );
-    }
+    // Glyph fallback (byte-identical pre-v0.10.0): mapBase (z=0) + idleInfill (z=0.5)
+    // + statusHud (z=1).
     await layerManager.bundle([
       { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
       { type: 'mount', z: ZIndex.Z0_5_IDLE_INFILL, layer: idleInfill },

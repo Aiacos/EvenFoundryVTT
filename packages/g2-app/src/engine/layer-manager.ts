@@ -678,9 +678,10 @@ export class LayerManager {
    *   so those tests remain valid.
    *
    * - `'hybrid'` (Feature 002): HYBRID schema (4 map image tiles + native header/footer/
-   *   status-hud + map-capture; containerTotalNum:8) from `buildHybridPageSchema()`. Shares
-   *   the canvas post-rebuild push path (driver / `_compositeAndPush`) for the map region only;
-   *   the status HUD + overlays update via native `textContainerUpgrade`, not the compositor.
+   *   status-hud + map-capture; containerTotalNum:8) from `buildHybridPageSchema()`. Does NOT
+   *   drive the compositor here — the map region (ids 0-3) is pushed by the event-driven
+   *   RasterController and the status HUD + chrome update via native `textContainerUpgrade`
+   *   (both wired in boot-engine-core, same producers as the glyph map-mode).
    *
    * map-capture and z05-* remain in the registry for the deferred map-mode
    * page (Phase 20 / Specs §7.4). They MUST NOT be declared in the canvas/glyph schema.
@@ -696,9 +697,13 @@ export class LayerManager {
    * @see .planning/debug/glasses-render-blank-containerid.md
    */
   private async _flushPage(): Promise<void> {
-    // Hybrid (Feature 002) and canvas both declare image tiles + a compositor-fed
-    // map region, so they share the post-rebuild push path (driver or _compositeAndPush).
-    const usesCompositor = this.renderMode === 'canvas' || this.renderMode === 'hybrid';
+    // Only canvas mode drives the LayerManager's 576×288 compositor push. Hybrid
+    // (Feature 002) declares map image tiles too, but its map region (400×200) is
+    // pushed by the event-driven RasterController to container ids 0-3 (wired in
+    // boot-engine-core, same producer as the glyph map-mode), and its status HUD +
+    // chrome update via native textContainerUpgrade — neither goes through the
+    // compositor here. So _flushPage only rebuilds the hybrid page schema.
+    const usesCompositor = this.renderMode === 'canvas';
     const schema =
       this.renderMode === 'canvas'
         ? buildHudRasterPageSchema() // 4 image tiles + 1 capture text = 5 containers (canvas mode)
