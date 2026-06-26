@@ -25,9 +25,11 @@ import {
   buildBaseImageContainers,
   buildBaseTextContainers,
   buildHudRasterPageSchema,
+  buildHybridPageSchema,
   buildStatusViewTextContainers,
   CONTAINER_REGISTRY,
   HUD_RASTER_CONTAINER_TOTAL,
+  HYBRID_CONTAINER_TOTAL,
   resolveContainerId,
   resolveContainerIdField,
 } from '../container-registry.js';
@@ -268,5 +270,133 @@ describe('G2 spec compliance — capture content', () => {
 
   it('SPEC-REGISTRY-UNCHANGED: CONTAINER_REGISTRY status-hud isEventCapture is still 0 (builder overrides per-schema, registry is geometry-only)', () => {
     expect(CONTAINER_REGISTRY['status-hud']?.isEventCapture).toBe(0);
+  });
+});
+
+// ── buildHybridPageSchema (Feature 002 — native chrome + raster map region) ────
+//
+// The hybrid page is the new default render substrate: 4 raster map image tiles
+// (left 400×200) + native text chrome (header/footer/status-hud) + an invisible
+// gesture-capture container. The status HUD + overlays update via cheap
+// textContainerUpgrade; only the map is rasterised.
+
+describe('buildHybridPageSchema', () => {
+  type Rect = {
+    xPosition?: number;
+    yPosition?: number;
+    width?: number;
+    height?: number;
+  };
+  /** Normalize an SDK property (optional geometry fields) to a concrete rect. */
+  const rect = (c: Rect) => ({
+    x: c.xPosition ?? 0,
+    y: c.yPosition ?? 0,
+    w: c.width ?? 0,
+    h: c.height ?? 0,
+  });
+  /** Half-open rect overlap test ([x,x+w) × [y,y+h)). Touching edges do NOT overlap. */
+  function rectsOverlap(ra: Rect, rb: Rect): boolean {
+    const a = rect(ra);
+    const b = rect(rb);
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  }
+
+  it('HYB-1: containerTotalNum === 8 (4 image + 4 text)', () => {
+    const schema = buildHybridPageSchema();
+    expect(schema.containerTotalNum).toBe(8);
+    expect(HYBRID_CONTAINER_TOTAL).toBe(8);
+    expect(schema.imageObject).toHaveLength(4);
+    expect(schema.textObject).toHaveLength(4);
+  });
+
+  it('HYB-2: image tiles are hybrid-map-tile-0..3, ids 0-3, 200×100, left 2×2 (400×200)', () => {
+    const { imageObject } = buildHybridPageSchema();
+    const expected = [
+      { name: 'hybrid-map-tile-0', x: 0, y: 27 },
+      { name: 'hybrid-map-tile-1', x: 200, y: 27 },
+      { name: 'hybrid-map-tile-2', x: 0, y: 127 },
+      { name: 'hybrid-map-tile-3', x: 200, y: 127 },
+    ];
+    expected.forEach(({ name, x, y }, i) => {
+      const tile = imageObject[i];
+      expect(tile?.containerName).toBe(name);
+      expect(tile?.containerID).toBe(i);
+      expect(tile?.width).toBe(200);
+      expect(tile?.height).toBe(100);
+      expect(tile?.xPosition).toBe(x);
+      expect(tile?.yPosition).toBe(y);
+    });
+  });
+
+  it('HYB-3: text containers are header(4), footer(5), hybrid-status-hud(6), hybrid-map-capture(7)', () => {
+    const { textObject } = buildHybridPageSchema();
+    const expected: Array<[string, number]> = [
+      ['header', 4],
+      ['footer', 5],
+      ['hybrid-status-hud', 6],
+      ['hybrid-map-capture', 7],
+    ];
+    expected.forEach(([name, id], i) => {
+      expect(textObject[i]?.containerName).toBe(name);
+      expect(textObject[i]?.containerID).toBe(id);
+    });
+  });
+
+  it('HYB-4: exactly ONE capture (hybrid-map-capture) with content single-space', () => {
+    const { imageObject, textObject } = buildHybridPageSchema();
+    const imageCaptureCount = imageObject.filter(
+      (c) => (c as { isEventCapture?: number }).isEventCapture === 1,
+    ).length;
+    const captures = textObject.filter((c) => c.isEventCapture === 1);
+    expect(imageCaptureCount).toBe(0);
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.containerName).toBe('hybrid-map-capture');
+    expect(captures[0]?.containerID).toBe(7);
+    expect(captures[0]?.content).toBe(' ');
+  });
+
+  it('HYB-5: no VISIBLE text container rect overlaps any image tile (host paints images over text)', () => {
+    const { imageObject, textObject } = buildHybridPageSchema();
+    // hybrid-map-capture is intentionally UNDER the tiles (invisible gesture capture).
+    const visibleText = textObject.filter((t) => t.containerName !== 'hybrid-map-capture');
+    for (const text of visibleText) {
+      for (const tile of imageObject) {
+        expect(
+          rectsOverlap(text, tile),
+          `"${text.containerName}" overlaps image tile "${tile.containerName}" — text would be hidden`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('HYB-6: all rects fit within the 576×288 physical screen', () => {
+    const { imageObject, textObject } = buildHybridPageSchema();
+    for (const c of [...imageObject, ...textObject]) {
+      const r = rect(c);
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(576);
+      expect(r.y + r.h).toBeLessThanOrEqual(288);
+    }
+  });
+
+  it('HYB-7: image budget ≤4, text budget ≤8 (G2 hardware limit)', () => {
+    const { imageObject, textObject } = buildHybridPageSchema();
+    expect(imageObject.length).toBeLessThanOrEqual(4);
+    expect(textObject.length).toBeLessThanOrEqual(8);
+  });
+
+  it('HYB-8: hybrid entries do NOT leak into the base/glyph builders (default boot unchanged)', () => {
+    // Regression guard: the new hybrid-* registry entries must not appear in the
+    // base-page or status-view schemas (those filter by BASE_NAMES / STATUS_VIEW_NAMES).
+    const baseNames = [
+      ...buildBaseImageContainers().map((c) => c.containerName),
+      ...buildBaseTextContainers().map((c) => c.containerName),
+    ];
+    const statusNames = buildStatusViewTextContainers().map((c) => c.containerName);
+    for (const n of baseNames) expect((n ?? '').startsWith('hybrid-')).toBe(false);
+    for (const n of statusNames) expect((n ?? '').startsWith('hybrid-')).toBe(false);
+    expect(BASE_CONTAINER_TOTAL).toBe(11);
+    expect(BOOT_CONTAINER_TOTAL).toBe(3);
   });
 });
