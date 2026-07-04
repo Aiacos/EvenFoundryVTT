@@ -37,12 +37,16 @@ describe('iconToUnicode', () => {
   });
 });
 
-describe('drawIcon (stub)', () => {
+describe('drawIcon', () => {
   function fakeCtx() {
     return {
       save: vi.fn(),
       restore: vi.fn(),
       fillText: vi.fn(),
+      // Vector-path primitives — the Speed boot draws via beginPath/rect/fill.
+      beginPath: vi.fn(),
+      rect: vi.fn(),
+      fill: vi.fn(),
       fillStyle: '',
       font: '',
       textAlign: '' as CanvasTextAlign,
@@ -82,5 +86,26 @@ describe('drawIcon (stub)', () => {
       '#0f0',
     );
     expect(ctx.fillText).not.toHaveBeenCalled();
+  });
+
+  it('draws a VECTOR BOOT for Speed — never the ⚔ glyph (movement, not attack)', () => {
+    const ctx = fakeCtx();
+    drawIcon(
+      ctx as unknown as CanvasRenderingContext2D,
+      IconId.Speed,
+      {
+        x: 0,
+        y: 0,
+        w: 16,
+        h: 16,
+      },
+      '#0f0',
+    );
+    // Vector path: beginPath + 3 rects (leg/foot/toe) + fill — NOT a glyph.
+    expect(ctx.beginPath).toHaveBeenCalledOnce();
+    expect(ctx.rect).toHaveBeenCalledTimes(3);
+    expect(ctx.fill).toHaveBeenCalledOnce();
+    expect(ctx.fillText).not.toHaveBeenCalled();
+    expect(ctx.fillStyle).toBe('#0f0');
   });
 });

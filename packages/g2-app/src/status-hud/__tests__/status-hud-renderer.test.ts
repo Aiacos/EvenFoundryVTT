@@ -449,3 +449,255 @@ describe('StatusHudRenderer 27px — placeholder (—) for missing CharacterSnap
     expect(output).not.toContain('30ft');
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// COMPACT hybrid card (Feature 002 slice 4) — 176px right-column status card
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `hybrid-status-hud` container width (id 6, x=400) per container-registry.ts.
+ * Every compact line MUST measure ≤ this via pretext getTextWidth (INV-1).
+ */
+const HYBRID_WIDTH_PX = 176;
+
+/** The canonical set of locales exercised by the compact INV-1 sweep. */
+const COMPACT_LOCALES = ['it', 'en'] as const;
+
+/**
+ * Assert every line of a compact-card output measures ≤176px. Returns the lines.
+ * This is the load-bearing INV-1 contract for the narrow hybrid column.
+ */
+function assertAllLinesWithinHybridBudget(output: string): string[] {
+  const lines = output.split('\n');
+  for (const line of lines) {
+    const px = getTextWidth(line);
+    expect(
+      px,
+      `compact line "${line}" width ${px}px exceeds ${HYBRID_WIDTH_PX}px`,
+    ).toBeLessThanOrEqual(HYBRID_WIDTH_PX);
+  }
+  return lines;
+}
+
+describe('StatusHudRenderer compact — shape + defaults', () => {
+  it('SHRC-1: compact render() returns exactly NEW_HUD_ROWS (8) lines', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    expect(renderer.render(APPROVED_SNAPSHOT).split('\n')).toHaveLength(NEW_HUD_ROWS);
+  });
+
+  it('SHRC-2: compact renderLoading()/renderMissing() each return 8 lines', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en', compact: true });
+    expect(renderer.renderLoading().split('\n')).toHaveLength(NEW_HUD_ROWS);
+    expect(renderer.renderMissing().split('\n')).toHaveLength(NEW_HUD_ROWS);
+  });
+
+  it('SHRC-3: compact defaults the width gate to 176 (no explicit maxWidthPx)', () => {
+    // A name far wider than 176px but well under 576px must be truncated in
+    // compact mode — proving the gate defaulted to 176, not 576.
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    const wideName = 'Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const first = renderer.render(makeSnapshot({ name: wideName })).split('\n')[0] ?? '';
+    expect(getTextWidth(first)).toBeLessThanOrEqual(HYBRID_WIDTH_PX);
+    expect(first).toContain('…');
+  });
+});
+
+describe('StatusHudRenderer compact — INV-1 width sweep (≤176px)', () => {
+  for (const locale of COMPACT_LOCALES) {
+    it(`SHRC-W-${locale}-populated: render(approved) all lines ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      assertAllLinesWithinHybridBudget(renderer.render(APPROVED_SNAPSHOT));
+    });
+
+    it(`SHRC-W-${locale}-loading: renderLoading() all lines ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      assertAllLinesWithinHybridBudget(renderer.renderLoading());
+    });
+
+    it(`SHRC-W-${locale}-missing: renderMissing() all lines ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      assertAllLinesWithinHybridBudget(renderer.renderMissing());
+    });
+
+    it(`SHRC-W-${locale}-long-name: 32-char name row ≤176px, truncated`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      const out = renderer.render(makeSnapshot({ name: 'Dante Lanzullissimo Il Magnifico' }));
+      const [nameLine] = assertAllLinesWithinHybridBudget(out);
+      expect(nameLine).toContain('…');
+    });
+
+    it(`SHRC-W-${locale}-long-class: multiclass name on level row ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      // "Lv20 Sorcerer / Warlock / Paladin" far exceeds 176px → must gate-truncate.
+      const out = renderer.render(
+        makeSnapshot({ level: 20, class: 'Sorcerer / Warlock / Paladin' }),
+      );
+      const lines = assertAllLinesWithinHybridBudget(out);
+      expect(lines[1]).toContain('Lv20');
+      expect(lines[1]).toContain('…');
+    });
+
+    it(`SHRC-W-${locale}-hp-7-vs-700: single- and triple-digit HP rows ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      assertAllLinesWithinHybridBudget(
+        renderer.render(makeSnapshot({ hp: 7, maxHp: 9, tempHp: 0 })),
+      );
+      assertAllLinesWithinHybridBudget(
+        renderer.render(makeSnapshot({ hp: 700, maxHp: 700, tempHp: 99 })),
+      );
+    });
+
+    it(`SHRC-W-${locale}-conditions: 0 and many conditions rows ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      assertAllLinesWithinHybridBudget(renderer.render(makeSnapshot({ conditions: [] })));
+      assertAllLinesWithinHybridBudget(
+        renderer.render(
+          makeSnapshot({
+            conditions: [
+              'concentrato',
+              'benedetto',
+              'avvelenato',
+              'prono',
+              'invisibile',
+              'stordito',
+            ],
+          }),
+        ),
+      );
+    });
+
+    it(`SHRC-W-${locale}-slots: many high-value slots row ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      const out = renderer.render(
+        makeSnapshot({
+          spells: {
+            slots: [
+              { level: 1, value: 4, max: 4 },
+              { level: 2, value: 3, max: 3 },
+              { level: 3, value: 3, max: 3 },
+              { level: 4, value: 2, max: 2 },
+              { level: 5, value: 1, max: 1 },
+            ],
+            spells: [],
+          },
+        }),
+      );
+      assertAllLinesWithinHybridBudget(out);
+    });
+
+    it(`SHRC-W-${locale}-death-saves: every success/failure count row ≤176px`, () => {
+      const renderer = new StatusHudRenderer({ locale, compact: true });
+      for (let s = 0; s <= 3; s++) {
+        for (let f = 0; f <= 3; f++) {
+          assertAllLinesWithinHybridBudget(
+            renderer.render(makeSnapshot({ death: { success: s, failure: f } })),
+          );
+        }
+      }
+    });
+  }
+
+  it('SHRC-W-de-missing: de locale renderMissing() all lines ≤176px', () => {
+    const renderer = new StatusHudRenderer({ locale: 'de', compact: true });
+    assertAllLinesWithinHybridBudget(renderer.renderMissing());
+  });
+
+  it('SHRC-W-de-populated: de locale render(approved) all lines ≤176px', () => {
+    const renderer = new StatusHudRenderer({ locale: 'de', compact: true });
+    assertAllLinesWithinHybridBudget(renderer.render(APPROVED_SNAPSHOT));
+  });
+});
+
+describe('StatusHudRenderer compact — content (real class/speed from snapshot)', () => {
+  it('SHRC-C1: level row shows real class name (not em-dash) when present', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en', compact: true });
+    const lines = renderer.render(makeSnapshot({ level: 5, class: 'Fighter' })).split('\n');
+    expect(lines[1]).toBe('Lv5 Fighter');
+  });
+
+  it('SHRC-C2: empty class falls back to em-dash on the level row', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en', compact: true });
+    const lines = renderer.render(makeSnapshot({ level: 3, class: '' })).split('\n');
+    expect(lines[1]).toBe('Lv3 —');
+  });
+
+  it('SHRC-C3: AC/VEL row shows real speed value (not em-dash)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    const out = renderer.render(makeSnapshot({ ac: 16, speed: 30 }));
+    expect(out).toContain('CA 16');
+    expect(out).toContain('VEL 30');
+  });
+
+  it('SHRC-C4: en locale AC/VEL row uses AC + SPD labels with real speed', () => {
+    const renderer = new StatusHudRenderer({ locale: 'en', compact: true });
+    const out = renderer.render(makeSnapshot({ ac: 18, speed: 25 }));
+    expect(out).toContain('AC 18');
+    expect(out).toContain('SPD 25');
+  });
+
+  it('SHRC-C5: HP row includes temp-HP suffix when tempHp > 0, omits when 0', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    expect(renderer.render(makeSnapshot({ hp: 41, maxHp: 63, tempHp: 10 }))).toContain(
+      '41/63 +10t',
+    );
+    const noTemp = renderer.render(makeSnapshot({ hp: 41, maxHp: 63, tempHp: 0 }));
+    expect(noTemp).toContain('41/63');
+    expect(noTemp).not.toContain('+');
+  });
+
+  it('SHRC-C6: HP row renders a glyph bar and cur/max', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    const out = renderer.render(APPROVED_SNAPSHOT);
+    expect(out).toContain('41/63');
+    const barChars = [...out].filter((c) => c === '█' || c === '▓' || c === '░');
+    expect(barChars.length).toBeGreaterThan(0);
+  });
+
+  it('SHRC-C7: death-saves row uses the compact TS/DS label with tight tracks', () => {
+    const it = new StatusHudRenderer({ locale: 'it', compact: true });
+    const en = new StatusHudRenderer({ locale: 'en', compact: true });
+    const snap = makeSnapshot({ death: { success: 2, failure: 1 } });
+    const itLast = it.render(snap).split('\n').at(-1) ?? '';
+    const enLast = en.render(snap).split('\n').at(-1) ?? '';
+    expect(itLast).toBe('TS ●●○/●○○');
+    expect(enLast).toBe('DS ●●○/●○○');
+  });
+
+  it('SHRC-C8: turn/round remain absent from the compact card (combat-channel data)', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    const out = renderer.render(APPROVED_SNAPSHOT);
+    expect(out).not.toContain('Turno');
+    expect(out).not.toContain('Round');
+  });
+
+  it('SHRC-C9: loading state HP row carries the … marker', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    expect(renderer.renderLoading()).toContain('…');
+  });
+
+  it('SHRC-C10: missing state renders em-dash placeholders', () => {
+    const renderer = new StatusHudRenderer({ locale: 'it', compact: true });
+    expect(renderer.renderMissing()).toContain('—');
+  });
+});
+
+describe('StatusHudRenderer compact — full-width path unchanged', () => {
+  it('SHRC-U1: non-compact render is byte-identical with and without explicit maxWidthPx=576', () => {
+    const a = new StatusHudRenderer({ locale: 'it' });
+    const b = new StatusHudRenderer({ locale: 'it', compact: false, maxWidthPx: 576 });
+    expect(b.render(APPROVED_SNAPSHOT)).toBe(a.render(APPROVED_SNAPSHOT));
+    expect(b.renderLoading()).toBe(a.renderLoading());
+    expect(b.renderMissing()).toBe(a.renderMissing());
+  });
+
+  it('SHRC-U2: full-width sheet still emits lines wider than the 176 compact budget', () => {
+    // Guards against an accidental global narrowing of the default gate: the
+    // full-width divider row is ~44 chars and must exceed 176px.
+    const renderer = new StatusHudRenderer({ locale: 'it' });
+    const anyWide = renderer
+      .render(APPROVED_SNAPSHOT)
+      .split('\n')
+      .some((l) => getTextWidth(l) > HYBRID_WIDTH_PX);
+    expect(anyWide).toBe(true);
+  });
+});
