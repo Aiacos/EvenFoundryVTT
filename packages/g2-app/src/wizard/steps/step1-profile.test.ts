@@ -48,6 +48,17 @@ function makeStore(
   });
 }
 
+// Hermetic baseline: neutralize a developer's gitignored `.env.local` (which Vite
+// also loads into the Vitest run). Without this, `VITE_EVF_NO_AUTH=true` makes
+// isWizardNoAuth() return true and the wizard skips the token step (STEP1→STEP3),
+// breaking the real-token-flow assertions below. Mirrors is-dev-no-auth.test.ts.
+beforeEach(() => {
+  vi.stubEnv('VITE_EVF_NO_AUTH', '');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('step1-profile — BRIDGE_URL_REGEX', () => {
   it('matches https URLs with OR without a port (D1 — full origin); rejects no-scheme/host/spaces', async () => {
     const { BRIDGE_URL_REGEX } = await import('./step1-profile.js');

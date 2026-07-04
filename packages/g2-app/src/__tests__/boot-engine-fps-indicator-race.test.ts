@@ -125,8 +125,8 @@ async function flushMicrotasks(iterations = 32): Promise<void> {
   }
 }
 
-/** Index of the `[F] FPS` item in the menu's MAIN_ITEMS (S,C,L,B,I,A,M,N,F,X). */
-const FPS_ITEM_INDEX = 8;
+/** Index of the `[F] FPS` item in the menu's MAIN_ITEMS (S,C,L,B,I,K,A,M,N,F,X). */
+const FPS_ITEM_INDEX = 9;
 
 /**
  * Drive the real menu panel to select the `[F] FPS` row via genuine gestures:
