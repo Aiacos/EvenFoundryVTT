@@ -202,9 +202,16 @@ export class CanvasCompositor implements CanvasCompositorLike {
       ctx.drawImage(entry.canvas, 0, 0);
     }
 
-    const imageData = ctx.getImageData(0, 0, COMPOSITOR_W, COMPOSITOR_H);
-    // Return a copy so callers cannot mutate the internal buffer.
-    return new Uint8ClampedArray(imageData.data.buffer.slice(0));
+    // `getImageData` returns a FRESH `ImageData` with a newly-allocated `data`
+    // buffer on every call (HTML spec — the buffer is never aliased to the
+    // canvas' internal storage). Returning `imageData.data` directly is therefore
+    // already copy-safe: no caller can corrupt the compositor by mutating it.
+    // The previous `new Uint8ClampedArray(imageData.data.buffer.slice(0))` made a
+    // SECOND redundant ~660 KB copy of a buffer that was already private — pure
+    // main-thread waste on the render hot path (removed as a perf fix). The sole
+    // production consumer (`HudDeltaDriver`) treats the buffer read-only and makes
+    // its own copy before transferring it to the tile Worker.
+    return ctx.getImageData(0, 0, COMPOSITOR_W, COMPOSITOR_H).data;
   }
 
   // ── Test escape hatch ──────────────────────────────────────────────────────
