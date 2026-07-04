@@ -41,6 +41,11 @@ export default defineConfig({
         // foundry-module/src/index.ts removed — Phase 2 Plan 01 replaced it with
         // module.ts + settings.ts which carry real logic and are covered by tests.
         'packages/g2-app/src/index.ts', // Phase 4a
+        // Dev-only hybrid-HUD preview harness — renders the Feature 002 layout on
+        // the glasses via the real SDK bridge with mock data (no live WS), for
+        // sim-gated visual verification. Never shipped (not a vite build input);
+        // an integration harness that pushes to the bridge, not unit-testable logic.
+        'packages/g2-app/src/demo/**',
         'packages/shared-protocol/src/index.ts', // Phase 2 (real schemas land then)
         // Hardware-test utilities — exercised by packages/validation-harness/scripts/
         // which require Even Hub access (Phase 0 closure). Unit tests for pure
