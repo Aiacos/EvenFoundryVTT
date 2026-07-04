@@ -436,9 +436,9 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       // place when bootWithMocks() constructs the MapCanvasLayer instance.
       const setFrameSpy = vi.spyOn(MapCanvasLayer.prototype, 'setFrame');
 
-      // Feature 002: the boot default is now 'hybrid' (scene frames route to the
-      // RasterController). This test verifies the retained CANVAS-mode scene wiring,
-      // so force canvas via the view.hud.render override.
+      // Feature 002: the boot default is now 'showcase' (scene frames route to the
+      // ShowcaseHudLayer.setFrame). This test verifies the retained CANVAS-mode scene
+      // wiring, so force canvas via the view.hud.render override.
       const { handle, ws } = await bootWithMocks(
         {},
         {

@@ -26,12 +26,14 @@ import {
   buildBaseTextContainers,
   buildHudRasterPageSchema,
   buildHybridPageSchema,
+  buildShowcasePageSchema,
   buildStatusViewTextContainers,
   CONTAINER_REGISTRY,
   HUD_RASTER_CONTAINER_TOTAL,
   HYBRID_CONTAINER_TOTAL,
   resolveContainerId,
   resolveContainerIdField,
+  SHOWCASE_CONTAINER_TOTAL,
 } from '../container-registry.js';
 
 describe('container-registry', () => {
@@ -398,5 +400,97 @@ describe('buildHybridPageSchema', () => {
     for (const n of statusNames) expect((n ?? '').startsWith('hybrid-')).toBe(false);
     expect(BASE_CONTAINER_TOTAL).toBe(11);
     expect(BOOT_CONTAINER_TOTAL).toBe(3);
+  });
+});
+
+// ── buildShowcasePageSchema (PRODUCTION default — whole HUD as one 400×200 raster) ─
+//
+// The showcase page is the PRODUCTION default substrate: 4 raster HUD image tiles
+// (200×100 each, 2×2 = 400×200 CENTRED at (88,44)) + 1 invisible full-region
+// gesture-capture text container (showcase-capture, id 4).
+describe('buildShowcasePageSchema', () => {
+  const rect = (c: {
+    xPosition?: number;
+    yPosition?: number;
+    width?: number;
+    height?: number;
+  }) => ({
+    x: c.xPosition ?? 0,
+    y: c.yPosition ?? 0,
+    w: c.width ?? 0,
+    h: c.height ?? 0,
+  });
+
+  it('SHOW-1: containerTotalNum === 5 (4 image + 1 text)', () => {
+    const schema = buildShowcasePageSchema();
+    expect(schema.containerTotalNum).toBe(5);
+    expect(SHOWCASE_CONTAINER_TOTAL).toBe(5);
+    expect(schema.imageObject).toHaveLength(4);
+    expect(schema.textObject).toHaveLength(1);
+  });
+
+  it('SHOW-2: image tiles are showcase-tile-0..3, ids 0-3, 200×100, centred 2×2 at (88,44)', () => {
+    const { imageObject } = buildShowcasePageSchema();
+    const expected = [
+      { name: 'showcase-tile-0', x: 88, y: 44 },
+      { name: 'showcase-tile-1', x: 288, y: 44 },
+      { name: 'showcase-tile-2', x: 88, y: 144 },
+      { name: 'showcase-tile-3', x: 288, y: 144 },
+    ];
+    expected.forEach(({ name, x, y }, i) => {
+      const tile = imageObject[i];
+      expect(tile?.containerName).toBe(name);
+      expect(tile?.containerID).toBe(i);
+      expect(tile?.width).toBe(200);
+      expect(tile?.height).toBe(100);
+      expect(tile?.xPosition).toBe(x);
+      expect(tile?.yPosition).toBe(y);
+    });
+  });
+
+  it('SHOW-3: exactly ONE capture (showcase-capture, id 4) covering the 400×200 region with content single-space', () => {
+    const { imageObject, textObject } = buildShowcasePageSchema();
+    const imageCaptureCount = imageObject.filter(
+      (c) => (c as { isEventCapture?: number }).isEventCapture === 1,
+    ).length;
+    const captures = textObject.filter((c) => c.isEventCapture === 1);
+    expect(imageCaptureCount).toBe(0);
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.containerName).toBe('showcase-capture');
+    expect(captures[0]?.containerID).toBe(4);
+    expect(captures[0]?.content).toBe(' ');
+    expect(rect(captures[0] ?? {})).toEqual({ x: 88, y: 44, w: 400, h: 200 });
+  });
+
+  it('SHOW-4: image budget ≤4, text budget ≤8 (G2 hardware limit)', () => {
+    const { imageObject, textObject } = buildShowcasePageSchema();
+    expect(imageObject.length).toBeLessThanOrEqual(4);
+    expect(textObject.length).toBeLessThanOrEqual(8);
+  });
+
+  it('SHOW-5: all rects fit within the 576×288 physical screen', () => {
+    const { imageObject, textObject } = buildShowcasePageSchema();
+    for (const c of [...imageObject, ...textObject]) {
+      const r = rect(c);
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(576);
+      expect(r.y + r.h).toBeLessThanOrEqual(288);
+    }
+  });
+
+  it('SHOW-6: showcase entries do NOT leak into the base/glyph/hybrid builders', () => {
+    const baseNames = [
+      ...buildBaseImageContainers().map((c) => c.containerName),
+      ...buildBaseTextContainers().map((c) => c.containerName),
+    ];
+    const statusNames = buildStatusViewTextContainers().map((c) => c.containerName);
+    const hybridNames = [
+      ...buildHybridPageSchema().imageObject.map((c) => c.containerName),
+      ...buildHybridPageSchema().textObject.map((c) => c.containerName),
+    ];
+    for (const n of [...baseNames, ...statusNames, ...hybridNames]) {
+      expect((n ?? '').startsWith('showcase-')).toBe(false);
+    }
   });
 });

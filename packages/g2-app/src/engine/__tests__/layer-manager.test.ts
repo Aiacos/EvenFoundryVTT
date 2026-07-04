@@ -267,6 +267,31 @@ describe('LayerManager — bundle() atomic semantics', () => {
     expect(bridge.updateImageRawData).not.toHaveBeenCalled();
   });
 
+  it('Test 8d: showcase mode _flushPage rebuilds the 5-container showcase schema (4 image + 1 capture=showcase-capture), no compositor push', async () => {
+    // Showcase mode: the whole HUD is one 400×200 raster split into 4 centred tiles +
+    // 1 gesture-capture text container. _flushPage must select buildShowcasePageSchema()
+    // → 4 image + 1 text = 5 containers, with exactly one isEventCapture=1
+    // (showcase-capture id4). Showcase does NOT drive the LayerManager compositor in
+    // _flushPage (the ShowcaseHudLayer owns its own push loop), so updateImageRawData
+    // is never called here — only the page rebuild is asserted.
+    const showLayer = makeMockLayer('showcase-hud', 'showcase-capture');
+    lm.mount(ZIndex.Z1_STATUS_HUD, showLayer);
+    lm.setRenderMode('showcase');
+    await lm.bundle([]);
+
+    expect(bridge.rebuildPageContainer).toHaveBeenCalledTimes(1);
+    const arg = bridge.rebuildPageContainer.mock.calls[0]?.[0];
+    expect(arg?.containerTotalNum).toBe(5);
+    expect(arg?.imageObject?.length).toBe(4);
+    expect(arg?.textObject?.length).toBe(1);
+    const captures = (arg?.textObject ?? []).filter(
+      (t: { isEventCapture?: number }) => t.isEventCapture === 1,
+    );
+    expect(captures).toHaveLength(1);
+    expect((captures[0] as { containerName?: string })?.containerName).toBe('showcase-capture');
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+  });
+
   it('Test 9: bundle applies ops in order; transient invariant violation tolerated when final state is valid', async () => {
     // Start: z=0 holds capture.
     const mapLayer = makeMockLayer('map', 'map-capture');
@@ -1620,4 +1645,67 @@ describe('LayerManager — canvas→glyph atomic switch (LMT-ATOMIC-01, Phase 25
       expect(bridge.updateImageRawData).not.toHaveBeenCalled();
     },
   );
+});
+
+// ── Feature 002 showcase: z=2 overlay-change listener ──────────────────────────────
+//
+// setOverlayChangeListener fires after any bundle() whose effective ops mounted or
+// destroyed a z=2 overlay. Showcase boot wires it to ShowcaseHudLayer.requestCycle()
+// so the raster HUD repaints (overlay ↔ base) right after the panel lifecycle flush.
+
+describe('LayerManager — setOverlayChangeListener (Feature 002 showcase overlays)', () => {
+  let bridge: ReturnType<typeof makeMockBridge>;
+  let lm: LayerManager;
+
+  beforeEach(() => {
+    bridge = makeMockBridge();
+    lm = new LayerManager(bridge as unknown as EvenAppBridge);
+  });
+
+  it('fires on a z=2 overlay mount (a panel opening)', async () => {
+    // Base capture provider so the invariant holds with the panel (no self-capture) mounted.
+    const base = makeCountedLayer('map', { image: 4, text: 1 }, 'hud-capture');
+    lm.mount(ZIndex.Z0_MAP, base);
+    const kicks: number[] = [];
+    lm.setOverlayChangeListener(() => kicks.push(1));
+
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 0 }, undefined);
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
+    expect(kicks).toHaveLength(1);
+  });
+
+  it('fires on a z=2 overlay destroy (a panel closing)', async () => {
+    const base = makeCountedLayer('map', { image: 4, text: 1 }, 'hud-capture');
+    lm.mount(ZIndex.Z0_MAP, base);
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 0 }, undefined);
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
+
+    const kicks: number[] = [];
+    lm.setOverlayChangeListener(() => kicks.push(1));
+    await lm.bundle([{ type: 'destroy', z: ZIndex.Z2_OVERLAY }]);
+    expect(kicks).toHaveLength(1);
+  });
+
+  it('does NOT fire for a bundle that touches only non-z=2 layers', async () => {
+    const base = makeCountedLayer('map', { image: 4, text: 1 }, 'hud-capture');
+    lm.mount(ZIndex.Z0_MAP, base);
+    const kicks: number[] = [];
+    lm.setOverlayChangeListener(() => kicks.push(1));
+
+    const status = makeCountedLayer('status', { image: 0, text: 1 }, undefined);
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: status }]);
+    expect(kicks).toHaveLength(0);
+  });
+
+  it('clearing the listener (null) makes subsequent z=2 changes no-op', async () => {
+    const base = makeCountedLayer('map', { image: 4, text: 1 }, 'hud-capture');
+    lm.mount(ZIndex.Z0_MAP, base);
+    const kicks: number[] = [];
+    lm.setOverlayChangeListener(() => kicks.push(1));
+    lm.setOverlayChangeListener(null);
+
+    const panel = makeOverlayPanelStub('overlay', { image: 0, text: 0 }, undefined);
+    await lm.bundle([{ type: 'mount', z: ZIndex.Z2_OVERLAY, layer: panel }]);
+    expect(kicks).toHaveLength(0);
+  });
 });

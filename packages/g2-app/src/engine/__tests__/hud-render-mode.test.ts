@@ -16,7 +16,7 @@ function bridgeReturning(value: string | Promise<never>): EvenAppBridge {
 
 describe('loadPersistedRenderMode', () => {
   it('reads the override from the canonical kv key', async () => {
-    const bridge = bridgeReturning('hybrid');
+    const bridge = bridgeReturning('showcase');
     await loadPersistedRenderMode(bridge);
     expect((bridge.getLocalStorage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
       RENDER_MODE_STORAGE_KEY,
@@ -25,6 +25,7 @@ describe('loadPersistedRenderMode', () => {
   });
 
   it.each([
+    'showcase',
     'hybrid',
     'canvas',
     'glyph',

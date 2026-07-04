@@ -177,16 +177,40 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
   });
 
   /**
-   * CR-01a (HYBRID default — Feature 002): the boot default substrate is now
-   * 'hybrid'. The hybrid bundle mounts the NATIVE layer set beside the raster map:
-   *   - z=0 (Z0_MAP): MapBaseLayer (id='map-base') — raster map region via RasterController.
-   *   - z=1 (Z1_STATUS_HUD): native StatusHudLayer (id='status-hud') — id=6 text card.
-   * Idle-infill (z=0.5) is NOT mounted (its z05-* containers are not in the hybrid
-   * schema; the map area is image tiles painting over any z=0.5 text).
-   * CanvasStatusHudLayer / MapCanvasLayer (canvas mode) are NOT mounted by default.
+   * CR-01a (SHOWCASE default — Feature 002 showcase promotion): the boot default
+   * substrate is now 'showcase'. The showcase bundle mounts ONLY the self-contained
+   * ShowcaseHudLayer (id='showcase-hud') at z=1 — it rasterises the WHOLE HUD and
+   * provides the sole capture container ('showcase-capture'). No map-base, no
+   * idle-infill, no native status-hud, no canvas layers are mounted by default.
    */
-  it('CR-01a: hybrid-default boot mounts the native layer set (map-base z=0 + status-hud z=1), no idle-infill', async () => {
-    const { handle } = await bootWith(); // no override → hybrid default
+  it('CR-01a: showcase-default boot mounts ONLY the ShowcaseHudLayer (z=1), no map-base / idle-infill / status-hud', async () => {
+    const { handle } = await bootWith(); // no override → showcase default
+
+    expect(handle.layerManager.getRenderMode()).toBe('showcase');
+
+    const z1 = handle.layerManager.getLayer(ZIndex.Z1_STATUS_HUD);
+    expect(z1?.id).toBe('showcase-hud');
+    // Shared raster-capture invariant token (matches canvas OverlayPanels so a composited
+    // z=2 overlay keeps the capture count at 1); the schema container stays 'showcase-capture'.
+    expect(z1?.getCaptureContainer?.()).toBe('hud-capture');
+
+    // Exactly one capture provider (the ShowcaseHudLayer) — INV-5 satisfied.
+    expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
+
+    // No z=0 map-base, no z=0.5 idle-infill in showcase mode.
+    expect(handle.layerManager.getLayer(ZIndex.Z0_MAP)).toBeUndefined();
+    expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
+
+    handle.teardown();
+  });
+
+  /**
+   * CR-01a-hybrid: the retained 'hybrid' substrate is still reachable via the
+   * `view.hud.render='hybrid'` override and mounts the native layer set (map-base
+   * z=0 + status-hud z=1), no idle-infill.
+   */
+  it("CR-01a-hybrid: view.hud.render='hybrid' override mounts the native layer set (map-base z=0 + status-hud z=1)", async () => {
+    const { handle } = await bootWith({ renderMode: 'hybrid' });
 
     expect(handle.layerManager.getRenderMode()).toBe('hybrid');
 
@@ -194,12 +218,9 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
     expect(z1?.id).toBe('status-hud');
     expect(z1?.id).not.toBe('canvas-status-hud');
 
-    // z=0 is the raster MapBaseLayer — provides the capture container.
     const z0 = handle.layerManager.getLayer(ZIndex.Z0_MAP);
     expect(z0?.id).toBe('map-base');
     expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
-
-    // Idle-infill is NOT mounted in hybrid (z05-* not in the hybrid schema).
     expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
 
     handle.teardown();

@@ -43,6 +43,7 @@ import {
   BOOT_CONTAINER_TOTAL,
   buildHudRasterPageSchema,
   buildHybridPageSchema,
+  buildShowcasePageSchema,
   buildStatusViewTextContainers,
 } from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
@@ -69,11 +70,16 @@ export type MapMode = 'auto' | 'raster' | 'glyph';
  *   status HUD + overlays composited and pushed as PNG tiles (v0.10.0 — slow refresh).
  * - `'hybrid'`: native text chrome + status HUD + a raster MAP region (8 containers,
  *   `buildHybridPageSchema()`); only the map rasterises, the rest update via cheap
- *   `textContainerUpgrade` (Feature 002 — the new default direction).
+ *   `textContainerUpgrade` (Feature 002).
+ * - `'showcase'`: the ENTIRE glanceable HUD rasterised as one 400×200 image (frame +
+ *   header + framed map + status card + footer), split into 4 centred image tiles +
+ *   1 capture text container (5 containers, `buildShowcasePageSchema()`). The
+ *   self-contained `ShowcaseHudLayer` owns its own throttled push loop — the
+ *   LayerManager compositor is NOT used. This is the PRODUCTION default substrate.
  *
  * @see specs/002-hybrid-native-raster-render/spec.md
  */
-export type HudRenderMode = 'canvas' | 'glyph' | 'hybrid';
+export type HudRenderMode = 'canvas' | 'glyph' | 'hybrid' | 'showcase';
 
 /**
  * Singleton orchestrator for the G2 layered HUD.
@@ -210,6 +216,28 @@ export class LayerManager {
    */
   setNegotiatedCaps(caps: ReadonlySet<ServerCap>): void {
     this.negotiatedCaps = caps;
+  }
+
+  /**
+   * Optional listener fired after every `bundle()` whose effective ops mounted or
+   * destroyed a z=2 overlay. Showcase boot wires it to
+   * `ShowcaseHudLayer.requestCycle()` so the raster HUD repaints (overlay ↔ base HUD)
+   * right after the panel lifecycle flush — every open/close path (Quick-Action menu,
+   * sheet, combat, spellbook, inventory, target-picker, modals) routes through
+   * `bundle()`, so this single hook covers them all with no per-panel wiring.
+   *
+   * Harmless (no-op) in other render modes: only showcase boot registers a listener,
+   * and `ShowcaseHudLayer.requestCycle()` itself is a no-op until the layer is started.
+   */
+  private _onOverlayChange: (() => void) | null = null;
+
+  /**
+   * Register (or clear with `null`) the {@link _onOverlayChange} listener.
+   *
+   * @param fn Listener fired post-flush when a z=2 overlay was mounted/destroyed.
+   */
+  setOverlayChangeListener(fn: (() => void) | null): void {
+    this._onOverlayChange = fn;
   }
 
   /**
@@ -431,6 +459,14 @@ export class LayerManager {
 
     // STEP 6 — Single bridge flush.
     await this._flushPage();
+
+    // STEP 6.5 — Overlay-change notify (Feature 002 showcase overlays). Fire AFTER the
+    // flush so a listener that composites the compositor + repaints (ShowcaseHudLayer)
+    // sees the mounted panel already registered. Fires when any effective op targeted
+    // z=2 (mount or destroy). No-op unless a listener was registered (showcase boot).
+    if (this._onOverlayChange !== null && effective.some((op) => op.z === ZIndex.Z2_OVERLAY)) {
+      this._onOverlayChange();
+    }
 
     // STEP 7 — Display mirror (Wave 4): record the resulting page rebuild with a
     // z-stack summary + container count. No-op when mirror absent (default).
@@ -709,13 +745,15 @@ export class LayerManager {
         ? buildHudRasterPageSchema() // 4 image tiles + 1 capture text = 5 containers (canvas mode)
         : this.renderMode === 'hybrid'
           ? buildHybridPageSchema() // 4 map tiles + native chrome/status + capture = 8 (hybrid)
-          : {
-              // Glyph mode: default status-view schema — byte-identical to pre-Phase-19 behavior.
-              // header(id4) + footer(id5) + status-hud(id6); map-capture + z05-* EXCLUDED.
-              containerTotalNum: BOOT_CONTAINER_TOTAL,
-              textObject: buildStatusViewTextContainers(),
-              imageObject: [] as never[],
-            };
+          : this.renderMode === 'showcase'
+            ? buildShowcasePageSchema() // 4 centred HUD tiles + 1 capture = 5 (showcase — whole HUD raster)
+            : {
+                // Glyph mode: default status-view schema — byte-identical to pre-Phase-19 behavior.
+                // header(id4) + footer(id5) + status-hud(id6); map-capture + z05-* EXCLUDED.
+                containerTotalNum: BOOT_CONTAINER_TOTAL,
+                textObject: buildStatusViewTextContainers(),
+                imageObject: [] as never[],
+              };
     const payload = new RebuildPageContainer(schema);
     await this.bridge.rebuildPageContainer(payload);
     if (usesCompositor) {
