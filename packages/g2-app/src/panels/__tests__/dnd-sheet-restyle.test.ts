@@ -91,6 +91,10 @@ function fakeCtx() {
     fillRect: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
+    // Vector-path primitives — the Speed icon draws a boot (beginPath/rect/fill).
+    beginPath: vi.fn(),
+    rect: vi.fn(),
+    fill: vi.fn(),
     fillStyle: '',
     font: '',
     textAlign: '' as CanvasTextAlign,
@@ -100,7 +104,7 @@ function fakeCtx() {
 }
 
 describe('paintMainTab — D&D vitals icons (canvas path)', () => {
-  it('draws the AC/INI/VEL icon glyphs and their values', () => {
+  it('draws the AC/INI glyphs, a VECTOR BOOT for speed, and the values', () => {
     const { ctx, calls } = fakeCtx();
     paintMainTab(
       ctx,
@@ -115,10 +119,14 @@ describe('paintMainTab — D&D vitals icons (canvas path)', () => {
     );
     const texts = calls.filter((c) => c.method === 'fillText').map((c) => String(c.args[0]));
     const joined = texts.join('|');
-    // Icons rendered via drawIcon → fillText of the shared glyphs.
+    // AC / INI still render as shared glyphs via drawIcon → fillText.
     expect(joined).toContain(iconToUnicode(IconId.ArmorClass)); // ⛨
     expect(joined).toContain(iconToUnicode(IconId.Initiative)); // ⚡
-    expect(joined).toContain(iconToUnicode(IconId.Speed)); // ⚔
+    // Speed is a per-icon divergence: a vector boot (beginPath/rect/fill), NOT the
+    // ⚔ glyph — swords misrepresent movement as "attack".
+    expect(joined).not.toContain(iconToUnicode(IconId.Speed)); // no ⚔ in the canvas path
+    expect(ctx.rect).toHaveBeenCalled();
+    expect(ctx.fill).toHaveBeenCalled();
     // Values still drawn.
     expect(texts.some((t) => t.includes('18'))).toBe(true);
     expect(texts.some((t) => t.includes('+3'))).toBe(true);

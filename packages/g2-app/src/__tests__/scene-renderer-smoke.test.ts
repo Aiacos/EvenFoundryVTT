@@ -436,7 +436,15 @@ describe('scene-renderer-smoke — Phase 4a end-to-end integration (Plan 05 Task
       // place when bootWithMocks() constructs the MapCanvasLayer instance.
       const setFrameSpy = vi.spyOn(MapCanvasLayer.prototype, 'setFrame');
 
-      const { handle, ws } = await bootWithMocks();
+      // Feature 002: the boot default is now 'showcase' (scene frames route to the
+      // ShowcaseHudLayer.setFrame). This test verifies the retained CANVAS-mode scene
+      // wiring, so force canvas via the view.hud.render override.
+      const { handle, ws } = await bootWithMocks(
+        {},
+        {
+          getLocalStorageImpl: async (key: string) => (key === 'view.hud.render' ? 'canvas' : ''),
+        },
+      );
       const worker = installedWorker;
       if (worker === null) throw new Error('worker mock missing');
 

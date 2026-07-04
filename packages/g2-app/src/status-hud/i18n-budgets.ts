@@ -1573,6 +1573,15 @@ export const HUD_WIDTH_BUDGETS = {
   hud27_death_saves_label: { it: 'TS morte', en: 'Death saves', de: 'Todesrettung', max: 13 },
 
   /**
+   * Compact death-saves label for the hybrid render mode's narrow 176px status
+   * card (Feature 002 slice 4). The full `hud27_death_saves_label` ("Death saves"
+   * / "Todesrettung") plus the `●●●/●●●` glyph tracks would overflow the 176px
+   * right-column budget, so the compact card uses a 2-char abbreviation.
+   * IT: `TS` (Tiri Salvezza) · EN: `DS` (Death Saves) · DE: `TR` (Todesrettung).
+   */
+  hud27c_death_label: { it: 'TS', en: 'DS', de: 'TR', max: 2 },
+
+  /**
    * R1 hint row (row 8 — bottom row of the status sheet).
    * Full-width hint string using the over-scroll/double-tap vocabulary agreed in the
    * approved mockup. Does NOT use `qa=` tokens (GEST-01/ADR-0012 Phase 20 sweep pending).

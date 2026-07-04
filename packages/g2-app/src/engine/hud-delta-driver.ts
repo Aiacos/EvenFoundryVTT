@@ -5,7 +5,8 @@
  * with a standalone, injectable class that owns:
  *
  *   - A one-time `await xxhash()` WASM init (lazy-singleton, mirrors raster-worker.ts).
- *   - A 4-slot `prevHashes` table (one h32 per HUD tile, updated on every changed push).
+ *   - A 4-slot `_prevSourceHashes` table (one h32 per HUD tile of the SOURCE, pre-dither
+ *     pixels — so unchanged tiles skip the dither + PNG encode, not just the BLE push).
  *   - A `setTimeout`-based throttle (configurable via `HudDeltaDriverOpts.minRedrawIntervalMs`;
  *     default `DEFAULT_MIN_REDRAW_INTERVAL_MS = 100` per D-24.1 — this overrides the
  *     ROADMAP criterion-#2 literal MIN_REDRAW_INTERVAL_MS = 200).
@@ -31,7 +32,7 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { XXHashAPI } from 'xxhash-wasm';
 import xxhash from 'xxhash-wasm';
-import { buildHudTiles, type HudTile } from '../hud/hud-raster-frame.js';
+import { encodeHudTile, type HudTile, splitFrameIntoTiles } from '../hud/hud-raster-frame.js';
 import { pushHudTiles } from '../hud/push-hud-tiles.js';
 import type { CanvasCompositorLike } from './canvas-compositor.js';
 
@@ -39,6 +40,9 @@ import type { CanvasCompositorLike } from './canvas-compositor.js';
 
 /** Number of HUD tiles per frame (2×2 layout, container IDs 0-3). */
 const TILE_COUNT = 4;
+
+/** All tile indices in container-id order — the "changed set" for a full-frame build. */
+const ALL_TILE_INDICES: ReadonlyArray<number> = Object.freeze([0, 1, 2, 3]);
 
 /** Sliding window (ms) for the {@link HudDeltaDriver.getFps} indicator. */
 const FPS_WINDOW_MS = 2000;
@@ -76,7 +80,8 @@ export interface HudDeltaDriverOpts {
   /**
    * The canvas compositor to invoke on each render cycle.
    *
-   * `composite()` returns the 400×200×4 RGBA buffer fed to `buildHudTiles`.
+   * `composite()` returns the full-screen 576×288×4 RGBA buffer that the driver
+   * splits into 4 source tiles for delta-gating and encoding.
    */
   readonly compositor: CanvasCompositorLike;
 
@@ -163,14 +168,32 @@ export class HudDeltaDriver {
   private _xxhash: XXHashAPI | null = null;
 
   /**
-   * Per-tile h32 hashes from the last push.
+   * Per-tile h32 hashes of the **source** (pre-dither) RGBA of the last cycle.
    *
-   * Length 4 (one slot per HUD tile, IDs 0-3). Initialized to 0 so the first
-   * `_runCycle` always detects a change on all tiles if called before
-   * `runFirstFrame()` has seeded them. In normal operation `runFirstFrame()` is
-   * called first and seeds accurate baselines.
+   * Length 4 (one slot per HUD tile, IDs 0-3). Hashing the compositor's source
+   * pixels — rather than the encoded PNG bytes — lets the driver decide which
+   * tiles changed BEFORE paying the dither + `UPNG.encode` cost. Unchanged tiles
+   * are therefore never encoded (the expensive PNG work used to run on all 4
+   * tiles every cycle; the old xxhash skip only saved the BLE push, not the
+   * encode). Determinism holds: identical source RGBA → identical dither →
+   * identical PNG → no push (D-24.5).
+   *
+   * Initialized to 0 so a `_runCycle` before `runFirstFrame()` seeds baselines
+   * detects a change on all non-black tiles. In normal operation
+   * `runFirstFrame()` runs first and seeds accurate baselines.
    */
-  private readonly _prevHashes: number[] = new Array(TILE_COUNT).fill(0);
+  private readonly _prevSourceHashes: number[] = new Array(TILE_COUNT).fill(0);
+
+  /**
+   * Dither mode applied on the last cycle, or `null` before the first build.
+   *
+   * The source-tile hash is intentionally dither-independent (it hashes pre-quantize
+   * pixels), so a live dither-mode toggle would otherwise not change any source hash
+   * and the glasses would keep the old pattern until the next content change. Tracking
+   * the mode lets `_runCycle` force a full-frame repaint on the cycle where the mode
+   * flips, preserving the previous "toggle → immediate repaint" behaviour.
+   */
+  private _prevDither: boolean | null = null;
 
   /** Pending throttle timer handle — null when no cycle is scheduled. */
   private _timer: ReturnType<typeof setTimeout> | null = null;
@@ -288,21 +311,25 @@ export class HudDeltaDriver {
       this._xxhash = await xxhash();
     }
 
+    const dither = this._opts.getDitherMode?.() ?? true;
     const rgba = this._opts.compositor.composite();
-    const tiles = await this._buildTiles(rgba);
+    const sourceTiles = splitFrameIntoTiles(rgba);
+    const tiles = await this._encodeTiles(rgba, sourceTiles, ALL_TILE_INDICES, dither);
 
     if (tiles.length > 0) {
       await pushHudTiles(this._opts.bridge, tiles);
     }
 
-    // Seed baseline hashes from the PNG bytes of each pushed tile.
-    // buildHudTiles returns exactly tiles.length elements or throws — the
-    // non-null assertion is correct at runtime; it satisfies noUncheckedIndexedAccess
-    // without dead-code guards (INV-4, WR-02).
-    for (let i = 0; i < tiles.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: buildHudTiles contract — tile at index i exists (see above)
-      this._prevHashes[i] = this._xxhash.h32Raw(tiles[i]!.bytes);
+    // Seed baseline SOURCE-tile hashes (pre-dither pixels). After this, an idle
+    // HUD produces zero pushes AND zero encodes — `_runCycle` short-circuits
+    // before any dither/PNG work when no source tile changed.
+    // splitFrameIntoTiles returns exactly TILE_COUNT entries; the non-null
+    // assertion satisfies noUncheckedIndexedAccess without dead guards (INV-4, WR-02).
+    for (let i = 0; i < TILE_COUNT; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: splitFrameIntoTiles contract — tile at index i exists
+      this._prevSourceHashes[i] = this._hashSourceTile(sourceTiles[i]!);
     }
+    this._prevDither = dither;
   }
 
   /**
@@ -421,81 +448,113 @@ export class HudDeltaDriver {
   }
 
   /**
-   * Composite the canvas, hash each tile, and push only changed tiles.
+   * Hash one 288×144 source (pre-dither) tile with xxhash `h32Raw`.
    *
-   * Per-tile algorithm:
-   *   1. `compositor.composite()` → 400×200×4 RGBA.
-   *   2. `buildHudTiles(rgba)` → 4 `HudTile[]` (dithered 4-bit PNG).
-   *   3. For each tile i: `h = h32Raw(tile.bytes)`.
-   *      If `h !== prevHashes[i]` → mark changed, update `prevHashes[i]`.
-   *   4. If no changes → return (zero-push-on-idle, D-24.3).
-   *   5. Else → `await pushHudTiles(bridge, changedTiles)` (serialized, CM-01).
+   * A zero-copy `Uint8Array` view over the tile's backing buffer is passed to
+   * `h32Raw` (which requires `Uint8Array`; the tile is a `Uint8ClampedArray`).
    *
-   * Hashing the PNG `tile.bytes` (already `Uint8Array`) satisfies D-24.5
-   * (static-chrome determinism): identical compositor RGBA → identical dither
-   * output → identical PNG bytes → identical hash → no push.
+   * `_xxhash` is guaranteed non-null: every caller (`runFirstFrame`, `_runCycle`)
+   * awaits the WASM init before hashing. The non-null assertion surfaces a loud
+   * TypeError if that invariant is ever broken (IN-01, INV-4).
+   *
+   * @param tile A 288×144×4 RGBA source tile from {@link splitFrameIntoTiles}.
+   * @returns The 32-bit xxhash of the tile's raw bytes.
    */
+  private _hashSourceTile(tile: Uint8ClampedArray): number {
+    const view = new Uint8Array(tile.buffer, tile.byteOffset, tile.byteLength);
+    // biome-ignore lint/style/noNonNullAssertion: WASM init awaited by every caller
+    return this._xxhash!.h32Raw(view);
+  }
+
   /**
-   * Build the 4 HUD tiles — Worker-backed when `opts.buildTilesAsync` is
-   * wired, with synchronous fallback on rejection or absence.
+   * Encode the requested tiles into PNG `HudTile`s — Worker-backed when
+   * `opts.buildTilesAsync` is wired, synchronous fallback otherwise.
    *
-   * Resolves the live dither mode via `opts.getDitherMode?.() ?? true` and
-   * forwards it to both the async Worker path and the synchronous fallback so
-   * a live toggle takes effect on the very next cycle without reconstruction.
+   * - **Worker path**: hands the full 576×288 `rgba` to the Worker (transferred,
+   *   zero-copy — the driver's independent `sourceTiles` copies back the sync
+   *   fallback, so `rgba` may be detached safely) and keeps only the requested
+   *   `indices`. The Worker still encodes all 4 tiles off the main thread; per-index
+   *   Worker encoding would need a Worker/boot protocol change (see report).
+   * - **Sync path**: encodes ONLY the requested `indices` on the main thread via
+   *   {@link encodeHudTile} — unchanged tiles never pay the dither + PNG cost.
+   *
+   * Output is byte-identical to the corresponding tiles of `buildHudTiles(rgba, dither)`.
+   *
+   * @param rgba The full 576×288×4 composited frame (may be transferred to the Worker).
+   * @param sourceTiles The 4 pre-split source tiles (used by the sync fallback + hashing).
+   * @param indices The tile indices to produce, ascending, a subset of `[0..3]`.
+   * @param dither Live dither mode forwarded to both paths (byte-identical per mode).
+   * @returns The requested `HudTile`s in `indices` order.
    */
-  private async _buildTiles(rgba: Uint8ClampedArray): Promise<HudTile[]> {
-    const dither = this._opts.getDitherMode?.() ?? true;
+  private async _encodeTiles(
+    rgba: Uint8ClampedArray,
+    sourceTiles: Uint8ClampedArray[],
+    indices: ReadonlyArray<number>,
+    dither: boolean,
+  ): Promise<HudTile[]> {
     const asyncBuilder = this._opts.buildTilesAsync;
     if (asyncBuilder !== undefined) {
       try {
-        // The Worker path TRANSFERS the buffer (hud-tile-worker-client.ts line
-        // ~128: `postMessage({ rgba: rgba.buffer, ... }, [rgba.buffer])`) which
-        // DETACHES whatever buffer we hand it. We MUST pass a copy here: on a
-        // worker rejection the catch below falls through to the synchronous
-        // `buildHudTiles(rgba, dither)` which reads the ORIGINAL `rgba`. Without
-        // this copy the original would be detached and the sync fallback would
-        // operate on a zero-length buffer. This copy is load-bearing — do NOT
-        // remove it (the `rgba` arg is the compositor's owned output, single-use
-        // per cycle, but the worker transfer + sync-fallback dual-read needs two
-        // independent buffers).
-        return await asyncBuilder(new Uint8ClampedArray(rgba), dither);
+        const all = await asyncBuilder(rgba, dither);
+        // biome-ignore lint/style/noNonNullAssertion: worker returns TILE_COUNT tiles in id order; indices ⊂ [0,TILE_COUNT)
+        return indices.map((i) => all[i]!);
       } catch (err) {
         console.warn('[EVF] HudDeltaDriver: worker tile build failed — sync fallback:', err);
       }
     }
-    return buildHudTiles(rgba, dither);
+    // biome-ignore lint/style/noNonNullAssertion: indices ⊂ [0,TILE_COUNT); sourceTiles has TILE_COUNT entries
+    return indices.map((i) => encodeHudTile(sourceTiles[i]!, i, dither));
   }
 
+  /**
+   * Composite the canvas, delta-gate on SOURCE tile hashes, and encode + push
+   * only the tiles whose source pixels changed.
+   *
+   * Algorithm:
+   *   1. `compositor.composite()` → 576×288×4 RGBA.
+   *   2. `splitFrameIntoTiles(rgba)` → 4 source (pre-dither) tiles.
+   *   3. For each tile i: `h = h32Raw(sourceTile_i)`. If `h !== prevSourceHashes[i]`
+   *      (or the dither mode flipped this cycle) → mark changed, update the hash.
+   *   4. If no changes → return WITHOUT encoding anything (zero-push AND
+   *      zero-encode on idle; on the Worker path, no round-trip at all).
+   *   5. Else → encode only the changed tiles and
+   *      `await pushHudTiles(bridge, changedTiles)` (serialized, CM-01).
+   *
+   * Gating on the SOURCE pixels (not the encoded PNG) means unchanged tiles never
+   * pay the dither + `UPNG.encode` cost — the prime per-cycle expense. Determinism
+   * (D-24.5): identical source RGBA → identical dither → identical PNG → no push.
+   * A live dither-mode flip forces a full-frame repaint (the source hash is
+   * mode-independent), preserving the previous toggle-repaint behaviour.
+   */
   private async _runCycle(): Promise<void> {
-    // _runCycle is only reachable via _fireCycle(), which is only wired by
-    // _schedule() → start(). start() initialises _xxhash before adding any
-    // subscriptions, so _xxhash is guaranteed non-null here. The non-null
-    // assertion surfaces a loud TypeError if the invariant is ever broken
-    // (IN-01, INV-4).
-    // biome-ignore lint/style/noNonNullAssertion: start() init guarantee — see above
-    const { h32Raw } = this._xxhash!;
+    const dither = this._opts.getDitherMode?.() ?? true;
+    // A dither-mode flip changes the OUTPUT but not the source hash, so force a
+    // full repaint on the cycle where the mode changes (null = first build).
+    const ditherFlipped = this._prevDither !== null && this._prevDither !== dither;
+    this._prevDither = dither;
 
     const rgba = this._opts.compositor.composite();
-    const tiles = await this._buildTiles(rgba);
-    const changed: typeof tiles = [];
+    const sourceTiles = splitFrameIntoTiles(rgba);
+    const changedIndices: number[] = [];
 
-    // buildHudTiles returns exactly TILE_COUNT elements or throws; _prevHashes is
+    // splitFrameIntoTiles returns exactly TILE_COUNT entries; _prevSourceHashes is
     // pre-allocated to TILE_COUNT. Non-null assertions satisfy noUncheckedIndexedAccess
     // without unreachable continue-guards (INV-4, WR-02).
     for (let i = 0; i < TILE_COUNT; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: buildHudTiles contract — tile at index i exists
-      const tile = tiles[i]!;
-      // h32Raw requires Uint8Array; tile.bytes is already Uint8Array (no cast needed).
-      const h = h32Raw(tile.bytes);
-      // biome-ignore lint/style/noNonNullAssertion: _prevHashes pre-allocated to TILE_COUNT
-      if (h !== this._prevHashes[i]!) {
-        this._prevHashes[i] = h;
-        changed.push(tile);
+      // biome-ignore lint/style/noNonNullAssertion: splitFrameIntoTiles contract — tile at index i exists
+      const h = this._hashSourceTile(sourceTiles[i]!);
+      // biome-ignore lint/style/noNonNullAssertion: _prevSourceHashes pre-allocated to TILE_COUNT
+      if (ditherFlipped || h !== this._prevSourceHashes[i]!) {
+        this._prevSourceHashes[i] = h;
+        changedIndices.push(i);
       }
     }
 
-    // D-24.3 zero-push-on-idle: skip pushHudTiles if nothing changed.
-    if (changed.length === 0) return;
+    // D-24.3 zero-push-on-idle, now also zero-ENCODE-on-idle: no dither/PNG work
+    // (and, on the Worker path, no Worker round-trip) when nothing changed.
+    if (changedIndices.length === 0) return;
+
+    const changed = await this._encodeTiles(rgba, sourceTiles, changedIndices, dither);
 
     // CM-01: pushHudTiles uses for...of + await (never Promise.all).
     await pushHudTiles(this._opts.bridge, changed);

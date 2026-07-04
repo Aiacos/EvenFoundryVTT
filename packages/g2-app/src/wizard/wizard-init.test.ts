@@ -74,6 +74,18 @@ function buildWizardDOM(): HTMLElement {
   return root;
 }
 
+// Hermetic baseline: neutralize a developer's gitignored `.env.local` (which Vite
+// also loads into the Vitest run). Without this, `VITE_EVF_NO_AUTH=true` makes
+// isWizardNoAuth() return true and the wizard skips the token step (STEP1→STEP3),
+// so Step 2 never renders and the DOM state-machine assertions fail. Mirrors
+// is-dev-no-auth.test.ts.
+beforeEach(() => {
+  vi.stubEnv('VITE_EVF_NO_AUTH', '');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('wizard.ts — checkRequiredKeys', () => {
   it('returns empty array when all keys present', async () => {
     const { checkRequiredKeys, ALL_I18N_KEYS } = await import('./wizard.js');

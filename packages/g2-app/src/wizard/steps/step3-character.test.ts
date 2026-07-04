@@ -86,6 +86,18 @@ async function waitForElement(
   );
 }
 
+// Hermetic baseline: neutralize a developer's gitignored `.env.local` (which Vite
+// also loads into the Vitest run). Without this, `VITE_EVF_NO_AUTH=true` makes
+// isWizardNoAuth() return true and Step 3's "Back" targets STEP1 instead of STEP2
+// (token step skipped), breaking the real-token-flow assertions. Mirrors
+// is-dev-no-auth.test.ts.
+beforeEach(() => {
+  vi.stubEnv('VITE_EVF_NO_AUTH', '');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('step3-character — render()', () => {
   let container: HTMLElement;
   let hubMock: ReturnType<typeof createHubMock>;

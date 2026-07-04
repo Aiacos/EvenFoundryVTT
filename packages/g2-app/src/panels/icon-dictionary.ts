@@ -22,6 +22,8 @@
  * @see specs/001-foundry-g2-hud/research.md D3
  */
 
+import { drawBoot } from '../hud/showcase-hud-renderer.js';
+
 /** Canvas 2D context accepted by {@link drawIcon} (browser or worker offscreen). */
 type IconCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -77,8 +79,13 @@ export enum IconId {
  * Unicode glyph for each icon — the de-duplicated legacy inventory/skill/spell glyphs.
  *
  * Some semantically-distinct icons intentionally share a glyph (e.g. {@link IconId.Armor}
- * and {@link IconId.ArmorClass} are both `⛨`; {@link IconId.Weapon} and {@link IconId.Speed}
- * are both `⚔`) — they remain separate IconIds so the canvas path can diverge later.
+ * and {@link IconId.ArmorClass} are both `⛨`) — they remain separate IconIds so the
+ * canvas path can diverge per-icon.
+ *
+ * {@link IconId.Speed} keeps `⚔` ONLY as the low-bandwidth text fallback: no
+ * monochrome "boot" glyph renders safely across the phosphor/VT323/monospace paths,
+ * so the glyph is retained rather than substituted. The canvas path ({@link drawIcon})
+ * draws a vector boot instead — swords misrepresent movement as "attack".
  */
 const ICON_UNICODE: Record<IconId, string> = {
   [IconId.Weapon]: '⚔',
@@ -115,11 +122,16 @@ export function iconToUnicode(id: IconId): string {
  */
 export const ALL_ICON_IDS: readonly IconId[] = Object.values(IconId);
 
+/** Base footprint (px) of the {@link drawBoot} vector at `scale = 1`. */
+const BOOT_BASE_PX = 11;
+
 /**
  * Draw an icon into the canvas at a fixed cell size (compositor path).
  *
- * Phase-2 stub: renders the {@link iconToUnicode} glyph centered in `bounds`, using
- * `fill` as the glyph color. US3 (T023) replaces this with per-icon vector/text paths.
+ * Most icons render the {@link iconToUnicode} glyph centered in `bounds`, using
+ * `fill` as the glyph color. {@link IconId.Speed} is a per-icon divergence: it
+ * draws a VECTOR BOOT ({@link drawBoot}) fitted + centered in `bounds` instead of
+ * the `⚔` glyph, because swords misrepresent movement as "attack".
  *
  * @param ctx    The 2D canvas context to draw into.
  * @param id     The icon to draw.
@@ -127,6 +139,16 @@ export const ALL_ICON_IDS: readonly IconId[] = Object.values(IconId);
  * @param fill   The fill style (color) for the icon.
  */
 export function drawIcon(ctx: IconCtx, id: IconId, bounds: IconBounds, fill: string): void {
+  if (id === IconId.Speed) {
+    // Movement/speed → vector boot (shared with the showcase HUD), fitted to the cell.
+    const cell = Math.min(bounds.w, bounds.h, ICON_CELL_PX);
+    const scale = cell / BOOT_BASE_PX;
+    const size = BOOT_BASE_PX * scale;
+    const ox = bounds.x + (bounds.w - size) / 2;
+    const oy = bounds.y + (bounds.h - size) / 2;
+    drawBoot(ctx, ox, oy, fill, scale);
+    return;
+  }
   const glyph = iconToUnicode(id);
   if (glyph.trim() === '') {
     return; // blank icon (e.g. Currency) — nothing to draw

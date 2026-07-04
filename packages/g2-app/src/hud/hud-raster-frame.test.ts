@@ -14,7 +14,12 @@
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1)
  */
 import { describe, expect, it } from 'vitest';
-import { buildHudTiles, HUD_TILE_GEOMETRY } from './hud-raster-frame.js';
+import {
+  buildHudTiles,
+  encodeHudTile,
+  HUD_TILE_GEOMETRY,
+  splitFrameIntoTiles,
+} from './hud-raster-frame.js';
 
 const FRAME_W = 576;
 const FRAME_H = 288;
@@ -213,5 +218,104 @@ describe('buildHudTiles', () => {
     const rgba = makeSyntheticRgba();
     // Must not throw — dither defaults to true
     expect(() => buildHudTiles(rgba)).not.toThrow();
+  });
+});
+
+// ── splitFrameIntoTiles — source-tile splitter (delta-gate input) ──────────────
+
+describe('splitFrameIntoTiles', () => {
+  /** Gradient RGBA: pixel value at (x,y) = (y*FRAME_W + x) mod 256 (matches buildHudTiles suite). */
+  function makeSyntheticRgba(): Uint8ClampedArray {
+    const buf = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);
+    for (let y = 0; y < FRAME_H; y++) {
+      for (let x = 0; x < FRAME_W; x++) {
+        const idx = (y * FRAME_W + x) * 4;
+        const v = (y * FRAME_W + x) % 256;
+        buf[idx] = v;
+        buf[idx + 1] = v;
+        buf[idx + 2] = v;
+        buf[idx + 3] = 255;
+      }
+    }
+    return buf;
+  }
+
+  it('returns exactly 4 tile buffers, each 288×144×4 bytes', () => {
+    const tiles = splitFrameIntoTiles(makeSyntheticRgba());
+    expect(tiles).toHaveLength(TILES);
+    for (const t of tiles) {
+      expect(t).toBeInstanceOf(Uint8ClampedArray);
+      expect(t.length).toBe(TILE_W * TILE_H * 4);
+    }
+  });
+
+  it('slices sub-regions by container-id order (TL/TR/BL/BR origin pixels match the frame)', () => {
+    const rgba = makeSyntheticRgba();
+    const tiles = splitFrameIntoTiles(rgba);
+    // Origin pixel (byte 0, R channel) of each tile equals the frame pixel at its top-left.
+    const frameR = (x: number, y: number): number => rgba[(y * FRAME_W + x) * 4] ?? -1;
+    expect(tiles[0]?.[0]).toBe(frameR(0, 0)); // TL
+    expect(tiles[1]?.[0]).toBe(frameR(TILE_W, 0)); // TR
+    expect(tiles[2]?.[0]).toBe(frameR(0, TILE_H)); // BL
+    expect(tiles[3]?.[0]).toBe(frameR(TILE_W, TILE_H)); // BR
+  });
+
+  it('produces independent buffers that do NOT alias the source frame', () => {
+    const rgba = makeSyntheticRgba();
+    const tiles = splitFrameIntoTiles(rgba);
+    // Mutating a tile must not corrupt the source (tiles are copies — needed so
+    // the driver can transfer `rgba` to the Worker while keeping the sync fallback alive).
+    const before = rgba[0];
+    if (tiles[0] !== undefined) tiles[0][0] = 200;
+    expect(rgba[0]).toBe(before);
+  });
+});
+
+// ── encodeHudTile — per-tile encoder (changed-only encode unit) ────────────────
+
+describe('encodeHudTile', () => {
+  function makeSyntheticRgba(): Uint8ClampedArray {
+    const buf = new Uint8ClampedArray(FRAME_W * FRAME_H * 4);
+    for (let y = 0; y < FRAME_H; y++) {
+      for (let x = 0; x < FRAME_W; x++) {
+        const idx = (y * FRAME_W + x) * 4;
+        const v = (y * FRAME_W + x) % 256;
+        buf[idx] = v;
+        buf[idx + 1] = v;
+        buf[idx + 2] = v;
+        buf[idx + 3] = 255;
+      }
+    }
+    return buf;
+  }
+
+  it('sets containerName/containerID from the id argument and returns positive-length PNG bytes', () => {
+    const [tile0] = splitFrameIntoTiles(makeSyntheticRgba());
+    expect(tile0).toBeDefined();
+    const hud = encodeHudTile(tile0 as Uint8ClampedArray, 2);
+    expect(hud.containerID).toBe(2);
+    expect(hud.containerName).toBe('hud-tile-2');
+    expect(hud.bytes).toBeInstanceOf(Uint8Array);
+    expect(hud.bytes.length).toBeGreaterThan(0);
+  });
+
+  it('is byte-identical to the corresponding buildHudTiles tile (dither=true)', () => {
+    const rgba = makeSyntheticRgba();
+    const full = buildHudTiles(rgba, true);
+    const sources = splitFrameIntoTiles(rgba);
+    for (let i = 0; i < TILES; i++) {
+      const single = encodeHudTile(sources[i] as Uint8ClampedArray, i, true);
+      expect(Array.from(single.bytes)).toEqual(Array.from(full[i]?.bytes ?? []));
+    }
+  });
+
+  it('is byte-identical to the corresponding buildHudTiles tile (dither=false)', () => {
+    const rgba = makeSyntheticRgba();
+    const full = buildHudTiles(rgba, false);
+    const sources = splitFrameIntoTiles(rgba);
+    for (let i = 0; i < TILES; i++) {
+      const single = encodeHudTile(sources[i] as Uint8ClampedArray, i, false);
+      expect(Array.from(single.bytes)).toEqual(Array.from(full[i]?.bytes ?? []));
+    }
   });
 });

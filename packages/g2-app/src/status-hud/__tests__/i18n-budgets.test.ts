@@ -273,7 +273,7 @@ describe('Phase 4b i18n-budgets extension (28 new keys)', () => {
     // Phase 13 Plan 02 totals: 8 Reaction Prompt Panel keys
     //   (reaction_prompt_title, _subject_shield, _subject_counterspell, _subject_opp_attack,
     //    _y_shield, _y_counterspell, _y_opp_attack, _n_cancel).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(233); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8 write channel [K] menu item)
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(234); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8 write channel [K] menu item); +1 hud27c_death_label (Feature 002 slice 4 compact hybrid card)
   });
 
   it('IB-ALL-2: every Phase 4b key is present (parametric)', () => {
@@ -356,7 +356,8 @@ describe('Phase 5 i18n-budgets extension + HudLocale widening', () => {
     // Updated to 218 after Phase 10 Plan 01 (2 SYNC LOST chip keys).
     // Updated to 225 (226 after Phase 13 Plan 02 minus action_options_long_label retired by ADR-0012).
     // Updated to 233 after Phase 8 write channel (+1 quick_item_skills [K] menu item).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(233); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8)
+    // Updated to 234 after Feature 002 slice 4 (+1 hud27c_death_label compact hybrid card).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(234); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8); +1 hud27c_death_label (Feature 002 slice 4)
   });
 
   // ─── Sheet Main tab ───────────────────────────────────────────────────────
@@ -532,6 +533,7 @@ describe('Phase 9 Plan 09-02 — i18n-budgets extension (4 new keys)', () => {
     // Note: after Plan 10-01, total is 218 (216 + 2 SYNC LOST chip keys).
     // Note: after Plan 13-02, total is 226 (218 + 8 Reaction Prompt Panel keys).
     // Note: after Phase 8 write channel, total is 233 (+1 quick_item_skills [K] menu item).
-    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(233); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8)
+    // Note: after Feature 002 slice 4, total is 234 (+1 hud27c_death_label compact hybrid card).
+    expect(Object.keys(HUD_WIDTH_BUDGETS).length).toBe(234); // +6 HUD-27PX keys (quick-260605-j0t) +1 quick_item_fps (FPS toggle 2026-06-10); dither + brightness menu items removed 2026-06-14 (settings moved to the phone panel); +1 quick_item_skills (Phase 8); +1 hud27c_death_label (Feature 002 slice 4)
   });
 });
