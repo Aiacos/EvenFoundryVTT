@@ -234,15 +234,28 @@ function ditherTile(rgba: Uint8ClampedArray, dither = true): Uint8ClampedArray {
 }
 
 /**
- * Slice a 400×200 RGBA frame into 4 × 200×100 tile buffers (row-by-row copy).
+ * Slice a 576×288 RGBA frame into 4 × 288×144 tile buffers (row-by-row copy).
  *
- * Layout: TL(id=0), TR(id=1), BL(id=2), BR(id=3) — mirrors `raster-worker.ts`
- * `splitIntoTiles` but for the HUD 400×200 / 200×100 geometry.
+ * Layout: TL(id=0), TR(id=1), BL(id=2), BR(id=3) — the 2×2 full-screen grid
+ * (layout B, 2026-06-10).
  *
- * @param rgba 400×200×4 RGBA pixel buffer.
- * @returns Array of 4 tile buffers in id order.
+ * Exported so `HudDeltaDriver` can hash each **source** tile (pre-dither) to
+ * gate encoding: a tile whose source pixels did not change since the last cycle
+ * is never dithered nor `UPNG.encode`d (perf fix — the expensive PNG work used
+ * to run on all 4 tiles unconditionally, before the delta skip). This mirrors
+ * `raster-worker.ts` `splitIntoTiles`, whose delta pass encodes only changed
+ * tiles.
+ *
+ * Pure row-copy — no validation (the sole caller `buildHudTiles` validates the
+ * frame length; the driver feeds `CanvasCompositor.composite()` output whose
+ * length is fixed by geometry coupling).
+ *
+ * @param rgba 576×288×4 RGBA pixel buffer.
+ * @returns Array of 4 tile buffers (288×144×4 each) in container-id order.
+ *
+ * @see packages/g2-app/src/engine/hud-delta-driver.ts (source-tile delta gate consumer)
  */
-function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
+export function splitFrameIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
   const tiles: Uint8ClampedArray[] = [];
   for (let t = 0; t < TILES_PER_FRAME; t++) {
     const buf = new Uint8ClampedArray(TILE_W * TILE_H * 4);
@@ -258,6 +271,41 @@ function splitIntoTiles(rgba: Uint8ClampedArray): Uint8ClampedArray[] {
     tiles.push(buf);
   }
   return tiles;
+}
+
+/**
+ * Quantize and PNG-encode a single 288×144 source tile into a {@link HudTile}.
+ *
+ * This is the per-tile unit of the HUD encode pipeline. `buildHudTiles` calls it
+ * once per tile for a full frame; `HudDeltaDriver` calls it ONLY for tiles whose
+ * source pixels changed (delta gate), so unchanged tiles skip the dither +
+ * `UPNG.encode` cost entirely.
+ *
+ * Steps: `ditherTile(sourceTile, dither)` → `UPNG.encode([…], 288, 144, 16)` →
+ * `new Uint8Array(png)`. Output is byte-identical to the corresponding tile of
+ * `buildHudTiles(frame, dither)`.
+ *
+ * @param sourceTile A 288×144×4 RGBA tile buffer (from {@link splitFrameIntoTiles}).
+ * @param containerID Numeric host container id (0-3); also derives `containerName`.
+ * @param dither When `true` (default) applies Bayer 4×4 ordered dither; when `false`
+ *   uses direct nearest-of-16-level quantization with no dither pattern.
+ * @returns A `HudTile` with `containerName`, `containerID`, and 4-bit PNG `bytes`.
+ *
+ * @see packages/g2-app/src/engine/hud-delta-driver.ts (changed-only encode consumer)
+ */
+export function encodeHudTile(
+  sourceTile: Uint8ClampedArray,
+  containerID: number,
+  dither = true,
+): HudTile {
+  const quantized = ditherTile(sourceTile, dither);
+  // Stage 9 from raster-worker: UPNG.encode([rgba.buffer], W, H, 16) → 4-bit indexed PNG.
+  const pngBuf = UPNG.encode([quantized.buffer], TILE_W, TILE_H, 16);
+  return {
+    containerName: `hud-tile-${containerID}`,
+    containerID,
+    bytes: new Uint8Array(pngBuf),
+  };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -306,21 +354,12 @@ export function buildHudTiles(rgba: Uint8ClampedArray, dither = true): HudTile[]
     );
   }
 
-  const tileBuffers = splitIntoTiles(rgba);
+  const tileBuffers = splitFrameIntoTiles(rgba);
   const result: HudTile[] = [];
 
   for (let i = 0; i < TILES_PER_FRAME; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: splitIntoTiles contract — always exactly TILES_PER_FRAME entries
-    const tileBuf = tileBuffers[i]!;
-    const quantized = ditherTile(tileBuf, dither);
-    // Stage 9 from raster-worker: UPNG.encode([rgba.buffer], W, H, 16) → 4-bit indexed PNG.
-    const pngBuf = UPNG.encode([quantized.buffer], TILE_W, TILE_H, 16);
-    const bytes = new Uint8Array(pngBuf);
-    result.push({
-      containerName: `hud-tile-${i}`,
-      containerID: i,
-      bytes,
-    });
+    // biome-ignore lint/style/noNonNullAssertion: splitFrameIntoTiles contract — always exactly TILES_PER_FRAME entries
+    result.push(encodeHudTile(tileBuffers[i]!, i, dither));
   }
 
   return result;

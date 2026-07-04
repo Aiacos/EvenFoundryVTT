@@ -42,6 +42,8 @@ import { type CanvasCompositorLike, COMPOSITOR_H, COMPOSITOR_W } from './canvas-
 import {
   BOOT_CONTAINER_TOTAL,
   buildHudRasterPageSchema,
+  buildHybridPageSchema,
+  buildShowcasePageSchema,
   buildStatusViewTextContainers,
 } from './container-registry.js';
 import type { DebugMirror } from './debug-mirror.js';
@@ -59,6 +61,25 @@ import { isOverlayPanel } from './overlay-panel.js';
 
 /** Map-rendering mode controlled via Quick Action `[M] Map mode` (Phase 6 wires it). */
 export type MapMode = 'auto' | 'raster' | 'glyph';
+
+/**
+ * HUD rendering substrate — selects the `_flushPage()` page schema.
+ *
+ * - `'glyph'`: native text-container status-view schema (3 text containers); no compositor.
+ * - `'canvas'`: full-screen canvas raster schema (4 image tiles + 1 capture = 5 containers);
+ *   status HUD + overlays composited and pushed as PNG tiles (v0.10.0 — slow refresh).
+ * - `'hybrid'`: native text chrome + status HUD + a raster MAP region (8 containers,
+ *   `buildHybridPageSchema()`); only the map rasterises, the rest update via cheap
+ *   `textContainerUpgrade` (Feature 002).
+ * - `'showcase'`: the ENTIRE glanceable HUD rasterised as one 400×200 image (frame +
+ *   header + framed map + status card + footer), split into 4 centred image tiles +
+ *   1 capture text container (5 containers, `buildShowcasePageSchema()`). The
+ *   self-contained `ShowcaseHudLayer` owns its own throttled push loop — the
+ *   LayerManager compositor is NOT used. This is the PRODUCTION default substrate.
+ *
+ * @see specs/002-hybrid-native-raster-render/spec.md
+ */
+export type HudRenderMode = 'canvas' | 'glyph' | 'hybrid' | 'showcase';
 
 /**
  * Singleton orchestrator for the G2 layered HUD.
@@ -97,7 +118,7 @@ export class LayerManager {
    *
    * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
    */
-  private renderMode: 'canvas' | 'glyph' = 'glyph';
+  private renderMode: HudRenderMode = 'glyph';
 
   /**
    * Optional canvas compositor injected at construction.
@@ -195,6 +216,28 @@ export class LayerManager {
    */
   setNegotiatedCaps(caps: ReadonlySet<ServerCap>): void {
     this.negotiatedCaps = caps;
+  }
+
+  /**
+   * Optional listener fired after every `bundle()` whose effective ops mounted or
+   * destroyed a z=2 overlay. Showcase boot wires it to
+   * `ShowcaseHudLayer.requestCycle()` so the raster HUD repaints (overlay ↔ base HUD)
+   * right after the panel lifecycle flush — every open/close path (Quick-Action menu,
+   * sheet, combat, spellbook, inventory, target-picker, modals) routes through
+   * `bundle()`, so this single hook covers them all with no per-panel wiring.
+   *
+   * Harmless (no-op) in other render modes: only showcase boot registers a listener,
+   * and `ShowcaseHudLayer.requestCycle()` itself is a no-op until the layer is started.
+   */
+  private _onOverlayChange: (() => void) | null = null;
+
+  /**
+   * Register (or clear with `null`) the {@link _onOverlayChange} listener.
+   *
+   * @param fn Listener fired post-flush when a z=2 overlay was mounted/destroyed.
+   */
+  setOverlayChangeListener(fn: (() => void) | null): void {
+    this._onOverlayChange = fn;
   }
 
   /**
@@ -417,6 +460,14 @@ export class LayerManager {
     // STEP 6 — Single bridge flush.
     await this._flushPage();
 
+    // STEP 6.5 — Overlay-change notify (Feature 002 showcase overlays). Fire AFTER the
+    // flush so a listener that composites the compositor + repaints (ShowcaseHudLayer)
+    // sees the mounted panel already registered. Fires when any effective op targeted
+    // z=2 (mount or destroy). No-op unless a listener was registered (showcase boot).
+    if (this._onOverlayChange !== null && effective.some((op) => op.z === ZIndex.Z2_OVERLAY)) {
+      this._onOverlayChange();
+    }
+
     // STEP 7 — Display mirror (Wave 4): record the resulting page rebuild with a
     // z-stack summary + container count. No-op when mirror absent (default).
     this.debugMirror?.record({
@@ -454,7 +505,7 @@ export class LayerManager {
    *
    * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
    */
-  setRenderMode(mode: 'canvas' | 'glyph'): void {
+  setRenderMode(mode: HudRenderMode): void {
     this.renderMode = mode;
   }
 
@@ -465,7 +516,7 @@ export class LayerManager {
    *
    * @see docs/architecture/0013-hud-raster-rendering.md Amendment 1 (RAST-04)
    */
-  getRenderMode(): 'canvas' | 'glyph' {
+  getRenderMode(): HudRenderMode {
     return this.renderMode;
   }
 
@@ -662,8 +713,14 @@ export class LayerManager {
    *   construction — schema-select tests), `_compositeAndPush()` is used as fallback
    *   so those tests remain valid.
    *
+   * - `'hybrid'` (Feature 002): HYBRID schema (4 map image tiles + native header/footer/
+   *   status-hud + map-capture; containerTotalNum:8) from `buildHybridPageSchema()`. Does NOT
+   *   drive the compositor here — the map region (ids 0-3) is pushed by the event-driven
+   *   RasterController and the status HUD + chrome update via native `textContainerUpgrade`
+   *   (both wired in boot-engine-core, same producers as the glyph map-mode).
+   *
    * map-capture and z05-* remain in the registry for the deferred map-mode
-   * page (Phase 20 / Specs §7.4). They MUST NOT be declared in either schema.
+   * page (Phase 20 / Specs §7.4). They MUST NOT be declared in the canvas/glyph schema.
    *
    * The single-call contract (exactly one `rebuildPageContainer` per bundle) is
    * preserved and load-bearing for ADR-0001 Amendment 1 (no intermediate frame
@@ -676,19 +733,30 @@ export class LayerManager {
    * @see .planning/debug/glasses-render-blank-containerid.md
    */
   private async _flushPage(): Promise<void> {
+    // Only canvas mode drives the LayerManager's 576×288 compositor push. Hybrid
+    // (Feature 002) declares map image tiles too, but its map region (400×200) is
+    // pushed by the event-driven RasterController to container ids 0-3 (wired in
+    // boot-engine-core, same producer as the glyph map-mode), and its status HUD +
+    // chrome update via native textContainerUpgrade — neither goes through the
+    // compositor here. So _flushPage only rebuilds the hybrid page schema.
+    const usesCompositor = this.renderMode === 'canvas';
     const schema =
       this.renderMode === 'canvas'
         ? buildHudRasterPageSchema() // 4 image tiles + 1 capture text = 5 containers (canvas mode)
-        : {
-            // Glyph mode: default status-view schema — byte-identical to pre-Phase-19 behavior.
-            // header(id4) + footer(id5) + status-hud(id6); map-capture + z05-* EXCLUDED.
-            containerTotalNum: BOOT_CONTAINER_TOTAL,
-            textObject: buildStatusViewTextContainers(),
-            imageObject: [] as never[],
-          };
+        : this.renderMode === 'hybrid'
+          ? buildHybridPageSchema() // 4 map tiles + native chrome/status + capture = 8 (hybrid)
+          : this.renderMode === 'showcase'
+            ? buildShowcasePageSchema() // 4 centred HUD tiles + 1 capture = 5 (showcase — whole HUD raster)
+            : {
+                // Glyph mode: default status-view schema — byte-identical to pre-Phase-19 behavior.
+                // header(id4) + footer(id5) + status-hud(id6); map-capture + z05-* EXCLUDED.
+                containerTotalNum: BOOT_CONTAINER_TOTAL,
+                textObject: buildStatusViewTextContainers(),
+                imageObject: [] as never[],
+              };
     const payload = new RebuildPageContainer(schema);
     await this.bridge.rebuildPageContainer(payload);
-    if (this.renderMode === 'canvas') {
+    if (usesCompositor) {
       if (this._deltaDriver !== null) {
         // Phase 24: HudDeltaDriver owns the first-frame push and the event-driven
         // debounced loop. start() MUST come first (CR-02): wires subscriptions +

@@ -116,9 +116,10 @@ async function flushMicrotasks(iterations = 32): Promise<void> {
  * step 9b/9d (the persisted override OVERRIDES the BLE verdict), exercising the
  * glyph-fallback mount branch added by CR-01.
  */
-async function bootWith(opts?: { storedMapMode?: string }) {
+async function bootWith(opts?: { storedMapMode?: string; renderMode?: string }) {
   const bridge = makeMockBridge(async (key: string) => {
     if (key === 'view.map.mode') return opts?.storedMapMode ?? 'auto';
+    if (key === 'view.hud.render') return opts?.renderMode ?? '';
     if (key === 'view.locale.override') return 'auto';
     return '';
   });
@@ -176,31 +177,68 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
   });
 
   /**
-   * CR-01a (canvas default): renderMode is 'canvas'. The canvas-mode bundle mounts:
-   *   - z=0 (Z0_MAP): MapCanvasLayer (id='map-canvas') — full-screen Foundry map.
-   *   - z=1 (Z1_STATUS_HUD): CanvasStatusHudLayer (id='canvas-status-hud').
-   *
-   * Glyph layers (map-base, idle-infill) are NOT mounted in canvas mode.
-   *
-   * Rule 1 auto-fix 2026-06-10: quick-task 260610-d42 Task 2 wires MapCanvasLayer
-   * at Z0_MAP in the canvas-mode bundle — updated expectation accordingly.
+   * CR-01a (SHOWCASE default — Feature 002 showcase promotion): the boot default
+   * substrate is now 'showcase'. The showcase bundle mounts ONLY the self-contained
+   * ShowcaseHudLayer (id='showcase-hud') at z=1 — it rasterises the WHOLE HUD and
+   * provides the sole capture container ('showcase-capture'). No map-base, no
+   * idle-infill, no native status-hud, no canvas layers are mounted by default.
    */
-  it('CR-01a: canvas-verdict boot mounts CanvasStatusHudLayer at z=1 AND MapCanvasLayer at z=0', async () => {
-    const { handle } = await bootWith(); // no persisted override → canvas default
+  it('CR-01a: showcase-default boot mounts ONLY the ShowcaseHudLayer (z=1), no map-base / idle-infill / status-hud', async () => {
+    const { handle } = await bootWith(); // no override → showcase default
 
-    expect(handle.layerManager.getRenderMode()).toBe('canvas');
+    expect(handle.layerManager.getRenderMode()).toBe('showcase');
 
     const z1 = handle.layerManager.getLayer(ZIndex.Z1_STATUS_HUD);
-    expect(z1?.id).toBe('canvas-status-hud');
-    // The canvas capture provider 'hud-capture' is in the canvas schema → count 1.
+    expect(z1?.id).toBe('showcase-hud');
+    // Shared raster-capture invariant token (matches canvas OverlayPanels so a composited
+    // z=2 overlay keeps the capture count at 1); the schema container stays 'showcase-capture'.
+    expect(z1?.getCaptureContainer?.()).toBe('hud-capture');
+
+    // Exactly one capture provider (the ShowcaseHudLayer) — INV-5 satisfied.
     expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
 
-    // MapCanvasLayer is mounted at z=0 (canvas-mode Task 2 — 260610-d42).
-    const z0 = handle.layerManager.getLayer(ZIndex.Z0_MAP);
-    expect(z0?.id).toBe('map-canvas');
-
-    // Glyph-only layers are NOT mounted in canvas mode.
+    // No z=0 map-base, no z=0.5 idle-infill in showcase mode.
+    expect(handle.layerManager.getLayer(ZIndex.Z0_MAP)).toBeUndefined();
     expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
+
+    handle.teardown();
+  });
+
+  /**
+   * CR-01a-hybrid: the retained 'hybrid' substrate is still reachable via the
+   * `view.hud.render='hybrid'` override and mounts the native layer set (map-base
+   * z=0 + status-hud z=1), no idle-infill.
+   */
+  it("CR-01a-hybrid: view.hud.render='hybrid' override mounts the native layer set (map-base z=0 + status-hud z=1)", async () => {
+    const { handle } = await bootWith({ renderMode: 'hybrid' });
+
+    expect(handle.layerManager.getRenderMode()).toBe('hybrid');
+
+    const z1 = handle.layerManager.getLayer(ZIndex.Z1_STATUS_HUD);
+    expect(z1?.id).toBe('status-hud');
+    expect(z1?.id).not.toBe('canvas-status-hud');
+
+    const z0 = handle.layerManager.getLayer(ZIndex.Z0_MAP);
+    expect(z0?.id).toBe('map-base');
+    expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
+    expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
+
+    handle.teardown();
+  });
+
+  /**
+   * CR-01a-canvas: the retained 'canvas' substrate is still reachable via the
+   * `view.hud.render='canvas'` override and mounts MapCanvasLayer (z=0) +
+   * CanvasStatusHudLayer (z=1), no glyph idle-infill.
+   */
+  it("CR-01a-canvas: view.hud.render='canvas' override mounts the canvas layer set", async () => {
+    const { handle } = await bootWith({ renderMode: 'canvas' });
+
+    expect(handle.layerManager.getRenderMode()).toBe('canvas');
+    expect(handle.layerManager.getLayer(ZIndex.Z1_STATUS_HUD)?.id).toBe('canvas-status-hud');
+    expect(handle.layerManager.getLayer(ZIndex.Z0_MAP)?.id).toBe('map-canvas');
+    expect(handle.layerManager.getLayer(ZIndex.Z0_5_IDLE_INFILL)).toBeUndefined();
+    expect(handle.layerManager.getCaptureContainerCount()).toBe(1);
 
     handle.teardown();
   });
@@ -273,7 +311,7 @@ describe('boot-engine glyph-fallback mount (Phase 25 CR-01)', () => {
    * tile push — the unit suite (CSHUD-2b) covers the actual card pixels.)
    */
   it('CR-01d: canvas-mode character.delta triggers a delta-driver composite cycle', async () => {
-    const { handle, ws } = await bootWith(); // canvas mode (default)
+    const { handle, ws } = await bootWith({ renderMode: 'canvas' }); // canvas via override
 
     expect(handle.layerManager.getRenderMode()).toBe('canvas');
 

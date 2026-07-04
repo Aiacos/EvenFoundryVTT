@@ -75,6 +75,7 @@ import { createDisplaySettingsSync } from '../engine/display-settings-sync.js';
 import { attachGlassesEventSource } from '../engine/glasses-event-source.js';
 import { writeFooterChrome, writeHeaderChrome } from '../engine/hud-chrome.js';
 import { HudDeltaDriver } from '../engine/hud-delta-driver.js';
+import { loadPersistedRenderMode } from '../engine/hud-render-mode.js';
 import { LayerManager } from '../engine/layer-manager.js';
 import { ZIndex } from '../engine/layer-types.js';
 import { loadPersistedMapMode } from '../engine/map-mode-toggle.js';
@@ -95,11 +96,13 @@ import { toWsConnectUrl } from '../engine/ws-url.js';
 import { installHubPolyfill } from '../hub-polyfill.js';
 import { createHudTileWorkerClient } from '../hud/hud-tile-worker-client.js';
 import { MapCanvasLayer } from '../hud/map-canvas-layer.js';
+import { ShowcaseHudLayer } from '../hud/showcase-hud-layer.js';
 import { LocaleEventEmitter } from '../locale/locale-events.js';
 import { type LocaleOverride, loadLocaleOverride } from '../locale/locale-override.js';
 import { attachActionEconomyHandler } from '../panels/action-economy-dispatcher.js';
 import { clearActionEconomyState } from '../panels/action-economy-state.js';
-import type { ActionOptionsRequest } from '../panels/action-options-modal.js';
+import type { ActionOptionsModal, ActionOptionsRequest } from '../panels/action-options-modal.js';
+import { loadActionOptionsModalCtor } from '../panels/action-options-variant.js';
 import { attachActionResultHandler } from '../panels/action-result-dispatcher.js';
 import { CanvasTargetPickerPanel } from '../panels/canvas-target-picker-panel.js';
 import { attachConcConflictHandler } from '../panels/conc-conflict-dispatcher.js';
@@ -787,19 +790,33 @@ export async function _bootEngineCore(
   const negotiatedCaps = new Set<ServerCap>(handshake.server_caps as ServerCap[]);
   layerManager.setNegotiatedCaps(negotiatedCaps);
 
-  // Phase 20 Plan 05 — flip the effective boot render mode to canvas.
+  // Feature 002 — flip the effective boot render mode to HYBRID (was 'canvas').
   //
-  // The `LayerManager.renderMode` class field defaults to `'glyph'` (line 99,
-  // layer-manager.ts) — kept so all ~50 existing tests constructed without a
-  // compositor continue to pass unchanged. We flip to `'canvas'` HERE, after
-  // setNegotiatedCaps, so the boot-time page rebuild uses buildHudRasterPageSchema()
-  // (4 image tiles + 1 text capture = 5 containers) instead of the glyph
-  // status-view schema (3 text containers). This is the ONLY place where the
-  // render mode is changed at boot — no class-field edit in layer-manager.ts.
+  // The `LayerManager.renderMode` class field defaults to `'glyph'` (layer-manager.ts)
+  // — kept so all existing tests constructed without a compositor pass unchanged. We
+  // flip HERE, after setNegotiatedCaps, so the boot-time page rebuild uses
+  // buildHybridPageSchema() (4 map image tiles + native header/footer/status-hud +
+  // map-capture = 8 containers). Hybrid renders the status HUD + chrome as native text
+  // (fast textContainerUpgrade) and only the map region as raster (RasterController →
+  // ids 0-3), escaping the full-screen canvas recompose that made the refresh slow.
   //
-  // Research lock (20-RESEARCH.md Q2): flip via setRenderMode here, never via
-  // the private class field — changing the field default breaks ~50 tests.
-  layerManager.setRenderMode('canvas');
+  // 'canvas' (full-screen raster) is retained as a selectable/fallback mode; 'glyph'
+  // remains the BLE-degraded fallback (step 9d flips to it when the effective verdict
+  // is 'glyph'). An optional device-local kv override (`view.hud.render` ∈
+  // canvas|glyph|hybrid) forces a specific substrate for dev/testing and the future
+  // Quick Action; absent/invalid/read-failure → the hybrid default. This is the ONLY
+  // place the boot render mode is set — no class-field edit in layer-manager.ts (flip
+  // via setRenderMode, never the private field — changing the field default breaks the
+  // driverless tests).
+  // Feature 002 (showcase promotion) — the PRODUCTION default substrate is now
+  // 'showcase': the ENTIRE glanceable HUD rasterised as one 400×200 image (frame +
+  // header + framed map + status card + footer), pushed by the self-contained
+  // ShowcaseHudLayer's own throttled driver (NOT the compositor). 'hybrid' /
+  // 'canvas' remain reachable as fallbacks via the `view.hud.render` kv override;
+  // 'glyph' remains the BLE-degraded fallback (step 9d flips to it when the
+  // effective verdict is 'glyph' — that gate takes precedence over this default).
+  const renderOverride = await loadPersistedRenderMode(bridge);
+  layerManager.setRenderMode(renderOverride ?? 'showcase');
 
   // 8. Construct the raster controller (singleton Worker + debounce).
   const rasterController = new RasterController(bridge);
@@ -934,28 +951,46 @@ export async function _bootEngineCore(
   const mapBase = new MapBaseLayer(bridge, rasterController, renderGlyphScene, layerManager);
   const idleInfill = new IdleInfillLayer(bridge, effectiveVerdict === 'glyph' ? 'glyph' : 'raster');
 
-  // CR-03 fix: only construct StatusHudLayer in glyph mode. In canvas mode the
-  // glyph StatusHudLayer's 30s heartbeat would fire bridge.textContainerUpgrade
-  // calls targeting container id=6 ('status-hud'), which does NOT exist in the
-  // HUD raster page schema (buildHudRasterPageSchema creates only 4 image tiles +
-  // 1 text capture = 5 containers; no id=6). Those calls are silently swallowed by
-  // the `void` operator but produce a background error storm every 30s. Deferring
-  // construction to glyph mode eliminates the spurious write loop entirely.
-  // CanvasStatusHudLayer (constructed below) is the sole HUD renderer in canvas mode.
+  // CR-03 fix: construct StatusHudLayer in every NON-canvas mode (glyph + hybrid).
+  // In canvas mode the glyph StatusHudLayer's 30s heartbeat would fire
+  // bridge.textContainerUpgrade calls targeting container id=6 ('status-hud'),
+  // which does NOT exist in the HUD raster page schema (buildHudRasterPageSchema
+  // creates only 4 image tiles + 1 text capture = 5 containers; no id=6) — a
+  // background error storm. CanvasStatusHudLayer is the sole HUD renderer in canvas.
+  //
+  // Feature 002 slice 4 — hybrid vs glyph renderer split:
+  //   - 'hybrid': the status container is 'hybrid-status-hud' (id 6, x=400,
+  //     width=176px — the RIGHT column beside the 400×200 map raster). The
+  //     full-width renderer emits ~576px lines that clip in the narrow column, so
+  //     hybrid uses the COMPACT renderer (maxWidthPx=176) targeting that container
+  //     by name.
+  //   - 'glyph': the full-width 576px sheet in the default 'status-hud' container.
+  const hudRenderMode = layerManager.getRenderMode();
   const statusHud =
-    layerManager.getRenderMode() === 'glyph'
+    hudRenderMode === 'hybrid'
       ? new StatusHudLayer({
           bridge,
-          renderer: new StatusHudRenderer({ locale: effectiveLocale }),
-          // Phase 10 Plan 10-01: seqTracker is shared with the bus created at step 5a
-          // (no additional observe wiring needed here — globalHandler already calls it).
-          // Phase 10 Plan 10-02: perfProbe late-bound via wsEventBus.setPerfProbe above.
-          // Pass the SAME wsEventBus instance (created at step 5a, persistent listener
-          // already attached) — the StatusHudLayer.subscribeWsEvents call will replay
-          // any character.delta cached during boot steps 6-9c.
+          renderer: new StatusHudRenderer({
+            locale: effectiveLocale,
+            compact: true,
+            maxWidthPx: 176,
+          }),
+          containerName: 'hybrid-status-hud',
           wsEvents: wsEventBus,
         })
-      : null;
+      : hudRenderMode === 'glyph'
+        ? new StatusHudLayer({
+            bridge,
+            renderer: new StatusHudRenderer({ locale: effectiveLocale }),
+            // Phase 10 Plan 10-01: seqTracker is shared with the bus created at step 5a
+            // (no additional observe wiring needed here — globalHandler already calls it).
+            // Phase 10 Plan 10-02: perfProbe late-bound via wsEventBus.setPerfProbe above.
+            // Pass the SAME wsEventBus instance (created at step 5a, persistent listener
+            // already attached) — the StatusHudLayer.subscribeWsEvents call will replay
+            // any character.delta cached during boot steps 6-9c.
+            wsEvents: wsEventBus,
+          })
+        : null;
 
   // Phase 20 Plan 05 — CanvasStatusHudLayer for the canvas boot path.
   //
@@ -1039,6 +1074,7 @@ export async function _bootEngineCore(
     if (typeof settings.dither === 'boolean' && settings.dither !== ditherOn) {
       ditherOn = settings.dither;
       hudDeltaDriver.requestCycle();
+      showcaseLayer.requestCycle(); // showcase mode: repaint on dither change (no-op until started)
     }
     // Reflect downstream Foundry changes into the phone controls.
     phoneSettings?.update(settings);
@@ -1147,15 +1183,52 @@ export async function _bootEngineCore(
     },
   });
 
+  // Feature 002 (showcase) — self-contained ShowcaseHudLayer for the DEFAULT boot.
+  //
+  // Constructed in every mode (like mapCanvas/canvasStatusHud) so the scene-input
+  // sink + gesture-publish kicks can reference it unconditionally; it only pushes
+  // once start()ed (showcase-mode bundle, step 12). Its `requestCycle()` is a no-op
+  // until started, so calling it in non-showcase modes is harmless. It subscribes to
+  // `character.delta`, `combat.turn` + `combat.state` on the SHARED wsEventBus (last-value
+  // replay), and to `bridge.onDeviceStatusChanged` for the R1 battery — all self-contained
+  // in the layer's constructor.
+  const showcaseLayer = new ShowcaseHudLayer({
+    bridge,
+    wsEvents: wsEventBus,
+  });
+
+  // Feature 002 (showcase) — GENERIC z=2 overlay bridge. Overlay panels open as the
+  // 'canvas' variant (CanvasLayers), so `LayerManager.bundle()` registers them on the
+  // SHARED `compositor` (576×288). When any z=2 panel is mounted, ShowcaseHudLayer
+  // composites that 576×288 buffer and downscales it to the 400×200 raster region
+  // (uniform 0.6944×, same 2:1 aspect — no distortion); when none is mounted it renders
+  // the base map+status HUD. One wiring point below covers EVERY open/close path
+  // (Quick-Action menu, sheet, combat, spellbook, inventory, target-picker, modals) —
+  // no per-panel code. The setOverlayChangeListener kick repaints right after the panel
+  // mount/unmount flush (bundle STEP 6.5).
+  showcaseLayer.setOverlaySource(() =>
+    layerManager.getLayer(ZIndex.Z2_OVERLAY) !== undefined ? compositor.composite() : null,
+  );
+  layerManager.setOverlayChangeListener(() => {
+    showcaseLayer.requestCycle();
+  });
+
   // 11. Wire Plan 06 — attach the WS frame_pixels receiver so Foundry-side
   //     canvas extractions route to the appropriate sink:
   //       - canvas mode: MapCanvasLayer.setFrame (no Worker round-trip)
   //       - glyph mode:  RasterController.requestFrame (Worker + dither pipeline)
   // quick-task 260529-khy — INBOUND unsubs are `let` so onReconnected can
   // dispose-before-reattach against newWs; the teardown reads the current value.
+  // Sink selection: canvas → MapCanvasLayer (compositor z=0); showcase →
+  // ShowcaseHudLayer.setFrame (its paintMap scales the frame into the framed region);
+  // hybrid/glyph → RasterController (Worker + dither map-tile pipeline).
   let unsubSceneInput = attachSceneInputToWs(
     ws,
-    layerManager.getRenderMode() === 'canvas' ? mapCanvas : rasterController,
+    layerManager.getRenderMode() === 'canvas'
+      ? mapCanvas
+      : layerManager.getRenderMode() === 'showcase'
+        ? showcaseLayer
+        : rasterController,
   );
 
   // 11a. Phase 10 Plan 10-01 — WS reconnect controller (D-Area1 / SC-1 / T-10-01).
@@ -1198,6 +1271,9 @@ export async function _bootEngineCore(
   const unsubGlassesEvents = attachGlassesEventSource(bridge, gestureBus, layerManager, {
     onPublish: () => {
       hudDeltaDriver.requestCycle();
+      // showcase mode: kick the ShowcaseHudLayer's own driver too (no-op until it
+      // is start()ed, so harmless in the other modes).
+      showcaseLayer.requestCycle();
     },
   });
 
@@ -1308,7 +1384,12 @@ export async function _bootEngineCore(
           // The pre-selected tab is recorded so the 'canvas-character-sheet' instance
           // handler (step 11d-iv) can call setInitialTab BEFORE onMount. This override is
           // single-use and NOT persisted, so the user's default sheet tab is preserved.
-          const isCanvas = layerManager.getRenderMode() === 'canvas';
+          // Feature 002 (showcase): overlay panels render as the 'canvas' variant in BOTH
+          // 'canvas' and 'showcase' modes — showcase composites the canvas panel onto the
+          // shared compositor and downscales it into the 400×200 raster region (see
+          // showcaseLayer.setOverlaySource above). Glyph/hybrid keep the native panels.
+          const overlayMode = layerManager.getRenderMode();
+          const isCanvas = overlayMode === 'canvas' || overlayMode === 'showcase';
           // Feature 001 (Option B): inventory/spellbook open dedicated INTERACTIVE
           // canvas panels (cursor + tap-to-use), NOT the read-only sheet tabs — so no
           // pre-selected sheet tab is recorded for them. Only character-sheet itself
@@ -1381,9 +1462,14 @@ export async function _bootEngineCore(
         // (2026-06-14). displaySettingsSync still drives the live dither value.
       },
       // Pass the live render mode so the menu uses the correct container strategy:
-      // canvas → 'hud-capture' (zero self-declared count, ADR-0013 Amendment 1);
-      // glyph  → 'overlay-block' (one text slot, ADR-0009 Amendment 1).
-      layerManager.getRenderMode(),
+      // canvas / showcase → 'canvas' ('hud-capture', zero self-declared count, ADR-0013
+      // Amendment 1) — showcase composites the canvas menu onto the shared compositor and
+      // downscales it into the raster region (Feature 002 z=2 overlays);
+      // glyph / hybrid → 'overlay-block' (one text slot, ADR-0009 Amendment 1) —
+      // hybrid renders the menu/overlay via the native text path like glyph (Feature 002).
+      layerManager.getRenderMode() === 'canvas' || layerManager.getRenderMode() === 'showcase'
+        ? 'canvas'
+        : 'glyph',
     );
   };
 
@@ -1618,7 +1704,11 @@ export async function _bootEngineCore(
       unsubSceneInput();
       unsubSceneInput = attachSceneInputToWs(
         newWs,
-        layerManager.getRenderMode() === 'canvas' ? mapCanvas : rasterController,
+        layerManager.getRenderMode() === 'canvas'
+          ? mapCanvas
+          : layerManager.getRenderMode() === 'showcase'
+            ? showcaseLayer
+            : rasterController,
       );
 
       unsubR1();
@@ -1757,92 +1847,103 @@ export async function _bootEngineCore(
       setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
     };
     spellbook.setActionOptionsHandler((req) => {
-      // Push ActionOptionsModal for the highlighted spell.
-      // Dynamically import to avoid circular boot-time dependency.
-      void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
-        // Phase 9 Plan 09-04: enrich the request with slot picker data.
-        // Reads the cached CharacterSnapshot from StatusHudLayer so the modal
-        // and (if needed) SlotPickerPanel have the correct slot availability.
-        //
-        // Enrichment logic:
-        //   1. Look up the spell entry from the cached snapshot's spellbook.
-        //   2. Compute availableSlots = slots where level >= spell.level AND value > 0.
-        //   3. Cantrip (spell.level === 0): requiresSlotPicker=false, defaultSlotLevel=0.
-        //   4. Non-cantrip, single slot: requiresSlotPicker=false (skip picker, cast directly).
-        //   5. Non-cantrip, multiple slots: requiresSlotPicker=true (mount SlotPickerPanel).
-        //
-        // Fail-open: if snapshot is null (no delta received yet), fall back to
-        // requiresSlotPicker=false + defaultSlotLevel=0 (cantrip-safe path).
-        const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
-        // CR-03: statusHud is null in canvas mode; fall back to null snapshot
-        // (same fail-open path as "no delta received yet" below).
-        const snapshot = statusHud?.getCachedSnapshot() ?? null;
-        const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
-        const spellLevel = spellEntry?.level ?? 0;
-        const availableSlots =
-          spellLevel === 0
-            ? []
-            : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
-        const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
-        const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
+      // Push the ActionOptionsModal for the highlighted spell. Select the variant for
+      // the live render mode: canvas/showcase → CanvasActionOptionsModal (composites onto
+      // the shared CanvasCompositor, flows through ShowcaseHudLayer's overlay-source
+      // downscale — Feature 002 z=2 overlays); glyph/hybrid → glyph ActionOptionsModal
+      // (native text container). Dynamic import avoids the circular boot-time dependency.
+      void loadActionOptionsModalCtor(layerManager.getRenderMode()).then(
+        (ActionOptionsModalCtor) => {
+          // Phase 9 Plan 09-04: enrich the request with slot picker data.
+          // Reads the cached CharacterSnapshot from StatusHudLayer so the modal
+          // and (if needed) SlotPickerPanel have the correct slot availability.
+          //
+          // Enrichment logic:
+          //   1. Look up the spell entry from the cached snapshot's spellbook.
+          //   2. Compute availableSlots = slots where level >= spell.level AND value > 0.
+          //   3. Cantrip (spell.level === 0): requiresSlotPicker=false, defaultSlotLevel=0.
+          //   4. Non-cantrip, single slot: requiresSlotPicker=false (skip picker, cast directly).
+          //   5. Non-cantrip, multiple slots: requiresSlotPicker=true (mount SlotPickerPanel).
+          //
+          // Fail-open: if snapshot is null (no delta received yet), fall back to
+          // requiresSlotPicker=false + defaultSlotLevel=0 (cantrip-safe path).
+          const baseReq = req as ConstructorParameters<typeof ActionOptionsModal>[3];
+          // CR-03: statusHud is null in canvas mode; fall back to null snapshot
+          // (same fail-open path as "no delta received yet" below).
+          const snapshot = statusHud?.getCachedSnapshot() ?? null;
+          const spellEntry = snapshot?.spells.spells.find((s) => s.id === baseReq.itemId);
+          const spellLevel = spellEntry?.level ?? 0;
+          const availableSlots =
+            spellLevel === 0
+              ? []
+              : (snapshot?.spells.slots.filter((s) => s.level >= spellLevel && s.value > 0) ?? []);
+          const requiresSlotPicker = spellLevel > 0 && availableSlots.length > 1;
+          const defaultSlotLevel = spellLevel === 0 ? 0 : (availableSlots[0]?.level ?? spellLevel);
 
-        const enrichedReq: ConstructorParameters<typeof ActionOptionsModal>[3] = {
-          ...baseReq,
-          requiresSlotPicker,
-          defaultSlotLevel,
-        };
+          const enrichedReq: ConstructorParameters<typeof ActionOptionsModal>[3] = {
+            ...baseReq,
+            requiresSlotPicker,
+            defaultSlotLevel,
+          };
 
-        const openSlotPicker = (): void => {
-          // Plan 09-04 BERW-19: after ActionOptionsModal closes with
-          // 'slot-picker-needed', push SlotPickerPanel at z=2.
-          void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
-            const slotPicker = new SlotPickerPanel(
-              bridge,
-              // quick-task 260529-khy — pass the WsSender holder (structurally satisfies
-              // SlotPickerWebSocket `{send}`) so a reconnect's holder.swap redirects this
-              // panel's sends to newWs with no re-construction.
-              wsSender,
-              gestureBus,
-              {
-                actorId: enrichedReq.actorId,
-                spellId: enrichedReq.itemId,
-                spellName: enrichedReq.name,
-                baseLevel: spellLevel,
-                availableSlots,
-              },
-              // T10: live locale at construction time (factory closure runs on open).
-              currentLocale,
-              handshake.session_id,
-              () => {
+          const openSlotPicker = (): void => {
+            // Plan 09-04 BERW-19: after ActionOptionsModal closes with
+            // 'slot-picker-needed', push SlotPickerPanel at z=2.
+            //
+            // NOTE: SlotPickerPanel has no canvas variant — it declares `{ image:0, text:1 }`
+            // (native text container). In canvas/showcase mode the ActionOptionsModal above is
+            // the canvas variant, but this multi-slot follow-on still renders through the glyph
+            // text path. A canvas SlotPicker is out of scope here (see task report); the modal
+            // (the common case) is correctly composited.
+            void import('../panels/slot-picker-panel.js').then(({ SlotPickerPanel }) => {
+              const slotPicker = new SlotPickerPanel(
+                bridge,
+                // quick-task 260529-khy — pass the WsSender holder (structurally satisfies
+                // SlotPickerWebSocket `{send}`) so a reconnect's holder.swap redirects this
+                // panel's sends to newWs with no re-construction.
+                wsSender,
+                gestureBus,
+                {
+                  actorId: enrichedReq.actorId,
+                  spellId: enrichedReq.itemId,
+                  spellName: enrichedReq.name,
+                  baseLevel: spellLevel,
+                  availableSlots,
+                },
+                // T10: live locale at construction time (factory closure runs on open).
+                currentLocale,
+                handshake.session_id,
+                () => {
+                  void panelRouter.popOverlay(layerManager);
+                },
+              );
+              void panelRouter.pushOverlay(slotPicker, layerManager);
+            });
+          };
+
+          const modal = new ActionOptionsModalCtor(
+            bridge,
+            // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
+            // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
+            wsSender,
+            gestureBus,
+            enrichedReq,
+            // T10: live locale at modal-construction time (closure runs on open).
+            currentLocale,
+            handshake.session_id,
+            (reason) => {
+              if (reason === 'slot-picker-needed') {
+                openSlotPicker();
+              } else {
                 void panelRouter.popOverlay(layerManager);
-              },
-            );
-            void panelRouter.pushOverlay(slotPicker, layerManager);
-          });
-        };
-
-        const modal = new ActionOptionsModal(
-          bridge,
-          // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
-          // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
-          wsSender,
-          gestureBus,
-          enrichedReq,
-          // T10: live locale at modal-construction time (closure runs on open).
-          currentLocale,
-          handshake.session_id,
-          (reason) => {
-            if (reason === 'slot-picker-needed') {
-              openSlotPicker();
-            } else {
-              void panelRouter.popOverlay(layerManager);
-            }
-          },
-          // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
-          toastQueue,
-        );
-        void panelRouter.pushOverlay(modal, layerManager);
-      });
+              }
+            },
+            // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
+            toastQueue,
+          );
+          void panelRouter.pushOverlay(modal, layerManager);
+        },
+      );
     });
   });
 
@@ -1851,26 +1952,30 @@ export async function _bootEngineCore(
       setActionOptionsHandler: (h: ((req: unknown) => void) | null) => void;
     };
     inventory.setActionOptionsHandler((req) => {
-      void import('../panels/action-options-modal.js').then(({ ActionOptionsModal }) => {
-        const modal = new ActionOptionsModal(
-          bridge,
-          // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
-          // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
-          wsSender,
-          gestureBus,
-          req as ConstructorParameters<typeof ActionOptionsModal>[3],
-          // T10: live locale at modal-construction time (closure runs on open).
-          currentLocale,
-          handshake.session_id,
-          (_reason) => {
-            // Inventory items never require slot picker — always pop the overlay.
-            void panelRouter.popOverlay(layerManager);
-          },
-          // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
-          toastQueue,
-        );
-        void panelRouter.pushOverlay(modal, layerManager);
-      });
+      // Same variant selection as the spellbook handler: canvas/showcase composite the
+      // modal onto the shared CanvasCompositor; glyph/hybrid use the native text container.
+      void loadActionOptionsModalCtor(layerManager.getRenderMode()).then(
+        (ActionOptionsModalCtor) => {
+          const modal = new ActionOptionsModalCtor(
+            bridge,
+            // quick-task 260529-khy — WsSender holder (satisfies ActionOptionsWebSocket
+            // `{send}`); reconnect holder.swap redirects this modal's sends to newWs.
+            wsSender,
+            gestureBus,
+            req as ConstructorParameters<typeof ActionOptionsModal>[3],
+            // T10: live locale at modal-construction time (closure runs on open).
+            currentLocale,
+            handshake.session_id,
+            (_reason) => {
+              // Inventory items never require slot picker — always pop the overlay.
+              void panelRouter.popOverlay(layerManager);
+            },
+            // Phase 9 Plan 09-02: toastQueue passed so preconditioner can emit error toasts.
+            toastQueue,
+          );
+          void panelRouter.pushOverlay(modal, layerManager);
+        },
+      );
     });
   });
 
@@ -2167,15 +2272,40 @@ export async function _bootEngineCore(
         ? [{ type: 'mount' as const, z: ZIndex.Z1_5_TOAST, layer: canvasToast }]
         : []),
     ]);
+  } else if (layerManager.getRenderMode() === 'showcase') {
+    // Showcase (PRODUCTION default): mount ONLY the self-contained ShowcaseHudLayer.
+    // It is the sole mounted layer — it provides the capture container
+    // ('showcase-capture', isEventCapture:1) so `_assertCaptureInvariant` passes, and
+    // declares `{image:0, text:0}` so the non-canvas per-layer budget SUM stays at 0.
+    // Its own throttled driver (started below) does the first-frame + subsequent tile
+    // pushes — the LayerManager compositor is NOT used (like hybrid). statusHud is
+    // null in showcase mode (constructed only for hybrid/glyph at step 10) — the whole
+    // status card is rasterised by the ShowcaseHudLayer instead.
+    await layerManager.bundle([{ type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: showcaseLayer }]);
+    // Start the driver: kicks the first-frame push (all 4 tiles) after the rebuild.
+    showcaseLayer.start();
+  } else if (statusHud === null) {
+    // Both non-canvas paths (glyph + hybrid) construct statusHud at step 10 under
+    // the identical `getRenderMode() !== 'canvas'` guard. A null here means the
+    // step-10 construction guard and this step-12 mount gate have drifted.
+    throw new Error(
+      '[boot-engine-core] non-canvas invariant violated: statusHud is null while ' +
+        'renderMode is non-canvas (step-10 construction guard out of sync with step-12 mount gate)',
+    );
+  } else if (layerManager.getRenderMode() === 'hybrid') {
+    // Hybrid (Feature 002): native chrome/status beside a raster map region.
+    // Mount mapBase (z=0, provides the capture container + drives the RasterController
+    // map tiles to ids 0-3) and the native statusHud (z=1, id=6 'hybrid-status-hud').
+    // NO idle-infill: its z05-* containers (ids 8-10) are NOT declared in the hybrid
+    // page schema (buildHybridPageSchema = 4 image + ids 4-7 text), and the map area
+    // is image tiles which paint over any z=0.5 text anyway.
+    await layerManager.bundle([
+      { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
+      { type: 'mount', z: ZIndex.Z1_STATUS_HUD, layer: statusHud },
+    ]);
   } else {
-    // Glyph fallback: statusHud is guaranteed non-null here — it is constructed
-    // at step 10 under the identical `getRenderMode() === 'glyph'` guard.
-    if (statusHud === null) {
-      throw new Error(
-        '[boot-engine-core] glyph fallback invariant violated: statusHud is null while ' +
-          'renderMode is glyph (step-10 construction guard out of sync with step-12 mount gate)',
-      );
-    }
+    // Glyph fallback (byte-identical pre-v0.10.0): mapBase (z=0) + idleInfill (z=0.5)
+    // + statusHud (z=1).
     await layerManager.bundle([
       { type: 'mount', z: ZIndex.Z0_MAP, layer: mapBase },
       { type: 'mount', z: ZIndex.Z0_5_IDLE_INFILL, layer: idleInfill },
@@ -2215,8 +2345,14 @@ export async function _bootEngineCore(
   //      doubled-header artifact seen in the simulator smoke test (2026-06-08).
   //      The glyph `header`/`footer` containers simply do NOT exist in the raster
   //      page schema; skip both writes in canvas mode entirely.
+  //      Showcase-mode guard (same rationale): the showcase page schema declares
+  //      only 4 image tiles + 1 gesture capture (id=4 'showcase-capture'), NO glyph
+  //      `header`/`footer` text containers — the header/footer bands are drawn INTO
+  //      the raster by drawShowcaseHud. Writing chrome here would paint into
+  //      'showcase-capture' as a floating overlay on top of the tiles. Skip both
+  //      writes in showcase mode too.
   const chromeMode = effectiveVerdict === 'glyph' ? 'glyph' : 'raster';
-  if (layerManager.getRenderMode() !== 'canvas') {
+  if (layerManager.getRenderMode() !== 'canvas' && layerManager.getRenderMode() !== 'showcase') {
     try {
       await writeHeaderChrome(bridge, { mode: chromeMode, locale: effectiveLocale });
     } catch (err) {
@@ -2463,6 +2599,13 @@ export async function _bootEngineCore(
         mapCanvas.destroy();
       } catch (err) {
         console.warn('[boot-engine-core] teardown: mapCanvas.destroy failed', err);
+      }
+      // Feature 002 (showcase): destroy the ShowcaseHudLayer (stops its driver +
+      // releases the character.delta subscription). No-op when never started.
+      try {
+        showcaseLayer.destroy();
+      } catch (err) {
+        console.warn('[boot-engine-core] teardown: showcaseLayer.destroy failed', err);
       }
       try {
         toastQueue.destroy();

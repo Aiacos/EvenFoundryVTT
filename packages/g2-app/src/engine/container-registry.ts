@@ -319,6 +319,158 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
     isEventCapture: 0,
     kind: 'text',
   },
+
+  // ── Hybrid page containers (Feature 002 — native chrome + raster map region) ──
+  //
+  // The hybrid page (renderMode='hybrid', the default from Feature 002) declares a
+  // SEPARATE rebuildPageContainer schema combining a raster MAP REGION (4 image
+  // tiles, max 400×200) with NATIVE text chrome (header/footer/status-hud) so the
+  // status HUD + overlays update via cheap textContainerUpgrade while only the map
+  // is rasterised. IDs are assigned in declaration order WITHIN this page: image
+  // tiles 0-3, then text containers 4-7.
+  //
+  // CRITICAL z-order constraint (probe-verified 2026-06-14, see the hud-capture note
+  // above): the G2 host paints IMAGE containers ON TOP of TEXT containers. So every
+  // visible text container MUST occupy a rect that does NOT overlap any image tile.
+  // Layout: header (full width, y<27, above the map); 4 map tiles fill the LEFT
+  // 400×200 region (x∈{0,200}, y∈{27,127}); hybrid-status-hud is the RIGHT column
+  // (x=400, never under a tile); footer (full width, y≥261, below the map);
+  // hybrid-map-capture is the invisible full-map-region gesture-capture text
+  // container (x<400, under the tiles — never shows text, routes R1 only, INV-5).
+  //
+  // Geometry is provisional and MUST be iterated in the simulator before lock
+  // (the 176px right column ≈ 15 chars at the ~27px LVGL grid — compact by design).
+  //
+  // @see specs/002-hybrid-native-raster-render/spec.md (container schema table)
+  'hybrid-map-tile-0': {
+    id: 0,
+    xPosition: 0,
+    yPosition: 27,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'hybrid-map-tile-1': {
+    id: 1,
+    xPosition: 200,
+    yPosition: 27,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'hybrid-map-tile-2': {
+    id: 2,
+    xPosition: 0,
+    yPosition: 127,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'hybrid-map-tile-3': {
+    id: 3,
+    xPosition: 200,
+    yPosition: 127,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  // hybrid-status-hud: RIGHT column (x=400, width=176), full content height
+  // (y=27..261, h=234). Never under a map tile (tiles end at x=400) → always visible.
+  'hybrid-status-hud': {
+    id: 6,
+    xPosition: 400,
+    yPosition: 27,
+    width: 176,
+    height: 234,
+    isEventCapture: 0,
+    kind: 'text',
+  },
+  // hybrid-map-capture: invisible gesture-capture text container covering the LEFT
+  // map region (x=0..400, y=27..261). The image tiles paint over it (type-based
+  // z-order), so it never shows text — it only routes R1 gestures (pan/ping).
+  'hybrid-map-capture': {
+    id: 7,
+    xPosition: 0,
+    yPosition: 27,
+    width: 400,
+    height: 234,
+    isEventCapture: 1,
+    kind: 'text',
+  },
+
+  // ── Showcase page containers (PRODUCTION raster HUD — the whole HUD is raster) ──
+  //
+  // The showcase page (renderMode='showcase', the DEFAULT boot substrate) rasterises
+  // the ENTIRE glanceable HUD — double-ruled D&D frame + header + framed map region +
+  // status card + footer (see `hud/showcase-hud-renderer.ts`) — onto a 400×200 canvas,
+  // dithers it to 4-bit, and pushes it as 4 × 200×100 image tiles CENTRED on the
+  // 576×288 screen. This is the hardware raster cap (4 image containers × 200×100;
+  // 576×288 cannot be fully rastered — INV-2, Specs §7.4).
+  //
+  // Centring offsets: OX = (576-400)/2 = 88, OY = (288-200)/2 = 44 (SHOWCASE_OX/OY).
+  // Tiles: id0 (88,44) id1 (288,44) id2 (88,144) id3 (288,144). A single
+  // full-region text container (showcase-capture, id 4, isEventCapture:1) covers the
+  // 400×200 region so R1 gestures on the HUD are captured; the image tiles paint over
+  // it (type-based host z-order), so it never shows text.
+  //
+  // ids 0-4 are page-local: only one page schema is declared at a time, so reusing
+  // ids 0-3 for the tiles (as the hybrid/canvas pages also do) is safe.
+  //
+  // @see packages/g2-app/src/hud/showcase-hud-renderer.ts (draws the 400×200 canvas)
+  // @see packages/g2-app/src/hud/showcase-hud-layer.ts (owns the throttled push loop)
+  // @see packages/g2-app/src/demo/showcase-preview.ts (dev visual test — same geometry)
+  'showcase-tile-0': {
+    id: 0,
+    xPosition: 88,
+    yPosition: 44,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'showcase-tile-1': {
+    id: 1,
+    xPosition: 288,
+    yPosition: 44,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'showcase-tile-2': {
+    id: 2,
+    xPosition: 88,
+    yPosition: 144,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  'showcase-tile-3': {
+    id: 3,
+    xPosition: 288,
+    yPosition: 144,
+    width: 200,
+    height: 100,
+    isEventCapture: 0,
+    kind: 'image',
+  },
+  // showcase-capture: invisible gesture-capture text container covering the full
+  // 400×200 centred region. The image tiles paint over it (type-based z-order), so it
+  // never shows text — it only routes R1 gestures. Sole isEventCapture=1 on the page.
+  'showcase-capture': {
+    id: 4,
+    xPosition: 88,
+    yPosition: 44,
+    width: 400,
+    height: 200,
+    isEventCapture: 1,
+    kind: 'text',
+  },
 });
 
 /**
@@ -451,6 +603,200 @@ export function buildHudRasterPageSchema(): {
   ];
 
   return { containerTotalNum: HUD_RASTER_CONTAINER_TOTAL, imageObject, textObject };
+}
+
+// ── Hybrid page schema (Feature 002 — native chrome + raster map region) ──────
+
+/**
+ * Total container count for the hybrid page schema: 4 map image tiles +
+ * 4 text containers (header, footer, hybrid-status-hud, hybrid-map-capture) = 8.
+ * Within the SDK budget (≤4 image, ≤8 text). Fixed at page creation — panel
+ * changes update existing containers via `updateImageRawData` / `textContainerUpgrade`,
+ * never `rebuildPageContainer` (avoids flicker, same discipline as the raster page).
+ *
+ * @see buildHybridPageSchema
+ */
+export const HYBRID_CONTAINER_TOTAL = 8;
+
+/**
+ * Build the hybrid page schema (Feature 002): a raster MAP REGION (4 image tiles,
+ * left 400×200) composited beside NATIVE text chrome (header, footer, status-hud).
+ *
+ * # Schema shape
+ *
+ * ```
+ * containerTotalNum: 8   (HYBRID_CONTAINER_TOTAL)
+ * imageObject: [hybrid-map-tile-0..3]            — 200×100 each, 2×2 = 400×200 (left)
+ * textObject:  [header(4), footer(5),            — full-width chrome, above/below the map
+ *               hybrid-status-hud(6),            — right column (x=400), native status card
+ *               hybrid-map-capture(7)]           — invisible gesture capture under the tiles
+ * ```
+ *
+ * The status HUD + overlay panels render through the native text path
+ * (`textContainerUpgrade`) so they update without rasterising the whole screen;
+ * only the map tiles are rasterised, and only when the map content changes.
+ *
+ * INVARIANTS (asserted by tests):
+ *  - Exactly one `isEventCapture=1` container (hybrid-map-capture), with content `' '`.
+ *  - No image tile rect overlaps any visible text container rect (header y<27,
+ *    footer y≥261, status-hud x≥400; tiles are x<400, 27≤y<227) — required because
+ *    the host paints images over text.
+ *  - 4 image + 4 text within the ≤4 image / ≤8 text budget.
+ *
+ * @see specs/002-hybrid-native-raster-render/spec.md
+ */
+export function buildHybridPageSchema(): {
+  containerTotalNum: number;
+  imageObject: ImageContainerProperty[];
+  textObject: TextContainerProperty[];
+} {
+  const tileNames = [
+    'hybrid-map-tile-0',
+    'hybrid-map-tile-1',
+    'hybrid-map-tile-2',
+    'hybrid-map-tile-3',
+  ];
+
+  const imageObject = tileNames.map((name) => {
+    const e = CONTAINER_REGISTRY[name];
+    if (e === undefined) {
+      throw new Error(`[EVF] buildHybridPageSchema: missing registry entry for '${name}'`);
+    }
+    return new ImageContainerProperty({
+      containerID: e.id,
+      containerName: name,
+      xPosition: e.xPosition,
+      yPosition: e.yPosition,
+      width: e.width,
+      height: e.height,
+    });
+  });
+
+  // Text containers in id order: header(4), footer(5), status-hud(6), map-capture(7).
+  const textNames = ['header', 'footer', 'hybrid-status-hud', 'hybrid-map-capture'];
+  const textObject = textNames
+    .map((name) => {
+      const e = CONTAINER_REGISTRY[name];
+      if (e === undefined) {
+        throw new Error(`[EVF] buildHybridPageSchema: missing registry entry for '${name}'`);
+      }
+      return { name, e };
+    })
+    .sort((a, b) => a.e.id - b.e.id)
+    .map(({ name, e }) => {
+      // hybrid-map-capture is the SOLE capture target (G2: exactly one per page).
+      // It needs content: ' ' — an event-capture container cannot have empty content
+      // (protobuf omits an absent optional field).
+      if (name === 'hybrid-map-capture') {
+        return new TextContainerProperty({
+          containerID: e.id,
+          containerName: name,
+          xPosition: e.xPosition,
+          yPosition: e.yPosition,
+          width: e.width,
+          height: e.height,
+          isEventCapture: 1,
+          content: ' ',
+        });
+      }
+      return new TextContainerProperty({
+        containerID: e.id,
+        containerName: name,
+        xPosition: e.xPosition,
+        yPosition: e.yPosition,
+        width: e.width,
+        height: e.height,
+        isEventCapture: e.isEventCapture,
+      });
+    });
+
+  return { containerTotalNum: HYBRID_CONTAINER_TOTAL, imageObject, textObject };
+}
+
+// ── Showcase page schema (PRODUCTION raster HUD — whole HUD is one raster image) ──
+
+/**
+ * Total container count for the showcase page schema: 4 map image tiles +
+ * 1 text capture container = 5. Within the SDK budget (≤4 image, ≤8 text). Fixed at
+ * page creation — the ShowcaseHudLayer updates the 4 tiles via `updateImageRawData`,
+ * never `rebuildPageContainer` (avoids flicker, same discipline as the raster/hybrid
+ * pages).
+ *
+ * @see buildShowcasePageSchema
+ */
+export const SHOWCASE_CONTAINER_TOTAL = 5;
+
+/**
+ * Build the showcase page schema (PRODUCTION default): the ENTIRE glanceable HUD as
+ * one 400×200 raster, split into 4 × 200×100 image tiles CENTRED on the 576×288
+ * screen, plus a single invisible full-region gesture-capture text container.
+ *
+ * # Schema shape
+ *
+ * ```
+ * containerTotalNum: 5   (SHOWCASE_CONTAINER_TOTAL)
+ * imageObject: [showcase-tile-0..3]   — 200×100 each, 2×2 = 400×200, centred at (88,44)
+ * textObject:  [showcase-capture]     — 400×200 @ (88,44), isEventCapture:1, content ' '
+ * ```
+ *
+ * The whole HUD (frame + header + framed map + status card + footer) is drawn by
+ * `drawShowcaseHud` onto a 400×200 canvas, dithered, and pushed as the 4 tiles by
+ * the `ShowcaseHudLayer`'s own throttled driver — the LayerManager compositor is NOT
+ * used (mirrors the hybrid map-region path, but here the region IS the whole HUD).
+ *
+ * INVARIANTS (asserted by tests):
+ *  - Exactly one `isEventCapture=1` container (showcase-capture), with content `' '`.
+ *  - 4 image + 1 text within the ≤4 image / ≤8 text budget.
+ *  - All rects fit within the 576×288 physical screen (400×200 centred at 88,44).
+ *
+ * @see packages/g2-app/src/hud/showcase-hud-layer.ts (the layer that pushes the tiles)
+ * @see packages/g2-app/src/hud/showcase-hud-renderer.ts (draws the 400×200 canvas)
+ */
+export function buildShowcasePageSchema(): {
+  containerTotalNum: number;
+  imageObject: ImageContainerProperty[];
+  textObject: TextContainerProperty[];
+} {
+  const tileNames = ['showcase-tile-0', 'showcase-tile-1', 'showcase-tile-2', 'showcase-tile-3'];
+
+  const imageObject = tileNames.map((name) => {
+    const e = CONTAINER_REGISTRY[name];
+    if (e === undefined) {
+      throw new Error(`[EVF] buildShowcasePageSchema: missing registry entry for '${name}'`);
+    }
+    return new ImageContainerProperty({
+      containerID: e.id,
+      containerName: name,
+      xPosition: e.xPosition,
+      yPosition: e.yPosition,
+      width: e.width,
+      height: e.height,
+    });
+  });
+
+  const captureEntry = CONTAINER_REGISTRY['showcase-capture'];
+  if (captureEntry === undefined) {
+    throw new Error("[EVF] buildShowcasePageSchema: missing registry entry for 'showcase-capture'");
+  }
+
+  const textObject = [
+    // showcase-capture: full-region gesture-capture text container. The image tiles
+    // cover it (type-based host z-order), so it stays invisible and only routes R1
+    // gestures. content: ' ' required — an event-capture container cannot have empty
+    // content (protobuf omits an absent optional field).
+    new TextContainerProperty({
+      containerID: captureEntry.id,
+      containerName: 'showcase-capture',
+      xPosition: captureEntry.xPosition,
+      yPosition: captureEntry.yPosition,
+      width: captureEntry.width,
+      height: captureEntry.height,
+      isEventCapture: 1,
+      content: ' ',
+    }),
+  ];
+
+  return { containerTotalNum: SHOWCASE_CONTAINER_TOTAL, imageObject, textObject };
 }
 
 // ── Base image / text container builders ──────────────────────────────────────

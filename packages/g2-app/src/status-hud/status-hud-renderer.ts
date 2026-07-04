@@ -113,6 +113,24 @@ export interface StatusHudRendererOpts {
    * {@link StatusHudRenderer.setMode} to flip into `'death-saves'`.
    */
   readonly mode?: StatusHudMode;
+  /**
+   * Compact hybrid-mode layout toggle (Feature 002 slice 4).
+   *
+   * When `true`, `render`/`renderLoading`/`renderMissing` produce the 8-row
+   * compact D&D status card sized for the narrow `hybrid-status-hud` right
+   * column (default gate {@link G2_HYBRID_STATUS_PX} = 176px) instead of the
+   * full-width 576px sheet. Defaults to `false` (full-width — byte-identical to
+   * the pre-slice-4 behaviour).
+   */
+  readonly compact?: boolean;
+  /**
+   * Explicit per-line pixel width gate.
+   *
+   * Defaults to {@link G2_HYBRID_STATUS_PX} (176) when `compact` is `true`,
+   * otherwise {@link G2_MAX_PX} (576). Every rendered line is truncated with `…`
+   * if it would exceed this budget (INV-1 layout integrity).
+   */
+  readonly maxWidthPx?: number;
 }
 
 /**
@@ -163,6 +181,27 @@ export const DEFAULT_R1_HINTS = Object.freeze({
 
 /** G2 display full-width pixel budget. */
 const G2_MAX_PX = 576;
+
+/**
+ * Hybrid render-mode status-card pixel budget (Feature 002 slice 4).
+ *
+ * In `'hybrid'` mode the map raster occupies the left 400×200 region and the
+ * native status card lives in the `hybrid-status-hud` container (id 6, x=400,
+ * width=176px, height=234px). Every compact-card line is width-gated against
+ * this value instead of {@link G2_MAX_PX}.
+ *
+ * @see packages/g2-app/src/engine/container-registry.ts ('hybrid-status-hud')
+ */
+const G2_HYBRID_STATUS_PX = 176;
+
+/**
+ * HP-bar glyph count for the compact hybrid card.
+ *
+ * Full glyphs (`█`) measure ~20px each; 8 full glyphs = 160px ≤ 176px budget
+ * (9 would be 180px and overflow). Empty/partial glyphs (`░`/`▓`) are ~4px, so
+ * a partially-filled bar is always narrower than the all-full worst case.
+ */
+const HP_BAR_GLYPHS_COMPACT = 8;
 
 /**
  * Row count for the full-width 27px status sheet.
@@ -224,6 +263,18 @@ export class StatusHudRenderer {
   private mode: StatusHudMode;
 
   /**
+   * Compact hybrid-mode layout flag (Feature 002 slice 4). Fixed at construction.
+   * When `true`, all three render entry-points emit the narrow 8-row compact card.
+   */
+  private readonly compact: boolean;
+
+  /**
+   * Per-line pixel width gate applied by {@link fitLine} on every row.
+   * `176` for the compact hybrid card, `576` for the full-width sheet.
+   */
+  private readonly maxWidthPx: number;
+
+  /**
    * Per-turn movement budget chip state (preserved for overlay callers — Phase 8).
    *
    * In the HUD-27PX default view, the movement budget is shown in the VEL field
@@ -243,6 +294,8 @@ export class StatusHudRenderer {
     this.locale = opts.locale;
     this._mapMode = opts.mapMode ?? 'raster';
     this.mode = opts.mode ?? 'standard';
+    this.compact = opts.compact ?? false;
+    this.maxWidthPx = opts.maxWidthPx ?? (this.compact ? G2_HYBRID_STATUS_PX : G2_MAX_PX);
   }
 
   /**
@@ -350,6 +403,21 @@ export class StatusHudRenderer {
    * Returns a 9-line `\n`-separated string, every line ≤576px (pretext-budgeted).
    */
   renderLoading(): string {
+    if (this.compact) {
+      return this._buildCompactCard({
+        nameDisplay: EM_DASH,
+        levelDisplay: EM_DASH,
+        classLabel: EM_DASH,
+        hpCurMax: `${ELLIPSIS}/${EM_DASH}`,
+        tempHpSuffix: '',
+        hpBar: ELLIPSIS,
+        acValue: EM_DASH,
+        spdValue: EM_DASH,
+        slotsText: EM_DASH,
+        conditionsText: EM_DASH,
+        deathSavesText: EM_DASH,
+      });
+    }
     return this._buildSheet({
       nameDisplay: EM_DASH,
       levelDisplay: EM_DASH,
@@ -374,6 +442,21 @@ export class StatusHudRenderer {
    * Returns a 9-line `\n`-separated string, every line ≤576px.
    */
   renderMissing(): string {
+    if (this.compact) {
+      return this._buildCompactCard({
+        nameDisplay: EM_DASH,
+        levelDisplay: EM_DASH,
+        classLabel: EM_DASH,
+        hpCurMax: `${EM_DASH}/${EM_DASH}`,
+        tempHpSuffix: '',
+        hpBar: EM_DASH,
+        acValue: EM_DASH,
+        spdValue: EM_DASH,
+        slotsText: EM_DASH,
+        conditionsText: EM_DASH,
+        deathSavesText: EM_DASH,
+      });
+    }
     return this._buildSheet({
       nameDisplay: EM_DASH,
       levelDisplay: EM_DASH,
@@ -402,6 +485,9 @@ export class StatusHudRenderer {
    * {@link _buildDeathSavesSheet} which emphasises the death-save trackers.
    */
   render(snapshot: CharacterSnapshot): string {
+    if (this.compact) {
+      return this._buildCompactStandard(snapshot);
+    }
     if (this.mode === 'death-saves') {
       return this._buildDeathSavesSheet(snapshot);
     }
@@ -543,18 +629,18 @@ export class StatusHudRenderer {
    * The returned string has exactly SHEET_ROWS (8) lines joined with `\n`.
    */
   private _buildSheet(fields: SheetFields): string {
-    const { locale } = this;
+    const { locale, maxWidthPx: maxPx } = this;
     const lines: string[] = [];
 
     // Row 0: name + level + class (–)
     const levelAndClass = `${fields.levelDisplay} ${fields.classLabel ?? EM_DASH}`;
     const nameWithPad = fields.nameDisplay;
-    const row0 = fitLine(`${nameWithPad}   ${levelAndClass}`, locale);
+    const row0 = fitLine(`${nameWithPad}   ${levelAndClass}`, maxPx);
     lines.push(row0);
 
     // Row 1: divider
     const divider = DIVIDER_CHAR.repeat(DIVIDER_LEN);
-    lines.push(fitLine(divider, locale));
+    lines.push(fitLine(divider, maxPx));
 
     // Row 2: HP bar + cur/max + CA + VEL
     const hpLabel = getLabel('hp_label', locale);
@@ -567,7 +653,7 @@ export class StatusHudRenderer {
     }
     const row2 = fitLine(
       `${hpLabel} ${hpBar} ${fields.hpCurMax}   ${acLabel} ${fields.acValue}   ${spdLabel} ${fields.spdValue}`,
-      locale,
+      maxPx,
     );
     lines.push(row2);
 
@@ -579,28 +665,134 @@ export class StatusHudRenderer {
     const roundLabel = getLabel('hud27_round_label', locale);
     const row3 = fitLine(
       `${turnLabel} ${fields.turnDisplay}   ${roundLabel} ${fields.roundDisplay}   [${fields.yourTurnDisplay}]`,
-      locale,
+      maxPx,
     );
     lines.push(row3);
 
     // Row 4: Conditions
     const condPrefix = getLabel('hud27_cond_prefix', locale);
-    const row4 = fitLine(`${condPrefix} ${fields.conditionsText}`, locale);
+    const row4 = fitLine(`${condPrefix} ${fields.conditionsText}`, maxPx);
     lines.push(row4);
 
     // Row 5: divider
-    lines.push(fitLine(divider, locale));
+    lines.push(fitLine(divider, maxPx));
 
     // Row 6: Spell slots
     const slotLabel = getLabel('slots_section', locale);
-    const row6 = fitLine(`${slotLabel} ${fields.slotsText}`, locale);
+    const row6 = fitLine(`${slotLabel} ${fields.slotsText}`, maxPx);
     lines.push(row6);
 
     // Row 7: Death saves (last row — no R1 hint, see SHEET_ROWS comment above)
-    lines.push(fitLine(fields.deathSavesText, locale));
+    lines.push(fitLine(fields.deathSavesText, maxPx));
 
     if (lines.length !== SHEET_ROWS) {
       throw new Error(`StatusHudRenderer: produced ${lines.length} rows, expected ${SHEET_ROWS}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Internal — compact hybrid card (Feature 002 slice 4)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Build the populated compact card from a CharacterSnapshot.
+   *
+   * Unlike the full-width sheet, the compact card renders the REAL `class` and
+   * `speed` fields now carried by CharacterSnapshot (Phase 21 RDATA-01/02). Only
+   * turn/round/your-turn remain `—` placeholders (they arrive on a separate
+   * combat channel, not the character snapshot). HP is shown as an 8-glyph bar;
+   * slots and conditions are width-budgeted against the narrow 176px column with
+   * `…`/`…+N` overflow markers.
+   */
+  private _buildCompactStandard(snapshot: CharacterSnapshot): string {
+    const { locale, maxWidthPx } = this;
+
+    // Real class name (may be empty for classless/fresh actors → em-dash).
+    const classLabel = snapshot.class.trim() !== '' ? snapshot.class : EM_DASH;
+    // Temp HP suffix, e.g. " +10t" — only when positive.
+    const tempHpSuffix = snapshot.tempHp > 0 ? ` +${snapshot.tempHp}t` : '';
+
+    // Content-level width budgets: total minus the label prefix width so the
+    // assembled row (prefix + content) still fits the column. fitLine is the
+    // final hard gate regardless.
+    const condPrefix = getLabel('hud27_cond_prefix', locale);
+    const slotLabel = getLabel('slots_section', locale);
+    const condAvailablePx = maxWidthPx - getTextWidth(`${condPrefix} `);
+    const slotAvailablePx = maxWidthPx - getTextWidth(`${slotLabel} `);
+    const deathLabel = getLabel('hud27c_death_label', locale);
+
+    return this._buildCompactCard({
+      nameDisplay: snapshot.name,
+      levelDisplay: `Lv${snapshot.level}`,
+      classLabel,
+      hpCurMax: `${snapshot.hp}/${snapshot.maxHp}`,
+      tempHpSuffix,
+      hpBar: buildHpBar(snapshot.hp, snapshot.maxHp, HP_BAR_GLYPHS_COMPACT),
+      acValue: String(snapshot.ac),
+      spdValue: String(snapshot.speed),
+      slotsText: buildSlotsText(snapshot.spells?.slots ?? [], locale, slotAvailablePx),
+      conditionsText: buildConditionsText(snapshot.conditions, locale, condAvailablePx),
+      deathSavesText: buildDeathSavesText(snapshot.death, locale, {
+        label: deathLabel,
+        tight: true,
+      }),
+    });
+  }
+
+  /**
+   * Assemble the 8-row compact card from pre-formatted scalars.
+   *
+   * Layout (rows 0-7), all width-gated to {@link maxWidthPx} (176px in hybrid):
+   *   0: `{name}`                         — truncated with `…`
+   *   1: `Lv{level} {class}`              — real class; multiclass truncated
+   *   2: `{PF} {hp}/{maxHp}{ +Nt}`        — temp HP suffix when > 0
+   *   3: `{hp bar}`                       — 8 glyphs (`█▓░`)
+   *   4: `{CA} {ac}   {VEL} {speed}`
+   *   5: `{Slot} {compact slots …}`
+   *   6: `{Cond:} {conditions …+N}`
+   *   7: `{TS} {●●○/○○○}`                 — compact death-save tracks
+   *
+   * The returned string has exactly {@link SHEET_ROWS} (8) lines joined with `\n`.
+   */
+  private _buildCompactCard(fields: CompactSheetFields): string {
+    const { locale, maxWidthPx: maxPx } = this;
+    const lines: string[] = [];
+
+    // Row 0: name (gate-truncated).
+    lines.push(fitLine(fields.nameDisplay, maxPx));
+
+    // Row 1: level + real class name.
+    lines.push(fitLine(`${fields.levelDisplay} ${fields.classLabel}`, maxPx));
+
+    // Row 2: HP cur/max + optional temp-HP suffix.
+    const hpLabel = getLabel('hp_label', locale);
+    lines.push(fitLine(`${hpLabel} ${fields.hpCurMax}${fields.tempHpSuffix}`, maxPx));
+
+    // Row 3: HP bar (own row — 8 glyphs fit the column).
+    lines.push(fitLine(fields.hpBar, maxPx));
+
+    // Row 4: AC + speed (real speed value).
+    const acLabel = getLabel('ac_label', locale);
+    const spdLabel = getLabel('speed_label', locale);
+    lines.push(fitLine(`${acLabel} ${fields.acValue}   ${spdLabel} ${fields.spdValue}`, maxPx));
+
+    // Row 5: spell slots (compact, budgeted).
+    const slotLabel = getLabel('slots_section', locale);
+    lines.push(fitLine(`${slotLabel} ${fields.slotsText}`, maxPx));
+
+    // Row 6: conditions (compact, budgeted with `…+N`).
+    const condPrefix = getLabel('hud27_cond_prefix', locale);
+    lines.push(fitLine(`${condPrefix} ${fields.conditionsText}`, maxPx));
+
+    // Row 7: death saves (compact short label + tight tracks).
+    lines.push(fitLine(fields.deathSavesText, maxPx));
+
+    if (lines.length !== SHEET_ROWS) {
+      throw new Error(
+        `StatusHudRenderer: compact card produced ${lines.length} rows, expected ${SHEET_ROWS}`,
+      );
     }
 
     return lines.join('\n');
@@ -685,49 +877,77 @@ interface SheetFields {
 }
 
 /**
- * Truncate a line to fit within 576px using pretext, appending `…` if cut.
+ * Internal struct passed to `_buildCompactCard` — pre-formatted compact scalars.
+ *
+ * Distinct from {@link SheetFields}: the compact card carries a temp-HP suffix
+ * and REAL class/speed values (rendered inline as `classLabel`/`spdValue`), and
+ * omits the turn/round/your-turn fields (those are combat-channel data, not part
+ * of the character snapshot) and the `isLoading` bar-substitution flag (the
+ * compact loading state passes the `…` bar directly).
+ */
+interface CompactSheetFields {
+  readonly nameDisplay: string;
+  readonly levelDisplay: string;
+  readonly classLabel: string;
+  readonly hpCurMax: string;
+  readonly tempHpSuffix: string;
+  readonly hpBar: string;
+  readonly acValue: string;
+  readonly spdValue: string;
+  readonly slotsText: string;
+  readonly conditionsText: string;
+  readonly deathSavesText: string;
+}
+
+/**
+ * Truncate a line to fit within `maxWidthPx` using pretext, appending `…` if cut.
  *
  * Uses `pxTruncate` from `@evenrealities/pretext` which appends `'...'` (3 ASCII dots);
  * we replace that with `'…'` (U+2026) to match project conventions.
  *
  * This is the single-source width gate: all rows pass through here before being
- * added to the sheet. The WIDTH-ASSERTION test in the test file independently
- * verifies every line ≤576px.
+ * added to the sheet. The WIDTH-ASSERTION tests in the test file independently
+ * verify every full-width line ≤576px and every compact line ≤176px.
  *
  * @param line Raw line string.
- * @param _locale Reserved for future locale-specific truncation strategy.
- * @returns The line, truncated with `…` if it exceeded 576px.
+ * @param maxWidthPx Per-line pixel budget (576 full-width, 176 compact hybrid).
+ * @returns The line, truncated with `…` if it exceeded `maxWidthPx`.
  */
-function fitLine(line: string, _locale: HudLocale): string {
+function fitLine(line: string, maxWidthPx: number): string {
   const px = getTextWidth(line);
-  if (px <= G2_MAX_PX) {
+  if (px <= maxWidthPx) {
     return line;
   }
   // pxTruncate appends '...'; replace with '…' for consistency
-  const truncated = pxTruncate(line, G2_MAX_PX - getTextWidth('…'));
+  const truncated = pxTruncate(line, maxWidthPx - getTextWidth('…'));
   // Remove trailing '...' if pxTruncate added it, then append '…'
   const clean = truncated.endsWith('...') ? truncated.slice(0, -3) : truncated;
   return `${clean}…`;
 }
 
 /**
- * Build the 10-glyph HP bar from current/max HP.
+ * Build the HP bar from current/max HP.
  *
- * Each glyph represents 1/10 of max HP:
+ * Each glyph represents `1/glyphs` of max HP:
  *   - `█` full
  *   - `▓` partial (≥0.5 of a glyph)
  *   - `░` empty
+ *
+ * @param cur Current HP.
+ * @param max Max HP.
+ * @param glyphs Bar length in glyphs (default {@link HP_BAR_GLYPHS} = 10 for the
+ *   full-width sheet; the compact card passes {@link HP_BAR_GLYPHS_COMPACT} = 8).
  */
-function buildHpBar(cur: number, max: number): string {
+function buildHpBar(cur: number, max: number, glyphs: number = HP_BAR_GLYPHS): string {
   if (max <= 0) {
-    return '░'.repeat(HP_BAR_GLYPHS);
+    return '░'.repeat(glyphs);
   }
   const ratio = Math.max(0, Math.min(1, cur / max));
-  const fullGlyphs = Math.floor(ratio * HP_BAR_GLYPHS);
-  const partial = ratio * HP_BAR_GLYPHS - fullGlyphs;
+  const fullGlyphs = Math.floor(ratio * glyphs);
+  const partial = ratio * glyphs - fullGlyphs;
   const partialGlyph = partial >= 0.5 ? '▓' : '';
   const partialCount = partialGlyph === '' ? 0 : 1;
-  const emptyCount = HP_BAR_GLYPHS - fullGlyphs - partialCount;
+  const emptyCount = glyphs - fullGlyphs - partialCount;
   return `${'█'.repeat(fullGlyphs)}${partialGlyph}${'░'.repeat(Math.max(0, emptyCount))}`;
 }
 
@@ -740,16 +960,24 @@ function buildHpBar(cur: number, max: number): string {
  *
  * The full row (including prefix) is still clamped by `fitLine` — this function
  * just does a content-level truncation for readability.
+ *
+ * @param availablePx Content pixel budget (excluding the `Cond:` prefix).
+ *   Defaults to the full-width budget (576 − `Cond: ` width); the compact hybrid
+ *   card passes the narrow `176 − prefix` budget so the `…+N` overflow marker
+ *   engages within the 176px column.
  */
-function buildConditionsText(conditions: ReadonlyArray<string>, _locale: HudLocale): string {
+function buildConditionsText(
+  conditions: ReadonlyArray<string>,
+  _locale: HudLocale,
+  availablePx: number = G2_MAX_PX - getTextWidth('Cond: '),
+): string {
   if (conditions.length === 0) {
     return EM_DASH;
   }
 
   // Try showing all conditions
   const allText = conditions.join(', ');
-  const condPrefixPx = getTextWidth('Cond: ');
-  const available = G2_MAX_PX - condPrefixPx;
+  const available = availablePx;
 
   if (getTextWidth(allText) <= available) {
     return allText;
@@ -780,10 +1008,17 @@ function buildConditionsText(conditions: ReadonlyArray<string>, _locale: HudLoca
  * (Note: value=remaining slots, max=total; empty=value, filled=max-value)
  *
  * Only shows levels 1-5 (most common use range). Truncated by fitLine if needed.
+ *
+ * @param availablePx When provided (compact hybrid card), slot groups are added
+ *   greedily until the next would exceed this content budget, then ` …` marks
+ *   the overflow (single-space separators to save width). When omitted
+ *   (full-width sheet), all groups are joined with two spaces — byte-identical
+ *   to the pre-slice-4 behaviour.
  */
 function buildSlotsText(
   slots: ReadonlyArray<{ level: number; value: number; max: number }>,
   _locale: HudLocale,
+  availablePx?: number,
 ): string {
   if (slots.length === 0) {
     return EM_DASH;
@@ -799,7 +1034,33 @@ function buildSlotsText(
     parts.push(`${slot.level}${filledGlyphs}${emptyGlyphs}`);
   }
 
-  return parts.length > 0 ? parts.join('  ') : EM_DASH;
+  if (parts.length === 0) {
+    return EM_DASH;
+  }
+
+  // Full-width path: join with two spaces (fitLine is the only width gate).
+  if (availablePx === undefined) {
+    return parts.join('  ');
+  }
+
+  // Compact path: greedily include groups within the content budget.
+  const overflowMark = ' …';
+  let acc = '';
+  for (const part of parts) {
+    const candidate = acc === '' ? part : `${acc} ${part}`;
+    if (getTextWidth(candidate) <= availablePx) {
+      acc = candidate;
+      continue;
+    }
+    // This group doesn't fit.
+    if (acc === '') {
+      // Even the first group overflows — hard-truncate it (rare; gate-safe).
+      return pxTruncate(part, availablePx);
+    }
+    const withMark = `${acc}${overflowMark}`;
+    return getTextWidth(withMark) <= availablePx ? withMark : acc;
+  }
+  return acc;
 }
 
 /**
@@ -813,14 +1074,25 @@ function buildSlotsText(
  *
  * @param death `{ success: number; failure: number }` from CharacterSnapshot.
  * @param locale Active locale for label.
+ * @param opts Compact-card overrides:
+ *   - `label` — replaces the default `hud27_death_saves_label` (the compact card
+ *     passes the 2-char `hud27c_death_label` so the row fits the 176px column).
+ *   - `tight` — when `true`, uses single-space `{label} {s}/{f}` (no spaces around
+ *     the slash) so the all-ticked worst case (`TS ●●●/●●●` ≈ 155px) stays under
+ *     176px. When omitted, the full-width `{label}  {s} / {f}` layout is used —
+ *     byte-identical to the pre-slice-4 behaviour.
  */
 function buildDeathSavesText(
   death: { readonly success: number; readonly failure: number },
   locale: HudLocale,
+  opts?: { readonly label?: string; readonly tight?: boolean },
 ): string {
-  const label = getLabel('hud27_death_saves_label', locale);
+  const label = opts?.label ?? getLabel('hud27_death_saves_label', locale);
   const successTrack = buildTrackGlyphs(death.success);
   const failureTrack = buildTrackGlyphs(death.failure);
+  if (opts?.tight) {
+    return `${label} ${successTrack}/${failureTrack}`;
+  }
   return `${label}  ${successTrack} / ${failureTrack}`;
 }
 

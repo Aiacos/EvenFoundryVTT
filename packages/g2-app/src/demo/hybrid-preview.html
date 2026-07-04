@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EvenFoundryVTT — Hybrid HUD preview (dev)</title>
+  </head>
+  <body>
+    <!--
+      DEV-ONLY hybrid-HUD preview harness. Renders the Feature 002 hybrid layout
+      (mock map + native chrome + compact D&D status card) on the glasses via the
+      real Even Hub SDK bridge — no live Foundry/bridge WS required. Reachable only
+      at the dev URL /demo/hybrid-preview.html; never shipped (not a vite build input).
+      @see packages/g2-app/src/demo/hybrid-preview.ts
+    -->
+    <script type="module" src="./hybrid-preview.ts"></script>
+  </body>
+</html>

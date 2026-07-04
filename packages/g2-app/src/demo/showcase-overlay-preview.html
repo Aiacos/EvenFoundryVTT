@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EvenFoundryVTT — Showcase OVERLAY preview (dev)</title>
+  </head>
+  <body>
+    <!--
+      DEV-ONLY showcase z=2 OVERLAY preview. Drives a REAL canvas OverlayPanel through
+      the production overlay path (compositor → 576×288 → downscale 400×200 → 4 tiles)
+      and pushes it centred on the glasses. Reachable at /demo/showcase-overlay-preview.html
+      Drive via URL params: ?overlay=menu|sheet|combat|spellbook  &locale=it|en
+      @see packages/g2-app/src/demo/showcase-overlay-preview.ts
+    -->
+    <script type="module" src="./showcase-overlay-preview.ts"></script>
+  </body>
+</html>
