@@ -500,3 +500,195 @@ describe('attachSceneInputToWs — frame_png decode path (SI-PNG-1, SI-PNG-2, SI
     expect(h).toBe(288);
   });
 });
+
+// ── Glyph-path padFrame branches (identity + oversize drop) ──────────────────
+
+describe('attachSceneInputToWs — glyph-path padFrame branches', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('a frame already at the glyph 400×200 canonical is forwarded without re-padding', () => {
+    const ws = makeMockSocket();
+    const ctrl = makeMockController();
+    attachSceneInputToWs(ws as unknown as WebSocket, asRasterControllerLike(ctrl));
+
+    ws.fire(JSON.stringify(makeFrameEnvelope({ width: 400, height: 200 })));
+
+    expect(ctrl.requestFrame).toHaveBeenCalledTimes(1);
+    const args = ctrl.requestFrame.mock.calls[0] as [Uint8ClampedArray, number, number];
+    // padFrame returns the input unchanged (identity branch) → exactly 400×200 bytes.
+    expect(args[0].length).toBe(400 * 200 * 4);
+    expect(args[1]).toBe(400);
+    expect(args[2]).toBe(200);
+  });
+
+  it('a full-screen 576×288 frame is dropped on the glyph path (cannot pad down)', () => {
+    const ws = makeMockSocket();
+    const ctrl = makeMockController();
+    attachSceneInputToWs(ws as unknown as WebSocket, asRasterControllerLike(ctrl));
+
+    ws.fire(JSON.stringify(makeFrameEnvelope({ width: 576, height: 288 })));
+
+    // padFrame returns null (larger than glyph canonical) → dropped + warn.
+    expect(ctrl.requestFrame).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('full-screen frame on glyph path'),
+    );
+  });
+});
+
+// ── Binary (ArrayBuffer) message data decode ─────────────────────────────────
+
+describe('attachSceneInputToWs — non-string message data', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('decodes ArrayBuffer message data via TextDecoder and dispatches', () => {
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    const json = JSON.stringify(makeFrameEnvelope({ width: 288, height: 144 }));
+    const bytes = new TextEncoder().encode(json);
+    // Fire with the underlying ArrayBuffer, exercising the non-string branch.
+    ws.fire(bytes.buffer as unknown as string);
+
+    expect(sink.setFrameCalls).toHaveLength(1);
+  });
+});
+
+// ── frame_png parse + decode edge branches ───────────────────────────────────
+
+describe('attachSceneInputToWs — frame_png edge branches', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('drops a frame_png with an out-of-bounds payload (FramePng parse failure)', () => {
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    // width=10 is below the FramePngSchema minimum → inner parse fails.
+    ws.fire(
+      JSON.stringify({
+        proto: 'evf-v1',
+        seq: 1,
+        ts: Date.now(),
+        type: 'frame_png',
+        session_id: VALID_UUID,
+        payload: { sceneId: 's', width: 10, height: 20, pngB64: 'AAAA', ts: Date.now() },
+      }),
+    );
+
+    expect(sink.setFrameCalls).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('FramePng payload parse failed'),
+      expect.anything(),
+    );
+  });
+});
+
+// ── Native PNG decoder path (createImageBitmap / OffscreenCanvas / Blob) ──────
+
+describe('attachSceneInputToWs — native frame_png decoder path', () => {
+  const saved: Record<string, unknown> = {};
+  const g = globalThis as Record<string, unknown>;
+
+  function installNativeDecoder(opts: {
+    bitmapW: number;
+    bitmapH: number;
+    ctxNull?: boolean;
+    dataLen?: number;
+  }): void {
+    for (const k of ['Blob', 'createImageBitmap', 'OffscreenCanvas']) {
+      saved[k] = g[k];
+    }
+    g.Blob = class {};
+    g.createImageBitmap = vi.fn(
+      async () => ({ width: opts.bitmapW, height: opts.bitmapH }) as unknown,
+    );
+    g.OffscreenCanvas = class {
+      constructor(
+        public width: number,
+        public height: number,
+      ) {}
+      getContext(): unknown {
+        if (opts.ctxNull === true) return null;
+        return {
+          drawImage: () => {},
+          getImageData: (_x: number, _y: number, w: number, h: number) => ({
+            data: new Uint8ClampedArray(opts.dataLen ?? w * h * 4),
+          }),
+        };
+      }
+    };
+  }
+
+  afterEach(() => {
+    for (const k of ['Blob', 'createImageBitmap', 'OffscreenCanvas']) {
+      if (saved[k] === undefined) delete g[k];
+      else g[k] = saved[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  it('decodes via createImageBitmap → OffscreenCanvas and dispatches to setFrame', async () => {
+    installNativeDecoder({ bitmapW: 20, bitmapH: 20 });
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    const luma = new Uint8Array(20 * 20).fill(64);
+    ws.fire(JSON.stringify(makeFramePngEnvelope(luma, 20, 20)));
+
+    // Native decode is async — flush microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(g.createImageBitmap).toHaveBeenCalledTimes(1);
+    expect(sink.setFrameCalls).toHaveLength(1);
+  });
+
+  it('drops a native decode whose bitmap dimensions mismatch the payload', async () => {
+    installNativeDecoder({ bitmapW: 99, bitmapH: 99 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    const luma = new Uint8Array(20 * 20).fill(64);
+    ws.fire(JSON.stringify(makeFramePngEnvelope(luma, 20, 20)));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sink.setFrameCalls).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('expected 20x20'));
+  });
+
+  it('drops a native decode when the OffscreenCanvas 2d context is null', async () => {
+    installNativeDecoder({ bitmapW: 20, bitmapH: 20, ctxNull: true });
+    const ws = makeMockSocket();
+    const sink = makeMockMapSink();
+    attachSceneInputToWs(ws as unknown as WebSocket, sink);
+
+    const luma = new Uint8Array(20 * 20).fill(64);
+    ws.fire(JSON.stringify(makeFramePngEnvelope(luma, 20, 20)));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sink.setFrameCalls).toHaveLength(0);
+  });
+});

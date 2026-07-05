@@ -541,6 +541,107 @@ describe('QuickActionMenuPanel — CR-01 navigation race regression (QAM-NAV)', 
   });
 });
 
+// ─── Canvas-mode paint path (drawMenuIcon + box paint) ──────────────────────
+
+/** A recording 2D context stub covering every call paint()/drawMenuIcon make. */
+function makeMockCtx() {
+  const ctx = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    lineJoin: '',
+    lineCap: '',
+    font: '',
+    textBaseline: '',
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    fill: vi.fn(),
+    arc: vi.fn(),
+    ellipse: vi.fn(),
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    strokeRect: vi.fn(),
+    fillText: vi.fn(),
+  };
+  return ctx;
+}
+
+function makeCanvasMenu() {
+  const bridge = makeMockBridge();
+  const bus = new PanelGestureBus();
+  const localeEvents = new LocaleEventEmitter();
+  const callbacks = makeCallbacks();
+  const panel = new QuickActionMenuPanel(
+    bridge,
+    bus,
+    'it',
+    'auto',
+    localeEvents,
+    callbacks,
+    'canvas',
+  );
+  return { panel, bridge, bus, localeEvents, callbacks };
+}
+
+describe('QuickActionMenuPanel — canvas-mode paint (drawMenuIcon coverage)', () => {
+  it('canvas mode declares zero text containers (hud-capture is pre-allocated)', () => {
+    const { panel } = makeCanvasMenu();
+    expect(panel.getContainerCount()).toEqual({ image: 0, text: 0 });
+  });
+
+  it('paint before attachCanvas is a safe no-op (null ctx guard)', () => {
+    const { panel } = makeCanvasMenu();
+    expect(() => panel.paint()).not.toThrow();
+  });
+
+  it('paint in main mode draws every menu icon + a cursor on the active row', async () => {
+    const { panel } = makeCanvasMenu();
+    const ctx = makeMockCtx();
+    const canvas = { getContext: () => ctx } as unknown as HTMLCanvasElement;
+    await panel.attachCanvas(canvas);
+    expect(panel.isDirty()).toBe(true);
+
+    panel.paint();
+
+    // Box chrome cleared + filled + bordered.
+    expect(ctx.clearRect).toHaveBeenCalledTimes(1);
+    expect(ctx.fillRect).toHaveBeenCalled();
+    expect(ctx.strokeRect).toHaveBeenCalled();
+    // Each of the 11 main items ran through drawMenuIcon → save/restore per icon.
+    expect(ctx.save.mock.calls.length).toBeGreaterThanOrEqual(11);
+    expect(ctx.restore.mock.calls.length).toBe(ctx.save.mock.calls.length);
+    // The ▶ cursor is painted for the active row (index 0).
+    const cursorDrawn = ctx.fillText.mock.calls.some((c) => c[0] === '▶');
+    expect(cursorDrawn).toBe(true);
+    // paint() clears the dirty flag as its last statement.
+    expect(panel.isDirty()).toBe(false);
+  });
+
+  it('paint in language sub-menu mode draws the locale rows with key markers', async () => {
+    const { panel } = makeCanvasMenu();
+    const ctx = makeMockCtx();
+    const canvas = { getContext: () => ctx } as unknown as HTMLCanvasElement;
+    await panel.attachCanvas(canvas);
+
+    // Enter language mode ([N] at index 8).
+    for (let i = 0; i < 8; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.onEvent({ kind: 'tap' });
+
+    panel.paint();
+
+    // Language rows carry a "[A] …" style key marker (no pixel icons here).
+    const rowTexts = ctx.fillText.mock.calls.map((c) => String(c[0]));
+    expect(rowTexts.some((t) => /\[[AIEDSFP]\]/.test(t))).toBe(true);
+    // The active row (index 0) is prefixed with the ▶ marker inline.
+    expect(rowTexts.some((t) => t.startsWith('▶ '))).toBe(true);
+  });
+});
+
 // ─── INV-1 Fixture Tests (QAM-FIX-01..04) ───────────────────────────────────
 
 describe('QuickActionMenuPanel — INV-1 fixtures (QAM-FIX-*)', () => {

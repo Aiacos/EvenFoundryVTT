@@ -12,6 +12,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PanelGestureBus } from '../../engine/panel-gesture-bus.js';
 import type { ActionOptionsRequest } from '../action-options-modal.js';
 import CanvasInventoryPanel from '../canvas-inventory-panel.js';
+import {
+  CANVAS_LIST_VISIBLE_ROWS,
+  clampCursorIndex,
+  windowCursorRows,
+} from '../canvas-selectable-list.js';
 import CanvasSpellbookPanel from '../canvas-spellbook-panel.js';
 
 const ability = (value: number, mod: number) => ({
@@ -254,5 +259,166 @@ describe('CanvasSpellbookPanel — cursor + tap dispatch', () => {
     expect(panel.getContainerCount()).toEqual({ image: 0, text: 0 });
     expect(panel.getCaptureContainer()).toBe('hud-capture');
     expect(panel.id).toBe('canvas-spellbook');
+  });
+});
+
+describe('windowCursorRows / clampCursorIndex — pure windowing', () => {
+  it('returns an empty array for an empty list (no cursor marker to place)', () => {
+    expect(windowCursorRows([], 0, (x: string) => x)).toEqual([]);
+  });
+
+  it('marks the cursor row with ▶ and blanks the others', () => {
+    const rows = windowCursorRows(['a', 'b', 'c'], 1, (x) => x);
+    expect(rows).toEqual(['  a', '▶ b', '  c']);
+  });
+
+  it('scrolls the window so the cursor stays visible past the window bottom', () => {
+    const items = Array.from({ length: 20 }, (_, i) => `i${i}`);
+    // Cursor at 12 with a 9-row window → window ends at the cursor row.
+    const rows = windowCursorRows(items, 12, (x) => x, 9);
+    expect(rows).toHaveLength(9);
+    expect(rows.at(-1)).toBe('▶ i12');
+    expect(rows[0]).toBe('  i4');
+  });
+
+  it('clampCursorIndex clamps into [0, len-1] and yields 0 for an empty list', () => {
+    expect(clampCursorIndex(-3, 5)).toBe(0);
+    expect(clampCursorIndex(99, 5)).toBe(4);
+    expect(clampCursorIndex(2, 5)).toBe(2);
+    expect(clampCursorIndex(3, 0)).toBe(0);
+  });
+});
+
+/** Fake 2D context recording draw calls, for paint() without a real canvas. */
+function makeMockCtx() {
+  return {
+    fillStyle: '',
+    strokeStyle: '',
+    font: '',
+    lineWidth: 0,
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    strokeRect: vi.fn(),
+    fillText: vi.fn(),
+  };
+}
+
+/** Fake canvas whose getContext returns `ctx` (or null to force the degraded path). */
+function makeMockCanvas(ctx: unknown) {
+  return { getContext: vi.fn(() => ctx) } as unknown as HTMLCanvasElement;
+}
+
+describe('CanvasSelectableListPanel — canvas paint + lifecycle', () => {
+  it('paint before attachCanvas is a safe no-op (null ctx guard)', () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    expect(() => panel.paint()).not.toThrow();
+  });
+
+  it('attachCanvas with a null-context canvas degrades without throwing', async () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await panel.attachCanvas(makeMockCanvas(null));
+    // Still degraded → paint remains a no-op.
+    expect(() => panel.paint()).not.toThrow();
+    warn.mockRestore();
+  });
+
+  it('paint draws chrome + one fillText per visible row and clears dirty', async () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const ctx = makeMockCtx();
+    await panel.attachCanvas(makeMockCanvas(ctx));
+    panel.onSnapshot(makeSnapshot());
+    expect(panel.isDirty()).toBe(true);
+    panel.paint();
+    // Two inventory rows → two content fillText calls (plus the header title).
+    expect(ctx.fillText).toHaveBeenCalled();
+    expect(ctx.clearRect).toHaveBeenCalledTimes(1);
+    expect(panel.isDirty()).toBe(false);
+  });
+
+  it('paint stops at the visible-row ceiling for a long list (break branch)', async () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const ctx = makeMockCtx();
+    await panel.attachCanvas(makeMockCanvas(ctx));
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      id: `i${i}`,
+      name: `Item ${i}`,
+      type: 'equipment',
+    }));
+    panel.onSnapshot(makeSnapshot({ inventory: many } as Partial<CharacterSnapshot>));
+    // Scroll the cursor deep so windowCursorRows returns a full window.
+    for (let i = 0; i < 20; i++) panel.onEvent({ kind: 'scroll', direction: 'down' });
+    panel.paint();
+    // Header title + at most CANVAS_LIST_VISIBLE_ROWS content rows are painted.
+    expect(ctx.fillText.mock.calls.length).toBeLessThanOrEqual(CANVAS_LIST_VISIBLE_ROWS + 1);
+    expect(ctx.fillText.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('onMount subscribes gesture + character deltas; re-mount re-subscribes; unmount releases', async () => {
+    const gestureUnsub = vi.fn();
+    const charUnsub = vi.fn();
+    const bus = { subscribe: vi.fn(() => gestureUnsub) } as unknown as PanelGestureBus;
+    const wsBus = { subscribe: vi.fn(() => charUnsub) };
+    const panel = new CanvasInventoryPanel(bridgeStub, bus, 'it');
+    panel.setWsEventBus(wsBus);
+
+    await panel.onMount();
+    expect(bus.subscribe).toHaveBeenCalledTimes(1);
+    expect(wsBus.subscribe).toHaveBeenCalledWith('character.delta', expect.any(Function));
+
+    // Re-mount must release the prior gesture sub before re-subscribing (line 217 branch).
+    await panel.onMount();
+    expect(gestureUnsub).toHaveBeenCalledTimes(1);
+    expect(bus.subscribe).toHaveBeenCalledTimes(2);
+
+    // Unmount releases both live subscriptions.
+    await panel.onUnmount();
+    expect(gestureUnsub).toHaveBeenCalledTimes(2);
+    expect(charUnsub).toHaveBeenCalledTimes(1);
+
+    // A second unmount with nothing subscribed is a safe no-op.
+    await expect(panel.onUnmount()).resolves.toBeUndefined();
+  });
+
+  it('the character.delta subscription routes payloads into onSnapshot', async () => {
+    let deltaCb: ((raw: unknown) => void) | undefined;
+    const wsBus = {
+      subscribe: vi.fn((_ch: string, cb: (raw: unknown) => void) => {
+        deltaCb = cb;
+        return () => {};
+      }),
+    };
+    const handler = vi.fn<(req: ActionOptionsRequest) => void>();
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    panel.setWsEventBus(wsBus);
+    panel.setActionOptionsHandler(handler);
+    await panel.onMount();
+    // Feed a snapshot through the wired channel, then a tap must dispatch.
+    deltaCb?.(makeSnapshot());
+    panel.onEvent({ kind: 'tap' });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]?.itemId).toBe('w1');
+  });
+
+  it('double-tap is a no-op (router owns overlay close)', () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const handler = vi.fn();
+    panel.setActionOptionsHandler(handler);
+    panel.onSnapshot(makeSnapshot());
+    panel.onEvent({ kind: 'double-tap' });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('tap on a cursor with no actionable entry warns and does not dispatch', () => {
+    const panel = new CanvasInventoryPanel(bridgeStub, busStub, 'it');
+    const handler = vi.fn();
+    panel.setActionOptionsHandler(handler);
+    // Empty inventory → resolveRequest returns null for any cursor.
+    panel.onSnapshot(makeSnapshot({ inventory: [] } as Partial<CharacterSnapshot>));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    panel.onEvent({ kind: 'tap' });
+    expect(handler).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

@@ -389,4 +389,33 @@ describe('scheduleBearerRotation', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('T-RR-11: timer firing after Foundry teardown (game.settings gone) is a silent no-op — no work, no warn, chain stops', async () => {
+    const now = Date.now();
+    const active = makeActiveEntry({ createdAt: now });
+    getActiveBearerMock.mockReturnValue(active);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const emitSpy = vi.fn();
+
+    const { scheduleBearerRotation } = await import('./bearer-rotation.js');
+    scheduleBearerRotation({ emit: emitSpy });
+
+    // Simulate module/worker teardown BEFORE the pending timer fires: the cancel
+    // closure is discarded in MVP (module.ts), so the timer still fires. Post-
+    // teardown, rotateNow must do nothing at all — a console.warn here is exactly
+    // the racing output behind the onUserConsoleLog teardown flake.
+    vi.stubGlobal('game', undefined);
+
+    await vi.advanceTimersByTimeAsync(24 * 3600 * 1000 + 10);
+
+    expect(generateBearerMock).not.toHaveBeenCalled();
+    expect(emitSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    // Chain stopped: advancing another full TTL fires nothing further.
+    await vi.advanceTimersByTimeAsync(24 * 3600 * 1000 + 10);
+    expect(generateBearerMock).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
 });
