@@ -387,7 +387,17 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
     vi.stubGlobal('canvas', fakeCanvas);
 
     const emit = vi.fn();
-    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 250 });
+    // Small target region: this test asserts scheduler cadence (emit counts),
+    // not frame realism. Shrinking the target keeps each fake-timer cycle from
+    // paying a full 576×288 synchronous UPNG encode (encode realism is covered
+    // by CE-PNG-1/CE-PNG-2), so the multi-cycle loop stays fast and doesn't
+    // blow the 5s default timeout on a throttled CI runner.
+    registerCanvasExtractor({
+      emit,
+      getCaptureIntervalMs: () => 250,
+      targetWidth: 50,
+      targetHeight: 30,
+    });
 
     // After 100ms — first 250ms wait not elapsed → no emit
     vi.advanceTimersByTime(100);
@@ -428,7 +438,17 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
     vi.stubGlobal('canvas', fakeCanvas);
 
     const emit = vi.fn();
-    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 33 });
+    // Small target region — see CE-PNG-5 rationale. This test does 10 encode
+    // cycles synchronously under fake timers; at the full 576×288 default each
+    // cycle's UPNG encode was ~25ms locally and multiples of that on a shared
+    // CI runner, which is what tripped the 5s default timeout (env-dependent,
+    // not a regression). The assertion is emit COUNT, so frame size is moot.
+    registerCanvasExtractor({
+      emit,
+      getCaptureIntervalMs: () => 33,
+      targetWidth: 50,
+      targetHeight: 30,
+    });
 
     // 330ms = 10 full 33ms cycles. The old TICK_MS=100 gate would have
     // allowed only 3 captures here (10fps hard cap) — the self-rescheduling
@@ -464,7 +484,13 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
 
     let interval = 250;
     const emit = vi.fn();
-    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => interval });
+    // Small target region — see CE-PNG-5 rationale (scheduler-cadence test).
+    registerCanvasExtractor({
+      emit,
+      getCaptureIntervalMs: () => interval,
+      targetWidth: 50,
+      targetHeight: 30,
+    });
 
     // First cycle at the slow cadence.
     vi.advanceTimersByTime(250);
@@ -489,7 +515,15 @@ describe('registerCanvasExtractor — live capture cadence (CE-PNG-5, CE-FPS-1..
     vi.stubGlobal('canvas', makeCanvasMock({ width: 50, height: 30 }));
 
     const emit = vi.fn();
-    registerCanvasExtractor({ emit, getCaptureIntervalMs: () => 250 });
+    // Small target region — see CE-PNG-5 rationale. This test fast-forwards
+    // ~11s of 250ms cycles (~44 cycles) under fake timers; a smaller target
+    // keeps the per-cycle downscale/luma work cheap on a slow CI runner.
+    registerCanvasExtractor({
+      emit,
+      getCaptureIntervalMs: () => 250,
+      targetWidth: 50,
+      targetHeight: 30,
+    });
 
     // First cycle (t=250ms) emits the initial frame; the next 4.75s of cycles
     // are identical-content skips until the 5s keyframe window elapses.

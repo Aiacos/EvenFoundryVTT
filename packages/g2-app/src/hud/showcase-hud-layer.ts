@@ -15,10 +15,12 @@
  *      the stored frame into the framed map region (or fills it with the bg colour
  *      when no frame has arrived yet).
  *   3. `requestCycle()` (external kick) + an internal trailing-edge throttle
- *      (min redraw ~100 ms). On fire: draw → `getImageData` → `encodeRegionToTiles`
- *      → per-tile xxhash skip (first frame pushes all 4; unchanged tiles push 0) →
- *      serial push (CM-01 — never concurrent). Fail-soft: never throws; a push
- *      rejection logs `console.warn` and continues.
+ *      (min redraw ~100 ms). On fire: draw → `getImageData` → per-tile SOURCE-quadrant
+ *      xxhash gate (`extractQuadrant` → hash → `encodeQuadrant` ONLY for changed
+ *      quadrants, so unchanged tiles skip the dither + PNG encode entirely, not just
+ *      the push) → serial push (CM-01 — never concurrent). First frame pushes all 4;
+ *      an idle cycle encodes + pushes 0. Fail-soft: never throws; a push rejection
+ *      logs `console.warn` and continues.
  *   4. `start()`/`stop()` idempotent; `destroy()` releases the timer + subscription.
  *
  * # happy-dom guard
@@ -29,7 +31,7 @@
  * to exercise the encode + xxhash-skip + push path without a real canvas.
  *
  * @see packages/g2-app/src/hud/showcase-hud-renderer.ts (drawShowcaseHud + model)
- * @see packages/g2-app/src/hud/showcase-raster.ts (encodeRegionToTiles + REGION_W/H)
+ * @see packages/g2-app/src/hud/showcase-raster.ts (extractQuadrant + encodeQuadrant + REGION_W/H)
  * @see packages/g2-app/src/status-hud/status-hud-layer.ts (character.delta subscribe pattern)
  * @see packages/g2-app/src/hud/map-canvas-layer.ts (setFrame + lazy ImageData guard)
  * @see packages/g2-app/src/engine/hud-delta-driver.ts (trailing-edge throttle + xxhash skip)
@@ -53,7 +55,14 @@ import type { XXHashAPI } from 'xxhash-wasm';
 import xxhash from 'xxhash-wasm';
 import type { Layer } from '../engine/layer-types.js';
 import { drawShowcaseHud, type ShowcaseHudModel } from './showcase-hud-renderer.js';
-import { encodeRegionToTiles, REGION_H, REGION_W } from './showcase-raster.js';
+import {
+  encodeQuadrant,
+  extractQuadrant,
+  QUADRANT_BYTES,
+  type RasterTile,
+  REGION_H,
+  REGION_W,
+} from './showcase-raster.js';
 
 /** Number of image tiles the 400×200 HUD region splits into (2×2, ids 0-3). */
 const TILE_COUNT = 4;
@@ -123,6 +132,14 @@ export type ShowcaseOverlaySource = () => Uint8ClampedArray | null;
  */
 export type ShowcaseOverlayDownscaler = (rgba576: Uint8ClampedArray) => Uint8ClampedArray | null;
 
+/**
+ * Per-tile encode seam — dither + UPNG-encode ONE contiguous 200×100 source quadrant
+ * into a {@link RasterTile}. Defaults to {@link encodeQuadrant}; the delta gate calls
+ * it ONLY for tiles whose source-quadrant hash changed (unchanged tiles are never
+ * encoded). Tests inject a spy to assert the zero-encode-on-idle invariant.
+ */
+export type ShowcaseTileEncoder = (quad: Uint8ClampedArray, id: number) => RasterTile;
+
 /** Constructor options for {@link ShowcaseHudLayer}. */
 export interface ShowcaseHudLayerOpts {
   /** Resolved bridge singleton — `updateImageRawData` (tiles) + optional `onDeviceStatusChanged` (battery). */
@@ -143,6 +160,12 @@ export interface ShowcaseHudLayerOpts {
    * no-op when no 2D context exists (happy-dom).
    */
   readonly overlayDownscale?: ShowcaseOverlayDownscaler;
+  /**
+   * Override the per-tile encoder (tests inject a spy to assert unchanged tiles are
+   * never encoded). When omitted, {@link encodeQuadrant} dithers + UPNG-encodes each
+   * changed quadrant.
+   */
+  readonly encodeTile?: ShowcaseTileEncoder;
   /** Initial scene / header name (default `''`). */
   readonly sceneName?: string;
 }
@@ -161,6 +184,18 @@ export class ShowcaseHudLayer implements Layer {
   private readonly wsEvents: ShowcaseWsEvents;
   private readonly minRedrawIntervalMs: number;
   private readonly renderRegion: ShowcaseRegionRenderer;
+  /** Per-tile encoder (dither + UPNG). Called only for changed quadrants. */
+  private readonly _encodeTile: ShowcaseTileEncoder;
+
+  /**
+   * Reusable 200×100 RGBA scratch quadrant — {@link extractQuadrant} rewrites it per
+   * tile each cycle so the delta gate (hash + conditional encode) allocates nothing
+   * in the hot path. Rewritten before it is read, and never retained across the
+   * `await` push, so a single shared buffer is safe under the single-cycle invariant.
+   */
+  private readonly _quadScratch = new Uint8ClampedArray(QUADRANT_BYTES);
+  /** Stable `Uint8Array` view over {@link _quadScratch} for `h32Raw` (allocated once). */
+  private readonly _quadHashView = new Uint8Array(this._quadScratch.buffer);
 
   /** The layer's own 400×200 canvas 2D context — null in happy-dom / no-canvas hosts. */
   private readonly _ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
@@ -195,7 +230,13 @@ export class ShowcaseHudLayer implements Layer {
   /** R1 ring battery percent, or `null` until the first device-status update. */
   private battery: number | null = null;
 
-  /** Per-tile hash of the last-pushed PNG bytes; `null` = never pushed (push all). */
+  /**
+   * Per-tile xxhash of the last-encoded SOURCE quadrant (pre-dither RGBA); `null` =
+   * never pushed (push all). Hashing the source pixels — not the encoded PNG — lets
+   * the cycle skip the dither + `UPNG.encode` for unchanged tiles entirely (mirrors
+   * `engine/hud-delta-driver.ts` `_prevSourceHashes`). Determinism holds: identical
+   * source quadrant → identical dither → identical PNG → no push.
+   */
   private readonly _prevTileHashes: Array<number | null> = new Array(TILE_COUNT).fill(null);
 
   /** xxhash WASM API — lazily initialised on the first cycle. */
@@ -227,6 +268,7 @@ export class ShowcaseHudLayer implements Layer {
     this._ctx = ShowcaseHudLayer._acquireCtx();
     this.renderRegion = opts.renderRegion ?? ((model) => this._renderRegionViaCanvas(model));
     this._overlayDownscale = opts.overlayDownscale ?? ((rgba) => this._downscaleViaCanvas(rgba));
+    this._encodeTile = opts.encodeTile ?? encodeQuadrant;
 
     // Subscribe immediately so last-value replay caches any snapshot delivered
     // during boot (before start()). Released in destroy().
@@ -527,13 +569,20 @@ export class ShowcaseHudLayer implements Layer {
     }
     const hasher = this._xxhash;
 
-    const tiles = encodeRegionToTiles(rgba);
-    for (const tile of tiles) {
-      const i = tile.containerID;
-      const h = hasher.h32Raw(tile.pngBytes);
-      // First frame: _prevTileHashes[i] === null → push. Unchanged → skip.
+    // Delta gate on the SOURCE quadrant (pre-dither), NOT the encoded PNG: extract +
+    // hash each 200×100 quadrant first and dither + `UPNG.encode` ONLY the tiles whose
+    // source pixels changed. An idle cycle therefore pays extraction + hashing (cheap)
+    // but zero encode (the per-cycle expense) — mirrors hud-delta-driver.ts.
+    for (let i = 0; i < TILE_COUNT; i++) {
+      extractQuadrant(rgba, i, this._quadScratch);
+      const h = hasher.h32Raw(this._quadHashView);
+      // First frame: _prevTileHashes[i] === null → encode + push. Unchanged → skip
+      // both the encode AND the push.
       if (this._prevTileHashes[i] === h) continue;
       this._prevTileHashes[i] = h;
+      // The scratch quadrant is read synchronously by the encoder (fresh PNG bytes
+      // returned) before the await below, so reusing it next iteration is safe.
+      const pngBytes = this._encodeTile(this._quadScratch, i).pngBytes;
       // CM-01: serial push — the SDK rejects concurrent updateImageRawData on the
       // same container. Fail-soft: a non-success result logs + continues.
       try {
@@ -541,7 +590,7 @@ export class ShowcaseHudLayer implements Layer {
           new ImageRawDataUpdate({
             containerID: i,
             containerName: `showcase-tile-${i}`,
-            imageData: tile.pngBytes,
+            imageData: pngBytes,
           }),
         );
         if (!ImageRawDataUpdateResult.isSuccess(result)) {

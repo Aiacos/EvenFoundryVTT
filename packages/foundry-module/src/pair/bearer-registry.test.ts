@@ -583,3 +583,55 @@ describe('ingestBearer', () => {
     expect(refreshed?.expiresAt).toBeLessThan(before);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression: registry reads must NOT throw when `game.settings` is unavailable.
+//
+// The bearer-rotation scheduler (bearer-rotation.ts) is a fire-and-forget
+// setTimeout chain whose cancel closure is discarded by module.ts, so a pending
+// rotation can fire during Foundry teardown / module reload, when `game.settings`
+// is transiently gone. Previously `readRegistry` did an unguarded
+// `game.settings.get(...)` there and threw `Cannot read properties of undefined
+// (reading 'get')`, which escaped `scheduleNext()` (run in `rotateNow`'s finally,
+// outside its try/catch) as an UNHANDLED promise rejection and failed the whole
+// `pnpm test` run despite every assertion passing. The read now degrades to the
+// empty registry so `getActiveBearer()` returns null and the chain terminates.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('registry teardown-resilience (unhandled-rejection regression)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('Application', ApplicationStub);
+    vi.stubGlobal('foundry', {
+      applications: {
+        api: {
+          ApplicationV2: ApplicationV2Stub,
+          HandlebarsApplicationMixin: (Base: unknown) => Base,
+        },
+      },
+    });
+    vi.stubGlobal('Hooks', makeHooksMock());
+    vi.stubGlobal('crypto', makeCryptoMock());
+  });
+
+  it('getActiveBearer returns null (no throw) when game.settings is gone', async () => {
+    const { getActiveBearer } = await import('./bearer-registry.js');
+    // Simulate the teardown window: `game` exists but `settings` was removed.
+    vi.stubGlobal('game', {});
+    expect(() => getActiveBearer()).not.toThrow();
+    expect(getActiveBearer()).toBeNull();
+  });
+
+  it('listBearers returns [] (no throw) when game.settings is gone', async () => {
+    const { listBearers } = await import('./bearer-registry.js');
+    vi.stubGlobal('game', {});
+    expect(() => listBearers()).not.toThrow();
+    expect(listBearers()).toEqual([]);
+  });
+
+  it('validateBearer reports invalid (no throw) when game.settings is gone', async () => {
+    const { validateBearer } = await import('./bearer-registry.js');
+    vi.stubGlobal('game', {});
+    expect(() => validateBearer('any-token')).not.toThrow();
+    expect(validateBearer('any-token').valid).toBe(false);
+  });
+});

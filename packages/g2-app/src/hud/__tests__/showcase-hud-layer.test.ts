@@ -19,7 +19,7 @@ import {
 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShowcaseHudLayer, type ShowcaseWsEvents } from '../showcase-hud-layer.js';
-import { REGION_H, REGION_W } from '../showcase-raster.js';
+import { encodeQuadrant, REGION_H, REGION_W } from '../showcase-raster.js';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────
 
@@ -326,6 +326,101 @@ describe('ShowcaseHudLayer — tile push + xxhash skip', () => {
     const after = bridge.calls.slice(4);
     expect(after).toHaveLength(1);
     expect(after[0]?.id).toBe(0);
+    layer.destroy();
+  });
+});
+
+// ── Source-quadrant delta gate (PERF: encode only changed tiles) ─────────────────
+//
+// The layer no longer dithers + UPNG-encodes all 4 tiles every cycle: it hashes each
+// 200×100 SOURCE quadrant and encodes ONLY changed ones. These tests spy the encode
+// seam (opts.encodeTile) to prove idle cycles encode ZERO tiles and a single-tile
+// change encodes exactly one — the whole point of the optimization (zero-encode-on-idle).
+
+describe('ShowcaseHudLayer — source-quadrant encode gate', () => {
+  /** A layer wired with a spying encode seam that still produces real PNG bytes. */
+  function makeGated(region: Uint8ClampedArray) {
+    const bridge = makeBridge();
+    const ws = makeWsEvents();
+    const encodeTile = vi.fn((quad: Uint8ClampedArray, id: number) => encodeQuadrant(quad, id));
+    const layer = new ShowcaseHudLayer({
+      bridge,
+      wsEvents: ws,
+      minRedrawIntervalMs: 5,
+      renderRegion: () => region,
+      encodeTile,
+    });
+    return { bridge, ws, layer, encodeTile };
+  }
+
+  it('first cycle encodes all 4 tiles (baseline)', async () => {
+    const { layer, encodeTile } = makeGated(makeRegion(10));
+    await layer.draw();
+    expect(encodeTile).toHaveBeenCalledTimes(4);
+    expect(encodeTile.mock.calls.map((c) => c[1]).sort()).toEqual([0, 1, 2, 3]);
+    layer.destroy();
+  });
+
+  it('an identical second cycle encodes ZERO tiles (zero-encode-on-idle)', async () => {
+    const { layer, encodeTile } = makeGated(makeRegion(10));
+    await layer.draw();
+    expect(encodeTile).toHaveBeenCalledTimes(4);
+    encodeTile.mockClear();
+    await layer.draw(); // unchanged source → no quadrant hash changes → NO encode
+    expect(encodeTile).not.toHaveBeenCalled();
+    layer.destroy();
+  });
+
+  it('mutating one quadrant encodes ONLY that tile (not all 4)', async () => {
+    const region = makeRegion(10);
+    const { layer, encodeTile } = makeGated(region);
+    await layer.draw();
+    encodeTile.mockClear();
+    mutateTile(region, 2, 200); // change only tile 2's source pixels
+    await layer.draw();
+    expect(encodeTile).toHaveBeenCalledTimes(1);
+    expect(encodeTile.mock.calls[0]?.[1]).toBe(2);
+    layer.destroy();
+  });
+
+  it('the changed tile is still transmitted to the bridge (encode gate does not drop pushes)', async () => {
+    const region = makeRegion(10);
+    const { layer, bridge } = makeGated(region);
+    await layer.draw();
+    const before = bridge.calls.length;
+    mutateTile(region, 1, 77);
+    await layer.draw();
+    const pushed = bridge.calls.slice(before);
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]?.id).toBe(1);
+    layer.destroy();
+  });
+
+  it('an overlay↔base transition forces a full 4-tile RE-ENCODE (rebuild-blank-tile guard)', async () => {
+    const bridge = makeBridge();
+    const ws = makeWsEvents();
+    const encodeTile = vi.fn((quad: Uint8ClampedArray, id: number) => encodeQuadrant(quad, id));
+    const overlay = new Uint8ClampedArray(576 * 288 * 4);
+    for (let i = 3; i < overlay.length; i += 4) overlay[i] = 255;
+    const downscaled = makeRegion(30);
+    let overlayActive = false;
+    const layer = new ShowcaseHudLayer({
+      bridge,
+      wsEvents: ws,
+      minRedrawIntervalMs: 5,
+      renderRegion: () => makeRegion(10),
+      overlayDownscale: () => downscaled,
+      encodeTile,
+    });
+    layer.setOverlaySource(() => (overlayActive ? overlay : null));
+
+    await layer.draw(); // base HUD → 4 encodes
+    expect(encodeTile).toHaveBeenCalledTimes(4);
+    encodeTile.mockClear();
+
+    overlayActive = true;
+    await layer.draw(); // base→overlay transition forces all 4 (hashes reset)
+    expect(encodeTile).toHaveBeenCalledTimes(4);
     layer.destroy();
   });
 });
