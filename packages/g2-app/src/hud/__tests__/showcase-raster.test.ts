@@ -7,7 +7,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { encodeRegionToTiles, REGION_H, REGION_W } from '../showcase-raster.js';
+import {
+  encodeQuadrant,
+  encodeRegionToTiles,
+  extractQuadrant,
+  QUADRANT_BYTES,
+  REGION_H,
+  REGION_W,
+  TILE_COUNT,
+} from '../showcase-raster.js';
 
 /** Build a synthetic 400×200 RGBA buffer with a smooth diagonal luma gradient. */
 function makeRegion(): Uint8ClampedArray {
@@ -78,5 +86,87 @@ describe('encodeRegionToTiles', () => {
     expect(Array.from(gradientTile0?.pngBytes ?? [])).not.toEqual(
       Array.from(flatTile0?.pngBytes ?? []),
     );
+  });
+});
+
+// ── Per-quadrant delta-gate primitives (extractQuadrant + encodeQuadrant) ──────────
+//
+// The production showcase layer no longer encodes all 4 tiles every cycle: it extracts
+// each 200×100 SOURCE quadrant, hashes it, and encodes ONLY changed quadrants via
+// encodeQuadrant. These tests pin the primitives' correctness AND — critically — prove
+// the per-quadrant encode is BYTE-IDENTICAL to the whole-region encodeRegionToTiles, so
+// the optimization changes nothing the glasses actually see (visual determinism proof).
+
+describe('extractQuadrant + encodeQuadrant', () => {
+  it("extractQuadrant copies each tile's 200×100 quadrant into a reusable buffer", () => {
+    const src = makeRegion();
+    const quad = new Uint8ClampedArray(QUADRANT_BYTES);
+    // Tile id1 is the top-right quadrant (ox=200, oy=0). Its (0,0) pixel maps to
+    // source (200,0); its last row-0 pixel to source (399,0).
+    extractQuadrant(src, 1, quad);
+    const srcAt = (x: number, y: number) => src[(y * REGION_W + x) * 4];
+    expect(quad[0]).toBe(srcAt(200, 0));
+    expect(quad[199 * 4]).toBe(srcAt(399, 0));
+    // Bottom-left pixel of the quadrant (local 0,99) maps to source (200,99).
+    expect(quad[99 * 200 * 4]).toBe(srcAt(200, 99));
+  });
+
+  it('extractQuadrant zero-fills before copying (unknown id → all zero; no stale bytes)', () => {
+    const quad = new Uint8ClampedArray(QUADRANT_BYTES).fill(200); // pre-dirty
+    extractQuadrant(makeRegion(), 99, quad); // out-of-range id
+    expect(quad.every((b) => b === 0)).toBe(true);
+  });
+
+  it('extractQuadrant reused across tiles leaves no cross-tile contamination', () => {
+    const src = makeRegion();
+    const shared = new Uint8ClampedArray(QUADRANT_BYTES);
+    // Extract tile 3 first (dirties the buffer), then tile 0 into the SAME buffer.
+    extractQuadrant(src, 3, shared);
+    extractQuadrant(src, 0, shared);
+    // A fresh dedicated buffer for tile 0 must match the reused one byte-for-byte.
+    const fresh = new Uint8ClampedArray(QUADRANT_BYTES);
+    extractQuadrant(src, 0, fresh);
+    expect(Array.from(shared)).toEqual(Array.from(fresh));
+  });
+
+  it('encodeQuadrant emits the hybrid id + name and a non-empty PNG', () => {
+    const quad = new Uint8ClampedArray(QUADRANT_BYTES);
+    extractQuadrant(makeRegion(), 2, quad);
+    const tile = encodeQuadrant(quad, 2);
+    expect(tile.containerID).toBe(2);
+    expect(tile.containerName).toBe('hybrid-map-tile-2');
+    expect(Array.from(tile.pngBytes.slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it('DETERMINISM PROOF: extract+encodeQuadrant is byte-identical to encodeRegionToTiles', () => {
+    // The showcase layer's delta gate must produce EXACTLY the same PNG bytes the
+    // dev-preview whole-region encoder produces — otherwise the optimization would
+    // alter the dithered image on the glasses. Prove per-tile == whole-region.
+    const src = makeRegion();
+    const whole = encodeRegionToTiles(src);
+    const quad = new Uint8ClampedArray(QUADRANT_BYTES);
+    for (let id = 0; id < TILE_COUNT; id++) {
+      extractQuadrant(src, id, quad);
+      const perTile = encodeQuadrant(quad, id);
+      expect(perTile.containerID).toBe(whole[id]?.containerID);
+      expect(perTile.containerName).toBe(whole[id]?.containerName);
+      expect(Array.from(perTile.pngBytes)).toEqual(Array.from(whole[id]?.pngBytes ?? []));
+    }
+  });
+
+  it('DETERMINISM PROOF holds for a flat buffer AND a short/undersized buffer', () => {
+    for (const src of [
+      new Uint8ClampedArray(REGION_W * REGION_H * 4).fill(128),
+      new Uint8ClampedArray(64), // undersized → out-of-bounds reads clamp to 0
+    ]) {
+      const whole = encodeRegionToTiles(src);
+      const quad = new Uint8ClampedArray(QUADRANT_BYTES);
+      for (let id = 0; id < TILE_COUNT; id++) {
+        extractQuadrant(src, id, quad);
+        expect(Array.from(encodeQuadrant(quad, id).pngBytes)).toEqual(
+          Array.from(whole[id]?.pngBytes ?? []),
+        );
+      }
+    }
   });
 });

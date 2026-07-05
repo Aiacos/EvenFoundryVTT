@@ -150,6 +150,32 @@ port-forwarding. Use that hostname as `EVF_PLUGIN_HOST` / `EVF_BRIDGE_HOST`.
    `npx @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/g2-app/dist -c`.
 3. **Repackage** with the real whitelist: `pnpm --filter @evf/g2-app pack:ehpk`.
 
+## Pre-submission readiness checklist
+
+Run through this before the manual portal upload (verified 2026-07-05 against the
+Even Hub packaging reference):
+
+- [ ] **`app.json` fields valid** — `package_id` reverse-domain lowercase (`io.github.aiacos.foundryvtt`,
+      each segment starts with a letter, no hyphens); `edition` = `202601`; `name` ≤20 chars
+      (`FoundryVTT G2 HUD` = 17); `version` semver, matches `package.json` (`0.2.5`);
+      `min_app_version`/`min_sdk_version` present; `entrypoint` = `index.html`; `supported_languages`
+      ⊂ `{en,de,fr,es,it,zh,ja,ko}` (`["it","en"]`).
+- [ ] **Whitelist matches the deployed origins** — `permissions[0].whitelist` lists the origin-complete
+      HTTPS origin(s) of the bridge + plugin host (no wildcards). Every production outbound call
+      (health `GET /v1/health`, i18n `GET /v1/i18n/{lang}`, WS `wss://…/ws` + `/v1/audio/stream`)
+      derives from the pasted `bridgeUrl`, so **one entry per distinct production origin** suffices;
+      the `wss://` upgrade of a whitelisted `https://` origin is same-origin. **A new bridge origin
+      requires an `app.json` whitelist edit + repack** (run `node deploy/sync-app-whitelist.mjs`).
+- [ ] **`dist/` clean** — `pnpm --filter @evf/g2-app build` produced `dist/index.html`,
+      `dist/wizard/wizard.html`, `dist/icon.png`, VT323 bundled locally (no CDN/font URL);
+      no sourcemaps, no `src/demo/*` pages, no `__EVF_DEBUG_AGENT_v1__` marker.
+- [ ] **CORS on the bridge** — `EVF_PLUGIN_HOST_URL` is set to the exact origin the WebView loads
+      from (the whitelist is an Even-level check and does **not** bypass CORS). When bridge and plugin
+      host share one origin (this repo's default), requests are same-origin and CORS is not exercised.
+- [ ] **`package_id` availability** — `npx @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/g2-app/dist -c`
+      (online, after `evenhub login`).
+- [ ] **Fresh `.ehpk`** — `pnpm --filter @evf/g2-app pack:ehpk` (bakes the current `app.json`).
+
 ## Manual submission steps
 
 1. Download `evenfoundryvtt.ehpk` from the latest `Even Hub Pack` workflow run (or build
@@ -165,7 +191,7 @@ port-forwarding. Use that hostname as `EVF_PLUGIN_HOST` / `EVF_BRIDGE_HOST`.
 | `package_id` | `io.github.aiacos.foundryvtt` | reverse-domain, lowercase, no hyphens, ≥2 segments, each segment starts with a letter |
 | `edition` | `202601` | exact |
 | `name` | `FoundryVTT G2 HUD` | ≤20 chars (avoid "Even") |
-| `version` | synced from `g2-app/package.json` | semver, no `v` prefix |
+| `version` | tracks `g2-app/package.json` (currently `0.2.5`) | semver, no `v` prefix. The repo `app.json` is kept in lockstep with the package version so **local** `pack:ehpk` bakes the correct version; the CD (`evenhub-pack.yml`) re-syncs it at build time as belt-and-braces. |
 | `min_app_version` / `min_sdk_version` | `2.0.0` / `0.0.10` | both required; SDK floor `0.0.10` |
 | `entrypoint` | `index.html` | must exist at the build-output root. `vite.config.ts` uses `root: 'src'` + `outDir: '../dist'` so the entry emits as `dist/index.html` (not `dist/src/index.html`) — keeping the canonical `index.html` entrypoint. |
 | `supported_languages` | `["it","en"]` | from `en,de,fr,es,it,zh,ja,ko` |

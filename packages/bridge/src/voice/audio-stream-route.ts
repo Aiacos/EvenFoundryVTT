@@ -202,7 +202,12 @@ export async function registerAudioStreamRoute(opts: RegisterAudioStreamRouteOpt
             logger.warn({ err }, 'audio-stream-route: error closing Deepgram stream');
           }
         });
-      })();
+      })().catch((err) => {
+        // The auth-setup awaits (tokenCache.validate) run outside the per-message
+        // try/catch above; guard the IIFE so a rejecting validate fn cannot become
+        // an unhandled promise rejection (same pattern as the /ws handlers).
+        logger.warn({ err }, 'audio-stream-route: session setup failed');
+      });
     },
   );
 }
