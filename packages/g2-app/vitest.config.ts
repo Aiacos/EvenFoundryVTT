@@ -19,5 +19,11 @@ export default defineProject({
     name: 'g2-app',
     environment: 'happy-dom',
     include: ['src/**/*.test.ts', 'src/__tests__/**/*.test.ts'],
+    // Hermetic-fetch guard: boot-engine tests use the sentinel bridge host
+    // `test`; happy-dom's window.fetch would otherwise CORS-preflight it over
+    // REAL node:http → real DNS (`getaddrinfo EAI_AGAIN test`) → an internal
+    // error escaping happy-dom's promise chain at teardown → Vitest exit 1
+    // with 0 test failures (the intermittent CI red on quality-gates).
+    setupFiles: ['src/test-support/hermetic-fetch.setup.ts'],
   },
 });
