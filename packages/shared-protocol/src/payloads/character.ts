@@ -110,8 +110,16 @@ export const InventoryItemSchema = z.object({
   tags: z.array(z.string()).optional(),
   /** Item weight in kg (may be absent for weightless items). */
   weight: z.number().optional(),
-  /** Stack quantity (e.g. 3 for ×3 potions). Defaults to 1 if absent. */
-  quantity: z.number().int().positive().optional(),
+  /**
+   * Stack quantity (e.g. 3 for ×3 potions). Defaults to 1 if absent.
+   *
+   * NONNEGATIVE, not positive: a depleted stack (quantity 0 — spent ammo, an
+   * empty potion bottle) is a legitimate dnd5e inventory state that the Foundry
+   * reader passes through verbatim. A `positive()` gate here made ONE qty-0 item
+   * reject the ENTIRE CharacterSnapshot on the glasses (live-debug 2026-07-05:
+   * `inventory[16].quantity` → whole character.delta dropped → empty sheet).
+   */
+  quantity: z.number().int().nonnegative().optional(),
 });
 
 export type InventoryItem = z.infer<typeof InventoryItemSchema>;

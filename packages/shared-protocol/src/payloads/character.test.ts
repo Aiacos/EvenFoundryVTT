@@ -356,6 +356,31 @@ describe('CharacterSnapshotSchema — inventory extension (CHAR-INV)', () => {
       expect(result.data.quantity).toBeUndefined();
     }
   });
+
+  it('CHAR-INV-7: quantity 0 (depleted stack) is VALID — regression for the live snapshot drop', () => {
+    // Live-debug 2026-07-05: a real Foundry actor carried a depleted stack
+    // (quantity 0 — spent ammo / empty bottle, legitimate dnd5e state). The old
+    // `positive()` gate rejected that one item and zod dropped the ENTIRE
+    // CharacterSnapshot on the glasses → permanently empty sheet.
+    const result = InventoryItemSchema.safeParse({
+      id: 'depleted-ammo',
+      name: 'Frecce',
+      type: 'consumable',
+      quantity: 0,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.quantity).toBe(0);
+    }
+    // Negative quantities remain invalid.
+    const negative = InventoryItemSchema.safeParse({
+      id: 'bad',
+      name: 'Bad',
+      type: 'consumable',
+      quantity: -1,
+    });
+    expect(negative.success).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
