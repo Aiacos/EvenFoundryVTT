@@ -21,6 +21,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShowcaseHudLayer, type ShowcaseWsEvents } from '../showcase-hud-layer.js';
 import { encodeQuadrant, REGION_H, REGION_W } from '../showcase-raster.js';
 
+// This suite drives the layer's REAL trailing-edge throttle (~100ms waits) with
+// real timers plus real UPNG encodes. On a throttled shared CI runner under V8
+// coverage instrumentation those event-loop wakes stretch arbitrarily — the
+// overlay-source test blew vitest's 5000ms default on GitHub Actions while
+// passing locally in <100ms (same env-variance class as the canvas-extractor
+// CE-FPS flake). Generous explicit ceiling; assertions are unchanged.
+vi.setConfig({ testTimeout: 20_000 });
+
 // ── Fixtures ────────────────────────────────────────────────────────────────────
 
 /** A complete, valid CharacterSnapshot (mirrors showcase-hud-renderer.test.ts). */
