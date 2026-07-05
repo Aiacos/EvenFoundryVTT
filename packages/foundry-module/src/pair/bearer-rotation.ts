@@ -171,6 +171,17 @@ export function scheduleBearerRotation(opts: BearerRotationOptions): () => void 
   async function rotateNow(active: NonNullable<ReturnType<typeof getActiveBearer>>): Promise<void> {
     if (cancelled) return;
 
+    // Torn-down guard: the cancel closure is discarded in MVP (module.ts), so a
+    // pending timer can fire AFTER Foundry teardown (module reload, or Vitest
+    // worker teardown in module.test.ts). With `game.settings` gone, generateBearer
+    // would throw and the catch below would console.warn post-teardown — in tests
+    // that racing console output intermittently kills the worker RPC
+    // (`onUserConsoleLog` teardown flake). Environment gone → stop the chain
+    // silently: no work, no warn, no reschedule.
+    if ((globalThis as { game?: { settings?: unknown } }).game?.settings === undefined) {
+      return;
+    }
+
     try {
       // Step 1: generate new bearer with 60s grace on old token (RESEARCH §Q6).
       // ADR-0014: carry the bound userId from the active entry so the rotated
