@@ -115,9 +115,25 @@ const MAX_ALIAS_LENGTH = 40;
 /**
  * Reads the bearer registry from Foundry settings.
  * Returns an empty registry if none is stored yet.
+ *
+ * Resilient to `game`/`game.settings` being unavailable: the bearer-rotation
+ * scheduler (bearer-rotation.ts) is a fire-and-forget `setTimeout` chain whose
+ * cancel closure is discarded by module.ts, so a pending rotation can fire
+ * DURING Foundry teardown / module reload — a window where `game.settings` is
+ * transiently gone. Reading it unguarded there threw `Cannot read properties of
+ * undefined (reading 'get')`, which surfaced as an UNHANDLED promise rejection
+ * from `scheduleNext()` (run in `rotateNow`'s `finally`, outside its try/catch)
+ * and failed the whole workspace test run. Degrading to the empty registry is
+ * correct: with no readable store there are no bearers, so `getActiveBearer()`
+ * returns `null` and the rotation chain terminates cleanly instead of crashing.
  */
 function readRegistry(): BearerRegistry {
-  const stored = game.settings.get(MODULE_ID, REGISTRY_KEY) as BearerRegistry | undefined;
+  const settings = (globalThis as { game?: { settings?: { get(m: string, k: string): unknown } } })
+    .game?.settings;
+  if (settings === undefined) {
+    return { entries: {}, version: 1 };
+  }
+  const stored = settings.get(MODULE_ID, REGISTRY_KEY) as BearerRegistry | undefined;
   if (!stored) {
     return { entries: {}, version: 1 };
   }
@@ -134,7 +150,19 @@ function readRegistry(): BearerRegistry {
  * @param registry - The registry to persist
  */
 async function writeRegistry(registry: BearerRegistry): Promise<void> {
-  await game.settings.set(MODULE_ID, REGISTRY_KEY, registry);
+  // Same teardown/reload resilience as readRegistry: a rotation that fires while
+  // `game.settings` is gone cannot persist, and throwing here only produces
+  // fault-tolerance noise (rotateNow catches it and warns). No-op when the store
+  // is unavailable — a normal Foundry session always has `game.settings`.
+  const settings = (
+    globalThis as {
+      game?: { settings?: { set(m: string, k: string, v: unknown): Promise<unknown> } };
+    }
+  ).game?.settings;
+  if (settings === undefined) {
+    return;
+  }
+  await settings.set(MODULE_ID, REGISTRY_KEY, registry);
 }
 
 /**
