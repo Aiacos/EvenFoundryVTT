@@ -229,6 +229,53 @@ describe('character-sheet-tab-renderers — paint*Tab canvas renderers', () => {
     expect(typeof module.paintFeatsTab).toBe('function');
     expect(typeof module.paintBioTab).toBe('function');
   });
+
+  // ── null-snapshot short-circuit, default locale, and row-overflow break ──────
+
+  it('every paint*Tab is a no-op with a null snapshot (no fillText)', async () => {
+    const m = await import('../character-sheet-tab-renderers.js');
+    const bounds = { x: 0, y: 0, w: 576, h: 288 };
+    for (const fn of [
+      m.paintSkillsTab,
+      m.paintInventoryTab,
+      m.paintSpellsTab,
+      m.paintFeatsTab,
+      m.paintBioTab,
+    ]) {
+      const { ctx, calls } = makeFakeCtx();
+      fn(ctx, null, bounds, '16px monospace');
+      expect(calls.filter((c) => c.method === 'fillText')).toHaveLength(0);
+    }
+  });
+
+  it('paint*Tab default the locale to "en" when the arg is omitted (still draws rows)', async () => {
+    const m = await import('../character-sheet-tab-renderers.js');
+    const bounds = { x: 0, y: 0, w: 576, h: 288 };
+    // Omit the trailing locale argument → exercises the `locale = 'en'` default-param branch.
+    for (const fn of [m.paintSkillsTab, m.paintInventoryTab, m.paintSpellsTab]) {
+      const { ctx, calls } = makeFakeCtx();
+      fn(ctx, TEST_SNAPSHOT, bounds, '16px monospace');
+      expect(calls.filter((c) => c.method === 'fillText').length).toBeGreaterThan(0);
+    }
+  });
+
+  it('paint*Tab stops at the row-overflow ceiling (break arm) when bounds.h is tiny', async () => {
+    const m = await import('../character-sheet-tab-renderers.js');
+    // h=0 forces the very first `lineY > y + bounds.h` check to break the loop.
+    const tightBounds = { x: 0, y: 0, w: 576, h: 0 };
+    for (const fn of [
+      m.paintSkillsTab,
+      m.paintInventoryTab,
+      m.paintSpellsTab,
+      m.paintFeatsTab,
+      m.paintBioTab,
+    ]) {
+      const { ctx, calls } = makeFakeCtx();
+      fn(ctx, TEST_SNAPSHOT, tightBounds, '16px monospace', 'en');
+      // Loop breaks after the first painted row → exactly one fillText.
+      expect(calls.filter((c) => c.method === 'fillText')).toHaveLength(1);
+    }
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1433,5 +1480,102 @@ describe('CanvasCharacterSheetPanel — setInitialTab override (RCSP-INITIAL-TAB
     panel.setInitialTab(null);
     await panel.onMount();
     expect(panel.getActiveTab()).toBe('skills');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RCSP-PAINT-CTX — paint() with a live 2D context across all six tabs
+//
+// The other suites attach only null-ctx canvases, so paint() returns early and
+// _paintActiveTab's per-tab dispatch (the 6-way switch) is never exercised.
+// Here we attach a recording fake ctx and paint each tab, asserting real draws.
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('CanvasCharacterSheetPanel — paint() live-ctx tab dispatch (RCSP-PAINT-CTX)', () => {
+  async function getPanel() {
+    const m = await import('../canvas-character-sheet-panel.js');
+    return m.default;
+  }
+
+  function makeMockGestureBus() {
+    const subscribers: Array<(g: { kind: string; direction?: string }) => void> = [];
+    return {
+      subscribe: vi.fn((fn: (g: { kind: string; direction?: string }) => void) => {
+        subscribers.push(fn);
+        return () => {
+          const idx = subscribers.indexOf(fn);
+          if (idx >= 0) subscribers.splice(idx, 1);
+        };
+      }),
+      publish: (g: { kind: string; direction?: string }) => {
+        for (const fn of [...subscribers]) fn(g);
+      },
+      size: () => subscribers.length,
+    };
+  }
+
+  function makeMockBridge() {
+    return {
+      setLocalStorage: vi.fn().mockResolvedValue('true'),
+      getLocalStorage: vi.fn().mockResolvedValue(''),
+      textContainerUpgrade: vi.fn().mockResolvedValue(undefined),
+      updateImageRawData: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('paints every tab through the live-ctx dispatch (all 6 switch arms) and clears dirty', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const panel = new CanvasCharacterSheetPanel(makeMockBridge() as never, bus as never, 'it');
+
+    const { ctx, calls } = makeFakeCtx();
+    const canvas = { getContext: () => ctx } as unknown as HTMLCanvasElement;
+
+    panel.onSnapshot(TEST_SNAPSHOT);
+    await panel.attachCanvas(canvas);
+    await panel.onMount();
+
+    // TABS order: main, skills, inventory, spells, feats, bio.
+    const seenTabs: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      calls.length = 0;
+      panel.paint();
+      // Static chrome cleared + drawn, tab strip + tab content painted.
+      expect(ctx.clearRect).toHaveBeenCalled();
+      expect(calls.some((c) => c.method === 'fillText')).toBe(true);
+      // paint() clears the dirty flag as its LAST statement.
+      expect(panel.isDirty()).toBe(false);
+      seenTabs.push(panel.getActiveTab());
+      // Advance to the next tab.
+      bus.publish({ kind: 'tap' });
+    }
+
+    // We visited all six distinct tabs (the switch's six arms).
+    expect(new Set(seenTabs).size).toBe(6);
+  });
+
+  it('destroy() is safe when no chrome bitmap was baked (happy-dom null-bitmap path)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const panel = new CanvasCharacterSheetPanel(
+      makeMockBridge() as never,
+      makeMockGestureBus() as never,
+      'it',
+    );
+    const { ctx } = makeFakeCtx();
+    await panel.attachCanvas({ getContext: () => ctx } as unknown as HTMLCanvasElement);
+    // In happy-dom createImageBitmap is unavailable → _chromeBitmap stays null.
+    expect(() => panel.destroy()).not.toThrow();
+  });
+
+  it('re-mount without a prior unmount releases the stale gesture subscription (WR-02 guard)', async () => {
+    const CanvasCharacterSheetPanel = await getPanel();
+    const bus = makeMockGestureBus();
+    const panel = new CanvasCharacterSheetPanel(makeMockBridge() as never, bus as never, 'it');
+
+    await panel.onMount();
+    expect(bus.size()).toBe(1);
+    // Second onMount without onUnmount must NOT leak a second subscription.
+    await panel.onMount();
+    expect(bus.size()).toBe(1);
   });
 });
