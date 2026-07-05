@@ -936,6 +936,11 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             debugInboundTap(sessionId, rawData);
           }
           handleResume(socket, sessionId, replayBuffer, rawData, logger);
+          // `.catch()` mirrors the pushInitialCharacterDelta guard above: this
+          // handler awaits `tokenCache.validate(...)`, and while the production
+          // `internalValidateFn` (pure cache reads) never rejects, an injected
+          // Foundry-roundtrip validate fn (see token-cache.ts) could — an
+          // unguarded rejection here would be an unhandled promise rejection.
           void handleToolInvoke(
             socket,
             sessionId,
@@ -944,7 +949,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             tokenCache,
             rawData,
             logger,
-          );
+          ).catch((err) => {
+            logger.error({ err }, 'tool.invoke handler failed');
+          });
           // 'client_setting' → queue a glasses-originated display-settings edit
           // for the upstream frame-POST piggyback. No-op on other message types.
           handleClientSetting(settingsStore, rawData, logger);
@@ -956,7 +963,9 @@ export async function buildServer(opts: BuildServerOptions = {}): Promise<Fastif
             sessionId,
             rawData,
             logger,
-          );
+          ).catch((err) => {
+            logger.error({ err }, 'client_select_actor handler failed');
+          });
           // 'client_player_view' → record the headless player-view intent, drive
           // the orchestrator (launch/teardown the headless Foundry session), and
           // reply to THIS session with the current orchestrator state. Subsequent
