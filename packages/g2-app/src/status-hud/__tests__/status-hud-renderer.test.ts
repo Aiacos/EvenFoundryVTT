@@ -701,3 +701,102 @@ describe('StatusHudRenderer compact — full-width path unchanged', () => {
     expect(anyWide).toBe(true);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Transition-guarded setters — setMovementBudget / setActionEconomy
+//
+// Both setters short-circuit when the incoming value is structurally identical
+// to the current one (overlay callers spam them on every frame). These tests
+// assert the guard actually holds/replaces state, not just that it runs.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('StatusHudRenderer — setMovementBudget transition guard', () => {
+  it('stores a budget, is a no-op on an identical budget, and replaces on a change', () => {
+    const r = new StatusHudRenderer({ locale: 'en' });
+    expect(r._getMovementBudgetForTest()).toBeNull();
+
+    r.setMovementBudget({ remaining: 20, total: 30 });
+    const first = r._getMovementBudgetForTest();
+    expect(first).toEqual({ remaining: 20, total: 30 });
+
+    // Structurally-identical values → guard returns early; reference is preserved.
+    r.setMovementBudget({ remaining: 20, total: 30 });
+    expect(r._getMovementBudgetForTest()).toBe(first);
+
+    // A changed value replaces the stored budget.
+    r.setMovementBudget({ remaining: 5, total: 30 });
+    expect(r._getMovementBudgetForTest()).toEqual({ remaining: 5, total: 30 });
+  });
+
+  it('clearing to null is a no-op when already null, and clears a set budget', () => {
+    const r = new StatusHudRenderer({ locale: 'en' });
+    // null → already null: guard short-circuits.
+    r.setMovementBudget(null);
+    expect(r._getMovementBudgetForTest()).toBeNull();
+    // set → null: clears.
+    r.setMovementBudget({ remaining: 1, total: 6 });
+    r.setMovementBudget(null);
+    expect(r._getMovementBudgetForTest()).toBeNull();
+  });
+});
+
+describe('StatusHudRenderer — setActionEconomy transition guard', () => {
+  const base = {
+    actionsUsed: 0,
+    bonusActionsUsed: 0,
+    reactionsUsed: 0,
+    multiAttackInProgress: false,
+  } as const;
+
+  it('stores state, no-ops on a structurally-equal state, and replaces on any field change', () => {
+    const r = new StatusHudRenderer({ locale: 'en' });
+    expect(r._getActionEconomyForTest()).toBeNull();
+
+    r.setActionEconomy({ ...base });
+    const first = r._getActionEconomyForTest();
+    expect(first).toEqual(base);
+
+    // Equal in every compared field → guard returns; stored reference unchanged.
+    r.setActionEconomy({ ...base });
+    expect(r._getActionEconomyForTest()).toBe(first);
+
+    // Flip one field → state is replaced.
+    r.setActionEconomy({ ...base, reactionsUsed: 1 });
+    expect(r._getActionEconomyForTest()?.reactionsUsed).toBe(1);
+  });
+
+  it('compares nested multiAttack current/total, replacing when they differ', () => {
+    const r = new StatusHudRenderer({ locale: 'en' });
+    r.setActionEconomy({
+      ...base,
+      multiAttackInProgress: true,
+      multiAttack: { current: 1, total: 3 },
+    });
+    const first = r._getActionEconomyForTest();
+
+    // Same nested numbers → no-op.
+    r.setActionEconomy({
+      ...base,
+      multiAttackInProgress: true,
+      multiAttack: { current: 1, total: 3 },
+    });
+    expect(r._getActionEconomyForTest()).toBe(first);
+
+    // Different nested current → replace.
+    r.setActionEconomy({
+      ...base,
+      multiAttackInProgress: true,
+      multiAttack: { current: 2, total: 3 },
+    });
+    expect(r._getActionEconomyForTest()?.multiAttack?.current).toBe(2);
+  });
+
+  it('clearing to null no-ops when already null and clears a set state', () => {
+    const r = new StatusHudRenderer({ locale: 'en' });
+    r.setActionEconomy(null);
+    expect(r._getActionEconomyForTest()).toBeNull();
+    r.setActionEconomy({ ...base });
+    r.setActionEconomy(null);
+    expect(r._getActionEconomyForTest()).toBeNull();
+  });
+});

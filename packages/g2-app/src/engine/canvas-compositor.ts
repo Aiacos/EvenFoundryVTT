@@ -8,10 +8,10 @@
  * cached canvas without calling `paint()` again), and returns a 576×288×4
  * RGBA `Uint8ClampedArray` consumed by `buildHudTiles` → `pushHudTiles`.
  *
- * # Canvas acquisition (acquireCanvas2d pattern)
+ * # Canvas acquisition
  *
- * The master canvas is created in the same environment-resolution order as
- * `acquireCanvas2d` in `hud-canvas-renderer.ts`:
+ * The master canvas is created via `_acquireMasterCtx()` using this
+ * environment-resolution order:
  *   1. `OffscreenCanvas` — Web Worker context.
  *   2. `document.createElement('canvas')` — WebView / browser main thread.
  *   3. Throws — no canvas API available (test environment must inject via
@@ -26,7 +26,6 @@
  *
  * @see docs/architecture/0013-hud-raster-rendering.md (ADR-0013 Amendment 1 — compositor model)
  * @see packages/g2-app/src/hud/hud-raster-frame.ts (FRAME_W/FRAME_H coupling)
- * @see packages/g2-app/src/hud/hud-canvas-renderer.ts (acquireCanvas2d pattern source)
  * @see packages/g2-app/src/engine/layer-types.ts (ZIndex, CanvasLayer)
  */
 
@@ -236,12 +235,10 @@ export class CanvasCompositor implements CanvasCompositorLike {
   /**
    * Acquire a 2D rendering context for the master 576×288 canvas.
    *
-   * Environment resolution order (mirrors `acquireCanvas2d` in hud-canvas-renderer.ts):
+   * Environment resolution order:
    *   1. `OffscreenCanvas` — Web Worker context.
    *   2. `document.createElement('canvas')` — WebView / browser main thread.
    *   3. Throws — test environment; tests must call `_testSetMasterContext`.
-   *
-   * @see packages/g2-app/src/hud/hud-canvas-renderer.ts acquireCanvas2d
    */
   private static _acquireMasterCtx(): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D {
     if (typeof OffscreenCanvas !== 'undefined') {
