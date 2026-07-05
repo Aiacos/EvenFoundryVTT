@@ -1070,11 +1070,21 @@ export async function _bootEngineCore(
   // adjusted on the PHONE (DOM control surface), not via on-glasses gestures.
   // Late-bound so the sync's onUpdate can refresh it; assigned just below.
   let phoneSettings: PhoneSettingsPanel | null = null;
+  // Late-bound ShowcaseHudLayer ref (same pattern as `phoneSettings` above).
+  // CRITICAL: `wsEventBus.subscribe` REPLAYS the cached `settings.display`
+  // envelope SYNCHRONOUSLY inside createDisplaySettingsSync below. On a live
+  // bridge (real phone) that envelope is already cached by this boot step, so
+  // this callback fires BEFORE `const showcaseLayer` (declared further down) is
+  // initialized — referencing it directly was a TDZ ReferenceError that killed
+  // the whole boot on real hardware (white page; live remote-debug 2026-07-05).
+  // The sim never caught it: its WebView WS never connects → no cached envelope
+  // → no synchronous replay.
+  let showcaseLayerRef: ShowcaseHudLayer | null = null;
   const displaySettingsSync = createDisplaySettingsSync(wsEventBus, wsSender, (settings) => {
     if (typeof settings.dither === 'boolean' && settings.dither !== ditherOn) {
       ditherOn = settings.dither;
       hudDeltaDriver.requestCycle();
-      showcaseLayer.requestCycle(); // showcase mode: repaint on dither change (no-op until started)
+      showcaseLayerRef?.requestCycle(); // showcase repaint on dither change (no-op until constructed/started)
     }
     // Reflect downstream Foundry changes into the phone controls.
     phoneSettings?.update(settings);
@@ -1196,6 +1206,9 @@ export async function _bootEngineCore(
     bridge,
     wsEvents: wsEventBus,
   });
+  // Late-bind the settings-sync callback ref (see showcaseLayerRef declaration
+  // above createDisplaySettingsSync — TDZ guard for the synchronous replay path).
+  showcaseLayerRef = showcaseLayer;
 
   // Feature 002 (showcase) — GENERIC z=2 overlay bridge. Overlay panels open as the
   // 'canvas' variant (CanvasLayers), so `LayerManager.bundle()` registers them on the
