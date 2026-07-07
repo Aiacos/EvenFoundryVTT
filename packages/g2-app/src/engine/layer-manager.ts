@@ -755,7 +755,16 @@ export class LayerManager {
                 imageObject: [] as never[],
               };
     const payload = new RebuildPageContainer(schema);
-    await this.bridge.rebuildPageContainer(payload);
+    const rebuildOk = await this.bridge.rebuildPageContainer(payload);
+    if (rebuildOk !== true) {
+      // Live-debug probe (2026-07-05): the REAL host returns false when it
+      // rejects a page schema (the sim always accepts). A rejected rebuild
+      // leaves the previous containers in place, so every subsequent
+      // updateImageRawData fails with `sendFailed`. Surface it loudly.
+      console.warn(
+        `[EVF] layer-manager: rebuildPageContainer REJECTED (mode=${this.renderMode}, containers=${schema.containerTotalNum})`,
+      );
+    }
     if (usesCompositor) {
       if (this._deltaDriver !== null) {
         // Phase 24: HudDeltaDriver owns the first-frame push and the event-driven
