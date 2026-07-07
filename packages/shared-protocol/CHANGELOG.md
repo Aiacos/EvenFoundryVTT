@@ -1,5 +1,95 @@
 # @evf/shared-protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- b385bf8: Combat snapshots now carry each combatant's **token UUID** (`tokenUuid`, e.g.
+  `Scene.X.Token.Y`) read from `combatant.token?.uuid`. The combatant `id` is the
+  Combatant document id, NOT a token UUID, so the glasses target picker — which forwards
+  the selected target into MidiQOL's `midiOptions.targetUuids` — was passing a value
+  MidiQOL could not resolve, silently producing no attack/cast on the chosen token (only
+  the EVF Audit card appeared). `CombatantSchema` gains an optional+nullable `tokenUuid`
+  field (back-compat with pre-tokenUuid module builds) and the combat reader emits it.
+- 96d2022: Add frame_png wire format (greyscale lossless PNG ~1-5KB vs 427KB RGBA) for the map stream: new FramePngSchema in shared-protocol, DM-configurable captureIntervalMs + leading+trailing hook throttle + identical-frame hash-skip + PNG encode in foundry-module v0.1.15, frame_png decode in g2-app (frame_pixels back-compat retained).
+- 2d5a35b: Optional `actorId` added to `HandshakeClientSchema` (task flv).
+
+  The field is additive (optional string, no default, no migration required). It lets the
+  g2-app pass the player's chosen character ID at WS connect time so the bridge can target
+  the initial `character.delta` push to that actor's snapshot. Sessions that omit `actorId`
+  fall back to `roster.characters[0]` (existing behaviour preserved).
+
+- a6c8fc8: Latency-audit follow-up: residual fps fixes + map brightness + bidirectional display-settings sync.
+
+  **Performance (residual latency removed):**
+
+  - foundry-module: the capture loop no longer awaits the native encode — `runEncodeJob` is fire-and-forget behind the single-flight latest-wins queue, so the loop re-arms after acquire+process only (the encode genuinely overlaps the next capture). Raises the producer ceiling well past 30 fps.
+  - foundry-module: lossy WebP wire format via `OffscreenCanvas.convertToBlob` (new `mapWebpQuality` world setting, default 75) — ~4–7× smaller than PNG, cutting the per-hop bandwidth from ~22 to ~4 Mbit/s at 30 fps. Transparent PNG fallback on hosts without WebP encoding.
+  - foundry-module: the `/internal/delta` frame POST is now single-flight latest-wins with a 5 s `AbortSignal.timeout`, so a slow WAN can no longer accumulate unbounded in-flight requests.
+  - bridge: frame deltas (`frame_png`/`frame_pixels`/`frame_stats`) are excluded from the replay buffer (no ~160 MB/session growth, no stale-frame replay burst on reconnect) and reuse the current seq (gap detection stays correct). Per-session `bufferedAmount` backpressure drops frames for a saturated client instead of queuing unbounded.
+  - g2-app: the HudDeltaDriver throttle (33 ms ≈ 30 fps cap) is now configurable per boot via `BootEngineOpts.hudMinIntervalMs` / `?hudms=` for lab tuning.
+
+  **Map brightness:** new `mapBrightness` client setting (−100..+100 luma gain) applied module-side before the 16-level quantize, with on-glasses `[+]`/`[-]` Quick Action menu rows.
+
+  **Bidirectional display-settings sync:** the five map settings (dither, brightness, WebP quality, capture fps, contrast-normalize) stay in sync between Foundry and the glasses and are controllable from both. Downstream over a new `settings.display` delta (cached by the bridge, pushed on connect); upstream over a `client_setting` WS message that the bridge piggybacks on the module's next frame-POST response (no new connection / no polling — the module is push-only). New `@evf/shared-protocol` payload `settings-display.ts`.
+
+- e17065e: Layout B — full-screen 576×288 map: 4 image tiles of 288×144 (SDK verbatim max, INV-2 drift corrected from 200×100) cover the entire G2 display; the extractor emits 576×288 frames; status/fps move into a translucent raster corner card (top-right) drawn over the map; the native hud-status container is removed (the host renders image containers over text).
+- a823240: Phase-8 write channel + skill-check tool, end-to-end.
+
+  The bridge could receive `tool.invoke` envelopes but had no way to execute write
+  tools in Foundry (it cannot use socketlib; the only bridge↔Foundry channel was the
+  one-way module → `/internal/delta` POST). This adds a poll-based REVERSE channel that
+  mirrors the player-view stream-request pattern:
+
+  - **bridge**: a new in-memory `ToolInvocationQueue` (`enqueue`/`drainPending`/`resolveResult`
+    with a 10s `foundry_timeout`) and two internal-secret-guarded, rate-limit-exempt
+    routes — `GET /internal/tool-requests` (drain pending) and `POST /internal/tool-result`
+    (resolve the awaiting promise). The production WS dispatch now enqueues on this queue
+    (the test override is preserved).
+  - **foundry-module**: a GM-gated `tool-invocation-poller` (≈1s cadence, fault-tolerant)
+    polls the bridge, dispatches each write, and POSTs the result back. The ADR-0014
+    per-actor write authorization was extracted into a single shared
+    `dispatchToolAuthorized` used by BOTH the socketlib adapter and the new poller, so
+    both channels enforce identical authorization. No new socketlib handler is added
+    (the `socket.register` count stays 17).
+  - **skill-check tool**: new `skill-check` write tool — `actor.rollSkill({ skill,
+advantage, disadvantage })` (dnd5e 5.x config-object API). Added to the shared
+    `TOOL_ID_SCHEMA`, the module `ToolId`/`TOOL_HANDLER_IDS`, and a new handler.
+  - **g2-app**: a new interactive canvas Skills panel (Quick Action `[K]`) that, on tap,
+    dispatches a `skill-check` `tool.invoke` directly (no ActionOptions modal), plus the
+    `[K]` menu item, icon, and `quick_item_skills` i18n key (IT/EN/DE).
+
+### Patch Changes
+
+- 8c4c5e3: Feature 001 — Foundry-to-G2 HUD UX slice:
+
+  - **Direct-link connection** — one canonical connection profile to the bridge; removed the
+    implicit `localhost:8910` default (the on-phone "unreachable bridge" bug). `bridgeUrl` is
+    persisted; the bearer token stays in memory and is re-acquired by the wizard (T-02-01 upheld).
+  - **Unified view selection** — the map-view mode dropdown is removed; the roster selector gains a
+    synthetic "Party" entry (→ streaming overview), a PC → actor (owner-elected). Pure
+    `toPlayerViewRequest` mapping; `client_player_view` wire shape unchanged (shared-protocol doc only).
+  - **D&D-styled sheet + shared icon dictionary** — new `icon-dictionary` as the single source for
+    glyph + canvas paths (consolidates item-type / proficiency / spell-slot / vitals glyphs,
+    byte-identical → INV-1 fixtures unchanged); double-ruled canvas frame + corner brackets; Main-tab
+    vitals drawn as icons.
+  - **Composited FPS badge** — FPS split into its own small corner widget via `EVF_FPS_CORNER`
+    (build-time `VITE_EVF_FPS_CORNER`, default bottom-right); yields below the status card on overlap.
+
+- edae764: Fix the scene-frame pipeline dimension contradiction that made every `frame_pixels` payload un-processable: `FramePixelsSchema` capped frames at 288×144 (pre-ADR-0013 SDK-polyfill bound) while `raster-worker.ts` rejects anything that is not the canonical 400×200 raster region. Schema bounds now admit 20–400 × 20–200; `canvas-extractor` always emits exactly 400×200 (center-crop + opaque-black letterbox, pure byte copy); `scene-input` center-pads undersized frames to the canonical region as consumer-side defence. Live-sim verified: a real 400×200 scene frame now dithers and renders on the glasses end-to-end.
+- 0038f94: Wire push-based bridge↔Foundry bearer-registry + character-list path enabling real pairing.
+
+  Adds two new push envelopes (`r1.bearers.available`, `r1.characters.available`) that the Foundry
+  module emits on `ready` and on bearer/actor lifecycle events. The bridge caches both and uses
+  them to validate bearer tokens (`GET /v1/health`) and serve the player-character roster
+  (`GET /v1/characters`) without a socketlib roundtrip. `buildServer({})` now works with NO
+  options — real token validation and character listing are wired internally.
+
+  Security: bearer tokens are pushed over the EVF_INTERNAL_SECRET-gated /internal/delta channel
+  (homelab trust model). Tokens are Zod-validated at the handler boundary before cache write and
+  never logged (T-RFP-01 / T-RFP-02). A never-pushed cache returns `foundry_unreachable` (503)
+  distinguishable from `unknown_token` (401) — T-RFP-03.
+
 ## 0.2.0
 
 ### Minor Changes
