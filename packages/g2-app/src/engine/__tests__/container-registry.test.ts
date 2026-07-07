@@ -429,13 +429,13 @@ describe('buildShowcasePageSchema', () => {
     expect(schema.textObject).toHaveLength(1);
   });
 
-  it('SHOW-2: image tiles are showcase-tile-0..3, ids 0-3, 200×100, centred 2×2 at (88,44)', () => {
+  it('SHOW-2: image tiles are showcase-tile-0..3, ids 0-3, 200×100, origin 2×2 at (0,0)', () => {
     const { imageObject } = buildShowcasePageSchema();
     const expected = [
-      { name: 'showcase-tile-0', x: 88, y: 44 },
-      { name: 'showcase-tile-1', x: 288, y: 44 },
-      { name: 'showcase-tile-2', x: 88, y: 144 },
-      { name: 'showcase-tile-3', x: 288, y: 144 },
+      { name: 'showcase-tile-0', x: 0, y: 0 },
+      { name: 'showcase-tile-1', x: 200, y: 0 },
+      { name: 'showcase-tile-2', x: 0, y: 100 },
+      { name: 'showcase-tile-3', x: 200, y: 100 },
     ];
     expected.forEach(({ name, x, y }, i) => {
       const tile = imageObject[i];
@@ -459,7 +459,7 @@ describe('buildShowcasePageSchema', () => {
     expect(captures[0]?.containerName).toBe('showcase-capture');
     expect(captures[0]?.containerID).toBe(4);
     expect(captures[0]?.content).toBe(' ');
-    expect(rect(captures[0] ?? {})).toEqual({ x: 88, y: 44, w: 400, h: 200 });
+    expect(rect(captures[0] ?? {})).toEqual({ x: 0, y: 0, w: 400, h: 200 });
   });
 
   it('SHOW-4: image budget ≤4, text budget ≤8 (G2 hardware limit)', () => {
