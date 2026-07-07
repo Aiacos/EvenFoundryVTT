@@ -407,15 +407,16 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   // The showcase page (renderMode='showcase', the DEFAULT boot substrate) rasterises
   // the ENTIRE glanceable HUD — double-ruled D&D frame + header + framed map region +
   // status card + footer (see `hud/showcase-hud-renderer.ts`) — onto a 400×200 canvas,
-  // dithers it to 4-bit, and pushes it as 4 × 200×100 image tiles CENTRED on the
-  // 576×288 screen. This is the hardware raster cap (4 image containers × 200×100;
-  // 576×288 cannot be fully rastered — INV-2, Specs §7.4).
+  // dithers it to 4-bit, and pushes it as 4 × 200×100 image tiles anchored TOP-LEFT
+  // on the 576×288 screen. This is the hardware raster cap (4 image containers ×
+  // 200×100; 576×288 cannot be fully rastered — INV-2, Specs §7.4).
   //
-  // Centring offsets: OX = (576-400)/2 = 88, OY = (288-200)/2 = 44 (SHOWCASE_OX/OY).
-  // Tiles: id0 (88,44) id1 (288,44) id2 (88,144) id3 (288,144). A single
-  // full-region text container (showcase-capture, id 4, isEventCapture:1) covers the
-  // 400×200 region so R1 gestures on the HUD are captured; the image tiles paint over
-  // it (type-based host z-order), so it never shows text.
+  // Origin offsets (0,0): tiles id0 (0,0) id1 (200,0) id2 (0,100) id3 (200,100) —
+  // the proven map-tile-0..3 geometry that rendered live on real G2 in June.
+  // NOTE: centred offsets (88,44) were REJECTED by the real host (see the tile
+  // block below). A single full-region text container (showcase-capture, id 4,
+  // isEventCapture:1) covers the 400×200 region so R1 gestures on the HUD are
+  // captured; the image tiles paint over it (type-based host z-order).
   //
   // ids 0-4 are page-local: only one page schema is declared at a time, so reusing
   // ids 0-3 for the tiles (as the hybrid/canvas pages also do) is safe.
@@ -423,10 +424,17 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   // @see packages/g2-app/src/hud/showcase-hud-renderer.ts (draws the 400×200 canvas)
   // @see packages/g2-app/src/hud/showcase-hud-layer.ts (owns the throttled push loop)
   // @see packages/g2-app/src/demo/showcase-preview.ts (dev visual test — same geometry)
+  // ORIGIN-ANCHORED 2×2 grid (0,0)(200,0)(0,100)(200,100). The centred offsets
+  // (88,44) were REJECTED by the real G2 host — `rebuildPageContainer` returned
+  // false → 0 containers → every updateImageRawData `sendFailed` (white glasses;
+  // live remote-debug 2026-07-07). The sim accepts any offset, so it never
+  // caught it. This origin geometry matches the proven `map-tile-0..3` layout
+  // that rendered live on real G2 in June. The showcase HUD is drawn full-bleed
+  // into 400×200 already, so it just anchors top-left instead of centred.
   'showcase-tile-0': {
     id: 0,
-    xPosition: 88,
-    yPosition: 44,
+    xPosition: 0,
+    yPosition: 0,
     width: 200,
     height: 100,
     isEventCapture: 0,
@@ -434,8 +442,8 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   },
   'showcase-tile-1': {
     id: 1,
-    xPosition: 288,
-    yPosition: 44,
+    xPosition: 200,
+    yPosition: 0,
     width: 200,
     height: 100,
     isEventCapture: 0,
@@ -443,8 +451,8 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   },
   'showcase-tile-2': {
     id: 2,
-    xPosition: 88,
-    yPosition: 144,
+    xPosition: 0,
+    yPosition: 100,
     width: 200,
     height: 100,
     isEventCapture: 0,
@@ -452,20 +460,20 @@ export const CONTAINER_REGISTRY: Readonly<Record<string, ContainerRegistryEntry>
   },
   'showcase-tile-3': {
     id: 3,
-    xPosition: 288,
-    yPosition: 144,
+    xPosition: 200,
+    yPosition: 100,
     width: 200,
     height: 100,
     isEventCapture: 0,
     kind: 'image',
   },
   // showcase-capture: invisible gesture-capture text container covering the full
-  // 400×200 centred region. The image tiles paint over it (type-based z-order), so it
+  // 400×200 region. The image tiles paint over it (type-based z-order), so it
   // never shows text — it only routes R1 gestures. Sole isEventCapture=1 on the page.
   'showcase-capture': {
     id: 4,
-    xPosition: 88,
-    yPosition: 44,
+    xPosition: 0,
+    yPosition: 0,
     width: 400,
     height: 200,
     isEventCapture: 1,
