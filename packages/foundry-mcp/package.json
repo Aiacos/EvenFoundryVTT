@@ -1,6 +1,6 @@
 {
   "name": "@evf/foundry-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "EVF Phase 11 V2 MCP server — exposes the Tool Registry over stdio + Streamable HTTP for Claude Desktop and remote MCP clients.",
