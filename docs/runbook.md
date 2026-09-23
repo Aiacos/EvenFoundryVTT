@@ -1,187 +1,197 @@
-# Runbook — EvenFoundryVTT Bridge
+# Runbook — EvenFoundryVTT (direct streaming)
 
-Operational procedures for the EvenFoundryVTT Bridge service (Phase 3+). Day-to-day ops:
-restart, audit log inspection, bearer revoke, metrics, and common error recovery.
+What to check when the glasses won't connect or stop updating. Since v0.10.0 there is no
+server to restart ([ADR-0012](architecture/0012-direct-foundry-streaming.md)). Only three
+pieces can fail:
 
-**Canonical reference:** `Specs.md §5.2` (bridge stack), `Specs.md §11.5.4` (auth), Phase 7 Plan 01 (audit log).
+1. **the phone page**: the g2-app in the Even Realities App WebView.
+2. **the Foundry server**: HTTPS, the static `/modules/evenfoundryvtt/g2/` files, the socket relay.
+3. **the GM browser**: the `evenfoundryvtt` module acting as **projector**. It holds the
+   device keys, reads dnd5e data and runs every action.
 
----
-
-## Restart the bridge
-
-### Docker Compose (recommended)
-
-```bash
-# From the repo root
-docker compose -f deploy/docker-compose.yml restart bridge
-
-# Verify the bridge is alive and ready
-curl http://bridge:8910/healthz
-# Expected: 200 OK
-# { "status": "ok", "version": "x.y.z", "ts": 1234567890 }
-
-curl http://bridge:8910/readyz
-# Expected: 200 OK when bearer registry is loaded and Foundry WS is connected
-# { "ready": true }
-```
-
-### Without Docker (dev)
-
-```bash
-pnpm --filter @evf/bridge build
-node packages/bridge/dist/index.js
-```
-
-Or with live reload:
-
-```bash
-pnpm --filter @evf/bridge dev
-```
-
-### Startup sequence
-
-On startup the bridge:
-
-1. Loads the bearer registry from `BEARER_REGISTRY_PATH` (creates file if missing).
-2. Opens a WebSocket connection to Foundry at `FOUNDRY_WS_URL`.
-3. Registers the Fastify plugin routes (REST + WS) and begins listening on `BRIDGE_PORT` (default `8910`).
-4. Sets `ready = true` once the Foundry WS handshake completes.
-
-The Even Realities App plugin should observe the boot splash advance to `[ ✓ ] Foundry sync`
-within a few seconds of a successful restart.
+First-time installation is covered in the [setup guide](setup-guide.md).
 
 ---
 
-## Inspect the audit log
+## 🏗️ What talks to what
 
-Every `dispatchTool` call (weapon attack, cast spell, use item, etc.) writes a **GM-only hidden
-`ChatMessage`** with `whisper: gmIds` and `flags.evf.audit` (Phase 7 Plan 01, INV-6).
+```
+[G2] ⇄ BLE ⇄ [Even App WebView: /modules/evenfoundryvtt/g2/index.html]
+                    │ POST /join (cookie) + socket.io, same origin
+                    ▼
+             [Foundry server] ── relays module.evenfoundryvtt (AES-GCM sealed envelopes)
+                    │
+                    ▼
+             [GM browser: projector] — answers only if game.users.activeGM is this client
+```
 
-### From the Foundry console (GM client)
+| Step | Who | Failure shows up as |
+|---|---|---|
+| Page load | Even App → Foundry HTTPS | blank page / certificate error |
+| Login | g2-app `POST /join` as "&lt;Player&gt; (G2)" | *credentials rejected* → first-setup page (P03) |
+| Socket | socket.io `/socket.io/` | *Foundry not responding*, retry with backoff 1→30 s |
+| `hello` → `welcome` | projector in the GM browser | *no GM connected* after 8 s without `welcome` |
+| Live updates | projector hooks → sealed pushes | stale sheet/map; after 2 missed pongs the page goes offline (M11) |
+
+---
+
+## 🐞 Diagnose from the phone
+
+The phone page is the fastest place to look.
+
+- **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause and the retry
+  countdown (*retrying in N s (attempt K)*). The causes:
+  - *no GM connected*: the projector did not answer. See [the GM section](#-diagnose-from-foundry-gm-browser).
+  - *Foundry not responding*: network, TLS, proxy or socket problem.
+  - *credentials rejected*: revoked, already used, or expired. Re-pair.
+  - *app in background*: expected. The page reconnects on foreground re-entry.
+- **Server / User / Character / GM:** confirms the page talks to the right world, as the
+  right "(G2)" user, and names the projecting GM (*Anna (online)*).
+- **Latency:** ping → pong round trip through the relay and the GM browser.
+- **Diagnostics ▸** (IT: *Diagnostica*): Foundry version (from `/api/status` when it is
+  exposed), the **recent errors** list (newest first, with level), and **Forget pairing**.
+- **Reconnect** forces a new login + socket. **Disconnect** stops the session and keeps
+  the credentials.
+
+---
+
+## 🐞 Diagnose from Foundry (GM browser)
+
+### Pair dialog
+
+*Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses**:
+
+- **Checks:** *valid HTTPS · module served · socket active*. Any ✗ blocks the phone.
+- **Paired devices:** each "(G2)" user with its character and **last contact**
+  (*last contact 12 s ago* / *never connected*). A device that never connects after a
+  scan means the phone never reached the projector: check HTTPS and the GM.
+
+### Browser console (F12 on the GM client)
+
+The projector logs with the `[EVF]` prefix:
+
+| Message | Meaning |
+|---|---|
+| `[EVF] projector: rejected envelope from <id> (authentication failed)` | The device used an old or unknown key: an old QR, or keys from another GM browser. Re-pair. |
+| `[EVF] projector: malformed message from <id>` | Protocol mismatch between the g2-app and the module. Update the module so both come from the same release. |
+| `[EVF] projector: password rotation failed …` | The one-time rotation failed. The pairing credentials stay valid. Check that the GM may edit users. |
+| `[EVF] projector: failed to push to a G2 device` | Socket emit failed. Usually transient. |
+| `[EVF] could not notify <id> of revocation` | The device was offline during revoke. The user is still deleted. |
+
+Useful checks in the console:
 
 ```js
-// List the last 20 audit entries
+game.users.activeGM?.name                       // must be the GM who paired
+game.settings.get('evenfoundryvtt', 'g2Devices') // public device metadata (no keys)
+game.socket.connected                            // relay available
+```
+
+Device **keys** are stored only in a hidden client-scoped setting of the browser that
+paired. Another browser or another GM account sees the metadata but can't open the
+envelopes, and the device reports *no GM connected*.
+
+### Audit log
+
+Every action that runs through `dispatchTool` (attack, cast, use item, end turn…) writes
+a GM-only hidden chat message flagged `flags.evf.audit`
+([ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)):
+
+```js
 game.messages.contents
-  .filter(m => m.flags?.evf?.audit)
+  .filter((m) => m.flags?.evf?.audit)
   .slice(-20)
-  .forEach(m => console.log(m.flags.evf.audit));
+  .forEach((m) => console.log(m.flags.evf.audit));
 ```
 
-### Audit record shape
-
-```json
-{
-  "ts": 1731234567890,
-  "session_id": "uuid",
-  "bearer_hash": "sha256(bearer).slice(0,16)",
-  "tool_id": "cast_spell",
-  "idempotency_key": "uuid",
-  "result": "ok",
-  "latency_ms": 215
-}
-```
-
-### Bridge-side structured logs (pino)
-
-```bash
-# Tail the bridge container logs
-docker compose -f deploy/docker-compose.yml logs -f bridge
-
-# Filter for audit events
-docker compose -f deploy/docker-compose.yml logs bridge | grep '"type":"audit"'
-
-# Filter by player (bearer hash prefix)
-docker compose -f deploy/docker-compose.yml logs bridge | grep '"bearer_hash":"abc123'
-```
+Each entry holds `tool`, `payload`, `idempotencyKey` (the request `rid`), `actorId`,
+`result`, `timestamp` and `bearer_id`. `bearer_id` is a hash of the device principal
+`g2:<userId>`, never a secret.
 
 ---
 
-## Revoke a bearer token
+## 🧪 Sideload GO/NO-GO harness
 
-Use when a G2 device is lost, a player leaves the group, or a token is compromised.
-
-### Via the Foundry module (recommended)
-
-GM: **Foundry Settings** → **Module Settings** → **EvenFoundryVTT** → **"Revoke G2 device"**
-→ select the device by name → **Confirm revoke**.
-
-The module calls `POST /admin/bearer/revoke` on the bridge with the DM's bearer token in the
-`Authorization` header.
-
-### Via curl (fallback)
+`validate:direct-sideload` checks that a Foundry instance can serve the glasses app to
+the Even Realities App (ADR-0012 §Confirmation). Script:
+[`packages/validation-harness/scripts/direct-sideload.ts`](../packages/validation-harness/scripts/direct-sideload.ts).
 
 ```bash
-curl -X POST \
-  -H "Authorization: Bearer <dm-bearer-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"deviceId": "<device-uuid>", "reason": "player left"}' \
-  http://bridge:8910/admin/bearer/revoke
+# Software checks only (CI-safe, no phone needed)
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
 
-# Expected: 200 OK { "revoked": true, "deviceId": "..." }
+# Full run: software checks + interactive y/n hardware checklist (needs a TTY, phone, G2, R1)
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload
 ```
 
-The revoked token is immediately invalidated in the in-memory registry and persisted to
-`BEARER_REGISTRY_PATH`. The G2 device will see `TOKEN_EXPIRED` on the next request and display
-a re-pair prompt.
+`FOUNDRY_URL` is the Foundry base URL **including any routePrefix**
+(e.g. `https://host/foundry`). The only flag is `--skip-hardware`.
+
+| Check | GO when | NO-GO typical cause |
+|---|---|---|
+| `https` | the URL is `https://` | HTTP URL |
+| `reachable` | Foundry root answers over TLS | `DEPTH_ZERO_SELF_SIGNED_CERT`, `ENOTFOUND`, 5xx |
+| `g2-entry` | `/modules/evenfoundryvtt/g2/index.html` → 200 `text/html` | module not enabled, zip without `g2/` |
+| `api-status` | informational: reports the Foundry version | *skipped* when hidden by a proxy (never NO-GO) |
+| `hw-qr-load` | the Even App scans the QR and loads the page | certificate, URL |
+| `hw-sdk-bridge` | `EvenAppBridge` is injected; the g2-app draws on the G2 | page opened outside the Even App |
+| `hw-cookie-persist` | the session cookie survives foreground exit → enter | WebView cookie policy |
+| `hw-socket-reconnect` | socket.io reconnects and the HUD resumes | proxy WebSocket timeout |
+
+The script also prints the URL form the QR encodes (with placeholders).
+
+**Exit codes:** `0` GO · `1` NO-GO · `2` skipped (`FOUNDRY_URL` unset, or the full run has
+no TTY) · `3` usage error (unknown flag, invalid URL).
+
+**Evidence:** `docs/perf/phase-0/adr-0012-direct-sideload-<ISO>.json`, holding the check
+verdicts only. URLs, credentials and QR payloads are never written. On NO-GO the script
+prints the documented fallback: serve Foundry and the g2 bundle behind a **same-site
+reverse-proxy subdomain**.
 
 ---
 
-## Metrics / Logs
+## 🔐 Revoke
 
-### Prometheus metrics
+1. GM: **Pair G2 glasses** → **Revoke** next to the device → **Confirm revoke**.
+2. The module sends a sealed `{t:'revoked'}` to the device, deletes the "(G2)" user and
+   forgets the key. The glasses go back to the "not paired" screen (M09).
+3. If the device was offline, the console logs `could not notify … of revocation`. The
+   user is deleted anyway, so the next login fails with *credentials rejected*.
 
-```bash
-curl http://bridge:8910/metrics
-# Content-Type: text/plain; version=0.0.4; charset=utf-8
-# Returns: standard Prometheus exposition format
-```
+Revoke right away if a phone is lost. Don't delete the "(G2)" user from *User
+Management*, because the device metadata would stay behind.
 
-Key metrics exported:
+## 🔐 Re-pair
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `evf_dispatch_total` | counter | `dispatchTool` calls by `tool_id` + `result` label |
-| `evf_dispatch_duration_ms` | histogram | latency of each dispatch (p50 / p95 / p99) |
-| `evf_ws_reconnect_total` | counter | Foundry WS reconnect events |
-| `evf_bearer_revoke_total` | counter | bearer revoke events |
-| `evf_replay_buffer_size` | gauge | current seq-buffer depth per session |
-| `http_request_duration_ms` | histogram | Fastify route latency |
+Re-pair when you changed the GM browser or computer, cleared browser data, changed the
+character, or when the phone shows *credentials rejected*.
 
-### Shipping to Loki / CloudWatch (Phase 13 stretch)
-
-For MVP single-tenant homelab: **Docker container stdout is sufficient**. Pipe through
-`pino-pretty` for human-readable dev output:
-
-```bash
-docker compose -f deploy/docker-compose.yml logs -f bridge | npx pino-pretty
-```
-
-Production log aggregation (Loki / CloudWatch / Datadog) is a Phase 13 cloud stretch — not
-required for homelab MVP.
+1. From the browser **the GM will use during play**, open **Pair G2 glasses**.
+2. Pick the same player: the same "(G2)" user is refreshed (tagged
+   `flags.evenfoundryvtt.g2For`). Pick the character → **Generate new QR**.
+3. On the phone: scan again. If the page is stuck on old credentials, use
+   *Diagnostics* → **Forget pairing** first.
 
 ---
 
-## Common errors with recovery
+## 🐞 Common errors and recovery
 
-| Error / Symptom | Cause | Recovery |
-|-----------------|-------|----------|
-| `⚠ SYNC LOST` chip on G2 | WS connection to bridge dropped | WS auto-reconnects (exponential backoff 1s→30s, Plan 10-01). Check bridge health via `/healthz`. If bridge is down: `docker compose restart bridge`. |
-| `BOOT_HANDSHAKE_FAIL` | Bridge not ready when plugin loaded | Wait for `/readyz` to return `{ "ready": true }`. Check `FOUNDRY_WS_URL` is reachable from inside the Docker container. |
-| `TOKEN_EXPIRED` | 24-hour bearer expired or revoked | Re-pair via QR (Foundry Settings → Pair a G2 device → scan QR). |
-| `MIDIQOL_AUTO_FAST_FORWARD_OFF` | MidiQOL Workflow setting not configured | Foundry → Module Settings → MidiQOL → Workflow → enable "Auto fast-forward attack". Required for full weapon-attack flow. |
-| `ERR_BRIDGE_WS_CLOSED` on Foundry side | Foundry restarted while bridge was connected | Bridge auto-reconnects to Foundry WS within a few seconds. If it persists, restart the bridge container. |
-| `/healthz` returns 503 | Bridge crashed or unhealthy | `docker compose -f deploy/docker-compose.yml restart bridge` then watch logs for startup errors. |
-| `/readyz` returns `{ "ready": false }` | Foundry WS handshake not yet complete | Bridge is starting. Wait 5-10 seconds. Check `FOUNDRY_WS_URL` env var is correct. |
-| Replay buffer overflow log line | Client disconnected for >60 seconds (buffer TTL) | Client will rejoin from latest seq. No action needed — expected behaviour for long disconnects. |
+| Symptom | Diagnosis | Recovery |
+|---|---|---|
+| *no GM connected* although the GM is in the world | The active GM is not the browser that paired (keys missing), or the GM tab is suspended | Bring the pairing GM's tab to the front, or re-pair from the active GM's browser. |
+| Certificate warning / blank page on the phone | Self-signed or expired certificate | Put Foundry behind Let's Encrypt, Tailscale or a trusted proxy. Re-run the harness `reachable` check. |
+| `g2-entry` NO-GO / pair dialog ✗ module served | `g2/` missing | Reinstall the release zip, or run `pnpm --filter @evf/foundry-module build:all` for a dev symlink. |
+| Connects, then *Foundry not responding* every ~minute | Proxy drops idle WebSockets or doesn't forward the upgrade | Forward `Upgrade`/`Connection` and raise the proxy read timeout. |
+| *credentials rejected* right after scanning | The QR had expired (5 min) or was already used | Generate a new QR. |
+| Sheet updates, map frozen or glyph-only | BLE throughput low; the map is ≤ 1 fps with 100 ms image pacing | Move the phone closer to the glasses. The map recovers after two good frames. |
+| Actions return `forbidden_actor` | The request targeted another actor | Only the paired character can act. Re-pair for a different character. |
+| Actions return `actor_missing` on connect | The paired character was deleted | Re-pair with an existing character. |
+| Attack posts a card but no rolls | midi-qol not active: vanilla `activity.use()` only posts the card | Enable midi-qol for full automation. |
 
 ---
 
-## See also
+## 📚 See also
 
-- `docs/setup-guide.md` — initial install walkthrough (bridge env vars, Docker Compose).
-- `docs/firmware-compatibility.md` — Even Hub SDK matrix.
-- [Plan 10-01 SUMMARY](../​.planning/phases/10-polish-field-test-mvp/10-01-SUMMARY.md) — WS reconnect + `⚠ SYNC LOST` chip implementation.
-- [Plan 10-02 SUMMARY](../​.planning/phases/10-polish-field-test-mvp/10-02-SUMMARY.md) — perf probe + `r1.perf.sample` envelope.
-- `Specs.md §5.2` — Bridge technology stack (Fastify + ws + pino + prom-client).
-- `Specs.md §11.5.4` — Auth + bearer lifecycle.
-- `Specs.md §11.5.8.1` — WS reconnect resilience canonical.
+- [Setup guide](setup-guide.md) · [Firmware compatibility](firmware-compatibility.md)
+- [ADR-0012](architecture/0012-direct-foundry-streaming.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
+- [G2 thirds layout](design/g2-thirds-layout.md) — M09 not paired · M10 connecting · M11 offline · P01–P03
+- [`packages/foundry-module/README.md`](../packages/foundry-module/README.md) — security model

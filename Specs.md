@@ -1,18 +1,18 @@
 ---
 title: EvenFoundryVTT — Requirements, Architecture & Execution Plan
 created: 2026-05-09
-updated: 2026-05-18
+updated: 2026-09-23
 status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.9.13)
+# EvenFoundryVTT — Project Specification (v0.10.0)
 
 ## 0. Executive Summary
 
 **EvenFoundryVTT** porta una sessione di D&D 5e su FoundryVTT direttamente sugli occhiali AR **Even Realities G2**, controllata dall'**anello R1**.
 
-**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, scroll, long-press), tutto sincronizzato in real-time con FoundryVTT tramite un Bridge service. Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
+**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, scroll, long-press), tutto sincronizzato in real-time con FoundryVTT **direttamente** (v0.10.0, ADR-0012): l'app per gli occhiali è servita dal modulo Foundry stesso, associata con un QR e collegata via socket Foundry con envelope cifrati — nessun Bridge, nessun Docker. Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
 
 **Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 e il bridge non integrano AI direttamente — restano deterministici.
 
@@ -151,7 +151,29 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 
 ## 2. System Architecture
 
+### 2.0 Direct Streaming Architecture (v0.10.0 — canonico)
+
+```
+[G2 glasses] ⇄ BLE ⇄ [Even App WebView ── pagina servita da Foundry: /modules/evenfoundryvtt/g2/]
+                                   │  same-origin HTTPS: POST /join (cookie) + socket.io
+                                   ▼
+                           [Foundry server]  relay module.evenfoundryvtt (envelope AES-GCM)
+                                   │
+                                   ▼
+             [Browser GM: modulo evenfoundryvtt = PROJECTOR]
+               readers dnd5e · dispatchTool (ADR-0011) · registro pairing
+```
+
+- **Hosting**: il bundle `g2-app` è compilato dentro `packages/foundry-module/g2/` e servito da Foundry; l'Even Realities App lo carica via **QR sideload** (`hub.evenrealities.com/docs/get-started/architecture`). Same-origin ⇒ niente CORS, niente whitelist cross-origin, cookie di sessione first-party (Foundry v14 accetta la sessione solo da cookie).
+- **Identità**: un utente Foundry dedicato «Giocatore (G2)», ruolo PLAYER, OWNER solo del PG scelto.
+- **Trasporto**: envelope `{evf,to,from,iv,ct}` AES-256-GCM (chiave per dispositivo, AAD `from>to`, finestra anti-replay 120 s) sul relay `module.evenfoundryvtt`, che Foundry inoltra a *tutti* i client.
+- **Projector**: il modulo nel browser del GM risponde a `hello/get/invoke/ping`, spinge `delta`, ruota password+chiave al primo `welcome` (QR monouso). Serve un GM online.
+- **Contratto**: [ADR-0012](docs/architecture/0012-direct-foundry-streaming.md) · `packages/shared-protocol/src/direct/`.
+
+
 ### 2.1 Component Diagram
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Il Bridge Node.js non esiste più: vedi §2.0. Conservato come storico; il contratto vivo è indicato qui.
 
 ```
                   MVP (deterministico, sempre attivo)
@@ -475,6 +497,8 @@ Verbatim simulator README: *"G2 plugins are web apps where **your code runs on a
 
 ### 3.8 Plugin Configuration Surface (Even Realities App)
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — La configurazione è ora il QR mostrato da Foundry + la pagina telefono P02/P03 (`docs/design/g2-thirds-layout.md` §Associazione). Conservato come storico; il contratto vivo è indicato qui.
+
 Verbatim upstream `support.evenrealities.com`: *"You can configure each widget individually through the Even App."* La Even Realities App **espone una settings UI per-plugin** sul telefono (analog Conversate / Translate / Teleprompt / Even AI hanno tutte un loro settings panel). evenfoundryvtt usa questo canale per le **connection-bootstrap settings** che richiedono input testuale (impossibile sul G2 — no keyboard, vincolo §3.1).
 
 **Settings esposte nell'Even Realities App per il plugin evenfoundryvtt** (vedi mockup §7.14.7):
@@ -535,6 +559,8 @@ game.modules.get('evenfoundryvtt').api = {
 ```
 
 ### 4.2 Bridge REST + WebSocket Surface
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Superficie sostituita dal canale diretto `module.evenfoundryvtt` (`packages/shared-protocol/src/direct/`). Conservato come storico; il contratto vivo è indicato qui.
 
 ```
 GET  /v1/actor/:id                  → full character state (auth: player token)
@@ -648,6 +674,8 @@ modules/evenfoundryvtt/
 
 ### 5.2 Bridge Service
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Package `bridge` rimosso. Conservato come storico; il contratto vivo è indicato qui.
+
 **Responsabilità**:
 
 - Reverse-proxy CORS-friendly per il G2 (deve emettere `Access-Control-Allow-Origin`)
@@ -666,6 +694,8 @@ modules/evenfoundryvtt/
 **Phase 15 — Deepgram Keyterm Prompting (v0.9.12, chiuso 2026-05-17)**: il builder di URL della sessione Deepgram (`packages/bridge/src/voice/deepgram-stt.ts`) ora accetta un `keytermProvider: () => string[]` invocato lazily a ogni `connect()` e appende un parametro query `keyterm=<URL-encoded>` per elemento. Il provider di default in `server.ts` step 10 chiude su `EntityPackCache` e ritorna `buildKeytermList(SPELL_KEYTERMS, entityCache.get())` — unione static (70 incantesimi SRD × IT+EN = 140 candidati) + dynamic (entity-pack Foundry-derived: items/weapons/armor/NPCs/monsters via canale push `/internal/delta`, vedi §11.5.5 Tier 1). **`DEEPGRAM_KEYTERM_LIMIT = 100`** (cap documentato Deepgram); su overflow si tronca prima l'entity-pack dinamico (CONTEXT D-04) per proteggere il lift di recall sul vocabolario SRD canonico. Hot-update: `KeytermRefresher` con debounce 250ms + drain-then-restart mutex su `EntityPackCache.onChange()` — la lista keyterm è osservabile telemetricamente via `event=keyterm.refreshed` ma il refresh in-stream non è supportato dal protocollo WS Deepgram, quindi il refresh diventa effettivo al prossimo `connect()` (sessioni Deepgram sono short-lived per-utterance, SLA VOICE-09 ≤ 5 min soddisfatto). Failure modes: empty-cache → one-shot warn `keyterm.empty-entity-cache` (reset on recovery); close codes 1007/1008/4xxx → retry-with-`sanitizeKeyterms` (strip ASCII control chars; Unicode letter-safe per IT spell names) → fallback baseline Phase 12 byte-for-byte (DGKT-04 regression-safe). Plan refs: `15-01..05-PLAN.md`.
 
 ### 5.3 Tool Registry (parte del Bridge — sempre attivo)
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Il registry vive solo nel modulo Foundry (`write-path/tool-registry.ts`), invocato dal projector (ADR-0011 invariato). Conservato come storico; il contratto vivo è indicato qui.
 
 Indipendentemente dal canale (R1 manual o MCP voice), il Bridge espone una **lista canonica di tool** che eseguono azioni Foundry:
 
@@ -1009,6 +1039,8 @@ ADR (Architecture Decision Record) per ogni decisione strutturale: `docs/archite
 
 ### 5.7 `foundry-mcp` — V2 Optional Module (MCP Server)
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Package `foundry-mcp` rimosso (dipendeva dal Bridge). Voice/MCP potrà tornare come client del canale diretto con un nuovo ADR. Conservato come storico; il contratto vivo è indicato qui.
+
 > **Status**: non parte del MVP. Sviluppato dopo Phase 10 quando il MVP è stabile e field-tested.
 
 **Scopo**: esporre i tool Foundry secondo Model Context Protocol così che qualunque client LLM compatibile (Claude Desktop, Claude Code, future app) possa guidare il VTT vocalmente. Disaccoppia totalmente l'AI dal core EvenFoundryVTT — un upgrade plug-in.
@@ -1203,6 +1235,41 @@ Un'evoluzione futura potrebbe far sì che il G2 catturi audio e lo invii al clie
 
 ## 7. UI/UX — "Monitor HUD" Aesthetic (Layered Model)
 
+### 7.0 Thirds Layout (v0.10.0 — canonico)
+
+Scheda PG **sempre visibile** su ⅓ (sinistra), **mappa pixelata** su ⅓ (centro, 2 image container 192×144 impilati), **colonna contesto** su ⅓ (destra: registro, iniziativa, azioni, bersagli, incantesimi, esiti, reazioni). Confini di colonna identici in ogni stato (INV-1). Contratto completo — griglia, budget container, modello di input, macchina a stati, 11 mock occhiali + 3 mock telefono/Foundry: **[`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md)**.
+
+Nota di misura (INV-2): il font firmware è proporzionale (~18 caratteri × 11 righe per colonna) e non contiene `▮▯◉⚠✓✖⌖`; il contratto eseguibile sono le fixture `packages/shared-render/src/fixtures/thirds.*.txt`. Il mock sotto descrive l'architettura dell'informazione.
+
+Mock M01 (esplorazione, default):
+
+```
+┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
+│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ SCENA  Cripta di Vel'Nar      │
+│ Nano delle colline · PHB24    │ ▓░░░░░░░░░▓▓▓▓▓░░░░░░░░░░░░░▓ │ Esplorazione · ⌁ collegato    │
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
+│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │ Registro                      │
+│     temp +10                  │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒a▒▒▒▒▒▒░▓ │  Mira: Percezione 17 ✓        │
+│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒@▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  GM: «Senti passi a nord»     │
+│ COMP +3  PERC 13  ISP ○       │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Thorin raccoglie: torcia     │
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Bram si muove (20 ft)        │
+│ FOR 18+4  DES 12+1  COS 16+3  │ ▓░░░░▒░░░░▓   ▓░░░░░░▒░░░░░░▓ │                               │
+│ INT 10+0  SAG 13+1  CAR  8-1  │ ▓▓▓▓▓▒▓▓▓▓▓   ▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓ │                               │
+│───────────────────────────────│ ▓    ▒              ▒       ▓ │                               │
+│ Azione ●  Bonus ●  Reaz ●     │ ─ ─ ─ tile A ▲ │ ▼ tile B ─ ─ │                               │
+│ Movimento 30/30 ft            │ ▓▓▓▓▓▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓▓ │                               │
+│───────────────────────────────│ ▓░░░░▒░░░░░░░░░░░░░░▒░░░░░░░▓ │                               │
+│ Slot  1°▮▮▯▯  2°▮▯▯           │ ▓░          ░░░░          ░░▓ │                               │
+│ Ki/Surge  Action Surge 1/1    │ ▓░   (nebbia di guerra)    ░▓ │                               │
+│───────────────────────────────│ ▓░                         ░▓ │───────────────────────────────│
+│ Condizioni                    │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ Party                         │
+│  ▸ Benedetto (7 round)        │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
+│  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
+│                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
+│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
+└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
+```
+
 ### 7.1 Design Language
 
 Il G2 rende **verde monocromatico 4-bit**. Trattiamo questa limitazione come feature: estetica **HUD militare / VFD / CRT verde / Alien Nostromo**. La sessione sembra un **monitor a fosfori verdi che galleggia davanti al giocatore**, con bezel ASCII, font monospace, cursori che lampeggiano.
@@ -1294,6 +1361,8 @@ Il corner card `~28×21 char` (vedi §7.3) ha **layout fisso indipendente dal co
 
 ### 7.2 Layered Rendering Model
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Layout a strati sostituito dal layout a terzi (§7.0). Conservato come storico; il contratto vivo è indicato qui.
+
 Una sola "main page" runtime con **4 layer** (z-order dal basso):
 
 ```
@@ -1331,6 +1400,8 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Allocazione sostituita da §7.0 (tre colonne da 192 px). Conservato come storico; il contratto vivo è indicato qui.
+
 **Approssimazione**: il G2 usa font firmware-defined; le metriche reali vanno verificate in Phase 0. I mockup assumono ~96 char × 24 row come riferimento di layout.
 
 ```
@@ -1361,6 +1432,8 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 **z=0.5 placement**: occupa le ultime ~3 row del map-area (idle state). Quando un overlay z=2 viene montato, z=0.5 è demolito e quelle row tornano disponibili al z=2 layout. Vedi §7.4c per il contratto completo.
 
 ### 7.4 Default View — Map + Persistent Status HUD
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Default view sostituita da M01 (§7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > **Mode selector** (v0.7+): la mappa supporta due rendering mode mutuamente esclusivi, selezionabili runtime via Quick Action `[M] Map ctrl`:
 >
@@ -1580,6 +1653,8 @@ L'approccio raster è ispirato direttamente al filone di porting di Doom su disp
 **Il pattern**: stato di gioco runs su hardware capable, viene **rasterizzato + ditherato server-side**, i frame compressi sono streamati al display constrainted via canale lento. Esattamente il nostro caso (Foundry capable → Bridge transform → BLE constrained → G2 4-bit).
 
 #### 7.4b.3 Approach D — Maximum Raster (canonical)
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — La mappa è ora 192×288 pixelata costruita sul telefono da `MapSnapshot` (§7.0); limite immagine SDK attuale 288×144. Conservato come storico; il contratto vivo è indicato qui.
 
 Quando `view.map.mode = "raster"`, dedichiamo **tutti e 4 gli image container** alla mappa, tiled in **2×2 grid**:
 
@@ -1964,6 +2039,8 @@ Due opzioni:
 ---
 
 ### 7.4c Idle Content Infill — z=0.5 layer (v0.9.12)
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — z=0.5 non esiste nel layout a terzi (la colonna contesto è sempre visibile). Conservato come storico; il contratto vivo è indicato qui.
 
 > **Status:** ratified v0.9.12 (2026-05-14) — extension to ADR-0001 layered model. Binds Phase 4a (engine + layer manager) and Phase 4b (overlay slot lifecycle).
 
@@ -2607,7 +2684,7 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.9.13                                          ║
+║                              EVENFOUNDRYVTT  v0.10.0                                      ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
@@ -2816,6 +2893,8 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 **Implicazioni di INV-3 (doc coherence)**: ogni nuova setting deve essere documentata nella superficie che ospita, con cross-ref. Non duplicare; se serve in due posti, usare `#2 phone-side` come canonical.
 
 #### 7.14.7 Phone-Side Configuration UI (Even Realities App)
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Sostituita dal pairing QR diretto (§7.0, mock P01–P03). Conservato come storico; il contratto vivo è indicato qui.
 
 > Surface canonica per **connection-bootstrap settings** (§3.8). HTML form renderizzato nel WebView del plugin sul telefono — **non** sul G2 — quando l'utente apre l'app evenfoundryvtt dall'Even Realities App. Risolve il chicken-and-egg "G2 senza tastiera, ma serve URL+token per connettersi a Foundry".
 
@@ -3177,6 +3256,8 @@ Settings i18n sono **device-local** (LRU per-device, non world-scope) — ogni p
 ---
 
 ## 8. Voice Interaction — Worked Examples (V2 OPZIONALE)
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Voice rimosso con Bridge/foundry-mcp (ADR-0012); esempi conservati per un futuro ADR. Conservato come storico; il contratto vivo è indicato qui.
 
 > **Non parte del MVP**. Questi esempi descrivono il comportamento atteso quando il modulo `foundry-mcp` (§5.7) è attivo e il giocatore usa un client MCP (es. Claude Desktop) come push-to-talk frontale. I tool chiamati sono gli stessi del Tool Registry §5.3 — nel MVP sono invocati manualmente dal G2 panel; in V2 dall'LLM via MCP.
 
@@ -3694,11 +3775,15 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 
 ### 11.5.3 Bridge deployment topology
 
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Nessun deployment: il modulo Foundry serve l'app G2 (§2.0). Conservato come storico; il contratto vivo è indicato qui.
+
 - **Decisione MVP**: **Docker Compose homelab default**. Bridge gira su same LAN del Foundry server (latency network ≤5 ms tipico). Phone Even App si collega via WiFi locale.
 - **Stretch**: Cloud deploy (Railway, Fly.io, Render) per accesso remoto. Cloudflare Tunnel o ngrok per esporre homelab via tunnel sicuro.
 - **Rationale**: homelab è il setup tipico Foundry (single-DM, 4-6 player). Cloud è opzionale per chi non ha port-forwarding o gioca remoto.
 
 ### 11.5.4 Authentication scheme
+
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Auth = utente Foundry dedicato «(G2)» + chiave AES-GCM per dispositivo, QR monouso (§2.0). Conservato come storico; il contratto vivo è indicato qui.
 
 - **Decisione**: **Bearer token opaco per-player**, generato server-side dal modulo Foundry. Token derivato da `user.id + secret + timestamp`, hash HMAC-SHA256, expiry 24h con refresh automatico.
 - **Provisioning** (v0.9.11): il bearer è **paired via QR scan** dal Foundry module Settings UI desktop verso l'Even Realities App phone (vedi §7.14.7.3). Riduce attack surface (no token in clipboard non sicura) e rende auditable il pairing dal DM-side. Paste manuale resta fallback per accessibility.
@@ -4048,6 +4133,17 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 ---
 
 ## Changelog
+
+- **2026-09-23 (v0.10.0 — Direct Foundry → G2 streaming, thirds layout)** — **Bump v0.9.13 → v0.10.0.** Architettura riscritta: rimossi Bridge Node.js, `foundry-mcp` e Docker Compose; l'app G2 è servita dal modulo Foundry e associata con un QR (ADR-0012). Nuovo layout a terzi (§7.0) e nuova sezione architettura (§2.0); sezioni superate marcate con banner SUPERSEDED.
+  - **Re-verified ✓ / Drift (INV-2, 2026-09-23, hub.evenrealities.com/docs/* aggiornate 2026-06-11 → 2026-08-29 + tarball npm SDK 0.0.10/0.0.14/0.0.15):**
+    - **Drift CRITICAL — SDK 0.0.10 → 0.0.15.** 0.0.11 location/foto/mic telefono; 0.0.12 `zOrderIndex` obbligatorio e univoco se usato, LZ4 immagini; 0.0.14 `menuObject` (≤10 voci, ≤32 byte), `LONG_PRESS_EVENT(9)`/`RELEASE(10)`, `textColor` 0–4, `updateImageRawData` a passo 100 ms; 0.0.15 `eventSource` sul long-press. `min_sdk_version` minimo per la review = 0.0.14 (`ship/app-submission`).
+    - **Drift IMPORTANT — image container 288×144** (`build/display`, tipi SDK 20–288 × 20–144) supera il 200×100 della voce 2026-05-31.
+    - **Drift IMPORTANT — long-press ri-aggiunto** (SDK 0.0.14 + Even App ≥ 2.2.9) ma solo come *extra* (il tap-poi-long-press è riservato al menu di sistema). **GEST-01 chiuso by design**: nel layout a terzi il menu azioni si apre con tap, il long-press apre solo scorciatoie duplicate.
+    - **Re-verified ✓** whitelist rete per origin completa senza wildcard, CORS non bypassato; **QR sideload** carica un URL arbitrario (`get-started/architecture`; `evenhub-cli@0.1.14 qr` codifica l'URL in chiaro); doppio tap sulla radice ⇒ `shutDownPageContainer(1)` obbligatorio; `setBackgroundState`/`onBackgroundRestore` **assenti** (si usano `FOREGROUND_ENTER/EXIT`); `localStorage` persiste a sospensione/aggiornamento; banda BLE 10–30 KB/s (FAQ) ⇒ mappa ≤ 1 fps.
+    - **Foundry (foundryvtt.com/article/module-development, api/v13 `foundry.Game`):** relay `module.<id>` verso tutti i client ⇒ envelope cifrati; v14 legge la sessione solo dal cookie ⇒ hosting same-origin; issue #14728 (login concorrente stesso utente) ⇒ utente «(G2)» dedicato.
+    - **Drift IMPORTANT — glifi e capienza del font firmware** (misurati con `@evenrealities/pretext` 0.1.4): `▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` hanno larghezza 0 (scartati dal firmware); sostituiti da `■ □ ★ ▲ ▶ ●`, mirino disegnato in pixel. Colonna 192 px ≈ 18 caratteri × 11 righe (i mock monospace a 31 colonne restano solo architettura dell'informazione). Il contratto INV-1 eseguibile diventa `packages/shared-render/src/fixtures/thirds.*.txt`.
+  - **Rimosso:** `packages/bridge`, `packages/foundry-mcp`, `deploy/`, wizard/audio della g2-app, pairing bearer + internal secret del modulo. Nuovo gate hardware `validate:direct-sideload` (pattern defer-hardware).
+  - **INV-3:** Specs.md + README.md + docs/showcase/index.html aggiornati nello stesso commit.
 
 - **2026-05-31 (INV-2 full validation round — hub.evenrealities.com/docs/*)** — Whole-development re-verification against the canonical Even Hub developer docs (overview · getting-started/architecture · guides/{display,device-apis,page-lifecycle,input-events,networking,design-guidelines} · reference/packaging). **No spec version bump** (validation + drift log; coherent corrections scheduled to dedicated v0.9.14 work per the §0 drift policy "fixato in PR dedicato").
   - **Re-verified ✓ (no change):** execution model (app logic in phone WebView, glasses = display + native scroll only); container budget 4 image + 8 other = 12 max; exactly one `isEventCapture:1`; canvas 576×288 4-bit greyscale; **image container 20–200 × 20–100 px** (canonical doc CONFIRMS Specs §3.1's 200×100 — supersedes the 2026-05-14 simulator-`index.d.ts` note that suggested 288×144; the docs are authoritative ⇒ our 200×100 tiles are correct); audio PCM 16 kHz s16le mono via `audioControl(true|false)` + `audioEvent`; `imuControl`; `getDeviceInfo`/`getUserInfo`; `getLocalStorage`/`setLocalStorage`; explicit "no audio output, no camera, greyscale only, no animations, no programmatic scroll position"; `shutDownPageContainer(0=immediate, 1=confirm)`; lifecycle events `FOREGROUND_ENTER_EVENT(4)`/`FOREGROUND_EXIT_EVENT(5)`/`ABNORMAL_EXIT_EVENT(6)` via `onEvenHubEvent`; **`setBackgroundState`/`onBackgroundRestore` confirmed ABSENT** (validates v0.9.14 LIFE phase scoping); networking full-origin whitelist (no wildcards), HTTPS-required, CORS not bypassed by whitelist, **WebSocket cannot set request headers from the WebView** (validates the 2026-05-30 audio-stream `?token=` query-param fix, task 260530-x2b).

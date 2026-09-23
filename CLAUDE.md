@@ -4,67 +4,66 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-**Phase 1 active.** Monorepo skeleton lives under `packages/`; tooling foundation is committed and CI gates active. The repo contains:
+**v0.10.0 — direct Foundry → G2 streaming** ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md)). The Node bridge, `packages/foundry-mcp`, `deploy/` (Docker Compose) and voice were **removed**. The g2-app is built into `packages/foundry-module/g2/`, Foundry serves it at `/modules/evenfoundryvtt/g2/index.html`, and the Even Realities App loads it by QR sideload. The Foundry module in the GM browser is the **projector**.
 
 **Config (root):**
 
-- `package.json` — pnpm workspace, `packageManager: pnpm@10.33.4`, scripts for lint/typecheck/test/changeset
+- `package.json` — pnpm workspace, `packageManager: pnpm@10.33.4`, scripts for lint/typecheck/test/changeset/release
 - `pnpm-workspace.yaml` — `packages/*` glob
-- `tsconfig.base.json` — strict + 6 flags (lifted from Phase 0 proven config)
-- `biome.jsonc` — Biome 2.4.15 config (recommended + 4 strict rules)
+- `tsconfig.base.json` — strict + 6 flags
+- `biome.jsonc` — Biome 2.4.15 config (recommended + strict rules)
 - `vitest.config.ts` — Vitest 4 `test.projects` workspace API + v8 coverage 80%
-- `.changeset/config.json` — independent per-package semver, pre-1.0 no-publish
+- `.changeset/config.json` — independent per-package semver
 - `commitlint.config.js` + `.husky/{pre-commit,commit-msg}` — Conventional Commits enforcement
-- `.nvmrc=24`, `.npmrc`, `.gitattributes`, `.editorconfig`, `.gitignore`
+- `.nvmrc=24`, `.npmrc`, `.gitattributes`, `.editorconfig`, `.gitignore` (`packages/foundry-module/g2/` is build output, never committed)
 
 **Packages:**
 
-- `packages/g2-app/` — Phase 4a placeholder (Vite 8 → Even Realities App WebView)
-- `packages/bridge/` — Phase 3 placeholder (Fastify + ws Node 24 service)
-- `packages/foundry-module/` — Phase 2 placeholder (Foundry module `evenfoundryvtt`)
-- `packages/shared-protocol/` — Zod schemas + types (Phase 2+ fills real schemas)
-- `packages/shared-render/` — ASCII grid + INV-1 snapshot matcher (Phase 4a real consumer)
-- `packages/validation-harness/` — folded from `tests/phase-0/` per Phase 0 D-15 + Phase 1 D-1.02 (hardware execution gated on Even Hub access)
+- `packages/foundry-module/` — Foundry module `evenfoundryvtt`: dnd5e readers, write path (`dispatchTool`, ADR-0011), `src/direct/` projector + pairing (menu `pairG2` "Pair G2 glasses"), ships `g2/`
+- `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.15): `src/direct/` (credentials, `/join` + socket.io client, sealed session), `src/hud/` (thirds layout, input state machine, pixel map), `src/phone/` (phone page P02/P03)
+- `packages/shared-protocol/` — Zod schemas + `direct/` envelope (WebCrypto AES-GCM), messages, pairing payload, map snapshot
+- `packages/shared-render/` — ASCII grid + INV-1 snapshot matcher + fixtures
+- `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:direct-sideload`
 
-**Architecture:**
-
-- `docs/architecture/` — 5 ADRs accepted (0001-0004 + 0008) + 2 Phase 0 stubs (0005, 0006); ADR-0007 reserved for V2 RTL stretch
+**Architecture:** `docs/architecture/` — ADR-0001…0012 (0012 = direct streaming, supersedes the bridge topology) + `INVARIANTS.md`; design contract `docs/design/g2-thirds-layout.md` (M01–M11, P01–P03).
 
 **Documentation:**
 
-- `Specs.md` (~4040 lines, **canonical source of truth**, v0.9.11) — requirements, hardware constraints, APIs, data models, UI/UX with ASCII mockups, layered raster pipeline, optional V2 MCP voice module, 13-week MVP roadmap, risk register
+- `Specs.md` (**canonical source of truth**, v0.10.0) — requirements, hardware constraints, APIs, data models, UI/UX mockups, roadmap, risk register
 - `README.md` — projection of `Specs.md` for GitHub readers; must stay coherent (see INV-3)
-- `docs/showcase/index.html` — animated single-file showcase deployed to GitHub Pages; another projection
-- `docs/index.html` — root redirect to `/showcase/`
+- `docs/showcase/index.html` — animated single-file showcase (GitHub Pages); `docs/index.html` redirects to it
+- `docs/setup-guide.md` · `docs/runbook.md` · `docs/firmware-compatibility.md` · `docs/release/{foundry-module,evenhub}.md`
 - `LICENSE` (MIT)
 
-**CI:** GitHub Actions `.github/workflows/ci.yml` enforces D-1.10 7 quality gates on every PR.
+**CI:** `.github/workflows/ci.yml` — D-1.10 gates 1–7 + Gate 8 (`activity.use(` only under `foundry-module/src/write-path`) + Gate 9 (no socketlib outside `foundry-module`) + Gate 10 (g2-app builds into `foundry-module/g2/index.html`). Release: `foundry-module-release.yml` (tag → module zip incl. `g2/`), `evenhub-pack.yml` (secondary `.ehpk`), `release.yml` (Changesets).
 
-### Build/Test/Lint Commands (Phase 1+)
+### Build/Test/Lint Commands
 
 ```bash
 pnpm install                  # install workspace deps
 pnpm typecheck                # tsc --noEmit -p tsconfig.base.json && pnpm -r exec tsc --noEmit
-pnpm lint                     # biome check . (writes fixes? use lint:ci for read-only)
+pnpm lint                     # biome check .
 pnpm lint:ci                  # biome ci . (read-only, CI-style)
 pnpm format                   # biome check --write .
 pnpm test                     # vitest --run (workspace-wide)
-pnpm test:watch               # vitest --watch
+pnpm test:watch               # vitest (watch)
 pnpm test:coverage            # vitest --run --coverage
 pnpm changeset                # add a changeset for the current PR
-pnpm changeset:status         # check changeset declared since main
+pnpm changeset:status         # check changeset declared since origin/main
 
 # Per-package (filter via pnpm)
-pnpm --filter @evf/g2-app build
-pnpm --filter @evf/validation-harness validate:all      # full hardware run (with Even Hub access)
-pnpm --filter @evf/validation-harness validate:all -- --skip-hardware   # software-only smoke
+pnpm --filter @evf/g2-app build                  # vite → packages/foundry-module/g2/
+pnpm --filter @evf/foundry-module build:all      # g2-app build, then tsup → dist/module.js
+pnpm --filter @evf/validation-harness inv:all    # invariant suite
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware   # ADR-0012 software GO/NO-GO
+pnpm --filter @evf/validation-harness validate:all:skip-hardware    # Phase 0 software-only smoke
 ```
 
-### Phase 1 self-test (clean clone)
+### Self-test (clean clone)
 
 ```bash
 pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:coverage && pnpm changeset:status
-# All exit 0 = Phase 1 healthy
+# All exit 0 = healthy
 ```
 
 ## Project Invariants (NON-NEGOTIABLE)
@@ -86,12 +85,12 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 - TypeScript strict, no `any` / non-null `!` without a justifying comment; Zod schemas in `shared-protocol` are the single source of truth for wire shapes — never redefine a type locally.
 - Zero dead code, unused exports, commented-out blocks, or orphan files (INV-4). `// TODO` only with `(#issue)` or `(ADR-NNNN)`.
 - TSDoc on every public API: purpose, params, return, thrown errors, and the `Specs.md §` it implements.
-- Errors are never swallowed: every `catch` either recovers explicitly, degrades with a documented fallback (e.g. raster → glyph), or rethrows with context. Log via `pino` (bridge) / debug channel (g2-app), never bare `console.log` in shipped code.
+- Errors are never swallowed: every `catch` either recovers explicitly, degrades with a documented fallback (e.g. raster → glyph), or rethrows with context. Log via the g2-app debug channel (`src/debug/`) or `[EVF]`-prefixed `console.warn/error` in the Foundry module, never bare `console.log` in shipped code.
 
 ### P2 · 🧪 Testing standards
 
 - Every behavior change ships with tests in the same commit; every bug fix ships with a regression test that fails before the fix.
-- Test pyramid: unit (pure logic, reducers, formatters) → integration (bridge ↔ foundry-module via mocks, WS protocol round-trips) → snapshot (INV-1 ASCII layouts, all states × IT/EN × min/max content widths) → E2E/simulator where hardware-like behavior matters.
+- Test pyramid: unit (pure logic, reducers, formatters) → integration (g2-app session ↔ projector via sealed-envelope round-trips on a fake socket) → snapshot (INV-1 ASCII layouts, all states × IT/EN × min/max content widths) → E2E/simulator where hardware-like behavior matters.
 - Coverage gate ≥ 80% (vitest v8) is a floor, not a target: cover edge cases (empty/overflow/unicode/locale, disconnect/reconnect, stale tokens), not lines.
 - Tests are deterministic: no real timers, network, or randomness without fakes/seeds. Flaky tests are bugs — fix or quarantine with an issue link, never retry-until-green.
 - Hardware-only checks follow the defer pattern: written as GO/NO-GO harness scripts in `validation-harness`, runnable with `--skip-hardware`, never blocking software CI.
@@ -112,7 +111,7 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 
 ### P5 · 🐞 Auto-debug & validation system
 
-- Every feature must be observable and drivable without glasses: emit structured events to the Debug Console (`EVF_DEBUG=true`, `/debug/{state,events,stream,inject,dispatch-tool,simulate-gesture}`) and keep the g2-app display mirror in sync.
+- Every feature must be observable and drivable without glasses: record structured events in the g2-app debug channel, add a `?demo=` scenario for every new HUD state, and keep the Even Hub simulator loop (`sim:check`: screenshots + input + console via the automation API) green.
 - Debug surfaces are dev-only and fail closed (404 when off, secret-gated) — never reachable in production builds.
 - Validate before claiming done: `pnpm lint:ci && pnpm typecheck && pnpm test:coverage`, plus `inv:all` for invariant-touching changes and the Even Hub simulator for display/input changes. Report real output; never claim "works" without evidence.
 - Debug autonomously first (reproduce → isolate via debug endpoints/logs → fix → regression test); ask the user only for hardware-gated steps.
@@ -182,34 +181,30 @@ Before bumping `Specs.md` version (e.g., v0.9.10 → v0.9.11):
 
 ## Architecture mental model
 
-EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. The spec resolves around a four-boundary system:
+EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. Since v0.10.0 there is **no server of our own** ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md)):
 
 ```
-[ G2 glasses ]  ←BLE LC3 audio + display ops→  [ Even Realities App (phone, WebView) ]
-                                                  │
-                                                  │ HTTPS / WSS
-                                                  ▼
-                                       [ Bridge (Node.js Fastify + ws) ]
-                                                  │
-                                                  │ socketlib + REST + hooks
-                                                  ▼
-                                       [ FoundryVTT + dnd5e 5.x ]
-                                                  │
-                                                  │ optional V2: foundry-mcp
-                                                  ▼
-                                       [ MCP client e.g. Claude Desktop ]
+[ G2 glasses ] ⇄ BLE ⇄ [ Even App WebView — page served by Foundry: /modules/evenfoundryvtt/g2/ ]
+                                   │ same-origin HTTPS: POST /join (cookie) + socket.io
+                                   ▼
+                           [ Foundry server ] ── relays module.evenfoundryvtt (AES-GCM sealed)
+                                   │
+                                   ▼
+             [ GM browser — evenfoundryvtt module = PROJECTOR ]
+               dnd5e readers · dispatchTool write path (ADR-0011) · pairing registry
 ```
 
 Crucial constraints baked into the spec (do not re-litigate without upstream evidence):
 
-- **Plugins run on the paired phone WebView, not on G2 firmware** (verbatim `hub.evenrealities.com/docs/getting-started/overview`). G2 is a thin client: display + 4-mic + IMU + touchpads. See §3.7.
-- **G2 has 4 directional mics** but **no speaker / no audio output / no camera** (verbatim `hub.evenrealities.com/docs/guides/device-apis`: *"no audio output, no arbitrary pixel drawing, no camera"*). All "voice" feedback must be visual (toast §7.15.2, status HUD §7.4). See §3.1, §3.5.
-- **Native EvenAI is opaque to dev apps** — proprietary "Even LLM", cloud-backed, **no API**, no transcript subscription. ChatGPT is G1-only. Our V2 voice via `foundry-mcp` MCP server is a **platform constraint**, not a design preference. See §3.6.
-- **Audio capture for our app**: `bridge.audioControl(true|false)` + `event.audioEvent.audioPcm` → PCM 16 kHz s16le mono. BLE raw codec is LC3 (decoded by Hub SDK; the app sees PCM). See §3.5.
-- **Rendering is layered**: z=0 map (raster default 4-bit dithered, glyph fallback) + z=1 persistent status HUD corner card + z=2 overlay panel slot. One UI, layered like Foundry desktop. See §7.2.
-- **Frame rate target**: 5 fps committed / 15 fps stretch via 6-layer optimization stack (delta hash · sub-tile encoding · static caching · custom RLE · BLE 4.2+ DLE · adaptive frame rate). See §7.4b.6.1.
-- **Locale follows Foundry** (`game.i18n.lang`) with **on-glasses override** via Quick Action `[N] Language`. Override is device-local, never modifies world settings. See §7.16.
-- **Phase 0 is gating**: hardware assumptions (R1 events, image API format, BLE bandwidth, partial-update API, DLE, audio chunk size) all have written GO/NO-GO tests before any application code lands. See §10.0.
+- **Plugins run on the paired phone WebView, not on G2 firmware.** G2 is a thin client: display + 4-mic + IMU + touchpads. See §3.7.
+- **Same-origin sideload is load-bearing**: Even Hub whitelists are fixed per build (no wildcards) and do not bypass CORS; Foundry v14 accepts the socket session only from the first-party `session` cookie. Hence the page is served by Foundry and QR-sideloaded, and Foundry must be on **valid HTTPS** reachable from the phone.
+- **Identity**: one Foundry user `"<Player> (G2)"` per paired player (role Player, owner of one actor). Pairing via settings menu `pairG2` → QR (5 min, single use; password + key rotate on first `hello`) + 16-char manual code.
+- **Privacy**: every relay payload is a sealed envelope (AES-256-GCM, AAD `from>to`). Device keys live **only** in the pairing GM browser (client-scope setting); only `game.users.activeGM` answers.
+- **G2 has no speaker / no audio output / no camera**. All feedback is visual (toast, HUD). Voice/MCP removed in v0.10.0; may return as a client of the direct channel via a new ADR. Native EvenAI has no developer API (§3.6).
+- **Thirds layout**: sheet (⅓) · pixel map 192×288 in 2 image containers (⅓, ≤ 1 fps, ≥ 100 ms image pacing) · context column (⅓, the only one that takes input). See `docs/design/g2-thirds-layout.md`.
+- **Input**: press / double-press / swipe up/down; long-press is an **extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9) opening the `menuObject` shortcuts, never the only path. Double-tap at root exits (`shutDownPageContainer(1)`).
+- **Locale follows Foundry** (`game.i18n.lang`) with device-local override (phone page or glasses menu). See §7.16.
+- **Hardware assumptions are gated** by GO/NO-GO harness scripts (defer-hardware pattern), incl. `validate:direct-sideload`. See §10.0.
 
 ## Working in this repo
 
@@ -222,7 +217,7 @@ Crucial constraints baked into the spec (do not re-litigate without upstream evi
 
 ## Roadmap snapshot
 
-13-week MVP (Phase 0 validation → Phase 10 polish) + V2 optional (Phase 11 MCP server / Phase 12 voice tuning / Phase 13 stretch). When code starts landing, the **first commit of Phase 1** must include monorepo skeleton + Biome + TypeScript strict + Vitest + ADR-0001 to ADR-0008 placeholders. Once that lands, replace this file's "Repository state" section with real commands.
+v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) are archived under `.planning/milestones/`. **v0.10.0** (current): direct Foundry → G2 streaming, thirds HUD, one-scan pairing (ADR-0012). Next: hardware UAT on G2 + R1 (sideload, cookie persistence, BLE map pacing) and, if wanted, voice/MCP as a client of the direct channel (new ADR required).
 
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
@@ -235,230 +230,59 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 ### Constraints
 
-- **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image max 200×100 px, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
-- **Hardware R1**: BLE → smartphone Even App → G2; gesture supportate (doc canonica) = `press / double-press / swipe-up / swipe-down`; **nessun long-press / input duration-based**; nessun input testuale. — *Hardware Even Realities (INV-2 re-verified 2026-05-31).* ⚠️ DRIFT noto: il codice usa ancora `long-press` per l'invocazione Quick-Action (assunzione `[SC-06-01 pending]` ora contraddetta) → fix schedulato GEST-01 (Specs changelog 2026-05-31). La doc canonica vince.
-- **Plugin execution model**: il codice plugin è servito da un server HTTP separato; l'Even Realities App lo carica nel WebView phone. Il G2 firmware NON esegue il nostro codice. — *Verbatim simulator README.*
-- **Network**: HTTPS obbligatorio in prod; ogni dominio outbound deve essere in `app.json` whitelist (origin completo, no wildcards). — *Vincolo Even Hub.*
+- **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image max 288×144 px, ≥ 100 ms tra update immagine, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
+- **Hardware R1**: BLE → smartphone Even App → G2; gesture canoniche = `press / double-press / swipe-up / swipe-down`; **long-press solo come extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9: apre il menu contestuale `menuObject`, mai unico accesso a una funzione); nessun input testuale. — *hub.evenrealities.com/docs/reference/changelog + /build/input (re-verified 2026-09-23). Il drift GEST-01 è chiuso dalla v0.10.0.*
+- **Plugin execution model**: il g2-app è servito da **Foundry stesso** (`/modules/evenfoundryvtt/g2/index.html`) e caricato dall'Even Realities App via QR sideload nel WebView del telefono. Il G2 firmware NON esegue il nostro codice. — *ADR-0012; hub.evenrealities.com/docs/get-started/architecture.*
+- **Network**: Foundry su HTTPS **valido** raggiungibile dal telefono (no self-signed); tutto il traffico è same-origin (`/join` + socket.io), quindi nessuna whitelist/CORS per il sideload. Il `.ehpk` (secondario) resta vincolato alla whitelist `app.json` (origin completo, no wildcards). — *Vincolo Even Hub + ADR-0012.*
 - **BLE bandwidth**: target ≥200 kbps sustained; <100 kbps blocca raster MVP (degrade a glyph-only). — *Phase 0 §10.0.3.*
 - **D&D edition**: dual-support PHB 2014 + PHB 2024 via `core.modernRules`. Setting MVP. — *§11.5.1.*
 - **License**: MIT su tutti i package del monorepo. — *§11.5.2.*
-- **Deployment MVP**: Docker Compose homelab single-tenant; cloud è stretch Phase 13. — *§11.5.3.*
-- **Auth**: bearer opaque 24h, paired via QR scan dal modulo Foundry desktop. — *§11.5.4.*
+- **Deployment**: solo il modulo Foundry (zip GitHub Release con `g2/`); niente bridge, niente Docker Compose (rimossi in v0.10.0). Serve un browser GM online (projector). — *ADR-0012 (supersede §11.5.3).*
+- **Auth**: utente Foundry dedicato `"<Giocatore> (G2)"` + chiave AES-256 per dispositivo; QR monouso 5 min (password + chiave ruotano al primo `hello`) o codice manuale di 16 caratteri; revoca dalla finestra «Associa occhiali G2». — *ADR-0012 (supersede §11.5.4 bearer 24h).*
 - **Tooling fissato**: TypeScript strict + Biome lint/format + Vitest coverage gate; CI fail su `// TODO` senza issue-link. — *INV-4 §0.1.*
 <!-- GSD:project-end -->
 
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
 
-> **Drift corrections (2026-05-11)** — the §Technology Stack rows below are a snapshot from `.planning/research/STACK.md` (researched 2026-05-10). Two version pins were drift-corrected after live `npm view` queries during Phase 0 Plan 01 (commit `40732fe`) and Phase 1 Plan 01 (commit `5096129`):
->
-> - **TypeScript** — research cited `5.8.5`; actual pinned version is **`5.8.3`** (5.8.5 does not exist on npm registry). Re-verified ✓ 2026-05-11.
-> - **pnpm** — research cited `10.3.1`; actual pinned version is **`10.33.4`** (10.3.1 does not exist; current `latest-10` dist-tag). Re-verified ✓ 2026-05-11.
->
-> Authoritative current pins live in repo configuration (`package.json` `packageManager`, root `devDependencies`, `.changeset/config.json`). Drift Corrections Log: `.planning/research/STACK.md` §11.
+> **v0.10.0 (2026-09-23)** — rewritten after [ADR-0012](docs/architecture/0012-direct-foundry-streaming.md). The original research snapshot (`.planning/research/STACK.md`, 2026-05-10) described a Node bridge + Docker + `foundry-mcp`; those rows are collapsed into *Removed in v0.10.0* below. Authoritative pins live in the `package.json` files (exact versions, re-check with `npm view` per INV-2).
 
-## 0. TL;DR — Phase 1 install matrix
-# Repo root
-# Workspace devDeps (root package.json)
-# packages/g2-app (browser bundle, served from plugin host server)
-# packages/bridge (Node 24 LTS service)
-# packages/foundry-mcp (V2, deferred to Phase 11)
-## 1. Recommended Stack — by package
-### 1.1 `packages/g2-app` — Plugin host bundle (browser, Even Realities App WebView)
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **TypeScript** | **5.8.5** | Type-safe authoring of plugin sources | Strict mode mandatory per INV-4 §0.1 (`noUnusedLocals`, `noUnusedParameters`). 5.8 stable; 6.0.x is also "latest" on npm but only 9 days old at time of research — **stay on 5.8.x for Phase 1** until 6.0 has a quarter of ecosystem catch-up. |
-| **Vite** | **8.0.11** | Dev server + production bundler | Fastest iteration loop (HMR <50 ms), worker-aware (`?worker` import suffix), tree-shakes `image-q`/`upng-js` cleanly. Outputs an `index.html` + JS chunks suitable for plain HTTP hosting (CDN-friendly per Specs.md §3.7). Vite 8 is current `latest` (verified 2026-05-10). |
-| **`image-q`** | **4.0.0** | Floyd-Steinberg / Atkinson / Bayer dither + custom 16-step greyscale palette | Specs.md §11.5.7 already settled; only library on npm with FS+Atkinson+Bayer **and** custom palette support. ~60 KB gz tree-shaken. **Worker-safe** (no DOM dep). |
-| **`upng-js`** | **2.1.0** | 4-bit indexed-palette PNG encode | Only mature npm encoder supporting `depth: 4` indexed-palette (matches G2 wire format §3.1). Photopea-maintained. ~25 KB gz. |
-| **`xxhash-wasm`** | **1.1.0** | Sub-tile hash for delta encoding (Layer 1 + Layer 2) | WASM `~1 GB/s` throughput → 5-10× faster than custom JS murmur/FNV. 1.3 KB gz. **Critical** for the 15 fps stretch target (Specs.md §11.5.7.1). |
-| **OffscreenCanvas + Web Worker** | platform | GPU-accelerated resize stage, off-main-thread quantize/dither/PNG encode | Native browser API, no library. `imageSmoothingQuality:'high'` GPU resize is 3-5× faster than custom bilinear (§11.5.7.1). Worker isolation also gives the failure-mode story §11.5.8.4 (worker crash → fallback glyph mode). |
-| **Native `WebSocket` + `fetch`** | platform | Talk to Bridge | No `axios`/`socket.io` needed. Even Realities WebView is Safari WKWebView (iOS) — modern WHATWG fetch + WebSocket are baseline. |
-### 1.2 `packages/bridge` — Node.js service (homelab Docker Compose)
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Node.js** | **24.x LTS** ("Krypton") | Runtime | Active LTS as of 2026-05 (verified nodejs.org/en/about/previous-releases). Alternative: 22 LTS ("Jod", maintenance). Pin in `.nvmrc` and Docker base image. Native `WebSocket` client (since 22), native `--watch`, native test runner (we still pick Vitest, see §1.6). |
-| **Fastify** | **5.8.5** | HTTP/REST framework | Specs.md §5.2 already chose Fastify. Fastify 5 is current major (`latest` tag). Schema-first (Zod via `fastify-type-provider-zod`), 2-3× faster than Express, first-class TS, plugin ecosystem covers everything we need below. Express 5 is acceptable but lacks built-in schema validation and is slower; **don't use Express**. |
-| **`@fastify/websocket`** | **11.2.0** | WebSocket plugin (uses `ws` underneath) | The Fastify-blessed way to expose WS endpoints. Mounts on the same Fastify instance — single port, single auth pipeline. |
-| **`ws`** | **8.20.0** | WS client toward Foundry's socket | Lower-level direct usage when we need to *originate* a connection (bridge → Foundry module). De-facto standard, used by `@fastify/websocket` itself. **Don't use `socket.io`**: Foundry doesn't speak socket.io protocol on its module socket layer; we'd be paying for a parallel handshake. |
-| **`@fastify/cors`** | **11.2.0** | CORS for plugin-host origin | The plugin host URL and the bridge URL are different origins (Specs.md §3.7). Whitelist plugin-host origin only — no wildcards (Even Hub network constraint §3.3). |
-| **`@fastify/rate-limit`** | **10.3.0** | Per-token rate limit on action endpoints | Bearer 24h tokens (Specs.md §11.5.4) + rate limit = belt-and-suspenders against runaway loops or compromised tokens. |
-| **`zod`** | **4.4.3** | Runtime schema validation | Single source of truth in `packages/shared-protocol`. Fastify type-provider derives static types AND runtime validators. Same Zod schemas re-used by `foundry-mcp` (§1.4) — Zod is the schema language MCP TS SDK already serializes to JSON Schema (Specs.md §4.7 *"developer scrive Zod, il client riceve JSON Schema standard"*). |
-| **`pino`** | **10.3.1** | Structured logging | Specs.md §5.2 already chose pino. Lowest overhead Node logger. JSON-line out → `pino-pretty` in dev, ship to Loki/CloudWatch in prod. |
-| **`prom-client`** | **15.1.3** | Prometheus metrics | Specs.md §5.2 mentions Prometheus. `/metrics` endpoint per Phase 3 §10. |
-| **`qrcode`** | **1.5.4** | Generate the pairing QR (24h bearer payload) | Specs.md §11.5.4 / §7.14.7.3 — DM scans QR from Foundry desktop UI on Even App. SVG output, no native deps. |
-| **In-memory LRU cache** | platform `Map` + ttl | Tier 1 storage (Specs.md §11.5.5) | MVP single-tenant: a `Map<sessionId, State>` with TTL is sufficient. Redis is Phase 13 stretch only. **Don't add Redis to MVP**. |
-### 1.3 `packages/foundry-module` — `evenfoundryvtt` Foundry module
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Foundry VTT** | **≥ 13.347, verified on 14** | Host platform | Specs.md §3.4 — verified live on `system.json` for dnd5e@5.3.3 (`compatibility.minimum: 13.347`, `compatibility.verified: 14`). v12 explicitly **not supported** (Activity system requirement). |
-| **dnd5e system** | **≥ 5.3.3** (latest 2026-05-07) | Game system providing Activity API | Verified live on github.com/foundryvtt/dnd5e/releases. Specs.md §11.5.1 mandates dual-edition (PHB 2014 + PHB 2024 via `core.modernRules`); dnd5e 5.x supports both. **Migration alert**: dnd5e 5.3.0 changed advancement data from array → object; if Phase 2 readers iterate that data, they must use object iteration. |
-| **`socketlib`** | **mandatory** (latest from `farling42/foundryvtt-socketlib`) | GM-side `executeAsGM` plumbing | **NOT on npm** (verified — `npm view socketlib` returns 404). It's a Foundry module installed as a sibling module via Foundry's manifest. Declare as `relationships.requires` in our `module.json` (Foundry will surface install prompt). Specs.md §4.8. |
-| **MidiQOL** | **optional** (latest from `gitlab.com/tposney/midi-qol`) | Attack→damage→save→effect full-flow | Module-level dependency, optional. When present, our writers (§Phase 7) call `MidiQOL.completeActivityUse`; when absent, fallback to vanilla `activity.use()`. Capability handshake §5.6.3 detects presence. |
-| **TypeScript** | **5.8.5** + `tsup` | Source authoring | We author TS, compile to plain ESM JS for Foundry. Foundry doesn't run TS directly; ship compiled output + sourcemap. `module.json` references the compiled JS. |
-| **`fvtt-types`** | community types (verify Phase 2) | Type defs for Foundry globals | The `fvtt-types` package on npm is community-maintained. Pin to a version compatible with Foundry v13/v14 schema. Re-verify per INV-2 in Phase 2. |
-### 1.4 `packages/foundry-mcp` — V2 optional MCP server
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **`@modelcontextprotocol/sdk`** | **1.29.0** | Official MCP TypeScript SDK | Verified live on npm 2026-05-10. Implements both required transports (stdio for Claude Desktop, **Streamable HTTP** for remote homelab). Tool registration via Zod schemas, auto-serialized to JSON Schema for the wire (Specs.md §4.7). |
-| **Transport: stdio + Streamable HTTP** | spec rev **2025-06-18** | MCP wire | Verified live on `modelcontextprotocol.io/specification/2025-06-18/basic/transports`. **HTTP+SSE is deprecated** (since 2024-11-05 transport version, replaced by Streamable HTTP from 2025-03-26 onward). Specs.md §4.7 already says exactly this — confirmed, no drift. **Do NOT implement HTTP+SSE except as backwards-compat fallback for legacy clients** (and even that is optional per spec). |
-| **`zod`** | **4.4.3** | Tool input schemas | Same Zod the bridge uses → single source of truth for tool inputs (cast_spell, weapon_attack, etc.). Specs.md §5.7.2. |
-| **Node.js** | 24.x LTS | Runtime (matches bridge) | Same runtime as bridge for ops simplicity. |
-### 1.5 `packages/shared-protocol` — TypeScript types + Zod schemas
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **TypeScript** | 5.8.5 | Type defs only | Pure types + Zod schemas. No runtime apart from Zod itself. |
-| **`zod`** | 4.4.3 | Runtime + static schema | Schemas defined here, imported by bridge, foundry-module, g2-app, foundry-mcp. |
-### 1.6 Test, lint, build — workspace-wide
-| Tool | Version | Purpose | Notes |
-|------|---------|---------|-------|
-| **Vitest** | **4.1.5** | Unit + integration test runner | Specs.md INV-4 mandates "Vitest coverage gate". v4 is the current `latest`. Native ESM, TS first-class, `--coverage` via v8. **Snapshot tests** are the backbone of INV-1 layout-integrity (Specs.md §7.14.4 ck 11-15 — every panel state vs ASCII fixtures). |
-| **`@vitest/coverage-v8`** | 4.1.5 | Coverage provider (matches Vitest) | Use v8 over istanbul — faster, no source-map gymnastics on TS sources. |
-| **`happy-dom`** | 20.9.0 | Test environment for plugin code | Faster than jsdom for simple WebView-shaped code. Switch to jsdom only if a corner case demands it. |
-| **Playwright** | **`@playwright/test@1.59.1`** | E2E for the plugin host UI | Drives the WebView-equivalent (plain Chromium) for visual snapshot of HUD layouts and bridge-mock integration. **Don't use Cypress** — slower, multi-tab limited, and our flow is single-page. Phase 4+ only; not Phase 1. |
-| **Biome** | **2.4.15** | Lint + format (replaces ESLint + Prettier) | Specs.md INV-4 already chose Biome. Single binary, ~10× faster than ESLint+Prettier combined, TS-aware out of the box. CI rule: `biome ci .` fails on any warning. v2 is the current `latest`. **Don't add Prettier or ESLint** — Biome covers both, and dual-tooling is the original sin we're avoiding. |
-| **TypeScript** | 5.8.5 | Type-check (`tsc --noEmit`) in CI | Strict + `noUnusedLocals` + `noUnusedParameters` per INV-4 §0.1. |
-| **`tsx`** | 4.21.0 | TS execution for dev scripts | Node native loader for `.ts` — replaces `ts-node`. |
-| **`tsup`** | 8.5.1 | Bundle bridge + foundry-mcp to ESM | Zero-config; fast esbuild backend. Outputs single-file dist for Docker. |
-| **pnpm** | **10.3.1** | Package manager + workspaces | Specs.md §10 already chose pnpm. Strict by default (`shamefully-hoist=false`), workspace protocol (`workspace:*`) for inter-package deps. Pin via `corepack` so Docker builds are reproducible. |
-| **Changesets** | **2.31.0** (`@changesets/cli`) | Versioning + changelog | Specs.md §11.5.6 already chose Changesets. Each PR adds a `.changeset/*.md` file declaring bump type per package. |
-### 1.7 Deployment — Docker Compose homelab
-| Component | Image / Recipe | Notes |
-|-----------|----------------|-------|
-| **Bridge** | `node:24-alpine` base; copy `tsup` bundle; `EXPOSE 8910` | Multi-stage build keeps final image <100 MB. Specs.md §11.5.3. |
-| **Plugin host** | Static `nginx:alpine` serving `g2-app/dist/` | Plain HTTPS file host. Specs.md §3.7 — *static, CDN-friendly, zero state*. Caddy is an acceptable swap for auto-HTTPS via Let's Encrypt. |
-| **Foundry VTT** | (out of scope for our compose; lives on user homelab already) | We don't ship Foundry; we ship a module **for** Foundry. Compose may include a `foundry` reference in dev-only `docker-compose.dev.yml` for CI integration tests. |
-| **`foundry-mcp` (V2)** | `node:24-alpine`; same base as bridge | Phase 11 only. Streamable HTTP variant. |
-| **Reverse proxy / TLS** | Caddy or Traefik | Automatic Let's Encrypt for the public plugin-host URL; mTLS optional for bridge if exposed beyond LAN. **Not** required for pure-LAN MVP. |
-## 2. Alternatives Considered (and why we picked otherwise)
-| Recommended | Alternative | Why not |
-|-------------|-------------|---------|
-| Fastify 5 | Express 5 | 2-3× slower, no built-in schema validation, weaker TS story. |
-| Fastify 5 | Hono + Bun | Specs.md considered it. Hono's WS story is less mature; Bun in production with native deps still has edge cases; rejecting until Phase 13 cloud rewrite. |
-| Vitest 4 | Jest | Slower, ESM story is still rough as of 2026, requires `babel-jest` for TS. Vitest is the modern default for new TS projects. |
-| Biome 2 | ESLint + Prettier | Two tools, two configs, two CI invocations, ~10× slower. Biome handles both. |
-| pnpm 10 | npm workspaces / yarn 4 | npm workspaces lacks `workspace:*` rigor and is slower. yarn 4 is fine, but pnpm has stricter dependency hoisting which catches bugs early — exactly what INV-4 wants. |
-| `image-q` 4.0.0 | `jimp` | Specs.md §11.5.7 already documented: jimp `@jimp/plugin-dither` is **Bayer 565 only**, no FS/Atkinson, no 4-bit indexed PNG output. **Insufficient for our requirement.** |
-| `image-q` 4.0.0 | `ditherjs` / `floyd-steinberg` / `digidither` | All abandoned >5 years (red flag). |
-| `upng-js` 2.1.0 | `pngjs` | 8-bit only — wrong shape for 4-bit indexed. |
-| `upng-js` 2.1.0 | `fast-png` | Decode-only on 4-bit; we need encode. |
-| `upng-js` 2.1.0 | `sharp` (browser) | sharp is server-only (libvips native binding). Cannot run in WebView. **In-bridge fallback** (Specs.md §11.5.7 Option B) is fine if we ever need server-side rendering, but MVP ships Option A in the browser worker. |
-| `xxhash-wasm` 1.1.0 | hand-rolled MurmurHash3 in JS | 5-10× slower (Specs.md §11.5.7.1). Critical path. |
-| Streamable HTTP | HTTP+SSE | **Deprecated 2025-03-26**. Confirmed live on `modelcontextprotocol.io/specification/2025-06-18/basic/transports`. Spec text: *"This replaces the HTTP+SSE transport from protocol version 2024-11-05."* |
-| `ws` (raw) | `socket.io` | Foundry doesn't speak socket.io natively at the module-socket layer; we'd add a parallel handshake/abstraction. Direct `ws` is leaner and matches Foundry's own protocol. |
-| In-memory `Map` | Redis (MVP) | Specs.md §11.5.5 — Tier 2 Redis is **Phase 13 stretch** only. Single-tenant homelab does not need it. |
-| Plain TS modules | React / Vue / Svelte (g2-app) | No DOM emitted. The "render target" is `bridge.createTextContainer({...})` calls. Virtual DOM brings zero value. |
-| Playwright | Cypress | Multi-tab limited, slower, weaker TS story. |
-| TypeScript 5.8.5 | TypeScript 6.0.x | 6.0 is `latest` on npm but only days old at time of research. Wait one quarter for ecosystem (esp. Vitest, Biome, fvtt-types) catch-up. |
-| Node 24 LTS | Node 22 LTS (Maintenance) | 24 is Active LTS as of 2026-05. Pin in `.nvmrc`. |
-## 3. What NOT to Use
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| **`jimp`** for raster pipeline | Only Bayer 565 dither, no FS/Atkinson, no 4-bit indexed PNG. Specs.md §11.5.7 — explicit `Skip jimp`. | `image-q` v4.0.0 + `upng-js` v2.1.0 |
-| **`pngjs` / `fast-png`** | Wrong bit depth (`pngjs` 8-bit only; `fast-png` decode-only on 4-bit). Specs.md §11.5.7. | `upng-js` v2.1.0 |
-| **`pako` / `fflate`** in raster pipeline | PNG already DEFLATEs the payload. Adding a second compression layer wastes bytes. Specs.md §11.5.7. | Trust upng-js's built-in DEFLATE |
-| **HTTP+SSE MCP transport** | **Deprecated 2025-03-26** (verified spec rev 2025-06-18). | Streamable HTTP (the official replacement) |
-| **`socket.io`** (bridge ↔ Foundry) | Foundry doesn't speak socket.io at module-socket layer. Parallel handshake. | `ws@8.20.0` raw |
-| **Express** (any version) | Slower, no built-in validation, weaker TS, less plugin coverage for our needs. | Fastify 5 |
-| **ESLint + Prettier** (separately) | Two tools, ~10× slower combined, two configs to maintain. INV-4 wants single source of code-quality truth. | Biome 2.4.15 |
-| **Jest** | ESM still painful in 2026; needs `babel-jest`. | Vitest 4.1.5 |
-| **`ts-node`** | Deprecated in favor of `tsx` for new projects. | `tsx@4.21.0` |
-| **`yarn` / `npm workspaces`** | pnpm's strict hoisting catches the kind of bug INV-4 wants caught. | pnpm 10.3.1 |
-| **React / Vue / Svelte** in `g2-app` | No DOM emitted to G2 — all output is `bridge.createTextContainer` / `updateImageRawData` calls. Virtual DOM brings zero value, just bundle bloat. | Plain TS modules + observable state-store (Specs.md §5.4) |
-| **Redis** in MVP bridge | Specs.md §11.5.5 — Tier 1 in-memory `Map` is sufficient for single-tenant. Redis is Phase 13 stretch. | `Map<sessionId, State>` with TTL |
-| **EvenAI native LLM** | Specs.md §3.6 — **non-API for developers** (Even Realities proprietary). | External MCP via `foundry-mcp` (V2) |
-| **localStorage / sessionStorage** in g2-app | Specs.md §3.1 — sandboxed iframe in WebView, **no localStorage**. Tier 4 storage uses Even Hub key-value only. | Even Hub host-managed kv store |
-| **Wildcards in `app.json` whitelist** | Specs.md §3.3 — Even Hub network constraint forbids them. | Origin-complete URLs (plugin host + bridge URL only) |
-## 4. Stack Patterns by Variant
-- Single Docker Compose file: bridge + plugin-host + (caddy).
-- Tier 1 in-memory cache only.
-- Bearer 24h tokens, paired by QR.
-- No `foundry-mcp`.
-- Add `foundry-mcp` container + `claude_desktop_config.json` snippet.
-- Uses **Streamable HTTP** for remote, **stdio** for local.
-- Same bearer token as MVP — no new auth surface (Specs.md §5.7.4).
-- Promote `Tier 1 Map` → `Tier 2 Redis`.
-- Promote `homelab Caddy` → `Cloudflare Tunnel` or `Fly.io`/`Railway`.
-- Re-evaluate Bun+Hono migration if RPS becomes a bottleneck.
-- Add `bridge-headless-foundry` (Puppeteer/Playwright) for server-side raster pipeline (Specs.md §11.5.7 Option B).
-## 5. Version Compatibility Matrix
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `dnd5e@5.3.3` | `Foundry@13.347+` (verified `14`) | From live `system.json` 2026-05-10. |
-| `foundry-module/evenfoundryvtt@0.1.x` | `dnd5e@>=5.3.0` | Activity system requirement. v12 explicitly **not supported**. |
-| `image-q@4.0.0` + `upng-js@2.1.0` + `xxhash-wasm@1.1.0` | OffscreenCanvas + Web Worker | All three are worker-safe (no DOM). Specs.md §11.5.7 verified. |
-| `Vite 8` + `TypeScript 5.8` | Node 24 build host | Both are current latest. |
-| `Vitest 4` + `@vitest/coverage-v8 4.1.5` | Match major+minor | Always co-bump (Vitest convention). |
-| `Fastify 5` + `@fastify/websocket 11` + `@fastify/cors 11` + `@fastify/rate-limit 10` | Pinned major matrix | Mismatches cause runtime errors at plugin registration. |
-| `@modelcontextprotocol/sdk@1.29.0` | MCP spec rev `2025-06-18` | Streamable HTTP supported. HTTP+SSE deprecated but still wire-compatible. |
-| `Node 24 LTS` | All deps above | 22 LTS also works (Maintenance) — pin via `.nvmrc`. |
-## 6. Drift / Supply-Chain Notes (INV-2 audit findings)
-## 7. Phase 1 Implications — what gets installed in the pnpm workspace skeleton
-- `docs/architecture/0001-layered-ui-model.md`
-- `docs/architecture/0002-protocol-versioning.md`
-- `docs/architecture/0003-tool-registry-pattern.md`
-- `docs/architecture/0004-voice-via-mcp-not-internal.md`
-- `docs/architecture/0005-phase0-go-no-go.md` (after Phase 0 completes)
-- `docs/architecture/0006-raster-pipeline-library-stack.md` (after Phase 0 raster validation)
-- `docs/architecture/0008-code-quality-configuration.md` (Biome rules, TS strict flags, CI gates concretized)
-- `tsconfig.base.json` (strict, ESM, `moduleResolution: bundler`)
-- `biome.jsonc` (lint rules, format settings)
-- `vitest.config.ts` (workspace-wide config)
-- `.changeset/config.json`
-- `.nvmrc` (`24`)
-- `Dockerfile`(s) under `deploy/`
-- `packages/shared-protocol/src/even-hub.d.ts` (hand-typed declarations from `hub.evenrealities.com/docs/guides/device-apis`)
-## 8. Confidence Assessment per Decision
-| Decision | Confidence | Source |
-|----------|-----------|--------|
-| Raster pipeline (`image-q` + `upng-js` + `xxhash-wasm`) | **HIGH** | Specs.md §11.5.7 + live npm verification 2026-05-10. Drift signal noted (image-q npm-vs-git mismatch) but choice still optimal. |
-| Fastify 5 + `ws` + Zod for bridge | **HIGH** | Specs.md §5.2 settled; live npm verification confirms current stable majors. |
-| Streamable HTTP only (no HTTP+SSE) for MCP | **HIGH** | modelcontextprotocol.io/specification/2025-06-18 quoted directly. |
-| Node 24 LTS | **HIGH** | nodejs.org/en/about/previous-releases verified 2026-05-10. |
-| `dnd5e@5.3.3` + Foundry v13.347 / v14 | **HIGH** | Live `system.json` from `release-5.3.3` tag. |
-| TypeScript 5.8.5 (deferring 6.0) | **MEDIUM-HIGH** | TypeScript 6.0 is `latest` on npm but 9 days old at research time; conservative pin until ecosystem catches up. Decision: pragmatic, not blocking. |
-| Biome 2 (no ESLint/Prettier) | **HIGH** | Specs.md INV-4 already chose; Biome 2.4.15 is current `latest`. |
-| Vitest 4 + Playwright 1.59 + happy-dom | **HIGH** | Specs.md INV-4 already chose Vitest; live npm verification of v4 series. |
-| pnpm 10 + Changesets + monorepo layout | **HIGH** | Specs.md §5.6.10 already settled. |
-| OffscreenCanvas + Web Worker for raster | **HIGH** | Specs.md §11.5.7 settled; native browser API. |
-| No React/Vue/Svelte in g2-app | **HIGH** | Specs.md §3.1 — no DOM emitted, no value-add from VDOM. |
-| Bun+Hono deferred to Phase 13 | **MEDIUM** | Specs.md mentions as alternative; my recommendation to defer is conservative. Acceptable to revisit if Phase 3 perf demands it. |
-| In-memory cache (no Redis) for MVP | **HIGH** | Specs.md §11.5.5 settled. |
-## 9. Open Questions for Phase 0 / Phase 1
-## 10. Sources (verification provenance)
-- `npm view image-q time --json` → 4.0.0 published 2022-06-19, no newer release.
-- `npm view image-q repository` → `git+https://github.com/ibezkrovnyi/image-quantization.git`.
-- `npm view upng-js version` → 2.1.0 (latest).
-- `npm view xxhash-wasm version` → 1.1.0 (latest).
-- `npm view fastify version` → 5.8.5 (latest).
-- `npm view @fastify/websocket version` → 11.2.0 (latest).
-- `npm view @fastify/cors version` → 11.2.0 (latest).
-- `npm view @fastify/rate-limit version` → 10.3.0 (latest).
-- `npm view ws version` → 8.20.0 (latest).
-- `npm view typescript dist-tags` → `latest: 6.0.3`, plus 5.8.5 in 5-series.
-- `npm view vite version` → 8.0.11 (latest).
-- `npm view vitest version` → 4.1.5 (latest).
-- `npm view @vitest/coverage-v8 version` → 4.1.5 (latest).
-- `npm view @biomejs/biome version` → 2.4.15 (latest).
-- `npm view @modelcontextprotocol/sdk version` → 1.29.0 (latest).
-- `npm view pnpm version` → 10.3.1 (latest).
-- `npm view zod version` → 4.4.3 (latest).
-- `npm view pino version` → 10.3.1 (latest).
-- `npm view @playwright/test version` → 1.59.1 (latest).
-- `npm view @changesets/cli version` → 2.31.0 (latest).
-- `npm view tsx version` → 4.21.0 (latest).
-- `npm view tsup version` → 8.5.1 (latest).
-- `npm view prom-client version` → 15.1.3 (latest).
-- `npm view qrcode version` → 1.5.4 (latest).
-- `npm view happy-dom version` → 20.9.0 (latest).
-- `npm view @types/node version` → 25.6.2 (latest).
-- `npm view socketlib version` → **E404**, confirms socketlib is NOT on npm (Foundry module manifest dependency only).
-- WebFetch `nodejs.org/en/about/previous-releases` → Node 24 (Krypton) Active LTS, 22 (Jod) Maintenance LTS.
-- WebFetch `modelcontextprotocol.io/specification/2025-06-18/basic/transports` → Streamable HTTP is current; HTTP+SSE deprecated since protocol version 2024-11-05.
-- WebFetch `github.com/foundryvtt/dnd5e/releases` → 5.3.3 latest stable, released 2026-05-07.
-- WebFetch `raw.githubusercontent.com/foundryvtt/dnd5e/release-5.3.3/system.json` → `compatibility.minimum: 13.347`, `compatibility.verified: 14`.
-- `Specs.md` v0.9.11 §3.1 (G2 hardware), §3.4 (Foundry), §3.7 (3-hop deployment), §4.7 (MCP), §4.8 (deps), §5.2 (Bridge stack), §5.6.10 (monorepo layout), §10 (Phase 0/1), §11.5.1 (edition), §11.5.2 (license), §11.5.3 (deploy), §11.5.4 (auth), §11.5.5 (storage), §11.5.6 (branch strategy), §11.5.7 (raster lib stack), §11.5.7.1 (perf gain), §11.5.8.4 (worker failure mode), INV-4 §0.1 (code quality config).
-- `PROJECT.md` Context + Constraints + Key Decisions tables.
+### Current stack (by package)
+
+| Package | Runtime deps (pinned) | Notes |
+|---|---|---|
+| `g2-app` | `@evenrealities/even_hub_sdk` 0.0.15 · `@evenrealities/pretext` 0.1.4 · `socket.io-client` 4.8.3 · `upng-js` 2.1.0 · `xxhash-wasm` 1.1.0 · `image-q` 4.0.0 · `zod` 4.4.3 · Vite 8.0.11 (dev) | Built into `packages/foundry-module/g2/`, relative `base`, no CDN assets. `app.json` `min_sdk_version` 0.0.14. |
+| `foundry-module` | `qrcode` 1.5.4 · `@evf/shared-protocol` · `tsup` 8.5.1 (dev) | Foundry ≥ 13.347 (v14 verified), dnd5e ≥ 5.3.3, midi-qol optional (`recommends`). socketlib **not used**. |
+| `shared-protocol` | `zod` 4.4.3 · WebCrypto (AES-256-GCM, HKDF-SHA256) | Zod = single source of truth for wire shapes; `direct/` envelope/messages/pairing/map. |
+| `shared-render` | — | ASCII grid + `matchAsciiFixture` (INV-1). |
+| `validation-harness` | `zod` 4.4.3 · `upng-js` 2.1.0 · `csv-stringify` 6.5.2 · `tsx` | GO/NO-GO scripts, `inv:all`, `validate:direct-sideload`. |
+| Workspace tooling | TypeScript 5.8.3 · pnpm 10.33.4 · Node 24 LTS (`.nvmrc`) · Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 · happy-dom 20.9.0 · Biome 2.4.15 · Changesets 2.31.0 · Playwright 1.59.1 · commitlint + husky | Stay on TS 5.8.x until the ecosystem (Vitest, Biome) catches up with 6.x. |
+
+### Removed in v0.10.0 (ADR-0012)
+
+`packages/bridge` (Fastify 5, `@fastify/{websocket,cors,rate-limit}`, `ws`, `pino`, `prom-client`, in-memory token/cache, `sharp` portrait renderer), `packages/foundry-mcp` (`@modelcontextprotocol/sdk`, stdio/Streamable HTTP), `deploy/` (Docker Compose, `node:24-alpine` images, GHCR `evf-bridge`), Deepgram voice proxy and g2-app audio capture, socketlib `executeAsGM`, standalone `g2-app-dist.zip`. Do not reintroduce any of them without a new ADR.
+
+### What NOT to use
+
+| Avoid | Why | Use instead |
+|---|---|---|
+| A server/bridge between Foundry and the phone | ADR-0012: zero-infrastructure goal; cross-origin fails (whitelist per build, no CORS bypass, v14 cookie-only session) | Same-origin page served by Foundry + `module.evenfoundryvtt` relay |
+| Plaintext payloads on `module.evenfoundryvtt` | The relay broadcasts to every client | Sealed envelopes (`@evf/shared-protocol` `direct/envelope.ts`) |
+| socketlib / `activity.use()` outside `foundry-module/src/write-path` | ADR-0011 single-workflow-origin; CI Gates 8/9 | `dispatchTool` in the GM-client projector |
+| `jimp`, `pngjs`, `fast-png`, `pako`/`fflate` for the map | Wrong dither / bit depth / double compression (§11.5.7) | `upng-js` 4-bit + `xxhash-wasm` tile hashes (SDK LZ4 in transit) |
+| React / Vue / Svelte in `g2-app` | Glasses output is SDK container calls; phone page is plain DOM | Plain TS modules + app store |
+| ESLint + Prettier, Jest, `ts-node` | Dual tooling / ESM pain / deprecated | Biome, Vitest, `tsx` |
+| EvenAI native LLM | No developer API (§3.6) | — (voice/MCP only via a future ADR) |
+| Wildcards in `app.json` whitelist | Even Hub forbids them | Origin-complete URL (only relevant for the secondary `.ehpk`) |
+
+### Version compatibility
+
+| A | Compatible with | Notes |
+|---|---|---|
+| `@evenrealities/even_hub_sdk` 0.0.15 | Even Realities App ≥ 2.2.9 (long-press/menu); npm metadata `minAppVersion` 2.2.10 | See `docs/firmware-compatibility.md`. |
+| `evenfoundryvtt` module | Foundry ≥ 13.347 (v14 verified) · dnd5e ≥ 5.3.3 | v12 not supported (Activity system). |
+| `socket.io-client` 4.8.x | Foundry socket.io server (EIO 4) | Undocumented `/join` + handshake → guarded by `validate:direct-sideload`. |
+| Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 | match major+minor | Always co-bump. |
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->

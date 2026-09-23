@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>EvenFoundryVTT — D&D 5e on Even Realities G2 + R1</title>
-<meta name="description" content="A glanceable HUD of FoundryVTT D&D sessions on Even Realities G2 AR glasses, driven by R1 ring gestures. Phosphor-green tactical HUD, 576x288 4-bit greyscale, MVP design spec." />
+<meta name="description" content="A glanceable HUD of FoundryVTT D&D sessions on Even Realities G2 AR glasses, driven by R1 ring gestures. Phosphor-green thirds HUD, 576x288 4-bit greyscale, streamed straight from Foundry — no server to run." />
 <meta name="theme-color" content="#0a0f0a" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -367,20 +367,6 @@ section.show .section-tag {
   text-transform: uppercase;
 }
 
-/* Voice MCP flow */
-.voice-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; margin-top: 1.5rem; align-items: stretch; }
-.voice-flow .vstep {
-  border: 1px solid var(--g0);
-  padding: 1rem;
-  background: var(--p2);
-  position: relative;
-  font-size: 0.82rem;
-}
-.voice-flow .vstep .num { color: var(--g2); font-family: var(--mono); font-size: 0.85rem; letter-spacing: .14em; font-weight: 600; }
-.voice-flow .vstep .what { font-family: var(--mono); color: var(--g4); margin: .3rem 0; font-weight: 500; line-height: 1.5; }
-.voice-flow .vstep .lat { font-family: var(--mono); font-size: 0.75rem; color: var(--g2); }
-.voice-flow .vstep code { font-size: 0.72rem; }
-
 /* Tech stack chips */
 .tech-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
 .tech-chips .chip {
@@ -440,12 +426,13 @@ footer.show a { color: var(--g2); border: none; }
     <li><a href="#hardware">Hardware</a></li>
     <li><a href="#setup">Setup</a></li>
     <li><a href="#hud">HUD</a></li>
+    <li><a href="#thirds">Thirds</a></li>
     <li><a href="#arch">Architecture</a></li>
     <li><a href="#pipeline">Pipeline</a></li>
     <li><a href="#fps">FPS</a></li>
     <li><a href="#i18n">i18n</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#voice">Voice V2</a></li>
+    <li><a href="#voice">Voice</a></li>
     <li><a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">GitHub</a></li>
   </ul>
 </nav>
@@ -462,15 +449,15 @@ footer.show a { color: var(--g2); border: none; }
   ███████   ████   ███████ ██   ████  ██       ██████   ██████  ██   ████ ██████  ██   ██    ██     ╚████╔╝    ██       ██
 </pre>
     <div class="tagline"><span class="typed" id="typedHero"></span></div>
-    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / scroll / long-press gestures from the Even R1 smart ring. Eyes on the table, not on a laptop.</p>
+    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / swipe / double-tap gestures from the Even R1 smart ring. The GM shows a QR in Foundry, you scan it, and your character streams straight to the glasses — no server to run. Eyes on the table, not on a laptop.</p>
 
     <div class="stats">
       <div class="stat"><span class="num">576×288</span><span class="lab">px / eye</span></div>
       <div class="stat"><span class="num">4-bit</span><span class="lab">greyscale</span></div>
-      <div class="stat"><span class="num">5–15</span><span class="lab">fps target</span></div>
-      <div class="stat"><span class="num">13</span><span class="lab">weeks MVP</span></div>
-      <div class="stat"><span class="num">4380+</span><span class="lab">lines spec</span></div>
-      <div class="stat"><span class="num">v0.9.13</span><span class="lab">4 invariants · ×5 cross-check + 3 INV-2 re-checks · 2668 tests</span></div>
+      <div class="stat"><span class="num">⅓·⅓·⅓</span><span class="lab">sheet · map · context</span></div>
+      <div class="stat"><span class="num">0</span><span class="lab">servers to run</span></div>
+      <div class="stat"><span class="num">1</span><span class="lab">QR scan to pair</span></div>
+      <div class="stat"><span class="num">v0.10.0</span><span class="lab">direct streaming · ADR-0012 · Even Hub SDK 0.0.15</span></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="../../Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
@@ -482,18 +469,18 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ PILLARS ══════════════════════════════════════════════════ -->
   <section class="show reveal" id="pillars">
     <span class="section-tag">◈ pillars</span>
-    <h2>Four ideas, no magic.</h2>
-    <p>The MVP is deterministic — every action is explicit gesture → tool → Foundry. AI is an optional V2 add-on, never a dependency.</p>
+    <h2>✨ Four ideas, no magic.</h2>
+    <p>Deterministic by design — every action is an explicit gesture → tool → Foundry. Nothing to host: Foundry itself serves the glasses app.</p>
     <div class="pillars">
       <div class="pillar">
         <div class="icon">▤</div>
         <h3>Glanceable HUD</h3>
-        <p>Map base · persistent status corner card · overlay panels stacked like Foundry desktop windows. A single layered UI, never a paginated app.</p>
+        <p>Three fixed thirds: character sheet · pixel map · context column. Column boundaries never move, so you learn <em>where</em> to look once.</p>
       </div>
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Gesture-driven</h3>
-        <p>R1 ring: tap to cycle, double-tap to back, scroll to navigate, long-press for the Quick Action menu. No on-glass keyboard, ever.</p>
+        <p>R1 ring: tap for actions, swipe to move the cursor, double-tap to go back (exit at root). Long-press opens a shortcuts menu as an extra — never the only path.</p>
       </div>
       <div class="pillar">
         <div class="icon">✦</div>
@@ -502,8 +489,8 @@ footer.show a { color: var(--g2); border: none; }
       </div>
       <div class="pillar">
         <div class="icon">≣</div>
-        <h3>Voice via MCP (V2)</h3>
-        <p>Optional <code>foundry-mcp</code> server exposes Foundry tools as Model Context Protocol. Drive from Claude Desktop or any MCP client. Plug-out, no cascade.</p>
+        <h3>Zero infrastructure</h3>
+        <p>The glasses app ships inside the Foundry module and is QR-sideloaded same-origin. The GM browser is the projector; every payload on the relay is AES-256-GCM sealed. No bridge, no Docker.</p>
       </div>
     </div>
   </section>
@@ -511,7 +498,7 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ INVARIANTS ═══════════════════════════════════════════════ -->
   <section class="show reveal" id="invariants">
     <span class="section-tag">▰ project invariants</span>
-    <h2>Four rules. Non-negotiable.</h2>
+    <h2>🛡️ Four rules. Non-negotiable.</h2>
     <p>Every PR, every audit, every release must satisfy them. They're constraints, not guidelines &mdash; ratified in <a href="../../Specs.md" style="color:var(--g3)">§0.1 of the spec</a> as the contract between today's design and tomorrow's implementation.</p>
     <div class="pillars">
       <div class="pillar">
@@ -522,7 +509,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌥</div>
         <h3>INV-2 · Online cross-validation</h3>
-        <p>Every technical claim cites a canonical upstream source &mdash; Even Hub, foundryvtt.com/api, dnd5e wiki, MCP spec, vendor pricing. Re-verified before each version bump and Phase 0 GO/NO-GO. Drift is classified, fixed and logged. Three rounds completed; the fourth is the next pre-implementation audit.</p>
+        <p>Every technical claim cites a canonical upstream source &mdash; Even Hub docs and changelog, foundryvtt.com, dnd5e, the npm registry. Re-verified before each version bump and every GO/NO-GO gate. Drift is classified, fixed and logged.</p>
       </div>
       <div class="pillar">
         <div class="icon">▤</div>
@@ -540,8 +527,8 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ HARDWARE ═════════════════════════════════════════════════ -->
   <section class="show reveal" id="hardware">
     <span class="section-tag">⌬ hardware</span>
-    <h2>Validated against upstream docs.</h2>
-    <p>Every spec parameter below is cited verbatim from Even Realities and FoundryVTT documentation, re-verified across <strong>5 cross-check rounds</strong> (v0.9.6 → v0.9.11) plus <strong>3 INV-2 re-checks</strong> (2026-05-14 image-API · 2026-05-17 EvenAI + Deepgram <code>keyterm</code> · 2026-05-18 dnd5e 5.3.3 abilities + skills schema).</p>
+    <h2>🥽 Validated against upstream docs.</h2>
+    <p>Every spec parameter below is cited from Even Realities and FoundryVTT documentation, last re-verified for v0.10.0 on 2026-09-23 against <code>hub.evenrealities.com/docs</code> (display, device APIs, input, changelog through SDK 0.0.14) and the npm registry (SDK 0.0.15).</p>
 
     <div class="hw-grid">
       <!-- G2 -->
@@ -593,17 +580,17 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>Resolution</th><td>576 × 288 px / eye</td></tr>
           <tr><th>Color</th><td>4-bit greyscale (16 levels green)</td></tr>
           <tr><th>Containers</th><td>max 4 image + 8 text/list per page</td></tr>
-          <tr><th>Image size</th><td>20–200 px W × 20–100 px H</td></tr>
+          <tr><th>Image size</th><td>20–288 px W × 20–144 px H · ≥ 100 ms between updates</td></tr>
           <tr><th>Text container</th><td>1 000 char (2 000 with upgrade)</td></tr>
           <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
-          <tr><th>Networking</th><td>fetch / XHR / WebSocket · whitelisted origins</td></tr>
+          <tr><th>Networking</th><td>same-origin page served by Foundry (QR sideload)</td></tr>
           <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
-          <tr><th>Microphone</th><td>4-mic directional array · PCM 16 kHz s16le mono via <code>bridge.audioControl()</code></td></tr>
+          <tr><th>Microphone</th><td>4-mic array · PCM 16 kHz via SDK (unused since v0.10.0)</td></tr>
           <tr><th>Audio out</th><td>❌ no speaker · feedback is visual only</td></tr>
           <tr><th>Camera</th><td>❌ none (intentional)</td></tr>
           <tr><th>Plugin runs on</th><td>paired phone WebView (not on G2 firmware)</td></tr>
         </table>
-        <div class="verified">✓ verified · hub.evenrealities.com/docs/guides/{display, device-apis, getting-started/overview}</div>
+        <div class="verified">✓ verified · hub.evenrealities.com/docs/build/{display, device-apis, input}</div>
       </div>
 
       <!-- R1 -->
@@ -629,8 +616,8 @@ footer.show a { color: var(--g2); border: none; }
               <circle cx="160" cy="40" r="3" fill="var(--g3)" class="pulse-fill" />
               <!-- gesture indicators around ring -->
               <text class="label" x="60" y="105" text-anchor="middle">tap</text>
-              <text class="label" x="160" y="180" text-anchor="middle">scroll</text>
-              <text class="label" x="260" y="105" text-anchor="middle">long-press</text>
+              <text class="label" x="160" y="180" text-anchor="middle">swipe ↑↓</text>
+              <text class="label" x="260" y="105" text-anchor="middle">double</text>
               <!-- biometric pulse line -->
               <path d="M 110 105 L 130 105 L 135 90 L 145 120 L 155 80 L 165 110 L 175 105 L 210 105"
                     stroke="var(--g3)" stroke-width="1.5" fill="none" class="pulse-fill" />
@@ -639,7 +626,7 @@ footer.show a { color: var(--g2); border: none; }
         </div>
         <table>
           <tr><th>Connection</th><td>BLE → Even App → G2</td></tr>
-          <tr><th>Gestures</th><td>tap · scroll · long-press</td></tr>
+          <tr><th>Gestures</th><td>press · double-press · swipe up/down · long-press extra (SDK ≥ 0.0.14, Even App ≥ 2.2.9)</td></tr>
           <tr><th>Biometrics</th><td>HR · HRV · SpO₂ · skin temp · steps · sleep</td></tr>
           <tr><th>Material</th><td>zirconia ceramic + medical-grade stainless steel</td></tr>
           <tr><th>Water</th><td>IP68 · 50 m / 30 min</td></tr>
@@ -651,56 +638,57 @@ footer.show a { color: var(--g2); border: none; }
     </div>
   </section>
 
-  <!-- ═══ SETUP (phone-side) ═══════════════════════════════════════ -->
+  <!-- ═══ SETUP / PAIRING ════════════════════════════════════════ -->
   <section class="show reveal" id="setup">
-    <span class="section-tag">▣ phone-side setup</span>
-    <h2>Setup happens on the phone. The G2 stays keyboardless.</h2>
-    <p>The G2 has no virtual keyboard, by design. Foundry connection bootstrap — bridge URL, auth token, character pick — lives in the <strong>Even Realities App</strong> per-plugin settings UI, the same surface Conversate / Translate / Teleprompt use. Pairing is a <strong>QR scan</strong> from the Foundry desktop module: no manual token copy-paste in the clipboard, audit trail kept by the DM. See <a href="../../Specs.md" style="color:var(--g3)">§3.8 / §7.14.7</a>.</p>
-    <div class="hud-sim" style="max-width:720px;margin-top:2rem;">
-<pre style="font-family:var(--mono);color:var(--g3);font-size:0.74rem;line-height:1.25;text-shadow:0 0 6px var(--g2);margin:0;white-space:pre;">
-┌───────────────────────────────────────────────────────────────────┐
-│  EvenFoundryVTT — Setup                                       ✕   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  STEP 1 / 3 · Connection profile                                  │
-│  ◉ Homelab (LAN)        ○ Cloud bridge        ○ Local dev         │
-│  Bridge URL                                                       │
-│  ┌─────────────────────────────────────────────────────────┐      │
-│  │ https://homelab.lan:8910                                │      │
-│  └─────────────────────────────────────────────────────────┘      │
-│                                                                   │
-│  STEP 2 / 3 · Auth token                                          │
-│  ┌─────────────────────────────────────────────────────────┐      │
-│  │ evf_•••••••••••••••••••••••••                          │      │
-│  └─────────────────────────────────────────────────────────┘      │
-│  [ 📷 Scan QR from Foundry module ]   [ 📋 Paste from clipboard ] │
-│                                                                   │
-│  STEP 3 / 3 · Character                                           │
-│  ✓ Connected to Foundry world "Homebrew 2024"                    │
-│  ◉ Thorin Mountainforge  (Fighter 3 / Wizard 5, multi)            │
-│  ○ Lyra Brightleaf       (Cleric 7)                               │
-│  ○ Drak'val              (Barbarian 6)                            │
-│  ☑ Auto-connect when G2 is worn                                   │
-│                                                                   │
-│              [ Back ]              [ Save & connect ▶ ]           │
-└───────────────────────────────────────────────────────────────────┘
+    <span class="section-tag">▣ pairing</span>
+    <h2>📦 One module, one QR, done.</h2>
+    <p>Install the Foundry module (manifest URL) — it also serves the glasses app. The GM opens <strong>Pair G2 glasses</strong> (<em>Associa occhiali G2</em>) in the module settings, picks player and character, and a QR appears. The player scans it with the <strong>Even Realities App</strong>: the page is loaded from Foundry itself, logs in as a dedicated <code>“&lt;Player&gt; (G2)”</code> user and connects. Foundry just needs valid HTTPS reachable from the phone. See the <a href="../setup-guide.md" style="color:var(--g3)">setup guide</a> and <a href="../architecture/0012-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0012</a>.</p>
+    <div class="hud-sim" style="max-width:820px;margin-top:2rem;">
+<pre class="screen" style="min-height:0;">
+╭────────────────────────────────────────────────────────────────────────╮
+│ EvenFoundryVTT · G2 glasses                                            │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Player      [ Luca ▾ ]    Character    [ Thorin ▾ ]                   │
+│                                                                        │
+│  ┌──────────────────────────┐   1. Open the Even Realities App         │
+│  │   ▄▄▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄▄▄   │   2. Scan the QR                         │
+│  │   █ ▄▄▄ █ ▀█▄▀ █ ▄▄▄ █   │   3. Put on the glasses: done!           │
+│  │   █ ███ █ ▄▀▀█ █ ███ █   │                                          │
+│  │   █▄▄▄▄▄█ █▀▄▀ █▄▄▄▄▄█   │   User created: «Luca (G2)»              │
+│  │   ▄▄ ▄  ▄▄▀█▄▀▄ ▄▄▄ ▄    │   role Player · owner only               │
+│  │   █▄▀██▄▄▀▄ ▀▄██▀▄▀▄█▀   │   of Thorin                              │
+│  │   ▄▄▄▄▄▄▄ ▀▄█▀ ▄ ▀█▄▀▄   │                                          │
+│  │   █ ▄▄▄ █ █▀▄▄▀▀▄█▀▄▄█   │   The QR expires in  04:52               │
+│  │   █ ███ █ ▀▄▀██▄▀▄ ▀▀    │   and is valid for a single pairing.     │
+│  │   █▄▄▄▄▄█ █▄ ▀▄█▀▄█▄▄█   │                                          │
+│  └──────────────────────────┘   Manual code: 7QK3-MX9P-2HRA-C4TE       │
+│                                                                        │
+│  ✓ valid HTTPS   ✓ module served   ✓ socket active                     │
+│                                                                        │
+│  Paired devices                                                        │
+│   ● Luca (G2) · Thorin · last contact 12 s ago     [ Revoke ]          │
+│   ○ Anna (G2) · Mira   · never connected           [ Revoke ]          │
+│                                                                        │
+│  [ Generate new QR ]            [ Copy manual code ]    [ Close ]      │
+╰────────────────────────────────────────────────────────────────────────╯
 </pre>
     </div>
     <div class="pillars" style="margin-top:2rem;">
       <div class="pillar">
-        <div class="icon">▤</div>
-        <h3>Three settings surfaces</h3>
-        <p>Foundry world (server-side, all players). Even App phone settings (text input, per-device bootstrap). G2 device-local (gesture toggles only, e.g. <code>[M]</code> map mode, <code>[N]</code> language). A simple decision tree picks where each new setting lives. <a href="../../Specs.md" style="color:var(--g3)">§7.14.6</a></p>
+        <div class="icon">⌬</div>
+        <h3>Single-use QR</h3>
+        <p>The QR carries the page URL plus a fragment (user, password, device key) that never reaches the server. It expires after 5 minutes; on first connect the GM client rotates password and key. A 16-character manual code is the fallback.</p>
       </div>
       <div class="pillar">
-        <div class="icon">⌬</div>
-        <h3>QR pair, never paste</h3>
-        <p>Foundry module Settings → "Pair a G2 device" → 24h opaque bearer + QR. Scan once, persist on phone. The bearer never sees the user's clipboard. Pairings are listed and revocable from Foundry by the DM.<a href="../../Specs.md" style="color:var(--g3)"> §7.14.7.3 / §11.5.4</a></p>
+        <div class="icon">▤</div>
+        <h3>A dedicated “(G2)” user</h3>
+        <p>One Foundry user per paired player, role Player, owner of that character only. Every action runs through the GM-side write path (<code>dispatchTool</code>, ADR-0011) and is audited. Revoke from the same dialog.</p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
-        <h3>Server-hosted plugin code</h3>
-        <p>Plugin code lives on a server (CDN-friendly static HTML+JS). The Even Realities App fetches the URL into the WebView. Two URLs in <code>app.json</code>: plugin host + bridge. Local dev uses your LAN IP — <em>not</em> <code>localhost</code> (the phone can't resolve it). <a href="../../Specs.md" style="color:var(--g3)">§3.7</a></p>
+        <h3>Sealed on the relay</h3>
+        <p>Foundry relays module messages to every client, so every payload is AES-256-GCM sealed with a per-device key that lives only in the GM browser that paired and on the phone. Other clients see ciphertext.</p>
       </div>
     </div>
   </section>
@@ -708,8 +696,8 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ HUD SIMULATOR ════════════════════════════════════════════ -->
   <section class="show reveal" id="hud">
     <span class="section-tag">▤ live preview</span>
-    <h2>The HUD, in your face.</h2>
-    <p>Click a tab to mount a panel over the map base layer. The persistent status HUD never disappears — it's always there in the corner, exactly like a Foundry window with a pinned mini character sheet. Mockups taken verbatim from the spec § 7.</p>
+    <h2>👓 The HUD, in your face.</h2>
+    <p>Interactive preview of the <strong>v0.9 layered engine</strong> (map base + status corner card + overlay panels), kept for reference. v0.10.0 replaced it with the thirds layout shown in the next section. Mockups from the spec § 7.</p>
 
     <div class="hud-sim">
       <div class="tabs" role="tablist">
@@ -729,14 +717,79 @@ footer.show a { color: var(--g2); border: none; }
     </div>
   </section>
 
+  <!-- ═══ THIRDS LAYOUT (v0.10) ══════════════════════════════════ -->
+  <section class="show reveal" id="thirds">
+    <span class="section-tag">▥ thirds layout</span>
+    <h2>👓 Sheet · map · context. Always in the same place.</h2>
+    <p>Three 192&nbsp;px columns on the 576&nbsp;×&nbsp;288 canvas. Left: the character sheet (4 pages, auto-switch to Combat). Centre: a 192&nbsp;×&nbsp;288 pixel map built on the phone from compact scene data, ≤&nbsp;1&nbsp;fps, only changed tiles sent. Right: the context column — log, initiative, actions, targets, spells, results — the only column that reacts to input. Mocks M01 and M02 below come verbatim from <a href="../design/g2-thirds-layout.md" style="color:var(--g3)">docs/design/g2-thirds-layout.md</a> (Italian UI, INV-1 contract).</p>
+    <div class="hud-sim" style="margin-top:2rem;">
+      <div class="meta" style="margin:0 0 .6rem 0;"><span>M01 · Exploration (default)</span><span>● tap: actions · ●● exit</span></div>
+<pre class="screen" style="min-height:0;">
+┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
+│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ SCENA  Cripta di Vel'Nar      │
+│ Nano delle colline · PHB24    │ ▓░░░░░░░░░▓▓▓▓▓░░░░░░░░░░░░░▓ │ Esplorazione · ⌁ collegato    │
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
+│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │ Registro                      │
+│     temp +10                  │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒a▒▒▒▒▒▒░▓ │  Mira: Percezione 17 ✓        │
+│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒@▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  GM: «Senti passi a nord»     │
+│ COMP +3  PERC 13  ISP ○       │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Thorin raccoglie: torcia     │
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Bram si muove (20 ft)        │
+│ FOR 18+4  DES 12+1  COS 16+3  │ ▓░░░░▒░░░░▓   ▓░░░░░░▒░░░░░░▓ │                               │
+│ INT 10+0  SAG 13+1  CAR  8-1  │ ▓▓▓▓▓▒▓▓▓▓▓   ▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓ │                               │
+│───────────────────────────────│ ▓    ▒              ▒       ▓ │                               │
+│ Azione ●  Bonus ●  Reaz ●     │ ─ ─ ─ tile A ▲ │ ▼ tile B ─ ─ │                               │
+│ Movimento 30/30 ft            │ ▓▓▓▓▓▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓▓ │                               │
+│───────────────────────────────│ ▓░░░░▒░░░░░░░░░░░░░░▒░░░░░░░▓ │                               │
+│ Slot  1°▮▮▯▯  2°▮▯▯           │ ▓░          ░░░░          ░░▓ │                               │
+│ Ki/Surge  Action Surge 1/1    │ ▓░   (nebbia di guerra)    ░▓ │                               │
+│───────────────────────────────│ ▓░                         ░▓ │───────────────────────────────│
+│ Condizioni                    │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ Party                         │
+│  ▸ Benedetto (7 round)        │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
+│  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
+│                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
+│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
+└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
+</pre>
+    </div>
+    <div class="hud-sim" style="margin-top:1.5rem;">
+      <div class="meta" style="margin:0 0 .6rem 0;"><span>M02 · Combat — your turn</span><span>● actions · ⇅ scroll · ●● exit</span></div>
+<pre class="screen" style="min-height:0;">
+┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
+│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ INIZIATIVA        round 3     │
+│ ▲ IL TUO TURNO · round 3      │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │───────────────────────────────│
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │ ▶ Thorin        19   45/68    │
+│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒g▒▒▒▒▒▒▒▒▒▒G▒▒▒▒▒▒░▓ │   Goblin A      17   ▮▮▯      │
+│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Mira          15   31/38    │
+│───────────────────────────────│ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Boss Hobgob.  12   ▮▮▮▮     │
+│ Azione ●  Bonus ●  Reaz ●     │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Goblin B       9   ▮▮▮      │
+│ Movimento 30/30 ft            │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Bram           6   22/33    │
+│ Attacchi  2/2 (Extra Attack)  │ ▓░▒▒▒▒▒▒··@··▒▒▒▒a▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
+│───────────────────────────────│ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │ Ultimi eventi                 │
+│ Armi                          │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  Goblin A → Mira  mancato     │
+│  Ascia bipenne  +7  1d12+4    │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  Mira → Goblin A  7 perforanti│
+│  Giavellotto    +7  1d6+4     │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
+│───────────────────────────────│ ▓░▒▒▒▒▒g▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
+│ Risorse                       │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
+│  Second Wind      1/1         │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │                               │
+│  Action Surge     1/1         │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │                               │
+│───────────────────────────────│                               │                               │
+│ Condizioni                    │ @ tu   g goblin   G boss      │                               │
+│  ▸ Benedetto (7 round)        │ · movimento 30 ft (6 celle)   │                               │
+│                               │ ▲ turno: TU · round 3         │───────────────────────────────│
+│ ◀ 2/4 Combattimento ▶         │                               │ ● azioni  ⇅ scorri  ●● esci   │
+└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
+</pre>
+    </div>
+  </section>
+
   <!-- ═══ ARCHITECTURE ════════════════════════════════════════════ -->
   <section class="show reveal" id="arch">
     <span class="section-tag">⌥ architecture</span>
-    <h2>Three boundaries, three contracts.</h2>
-    <p>Every plugin slot is versioned. dnd5e v6 lands? swap the Foundry adapter — no cascade. Even SDK changes? swap the provider. New ring (R2)? swap the event source. Forward compat is a primary requirement.</p>
+    <h2>🏗️ No bridge. Foundry is the server.</h2>
+    <p>The glasses app is served by Foundry at <code>/modules/evenfoundryvtt/g2/</code> and loaded by the Even Realities App from the pairing QR. Same origin means no CORS, no whitelist, first-party cookies (Foundry v13 and v14). The module in the GM browser is the <strong>projector</strong>: it computes dnd5e derived data, answers snapshots, pushes deltas and executes actions. Decision record: <a href="../architecture/0012-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0012</a>.</p>
 
     <div class="arch-diagram">
-      <svg viewBox="0 0 800 480" width="100%">
+      <svg viewBox="0 0 800 480" width="100%" role="img" aria-label="Direct streaming architecture: G2 and R1 talk BLE to the Even App WebView, which talks same-origin HTTPS to Foundry, which relays sealed messages to the GM browser projector">
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="var(--g1)" />
@@ -746,70 +799,77 @@ footer.show a { color: var(--g2); border: none; }
           </marker>
         </defs>
 
-        <!-- MVP Layer -->
-        <text class="label-sm" x="20" y="20">▶ MVP (always-on, deterministic)</text>
+        <text class="label-sm" x="20" y="20">▶ v0.10.0 · direct streaming</text>
 
         <!-- G2 -->
         <g>
           <rect class="node node-mvp pulse" x="40" y="40" width="180" height="80" />
           <text class="label" x="130" y="68" text-anchor="middle">Even G2 Glasses</text>
           <text class="label-sm" x="130" y="86" text-anchor="middle">576 × 288 · 4-bit</text>
-          <text class="label-sm" x="130" y="102" text-anchor="middle">layered HUD UI</text>
+          <text class="label-sm" x="130" y="102" text-anchor="middle">thirds HUD</text>
         </g>
         <!-- R1 -->
         <g>
           <rect class="node node-mvp" x="280" y="40" width="160" height="80" />
           <text class="label" x="360" y="68" text-anchor="middle">Even R1 Ring</text>
-          <text class="label-sm" x="360" y="86" text-anchor="middle">tap · scroll · long-press</text>
-          <text class="label-sm" x="360" y="102" text-anchor="middle">+ biometrics</text>
+          <text class="label-sm" x="360" y="86" text-anchor="middle">tap · swipe · double</text>
+          <text class="label-sm" x="360" y="102" text-anchor="middle">long-press extra</text>
         </g>
-        <line class="arrow arrow-mvp" x1="280" y1="80" x2="220" y2="80" marker-end="url(#arrowhead-mvp)" />
-        <text class="label-sm" x="245" y="74">BLE</text>
 
-        <!-- Bridge -->
+        <!-- Phone WebView -->
         <g>
           <rect class="node node-mvp pulse" x="40" y="180" width="400" height="100" />
-          <text class="label" x="240" y="210" text-anchor="middle">Bridge Service (Node.js · homelab)</text>
-          <text class="label-sm" x="240" y="230" text-anchor="middle">REST + WS · auth · CORS · rate limit</text>
-          <text class="label-sm" x="240" y="246" text-anchor="middle">tool registry · state cache · delta diff</text>
-          <text class="label-sm" x="240" y="262" text-anchor="middle">capability negotiation</text>
+          <text class="label" x="240" y="210" text-anchor="middle">Even Realities App · WebView (phone)</text>
+          <text class="label-sm" x="240" y="230" text-anchor="middle">g2-app served by Foundry · QR sideload</text>
+          <text class="label-sm" x="240" y="246" text-anchor="middle">pixel map 192×288 · sheet · context</text>
+          <text class="label-sm" x="240" y="262" text-anchor="middle">sealed session (AES-256-GCM)</text>
         </g>
         <line class="arrow arrow-mvp" x1="130" y1="180" x2="130" y2="120" marker-end="url(#arrowhead-mvp)" />
-        <text class="label-sm" x="135" y="155">HTTPS / WS</text>
+        <text class="label-sm" x="136" y="155">BLE</text>
+        <line class="arrow arrow-mvp" x1="360" y1="120" x2="360" y2="180" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="366" y="155">BLE</text>
 
-        <!-- Foundry -->
+        <!-- Foundry server -->
         <g>
           <rect class="node node-mvp" x="40" y="340" width="400" height="100" />
-          <text class="label" x="240" y="370" text-anchor="middle">FoundryVTT v13.347+ · dnd5e 5.x</text>
-          <text class="label-sm" x="240" y="390" text-anchor="middle">evenfoundryvtt module · readers · writers</text>
-          <text class="label-sm" x="240" y="406" text-anchor="middle">Activity#use · MidiQOL · socketlib · hooks</text>
-          <text class="label-sm" x="240" y="422" text-anchor="middle">SINGLE SOURCE OF TRUTH</text>
+          <text class="label" x="240" y="370" text-anchor="middle">Foundry server · v13.347+ / v14 · HTTPS</text>
+          <text class="label-sm" x="240" y="390" text-anchor="middle">static /modules/evenfoundryvtt/g2/</text>
+          <text class="label-sm" x="240" y="406" text-anchor="middle">POST /join · socket.io</text>
+          <text class="label-sm" x="240" y="422" text-anchor="middle">relays module.evenfoundryvtt (ciphertext)</text>
         </g>
-        <line class="arrow arrow-mvp" x1="240" y1="340" x2="240" y2="280" marker-end="url(#arrowhead-mvp)" />
+        <line class="arrow arrow-mvp" x1="240" y1="280" x2="240" y2="340" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="246" y="315">same-origin HTTPS · WSS</text>
 
-        <!-- V2 right side -->
-        <text class="label-sm" x="500" y="20">⋯ V2 OPTIONAL</text>
-
-        <g>
-          <rect class="node node-v2" x="500" y="40" width="280" height="80" />
-          <text class="label" x="640" y="68" text-anchor="middle">MCP Client</text>
-          <text class="label-sm" x="640" y="86" text-anchor="middle">Claude Desktop · Code · ChatGPT</text>
-          <text class="label-sm" x="640" y="102" text-anchor="middle">built-in STT + UI</text>
-        </g>
-
+        <!-- Pairing -->
         <g>
           <rect class="node node-v2" x="500" y="180" width="280" height="100" />
-          <text class="label" x="640" y="210" text-anchor="middle">foundry-mcp</text>
-          <text class="label-sm" x="640" y="230" text-anchor="middle">stdio · Streamable HTTP</text>
-          <text class="label-sm" x="640" y="246" text-anchor="middle">cast_spell · weapon_attack · clarify</text>
-          <text class="label-sm" x="640" y="262" text-anchor="middle">resources: actor / scene / combat</text>
+          <text class="label" x="640" y="210" text-anchor="middle">Pair G2 glasses (GM)</text>
+          <text class="label-sm" x="640" y="230" text-anchor="middle">«Player (G2)» user · device key</text>
+          <text class="label-sm" x="640" y="246" text-anchor="middle">QR 5 min · single use</text>
+          <text class="label-sm" x="640" y="262" text-anchor="middle">16-char manual code</text>
         </g>
+        <line class="arrow arrow-v2" x1="500" y1="230" x2="440" y2="230" marker-end="url(#arrowhead)" />
+        <text class="label-sm" x="446" y="222">scan</text>
 
-        <line class="arrow arrow-v2" x1="640" y1="180" x2="640" y2="120" marker-end="url(#arrowhead)" />
-        <text class="label-sm" x="650" y="155">MCP</text>
+        <!-- GM projector -->
+        <g>
+          <rect class="node node-mvp pulse" x="500" y="340" width="280" height="100" />
+          <text class="label" x="640" y="370" text-anchor="middle">GM browser · projector</text>
+          <text class="label-sm" x="640" y="390" text-anchor="middle">dnd5e readers · dispatchTool</text>
+          <text class="label-sm" x="640" y="406" text-anchor="middle">activity.use · MidiQOL (opt)</text>
+          <text class="label-sm" x="640" y="422" text-anchor="middle">SINGLE SOURCE OF TRUTH</text>
+        </g>
+        <line class="arrow arrow-mvp" x1="440" y1="390" x2="500" y2="390" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="446" y="383">relay</text>
+        <line class="arrow arrow-v2" x1="640" y1="340" x2="640" y2="280" marker-end="url(#arrowhead)" />
 
-        <line class="arrow arrow-v2" x1="500" y1="220" x2="440" y2="220" marker-end="url(#arrowhead)" />
-        <text class="label-sm" x="445" y="214">HTTPS</text>
+        <!-- Removed -->
+        <g>
+          <rect class="node node-v2" x="500" y="40" width="280" height="80" />
+          <text class="label" x="640" y="68" text-anchor="middle">Removed in v0.10.0</text>
+          <text class="label-sm" x="640" y="86" text-anchor="middle">Node bridge · Docker Compose</text>
+          <text class="label-sm" x="640" y="102" text-anchor="middle">foundry-mcp · voice proxy</text>
+        </g>
       </svg>
     </div>
   </section>
@@ -817,17 +877,17 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ RASTER PIPELINE ═════════════════════════════════════════ -->
   <section class="show reveal" id="pipeline">
     <span class="section-tag">⊞ pipeline</span>
-    <h2>Foundry canvas → 4-bit dithered phosphor.</h2>
-    <p>Inspired by the <em>Doom-on-exotic-devices</em> pattern: state runs on capable hardware, gets rasterized + dithered server-side, frames stream to the constrained display via slow channel. Nine deterministic stages, each with a time budget.</p>
+    <h2>⚡ Scene data → 4-bit dithered phosphor.</h2>
+    <p>Inspired by the <em>Doom-on-exotic-devices</em> pattern: state lives on capable hardware and frames stream to the constrained display over a slow channel. Since v0.10.0 the phone builds the map from compact scene data (grid, walls, lights, visible tokens, background) sent by the GM projector — no server-side rendering. Stage budgets below are from the v0.9 full-screen raster design.</p>
     <div class="pipeline">
       <div class="pipe-step"><div class="num">01</div><span class="nm">Capture</span><div class="det">PIXI extract</div><div class="det">30–80 ms</div></div>
       <div class="pipe-step"><div class="num">02</div><span class="nm">Resample</span><div class="det">OffscreenCanvas Lanczos</div><div class="det">5–10 ms</div></div>
       <div class="pipe-step"><div class="num">03</div><span class="nm">Greyscale</span><div class="det">Y = 0.299R + …</div><div class="det">2–5 ms</div></div>
       <div class="pipe-step"><div class="num">04</div><span class="nm">Quantize</span><div class="det">FS / Atkinson / Bayer</div><div class="det">5–15 ms</div></div>
-      <div class="pipe-step"><div class="num">05</div><span class="nm">Tile 200×100</span><div class="det">2 × 2 split</div><div class="det">&lt; 1 ms</div></div>
+      <div class="pipe-step"><div class="num">05</div><span class="nm">Tile 192×144</span><div class="det">2 stacked tiles</div><div class="det">&lt; 1 ms</div></div>
       <div class="pipe-step"><div class="num">06</div><span class="nm">Delta</span><div class="det">xxHash per tile</div><div class="det">&lt; 1 ms</div></div>
       <div class="pipe-step"><div class="num">07</div><span class="nm">Encode</span><div class="det">PNG indexed 4-bit + RLE</div><div class="det">5–15 ms</div></div>
-      <div class="pipe-step"><div class="num">08</div><span class="nm">Wire</span><div class="det">WS → BLE 4.2+ DLE</div><div class="det">3–80 ms</div></div>
+      <div class="pipe-step"><div class="num">08</div><span class="nm">Wire</span><div class="det">SDK → BLE (LZ4, ≥ 100 ms pacing)</div><div class="det">3–80 ms</div></div>
       <div class="pipe-step"><div class="num">09</div><span class="nm">Apply</span><div class="det">updateImageRawData</div><div class="det">firmware</div></div>
     </div>
     <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--g1);">Library stack benchmarked: <code>image-q</code> + <code>upng-js</code> + <code>xxhash-wasm</code> = <strong>30–50 % compute reduction</strong> vs roll-your-own. Bundle ~ 90 KB gzipped.</p>
@@ -836,8 +896,8 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ FPS LAYERED STRATEGY ════════════════════════════════════ -->
   <section class="show reveal" id="fps">
     <span class="section-tag">▰ frame rate</span>
-    <h2>Six layers, 5 to 15 fps.</h2>
-    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. The MVP commits to <strong>5 fps event-based standard</strong>. The 15 fps stretch needs all six layers + Phase 0 favorable signals (partial-update API, BLE 4.2 DLE).</p>
+    <h2>⚡ Six layers, 5 to 15 fps.</h2>
+    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. This optimisation stack was designed for the v0.9 full-screen raster (5 fps committed, 15 fps stretch). The v0.10 thirds map needs far less: one third of the screen, <strong>≤ 1 fps</strong>, changed tiles only, paced to the SDK's 100 ms image limit.</p>
     <div class="fps-chart" id="fpsChart">
       <div class="layer-row" data-fps="3" data-target="20">
         <div class="info">
@@ -902,7 +962,7 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ I18N ════════════════════════════════════════════════════ -->
   <section class="show reveal" id="i18n">
     <span class="section-tag">🌐 multilingua</span>
-    <h2>Locale follows Foundry. Override on the glasses.</h2>
+    <h2>⚙️ Locale follows Foundry. Override on the glasses.</h2>
     <p>Internationalization is wired in from the MVP &mdash; the locale auto-detects from <code>game.i18n.lang</code> in Foundry and broadcasts at handshake; the player can override it directly from the glasses without touching the world setting. Catalogs live in Foundry (dnd5e + module languages), the G2 carries no strings of its own. See <a href="../../Specs.md" style="color:var(--g3)">§7.16 of the spec</a>.</p>
     <div class="hud-sim" style="max-width:780px;margin-top:2rem;">
 <pre style="font-family:var(--mono);color:var(--g3);font-size:0.78rem;line-height:1.25;text-shadow:0 0 6px var(--g2);margin:0;white-space:pre;">
@@ -930,7 +990,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Override on glasses</h3>
-        <p>Long-press R1 → Quick Action → <code>[N] Language</code>. Selection is <strong>device-local</strong>: it never modifies the world setting. Auto mode follows the GM live; explicit override sticks per-device.</p>
+        <p>Change it from the phone page (<em>Language</em>) or the glasses shortcuts menu (<code>Lingua</code>). Selection is <strong>device-local</strong>: it never modifies the world setting. Auto mode follows Foundry; an explicit override sticks per device.</p>
       </div>
       <div class="pillar">
         <div class="icon">▤</div>
@@ -943,12 +1003,12 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ ROADMAP ═════════════════════════════════════════════════ -->
   <section class="show reveal" id="roadmap">
     <span class="section-tag">⤳ roadmap</span>
-    <h2>Phase 0–13. MVP in 13 weeks.</h2>
+    <h2>🗺️ Phase 0–13, then v0.10 direct streaming.</h2>
     <div class="timeline">
       <div class="phase mvp"><div class="head"><span class="ph">P0</span><span class="wks">Week 0</span></div><div class="ttl">Hardware / SDK validation</div><div class="det">R1 events · <code>updateImageRawData</code> format · BLE bandwidth · partial-update API · DLE 4.2+ · GO/NO-GO decision tree (Branch A / B / C)</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P1</span><span class="wks">Week 1–2</span></div><div class="ttl">Foundation</div><div class="det">monorepo skeleton (pnpm + TypeScript) · shared protocol · CI pipeline · ADR-0001 to ADR-0004</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P2</span><span class="wks">Week 2–3</span></div><div class="ttl">Foundry module core</div><div class="det">readers (character / combat / scene / log) · WS server · capability handshake · contract fixtures</div></div>
-      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · CORS · /healthz /readyz /metrics · Docker</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · Docker — <strong>removed in v0.10.0 (ADR-0012)</strong></div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P4</span><span class="wks">Week 4–7</span></div><div class="ttl">G2 layered engine + map modes</div><div class="det">layer manager · raster pipeline (Layers 1+3+4+6 base, 2+5 conditional) · glyph fallback · boot splash · render primitives</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P5</span><span class="wks">Week 6–8</span></div><div class="ttl">Panel plugin system</div><div class="det">Sheet 6-tab · Combat · Log · Spellbook · Inventory · auto-discovered panels · snapshot fixtures</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P6</span><span class="wks">Week 7–8</span></div><div class="ttl">R1 + event plumbing</div><div class="det">ring-r1 provider · Quick Action menu · gesture latency telemetry</div></div>
@@ -959,79 +1019,63 @@ footer.show a { color: var(--g2); border: none; }
 
       <div class="divider">— end MVP — V2 OPTIONAL below —</div>
 
-      <div class="phase v2"><div class="head"><span class="ph">P11</span><span class="wks">Week 14–15</span><span class="v2tag">V2</span></div><div class="ttl">foundry-mcp server</div><div class="det">MCP TS SDK · tools mirror Tool Registry · resources actor/scene/combat · Claude Desktop integration</div></div>
-      <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">system prompt template · IT↔EN spell name lookup · worked examples A/B/C end-to-end</div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P11</span><span class="wks">Week 14–15</span><span class="v2tag">V2</span></div><div class="ttl">foundry-mcp server</div><div class="det">MCP TS SDK · tools mirror Tool Registry — <strong>removed in v0.10.0</strong>; may return as a client of the direct channel (new ADR)</div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">IT↔EN spell name lookup · Deepgram keyterms — <strong>removed in v0.10.0</strong></div></div>
       <div class="phase v2"><div class="head"><span class="ph">P13</span><span class="wks">post-V2</span><span class="v2tag">V2</span></div><div class="ttl">Stretch goals</div><div class="det">reaction bot · biometric narrative cues · multi-player bridge · dnd5e 6.x adapter · PF2e adapter · portrait images · Dice So Nice raster · headless Foundry session</div></div>
+      <div class="divider">— v0.10.0 · direct streaming —</div>
+      <div class="phase mvp"><div class="head"><span class="ph">v0.10</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · GM-client projector · AES-GCM sealed relay · thirds HUD · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
     </div>
   </section>
 
-  <!-- ═══ VOICE FLOW ═════════════════════════════════════════════ -->
+  <!-- ═══ VOICE (removed / future) ════════════════════════════════ -->
   <section class="show reveal" id="voice">
-    <span class="section-tag">≣ voice via mcp</span>
-    <h2>"I cast Fireball on the goblins" · ~1.2 s.</h2>
-    <p>V2 only — never required. The MCP server lives outside the core, exposes the same tool registry the MVP already uses for manual actions. Add Claude Desktop or any MCP client; remove it without touching anything else.</p>
-    <div class="pillars" style="margin-bottom:2rem;">
+    <span class="section-tag">≣ voice · future</span>
+    <h2>🎙️ Voice: removed in v0.10.0, may return.</h2>
+    <p>The bridge-hosted Deepgram proxy and the <code>foundry-mcp</code> server were removed together with the bridge (<a href="../architecture/0012-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0012</a>). The product is fully usable with gestures alone. Voice or MCP control may come back later as a client of the same direct channel — that needs a new ADR.</p>
+    <div class="pillars">
       <div class="pillar">
         <div class="icon">⌬</div>
-        <h3>Mic capture: hardware-feasible ✓</h3>
-        <p>Verified upstream (<code>hub.evenrealities.com/docs/guides/device-apis</code>): G2 4-mic array streams <strong>PCM 16 kHz s16le mono</strong> to plugins via <code>bridge.audioControl(true)</code>. No extra hardware. <a href="../../Specs.md" style="color:var(--g3)">§3.5</a></p>
+        <h3>Mic capture: hardware-feasible</h3>
+        <p>The G2 4-mic array streams PCM 16 kHz to plugins through the Even Hub SDK. Not used since v0.10.0. <a href="../../Specs.md" style="color:var(--g3)">§3.5</a></p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
-        <h3>AI on-glasses: NOT possible</h3>
-        <p>EvenAI ("Hey Even") is proprietary, cloud-backed, and exposes <strong>no API</strong> to dev apps — not us, not anyone. The voice/transcript event types simply aren't in the SDK taxonomy. Our MCP-via-external-client is therefore a platform constraint, not a design choice. <a href="../../Specs.md" style="color:var(--g3)">§3.6</a></p>
+        <h3>AI on-glasses: not possible</h3>
+        <p>EvenAI is proprietary, cloud-backed, and exposes <strong>no API</strong> to developer apps. Any future voice path must be external. <a href="../../Specs.md" style="color:var(--g3)">§3.6</a></p>
       </div>
       <div class="pillar">
         <div class="icon">▤</div>
         <h3>No speaker → visual feedback only</h3>
-        <p>The G2 has no speaker, bone-conduction or audio output (verbatim Even docs: <em>"no audio output, no arbitrary pixel drawing, no camera"</em>). Every result lands as a toast banner (<a href="../../Specs.md" style="color:var(--g3)">§7.15.2</a>) or status HUD update — never a beep, never a TTS line.</p>
+        <p>The G2 has no audio output. Every result lands as a toast or a HUD update — never a beep, never a TTS line.</p>
       </div>
     </div>
-    <div class="voice-flow">
-      <div class="vstep"><div class="num">▸ 01</div><div class="what">Player long-presses R1 and speaks naturally</div><div class="lat">~ 0 ms</div></div>
-      <div class="vstep"><div class="num">▸ 02</div><div class="what">MCP client captures audio + STT</div><div class="lat">~ 250–310 ms · AssemblyAI / built-in</div></div>
-      <div class="vstep"><div class="num">▸ 03</div><div class="what">LLM tool call streamed</div><div class="lat">~ 600 ms · Claude Sonnet 4.6</div></div>
-      <div class="vstep"><div class="num">▸ 04</div><div class="what"><code>cast_spell</code> tool received by foundry-mcp</div><div class="lat">~ 5 ms</div></div>
-      <div class="vstep"><div class="num">▸ 05</div><div class="what">POST <code>/v1/action/use-activity</code> on bridge</div><div class="lat">~ 10 ms</div></div>
-      <div class="vstep"><div class="num">▸ 06</div><div class="what"><code>activity.use()</code> + MidiQOL + AbilityTemplate</div><div class="lat">~ 150 ms · saves rolled, damage applied</div></div>
-      <div class="vstep"><div class="num">▸ 07</div><div class="what">Foundry hooks → bridge WS → G2 toast</div><div class="lat">~ 60 ms · HUD updated</div></div>
-    </div>
-    <p style="margin-top:1.5rem;font-size:0.85rem;color:var(--g1);">The G2 itself never runs an LLM. It receives the result, renders a 3-second toast banner over the map, and the persistent status HUD updates (HP, slots, conditions). The LLM is free to be replaced — every component is a plugin slot.</p>
   </section>
 
   <!-- ═══ TECH ════════════════════════════════════════════════════ -->
   <section class="show reveal" id="tech">
     <span class="section-tag">⊟ stack</span>
-    <h2>Open-source, mostly TypeScript.</h2>
+    <h2>🧰 Open-source, mostly TypeScript.</h2>
     <p>Library choices are research-driven and documented as ADRs. Every external dependency was evaluated against alternatives in <code>§ 11.5.7</code> of the spec.</p>
     <div class="tech-chips">
       <span class="chip">TypeScript</span>
       <span class="chip">pnpm workspaces</span>
+      <span class="chip">Vite 8</span>
       <span class="chip">Vitest</span>
       <span class="chip">Biome</span>
       <span class="chip">Changesets</span>
       <span class="chip">GitFlow</span>
-      <span class="chip">Node.js 22</span>
-      <span class="chip">Fastify</span>
-      <span class="chip">ws</span>
-      <span class="chip">Redis (opt)</span>
-      <span class="chip">Docker Compose</span>
-      <span class="chip">FoundryVTT v13.347+</span>
+      <span class="chip">GitHub Actions</span>
+      <span class="chip">FoundryVTT v13.347+ / v14</span>
       <span class="chip">dnd5e 5.x</span>
-      <span class="chip">socketlib</span>
-      <span class="chip">MidiQOL</span>
-      <span class="chip">Even Hub SDK</span>
-      <span class="chip">image-q v4</span>
+      <span class="chip">MidiQOL (opt)</span>
+      <span class="chip">Even Hub SDK 0.0.15</span>
+      <span class="chip">@evenrealities/pretext</span>
+      <span class="chip">socket.io-client</span>
+      <span class="chip">WebCrypto AES-GCM</span>
+      <span class="chip">Zod</span>
       <span class="chip">upng-js v2</span>
       <span class="chip">xxhash-wasm v1</span>
-      <span class="chip">sharp (bridge)</span>
-      <span class="chip">OffscreenCanvas</span>
-      <span class="chip">@modelcontextprotocol/sdk</span>
-      <span class="chip">AssemblyAI</span>
-      <span class="chip">Anthropic Claude</span>
-      <span class="chip">GitHub Actions</span>
-      <span class="chip">pino</span>
-      <span class="chip">Prometheus</span>
+      <span class="chip">qrcode</span>
     </div>
   </section>
 
@@ -1044,11 +1088,11 @@ footer.show a { color: var(--g2); border: none; }
                         ▓                                  ▓
                         ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 </div>
-    <p>EvenFoundryVTT — design specification v0.9.13 (2026-05-18 · Phase 14 ratification 2026-05-17 · Phase 15 closure 2026-05-17 · Phases 16–18 closure 2026-05-18).<br/>
+    <p>EvenFoundryVTT — v0.10.0 · direct streaming (2026-09-23).<br/>
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>Distribution (Phase 19):</strong> GitHub Release ships three installable artifacts — Foundry module via manifest URL (<code>releases/latest/download/module.json</code>), bridge Docker image at <code>ghcr.io/aiacos/evf-bridge:latest</code> (GHCR), and g2-app static bundle as <code>g2-app-dist.zip</code>. See README <a href="https://github.com/Aiacos/EvenFoundryVTT#installation" target="_blank" rel="noopener">## Installation</a> for the full setup guide. All 20 phases (0 → 18) software-complete (v0.9.11 MVP shipped 2026-05-17 · v0.9.12 Quick Wins shipped 2026-05-17 · v0.9.13 Sheet Data Completion + Polish shipped 2026-05-18); hardware UAT pending Even Hub developer access. Five rounds of online cross-check against upstream Even Hub / FoundryVTT / dnd5e / MCP / pricing, plus a v0.9.12 INV-2 spot-check (2026-05-14, image-API hardware constraint, drift NEUTRO), a v0.9.12 Phase 15 INV-2 re-check (2026-05-17, EvenAI native API closure + Deepgram <code>keyterm</code> capability on 6 canonical Even Realities domains, status quo confirmed), and a v0.9.13 INV-2 cross-check (2026-05-18, dnd5e 5.3.3 canonical abilities + skills schema re-verified on <code>github.com/foundryvtt/dnd5e@release-5.3.3</code> + dnd5e wiki Roll-Formulas). Four non-negotiable Project Invariants ratified in §0.1: layout integrity · online cross-validation · documentation coherence · code quality. G2 audio surface verified (PCM 16 kHz mic via SDK), native EvenAI confirmed non-API for dev. Plugin code is server-hosted; the Even Realities App loads it in a phone WebView and exposes a per-plugin settings UI for Foundry connection bootstrap (URL + QR-paired token). The <code>z=0.5</code> Idle Content Infill layer (§7.4c) fills previously-empty raster-mode rows without violating the 4-image hardware budget. Phase 14 ratified the z=0.5 contract end-to-end on 2026-05-17 (INV-1 fixtures · cross-state column equality · LMT-DD-07 race coverage). Phase 15 closed end-to-end on 2026-05-17 with Deepgram Keyterm Prompting + Entity-Pack Integration. <strong>v0.9.13 closure (2026-05-18):</strong> Phase 16 wires the Character Sheet Main tab end-to-end — 6 ability scores (STR/DEX/CON/INT/WIS/CHA) with formatted modifiers and saving throws (<code>+N</code>/<code>-N</code>), proficiency markers (<code>◉</code>/<code>○</code>) data-driven from <code>actor.system.abilities.*</code>; Phase 17 wires the Skills tab — 18 skill modifiers + proficiency glyphs (<code>○</code>/<code>◉</code>/<code>★</code>, half-prof 0.5 rounds up to <code>◉</code>) + passive Perception/Insight/Investigation on the Main tab senses line; Phase 18 closes the 3 advisory UI-REVIEW findings from Phase 14 — UI-SPEC §2 col-anchors corrected (col 70 → col 67, content-width 66 → 64 cells, divider at col 68 not col 71), UI-SPEC §10 width-budget table re-derived from <code>idle-infill-layer.ts</code> runtime literals (label 40 → 52 raster / 40 glyph; stats 60 → 54 raster / 51 glyph), IT locale leak fix in <code>glyph-scene.glyph-idle-z05.it.txt</code> Status HUD column (rows 1/5/7/9/12/17 — PF/CA/Az./Slot/Condizioni + TURNO IT-locale restored), Z05-INV-02b-triade test extension prevents regression. socketlib <code>registerComplexHandler</code> count stays exactly <strong>17</strong> through v0.9.13 (CI Gate 8 invariant — both Sheet phases are pure read-path extensions); workspace test suite <strong>2668 / 2668</strong> green (+109 across the milestone: +89 Phase 16, +22 Phase 17, +1 Phase 18 triade). Software-only; zero new hardware-pending SCs.</p>
+    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.10.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0012-direct-foundry-streaming.md">ADR-0012</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM pairs a player with one QR; the Even Realities App loads the page same-origin; the GM browser projects the character, combat, log and map over an AES-256-GCM sealed relay. The G2 UI is the thirds layout on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.9.13) are archived in the repository.</p>
   </footer>
 
 </div><!-- /bezel -->
@@ -1061,7 +1105,7 @@ footer.show a { color: var(--g2); border: none; }
     'D&D 5e on AR glasses, controlled by a smart ring.',
     'Phosphor-green tactical HUD over your real table.',
     'FoundryVTT is the source of truth. The DM is still in charge.',
-    'Voice via MCP is optional — never a dependency.'
+    'No bridge, no Docker: the GM shows a QR, you scan it.'
   ];
   let li = 0, ci = 0, deleting = false;
   const speed = 38, pause = 1700, delspeed = 18;

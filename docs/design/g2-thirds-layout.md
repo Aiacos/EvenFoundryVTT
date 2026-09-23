@@ -33,7 +33,17 @@ univoco (obbligatorio da SDK 0.0.12 se usato da uno).
 caratteri nei mock, ma a build-time vengono misurate in pixel con
 `@evenrealities/pretext` (budget per stringa per colonna, IT + EN, min/max contenuto).
 Glifi non supportati dal font vengono scartati silenziosamente → si usa solo il set
-Unicode verificato (`▮▯●○◉▶◀▲⚠✓✖⌖·─│`).
+**misurato** con `@evenrealities/pretext` 0.1.4 (larghezza > 0): `● ○ ■ □ ★ ▲ ▶ · ─ │ …`.
+
+> 📏 **Realtà misurata (2026-09-23, INV-2).** I mock qui sotto sono in griglia monospace a
+> 31 caratteri per colonna e descrivono l'**architettura dell'informazione** (cosa appare,
+> dove, in che ordine). Il font firmware è proporzionale, ~10 px/carattere medio: una colonna
+> da 192 px contiene **~18 caratteri × 11 righe**. Inoltre `▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` hanno
+> larghezza 0 nel font reale e verrebbero scartati: nel runtime diventano `■ □ ★ ▲ ▶ ●`, il
+> mirino `⌖` è disegnato in pixel nell'immagine mappa, `▓ ▒ ░` esistono solo come livelli di
+> grigio dentro l'immagine. **Il contratto INV-1 eseguibile sono le fixture misurate**
+> `packages/shared-render/src/fixtures/thirds.m01…m11.{it,en}.{min,max}.txt`, verificate dai
+> test (confini di colonna identici in tutti gli stati, larghezza in pixel, soli glifi presenti).
 
 ### Mappa pixelata
 
