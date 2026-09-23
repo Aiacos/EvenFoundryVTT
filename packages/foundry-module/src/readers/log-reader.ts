@@ -56,8 +56,12 @@ interface Dnd5eFlags {
  * Source: `game.messages.contents` (EvenFoundryVTT foundry-globals.d.ts).
  * Using `unknown` for the `flags` field — accessed via defensive narrowing.
  */
-interface ChatMessageLike {
+export interface ChatMessageLike {
   id: string;
+  /** Recipient user ids; empty for public messages. */
+  whisper?: string[];
+  /** Blind roll (hidden from the roller). */
+  blind?: boolean;
   timestamp?: number;
   speaker?: { alias?: string };
   flags?: { dnd5e?: Dnd5eFlags };
@@ -155,59 +159,81 @@ function detectKindAndResult(message: ChatMessageLike): {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Whether a chat message may be shown to any of `viewerIds` (the player and the
+ * player's "(G2)" user). Public messages are visible; whispers only to recipients;
+ * blind rolls never (the GM client holds every message, so this filter is what keeps
+ * GM-only content off the glasses — ADR-0016 §Decision Drivers 4).
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.documents.BaseChatMessage.html (`whisper`, `blind`)
+ */
+export function isMessageVisibleTo(
+  message: ChatMessageLike,
+  viewerIds: readonly string[],
+): boolean {
+  if (message.blind === true) return false;
+  const whisper = Array.isArray(message.whisper) ? message.whisper : [];
+  return whisper.length === 0 || whisper.some((id) => viewerIds.includes(id));
+}
+
+/**
+ * Maps one ChatMessage to a {@link LogEvent}; null when the message has no id.
+ */
+export function toLogEvent(message: ChatMessageLike): LogEvent | null {
+  const id = message.id;
+  if (id === undefined || id === '' || id === null) return null;
+
+  const timestamp = typeof message.timestamp === 'number' ? message.timestamp : Date.now();
+
+  // Actor name from speaker.alias; defensive empty string if missing.
+  const actorName = typeof message.speaker?.alias === 'string' ? message.speaker.alias : '';
+
+  const { kind, result } = detectKindAndResult(message);
+
+  // Description: minimal speaker + kind label for the log row.
+  // WR-05 fix: only append " roll" suffix for kinds that are actual dice rolls
+  // (attack, damage, save). For spell/feature/chat the actor name alone is
+  // sufficient — "spell roll" and "feature roll" are semantically wrong.
+  const isRollKind = kind === 'attack' || kind === 'roll' || kind === 'damage';
+  const description = actorName !== '' ? (isRollKind ? `${actorName} — ${kind}` : actorName) : kind;
+
+  return {
+    id,
+    timestamp,
+    actorName,
+    kind,
+    description,
+    ...(result !== undefined ? { result } : {}),
+  };
+}
+
+/**
  * Read the tail of the Foundry chat log and map it to typed {@link LogEvent}s.
  *
- * Iterates `game.messages.contents.slice(-maxCount)` (newest `maxCount` messages).
- * Returns an array in chronological order (oldest first) — the panel's scroll
- * windowing applies a second clamp on the visible slice.
+ * Returns up to `maxCount` of the newest messages (visible to `viewerIds` when
+ * given), in chronological order (oldest first).
  *
- * **DoS mitigation (T-05-05-03):** The `maxCount` cap (default 50) prevents
- * pathological scan of large `game.messages` collections (>10k entries).
+ * **DoS mitigation (T-05-05-03):** The `maxCount` cap (default 50) bounds the
+ * output; the scan walks backwards and stops as soon as the cap is reached.
  *
- * @param maxCount Maximum number of messages to read (default 50).
+ * @param maxCount  Maximum number of events to return (default 50).
+ * @param viewerIds When set, only messages {@link isMessageVisibleTo} these users.
  * @returns Array of {@link LogEvent} objects, oldest-first.
  */
-export function getLogEventTail(maxCount = 50): LogEvent[] {
+export function getLogEventTail(maxCount = 50, viewerIds?: readonly string[]): LogEvent[] {
   // Defensive: game is declared as a module-level global but may be undefined
   // in test environments (vitest stubs game via vi.stubGlobal).
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   const messages: ChatMessageLike[] =
     typeof game !== 'undefined' && game.messages != null
       ? (game.messages.contents as ChatMessageLike[])
       : [];
 
-  const tail = messages.slice(-maxCount);
-
   const events: LogEvent[] = [];
-
-  for (const message of tail) {
-    const id = message.id;
-    if (id === undefined || id === '' || id === null) continue;
-
-    const timestamp = typeof message.timestamp === 'number' ? message.timestamp : Date.now();
-
-    // Actor name from speaker.alias; defensive empty string if missing.
-    const actorName = typeof message.speaker?.alias === 'string' ? message.speaker.alias : '';
-
-    const { kind, result } = detectKindAndResult(message);
-
-    // Description: minimal speaker + kind label for the log row.
-    // WR-05 fix: only append " roll" suffix for kinds that are actual dice rolls
-    // (attack, damage, save). For spell/feature/chat the actor name alone is
-    // sufficient — "spell roll" and "feature roll" are semantically wrong.
-    const isRollKind = kind === 'attack' || kind === 'roll' || kind === 'damage';
-    const description =
-      actorName !== '' ? (isRollKind ? `${actorName} — ${kind}` : actorName) : kind;
-
-    events.push({
-      id,
-      timestamp,
-      actorName,
-      kind,
-      description,
-      ...(result !== undefined ? { result } : {}),
-    });
+  for (let i = messages.length - 1; i >= 0 && events.length < maxCount; i--) {
+    const message = messages[i];
+    if (message === undefined) continue;
+    if (viewerIds !== undefined && !isMessageVisibleTo(message, viewerIds)) continue;
+    const event = toLogEvent(message);
+    if (event !== null) events.push(event);
   }
-
-  return events;
+  return events.reverse();
 }

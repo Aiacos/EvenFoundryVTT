@@ -14,7 +14,7 @@
  * - `actor_not_found`   — `args.actor_id` not in `game.actors`
  * - `item_not_found`    — `args.item_id` not in `actor.items.contents`
  * - `no_activity`       — `item.system.activities?.contents[0]` is undefined
- * - `no_gm_connected`   — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
+ * - `no_gm_connected`   — dnd5e threw "No connected GM" (Pitfall 5)
  * - `<message>`         — any other dnd5e error
  *
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)

@@ -1,182 +1,195 @@
 # Setup Guide — EvenFoundryVTT
 
-End-to-end installation walkthrough: Foundry module → Bridge service → Plugin host → Even Realities App
-configuration → R1 ring pairing. Five steps, hardware + software prerequisites listed.
+How to get a D&D 5e character from Foundry onto the G2 glasses. There is **one** thing to
+install, the Foundry module. It also serves the glasses app. You don't need a bridge,
+Docker or a second server
+([ADR-0016](architecture/0016-direct-foundry-streaming.md)).
 
-**Canonical reference:** `Specs.md` §3 (hardware), §5 (bridge), §3.7 (3-hop deployment), §11.5.4 (auth).
-
----
-
-## Prerequisites
-
-Before starting, confirm you have all of the following:
-
-| Component | Required version | Notes |
-|-----------|-----------------|-------|
-| **FoundryVTT** | v13.347+ (verified v14) | Self-hosted or The Forge. v12 is **not supported** (Activity system requirement). |
-| **dnd5e system** | ≥ 5.3.3 | Install/update from Foundry's system browser. PHB 2014 + PHB 2024 both supported via `core.modernRules`. |
-| **pnpm** | 10.33.4 | `corepack enable && corepack prepare pnpm@10.33.4 --activate` |
-| **Node.js** | 24.x LTS ("Krypton") | Pin via `.nvmrc`; `nvm use 24` or `fnm use`. |
-| **Docker + Compose** | any recent stable | Used to run the Bridge service container. |
-| **Even Realities G2** glasses | current firmware | Paired to your phone via the Even Realities App. |
-| **Even Realities R1** ring | current firmware | Paired to G2 via Bluetooth (standard Even setup). |
-| **Even Realities App** | latest (iOS or Android) | The phone app that loads the plugin WebView and relays BLE to G2. |
-
-> **Network constraint (Even Hub §3.3):** the Even Realities App enforces an `app.json` domain
-> whitelist. You must provide **origin-complete URLs** (scheme + host + port, no wildcards).
-> Wildcard origins (e.g. `*` or `https://*`) are forbidden and will cause the plugin to fail
-> loading. Keep both your plugin-host URL and your bridge URL minimal and exact.
+**Canonical references:** [ADR-0016](architecture/0016-direct-foundry-streaming.md) ·
+[`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) (glasses screens S10–S12) ·
+[`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.md) §Associazione e connessione
+(pairing flow, phone/Foundry mocks P01–P03) · [`packages/foundry-module/README.md`](../packages/foundry-module/README.md).
 
 ---
 
-## Step 1: Install the Foundry module
-
-In Foundry → **Setup** → **Add-on Modules** → **Install Module** → paste this **Manifest URL**:
+## 🎲 How it works in 30 seconds
 
 ```
-https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
+GM browser (Foundry, module = projector) ──shows QR──▶ player's phone (Even Realities App)
+        ▲                                                   │ loads https://<foundry>/modules/evenfoundryvtt/g2/index.html
+        └──── Foundry server relays module.evenfoundryvtt ◀──┘ (same origin, AES-GCM sealed)
 ```
 
-Foundry will auto-install the required dependencies declared in `relationships.requires`:
-
-- **socketlib** (latest, Foundry module — **not on npm**; Foundry handles the install prompt)
-- **midi-qol** (optional but recommended; enables full attack → damage → save → effect flow)
-
-dnd5e ≥ 5.3.3 must already be installed as the active game system.
-
-> **No GitHub Release yet?** Install in dev mode: symlink `packages/foundry-module/` into
-> `<Foundry Data>/modules/evenfoundryvtt/`, then run:
-> ```bash
-> pnpm --filter @evf/foundry-module build
-> ```
-> See `docs/release/foundry-module.md` for cutting a proper release.
-
-After install, **enable** the `evenfoundryvtt` module in your World settings and **restart** Foundry.
+1. The GM opens **Pair G2 glasses** in Foundry and picks a player and a character.
+2. The module creates a Foundry user **"&lt;Player&gt; (G2)"** and shows a QR (valid 5 min, single use).
+3. The player scans the QR with the Even Realities App. The glasses app opens already connected.
 
 ---
 
-## Step 2: Run the Bridge service
+## 🥽 Prerequisites
 
-The Bridge is a Node.js (Fastify + ws) service that sits between the Even Realities App and your
-Foundry instance. Run it via Docker Compose (recommended for homelab):
+| Component | Required | Notes |
+|---|---|---|
+| **FoundryVTT** | v13.347+ (v14 verified) | Self-hosted or hosted. v12 is not supported (dnd5e Activity system). |
+| **dnd5e system** | ≥ 5.3.3 | PHB 2014 and PHB 2024 both work (`core.modernRules`). |
+| **midi-qol** | optional | Full attack → damage → save automation when active; vanilla `activity.use()` otherwise. |
+| **Valid HTTPS** | required | Foundry must be reachable **from the phone** over a certificate the phone trusts (see below). |
+| **A GM browser online** | required during play | The module in the GM client computes dnd5e data and executes actions. |
+| **Even Realities G2 + R1** | current firmware | Paired to the phone with the standard Even setup. |
+| **Even Realities App** | ≥ 2.2.9 | Needed for the long-press shortcuts menu ([firmware matrix](firmware-compatibility.md)). |
+
+socketlib is **no longer needed**.
+
+### 🔐 HTTPS reachable from the phone
+
+The Even Realities App loads the glasses page from Foundry's own origin, and the phone
+WebView **rejects self-signed certificates**. A plain `http://192.168.x.x:30000` LAN
+address does not work. Pick one of these:
+
+| Option | How | Notes |
+|---|---|---|
+| **Reverse proxy + Let's Encrypt** | Caddy, nginx or Traefik in front of Foundry on a public DNS name | Follow [foundryvtt.com/article/nginx](https://foundryvtt.com/article/nginx/). The proxy **must forward the WebSocket upgrade** (`Upgrade` / `Connection: upgrade` headers; Caddy does it by default). Set `proxySSL: true` and `proxyPort: 443` in Foundry's `options.json`. |
+| **Tailscale** | `tailscale serve` / `tailscale cert` on the Foundry host | Valid `*.ts.net` certificate. The phone must be on the same tailnet. |
+| **Foundry native TLS** | `sslCert` / `sslKey` in `options.json` ([foundryvtt.com/article/configuration](https://foundryvtt.com/article/configuration/)) | Use a real certificate (e.g. Let's Encrypt via DNS challenge), not a self-signed one. |
+
+**routePrefix:** if Foundry runs under a path (`routePrefix: "foundry"` →
+`https://host/foundry/`), you don't need to do anything extra. The QR URL includes the
+prefix (`foundry.utils.getRoute`) and the g2-app build uses relative paths.
+
+> **Open Foundry from the public URL when you pair.** The QR is built from the address in
+> the GM's browser bar. If the GM is on `http://localhost:30000`, the QR points to
+> `localhost` and the phone cannot open it.
+
+---
+
+## 📦 Install the module
+
+1. **Foundry** → *Setup* → *Add-on Modules* → *Install Module* → Manifest URL:
+
+   ```
+   https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
+   ```
+
+2. Launch the world and enable **EvenFoundryVTT** under *Manage Modules*.
+3. Optional: install and enable **midi-qol** (the module lists it under `recommends`).
+
+The release zip already contains the glasses app under `g2/`. Foundry serves it at
+`https://<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html`.
+
+---
+
+## ⚙️ Pair the glasses (GM)
+
+1. As GM: *Game Settings* → *Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses**
+   (IT: **Associa occhiali G2**; menu key `pairG2`).
+2. Pick the **Player** and the **Character**, then press **Generate new QR**.
+3. The window (mock P01) shows:
+   - the **QR**. It works once and expires after **5 minutes**. After that it is hidden
+     and the credentials are rotated.
+   - the **manual code** (16 characters, e.g. `7QK3-MX9P-2HRA-C4TE`) under the QR.
+   - three checks: **valid HTTPS · module served · socket active**. All three must be ✓.
+   - the **paired devices**, with their last contact and a **Revoke** button.
+4. The module creates or refreshes the user **"&lt;Player&gt; (G2)"**: role Player, owner of
+   that character only. Don't delete it by hand. Use **Revoke**.
+
+> **The keys stay in this browser.** Device keys are stored only in the browser of the GM
+> who paired (client-scoped setting). Pair from the browser the GM will use during play.
+
+---
+
+## 🕹️ Connect (player)
+
+1. Open the **Even Realities App** and **scan the QR** shown in Foundry.
+2. The app loads the glasses page. It saves the credentials, removes them from the URL,
+   logs in as the "(G2)" user and says hello to the GM projector.
+3. The glasses show **Connecting** (S11), then the D&D-sheet HUD (S1): portrait, header
+   (AC, HP, turn) and square map on top, ability page and context panel below.
+
+   ![Glasses after pairing: exploration screen](design/img/sheet-explore.png)
+4. On the first connection the GM client **rotates** the password and key, so the QR
+   you scanned stops working.
+
+The phone screen shows the **Connection** page (mock P02): status, server, user,
+character, GM, latency, language, map pixel size, *Follow my token*, *Auto Combat page*,
+**Reconnect**, **Disconnect** and **Diagnostics**.
+
+### Manual code fallback
+
+Use this when the QR can't be scanned, or when the app opens without saved credentials
+(mock P03):
+
+1. On the phone, open `https://<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html`
+   in the Even Realities App.
+2. Pick the **"&lt;Player&gt; (G2)"** user. The list is read from the same Foundry server.
+3. Type the **16-character code** shown under the QR (with or without dashes) → **Connect**.
+
+The code follows the same rules as the QR: single use, valid for 5 minutes.
+
+### Gestures
+
+| Gesture (R1 or temple touchpad) | At the root | In lists |
+|---|---|---|
+| tap | opens **Actions** | confirms |
+| swipe up / down | scrolls log / initiative | moves the `▶` cursor |
+| double tap | **exits the app** | back one level |
+| long press (extra) | shortcuts menu | shortcuts menu |
+
+Long press is never the only way to reach a function.
+
+---
+
+## 🔐 Revoke or re-pair
+
+- **Revoke:** in *Pair G2 glasses* → **Revoke** next to the device → confirm. The glasses
+  receive a sealed `revoked` message and go back to the "not paired" screen (S10). Then
+  the "(G2)" user is deleted and the key is forgotten.
+- **Re-pair:** run the pairing again for the same player. The module refreshes the same
+  "(G2)" user (it is tagged by player), creates a new key and shows a new QR.
+- **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials.
+
+---
+
+## 🐞 Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Glasses stuck on *Connecting*, phone says **"no GM connected"** | No GM browser is in the world, or the active GM is not the one who paired | Open the world as GM **in the browser that paired**. Keys live only there. If another GM is the active GM (`game.users.activeGM`), re-pair from that GM's browser. |
+| Phone page doesn't load / blank after scanning | Self-signed or invalid certificate, or HTTP URL | Use a trusted certificate (Let's Encrypt, Tailscale, reverse proxy). The pair dialog must show ✓ **valid HTTPS**. |
+| QR opens `localhost` or a LAN IP | The GM opened Foundry from a local address | Open Foundry from its public HTTPS URL, then press **Generate new QR**. |
+| ✗ **module served** in the pair dialog | `g2/` missing from the module folder (dev build without `build:g2`) | Reinstall the release zip, or run `pnpm --filter @evf/foundry-module build:all`. |
+| ✗ **socket active**, or connection drops after a few seconds | Proxy doesn't forward the WebSocket upgrade | Add the `Upgrade` / `Connection` headers (nginx) and check `routePrefix` matches the proxied path. |
+| *"credentials rejected"*, back to the first-setup page | Pairing revoked, QR already used, or code expired | Ask the GM to **Generate new QR** and scan again. |
+| *"app in background"* | The Even App went to the background (phone locked, app switched) | Nothing to do. The session reconnects when the app returns to the foreground. |
+| Map column shows text glyphs (`▓▒░@`) | Two map frames in a row failed (weak BLE) | It recovers by itself once the link is stable. |
+| Action fails with `forbidden_actor` / `actor_missing` | The character was deleted or ownership changed | Re-pair and choose the right character. |
+
+For deeper diagnosis see the [runbook](runbook.md).
+
+---
+
+## 🧪 Developer setup
+
+Commands verified against the workspace `package.json` files:
 
 ```bash
-# Clone the repo if not already done
-git clone https://github.com/Aiacos/EvenFoundryVTT.git
-cd EvenFoundryVTT
+pnpm install --frozen-lockfile
+pnpm --filter @evf/foundry-module build:all     # g2-app → packages/foundry-module/g2/, then tsup → dist/module.js
+ln -s "$PWD/packages/foundry-module" "<FoundryData>/Data/modules/evenfoundryvtt"   # dev install
+pnpm lint:ci && pnpm typecheck && pnpm test:coverage
 
-# Copy and edit the env file
-cp deploy/.env.example deploy/.env
-# Edit deploy/.env — set FOUNDRY_WS_URL, BRIDGE_PORT, BEARER_REGISTRY_PATH
-
-# Start the bridge (and optional nginx plugin host)
-docker compose -f deploy/docker-compose.yml up -d bridge
+# GO/NO-GO sideload check against your Foundry (see runbook)
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
 ```
 
-Key environment variables (`deploy/.env`):
-
-| Variable | Example | Description |
-|----------|---------|-------------|
-| `BRIDGE_PORT` | `8910` | Port the bridge listens on (Fastify) |
-| `FOUNDRY_WS_URL` | `ws://192.168.1.50:30000` | WebSocket URL to your running Foundry instance |
-| `BEARER_REGISTRY_PATH` | `/data/bearers.json` | Persistent path for paired device tokens |
-| `BRIDGE_LOG_LEVEL` | `info` | Pino log level (`trace` \| `debug` \| `info` \| `warn` \| `error`) |
-
-Verify the bridge is running:
-
-```bash
-curl http://localhost:8910/healthz
-# Expected: 200 OK with JSON { "status": "ok", "version": "..." }
-```
-
-> **CORS whitelist:** the bridge only allows the plugin-host origin. Set `PLUGIN_HOST_ORIGIN` in
-> `deploy/.env` to the **exact** origin of your plugin host (e.g. `https://my-plugin-host.example.com`).
-> Never use a wildcard — this would expose bearer tokens to arbitrary origins (Even Hub constraint §3.3,
-> `CLAUDE.md §Constraints`).
+`packages/foundry-module/g2/` is build output and is git-ignored. Rebuild it after every
+g2-app change (`pnpm --filter @evf/g2-app build`) and reload the phone page.
 
 ---
 
-## Step 3: Host the plugin (g2-app)
+## 📚 See also
 
-The plugin is a static web app (Vite bundle) served over HTTPS. The Even Realities App loads it in
-a phone WebView.
-
-```bash
-# Build the production bundle
-pnpm --filter @evf/g2-app build
-# Output: packages/g2-app/dist/
-```
-
-Serve `packages/g2-app/dist/` via any static HTTPS host:
-
-- **Caddy** (recommended for homelab auto-HTTPS via Let's Encrypt):
-  ```bash
-  docker compose -f deploy/docker-compose.yml up -d plugin-host
-  ```
-- **Cloudflare Pages / Vercel / any CDN**: drag-and-drop or CI-deploy the `dist/` folder.
-- **Local dev only**: `vite preview` (HTTP, phone WebView requires HTTPS in production).
-
-The plugin-host URL (e.g. `https://evf-plugin.example.com`) is what you paste into the
-Even Realities App in Step 4.
-
-> **`app.json` whitelist (mandatory):** before deploying, update `packages/g2-app/public/app.json`
-> so the `domainWhiteList` array contains **only** the exact origin of your bridge (e.g.
-> `"https://bridge.example.com:8910"`). No wildcards. See Specs.md §3.3.
-
----
-
-## Step 4: Configure the Even Realities App
-
-1. Open the **Even Realities App** on your phone.
-2. Navigate to **Plugins** → tap the **+** button to add a new plugin.
-3. Enter the **Plugin URL**: the HTTPS URL of your plugin host (Step 3).
-4. In the plugin's **Settings** UI (loaded from the WebView):
-   - **Bridge URL**: your bridge's HTTPS/WSS URL (e.g. `https://bridge.example.com:8910`)
-   - Leave the **Bearer token** field empty for now — you will paste it during pairing in Step 5.
-5. Save. The app will fetch the plugin and display the EvenFoundryVTT boot splash on the G2.
-
----
-
-## Step 5: Pair G2 → Foundry (self-service, copy-and-paste)
-
-Pairing is **self-service** — every user pairs their own device, no QR scan (the Even Hub
-platform exposes no camera/QR-scan API to apps). Each user does this once per device:
-
-1. In Foundry, open **Settings** → **Module Settings** → **EvenFoundryVTT** →
-   **"Pair a G2 device"** (available to all users, not just the GM — a non-GM player can pair
-   standalone without a GM online).
-2. Foundry shows a **non-expiring (campaign-long) bearer token** as **copyable text**
-   (Specs.md §11.5.4). Click **Reveal**/**Copy**.
-3. On the phone, open the Even Realities App → EvenFoundryVTT plugin wizard and **paste** the
-   token into the bearer-token field.
-4. Save. The token is stored securely on the phone.
-5. The G2 boot splash should advance past `[ ⟳ ] Bridge` to `[ ✓ ] Foundry sync` and then load
-   your character's HUD.
-
-> **Token lifetime:** the bearer token is **non-expiring (campaign-long)** — it never times out
-> mid-session. You only need to re-pair (re-copy and re-paste) if you explicitly revoke the
-> token via the procedure in `docs/runbook.md §Revoke a bearer token`.
-
----
-
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| *"Failed to fetch package manifest"* | No GitHub Release published yet | Install in dev mode (symlink + build, see Step 1 note). |
-| *WebSocket handshake fails* | Bridge bearer mismatch or wrong CORS origin | Check `BEARER_REGISTRY_PATH` is writable; check `PLUGIN_HOST_ORIGIN` matches your plugin-host URL exactly (no trailing slash). |
-| *`⚠ SYNC LOST` persists after pairing* | Bridge unreachable from phone's network | Confirm bridge URL is accessible from the phone (not `localhost` — use the homelab LAN IP or public URL). See `docs/runbook.md`. |
-| *MidiQOL auto-fast-forward off* | MidiQOL Workflow setting not configured | Foundry → Settings → MidiQOL → Workflow → "Auto fast-forward" → enable. Required for full attack → damage → effect flow. |
-| *G2 shows blank screen after boot* | No character linked to token | Ensure the logged-in Foundry player owns at least one Actor token in the active scene. |
-| *Even App WebView shows "Not allowed"* | Plugin URL not in `app.json` whitelist | Re-check that `domainWhiteList` in `packages/g2-app/public/app.json` contains the exact bridge origin (no wildcards). Rebuild + redeploy. |
-| *Bridge `/healthz` returns 503* | Bridge not ready (Foundry WS not connected) | Check `/readyz` for readiness; confirm `FOUNDRY_WS_URL` is reachable from inside the Docker container. |
-
----
-
-## See also
-
-- `docs/runbook.md` — day-to-day operations, bearer revoke, metrics.
-- `docs/firmware-compatibility.md` — Even Hub SDK and hardware compatibility matrix.
-- `Specs.md §3` — hardware constraints canonical (G2 display, R1 ring, BLE, audio).
-- `Specs.md §3.7` — 3-hop deployment architecture.
-- `Specs.md §11.5.4` — bearer auth + self-service copy-and-paste pairing protocol.
+- [Runbook](runbook.md) — diagnosis, revoke, re-pair, the sideload harness.
+- [ADR-0016](architecture/0016-direct-foundry-streaming.md) — why there is no bridge.
+- [G2 sheet UX](design/g2-sheet-ux.html) — glasses HUD design and screens.
+- [G2 thirds layout](design/g2-thirds-layout.md) — superseded glasses layout; pairing flow and phone/Foundry mocks P01–P03 still current.
+- [Firmware compatibility](firmware-compatibility.md) — SDK / Even App versions.

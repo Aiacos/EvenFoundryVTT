@@ -742,4 +742,36 @@ describe('registerCombatActionTracker', () => {
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_UPDATE_COMBAT_HOOK_ID);
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_DELETE_COMBAT_HOOK_ID);
   });
+
+  // ── ADR-0016: paired actors + getter ──────────────────────────────────────────
+
+  it('CAT-P1: turn change also emits a fresh payload for tracked (paired) actors without state', async () => {
+    vi.stubGlobal('game', makeGameMock());
+    vi.stubGlobal('Hooks', makeHooksMock());
+    const { registerCombatActionTracker, getActionEconomy } = await import(
+      './combat-action-tracker.js'
+    );
+    const emit = vi.fn<(p: ActionEconomyPayload) => void>();
+    registerCombatActionTracker(emit, () => [
+      { actorId: 'thorin', recipientUserId: 'p1' },
+      { actorId: 'actor-mage', recipientUserId: 'p2' },
+    ]);
+    fireCreateChatMessage(makeChatMsg({ audit: { toolId: 'cast-spell', actorId: 'actor-mage' } }));
+    expect(getActionEconomy('actor-mage', 'x').actionsUsed).toBe(1);
+    expect(getActionEconomy('thorin', 'p1')).toEqual({
+      actorId: 'thorin',
+      actionsUsed: 0,
+      bonusActionsUsed: 0,
+      reactionsUsed: 0,
+      multiAttackInProgress: false,
+      recipientUserId: 'p1',
+    });
+    emit.mockClear();
+    fireUpdateCombat({ turn: 1 });
+    // actor-mage reset once (from state), thorin primed once (no state) — no duplicate
+    expect(emit.mock.calls.map((c) => [c[0].actorId, c[0].actionsUsed])).toEqual([
+      ['actor-mage', 0],
+      ['thorin', 0],
+    ]);
+  });
 });

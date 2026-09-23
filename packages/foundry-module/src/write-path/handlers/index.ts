@@ -11,7 +11,8 @@
  * - Wave 2 (Plan 07-03): 2 handlers (place-template, confirm-template-placement)
  * - Wave 3 (Plan 07-05): 1 handler (drop-concentration, replacing evf.setTargets stub)
  * - Phase 13 (Plan 13-01): 3 handlers (cast-shield, cast-counterspell, opportunity-attack)
- *   → socketlib `socket.register` count FLIPS 14 → 17 (Phase 13 INVARIANT)
+ * - ADR-0016 direct channel: 1 handler (end-turn)
+ * - skill-check (ACT-01): actor.rollSkill, reached through the same dispatchTool path
  *
  * # Single-workflow-origin (ADR-0011)
  * All registrations go through `registerToolHandler` — the canonical write-path
@@ -29,6 +30,7 @@ import { castCounterspellHandler } from './cast-counterspell.js';
 import { castShieldHandler } from './cast-shield.js';
 import { castSpellHandler } from './cast-spell.js';
 import { dropConcentrationHandler } from './drop-concentration.js';
+import { endTurnHandler } from './end-turn.js';
 import { moveTokenHandler } from './move-token.js';
 import { opportunityAttackHandler } from './opportunity-attack.js';
 import { confirmTemplatePlacementHandler, placeTemplateHandler } from './place-template.js';
@@ -59,11 +61,9 @@ registerToolHandler('confirm-template-placement', confirmTemplatePlacementHandle
 
 // ─── Wave 3 handlers (Plan 07-05) ────────────────────────────────────────────
 // drop-concentration: resolves actor + concentration effect → calls effect.delete()
-// Replaces evf.setTargets stub in socketlib-handlers.ts (slot rename, count stays 14).
 registerToolHandler('drop-concentration', dropConcentrationHandler);
 
 // ─── Phase 13 ACT-04 reaction handlers (Plan 13-01) ─────────────────────────
-// These 3 new handlers FLIP the socketlib count from 14 → 17.
 // cast-shield: level-1 Shield spell reaction (D-13-01)
 // cast-counterspell: level-3+ Counterspell reaction with upcast (D-13-02)
 // opportunity-attack: melee weapon attack triggered by OA Reaction (D-13-03)
@@ -71,8 +71,8 @@ registerToolHandler('cast-shield', castShieldHandler);
 registerToolHandler('cast-counterspell', castCounterspellHandler);
 registerToolHandler('opportunity-attack', opportunityAttackHandler);
 
-// ─── Phase 8 write channel (ACT-01) ──────────────────────────────────────────
-// skill-check: resolves actor + calls actor.rollSkill({ skill, advantage, disadvantage }).
-// Reached by the reverse-channel poller via dispatchToolAuthorized (NOT socketlib —
-// the socketlib socket.register count stays 17, no new handler).
+// ─── ADR-0016 direct channel ─────────────────────────────────────────────────
+// end-turn: Combat#nextTurn for the paired actor, only on its own turn.
+registerToolHandler('end-turn', endTurnHandler);
+// skill-check (ACT-01): resolves actor + calls actor.rollSkill({ skill, advantage, disadvantage }).
 registerToolHandler('skill-check', skillCheckHandler);

@@ -17,7 +17,9 @@
     "validate:dle-sustained": "tsx scripts/10-0-7-dle-sustained.ts",
     "validate:queue-depth": "tsx scripts/10-0-8-queue-depth.ts",
     "validate:palette-calibration": "tsx scripts/10-0-9-palette-calibration.ts",
-    "validate:midiqol-probe": "tsx scripts/midiqol-config-probe.ts"
+    "validate:midiqol-probe": "tsx scripts/midiqol-config-probe.ts",
+    "validate:direct-sideload": "tsx scripts/direct-sideload.ts",
+    "validate:direct-sideload:skip-hardware": "tsx scripts/direct-sideload.ts --skip-hardware"
   },
   "dependencies": {
     "csv-stringify": "6.5.2",

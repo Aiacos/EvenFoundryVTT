@@ -25,6 +25,7 @@ packages/validation-harness/
 │   ├── 10-0-8-queue-depth.ts
 │   ├── 10-0-9-palette-calibration.ts
 │   ├── midiqol-config-probe.ts
+│   ├── direct-sideload.ts        # ADR-0016 GO/NO-GO (helpers in src/direct-sideload.ts)
 │   └── run-all.ts                # orchestrator with --skip-hardware flag
 ├── tests/
 │   └── path-resolution.test.ts   # smoke test for Pitfall 8 (writer → repo-root)
@@ -57,6 +58,10 @@ pnpm --filter @evf/validation-harness validate:dle-sustained
 pnpm --filter @evf/validation-harness validate:queue-depth
 pnpm --filter @evf/validation-harness validate:palette-calibration
 pnpm --filter @evf/validation-harness validate:midiqol-probe
+
+# ADR-0016 direct sideload (Foundry serves the g2-app; QR loads it in the Even App)
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload   # interactive hardware checklist
 ```
 
 Evidence is always written to **repo-root** `docs/perf/phase-0/` regardless of cwd, via

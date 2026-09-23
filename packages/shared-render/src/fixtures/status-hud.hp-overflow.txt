@@ -1,8 +1,0 @@
-VeryLongNameOverflow   Lv5 —
-───────────────────────────…
-HP ██████████ 99999/99999   AC 18   SPD —
-Turn —   Round —   [—]
-Cond: —
-───────────────────────────…
-Slots —
-Death saves  ○○○ / ○○○

@@ -1,81 +1,81 @@
 # Firmware & SDK Compatibility
 
-Version matrix for all hardware and platform dependencies in EvenFoundryVTT. This file is the
-**canonical reference** for which SDK / firmware versions are verified and what the forward-compat
-policy is for each.
+Which SDK, app, firmware and Foundry versions EvenFoundryVTT is verified against, and the
+forward-compat policy for each.
 
-**INV-2 note:** every version pin listed here was verified against a canonical upstream source. Per
-`CLAUDE.md §Project Invariants > INV-2`, re-verify before each version bump using ≥4 parallel
-WebFetch requests against canonical domains. Aggregator / blog / AI-summary sources are not
-authoritative.
+**INV-2 note:** every pin below cites a canonical upstream source. Re-verify before each
+version bump (≥ 4 parallel WebFetch on canonical domains, per `CLAUDE.md` §Pre-bump
+checklist). Aggregator, blog and AI-summary sources are not authoritative.
 
 ---
 
-## Verified versions
+## 🔬 Verified versions
 
-| Component | Pinned version | Verified date | Source |
-|-----------|---------------|---------------|--------|
-| `@evenrealities/even_hub_sdk` | **0.0.10** | 2026-05-14 | `STATE.md` Quick Tasks `oq-inv2-4-hub-polyfill-via-evenrealities-sdk` — full 1 292-line `index.d.ts` read; MIT license, author: Whiskee Chen @ Even Realities. |
-| G2 firmware identifier | `"g2"` (model string) | 2026-05-14 | `STATE.md` Quick Tasks `adr-0005-oq-inv2-1-resolution-via-simulator` — `getGlassesInfo()` probe on simulator returned `{ model: "g2" }`. |
-| FoundryVTT host | ≥ v13.347 (verified v14) | 2026-05-10 | Live `system.json` at `github.com/foundryvtt/dnd5e` tag `release-5.3.3`: `compatibility.minimum: "13.347"`, `compatibility.verified: "14"`. |
-| dnd5e game system | ≥ 5.3.3 (latest: 5.3.3) | 2026-05-07 | GitHub Releases: `github.com/foundryvtt/dnd5e/releases` — `5.3.3` released 2026-05-07. |
-| socketlib | latest (Foundry module) | 2026-05-10 | `github.com/farling42/foundryvtt-socketlib` — **not on npm** (`npm view socketlib` → E404; confirmed). Installed as a Foundry module. |
-| midi-qol | latest (optional) | 2026-05-10 | `gitlab.com/tposney/midi-qol` — optional module; enables full attack → damage → save → effect flow. |
+| Component | Version | Verified | Source |
+|---|---|---|---|
+| `@evenrealities/even_hub_sdk` | **0.0.15** (exact pin, `packages/g2-app/package.json`) | 2026-09-23 | npm registry: 0.0.15 published 2026-09-07 (`npm view @evenrealities/even_hub_sdk time`) |
+| `app.json` `min_sdk_version` | **0.0.14** | 2026-09-23 | `packages/g2-app/app.json`. 0.0.14 is the floor for long-press, `menuObject` and 100 ms `updateImageRawData` pacing. |
+| Even Realities App | **≥ 2.2.9** for long-press / context menu | 2026-09-23 | [hub.evenrealities.com/docs/reference/changelog](https://hub.evenrealities.com/docs/reference/changelog): the context menu needs app 2.2.9; the SDK 0.0.13 floor is 2.2.6 |
+| Even Realities App (SDK 0.0.15 metadata) | `minAppVersion` **2.2.10** | 2026-09-23 | `npm view @evenrealities/even_hub_sdk@0.0.15 minAppVersion`. The hub changelog still lists 0.0.14 as the latest entry. Re-verify when the changelog catches up. |
+| `@evenrealities/pretext` | 0.1.4 | 2026-09-23 | `packages/g2-app/package.json` (pixel text budgets, INV-1) |
+| `socket.io-client` | 4.8.3 | 2026-09-23 | `packages/g2-app/package.json` (Foundry socket, EIO 4) |
+| G2 model identifier | `"g2"` | 2026-05-14 | `getGlassesInfo()` probe on the simulator |
+| FoundryVTT | ≥ v13.347 (v14 verified) | 2026-09-23 | `packages/foundry-module/module.json` → `compatibility`. v14 accepts the socket session only from the `session` cookie, so the page must be same-origin ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). |
+| dnd5e | ≥ 5.3.3 | 2026-05-07 | [github.com/foundryvtt/dnd5e/releases](https://github.com/foundryvtt/dnd5e/releases) |
+| midi-qol | optional (`relationships.recommends`) | 2026-05-10 | [gitlab.com/tposney/midi-qol](https://gitlab.com/tposney/midi-qol) |
+| socketlib | **not used** since v0.10.0 | — | The projector runs in the GM client, so no `executeAsGM` round-trip is left (ADR-0016). |
 
----
+### 📝 SDK changes that matter to us
 
-## Hardware limits (verbatim per SDK `index.d.ts`)
+From [hub.evenrealities.com/docs/reference/changelog](https://hub.evenrealities.com/docs/reference/changelog) (fetched 2026-09-23):
 
-From `@evenrealities/even_hub_sdk@0.0.10` `index.d.ts` (1 292 lines, verified 2026-05-14):
-
-| Parameter | Limit | Notes |
-|-----------|-------|-------|
-| Image width | 20–288 px | Per `createImageContainer` constraints |
-| Image height | 20–144 px | Per `createImageContainer` constraints |
-| `containerTotalNum` | 1–12 | Total containers per page |
-| `textObject` | max 8 per page | Text/list container budget |
-| `imageObject` | max 4 per page | Image container budget |
-| Capture container | max 1 | Must set `isEventCapture: 1` to receive R1 events |
-| Audio | PCM 16 kHz s16le mono | Via `bridge.audioControl(true)` + `event.audioEvent.audioPcm` |
-| No speaker | — | G2 has **no audio output** (verbatim SDK docs). All feedback is visual. |
-| No camera | — | G2 has **no camera** (verbatim SDK docs). |
-
-These constraints are canonical for the EVF raster pipeline (Specs.md §3.1 + §7.2) and the
-4-image / 8-text container budget (Specs.md §7.1a).
-
-> **INV-1 binding:** any ASCII mockup or runtime layout that violates these hardware limits fails
-> the INV-1 gate. The `matchAsciiFixture` snapshot tests enforce this at build time.
+| SDK | Shipped | Change used by EVF |
+|---|---|---|
+| 0.0.12 | 2026-07-10 | `zOrderIndex` on containers (unique per page, all-or-nothing); image payloads LZ4-compressed in transit |
+| 0.0.13 | 2026-07-31 | `minAppVersion` published in npm metadata (2.2.6) |
+| 0.0.14 | 2026-08-20 | `textColor` (5 brightness levels) · `updateImageRawData` holds the image path for 100 ms · `menuObject` context menu (≤ 10 items) · `LONG_PRESS_EVENT` (9) / `LONG_PRESS_RELEASE_EVENT` (10) |
+| 0.0.15 | 2026-09-07 (npm) | current pin. No hub changelog entry yet; `minAppVersion` 2.2.10 |
 
 ---
 
-## Forward-compat policy
+## 🥽 Hardware limits used by the sheet layout
 
-`@evenrealities/even_hub_sdk` is **pre-1.0** (semver-exempt by convention). This means:
+Sources: [hub.evenrealities.com/docs/build/display](https://hub.evenrealities.com/docs/build/display) ·
+[/build/device-apis](https://hub.evenrealities.com/docs/build/device-apis) (input events) (fetched 2026-09-23;
+`/build/input` now redirects to Get Started).
 
-- **Any minor bump** (`0.0.10 → 0.0.11`) is treated as potentially breaking.
-- Before upgrading, run a full **INV-2 re-verification** per `CLAUDE.md §Pre-bump checklist`:
-  - ≥4 parallel WebFetch against canonical upstream sources (Even Hub docs, Even Realities product pages).
-  - Check `index.d.ts` diff for changes to `containerTotalNum`, image dimension limits, `EvenAppBridge` API surface, audio API.
-  - Log all drift findings as `Re-verified ✓` or `Drift: <description>` in Specs.md changelog.
-- Run a **Phase-0-style probe sweep** (per `STATE.md Quick Tasks 2026-05-14 oq-inv2-4`):
-  - `getGlassesInfo()` — model string, firmware version.
-  - `createImageContainer` with a boundary-condition payload (width=288, height=144).
-  - `bridge.audioControl(true)` → confirm PCM chunk size and format.
-  - R1 event delivery — tap + scroll + long-press sequence with timing measurement.
-- Update `docs/firmware-compatibility.md` (this file) with the new verified version + date + source.
-- The version bump lands in an **INV-3 atomic commit** (Specs.md + README.md + showcase + this file).
+| Parameter | Limit | EVF usage |
+|---|---|---|
+| Canvas | 576 × 288, 4-bit greyscale green | five zones: portrait 144² · header 288×144 · map 144² · sheet 288×144 · context 288×144 |
+| Image containers | ≤ 4 per page, each ≤ 288 × 144 | 4 / 4: portrait, header, map, sheet (pixel renderer) |
+| Text / list containers | ≤ 8 per page | 4 / 8: context title · body · hint + background capture |
+| Event capture | exactly 1 container with `isEventCapture: 1` | full-screen background text |
+| Image pacing | ≥ 100 ms between image updates (SDK 0.0.14) | one image at a time, per-zone hash, priority header > map > sheet > portrait; map ≤ 1 fps |
+| Input | press · double-press · swipe up/down; long-press is an **extra** (0.0.14, app ≥ 2.2.9) | long-press opens the `menuObject` shortcuts. Every shortcut can also be reached with a tap. |
+| Audio out / camera | none | all feedback is visual |
 
-> **No auto-upgrades.** Even Hub SDK is not pinned to a semver range (`^` or `~`). The
-> `packages/g2-app/package.json` uses an **exact version pin** (`"0.0.10"`) to prevent accidental
-> upgrades during `pnpm install --frozen-lockfile` CI runs.
+Full budget table: [`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) §Architettura della schermata · `Specs.md` §7.0.
 
 ---
 
-## See also
+## 🛡️ Forward-compat policy
 
-- `Specs.md §3.1` — G2 display + hardware constraints canonical.
-- `Specs.md §3.5` — audio capture API (PCM 16 kHz s16le mono, BLE LC3 decoded by Hub SDK).
-- `Specs.md §3.6` — EvenAI non-API constraint (proprietary, no transcript subscription).
-- `packages/g2-app/package.json` line 14 — `"@evenrealities/even_hub_sdk": "0.0.10"` (exact pin).
-- `STATE.md Quick Tasks 2026-05-14` — `oq-inv2-4-hub-polyfill-via-evenrealities-sdk` full SDK probe notes.
-- `CLAUDE.md §Pre-bump checklist` — full re-verification protocol.
+`@evenrealities/even_hub_sdk` is **pre-1.0**, so treat every bump as potentially breaking:
+
+- Keep the **exact pin** (no `^`/`~`) in `packages/g2-app/package.json`.
+- Before upgrading, read the hub changelog and diff `index.d.ts`. Look at container
+  limits, `OsEventTypeList`, image pacing, storage and lifecycle events.
+- Raise `min_sdk_version` in `packages/g2-app/app.json` only when the code needs the new API.
+- Re-run the tests (`pnpm test`) and the sideload harness
+  (`pnpm --filter @evf/validation-harness validate:direct-sideload`) on real hardware when
+  you can. Otherwise follow the defer-hardware pattern.
+- Update this file and log drift (`Re-verified ✓` / `Drift: …`) in the `Specs.md`
+  changelog. Update `README.md` and the showcase in the same commit (INV-3).
+
+---
+
+## 📚 See also
+
+- [ADR-0016 — Direct Foundry → G2 streaming](architecture/0016-direct-foundry-streaming.md)
+- [G2 sheet UX](design/g2-sheet-ux.html) · [G2 thirds layout (superseded)](design/g2-thirds-layout.md)
+- [Setup guide](setup-guide.md) · [Runbook](runbook.md)

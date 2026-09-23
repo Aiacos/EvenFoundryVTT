@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-05-11
 deciders: aiacos (DM/PO/sole-developer)
 consulted: Claude Code (Opus 4.7, planning/research agent)
@@ -9,6 +9,8 @@ informed: future contributors
 # ADR-0001: Layered UI Model — z=0 map / z=1 status HUD / z=2 overlay panel
 
 ## Status
+
+> **SUPERSEDED by [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. The z=0/0.5/1/2 layered model is replaced by the five fixed zones of the D&D-sheet HUD.
 
 **ACCEPTED** — 2026-05-11. **AMENDED** — 2026-05-14 (added z=0.5 extension) + **RATIFIED** — 2026-05-17 (Phase 14 — INFILL-01..05 closed). Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), Phase 5 (Panel Plugin System).
 

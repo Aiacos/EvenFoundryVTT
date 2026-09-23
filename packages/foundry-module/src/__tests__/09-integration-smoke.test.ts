@@ -3,7 +3,7 @@
  *
  * End-to-end integration tests proving the full Phase 9 write-path extensions:
  * concentration detection + cast-spell slot forwarding + combat-action-tracker
- * + action-result-watcher error mapping + 14-socketlib-handler invariant.
+ * + action-result-watcher error mapping.
  *
  * Each FM-ISM-W9-NN test exercises ONE complete scenario using REAL implementations
  * with mocked Foundry globals (game, Hooks, ChatMessage, canvas).
@@ -19,9 +19,6 @@
  */
 
 import { webcrypto } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Foundry global stubs ────────────────────────────────────────────────────
@@ -631,28 +628,6 @@ describe('Phase 9 Foundry-Module Integration Smoke (FM-ISM-W9)', () => {
     expect(resultPayload.toolId).toBe('cast-spell');
     expect(resultPayload.status).toBe('failure');
     expect(resultPayload.errorKind).toBe('concentration-required');
-  });
-
-  // ── FM-ISM-W9-09: 17-socketlib-handler invariant (file-content read) ──────
-  // Phase 13 Plan 13-01 FLIPPED the count from 14 → 17 (ACT-04 reaction handlers).
-  // The invariant is now 17 for all phases ≥ 13.
-  // Quick Task 260604-lg4: the registration MECHANISM changed from the fictional
-  // socketlib.registerComplexHandler(...) to the real socket API
-  // (evfSocket.register('evf.*', handler)); the count invariant of 17 is preserved.
-
-  it('FM-ISM-W9-09: 17-socketlib-handler invariant confirmed (grep gate)', () => {
-    const thisDir = dirname(fileURLToPath(import.meta.url));
-    const handlersPath = join(thisDir, '../../src/pair/socketlib-handlers.ts');
-    const content = readFileSync(handlersPath, 'utf-8');
-    const callLines = content
-      .split('\n')
-      .filter((line) => /evfSocket\.register\('evf\./.test(line));
-    expect(callLines.length).toBe(17);
-    // The fictional API must be fully retired (no runtime calls remain).
-    const fictionalCalls = content
-      .split('\n')
-      .filter((line) => line.includes('socketlib.registerComplexHandler('));
-    expect(fictionalCalls.length).toBe(0);
   });
 
   // ── FM-ISM-W9-10: audit-log includes attackId when handler result carries one ──

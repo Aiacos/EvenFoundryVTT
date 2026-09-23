@@ -1,1 +1,0 @@
-R1: tap=apri scroll=voce qa=annulla

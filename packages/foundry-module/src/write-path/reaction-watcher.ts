@@ -7,7 +7,7 @@
  * When an NPC activity fires (not the player's own action), infers the
  * reaction kind via a Phase 7 broad heuristic and emits a `ReactionAvailablePayload`
  * via the injected `emit` callback. The callback is wired by `module.ts` to
- * `bridgeDeltaEmitter('r1.reaction.available', payload)`.
+ * `projector.pushDelta('r1.reaction.available', payload)`.
  *
  * ## CRITICAL: NEVER return false
  *
@@ -100,7 +100,7 @@ function inferReactionKind(
  * (RESEARCH §Q3 + Pitfall 1). Using them produces a silent no-op — the handler
  * is registered but NEVER fired.
  *
- * @param emit - Callback to emit the reaction payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the reaction payload via projector.pushDelta.
  *               Called at most once per triggering activity. Never called for
  *               the player's own actions.
  * @returns Unsubscribe closure — calls `Hooks.off(hookId)`. Discarded by module.ts

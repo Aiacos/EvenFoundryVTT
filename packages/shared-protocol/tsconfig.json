@@ -1,11 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "types": [],
     "outDir": "dist",
     "rootDir": "src"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "src/voice/spell-keyterms.test.ts"]
+  "exclude": ["dist", "node_modules"]
 }

@@ -5,6 +5,11 @@ node_modules/
 # Build outputs
 dist/
 build/
+# g2-app Vite outDir (ADR-0016) — shipped only via the release zip, never committed
+packages/foundry-module/g2/
+# release-workflow staging (foundry-module-release.yml)
+packages/foundry-module/release-tree/
+packages/foundry-module/evenfoundryvtt.zip
 *.tsbuildinfo
 
 # Caches
@@ -42,12 +47,6 @@ Thumbs.db
 .env.*.local
 *.secret.json
 
-# deploy: never commit real secrets (deploy/.env.example is the template)
-deploy/.env
-deploy/.env.local
-# Headless player-view saved Forge session (storageState) — sensitive, never commit.
-deploy/secrets/
-
 # Even Hub package bundles — build artifacts, regenerated via `pnpm --filter @evf/g2-app pack:ehpk`
 *.ehpk
 
@@ -65,3 +64,4 @@ release-artifacts/
 
 # Claude Code transient worktree state
 .claude/worktrees/
+packages/g2-app/.sim-artifacts/

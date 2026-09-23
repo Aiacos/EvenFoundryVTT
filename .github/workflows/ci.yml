@@ -1,4 +1,4 @@
-# EVF CI Workflow — D-1.09 (GitHub Actions) + D-1.10 (7 quality gates)
+# EVF CI Workflow — D-1.09 (GitHub Actions) + D-1.10 (7 quality gates) + ADR-0011/0016 guards
 # Source: github.com/pnpm/action-setup (verified 2026-05-11)
 name: CI
 
@@ -48,20 +48,16 @@ jobs:
         run: pnpm test:coverage
 
       # D-1.10 gate 5: // TODO discipline (INV-4)
-      # Pattern matches // TODO that is NOT followed by (#NN) or (ADR-NNNN).
-      # PCRE (-P) is required for the negative lookahead — ERE (-E) silently never
-      # fires. The optional space lives INSIDE the lookahead (`(?! ?\(...)`) so both
-      # `// TODO (#NN)` and `// TODO(ADR-NNNN)` pass without a backtrack escape.
-      # --exclude-dir=node_modules: this step runs AFTER `pnpm install`, so deps are
-      # on disk; without the exclude the (now-functional) gate would fail on third-
-      # party TODOs (e.g. image-q). We only police first-party source.
+      # Fails on any `// TODO` NOT immediately followed by `(#NN)` or `(ADR-NNNN)`.
+      # Uses `git grep -P` (PCRE): the negative lookahead is not valid ERE — the former
+      # `grep -E` form errored/never matched, so the gate silently passed. `git grep`
+      # scans tracked files only (no node_modules / build output).
       - name: TODO discipline grep
         run: |
-          if grep -RPn '// TODO(?! ?\((#[0-9]+|ADR-[0-9]+)\))' \
-              --include='*.ts' --include='*.tsx' --include='*.js' \
-              --exclude-dir=node_modules \
-              packages/ docs/architecture/ 2>/dev/null; then
-            echo "::error::Found // TODO without (#issue) or (ADR-NNNN) reference"
+          if git grep -nP '// TODO(?!\((#[0-9]+|ADR-[0-9]+)\))' -- \
+              'packages/*.ts' 'packages/*.tsx' 'packages/*.js' 'packages/*.mjs' \
+              'scripts/*.mjs' 'scripts/*.ts'; then
+            echo "::error::Found // TODO without (#issue) or (ADR-NNNN) reference (INV-4)"
             exit 1
           fi
 
@@ -77,57 +73,70 @@ jobs:
         if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset:status
 
-      # D-7.01 gate 8: Single-workflow-origin guard (Phase 7 ADR-0011 + Plan 07-01)
-      # The ONLY valid call sites for activity.use() are in:
-      #   packages/foundry-module/src/write-path/handlers/*.ts
-      # Any hit in g2-app or bridge is a client-side write bypass — critical security
-      # violation of the single-workflow-origin discipline (T-07-01 mitigation).
+      # D-7.01 gate 8: Single-workflow-origin guard (ADR-0011, preserved by ADR-0016)
+      # The ONLY valid call sites for activity.use() are under
+      #   packages/foundry-module/src/write-path/
+      # Any other hit (g2-app, shared-*, validation-harness, or foundry-module outside
+      # write-path — e.g. the ADR-0016 projector) is a write bypass of the GM-side
+      # dispatchTool pipeline — critical violation (T-07-01 mitigation).
       # @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
+      # @see docs/architecture/0016-direct-foundry-streaming.md (Decision Outcome §5)
       - name: Single-workflow-origin guard (ADR-0011)
         run: |
-          # Match real calls only. The post-filter drops grep hits whose line
-          # content (after `path:NN:`) begins with a comment marker (JSDoc `*`,
-          # `//`, or `/*`) — doc comments that merely *mention* activity.use()
-          # (e.g. "NEVER calls activity.use() directly") are documentation, not
-          # a client-side write bypass. Real calls never start with a comment.
-          HITS=$(grep -rnE 'activity\.use\(' packages/g2-app packages/bridge --include="*.ts" 2>/dev/null \
-            | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' || true)
+          # Match real calls only. Post-filters drop (1) lines whose content (after
+          # `path:NN:`) starts with a comment marker (JSDoc `*`, `//`, `/*`) and
+          # (2) prose mentions of the empty-paren form `activity.use()` inside a string
+          # literal (e.g. tool description 'Cast a spell via activity.use()'). Real
+          # calls pass arguments or are not quote-enclosed, so they are never dropped.
+          HITS=$(git grep -nE 'activity\.use\(' -- 'packages/*.ts' 'packages/*.tsx' \
+              ':!packages/foundry-module/src/write-path/**' \
+            | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' \
+            | grep -vE "['\"\`][^'\"\`]*activity\.use\(\)[^'\"\`]*['\"\`]" || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
-            echo "::error::Client-side activity.use() call detected in packages/g2-app or packages/bridge."
-            echo "::error::All write-path mutations must go through packages/foundry-module/src/write-path/handlers/."
+            echo "::error::activity.use() call detected outside packages/foundry-module/src/write-path/."
+            echo "::error::All mutations must go through the GM-side dispatchTool pipeline (write-path handlers)."
             echo "::error::See docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)"
             exit 1
           fi
 
-      # Phase 15 gate: SKT-02 drift-gate import path probe (WR-07 hardening)
-      # The shared-protocol SKT-02 test imports SPELL_LOOKUP from foundry-mcp via a
-      # hard-coded relative path (cross-package test-only import). If foundry-mcp is
-      # restructured (src/ moved to source/, spell-lookup.ts moved into a subdir),
-      # the test fails with a confusing 'Cannot resolve module' rather than an
-      # explicit 'drift gate broken' signal. This probe fails loudly BEFORE the
-      # Vitest run with a precise error pointing both sides at the contract.
-      - name: SKT-02 drift gate import-path probe (Phase 15 WR-07)
+      # ADR-0016 gate 9: socketlib is a Foundry-side (GM client) dependency only.
+      # The phone g2-app talks raw socket.io on `module.evenfoundryvtt`; shared-* are
+      # environment-agnostic. Any socketlib import/call outside packages/foundry-module
+      # is an architecture leak. (Replaces the former fixed handler-count assertion:
+      # the gate must not depend on how many handlers foundry-module registers.)
+      - name: socketlib confinement guard (ADR-0016)
         run: |
-          src=packages/foundry-mcp/src/voice/spell-lookup.ts
-          test=packages/shared-protocol/src/voice/spell-keyterms.test.ts
-          rel='../../../foundry-mcp/src/voice/spell-lookup.js'
-          if ! test -f "$src"; then
-            echo "::error file=$test::SKT-02 drift gate broken: $src missing."
-            echo "::error::The cross-package test-only import in spell-keyterms.test.ts hard-codes"
-            echo "::error::$rel — moving spell-lookup.ts requires updating that path."
+          HITS=$(git grep -nE \
+              "from ['\"][^'\"]*socketlib|import\(['\"][^'\"]*socketlib|\bsocketlib\.(register|execute)[A-Za-z]*\(|modules\.get\(['\"]socketlib" \
+              -- 'packages/*.ts' 'packages/*.tsx' ':!packages/foundry-module/**' \
+            | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
+            echo "::error::socketlib usage detected outside packages/foundry-module (ADR-0016)."
+            echo "::error::Only the GM-client Foundry module may depend on socketlib."
             exit 1
           fi
-          if ! grep -q '^export const SPELL_LOOKUP' "$src"; then
-            echo "::error file=$src::SKT-02 drift gate broken: SPELL_LOOKUP export missing or renamed."
-            echo "::error::spell-keyterms.test.ts imports it by name — rename in lock-step."
+
+      # ADR-0016 gate 10: the g2-app is served by Foundry from the module folder.
+      # `vite build` must emit into packages/foundry-module/g2/ with an index.html
+      # entry, or the QR-sideload URL /modules/evenfoundryvtt/g2/index.html 404s.
+      - name: Build g2-app into foundry-module/g2 (ADR-0016)
+        run: |
+          pnpm --filter @evf/g2-app build
+          if ! test -f packages/foundry-module/g2/index.html; then
+            echo "::error file=packages/g2-app/vite.config.ts::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0016 hosting contract)."
             exit 1
           fi
-          if ! grep -qF "$rel" "$test"; then
-            echo "::error file=$test::SKT-02 drift gate broken: relative import path $rel no longer present in test."
-            echo "::error::Update this CI gate alongside the test if the contract intentionally changed."
-            exit 1
-          fi
+          ls -la packages/foundry-module/g2
+
+      # Wiki source (docs/wiki/) is published by wiki-sync.yml on main; break it here,
+      # not after merge: unknown pages, missing images/files and orphan pages fail.
+      - name: Wiki link check (docs/wiki)
+        run: node scripts/check-wiki-links.mjs docs/wiki
+
+      - name: Module runtime assets (module.json references)
+        run: node scripts/check-module-assets.mjs packages/foundry-module
 
   commit-lint-pr-title:
     runs-on: ubuntu-latest

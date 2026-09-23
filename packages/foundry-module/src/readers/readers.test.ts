@@ -1,5 +1,5 @@
 /**
- * Reader unit tests — character, combat, scene, event-log, hook-subscribers.
+ * Reader unit tests — character, combat, hook-subscribers.
  *
  * Uses vi.stubGlobal to mock Foundry globals (game, canvas, Hooks).
  * No real Foundry runtime or HTTP calls.
@@ -11,8 +11,6 @@
  *
  * @see packages/foundry-module/src/readers/character-reader.ts
  * @see packages/foundry-module/src/readers/combat-reader.ts
- * @see packages/foundry-module/src/readers/scene-reader.ts
- * @see packages/foundry-module/src/readers/event-log-reader.ts
  * @see packages/foundry-module/src/readers/hook-subscribers.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1165,6 +1163,75 @@ describe('getCharacterSnapshot', () => {
     expect(result.success).toBe(true);
   });
 
+  // ── CR-SHEET: G2 sheet HUD header data (docs/design/g2-sheet-ux.html zone B) ──
+
+  it('CR-SHEET-1: class/subclass/species/inspiration/speed/prof/init/darkvision + token image', async () => {
+    const base = makeActor({ id: 'pc-sheet-1' });
+    const actor = {
+      ...base,
+      system: {
+        ...base.system,
+        attributes: {
+          ...base.system.attributes,
+          inspiration: true,
+          prof: 3,
+          init: { total: 0 },
+          movement: { walk: 25, units: 'ft' },
+          senses: { ranges: { darkvision: 60 } },
+        },
+        details: { level: 5, race: { name: 'Nano delle colline' } },
+      },
+      classes: {
+        fighter: { name: 'Guerriero', system: { levels: 1 }, subclass: null },
+        cleric: {
+          name: 'Chierico',
+          system: { levels: 4 },
+          subclass: { name: 'Dominio della Guerra' },
+        },
+      },
+      prototypeToken: { texture: { src: 'tokens/thorin.webp' } },
+    };
+    vi.stubGlobal('game', makeGameMock([actor as unknown as ReturnType<typeof makeActor>]));
+    const snap = getCharacterSnapshot('pc-sheet-1');
+    expect(snap?.details).toEqual({
+      classId: 'cleric',
+      className: 'Chierico',
+      subclass: 'Dominio della Guerra',
+      race: 'Nano delle colline',
+      inspiration: true,
+      speed: 25,
+      proficiency: 3,
+      initiative: 0,
+      darkvision: 60,
+    });
+    expect(snap?.token).toEqual({ url: 'tokens/thorin.webp' });
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    expect(CharacterSnapshotSchema.safeParse(snap).success).toBe(true);
+  });
+
+  it('CR-SHEET-2: fresh actor → defensive details, no token field', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-sheet-2' })]));
+    const snap = getCharacterSnapshot('pc-sheet-2');
+    expect(snap?.details).toEqual({
+      inspiration: false,
+      speed: 0,
+      proficiency: 0,
+      initiative: 0,
+      darkvision: 0,
+    });
+    expect(snap).not.toHaveProperty('token');
+  });
+
+  it('CR-SHEET-3: weapon labels → toHit and the simplified damage formula', () => {
+    const sword = {
+      ...makeItem({ id: 'w-lab', damage: '1d8' }),
+      labels: { toHit: '+6', damages: [{ formula: '1d8 + 3' }] },
+    };
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-sheet-3', items: [sword] })]));
+    const snap = getCharacterSnapshot('pc-sheet-3');
+    expect(snap?.inventory[0]).toMatchObject({ toHit: '+6', damage: '1d8+3' });
+  });
+
   // ── CR-PORT: Plan 13-03 portrait passthrough tests ────────────────────────
 
   it('CR-PORT-01: actor with img → portrait.url surfaced in snapshot', async () => {
@@ -1195,136 +1262,6 @@ describe('getCharacterSnapshot', () => {
     const snap = getCharacterSnapshot('pc-port-3');
     expect(snap).not.toBeNull();
     expect(snap?.portrait).toBeUndefined();
-  });
-
-  // ── Phase 21 Plan 21-01: class reader (CR-CLS-1..4) ───────────────────────
-
-  it('CR-CLS-1: single class item → snapshot.class = class name', () => {
-    // Standard single-class actor: one item with type==='class'.
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-cls-1', classNames: ['Fighter'] })]));
-
-    const snap = getCharacterSnapshot('pc-cls-1');
-    expect(snap).not.toBeNull();
-    expect(snap?.class).toBe('Fighter');
-  });
-
-  it('CR-CLS-2: two class items → snapshot.class = "Fighter / Wizard" (multiclass)', () => {
-    // Multiclass: two type==='class' items joined by ' / '.
-    vi.stubGlobal(
-      'game',
-      makeGameMock([makeActor({ id: 'pc-cls-2', classNames: ['Fighter', 'Wizard'] })]),
-    );
-
-    const snap = getCharacterSnapshot('pc-cls-2');
-    expect(snap).not.toBeNull();
-    expect(snap?.class).toBe('Fighter / Wizard');
-  });
-
-  it('CR-CLS-3: no class items → snapshot.class = "" (classless / fresh actor)', () => {
-    // Fresh actor with no items of type==='class': empty string.
-    vi.stubGlobal(
-      'game',
-      makeGameMock([makeActor({ id: 'pc-cls-3' })]), // no classNames
-    );
-
-    const snap = getCharacterSnapshot('pc-cls-3');
-    expect(snap).not.toBeNull();
-    expect(snap?.class).toBe('');
-  });
-
-  it('CR-CLS-4: items array has non-class items — only class items contribute', () => {
-    // Verify filter: weapon items are not counted as class names.
-    vi.stubGlobal(
-      'game',
-      makeGameMock([
-        makeActor({
-          id: 'pc-cls-4',
-          classNames: ['Ranger'],
-          items: [makeItem({ name: 'Longbow', type: 'weapon' })],
-        }),
-      ]),
-    );
-
-    const snap = getCharacterSnapshot('pc-cls-4');
-    expect(snap).not.toBeNull();
-    expect(snap?.class).toBe('Ranger');
-  });
-
-  // ── Phase 21 Plan 21-01: initiative reader (CR-INI-1..4) ──────────────────
-
-  it('CR-INI-1: actor.system.attributes.init.total = 3 → snapshot.initiative = 3', () => {
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-1', initTotal: 3 })]));
-
-    const snap = getCharacterSnapshot('pc-ini-1');
-    expect(snap).not.toBeNull();
-    expect(snap?.initiative).toBe(3);
-  });
-
-  it('CR-INI-2: missing actor.system.attributes.init → defaults to 0', () => {
-    // Actor without init field: defensive default of 0.
-    vi.stubGlobal(
-      'game',
-      makeGameMock([makeActor({ id: 'pc-ini-2' })]), // no initTotal
-    );
-
-    const snap = getCharacterSnapshot('pc-ini-2');
-    expect(snap).not.toBeNull();
-    expect(snap?.initiative).toBe(0);
-  });
-
-  it('CR-INI-3: negative initiative modifier (DEX penalty) → preserved verbatim', () => {
-    // D&D 5e: negative DEX modifier reduces initiative. Must not be clamped.
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-3', initTotal: -1 })]));
-
-    const snap = getCharacterSnapshot('pc-ini-3');
-    expect(snap).not.toBeNull();
-    expect(snap?.initiative).toBe(-1);
-  });
-
-  it('CR-INI-4: initiative = 0 → preserved (not treated as falsy/missing)', () => {
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-ini-4', initTotal: 0 })]));
-
-    const snap = getCharacterSnapshot('pc-ini-4');
-    expect(snap).not.toBeNull();
-    expect(snap?.initiative).toBe(0);
-  });
-
-  // ── Phase 21 Plan 21-01: walk speed reader (CR-SPD-1..4) ──────────────────
-
-  it('CR-SPD-1: actor.system.attributes.movement.walk = 25 → snapshot.speed = 25 (dwarf)', () => {
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-1', movementWalk: 25 })]));
-
-    const snap = getCharacterSnapshot('pc-spd-1');
-    expect(snap).not.toBeNull();
-    expect(snap?.speed).toBe(25);
-  });
-
-  it('CR-SPD-2: missing actor.system.attributes.movement → defaults to 30 (D&D standard)', () => {
-    // Actor without movement field: D&D 5e standard walk speed of 30 ft.
-    vi.stubGlobal(
-      'game',
-      makeGameMock([makeActor({ id: 'pc-spd-2' })]), // no movementWalk
-    );
-
-    const snap = getCharacterSnapshot('pc-spd-2');
-    expect(snap).not.toBeNull();
-    expect(snap?.speed).toBe(30);
-  });
-
-  it('CR-SPD-3: movement.walk = 0 → preserved (immobilised actor, not treated as missing)', () => {
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-3', movementWalk: 0 })]));
-
-    const snap = getCharacterSnapshot('pc-spd-3');
-    expect(snap).not.toBeNull();
-    expect(snap?.speed).toBe(0);
-  });
-
-  it('CR-SPD-4: movement.walk = 60 (fast actor) → preserved', () => {
-    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-spd-4', movementWalk: 60 })]));
-
-    const snap = getCharacterSnapshot('pc-spd-4');
-    expect(snap).not.toBeNull();
-    expect(snap?.speed).toBe(60);
   });
 });
 
@@ -1944,72 +1881,10 @@ describe('getCombatSnapshot', () => {
   });
 });
 
-// ─── Scene reader tests ────────────────────────────────────────────────────────
-
-describe('getSceneViewport', () => {
-  let getSceneViewport: typeof import('./scene-reader.js').getSceneViewport;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    const mod = await import('./scene-reader.js');
-    getSceneViewport = mod.getSceneViewport;
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('returns zero-state when no active scene', () => {
-    vi.stubGlobal('game', makeGameMock([], null, null));
-    vi.stubGlobal('canvas', null);
-
-    const vp = getSceneViewport();
-    expect(vp.sceneId).toBe('');
-    expect(vp.viewX).toBe(0);
-    expect(vp.viewY).toBe(0);
-    expect(vp.scale).toBe(1.0);
-    expect(vp.tokenIds).toEqual([]);
-  });
-
-  it('returns correct sceneId and token list', () => {
-    const scene = {
-      id: 'scene-abc',
-      name: 'Dungeon',
-      tokens: { contents: [{ id: 'token-1' }, { id: 'token-2' }] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', {
-      stage: { pivot: { x: 100, y: 200 }, scale: { x: 1.5 } },
-    });
-
-    const vp = getSceneViewport();
-    expect(vp.sceneId).toBe('scene-abc');
-    expect(vp.sceneName).toBe('Dungeon');
-    expect(vp.viewX).toBe(100);
-    expect(vp.viewY).toBe(200);
-    expect(vp.scale).toBe(1.5);
-    expect(vp.tokenIds).toEqual(['token-1', 'token-2']);
-  });
-
-  it('defaults to scale=1.0 when canvas is null', () => {
-    const scene = {
-      id: 'scene-1',
-      name: 'Test',
-      tokens: { contents: [] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', null);
-
-    const vp = getSceneViewport();
-    expect(vp.scale).toBe(1.0);
-  });
-});
-
 // ─── Hook subscribers tests ────────────────────────────────────────────────────
 
 describe('registerHookSubscribers', () => {
   let registerHookSubscribers: typeof import('./hook-subscribers.js').registerHookSubscribers;
-  let _resetEventSeq: () => void;
 
   // Capture registered hook callbacks for manual invocation in tests
   const hookCallbacks = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -2050,12 +1925,10 @@ describe('registerHookSubscribers', () => {
 
     const mod = await import('./hook-subscribers.js');
     registerHookSubscribers = mod.registerHookSubscribers;
-    _resetEventSeq = mod._resetEventSeq;
 
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', makeGameMock([]));
     vi.stubGlobal('canvas', null);
-    _resetEventSeq();
   });
 
   afterEach(() => {
@@ -2141,28 +2014,6 @@ describe('registerHookSubscribers', () => {
     expect(emitFn).not.toHaveBeenCalled();
   });
 
-  it('createChatMessage pushes to ring buffer and emits event.log.delta', () => {
-    const emitFn = vi.fn();
-    registerHookSubscribers(emitFn);
-
-    const message = {
-      content: 'You hit the goblin!',
-      flavor: '',
-      speaker: { actor: 'actor-1', scene: 'scene-1', token: 'token-1', alias: 'Aragorn' },
-    };
-    fireHook('createChatMessage', message);
-
-    expect(emitFn).toHaveBeenCalledWith(
-      'event.log.delta',
-      expect.objectContaining({
-        seq: 1,
-        type: 'chat',
-        actorId: 'actor-1',
-        content: 'You hit the goblin!',
-      }),
-    );
-  });
-
   it('targetToken emits combat.targets with user targets', () => {
     const emitFn = vi.fn();
     registerHookSubscribers(emitFn);
@@ -2195,27 +2046,6 @@ describe('registerHookSubscribers', () => {
     );
   });
 
-  it('canvasReady emits scene.viewport', () => {
-    const emitFn = vi.fn();
-    const scene = {
-      id: 'scene-1',
-      name: 'Forest',
-      tokens: { contents: [] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', { stage: { pivot: { x: 0, y: 0 }, scale: { x: 1 } } });
-
-    registerHookSubscribers(emitFn);
-    fireHook('canvasReady', {});
-
-    expect(emitFn).toHaveBeenCalledWith(
-      'scene.viewport',
-      expect.objectContaining({
-        sceneId: 'scene-1',
-      }),
-    );
-  });
-
   it('combatStart emits combat.state', () => {
     const emitFn = vi.fn();
     const combat = {
@@ -2236,53 +2066,5 @@ describe('registerHookSubscribers', () => {
         combatId: 'combat-new',
       }),
     );
-  });
-});
-
-// ─── ADR-0014: per-user roster scoping (listPlayerCharactersForUser) ───────────
-
-describe('listPlayerCharactersForUser (ADR-0014)', () => {
-  let listPlayerCharacters: typeof import('./character-reader.js').listPlayerCharacters;
-  let listPlayerCharactersForUser: typeof import('./character-reader.js').listPlayerCharactersForUser;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    vi.stubGlobal(
-      'game',
-      makeGameMock([
-        makeActor({ id: 'actor-alice', name: 'Alice', type: 'character' }),
-        makeActor({ id: 'actor-bob', name: 'Bob', type: 'character' }),
-        makeActor({ id: 'npc-1', name: 'Goblin', type: 'npc' }),
-      ]),
-    );
-    const mod = await import('./character-reader.js');
-    listPlayerCharacters = mod.listPlayerCharacters;
-    listPlayerCharactersForUser = mod.listPlayerCharactersForUser;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('filters the roster to the authorized actor ids', () => {
-    const roster = listPlayerCharactersForUser(['actor-bob']);
-    expect(roster.map((c) => c.actorId)).toEqual(['actor-bob']);
-  });
-
-  it('returns every owned PC when all ids are authorized (still excludes NPCs)', () => {
-    const roster = listPlayerCharactersForUser(['actor-alice', 'actor-bob', 'npc-1']);
-    // NPCs are never characters, so npc-1 never appears even if "authorized".
-    expect(roster.map((c) => c.actorId).sort()).toEqual(['actor-alice', 'actor-bob']);
-  });
-
-  it('fail-closed: empty authorized set yields an empty roster', () => {
-    expect(listPlayerCharactersForUser([])).toEqual([]);
-  });
-
-  it('is a strict subset of the global listPlayerCharacters roster', () => {
-    const global = listPlayerCharacters().map((c) => c.actorId);
-    const scoped = listPlayerCharactersForUser(['actor-alice']).map((c) => c.actorId);
-    expect(scoped.every((id) => global.includes(id))).toBe(true);
-    expect(scoped).toEqual(['actor-alice']);
   });
 });

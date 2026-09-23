@@ -120,6 +120,11 @@ export const InventoryItemSchema = z.object({
    * `inventory[16].quantity` → whole character.delta dropped → empty sheet).
    */
   quantity: z.number().int().nonnegative().optional(),
+  /**
+   * Attack bonus label of the first attack activity (`item.labels.toHit`, e.g. `'+6'`)
+   * — the «Attacchi» table of the sheet (docs/design/g2-sheet-ux.html S3).
+   */
+  toHit: z.string().min(1).max(8).optional(),
 });
 
 export type InventoryItem = z.infer<typeof InventoryItemSchema>;
@@ -560,6 +565,39 @@ export const BiographySnapshotSchema = z.object({
 export type BiographySnapshot = z.infer<typeof BiographySnapshotSchema>;
 
 /**
+ * Sheet header / identity data of the G2 sheet HUD (docs/design/g2-sheet-ux.html
+ * zone B «Intestazione» + zone D «Caratteristiche»), read from the dnd5e 5.x character
+ * data model (INV-2 verified 2026-09-23 against github.com/foundryvtt/dnd5e
+ * release-5.3.3 `module/data/actor/character.mjs`, `templates/attributes.mjs`,
+ * `shared/senses-field.mjs`, `module/documents/actor/actor.mjs`):
+ *
+ * - `classId` / `className` / `subclass` — `actor.classes` key (dnd5e identifier, e.g.
+ *   `cleric`) of the highest-level class, its item name and its `subclass` item name;
+ * - `race`                   — `system.details.race` item name (species);
+ * - `inspiration`            — `system.attributes.inspiration`;
+ * - `speed`                  — `system.attributes.movement.walk` (scene units, ft);
+ * - `proficiency`            — `system.attributes.prof`;
+ * - `initiative`             — `system.attributes.init.total`;
+ * - `darkvision`             — `system.attributes.senses.ranges.darkvision` (0 = none).
+ *
+ * Open `z.object` for forward compatibility (more senses, 2024 «Ispirazione eroica»
+ * label are rendering concerns).
+ */
+export const CharacterSheetDetailsSchema = z.object({
+  classId: z.string().optional(),
+  className: z.string().optional(),
+  subclass: z.string().optional(),
+  race: z.string().optional(),
+  inspiration: z.boolean(),
+  speed: z.number().int().nonnegative(),
+  proficiency: z.number().int(),
+  initiative: z.number().int(),
+  darkvision: z.number().int().nonnegative(),
+});
+
+export type CharacterSheetDetails = z.infer<typeof CharacterSheetDetailsSchema>;
+
+/**
  * Snapshot of a single player character's mutable game state.
  *
  * Read-only in Phase 2. Write path (HP update, condition apply) deferred to Phase 7.
@@ -641,27 +679,6 @@ export const CharacterSnapshotSchema = z.strictObject({
    */
   skills: SkillsSchema,
   /**
-   * Character class display name (Phase 21 Plan 21-01 atomic extension; RDATA-01).
-   * REQUIRED — empty string for classless or fresh actors.
-   * Multiclass: joined as "Fighter / Wizard" (reader extracts from actor.items
-   * filtered to `type === 'class'`).
-   * `level` carries the numeric level separately — this field is class name(s) only.
-   */
-  class: z.string(),
-  /**
-   * Initiative modifier — dnd5e prep-time computed total (Phase 21; RDATA-02).
-   * REQUIRED — integer, may be negative (e.g. DEX-penalised character).
-   * Reader path: `actor.system.attributes.init.total ?? 0`.
-   */
-  initiative: z.number().int(),
-  /**
-   * Walking speed in feet (Phase 21; RDATA-02).
-   * REQUIRED — non-negative integer (standard D&D 5e: 30 ft; dwarves 25 ft).
-   * Reader path: `actor.system.attributes.movement.walk ?? 30`.
-   * Other movement modes (fly/swim/climb) are deferred to a future phase.
-   */
-  speed: z.number().int().nonnegative(),
-  /**
    * Character feats and features (Phase 22 Plan 22-01 atomic extension; RDATA-03).
    * OPTIONAL — absent when the actor has not yet been synced or has no feat items.
    * Renderers fall back to empty array (`snapshot.feats ?? []`) when absent.
@@ -687,6 +704,13 @@ export const CharacterSnapshotSchema = z.strictObject({
    * `worlds/foo/p.webp`) — URL validation is the bridge's responsibility, not the schema's.
    */
   portrait: z.object({ url: z.string().min(1) }).optional(),
+  /**
+   * Prototype token image (`actor.prototypeToken.texture.src`) — portrait fallback of
+   * the G2 sheet HUD when the actor has no portrait. Same URL rules as `portrait`.
+   */
+  token: z.object({ url: z.string().min(1) }).optional(),
+  /** Sheet header / identity data (G2 sheet HUD); optional for older projectors. */
+  details: CharacterSheetDetailsSchema.optional(),
 });
 
 export type CharacterSnapshot = z.infer<typeof CharacterSnapshotSchema>;

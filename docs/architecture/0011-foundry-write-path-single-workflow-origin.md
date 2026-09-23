@@ -10,6 +10,8 @@ informed: executor
 
 ## Status
 
+> **AMENDED by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)** — 2026-09-23. The single workflow origin is the *elected projector client* for each device (the player's own client when online, else the active GM), still through `dispatchTool`; socketlib is no longer used.
+
 **ACCEPTED** — 2026-05-16. Binds Phase 7 (Foundry Module Write Path) and all
 downstream phases that add new write-path tools.
 

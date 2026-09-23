@@ -10,6 +10,8 @@ informed: future contributors
 
 ## Status
 
+> **AMENDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. The registry now lives only in the Foundry module and is invoked by the projector; the bridge REST surface and the MCP consumer were removed.
+
 **ACCEPTED** — 2026-05-11. Binds Phase 3 (Bridge), Phase 7 (Write Path), Phase 8 (Manual Action UX), Phase 11 (V2 foundry-mcp).
 
 ## Context and Problem Statement

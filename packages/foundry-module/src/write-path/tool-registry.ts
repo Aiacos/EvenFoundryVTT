@@ -1,39 +1,28 @@
 /**
- * Tool Registry — Phase 7 Wave 0 scaffold.
+ * Tool Registry — the single write-path entry point (ADR-0011).
  *
  * Exports the ToolId union, ToolHandler<TArgs> interface, ToolResult discriminated
- * union, TOOL_REGISTRY Record (initially empty — Waves 1-3 fill it via
- * `registerToolHandler`), TOOL_HANDLER_IDS kebab→camelCase socketlib handler
- * name mapping, and `registerToolHandler` helper.
- *
- * `dispatchTool` is added in Task 2 once IdempotencyStore + writeAuditLog are
- * available (Plan 07-01, Task 2 GREEN phase).
+ * union, TOOL_REGISTRY (filled by `handlers/index.ts` via `registerToolHandler`),
+ * the runtime TOOL_IDS guard and `dispatchTool`.
  *
  * # Architecture
  *
  * Per ADR-0011 single-workflow-origin discipline, ALL write-path mutations go
- * through `dispatchTool(toolId, payload)` → socketlib.executeAsGM → handler.handle().
- * Handlers live in `packages/foundry-module/src/write-path/handlers/*.ts`.
- *
- * # Handler ID mapping note (Plan 07-05 forward reference)
- *
- * The `evf.dropConcentration` handler ID (ToolId: 'drop-concentration') is a NEW
- * handler that Plan 07-05 will register by REPLACING the existing `evf.setTargets`
- * stub registration call site in `socketlib-handlers.ts`. The total handler count
- * remains 14. This is not adding a new handler — it is renaming the placeholder
- * stub to the real target name. Plan 07-05 documents the rename explicitly.
+ * through `dispatchTool(toolId, payload)` → handler.handle(), executed in the GM
+ * client. Since ADR-0016 the caller is the direct projector (`src/direct/projector.ts`)
+ * answering sealed `invoke` messages from a paired G2 device; the per-device
+ * principal (`g2:<userId>`) is passed as `bearer` and binds the idempotency cache.
  *
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see docs/architecture/0003-tool-registry-pattern.md
  * @see packages/foundry-module/src/write-path/idempotency-cache.ts
  * @see packages/foundry-module/src/write-path/audit-log.ts
- * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md
  */
 // Import the idempotency cache + audit log (both in the same write-path subdir).
 // tool-registry.ts is the assembly point for Task 2: dispatchTool wires these together.
 
 import { type AuditEntry, writeAuditLog } from './audit-log.js';
-import { beginTrace, traceCurrent } from './debug-trace.js';
 import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache.js';
 
 // ─── ToolId union ─────────────────────────────────────────────────────────────
@@ -44,16 +33,7 @@ import { buildCacheKey, hashBearer, IdempotencyStore } from './idempotency-cache
  * Matches the `TOOL_ID_SCHEMA` enum in `@evf/shared-protocol/payloads/tool`.
  * Intentionally closed — new tools require an ADR-0011 amendment and a Plan update.
  *
- * Mapping to socketlib handler IDs: {@link TOOL_HANDLER_IDS}.
- *
- * # Plan 07-03 extension: `'confirm-template-placement'`
- *
- * Added in Plan 07-03 (Wave 2) — the confirm handler takes the socketlib slot
- * previously occupied by `evf.skillCheck` (stub renamed in-place; skill-check
- * moves to Phase 8/9 when ACT-01 ships). Total handler count stays 14.
- *
- * @see packages/foundry-module/src/pair/socketlib-handlers.ts (evf.confirmTemplatePlacement)
- * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
+ * Runtime list: {@link TOOL_IDS}.
  */
 export type ToolId =
   | 'cast-spell'
@@ -63,14 +43,13 @@ export type ToolId =
   | 'drop-concentration'
   | 'place-template'
   | 'confirm-template-placement'
-  // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPS 14 → 17)
+  // Phase 13 ACT-04 reaction handlers (Plan 13-01)
   | 'cast-shield'
   | 'cast-counterspell'
   | 'opportunity-attack'
-  // Phase 8 write channel — direct skill/ability check roll (ACT-01).
-  // No NEW socketlib handler is registered (the poll-based poller calls
-  // dispatchToolAuthorized directly); TOOL_HANDLER_IDS keeps a mapping entry for
-  // type-completeness only. The socketlib `socket.register` count stays 17.
+  // ADR-0016 direct channel: the paired actor ends its own combat turn
+  | 'end-turn'
+  // Direct skill/ability check roll (ACT-01), dispatched like every other tool.
   | 'skill-check';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
@@ -108,9 +87,8 @@ export type ToolResult = { success: true; data: unknown } | { success: false; er
  * const castSpellHandler: ToolHandler<CastSpellArgs> = {
  *   argsSchema: CastSpellArgsSchema,
  *   handle: async (args) => {
- *     // args is typed as CastSpellArgs (validated by argsSchema). The handler
- *     // already runs in GM context; the bridge reaches it via
- *     // socket.executeAsGM(handlerId, ...args) using the socketlib socket.
+ *     // args is typed as CastSpellArgs (validated by argsSchema)
+ *     const actor = game.actors.get(args.actor_id);
  *     return { success: true, data: { rolled: true } };
  *   },
  * };
@@ -176,60 +154,31 @@ export function registerToolHandler<T>(id: ToolId, handler: ToolHandler<T>): voi
   TOOL_REGISTRY[id] = handler as ToolHandler<unknown>;
 }
 
-// ─── TOOL_HANDLER_IDS ─────────────────────────────────────────────────────────
+// ─── TOOL_IDS ─────────────────────────────────────────────────────────────────
 
 /**
- * Mapping from kebab-case ToolId to the socketlib handler ID (camelCase prefixed by `evf.`).
- *
- * The bridge invokes a GM handler via the socketlib socket's
- * `socket.executeAsGM(handlerId, ...args)` (real farling42/foundryvtt-socketlib
- * API — name first, NO moduleId argument). The module side dispatches via
- * `dispatchTool` directly (it already runs in GM context). The socketlib handler
- * registrations in `socketlib-handlers.ts` use these same IDs.
- *
- * # Forward reference: `evf.dropConcentration` (Plan 07-05)
- *
- * `drop-concentration` maps to `evf.dropConcentration`. Plan 07-05 will replace
- * the existing `evf.setTargets` stub registration in `socketlib-handlers.ts`
- * with `evf.dropConcentration`. The total handler count stays at 14 — this is
- * a rename, not a new registration. See Plan 07-05 for the rename commit.
- *
- * @see packages/foundry-module/src/pair/socketlib-handlers.ts
+ * Runtime list of every {@link ToolId} — the projector validates the `tool` field of
+ * an untrusted `invoke` message against it before calling {@link dispatchTool}.
  */
-export const TOOL_HANDLER_IDS: Record<ToolId, string> = {
-  'cast-spell': 'evf.castSpell',
-  'weapon-attack': 'evf.weaponAttack',
-  'use-item': 'evf.useItem',
-  'move-token': 'evf.moveToken',
-  'drop-concentration': 'evf.dropConcentration',
-  'place-template': 'evf.placeTemplate',
-  /**
-   * Plan 07-03: confirm-template-placement maps to `evf.confirmTemplatePlacement`.
-   *
-   * This handler REPLACES the `evf.skillCheck` stub registration in-place
-   * in `socketlib-handlers.ts`. The total `socket.register(name, fn)` count
-   * (via the socket from `socketlib.registerModule(MODULE_ID)`) stays 14.
-   * Skill-check will be re-registered in Phase 8/9 when ACT-01 ships.
-   *
-   * @see .planning/phases/07-foundry-module-write-path/07-03-PLAN.md Task 2
-   */
-  'confirm-template-placement': 'evf.confirmTemplatePlacement',
-  // Phase 13 ACT-04 reaction handlers (Plan 13-01 — count FLIPPED 14 → 17)
-  'cast-shield': 'evf.castShield',
-  'cast-counterspell': 'evf.castCounterspell',
-  'opportunity-attack': 'evf.opportunityAttack',
-  /**
-   * Phase 8 write channel — `skill-check` maps to `evf.rollSkill` for type-completeness.
-   *
-   * NOTE: NO socketlib handler is registered for this id (the socketlib `socket.register`
-   * count stays 17). The Phase 8 reverse-channel poller calls `dispatchToolAuthorized`
-   * directly in GM context, so the socketlib path is not used for skill-check. This
-   * mapping exists only so `TOOL_HANDLER_IDS` remains a total `Record<ToolId, string>`.
-   *
-   * @see packages/foundry-module/src/write-path/tool-invocation-poller.ts
-   */
-  'skill-check': 'evf.rollSkill',
-};
+export const TOOL_IDS: readonly ToolId[] = [
+  'cast-spell',
+  'weapon-attack',
+  'use-item',
+  'move-token',
+  'drop-concentration',
+  'place-template',
+  'confirm-template-placement',
+  'cast-shield',
+  'cast-counterspell',
+  'opportunity-attack',
+  'end-turn',
+  'skill-check',
+];
+
+/** Type guard: true when `value` is a known {@link ToolId}. */
+export function isToolId(value: string): value is ToolId {
+  return (TOOL_IDS as readonly string[]).includes(value);
+}
 
 // ─── Module-level singleton IdempotencyStore ─────────────────────────────────
 
@@ -314,7 +263,7 @@ export function extractActorId(args: unknown): string | null {
  * @param payload - Tool invocation payload
  * @param payload.args - Raw tool arguments (validated by handler.argsSchema)
  * @param payload.idempotencyKey - UUID v4 for cache deduplication
- * @param payload.bearer - Raw bearer token (hashed to build the cache key)
+ * @param payload.bearer - Caller principal (the projector passes `g2:<userId>`); hashed to build the cache key
  * @returns Promise<ToolResult> — always resolves, never rejects
  *
  * @see dispatchTool pipeline spec in 07-01-PLAN.md Task 2 <behavior>
@@ -347,7 +296,6 @@ export async function dispatchTool(
   // itself never rejects (step 5 catches handler throws, step 7 catches audit throws),
   // so `await p` below cannot reject — preserving "always resolves, never rejects".
   const run = async (): Promise<ToolResult> => {
-    beginTrace(`${toolId}:start`);
     // Step 3: handler lookup — return error on unknown tool
     const handler = TOOL_REGISTRY[toolId];
     if (handler === undefined) {
@@ -360,16 +308,11 @@ export async function dispatchTool(
       return { success: false, error: parseResult.error.message };
     }
 
-    // Step 5: handler invocation (error isolation). Trace the handler boundary so a
-    // remote (browserless) operator can tell a HUNG handler (`…:handler:pending` frozen
-    // in the bridge log) from a slow audit write or a clean failure — see debug-trace.ts.
+    // Step 5: handler invocation (error isolation)
     let result: ToolResult;
-    traceCurrent(`${toolId}:handler:pending`);
     try {
       result = await handler.handle(parseResult.data);
-      traceCurrent(`${toolId}:handler:done:${result.success}`);
     } catch (err) {
-      traceCurrent(`${toolId}:handler:throw`);
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
 
@@ -417,7 +360,6 @@ export async function dispatchTool(
       // writeAuditLog already catches internally — this outer catch is a safety net
       // in case of unexpected synchronous throws from writeAuditLog itself.
     }
-    traceCurrent(`${toolId}:audit:done`);
 
     return result;
   };

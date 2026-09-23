@@ -11,27 +11,6 @@
  * @see docs/architecture/0003-tool-registry-pattern.md
  * @see Specs.md §4 (architecture) + §5.3 (Tool Registry)
  */
-export {
-  type ClientResume,
-  ClientResumeSchema,
-  type DeltaEnvelope,
-  DeltaEnvelopeSchema,
-  type Envelope,
-  EnvelopeSchema,
-  type ResumeFullSnapshot,
-  ResumeFullSnapshotSchema,
-  type ResumeReplay,
-  ResumeReplaySchema,
-} from './envelope.js';
-
-export {
-  type HandshakeClient,
-  HandshakeClientSchema,
-  type HandshakeServer,
-  HandshakeServerSchema,
-  SERVER_CAPS_V1,
-  type ServerCap,
-} from './handshake.js';
 
 // ─── Payload schemas (Phase 2 Plan 05 — reader API) ───────────────────────────
 
@@ -46,6 +25,8 @@ export {
   type BiographySnapshot,
   BiographySnapshotSchema,
   CHARACTER_DELTA_TYPE,
+  type CharacterSheetDetails,
+  CharacterSheetDetailsSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
@@ -90,12 +71,6 @@ export {
 // Concentration conflict + drop-confirmation envelope schemas + type constants.
 // Plan 05 conc-conflict-dispatcher.ts consumes these at the WS-receive boundary.
 
-// Live character/role selection from the EvenHub app (2026-06-16).
-export {
-  CLIENT_SELECT_ACTOR_TYPE,
-  type ClientSelectActorMessage,
-  ClientSelectActorMessageSchema,
-} from './payloads/client-select-actor.js';
 export {
   CONC_CONFLICT_TYPE,
   CONC_DROP_CONFIRMED_TYPE,
@@ -119,43 +94,11 @@ export {
   type FramePixels,
   FramePixelsSchema,
 } from './payloads/frame.js';
-// ─── v0.1.15 map-stream format (Quick Task 260611-e71 FRAME-PNG-01) ───────────
-// FramePngSchema: greyscale lossless PNG wire format (~1-5 KB vs ~884 KB RGBA).
-// foundry-module v0.1.15+ exclusively emits frame_png; frame_pixels still exported
-// for back-compat (modules ≤v0.1.14 still emit frame_pixels; g2-app handles both).
-export {
-  FRAME_PNG_TYPE,
-  type FramePng,
-  FramePngSchema,
-} from './payloads/frame-png.js';
-// Headless player-view toggle + status (ADR-0015 §C, 2026-06-17).
-export {
-  CLIENT_PLAYER_VIEW_TYPE,
-  type ClientPlayerViewMessage,
-  ClientPlayerViewMessageSchema,
-  PLAYER_VIEW_MODES,
-  PLAYER_VIEW_STATES,
-  PLAYER_VIEW_STATUS_TYPE,
-  type PlayerViewStatus,
-  PlayerViewStatusSchema,
-} from './payloads/player-view.js';
 export {
   SCENE_VIEWPORT_DELTA_TYPE,
   type SceneViewport,
   SceneViewportSchema,
 } from './payloads/scene.js';
-
-// Latency-audit follow-up 2026-06-14 — bidirectional map/display settings sync.
-export {
-  CLIENT_SETTING_TYPE,
-  type ClientSettingMessage,
-  ClientSettingMessageSchema,
-  SETTINGS_DISPLAY_TYPE,
-  type SettingsDisplay,
-  type SettingsDisplayEdit,
-  SettingsDisplayEditSchema,
-  SettingsDisplaySchema,
-} from './payloads/settings-display.js';
 
 // ─── Phase 5 Plan 05-05 — Log payload schema ─────────────────────────────────
 // LogEvent + LogSnapshot + LogEventKind + LOG_DELTA_TYPE for chat log tail.
@@ -239,6 +182,13 @@ export {
   ReactionAvailablePayloadSchema,
 } from './payloads/reaction.js';
 
+// ─── v0.12 sheet HUD — GM roll requests (docs/design/g2-sheet-ux.html S8) ──────
+export {
+  R1_ROLL_REQUEST_TYPE,
+  type RollRequestPayload,
+  RollRequestPayloadSchema,
+} from './payloads/roll-request.js';
+
 // ─── Phase 7 additions (Plan 07-05) — drop-concentration internal schema ─────
 // Module-internal schema for the evf.dropConcentration socketlib handler.
 // NOT part of the 7-entry TOOL_REGISTRY served by GET /v1/tools.
@@ -304,24 +254,10 @@ export {
 // foundry-mcp deepgram-stt.ts (Plan 12-03) produces envelopes of this shape.
 // The MCP server validates them at the WS-receive trust boundary (T-12-WIRE-01).
 
-export {
-  R1_VOICE_TRANSCRIPT_TYPE,
-  type VoiceTranscriptPayload,
-  VoiceTranscriptPayloadSchema,
-} from './payloads/voice.js';
-
 // ─── Quick Task 20260517 — spell-pack vocabulary push schema ─────────────────
 // AvailableSpellsPayloadSchema pushed by foundry-module spell-pack-reader.ts.
 // Bridge caches via spell-pack-cache.ts + serves GET /v1/spells/available.
 // foundry-mcp spell-lookup-foundry.ts fetches with 5-min TTL + Levenshtein fuzzy.
-
-export {
-  type AvailableSpellsPayload,
-  AvailableSpellsPayloadSchema,
-  R1_SPELLS_AVAILABLE_TYPE,
-  type SpellPackEntry,
-  SpellPackEntrySchema,
-} from './payloads/spell-pack.js';
 
 // ─── Quick Task 260517-k2g — entity-pack vocabulary push schema ───────────────
 // AvailableEntitiesPayloadSchema pushed by foundry-module entity-pack-reader.ts.
@@ -330,24 +266,10 @@ export {
 // GET /v1/entities/available. foundry-mcp entity-lookup-foundry.ts fetches
 // with 5-min TTL + Levenshtein fuzzy. NO offline fallback (returns null).
 
-export {
-  type AvailableEntitiesPayload,
-  AvailableEntitiesPayloadSchema,
-  type EntityPackEntry,
-  EntityPackEntrySchema,
-  R1_ENTITIES_AVAILABLE_TYPE,
-} from './payloads/entity-pack.js';
-
 // ─── Phase 13 additions (Plan 13-03 — portrait ready schema) ─────────────────
 // Portrait ready payload schema for STRETCH-06 Bio tab portrait feature.
 // Bridge emits r1.portrait.ready envelope on cache-miss render path.
 // Plan 13-04 portrait-dispatcher consumes this at the WS-receive boundary.
-
-export {
-  type PortraitReadyPayload,
-  PortraitReadyPayloadSchema,
-  R1_PORTRAIT_READY_TYPE,
-} from './payloads/portrait.js';
 
 // ─── Phase 13 additions (Plan 13-01 — ACT-04 reaction schemas) ───────────────
 // Three new ACT-04 reaction handler input schemas.
@@ -358,6 +280,8 @@ export {
   CastCounterspellInputSchema,
 } from './tools/cast-counterspell.js';
 export { type CastShieldInput, CastShieldInputSchema } from './tools/cast-shield.js';
+// ADR-0016 direct channel — `end-turn` (paired actor ends its own combat turn).
+export { END_TURN_TOOL, type EndTurnInput, EndTurnInputSchema } from './tools/end-turn.js';
 export {
   type OpportunityAttackInput,
   OpportunityAttackInputSchema,
@@ -393,77 +317,11 @@ export {
 // param. Lives in shared-protocol so the bridge does NOT depend on foundry-mcp.
 // Drift-proofed against foundry-mcp's SPELL_LOOKUP via the SKT-02 test gate.
 
-export {
-  SPELL_KEYTERMS,
-  type SpellKeytermEntry,
-} from './voice/spell-keyterms.js';
-
 // ─── Quick Task 260529-h5e — Debug Console schemas (dev-only) ─────────────────
 // Lean dev-tooling contracts for the bridge debug backend (Wave 2), CRT dashboard
 // (Wave 3), and g2-app display-op mirror (Wave 4). Models the privileged dev
 // backdoor described in the plan's <security_model>. DebugGestureBodySchema.kind
 // reuses the canonical 5 R1 gesture kinds from R1GesturePayloadSchema.
 
-export {
-  type DebugDispatchBody,
-  DebugDispatchBodySchema,
-  type DebugEvent,
-  DebugEventSchema,
-  type DebugGestureBody,
-  DebugGestureBodySchema,
-  type DebugInjectBody,
-  DebugInjectBodySchema,
-  type DisplayOpPayload,
-  DisplayOpPayloadSchema,
-  R1_DEBUG_DISPLAYOP_TYPE,
-} from './debug/debug-events.js';
-
-// ─── Quick Task 260604-eyf — bearer-registry + character-list push schemas ───────
-// BearerRegistrySnapshotSchema pushed by foundry-module bearer-registry-reader.ts.
-// Bridge caches via bearer-registry-cache.ts + builds internal foundryValidateFn.
-// CharacterListSnapshotSchema pushed by foundry-module character-list-reader.ts.
-// Bridge caches via character-list-cache.ts + serves GET /v1/characters from cache.
-// Both pipelines push via the existing /internal/delta channel (count stays 17).
-
-export {
-  type BearerAuthorization,
-  BearerAuthorizationSchema,
-  type BearerRegistryEntry,
-  BearerRegistryEntrySchema,
-  type BearerRegistrySnapshot,
-  BearerRegistrySnapshotSchema,
-  R1_BEARERS_AVAILABLE_TYPE,
-} from './payloads/bearer-registry.js';
-
-export {
-  type CharacterListEntry,
-  CharacterListEntrySchema,
-  type CharacterListSnapshot,
-  CharacterListSnapshotSchema,
-  R1_CHARACTERS_AVAILABLE_TYPE,
-} from './payloads/character-list.js';
-
-// ─── Quick Task 260604-cwa — Agent control-channel schemas (dev-only) ──────────
-// Wire-protocol contracts for the debug agent control channel: a WS endpoint
-// where the g2-app connects AS a named agent, a relay (POST /debug/cmd) that
-// routes commands and correlates results by id, /debug/agents roster, and
-// aggregated /debug/logs reader with newest-id tracking.
-
-export {
-  type AgentClientFrame,
-  AgentClientFrameSchema,
-  type AgentCommand,
-  AgentCommandSchema,
-  type AgentLog,
-  AgentLogSchema,
-  type AgentRegister,
-  AgentRegisterSchema,
-  type AgentResult,
-  AgentResultSchema,
-  type AgentRole,
-  AgentRoleSchema,
-  DEBUG_AGENT_LOG_DIRECTION,
-  DEBUG_AGENT_RESULT_DIRECTION,
-  type DebugCmdBody,
-  DebugCmdBodySchema,
-} from './debug/agent-protocol.js';
+// ─── Direct channel (ADR-0016) ───────────────────────────────────────────────
+export * from './direct/index.js';

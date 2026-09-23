@@ -49,13 +49,11 @@ function gameWith(actor: ReturnType<typeof actorWith>, users: unknown[] = []) {
 }
 
 let getCharacterSnapshot: typeof import('./character-reader.js').getCharacterSnapshot;
-let listPlayerCharacters: typeof import('./character-reader.js').listPlayerCharacters;
 
 beforeEach(async () => {
   vi.resetModules();
   const mod = await import('./character-reader.js');
   getCharacterSnapshot = mod.getCharacterSnapshot;
-  listPlayerCharacters = mod.listPlayerCharacters;
 });
 
 afterEach(() => {
@@ -239,57 +237,5 @@ describe('skill homebrew clamp arms', () => {
     const skills = { prc: { total: 1, ability: 'wis', proficient: 0, passive: -5 } };
     vi.stubGlobal('game', gameWith(actorWith({ skills: skills as unknown as Sys })));
     expect(getCharacterSnapshot('a1')?.skills.prc.passive).toBe(0);
-  });
-});
-
-describe('consentingOwnerName (ADR-0015 §C owner scan)', () => {
-  function user(over: Partial<{ id: string; name: string; isGM: boolean; consent: boolean }>) {
-    return {
-      id: over.id ?? 'u',
-      name: over.name ?? 'User',
-      isGM: over.isGM ?? false,
-      getFlag: (_scope: string, _key: string) => over.consent === true,
-    };
-  }
-
-  it('consenting non-GM owner → userName surfaced (GM user is skipped)', () => {
-    const actor = actorWith({});
-    // consentingOwnerName scans actor.testUserPermission per user.
-    (actor as Record<string, unknown>).testUserPermission = (u: { name: string }) =>
-      u.name === 'Alice';
-    const users = [
-      user({ id: 'gm', name: 'GM', isGM: true, consent: true }),
-      user({ id: 'a', name: 'Alice', consent: true }),
-    ];
-    vi.stubGlobal('game', gameWith(actor, users));
-    expect(listPlayerCharacters()[0]?.userName).toBe('Alice');
-  });
-
-  it('non-GM without consent flag → skipped, no userName', () => {
-    const actor = actorWith({});
-    (actor as Record<string, unknown>).testUserPermission = () => true;
-    const users = [user({ id: 'b', name: 'Bob', consent: false })];
-    vi.stubGlobal('game', gameWith(actor, users));
-    expect(listPlayerCharacters()[0]?.userName).toBeUndefined();
-  });
-
-  it('consenting non-owner → no userName (testUserPermission false)', () => {
-    const actor = actorWith({});
-    (actor as Record<string, unknown>).testUserPermission = () => false;
-    const users = [user({ id: 'd', name: 'Dave', consent: true })];
-    vi.stubGlobal('game', gameWith(actor, users));
-    expect(listPlayerCharacters()[0]?.userName).toBeUndefined();
-  });
-
-  it('actor.testUserPermission throwing does not break the roster', () => {
-    const actor = actorWith({});
-    (actor as Record<string, unknown>).testUserPermission = () => {
-      throw new Error('boom');
-    };
-    const users = [user({ id: 'c', name: 'Carol', consent: true })];
-    vi.stubGlobal('game', gameWith(actor, users));
-    const roster = listPlayerCharacters();
-    expect(roster).toHaveLength(1);
-    expect(roster[0]?.userName).toBeUndefined();
   });
 });

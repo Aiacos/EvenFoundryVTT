@@ -7,6 +7,8 @@
 
 ## Status
 
+> **NOTE** — 2026-09-23: the raster branch this ADR gates was replaced by the pure-TS renderer of [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md); the hardware GO/NO-GO for the direct model is `validate:direct-sideload` ([ADR-0016](./0016-direct-foundry-streaming.md)).
+
 **PROVISIONAL-ACCEPTED** — 2026-05-14 — Branch **A** presumed via INV-2 literature review (online canonical sources fetched 2026-05-14) + **§10.0.2 image format RESOLVED empirically via official simulator probe `@evenrealities/evenhub-simulator@0.7.3`** (same day, afternoon). Branch verdict + BLE/queue/DLE/audio-chunk tests pending real-device empirical re-validation of §10.0.3-10.0.9 hardware-gated tests when paired G2 + R1 + 3 RF environments are available.
 
 **Spec amendment v0.9.13 required** as direct consequence of OQ-INV2-1 resolution — Specs.md §3.5 (audio surface dispatch), §4.3 (SDK Surface table), §7.2 (layered model implementation), §7.4c (idle infill state machine) all need rewrite to reflect the actual envelope-based API contract (`flutterBridge.callHandler('evenAppMessage', json({type, method, data}))` with 10-method enum). Existing §3.1 hardware budget claims (4 image + 8 text/list + 1 capture per page) remain plausible; specific 200×100 size limit still pending real-hardware probe.

@@ -3,12 +3,12 @@
  *
  * Covers Plan 4a-06 Task 1 behaviour FP-1..FP-10 (data-source raster ingress):
  *   - FP-1     happy-path safeParse of a valid FramePixels payload
- *   - FP-2..4  bounds enforcement on width (20-576) + height (20-288) — full-screen region (layout B 2026-06-10)
+ *   - FP-2..4  bounds enforcement on width (20-288) + height (20-144)
  *   - FP-5     decodeFramePixels rejects non-base64 input with a typed Error
  *   - FP-6     encodeFramePixels → base64 string; decode roundtrip yields a
  *              Uint8ClampedArray of length width × height × 4
  *   - FP-7     decodeFramePixels rejects length-mismatch with a typed Error
- *   - FP-8     byte-for-byte roundtrip identity on a 400×200 frame
+ *   - FP-8     byte-for-byte roundtrip identity on a 288×144 frame
  *   - FP-9     re-exports from `@evf/shared-protocol` package entry (the cross-
  *              package consumption contract)
  *   - FP-10    cross-schema lock: a `FramePixels` payload travels cleanly inside
@@ -18,10 +18,8 @@
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 1
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-5 + §NF-1 + §NF-3
- * @see ./envelope.ts (real EnvelopeSchema export)
  */
 import { describe, expect, it } from 'vitest';
-import { EnvelopeSchema } from '../envelope.js';
 import {
   decodeFramePixels,
   encodeFramePixels,
@@ -60,9 +58,9 @@ describe('FramePixelsSchema — happy path (FP-1)', () => {
   it('parses a valid full-bound FramePixels payload', () => {
     const valid: FramePixels = {
       sceneId: 'scene1',
-      width: 400,
-      height: 200,
-      pixelsB64: encodeRaw(makeRgba(400, 200, 1)),
+      width: 288,
+      height: 144,
+      pixelsB64: encodeRaw(makeRgba(288, 144, 1)),
       ts: 1_234_567_890_000,
     };
     expect(FramePixelsSchema.safeParse(valid).success).toBe(true);
@@ -95,10 +93,10 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
     }
   });
 
-  it('FP-3: rejects width above maximum (577)', () => {
+  it('FP-3: rejects width above maximum (289)', () => {
     const r = FramePixelsSchema.safeParse({
       sceneId: 's',
-      width: 577,
+      width: 289,
       height: 20,
       pixelsB64: MIN_B64,
       ts: 1,
@@ -109,11 +107,11 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
     }
   });
 
-  it('FP-4: rejects height above maximum (289)', () => {
+  it('FP-4: rejects height above maximum (145)', () => {
     const r = FramePixelsSchema.safeParse({
       sceneId: 's',
       width: 20,
-      height: 289,
+      height: 145,
       pixelsB64: MIN_B64,
       ts: 1,
     });
@@ -132,20 +130,6 @@ describe('FramePixelsSchema — bounds (FP-2..FP-4)', () => {
       ts: 1,
     });
     expect(r.success).toBe(false);
-  });
-
-  it('rejects empty pixelsB64 (a frame carrier with no pixels is never valid)', () => {
-    const r = FramePixelsSchema.safeParse({
-      sceneId: 's',
-      width: 20,
-      height: 20,
-      pixelsB64: '',
-      ts: 1,
-    });
-    expect(r.success).toBe(false);
-    if (!r.success) {
-      expect(r.error.issues.some((i) => i.path.includes('pixelsB64'))).toBe(true);
-    }
   });
 });
 
@@ -173,10 +157,10 @@ describe('encodeFramePixels / decodeFramePixels — roundtrip (FP-6, FP-8)', () 
     expect(decoded.length).toBe(20 * 20 * 4);
   });
 
-  it('FP-8: byte-for-byte roundtrip on a 400×200 frame', () => {
-    const original = makeRgba(400, 200, 0x42);
+  it('FP-8: byte-for-byte roundtrip on a 288×144 frame', () => {
+    const original = makeRgba(288, 144, 0x42);
     const b64 = encodeFramePixels(original);
-    const decoded = decodeFramePixels(b64, 400, 200);
+    const decoded = decodeFramePixels(b64, 288, 144);
     expect(decoded.length).toBe(original.length);
     // Compare byte-by-byte. toEqual on typed arrays is supported by Vitest.
     expect(decoded).toEqual(original);
@@ -206,49 +190,5 @@ describe('FramePixelsSchema + helpers re-export (FP-9)', () => {
       ts: 1,
     });
     expect(r.success).toBe(true);
-  });
-});
-
-describe('EnvelopeSchema + FramePixelsSchema cross-schema contract (FP-10)', () => {
-  it('FP-10: a valid FramePixels travels cleanly inside an EnvelopeSchema envelope', () => {
-    const framePixels: FramePixels = {
-      sceneId: 'scene1',
-      width: 288,
-      height: 144,
-      pixelsB64: encodeRaw(makeRgba(288, 144, 9)),
-      ts: Date.now(),
-    };
-    const envelope = {
-      proto: 'evf-v1' as const,
-      seq: 0,
-      ts: Date.now(),
-      type: 'frame_pixels',
-      session_id: '00000000-0000-4000-8000-000000000000',
-      payload: framePixels,
-    };
-    const outer = EnvelopeSchema.safeParse(envelope);
-    expect(outer.success).toBe(true);
-    if (outer.success) {
-      const inner = FramePixelsSchema.safeParse(outer.data.payload);
-      expect(inner.success).toBe(true);
-    }
-  });
-
-  it('FP-10 (negative): a missing session_id makes the outer envelope fail (lock NF-1 contract)', () => {
-    const envelopeWithoutSession = {
-      proto: 'evf-v1' as const,
-      seq: 0,
-      ts: Date.now(),
-      type: 'frame_pixels',
-      // session_id intentionally omitted — EnvelopeSchema requires it.
-      payload: {
-        sceneId: 'scene1',
-        width: 20,
-        height: 20,
-        pixelsB64: MIN_B64,
-        ts: Date.now(),
-      },
-    };
-    expect(EnvelopeSchema.safeParse(envelopeWithoutSession).success).toBe(false);
   });
 });

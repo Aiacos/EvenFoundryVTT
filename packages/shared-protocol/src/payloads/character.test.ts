@@ -147,9 +147,6 @@ const VALID_SNAPSHOT: CharacterSnapshot = {
   spells: { slots: [], spells: [] },
   abilities: VALID_ABILITIES,
   skills: VALID_SKILLS,
-  class: 'Fighter',
-  initiative: 2,
-  speed: 30,
 };
 
 describe('CharacterSnapshotSchema — death-saves extension (CS-DS)', () => {
@@ -823,81 +820,6 @@ describe('CharacterSnapshotSchema — skills extension (CS-SK)', () => {
     expect(result.success).toBe(false);
   });
 });
-
-describe('CharacterSnapshotSchema — class/initiative/speed extension (CS-CIS)', () => {
-  it('CS-CIS-1: happy-path — snapshot with class/initiative/speed parses', () => {
-    // Verifies all 3 new REQUIRED fields are accepted in a well-formed snapshot.
-    const result = CharacterSnapshotSchema.safeParse({
-      ...VALID_SNAPSHOT,
-      class: 'Fighter',
-      initiative: 2,
-      speed: 30,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('CS-CIS-2: REQUIRED — missing `class` field is rejected (NOT .optional())', () => {
-    // Phase 21: class is REQUIRED — no .optional() window per atomic-commit pattern.
-    const { class: _class, ...snapshotWithoutClass } = VALID_SNAPSHOT;
-    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutClass);
-    expect(result.success).toBe(false);
-  });
-
-  it('CS-CIS-3: REQUIRED — missing `initiative` field is rejected (NOT .optional())', () => {
-    const { initiative: _initiative, ...snapshotWithoutInitiative } = VALID_SNAPSHOT;
-    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutInitiative);
-    expect(result.success).toBe(false);
-  });
-
-  it('CS-CIS-4: REQUIRED — missing `speed` field is rejected (NOT .optional())', () => {
-    const { speed: _speed, ...snapshotWithoutSpeed } = VALID_SNAPSHOT;
-    const result = CharacterSnapshotSchema.safeParse(snapshotWithoutSpeed);
-    expect(result.success).toBe(false);
-  });
-
-  it('CS-CIS-5: initiative accepts negative integers; rejects non-integers (float)', () => {
-    // initiative is a signed modifier — may be negative (DEX penalty).
-    const negative = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, initiative: -3 });
-    expect(negative.success).toBe(true);
-
-    const zero = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, initiative: 0 });
-    expect(zero.success).toBe(true);
-
-    // Non-integer (float) must be rejected — z.number().int() gate.
-    const float = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, initiative: 2.5 });
-    expect(float.success).toBe(false);
-  });
-
-  it('CS-CIS-6: speed rejects negative values (.nonnegative()); accepts 0 and 30', () => {
-    // speed is walk feet — can be 0 (immobile) but never negative.
-    const zero = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, speed: 0 });
-    expect(zero.success).toBe(true);
-
-    const thirty = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, speed: 30 });
-    expect(thirty.success).toBe(true);
-
-    const negative = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, speed: -5 });
-    expect(negative.success).toBe(false);
-
-    // Non-integer float must also be rejected — z.number().int().nonnegative() gate.
-    const float = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, speed: 30.5 });
-    expect(float.success).toBe(false);
-  });
-
-  it('CS-CIS-7: class accepts empty string (classless/fresh actor) and multiclass "Fighter / Wizard"', () => {
-    // Empty string = no class items on actor (fresh or classless) — valid.
-    const classless = CharacterSnapshotSchema.safeParse({ ...VALID_SNAPSHOT, class: '' });
-    expect(classless.success).toBe(true);
-
-    // Multiclass joined string — valid.
-    const multiclass = CharacterSnapshotSchema.safeParse({
-      ...VALID_SNAPSHOT,
-      class: 'Fighter / Wizard',
-    });
-    expect(multiclass.success).toBe(true);
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 22 Plan 22-01 — FeatEntrySchema (CS-FE-1..6)
 // ─────────────────────────────────────────────────────────────────────────────
