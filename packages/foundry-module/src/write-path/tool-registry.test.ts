@@ -38,9 +38,9 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
 // ─── ToolId type compile-time tests ──────────────────────────────────────────
 
 describe('TOOL_IDS / isToolId', () => {
-  it('lists all 10 ToolIds', () => {
-    expect(TOOL_IDS).toHaveLength(10);
-    expect(new Set(TOOL_IDS).size).toBe(10);
+  it('lists all 11 ToolIds (10 + end-turn, ADR-0012)', () => {
+    expect(TOOL_IDS).toHaveLength(11);
+    expect(new Set(TOOL_IDS).size).toBe(11);
   });
 
   it('isToolId accepts known ids and rejects anything else', () => {

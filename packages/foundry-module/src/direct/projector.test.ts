@@ -232,6 +232,75 @@ describe('Projector — get / ping / invoke', () => {
   });
 });
 
+describe('Projector — targets and combat priming (ADR-0012)', () => {
+  function scene(): Record<string, unknown> {
+    const tok = (id: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      uuid: `Scene.s1.Token.${id}`,
+      name: id,
+      x: 0,
+      y: 0,
+      actorId: null,
+      actor: null,
+      ...extra,
+    });
+    return {
+      id: 's1',
+      name: 'Cripta',
+      tokens: { contents: [tok('tGob'), tok('tHidden', { hidden: true })], get: () => undefined },
+    };
+  }
+
+  it('PJ-18 invoke translates visible MapSnapshot token ids into token UUIDs', async () => {
+    (f.game.scenes as { active: unknown }).active = scene();
+    dispatchTool.mockResolvedValueOnce({ success: true, data: {} });
+    await appSend({
+      t: 'invoke',
+      rid: 'w1',
+      tool: 'weapon-attack',
+      input: { item_id: 'axe', targets: ['tGob'] },
+    });
+    expect(dispatchTool).toHaveBeenCalledWith('weapon-attack', {
+      args: { item_id: 'axe', targets: ['Scene.s1.Token.tGob'], actor_id: 'thorin' },
+      idempotencyKey: 'w1',
+      bearer: 'g2:g2a',
+    });
+  });
+
+  it('PJ-19 invoke rejects ids not on the scene / hidden / malformed targets without dispatching', async () => {
+    (f.game.scenes as { active: unknown }).active = scene();
+    await appSend({
+      t: 'invoke',
+      rid: 'a',
+      tool: 'cast-spell',
+      input: { spell_id: 's', slot_level: 1, targets: ['tGob', 'other-scene-token'] },
+    });
+    await appSend({ t: 'invoke', rid: 'b', tool: 'use-item', input: { targets: ['tHidden'] } });
+    await appSend({ t: 'invoke', rid: 'c', tool: 'use-item', input: { targets: 'tGob' } });
+    await appSend({ t: 'invoke', rid: 'd', tool: 'use-item', input: { targets: [7] } });
+    const codes = (await received()).map((m) => [m.rid, (m.error as { code: string }).code]);
+    expect(codes).toEqual([
+      ['a', 'invalid_target'],
+      ['b', 'invalid_target'],
+      ['c', 'invalid_input'],
+      ['d', 'invalid_input'],
+    ]);
+    expect(dispatchTool).not.toHaveBeenCalled();
+  });
+
+  it('PJ-20 hello during combat primes action economy + movement for the paired actor', async () => {
+    f.game.combat = { id: 'c1', round: 1, turn: 0 };
+    await appSend({ t: 'hello', rid: 'r1', proto: 1, app: 'g2' });
+    const deltas = (await received()).filter((m) => m.t === 'delta');
+    expect(deltas.map((m) => [m.seq, m.topic])).toEqual([
+      [1, 'r1.action.economy'],
+      [2, 'r1.movement.budget'],
+    ]);
+    expect(deltas[0]?.data).toMatchObject({ actorId: 'thorin', actionsUsed: 0 });
+    expect(deltas[1]?.data).toMatchObject({ actorId: 'thorin', remainingFeet: 30 });
+  });
+});
+
 describe('Projector — ignored input', () => {
   it('PJ-08 non-GM client, non-active GM, wrong recipient, unknown sender, malformed envelope', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -324,8 +393,11 @@ describe('Projector — pushes', () => {
     await until(1);
     expect((await received()).map((m) => m.what)).toEqual(['map']);
     f.emitted.length = 0;
+    // `until` (vi.waitFor) advances the fake clock while polling: measure the throttle
+    // window from the first send (at T0), not from now.
+    const elapsed = Date.now() - T0;
     f.fire('targetToken');
-    await vi.advanceTimersByTimeAsync(MAP_THROTTLE_MS - 10);
+    await vi.advanceTimersByTimeAsync(MAP_THROTTLE_MS - 10 - elapsed);
     expect(f.emitted).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(20);
     await until(1);
@@ -369,10 +441,14 @@ describe('Projector — pushes', () => {
       throw new Error('socket closed');
     });
     projector.pushDelta('combat.turn', {});
-    await flush();
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining('failed to push'),
-      expect.anything(),
+    // Sealing runs on real WebCrypto: wait for the rejection instead of a fixed flush.
+    await vi.waitFor(
+      () =>
+        expect(error).toHaveBeenCalledWith(
+          expect.stringContaining('failed to push'),
+          expect.anything(),
+        ),
+      { timeout: 5_000, interval: 5 },
     );
   });
 });

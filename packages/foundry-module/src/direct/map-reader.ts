@@ -84,13 +84,55 @@ export function toRelativeBackground(
   }
 }
 
+/** Scene projected on the glasses: the active scene, else the GM's viewed scene. */
+function projectedScene(): FoundryScene | null {
+  return game.scenes.active ?? canvas?.scene ?? null;
+}
+
+/** Tokens hidden from players are never projected (nor targetable). */
+function isProjectedToken(token: FoundryTokenDoc): boolean {
+  return token.hidden !== true;
+}
+
+/** Outcome of {@link resolveTargetUuids}. */
+export type TargetResolution = { ok: true; uuids: string[] } | { ok: false; invalidId: string };
+
+/**
+ * Translates {@link MapToken.id}s chosen on the glasses into token document UUIDs
+ * (`Scene.<sceneId>.Token.<tokenId>`, the form `midiOptions.targetUuids` expects).
+ *
+ * Only tokens the device can see in its {@link MapSnapshot} are accepted — same
+ * scene and same visibility rule as {@link readMapSnapshot} — so a tampered or stale
+ * id can never target a hidden token or one on another scene.
+ *
+ * @param ids - Token ids from the wire (untrusted).
+ * @returns `{ ok: true, uuids }` in input order, or the first id that is not a
+ *          visible token of the projected scene.
+ * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#uuid
+ */
+export function resolveTargetUuids(ids: readonly string[]): TargetResolution {
+  const scene = projectedScene();
+  const visible = new Map<string, string>();
+  for (const token of scene?.tokens.contents ?? []) {
+    if (isProjectedToken(token) && typeof token.uuid === 'string')
+      visible.set(token.id, token.uuid);
+  }
+  const uuids: string[] = [];
+  for (const id of ids) {
+    const uuid = visible.get(id);
+    if (uuid === undefined) return { ok: false, invalidId: id };
+    uuids.push(uuid);
+  }
+  return { ok: true, uuids };
+}
+
 /**
  * Builds the map snapshot of the active scene for `viewer`.
  *
  * @returns the snapshot, or null when no scene is active.
  */
 export function readMapSnapshot(viewer: MapViewer): MapSnapshot | null {
-  const scene = game.scenes.active ?? canvas?.scene ?? null;
+  const scene = projectedScene();
   if (scene === null) return null;
 
   const gridPx =
@@ -110,7 +152,7 @@ export function readMapSnapshot(viewer: MapViewer): MapSnapshot | null {
   const tokens: MapToken[] = [];
   let selfTokenId: string | undefined;
   for (const token of scene.tokens.contents) {
-    if (token.hidden === true) continue;
+    if (!isProjectedToken(token)) continue;
     const kind = classifyToken(token, viewer);
     if (kind === 'self' && selfTokenId === undefined) selfTokenId = token.id;
     const hp = kind === 'self' || kind === 'ally' ? hpFraction(token) : undefined;

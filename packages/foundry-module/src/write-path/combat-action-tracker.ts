@@ -157,6 +157,24 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** An actor shown on a G2 device and the user its economy payloads are addressed to. */
+export interface TrackedActor {
+  actorId: string;
+  recipientUserId: string;
+}
+
+/**
+ * Current action economy of `actorId` this turn (all slots free when nothing was
+ * consumed). Read by the projector to prime a G2 device right after `hello` (ADR-0012).
+ *
+ * @param actorId - Foundry actor id.
+ * @param recipientUserId - User the payload is addressed to when no state exists yet.
+ * @returns The payload the tracker would emit now.
+ */
+export function getActionEconomy(actorId: string, recipientUserId: string): ActionEconomyPayload {
+  return buildPayload(actorId, getOrInit(actorId, recipientUserId));
+}
+
 /**
  * Register the `createChatMessage` + `updateCombat` hook subscribers.
  *
@@ -172,12 +190,17 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
  *
  * @param emit - Callback to emit the action economy payload via projector.pushDelta.
  *               Fire-and-forget; failures are swallowed with console.warn.
+ * @param trackedActors - Actors that also receive a fresh (all-free) payload on every
+ *               turn/round change even if they consumed nothing yet — the GM projector
+ *               passes the paired actors so a G2 device always learns its economy
+ *               (ADR-0012). Defaults to none (only actors with state are reset).
  * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (R3).
  *          Discarded by module.ts for MVP (module lifecycle is for-the-session).
  */
 export function registerCombatActionTracker(
   emit: (payload: ActionEconomyPayload) => void,
+  trackedActors: () => readonly TrackedActor[] = () => [],
 ): () => void {
   // ── createChatMessage hook ──────────────────────────────────────────────────
   const createChatHookId = Hooks.on('createChatMessage', (...args: unknown[]): void => {
@@ -292,6 +315,10 @@ export function registerCombatActionTracker(
         // Clear attackId dedup for this actor (turn reset = new action pool)
         _attackIdSeen.delete(actorId);
         emit(buildPayload(actorId, resetState));
+      }
+      for (const tracked of trackedActors()) {
+        if (_state.has(tracked.actorId)) continue;
+        emit(getActionEconomy(tracked.actorId, tracked.recipientUserId));
       }
     } catch (err) {
       console.warn('[combat-action-tracker] updateCombat handler threw', err);

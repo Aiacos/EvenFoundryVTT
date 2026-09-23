@@ -85,6 +85,30 @@ describe('module entry', () => {
     }
   });
 
+  it('MOD-07 combat trackers follow the paired actors (not the GM character) on turn change', async () => {
+    const mod = await load();
+    f.fire('init');
+    const store = await import('./direct/pairing-store.js');
+    await store.upsertDevice(
+      {
+        g2UserId: 'g2a',
+        playerUserId: 'p1',
+        actorId: 'thorin',
+        label: 'Luca (G2)',
+        createdAt: 0,
+        lastSeenAt: null,
+        pendingRotation: false,
+      },
+      'k',
+    );
+    const push = vi.spyOn(mod.projector, 'pushDelta');
+    f.fire('ready');
+    f.fire('updateCombat', {}, { turn: 1 }, {}, 'gm1');
+    const topics = push.mock.calls.map((c) => [c[0], (c[1] as { actorId?: string }).actorId]);
+    expect(topics).toContainEqual(['r1.action.economy', 'thorin']);
+    expect(topics).toContainEqual(['r1.movement.budget', 'thorin']);
+  });
+
   it('MOD-06 ready on a player client does nothing (no relay listener, no hooks)', async () => {
     f.game.user.isGM = false;
     await load();

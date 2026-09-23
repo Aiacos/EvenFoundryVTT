@@ -7,7 +7,10 @@
  *
  * - `hello`  → `welcome` (+ one-time credential rotation) then full snapshots
  * - `get`    → `snapshot` of character / combat / log / map for the paired actor
- * - `invoke` → `dispatchTool` (ADR-0011 single-workflow-origin), `rid` = idempotency key
+ * - `invoke` → `dispatchTool` (ADR-0011 single-workflow-origin), `rid` = idempotency key;
+ *   `targets` (MapSnapshot token ids) are translated to token document UUIDs here
+ * - after the hello snapshots, during combat: the paired actor's action economy and
+ *   movement budget (`r1.action.economy`, `r1.movement.budget` deltas)
  * - `ping`   → `pong`
  *
  * It also pushes `delta` messages (hook subscribers, write-path watchers, chat log,
@@ -34,6 +37,8 @@ import {
   MAX_ENVELOPE_AGE_MS,
   open,
   type ProjectorMessage,
+  R1_ACTION_ECONOMY_TYPE,
+  R1_MOVEMENT_BUDGET_TYPE,
   SealedEnvelopeSchema,
   type SnapshotTopic,
   seal,
@@ -46,9 +51,11 @@ import {
   isMessageVisibleTo,
   toLogEvent,
 } from '../readers/log-reader.js';
+import { getActionEconomy } from '../write-path/combat-action-tracker.js';
+import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
 import { generatePassword, setG2Password } from './g2-user.js';
-import { readMapSnapshot } from './map-reader.js';
+import { readMapSnapshot, resolveTargetUuids } from './map-reader.js';
 import {
   type DeviceMeta,
   getDevice,
@@ -272,6 +279,21 @@ export class Projector {
     for (const what of HELLO_SNAPSHOT_ORDER) {
       await this.send(meta.g2UserId, key, { t: 'snapshot', what, data: this.snapshot(meta, what) });
     }
+    // Combat trackers only emit on change: prime the device with the current turn state.
+    if (game.combat !== null && game.combat !== undefined) {
+      await this.sendDelta(
+        meta.g2UserId,
+        key,
+        R1_ACTION_ECONOMY_TYPE,
+        getActionEconomy(meta.actorId, meta.playerUserId),
+      );
+      await this.sendDelta(
+        meta.g2UserId,
+        key,
+        R1_MOVEMENT_BUDGET_TYPE,
+        getMovementBudget(meta.actorId),
+      );
+    }
   }
 
   private async onInvoke(
@@ -292,8 +314,23 @@ export class Projector {
     if (args.actor_id !== undefined && args.actor_id !== meta.actorId) {
       return fail('forbidden_actor', 'a G2 device may only act for its paired actor');
     }
+    // The HUD picks targets by MapSnapshot token id (small wire, simple HUD); the write
+    // path / MidiQOL `targetUuids` need document UUIDs. Only tokens this device can
+    // see on the projected scene are accepted.
+    let targets: string[] | undefined;
+    if (args.targets !== undefined) {
+      const ids = args.targets;
+      if (!Array.isArray(ids) || !ids.every((id): id is string => typeof id === 'string')) {
+        return fail('invalid_input', 'targets must be an array of token ids');
+      }
+      const resolved = resolveTargetUuids(ids);
+      if (!resolved.ok) {
+        return fail('invalid_target', `token ${resolved.invalidId} is not visible on the scene`);
+      }
+      targets = resolved.uuids;
+    }
     const result = await dispatchTool(tool, {
-      args: { ...args, actor_id: meta.actorId },
+      args: { ...args, ...(targets !== undefined ? { targets } : {}), actor_id: meta.actorId },
       idempotencyKey: rid,
       bearer: principalOf(meta.g2UserId),
     });

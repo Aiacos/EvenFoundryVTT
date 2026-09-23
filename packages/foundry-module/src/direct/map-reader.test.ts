@@ -1,7 +1,7 @@
 import { MapSnapshotSchema } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFoundry, makeActor, makeUser } from '../__tests__/direct-fixtures.js';
-import { readMapSnapshot, toRelativeBackground } from './map-reader.js';
+import { readMapSnapshot, resolveTargetUuids, toRelativeBackground } from './map-reader.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -151,5 +151,41 @@ describe('toRelativeBackground', () => {
     expect(toRelativeBackground('', origin)).toBeUndefined();
     expect(toRelativeBackground(null, origin)).toBeUndefined();
     expect(toRelativeBackground(undefined, origin)).toBeUndefined();
+  });
+});
+
+describe('resolveTargetUuids', () => {
+  const uuid = (id: string) => `Scene.s1.Token.${id}`;
+  it('MR-10 translates visible token ids to document UUIDs, in order', () => {
+    installFoundry({
+      scene: scene([
+        token('tGob', { uuid: uuid('tGob'), disposition: -1 }),
+        token('tAlly', { uuid: uuid('tAlly'), disposition: 1 }),
+      ]),
+    });
+    expect(resolveTargetUuids(['tAlly', 'tGob'])).toEqual({
+      ok: true,
+      uuids: [uuid('tAlly'), uuid('tGob')],
+    });
+    expect(resolveTargetUuids([])).toEqual({ ok: true, uuids: [] });
+  });
+
+  it('MR-11 rejects ids not on the scene, hidden tokens, tokens without uuid, no scene', () => {
+    installFoundry({
+      scene: scene([
+        token('tGob', { uuid: uuid('tGob') }),
+        token('tHidden', { uuid: uuid('tHidden'), hidden: true }),
+        token('tNoUuid'),
+      ]),
+    });
+    expect(resolveTargetUuids(['tGob', 'elsewhere'])).toEqual({
+      ok: false,
+      invalidId: 'elsewhere',
+    });
+    expect(resolveTargetUuids(['tHidden'])).toEqual({ ok: false, invalidId: 'tHidden' });
+    expect(resolveTargetUuids(['tNoUuid'])).toEqual({ ok: false, invalidId: 'tNoUuid' });
+    vi.unstubAllGlobals();
+    installFoundry();
+    expect(resolveTargetUuids(['tGob'])).toEqual({ ok: false, invalidId: 'tGob' });
   });
 });

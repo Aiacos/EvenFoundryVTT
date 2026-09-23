@@ -46,7 +46,9 @@ export type ToolId =
   // Phase 13 ACT-04 reaction handlers (Plan 13-01)
   | 'cast-shield'
   | 'cast-counterspell'
-  | 'opportunity-attack';
+  | 'opportunity-attack'
+  // ADR-0012 direct channel: the paired actor ends its own combat turn
+  | 'end-turn';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────
 
@@ -167,6 +169,7 @@ export const TOOL_IDS: readonly ToolId[] = [
   'cast-shield',
   'cast-counterspell',
   'opportunity-attack',
+  'end-turn',
 ];
 
 /** Type guard: true when `value` is a known {@link ToolId}. */

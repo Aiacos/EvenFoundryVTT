@@ -11,6 +11,7 @@
  * - Wave 2 (Plan 07-03): 2 handlers (place-template, confirm-template-placement)
  * - Wave 3 (Plan 07-05): 1 handler (drop-concentration, replacing evf.setTargets stub)
  * - Phase 13 (Plan 13-01): 3 handlers (cast-shield, cast-counterspell, opportunity-attack)
+ * - ADR-0012 direct channel: 1 handler (end-turn)
  *
  * # Single-workflow-origin (ADR-0011)
  * All registrations go through `registerToolHandler` — the canonical write-path
@@ -28,6 +29,7 @@ import { castCounterspellHandler } from './cast-counterspell.js';
 import { castShieldHandler } from './cast-shield.js';
 import { castSpellHandler } from './cast-spell.js';
 import { dropConcentrationHandler } from './drop-concentration.js';
+import { endTurnHandler } from './end-turn.js';
 import { moveTokenHandler } from './move-token.js';
 import { opportunityAttackHandler } from './opportunity-attack.js';
 import { confirmTemplatePlacementHandler, placeTemplateHandler } from './place-template.js';
@@ -66,3 +68,7 @@ registerToolHandler('drop-concentration', dropConcentrationHandler);
 registerToolHandler('cast-shield', castShieldHandler);
 registerToolHandler('cast-counterspell', castCounterspellHandler);
 registerToolHandler('opportunity-attack', opportunityAttackHandler);
+
+// ─── ADR-0012 direct channel ─────────────────────────────────────────────────
+// end-turn: Combat#nextTurn for the paired actor, only on its own turn.
+registerToolHandler('end-turn', endTurnHandler);

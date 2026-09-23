@@ -573,6 +573,14 @@ interface FoundryItem {
 interface FoundryTokenDoc {
   /** Foundry token document ID. */
   id: string;
+  /**
+   * Document UUID (`Scene.<sceneId>.Token.<tokenId>`) — the form MidiQOL's
+   * `midiOptions.targetUuids` expects. Optional in this minimal shape; the projector
+   * rejects a target whose UUID is unknown.
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#uuid
+   */
+  uuid?: string;
   /** Token display name (map-reader). */
   name?: string;
   /** Top-left position in canvas pixels (includes scene padding). */
@@ -708,6 +716,17 @@ interface FoundryCombat {
   combatant: FoundryCombatant | null;
   /** All combatants in initiative order. */
   combatants: { contents: FoundryCombatant[] };
+  /**
+   * "Has this combat encounter been started?" (`Combat#started`). Optional in this
+   * minimal shape; the end-turn handler treats `false` as "not started".
+   */
+  started?: boolean;
+  /**
+   * "Advance the combat to the next turn" (`Combat#nextTurn(): Promise<Combat>`).
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.documents.Combat.html#nextturn
+   */
+  nextTurn?(): Promise<unknown>;
 }
 
 // ─── Foundry Scene (minimal read shape) ───────────────────────────────────────

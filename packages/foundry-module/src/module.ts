@@ -24,6 +24,7 @@ import {
   R1_MULTIATTACK_PROGRESS_TYPE,
   R1_REACTION_AVAILABLE_TYPE,
 } from '@evf/shared-protocol';
+import { listDevices } from './direct/pairing-store.js';
 import { Projector } from './direct/projector.js';
 import { registerHookSubscribers } from './readers/hook-subscribers.js';
 import { registerSettings } from './settings.js';
@@ -57,8 +58,13 @@ export function startProjector(): void {
   setMultiAttackProgressEmitter(topic(R1_MULTIATTACK_PROGRESS_TYPE));
   registerReactionWatcher(topic(R1_REACTION_AVAILABLE_TYPE));
   registerActionResultWatcher(topic(R1_ACTION_RESULT_TYPE));
-  registerMovementTracker(topic(R1_MOVEMENT_BUDGET_TYPE));
-  registerCombatActionTracker(topic(R1_ACTION_ECONOMY_TYPE));
+  // The GM's own character is not what the glasses show: track the paired actors.
+  registerMovementTracker(topic(R1_MOVEMENT_BUDGET_TYPE), () =>
+    listDevices().map((d) => d.actorId),
+  );
+  registerCombatActionTracker(topic(R1_ACTION_ECONOMY_TYPE), () =>
+    listDevices().map((d) => ({ actorId: d.actorId, recipientUserId: d.playerUserId })),
+  );
   setConcConflictEmitter(push);
 }
 

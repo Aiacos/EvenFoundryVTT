@@ -267,6 +267,8 @@ export {
   CastCounterspellInputSchema,
 } from './tools/cast-counterspell.js';
 export { type CastShieldInput, CastShieldInputSchema } from './tools/cast-shield.js';
+// ADR-0012 direct channel — `end-turn` (paired actor ends its own combat turn).
+export { END_TURN_TOOL, type EndTurnInput, EndTurnInputSchema } from './tools/end-turn.js';
 export {
   type OpportunityAttackInput,
   OpportunityAttackInputSchema,

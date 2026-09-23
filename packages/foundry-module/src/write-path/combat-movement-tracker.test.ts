@@ -421,4 +421,45 @@ describe('registerMovementTracker', () => {
       unsubscribe();
     }).not.toThrow();
   });
+
+  // ── ADR-0012: GM projector tracks the paired actors, not game.user.character ──
+
+  it('CMT-P1: injected tracked actors are tracked on a GM client; reset primes + seeds position', async () => {
+    const gameMock = makeGameMock({ hasCharacter: false, walkSpeed: 25 });
+    vi.stubGlobal('game', gameMock);
+    vi.stubGlobal('Hooks', makeHooksMock());
+    vi.stubGlobal('canvas', {
+      scene: {
+        grid: { size: 100, distance: 5 },
+        tokens: { contents: [{ id: 'token-1', actorId: 'actor-player-1', x: 0, y: 0 }] },
+      },
+    });
+    const { registerMovementTracker, getMovementBudget } = await import(
+      './combat-movement-tracker.js'
+    );
+    const emit = vi.fn<(payload: MovementBudgetPayload) => void>();
+    registerMovementTracker(emit, () => ['actor-player-1']);
+
+    expect(getMovementBudget('actor-player-1')).toEqual({
+      actorId: 'actor-player-1',
+      walkSpeed: 25,
+      usedThisTurn: 0,
+      remainingFeet: 25,
+    });
+    capturedUpdateCombatHandler?.({}, { turn: 1 }, {}, 'gm');
+    expect(emit).toHaveBeenLastCalledWith({
+      actorId: 'actor-player-1',
+      walkSpeed: 25,
+      usedThisTurn: 0,
+      remainingFeet: 25,
+    });
+    // position seeded at (0,0): the FIRST move of the turn is measured (200px = 10 ft)
+    fireUpdateToken(makeTokenDoc({ x: 200, y: 0 }), { x: 200 });
+    expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ usedThisTurn: 10, remainingFeet: 20 });
+    expect(getMovementBudget('actor-player-1').usedThisTurn).toBe(10);
+
+    emit.mockClear();
+    fireUpdateToken(makeTokenDoc({ actorId: 'someone-else' }), { x: 500 });
+    expect(emit).not.toHaveBeenCalled();
+  });
 });
