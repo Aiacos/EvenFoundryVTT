@@ -743,7 +743,7 @@ describe('registerCombatActionTracker', () => {
     expect(hooksMock.off).toHaveBeenCalledWith(MOCK_DELETE_COMBAT_HOOK_ID);
   });
 
-  // ── ADR-0012: paired actors + getter ──────────────────────────────────────────
+  // ── ADR-0016: paired actors + getter ──────────────────────────────────────────
 
   it('CAT-P1: turn change also emits a fresh payload for tracked (paired) actors without state', async () => {
     vi.stubGlobal('game', makeGameMock());

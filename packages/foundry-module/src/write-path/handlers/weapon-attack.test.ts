@@ -635,7 +635,7 @@ describe('weaponAttackHandler', () => {
       warnSpy.mockRestore();
     });
 
-    it("V2b: on a player-client projector (ADR-0013) targets are the player's own → no targets warning", async () => {
+    it("V2b: on a player-client projector (ADR-0017) targets are the player's own → no targets warning", async () => {
       const activity = makeAttackActivity({ chatCardId: 'cm-p' });
       const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
       const actor = makeActor({ id: 'actor-a', item });

@@ -1,11 +1,11 @@
 /**
- * Glasses pairing window (mock P01) — one component, two modes (ADR-0013):
+ * Glasses pairing window (mock P01) — one component, two modes (ADR-0017):
  *
  * - **GM mode** «Associa occhiali G2» (settings menu, Players list entry on a player):
  *   one-time enablement of player-owned glasses («Abilita occhiali per i giocatori»,
  *   per player or all, with status not enabled / enabled / paired / online and
  *   «Rigenera password»), pairing **on behalf** of a player without Foundry (QR shown
- *   on the GM screen, ADR-0012 flow), and revocation;
+ *   on the GM screen, ADR-0016 flow), and revocation;
  * - **player mode** «Associa i miei occhiali» (player settings menu, Players list
  *   entry on themselves): self-service QR for the player's own glasses, generated in
  *   the player's browser (`self-pairing.ts`) — no GM needed after enablement.
@@ -221,7 +221,7 @@ export function glassesStatus(
     return { status: 'online', waiting };
   }
   const selfPaired = readSelfDevice(player)?.g2UserId === g2UserId;
-  // keyHolder: a GM id (paired on behalf) or undefined (legacy ADR-0012 pairing).
+  // keyHolder: a GM id (paired on behalf) or undefined (legacy ADR-0016 pairing).
   const gmPaired = device !== undefined && device.keyHolder !== null;
   if (selfPaired || gmPaired) return { status: 'paired', waiting };
   return { status: access === null ? 'disabled' : 'enabled', waiting };

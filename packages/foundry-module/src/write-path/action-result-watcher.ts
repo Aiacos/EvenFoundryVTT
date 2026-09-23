@@ -28,7 +28,7 @@
  * ## Emission
  *
  * Emission is via the injected `emit` callback — `projector.pushDelta` in
- * production (fire-and-forget sealed delta to the paired G2 devices, ADR-0012).
+ * production (fire-and-forget sealed delta to the paired G2 devices, ADR-0016).
  *
  * ## Fault tolerance
  *

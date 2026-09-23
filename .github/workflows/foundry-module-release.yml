@@ -8,7 +8,7 @@ name: Foundry Module Release
 # What this workflow does end-to-end:
 #   1. Validates the tag format vMAJOR.MINOR.PATCH[-prerelease]
 #   2. Builds the Foundry module (pnpm + tsup, bundles @evf/shared-protocol + qrcode)
-#   3. Builds the g2-app Vite bundle INTO packages/foundry-module/g2/ (ADR-0012:
+#   3. Builds the g2-app Vite bundle INTO packages/foundry-module/g2/ (ADR-0016:
 #      the phone WebView loads it same-origin from /modules/evenfoundryvtt/g2/)
 #   4. Patches module.json `version` + `download` from the tag
 #   5. Zips the runtime assets (module.json + dist/ + g2/ + lang/ + templates/ + styles/)
@@ -16,7 +16,7 @@ name: Foundry Module Release
 #   7. Creates the GitHub Release on the tag
 #   8. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
 #
-# ADR-0012 removed the Node bridge + Docker Compose: there is no GHCR image
+# ADR-0016 removed the Node bridge + Docker Compose: there is no GHCR image
 # (former REL-02) and no standalone g2-app-dist.zip (former REL-03) — the g2-app
 # ships inside the module zip.
 #
@@ -91,13 +91,13 @@ jobs:
       - name: Build foundry-module bundle
         run: pnpm --filter @evf/foundry-module build
 
-      # ADR-0012 hosting contract: vite outDir = packages/foundry-module/g2/.
+      # ADR-0016 hosting contract: vite outDir = packages/foundry-module/g2/.
       # Fail the release (not ship a module whose QR URL 404s) if index.html is missing.
       - name: Build g2-app into foundry-module/g2
         run: |
           pnpm --filter @evf/g2-app build
           if ! test -f packages/foundry-module/g2/index.html; then
-            echo "::error::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0012)."
+            echo "::error::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0016)."
             exit 1
           fi
 
@@ -142,9 +142,9 @@ jobs:
           # Listing captured once: piping unzip into head/grep -q can SIGPIPE under pipefail.
           LISTING=$(unzip -Z1 ../evenfoundryvtt.zip)
           head -20 <<<"$LISTING"
-          # ADR-0012: the sideload entry point must be inside the zip.
+          # ADR-0016: the sideload entry point must be inside the zip.
           if ! grep -qx 'g2/index.html' <<<"$LISTING"; then
-            echo "::error::evenfoundryvtt.zip is missing g2/index.html (ADR-0012)."
+            echo "::error::evenfoundryvtt.zip is missing g2/index.html (ADR-0016)."
             exit 1
           fi
 

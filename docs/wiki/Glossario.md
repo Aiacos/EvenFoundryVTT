@@ -19,7 +19,7 @@ Un solo nome per ogni concetto, lo stesso sugli occhiali, in Foundry e nei docum
 | **Relay** | l'inoltro Foundry dei messaggi `module.evenfoundryvtt` a tutti i client |
 | **Busta sigillata** | `{evf, to, from, iv, ct}`: messaggio cifrato AES-256-GCM con la chiave del dispositivo |
 | **Chiave del dispositivo** | chiave AES-256 condivisa tra occhiali e projector; ruota al primo collegamento |
-| **Chiave pubblica / privata** | coppia ECDH P-256 di ogni client (ADR-0013); la pubblica è in `flags.evenfoundryvtt.pub` |
+| **Chiave pubblica / privata** | coppia ECDH P-256 di ogni client (ADR-0017); la pubblica è in `flags.evenfoundryvtt.pub` |
 | **Abilitazione** | passo una tantum del GM che crea gli utenti «(G2)» dei giocatori |
 | **Associazione** | collegare un paio di occhiali a un personaggio (self-service, dal GM o con codice manuale) |
 | **Codice manuale** | 16 caratteri `XXXX-XXXX-XXXX-XXXX` in alternativa al QR |

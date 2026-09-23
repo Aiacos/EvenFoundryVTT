@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-**v0.10.0 — direct Foundry → G2 streaming** ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md)). The Node bridge, `packages/foundry-mcp`, `deploy/` (Docker Compose) and voice were **removed**. The g2-app is built into `packages/foundry-module/g2/`, Foundry serves it at `/modules/evenfoundryvtt/g2/index.html`, and the Even Realities App loads it by QR sideload. The Foundry module in the GM browser is the **projector**.
+**v0.10.0 — direct Foundry → G2 streaming** ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)). The Node bridge, `packages/foundry-mcp`, `deploy/` (Docker Compose) and voice were **removed**. The g2-app is built into `packages/foundry-module/g2/`, Foundry serves it at `/modules/evenfoundryvtt/g2/index.html`, and the Even Realities App loads it by QR sideload. The Foundry module in the GM browser is the **projector**.
 
 **Config (root):**
 
@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/shared-render/` — ASCII grid + INV-1 matchers, `src/pixel/` 4-bit pixel renderer + bitmap fonts + D&D icons, per-zone golden fixtures `sheet.*.txt`
 - `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:direct-sideload`
 
-**Architecture:** `docs/architecture/` — ADR-0001…0012 (0012 = direct streaming, supersedes the bridge topology) + `INVARIANTS.md`; design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
+**Architecture:** `docs/architecture/` — ADR-0001…0016 (0016 = direct streaming, supersedes the bridge topology) + `INVARIANTS.md`; design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
 
 **Documentation:**
 
@@ -55,7 +55,7 @@ pnpm changeset:status         # check changeset declared since origin/main
 pnpm --filter @evf/g2-app build                  # vite → packages/foundry-module/g2/
 pnpm --filter @evf/foundry-module build:all      # g2-app build, then tsup → dist/module.js
 pnpm --filter @evf/validation-harness inv:all    # invariant suite
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware   # ADR-0012 software GO/NO-GO
+FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware   # ADR-0016 software GO/NO-GO
 pnpm --filter @evf/validation-harness validate:all:skip-hardware    # Phase 0 software-only smoke
 ```
 
@@ -181,7 +181,7 @@ Before bumping `Specs.md` version (e.g., v0.9.10 → v0.9.11):
 
 ## Architecture mental model
 
-EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. Since v0.10.0 there is **no server of our own** ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md)):
+EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. Since v0.10.0 there is **no server of our own** ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)):
 
 ```
 [ G2 glasses ] ⇄ BLE ⇄ [ Even App WebView — page served by Foundry: /modules/evenfoundryvtt/g2/ ]
@@ -217,7 +217,7 @@ Crucial constraints baked into the spec (do not re-litigate without upstream evi
 
 ## Roadmap snapshot
 
-v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) are archived under `.planning/milestones/`. **v0.10.0** (current): direct Foundry → G2 streaming, D&D-sheet HUD, one-scan pairing (ADR-0012). Next: hardware UAT on G2 + R1 (sideload, cookie persistence, BLE map pacing) and, if wanted, voice/MCP as a client of the direct channel (new ADR required).
+v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) are archived under `.planning/milestones/`. **v0.10.0** (current): direct Foundry → G2 streaming, D&D-sheet HUD, one-scan pairing (ADR-0016). Next: hardware UAT on G2 + R1 (sideload, cookie persistence, BLE map pacing) and, if wanted, voice/MCP as a client of the direct channel (new ADR required).
 
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
@@ -232,20 +232,20 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 - **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image max 288×144 px, ≥ 100 ms tra update immagine, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
 - **Hardware R1**: BLE → smartphone Even App → G2; gesture canoniche = `press / double-press / swipe-up / swipe-down`; **long-press solo come extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9: apre il menu contestuale `menuObject`, mai unico accesso a una funzione); nessun input testuale. — *hub.evenrealities.com/docs/reference/changelog + /build/input (re-verified 2026-09-23). Il drift GEST-01 è chiuso dalla v0.10.0.*
-- **Plugin execution model**: il g2-app è servito da **Foundry stesso** (`/modules/evenfoundryvtt/g2/index.html`) e caricato dall'Even Realities App via QR sideload nel WebView del telefono. Il G2 firmware NON esegue il nostro codice. — *ADR-0012; hub.evenrealities.com/docs/get-started/architecture.*
-- **Network**: Foundry su HTTPS **valido** raggiungibile dal telefono (no self-signed); tutto il traffico è same-origin (`/join` + socket.io), quindi nessuna whitelist/CORS per il sideload. Il `.ehpk` (secondario) resta vincolato alla whitelist `app.json` (origin completo, no wildcards). — *Vincolo Even Hub + ADR-0012.*
+- **Plugin execution model**: il g2-app è servito da **Foundry stesso** (`/modules/evenfoundryvtt/g2/index.html`) e caricato dall'Even Realities App via QR sideload nel WebView del telefono. Il G2 firmware NON esegue il nostro codice. — *ADR-0016; hub.evenrealities.com/docs/get-started/architecture.*
+- **Network**: Foundry su HTTPS **valido** raggiungibile dal telefono (no self-signed); tutto il traffico è same-origin (`/join` + socket.io), quindi nessuna whitelist/CORS per il sideload. Il `.ehpk` (secondario) resta vincolato alla whitelist `app.json` (origin completo, no wildcards). — *Vincolo Even Hub + ADR-0016.*
 - **BLE bandwidth**: target ≥200 kbps sustained; <100 kbps blocca raster MVP (degrade a glyph-only). — *Phase 0 §10.0.3.*
 - **D&D edition**: dual-support PHB 2014 + PHB 2024 via `core.modernRules`. Setting MVP. — *§11.5.1.*
 - **License**: MIT su tutti i package del monorepo. — *§11.5.2.*
-- **Deployment**: solo il modulo Foundry (zip GitHub Release con `g2/`); niente bridge, niente Docker Compose (rimossi in v0.10.0). Serve un browser GM online (projector). — *ADR-0012 (supersede §11.5.3).*
-- **Auth**: utente Foundry dedicato `"<Giocatore> (G2)"` + chiave AES-256 per dispositivo; QR monouso 5 min (password + chiave ruotano al primo `hello`) o codice manuale di 16 caratteri; revoca dalla finestra «Associa occhiali G2». — *ADR-0012 (supersede §11.5.4 bearer 24h).*
+- **Deployment**: solo il modulo Foundry (zip GitHub Release con `g2/`); niente bridge, niente Docker Compose (rimossi in v0.10.0). Serve un browser GM online (projector). — *ADR-0016 (supersede §11.5.3).*
+- **Auth**: utente Foundry dedicato `"<Giocatore> (G2)"` + chiave AES-256 per dispositivo; QR monouso 5 min (password + chiave ruotano al primo `hello`) o codice manuale di 16 caratteri; revoca dalla finestra «Associa occhiali G2». — *ADR-0016 (supersede §11.5.4 bearer 24h).*
 - **Tooling fissato**: TypeScript strict + Biome lint/format + Vitest coverage gate; CI fail su `// TODO` senza issue-link. — *INV-4 §0.1.*
 <!-- GSD:project-end -->
 
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
 
-> **v0.10.0 (2026-09-23)** — rewritten after [ADR-0012](docs/architecture/0012-direct-foundry-streaming.md). The original research snapshot (`.planning/research/STACK.md`, 2026-05-10) described a Node bridge + Docker + `foundry-mcp`; those rows are collapsed into *Removed in v0.10.0* below. Authoritative pins live in the `package.json` files (exact versions, re-check with `npm view` per INV-2).
+> **v0.10.0 (2026-09-23)** — rewritten after [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md). The original research snapshot (`.planning/research/STACK.md`, 2026-05-10) described a Node bridge + Docker + `foundry-mcp`; those rows are collapsed into *Removed in v0.10.0* below. Authoritative pins live in the `package.json` files (exact versions, re-check with `npm view` per INV-2).
 
 ### Current stack (by package)
 
@@ -258,7 +258,7 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 | `validation-harness` | `zod` 4.4.3 · `upng-js` 2.1.0 · `csv-stringify` 6.5.2 · `tsx` | GO/NO-GO scripts, `inv:all`, `validate:direct-sideload`. |
 | Workspace tooling | TypeScript 5.8.3 · pnpm 10.33.4 · Node 24 LTS (`.nvmrc`) · Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 · happy-dom 20.9.0 · Biome 2.4.15 · Changesets 2.31.0 · Playwright 1.59.1 · commitlint + husky | Stay on TS 5.8.x until the ecosystem (Vitest, Biome) catches up with 6.x. |
 
-### Removed in v0.10.0 (ADR-0012)
+### Removed in v0.10.0 (ADR-0016)
 
 `packages/bridge` (Fastify 5, `@fastify/{websocket,cors,rate-limit}`, `ws`, `pino`, `prom-client`, in-memory token/cache, `sharp` portrait renderer), `packages/foundry-mcp` (`@modelcontextprotocol/sdk`, stdio/Streamable HTTP), `deploy/` (Docker Compose, `node:24-alpine` images, GHCR `evf-bridge`), Deepgram voice proxy and g2-app audio capture, socketlib `executeAsGM`, standalone `g2-app-dist.zip`. Do not reintroduce any of them without a new ADR.
 
@@ -266,7 +266,7 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 | Avoid | Why | Use instead |
 |---|---|---|
-| A server/bridge between Foundry and the phone | ADR-0012: zero-infrastructure goal; cross-origin fails (whitelist per build, no CORS bypass, v14 cookie-only session) | Same-origin page served by Foundry + `module.evenfoundryvtt` relay |
+| A server/bridge between Foundry and the phone | ADR-0016: zero-infrastructure goal; cross-origin fails (whitelist per build, no CORS bypass, v14 cookie-only session) | Same-origin page served by Foundry + `module.evenfoundryvtt` relay |
 | Plaintext payloads on `module.evenfoundryvtt` | The relay broadcasts to every client | Sealed envelopes (`@evf/shared-protocol` `direct/envelope.ts`) |
 | socketlib / `activity.use()` outside `foundry-module/src/write-path` | ADR-0011 single-workflow-origin; CI Gates 8/9 | `dispatchTool` in the GM-client projector |
 | `jimp`, `pngjs`, `fast-png`, `pako`/`fflate` for the map | Wrong dither / bit depth / double compression (§11.5.7) | `upng-js` 4-bit + `xxhash-wasm` tile hashes (SDK LZ4 in transit) |

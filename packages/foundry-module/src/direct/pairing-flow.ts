@@ -1,5 +1,5 @@
 /**
- * Pairing flow behind the «Associa occhiali G2» window (mock P01, ADR-0012 §3).
+ * Pairing flow behind the «Associa occhiali G2» window (mock P01, ADR-0016 §3).
  *
  * One pairing session = one 16-char manual code (Crockford base32, 80 bits):
  * - the code (normalised, no dashes) **is** the Foundry password of the "(G2)" user;

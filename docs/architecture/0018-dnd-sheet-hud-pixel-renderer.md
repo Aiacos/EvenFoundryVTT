@@ -6,7 +6,7 @@ consulted: hub.evenrealities.com/docs/build/display, @evenrealities/pretext 0.1.
 informed: g2-app, shared-render, foundry-module (map reader)
 ---
 
-# ADR-0014: D&D-Sheet HUD on a Pure-TypeScript Pixel Renderer
+# ADR-0018: D&D-Sheet HUD on a Pure-TypeScript Pixel Renderer
 
 ## Status
 
@@ -14,12 +14,12 @@ informed: g2-app, shared-render, foundry-module (map reader)
 z-model), [ADR-0006](./0006-raster-pipeline-library-stack.md) (image-q / xxhash-wasm raster
 stack), [ADR-0009](./0009-layer-manager-contract.md) (layer manager) and
 [ADR-0010](./0010-panel-plugin-registry.md) (overlay panel registry). Replaces the map
-section (point 6) of [ADR-0012](./0012-direct-foundry-streaming.md). Design spec:
+section (point 6) of [ADR-0016](./0016-direct-foundry-streaming.md). Design spec:
 [`docs/design/g2-sheet-ux.html`](../design/g2-sheet-ux.html).
 
 ## Context
 
-- The first v0.10 layout (three equal columns of firmware text) worked on the simulator
+- The first v0.12 layout (three equal columns of firmware text) worked on the simulator
   but did not read like a D&D character sheet (maintainer feedback, 2026-09-23).
 - The firmware text font is proportional, has no size control, and **drops** the glyphs
   a sheet needs (`▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` measure 0 px with `@evenrealities/pretext`). A

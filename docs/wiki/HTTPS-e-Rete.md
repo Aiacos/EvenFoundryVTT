@@ -6,7 +6,7 @@ La Even Realities App carica la pagina degli occhiali **dall'origine di Foundry*
 
 - Le app Even Hub impacchettate hanno una whitelist di origini **fissa per build, senza wildcard**, e la whitelist **non aggira il CORS** ([networking](https://hub.evenrealities.com/docs/build/networking)): un'app pacchettizzata non può raggiungere il Foundry di chiunque.
 - Foundry v14 accetta la sessione socket **solo dal cookie `session`**, quindi serve un contesto first-party.
-- Soluzione: la pagina è servita da Foundry stesso e caricata con il **QR sideload** ([architettura Even Hub](https://hub.evenrealities.com/docs/get-started/architecture)). Stessa origine ⇒ niente CORS, niente whitelist, cookie di prima parte ([ADR-0012](Decisioni-Architetturali)).
+- Soluzione: la pagina è servita da Foundry stesso e caricata con il **QR sideload** ([architettura Even Hub](https://hub.evenrealities.com/docs/get-started/architecture)). Stessa origine ⇒ niente CORS, niente whitelist, cookie di prima parte ([ADR-0016](Decisioni-Architetturali)).
 
 ## ⚙️ Tre modi per avere HTTPS valido
 

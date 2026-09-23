@@ -1,10 +1,10 @@
 /**
- * App bootstrap for the sideloaded G2 app (ADR-0012): wires store → credentials →
+ * App bootstrap for the sideloaded G2 app (ADR-0016): wires store → credentials →
  * session → phone page → HUD, and routes Even Hub foreground events to the session.
  *
  * Kept free of globals so it is testable; `src/main.ts` passes the browser environment.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see hub.evenrealities.com/docs/build/background-lifecycle (foreground/background, storage)
  */
 import {

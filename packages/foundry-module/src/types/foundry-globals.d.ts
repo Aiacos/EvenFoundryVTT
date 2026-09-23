@@ -3,7 +3,7 @@
  *
  * These declarations describe the subset of the Foundry v13/v14 API surface
  * consumed by the evenfoundryvtt module: settings + pairing window, the direct
- * projector (socket relay, users, ownership — ADR-0012), readers and write path.
+ * projector (socket relay, users, ownership — ADR-0016), readers and write path.
  *
  * Intentionally minimal: only declare what is used. noUncheckedIndexedAccess
  * and strict mode (INV-4 §0.1) require every access to be provably safe.

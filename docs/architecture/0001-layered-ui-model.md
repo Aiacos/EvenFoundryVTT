@@ -10,7 +10,7 @@ informed: future contributors
 
 ## Status
 
-> **SUPERSEDED by [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. The z=0/0.5/1/2 layered model is replaced by the five fixed zones of the D&D-sheet HUD.
+> **SUPERSEDED by [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. The z=0/0.5/1/2 layered model is replaced by the five fixed zones of the D&D-sheet HUD.
 
 **ACCEPTED** — 2026-05-11. **AMENDED** — 2026-05-14 (added z=0.5 extension) + **RATIFIED** — 2026-05-17 (Phase 14 — INFILL-01..05 closed). Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), Phase 5 (Panel Plugin System).
 

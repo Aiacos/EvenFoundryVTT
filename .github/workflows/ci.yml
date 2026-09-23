@@ -1,4 +1,4 @@
-# EVF CI Workflow — D-1.09 (GitHub Actions) + D-1.10 (7 quality gates) + ADR-0011/0012 guards
+# EVF CI Workflow — D-1.09 (GitHub Actions) + D-1.10 (7 quality gates) + ADR-0011/0016 guards
 # Source: github.com/pnpm/action-setup (verified 2026-05-11)
 name: CI
 
@@ -73,14 +73,14 @@ jobs:
         if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset:status
 
-      # D-7.01 gate 8: Single-workflow-origin guard (ADR-0011, preserved by ADR-0012)
+      # D-7.01 gate 8: Single-workflow-origin guard (ADR-0011, preserved by ADR-0016)
       # The ONLY valid call sites for activity.use() are under
       #   packages/foundry-module/src/write-path/
       # Any other hit (g2-app, shared-*, validation-harness, or foundry-module outside
-      # write-path — e.g. the ADR-0012 projector) is a write bypass of the GM-side
+      # write-path — e.g. the ADR-0016 projector) is a write bypass of the GM-side
       # dispatchTool pipeline — critical violation (T-07-01 mitigation).
       # @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
-      # @see docs/architecture/0012-direct-foundry-streaming.md (Decision Outcome §5)
+      # @see docs/architecture/0016-direct-foundry-streaming.md (Decision Outcome §5)
       - name: Single-workflow-origin guard (ADR-0011)
         run: |
           # Match real calls only. Post-filters drop (1) lines whose content (after
@@ -100,12 +100,12 @@ jobs:
             exit 1
           fi
 
-      # ADR-0012 gate 9: socketlib is a Foundry-side (GM client) dependency only.
+      # ADR-0016 gate 9: socketlib is a Foundry-side (GM client) dependency only.
       # The phone g2-app talks raw socket.io on `module.evenfoundryvtt`; shared-* are
       # environment-agnostic. Any socketlib import/call outside packages/foundry-module
       # is an architecture leak. (Replaces the former fixed handler-count assertion:
       # the gate must not depend on how many handlers foundry-module registers.)
-      - name: socketlib confinement guard (ADR-0012)
+      - name: socketlib confinement guard (ADR-0016)
         run: |
           HITS=$(git grep -nE \
               "from ['\"][^'\"]*socketlib|import\(['\"][^'\"]*socketlib|\bsocketlib\.(register|execute)[A-Za-z]*\(|modules\.get\(['\"]socketlib" \
@@ -113,19 +113,19 @@ jobs:
             | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)' || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
-            echo "::error::socketlib usage detected outside packages/foundry-module (ADR-0012)."
+            echo "::error::socketlib usage detected outside packages/foundry-module (ADR-0016)."
             echo "::error::Only the GM-client Foundry module may depend on socketlib."
             exit 1
           fi
 
-      # ADR-0012 gate 10: the g2-app is served by Foundry from the module folder.
+      # ADR-0016 gate 10: the g2-app is served by Foundry from the module folder.
       # `vite build` must emit into packages/foundry-module/g2/ with an index.html
       # entry, or the QR-sideload URL /modules/evenfoundryvtt/g2/index.html 404s.
-      - name: Build g2-app into foundry-module/g2 (ADR-0012)
+      - name: Build g2-app into foundry-module/g2 (ADR-0016)
         run: |
           pnpm --filter @evf/g2-app build
           if ! test -f packages/foundry-module/g2/index.html; then
-            echo "::error file=packages/g2-app/vite.config.ts::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0012 hosting contract)."
+            echo "::error file=packages/g2-app/vite.config.ts::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0016 hosting contract)."
             exit 1
           fi
           ls -la packages/foundry-module/g2

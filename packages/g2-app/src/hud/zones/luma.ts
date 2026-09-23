@@ -6,7 +6,7 @@
  * Degradation: a failed fetch/decode is cached as "failed" so the caller falls back
  * (token image → class emblem; background → grid dots) without retry storms.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md (page served same-origin by Foundry)
+ * @see docs/architecture/0016-direct-foundry-streaming.md (page served same-origin by Foundry)
  */
 
 /** 8-bit luminance picture (0 = black, 255 = white), row-major. */

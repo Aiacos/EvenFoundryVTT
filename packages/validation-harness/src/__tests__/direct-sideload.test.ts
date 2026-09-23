@@ -1,8 +1,8 @@
 /**
- * Unit tests for the ADR-0012 direct-sideload GO/NO-GO pure helpers.
+ * Unit tests for the ADR-0016 direct-sideload GO/NO-GO pure helpers.
  *
  * @see packages/validation-harness/src/direct-sideload.ts
- * @see docs/architecture/0012-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
  */
 
 import { describe, expect, it } from 'vitest';
@@ -131,7 +131,7 @@ describe('evaluateApiStatus', () => {
 });
 
 describe('hardware checklist', () => {
-  it('covers the four ADR-0012 confirmation steps', () => {
+  it('covers the four ADR-0016 confirmation steps', () => {
     expect(HARDWARE_CHECKLIST.map((s) => s.id)).toEqual([
       'hw-qr-load',
       'hw-sdk-bridge',

@@ -6,14 +6,14 @@
  * `direct/identity-keys.ts`; sealed glasses passwords world-scope —
  * `direct/glasses-access.ts`), the GM-only settings menu «Associa occhiali G2»
  * (enablement + pairing on behalf, mock P01), the player menu «Associa i miei occhiali»
- * (self-service, ADR-0013), and the same entries in the Players list context menu
+ * (self-service, ADR-0017), and the same entries in the Players list context menu
  * (`direct/players-menu.ts`).
  *
  * Also reads `detectedLocale` from `game.i18n.lang` (I18N-01, locale detection at
  * module boot).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 3
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 3
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  * @see docs/design/g2-thirds-layout.md §P01
  */
 

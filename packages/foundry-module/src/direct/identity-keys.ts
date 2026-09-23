@@ -1,5 +1,5 @@
 /**
- * Per-client ECDH identity key (ADR-0013 §Decision 2).
+ * Per-client ECDH identity key (ADR-0017 §Decision 2).
  *
  * Every Foundry client running the module — players and GMs — owns one P-256 key pair:
  * - the **private** JWK lives in a hidden `scope: 'client'` setting (this browser only);
@@ -19,7 +19,7 @@
  *
  * @see https://foundryvtt.com/api/v13/classes/foundry.documents.User.html — `setFlag`, `update`, `isSelf`
  * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.ClientSettings.html — setting scopes (client = this browser)
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import {
   generateIdentityKeyPair,

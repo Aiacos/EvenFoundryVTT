@@ -6,20 +6,20 @@ consulted: foundryvtt.com/article/users (user management rights, verbatim re-che
 informed: foundry-module, g2-app, shared-protocol
 ---
 
-# ADR-0013: Player-Owned Glasses — Self-Service Pairing + Hybrid Projector
+# ADR-0017: Player-Owned Glasses — Self-Service Pairing + Hybrid Projector
 
 ## Status
 
 > **ERRATUM** — 2026-09-23: the Context quote from foundryvtt.com/article/users was a paraphrase, not the page text; replaced with the verbatim sentence (which also grants Assistant GMs user configuration). The decision is unchanged.
 
-**ACCEPTED** — 2026-09-23. Amends [ADR-0012](./0012-direct-foundry-streaming.md) (pairing,
+**ACCEPTED** — 2026-09-23. Amends [ADR-0016](./0016-direct-foundry-streaming.md) (pairing,
 key custody, projector location) and [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md)
 (the single workflow origin becomes *the elected projector client*, still one per device
 at a time, still through `dispatchTool`).
 
 ## Context
 
-- ADR-0012 put every device key in the browser of the GM that paired it, and made the
+- ADR-0016 put every device key in the browser of the GM that paired it, and made the
   active GM the only projector. Every pairing needed the GM; changing the GM browser
   lost all keys.
 - Several players may wear glasses; at a physical table **some** players also have
@@ -44,7 +44,7 @@ at a time, still through `dispatchTool`).
    player's browser can open it. The GM can regenerate it at any time.
 4. **Self-service pairing.** From their own Foundry, the player opens *«Associa i miei
    occhiali»*: their client generates the device AES key, shows the QR
-   (`u`, `p`, `k` as in ADR-0012) and rotates the device key after the first `hello`
+   (`u`, `p`, `k` as in ADR-0016) and rotates the device key after the first `hello`
    (single-use QR). The password rotates only when the GM regenerates it.
 5. **GM fallback custody.** The player's client seals the device key for each GM's
    public key and publishes the ciphertexts in its own User flags, so any GM browser
@@ -87,7 +87,7 @@ Tests covering the items above:
 - Self-service pairing, key custody for multiple GMs, expiry, custody reconciliation:
   `packages/foundry-module/src/direct/self-pairing.test.ts`
 - Hybrid projector (player answers + key-only rotation, GM fallback via `gmKeys`,
-  only-elected-executes, takeover on `userConnected`, player-own targets, ADR-0012
+  only-elected-executes, takeover on `userConnected`, player-own targets, ADR-0016
   migration via `keyHolder`, on-behalf pairing of an enabled player):
   `packages/foundry-module/src/direct/projector-hybrid.test.ts`
 - Identity keys, self flags, custody sync hooks, player targets:

@@ -40,7 +40,7 @@
  * ## Emission
  *
  * Emission is via the injected `emit` callback — `projector.pushDelta` in
- * production (fire-and-forget sealed delta, ADR-0012).
+ * production (fire-and-forget sealed delta, ADR-0016).
  *
  * ## Threat model
  *
@@ -126,7 +126,7 @@ function _getPlayerActorId(): string | null {
 
 /**
  * Default tracked set: the local user's character (player-client behaviour).
- * On the GM projector (ADR-0012) `module.ts` injects the paired actors instead —
+ * On the GM projector (ADR-0016) `module.ts` injects the paired actors instead —
  * `game.user.character` of a GM is not the character shown on the glasses.
  */
 function defaultTrackedActorIds(): readonly string[] {
@@ -157,7 +157,7 @@ function seedPosition(actorId: string): void {
 
 /**
  * Current movement budget of `actorId` this turn (full budget when it has not moved).
- * Read by the projector to prime a G2 device right after `hello` (ADR-0012).
+ * Read by the projector to prime a G2 device right after `hello` (ADR-0016).
  *
  * @param actorId - Foundry actor id.
  * @returns The payload the tracker would emit now.
@@ -192,7 +192,7 @@ export function getMovementBudget(actorId: string): MovementBudgetPayload {
  *               - Token is not a tracked actor (CMT-02/07)
  *               - Combat is not active (CMT-04)
  * @param trackedActorIds - Actors whose movement is tracked. Defaults to the local
- *               user's character; the GM projector passes the paired actors (ADR-0012).
+ *               user's character; the GM projector passes the paired actors (ADR-0016).
  * @returns Unsubscribe closure — calls `Hooks.off(updateTokenHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (FIX E).
  *          Discarded by module.ts for MVP (module lifecycle is for-the-session).

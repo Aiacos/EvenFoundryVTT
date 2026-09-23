@@ -1,5 +1,5 @@
 /**
- * Targets for actions executed on a **player** client (ADR-0013 §Decision 7).
+ * Targets for actions executed on a **player** client (ADR-0017 §Decision 7).
  *
  * Vanilla dnd5e records an activity's targets from `game.user.targets`
  * (`getTargetDescriptors()` in dnd5e 5.3.3 `module/utils.mjs`). When the projector runs

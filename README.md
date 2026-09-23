@@ -35,7 +35,7 @@ There is **one** thing to install: the Foundry module. It also serves the glasse
 
 | Who | Where | What |
 |---|---|---|
-| GM (once) | *Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses** → *Players' glasses* → **Enable glasses for players** | creates a "&lt;Player&gt; (G2)" user per player and seals its password for that player's public key ([ADR-0013](docs/architecture/0013-player-owned-glasses-hybrid-projector.md)) |
+| GM (once) | *Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses** → *Players' glasses* → **Enable glasses for players** | creates a "&lt;Player&gt; (G2)" user per player and seals its password for that player's public key ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)) |
 | Player | own Foundry → *Configure Settings* → *EvenFoundryVTT* → **Pair my glasses** (or right-click own name in *Players*) | the player's browser creates the device key and shows the QR — no GM needed |
 | GM (on behalf) | Foundry sidebar → *Players* → right-click a player → **Pair G2 glasses** (or *Configure Settings* → *EvenFoundryVTT*) | player + character preselected → a QR appears (valid 5 min, single use); the dialog turns to *Glasses connected* on success. For players without Foundry open |
 | Player | Even Realities App → **scan the QR** | the glasses app opens already connected to that character |
@@ -79,15 +79,15 @@ Real simulator screenshots (all 12 screens in [`docs/design/img/`](docs/design/i
      evenfoundryvtt module: dnd5e readers · write path (activity.use / MidiQOL) · pairing
 ```
 
-No bridge, no Docker, no extra origin. Decision record: **[ADR-0012](docs/architecture/0012-direct-foundry-streaming.md)**. A projector client must be online — the player's own Foundry client, or a GM holding the device key ([ADR-0013](docs/architecture/0013-player-owned-glasses-hybrid-projector.md)); it computes dnd5e derived data and is the only client that executes that device's actions ([ADR-0011](docs/architecture/0011-foundry-write-path-single-workflow-origin.md)).
+No bridge, no Docker, no extra origin. Decision record: **[ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)**. A projector client must be online — the player's own Foundry client, or a GM holding the device key ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)); it computes dnd5e derived data and is the only client that executes that device's actions ([ADR-0011](docs/architecture/0011-foundry-write-path-single-workflow-origin.md)).
 
 ## ✨ Highlights
 
 - **Zero infrastructure** — the glasses app is shipped inside the Foundry module and QR-sideloaded; same-origin means no CORS, no whitelist, no cookies blocked (works on Foundry v13 and v14).
 - **Private by design** — Foundry relays module messages to every client, so every payload is **AES-256-GCM sealed** with a per-device key held only by the phone and the projector clients; the QR is single-use (the key rotates on first connect).
 - **Reads like your character sheet** — AC shield, HP box, ability boxes and proficiency circles drawn by our own pixel renderer and bitmap fonts (the firmware font has no D&D glyphs); pages switch automatically (Saves & Skills on a GM roll request, death saves at 0 HP).
-- **Player-owned glasses** — the GM enables players once; each player pairs from their own Foundry, and their client is the projector while online, with the GM as fallback. Keys travel sealed with ECDH P-256 ([ADR-0013](docs/architecture/0013-player-owned-glasses-hybrid-projector.md)).
-- **Pixelated original map** — the phone fetches the scene art (background, tiles, token art) same-origin, block-downsamples it (pixel size 1/2/3, default 2), Floyd–Steinberg dithers it to 16 greens, blacks out what your token can't see (12 cells when the token has no sight radius) and draws crisp markers on top; one square 144 × 144 image centred on your token, sent only when it changes (≤ 1 fps), paced to the SDK's 100 ms image limit ([ADR-0014](docs/architecture/0014-dnd-sheet-hud-pixel-renderer.md)).
+- **Player-owned glasses** — the GM enables players once; each player pairs from their own Foundry, and their client is the projector while online, with the GM as fallback. Keys travel sealed with ECDH P-256 ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)).
+- **Pixelated original map** — the phone fetches the scene art (background, tiles, token art) same-origin, block-downsamples it (pixel size 1/2/3, default 2), Floyd–Steinberg dithers it to 16 greens, blacks out what your token can't see (12 cells when the token has no sight radius) and draws crisp markers on top; one square 144 × 144 image centred on your token, sent only when it changes (≤ 1 fps), paced to the SDK's 100 ms image limit ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)).
 - **Dual D&D edition** — PHB 2014 and PHB 2024 via `core.modernRules`.
 - **IT + EN** — follows Foundry's language, overridable from the phone page or the glasses menu.
 
@@ -97,7 +97,7 @@ Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layo
 
 ## 📊 Status
 
-**v0.10.0 — direct streaming.** The Node bridge, the `foundry-mcp` server and Docker Compose were removed (ADR-0012); the G2 app was redesigned around the D&D-sheet layout ("Scheda da tavolo G2", UX round 2) on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern: `pnpm --filter @evf/validation-harness validate:direct-sideload`.
+**v0.10.0 — direct streaming.** The Node bridge, the `foundry-mcp` server and Docker Compose were removed (ADR-0016); the G2 app was redesigned around the D&D-sheet layout ("Scheda da tavolo G2", UX round 2) on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern: `pnpm --filter @evf/validation-harness validate:direct-sideload`.
 
 Previous milestones (v0.9.11 MVP → v0.9.13 sheet data) are archived under [`.planning/milestones/`](.planning/milestones/).
 
@@ -128,7 +128,7 @@ Previous milestones (v0.9.11 MVP → v0.9.13 sheet data) are archived under [`.p
 - [`Specs.md`](Specs.md) — canonical specification (v0.10.0)
 - [`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html) — D&D-sheet HUD design (zones, principles, gestures, 12 screens)
 - [`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md) — superseded thirds layout (history); its pairing flow and phone mocks P01–P03 are still current
-- [`docs/architecture/`](docs/architecture/) — ADRs (0012 direct streaming · 0013 player-owned glasses · 0014 D&D-sheet HUD)
+- [`docs/architecture/`](docs/architecture/) — ADRs (0016 direct streaming · 0017 player-owned glasses · 0018 D&D-sheet HUD)
 - [`docs/setup-guide.md`](docs/setup-guide.md) · [`docs/runbook.md`](docs/runbook.md) · [`docs/showcase/index.html`](docs/showcase/index.html)
 
 ## 🎨 Inspiration

@@ -1,6 +1,6 @@
 /**
- * Direct projector — the Foundry-client end of the G2 channel (ADR-0012 §Decision
- * Outcome 5, amended by ADR-0013 §Decision 6).
+ * Direct projector — the Foundry-client end of the G2 channel (ADR-0016 §Decision
+ * Outcome 5, amended by ADR-0017 §Decision 6).
  *
  * Listens on the Foundry socket relay (`module.evenfoundryvtt`) for sealed envelopes
  * addressed to {@link PROJECTOR_ADDRESS}, authenticates them with the sender device's
@@ -27,8 +27,8 @@
  * snapshots — when the election changes (`userConnected`). Every message leaves sealed
  * `from` {@link PROJECTOR_ADDRESS}: the glasses do not care which client answered.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see packages/shared-protocol/src/direct/ (wire contract)
  */

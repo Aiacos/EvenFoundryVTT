@@ -1,5 +1,5 @@
 /**
- * Per-device projector election (ADR-0013 §Decision 6).
+ * Per-device projector election (ADR-0017 §Decision 6).
  *
  * Every Foundry client runs a projector, but for each paired device exactly one client
  * — the **responder** — answers. All clients compute the same answer from state they
@@ -11,7 +11,7 @@
  * 2. otherwise a connected **GM that can open the device key**: from the player's
  *    `gmKeys[gmId]` (sealed for that GM's current public key) for self-paired devices,
  *    or its own browser storage (`DeviceMeta.keyHolder`) for devices paired on the
- *    player's behalf; legacy ADR-0012 records (no `keyHolder`) assume the active GM.
+ *    player's behalf; legacy ADR-0016 records (no `keyHolder`) assume the active GM.
  *    Preference: `game.users.activeGM`, then the lowest user id (deterministic).
  * 3. nobody (the glasses time out and retry).
  *
@@ -22,7 +22,7 @@
  * @see https://foundryvtt.com/api/v14/classes/foundry.documents.User.html — `active`, `isSelf`
  * @see https://foundryvtt.com/api/v13/classes/foundry.documents.collections.Users.html — `activeGM`
  * @see https://foundryvtt.com/api/v13/functions/hookEvents.userConnected.html
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import type { GmKeyEntry, SelfDevice } from '@evf/shared-protocol';
 import { readGmKeys, readSelfDevice } from './glasses-flags.js';

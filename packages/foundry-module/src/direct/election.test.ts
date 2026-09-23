@@ -1,5 +1,5 @@
 /**
- * ADR-0013 §Confirmation — election matrix: player active/inactive × GM active/none ×
+ * ADR-0017 §Confirmation — election matrix: player active/inactive × GM active/none ×
  * key present/absent, plus custody variants (self-paired, on behalf, legacy).
  */
 import { generateIdentityKeyPair, type SealedBlob, type SelfDevice } from '@evf/shared-protocol';

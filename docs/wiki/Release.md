@@ -1,6 +1,6 @@
 # Release
 
-Dalla v0.10.0 l'unico artefatto di release è lo **zip del modulo Foundry**, che contiene anche l'app degli occhiali in `g2/` ([ADR-0012](Decisioni-Architetturali)). Flusso: **GitFlow + Changesets**.
+Dalla v0.10.0 l'unico artefatto di release è lo **zip del modulo Foundry**, che contiene anche l'app degli occhiali in `g2/` ([ADR-0016](Decisioni-Architetturali)). Flusso: **GitFlow + Changesets**.
 
 ## 🚀 Dal changeset al tag
 

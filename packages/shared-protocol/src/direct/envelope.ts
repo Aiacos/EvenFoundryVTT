@@ -10,8 +10,8 @@
  * Uses WebCrypto only (`globalThis.crypto.subtle`) — available in the Even App
  * WebView, Foundry browser clients and Node ≥ 20 (tests).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 4
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md §Decision 6
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 4
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md §Decision 6
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';
@@ -21,7 +21,7 @@ export const DIRECT_SOCKET_EVENT = 'module.evenfoundryvtt' as const;
 
 /**
  * Address the glasses write to: whichever Foundry client is currently elected projector
- * for the device (the player's own client, else a GM holding the device key — ADR-0013
+ * for the device (the player's own client, else a GM holding the device key — ADR-0017
  * §Decision 6). Replies are sealed `from` the same address, so the AAD `from>to` does not
  * depend on which client answered.
  */

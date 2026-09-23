@@ -1,6 +1,6 @@
 # Installazione (GM)
 
-C'è **una sola cosa** da installare: il modulo Foundry **EvenFoundryVTT**. Serve anche l'app per gli occhiali, quindi non ci sono server, container o secondi domini ([ADR-0012](Decisioni-Architetturali)).
+C'è **una sola cosa** da installare: il modulo Foundry **EvenFoundryVTT**. Serve anche l'app per gli occhiali, quindi non ci sono server, container o secondi domini ([ADR-0016](Decisioni-Architetturali)).
 
 ## 🥽 Requisiti
 

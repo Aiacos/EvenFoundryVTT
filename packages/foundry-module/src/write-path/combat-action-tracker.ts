@@ -22,7 +22,7 @@
  * ## Emission
  *
  * Emission is via the injected `emit` callback — `projector.pushDelta` in
- * production (fire-and-forget sealed delta, ADR-0012). Read-only: per ADR-0011
+ * production (fire-and-forget sealed delta, ADR-0016). Read-only: per ADR-0011
  * single-workflow-origin discipline this module never mutates game state.
  *
  * ## Threat model
@@ -165,7 +165,7 @@ export interface TrackedActor {
 
 /**
  * Current action economy of `actorId` this turn (all slots free when nothing was
- * consumed). Read by the projector to prime a G2 device right after `hello` (ADR-0012).
+ * consumed). Read by the projector to prime a G2 device right after `hello` (ADR-0016).
  *
  * @param actorId - Foundry actor id.
  * @param recipientUserId - User the payload is addressed to when no state exists yet.
@@ -193,7 +193,7 @@ export function getActionEconomy(actorId: string, recipientUserId: string): Acti
  * @param trackedActors - Actors that also receive a fresh (all-free) payload on every
  *               turn/round change even if they consumed nothing yet — the GM projector
  *               passes the paired actors so a G2 device always learns its economy
- *               (ADR-0012). Defaults to none (only actors with state are reset).
+ *               (ADR-0016). Defaults to none (only actors with state are reset).
  * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (R3).
  *          Discarded by module.ts for MVP (module lifecycle is for-the-session).

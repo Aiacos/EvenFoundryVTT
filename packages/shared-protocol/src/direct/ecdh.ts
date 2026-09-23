@@ -1,5 +1,5 @@
 /**
- * Public-key sealing for the player-owned glasses flow (ADR-0013 §Decision 2, 3, 5).
+ * Public-key sealing for the player-owned glasses flow (ADR-0017 §Decision 2, 3, 5).
  *
  * Every participating Foundry client (players and GMs) owns an ECDH P-256 identity key
  * pair: the private key stays in that browser's `scope:'client'` storage, the public key
@@ -19,7 +19,7 @@
  *
  * @see https://www.w3.org/TR/WebCryptoAPI/ (ECDH `deriveBits`, HKDF, AES-GCM)
  * @see https://www.rfc-editor.org/rfc/rfc5869 (HKDF)
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';

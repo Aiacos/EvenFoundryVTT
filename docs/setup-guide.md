@@ -3,9 +3,9 @@
 How to get a D&D 5e character from Foundry onto the G2 glasses. There is **one** thing to
 install, the Foundry module. It also serves the glasses app. You don't need a bridge,
 Docker or a second server
-([ADR-0012](architecture/0012-direct-foundry-streaming.md)).
+([ADR-0016](architecture/0016-direct-foundry-streaming.md)).
 
-**Canonical references:** [ADR-0012](architecture/0012-direct-foundry-streaming.md) ·
+**Canonical references:** [ADR-0016](architecture/0016-direct-foundry-streaming.md) ·
 [`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) (glasses screens S10–S12) ·
 [`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.md) §Associazione e connessione
 (pairing flow, phone/Foundry mocks P01–P03) · [`packages/foundry-module/README.md`](../packages/foundry-module/README.md).
@@ -189,7 +189,7 @@ g2-app change (`pnpm --filter @evf/g2-app build`) and reload the phone page.
 ## 📚 See also
 
 - [Runbook](runbook.md) — diagnosis, revoke, re-pair, the sideload harness.
-- [ADR-0012](architecture/0012-direct-foundry-streaming.md) — why there is no bridge.
+- [ADR-0016](architecture/0016-direct-foundry-streaming.md) — why there is no bridge.
 - [G2 sheet UX](design/g2-sheet-ux.html) — glasses HUD design and screens.
 - [G2 thirds layout](design/g2-thirds-layout.md) — superseded glasses layout; pairing flow and phone/Foundry mocks P01–P03 still current.
 - [Firmware compatibility](firmware-compatibility.md) — SDK / Even App versions.

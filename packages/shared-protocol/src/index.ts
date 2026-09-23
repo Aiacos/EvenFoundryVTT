@@ -178,7 +178,7 @@ export {
   ReactionAvailablePayloadSchema,
 } from './payloads/reaction.js';
 
-// ─── v0.10 sheet HUD — GM roll requests (docs/design/g2-sheet-ux.html S8) ──────
+// ─── v0.12 sheet HUD — GM roll requests (docs/design/g2-sheet-ux.html S8) ──────
 export {
   R1_ROLL_REQUEST_TYPE,
   type RollRequestPayload,
@@ -276,7 +276,7 @@ export {
   CastCounterspellInputSchema,
 } from './tools/cast-counterspell.js';
 export { type CastShieldInput, CastShieldInputSchema } from './tools/cast-shield.js';
-// ADR-0012 direct channel — `end-turn` (paired actor ends its own combat turn).
+// ADR-0016 direct channel — `end-turn` (paired actor ends its own combat turn).
 export { END_TURN_TOOL, type EndTurnInput, EndTurnInputSchema } from './tools/end-turn.js';
 export {
   type OpportunityAttackInput,
@@ -319,5 +319,5 @@ export {
 // backdoor described in the plan's <security_model>. DebugGestureBodySchema.kind
 // reuses the canonical 5 R1 gesture kinds from R1GesturePayloadSchema.
 
-// ─── Direct channel (ADR-0012) ───────────────────────────────────────────────
+// ─── Direct channel (ADR-0016) ───────────────────────────────────────────────
 export * from './direct/index.js';

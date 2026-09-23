@@ -1,6 +1,6 @@
 /**
  * Self-service pairing state published by a player on their OWN User document
- * (ADR-0013 §Decision 4–5). Every client can read it; only the player (or a GM) can
+ * (ADR-0017 §Decision 4–5). Every client can read it; only the player (or a GM) can
  * write it — a player cannot update another user's document.
  *
  * - `flags.evenfoundryvtt.device` — {@link SelfDevice}: the glasses the player paired
@@ -12,7 +12,7 @@
  * degrade to "absent".
  *
  * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#update — `-=key` deletion syntax
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import {
   type GmKeyEntry,

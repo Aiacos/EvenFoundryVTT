@@ -7,7 +7,7 @@
  * scene rectangle's top-left, so the payload is resolution-independent and small.
  * Scene art (background, tiles) is positioned in **scene pixels** relative to the
  * same corner — the phone divides by {@link MapSnapshot.gridPx}. Image `src`s are
- * same-origin relative URLs (the g2-app page is served by Foundry, ADR-0012).
+ * same-origin relative URLs (the g2-app page is served by Foundry, ADR-0016).
  * Tokens are already filtered by the projector to what the paired actor may see.
  */
 import { z } from 'zod';

@@ -33,7 +33,7 @@ Esempi:
 ```
 feat(g2-app): arte originale pixelata nella mappa
 fix(foundry-module): elezione del projector quando il GM cambia
-docs(*): wiki e showcase per ADR-0013
+docs(*): wiki e showcase per ADR-0017
 ```
 
 ## 🧹 Checklist della PR

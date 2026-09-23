@@ -2,7 +2,7 @@
 
 How to publish EvenFoundryVTT to GitHub Releases, and how users install it on Foundry or
 The Forge. Since v0.10.0 the module zip is the **only** release artefact. It also carries
-the glasses app under `g2/` ([ADR-0012](../architecture/0012-direct-foundry-streaming.md)).
+the glasses app under `g2/` ([ADR-0016](../architecture/0016-direct-foundry-streaming.md)).
 
 ---
 

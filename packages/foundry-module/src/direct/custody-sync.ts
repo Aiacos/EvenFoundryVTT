@@ -1,9 +1,9 @@
 /**
- * Keeps key custody consistent across clients (ADR-0013), on `ready` and whenever a
+ * Keeps key custody consistent across clients (ADR-0017), on `ready` and whenever a
  * user's public identity key changes (`updateUser`):
  *
  * - every client publishes its identity key ({@link ensureIdentity});
- * - GM clients stamp legacy ADR-0012 records with their `keyHolder`, re-seal enabled
+ * - GM clients stamp legacy ADR-0016 records with their `keyHolder`, re-seal enabled
  *   players' passwords for new player keys (designated GM only) and start the actor
  *   ownership mirror;
  * - player clients fix `playerHasKey` and re-seal their device key for new GM keys.
@@ -13,7 +13,7 @@
  * still works).
  *
  * @see https://foundryvtt.com/api/v13/functions/hookEvents.updateDocument.html — `updateUser(document, changed, options, userId)`
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import { MODULE_ID } from '../module-id.js';
 import { refreshSealedPasswords, registerOwnershipMirror } from './glasses-access.js';

@@ -4,7 +4,7 @@
  * - **GM**: right-clicking a player offers *Pair G2 glasses*, which opens the GM
  *   pairing window (mock P01) with that player — and their assigned character
  *   `user.character` — preselected.
- * - **Player** (ADR-0013): right-clicking **themselves** offers *Pair my glasses*
+ * - **Player** (ADR-0017): right-clicking **themselves** offers *Pair my glasses*
  *   (self-service window), once the GM enabled glasses for them.
  *
  * The settings menus stay the canonical paths; these only save the trip through

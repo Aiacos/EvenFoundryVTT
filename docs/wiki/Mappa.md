@@ -1,6 +1,6 @@
 # Mappa (zona C)
 
-La zona C, in alto a destra, è una **mappa quadrata di 144 × 144 px** centrata sul tuo token. Mostra l'**arte originale della scena** — sfondo, tile e immagini dei token — **pixelata** e ridotta a 16 livelli di verde, con i segni tattici disegnati sopra in modo netto. È il disegno attuale della zona C ([ADR-0014](Decisioni-Architetturali), punto 5).
+La zona C, in alto a destra, è una **mappa quadrata di 144 × 144 px** centrata sul tuo token. Mostra l'**arte originale della scena** — sfondo, tile e immagini dei token — **pixelata** e ridotta a 16 livelli di verde, con i segni tattici disegnati sopra in modo netto. È il disegno attuale della zona C ([ADR-0018](Decisioni-Architetturali), punto 5).
 
 > Gli screenshot di questa wiki mostrano la mappa con l'arte originale pixelata (cripta generata per la demo). La mappa schematica (muri e griglia su fondo scuro) resta come **riserva** quando la scena non ha un'immagine o l'immagine non si carica.
 
@@ -57,4 +57,4 @@ La mappa viene inviata agli occhiali **solo quando cambia** (hash per zona) e **
 ## 📚 Vedi anche
 
 - [Renderer a pixel](Renderer-Pixel) — come sono disegnate le zone.
-- [ADR-0014](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0014-dnd-sheet-hud-pixel-renderer.md) · design: [`docs/design/g2-sheet-ux.html`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/design/g2-sheet-ux.html)
+- [ADR-0018](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md) · design: [`docs/design/g2-sheet-ux.html`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/design/g2-sheet-ux.html)

@@ -1,14 +1,14 @@
 /**
  * Vite 8 config for @evf/g2-app — single entry, emitted into the Foundry module.
  *
- * ADR-0012: Foundry serves the bundle at `<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/`,
+ * ADR-0016: Foundry serves the bundle at `<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/`,
  * so the output goes to `packages/foundry-module/g2/` (shipped in the module zip) with a
  * relative `base` — the same build works under any routePrefix. No external CDN assets.
  *
  * The `.ehpk` package is secondary (sideload-first): `evenhub pack app.json
  * ../foundry-module/g2` packs the same output (`app.json` entrypoint `index.html`).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 1
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 1
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

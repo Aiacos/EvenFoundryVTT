@@ -162,7 +162,7 @@ function detectKindAndResult(message: ChatMessageLike): {
  * Whether a chat message may be shown to any of `viewerIds` (the player and the
  * player's "(G2)" user). Public messages are visible; whispers only to recipients;
  * blind rolls never (the GM client holds every message, so this filter is what keeps
- * GM-only content off the glasses — ADR-0012 §Decision Drivers 4).
+ * GM-only content off the glasses — ADR-0016 §Decision Drivers 4).
  *
  * @see https://foundryvtt.com/api/v13/classes/foundry.documents.BaseChatMessage.html (`whisper`, `blind`)
  */

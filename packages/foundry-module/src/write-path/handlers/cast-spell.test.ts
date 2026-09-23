@@ -669,7 +669,7 @@ describe('castSpellHandler', () => {
       warnSpy.mockRestore();
     });
 
-    it("CV1b: on a player-client projector (ADR-0013) targets are the player's own → no targets warning", async () => {
+    it("CV1b: on a player-client projector (ADR-0017) targets are the player's own → no targets warning", async () => {
       const activity = makeActivity({ chatCardId: 'cm-p' });
       const item = makeItem({ id: 'spell-1', activity });
       const actor = makeActor({ id: 'actor-a', item });

@@ -29,7 +29,7 @@ Segue la lingua di Foundry (IT o EN); puoi forzarla dalla pagina del telefono o 
 ## 💡 Domande dei GM
 
 **Serve un server, Docker o un bridge?**
-No, dalla v0.10.0. Basta il modulo ([Installazione](Installazione)).
+No, dalla v0.12.0. Basta il modulo ([Installazione](Installazione)).
 
 **Perché serve HTTPS valido anche in LAN?**
 La WebView del telefono rifiuta i certificati autofirmati e Foundry v14 accetta la sessione solo dal cookie di prima parte ([HTTPS e rete](HTTPS-e-Rete)).
@@ -38,7 +38,7 @@ La WebView del telefono rifiuta i certificati autofirmati e Foundry v14 accetta 
 No. Foundry inoltra i messaggi a tutti, ma sono cifrati AES-256-GCM con la chiave del dispositivo ([Revoca e sicurezza](Revoca-e-Sicurezza)).
 
 **Cambio computer come GM: perdo le associazioni?**
-Con l'associazione self-service (ADR-0013) no: i giocatori sigillano la chiave del dispositivo per ogni GM, e un browser GM nuovo fa da riserva dopo aver pubblicato la propria chiave pubblica. Per i dispositivi associati dal GM con il flusso della v0.10 iniziale, le chiavi vivono solo nel browser che ha associato: riassocia.
+Con l'associazione self-service (ADR-0017) no: i giocatori sigillano la chiave del dispositivo per ogni GM, e un browser GM nuovo fa da riserva dopo aver pubblicato la propria chiave pubblica. Per i dispositivi associati dal GM con il flusso della v0.12 iniziale, le chiavi vivono solo nel browser che ha associato: riassocia.
 
 **Posso cancellare l'utente «(G2)» da User Management?**
 Meglio di no: usa **Revoca**, che avvisa gli occhiali e pulisce i metadati.
@@ -52,13 +52,13 @@ Sì: PHB 2014 e PHB 2024 tramite `core.modernRules` di dnd5e.
 ## 💡 Domande tecniche
 
 **Perché non un'app Even Hub normale (`.ehpk`)?**
-La whitelist di rete di un'app pacchettizzata è fissa per build, senza wildcard, e non aggira il CORS: non può raggiungere il Foundry di chiunque ([networking](https://hub.evenrealities.com/docs/build/networking), [ADR-0012](Decisioni-Architetturali)).
+La whitelist di rete di un'app pacchettizzata è fissa per build, senza wildcard, e non aggira il CORS: non può raggiungere il Foundry di chiunque ([networking](https://hub.evenrealities.com/docs/build/networking), [ADR-0016](Decisioni-Architetturali)).
 
 **Perché le immagini e non il testo firmware?**
 Il font firmware non ha dimensioni né i simboli D&D ([Renderer a pixel](Renderer-Pixel)).
 
 **La voce / l'AI?**
-Rimosse nella v0.10.0; potranno tornare come client del canale diretto con un nuovo ADR. EvenAI nativo non ha API per gli sviluppatori.
+Rimosse nella v0.12.0; potranno tornare come client del canale diretto con un nuovo ADR. EvenAI nativo non ha API per gli sviluppatori.
 
 ## 📚 Vedi anche
 

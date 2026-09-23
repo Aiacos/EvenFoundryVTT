@@ -464,7 +464,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="stat"><span class="num">5</span><span class="lab">zones · 4 images · 1 input panel</span></div>
       <div class="stat"><span class="num">0</span><span class="lab">servers to run</span></div>
       <div class="stat"><span class="num">1</span><span class="lab">QR scan to pair</span></div>
-      <div class="stat"><span class="num">v0.10.0</span><span class="lab">direct streaming · ADR-0012 · Even Hub SDK 0.0.15</span></div>
+      <div class="stat"><span class="num">v0.12.0</span><span class="lab">direct streaming · ADR-0016 · Even Hub SDK 0.0.15</span></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="../../Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
@@ -536,7 +536,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="hardware">
     <span class="section-tag">⌬ hardware</span>
     <h2>🥽 Validated against upstream docs.</h2>
-    <p>Every spec parameter below is cited from Even Realities and FoundryVTT documentation, last re-verified for v0.10.0 on 2026-09-23 against <code>hub.evenrealities.com/docs</code> (display, device APIs, input, changelog through SDK 0.0.14) and the npm registry (SDK 0.0.15).</p>
+    <p>Every spec parameter below is cited from Even Realities and FoundryVTT documentation, last re-verified for v0.12.0 on 2026-09-23 against <code>hub.evenrealities.com/docs</code> (display, device APIs, input, changelog through SDK 0.0.14) and the npm registry (SDK 0.0.15).</p>
 
     <div class="hw-grid">
       <!-- G2 -->
@@ -593,7 +593,7 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
           <tr><th>Networking</th><td>same-origin page served by Foundry (QR sideload)</td></tr>
           <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
-          <tr><th>Microphone</th><td>4-mic array · PCM 16 kHz via SDK (unused since v0.10.0)</td></tr>
+          <tr><th>Microphone</th><td>4-mic array · PCM 16 kHz via SDK (unused since v0.12.0)</td></tr>
           <tr><th>Audio out</th><td>❌ no speaker · feedback is visual only</td></tr>
           <tr><th>Camera</th><td>❌ none (intentional)</td></tr>
           <tr><th>Plugin runs on</th><td>paired phone WebView (not on G2 firmware)</td></tr>
@@ -650,7 +650,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="setup">
     <span class="section-tag">▣ pairing</span>
     <h2>📦 One module, one QR — pair your own glasses.</h2>
-    <p>Install the Foundry module (manifest URL) — it also serves the glasses app. Since <a href="../architecture/0013-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0013</a> the glasses belong to the <strong>players</strong>: the GM enables them <strong>once</strong> (<em>Abilita occhiali per i giocatori</em> creates a <code>“&lt;Player&gt; (G2)”</code> user per player and seals its password for that player’s public key), then each player opens <strong>Pair my glasses</strong> (<em>Associa i miei occhiali</em>) in their own Foundry and scans the QR with the <strong>Even Realities App</strong>. While the player has Foundry open, <strong>their client is the projector</strong> and actions run as that player; otherwise an online GM that holds the device key takes over. Players without Foundry at the table are still paired by the GM with <strong>Pair G2 glasses</strong> (<em>Associa occhiali G2</em>, also on right-click in the Players list). Foundry just needs valid HTTPS reachable from the phone. Guides: the <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener" style="color:var(--g3)">project wiki</a> (Italian) and the <a href="../setup-guide.md" style="color:var(--g3)">setup guide</a>.</p>
+    <p>Install the Foundry module (manifest URL) — it also serves the glasses app. Since <a href="../architecture/0017-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0017</a> the glasses belong to the <strong>players</strong>: the GM enables them <strong>once</strong> (<em>Abilita occhiali per i giocatori</em> creates a <code>“&lt;Player&gt; (G2)”</code> user per player and seals its password for that player’s public key), then each player opens <strong>Pair my glasses</strong> (<em>Associa i miei occhiali</em>) in their own Foundry and scans the QR with the <strong>Even Realities App</strong>. While the player has Foundry open, <strong>their client is the projector</strong> and actions run as that player; otherwise an online GM that holds the device key takes over. Players without Foundry at the table are still paired by the GM with <strong>Pair G2 glasses</strong> (<em>Associa occhiali G2</em>, also on right-click in the Players list). Foundry just needs valid HTTPS reachable from the phone. Guides: the <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener" style="color:var(--g3)">project wiki</a> (Italian) and the <a href="../setup-guide.md" style="color:var(--g3)">setup guide</a>.</p>
 
     <div class="arch-diagram flow-diagram">
       <svg viewBox="0 0 800 400" width="100%" role="img" aria-label="Hybrid pairing flow: the GM enables players once; the player pairs from their own Foundry and the Even App scans the QR; at play time the glasses address the projector, which is the player's client when online and the GM otherwise">
@@ -722,7 +722,7 @@ footer.show a { color: var(--g2); border: none; }
           <text class="label-sm" x="665" y="346" text-anchor="middle">if it holds the device key</text>
         </g>
 
-        <text class="label-sm" x="20" y="386">Only the elected client executes actions (dispatchTool · ADR-0011 as amended by ADR-0013).</text>
+        <text class="label-sm" x="20" y="386">Only the elected client executes actions (dispatchTool · ADR-0011 as amended by ADR-0017).</text>
       </svg>
     </div>
 
@@ -767,7 +767,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">▤</div>
         <h3>A dedicated “(G2)” user</h3>
-        <p>One Foundry user per player, role Player, owning only what the player owns. Every action runs through <code>dispatchTool</code> on the single elected projector (ADR-0011 / ADR-0013) and is audited. The GM can revoke a device or regenerate its password at any time.</p>
+        <p>One Foundry user per player, role Player, owning only what the player owns. Every action runs through <code>dispatchTool</code> on the single elected projector (ADR-0011 / ADR-0017) and is audited. The GM can revoke a device or regenerate its password at any time.</p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
@@ -781,7 +781,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="hud">
     <span class="section-tag">▤ live preview</span>
     <h2>👓 The HUD, in your face.</h2>
-    <p>Interactive preview of the <strong>v0.9 layered engine</strong> (map base + status corner card + overlay panels), kept for reference. v0.10.0 replaced it with the D&amp;D-sheet layout shown in the next section. Mockups from the spec § 7.</p>
+    <p>Interactive preview of the <strong>v0.9 layered engine</strong> (map base + status corner card + overlay panels), kept for reference. v0.12.0 replaced it with the D&amp;D-sheet layout shown in the next section. Mockups from the spec § 7.</p>
 
     <div class="hud-sim">
       <div class="tabs" role="tablist">
@@ -801,7 +801,7 @@ footer.show a { color: var(--g2); border: none; }
     </div>
   </section>
 
-  <!-- ═══ SHEET LAYOUT (v0.10) ═══════════════════════════════════ -->
+  <!-- ═══ SHEET LAYOUT (v0.12) ═══════════════════════════════════ -->
   <section class="show reveal" id="sheet">
     <span class="section-tag">▥ scheda da tavolo</span>
     <h2>👓 Your character sheet, on the glasses.</h2>
@@ -818,7 +818,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="arch">
     <span class="section-tag">⌥ architecture</span>
     <h2>🏗️ No bridge. Foundry is the server.</h2>
-    <p>The glasses app is served by Foundry at <code>/modules/evenfoundryvtt/g2/</code> and loaded by the Even Realities App from the pairing QR. Same origin means no CORS, no whitelist, first-party cookies (Foundry v13 and v14). The <strong>projector</strong> — the player’s own Foundry client while online, otherwise a GM holding the device key — computes dnd5e derived data, answers snapshots, pushes deltas and is the only client that executes that device’s actions. Decision records: <a href="../architecture/0012-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0012</a> · <a href="../architecture/0013-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0013</a>.</p>
+    <p>The glasses app is served by Foundry at <code>/modules/evenfoundryvtt/g2/</code> and loaded by the Even Realities App from the pairing QR. Same origin means no CORS, no whitelist, first-party cookies (Foundry v13 and v14). The <strong>projector</strong> — the player’s own Foundry client while online, otherwise a GM holding the device key — computes dnd5e derived data, answers snapshots, pushes deltas and is the only client that executes that device’s actions. Decision records: <a href="../architecture/0016-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0016</a> · <a href="../architecture/0017-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0017</a>.</p>
 
     <div class="arch-diagram">
       <svg viewBox="0 0 800 480" width="100%" role="img" aria-label="Direct streaming architecture: G2 and R1 talk BLE to the Even App WebView, which talks same-origin HTTPS to Foundry, which relays sealed messages to the elected projector — the player's client when online, otherwise a GM">
@@ -831,7 +831,7 @@ footer.show a { color: var(--g2); border: none; }
           </marker>
         </defs>
 
-        <text class="label-sm" x="20" y="20">▶ v0.10.0 · direct streaming</text>
+        <text class="label-sm" x="20" y="20">▶ v0.12.0 · direct streaming</text>
 
         <!-- G2 -->
         <g>
@@ -875,7 +875,7 @@ footer.show a { color: var(--g2); border: none; }
         <!-- Pairing -->
         <g>
           <rect class="node node-v2" x="500" y="180" width="280" height="100" />
-          <text class="label" x="640" y="210" text-anchor="middle">Pairing (ADR-0013)</text>
+          <text class="label" x="640" y="210" text-anchor="middle">Pairing (ADR-0017)</text>
           <text class="label-sm" x="640" y="230" text-anchor="middle">GM enables once · «Player (G2)»</text>
           <text class="label-sm" x="640" y="246" text-anchor="middle">player pairs from own Foundry</text>
           <text class="label-sm" x="640" y="262" text-anchor="middle">single-use QR · manual code</text>
@@ -898,7 +898,7 @@ footer.show a { color: var(--g2); border: none; }
         <!-- Removed -->
         <g>
           <rect class="node node-v2" x="500" y="40" width="280" height="80" />
-          <text class="label" x="640" y="68" text-anchor="middle">Removed in v0.10.0</text>
+          <text class="label" x="640" y="68" text-anchor="middle">Removed in v0.12.0</text>
           <text class="label-sm" x="640" y="86" text-anchor="middle">Node bridge · Docker Compose</text>
           <text class="label-sm" x="640" y="102" text-anchor="middle">foundry-mcp · voice proxy</text>
         </g>
@@ -910,7 +910,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="pipeline">
     <span class="section-tag">⊞ map · arte originale pixelata</span>
     <h2>⚡ Your battle map, pixelated for 16 greens.</h2>
-    <p>Zone C shows the scene’s <strong>original art</strong> — background, tiles and token art — not a schematic. The projector’s scene reader sends only compact scene data (<code>MapSnapshot</code>: grid, walls, tiles, visible tokens, image URLs); the <strong>phone</strong> fetches the pictures same-origin from Foundry and renders the square in plain, deterministic TypeScript (<a href="../architecture/0014-dnd-sheet-hud-pixel-renderer.md" style="color:var(--g3)">ADR-0014</a>). Darkness outside your token’s sight means the map never reveals rooms your character can’t see. Inspired by the <em>Doom-on-exotic-devices</em> pattern and <em>ditherpunk</em>.</p>
+    <p>Zone C shows the scene’s <strong>original art</strong> — background, tiles and token art — not a schematic. The projector’s scene reader sends only compact scene data (<code>MapSnapshot</code>: grid, walls, tiles, visible tokens, image URLs); the <strong>phone</strong> fetches the pictures same-origin from Foundry and renders the square in plain, deterministic TypeScript (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md" style="color:var(--g3)">ADR-0018</a>). Darkness outside your token’s sight means the map never reveals rooms your character can’t see. Inspired by the <em>Doom-on-exotic-devices</em> pattern and <em>ditherpunk</em>.</p>
     <div class="pipeline">
       <div class="pipe-step"><div class="num">01</div><span class="nm">Scene data</span><div class="det">MapSnapshot from the projector</div><div class="det">cells · walls · tokens</div></div>
       <div class="pipe-step"><div class="num">02</div><span class="nm">Fetch art</span><div class="det">background · ≤ 32 tiles · token art</div><div class="det">same-origin</div></div>
@@ -929,7 +929,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="fps">
     <span class="section-tag">▰ frame rate</span>
     <h2>⚡ Six layers, 5 to 15 fps.</h2>
-    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. This optimisation stack was designed for the v0.9 full-screen raster (5 fps committed, 15 fps stretch). The v0.10 sheet-layout map needs far less: one 144&nbsp;×&nbsp;144 image, <strong>≤ 1 fps</strong>, changed tiles only, paced to the SDK's 100 ms image limit.</p>
+    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. This optimisation stack was designed for the v0.9 full-screen raster (5 fps committed, 15 fps stretch). The v0.12 sheet-layout map needs far less: one 144&nbsp;×&nbsp;144 image, <strong>≤ 1 fps</strong>, changed tiles only, paced to the SDK's 100 ms image limit.</p>
     <div class="fps-chart" id="fpsChart">
       <div class="layer-row" data-fps="3" data-target="20">
         <div class="info">
@@ -1035,12 +1035,12 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ ROADMAP ═════════════════════════════════════════════════ -->
   <section class="show reveal" id="roadmap">
     <span class="section-tag">⤳ roadmap</span>
-    <h2>🗺️ Phase 0–13, then v0.10 direct streaming.</h2>
+    <h2>🗺️ Phase 0–13, then v0.12 direct streaming.</h2>
     <div class="timeline">
       <div class="phase mvp"><div class="head"><span class="ph">P0</span><span class="wks">Week 0</span></div><div class="ttl">Hardware / SDK validation</div><div class="det">R1 events · <code>updateImageRawData</code> format · BLE bandwidth · partial-update API · DLE 4.2+ · GO/NO-GO decision tree (Branch A / B / C)</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P1</span><span class="wks">Week 1–2</span></div><div class="ttl">Foundation</div><div class="det">monorepo skeleton (pnpm + TypeScript) · shared protocol · CI pipeline · ADR-0001 to ADR-0004</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P2</span><span class="wks">Week 2–3</span></div><div class="ttl">Foundry module core</div><div class="det">readers (character / combat / scene / log) · WS server · capability handshake · contract fixtures</div></div>
-      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · Docker — <strong>removed in v0.10.0 (ADR-0012)</strong></div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">P3</span><span class="wks">Week 3–4</span></div><div class="ttl">Bridge skeleton</div><div class="det">Fastify + ws · auth bearer 24 h · tool registry · Docker — <strong>removed in v0.12.0 (ADR-0016)</strong></div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P4</span><span class="wks">Week 4–7</span></div><div class="ttl">G2 layered engine + map modes</div><div class="det">layer manager · raster pipeline (Layers 1+3+4+6 base, 2+5 conditional) · glyph fallback · boot splash · render primitives</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P5</span><span class="wks">Week 6–8</span></div><div class="ttl">Panel plugin system</div><div class="det">Sheet 6-tab · Combat · Log · Spellbook · Inventory · auto-discovered panels · snapshot fixtures</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P6</span><span class="wks">Week 7–8</span></div><div class="ttl">R1 + event plumbing</div><div class="det">ring-r1 provider · Quick Action menu · gesture latency telemetry</div></div>
@@ -1051,24 +1051,24 @@ footer.show a { color: var(--g2); border: none; }
 
       <div class="divider">— end MVP — V2 OPTIONAL below —</div>
 
-      <div class="phase v2"><div class="head"><span class="ph">P11</span><span class="wks">Week 14–15</span><span class="v2tag">V2</span></div><div class="ttl">foundry-mcp server</div><div class="det">MCP TS SDK · tools mirror Tool Registry — <strong>removed in v0.10.0</strong>; may return as a client of the direct channel (new ADR)</div></div>
-      <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">IT↔EN spell name lookup · Deepgram keyterms — <strong>removed in v0.10.0</strong></div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P11</span><span class="wks">Week 14–15</span><span class="v2tag">V2</span></div><div class="ttl">foundry-mcp server</div><div class="det">MCP TS SDK · tools mirror Tool Registry — <strong>removed in v0.12.0</strong>; may return as a client of the direct channel (new ADR)</div></div>
+      <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">IT↔EN spell name lookup · Deepgram keyterms — <strong>removed in v0.12.0</strong></div></div>
       <div class="phase v2"><div class="head"><span class="ph">P13</span><span class="wks">post-V2</span><span class="v2tag">V2</span></div><div class="ttl">Stretch goals</div><div class="det">reaction bot · biometric narrative cues · multi-player bridge · dnd5e 6.x adapter · PF2e adapter · portrait images · Dice So Nice raster · headless Foundry session</div></div>
-      <div class="divider">— v0.10.0 · direct streaming —</div>
-      <div class="phase mvp"><div class="head"><span class="ph">v0.10</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · hybrid projector (player or GM, ADR-0013) · AES-GCM sealed relay · D&amp;D-sheet HUD · pixelated original map (ADR-0014) · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
+      <div class="divider">— v0.12.0 · direct streaming —</div>
+      <div class="phase mvp"><div class="head"><span class="ph">v0.12</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · hybrid projector (player or GM, ADR-0017) · AES-GCM sealed relay · D&amp;D-sheet HUD · pixelated original map (ADR-0018) · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
     </div>
   </section>
 
   <!-- ═══ VOICE (removed / future) ════════════════════════════════ -->
   <section class="show reveal" id="voice">
     <span class="section-tag">≣ voice · future</span>
-    <h2>🎙️ Voice: removed in v0.10.0, may return.</h2>
-    <p>The bridge-hosted Deepgram proxy and the <code>foundry-mcp</code> server were removed together with the bridge (<a href="../architecture/0012-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0012</a>). The product is fully usable with gestures alone. Voice or MCP control may come back later as a client of the same direct channel — that needs a new ADR.</p>
+    <h2>🎙️ Voice: removed in v0.12.0, may return.</h2>
+    <p>The bridge-hosted Deepgram proxy and the <code>foundry-mcp</code> server were removed together with the bridge (<a href="../architecture/0016-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0016</a>). The product is fully usable with gestures alone. Voice or MCP control may come back later as a client of the same direct channel — that needs a new ADR.</p>
     <div class="pillars">
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Mic capture: hardware-feasible</h3>
-        <p>The G2 4-mic array streams PCM 16 kHz to plugins through the Even Hub SDK. Not used since v0.10.0. <a href="../../Specs.md" style="color:var(--g3)">§3.5</a></p>
+        <p>The G2 4-mic array streams PCM 16 kHz to plugins through the Even Hub SDK. Not used since v0.12.0. <a href="../../Specs.md" style="color:var(--g3)">§3.5</a></p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
@@ -1120,11 +1120,11 @@ footer.show a { color: var(--g2); border: none; }
                         ▓                                  ▓
                         ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 </div>
-    <p>EvenFoundryVTT — v0.10.0 · direct streaming (2026-09-23).<br/>
+    <p>EvenFoundryVTT — v0.12.0 · direct streaming (2026-09-23).<br/>
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.10.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0012-direct-foundry-streaming.md">ADR-0012</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM enables players once and each player pairs from their own Foundry with one QR (<a href="../architecture/0013-player-owned-glasses-hybrid-projector.md">ADR-0013</a>); the Even Realities App loads the page same-origin; the player’s client — or a GM as fallback — projects the character, combat, log and a pixelated map of the original scene art (<a href="../architecture/0014-dnd-sheet-hud-pixel-renderer.md">ADR-0014</a>) over an AES-256-GCM sealed relay. Guides: <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener">project wiki</a>. The G2 UI is the D&amp;D-sheet layout («Scheda da tavolo G2») on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.9.13) are archived in the repository.</p>
+    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.12.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0016-direct-foundry-streaming.md">ADR-0016</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM enables players once and each player pairs from their own Foundry with one QR (<a href="../architecture/0017-player-owned-glasses-hybrid-projector.md">ADR-0017</a>); the Even Realities App loads the page same-origin; the player’s client — or a GM as fallback — projects the character, combat, log and a pixelated map of the original scene art (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md">ADR-0018</a>) over an AES-256-GCM sealed relay. Guides: <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener">project wiki</a>. The G2 UI is the D&amp;D-sheet layout («Scheda da tavolo G2») on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.9.13) are archived in the repository.</p>
   </footer>
 
 </div><!-- /bezel -->

@@ -1,7 +1,7 @@
 /**
- * ADR-0012 direct-sideload GO/NO-GO — pure helpers.
+ * ADR-0016 direct-sideload GO/NO-GO — pure helpers.
  *
- * ADR-0012 removes the Node bridge: the g2-app is served by Foundry itself at
+ * ADR-0016 removes the Node bridge: the g2-app is served by Foundry itself at
  * `/modules/evenfoundryvtt/g2/index.html` and QR-sideloaded into the Even Realities
  * App WebView. This module holds the side-effect-free logic of the
  * `validate:direct-sideload` harness (`scripts/direct-sideload.ts`): URL derivation,
@@ -14,7 +14,7 @@
  *   2 — skipped (missing prerequisite: FOUNDRY_URL unset, or no TTY for the manual checklist)
  *   3 — usage error
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
  * @see https://foundryvtt.com/article/module-development/ (modules served at /modules/<id>/)
  */
 
@@ -77,7 +77,7 @@ export function apiStatusUrl(base: string): string {
 }
 
 /**
- * Shape of the URL the pairing QR encodes (ADR-0012 Decision Outcome §3). The fragment
+ * Shape of the URL the pairing QR encodes (ADR-0016 Decision Outcome §3). The fragment
  * carries base64url(JSON `{v:1,u,p,k}`) and never reaches the server. Printed with
  * placeholders only — the harness never generates real credentials.
  */
@@ -85,14 +85,14 @@ export function qrUrlForm(base: string): string {
   return `${g2EntryUrl(base)}#evf=<base64url({"v":1,"u":"<g2UserId>","p":"<password>","k":"<K>"})>`;
 }
 
-/** ADR-0012 consequence: the phone must reach Foundry over valid HTTPS. */
+/** ADR-0016 consequence: the phone must reach Foundry over valid HTTPS. */
 export function checkHttps(base: string): CheckResult {
   return base.startsWith('https://')
     ? { id: 'https', verdict: 'pass', detail: 'Foundry base URL uses HTTPS' }
     : {
         id: 'https',
         verdict: 'fail',
-        detail: 'Foundry base URL is not HTTPS — Even App WebView requires valid HTTPS (ADR-0012)',
+        detail: 'Foundry base URL is not HTTPS — Even App WebView requires valid HTTPS (ADR-0016)',
       };
 }
 
@@ -104,14 +104,14 @@ export type HttpOutcome =
 /**
  * Reachability of the Foundry root. Any HTTP answer below 500 counts (Foundry
  * redirects `/` to `/join` or `/setup`); a transport error (DNS, TLS, timeout) fails —
- * a self-signed LAN certificate surfaces here, which ADR-0012 lists as unsupported.
+ * a self-signed LAN certificate surfaces here, which ADR-0016 lists as unsupported.
  */
 export function evaluateReachability(outcome: HttpOutcome): CheckResult {
   if (outcome.kind === 'error') {
     return {
       id: 'reachable',
       verdict: 'fail',
-      detail: `transport error: ${outcome.message} (self-signed TLS is unsupported — ADR-0012)`,
+      detail: `transport error: ${outcome.message} (self-signed TLS is unsupported — ADR-0016)`,
     };
   }
   return outcome.status < 500
@@ -174,7 +174,7 @@ export function evaluateApiStatus(outcome: HttpOutcome): CheckResult {
 /** One manual hardware step (defer-hardware pattern: prompted, never automated). */
 export type HardwareStep = { id: string; prompt: string };
 
-/** Manual checklist from ADR-0012 §Confirmation — executed with real phone + G2. */
+/** Manual checklist from ADR-0016 §Confirmation — executed with real phone + G2. */
 export const HARDWARE_CHECKLIST: ReadonlyArray<HardwareStep> = [
   {
     id: 'hw-qr-load',
@@ -195,9 +195,9 @@ export const HARDWARE_CHECKLIST: ReadonlyArray<HardwareStep> = [
   },
 ];
 
-/** NO-GO fallback documented by ADR-0012. */
+/** NO-GO fallback documented by ADR-0016. */
 export const NO_GO_FALLBACK =
-  'NO-GO fallback (ADR-0012): serve Foundry + g2 bundle behind a same-site reverse-proxy subdomain.';
+  'NO-GO fallback (ADR-0016): serve Foundry + g2 bundle behind a same-site reverse-proxy subdomain.';
 
 /**
  * Maps operator answers to check results. Unanswered steps are `skipped`.

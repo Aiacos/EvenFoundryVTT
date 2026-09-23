@@ -232,7 +232,7 @@ describe('Projector — get / ping / invoke', () => {
   });
 });
 
-describe('Projector — targets and combat priming (ADR-0012)', () => {
+describe('Projector — targets and combat priming (ADR-0016)', () => {
   function scene(): Record<string, unknown> {
     const tok = (id: string, extra: Record<string, unknown> = {}) => ({
       id,

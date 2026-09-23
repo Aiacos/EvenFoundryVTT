@@ -1,11 +1,11 @@
-// ADR-0012 direct-sideload GO/NO-GO harness — `validate:direct-sideload`.
+// ADR-0016 direct-sideload GO/NO-GO harness — `validate:direct-sideload`.
 //
 // Usage:
 //   FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload
 //   FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload -- --skip-hardware
 //
 // Software checks (always, need FOUNDRY_URL — include any Foundry routePrefix):
-//   1. https       — base URL is HTTPS (ADR-0012: valid HTTPS required from the phone)
+//   1. https       — base URL is HTTPS (ADR-0016: valid HTTPS required from the phone)
 //   2. reachable   — Foundry root answers over TLS (self-signed / DNS errors → NO-GO)
 //   3. g2-entry    — /modules/evenfoundryvtt/g2/index.html served 200 text/html
 //   4. api-status  — /api/status JSON (informational; absent = skipped, never NO-GO)
@@ -16,10 +16,10 @@
 //   otherwise       → operator answers y/n per step on a TTY; no TTY → exit 2 (skipped).
 //
 // Exit codes: 0 GO · 1 NO-GO · 2 skipped (missing FOUNDRY_URL / no TTY) · 3 usage error.
-// Evidence: repo-root docs/perf/phase-0/adr-0012-direct-sideload-<ISO>.json — check
+// Evidence: repo-root docs/perf/phase-0/adr-0016-direct-sideload-<ISO>.json — check
 // verdicts only; NO URL, credentials or QR payload are persisted (T-00-01).
 //
-// @see docs/architecture/0012-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
+// @see docs/architecture/0016-direct-foundry-streaming.md §Confirmation / GO-NO-GO gates
 
 import { createInterface } from 'node:readline/promises';
 import {
@@ -81,7 +81,7 @@ async function probe(url: string): Promise<HttpOutcome> {
 }
 
 function printChecklist(): void {
-  log('Manual hardware checklist (ADR-0012 §Confirmation):');
+  log('Manual hardware checklist (ADR-0016 §Confirmation):');
   for (const [i, step] of HARDWARE_CHECKLIST.entries()) {
     log(`  [${i + 1}] ${step.prompt}`);
   }
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     process.exit(3);
   }
 
-  log('ADR-0012 — direct sideload GO/NO-GO');
+  log('ADR-0016 — direct sideload GO/NO-GO');
   log('===================================');
   log(`Mode: ${skipHardware ? 'SKIP-HARDWARE (software checks only)' : 'FULL'}`);
   log();
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
   const summary = summarize(results);
   const evidence = DirectSideloadResult.parse({
     schema_version: 1,
-    test_id: 'adr-0012-direct-sideload',
+    test_id: 'adr-0016-direct-sideload',
     timestamp: new Date().toISOString(),
     verdict: summary.verdict,
     rationale:

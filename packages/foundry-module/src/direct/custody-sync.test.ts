@@ -1,5 +1,5 @@
 /**
- * ADR-0013 — identity keys, self-pairing flags, custody sync on `ready` / `updateUser`,
+ * ADR-0017 — identity keys, self-pairing flags, custody sync on `ready` / `updateUser`,
  * player-client targets.
  */
 import { generateIdentityKeyPair } from '@evf/shared-protocol';

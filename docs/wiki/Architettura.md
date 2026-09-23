@@ -1,6 +1,6 @@
 # Architettura
 
-Dalla v0.10.0 **non c'è un server nostro**: l'app degli occhiali è servita da Foundry, parla con Foundry sulla stessa origine e un client Foundry fa da **projector** ([ADR-0012](Decisioni-Architetturali)). Con [ADR-0013](Decisioni-Architetturali) il projector è **ibrido**: il client del giocatore quando è online, altrimenti un GM.
+Dalla v0.10.0 **non c'è un server nostro**: l'app degli occhiali è servita da Foundry, parla con Foundry sulla stessa origine e un client Foundry fa da **projector** ([ADR-0016](Decisioni-Architetturali)). Con [ADR-0017](Decisioni-Architetturali) il projector è **ibrido**: il client del giocatore quando è online, altrimenti un GM.
 
 ## 🏗️ Vista d'insieme
 
@@ -34,10 +34,10 @@ flowchart TD
   G -- no --> N[nessuna risposta<br/>occhiali: Nessun GM connesso]
 ```
 
-- **Solo il client eletto esegue `invoke`**: un'origine per dispositivo alla volta ([ADR-0011](Decisioni-Architetturali) emendato da ADR-0013, invariante **INV-6**). Il client non eletto ignora il messaggio.
+- **Solo il client eletto esegue `invoke`**: un'origine per dispositivo alla volta ([ADR-0011](Decisioni-Architetturali) emendato da ADR-0017, invariante **INV-6**). Il client non eletto ignora il messaggio.
 - Nella breve finestra di passaggio online/offline possono rispondere due client: la regola «solo l'eletto esegue `invoke`», il `rid` usato come chiave di idempotenza e il timeout con nuovo tentativo dell'app coprono il caso.
 
-## 🔐 Custodia delle chiavi (ADR-0013)
+## 🔐 Custodia delle chiavi (ADR-0017)
 
 ```mermaid
 sequenceDiagram

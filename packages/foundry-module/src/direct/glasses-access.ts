@@ -1,5 +1,5 @@
 /**
- * One-time GM enablement of player-owned glasses (ADR-0013 §Decision 1, 3).
+ * One-time GM enablement of player-owned glasses (ADR-0017 §Decision 1, 3).
  *
  * Only a GM can create users and set passwords (foundryvtt.com/article/users: the GM's
  * User Management screen is where one can "add new users, remove existing users,
@@ -20,7 +20,7 @@
  * @see https://foundryvtt.com/article/users/
  * @see https://foundryvtt.com/api/v13/functions/hookEvents.updateDocument.html — `updateActor`
  * @see https://foundryvtt.com/api/v13/functions/hookEvents.createDocument.html — `createActor`
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import {
   type GlassesAccess,

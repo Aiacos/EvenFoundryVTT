@@ -212,7 +212,7 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
           // non-deterministic double-execution hazard; research §2). MidiQOL is
           // the automation layer. We NEVER call rollAttack, NEVER register a
           // roll hook, and NEVER mutate game.user.targets.
-          // On a player-client projector (ADR-0013) targets are already the player's
+          // On a player-client projector (ADR-0017) targets are already the player's
           // own Foundry targets (read by vanilla dnd5e); only a GM client lacks them.
           const lost = [
             args.advantage !== 'normal' ? 'advantage' : '',

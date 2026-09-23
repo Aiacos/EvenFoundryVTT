@@ -62,7 +62,7 @@ pnpm --filter @evf/validation-harness validate:all:skip-hardware   # tutte le ve
 pnpm --filter @evf/validation-harness inv:all                      # suite degli invarianti
 ```
 
-Le prove finiscono in `docs/perf/phase-0/` (per il sideload: `adr-0012-direct-sideload-<ISO>.json`, solo i verdetti — mai URL, credenziali o payload del QR). Dettagli dei controlli: [HTTPS e rete](HTTPS-e-Rete).
+Le prove finiscono in `docs/perf/phase-0/` (per il sideload: `adr-0016-direct-sideload-<ISO>.json`, solo i verdetti — mai URL, credenziali o payload del QR). Dettagli dei controlli: [HTTPS e rete](HTTPS-e-Rete).
 
 ## 🐞 Debug dal lato Foundry
 

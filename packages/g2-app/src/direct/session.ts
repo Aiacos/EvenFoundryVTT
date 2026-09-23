@@ -16,11 +16,11 @@
  * immediately. All traffic is sealed (AES-GCM, `from = userId`, `to = projector`); every
  * envelope addressed to this user is opened, whichever Foundry client sent it: the
  * elected projector may be the player's own browser or a GM's and may switch mid-session
- * (ADR-0013 §Decision 6). Authenticity comes from the device key and the AAD
+ * (ADR-0017 §Decision 6). Authenticity comes from the device key and the AAD
  * (`projector>userId`), not from the sender id.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  * @see docs/design/g2-thirds-layout.md §Associazione e connessione
  */
 import {
@@ -505,7 +505,7 @@ export class DirectSession implements AppActions {
     if (epoch !== this.epoch || this.key === null || this.creds === null) return;
     const env = SealedEnvelopeSchema.safeParse(raw);
     // Other devices' traffic shares the relay: silently skip what is not ours. The sender
-    // is informational — any projector holding the device key may answer (ADR-0013).
+    // is informational — any projector holding the device key may answer (ADR-0017).
     if (!env.success || env.data.to !== this.creds.userId) return;
     const opened = await open(this.key, env.data, this.now());
     if (epoch !== this.epoch) return;

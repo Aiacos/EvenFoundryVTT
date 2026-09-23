@@ -6,7 +6,7 @@
  * `t` discriminates the message; `rid` correlates a request with its response and is
  * reused as the idempotency key for `invoke` (ADR-0011 dispatch pipeline).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see docs/design/g2-thirds-layout.md §Associazione e connessione
  */
 import { z } from 'zod';
@@ -59,7 +59,7 @@ export type AppMessage = z.infer<typeof AppMessageSchema>;
 /**
  * Fresh credentials pushed on first `welcome` so the pairing QR/code is single-use.
  * `password` is absent when the projector is a player client (only a GM may change a
- * Foundry password — ADR-0013): the app then keeps its current password.
+ * Foundry password — ADR-0017): the app then keeps its current password.
  */
 export const RotateSchema = z.strictObject({
   password: z.string().min(12).max(128).optional(),

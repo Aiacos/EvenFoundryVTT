@@ -1,6 +1,6 @@
 /**
  * Map reader — builds the {@link MapSnapshot} the G2 app turns into the square,
- * pixelated scene map of zone C (docs/design/g2-sheet-ux.html `mapZone()`, ADR-0012 §6).
+ * pixelated scene map of zone C (docs/design/g2-sheet-ux.html `mapZone()`, ADR-0016 §6).
  *
  * Reads **document data only** (`scene.grid`, `scene.dimensions`, `scene.background`,
  * `scene.tiles`, `scene.walls`, `scene.tokens`) — never the PIXI canvas — so it is

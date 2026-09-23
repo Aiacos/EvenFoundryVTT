@@ -422,7 +422,7 @@ describe('registerMovementTracker', () => {
     }).not.toThrow();
   });
 
-  // ── ADR-0012: GM projector tracks the paired actors, not game.user.character ──
+  // ── ADR-0016: GM projector tracks the paired actors, not game.user.character ──
 
   it('CMT-P1: injected tracked actors are tracked on a GM client; reset primes + seeds position', async () => {
     const gameMock = makeGameMock({ hasCharacter: false, walkSpeed: 25 });

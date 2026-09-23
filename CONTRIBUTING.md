@@ -102,8 +102,8 @@ CI runs the D-1.10 quality gates plus the architecture guards:
 6. Snapshot drift check (`vitest --run --update=false`)
 7. `pnpm changeset:status --since=main` — changeset declared if package changed
 8. Single-workflow-origin guard (ADR-0011) — `activity.use(` only under `packages/foundry-module/src/write-path/`
-9. socketlib confinement (ADR-0012) — no socketlib usage outside `packages/foundry-module`
-10. g2-app build (ADR-0012) — `pnpm --filter @evf/g2-app build` must emit `packages/foundry-module/g2/index.html`
+9. socketlib confinement (ADR-0016) — no socketlib usage outside `packages/foundry-module`
+10. g2-app build (ADR-0016) — `pnpm --filter @evf/g2-app build` must emit `packages/foundry-module/g2/index.html`
 
 Plus a parallel job: PR title commitlint validation.
 

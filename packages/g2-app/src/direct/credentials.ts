@@ -1,5 +1,5 @@
 /**
- * Pairing credentials for the direct Foundry channel (ADR-0012 §Decision Outcome 3).
+ * Pairing credentials for the direct Foundry channel (ADR-0016 §Decision Outcome 3).
  *
  * Sources, in order:
  * 1. **QR path** — `location.hash` carries `#evf=<payload>` ({@link readPairingFragment});
@@ -15,7 +15,7 @@
  * The Foundry base (`origin` + optional routePrefix) is derived from the page URL, since
  * the app is served by Foundry itself at `<base>/modules/evenfoundryvtt/g2/index.html`.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see docs/design/g2-thirds-layout.md §Associazione e connessione
  */
 import {
@@ -203,7 +203,7 @@ export class CredentialStore {
   /**
    * Applies a `welcome.rotate` atomically: the new key (and password, when present)
    * replace the old ones in a single record write, so a crash mid-way never leaves a
-   * mixed pair. A player-client projector rotates only the key (ADR-0013): a player
+   * mixed pair. A player-client projector rotates only the key (ADR-0017): a player
    * cannot change a Foundry password, so the current one is kept.
    *
    * @throws Error when there are no credentials to rotate

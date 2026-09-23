@@ -1,6 +1,6 @@
 # Abilitare i giocatori (GM)
 
-Dalla v0.10 gli occhiali sono **dei giocatori** ([ADR-0013](Decisioni-Architetturali)): il GM li abilita **una volta**, poi ogni giocatore si associa da solo dal proprio Foundry. Il GM può comunque associare gli occhiali per conto di un giocatore, ed è la strada da usare per chi non ha Foundry aperto.
+Dalla v0.12 gli occhiali sono **dei giocatori** ([ADR-0017](Decisioni-Architetturali)): il GM li abilita **una volta**, poi ogni giocatore si associa da solo dal proprio Foundry. Il GM può comunque associare gli occhiali per conto di un giocatore, ed è la strada da usare per chi non ha Foundry aperto.
 
 ## 💡 Perché serve il GM (una volta)
 
@@ -51,4 +51,4 @@ Il GM riceve la chiave del dispositivo perché il browser del giocatore la **sig
 ## 📚 Vedi anche
 
 - [Revoca e sicurezza](Revoca-e-Sicurezza) · [Risoluzione problemi](Risoluzione-Problemi)
-- [ADR-0013](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0013-player-owned-glasses-hybrid-projector.md)
+- [ADR-0017](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0017-player-owned-glasses-hybrid-projector.md)

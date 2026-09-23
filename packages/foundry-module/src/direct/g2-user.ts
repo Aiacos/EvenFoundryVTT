@@ -1,5 +1,5 @@
 /**
- * Dedicated Foundry user per paired G2 device (ADR-0012 §Decision Outcome 2).
+ * Dedicated Foundry user per paired G2 device (ADR-0016 §Decision Outcome 2).
  *
  * The glasses never log in as the player: Foundry rejects concurrent logins of one
  * user (foundryvtt/foundryvtt#14728), so the module creates `"<Player> (G2)"` with

@@ -8,21 +8,21 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 
 | ID | Title | Status | Phase Gate |
 |----|-------|--------|------------|
-| [ADR-0001](./0001-layered-ui-model.md) | Layered UI Model — z=0/1/2 + single capture container | superseded by 0014 | Phase 4a entry |
-| [ADR-0002](./0002-protocol-versioning.md) | Protocol Versioning — WS envelope + idempotency + replay (bridge transport superseded by ADR-0012) | superseded by 0012 | Phase 2 entry |
-| [ADR-0003](./0003-tool-registry-pattern.md) | Tool Registry — shared MVP gestures + V2 MCP | accepted (amended by 0012) | Phase 3 entry |
-| [ADR-0004](./0004-voice-via-mcp-not-internal.md) | Voice via MCP (NOT internal LLM, NOT EvenAI hijack) — bridge Deepgram proxy + `foundry-mcp` removed by ADR-0012 | superseded by 0012 | Phase 11 entry |
+| [ADR-0001](./0001-layered-ui-model.md) | Layered UI Model — z=0/1/2 + single capture container | superseded by 0018 | Phase 4a entry |
+| [ADR-0002](./0002-protocol-versioning.md) | Protocol Versioning — WS envelope + idempotency + replay (bridge transport superseded by ADR-0016) | superseded by 0016 | Phase 2 entry |
+| [ADR-0003](./0003-tool-registry-pattern.md) | Tool Registry — shared MVP gestures + V2 MCP | accepted (amended by 0016) | Phase 3 entry |
+| [ADR-0004](./0004-voice-via-mcp-not-internal.md) | Voice via MCP (NOT internal LLM, NOT EvenAI hijack) — bridge Deepgram proxy + `foundry-mcp` removed by ADR-0016 | superseded by 0016 | Phase 11 entry |
 | [ADR-0005](./0005-phase0-go-no-go.md) | Phase 0 GO/NO-GO — Branch A/B/C raster vs glyph default | proposed | Phase 0 closure (Plan 04 fills verdict) |
-| [ADR-0006](./0006-raster-pipeline-library-stack.md) | Raster Pipeline Library Stack | superseded by 0014 | Phase 0 closure (Plan 04 fills branch path) |
+| [ADR-0006](./0006-raster-pipeline-library-stack.md) | Raster Pipeline Library Stack | superseded by 0018 | Phase 0 closure (Plan 04 fills branch path) |
 | [ADR-0008](./0008-code-quality-configuration.md) | Code Quality Configuration — Biome+TS+Vitest+CI gates | accepted | Phase 1+ every commit |
-| [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | superseded by 0014 | Phase 4a Plan 05 — boot orchestrator wired the contract across 6 plans (606/606 tests) |
-| [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | superseded by 0014 | Phase 5 entry |
-| [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) | Foundry Write Path — Single-Workflow-Origin Discipline | accepted (amended by 0013) | Phase 7 entry |
-| [ADR-0012](./0012-direct-foundry-streaming.md) | Direct Foundry → G2 Streaming (bridge + Docker removed) | accepted (amended by 0013, 0014) | v0.10 entry — supersedes §11.5.3 topology + ADR-0002 transport |
-| [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md) | Player-Owned Glasses — self-service pairing + hybrid projector | accepted | v0.10 — amends ADR-0012 pairing/custody + ADR-0011 origin |
-| [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md) | D&D-sheet HUD on a pure-TypeScript pixel renderer | accepted | v0.10 UX round 2 — supersedes 0001/0006/0009/0010 + ADR-0012 point 6 |
+| [ADR-0009](./0009-layer-manager-contract.md) | Layer Manager Contract — mount/destroy/bundle API + capture-container invariant | superseded by 0018 | Phase 4a Plan 05 — boot orchestrator wired the contract across 6 plans (606/606 tests) |
+| [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | superseded by 0018 | Phase 5 entry |
+| [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) | Foundry Write Path — Single-Workflow-Origin Discipline | accepted (amended by 0017) | Phase 7 entry |
+| [ADR-0016](./0016-direct-foundry-streaming.md) | Direct Foundry → G2 Streaming (bridge + Docker removed) | accepted (amended by 0017, 0018) | v0.12 entry — supersedes §11.5.3 topology + ADR-0002 transport |
+| [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md) | Player-Owned Glasses — self-service pairing + hybrid projector | accepted | v0.12 — amends ADR-0016 pairing/custody + ADR-0011 origin |
+| [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md) | D&D-sheet HUD on a pure-TypeScript pixel renderer | accepted | v0.12 UX round 2 — supersedes 0001/0006/0009/0010 + ADR-0016 point 6 |
 
-**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). v0.10 (2026-09-23) added ADR-0012 (direct streaming), ADR-0013 (player-owned glasses) and ADR-0014 (D&D-sheet HUD). Superseded ADRs stay in place, immutable, with a status note pointing to their successor.
+**Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). v0.12 (2026-09-23) added ADR-0016 (direct streaming), ADR-0017 (player-owned glasses) and ADR-0018 (D&D-sheet HUD). Superseded ADRs stay in place, immutable, with a status note pointing to their successor.
 
 ## 🧹 Authoring Process
 

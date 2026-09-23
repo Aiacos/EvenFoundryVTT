@@ -10,7 +10,7 @@ informed: future contributors
 
 ## Status
 
-> **SUPERSEDED by [ADR-0012](./0012-direct-foundry-streaming.md)** — 2026-09-23. The bridge WS envelope, resume and replay buffer are gone; the direct channel uses sealed `module.evenfoundryvtt` messages (`packages/shared-protocol/src/direct/`).
+> **SUPERSEDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. The bridge WS envelope, resume and replay buffer are gone; the direct channel uses sealed `module.evenfoundryvtt` messages (`packages/shared-protocol/src/direct/`).
 
 **ACCEPTED** — 2026-05-11. Binds Phase 2 (Foundry Module Core), Phase 3 (Bridge), Phase 7 (Write Path), and indirectly all V2 phases (foundry-mcp consumes same envelope).
 

@@ -1,13 +1,13 @@
 /**
  * Debug channel — a small structured ring buffer (P5 auto-debug: every feature observable
- * without glasses). Replaces the bridge Debug Console removed by ADR-0012: the buffer lives
+ * without glasses). Replaces the bridge Debug Console removed by ADR-0016: the buffer lives
  * in the WebView, is shown in the phone page "Diagnostica" section and read by
  * `window.__evf.events()` / the simulator loop.
  *
  * Only created when `?debug=1` or `?demo=…` is present (see `flags.ts`); production
  * sessions without the flag never allocate it (fail-closed).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  */
 
 export type DebugLevel = 'debug' | 'info' | 'warn' | 'error';

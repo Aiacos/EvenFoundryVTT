@@ -1,13 +1,13 @@
 /**
  * Self-service pairing on the PLAYER's own Foundry client — «Associa i miei occhiali»
- * (ADR-0013 §Decision 4–5).
+ * (ADR-0017 §Decision 4–5).
  *
  * Preconditions: the GM enabled glasses for this player (`glasses-access.ts`) and this
  * browser can open the sealed "(G2)" password.
  *
  * - {@link startSelfPairing}: device key = HKDF(password-as-manual-code, g2UserId) so
  *   the QR (`{u, p, k}`) and the manual code are two views of the same secret (as in
- *   ADR-0012); stored in THIS browser, announced in the player's own flag
+ *   ADR-0016); stored in THIS browser, announced in the player's own flag
  *   `device` (`pendingRotation: true`) and sealed for every GM in `gmKeys`.
  * - first `hello` → the player's projector calls {@link rotateSelfKey}: a random key
  *   replaces the derived one (single-use QR); the password rotates only when the GM
@@ -17,7 +17,7 @@
  * - {@link reconcileSelfCustody}: browser storage lost the key → tell the election
  *   (`playerHasKey: false`), so the GM fallback answers instead.
  *
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import {
   buildPairingUrl,

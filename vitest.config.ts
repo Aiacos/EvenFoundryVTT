@@ -42,7 +42,7 @@ export default defineConfig({
         // which require Even Hub access (Phase 0 closure). Unit tests for pure
         // helpers can land in tests/ to lift these exclusions incrementally.
         'packages/validation-harness/src/lib/**',
-        // g2-app browser entry glue (ADR-0012) — Vite `index.html` <script> target that
+        // g2-app browser entry glue (ADR-0016) — Vite `index.html` <script> target that
         // wires the Even Hub bridge + socket client on page load; side-effectful on
         // import, so not unit-instrumentable. All logic it calls lives in tested modules.
         'packages/g2-app/src/main.ts',

@@ -1,12 +1,12 @@
 /**
- * Paired-device registry for the direct G2 channel (ADR-0012 §Decision Outcome 5,
- * amended by ADR-0013).
+ * Paired-device registry for the direct G2 channel (ADR-0016 §Decision Outcome 5,
+ * amended by ADR-0017).
  *
  * Storage split — the whole point of this module:
  * - **Secrets** (per-device AES-256 key, base64url) live ONLY in a hidden
  *   `scope: 'client'` setting, i.e. the browser storage of the client that paired the
- *   device: the **player's own browser** for self-service pairing (ADR-0013), or the GM
- *   browser for pairing on behalf of a player (ADR-0012 flow, kept). They never reach
+ *   device: the **player's own browser** for self-service pairing (ADR-0017), or the GM
+ *   browser for pairing on behalf of a player (ADR-0016 flow, kept). They never reach
  *   the Foundry server in clear (player keys travel to GMs only sealed — see
  *   `glasses-flags.ts`).
  * - **Public metadata** (which "(G2)" user, for which player/actor, label, timestamps,
@@ -14,14 +14,14 @@
  *   setting readable by every client (projector election needs it). Only GMs write it:
  *   world settings are GM-managed, so every writer here no-ops on player clients.
  *
- * Migration from ADR-0012 records: they have no `keyHolder`; {@link migrateKeyHolders}
+ * Migration from ADR-0016 records: they have no `keyHolder`; {@link migrateKeyHolders}
  * stamps the GM whose browser holds the key, and until then the election treats the
- * active GM as holder (ADR-0012 behaviour).
+ * active GM as holder (ADR-0016 behaviour).
  *
  * Values read back from settings are treated as untrusted and re-validated (a
  * corrupted or hand-edited setting degrades to "no devices", never throws).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see docs/design/g2-thirds-layout.md §Associazione e connessione
  */
 import { MODULE_ID } from '../module-id.js';
@@ -53,7 +53,7 @@ export interface DeviceMeta {
   /**
    * GM user whose browser holds the device key (pairing on behalf of the player);
    * `null` = no GM-held key (glasses enabled for self-service only); absent = legacy
-   * ADR-0012 record (the active GM is assumed to hold it).
+   * ADR-0016 record (the active GM is assumed to hold it).
    */
   keyHolder?: string | null;
 }
@@ -205,7 +205,7 @@ export async function touchDevice(g2UserId: string, now: number = Date.now()): P
 }
 
 /**
- * ADR-0012 → ADR-0013 migration (GM clients, on `ready`): every legacy record whose key
+ * ADR-0016 → ADR-0017 migration (GM clients, on `ready`): every legacy record whose key
  * sits in THIS browser gets `keyHolder = game.user.id`, so the election can pick this GM
  * even when another GM is the designated active GM.
  *

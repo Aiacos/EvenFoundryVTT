@@ -1,6 +1,6 @@
 # Renderer a pixel
 
-Le zone A–D della HUD sono **immagini disegnate da noi**, non testo firmware: il font firmware è proporzionale, senza dimensioni e **scarta** i simboli di cui una scheda ha bisogno (`▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` misurano 0 px con `@evenrealities/pretext` 0.1.4). Decisione: [ADR-0014](Decisioni-Architetturali).
+Le zone A–D della HUD sono **immagini disegnate da noi**, non testo firmware: il font firmware è proporzionale, senza dimensioni e **scarta** i simboli di cui una scheda ha bisogno (`▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` misurano 0 px con `@evenrealities/pretext` 0.1.4). Decisione: [ADR-0018](Decisioni-Architetturali).
 
 ## 🏗️ Framebuffer e primitive
 

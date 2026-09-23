@@ -4,7 +4,7 @@
  * Executed GM-side by `packages/foundry-module/src/write-path/handlers/end-turn.ts`
  * through `dispatchTool` (ADR-0011 single-workflow-origin). The handler only
  * advances the encounter when the current combatant's actor is `actor_id`; the
- * direct projector forces `actor_id` to the device's paired actor (ADR-0012), so a
+ * direct projector forces `actor_id` to the device's paired actor (ADR-0016), so a
  * G2 device can never end somebody else's turn.
  *
  * Strict object: no extra fields (no combat id — always the active encounter).

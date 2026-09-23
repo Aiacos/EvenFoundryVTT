@@ -1,7 +1,7 @@
 # Runbook — EvenFoundryVTT (direct streaming)
 
 What to check when the glasses won't connect or stop updating. Since v0.10.0 there is no
-server to restart ([ADR-0012](architecture/0012-direct-foundry-streaming.md)). Only three
+server to restart ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). Only three
 pieces can fail:
 
 1. **the phone page**: the g2-app in the Even Realities App WebView.
@@ -112,7 +112,7 @@ Each entry holds `tool`, `payload`, `idempotencyKey` (the request `rid`), `actor
 ## 🧪 Sideload GO/NO-GO harness
 
 `validate:direct-sideload` checks that a Foundry instance can serve the glasses app to
-the Even Realities App (ADR-0012 §Confirmation). Script:
+the Even Realities App (ADR-0016 §Confirmation). Script:
 [`packages/validation-harness/scripts/direct-sideload.ts`](../packages/validation-harness/scripts/direct-sideload.ts).
 
 ```bash
@@ -142,7 +142,7 @@ The script also prints the URL form the QR encodes (with placeholders).
 **Exit codes:** `0` GO · `1` NO-GO · `2` skipped (`FOUNDRY_URL` unset, or the full run has
 no TTY) · `3` usage error (unknown flag, invalid URL).
 
-**Evidence:** `docs/perf/phase-0/adr-0012-direct-sideload-<ISO>.json`, holding the check
+**Evidence:** `docs/perf/phase-0/adr-0016-direct-sideload-<ISO>.json`, holding the check
 verdicts only. URLs, credentials and QR payloads are never written. On NO-GO the script
 prints the documented fallback: serve Foundry and the g2 bundle behind a **same-site
 reverse-proxy subdomain**.
@@ -192,7 +192,7 @@ character, or when the phone shows *credentials rejected*.
 ## 📚 See also
 
 - [Setup guide](setup-guide.md) · [Firmware compatibility](firmware-compatibility.md)
-- [ADR-0012](architecture/0012-direct-foundry-streaming.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
+- [ADR-0016](architecture/0016-direct-foundry-streaming.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
 - [G2 sheet UX](design/g2-sheet-ux.html) — S10 not paired · S11 connecting · S12 offline ([screenshots](design/img/))
 - [G2 thirds layout](design/g2-thirds-layout.md) — superseded layout; pairing mocks P01–P03 still current
 - [`packages/foundry-module/README.md`](../packages/foundry-module/README.md) — security model

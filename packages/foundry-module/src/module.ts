@@ -1,10 +1,10 @@
 /**
  * @evf/foundry-module — EvenFoundryVTT module entry point.
  *
- * Loaded by Foundry VTT via `esmodules` in module.json. Since ADR-0012 the module is
+ * Loaded by Foundry VTT via `esmodules` in module.json. Since ADR-0016 the module is
  * the **projector**: a Foundry client talks directly to the paired G2 apps over the
  * Foundry socket relay (`module.evenfoundryvtt`) with sealed envelopes — no bridge,
- * no socketlib, no extra server. Since ADR-0013 every client (players too) runs a
+ * no socketlib, no extra server. Since ADR-0017 every client (players too) runs a
  * projector and answers only for the devices it is elected for.
  *
  * - `init`  → settings + pairing menus (GM «Associa occhiali G2», player «Associa i
@@ -16,8 +16,8 @@
  * Write tools are registered by the side-effect import of `write-path/handlers` and
  * executed only through `dispatchTool` (ADR-0011 single-workflow-origin).
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  * @see Specs.md §3.4 (Foundry compatibility minimum 13.347, verified 14)
  */
 

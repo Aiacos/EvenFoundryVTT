@@ -6,11 +6,11 @@ consulted: research agents (Even Hub docs 2026-09, Foundry v13/v14 socket protoc
 informed: all packages
 ---
 
-# ADR-0012: Direct Foundry → G2 Streaming (bridge + Docker removed)
+# ADR-0016: Direct Foundry → G2 Streaming (bridge + Docker removed)
 
 ## Status
 
-> **AMENDED** — 2026-09-23 by [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md) (pairing, key custody, projector location) and [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md) (point 6, map rendering).
+> **AMENDED** — 2026-09-23 by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md) (pairing, key custody, projector location) and [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md) (point 6, map rendering).
 
 **ACCEPTED** — 2026-09-23. Supersedes the deployment topology of Specs.md §11.5.3
 (Docker Compose bridge) and the transport sections of [ADR-0002](./0002-protocol-versioning.md)

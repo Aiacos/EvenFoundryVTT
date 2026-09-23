@@ -3,7 +3,7 @@
 ## 🎲 Overview
 
 The Foundry VTT module is the whole server side of EvenFoundryVTT
-([ADR-0012](../../docs/architecture/0012-direct-foundry-streaming.md)). It runs in the
+([ADR-0016](../../docs/architecture/0016-direct-foundry-streaming.md)). It runs in the
 GM's browser as the **projector**: it reads the character, combat, chat log and map, and
 runs every glasses action through `dispatchTool`
 ([ADR-0011](../../docs/architecture/0011-foundry-write-path-single-workflow-origin.md)).
@@ -95,7 +95,7 @@ The release zip holds `module.json`, `dist/`, `g2/`, `lang/` and `templates/`
 
 ## 📚 Documentation
 
-- [ADR-0012 — Direct Foundry → G2 streaming](../../docs/architecture/0012-direct-foundry-streaming.md)
+- [ADR-0016 — Direct Foundry → G2 streaming](../../docs/architecture/0016-direct-foundry-streaming.md)
 - [G2 sheet UX — glasses HUD design](../../docs/design/g2-sheet-ux.html)
 - [Pairing flow + mocks P01–P03](../../docs/design/g2-thirds-layout.md) (in the superseded thirds-layout doc)
 - [ADR-0011 — Single-workflow-origin write path](../../docs/architecture/0011-foundry-write-path-single-workflow-origin.md)

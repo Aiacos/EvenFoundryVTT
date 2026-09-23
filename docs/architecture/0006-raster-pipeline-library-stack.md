@@ -6,7 +6,7 @@
 
 ## Status
 
-> **SUPERSEDED by [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. `image-q` and `xxhash-wasm` were dropped; dithering and hashing are pure TypeScript, `upng-js` remains only as the 4-bit PNG encoder.
+> **SUPERSEDED by [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. `image-q` and `xxhash-wasm` were dropped; dithering and hashing are pure TypeScript, `upng-js` remains only as the 4-bit PNG encoder.
 
 **PROPOSED** — template stub. Content is **conditional on ADR-0005 Branch verdict** per CONTEXT.md D-14. Will move to ACCEPTED at Phase 0 closure (Plan 04) once the Branch verdict resolves whether to commit to the lib stack (A/B path) or declare it moot (C path).
 

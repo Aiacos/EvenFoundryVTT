@@ -1,5 +1,5 @@
 /**
- * ADR-0013 §Confirmation — GM enablement, sealed password delivery, regeneration,
+ * ADR-0017 §Confirmation — GM enablement, sealed password delivery, regeneration,
  * ownership mirroring.
  */
 import {

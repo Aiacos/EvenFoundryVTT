@@ -17,7 +17,7 @@ import {
 } from './ecdh.js';
 import { ProjectorMessageSchema } from './messages.js';
 
-describe('ECDH identity keys + sealed blobs (ADR-0013)', () => {
+describe('ECDH identity keys + sealed blobs (ADR-0017)', () => {
   it('EC-01 generates a P-256 pair whose public part carries no private member', async () => {
     const pair = await generateIdentityKeyPair();
     expect(IdentityPublicJwkSchema.parse(pair.publicJwk)).toEqual(pair.publicJwk);

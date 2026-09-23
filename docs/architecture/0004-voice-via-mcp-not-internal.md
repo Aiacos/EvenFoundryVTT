@@ -10,7 +10,7 @@ informed: future contributors
 
 ## Status
 
-> **SUPERSEDED by [ADR-0012](./0012-direct-foundry-streaming.md)** — 2026-09-23. Voice (Deepgram proxy) and `foundry-mcp` were removed with the bridge; a future voice/MCP design needs a new ADR on top of the direct channel.
+> **SUPERSEDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. Voice (Deepgram proxy) and `foundry-mcp` were removed with the bridge; a future voice/MCP design needs a new ADR on top of the direct channel.
 
 **ACCEPTED** — 2026-05-11. Binds V2 OPZIONALE Phase 11 (foundry-mcp server), Phase 12 (Voice UX Tuning); locks the architecture so that no MVP code path takes voice as an internal dependency.
 

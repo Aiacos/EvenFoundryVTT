@@ -230,7 +230,7 @@ describe('connect flow', () => {
     expect((await gm.drain()).map((m) => m.t)).toEqual(['get']);
   });
 
-  it('addresses the elected projector and applies a key-only rotation (ADR-0013)', async () => {
+  it('addresses the elected projector and applies a key-only rotation (ADR-0017)', async () => {
     const h = setup();
     await h.session.start(h.creds);
     await settle();

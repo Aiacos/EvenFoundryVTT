@@ -2,7 +2,7 @@
  * Foundry hook subscribers — character / combat deltas for the direct projector.
  *
  * Registers Foundry hooks that observe game state changes and push delta payloads
- * through the injected `emitFn` (the projector's `pushDelta`, ADR-0012; a spy in tests).
+ * through the injected `emitFn` (the projector's `pushDelta`, ADR-0016; a spy in tests).
  *
  * Hooks registered:
  * 1. `updateActor`  → `character.delta` (HP, AC, conditions, exhaustion)

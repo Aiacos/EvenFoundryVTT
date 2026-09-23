@@ -13,7 +13,7 @@
  * clearing a handled reaction prompt (`reaction`) and a handled GM roll request
  * (`rollRequest`), owned by the HUD per the store contract.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  */
 import {
   type EvenAppBridge,

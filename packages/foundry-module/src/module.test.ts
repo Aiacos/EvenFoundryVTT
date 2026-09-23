@@ -1,6 +1,6 @@
 /**
  * Entry-point tests: `init` registers settings + pairing menus, `ready` starts the
- * direct projector on every client (ADR-0012, ADR-0013) and syncs key custody.
+ * direct projector on every client (ADR-0016, ADR-0017) and syncs key custody.
  */
 import { DIRECT_SOCKET_EVENT } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

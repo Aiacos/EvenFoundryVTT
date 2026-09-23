@@ -13,7 +13,7 @@ INV-1 through INV-4 were set at project inception and live in `CLAUDE.md` §Proj
 INV-5 (Gesture Determinism) was ratified in Phase 6 Plan 01 (2026-05-16).
 INV-6 (GM Authority Preservation) was ratified in Phase 7 Plan 01 (2026-05-16).
 
-**v0.10.0 update (2026-09-23):** [ADR-0012](./0012-direct-foundry-streaming.md) removed the
+**v0.10.0 update (2026-09-23):** [ADR-0016](./0016-direct-foundry-streaming.md) removed the
 Node bridge, `foundry-mcp` and socketlib. The invariants themselves are unchanged. The
 enforcement paths below now point at the direct-streaming code (D&D-sheet HUD, GM-client
 projector).
@@ -117,14 +117,14 @@ status-HUD R1 chip) was removed with that engine. See Specs.md history.
 
 ## 🛡️ 6. INV-6 — GM Authority Preservation (Phase 7 ratification)
 
-**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0012). **Origin amended:** 2026-09-23 (ADR-0013).
+**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0016). **Origin amended:** 2026-09-23 (ADR-0017).
 
 > Every Foundry write-path mutation (cast spell, weapon attack, use item, move token, drop
 > concentration, place template, end turn) MUST execute through `dispatchTool` on **exactly
 > one Foundry client per device at a time — the elected projector**: the player's own client
 > when that player is online, otherwise the active GM
 > ([ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) as amended by
-> [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md)). GM authority is preserved by
+> [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)). GM authority is preserved by
 > Foundry's own permission model: a player client can only perform what that player could
 > perform in Foundry; GM-only steps (e.g. damage to NPCs) go through MidiQOL's GM socket.
 > No code outside `packages/foundry-module/src/write-path/` may call `activity.use()`.
@@ -141,7 +141,7 @@ the message and never execute `invoke`. socketlib `executeAsGM` is no longer use
   `git grep 'activity\.use\('` over `packages/**/*.ts(x)` **excluding only**
   `packages/foundry-module/src/write-path/**`. Comment lines and quoted prose are
   filtered. Any hit fails the PR. The projector and readers are covered too.
-- **CI Gate 9** (*socketlib confinement guard*, ADR-0012): no socketlib import or call
+- **CI Gate 9** (*socketlib confinement guard*, ADR-0016): no socketlib import or call
   outside `packages/foundry-module`. socketlib is removed from the module as well. The
   gate keeps it from creeping back into the phone app or the shared packages. The old
   fixed `registerComplexHandler` count (14 → 17) is retired.
@@ -166,9 +166,9 @@ the message and never execute `invoke`. socketlib `executeAsGM` is no longer use
   over HTTPS with the GM projector online.
 - **SC-07-02**: concurrent actions from two paired devices are serialized correctly on
   their elected projectors (player clients and/or GM).
-- **ADR-0013 hand-over**: a player's client going offline mid-session hands the device to
+- **ADR-0017 hand-over**: a player's client going offline mid-session hands the device to
   the GM fallback without a duplicated action.
-- **ADR-0012 sideload gate**: QR load, SDK bridge injection, cookie persistence and
+- **ADR-0016 sideload gate**: QR load, SDK bridge injection, cookie persistence and
   socket reconnect (`pnpm --filter @evf/validation-harness validate:direct-sideload`).
 - **SC-06-01 / SC-06-03**: gesture timings and menu-open latency on real G2 + R1.
   (SC-06-02, the long-press false-trigger check, is now the OS's job: long-press is

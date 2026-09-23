@@ -4,7 +4,7 @@
 "@evf/shared-protocol": minor
 ---
 
-ADR-0012 direct Foundry → G2 streaming. The g2-app is now built into the module
+ADR-0016 direct Foundry → G2 streaming. The g2-app is now built into the module
 (`packages/foundry-module/g2/`) and served by Foundry at
 `/modules/evenfoundryvtt/g2/index.html`; the Even Realities App loads it by scanning the
 pairing QR shown in Foundry. The phone logs in as a dedicated "(G2)" Foundry user and talks

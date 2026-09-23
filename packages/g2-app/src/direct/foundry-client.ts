@@ -1,7 +1,7 @@
 /**
  * Same-origin Foundry client: `/join` login + raw socket.io connection as the "(G2)" user.
  *
- * Handshake (ADR-0012 §Decision Outcome 4; no official API — guarded by the version probe
+ * Handshake (ADR-0016 §Decision Outcome 4; no official API — guarded by the version probe
  * and the `validate:direct-sideload` hardware gate):
  *
  * 1. `GET {base}/join` — sets the `session` cookie (first-party, same origin).
@@ -18,7 +18,7 @@
  * (the `/join` page renders its user list client-side in v13+), falling back to parsing
  * the server HTML.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  */
 import { io as socketIo } from 'socket.io-client';
 import { filterG2Users, type JoinUser, parseJoinUsers } from './credentials.js';

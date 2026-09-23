@@ -10,7 +10,7 @@ Gli occhiali si collegano a Foundry come un utente dedicato **«&lt;Giocatore&gt
 
 In tutti i casi serve che Foundry sia raggiungibile dal telefono in **HTTPS valido** ([HTTPS e rete](HTTPS-e-Rete)).
 
-## 🕹️ A · Associazione self-service (ADR-0013)
+## 🕹️ A · Associazione self-service (ADR-0017)
 
 Prerequisito: il GM ha fatto **una volta** l'abilitazione dei giocatori ([Abilitare i giocatori](Abilitare-i-Giocatori)).
 

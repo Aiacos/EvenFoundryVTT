@@ -1,9 +1,9 @@
 /**
- * Records of the player-owned glasses flow (ADR-0013), stored in world-readable places
+ * Records of the player-owned glasses flow (ADR-0017), stored in world-readable places
  * of Foundry (a GM-written world setting and each player's own User flags). They only
  * ever carry public metadata and {@link SealedBlob}s — never a secret in clear.
  *
- * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
+ * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
  */
 import { z } from 'zod';
 import { SealedBlobSchema } from './ecdh.js';

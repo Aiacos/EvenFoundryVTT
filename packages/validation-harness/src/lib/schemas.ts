@@ -12,7 +12,7 @@ export const TEST_IDS = [
   '10-0-8-queue-depth',
   '10-0-9-palette-calibration',
   'midiqol-config-probe',
-  'adr-0012-direct-sideload',
+  'adr-0016-direct-sideload',
 ] as const;
 export const TestId = z.enum(TEST_IDS);
 export type TestId = z.infer<typeof TestId>;
@@ -165,10 +165,10 @@ export const MidiQolConfigResult = EvidenceMeta.extend({
 });
 export type MidiQolConfigResult = z.infer<typeof MidiQolConfigResult>;
 
-// ADR-0012 direct-sideload GO/NO-GO (software checks + manual hardware checklist).
+// ADR-0016 direct-sideload GO/NO-GO (software checks + manual hardware checklist).
 // T-00-01: carries NO Foundry URL, credentials or QR payload — only check verdicts.
 export const DirectSideloadResult = EvidenceMeta.extend({
-  test_id: z.literal('adr-0012-direct-sideload'),
+  test_id: z.literal('adr-0016-direct-sideload'),
   skip_hardware: z.boolean(),
   checks: z.array(
     z.object({

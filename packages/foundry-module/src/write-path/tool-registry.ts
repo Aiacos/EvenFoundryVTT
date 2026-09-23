@@ -9,12 +9,12 @@
  *
  * Per ADR-0011 single-workflow-origin discipline, ALL write-path mutations go
  * through `dispatchTool(toolId, payload)` → handler.handle(), executed in the GM
- * client. Since ADR-0012 the caller is the direct projector (`src/direct/projector.ts`)
+ * client. Since ADR-0016 the caller is the direct projector (`src/direct/projector.ts`)
  * answering sealed `invoke` messages from a paired G2 device; the per-device
  * principal (`g2:<userId>`) is passed as `bearer` and binds the idempotency cache.
  *
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  * @see docs/architecture/0003-tool-registry-pattern.md
  * @see packages/foundry-module/src/write-path/idempotency-cache.ts
  * @see packages/foundry-module/src/write-path/audit-log.ts
@@ -47,7 +47,7 @@ export type ToolId =
   | 'cast-shield'
   | 'cast-counterspell'
   | 'opportunity-attack'
-  // ADR-0012 direct channel: the paired actor ends its own combat turn
+  // ADR-0016 direct channel: the paired actor ends its own combat turn
   | 'end-turn';
 
 // ─── ToolResult ───────────────────────────────────────────────────────────────

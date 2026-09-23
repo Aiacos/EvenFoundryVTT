@@ -7,7 +7,7 @@
  *   Crockford-base32 code; the code is the Foundry password and the AES key is
  *   HKDF-SHA256(code, salt = userId). Both are rotated on the first `welcome`.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 3
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 3
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';

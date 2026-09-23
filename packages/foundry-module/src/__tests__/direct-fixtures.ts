@@ -270,7 +270,7 @@ export interface ClientIdentity {
 }
 
 /**
- * Switches the mock to the browser of `userId` (ADR-0013 multi-client scenarios):
+ * Switches the mock to the browser of `userId` (ADR-0017 multi-client scenarios):
  * `game.user` becomes that user, the client-scope identity + device-key settings are
  * swapped for that browser's, and its public key is published on the user.
  *

@@ -1,5 +1,5 @@
 /**
- * ADR-0013 §Confirmation — self-service pairing from the player's client and key
+ * ADR-0017 §Confirmation — self-service pairing from the player's client and key
  * custody for multiple GMs.
  */
 import {

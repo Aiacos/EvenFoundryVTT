@@ -57,8 +57,8 @@ pnpm --filter @evf/validation-harness inv:all   # suite degli invarianti
 | 6 | `pnpm vitest --run --update=false` | snapshot o fixture non aggiornati |
 | 7 | `pnpm changeset:status` (solo PR, non sulla PR *Version Packages*) | PR senza changeset |
 | 8 | guardia ADR-0011 | `activity.use(` fuori da `packages/foundry-module/src/write-path/` |
-| 9 | confinamento socketlib (ADR-0012) | uso di socketlib fuori da `packages/foundry-module` |
-| 10 | build della g2-app in `foundry-module/g2` (ADR-0012) | build che non emette `packages/foundry-module/g2/index.html` |
+| 9 | confinamento socketlib (ADR-0016) | uso di socketlib fuori da `packages/foundry-module` |
+| 10 | build della g2-app in `foundry-module/g2` (ADR-0016) | build che non emette `packages/foundry-module/g2/index.html` |
 
 Job **commit-lint-pr-title** (solo PR): il titolo della PR passa da commitlint. In locale, Husky esegue Biome sui file in stage (pre-commit) e commitlint sul messaggio (commit-msg). Il workflow **Wiki Sync** valida i link della wiki con `node scripts/check-wiki-links.mjs docs/wiki` ([Release](Release)).
 

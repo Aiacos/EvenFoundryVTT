@@ -2,14 +2,14 @@
 
 Since v0.10.0 the glasses app is distributed by **QR sideload**. Foundry serves it from
 the module folder (`/modules/evenfoundryvtt/g2/index.html`), and the Even Realities App
-loads it from the pairing QR ([ADR-0012](../architecture/0012-direct-foundry-streaming.md)).
+loads it from the pairing QR ([ADR-0016](../architecture/0016-direct-foundry-streaming.md)).
 Players don't need the `.ehpk`.
 
 The `.ehpk` is kept for two reasons: it validates the manifest and build on every merge,
 and it keeps the door open for a future Even Hub listing. A packaged build can't replace
 the sideload. Its network whitelist is fixed in `app.json` (origin-complete, no
 wildcards) and doesn't bypass CORS, so it can't reach an arbitrary user's Foundry
-(ADR-0012, Considered Options B).
+(ADR-0016, Considered Options B).
 
 ---
 

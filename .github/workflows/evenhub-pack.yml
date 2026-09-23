@@ -11,11 +11,11 @@
 # artifact so the latest publishable package is always available. The portal
 # submission step is manual — see docs/release/evenhub.md.
 #
-# ADR-0012 (direct Foundry streaming): the PRIMARY distribution is now the QR
+# ADR-0016 (direct Foundry streaming): the PRIMARY distribution is now the QR
 # sideload of the bundle Foundry serves at /modules/evenfoundryvtt/g2/index.html
 # (Vite outDir = packages/foundry-module/g2/). A packaged .ehpk cannot reach an
 # arbitrary user Foundry origin (fixed app.json whitelist + no CORS bypass — see
-# ADR-0012 Considered Options B), so this artefact is kept only for manifest/build
+# ADR-0016 Considered Options B), so this artefact is kept only for manifest/build
 # validation and a future Even Hub listing; it packs that same build output.
 name: Even Hub Pack
 
@@ -44,7 +44,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # ADR-0012: vite emits into packages/foundry-module/g2/ (no packages/g2-app/dist).
+      # ADR-0016: vite emits into packages/foundry-module/g2/ (no packages/g2-app/dist).
       - name: Build g2-app
         run: |
           pnpm --filter @evf/g2-app build

@@ -1,5 +1,5 @@
 /**
- * Single entry of the sideloaded G2 app (ADR-0012): binds the browser environment to
+ * Single entry of the sideloaded G2 app (ADR-0016): binds the browser environment to
  * {@link startApp}. All logic lives in `direct/app.ts` (testable); this file only reads
  * globals.
  *
@@ -10,7 +10,7 @@
  *   diagnostics), tap the bridge (display mirror, `EVF_READY` marker) and expose
  *   `window.__evf`.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  */
 import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type BridgeTap, tapBridge } from './debug/bridge-tap.js';

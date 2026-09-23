@@ -20,10 +20,10 @@ checklist). Aggregator, blog and AI-summary sources are not authoritative.
 | `@evenrealities/pretext` | 0.1.4 | 2026-09-23 | `packages/g2-app/package.json` (pixel text budgets, INV-1) |
 | `socket.io-client` | 4.8.3 | 2026-09-23 | `packages/g2-app/package.json` (Foundry socket, EIO 4) |
 | G2 model identifier | `"g2"` | 2026-05-14 | `getGlassesInfo()` probe on the simulator |
-| FoundryVTT | ≥ v13.347 (v14 verified) | 2026-09-23 | `packages/foundry-module/module.json` → `compatibility`. v14 accepts the socket session only from the `session` cookie, so the page must be same-origin ([ADR-0012](architecture/0012-direct-foundry-streaming.md)). |
+| FoundryVTT | ≥ v13.347 (v14 verified) | 2026-09-23 | `packages/foundry-module/module.json` → `compatibility`. v14 accepts the socket session only from the `session` cookie, so the page must be same-origin ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). |
 | dnd5e | ≥ 5.3.3 | 2026-05-07 | [github.com/foundryvtt/dnd5e/releases](https://github.com/foundryvtt/dnd5e/releases) |
 | midi-qol | optional (`relationships.recommends`) | 2026-05-10 | [gitlab.com/tposney/midi-qol](https://gitlab.com/tposney/midi-qol) |
-| socketlib | **not used** since v0.10.0 | — | The projector runs in the GM client, so no `executeAsGM` round-trip is left (ADR-0012). |
+| socketlib | **not used** since v0.10.0 | — | The projector runs in the GM client, so no `executeAsGM` round-trip is left (ADR-0016). |
 
 ### 📝 SDK changes that matter to us
 
@@ -76,6 +76,6 @@ Full budget table: [`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) §A
 
 ## 📚 See also
 
-- [ADR-0012 — Direct Foundry → G2 streaming](architecture/0012-direct-foundry-streaming.md)
+- [ADR-0016 — Direct Foundry → G2 streaming](architecture/0016-direct-foundry-streaming.md)
 - [G2 sheet UX](design/g2-sheet-ux.html) · [G2 thirds layout (superseded)](design/g2-thirds-layout.md)
 - [Setup guide](setup-guide.md) · [Runbook](runbook.md)

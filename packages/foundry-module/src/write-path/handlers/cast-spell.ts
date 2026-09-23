@@ -214,7 +214,7 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
         );
         return { success: true, data: { chatCardId: extractChatCardId(result) } };
       }
-      // On a player-client projector (ADR-0013) the targets were already made this
+      // On a player-client projector (ADR-0017) the targets were already made this
       // player's own Foundry targets, which vanilla dnd5e reads; only a GM client lacks them.
       if (args.targets.length > 0 && game.user?.isGM) {
         console.warn(

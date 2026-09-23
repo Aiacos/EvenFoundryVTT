@@ -42,7 +42,7 @@ Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anch
 | projector → app | `pong` | `rid` |
 | projector → app | `revoked` | — |
 
-`rotate = { password?, key }`: nuove credenziali al primo `welcome` (QR monouso). `password` manca quando risponde il client di un giocatore, perché solo un GM può cambiare una password Foundry (ADR-0013).
+`rotate = { password?, key }`: nuove credenziali al primo `welcome` (QR monouso). `password` manca quando risponde il client di un giocatore, perché solo un GM può cambiare una password Foundry (ADR-0017).
 
 **Tempi dell'app** (`SESSION_TIMING` in `packages/g2-app/src/direct/session.ts`): `welcome` entro 8 s, snapshot e `invoke` entro 10 s, heartbeat ogni 20 s, offline dopo 2 pong persi, nuovo tentativo con attesa 1 s → 30 s e jitter fino al 20 %.
 
@@ -51,7 +51,7 @@ Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anch
 - **QR**: `<origine>[/<prefisso>]/modules/evenfoundryvtt/g2/index.html#evf=<payload>`; `payload = base64url(JSON {v:1, u, p, k})` — `u` id utente «(G2)», `p` password (12–128 car.), `k` chiave AES-256 base64url. Il frammento non arriva mai al server.
 - **Codice manuale**: 16 caratteri Crockford base32 (`MANUAL_CODE_LENGTH`), mostrato come `XXXX-XXXX-XXXX-XXXX`; il codice è la password e la chiave è `HKDF-SHA256(codice, salt = userId)`.
 
-## 🔐 Sigilli a chiave pubblica (ADR-0013)
+## 🔐 Sigilli a chiave pubblica (ADR-0017)
 
 `SealedBlob = { v: 1, epk: <JWK P-256 effimera>, iv, ct }`, costruito in `ecdh.ts`:
 
@@ -83,4 +83,4 @@ La geometria è in **celle** (numeri decimali ammessi), l'arte in **pixel di sce
 ## 📚 Vedi anche
 
 - [Architettura](Architettura) · [Revoca e sicurezza](Revoca-e-Sicurezza)
-- [ADR-0012](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0012-direct-foundry-streaming.md) · [ADR-0013](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0013-player-owned-glasses-hybrid-projector.md)
+- [ADR-0016](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0016-direct-foundry-streaming.md) · [ADR-0017](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0017-player-owned-glasses-hybrid-projector.md)

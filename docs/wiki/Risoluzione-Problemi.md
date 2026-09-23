@@ -6,7 +6,7 @@ Tre pezzi possono guastarsi: la **pagina sul telefono**, il **server Foundry** (
 
 | Sintomo | Causa | Soluzione |
 |---|---|---|
-| Occhiali fermi su **Collegamento**, poi *Nessun GM connesso* | nessun projector ha risposto entro 8 s: il giocatore non ha Foundry aperto **e** nessun GM online ha la chiave del dispositivo | apri Foundry come giocatore, oppure fai entrare un GM. Con il flusso del GM (ADR-0012) la chiave vive solo nel browser che ha associato: apri il mondo **da quel browser** o riassocia da quello del GM attivo |
+| Occhiali fermi su **Collegamento**, poi *Nessun GM connesso* | nessun projector ha risposto entro 8 s: il giocatore non ha Foundry aperto **e** nessun GM online ha la chiave del dispositivo | apri Foundry come giocatore, oppure fai entrare un GM. Con il flusso del GM (ADR-0016) la chiave vive solo nel browser che ha associato: apri il mondo **da quel browser** o riassocia da quello del GM attivo |
 | Pagina bianca o errore di certificato dopo la scansione | certificato autofirmato, scaduto, o URL `http://` | certificato valido (Let's Encrypt, Tailscale, reverse proxy) — [HTTPS e rete](HTTPS-e-Rete) |
 | Il QR apre `localhost` o un IP di rete locale | chi ha generato il QR ha aperto Foundry da un indirizzo locale | riapri Foundry dall'indirizzo pubblico HTTPS e genera un nuovo QR (verifica *indirizzo pubblico*) |
 | ✗ **modulo servito** | manca la cartella `g2/` (build di sviluppo senza `build:g2`, o proxy che non inoltra `/modules`) | reinstalla lo zip della release, oppure `pnpm --filter @evf/foundry-module build:all` |

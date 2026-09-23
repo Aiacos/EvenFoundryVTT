@@ -7,7 +7,7 @@
  * is SDK container calls, not DOM (Specs.md §3.1).
  *
  * @see docs/design/g2-sheet-ux.html
- * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md
  */
 import type {
   ActionEconomyPayload,

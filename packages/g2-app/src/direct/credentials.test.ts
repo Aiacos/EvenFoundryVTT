@@ -167,7 +167,7 @@ describe('CredentialStore', () => {
     expect(JSON.parse(storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(next);
   });
 
-  it('a key-only rotation (player-client projector, ADR-0013) keeps the password', async () => {
+  it('a key-only rotation (player-client projector, ADR-0017) keeps the password', async () => {
     const storage = new MemoryStorage();
     const store = new CredentialStore(storage, warn);
     const creds = makeCredentials();

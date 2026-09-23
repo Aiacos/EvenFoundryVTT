@@ -1,7 +1,7 @@
 /**
- * ADR-0013 §Confirmation — hybrid projector: the player's own client answers for its
+ * ADR-0017 §Confirmation — hybrid projector: the player's own client answers for its
  * self-paired glasses, the GM takes over (with the player-sealed key) when the player
- * leaves, only the elected client executes `invoke`, legacy ADR-0012 records migrate.
+ * leaves, only the elected client executes `invoke`, legacy ADR-0016 records migrate.
  */
 import {
   DIRECT_SOCKET_EVENT,
@@ -90,7 +90,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('hybrid projector (ADR-0013)', () => {
+describe('hybrid projector (ADR-0017)', () => {
   it('HP-01 the player client answers hello with a key-only rotation and re-seals it for the GM', async () => {
     await selfPaired();
     const projector = new Projector();
@@ -225,7 +225,7 @@ describe('hybrid projector (ADR-0013)', () => {
     expect(f.emitted).toHaveLength(0);
   });
 
-  it('HP-06 legacy ADR-0012 record: migrateKeyHolders lets a non-designated GM holding the key answer', async () => {
+  it('HP-06 legacy ADR-0016 record: migrateKeyHolders lets a non-designated GM holding the key answer', async () => {
     const gm2 = makeUser('gm2', 'Bo', { isGM: true });
     f.users.push(gm2, makeUser('g2a', 'Luca (G2)', { flags: { evenfoundryvtt: { g2For: 'p1' } } }));
     g2Id = 'g2a';

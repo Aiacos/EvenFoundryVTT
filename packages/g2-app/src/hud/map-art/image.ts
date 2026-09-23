@@ -11,7 +11,7 @@
  * background makes the map fall back to the schematic renderer, a failed tile/token
  * picture is simply not drawn.
  *
- * @see docs/architecture/0012-direct-foundry-streaming.md (page served same-origin by Foundry)
+ * @see docs/architecture/0016-direct-foundry-streaming.md (page served same-origin by Foundry)
  */
 import type { DecodeDeps, DecodeRequest } from '../zones/luma.js';
 

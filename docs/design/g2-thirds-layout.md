@@ -1,7 +1,7 @@
-# G2 Thirds Layout — design & mock (v0.10)
+# G2 Thirds Layout — design & mock (v0.12)
 
 > Contratto di design per la UI "a terzi" e per il flusso di associazione diretto
-> Foundry → occhiali. Decisione architetturale: [ADR-0012](../architecture/0012-direct-foundry-streaming.md).
+> Foundry → occhiali. Decisione architetturale: [ADR-0016](../architecture/0016-direct-foundry-streaming.md).
 > I mock sono generati e **validati in larghezza** da uno script (ogni riga = 97 caratteri,
 > 24 righe) e sono il riferimento per gli snapshot test INV-1 in `packages/g2-app`.
 
@@ -362,7 +362,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                               │
-│   EVENFOUNDRYVTT                                                          ⌁ v0.10             │
+│   EVENFOUNDRYVTT                                                          ⌁ v0.12             │
 │   ───────────────────────────────────────────────────────────────────────────────             │
 │                                                                                               │
 │   Occhiali non ancora associati a Foundry.                                                    │
@@ -391,7 +391,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                               │
-│   EVENFOUNDRYVTT                                                          ⌁ v0.10             │
+│   EVENFOUNDRYVTT                                                          ⌁ v0.12             │
 │   ───────────────────────────────────────────────────────────────────────────────             │
 │                                                                                               │
 │   Collegamento a  foundry.casa-rossi.it …                                                     │
