@@ -79,11 +79,11 @@ Format: `<type>(<scope>): <subject>` (D-1.14)
 | `style` | Formatting, white space |
 | `ci` | CI pipeline change |
 
-Scope: package name (`g2-app`, `bridge`, etc.) OR plan ID (`02-01`, `01-03`) OR `*` (cross-cutting).
+Scope: package name (`g2-app`, `foundry-module`, `shared-protocol`, `shared-render`, `validation-harness`) OR plan ID (`02-01`, `01-03`) OR `*` (cross-cutting).
 
 Examples:
 
-- `feat(bridge): add Tool Registry dispatch table`
+- `feat(foundry-module): add GM-client projector for sealed envelopes`
 - `docs(02-01): plan Foundry module readers`
 - `chore: bump pnpm to 10.33.4`
 - `fix(g2-app): correct Status HUD column alignment`
@@ -92,7 +92,7 @@ The `commit-msg` Husky hook validates locally; CI re-validates the PR title serv
 
 ### 6. Push + Open PR
 
-CI runs 7 quality gates (D-1.10):
+CI runs the D-1.10 quality gates plus the architecture guards:
 
 1. `pnpm install --frozen-lockfile` — lockfile drift detection
 2. `pnpm biome ci .` — lint + format (read-only)
@@ -101,6 +101,9 @@ CI runs 7 quality gates (D-1.10):
 5. `// TODO` discipline grep — every TODO needs `(#N)` or `(ADR-N)`
 6. Snapshot drift check (`vitest --run --update=false`)
 7. `pnpm changeset:status --since=main` — changeset declared if package changed
+8. Single-workflow-origin guard (ADR-0011) — `activity.use(` only under `packages/foundry-module/src/write-path/`
+9. socketlib confinement (ADR-0012) — no socketlib usage outside `packages/foundry-module`
+10. g2-app build (ADR-0012) — `pnpm --filter @evf/g2-app build` must emit `packages/foundry-module/g2/index.html`
 
 Plus a parallel job: PR title commitlint validation.
 

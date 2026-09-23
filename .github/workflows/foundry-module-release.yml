@@ -8,13 +8,17 @@ name: Foundry Module Release
 # What this workflow does end-to-end:
 #   1. Validates the tag format vMAJOR.MINOR.PATCH[-prerelease]
 #   2. Builds the Foundry module (pnpm + tsup, bundles @evf/shared-protocol + qrcode)
-#   3. Patches module.json `version` + `download` from the tag
-#   4. Zips the runtime assets (module.json + dist/ + lang/ + templates/)
-#   5. Extracts release notes from Changesets CHANGELOG.md (falls back to --generate-notes on first release)
-#   6. Creates the GitHub Release on the tag
-#   7. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
-#   8. Builds + pushes bridge Docker image to GHCR (REL-02, job: build-bridge-ghcr)
-#   9. Builds g2-app Vite bundle, zips dist/, uploads g2-app-dist.zip (REL-03, job: build-g2app-zip)
+#   3. Builds the g2-app Vite bundle INTO packages/foundry-module/g2/ (ADR-0012:
+#      the phone WebView loads it same-origin from /modules/evenfoundryvtt/g2/)
+#   4. Patches module.json `version` + `download` from the tag
+#   5. Zips the runtime assets (module.json + dist/ + g2/ + lang/ + templates/)
+#   6. Extracts release notes from Changesets CHANGELOG.md (falls back to --generate-notes on first release)
+#   7. Creates the GitHub Release on the tag
+#   8. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
+#
+# ADR-0012 removed the Node bridge + Docker Compose: there is no GHCR image
+# (former REL-02) and no standalone g2-app-dist.zip (former REL-03) — the g2-app
+# ships inside the module zip.
 #
 # After completion, the install URL works:
 #   https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
@@ -24,9 +28,6 @@ name: Foundry Module Release
 #
 # Manual override: workflow_dispatch lets you re-run for a specific tag
 # without re-tagging (useful if a previous run failed).
-#
-# GHCR first-push note (one-time manual step after first real release):
-#   GitHub → Profile → Packages → evf-bridge → Package settings → Change visibility → Public
 
 on:
   push:
@@ -90,6 +91,16 @@ jobs:
       - name: Build foundry-module bundle
         run: pnpm --filter @evf/foundry-module build
 
+      # ADR-0012 hosting contract: vite outDir = packages/foundry-module/g2/.
+      # Fail the release (not ship a module whose QR URL 404s) if index.html is missing.
+      - name: Build g2-app into foundry-module/g2
+        run: |
+          pnpm --filter @evf/g2-app build
+          if ! test -f packages/foundry-module/g2/index.html; then
+            echo "::error::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0012)."
+            exit 1
+          fi
+
       - name: Patch module.json (version + download URL)
         working-directory: packages/foundry-module
         env:
@@ -115,6 +126,7 @@ jobs:
           mkdir -p release-tree
           cp module.json release-tree/
           cp -r dist release-tree/
+          cp -r g2 release-tree/
           cp -r lang release-tree/
           cp -r templates release-tree/
           ls -R release-tree
@@ -124,10 +136,17 @@ jobs:
         run: |
           zip -r ../evenfoundryvtt.zip . -x "*.map"  # exclude sourcemaps from runtime zip
           ls -la ../evenfoundryvtt.zip
-          unzip -l ../evenfoundryvtt.zip | head -20
+          # Listing captured once: piping unzip into head/grep -q can SIGPIPE under pipefail.
+          LISTING=$(unzip -Z1 ../evenfoundryvtt.zip)
+          head -20 <<<"$LISTING"
+          # ADR-0012: the sideload entry point must be inside the zip.
+          if ! grep -qx 'g2/index.html' <<<"$LISTING"; then
+            echo "::error::evenfoundryvtt.zip is missing g2/index.html (ADR-0012)."
+            exit 1
+          fi
 
       # REL-04: Extract release notes from Changesets CHANGELOG.md files.
-      # Aggregates user-facing packages: foundry-module (primary) + bridge + g2-app (if present).
+      # Aggregates user-facing packages: foundry-module (primary) + g2-app (bundled in the zip, if present).
       # Falls back to empty output when no CHANGELOG.md exists yet (first release, Pitfall 5).
       - name: Extract release notes from CHANGELOG.md
         id: notes
@@ -149,20 +168,6 @@ jobs:
               fs.appendFileSync('${NOTES_FILE}', m[0].trim() + '\\n');
             "
             FOUND=1
-          fi
-
-          # bridge CHANGELOG.md (append if present)
-          if test -f "packages/bridge/CHANGELOG.md"; then
-            node -e "
-              const fs = require('node:fs');
-              const ver = process.env.VERSION;
-              const log = fs.readFileSync('packages/bridge/CHANGELOG.md', 'utf-8');
-              const escaped = ver.replace(/\\./g, '\\\\.');
-              const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
-              if (m) {
-                fs.appendFileSync('${NOTES_FILE}', '\\n---\\n\\n' + m[0].trim() + '\\n');
-              }
-            " || true
           fi
 
           # g2-app CHANGELOG.md (append if present)
@@ -240,129 +245,3 @@ jobs:
         run: |
           echo "::notice title=Module ready::Install URL → https://github.com/${{ github.repository }}/releases/latest/download/module.json"
           echo "::notice title=Version-pinned ZIP::https://github.com/${{ github.repository }}/releases/download/${TAG}/evenfoundryvtt.zip"
-
-  # REL-02: Build bridge Docker image and push to GHCR.
-  # Least-privilege: packages:write only (no contents:write — no release upload needed).
-  # Auth: GITHUB_TOKEN (auto-scoped, short-lived) — NOT a PAT (T-19-03).
-  # Runs after `release` so the GitHub Release context is available if needed in future steps.
-  build-bridge-ghcr:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read   # checkout only
-      packages: write  # GHCR push (T-19-02)
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      # GHCR requires lowercase image path (Pitfall 4 from RESEARCH.md).
-      # github.repository_owner may be mixed-case (Aiacos); tr converts to lowercase.
-      - name: Lowercase owner
-        id: lower
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # T-19-03: authenticate with GITHUB_TOKEN — no PAT, no long-lived secret
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Derive tag + version identically to the release job (reuses same validated tag path)
-      - name: Derive release tag + version
-        id: vars
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          VERSION="${TAG#v}"
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-            echo "::error::Tag '$TAG' does not match required vMAJOR.MINOR.PATCH[-prerelease] format"
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      # REL-02: generate version + latest tags from the semver version.
-      # latest=auto: suppress :latest on pre-release tags automatically.
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ steps.lower.outputs.owner }}/evf-bridge
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}},value=${{ steps.vars.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.vars.outputs.tag }}
-
-      # REL-02: build from deploy/bridge.Dockerfile (multi-stage node:24-alpine — do NOT modify Dockerfile).
-      # GHA layer cache (cache-from/cache-to gha) reduces rebuild time dramatically on re-runs.
-      - name: Build and push bridge image to GHCR
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: deploy/bridge.Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # REL-03: Build g2-app Vite bundle, zip dist/, and attach g2-app-dist.zip to the GitHub Release.
-  # Needs `release` so the GitHub Release exists before `gh release upload` is called (Pitfall 2).
-  build-g2app-zip:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # required for `gh release upload`
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.4
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      # REL-03: build produces packages/g2-app/dist/ (outDir per vite.config.ts)
-      - name: Build g2-app
-        run: pnpm --filter @evf/g2-app build
-
-      # Zip from packages/g2-app so archive paths are dist/... (not packages/g2-app/dist/...).
-      # End-user extracts zip → gets `dist/` directly; serve via HTTPS static host.
-      - name: Create g2-app-dist.zip
-        working-directory: packages/g2-app
-        run: zip -r ../../g2-app-dist.zip dist/ -x "*.map"
-
-      # REL-03: upload g2-app-dist.zip to the GitHub Release created by the `release` job.
-      - name: Upload g2-app-dist.zip to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          gh release upload "$TAG" g2-app-dist.zip --clobber

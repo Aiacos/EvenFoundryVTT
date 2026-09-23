@@ -76,6 +76,12 @@ const TESTS: ReadonlyArray<TestPlan> = [
     hardware: true,
     description: 'Palette calibration ramp + perceptual derivation (Pitfall 15)',
   },
+  {
+    id: 'adr-0012-direct-sideload',
+    file: 'direct-sideload.ts',
+    hardware: true,
+    description: 'ADR-0012 QR sideload served by Foundry (needs FOUNDRY_URL + phone + G2)',
+  },
 ];
 
 type TestOutcome = 'pass' | 'fail' | 'skipped' | 'not-yet-created' | 'skipped-by-flag';

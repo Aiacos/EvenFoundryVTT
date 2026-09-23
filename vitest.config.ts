@@ -37,7 +37,6 @@ export default defineConfig({
         'packages/*/src/__tests__/**',
         'packages/*/dist/**',
         // Phase 2+ placeholders (single export-only stubs; remove when logic lands)
-        'packages/bridge/src/index.ts', // Phase 3
         // foundry-module/src/index.ts removed — Phase 2 Plan 01 replaced it with
         // module.ts + settings.ts which carry real logic and are covered by tests.
         'packages/g2-app/src/index.ts', // Phase 4a
@@ -53,16 +52,10 @@ export default defineConfig({
         // instrument worker-thread code. Pure helper extraction to raster-pipeline.ts
         // is logged future debt (CONCERNS.md §Raster Worker Isolation).
         'packages/g2-app/src/raster/raster-worker.ts',
-        // foundry-mcp Streamable HTTP entry — top-level `(async () => { … })()` IIFE
-        // that binds 0.0.0.0:port + connects MCP transport on import; un-instrumentable
-        // as a unit (mirrors bridge/src/index.ts). Its testable security primitive
-        // `bearerEquals` was extracted to `security/bearer-equals.ts` and is
-        // unit-tested (Task 1, quick task 260525-owx).
-        'packages/foundry-mcp/src/http.ts',
-        // foundry-mcp stdio entry — top-level `(async () => { … })()` IIFE connecting
-        // StdioServerTransport on import; un-instrumentable as a unit (mirrors
-        // bridge/src/index.ts). The 2 branches are BootError catch arms.
-        'packages/foundry-mcp/src/index.ts',
+        // g2-app browser entry glue (ADR-0012) — Vite `index.html` <script> target that
+        // wires the Even Hub bridge + socket client on page load; side-effectful on
+        // import, so not unit-instrumentable. All logic it calls lives in tested modules.
+        'packages/g2-app/src/main.ts',
       ],
     },
   },
