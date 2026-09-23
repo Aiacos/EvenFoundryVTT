@@ -1,69 +1,84 @@
 # EvenFoundryVTT — Docs
 
-Documentation index for the **EvenFoundryVTT** project. This folder contains operator guides,
-architecture references, and field-test materials. The **canonical source of truth** is
-`Specs.md` at the repository root; all documents here are projections or expansions of it.
+Documentation index for **EvenFoundryVTT** v0.12.0 (direct Foundry → G2 streaming, ported
+onto `develop` after the bridge-era v0.11.0; the bridge, Docker and `foundry-mcp` docs were
+removed with ADR-0016). The
+**canonical source of truth** is [`Specs.md`](../Specs.md) at the repository root. Every
+document here is a projection or expansion of it.
 
 ---
 
-## Where to start
+## 📚 Where to start
 
 | Resource | Path | Description |
-|----------|------|-------------|
-| Canonical specification | [`Specs.md`](../Specs.md) | 4 000+ line requirements, architecture, hardware constraints, UI/UX mockups, roadmap. Start here. |
-| 5-step quickstart | [`docs/setup-guide.md`](setup-guide.md) | Install Foundry module → bridge service → plugin host → Even Realities App → R1 pairing. |
-| Operational runbook | [`docs/runbook.md`](runbook.md) | Bridge restart, audit log, bearer revoke, metrics, common errors with recovery. |
-| Firmware compatibility | [`docs/firmware-compatibility.md`](firmware-compatibility.md) | Even Hub SDK version matrix + forward-compat policy. |
-| Latency profile | [`docs/perf/phase-10-latency.md`](perf/phase-10-latency.md) | Hardware-pending perf measurements (scaffold only until real hardware session). |
-| Animated showcase | [`docs/showcase/index.html`](showcase/index.html) | Single-file animated showcase of all HUD panels. Open in any browser. |
-| Invariants | [`docs/architecture/INVARIANTS.md`](architecture/INVARIANTS.md) | The 6 ratified non-negotiable project invariants (INV-1..6). |
-| ADRs | [`docs/architecture/`](architecture/) | Architecture Decision Records (ADR-0001 through ADR-0011 + reserved). |
+|---|---|---|
+| Canonical specification | [`Specs.md`](../Specs.md) | Requirements, architecture, hardware constraints, UI/UX mockups, roadmap. |
+| Project wiki (Italian) | [`wiki/`](wiki/Home.md) → [GitHub wiki](https://github.com/Aiacos/EvenFoundryVTT/wiki) | Player, GM and developer guides by audience; mirrored to the GitHub wiki by `.github/workflows/wiki-sync.yml`, links checked by `scripts/check-wiki-links.mjs`. |
+| Setup guide | [`setup-guide.md`](setup-guide.md) | HTTPS prerequisites → install the module → GM pairing → player QR scan → manual code, revoke, troubleshooting. |
+| Runbook | [`runbook.md`](runbook.md) | Diagnosis from the phone page and the GM browser, the `validate:direct-sideload` harness, revoke / re-pair, common errors. |
+| Design index | [`design/README.md`](design/README.md) | Current and historical design documents. |
+| Sheet layout design | [`design/g2-sheet-ux.html`](design/g2-sheet-ux.html) | «Scheda da tavolo G2»: zones, principles, gestures, 12 glasses screens (S1–S12); simulator screenshots in [`design/img/`](design/img/). INV-1 contract = `packages/shared-render/src/fixtures/sheet.*.txt`. |
+| Thirds layout (superseded) | [`design/g2-thirds-layout.md`](design/g2-thirds-layout.md) | Historical first v0.12 layout; its pairing flow and phone/Foundry mocks (P01–P03) are still current. |
+| Direct streaming decision | [`architecture/0016-direct-foundry-streaming.md`](architecture/0016-direct-foundry-streaming.md) | Why the bridge, Docker and `foundry-mcp` were removed. |
+| Firmware compatibility | [`firmware-compatibility.md`](firmware-compatibility.md) | Even Hub SDK / Even App / Foundry version matrix + forward-compat policy. |
+| Invariants | [`architecture/INVARIANTS.md`](architecture/INVARIANTS.md) | INV-1..6 and how CI enforces them. |
+| ADRs | [`architecture/`](architecture/) | ADR-0001 … ADR-0018 ([index](architecture/README.md)); 0012 = R1 gesture model (canonical), 0016 = direct streaming, 0017 = player-owned glasses + hybrid projector, 0018 = D&D-sheet HUD pixel renderer. 0016–0018 were renumbered from 0012–0014 in the v0.12.0 port onto `develop`. |
+| Release | [`release/foundry-module.md`](release/foundry-module.md) · [`release/evenhub.md`](release/evenhub.md) | Module zip (with `g2/`), the `.ehpk` attached to every release, bridge-era migration, Even Hub pre-submission checklist. |
+| Animated showcase | [`showcase/index.html`](showcase/index.html) | Single-file showcase (GitHub Pages). |
 
 ---
 
-## Field-test template
+## 🧪 Field tests and measurements
 
-When a real hardware session is available, use the structured self-report form for SC-10-01 closure:
-
-- [`docs/field-test-template.md`](field-test-template.md) — NASA-TLX (6 dimensions × 21-point scale) + Borg CR-10 eye-fatigue + SC-10-01..03 closure checkboxes.
+- [`field-test-template.md`](field-test-template.md): NASA-TLX + Borg CR-10 self-report
+  and the SC-10-01..03 closure checkboxes for a real hardware session.
+- [`perf/phase-0/`](perf/phase-0/README.md): machine-readable Phase 0 evidence, plus the
+  `adr-0016-direct-sideload-*.json` output of the sideload harness.
 
 ---
 
-## Project status
+## 📊 Project status
 
 | Item | Link |
-|------|------|
+|---|---|
 | Root README (GitHub landing) | [`README.md`](../README.md) |
-| Phase roadmap | [`.planning/ROADMAP.md`](../.planning/ROADMAP.md) |
-| Current state | [`.planning/STATE.md`](../.planning/STATE.md) |
+| Feature specs (Spec Kit) | [`specs/`](../specs/) — one folder per feature (`NNN-name/spec.md`, `plan.md`) |
+| Project constitution | [`.specify/memory/constitution.md`](../.specify/memory/constitution.md) |
+| Releases | [GitHub Releases](https://github.com/Aiacos/EvenFoundryVTT/releases) — module zip + `module.json` + `.ehpk`; last bridge-era release v0.1.55 |
 
 ---
 
-## Documentation structure
+## 🏗️ Documentation structure
 
 ```
 docs/
-├── README.md                   ← you are here (docs-folder index)
-├── setup-guide.md              ← 5-step install walkthrough
-├── runbook.md                  ← operational procedures
-├── firmware-compatibility.md   ← Even Hub SDK matrix
-├── field-test-template.md      ← NASA-TLX self-report template
+├── README.md                    ← you are here
+├── setup-guide.md               ← install + pairing walkthrough
+├── runbook.md                   ← diagnosis and recovery
+├── firmware-compatibility.md    ← Even Hub SDK / Even App / Foundry matrix
+├── field-test-template.md       ← hardware session self-report
+├── index.html                   ← redirect to showcase/
 ├── architecture/
-│   ├── README.md               ← ADR index
-│   ├── INVARIANTS.md           ← INV-1..6 ratified
-│   ├── 0001-layered-ui-model.md
-│   ├── ... (0002 – 0011 + reserved)
+│   ├── README.md                ← ADR index
+│   ├── INVARIANTS.md            ← INV-1..6
+│   └── 0001 … 0018-*.md         ← ADRs (0016 direct streaming · 0017 player-owned glasses · 0018 sheet HUD)
+├── design/
+│   ├── README.md                ← design index
+│   ├── g2-sheet-ux.html         ← D&D-sheet HUD design (current)
+│   ├── g2-thirds-layout.md      ← superseded thirds HUD + pairing mocks P01–P03
+│   └── img/sheet-*.png          ← simulator screenshots S1–S12
 ├── perf/
-│   └── phase-10-latency.md     ← latency template (hardware-pending)
+│   └── phase-0/                 ← GO/NO-GO evidence + calibration methodology
 ├── release/
-│   └── foundry-module.md       ← how to cut a GitHub Release
+│   ├── foundry-module.md        ← GitHub Release of the module zip
+│   └── evenhub.md               ← .ehpk packaging (secondary)
 ├── showcase/
-│   └── index.html              ← animated showcase (GitHub Pages)
-└── wiki/
+│   └── index.html               ← animated showcase (GitHub Pages)
+└── wiki/                        ← GitHub-wiki source (Italian): Home, _Sidebar, _Footer, 25 pages, images/
 ```
 
 ---
 
-*All version numbers in this folder follow `Specs.md` header (the INV-3 anchor). Any cross-cutting
-version bump updates `Specs.md` + `README.md` + `docs/showcase/index.html` in a single atomic commit
-per INV-3 (§0.1).*
+*Version numbers in this folder follow the `Specs.md` header (the INV-3 anchor). A
+cross-cutting version bump updates `Specs.md` + `README.md` + `docs/showcase/index.html`
+in one commit.*

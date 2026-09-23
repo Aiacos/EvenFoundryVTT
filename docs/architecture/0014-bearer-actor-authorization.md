@@ -4,6 +4,8 @@
 - **Relates to:** ADR-0002 (protocol versioning — WS envelope + token), ADR-0011 (Foundry write-path single-workflow-origin). Supersedes the implicit "world-scoped bearer" trust assumption in `Specs.md` §11.5.4.
 - **Security finding addressed:** T8 — *cross-player character data disclosure* (full-codebase review, 2026-06-14). See [[bearer-tokens-world-scoped-not-actor]].
 
+> **Status note (v0.12.0, 2026-09-23)** — **Superseded by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)** (including Amendments 1 and 2): bearer tokens, the bearer registry and the PairModal were removed; each device now has its own ECDH-sealed AES-GCM key and a dedicated "(G2)" Foundry user. The per-actor ownership check is **carried forward** as a live `userOwnsActor(actorId, playerUserId)` check in the projector on every get/invoke.
+
 ## Context
 
 A bearer token authenticates a paired G2 device to the bridge. Today the token is **world-scoped, not actor-scoped**:

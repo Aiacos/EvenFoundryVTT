@@ -23,7 +23,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getLogEventTail } from '../log-reader.js';
+import { getLogEventTail, isMessageVisibleTo, toLogEvent } from '../log-reader.js';
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -208,5 +208,36 @@ describe('getLogEventTail', () => {
     const result = getLogEventTail();
     // No actorName → description is just the kind
     expect(result[0]?.description).toBe('chat');
+  });
+});
+
+describe('log visibility (direct projector privacy filter)', () => {
+  it('LR-VIS-1: public message is visible to anyone', () => {
+    expect(isMessageVisibleTo({ id: 'm', whisper: [] }, ['p1'])).toBe(true);
+    expect(isMessageVisibleTo({ id: 'm' }, ['p1'])).toBe(true);
+  });
+
+  it('LR-VIS-2: whisper visible only to recipients', () => {
+    expect(isMessageVisibleTo({ id: 'm', whisper: ['gm'] }, ['p1', 'g2'])).toBe(false);
+    expect(isMessageVisibleTo({ id: 'm', whisper: ['gm', 'g2'] }, ['p1', 'g2'])).toBe(true);
+  });
+
+  it('LR-VIS-3: blind rolls are never visible', () => {
+    expect(isMessageVisibleTo({ id: 'm', whisper: [], blind: true }, ['p1'])).toBe(false);
+  });
+
+  it('LR-VIS-4: getLogEventTail with viewerIds drops hidden messages and keeps order', () => {
+    stubGameMessages([
+      { ...makeMessage({ id: 'a' }) },
+      { ...makeMessage({ id: 'secret' }), whisper: ['gm'] },
+      { ...makeMessage({ id: 'b' }), whisper: ['p1'] },
+      { ...makeMessage({ id: 'c' }) },
+    ]);
+    expect(getLogEventTail(50, ['p1']).map((e) => e.id)).toEqual(['a', 'b', 'c']);
+    expect(getLogEventTail(2, ['p1']).map((e) => e.id)).toEqual(['b', 'c']);
+  });
+
+  it('LR-TOEVENT: message without id maps to null', () => {
+    expect(toLogEvent({ id: '' })).toBeNull();
   });
 });

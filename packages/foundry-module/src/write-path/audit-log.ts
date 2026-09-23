@@ -29,10 +29,10 @@ import type { ToolResult } from './tool-registry.js';
 /**
  * Max time to wait for the audit `ChatMessage.create` before giving up (ms).
  *
- * Must stay well under the bridge's `TOOL_INVOKE_TIMEOUT_MS` (10_000) so a hung audit
- * write cannot push tool dispatch past the bridge's result-wait window. The audit is
+ * Must stay well under the glasses' invoke timeout so a hung audit write cannot push
+ * tool dispatch past the window in which the app waits for the `result`. The audit is
  * best-effort observability — losing an entry to a timeout is acceptable; stalling the
- * player's action (and the bridge queue slot) for 10s is not.
+ * player's action is not.
  */
 export const AUDIT_WRITE_TIMEOUT_MS = 2_500;
 
@@ -137,9 +137,9 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
 
   // The audit write must NEVER block tool dispatch. `dispatchTool` awaits this function
   // before returning its result (and, on the poll path, before POSTing the result back to
-  // the bridge). On a player/headless executor `ChatMessage.create` can HANG indefinitely
+  // the glasses). On a player/headless executor `ChatMessage.create` can HANG indefinitely
   // (the doc create awaits a server/GM round-trip that may never complete) — observed live:
-  // a skill roll executed (its own card appeared) but the bridge still hit its 10s
+  // a skill roll executed (its own card appeared) but the caller still hit its 10s
   // `foundry_timeout` because this audit write never resolved. We therefore bound the write
   // with a timeout: a hung create resolves here (best-effort) instead of stalling dispatch.
   let timer: ReturnType<typeof setTimeout> | undefined;

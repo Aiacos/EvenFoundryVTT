@@ -2,7 +2,7 @@
  * Multi-attack progress payload schema (Plan 07-04 — MULTI-01).
  *
  * Emitted by the Foundry module on each iteration of the Path B client-side
- * loop inside `weaponAttackHandler`. The bridge propagates this envelope to
+ * loop inside `weaponAttackHandler`. The projector relays this delta to
  * g2-app's `multi-attack-progress-dispatcher`, which updates the
  * `CombatTrackerPanel.multiAttackState` field and triggers a re-render of
  * the `[Atk N/M]` chip.

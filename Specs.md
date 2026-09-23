@@ -1,22 +1,22 @@
 ---
 title: EvenFoundryVTT — Requirements, Architecture & Execution Plan
 created: 2026-05-09
-updated: 2026-07-04
+updated: 2026-09-23
 status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.11.0)
+# EvenFoundryVTT — Project Specification (v0.12.0)
 
 ## 0. Executive Summary
 
 **EvenFoundryVTT** porta una sessione di D&D 5e su FoundryVTT direttamente sugli occhiali AR **Even Realities G2**, controllata dall'**anello R1**.
 
-**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, swipe-up, swipe-down, double-tap), tutto sincronizzato in real-time con FoundryVTT tramite un Bridge service. Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
+**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, swipe-up, swipe-down, double-tap), tutto sincronizzato in real-time con FoundryVTT **direttamente** (v0.12.0, [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)): l'app per gli occhiali è servita dal modulo Foundry stesso, associata con un QR e collegata via socket Foundry con envelope cifrati — nessun Bridge, nessun Docker. Ogni giocatore associa i propri occhiali dal proprio Foundry ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)); la HUD è la «Scheda da tavolo G2» disegnata da un renderer a pixel ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md), §7.0). Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
 
-**Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 e il bridge non integrano AI direttamente — restano deterministici.
+**Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 non integra AI direttamente — resta deterministico. **v0.12.0:** `foundry-mcp` è stato rimosso insieme al Bridge (ADR-0016); voice/MCP potrà tornare solo come client del canale diretto, con un nuovo ADR.
 
-**Stato**: design only. Nessuna riga di codice scritta. Hardware target già verificato (G2 + R1 sono prodotti commerciali Even Realities, vedi §3 e §13).
+**Stato (v0.12.0)**: monorepo attivo (`foundry-module`, `g2-app`, `shared-protocol`, `shared-render`, `validation-harness`). La linea v0.9.14 → v0.11.0 (Bridge, streaming raster del canvas, bearer token; ultimo rilascio `v0.1.55`) è conservata nella storia e nel Changelog; v0.12.0 la sostituisce con lo streaming diretto. Verifiche hardware con il pattern defer-hardware (ADR-0005, `validate:direct-sideload`).
 
 ---
 
@@ -151,7 +151,29 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 
 ## 2. System Architecture
 
+### 2.0 Direct Streaming Architecture (v0.12.0 — canonico)
+
+```
+[G2 glasses] ⇄ BLE ⇄ [Even App WebView ── pagina servita da Foundry: /modules/evenfoundryvtt/g2/]
+                                   │  same-origin HTTPS: POST /join (cookie) + socket.io
+                                   ▼
+                           [Foundry server]  relay module.evenfoundryvtt (envelope AES-GCM)
+                                   │
+                                   ▼
+             [Browser GM: modulo evenfoundryvtt = PROJECTOR]
+               readers dnd5e · dispatchTool (ADR-0011) · registro pairing
+```
+
+- **Hosting**: il bundle `g2-app` è compilato dentro `packages/foundry-module/g2/` e servito da Foundry; l'Even Realities App lo carica via **QR sideload** (`hub.evenrealities.com/docs/get-started/architecture`). Same-origin ⇒ niente CORS, niente whitelist cross-origin, cookie di sessione first-party (Foundry v14 accetta la sessione solo da cookie).
+- **Identità**: un utente Foundry dedicato «Giocatore (G2)», ruolo PLAYER, OWNER solo del PG scelto.
+- **Trasporto**: envelope `{evf,to,from,iv,ct}` AES-256-GCM (chiave per dispositivo, AAD `from>to`, finestra anti-replay 120 s) sul relay `module.evenfoundryvtt`, che Foundry inoltra a *tutti* i client.
+- **Projector** (ibrido, [ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)): gli occhiali scrivono a `projector`; per ogni dispositivo risponde il **client del giocatore** quando è online (azioni a suo nome), altrimenti il **GM attivo** che possiede la chiave del dispositivo; solo il client eletto esegue `invoke` (ADR-0011, INV-6). Il projector risponde a `hello/get/invoke/ping`, spinge `delta`, ruota la chiave al primo `welcome` (QR monouso; la password la ruota solo un GM). Associazione self-service: il GM abilita i giocatori una volta (utenti «(G2)», password sigillata ECDH P-256 per la chiave pubblica del giocatore), il giocatore mostra il QR dal proprio Foundry e sigilla la chiave del dispositivo per ogni GM.
+- **Contratto**: [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md) · `packages/shared-protocol/src/direct/`.
+- **Sostituisce** (linea v0.10–v0.11): Bridge Fastify + WS, immagine GHCR, Docker Compose, bearer token e PairModal (ADR-0014 remoto → ADR-0017), cattura headless della player-view e streaming raster del canvas (ADR-0015 → ADR-0016), substrati raster/hybrid/showcase (ADR-0013, ADR-0009/0010 → ADR-0018). Restano canonici ADR-0011 (single workflow origin) e ADR-0012 (modello gesti R1).
+
 ### 2.1 Component Diagram
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Il Bridge Node.js non esiste più: vedi §2.0. Conservato come storico; il contratto vivo è indicato qui.
 
 ```
                   MVP (deterministico, sempre attivo)
@@ -223,6 +245,8 @@ Il blocco V2 è completamente disaccoppiato: si avvia/spegne separatamente, non 
 
 ### 2.2 Data Flow
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Letture: hook Foundry → projector (client del giocatore o GM) → `delta` sigillato sul relay `module.evenfoundryvtt` → HUD. Scritture: gesto → `invoke` sigillato → projector eletto → `dispatchTool` → `activity.use()` / MidiQOL (ADR-0011). Il percorso vocale via MCP è rimosso. Conservato come storico; il contratto vivo è indicato qui.
+
 **Read path (HUD aggiornato in real-time, MVP)**:
 
 ```
@@ -256,6 +280,8 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 
 ### 2.3 Trust & Authority
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md))** — Identità = utente Foundry dedicato «(G2)» (ruolo Player, OWNER solo del proprio PG); le azioni girano sul client del giocatore quando è online, altrimenti sul GM attivo che possiede la chiave del dispositivo (§2.0). Il principio «Foundry single source of truth» resta valido. Conservato come storico; il contratto vivo è indicato qui.
+
 - **Single source of truth**: FoundryVTT. Ogni stato deriva dal mondo Foundry.
 - **GM mantiene controllo**: ogni azione AI passa dal sistema Activity di Foundry, quindi è soggetta a regole, hooks, modifier, advantage/disadvantage. Il GM può sempre annullare.
 - **Player permission boundary**: il bridge si autentica come l'utente del player; può operare solo su attori posseduti. Per applicare danni a NPC si usa `socketlib.executeAsGM` o `MidiQOL.completeActivityUse({ asUser: gmUserId })`.
@@ -272,7 +298,7 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 | Profondità colore | **4-bit greyscale**, 16 livelli di verde |
 | Containers per pagina | **max 4 image + 8 altri** (text/list) |
 | Event capture | esattamente **1 container con `isEventCapture: 1`** |
-| Image container size | **20–200 px W × 20–100 px H** (⚠️ NO full-screen image). **Caveat**: image container non può essere inviato durante creazione iniziale — serve placeholder + `updateImageRawData` post-create |
+| Image container size | **20–288 px W × 20–144 px H** (SDK 0.0.15, tipi + `build/display`; il 200×100 delle versioni precedenti è superato). ⚠️ NO full-screen image: 576×288 = griglia 2×2 di tile 288×144. **Sul G2 reale i tile devono stare sulla griglia ancorata a (0,0)** — offset fuori griglia ⇒ pagina `REJECTED` (d97b12e, §7.0). **Caveat**: image container non può essere inviato durante creazione iniziale — serve placeholder + `updateImageRawData` post-create (passo ≥ 100 ms) |
 | Text container | fino a 1.000 char (2.000 con `textContainerUpgrade`), wrap automatico. Full-screen container tipico ~400–500 char visibili |
 | List container | **max 20 item × 64 char** ciascuno, no styling per-item, **no in-place updates** |
 | Layout | coordinate assolute pixel da top-left, no CSS/DOM/flex |
@@ -287,6 +313,8 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 - La mini-mappa **non può** essere un'unica immagine 576×288. Soluzione: **text grid + glyph unicode** (vedi §7) con un piccolo image container (≤200×100) opzionale per "you-are-here".
 - 8 container non-image è abbondante per testo strutturato a colonne.
 - Il vincolo "1 solo capture" non impedisce overlay: il **focus di input** si sposta tra layer (mappa ↔ overlay) tramite state machine. Una sola UI, layer impilati.
+
+> **v0.12.0:** il budget effettivo è quello del layout a scheda (§7.0): **3 / 4 image + 4 / 8 text** in gioco, 4 image a tutto schermo. La tabella sotto è storica (linea raster-default).
 
 **Container budget allocato per la "main page"** (vedi §7) — aggiornato post-v0.7 raster-default:
 
@@ -315,6 +343,8 @@ Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.
 | Batteria | ~4 giorni, ricarica completa ~90 min |
 | Range operativo | -10 °C a 45 °C |
 | Disponibilità API | gestures espongono eventi al plugin tramite Even App |
+
+> **v0.12.0 — implementazione di ADR-0012 (Amd 2) nel layout a scheda ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)):** tap alla radice = apre il menu **Azioni** nel pannello contesto (zona E) · swipe su/giù = cursore · doppio tap = indietro, alla radice = uscita (`shutDownPageContainer(1)`) · pressione lunga = solo scorciatoie *duplicate* (`LONG_PRESS_EVENT(9)` riaggiunto in SDK 0.0.14 + Even App ≥ 2.2.9; mai necessario). L'over-scroll → menu (D-2) è ritirato da ADR-0012 Amd 2. Le tabelle sotto descrivono la linea v0.11 (mappa/overlay).
 
 **Mapping gesture → azione** (proposta):
 
@@ -489,6 +519,8 @@ Verbatim simulator README: *"G2 plugins are web apps where **your code runs on a
 
 ### 3.8 Plugin Configuration Surface (Even Realities App)
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — La configurazione è ora il QR mostrato da Foundry + la pagina telefono P02/P03 (`docs/design/g2-thirds-layout.md` §Associazione); nessun URL o token da incollare. Conservato come storico; il contratto vivo è indicato qui.
+
 Verbatim upstream `support.evenrealities.com`: *"You can configure each widget individually through the Even App."* La Even Realities App **espone una settings UI per-plugin** sul telefono (analog Conversate / Translate / Teleprompt / Even AI hanno tutte un loro settings panel). evenfoundryvtt usa questo canale per le **connection-bootstrap settings** che richiedono input testuale (impossibile sul G2 — no keyboard, vincolo §3.1).
 
 **Settings esposte nell'Even Realities App per il plugin evenfoundryvtt** (vedi mockup §7.14.7):
@@ -549,6 +581,8 @@ game.modules.get('evenfoundryvtt').api = {
 ```
 
 ### 4.2 Bridge REST + WebSocket Surface
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Superficie sostituita dal canale diretto `module.evenfoundryvtt` (`packages/shared-protocol/src/direct/`). Conservato come storico; il contratto vivo è indicato qui.
 
 ```
 GET  /v1/actor/:id                  → full character state (auth: player token)
@@ -621,6 +655,8 @@ Spec: https://modelcontextprotocol.io/. SDK ufficiali in TypeScript e Python.
 
 ### 4.8 Dependency: socketlib, MidiQOL
 
+> **v0.12.0:** `socketlib` non è più una dipendenza richiesta (`module.json` non la dichiara): il canale diretto usa il relay `module.evenfoundryvtt` e l'elezione del projector (ADR-0017); l'uso residuo di socketlib è confinato da un gate CI. MidiQOL resta opzionale.
+
 - **socketlib** (https://github.com/farling42/foundryvtt-socketlib) — pattern: `const socket = socketlib.registerModule("evenfoundryvtt"); socket.register("handlerName", fn); await socket.executeAsGM("handlerName", ...args)`. NON è static — registra il modulo per ottenere l'instance. Altri metodi: `executeAsUser`, `executeForAllGMs`, `executeForOtherGMs`, `executeForEveryone`, `executeForOthers`, `executeForUsers`.
 - **MidiQOL** (https://gitlab.com/tposney/midi-qol) — wrapper full-flow attack→damage→save→effect. Forte raccomandazione per ridurre LOC nel modulo.
 
@@ -662,6 +698,8 @@ modules/evenfoundryvtt/
 
 ### 5.2 Bridge Service
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Package `bridge` rimosso (con immagine GHCR e `deploy/`). Conservato come storico; il contratto vivo è indicato qui.
+
 **Responsabilità**:
 
 - Reverse-proxy CORS-friendly per il G2 (deve emettere `Access-Control-Allow-Origin`)
@@ -680,6 +718,8 @@ modules/evenfoundryvtt/
 **Phase 15 — Deepgram Keyterm Prompting (v0.9.12, chiuso 2026-05-17)**: il builder di URL della sessione Deepgram (`packages/bridge/src/voice/deepgram-stt.ts`) ora accetta un `keytermProvider: () => string[]` invocato lazily a ogni `connect()` e appende un parametro query `keyterm=<URL-encoded>` per elemento. Il provider di default in `server.ts` step 10 chiude su `EntityPackCache` e ritorna `buildKeytermList(SPELL_KEYTERMS, entityCache.get())` — unione static (70 incantesimi SRD × IT+EN = 140 candidati) + dynamic (entity-pack Foundry-derived: items/weapons/armor/NPCs/monsters via canale push `/internal/delta`, vedi §11.5.5 Tier 1). **`DEEPGRAM_KEYTERM_LIMIT = 100`** (cap documentato Deepgram); su overflow si tronca prima l'entity-pack dinamico (CONTEXT D-04) per proteggere il lift di recall sul vocabolario SRD canonico. Hot-update: `KeytermRefresher` con debounce 250ms + drain-then-restart mutex su `EntityPackCache.onChange()` — la lista keyterm è osservabile telemetricamente via `event=keyterm.refreshed` ma il refresh in-stream non è supportato dal protocollo WS Deepgram, quindi il refresh diventa effettivo al prossimo `connect()` (sessioni Deepgram sono short-lived per-utterance, SLA VOICE-09 ≤ 5 min soddisfatto). Failure modes: empty-cache → one-shot warn `keyterm.empty-entity-cache` (reset on recovery); close codes 1007/1008/4xxx → retry-with-`sanitizeKeyterms` (strip ASCII control chars; Unicode letter-safe per IT spell names) → fallback baseline Phase 12 byte-for-byte (DGKT-04 regression-safe). Plan refs: `15-01..05-PLAN.md`.
 
 ### 5.3 Tool Registry (parte del Bridge — sempre attivo)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Il registry vive solo nel modulo Foundry (`write-path/tool-registry.ts`), invocato dal projector (ADR-0011 invariato; `skill-check` aggiunto nella linea v0.11 e mantenuto). Conservato come storico; il contratto vivo è indicato qui.
 
 Indipendentemente dal canale (R1 manual o MCP voice), il Bridge espone una **lista canonica di tool** che eseguono azioni Foundry:
 
@@ -703,6 +743,8 @@ type Tool =
 In entrambi i casi il Bridge esegue lo stesso codice — single source of truth per le azioni.
 
 ### 5.4 G2 App — `EvenFoundryVTT`
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — La g2-app è riscritta attorno al layout a scheda (§7.0): nessun LayerManager né pannelli; zone A–D disegnate dal renderer a pixel, zona E testo firmware. Conservato come storico; il contratto vivo è indicato qui.
 
 Vedi §7 per UI dettagliata.
 
@@ -799,6 +841,8 @@ Layer JS dentro G2 app che traduce eventi R1 in azioni applicative. Vedi §3.2 p
 Principio guida: **ogni componente cambiabile dal mondo esterno è un plugin con un contratto**. SDK Even cambia? Si aggiorna `providers/g2-sdk-vXX`. Esce un anello R2? Si aggiunge `providers/ring-r2`. dnd5e v6 ridisegna activity? Si pinna `foundry-adapter@v5` e si scrive `foundry-adapter@v6` in parallelo. Niente breaking change a cascata.
 
 #### 5.6.1 Boundary Map (chi parla con chi)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Confini attuali: G2 ⇄ WebView (Even App) ⇄ Foundry (same-origin, relay sigillato) ⇄ projector (§2.0). Conservato come storico; il contratto vivo è indicato qui.
 
 ```
         ┌────────────────────────────────┐
@@ -1023,6 +1067,8 @@ ADR (Architecture Decision Record) per ogni decisione strutturale: `docs/archite
 
 ### 5.7 `foundry-mcp` — V2 Optional Module (MCP Server)
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Package `foundry-mcp` rimosso (dipendeva dal Bridge). Voice/MCP potrà tornare come client del canale diretto con un nuovo ADR. Conservato come storico; il contratto vivo è indicato qui.
+
 > **Status**: non parte del MVP. Sviluppato dopo Phase 10 quando il MVP è stabile e field-tested.
 
 **Scopo**: esporre i tool Foundry secondo Model Context Protocol così che qualunque client LLM compatibile (Claude Desktop, Claude Code, future app) possa guidare il VTT vocalmente. Disaccoppia totalmente l'AI dal core EvenFoundryVTT — un upgrade plug-in.
@@ -1217,6 +1263,69 @@ Un'evoluzione futura potrebbe far sì che il G2 catturi audio e lo invii al clie
 
 ## 7. UI/UX — "Monitor HUD" Aesthetic (Layered Model)
 
+### 7.0 Sheet Layout (v0.12.0 — canonico)
+
+**«Scheda da tavolo G2»** (giro UX 2, 2026-09-23): la HUD si legge come la scheda cartacea di D&D 5e e come D&D Beyond — CA nello scudo, box PF, box delle caratteristiche, cerchi di competenza — più una mappa quadrata del combattimento. Sostituisce il layout a terzi della prima stesura v0.12.0 (storico: [`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md), il cui flusso di associazione P01–P03 resta valido). Contratto completo — brief, principi, inventario scheda→G2, zone e budget SDK, linguaggio visivo, interazione, 12 schermate hi-fi, casi limite: **[`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html)**.
+
+![Scheda da tavolo G2 — combattimento, il tuo turno (simulatore, 576×288)](docs/design/img/sheet-combat-my-turn.png)
+
+*S2 · combattimento, tuo turno — screenshot reale dal simulatore Even Hub (`docs/design/img/sheet-*.png`, 12 schermate S1–S12).*
+
+**Geometria delle pagine — griglia 2×2 di tile 288 × 144 (provata su hardware).** Il host G2 reale **rifiuta** `createStartUpPageContainer`/`rebuildPageContainer` quando un container immagine sta a un offset fuori dalla griglia ancorata a (0, 0): i tile del substrato showcase a (88, 44) davano `REJECTED`, la pagina restava con 0 container e ogni `updateImageRawData` successivo finiva in `sendFailed` (occhiali bianchi) — commit d97b12e, 2026-07-07. Il simulatore accetta qualunque offset, quindi non lo rileva. Le sole geometrie provate sul G2 reale sono le griglie 2×2 da (0, 0) di tile 200 × 100 e **288 × 144** (streaming live, giugno 2026). La prima stesura v0.12.0 (tile 144² a x = 0 / 144 / 432) non è mai stata verificata e viene sostituita da questa:
+
+```
+0           144         288         432         576
+┌───────────┬───────────────────────┬───────────┐
+│ A ritratto│ B intesta-┊zione (PF, │ C mappa   │
+│ 144×144   │ CA, turno,┊azioni)    │ 144×144   │
+│           │ tile T1 ◀ ┊▶ tile T2  │           │
+├───────────┴───────────┼───────────┴───────────┤
+│ D scheda — tile T3    │ E contesto — testo ×3 │
+│ image 288×144 (0,144) │ 288×144 (288,144)     │
+│                       │ unica zona interattiva│
+└───────────────────────┴───────────────────────┘
+```
+
+*Linee continue = confini delle zone (INV-1); `┊` = taglio fra i tile T1 e T2 (x = 288). Scala 1 carattere = 12 px.*
+
+**Container** (una pagina, nessun `rebuildPageContainer` durante il gioco):
+
+| Container | Area (x, y, l × a) | Tipo | Contenuto |
+|---|---|---|---|
+| T1 · banda sinistra | 0, 0, 288 × 144 | image | metà sinistra della **banda superiore**: A ritratto (x 0–143) + B intestazione (x 144–287) |
+| T2 · banda destra | 288, 0, 288 × 144 | image | metà destra della banda: B intestazione (x 288–431) + C mappa (x 432–575) |
+| T3 · scheda | 0, 144, 288 × 144 | image | zona D |
+| E · contesto | 288, 144, 288 × 144 | text × 3: titolo (1 riga) · corpo incorniciato (3 righe, cursore ▶) · suggerimento gesti (1 riga) | zona E |
+| Sfondo | 0, 0, 576 × 288 | text `' '`, `isEventCapture: 1`, z minimo | cattura eventi (unico container di cattura; contenuto `' '` obbligatorio, altrimenti il protobuf lo scarta e l'hardware perde i gesti) |
+
+La **banda superiore 576 × 144** (A · B · C) è disegnata **una volta** in un solo framebuffer dal renderer a pixel e tagliata a x = 288 nei tile T1 e T2; ogni tile ha il proprio hash e viene inviato solo se cambia (un cambio di PF o di turno tocca l'intestazione, quindi entrambi i tile; un cambio di mappa solo T2). Gli ID dei container seguono il namespace globale del host: **prima i container immagine, poi quelli di testo**, in ordine di dichiarazione. I container immagine sono sempre disegnati **sopra** quelli di testo, qualunque sia lo `zOrderIndex` (probe 2026-06-14): per questo nessun testo visibile sta sotto un tile (lo sfondo di cattura è invisibile per costruzione) e la zona E è fuori da ogni tile.
+
+**Zone** (confini identici in ogni stato, INV-1):
+
+| Zona | Area (x, y, l × a) | Tile | Contenuto | Aggiornamento | Input |
+|---|---|---|---|---|---|
+| A · Ritratto | 0, 0, 144 × 144 | T1 | immagine attore → token → stemma di classe; tetto a mezzo tono (livello ≤ 8), attenuato a 0 PF; bordo a 15 nel tuo turno | cambio scena/condizione | no |
+| B · Intestazione | 144, 0, 288 × 144 | T1 + T2 | nome + ispirazione ★, razza · classe; **scudo CA**, **box PF** (attuali/max, badge TEMP, barra), mini-box INIZ · VEL · COMP; economia d'azione ● Azione ▲ Bonus ◆ Reazione + movimento (in combattimento); chip condizioni/concentrazione; chip **▲ TUO TURNO** + round | PF, CA, turno, condizioni | no |
+| C · Mappa | 432, 0, 144 × 144 | T2 | mappa quadrata centrata sul tuo token, celle 12 px (12 × 12 ≈ 60 ft): **arte originale della scena** (sfondo, tile, immagini dei token, scaricati same-origin) pixelata a blocchi (pixel 1/2/3, default 2), dither Floyd–Steinberg a 16 livelli, nero fuori dal raggio visivo del proprio token (12 celle se ignoto) e dietro i muri; marcatori vettoriali, mirino e portata sopra; riserva schematica senza arte ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)) | ≤ 1 fps, solo se cambia l'hash | no |
+| D · Scheda | 0, 144, 288 × 144 | T3 | due pagine: **Caratteristiche** (6 box modificatore/punteggio + passive) · **Tiri salvezza · Abilità** (● competente · ◉ maestria · ○ no); a 0 PF **Tiri contro la morte** (3 + 3 cerchi) | cambio pagina o dati | no |
+| E · Contesto | 288, 144, 288 × 144 | — (testo firmware) | registro, iniziativa, azioni, bersagli, incantesimi, esiti, reazioni, prove richieste | istantaneo (`textContainerUpgrade`, niente flicker) | **sì** (unica zona interattiva) |
+
+**Budget**: **3 / 4 image + 4 / 8 text** in gioco; restano 1 image e 4 text container di riserva. Le schermate a tutto schermo (S10 non associato, S11 collegamento) usano i **4 tile 288 × 144** della stessa griglia + sfondo, con un solo rebuild in entrata/uscita. Invio immagini: uno alla volta, passo ≥ 100 ms, hash per tile, priorità banda superiore (PF/turno) > scheda. Se il host rifiuta comunque la pagina (`rebuildPageContainer !== true`) la g2-app lo registra e ripiega sulla modalità a tutto schermo; la geometria è un item GO/NO-GO hardware (ADR-0005, `validate:direct-sideload`).
+
+**Pagina automatica della zona D**: default **Caratteristiche** · prova o tiro salvezza richiesto dal GM (`r1.roll.request`) → **Tiri salvezza · Abilità** (il contesto mostra «Tira il d20 sul tavolo») · **0 PF** → **Tiri contro la morte** (prevale su ogni scelta). Se il giocatore cambia pagina a mano (menu Azioni col tap; la pressione lunga è solo una scorciatoia duplicata), la scelta resta fino al prossimo evento.
+
+**Gerarchia dei principi** (in ordine di priorità, dal design doc):
+
+1. **Si legge come una scheda** — stessi simboli e stessa posizione della scheda cartacea / D&D Beyond.
+2. **Prima i numeri che uccidono** — PF, CA e turno sono i valori più grandi e più luminosi (livello 15); testo 11, etichette 7–9, cornici 3–5; il ritratto non supera mai il mezzo tono.
+3. **Un solo punto d'interazione** — i gesti agiscono sempre sulla zona E; il resto si aggiorna da solo.
+4. **Due pagine, scelte dal gioco** — attacchi e incantesimi vivono nel pannello contesto, dove si scelgono.
+5. **Mai uno schermo muto** — non associato, in collegamento, offline, GM assente: ogni stato ha una schermata che dice cosa fare.
+
+**Rendering**: le zone A–D sono disegnate dal renderer a pixel `packages/shared-render/src/pixel/` (framebuffer 4-bit deterministico, tre font bitmap disegnati a mano con accenti IT, set di icone D&D) perché il font firmware è proporzionale, senza dimensioni e senza i simboli D&D; codifica PNG 4-bit indicizzata pixel-exact. Solo la zona E usa il testo firmware (riga 27 px ⇒ 5 righe in 144 px). Le prove richieste dal GM non si tirano dagli occhiali (nessun handler Foundry per il tiro remoto): il contesto dice «Tira il d20 sul tavolo».
+
+**Contratto INV-1 eseguibile**: fixture golden per zona `packages/shared-render/src/fixtures/sheet.<zone>.<screen>.<locale>.<variant>.txt` (zone `portrait` · `header` · `map` · `sheet` · `full`; schermate S1–S12; locale `it`/`en`; varianti `min`/`max` per PF/nomi lunghi) — 76 fixture, un carattere esadecimale per pixel (livello 0–f).
+
 ### 7.1 Design Language
 
 Il G2 rende **verde monocromatico 4-bit**. Trattiamo questa limitazione come feature: estetica **HUD militare / VFD / CRT verde / Alien Nostromo**. La sessione sembra un **monitor a fosfori verdi che galleggia davanti al giocatore**, con bezel ASCII, font monospace, cursori che lampeggiano.
@@ -1308,6 +1417,8 @@ Il corner card `~28×21 char` (vedi §7.3) ha **layout fisso indipendente dal co
 
 ### 7.2 Layered Rendering Model
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Modello a strati e substrati `showcase`/`canvas`/`hybrid`/`glyph` (ADR-0001, ADR-0009/0010, ADR-0013) sostituiti dal layout a scheda «Scheda da tavolo G2» (§7.0) sulla griglia 2×2 di tile 288×144 provata su hardware; il substrato showcase 400×200 con tile a offset (88,44) è proprio quello che il G2 reale rifiuta (d97b12e). Conservato come storico; il contratto vivo è indicato qui.
+
 Una sola "main page" runtime con **4 layer** (z-order dal basso):
 
 ```
@@ -1365,6 +1476,8 @@ Gli **overlay z=2** (menu Quick Action, scheda PG, combat tracker, spellbook, in
 
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Allocazione sostituita da §7.0 (banda superiore 576×144 = ritratto · intestazione · mappa, tagliata in due tile 288×144; tile scheda 288×144 in basso a sinistra; pannello contesto testo 288×144 in basso a destra). Conservato come storico; il contratto vivo è indicato qui.
+
 **Approssimazione**: il G2 usa font firmware-defined; le metriche reali vanno verificate in Phase 0. I mockup assumono ~96 char × 24 row come riferimento di layout.
 
 ```
@@ -1395,6 +1508,8 @@ Gli **overlay z=2** (menu Quick Action, scheda PG, combat tracker, spellbook, in
 **z=0.5 placement**: occupa le ultime ~3 row del map-area (idle state). Quando un overlay z=2 viene montato, z=0.5 è demolito e quelle row tornano disponibili al z=2 layout. Vedi §7.4c per il contratto completo.
 
 ### 7.4 Default View — Character Status Sheet (27px grid)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Default view sostituita dalla schermata S1 esplorazione del layout a scheda (§7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > **HUD-27PX redesign (v0.9.14, 2026-06-05):** The default always-on glasses view is now the **full-width Character Status Sheet**, NOT the raster map. The G2 LVGL font has a **fixed 27px line height** (no font control per SDK). Screen: 576×288 px → ~10 rows max; full-width line ≈ ~50 chars (variable-width, measured by `@evenrealities/pretext`). The old 28×21 corner card was designed for a ~12px/24-row grid — text appeared ~2.25× too big on real glasses ("scritte troppo grandi"). This section describes the new default view. The raster/glyph map mode is a **DEFERRED gesture-opened overlay** (see §7.4 "Map mode — DEFERRED" below and ADR-0001 Amendment 2).
 
@@ -1504,6 +1619,8 @@ Stato di default (nessun overlay aperto). La mappa cattura input.
 **Vincolo hardware** (§3.1): l'image container max è **200×100 px** e ne sono disponibili **4 per pagina**. **400×200 = massimo teorico possibile** sul G2. Una versione "full-screen 576×288 raster" non è fisicamente realizzabile con l'hardware attuale.
 
 ### 7.4a Map Rendering Pipeline
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Nessuna trasformazione Bridge: il projector invia `MapSnapshot` (dati del documento scena: muri, token, luci) e il telefono compone la zona C con l'arte originale della scena pixelata ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md), §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 La pipeline **glyph mode** (§7.4b.7 fallback alternativa) sintetizza la mappa da dati semantici invece di rasterizzare il canvas Foundry. Usata quando `view.map.mode = "glyph"` o quando Phase 0 GO/NO-GO branch C (§10.0.5) forza glyph-only. Per il **raster mode default MVP** vedi §7.4b.4. Tre stadi della glyph synthesis:
 
@@ -1643,6 +1760,8 @@ Quel `Row 11` ha 3 token + facing arrow + 4 muri + ~22 floor cells, costo render
 ---
 
 ### 7.4b Map View Mode — Glyph or Raster (user-selectable)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Lo streaming raster del canvas Foundry (estrattore canvas, cattura headless della player-view, ADR-0015) è rimosso. La mappa è quadrata 144×144 nella banda superiore, costruita sul telefono da `MapSnapshot` (≤ 1 fps, solo su cambio hash). Lezione hardware mantenuta: sul G2 reale 30 fps saturavano il BLE (~540 KB/s contro ~25 KB/s), da cui il default 5 fps della linea v0.11 e il nostro ≤ 1 fps. Conservato come storico; il contratto vivo è indicato qui.
 
 > **Decisione di design v0.7** (flipped): la mappa supporta **due mode esclusivi** selezionabili dall'utente:
 > - **Raster mode** (DEFAULT MVP): canvas Foundry streamato, fedele al canvas reale, max risoluzione hardware (400×200 px). Default mockup in §7.4. Pipeline §7.4b.4.
@@ -2018,6 +2137,8 @@ Il footer espone il toggle `mode: ▶GLYPH (toggle RASTER)` — switch via Quick
 
 #### 7.4b.8 Server topology — dove gira la pipeline
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Nessun server: tutto gira nel browser del projector e nella WebView del telefono. Conservato come storico; il contratto vivo è indicato qui.
+
 Due opzioni:
 
 **A. Player client estrae** ✦ DECISIONE MVP: **default Phase 4**:
@@ -2056,6 +2177,8 @@ Due opzioni:
 ---
 
 ### 7.4c Idle Content Infill — z=0.5 layer (v0.9.12)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — z=0.5 non esiste nel layout a scheda (il pannello contesto, zona E, è sempre visibile — §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > **Status:** ratified v0.9.12 (2026-05-14) — extension to ADR-0001 layered model. Binds Phase 4a (engine + layer manager) and Phase 4b (overlay slot lifecycle).
 
@@ -2152,6 +2275,8 @@ INV-1 §7.1a sub-rule **#11 (corner alignment)** e **#13 (tab strip equal-width)
 ---
 
 ### 7.5 Overlay — Sheet (size=`panel`, multi-tab in stile Foundry)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — La scheda è la zona D (pagine Caratteristiche · Tiri salvezza e abilità · Tiri contro la morte, §7.0); incantesimi, inventario e azioni vivono nel pannello contesto (zona E). I tab Talenti/Bio restano fonti dati (reader feats/biography mantenuti) senza overlay dedicato. Conservato come storico; il contratto vivo è indicato qui.
 
 Aperto via chip `[sheet]` o quick-action menu. Replica il più fedelmente possibile la **scheda personaggio Foundry dnd5e v5.x** (supporta sia ruleset **PHB 2014** che **PHB 2024 / One D&D** via setting `core.modernRules`, vedi §11.5.1): stessa struttura header → vitals → abilità+saves → skills → features → bio. Stessi dati, stessa iconografia (mappata a Unicode), stesse decorazioni (box drawing, dividers, banner).
 
@@ -2491,6 +2616,8 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 
 ### 7.6 Overlay — Combat (size=`panel`)
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Contenuto mostrato come vista del pannello contesto (zona E, §7.0), non come overlay. Conservato come storico; il contratto vivo è indicato qui.
+
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║ MAP · Sala Banchetti  ▶ COMBAT                    ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
@@ -2519,6 +2646,8 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 ```
 
 ### 7.7 Overlay — Log (size=`panel`)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Contenuto mostrato come vista del pannello contesto (zona E, §7.0), non come overlay. Conservato come storico; il contratto vivo è indicato qui.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2549,6 +2678,8 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 
 ### 7.8 Overlay — Spellbook (size=`panel`)
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Contenuto mostrato come vista del pannello contesto (zona E, §7.0), non come overlay. Conservato come storico; il contratto vivo è indicato qui.
+
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║ MAP · Sala Banchetti  ▶ SPELLBOOK                 ROUND 3 · TURN 2/5            ⌁ R1 92%  ║
@@ -2576,6 +2707,8 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 ```
 
 ### 7.9 Overlay — Inventory (size=`panel`)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Contenuto mostrato come vista del pannello contesto (zona E, §7.0), non come overlay. Conservato come storico; il contratto vivo è indicato qui.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2605,6 +2738,8 @@ Ogni campo della Sheet legge da `actor.system` di dnd5e:
 ```
 
 ### 7.10 Voice Overlay (size=`modal`, full-screen) — **V2 OPZIONALE**
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Voice rimosso con Bridge/foundry-mcp. Conservato come storico; il contratto vivo è indicato qui.
 
 > **Non parte del MVP**. La voice UI vive nel client MCP (§5.7) — l'LLM non è on-glasses (vincolo §3.6). Tuttavia la **cattura audio sul G2 è hardware-fattibile** (verificato v0.9.10, vedi §3.5): il G2 ha 4-mic e SDK espone `audioControl()` → PCM 16 kHz s16le mono al plugin nel WebView del telefono. Architettura V2: G2 mic → plugin WebView → bridge `/v1/voice` (§4.2) → STT cloud (§4.5) → tool MCP → toast risultato sul G2. **Audio output non disponibile** (G2 no speaker §3.1) → tutto il feedback è visivo (toast HUD §7.15.2, status update §7.4).
 
@@ -2673,6 +2808,8 @@ Mostrato dopo l'apertura del Quick Action menu via over-scroll (swipe-up al top)
 
 ### 7.11 Clarify Overlay (size=`modal`) — **V2 OPZIONALE**
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Voice rimosso con Bridge/foundry-mcp. Conservato come storico; il contratto vivo è indicato qui.
+
 > **Non parte del MVP**. Usato solo quando l'AI MCP chiede disambiguazione; nel MVP il giocatore seleziona target manualmente via R1 scroll+tap dentro Combat overlay.
 
 Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen perché richiede scelta esplicita.
@@ -2696,15 +2833,17 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 
 ### 7.12 Boot Splash (page indipendente, prima del main)
 
+> **v0.12.0:** sugli occhiali il boot è la schermata a tutto schermo **S11 «collegamento»** (4 tile 288×144, §7.0); il mockup sotto resta il riferimento di versione (pre-bump checklist) con la riga Bridge sostituita dall'origine Foundry.
+
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.11.0                                          ║
+║                              EVENFOUNDRYVTT  v0.12.0                                      ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
 ║                              [ ✓ ] R1 ring paired (92%)                                   ║
-║                              [ ⟳ ] Bridge ws://homelab:8910                               ║
+║                              [ ⟳ ] Foundry https://foundry.lan (same-origin)              ║
 ║                              [   ] Foundry sync                                           ║
 ║                              [   ] Character: Thorin                                      ║
 ║                                                                                           ║
@@ -2715,9 +2854,11 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 ╚═══════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-### 7.13a Quick Action Menu (MVP — over-scroll entry point)
+### 7.13a Quick Action Menu (MVP — tap entry point, ADR-0012 Amd 2)
 
-Apparso su **over-scroll (swipe-up al top boundary del layer in focus)**, ADR-0012. Selezione via scroll, conferma via tap.
+> **v0.12.0:** il menu si apre con un **tap dalla vista base** (ADR-0012 Amendment 2, 2026-06-19 — l'over-scroll è ritirato) e nel layout a scheda è il menu **Azioni** del pannello contesto (zona E, [ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)); la pressione lunga apre solo scorciatoie duplicate. Il mockup sotto (voci S/C/L/B/I/A/M/N) è storico.
+
+Apparso su **over-scroll (swipe-up al top boundary del layer in focus)**, ADR-0012 (D-2, ritirato da Amd 2). Selezione via scroll, conferma via tap.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
@@ -2908,6 +3049,8 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 **Implicazioni di INV-3 (doc coherence)**: ogni nuova setting deve essere documentata nella superficie che ospita, con cross-ref. Non duplicare; se serve in due posti, usare `#2 phone-side` come canonical.
 
 #### 7.14.7 Phone-Side Configuration UI (Even Realities App)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Sostituita dal pairing QR diretto (mock P01–P03 in `docs/design/g2-thirds-layout.md` §Associazione; schermate occhiali S10–S12 in §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > Surface canonica per **connection-bootstrap settings** (§3.8). HTML form renderizzato nel WebView del plugin sul telefono — **non** sul G2 — quando l'utente apre l'app evenfoundryvtt dall'Even Realities App. Risolve il chicken-and-egg "G2 senza tastiera, ma serve URL+token per connettersi a Foundry".
 
@@ -3136,7 +3279,7 @@ BLE budget: OK (sotto 25 KB/s real-world)
 **Regole macro** (in ordine di priorità):
 
 1. **Tap doppio = "indietro"**: chiude qualsiasi overlay/modal e torna a MAIN_MAP (sulla root mappa = EXIT dialog).
-2. **Over-scroll (swipe-up al top boundary) = apri Quick Action menu** (§7.13a, ADR-0012): in MAIN_MAP — o in qualunque layer già al proprio top — uno `swipe-up` apre il menu. NON è un long-press (gesture ritirato, ADR-0012): non esiste input duration-based.
+2. **Tap alla vista base = apri il menu** (§7.13a, ADR-0012 Amd 2; v0.12.0: menu Azioni della zona E). *Storico (D-2):* **Over-scroll (swipe-up al top boundary) = apri Quick Action menu** (§7.13a, ADR-0012): in MAIN_MAP — o in qualunque layer già al proprio top — uno `swipe-up` apre il menu. NON è un long-press (gesture ritirato, ADR-0012): non esiste input duration-based.
 3. **Tap singolo = primary action / cycle**: cicla tab (Sheet), seleziona opzione (Quick Action), o attiva l'item highlighted / esegue l'azione del panel (cast, use, equip via `activity.use()`).
 4. **Scroll = navigazione**: pan mappa, lista item, storia eventi, opzioni modal.
 
@@ -3266,6 +3409,8 @@ Settings i18n sono **device-local** (LRU per-device, non world-scope) — ogni p
 ---
 
 ## 8. Voice Interaction — Worked Examples (V2 OPZIONALE)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Voice rimosso con Bridge/foundry-mcp; esempi conservati per un futuro ADR. Conservato come storico; il contratto vivo è indicato qui.
 
 > **Non parte del MVP**. Questi esempi descrivono il comportamento atteso quando il modulo `foundry-mcp` (§5.7) è attivo e il giocatore usa un client MCP (es. Claude Desktop) come push-to-talk frontale. I tool chiamati sono gli stessi del Tool Registry §5.3 — nel MVP sono invocati manualmente dal G2 panel; in V2 dall'LLM via MCP.
 
@@ -3422,6 +3567,8 @@ SCIMITAR (bonus) vs Goblin → 22 vs AC 14  HIT  → 6 slashing
 ---
 
 ## 10. Roadmap (Aggiornata v0.9 — 15 fps target + dual-edition support)
+
+> **v0.12.0:** le fasi 0–13 sotto sono la roadmap storica della linea MVP (chiusa software-complete in v0.11.0). Il lavoro corrente è tracciato con Spec Kit (`specs/003-direct-streaming/`); il gate hardware aggiunto è `validate:direct-sideload` + GO/NO-GO della geometria a tile 2×2 (ADR-0005). Bridge (Phase 3), `foundry-mcp` (Phase 11) e voice (Phase 12) sono rimossi da ADR-0016.
 
 > **MVP** = Phase 0–10 (HUD + R1 + manual action) → **13 settimane** (Week 0 + Week 1-13 implementation). **V2 opzionale** = Phase 11+ (voice via MCP + stretch features) → 14-16 weeks.
 
@@ -3783,11 +3930,15 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 
 ### 11.5.3 Bridge deployment topology
 
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Nessun deployment: il modulo Foundry serve l'app G2 (§2.0); serve solo Foundry raggiungibile in HTTPS con certificato valido. Conservato come storico; il contratto vivo è indicato qui.
+
 - **Decisione MVP**: **Docker Compose homelab default**. Bridge gira su same LAN del Foundry server (latency network ≤5 ms tipico). Phone Even App si collega via WiFi locale.
 - **Stretch**: Cloud deploy (Railway, Fly.io, Render) per accesso remoto. Cloudflare Tunnel o ngrok per esporre homelab via tunnel sicuro.
 - **Rationale**: homelab è il setup tipico Foundry (single-DM, 4-6 player). Cloud è opzionale per chi non ha port-forwarding o gioca remoto.
 
 ### 11.5.4 Authentication scheme
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md))** — Auth = utente Foundry dedicato «(G2)» + chiave AES-GCM per dispositivo, QR monouso ruotato al primo `welcome`; password e chiavi sigillate ECDH P-256; autorizzazione per-attore = ownership live del PG (idea ereditata da ADR-0014 remoto) (§2.0). Nessun bearer token. Conservato come storico; il contratto vivo è indicato qui.
 
 - **Decisione**: **Bearer token opaco per-player** (32 byte random base64url), generato dal modulo Foundry. **Non scade** — durata illimitata per tutta la campagna (sentinel `NO_EXPIRY_MS`; era 24h con rotation, ritirato — ADR-0014 Amd 2b: il TTL faceva scadere i device a metà sessione senza beneficio nel trust model single-tenant homelab). Revoca esplicita (cancella il flag / `revokeBearer`) per invalidare un device.
 - **Pairing self-service (ADR-0014 Amd 2a, 2026-06-21)**: **ogni utente abbina il proprio device** (no user-picker GM), legato al proprio `game.user.id`. Un **GM** scrive il bearer direttamente nel `bearerRegistry` (world setting). Un **player non-GM** non può scrivere il world setting, quindi scrive un flag `pendingPair` sul **proprio** User document: è un **bearer di prima classe auto-autenticato** (solo quell'utente può scrivere il proprio flag → binding token→utente autenticato dall'ownership del documento), risolto da `validateBearer` + `readBearerRegistry`, quindi **funziona standalone senza alcun GM online**. (L'eventuale ingestione GM nel registry persistente è un upgrade opzionale, non un requisito.)
@@ -3803,6 +3954,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 - **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. Il copy/paste è l'unico pattern realizzabile per il phone-side bootstrap (nessuna app può scansionare un QR — niente fotocamera).
 
 ### 11.5.5 Storage backend
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Niente cache Bridge (Tier 1/2). Restano: stato Foundry (unica fonte), record di pairing nel mondo (sigillati), `localStorage` della WebView per chiave del dispositivo e preferenze (persiste a sospensione/aggiornamento, INV-2 2026-09-23). Conservato come storico; il contratto vivo è indicato qui.
 
 **Quattro tier di storage**, con ruoli distinti (v0.9.11 aggiunto tier #4 phone-side):
 
@@ -3827,6 +3980,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 - **Releases**: modello Changesets "Version-PR". Push su `main` → `changesets/action@v1` apre/aggiorna una PR "Version Packages" che bumpa le versioni per-package e consuma i changeset; al merge (zero changeset residui) lo step `publish` crea+pusha il tag `v<version>` (derivato da `@evf/foundry-module`) e dispatcha `foundry-module-release.yml`. Nessun `npm publish` (pre-1.0, privatePackages tag:false). Nota: un tag pushato col GITHUB_TOKEN di default NON triggera altri workflow → il dispatch usa `gh workflow run` (workflow_dispatch), nessun PAT aggiuntivo.
 
 ### 11.5.7 Raster pipeline library stack (v0.9.3)
+
+> ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md))** — Nessuna pipeline di cattura: la g2-app usa `upng-js` (PNG 4-bit indicizzato pixel-exact) + dither Floyd–Steinberg e pixelazione in TypeScript puro; `image-q`/`xxhash-wasm` non sono più usati. Conservato come storico; il contratto vivo è indicato qui.
 
 Verified via library research (Q2 2026): le librerie open source coprono tutto il pipeline §7.4b.4 senza necessità di scrivere quantization/dithering/PNG-encode da zero. **Bundle target Foundry module: ~90 KB gzipped totali** (well within hygiene).
 
@@ -4140,6 +4295,36 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ## Changelog
 
+- **2026-09-23 (v0.12.0 — port dello streaming diretto su `develop`)** — **Bump v0.11.0 → v0.12.0.** Il ramo `feature/direct-streaming-v2` (22 commit dal merge-base 25cd90f del 2026-05-31) è stato fuso su `origin/develop` (627 commit, fino a d97b12e del 2026-07-07) con storia remota **conservata**. Il numero v0.10.0 del ramo collideva con il milestone remoto v0.10.0 (e v0.11.0 era già usato) ⇒ **v0.12.0**.
+  - **Rinumerazione ADR** (sed meccanico prima del merge, in quest'ordine): ADR-0014 → **ADR-0018** (HUD scheda D&D, renderer a pixel) · ADR-0013 → **ADR-0017** (occhiali dei giocatori, projector ibrido) · ADR-0012 → **ADR-0016** (streaming diretto Foundry → G2). Le ADR remote 0012–0015 mantengono numero e contenuto; ricevono solo note di stato: **0012** (modello gesti R1, Amd 2 «il menu si apre col tap») **resta canonica** ed è implementata da ADR-0018; **0013** (+Amd 1, HUD raster) superata da ADR-0018 (fatti hardware mantenuti); **0014** (+Amd 1, 2, bearer ↔ autorizzazione per attore) superata da ADR-0017 (controllo di ownership per attore ereditato); **0015** (cattura mappa player-view) superata da ADR-0016; **0009/0010** superate da ADR-0018; **0011** Amd 2 superata da ADR-0017 (la regola single-workflow-origin resta); **0002** parzialmente superata da ADR-0016; **0003/0004**: `foundry-mcp` rimosso, voice/MCP richiede un nuovo ADR. Indice: `docs/architecture/README.md`.
+  - **Mantenuto dalla linea v0.9.14 → v0.11.0:** storia e Changelog; §3.2 mapping R1 e ADR-0012; fix Foundry/dnd5e trovati dal vivo — `Activity#use(usage, dialog, message)` con `configure:false` nell'argomento **dialog** (184f172: prima ogni cast/attacco/uso restava appeso ~10 s), `hp.temp` nullo ⇒ 0 (448a56c), id di riserva stabile per oggetti senza id (079e6d6), `method`/`prepared` degli incantesimi dnd5e 5.1 (0ce4322, con `prepared` numerico 0/1/2), quantità 0 ammessa (b6d7d14), scrittura dell'audit log limitata a 2,5 s (fbb9f83), handler `skill-check`, CA dei combattenti, reader talenti/biografia; cache-bust del nome file esmodule (7f37b5f); canale di rilascio (tag `vX.Y.Z` via `scripts/release-tag.mjs` → `foundry-module-release.yml`, manifest `releases/latest/download/module.json`, `.ehpk` allegato); fatti Even Hub (le prove caricate sul portale **scadono** ⇒ test con `evenhub qr`/sideload; nessun comando CLI di submit; `app.json` versione = versione del package, icona e descrizione richieste).
+  - **Rimosso:** `packages/bridge` (immagine GHCR, rate limiter, cache, route agent, player-view headless), `packages/foundry-mcp`, `deploy/` (Caddy, compose, Watchtower), `tools/pv-doctor.mjs`, `scripts/sim.sh`; bearer token, PairModal, BridgeConfigModal, pairing self-service via flag; estrattore canvas e cattura raster della mappa; substrati `showcase`/`canvas`/`hybrid` e LayerManager/pannelli della g2-app; docs `self-hosting`, `simulator-testing`, `mcp-verification`, `voice-verification`, `release/{bridge,debug-harness,foundry-test-stack,phase8-write-channel-redeploy}`. 40 changeset bridge-only o di funzioni abbandonate eliminati; la PR «Version Packages» (#39, bridge-era) va chiusa senza merge. Sezioni superate di questo documento marcate con banner **SUPERSEDED in v0.12.0**.
+  - **Fatto hardware (d97b12e, 2026-07-07) ⇒ nuova geometria (§7.0):** il host G2 reale rifiuta le pagine con tile immagine fuori dalla griglia ancorata a (0, 0) (tile showcase a (88, 44) → `REJECTED`, 0 container, occhiali bianchi); il simulatore no. Il layout a scheda passa alla **griglia 2×2 di tile 288 × 144** provata su hardware: banda superiore 576 × 144 (ritratto · intestazione · mappa) disegnata una volta e tagliata a x = 288, tile scheda in (0, 144), pannello contesto di testo in basso a destra; budget 3 / 4 image + 4 / 8 text. Altri fatti del G2 reale acquisiti dalla linea remota: `containerID` obbligatorio con namespace «prima immagini, poi testo»; le immagini stanno sempre sopra al testo; container di cattura con contenuto `' '`; il BLE reale satura a 30 fps (⇒ mappa ≤ 1 fps con hash); un `Error` nella console WebView si serializza come `{}`; il bundle browser non deve importare `node:fs`.
+  - **§3.1** image container corretto a **20–288 × 20–144** (SDK 0.0.15). **§7.13a** titolo corretto in «tap entry point» (ADR-0012 Amd 2; l'«over-scroll» remoto e il «long-press» della nostra stesura erano entrambi obsoleti). **§4.8** socketlib non più richiesto.
+  - **Versioni** (changeset, minor = breaking pre-1.0): `@evf/foundry-module` 0.1.55 → **0.2.0** (tag `v0.2.0`; `v0.1.55` resta l'ultimo rilascio bridge-era, `g2-app-v0.11.0` l'ultima pre-release) · `@evf/g2-app` 0.2.5 → 0.3.0 · `@evf/shared-protocol` 0.2.0 → 0.3.0 · `@evf/shared-render` 0.1.1 → 0.2.0 · `@evf/validation-harness` 0.1.0 → 0.2.0. Migrazione: rimuovere il container del Bridge e riassociare gli occhiali dalla lista Giocatori.
+  - **Workflow:** GSD `.planning/` sostituito da Spec Kit sul lato remoto; questa feature è `specs/003-direct-streaming/`; `specs/002-hybrid-native-raster-render/` marcata superata.
+  - **INV-3:** Specs.md + README.md + docs/showcase/index.html + CLAUDE.md + wiki (`docs/wiki/`) aggiornati insieme; versione v0.12.0 su badge README, hero showcase e boot splash §7.12.
+- **2026-09-23 (v0.12.0 — Direct Foundry → G2 streaming, thirds layout; stesura sul feature branch)** — Scritta sul ramo `feature/direct-streaming-v2` a partire da v0.9.13 (merge-base 25cd90f) come «v0.10.0 / ADR-0012–0014», **rinumerata v0.12.0 / ADR-0016–0018** al port su `develop` (voce sopra). Architettura riscritta: rimossi Bridge Node.js, `foundry-mcp` e Docker Compose; l'app G2 è servita dal modulo Foundry e associata con un QR (ADR-0016). Nuovo layout a terzi (§7.0) e nuova sezione architettura (§2.0); sezioni superate marcate con banner SUPERSEDED.
+  - **Re-verified ✓ / Drift (INV-2, 2026-09-23, hub.evenrealities.com/docs/* aggiornate 2026-06-11 → 2026-08-29 + tarball npm SDK 0.0.10/0.0.14/0.0.15):**
+    - **Drift CRITICAL — SDK 0.0.10 → 0.0.15.** 0.0.11 location/foto/mic telefono; 0.0.12 `zOrderIndex` obbligatorio e univoco se usato, LZ4 immagini; 0.0.14 `menuObject` (≤10 voci, ≤32 byte), `LONG_PRESS_EVENT(9)`/`RELEASE(10)`, `textColor` 0–4, `updateImageRawData` a passo 100 ms; 0.0.15 `eventSource` sul long-press. `min_sdk_version` minimo per la review = 0.0.14 (`ship/app-submission`).
+    - **Drift IMPORTANT — image container 288×144** (`build/display`, tipi SDK 20–288 × 20–144) supera il 200×100 della voce 2026-05-31.
+    - **Drift IMPORTANT — long-press ri-aggiunto** (SDK 0.0.14 + Even App ≥ 2.2.9) ma solo come *extra* (il tap-poi-long-press è riservato al menu di sistema). **GEST-01 chiuso by design**: nel layout a terzi il menu azioni si apre con tap, il long-press apre solo scorciatoie duplicate.
+    - **Re-verified ✓** whitelist rete per origin completa senza wildcard, CORS non bypassato; **QR sideload** carica un URL arbitrario (`get-started/architecture`; `evenhub-cli@0.1.14 qr` codifica l'URL in chiaro); doppio tap sulla radice ⇒ `shutDownPageContainer(1)` obbligatorio; `setBackgroundState`/`onBackgroundRestore` **assenti** (si usano `FOREGROUND_ENTER/EXIT`); `localStorage` persiste a sospensione/aggiornamento; banda BLE 10–30 KB/s (FAQ) ⇒ mappa ≤ 1 fps.
+    - **Foundry (foundryvtt.com/article/module-development, api/v13 `foundry.Game`):** relay `module.<id>` verso tutti i client ⇒ envelope cifrati; v14 legge la sessione solo dal cookie ⇒ hosting same-origin; issue #14728 (login concorrente stesso utente) ⇒ utente «(G2)» dedicato.
+    - **Drift IMPORTANT — glifi e capienza del font firmware** (misurati con `@evenrealities/pretext` 0.1.4): `▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` hanno larghezza 0 (scartati dal firmware); sostituiti da `■ □ ★ ▲ ▶ ●`, mirino disegnato in pixel. Colonna 192 px ≈ 18 caratteri × 11 righe (i mock monospace a 31 colonne restano solo architettura dell'informazione). Il contratto INV-1 eseguibile diventa `packages/shared-render/src/fixtures/thirds.*.txt`.
+  - **Rimosso:** `packages/bridge`, `packages/foundry-mcp`, `deploy/`, wizard/audio della g2-app, pairing bearer + internal secret del modulo. Nuovo gate hardware `validate:direct-sideload` (pattern defer-hardware).
+  - **INV-3:** Specs.md + README.md + docs/showcase/index.html aggiornati nello stesso commit.
+  - **UX round 2 (2026-09-23) — layout a scheda «Scheda da tavolo G2» sostituisce i terzi** (feedback utente: la HUD deve leggersi come la scheda cartacea / D&D Beyond). §7.0 riscritto: ritratto 144² · intestazione 288×144 (scudo CA, box PF + temp + barra, INIZ/VEL/COMP, economia d'azione, chip condizioni e ▲ TUO TURNO) · mappa quadrata 144² · scheda 288×144 a due pagine (Caratteristiche · Tiri salvezza e abilità; tiri contro la morte a 0 PF) · pannello contesto 288×144 unica zona interattiva. Budget 4/4 image + 4/8 text, nessun rebuild in gioco. Design: [`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html); screenshot simulatore `docs/design/img/sheet-*.png`; `g2-thirds-layout.md` resta come storico (associazione P01–P03 ancora valida).
+    - **Renderer a pixel + font bitmap** (`packages/shared-render/src/pixel/`): il font firmware è proporzionale, senza dimensioni e senza i glifi D&D (scudo, cuore, ● ▲ ◆, cerchi di competenza) ⇒ le zone A–D sono immagini disegnate da noi; solo la zona E usa il testo firmware.
+    - **Fix PNG 4-bit**: il vecchio percorso quantizzato (`cnum = 16`) fondeva i livelli 9 e 10; ora palette esatta `UPNG.encode(…, 0)`, pixel-exact, profondità 4.
+    - **Tetto a mezzo tono del ritratto** (livello ≤ 8): un'area piena appare più luminosa del suo livello; PF, CA e turno (livello 15) restano i segni più brillanti.
+    - **Zona E = 3 righe di corpo**: riga firmware misurata 27 px (pretext/LVGL) ⇒ 144 px = titolo 1 + corpo 3 + suggerimento 1.
+    - **Nessun tiro dagli occhiali** per le prove richieste dal GM (`r1.roll.request`): Foundry non ha un handler per il tiro remoto ⇒ la scheda passa a «Tiri salvezza · Abilità» e il contesto mostra «Tira il d20 sul tavolo».
+    - **Contratto INV-1 eseguibile**: 76 fixture golden per zona `packages/shared-render/src/fixtures/sheet.<zone>.<screen>.<locale>.<variant>.txt` (S1–S12, IT/EN, min/max) sostituiscono `thirds.*.txt`.
+  - **Occhiali dei giocatori + mappa ad arte originale + wiki (2026-09-23)** — [ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md): abilitazione una tantum del GM, associazione self-service dal Foundry del giocatore, coppie ECDH P-256 (privata `scope:'client'`, pubblica in `flags.evenfoundryvtt.pub`), password e chiavi sigillate in record pubblici, **projector ibrido** per dispositivo (client del giocatore se online, altrimenti il GM attivo con la chiave; solo l'eletto esegue `invoke`) — §2.0 aggiornato. [ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md): zona C = arte originale della scena pixelata (1/2/3 px, default 2) + dither Floyd–Steinberg a 16 livelli + maschera di visione (12 celle se ignota) + marcatori vettoriali — §7.0 aggiornato. Nuova **wiki** di progetto in italiano (`docs/wiki/`, 22 pagine per giocatori/GM/sviluppatori, specchiata sulla wiki GitHub da `wiki-sync.yml`, link verificati da `scripts/check-wiki-links.mjs`).
+    - **Re-verified ✓ (INV-2, 2026-09-23):** `hub.evenrealities.com/docs/build/networking` (origini complete, niente wildcard, la whitelist non aggira il CORS) · `/get-started/architecture` (plugin nella WebView del telefono, QR dalla CLI) · `/build/contextual-menu` (pressione lunga + menu: SDK 0.0.14, Even App 2.2.9) · `/reference/faq` (BLE ~10–30 KB/s) · `/build/device-apis` (nessuna uscita audio, nessuna fotocamera).
+    - **Drift NICE-TO-HAVE:** `foundryvtt.com/article/users` non contiene più la frase citata in ADR-0017 («Players and Trusted Players cannot create new user accounts or change passwords»); il vincolo resta confermato da *«gamemasters and assistant gamemasters can configure any user they want»* e dal fatto che un giocatore *«can only open your own user configuration»*. `hub.evenrealities.com/docs/build/input` ora reindirizza a *Get Started*: i gesti sono documentati in `/build/device-apis`.
+    - **INV-3:** Specs.md + README.md (Usage, Highlights, Architecture, Documentation) + docs/showcase/index.html (sezione associazione ibrida con diagramma, mappa ad arte originale, link alla wiki) aggiornati insieme.
 - **2026-07-04 (v0.11.0 — milestone: substrato default = Showcase raster HUD whole-HUD 400×200)** — Il substrato di rendering **default** degli occhiali cambia da `hybrid` al nuovo mode **`'showcase'`**, fedele a `docs/showcase/index.html`. **Bump v0.10.0 → v0.11.0.** Doc-only sweep (INV-3 atomic: Specs §7.2/§7.4 + README badge/bullet + showcase version/milestone). Sintesi del feature shipped (verificato sul codice):
   - **Whole-HUD raster:** l'**intero HUD glanceable** è renderizzato come **una singola immagine raster 400×200 4-bit** (4 image tile × 200×100 px — tetto hardware §7.4b.3), centrata sui 576×288. `ShowcaseHudLayer` disegna (font pixel VT323 + palette phosphor-green) cornice D&D a doppio filetto + bracket d'angolo, header (scena · round/turn · battery R1), regione MAP incorniciata, card status D&D a destra (nome, livello+classe, barra `♥` PF + numerico, `⛨` CA, **VELOCITÀ con icona STIVALE**, pips slot `▓░`, condizioni `▶`) e footer con gli hint gesture R1 canonici (scroll / tap / `▲`=menu — no long-press §GEST-01).
   - **Speed icon = STIVALE:** l'icona velocità è ora un **vettore boot** nei path canvas (`panels/icon-dictionary.ts` → `drawIcon(IconId.Speed)`; `⚔` era errato per il movimento e resta solo text-fallback low-bandwidth).

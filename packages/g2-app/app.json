@@ -2,17 +2,17 @@
   "package_id": "io.github.aiacos.foundryvtt",
   "edition": "202601",
   "name": "FoundryVTT G2 HUD",
-  "description": "Foundry VTT D&D 5e session on Even Realities G2 \u2014 glanceable HUD driven by R1 ring gestures.",
+  "description": "Foundry VTT D&D 5e character sheet HUD on Even Realities G2, streamed directly from your Foundry server and driven by R1 ring gestures.",
   "icon": "icon.png",
   "version": "0.2.5",
   "min_app_version": "2.0.0",
-  "min_sdk_version": "0.0.10",
+  "min_sdk_version": "0.0.15",
   "entrypoint": "index.html",
   "permissions": [
     {
       "name": "network",
-      "desc": "Connects to the EvenFoundryVTT bridge (WS/REST) and plugin host to stream the Foundry VTT session onto G2.",
-      "whitelist": ["https://evenfoundry.lucifer-tnas.mywire.org"]
+      "desc": "Sideload-first: the app is served by your Foundry server and scanned by QR, so it talks to Foundry same-origin. This packaged build only reaches the Foundry origin listed here.",
+      "whitelist": ["https://foundry.REPLACE-WITH-YOUR-ORIGIN.example"]
     }
   ],
   "supported_languages": ["it", "en"]

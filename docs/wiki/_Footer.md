@@ -1,0 +1,1 @@
+EvenFoundryVTT v0.12.0 · MIT · Sorgente della wiki: [`docs/wiki/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/docs/wiki) (le modifiche passano da una PR; la wiki di GitHub è uno specchio) · Specifica canonica: [`Specs.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/Specs.md) · *«Il giocatore non distoglie mai lo sguardo dal tavolo.»*

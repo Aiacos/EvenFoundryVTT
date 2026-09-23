@@ -4,6 +4,8 @@
 - **Supersedes (in part):** the text-container HUD rendering path of ADR-0001 (layered UI model) for the always-on status view. ADR-0001's layered z-model is retained; the **rendering substrate** of the status/HUD layer changes from SDK text containers to a rasterized image.
 - **Relates to:** ADR-0006 (raster pipeline library stack), ADR-0005 (Phase 0 GO/NO-GO — BLE bandwidth), ADR-0009 (LayerManager contract).
 
+> **Status note (v0.12.0, 2026-09-23)** — **Superseded by [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md)** (renderer), including Amendment 1 (canvas compositor) and the later hybrid/showcase substrates. Hardware facts found under this ADR are **retained** and cited by ADR-0018: image containers render on top of text containers regardless of z-order; the capture container needs `content: ' '` and exactly one `isEventCapture:1`; the real host rejects image tiles at non-grid offsets (`d97b12e`).
+
 ## Context
 
 The Even Realities G2 SDK exposes two rendering substrates:

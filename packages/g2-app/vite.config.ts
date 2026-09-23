@@ -1,56 +1,39 @@
 /**
- * Vite 8 config for @evf/g2-app.
+ * Vite 8 config for @evf/g2-app — single entry, emitted into the Foundry module.
  *
- * Multi-entry build:
- *   - `main`  → src/index.ts  (Phase 4a G2 plugin host — still a placeholder)
- *   - `wizard` → src/wizard/wizard.html  (Phase 2 phone WebView onboarding wizard)
+ * ADR-0016: Foundry serves the bundle at `<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/`,
+ * so the output goes to `packages/foundry-module/g2/` (shipped in the module zip) with a
+ * relative `base` — the same build works under any routePrefix. No external CDN assets.
  *
- * Constraints:
- *   - All wizard assets must be inlineable (Even Hub CDN constraint — no external CDN requests).
- *   - Target: ES2023 (covers all modern iOS/Android WebViews).
+ * The `.ehpk` package is secondary (sideload-first): `evenhub pack app.json
+ * ../foundry-module/g2` packs the same output (`app.json` entrypoint `index.html`).
  *
- * @see Specs.md §3.3 (Even Hub network constraint — origin whitelist, no wildcards)
- * @see Specs.md §3.7 (static CDN-friendly plugin host)
- * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 1 (Vite multi-entry)
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 1
  */
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-/**
- * Absolute path of THIS config's directory (packages/g2-app). Resolved from
- * `import.meta.url` rather than `import.meta.dirname` because Vite bundles the
- * config via esbuild before importing it, and `import.meta.dirname` resolves
- * unreliably through that step — leaving `envDir` undefined and `.env.local`
- * silently ignored (the no-auth dev flow then never activated). `fileURLToPath`
- * of the module URL is the canonical, bundling-safe way to get the package dir.
- */
-const PACKAGE_DIR = fileURLToPath(new URL('.', import.meta.url));
+const here = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+const appJson = JSON.parse(readFileSync(here('./app.json'), 'utf8')) as { version: string };
+/** The module this bundle ships in: the app warns when Foundry runs another version. */
+const modulePkg = JSON.parse(readFileSync(here('../foundry-module/package.json'), 'utf8')) as {
+  version: string;
+};
 
 export default defineConfig({
-  // `.env` / `.env.local` live at the PACKAGE ROOT (packages/g2-app/), not under
-  // src/. Because `root: 'src'` (below), Vite's `envDir` would otherwise default to
-  // src/ and silently ignore them — which is why `VITE_EVF_NO_AUTH` / the dev-bridge
-  // override never took effect (the wizard always showed). Pin envDir to the package
-  // root so `.env.local` (gitignored) + `.env.local.example` are the env source (D1).
-  envDir: PACKAGE_DIR,
-  // `root: 'src'` makes the HTML entries resolve relative to src/, so Vite emits
-  // them at the dist ROOT (dist/index.html, dist/wizard/wizard.html) instead of
-  // leaking the source path into the bundle (dist/src/index.html). This keeps the
-  // Even Hub manifest entrypoint the canonical `index.html` — see app.json and
-  // docs/release/evenhub.md (DIST-EHUB-01).
-  root: 'src',
+  root: here('./src'),
+  base: './',
+  define: {
+    __EVF_APP_VERSION__: JSON.stringify(appJson.version),
+    __EVF_MODULE_VERSION__: JSON.stringify(modulePkg.version),
+  },
   build: {
     target: 'es2023',
-    // outDir is relative to `root`, so '../dist' lands at the package root.
-    outDir: '../dist',
+    outDir: here('../foundry-module/g2'),
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        // Phase 4a G2 plugin host entry (placeholder — real implementation Phase 4a)
-        main: 'index.html',
-        // Phase 2 phone WebView wizard entry
-        wizard: 'wizard/wizard.html',
-      },
+      input: here('./src/index.html'),
     },
   },
 });

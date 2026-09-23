@@ -13,9 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ArgsValidator,
   dispatchTool,
+  isToolId,
   moduleIdempotencyStore,
   registerToolHandler,
-  TOOL_HANDLER_IDS,
+  TOOL_IDS,
   TOOL_REGISTRY,
   type ToolHandler,
   type ToolId,
@@ -36,34 +37,16 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
 
 // ─── ToolId type compile-time tests ──────────────────────────────────────────
 
-describe('ToolId — static type surface', () => {
-  it('TOOL_HANDLER_IDS maps all 11 ToolIds to evf.camelCase handler names', () => {
-    const expected: Record<ToolId, string> = {
-      'cast-spell': 'evf.castSpell',
-      'weapon-attack': 'evf.weaponAttack',
-      'use-item': 'evf.useItem',
-      'move-token': 'evf.moveToken',
-      'drop-concentration': 'evf.dropConcentration',
-      'place-template': 'evf.placeTemplate',
-      // Plan 07-03 (Wave 2): confirm-template-placement replaces evf.skillCheck stub in-place
-      // (count stays 14; skill-check slot renamed to evf.confirmTemplatePlacement)
-      'confirm-template-placement': 'evf.confirmTemplatePlacement',
-      // Phase 13 ACT-04 reaction handlers (Plan 13-01 — socketlib count FLIPS 14 → 17)
-      'cast-shield': 'evf.castShield',
-      'cast-counterspell': 'evf.castCounterspell',
-      'opportunity-attack': 'evf.opportunityAttack',
-      // Phase 8 write channel: skill-check maps to evf.rollSkill for type-completeness
-      // only — NO socketlib handler is registered for it (socket.register count stays
-      // 17); the reverse-channel poller calls dispatchToolAuthorized directly.
-      'skill-check': 'evf.rollSkill',
-    };
-    for (const [toolId, handlerId] of Object.entries(expected)) {
-      expect(TOOL_HANDLER_IDS[toolId as ToolId]).toBe(handlerId);
-    }
+describe('TOOL_IDS / isToolId', () => {
+  it('lists all 12 ToolIds (10 + end-turn, ADR-0016 + skill-check)', () => {
+    expect(TOOL_IDS).toHaveLength(12);
+    expect(new Set(TOOL_IDS).size).toBe(12);
   });
 
-  it('TOOL_HANDLER_IDS has exactly 11 entries (Phase 8 added skill-check, mapping-only)', () => {
-    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(11);
+  it('isToolId accepts known ids and rejects anything else', () => {
+    for (const id of TOOL_IDS) expect(isToolId(id)).toBe(true);
+    expect(isToolId('delete-world')).toBe(false);
+    expect(isToolId('')).toBe(false);
   });
 });
 

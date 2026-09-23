@@ -10,6 +10,10 @@ informed: future contributors
 
 ## Status
 
+> **Status note (v0.12.0, 2026-09-23)** — `packages/bridge` and `packages/foundry-mcp` were removed ([ADR-0016](./0016-direct-foundry-streaming.md)). The tool registry survives only inside the Foundry module (`write-path/tool-registry.ts`), invoked by the elected projector ([ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)); the v0.12 port added the `skill-check` handler from the bridge-era line. The "V2 MCP" half of this ADR has no implementation today — voice/MCP needs a new ADR.
+
+> **AMENDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. The registry now lives only in the Foundry module and is invoked by the projector; the bridge REST surface and the MCP consumer were removed.
+
 **ACCEPTED** — 2026-05-11. Binds Phase 3 (Bridge), Phase 7 (Write Path), Phase 8 (Manual Action UX), Phase 11 (V2 foundry-mcp).
 
 ## Context and Problem Statement

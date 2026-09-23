@@ -37,11 +37,10 @@
  * from applying the position update or combat state change. TypeScript `void` return
  * type enforces this contract.
  *
- * ## 14-socketlib-handler invariant
+ * ## Emission
  *
- * This module registers NO new socketlib handlers. The total count remains 14.
- * Emission is via the existing `bridgeDeltaEmitter` channel (fire-and-forget
- * POST to bridge).
+ * Emission is via the injected `emit` callback — `projector.pushDelta` in
+ * production (fire-and-forget sealed delta, ADR-0016).
  *
  * ## Threat model
  *
@@ -125,6 +124,54 @@ function _getPlayerActorId(): string | null {
   return character?.id ?? null;
 }
 
+/**
+ * Default tracked set: the local user's character (player-client behaviour).
+ * On the GM projector (ADR-0016) `module.ts` injects the paired actors instead —
+ * `game.user.character` of a GM is not the character shown on the glasses.
+ */
+function defaultTrackedActorIds(): readonly string[] {
+  const id = _getPlayerActorId();
+  return id === null ? [] : [id];
+}
+
+/** Base walking speed of an actor in feet (`system.attributes.movement.walk`, default 30). */
+function walkSpeedOf(actorId: string): number {
+  const actor = game.actors?.get(actorId) as
+    | { system?: { attributes?: { movement?: { walk?: number } } } }
+    | undefined;
+  const walk = actor?.system?.attributes?.movement?.walk;
+  return typeof walk === 'number' && walk >= 0 ? Math.round(walk) : 30;
+}
+
+/**
+ * Seeds the last known position of `actorId` from its token on the viewed scene, so
+ * the first move of a turn is measured from where the token actually stands.
+ */
+function seedPosition(actorId: string): void {
+  const scene = (
+    canvas as { scene?: { tokens?: { contents?: FoundryTokenDoc[] } } } | null | undefined
+  )?.scene;
+  const token = scene?.tokens?.contents?.find((t) => t.actorId === actorId);
+  if (token !== undefined) _lastPosition.set(actorId, { x: token.x ?? 0, y: token.y ?? 0 });
+}
+
+/**
+ * Current movement budget of `actorId` this turn (full budget when it has not moved).
+ * Read by the projector to prime a G2 device right after `hello` (ADR-0016).
+ *
+ * @param actorId - Foundry actor id.
+ * @returns The payload the tracker would emit now.
+ */
+export function getMovementBudget(actorId: string): MovementBudgetPayload {
+  const state = _state.get(actorId) ?? { walkSpeed: walkSpeedOf(actorId), usedThisTurn: 0 };
+  return {
+    actorId,
+    walkSpeed: state.walkSpeed,
+    usedThisTurn: state.usedThisTurn,
+    remainingFeet: state.walkSpeed - state.usedThisTurn,
+  };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -139,17 +186,20 @@ function _getPlayerActorId(): string | null {
  *     is removed, so stale `usedThisTurn` from the ended encounter cannot leak into a
  *     freshly created combat before its first turn-advance.
  *
- * @param emit - Callback to emit the movement budget payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the movement budget payload via projector.pushDelta.
  *               Called at most once per triggering event. Never called when:
  *               - No x/y change in the token update (CMT-02)
- *               - Token is not the player's actor (CMT-02/07)
+ *               - Token is not a tracked actor (CMT-02/07)
  *               - Combat is not active (CMT-04)
+ * @param trackedActorIds - Actors whose movement is tracked. Defaults to the local
+ *               user's character; the GM projector passes the paired actors (ADR-0016).
  * @returns Unsubscribe closure — calls `Hooks.off(updateTokenHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (FIX E).
  *          Discarded by module.ts for MVP (module lifecycle is for-the-session).
  */
 export function registerMovementTracker(
   emit: (payload: MovementBudgetPayload) => void,
+  trackedActorIds: () => readonly string[] = defaultTrackedActorIds,
 ): () => void {
   // ── updateToken hook ────────────────────────────────────────────────────────
   const updateTokenHookId = Hooks.on('updateToken', (...args: unknown[]): void => {
@@ -170,13 +220,10 @@ export function registerMovementTracker(
       const newY = change.y as number | undefined;
       if (newX === undefined && newY === undefined) return;
 
-      // CMT-07: Early return if no player character
-      const playerActorId = _getPlayerActorId();
-      if (playerActorId === null) return;
-
-      // CMT-02/03: Only track the player's own token
-      const tokenActorId = tokenDoc.actorId as string | undefined;
-      if (tokenActorId !== playerActorId) return;
+      // CMT-02/03/07: Only track tracked actors' tokens (none tracked → silent return)
+      const tokenActorId = tokenDoc.actorId;
+      if (typeof tokenActorId !== 'string' || !trackedActorIds().includes(tokenActorId)) return;
+      const playerActorId = tokenActorId;
 
       // CMT-04: Only track during active combat
       if (game.combat === null || game.combat === undefined) return;
@@ -265,21 +312,12 @@ export function registerMovementTracker(
         });
       }
 
-      // Also emit for the current player actor if they haven't moved yet this turn
-      const playerActorId = _getPlayerActorId();
-      if (playerActorId !== null && !_state.has(playerActorId)) {
-        // Get walkSpeed from game.user.character
-        const character = game.user?.character as
-          | { id: string; system: { attributes: { movement: { walk: number } } } }
-          | null
-          | undefined;
-        const walkSpeed = character?.system?.attributes?.movement?.walk ?? 30;
-        emit({
-          actorId: playerActorId,
-          walkSpeed,
-          usedThisTurn: 0,
-          remainingFeet: walkSpeed,
-        });
+      // Also emit for tracked actors that have not moved yet (fresh full budget), and
+      // seed every tracked actor's position so the first move is measured correctly.
+      for (const actorId of trackedActorIds()) {
+        seedPosition(actorId);
+        if (_state.has(actorId)) continue;
+        emit(getMovementBudget(actorId));
       }
     } catch (err) {
       console.warn('[combat-movement-tracker] updateCombat handler threw', err);

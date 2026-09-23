@@ -4,6 +4,8 @@
 - **Relates to:** ADR-0001 (layered UI — z=0 map), ADR-0014 (bearer ↔ Foundry-user binding — the authorized actor set), [[map-auto-framing]], [[frame-post-depth2-pipeline]].
 - **Driver:** user request 2026-06-16 — *"la mappa deve essere quella del PG selezionato (Shin), non per forza quella del GM"* and *"vorrei che si loggasse con il ruolo selezionato"*.
 
+> **Status note (v0.12.0, 2026-09-23)** — **Superseded by [ADR-0016](./0016-direct-foundry-streaming.md)** (and ADR-0018 zone C): the map is built on the phone from document data (`MapSnapshot`: scene art, tiles, tokens, walls), not captured from a player-view canvas; there is no headless session. The (B) party-fit framing idea is ported as an option of the map viewport.
+
 ## Context
 
 The map streamed to the glasses is a **screenshot of a rendered Foundry PIXI canvas**. That canvas exists **only inside a logged-in browser** — there is no server-side scene render. So *whose* view the glasses show is exactly *whose browser is captured*:

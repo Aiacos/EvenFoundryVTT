@@ -1,8 +1,9 @@
 /**
  * skillCheckHandler — Phase 8 write channel (ACT-01) write-path handler.
  *
- * Resolves an actor by `args.actor_id`, then rolls a skill (or ability-keyed) check
- * via the dnd5e 5.x `Actor5e#rollSkill` API. Mirrors the structure of `use-item.ts`
+ * Resolves an actor by `args.actor_id`, then rolls — per `args.kind` — a skill check
+ * (`Actor5e#rollSkill`, default), an ability check (`rollAbilityCheck`) or a saving
+ * throw (`rollSavingThrow`), all with `config.ability` + the advantage booleans. Mirrors the structure of `use-item.ts`
  * (actor resolution → API call → error normalisation).
  *
  * # dnd5e 5.x rollSkill signature
@@ -20,8 +21,9 @@
  * We map our `args.advantage` enum (`'normal' | 'advantage' | 'disadvantage'`) to the
  * boolean pair, never set both true, and pass `{ skill, advantage, disadvantage }`.
  *
- * Source (INV-2): github.com/foundryvtt/dnd5e — `Actor5e#rollSkill` (5.3.x branch,
- * `module/documents/actor/actor.mjs`), verified 2026-06-19. (Specs.md §5.3 / §7.x
+ * Source (INV-2): github.com/foundryvtt/dnd5e — `Actor5e#rollSkill`,
+ * `#rollAbilityCheck`, `#rollSavingThrow` (release-5.3.3,
+ * `module/documents/actor/actor.mjs`), verified 2026-06-19 and 2026-09-23. (Specs.md §5.3 / §7.x
  * still show the pre-4.x positional `rollSkill(skillId)` form — a known doc drift;
  * the runtime call here uses the canonical 5.x config-object form.)
  *
@@ -54,8 +56,8 @@ function isNoGmError(err: unknown): boolean {
  * Implements ToolHandler<SkillCheckInput> for the 'skill-check' tool.
  *
  * Registered into TOOL_REGISTRY via `registerToolHandler('skill-check', skillCheckHandler)`
- * in `handlers/index.ts` at module-load time. Reached by the Phase 8 reverse-channel
- * poller through `dispatchToolAuthorized` (ADR-0014 per-actor authz runs first).
+ * in `handlers/index.ts` at module-load time. Reached through `dispatchTool` from the
+ * direct projector, which re-checks the actor ownership live first (ADR-0016/0017).
  */
 export const skillCheckHandler: ToolHandler<(typeof SkillCheckInputSchema)['_input']> = {
   argsSchema: SkillCheckInputSchema,
@@ -67,23 +69,45 @@ export const skillCheckHandler: ToolHandler<(typeof SkillCheckInputSchema)['_inp
       return { success: false, error: 'actor_not_found' };
     }
 
-    // Step 2: roll the skill check via the dnd5e 5.x config-object API.
+    // Step 2: roll via the dnd5e 5.x config-object API (skill / ability check / save).
     // Map the advantage enum to the top-level boolean pair (never both true).
     try {
       const advantage = args.advantage === 'advantage';
       const disadvantage = args.advantage === 'disadvantage';
-      // FAST-FORWARD the roll: this handler is driven HEADLESSLY by the tool-invocation
-      // poller (no human at this client to confirm a roll-configuration dialog). dnd5e's
-      // `rollSkill(config, dialog, message)` opens that dialog by DEFAULT — left open it
-      // blocks forever, the awaiting bridge Promise hits `foundry_timeout`, and the
-      // glasses tap appears to "do nothing". `dialog: { configure: false }` rolls
-      // immediately with the supplied advantage/normal mode (the canonical 5.x way to
-      // suppress the dialog), so a chat message posts and the result returns at once.
-      const result = await actor.rollSkill?.(
-        { skill: args.skill, advantage, disadvantage },
-        { configure: false },
-      );
-      return { success: true, data: { skill: args.skill, advantage: args.advantage, result } };
+      const mode = { advantage, disadvantage };
+      // FAST-FORWARD the roll: the glasses drive this handler HEADLESSLY (no human at
+      // this client to confirm a roll-configuration dialog). dnd5e's roll methods open
+      // that dialog by DEFAULT — left open it blocks forever, the glasses' invoke times
+      // out and the tap appears to "do nothing". `dialog: { configure: false }` rolls
+      // immediately with the supplied mode (the canonical 5.x way to suppress the
+      // dialog), so a chat message posts and the result returns at once.
+      const dialog = { configure: false };
+      const kind = args.kind ?? 'skill';
+      let result: unknown;
+      if (kind === 'save') {
+        result = await actor.rollSavingThrow?.({ ability: args.ability ?? '', ...mode }, dialog);
+      } else if (kind === 'check') {
+        result = await actor.rollAbilityCheck?.({ ability: args.ability ?? '', ...mode }, dialog);
+      } else {
+        result = await actor.rollSkill?.(
+          {
+            skill: args.skill ?? '',
+            ...(args.ability !== undefined && { ability: args.ability }),
+            ...mode,
+          },
+          dialog,
+        );
+      }
+      return {
+        success: true,
+        data: {
+          kind,
+          ...(args.skill !== undefined && { skill: args.skill }),
+          ...(args.ability !== undefined && { ability: args.ability }),
+          advantage: args.advantage,
+          result,
+        },
+      };
     } catch (err) {
       if (isNoGmError(err)) {
         return { success: false, error: 'no_gm_connected' };

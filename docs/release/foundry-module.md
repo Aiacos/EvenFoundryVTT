@@ -1,214 +1,130 @@
 # Foundry Module Release & Distribution
 
-Operator runbook for publishing EvenFoundryVTT to GitHub Releases and how end
-users install it on Foundry desktop or The Forge.
+How to publish EvenFoundryVTT to GitHub Releases, and how users install it on Foundry or
+The Forge. Since v0.12.0 the module zip is the release artefact. It also carries the
+glasses app under `g2/` ([ADR-0016](../architecture/0016-direct-foundry-streaming.md)); each
+release also attaches the Even Hub package `evenfoundryvtt.ehpk`, packed from the same `g2/`
+folder ([evenhub.md](evenhub.md)).
+
+**Versions.** The last bridge-era release is module **v0.1.55** (plus the g2-app pre-release
+`g2-app-v0.11.0`). The first release after the direct-streaming port is **v0.2.0** (breaking
+change before 1.0, so a minor bump).
+
+**Migrating from the bridge era (≤ v0.1.55).** Stop and remove the `evf-bridge` container
+(and its Compose project, Caddy/Watchtower entries, GHCR image); update the module from the
+manifest URL; then re-pair every pair of glasses from *Pair G2 glasses* or the *Players*
+list. Bearer tokens no longer exist, so old pairings do not carry over.
 
 ---
 
-## 1. The two URLs that matter
+## 🎲 The two URLs that matter
 
-The Foundry release flow rests on two URL patterns inside `module.json`:
-
-| Field | URL | Purpose |
+| Field in `module.json` | URL | Purpose |
 |---|---|---|
-| `manifest` | `https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json` | **Stable.** Foundry desktop + The Forge poll this URL to detect updates. Always points to the most recent release thanks to GitHub's `/latest/` redirect. |
-| `download` | `https://github.com/Aiacos/EvenFoundryVTT/releases/download/v<X.Y.Z>/evenfoundryvtt.zip` | **Version-pinned.** Tells Foundry exactly which zip to fetch for *this* version. Patched per release by the workflow — never use `/latest/` here (it would break older clients still on an older version). |
+| `manifest` | `https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json` | **Stable.** Foundry and The Forge poll it for updates (GitHub's `/latest/` redirect). |
+| `download` | `https://github.com/Aiacos/EvenFoundryVTT/releases/download/v<X.Y.Z>/evenfoundryvtt.zip` | **Version-pinned.** Patched per release by the workflow. Never use `/latest/` here. |
 
-Both URLs become real assets attached to the GitHub Release by
+Both files are uploaded as release assets by
 `.github/workflows/foundry-module-release.yml`.
 
 ---
 
-## 2. Publishing a new release (fully automated)
+## 🚀 Publishing a release
 
-End-to-end, **one command after your commits are on `main`** (or any branch):
+Releases follow GitFlow + Changesets. Merging the *Version Packages* PR on `main` runs
+`pnpm release:tag` (`scripts/release-tag.mjs`) from `release.yml`: it reads the version
+from `packages/foundry-module/package.json`, pushes the tag `v<version>` (idempotent) and
+dispatches `foundry-module-release.yml` (a tag pushed with the default token would not
+trigger it on its own). Manual tag, if needed:
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-That's it. The `foundry-module-release` workflow triggers on the tag push and:
+The workflow runs on `v*.*.*` tags (or `workflow_dispatch` with a `tag` input):
 
-1. Validates the tag matches `vMAJOR.MINOR.PATCH[-prerelease]`.
-2. Installs deps (`pnpm install --frozen-lockfile --ignore-scripts`).
-3. Builds the module bundle (`pnpm --filter @evf/foundry-module build` →
-   `dist/module.js` with `@evf/shared-protocol` + `qrcode` bundled in).
-4. Patches `module.json` with `version = 0.2.0` and the version-pinned
-   `download` URL.
-5. Assembles the release tree (`module.json` + `dist/` + `lang/` + `templates/`).
-6. Zips it as `evenfoundryvtt.zip` (sourcemaps excluded).
-7. **Creates the GitHub Release** (if it doesn't exist yet) with auto-generated
-   notes from commit history. Tags with `-prerelease` suffix are marked as
-   pre-release automatically.
-8. Uploads `module.json` + `evenfoundryvtt.zip` to the release.
+1. Validates the tag format `vMAJOR.MINOR.PATCH[-prerelease]`.
+2. `pnpm install --frozen-lockfile --ignore-scripts`.
+3. Builds the module: `pnpm --filter @evf/foundry-module build` → `dist/module.js`
+   (bundles `@evf/shared-protocol` + `qrcode`).
+4. Builds the g2-app **into the module**: `pnpm --filter @evf/g2-app build` →
+   `packages/foundry-module/g2/`. It fails if `g2/index.html` is missing.
+5. Patches `module.json` `version` and the pinned `download` URL, and **version-stamps**
+   the esmodule and stylesheet filenames (`dist/module-<ver>.js`,
+   `styles/pair-g2-<ver>.css`): Foundry caches module JavaScript, so without a new filename
+   clients keep running the old build. Syncs `packages/g2-app/app.json` `version` from the
+   g2-app package and packs `evenfoundryvtt.ehpk`.
+6. Assembles `module.json` + `dist/` + **`g2/`** + `lang/` + `templates/` + `styles/` and zips them as
+   `evenfoundryvtt.zip` (sourcemaps excluded). It fails if `g2/index.html` is not in the zip.
+7. Builds the release notes from the `packages/foundry-module/CHANGELOG.md` entry, plus the
+   `packages/g2-app/CHANGELOG.md` entry when there is one. On a first release it falls back
+   to `--generate-notes`.
+8. Creates the GitHub Release if it is missing (tags with `-` are marked pre-release) and
+   uploads `module.json` + `evenfoundryvtt.zip` + `evenfoundryvtt.ehpk` with `--clobber`.
 
-After ~2 min, the manifest URL `…/releases/latest/download/module.json`
-resolves to the new `module.json`. Foundry desktop + The Forge poll it; users
-see "Update available" within minutes.
+There is no GHCR bridge image and no standalone `g2-app-dist.zip` any more (both removed with the bridge, ADR-0016).
 
-### Optional: changeset hygiene before tagging
+**Re-run:** *Actions → Foundry Module Release → Run workflow* with the tag. It is
+idempotent: an existing release is reused and assets are overwritten.
 
-The workspace uses `@changesets/cli`. To track what shipped in each tag, add a
-changeset before tagging:
+---
+
+## 📦 End-user installation
+
+**Foundry:** *Setup* → *Add-on Modules* → *Install Module* → Manifest URL
+`https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json`.
+
+**The Forge:** *Bazaar* → *+ Install Module from a Manifest* → the same URL.
+
+Foundry extracts the zip to `Data/modules/evenfoundryvtt/` and serves the glasses app at
+`https://<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html`. Foundry must be on
+valid HTTPS for the phone. Next steps: [setup guide](../setup-guide.md).
+
+### Dependencies declared in `module.json`
+
+- **System:** `dnd5e` ≥ 5.3.3 (`relationships.systems`).
+- **Recommended:** `midi-qol` (`relationships.recommends`). It is optional.
+- **socketlib:** no longer required.
+
+---
+
+## ⚙️ MidiQOL at runtime
+
+The write-path handlers check at runtime whether MidiQOL is active:
+
+- **MidiQOL active:** handlers call `MidiQOL.completeActivityUse` with advantage and
+  explicit targets, so attack → damage → save → effect runs headless.
+- **MidiQOL absent:** handlers fall back to vanilla `activity.use()`. This posts the
+  activity card, and the rolls stay manual.
+
+Every call goes through `dispatchTool` in the GM client
+([ADR-0011](../architecture/0011-foundry-write-path-single-workflow-origin.md)). CI gate 8
+rejects `activity.use(` anywhere outside `packages/foundry-module/src/write-path/`.
+
+---
+
+## 🧪 Local build before tagging
 
 ```bash
-pnpm changeset
-# describe the change; choose `minor`/`patch` per semver
-git add .changeset/*.md
-git commit -m "release: foundry-module v0.2.0"
-git push
-git tag v0.2.0 && git push origin v0.2.0
-```
+pnpm install --frozen-lockfile
+pnpm --filter @evf/foundry-module build:all     # g2-app → g2/, then tsup → dist/
 
-The changeset summary becomes part of the auto-generated release notes.
-
-### Manual re-run (failed workflow)
-
-If a workflow run failed mid-way and you need to re-trigger without changing the tag:
-- Open **Actions → Foundry Module Release → Run workflow** in the GitHub UI.
-- Enter the tag (e.g. `v0.2.0`) in the `workflow_dispatch` input.
-- The workflow is idempotent — `gh release create` skips if the release already
-  exists, and `gh release upload --clobber` overwrites stale assets.
-
----
-
-## 3. End-user installation
-
-### Foundry desktop / self-hosted
-
-1. Launch Foundry → **Setup** → **Add-on Modules** → **Install Module**
-2. In the **Manifest URL** field paste:
-   ```
-   https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
-   ```
-3. Click **Install**.
-
-Foundry downloads the version-pinned zip from the `download` field of that
-manifest, extracts to `Data/modules/evenfoundryvtt/`, and adds the module to
-the world's module list.
-
-### The Forge
-
-1. In **The Forge Bazaar**, scroll to the bottom: **Add-on Modules** → 
-   **+ Install Module from a Manifest**.
-2. Paste the same manifest URL:
-   ```
-   https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
-   ```
-3. Click **Install**.
-
-The Forge's Bazaar polls the same manifest URL as Foundry desktop. When a
-new release is published, the Forge surfaces the update in its **Modules** tab
-within ~24h (or immediately on manual refresh).
-
-### Required modules (auto-resolved)
-
-`module.json` declares these `relationships.requires` — Foundry's installer
-prompts the user to install them automatically:
-
-- `socketlib` — GM-side `executeAsGM` dispatch.
-- `midi-qol` — attack → damage → save → effect workflow. **See §5 for why MidiQOL is a soft
-  dependency at runtime.**
-
-And the required system:
-
-- `dnd5e` >= 5.3.3 (PHB 2014 + PHB 2024 dual-edition support).
-
----
-
-## 4. Re-publishing a release (corrections)
-
-If a release ships with a bug and you need to ship a hotfix:
-
-```bash
-# 1. Fix on main, push commits
-# 2. Bump version (semver patch)
-# 3. Tag + GitHub Release as in §2
-
-git tag v0.2.1
-git push origin v0.2.1
-# create the GitHub Release on v0.2.1
-```
-
-The workflow always patches the manifest with the tag's version. Foundry
-desktop + The Forge will detect the new version on their next poll.
-
-**Avoid editing or deleting published releases** — the version-pinned download
-URL becomes part of the auto-update history for users who already have v0.2.0
-installed. If you must, the workflow re-runs idempotently via `gh release
-upload --clobber`.
-
----
-
-## 5. MidiQOL: soft vs hard dependency
-
-MidiQOL is declared in `module.json` as `relationships.requires`. This means
-Foundry installs it alongside EvenFoundryVTT, which is the recommended UX.
-
-But the actual runtime dependency is *behavioral, not API-level*: when our
-Phase 07+ write path calls `activity.use()` (dnd5e API), Foundry fires the
-`dnd5e.preUseActivity` hook. If MidiQOL is installed, **it listens on that
-hook** and runs its full attack → damage → save → effect workflow. Our code
-never imports `MidiQOL`. We never call `MidiQOL.completeActivityUse()` directly.
-
-Implications:
-- If MidiQOL is uninstalled, EvenFoundryVTT still loads cleanly — `activity.use()`
-  runs the dnd5e baseline workflow without MidiQOL enhancements (no auto-targets,
-  no auto-damage application, no MidiQOL-specific automations).
-- The `module.json` `requires` clause is for **good defaults**, not a hard
-  runtime gate. A user could remove MidiQOL from their world manually; the
-  bridge dispatch still works.
-
-This is why the Phase 0 MidiQOL "config probe" is treated as **advisory, not
-blocking**: the probe verifies MidiQOL config is sensible, but the real test
-is behavioral — does an `activity.use()` triggered via the bridge reach
-MidiQOL's listener and produce the expected chat-card sequence? That's a
-Phase 07 integration test, not a Phase 0 gate.
-
----
-
-## 6. Local testing before publishing
-
-Build the zip locally as a sanity check before tagging:
-
-```bash
-pnpm --filter @evf/foundry-module build
-
-# Manually run the same patch the workflow does:
-node -e '
-  const m = require("./packages/foundry-module/module.json");
-  m.version = "0.2.0-test";
-  m.download = "https://example.test/evenfoundryvtt.zip";
-  require("fs").writeFileSync("packages/foundry-module/module.json", JSON.stringify(m, null, 2) + "\n");
-'
-
-# Assemble + zip:
 cd packages/foundry-module
 mkdir -p release-tree
-cp module.json release-tree/
-cp -r dist release-tree/
-cp -r lang release-tree/
-cp -r templates release-tree/
-cd release-tree && zip -r ../evenfoundryvtt.zip . -x "*.map" && cd ..
-unzip -l evenfoundryvtt.zip
-
-# Then point Foundry's "Manifest URL" install at a file:// or local HTTP path
-# pointing at the local module.json. After verifying, revert the module.json
-# patch (or restore from git).
+cp module.json release-tree/ && cp -r dist g2 lang templates release-tree/
+(cd release-tree && zip -r ../evenfoundryvtt.zip . -x "*.map")
+unzip -Z1 evenfoundryvtt.zip | grep -x 'g2/index.html'   # must print the entry
+rm -rf release-tree evenfoundryvtt.zip                    # keep the tree clean
 ```
 
-The CI workflow runs the exact same sequence non-interactively.
+For quick iteration, symlink `packages/foundry-module/` into
+`<FoundryData>/Data/modules/evenfoundryvtt/` instead of zipping.
 
 ---
 
-## 7. Sources
+## 📚 Sources
 
-The conventions documented here come from:
-
-- [Foundry VTT — Introduction to Module Development](https://foundryvtt.com/article/module-development/) (manifest field semantics)
-- [Foundry VTT Community Wiki — Package Manifest+](https://foundryvtt.wiki/en/development/manifest-plus)
-- [Foundry VTT Community Wiki — Package Releases and Version History](https://foundryvtt.wiki/en/development/guides/releases-and-history)
-- [League of Foundry Developers — FoundryVTT-Module-Template](https://github.com/League-of-Foundry-Developers/FoundryVTT-Module-Template) (CI/CD pattern + `releases/latest/download/module.json` trick)
-- [The Forge — Module Management & Bazaar polling](https://forums.forge-vtt.com/t/how-are-module-updates-handled/18100)
-- [dnd5e Hooks reference](https://github.com/foundryvtt/dnd5e/wiki/Hooks) — `dnd5e.preUseActivity` confirms MidiQOL's Hook-based interception model.
+- [Foundry VTT — Introduction to Module Development](https://foundryvtt.com/article/module-development/) (manifest fields, static module files, `module.<id>` socket relay)
+- [League of Foundry Developers — FoundryVTT-Module-Template](https://github.com/League-of-Foundry-Developers/FoundryVTT-Module-Template) (`releases/latest/download/module.json` pattern)
+- [Even Hub packaging](evenhub.md) — the secondary `.ehpk` artefact

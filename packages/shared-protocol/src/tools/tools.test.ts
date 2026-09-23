@@ -204,6 +204,20 @@ describe('SkillCheckInputSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts saves and ability checks keyed by ability, and requires the ability', () => {
+    const save = SkillCheckInputSchema.safeParse({ actor_id: 'a', kind: 'save', ability: 'dex' });
+    expect(save.success && save.data).toMatchObject({ kind: 'save', ability: 'dex' });
+    expect(
+      SkillCheckInputSchema.safeParse({ actor_id: 'a', kind: 'check', ability: 'str' }).success,
+    ).toBe(true);
+    expect(SkillCheckInputSchema.safeParse({ actor_id: 'a', kind: 'save' }).success).toBe(false);
+    expect(
+      SkillCheckInputSchema.safeParse({ actor_id: 'a', kind: 'save', ability: 'luck' }).success,
+    ).toBe(false);
+    const skill = SkillCheckInputSchema.safeParse({ actor_id: 'a', skill: 'prc' });
+    expect(skill.success && skill.data.kind).toBe('skill');
+  });
 });
 
 describe('MoveTokenInputSchema', () => {

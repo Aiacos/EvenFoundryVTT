@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "EVF shared render — ASCII grid model + snapshot matcher for INV-1 layout integrity testing.",
+  "description": "EVF shared render \u2014 ASCII grid model + snapshot matcher for INV-1 layout integrity testing.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -14,6 +14,10 @@
     "./ascii-grid": {
       "types": "./src/ascii-grid.ts",
       "default": "./src/ascii-grid.ts"
+    },
+    "./testing": {
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
     }
   },
   "scripts": {

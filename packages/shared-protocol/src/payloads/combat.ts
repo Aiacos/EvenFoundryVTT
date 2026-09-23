@@ -4,7 +4,7 @@
  * Covers `game.combat` state: current round/turn, active combatant, all combatants.
  * Dual-edition aware (PHB 2014 + PHB 2024): initiative, HP, and name are edition-stable.
  *
- * Null result from bridge (no active combat) → HTTP 204 (no content).
+ * No active combat → the projector answers the `combat` snapshot with `null`.
  *
  * @see Specs.md §4 (read pipeline), FOUN-01 (getCombatState reader contract)
  * @see packages/foundry-module/src/readers/combat-reader.ts (producer)
@@ -47,14 +47,6 @@ export type Concentration = z.infer<typeof ConcentrationSchema>;
 export const CombatantSchema = z.strictObject({
   /** Combatant ID (foundry combatant document ID). */
   id: z.string().min(1),
-  /**
-   * Canonical Foundry token UUID (e.g. `Scene.X.Token.Y`) for this combatant, or null
-   * when the combat has no token for it. This is what MidiQOL's `midiOptions.targetUuids`
-   * expects — the combatant `id` is NOT a token UUID. The glasses target picker forwards
-   * this so a chosen cast/attack actually resolves onto the token.
-   * Optional for back-compat with pre-tokenUuid module builds (treated as absent).
-   */
-  tokenUuid: z.string().nullable().optional(),
   /** Display name for this combatant. */
   name: z.string().min(1),
   /** Linked actor ID (null for token-only combatants). */

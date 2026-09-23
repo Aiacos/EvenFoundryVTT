@@ -1,34 +1,25 @@
 /**
- * Foundry hook subscribers — 5 hooks per D-2.14.
+ * Foundry hook subscribers — character / combat deltas for the direct projector.
  *
- * Registers Foundry hooks that observe game state changes and push delta
- * payloads to the bridge via the provided `emitFn`. The `emitFn` is injected
- * from `module.ts` for testability — no real HTTP calls in unit tests.
+ * Registers Foundry hooks that observe game state changes and push delta payloads
+ * through the injected `emitFn` (the projector's `pushDelta`, ADR-0016; a spy in tests).
  *
- * Hooks registered (D-2.14):
- * 1. `updateActor`      → emit `character.delta` (HP, AC, conditions, exhaustion)
- * 2. `updateCombat`     → emit `combat.turn` + `combat.state`
- * 3. `canvasReady`      → emit `scene.viewport` on scene load
- * 4. `controlToken`     → emit `scene.viewport` on token selection
- * 5. `createChatMessage` → emit `event.log.delta` + push to ring buffer
- * 6. `targetToken`      → emit `combat.targets` (FOUN-04 read-side)
+ * Hooks registered:
+ * 1. `updateActor`  → `character.delta` (HP, AC, conditions, exhaustion)
+ * 2. `updateCombat` → `combat.turn`
+ * 3. `combatStart`  → `combat.state`
+ * 4. `targetToken`  → `combat.targets` (FOUN-04 read-side)
  *
- * Read-only contract (Phase 2): no `actor.update()`, no `game.settings.set()`,
- * no `combat.advance()`. Only reading Foundry state. Writes deferred to Phase 7.
+ * Map/scene changes and chat log events are pushed by the projector itself because
+ * they need per-device filtering (visible tokens, whisper recipients).
  *
- * Performance (D-2.15 zero polling): push-only via hooks. No `setInterval` polling.
+ * Read-only contract: no `actor.update()`, no `game.settings.set()`, no
+ * `combat.advance()`. Performance (D-2.15 zero polling): push-only via hooks.
  * The `updateActor` guard (changes.system?.attributes or changes.statuses) prevents
  * spurious emits on unrelated actor changes (e.g. macro flag updates).
  *
- * Security (T-02-01): emitFn is fire-and-forget. A failed bridge POST logs a warning
- * but MUST NOT throw — a network error must not crash the Foundry session.
- *
  * @see 02-CONTEXT.md D-2.14 (hook list), D-2.15 (zero polling)
- * @see 02-05-PLAN.md Task 1 (hook-subscribers.ts spec)
- * @see packages/foundry-module/src/readers/character-reader.ts
- * @see packages/foundry-module/src/readers/combat-reader.ts
- * @see packages/foundry-module/src/readers/scene-reader.ts
- * @see packages/foundry-module/src/readers/event-log-reader.ts
+ * @see packages/foundry-module/src/direct/projector.ts (emitFn implementation)
  */
 
 import {
@@ -36,41 +27,21 @@ import {
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TARGETS_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
-  EVENT_LOG_DELTA_TYPE,
-  type EventLogEntry,
-  type EventType,
-  SCENE_VIEWPORT_DELTA_TYPE,
 } from '@evf/shared-protocol';
 import { getCharacterSnapshot } from './character-reader.js';
 import { getCombatSnapshot } from './combat-reader.js';
-import { eventLogBuffer } from './event-log-reader.js';
-import { getSceneViewport } from './scene-reader.js';
 
 /**
- * Function that emits a typed delta to the bridge.
+ * Function that emits a typed delta to the paired G2 devices.
  *
- * Injected from `module.ts` — the concrete implementation POSTs to
- * bridge `/internal/delta`. During tests, a spy function is injected instead.
+ * Injected from `module.ts` — the concrete implementation is the projector's
+ * `pushDelta` (sealed envelopes on the Foundry socket relay). Tests inject a spy.
  *
  * Must be fire-and-forget (returns void, not Promise<void>): hook callbacks
  * are synchronous; the emit happens in the background. Errors are logged
  * but never re-thrown.
  */
 export type EmitFn = (type: string, payload: unknown) => void;
-
-// ─── Monotonic ring-buffer sequence counter ────────────────────────────────────
-
-/**
- * Module-level monotonic counter for event log entries.
- * Incremented on every createChatMessage emission.
- * Exported for test isolation (tests can reset it via the setter below).
- */
-let _eventSeq = 0;
-
-/** @internal For testing only. */
-export function _resetEventSeq(): void {
-  _eventSeq = 0;
-}
 
 // ─── Hook handlers ─────────────────────────────────────────────────────────────
 
@@ -134,75 +105,6 @@ function handleUpdateCombat(_combat: unknown, emitFn: EmitFn): void {
 }
 
 /**
- * Handles the `canvasReady` hook.
- * Emits scene.viewport when a new scene canvas has finished loading.
- *
- * @param emitFn - Delta emission function
- */
-function handleCanvasReady(emitFn: EmitFn): void {
-  const viewport = getSceneViewport();
-  emitFn(SCENE_VIEWPORT_DELTA_TYPE, viewport);
-}
-
-/**
- * Handles the `controlToken` hook.
- * Emits scene.viewport when a token is selected/deselected (viewport may shift).
- *
- * @param emitFn - Delta emission function
- */
-function handleControlToken(emitFn: EmitFn): void {
-  const viewport = getSceneViewport();
-  emitFn(SCENE_VIEWPORT_DELTA_TYPE, viewport);
-}
-
-/**
- * Handles the `createChatMessage` hook.
- * Classifies the message, pushes to ring buffer, and emits event.log.delta.
- *
- * Message type classification:
- * - Type 5 = roll (may contain damage/heal markers in content)
- * - All others = "chat" for Phase 2 (fine-grained classification in Phase 7)
- *
- * @param message - The created chat message document
- * @param emitFn  - Delta emission function
- */
-function handleCreateChatMessage(message: unknown, emitFn: EmitFn): void {
-  if (typeof message !== 'object' || message === null) {
-    return;
-  }
-
-  const msg = message as Record<string, unknown>;
-
-  const content =
-    typeof msg.content === 'string'
-      ? msg.content
-      : typeof msg.flavor === 'string'
-        ? msg.flavor
-        : '';
-
-  // Derive actor ID from speaker object (may be null for out-of-combat messages)
-  let actorId: string | null = null;
-  if (typeof msg.speaker === 'object' && msg.speaker !== null) {
-    const speaker = msg.speaker as Record<string, unknown>;
-    actorId = typeof speaker.actor === 'string' ? speaker.actor : null;
-  }
-
-  // Simple type classification for Phase 2 (Phase 7 will refine damage/heal detection)
-  const type: EventType = 'chat';
-
-  const entry: EventLogEntry = {
-    seq: ++_eventSeq,
-    ts: Date.now(),
-    type,
-    actorId,
-    content,
-  };
-
-  eventLogBuffer.push(entry);
-  emitFn(EVENT_LOG_DELTA_TYPE, entry);
-}
-
-/**
  * Handles the `targetToken` hook (FOUN-04 — read-side observation).
  *
  * Emits `combat.targets` with the user's current target set.
@@ -239,7 +141,7 @@ function handleTargetToken(user: unknown, token: unknown, targeted: unknown, emi
 // ─── Registration ──────────────────────────────────────────────────────────────
 
 /**
- * Registers all 5 (+ FOUN-04 targetToken) Foundry hook subscribers.
+ * Registers the character / combat Foundry hook subscribers.
  *
  * Returns a cleanup function that calls `Hooks.off(id)` for all registered hooks.
  * Call the cleanup function to deregister (e.g. on module teardown or in tests).
@@ -250,7 +152,7 @@ function handleTargetToken(user: unknown, token: unknown, targeted: unknown, emi
  * @example
  * ```ts
  * // module.ts ready hook:
- * const cleanup = registerHookSubscribers(bridgeDeltaEmitter);
+ * const cleanup = registerHookSubscribers(projector.pushDelta);
  * // On teardown (rarely needed in Foundry modules):
  * cleanup();
  * ```
@@ -277,24 +179,6 @@ export function registerHookSubscribers(emitFn: EmitFn): () => void {
       if (snapshot !== null) {
         emitFn(COMBAT_STATE_DELTA_TYPE, snapshot);
       }
-    }),
-  );
-
-  hookIds.push(
-    Hooks.on('canvasReady', (_canvas: unknown) => {
-      handleCanvasReady(emitFn);
-    }),
-  );
-
-  hookIds.push(
-    Hooks.on('controlToken', (_token: unknown, _controlled: unknown) => {
-      handleControlToken(emitFn);
-    }),
-  );
-
-  hookIds.push(
-    Hooks.on('createChatMessage', (message: unknown) => {
-      handleCreateChatMessage(message, emitFn);
     }),
   );
 
