@@ -1,13 +1,13 @@
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│THORIN SCUDODIQU…                             │#                                             │TARGET · Ascia                                │
-│▲ YOUR TURN  R123                             │#                                             │Advantage: no                                 │
-│──────────────────────────────────────────────│#                                             │──────────────────────────────────────────────│
-│HP 345/999 ■□□                                │                                              │▶ Goblin A        5 ft                        │
-│AC 25  temp +120                              │    n@@a                                      │    Mercante       10 ft                      │
-│Act ● Bon ● Rea ●                             │     @@a                                      │    Mira               10 ft                  │
-│Mov -5/120 ft                                 │                                              │    (no target)                               │
-│Conditions: Benedet…                          │                                              │                                              │
-│ Ascia bipe… 1d12+4                           │                                              │                                              │
+│THORIN SCUDODIQU…                             │                                              │TARGET · Ascia                                │
+│▲ YOUR TURN  R123                             │ ##########                                   │Advantage: no                                 │
+│──────────────────────────────────────────────│ # ##     #                                   │──────────────────────────────────────────────│
+│HP 345/999 ■□□                                │ #        ##                                  │▶ Goblin A        5 ft                        │
+│AC 25  temp +120                              │ #   @@a  ##                                  │    Hobgoblin      70 ft                      │
+│Act ● Bon ● Rea ●                             │ #nn @@g  #                                   │    Mercante       20 ft                      │
+│Mov -5/120 ft                                 │ #nn#     #                                   │    Mira               10 ft                  │
+│Conditions: Benedet…                          │ #        #                                   │    (no target)                               │
+│ Ascia bipe… 1d12+4                           │ ##########                                   │                                              │
 │ Giavellotto   1d6+4                          │                                              │                                              │
 │2/4 Combat                                    │                                              │──────────────────────────────────────────────│
 │                                              │                                              │● roll  ●● back                               │

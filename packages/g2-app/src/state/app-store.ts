@@ -96,7 +96,7 @@ export interface AppActions {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   locale: 'auto',
-  mapCellPx: 8,
+  mapCellPx: 12,
   followToken: true,
   autoCombatPage: true,
 };

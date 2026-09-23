@@ -18,6 +18,6 @@ export default defineProject({
   test: {
     name: 'g2-app',
     environment: 'happy-dom',
-    include: ['src/**/*.test.ts', 'src/__tests__/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 });

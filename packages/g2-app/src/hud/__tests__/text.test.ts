@@ -3,6 +3,7 @@
  */
 import { getTextWidth } from '@evenrealities/pretext';
 import { describe, expect, it } from 'vitest';
+import { character, combat, economy, movement, online, result } from '../../demo/fixtures.js';
 import { initialState } from '../../state/app-store.js';
 import { nextLocaleSetting, strings } from '../i18n.js';
 import { initialUi } from '../input/ui-state.js';
@@ -17,7 +18,6 @@ import {
   sheetHeader,
   turnBudget,
 } from '../text/sheet.js';
-import { character, combat, economy, movement, online, result } from './fixtures.js';
 
 const it_ = strings('it');
 const en = strings('en');
@@ -287,7 +287,7 @@ describe('context column', () => {
     expect(items.head[0]).toBe('Items');
     const options = contextView(app, { ...initialUi(), view: 'options' }, en, 0);
     expect(options.head[0]).toBe('OPTIONS');
-    expect(options.body.join('|')).toContain('Zoom + (8 px)');
+    expect(options.body.join('|')).toContain('Zoom + (12 px)');
     const spells = contextView(
       { ...app, character: null },
       { ...initialUi(), view: 'spells' },

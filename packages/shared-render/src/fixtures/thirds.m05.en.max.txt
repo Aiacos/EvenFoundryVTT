@@ -1,13 +1,13 @@
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│THORIN SCUDODIQU…                             │#                                             │Spells                                        │
-│Exploration · PHB24                           │#                                             │Slots 1°3/4 2°1/3 3°…                         │
-│──────────────────────────────────────────────│#                                             │──────────────────────────────────────────────│
-│Slots 1°3/4 2°1/3 3°…                         │                                              │    C Fiamma s… 60ft                          │
-│ C Fiamma sacra                               │    n@@a                                      │    1° Benedizio… conc.                       │
-│ 1° Cura ferite                               │     @@a                                      │▶ 1° Cura ferite toc…                         │
-│ 1° Benedizione                               │                                              │                                              │
-│Items                                         │                                              │                                              │
-│ Pozione di guarigio…                         │                                              │                                              │
+│THORIN SCUDODIQU…                             │                                              │Spells                                        │
+│Exploration · PHB24                           │ ##########                                   │Slots 1°3/4 2°1/3 3°…                         │
+│──────────────────────────────────────────────│ # ##     #                                   │──────────────────────────────────────────────│
+│Slots 1°3/4 2°1/3 3°…                         │ #        ##                                  │    C Fiamma s… 60ft                          │
+│ C Fiamma sacra                               │ #   @@a  ##                                  │    1° Benedizio… conc.                       │
+│ 1° Cura ferite                               │ #nn @@g  #                                   │▶ 1° Cura ferite toc…                         │
+│ 1° Benedizione                               │ #nn#     #                                   │                                              │
+│Items                                         │ #        #                                   │                                              │
+│ Pozione di guarigio…                         │ ##########                                   │                                              │
 │                                              │                                              │                                              │
 │4/4 Spells/Items                              │                                              │──────────────────────────────────────────────│
 │                                              │                                              │● ok  ●● back                                 │

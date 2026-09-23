@@ -1,13 +1,13 @@
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│THORIN  Liv 5                                 │#                                             │BERSAGLIO · Ascia                             │
-│▲ TUO TURNO  R3                               │#                                             │Vantaggio: no                                 │
-│──────────────────────────────────────────────│#                                             │──────────────────────────────────────────────│
-│PF 7/9           ■■□                          │                                              │▶ Goblin A        5 ft                        │
-│CA 18                                         │    n@@a                                      │    Mercante       10 ft                      │
-│Az ●   Bon ● Rea ●                            │     @@a                                      │    Mira               10 ft                  │
-│Mov 25/30 ft                                  │                                              │    (nessun bersaglio)                        │
-│Condizioni: nessuna                           │                                              │                                              │
-│ Ascia           1d12+4                       │                                              │                                              │
+│THORIN  Liv 5                                 │                                              │BERSAGLIO · Ascia                             │
+│▲ TUO TURNO  R3                               │ ##########                                   │Vantaggio: no                                 │
+│──────────────────────────────────────────────│ # ##     #                                   │──────────────────────────────────────────────│
+│PF 7/9           ■■□                          │ #        ##                                  │▶ Goblin A        5 ft                        │
+│CA 18                                         │ #   @@a  ##                                  │    Hobgoblin      70 ft                      │
+│Az ●   Bon ● Rea ●                            │ #nn @@g  #                                   │    Mercante       20 ft                      │
+│Mov 25/30 ft                                  │ #nn#     #                                   │    Mira               10 ft                  │
+│Condizioni: nessuna                           │ #        #                                   │    (nessun bersaglio)                        │
+│ Ascia           1d12+4                       │ ##########                                   │                                              │
 │ Giavellotto   1d6+4                          │                                              │                                              │
 │2/4 Combattimento                             │                                              │──────────────────────────────────────────────│
 │                                              │                                              │● tira  ●● indietro                           │

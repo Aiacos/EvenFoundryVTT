@@ -8,7 +8,9 @@
     "build": "vite build",
     "dev": "vite",
     "test": "vitest --run --project g2-app --root ../..",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p scripts",
+    "dev:demo": "vite --open '/?demo=tour'",
+    "sim:check": "tsx scripts/sim-check.ts"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.15",

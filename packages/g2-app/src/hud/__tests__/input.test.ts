@@ -13,6 +13,7 @@ import {
   WeaponAttackInputSchema,
 } from '@evf/shared-protocol';
 import { describe, expect, it } from 'vitest';
+import { character, combat, online, result } from '../../demo/fixtures.js';
 import { type AppState, initialState } from '../../state/app-store.js';
 import { strings } from '../i18n.js';
 import { buildEntries, MENU_OPS } from '../input/entries.js';
@@ -26,7 +27,6 @@ import {
   reduce,
 } from '../input/state-machine.js';
 import { initialUi, type UiState } from '../input/ui-state.js';
-import { character, combat, online, result } from './fixtures.js';
 
 const s = strings('it');
 
@@ -61,13 +61,14 @@ describe('weapon attack flow (M03 → M04 → M06)', () => {
     const app = online('max');
     const { ui, effects } = drive(app, [{ t: 'tap' }, { t: 'tap' }, { t: 'down' }, { t: 'tap' }]);
     expect(ui.view).toBe('result');
-    expect(ui.result?.title).toBe('Ascia bipenne +3 del Drago Rosso → Mercante');
+    // Targets list enemies first, nearest first: Goblin A (5 ft), Hobgoblin (70 ft), …
+    expect(ui.result?.title).toBe('Ascia bipenne +3 del Drago Rosso → Hobgoblin');
     const [call] = invokes(effects);
     expect(call?.tool).toBe('weapon-attack');
     expect(WeaponAttackInputSchema.parse(call?.input)).toEqual({
       actor_id: 'actor-1',
       item_id: 'w1',
-      targets: ['t-npc'],
+      targets: ['t-boss'],
       advantage: 'normal',
       count: 1,
     });
@@ -153,7 +154,8 @@ describe('items and options', () => {
   });
 
   it('every menu operation is reachable by tap through Opzioni…', () => {
-    const app = online();
+    // Mid zoom level so both "Zoom +" and "Zoom −" produce an effect.
+    const app = online('min', { settings: { ...online().settings, mapCellPx: 8 } });
     const opts = drive(app, [
       { t: 'tap' },
       { t: 'down' },

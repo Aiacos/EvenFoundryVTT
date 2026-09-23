@@ -1,13 +1,13 @@
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│THORIN SCUDODIQU…                             │#                                             │▲ REACTION                                    │
-│Turn: Goblin A                                │#                                             │Trigger: Goblin A                             │
-│──────────────────────────────────────────────│#                                             │──────────────────────────────────────────────│
-│HP 345/999 ■□□                                │                                              │▶ Opp. att.: Ascia bi…                        │
-│AC 25  temp +120                              │    n@@a                                      │    Opp. att.: Giavello…                      │
-│Passive Perc. 14                              │     @@a                                      │    Ignore                                    │
-│Conditions: Benedet…                          │                                              │                                              │
-│Weapons                                       │                                              │ends ■□□ 4 s                                  │
-│ Ascia bipe… 1d12+4                           │                                              │                                              │
+│THORIN SCUDODIQU…                             │                                              │▲ REACTION                                    │
+│Turn: Goblin A                                │ ##########                                   │Trigger: Goblin A                             │
+│──────────────────────────────────────────────│ # ##     #                                   │──────────────────────────────────────────────│
+│HP 345/999 ■□□                                │ #        ##                                  │▶ Opp. att.: Ascia bi…                        │
+│AC 25  temp +120                              │ #   @@a  ##                                  │    Opp. att.: Giavello…                      │
+│Passive Perc. 14                              │ #nn @@g  #                                   │    Ignore                                    │
+│Conditions: Benedet…                          │ #nn#     #                                   │                                              │
+│Weapons                                       │ #        #                                   │ends ■□□ 4 s                                  │
+│ Ascia bipe… 1d12+4                           │ ##########                                   │                                              │
 │ Giavellotto   1d6+4                          │                                              │                                              │
 │2/4 Combat                                    │                                              │──────────────────────────────────────────────│
 │                                              │                                              │● ok ●● ignore                                │

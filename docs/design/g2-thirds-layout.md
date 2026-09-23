@@ -49,7 +49,7 @@ Glifi non supportati dal font vengono scartati silenziosamente → si usa solo i
 
 - Il telefono costruisce la mappa dallo **snapshot scena** (griglia, muri, luci, token
   visibili al PG, URL dello sfondo scaricato same-origin da Foundry).
-- 1 cella di griglia = **8 px** (default; 6/8/12 px da impostazioni) → ~24×36 celle.
+- 1 cella di griglia = **12 px** (default, scelto per leggibilità a colpo d'occhio; 8/6 px come zoom out) → 16×24 celle ≈ 80×120 ft.
 - Palette: sfondo scena dithered a 4 livelli bassi (0–5), muri 9, luce 7, token 15;
   il proprio token lampeggia 15/11 a ogni frame; bersaglio selezionato = mirino `⌖`.
 - **Segui token** (default): la vista si ricentra quando il PG esce dal 50% centrale.
@@ -144,7 +144,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 │  ▸ Benedetto (7 round)        │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
 │  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
 │                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
-│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
+│ ◀ 1/4 Principale  ▶           │ 1 cella = 12 px · 16×24 celle │ ● tocca: azioni  ●● esci      │
 └───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -347,7 +347,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 │ Percezione passiva 14         │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
 │ Sensi  Scurovisione 60 ft     │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
 │                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
-│ ◀ 3/4 Abilità & TS ▶          │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
+│ ◀ 3/4 Abilità & TS ▶          │ 1 cella = 12 px · 16×24 celle │ ● tocca: azioni  ●● esci      │
 └───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -434,7 +434,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 │  ▸ Benedetto (7 round)        │                               │                               │
 │  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │                               │
 │                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
-│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● riprova ora  ●● esci        │
+│ ◀ 1/4 Principale  ▶           │ 1 cella = 12 px · 16×24 celle │ ● riprova ora  ●● esci        │
 └───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -488,7 +488,7 @@ Legenda mappa: `@` tu · `a` alleato · `g`/`G` nemici · `▓` muro · `▒` lu
 │  Latenza    84 ms · mappa 1 fps        │
 │                                        │
 │  Lingua     [ Segui Foundry ▾ ]        │
-│  Mappa      [ Pixel 8 px ▾ ]           │
+│  Mappa      [ Pixel 12 px ▾ ]          │
 │             [x] Segui il mio token     │
 │  Scheda     [x] Auto pagina Combat     │
 │                                        │

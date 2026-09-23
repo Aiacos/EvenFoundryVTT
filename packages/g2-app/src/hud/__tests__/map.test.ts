@@ -2,7 +2,28 @@
  * Pixel map, viewport, tiles, glyph fallback, image pacing, background loader and
  * map controller (docs/design/g2-thirds-layout.md §Mappa pixelata).
  */
+
+import type { MapSnapshot } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mapSnap } from '../../demo/fixtures.js';
+
+/**
+ * Pixel assertions need a fixed, hand-checked geometry — independent of the demo
+ * dungeon in `geometrySnap()`, which may evolve for readability.
+ */
+function geometrySnap(extra: Partial<MapSnapshot> = {}): MapSnapshot {
+  return mapSnap({
+    walls: [{ c: [0, 0, 10, 0] }, { c: [10, 0, 10, 10], door: true }],
+    tokens: [
+      { id: 't-self', name: 'Thorin', kind: 'self', x: 20, y: 20, w: 1, h: 1 },
+      { id: 't-ally', name: 'Mira', kind: 'ally', x: 22, y: 20, w: 1, h: 1, hp: 0.8 },
+      { id: 't-gob', name: 'Goblin A', kind: 'enemy', x: 21, y: 21, w: 1, h: 1, hp: 0.4 },
+      { id: 't-npc', name: 'Mercante', kind: 'neutral', x: 18, y: 18, w: 1, h: 1 },
+    ],
+    ...extra,
+  });
+}
+
 import { DEFAULT_SETTINGS } from '../../state/app-store.js';
 import { IMAGE } from '../layout.js';
 import { BackgroundLoader, type DecodeDeps } from '../map/background.js';
@@ -11,7 +32,6 @@ import { ImageSender, type TileUpdate } from '../map/image-sender.js';
 import { MapController, MIN_RENDER_MS, RETRY_IMAGES_MS } from '../map/map-controller.js';
 import { computeViewport, LEVEL, MAP_H, MAP_W, renderPixelMap } from '../map/pixel-map.js';
 import { encodeTilePng, hashTile, splitTiles } from '../map/tiles.js';
-import { mapSnap } from './fixtures.js';
 
 const px = (p: Uint8Array, x: number, y: number): number => p[y * MAP_W + x] ?? -1;
 
@@ -21,7 +41,7 @@ function imageData(w: number, h: number, grey: number): ImageData {
 }
 
 describe('computeViewport', () => {
-  const snap = mapSnap();
+  const snap = geometrySnap();
   it('centres on the own token first', () => {
     // 8 px cells → 24×36 cells view; self centre = (20.5, 20.5).
     expect(computeViewport(snap, 8, true)).toEqual({ x: 8.5, y: 2.5 });
@@ -54,7 +74,7 @@ describe('computeViewport', () => {
 });
 
 describe('renderPixelMap', () => {
-  const snap = mapSnap();
+  const snap = geometrySnap();
   const vp = { x: 8, y: 2 };
   const draw = (extra = {}) =>
     renderPixelMap(snap, { cellPx: 8, follow: true, viewport: vp, ...extra });
@@ -89,7 +109,7 @@ describe('renderPixelMap', () => {
   });
 
   it('shows grid dots without a background, nothing outside the scene', () => {
-    const p = renderPixelMap(mapSnap({ tokens: [], walls: [] }), {
+    const p = renderPixelMap(geometrySnap({ tokens: [], walls: [] }), {
       cellPx: 8,
       follow: true,
       viewport: { x: -1, y: 0 },
@@ -100,7 +120,7 @@ describe('renderPixelMap', () => {
   });
 
   it('dithers the background to levels 0–5 and dims it with darkness', () => {
-    const empty = mapSnap({ tokens: [], walls: [] });
+    const empty = geometrySnap({ tokens: [], walls: [] });
     const bright = renderPixelMap(empty, {
       cellPx: 8,
       follow: true,
@@ -124,7 +144,7 @@ describe('renderPixelMap', () => {
   });
 
   it('draws the reticle around the target (option overrides the snapshot)', () => {
-    const withTarget = renderPixelMap(mapSnap({ targetId: 't-gob' }), {
+    const withTarget = renderPixelMap(geometrySnap({ targetId: 't-gob' }), {
       cellPx: 8,
       follow: true,
       viewport: vp,
@@ -281,7 +301,7 @@ describe('ImageSender', () => {
 });
 
 describe('BackgroundLoader', () => {
-  const snap = mapSnap({ background: 'worlds/w/bg.webp' });
+  const snap = geometrySnap({ background: 'worlds/w/bg.webp' });
 
   function deps(overrides: Partial<DecodeDeps> = {}): DecodeDeps {
     const ctx = {
@@ -305,7 +325,7 @@ describe('BackgroundLoader', () => {
   }
 
   it('returns null without a background URL', () => {
-    expect(new BackgroundLoader(vi.fn(), deps()).get(mapSnap())).toBeNull();
+    expect(new BackgroundLoader(vi.fn(), deps()).get(geometrySnap())).toBeNull();
   });
 
   it('loads, down-scales, caches and notifies', async () => {
@@ -386,7 +406,7 @@ describe('MapController', () => {
 
   const noBg = { get: () => null } as unknown as BackgroundLoader;
   const input = (patch = {}) => ({
-    map: mapSnap(),
+    map: geometrySnap(),
     settings: DEFAULT_SETTINGS,
     active: true,
     ...patch,

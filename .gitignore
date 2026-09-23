@@ -46,3 +46,4 @@ Thumbs.db
 .env.local
 .env.*.local
 *.secret.json
+packages/g2-app/.sim-artifacts/

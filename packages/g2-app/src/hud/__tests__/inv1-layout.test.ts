@@ -15,12 +15,12 @@ import {
   RULE,
 } from '@evf/shared-render';
 import { describe, expect, it } from 'vitest';
+import { type MockState, mockStates, type Variant } from '../../demo/fixtures.js';
 import { type HudLocale, strings } from '../i18n.js';
 import { TEXT, type TextContent, type TextRegion } from '../layout.js';
 import { glyphMapLines } from '../map/glyph-map.js';
 import { renderPixelMap } from '../map/pixel-map.js';
 import { layoutModeFor, renderTexts } from '../view.js';
-import { type MockState, mockStates, type Variant } from './fixtures.js';
 
 const COL_CHARS = 46;
 /** Relative to this test file (toMatchFileSnapshot resolves against the test path). */

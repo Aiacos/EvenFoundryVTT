@@ -5,6 +5,7 @@
  */
 import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { online } from '../../demo/fixtures.js';
 import {
   type AppActions,
   type AppState,
@@ -15,7 +16,6 @@ import {
 import { BRIDGE_CALL_TIMEOUT_MS, createBridgeQueue } from '../bridge-queue.js';
 import { startHud, TICK_MS } from '../index.js';
 import { menuIdOf } from '../input/state-machine.js';
-import { online } from './fixtures.js';
 
 interface Call {
   method: string;
@@ -203,7 +203,8 @@ describe('startHud', () => {
   });
 
   it('routes settings and reconnect effects to AppActions; clears handled reactions', async () => {
-    store = createAppStore(itState());
+    const mid = itState();
+    store = createAppStore({ ...mid, settings: { ...mid.settings, mapCellPx: 8 } });
     dispose = startHud(fb.bridge, store, actions);
     await flush();
     fb.emit({ menuItemClickEvent: { itemID: 2 } } as EvenHubEvent);

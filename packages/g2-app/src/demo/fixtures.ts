@@ -1,5 +1,6 @@
 /**
- * Test fixtures for the HUD: mock states M01–M11 with min/max content variants.
+ * Canonical HUD states M01–M11 (min/max content variants) — shared by demo mode
+ * (`?demo=`) and the INV-1 / HUD unit tests, so both render the same data.
  */
 import {
   ABILITY_KEYS,
@@ -13,8 +14,8 @@ import {
   SKILL_KEYS,
   type Skills,
 } from '@evf/shared-protocol';
-import { type AppState, initialState } from '../../state/app-store.js';
-import { initialUi, type UiState } from '../input/ui-state.js';
+import { initialUi, type UiState } from '../hud/input/ui-state.js';
+import { type AppState, initialState } from '../state/app-store.js';
 
 export type Variant = 'min' | 'max';
 
@@ -196,12 +197,34 @@ export function mapSnap(extra: Partial<MapSnapshot> = {}): MapSnapshot {
     rows: 40,
     gridPx: 100,
     darkness: 0,
-    walls: [{ c: [0, 0, 10, 0] }, { c: [10, 0, 10, 10], door: true }],
+    // Two rooms joined by a corridor with a door, around the tokens (cells 14–38).
+    walls: [
+      // Room A (14,12)–(27,28)
+      { c: [14, 12, 27, 12] },
+      { c: [14, 28, 27, 28] },
+      { c: [14, 12, 14, 28] },
+      { c: [27, 12, 27, 18] },
+      { c: [27, 18, 27, 20], door: true },
+      { c: [27, 20, 27, 28] },
+      // Corridor (27,18)–(31,20)
+      { c: [27, 18, 31, 18] },
+      { c: [27, 20, 31, 20] },
+      // Room B (31,14)–(38,26)
+      { c: [31, 14, 38, 14] },
+      { c: [31, 26, 38, 26] },
+      { c: [38, 14, 38, 26] },
+      { c: [31, 14, 31, 18] },
+      { c: [31, 20, 31, 26] },
+      // Pillars in room A
+      { c: [17, 15, 18, 15] },
+      { c: [17, 25, 18, 25] },
+    ],
     tokens: [
       { id: 't-self', name: 'Thorin', kind: 'self', x: 20, y: 20, w: 1, h: 1 },
       { id: 't-ally', name: 'Mira', kind: 'ally', x: 22, y: 20, w: 1, h: 1, hp: 0.8 },
       { id: 't-gob', name: 'Goblin A', kind: 'enemy', x: 21, y: 21, w: 1, h: 1, hp: 0.4 },
-      { id: 't-npc', name: 'Mercante', kind: 'neutral', x: 18, y: 18, w: 1, h: 1 },
+      { id: 't-npc', name: 'Mercante', kind: 'neutral', x: 16, y: 22, w: 1, h: 1 },
+      { id: 't-boss', name: 'Hobgoblin', kind: 'enemy', x: 34, y: 19, w: 2, h: 2, hp: 1 },
     ],
     selfTokenId: 't-self',
     ...extra,

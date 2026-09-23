@@ -1,13 +1,13 @@
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│THORIN  Liv 5                                 │#                                             │SCENA Cripta di Vel'…                         │
-│Esplorazione · PHB24                          │#                                             │Esplorazione                                  │
-│──────────────────────────────────────────────│#                                             │──────────────────────────────────────────────│
-│PF 7/9           ■■□                          │                                              │Registro                                      │
-│CA 18                                         │    n@@a                                      │ (vuoto)                                      │
-│FOR+4 DES+1  COS+3                            │     @@a                                      │Party                                         │
-│INT+0  SAG+1  CAR-1                           │                                              │ Mira             ■■□                         │
-│Perc. passiva 14                              │                                              │                                              │
-│Condizioni: nessuna                           │                                              │                                              │
+│THORIN  Liv 5                                 │                                              │SCENA Cripta di Vel'…                         │
+│Esplorazione · PHB24                          │ ##########                                   │Esplorazione                                  │
+│──────────────────────────────────────────────│ # ##     #                                   │──────────────────────────────────────────────│
+│PF 7/9           ■■□                          │ #        ##                                  │Registro                                      │
+│CA 18                                         │ #   @@a  ##                                  │ (vuoto)                                      │
+│FOR+4 DES+1  COS+3                            │ #nn @@g  #                                   │Party                                         │
+│INT+0  SAG+1  CAR-1                           │ #nn#     #                                   │ Mira             ■■□                         │
+│Perc. passiva 14                              │ #        #                                   │                                              │
+│Condizioni: nessuna                           │ ##########                                   │                                              │
 │                                              │                                              │                                              │
 │1/4 Principale                                │                                              │──────────────────────────────────────────────│
 │                                              │                                              │● azioni  ●● esci                             │
