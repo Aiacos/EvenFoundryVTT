@@ -13,7 +13,8 @@ document here is a projection or expansion of it.
 | Canonical specification | [`Specs.md`](../Specs.md) | Requirements, architecture, hardware constraints, UI/UX mockups, roadmap. |
 | Setup guide | [`setup-guide.md`](setup-guide.md) | HTTPS prerequisites → install the module → GM pairing → player QR scan → manual code, revoke, troubleshooting. |
 | Runbook | [`runbook.md`](runbook.md) | Diagnosis from the phone page and the GM browser, the `validate:direct-sideload` harness, revoke / re-pair, common errors. |
-| Thirds layout design | [`design/g2-thirds-layout.md`](design/g2-thirds-layout.md) | 11 glasses mocks (M01–M11) + 3 phone/Foundry mocks (P01–P03). This is the INV-1 contract. |
+| Sheet layout design | [`design/g2-sheet-ux.html`](design/g2-sheet-ux.html) | «Scheda da tavolo G2»: zones, principles, gestures, 12 glasses screens (S1–S12); simulator screenshots in [`design/img/`](design/img/). INV-1 contract = `packages/shared-render/src/fixtures/sheet.*.txt`. |
+| Thirds layout (superseded) | [`design/g2-thirds-layout.md`](design/g2-thirds-layout.md) | Historical first v0.10 layout; its pairing flow and phone/Foundry mocks (P01–P03) are still current. |
 | Direct streaming decision | [`architecture/0012-direct-foundry-streaming.md`](architecture/0012-direct-foundry-streaming.md) | Why the bridge, Docker and `foundry-mcp` were removed. |
 | Firmware compatibility | [`firmware-compatibility.md`](firmware-compatibility.md) | Even Hub SDK / Even App / Foundry version matrix + forward-compat policy. |
 | Invariants | [`architecture/INVARIANTS.md`](architecture/INVARIANTS.md) | INV-1..6 and how CI enforces them. |
@@ -57,7 +58,9 @@ docs/
 │   ├── INVARIANTS.md            ← INV-1..6
 │   └── 0001 … 0012-*.md         ← ADRs (0012 = direct streaming)
 ├── design/
-│   └── g2-thirds-layout.md      ← thirds HUD + pairing mocks
+│   ├── g2-sheet-ux.html         ← D&D-sheet HUD design (current)
+│   ├── g2-thirds-layout.md      ← superseded thirds HUD + pairing mocks P01–P03
+│   └── img/sheet-*.png          ← simulator screenshots S1–S12
 ├── perf/
 │   └── phase-0/                 ← GO/NO-GO evidence + calibration methodology
 ├── release/

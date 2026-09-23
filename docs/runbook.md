@@ -31,7 +31,7 @@ First-time installation is covered in the [setup guide](setup-guide.md).
 | Login | g2-app `POST /join` as "&lt;Player&gt; (G2)" | *credentials rejected* → first-setup page (P03) |
 | Socket | socket.io `/socket.io/` | *Foundry not responding*, retry with backoff 1→30 s |
 | `hello` → `welcome` | projector in the GM browser | *no GM connected* after 8 s without `welcome` |
-| Live updates | projector hooks → sealed pushes | stale sheet/map; after 2 missed pongs the page goes offline (M11) |
+| Live updates | projector hooks → sealed pushes | stale sheet/map; after 2 missed pongs the page goes offline (S12) |
 
 ---
 
@@ -153,7 +153,7 @@ reverse-proxy subdomain**.
 
 1. GM: **Pair G2 glasses** → **Revoke** next to the device → **Confirm revoke**.
 2. The module sends a sealed `{t:'revoked'}` to the device, deletes the "(G2)" user and
-   forgets the key. The glasses go back to the "not paired" screen (M09).
+   forgets the key. The glasses go back to the "not paired" screen (S10).
 3. If the device was offline, the console logs `could not notify … of revocation`. The
    user is deleted anyway, so the next login fails with *credentials rejected*.
 
@@ -193,5 +193,6 @@ character, or when the phone shows *credentials rejected*.
 
 - [Setup guide](setup-guide.md) · [Firmware compatibility](firmware-compatibility.md)
 - [ADR-0012](architecture/0012-direct-foundry-streaming.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
-- [G2 thirds layout](design/g2-thirds-layout.md) — M09 not paired · M10 connecting · M11 offline · P01–P03
+- [G2 sheet UX](design/g2-sheet-ux.html) — S10 not paired · S11 connecting · S12 offline ([screenshots](design/img/))
+- [G2 thirds layout](design/g2-thirds-layout.md) — superseded layout; pairing mocks P01–P03 still current
 - [`packages/foundry-module/README.md`](../packages/foundry-module/README.md) — security model

@@ -6,8 +6,9 @@ Docker or a second server
 ([ADR-0012](architecture/0012-direct-foundry-streaming.md)).
 
 **Canonical references:** [ADR-0012](architecture/0012-direct-foundry-streaming.md) ·
+[`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) (glasses screens S10–S12) ·
 [`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.md) §Associazione e connessione
-(mocks P01–P03, M09–M11) · [`packages/foundry-module/README.md`](../packages/foundry-module/README.md).
+(pairing flow, phone/Foundry mocks P01–P03) · [`packages/foundry-module/README.md`](../packages/foundry-module/README.md).
 
 ---
 
@@ -101,8 +102,10 @@ The release zip already contains the glasses app under `g2/`. Foundry serves it 
 1. Open the **Even Realities App** and **scan the QR** shown in Foundry.
 2. The app loads the glasses page. It saves the credentials, removes them from the URL,
    logs in as the "(G2)" user and says hello to the GM projector.
-3. The glasses show **Connecting** (M10), then the thirds HUD (M01): character sheet on
-   the left, pixel map in the centre, context on the right.
+3. The glasses show **Connecting** (S11), then the D&D-sheet HUD (S1): portrait, header
+   (AC, HP, turn) and square map on top, ability page and context panel below.
+
+   ![Glasses after pairing: exploration screen](design/img/sheet-explore.png)
 4. On the first connection the GM client **rotates** the password and key, so the QR
    you scanned stops working.
 
@@ -138,7 +141,7 @@ Long press is never the only way to reach a function.
 ## 🔐 Revoke or re-pair
 
 - **Revoke:** in *Pair G2 glasses* → **Revoke** next to the device → confirm. The glasses
-  receive a sealed `revoked` message and go back to the "not paired" screen (M09). Then
+  receive a sealed `revoked` message and go back to the "not paired" screen (S10). Then
   the "(G2)" user is deleted and the key is forgotten.
 - **Re-pair:** run the pairing again for the same player. The module refreshes the same
   "(G2)" user (it is tagged by player), creates a new key and shows a new QR.
@@ -187,5 +190,6 @@ g2-app change (`pnpm --filter @evf/g2-app build`) and reload the phone page.
 
 - [Runbook](runbook.md) — diagnosis, revoke, re-pair, the sideload harness.
 - [ADR-0012](architecture/0012-direct-foundry-streaming.md) — why there is no bridge.
-- [G2 thirds layout](design/g2-thirds-layout.md) — glasses, phone and Foundry mocks.
+- [G2 sheet UX](design/g2-sheet-ux.html) — glasses HUD design and screens.
+- [G2 thirds layout](design/g2-thirds-layout.md) — superseded glasses layout; pairing flow and phone/Foundry mocks P01–P03 still current.
 - [Firmware compatibility](firmware-compatibility.md) — SDK / Even App versions.

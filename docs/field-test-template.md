@@ -110,7 +110,7 @@ projector). Note the map frame rate observed in the centre column (budget ≤ 1 
 | End-to-end latency p95 | _pending_ ms | — |
 | End-to-end latency p99 | _pending_ ms | — |
 | Phone page *Latency* (relay + GM projector RTT) | _pending_ ms | — |
-| Map frame rate observed (approx.) | _pending_ fps | ≤ 1 fps (thirds layout budget) |
+| Map frame rate observed (approx.) | _pending_ fps | ≤ 1 fps (sheet layout, zone C budget) |
 
 ---
 

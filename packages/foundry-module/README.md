@@ -96,5 +96,6 @@ The release zip holds `module.json`, `dist/`, `g2/`, `lang/` and `templates/`
 ## 📚 Documentation
 
 - [ADR-0012 — Direct Foundry → G2 streaming](../../docs/architecture/0012-direct-foundry-streaming.md)
-- [G2 thirds layout + pairing mocks (P01–P03)](../../docs/design/g2-thirds-layout.md)
+- [G2 sheet UX — glasses HUD design](../../docs/design/g2-sheet-ux.html)
+- [Pairing flow + mocks P01–P03](../../docs/design/g2-thirds-layout.md) (in the superseded thirds-layout doc)
 - [ADR-0011 — Single-workflow-origin write path](../../docs/architecture/0011-foundry-write-path-single-workflow-origin.md)

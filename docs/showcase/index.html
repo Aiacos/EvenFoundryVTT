@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>EvenFoundryVTT — D&D 5e on Even Realities G2 + R1</title>
-<meta name="description" content="A glanceable HUD of FoundryVTT D&D sessions on Even Realities G2 AR glasses, driven by R1 ring gestures. Phosphor-green thirds HUD, 576x288 4-bit greyscale, streamed straight from Foundry — no server to run." />
+<meta name="description" content="A glanceable HUD of FoundryVTT D&D sessions on Even Realities G2 AR glasses, driven by R1 ring gestures. Phosphor-green D&amp;D-sheet HUD, 576x288 4-bit greyscale, streamed straight from Foundry — no server to run." />
 <meta name="theme-color" content="#0a0f0a" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -217,6 +217,11 @@ section.show .section-tag {
 .hw-card .verified { font-family: var(--mono); font-size: 0.78rem; color: var(--g2); margin-top: 1rem; }
 
 /* HUD simulator */
+.shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; margin-top: 2rem; }
+.shot { margin: 0; border: 1px solid var(--g0); background: #000; padding: .5rem; }
+.shot img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.shot figcaption { margin-top: .5rem; font-size: 0.72rem; color: var(--g1); }
+@media (max-width: 800px) { .shots { grid-template-columns: 1fr; } }
 .hud-sim {
   margin: 2rem auto;
   max-width: 1100px;
@@ -426,7 +431,7 @@ footer.show a { color: var(--g2); border: none; }
     <li><a href="#hardware">Hardware</a></li>
     <li><a href="#setup">Setup</a></li>
     <li><a href="#hud">HUD</a></li>
-    <li><a href="#thirds">Thirds</a></li>
+    <li><a href="#sheet">Sheet</a></li>
     <li><a href="#arch">Architecture</a></li>
     <li><a href="#pipeline">Pipeline</a></li>
     <li><a href="#fps">FPS</a></li>
@@ -454,7 +459,7 @@ footer.show a { color: var(--g2); border: none; }
     <div class="stats">
       <div class="stat"><span class="num">576×288</span><span class="lab">px / eye</span></div>
       <div class="stat"><span class="num">4-bit</span><span class="lab">greyscale</span></div>
-      <div class="stat"><span class="num">⅓·⅓·⅓</span><span class="lab">sheet · map · context</span></div>
+      <div class="stat"><span class="num">5</span><span class="lab">zones · 4 images · 1 input panel</span></div>
       <div class="stat"><span class="num">0</span><span class="lab">servers to run</span></div>
       <div class="stat"><span class="num">1</span><span class="lab">QR scan to pair</span></div>
       <div class="stat"><span class="num">v0.10.0</span><span class="lab">direct streaming · ADR-0012 · Even Hub SDK 0.0.15</span></div>
@@ -475,7 +480,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">▤</div>
         <h3>Glanceable HUD</h3>
-        <p>Three fixed thirds: character sheet · pixel map · context column. Column boundaries never move, so you learn <em>where</em> to look once.</p>
+        <p>Reads like the paper 5e sheet: portrait · AC shield and HP box · square map · ability and save pages · one context panel. Zone boundaries never move, so you learn <em>where</em> to look once.</p>
       </div>
       <div class="pillar">
         <div class="icon">⌬</div>
@@ -697,7 +702,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="hud">
     <span class="section-tag">▤ live preview</span>
     <h2>👓 The HUD, in your face.</h2>
-    <p>Interactive preview of the <strong>v0.9 layered engine</strong> (map base + status corner card + overlay panels), kept for reference. v0.10.0 replaced it with the thirds layout shown in the next section. Mockups from the spec § 7.</p>
+    <p>Interactive preview of the <strong>v0.9 layered engine</strong> (map base + status corner card + overlay panels), kept for reference. v0.10.0 replaced it with the D&amp;D-sheet layout shown in the next section. Mockups from the spec § 7.</p>
 
     <div class="hud-sim">
       <div class="tabs" role="tablist">
@@ -717,68 +722,16 @@ footer.show a { color: var(--g2); border: none; }
     </div>
   </section>
 
-  <!-- ═══ THIRDS LAYOUT (v0.10) ══════════════════════════════════ -->
-  <section class="show reveal" id="thirds">
-    <span class="section-tag">▥ thirds layout</span>
-    <h2>👓 Sheet · map · context. Always in the same place.</h2>
-    <p>Three 192&nbsp;px columns on the 576&nbsp;×&nbsp;288 canvas. Left: the character sheet (4 pages, auto-switch to Combat). Centre: a 192&nbsp;×&nbsp;288 pixel map built on the phone from compact scene data, ≤&nbsp;1&nbsp;fps, only changed tiles sent. Right: the context column — log, initiative, actions, targets, spells, results — the only column that reacts to input. Mocks M01 and M02 below come verbatim from <a href="../design/g2-thirds-layout.md" style="color:var(--g3)">docs/design/g2-thirds-layout.md</a> (Italian UI, INV-1 contract).</p>
-    <div class="hud-sim" style="margin-top:2rem;">
-      <div class="meta" style="margin:0 0 .6rem 0;"><span>M01 · Exploration (default)</span><span>● tap: actions · ●● exit</span></div>
-<pre class="screen" style="min-height:0;">
-┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
-│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ SCENA  Cripta di Vel'Nar      │
-│ Nano delle colline · PHB24    │ ▓░░░░░░░░░▓▓▓▓▓░░░░░░░░░░░░░▓ │ Esplorazione · ⌁ collegato    │
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
-│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │ Registro                      │
-│     temp +10                  │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒a▒▒▒▒▒▒░▓ │  Mira: Percezione 17 ✓        │
-│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒@▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  GM: «Senti passi a nord»     │
-│ COMP +3  PERC 13  ISP ○       │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Thorin raccoglie: torcia     │
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Bram si muove (20 ft)        │
-│ FOR 18+4  DES 12+1  COS 16+3  │ ▓░░░░▒░░░░▓   ▓░░░░░░▒░░░░░░▓ │                               │
-│ INT 10+0  SAG 13+1  CAR  8-1  │ ▓▓▓▓▓▒▓▓▓▓▓   ▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓ │                               │
-│───────────────────────────────│ ▓    ▒              ▒       ▓ │                               │
-│ Azione ●  Bonus ●  Reaz ●     │ ─ ─ ─ tile A ▲ │ ▼ tile B ─ ─ │                               │
-│ Movimento 30/30 ft            │ ▓▓▓▓▓▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓▓ │                               │
-│───────────────────────────────│ ▓░░░░▒░░░░░░░░░░░░░░▒░░░░░░░▓ │                               │
-│ Slot  1°▮▮▯▯  2°▮▯▯           │ ▓░          ░░░░          ░░▓ │                               │
-│ Ki/Surge  Action Surge 1/1    │ ▓░   (nebbia di guerra)    ░▓ │                               │
-│───────────────────────────────│ ▓░                         ░▓ │───────────────────────────────│
-│ Condizioni                    │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ Party                         │
-│  ▸ Benedetto (7 round)        │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
-│  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
-│                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
-│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
-└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
-</pre>
-    </div>
-    <div class="hud-sim" style="margin-top:1.5rem;">
-      <div class="meta" style="margin:0 0 .6rem 0;"><span>M02 · Combat — your turn</span><span>● actions · ⇅ scroll · ●● exit</span></div>
-<pre class="screen" style="min-height:0;">
-┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
-│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ INIZIATIVA        round 3     │
-│ ▲ IL TUO TURNO · round 3      │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │───────────────────────────────│
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │ ▶ Thorin        19   45/68    │
-│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒g▒▒▒▒▒▒▒▒▒▒G▒▒▒▒▒▒░▓ │   Goblin A      17   ▮▮▯      │
-│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Mira          15   31/38    │
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Boss Hobgob.  12   ▮▮▮▮     │
-│ Azione ●  Bonus ●  Reaz ●     │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Goblin B       9   ▮▮▮      │
-│ Movimento 30/30 ft            │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │   Bram           6   22/33    │
-│ Attacchi  2/2 (Extra Attack)  │ ▓░▒▒▒▒▒▒··@··▒▒▒▒a▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
-│───────────────────────────────│ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │ Ultimi eventi                 │
-│ Armi                          │ ▓░▒▒▒▒▒▒·····▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  Goblin A → Mira  mancato     │
-│  Ascia bipenne  +7  1d12+4    │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  Mira → Goblin A  7 perforanti│
-│  Giavellotto    +7  1d6+4     │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
-│───────────────────────────────│ ▓░▒▒▒▒▒g▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
-│ Risorse                       │ ▓░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │                               │
-│  Second Wind      1/1         │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │                               │
-│  Action Surge     1/1         │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │                               │
-│───────────────────────────────│                               │                               │
-│ Condizioni                    │ @ tu   g goblin   G boss      │                               │
-│  ▸ Benedetto (7 round)        │ · movimento 30 ft (6 celle)   │                               │
-│                               │ ▲ turno: TU · round 3         │───────────────────────────────│
-│ ◀ 2/4 Combattimento ▶         │                               │ ● azioni  ⇅ scorri  ●● esci   │
-└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
-</pre>
+  <!-- ═══ SHEET LAYOUT (v0.10) ═══════════════════════════════════ -->
+  <section class="show reveal" id="sheet">
+    <span class="section-tag">▥ scheda da tavolo</span>
+    <h2>👓 Your character sheet, on the glasses.</h2>
+    <p>The HUD reads like the paper 5e sheet and D&amp;D Beyond. Five fixed zones on the 576&nbsp;×&nbsp;288 canvas: <strong>A</strong> portrait 144², <strong>B</strong> header 288&nbsp;×&nbsp;144 (AC shield, HP box + temp, INIT · SPD · PROF, ● Action ▲ Bonus ◆ Reaction, conditions, ▲ YOUR TURN), <strong>C</strong> square map 144² centred on your token (12&nbsp;px cells, ≤&nbsp;1&nbsp;fps), <strong>D</strong> sheet 288&nbsp;×&nbsp;144 (Abilities · Saves &amp; Skills, death saves at 0&nbsp;HP) and <strong>E</strong> the context panel — the only zone that reacts to input. Zones A–D are drawn by our own 4-bit pixel renderer and bitmap fonts (the firmware font has no D&amp;D glyphs); budget 4/4 images + 4/8 text, no page rebuild during play. Real simulator screenshots below (Italian UI); full design in <a href="../design/g2-sheet-ux.html" style="color:var(--g3)">docs/design/g2-sheet-ux.html</a>.</p>
+    <div class="shots">
+      <figure class="shot"><img src="../design/img/sheet-explore.png" width="576" height="288" loading="lazy" alt="Exploration: portrait, AC 18, HP 27/38, square map, abilities page, log in the context panel" /><figcaption>S1 · Exploration — abilities page, log</figcaption></figure>
+      <figure class="shot"><img src="../design/img/sheet-combat-my-turn.png" width="576" height="288" loading="lazy" alt="Combat, your turn: YOUR TURN chip, action economy, initiative list in the context panel" /><figcaption>S2 · Combat, your turn — action economy, initiative</figcaption></figure>
+      <figure class="shot"><img src="../design/img/sheet-target.png" width="576" height="288" loading="lazy" alt="Target picker: crosshair on the square map, target list in the context panel" /><figcaption>S4 · Target picker — crosshair drawn on the map</figcaption></figure>
+      <figure class="shot"><img src="../design/img/sheet-dying.png" width="576" height="288" loading="lazy" alt="At 0 HP: dimmed portrait, death saving throws replace the sheet" /><figcaption>S9 · 0 HP — death saves replace the sheet</figcaption></figure>
     </div>
   </section>
 
@@ -806,7 +759,7 @@ footer.show a { color: var(--g2); border: none; }
           <rect class="node node-mvp pulse" x="40" y="40" width="180" height="80" />
           <text class="label" x="130" y="68" text-anchor="middle">Even G2 Glasses</text>
           <text class="label-sm" x="130" y="86" text-anchor="middle">576 × 288 · 4-bit</text>
-          <text class="label-sm" x="130" y="102" text-anchor="middle">thirds HUD</text>
+          <text class="label-sm" x="130" y="102" text-anchor="middle">D&amp;D-sheet HUD</text>
         </g>
         <!-- R1 -->
         <g>
@@ -821,7 +774,7 @@ footer.show a { color: var(--g2); border: none; }
           <rect class="node node-mvp pulse" x="40" y="180" width="400" height="100" />
           <text class="label" x="240" y="210" text-anchor="middle">Even Realities App · WebView (phone)</text>
           <text class="label-sm" x="240" y="230" text-anchor="middle">g2-app served by Foundry · QR sideload</text>
-          <text class="label-sm" x="240" y="246" text-anchor="middle">pixel map 192×288 · sheet · context</text>
+          <text class="label-sm" x="240" y="246" text-anchor="middle">pixel renderer · sheet · map 144² · context</text>
           <text class="label-sm" x="240" y="262" text-anchor="middle">sealed session (AES-256-GCM)</text>
         </g>
         <line class="arrow arrow-mvp" x1="130" y1="180" x2="130" y2="120" marker-end="url(#arrowhead-mvp)" />
@@ -897,7 +850,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="fps">
     <span class="section-tag">▰ frame rate</span>
     <h2>⚡ Six layers, 5 to 15 fps.</h2>
-    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. This optimisation stack was designed for the v0.9 full-screen raster (5 fps committed, 15 fps stretch). The v0.10 thirds map needs far less: one third of the screen, <strong>≤ 1 fps</strong>, changed tiles only, paced to the SDK's 100 ms image limit.</p>
+    <p>BLE bandwidth is the bottleneck on a 4-bit greyscale phosphor display. This optimisation stack was designed for the v0.9 full-screen raster (5 fps committed, 15 fps stretch). The v0.10 sheet-layout map needs far less: one 144&nbsp;×&nbsp;144 image, <strong>≤ 1 fps</strong>, changed tiles only, paced to the SDK's 100 ms image limit.</p>
     <div class="fps-chart" id="fpsChart">
       <div class="layer-row" data-fps="3" data-target="20">
         <div class="info">
@@ -1023,7 +976,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="phase v2"><div class="head"><span class="ph">P12</span><span class="wks">Week 15–16</span><span class="v2tag">V2</span></div><div class="ttl">Voice UX tuning</div><div class="det">IT↔EN spell name lookup · Deepgram keyterms — <strong>removed in v0.10.0</strong></div></div>
       <div class="phase v2"><div class="head"><span class="ph">P13</span><span class="wks">post-V2</span><span class="v2tag">V2</span></div><div class="ttl">Stretch goals</div><div class="det">reaction bot · biometric narrative cues · multi-player bridge · dnd5e 6.x adapter · PF2e adapter · portrait images · Dice So Nice raster · headless Foundry session</div></div>
       <div class="divider">— v0.10.0 · direct streaming —</div>
-      <div class="phase mvp"><div class="head"><span class="ph">v0.10</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · GM-client projector · AES-GCM sealed relay · thirds HUD · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">v0.10</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · GM-client projector · AES-GCM sealed relay · D&amp;D-sheet HUD · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
     </div>
   </section>
 
@@ -1092,7 +1045,7 @@ footer.show a { color: var(--g2); border: none; }
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.10.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0012-direct-foundry-streaming.md">ADR-0012</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM pairs a player with one QR; the Even Realities App loads the page same-origin; the GM browser projects the character, combat, log and map over an AES-256-GCM sealed relay. The G2 UI is the thirds layout on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.9.13) are archived in the repository.</p>
+    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.10.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0012-direct-foundry-streaming.md">ADR-0012</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM pairs a player with one QR; the Even Realities App loads the page same-origin; the GM browser projects the character, combat, log and map over an AES-256-GCM sealed relay. The G2 UI is the D&amp;D-sheet layout («Scheda da tavolo G2») on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.9.13) are archived in the repository.</p>
   </footer>
 
 </div><!-- /bezel -->

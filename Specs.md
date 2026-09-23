@@ -1235,40 +1235,40 @@ Un'evoluzione futura potrebbe far sì che il G2 catturi audio e lo invii al clie
 
 ## 7. UI/UX — "Monitor HUD" Aesthetic (Layered Model)
 
-### 7.0 Thirds Layout (v0.10.0 — canonico)
+### 7.0 Sheet Layout (v0.10.0 — canonico)
 
-Scheda PG **sempre visibile** su ⅓ (sinistra), **mappa pixelata** su ⅓ (centro, 2 image container 192×144 impilati), **colonna contesto** su ⅓ (destra: registro, iniziativa, azioni, bersagli, incantesimi, esiti, reazioni). Confini di colonna identici in ogni stato (INV-1). Contratto completo — griglia, budget container, modello di input, macchina a stati, 11 mock occhiali + 3 mock telefono/Foundry: **[`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md)**.
+**«Scheda da tavolo G2»** (giro UX 2, 2026-09-23): la HUD si legge come la scheda cartacea di D&D 5e e come D&D Beyond — CA nello scudo, box PF, box delle caratteristiche, cerchi di competenza — più una mappa quadrata del combattimento. Sostituisce il layout a terzi della prima stesura v0.10.0 (storico: [`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md), il cui flusso di associazione P01–P03 resta valido). Contratto completo — brief, principi, inventario scheda→G2, zone e budget SDK, linguaggio visivo, interazione, 12 schermate hi-fi, casi limite: **[`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html)**.
 
-Nota di misura (INV-2): il font firmware è proporzionale (~18 caratteri × 11 righe per colonna) e non contiene `▮▯◉⚠✓✖⌖`; il contratto eseguibile sono le fixture `packages/shared-render/src/fixtures/thirds.*.txt`. Il mock sotto descrive l'architettura dell'informazione.
+![Scheda da tavolo G2 — combattimento, il tuo turno (simulatore, 576×288)](docs/design/img/sheet-combat-my-turn.png)
 
-Mock M01 (esplorazione, default):
+*S2 · combattimento, tuo turno — screenshot reale dal simulatore Even Hub (`docs/design/img/sheet-*.png`, 12 schermate S1–S12).*
 
-```
-┌───────────────────────────────┬───────────────────────────────┬───────────────────────────────┐
-│ THORIN  Guerriero 5           │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ SCENA  Cripta di Vel'Nar      │
-│ Nano delle colline · PHB24    │ ▓░░░░░░░░░▓▓▓▓▓░░░░░░░░░░░░░▓ │ Esplorazione · ⌁ collegato    │
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │───────────────────────────────│
-│ PF  ██████████░░░  45/68      │ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │ Registro                      │
-│     temp +10                  │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒a▒▒▒▒▒▒░▓ │  Mira: Percezione 17 ✓        │
-│ CA 18   VEL 30   INIZ +1      │ ▓░▒▒▒@▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░▓ │  GM: «Senti passi a nord»     │
-│ COMP +3  PERC 13  ISP ○       │ ▓░▒▒▒▒▒▒▒░░░░░░░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Thorin raccoglie: torcia     │
-│───────────────────────────────│ ▓░▒▒▒▒▒▒▒░▓   ▓░▒▒▒▒▒▒▒▒▒▒▒░▓ │  Bram si muove (20 ft)        │
-│ FOR 18+4  DES 12+1  COS 16+3  │ ▓░░░░▒░░░░▓   ▓░░░░░░▒░░░░░░▓ │                               │
-│ INT 10+0  SAG 13+1  CAR  8-1  │ ▓▓▓▓▓▒▓▓▓▓▓   ▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓ │                               │
-│───────────────────────────────│ ▓    ▒              ▒       ▓ │                               │
-│ Azione ●  Bonus ●  Reaz ●     │ ─ ─ ─ tile A ▲ │ ▼ tile B ─ ─ │                               │
-│ Movimento 30/30 ft            │ ▓▓▓▓▓▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▓▓▓▓▓▓▓▓ │                               │
-│───────────────────────────────│ ▓░░░░▒░░░░░░░░░░░░░░▒░░░░░░░▓ │                               │
-│ Slot  1°▮▮▯▯  2°▮▯▯           │ ▓░          ░░░░          ░░▓ │                               │
-│ Ki/Surge  Action Surge 1/1    │ ▓░   (nebbia di guerra)    ░▓ │                               │
-│───────────────────────────────│ ▓░                         ░▓ │───────────────────────────────│
-│ Condizioni                    │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ Party                         │
-│  ▸ Benedetto (7 round)        │                               │  Mira   ▮▮▮▮▮▯ 31/38          │
-│  ▸ Concentrazione: —          │ @ tu  a alleato  ▓ muro       │  Bram   ▮▮▮▮▯▯ 22/33          │
-│                               │ ▒ luce  ░ penombra   ⌖ segui  │───────────────────────────────│
-│ ◀ 1/4 Principale  ▶           │ 1 cella = 8 px · 24×36 celle  │ ● tocca: azioni  ●● esci      │
-└───────────────────────────────┴───────────────────────────────┴───────────────────────────────┘
-```
+**Zone** (confini identici in ogni stato, INV-1):
+
+| Zona | Area (x, y, l × a) | Container SDK | Contenuto | Aggiornamento | Input |
+|---|---|---|---|---|---|
+| A · Ritratto | 0, 0, 144 × 144 | image #1 | immagine attore → token → stemma di classe; tetto a mezzo tono (livello ≤ 8), attenuato a 0 PF; bordo a 15 nel tuo turno | cambio scena/condizione | no |
+| B · Intestazione | 144, 0, 288 × 144 | image #2 | nome + ispirazione ★, razza · classe; **scudo CA**, **box PF** (attuali/max, badge TEMP, barra), mini-box INIZ · VEL · COMP; economia d'azione ● Azione ▲ Bonus ◆ Reazione + movimento (in combattimento); chip condizioni/concentrazione; chip **▲ TUO TURNO** + round | PF, CA, turno, condizioni | no |
+| C · Mappa | 432, 0, 144 × 144 | image #3 | mappa quadrata centrata sul tuo token, celle 12 px (12 × 12 ≈ 60 ft), mirino e portata disegnati in pixel | ≤ 1 fps, solo se cambia l'hash | no |
+| D · Scheda | 0, 144, 288 × 144 | image #4 | due pagine: **Caratteristiche** (6 box modificatore/punteggio + passive) · **Tiri salvezza · Abilità** (● competente · ◉ maestria · ○ no); a 0 PF **Tiri contro la morte** (3 + 3 cerchi) | cambio pagina o dati | no |
+| E · Contesto | 288, 144, 288 × 144 | text × 3: titolo (1 riga) · corpo incorniciato (3 righe, cursore ▶) · suggerimento gesti (1 riga) | registro, iniziativa, azioni, bersagli, incantesimi, esiti, reazioni, prove richieste | istantaneo (`textContainerUpgrade`, niente flicker) | **sì** (unica zona interattiva) |
+| Sfondo | 0, 0, 576 × 288 | text `' '`, `isEventCapture: 1`, z minimo | — | mai | sì (cattura eventi) |
+
+**Budget**: 4 / 4 image + 4 / 8 text; restano 4 text container per toast e avvisi. Nessun `rebuildPageContainer` durante il gioco. Le schermate a tutto schermo (S10 non associato, S11 collegamento) usano 4 tile image 288 × 144 + sfondo, con un solo rebuild in entrata/uscita. Invio immagini: una alla volta, ≥ 100 ms, hash per zona, priorità intestazione > mappa > scheda > ritratto.
+
+**Pagina automatica della zona D**: default **Caratteristiche** · prova o tiro salvezza richiesto dal GM (`r1.roll.request`) → **Tiri salvezza · Abilità** (il contesto mostra «Tira il d20 sul tavolo») · **0 PF** → **Tiri contro la morte** (prevale su ogni scelta). Se il giocatore cambia pagina a mano (menu long-press, scorciatoia duplicata), la scelta resta fino al prossimo evento.
+
+**Gerarchia dei principi** (in ordine di priorità, dal design doc):
+
+1. **Si legge come una scheda** — stessi simboli e stessa posizione della scheda cartacea / D&D Beyond.
+2. **Prima i numeri che uccidono** — PF, CA e turno sono i valori più grandi e più luminosi (livello 15); testo 11, etichette 7–9, cornici 3–5; il ritratto non supera mai il mezzo tono.
+3. **Un solo punto d'interazione** — i gesti agiscono sempre sulla zona E; il resto si aggiorna da solo.
+4. **Due pagine, scelte dal gioco** — attacchi e incantesimi vivono nel pannello contesto, dove si scelgono.
+5. **Mai uno schermo muto** — non associato, in collegamento, offline, GM assente: ogni stato ha una schermata che dice cosa fare.
+
+**Rendering**: le zone A–D sono disegnate dal renderer a pixel `packages/shared-render/src/pixel/` (framebuffer 4-bit deterministico, tre font bitmap disegnati a mano con accenti IT, set di icone D&D) perché il font firmware è proporzionale, senza dimensioni e senza i simboli D&D; codifica PNG 4-bit indicizzata pixel-exact. Solo la zona E usa il testo firmware (riga 27 px ⇒ 5 righe in 144 px). Le prove richieste dal GM non si tirano dagli occhiali (nessun handler Foundry per il tiro remoto): il contesto dice «Tira il d20 sul tavolo».
+
+**Contratto INV-1 eseguibile**: fixture golden per zona `packages/shared-render/src/fixtures/sheet.<zone>.<screen>.<locale>.<variant>.txt` (zone `portrait` · `header` · `map` · `sheet` · `full`; schermate S1–S12; locale `it`/`en`; varianti `min`/`max` per PF/nomi lunghi) — 76 fixture, un carattere esadecimale per pixel (livello 0–f).
 
 ### 7.1 Design Language
 
@@ -1361,7 +1361,7 @@ Il corner card `~28×21 char` (vedi §7.3) ha **layout fisso indipendente dal co
 
 ### 7.2 Layered Rendering Model
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Layout a strati sostituito dal layout a terzi (§7.0). Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Layout a strati sostituito dal layout a scheda «Scheda da tavolo G2» (§7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 Una sola "main page" runtime con **4 layer** (z-order dal basso):
 
@@ -1400,7 +1400,7 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 ### 7.3 Canvas Allocation (576×288 ≈ 96×24 char @ 6×12 mono)
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Allocazione sostituita da §7.0 (tre colonne da 192 px). Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Allocazione sostituita da §7.0 (cinque zone: ritratto 144² · intestazione 288×144 · mappa 144² · scheda 288×144 · contesto 288×144). Conservato come storico; il contratto vivo è indicato qui.
 
 **Approssimazione**: il G2 usa font firmware-defined; le metriche reali vanno verificate in Phase 0. I mockup assumono ~96 char × 24 row come riferimento di layout.
 
@@ -1433,7 +1433,7 @@ Manager: `core/event-router.js` → routing event al layer top-of-stack che ha `
 
 ### 7.4 Default View — Map + Persistent Status HUD
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Default view sostituita da M01 (§7.0). Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Default view sostituita dalla schermata S1 esplorazione del layout a scheda (§7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > **Mode selector** (v0.7+): la mappa supporta due rendering mode mutuamente esclusivi, selezionabili runtime via Quick Action `[M] Map ctrl`:
 >
@@ -1654,7 +1654,7 @@ L'approccio raster è ispirato direttamente al filone di porting di Doom su disp
 
 #### 7.4b.3 Approach D — Maximum Raster (canonical)
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — La mappa è ora 192×288 pixelata costruita sul telefono da `MapSnapshot` (§7.0); limite immagine SDK attuale 288×144. Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — La mappa è ora quadrata 144×144 pixelata (zona C, celle 12 px) costruita sul telefono da `MapSnapshot` (§7.0); limite immagine SDK attuale 288×144. Conservato come storico; il contratto vivo è indicato qui.
 
 Quando `view.map.mode = "raster"`, dedichiamo **tutti e 4 gli image container** alla mappa, tiled in **2×2 grid**:
 
@@ -2040,7 +2040,7 @@ Due opzioni:
 
 ### 7.4c Idle Content Infill — z=0.5 layer (v0.9.12)
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — z=0.5 non esiste nel layout a terzi (la colonna contesto è sempre visibile). Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — z=0.5 non esiste nel layout a scheda (il pannello contesto, zona E, è sempre visibile — §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > **Status:** ratified v0.9.12 (2026-05-14) — extension to ADR-0001 layered model. Binds Phase 4a (engine + layer manager) and Phase 4b (overlay slot lifecycle).
 
@@ -2894,7 +2894,7 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 
 #### 7.14.7 Phone-Side Configuration UI (Even Realities App)
 
-> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Sostituita dal pairing QR diretto (§7.0, mock P01–P03). Conservato come storico; il contratto vivo è indicato qui.
+> ⚠️ **SUPERSEDED in v0.10.0 ([ADR-0012](docs/architecture/0012-direct-foundry-streaming.md))** — Sostituita dal pairing QR diretto (mock P01–P03 in `docs/design/g2-thirds-layout.md` §Associazione; schermate occhiali S10–S12 in §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
 > Surface canonica per **connection-bootstrap settings** (§3.8). HTML form renderizzato nel WebView del plugin sul telefono — **non** sul G2 — quando l'utente apre l'app evenfoundryvtt dall'Even Realities App. Risolve il chicken-and-egg "G2 senza tastiera, ma serve URL+token per connettersi a Foundry".
 
@@ -4144,6 +4144,13 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
     - **Drift IMPORTANT — glifi e capienza del font firmware** (misurati con `@evenrealities/pretext` 0.1.4): `▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░` hanno larghezza 0 (scartati dal firmware); sostituiti da `■ □ ★ ▲ ▶ ●`, mirino disegnato in pixel. Colonna 192 px ≈ 18 caratteri × 11 righe (i mock monospace a 31 colonne restano solo architettura dell'informazione). Il contratto INV-1 eseguibile diventa `packages/shared-render/src/fixtures/thirds.*.txt`.
   - **Rimosso:** `packages/bridge`, `packages/foundry-mcp`, `deploy/`, wizard/audio della g2-app, pairing bearer + internal secret del modulo. Nuovo gate hardware `validate:direct-sideload` (pattern defer-hardware).
   - **INV-3:** Specs.md + README.md + docs/showcase/index.html aggiornati nello stesso commit.
+  - **UX round 2 (2026-09-23) — layout a scheda «Scheda da tavolo G2» sostituisce i terzi** (feedback utente: la HUD deve leggersi come la scheda cartacea / D&D Beyond). §7.0 riscritto: ritratto 144² · intestazione 288×144 (scudo CA, box PF + temp + barra, INIZ/VEL/COMP, economia d'azione, chip condizioni e ▲ TUO TURNO) · mappa quadrata 144² · scheda 288×144 a due pagine (Caratteristiche · Tiri salvezza e abilità; tiri contro la morte a 0 PF) · pannello contesto 288×144 unica zona interattiva. Budget 4/4 image + 4/8 text, nessun rebuild in gioco. Design: [`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html); screenshot simulatore `docs/design/img/sheet-*.png`; `g2-thirds-layout.md` resta come storico (associazione P01–P03 ancora valida).
+    - **Renderer a pixel + font bitmap** (`packages/shared-render/src/pixel/`): il font firmware è proporzionale, senza dimensioni e senza i glifi D&D (scudo, cuore, ● ▲ ◆, cerchi di competenza) ⇒ le zone A–D sono immagini disegnate da noi; solo la zona E usa il testo firmware.
+    - **Fix PNG 4-bit**: il vecchio percorso quantizzato (`cnum = 16`) fondeva i livelli 9 e 10; ora palette esatta `UPNG.encode(…, 0)`, pixel-exact, profondità 4.
+    - **Tetto a mezzo tono del ritratto** (livello ≤ 8): un'area piena appare più luminosa del suo livello; PF, CA e turno (livello 15) restano i segni più brillanti.
+    - **Zona E = 3 righe di corpo**: riga firmware misurata 27 px (pretext/LVGL) ⇒ 144 px = titolo 1 + corpo 3 + suggerimento 1.
+    - **Nessun tiro dagli occhiali** per le prove richieste dal GM (`r1.roll.request`): Foundry non ha un handler per il tiro remoto ⇒ la scheda passa a «Tiri salvezza · Abilità» e il contesto mostra «Tira il d20 sul tavolo».
+    - **Contratto INV-1 eseguibile**: 76 fixture golden per zona `packages/shared-render/src/fixtures/sheet.<zone>.<screen>.<locale>.<variant>.txt` (S1–S12, IT/EN, min/max) sostituiscono `thirds.*.txt`.
 
 - **2026-05-31 (INV-2 full validation round — hub.evenrealities.com/docs/*)** — Whole-development re-verification against the canonical Even Hub developer docs (overview · getting-started/architecture · guides/{display,device-apis,page-lifecycle,input-events,networking,design-guidelines} · reference/packaging). **No spec version bump** (validation + drift log; coherent corrections scheduled to dedicated v0.9.14 work per the §0 drift policy "fixato in PR dedicato").
   - **Re-verified ✓ (no change):** execution model (app logic in phone WebView, glasses = display + native scroll only); container budget 4 image + 8 other = 12 max; exactly one `isEventCapture:1`; canvas 576×288 4-bit greyscale; **image container 20–200 × 20–100 px** (canonical doc CONFIRMS Specs §3.1's 200×100 — supersedes the 2026-05-14 simulator-`index.d.ts` note that suggested 288×144; the docs are authoritative ⇒ our 200×100 tiles are correct); audio PCM 16 kHz s16le mono via `audioControl(true|false)` + `audioEvent`; `imuControl`; `getDeviceInfo`/`getUserInfo`; `getLocalStorage`/`setLocalStorage`; explicit "no audio output, no camera, greyscale only, no animations, no programmatic scroll position"; `shutDownPageContainer(0=immediate, 1=confirm)`; lifecycle events `FOREGROUND_ENTER_EVENT(4)`/`FOREGROUND_EXIT_EVENT(5)`/`ABNORMAL_EXIT_EVENT(6)` via `onEvenHubEvent`; **`setBackgroundState`/`onBackgroundRestore` confirmed ABSENT** (validates v0.9.14 LIFE phase scoping); networking full-origin whitelist (no wildcards), HTTPS-required, CORS not bypassed by whitelist, **WebSocket cannot set request headers from the WebView** (validates the 2026-05-30 audio-stream `?token=` query-param fix, task 260530-x2b).

@@ -20,12 +20,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Packages:**
 
 - `packages/foundry-module/` — Foundry module `evenfoundryvtt`: dnd5e readers, write path (`dispatchTool`, ADR-0011), `src/direct/` projector + pairing (menu `pairG2` "Pair G2 glasses"), ships `g2/`
-- `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.15): `src/direct/` (credentials, `/join` + socket.io client, sealed session), `src/hud/` (thirds layout, input state machine, pixel map), `src/phone/` (phone page P02/P03)
+- `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.15): `src/direct/` (credentials, `/join` + socket.io client, sealed session), `src/hud/` (D&D-sheet layout, zone renderers + sender, input state machine), `src/phone/` (phone page P02/P03)
 - `packages/shared-protocol/` — Zod schemas + `direct/` envelope (WebCrypto AES-GCM), messages, pairing payload, map snapshot
-- `packages/shared-render/` — ASCII grid + INV-1 snapshot matcher + fixtures
+- `packages/shared-render/` — ASCII grid + INV-1 matchers, `src/pixel/` 4-bit pixel renderer + bitmap fonts + D&D icons, per-zone golden fixtures `sheet.*.txt`
 - `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:direct-sideload`
 
-**Architecture:** `docs/architecture/` — ADR-0001…0012 (0012 = direct streaming, supersedes the bridge topology) + `INVARIANTS.md`; design contract `docs/design/g2-thirds-layout.md` (M01–M11, P01–P03).
+**Architecture:** `docs/architecture/` — ADR-0001…0012 (0012 = direct streaming, supersedes the bridge topology) + `INVARIANTS.md`; design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
 
 **Documentation:**
 
@@ -201,7 +201,7 @@ Crucial constraints baked into the spec (do not re-litigate without upstream evi
 - **Identity**: one Foundry user `"<Player> (G2)"` per paired player (role Player, owner of one actor). Pairing via settings menu `pairG2` → QR (5 min, single use; password + key rotate on first `hello`) + 16-char manual code.
 - **Privacy**: every relay payload is a sealed envelope (AES-256-GCM, AAD `from>to`). Device keys live **only** in the pairing GM browser (client-scope setting); only `game.users.activeGM` answers.
 - **G2 has no speaker / no audio output / no camera**. All feedback is visual (toast, HUD). Voice/MCP removed in v0.10.0; may return as a client of the direct channel via a new ADR. Native EvenAI has no developer API (§3.6).
-- **Thirds layout**: sheet (⅓) · pixel map 192×288 in 2 image containers (⅓, ≤ 1 fps, ≥ 100 ms image pacing) · context column (⅓, the only one that takes input). See `docs/design/g2-thirds-layout.md`.
+- **Sheet layout** (Specs §7.0): portrait 144² · header 288×144 (AC, HP, turn, action economy) · square map 144² (≤ 1 fps) on top; sheet 288×144 (Abilities · Saves & Skills, death saves at 0 HP) · context panel 288×144 (firmware text, the only zone that takes input) below. 4/4 images drawn by our pixel renderer (firmware font lacks D&D glyphs), one at a time ≥ 100 ms apart; 4/8 text. See `docs/design/g2-sheet-ux.html`.
 - **Input**: press / double-press / swipe up/down; long-press is an **extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9) opening the `menuObject` shortcuts, never the only path. Double-tap at root exits (`shutDownPageContainer(1)`).
 - **Locale follows Foundry** (`game.i18n.lang`) with device-local override (phone page or glasses menu). See §7.16.
 - **Hardware assumptions are gated** by GO/NO-GO harness scripts (defer-hardware pattern), incl. `validate:direct-sideload`. See §10.0.
@@ -217,7 +217,7 @@ Crucial constraints baked into the spec (do not re-litigate without upstream evi
 
 ## Roadmap snapshot
 
-v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) are archived under `.planning/milestones/`. **v0.10.0** (current): direct Foundry → G2 streaming, thirds HUD, one-scan pairing (ADR-0012). Next: hardware UAT on G2 + R1 (sideload, cookie persistence, BLE map pacing) and, if wanted, voice/MCP as a client of the direct channel (new ADR required).
+v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) are archived under `.planning/milestones/`. **v0.10.0** (current): direct Foundry → G2 streaming, D&D-sheet HUD, one-scan pairing (ADR-0012). Next: hardware UAT on G2 + R1 (sideload, cookie persistence, BLE map pacing) and, if wanted, voice/MCP as a client of the direct channel (new ADR required).
 
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project

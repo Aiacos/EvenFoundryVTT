@@ -38,7 +38,7 @@ From [hub.evenrealities.com/docs/reference/changelog](https://hub.evenrealities.
 
 ---
 
-## 🥽 Hardware limits used by the thirds layout
+## 🥽 Hardware limits used by the sheet layout
 
 Sources: [hub.evenrealities.com/docs/build/display](https://hub.evenrealities.com/docs/build/display) ·
 [/build/device-apis](https://hub.evenrealities.com/docs/build/device-apis) ·
@@ -46,15 +46,15 @@ Sources: [hub.evenrealities.com/docs/build/display](https://hub.evenrealities.co
 
 | Parameter | Limit | EVF usage |
 |---|---|---|
-| Canvas | 576 × 288, 4-bit greyscale green | three 192 px columns |
-| Image containers | ≤ 4 per page, each ≤ 288 × 144 | 2 × 192×144 map tiles |
-| Text / list containers | ≤ 8 per page | 6 (sheet, context, footer, capture) |
+| Canvas | 576 × 288, 4-bit greyscale green | five zones: portrait 144² · header 288×144 · map 144² · sheet 288×144 · context 288×144 |
+| Image containers | ≤ 4 per page, each ≤ 288 × 144 | 4 / 4: portrait, header, map, sheet (pixel renderer) |
+| Text / list containers | ≤ 8 per page | 4 / 8: context title · body · hint + background capture |
 | Event capture | exactly 1 container with `isEventCapture: 1` | full-screen background text |
-| Image pacing | ≥ 100 ms between image updates (SDK 0.0.14) | map ≤ 1 fps, tiles serialized |
+| Image pacing | ≥ 100 ms between image updates (SDK 0.0.14) | one image at a time, per-zone hash, priority header > map > sheet > portrait; map ≤ 1 fps |
 | Input | press · double-press · swipe up/down; long-press is an **extra** (0.0.14, app ≥ 2.2.9) | long-press opens the `menuObject` shortcuts. Every shortcut can also be reached with a tap. |
 | Audio out / camera | none | all feedback is visual |
 
-Full budget table: [`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.md) §Griglia e budget container.
+Full budget table: [`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) §Architettura della schermata · `Specs.md` §7.0.
 
 ---
 
@@ -77,5 +77,5 @@ Full budget table: [`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.m
 ## 📚 See also
 
 - [ADR-0012 — Direct Foundry → G2 streaming](architecture/0012-direct-foundry-streaming.md)
-- [G2 thirds layout](design/g2-thirds-layout.md)
+- [G2 sheet UX](design/g2-sheet-ux.html) · [G2 thirds layout (superseded)](design/g2-thirds-layout.md)
 - [Setup guide](setup-guide.md) · [Runbook](runbook.md)

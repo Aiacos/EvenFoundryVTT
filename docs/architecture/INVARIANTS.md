@@ -15,7 +15,7 @@ INV-6 (GM Authority Preservation) was ratified in Phase 7 Plan 01 (2026-05-16).
 
 **v0.10.0 update (2026-09-23):** [ADR-0012](./0012-direct-foundry-streaming.md) removed the
 Node bridge, `foundry-mcp` and socketlib. The invariants themselves are unchanged. The
-enforcement paths below now point at the direct-streaming code (thirds HUD, GM-client
+enforcement paths below now point at the direct-streaming code (D&D-sheet HUD, GM-client
 projector).
 
 **Cross-cutting note:** any new invariant MUST be added here and indexed from
@@ -27,20 +27,23 @@ supersedes them with explicit rationale.
 ## 🛡️ 1. INV-1 — Layout Integrity
 
 Every ASCII mockup and runtime layout must align character-perfect across all states,
-contents, and locales. Verifiable via Specs.md §7.1a (8 sub-rules) and the mock set in
-[`docs/design/g2-thirds-layout.md`](../design/g2-thirds-layout.md) (M01–M11, P01–P03).
+contents, and locales. Verifiable via Specs.md §7.0 / §7.1a (8 sub-rules) and the
+screen set in [`docs/design/g2-sheet-ux.html`](../design/g2-sheet-ux.html) (S1–S12; pairing
+mocks P01–P03 remain in the superseded [`g2-thirds-layout.md`](../design/g2-thirds-layout.md)).
 
-Column boundaries (192 / 384 px), dividers and frame glyphs stay in the same place in
-every state. Variable content (HP `7` vs `700`, name length, condition overflow, IT vs EN)
+Zone boundaries (portrait 144² · header 288×144 · map 144² on top; sheet 288×144 · context
+288×144 below), frames and icons stay in the same place in every state. Variable content (HP `7` vs `700`, name length, condition overflow, IT vs EN)
 is width-budgeted at build time, never best-effort.
 
-**Pixel-budget gate:** strings are measured in pixels with `@evenrealities/pretext`
-(`packages/g2-app/src/hud/text/measure.ts`). Only firmware-font glyphs may be emitted.
+**Pixel-budget gate (zone E, firmware text):** strings are measured in pixels with
+`@evenrealities/pretext` (`packages/g2-app/src/hud/text/measure.ts`). Only firmware-font
+glyphs may be emitted. `packages/g2-app/src/hud/__tests__/context.test.ts` checks lines ≤
+region capacity and width ≤ budget for S1–S12 × IT/EN × min/max content.
 
-**Snapshot gate:** `packages/g2-app/src/hud/__tests__/inv1-layout.test.ts` covers every
-state × IT/EN × min/max content. It asserts the column boundaries and region capacity,
-and matches the ASCII fixtures in `packages/shared-render/src/fixtures/` through
-`matchAsciiFixture` (`@evf/shared-render`).
+**Golden gate (zones A–D, pixel renderer):** `packages/g2-app/src/hud/__tests__/golden.test.ts`
+renders every image zone of every screen and matches it pixel-for-pixel against
+`packages/shared-render/src/fixtures/sheet.<zone>.<screen>.<locale>.<variant>.txt` through
+`matchPixelFixture` (`@evf/shared-render`); the same states assert that zone frames never move.
 
 ---
 
@@ -93,14 +96,14 @@ TSDoc on every public API. Hot-path benchmarks gate regressions.
 > Every gesture maps to **exactly one** handler call. Zero-handler cases are explicit
 > no-ops, never silent drops or multi-handler broadcasts.
 
-### Enforcement (thirds HUD, v0.10.0)
+### Enforcement (D&D-sheet HUD, v0.10.0)
 
 - **Single entry point:** `toGestureEvent` (`packages/g2-app/src/hud/input/events.ts`)
   maps each Even Hub event to at most one `HudInput`: `tap`, `double`, `up`, `down`, or
   `menu` for a context-menu choice. Anything else returns `null`, an explicit no-op.
-- **Single reducer:** the column-C state machine
+- **Single reducer:** the zone-E (context panel) state machine
   (`packages/g2-app/src/hud/input/state-machine.ts`) is a pure reducer. One input
-  produces one next state. Columns A (sheet) and B (map) never capture input.
+  produces one next state. Zones A–D (portrait, header, map, sheet) never capture input.
 - **Canonical gestures:** press, double-press, swipe up/down. **Long-press** is an extra
   (SDK ≥ 0.0.14, Even App ≥ 2.2.9). The OS opens the page's `menuObject` and the choice
   arrives as one `menuItemClickEvent`. Every menu entry is also reachable with a tap, so
