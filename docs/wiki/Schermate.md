@@ -2,7 +2,7 @@
 
 Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore ufficiale Even Hub 0.9.5** con lo stesso renderer che gira sugli occhiali (576 × 288, 16 livelli). Personaggio d'esempio: **Thorin**, nano delle colline, Chierico 5. Ogni schermata è anche uno scenario demo (`?demo=<nome>`, vedi [Debug e simulatore](Debug-e-Simulatore)).
 
-> La mappa (zona C) in queste immagini è ancora quella schematica; il disegno attuale è l'arte originale pixelata ([Mappa](Mappa)).
+> La mappa (zona C) mostra l'arte originale pixelata della scena demo; dettagli in [Mappa](Mappa).
 
 ## 👓 Esplorazione e combattimento
 

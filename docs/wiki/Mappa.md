@@ -2,7 +2,7 @@
 
 La zona C, in alto a destra, è una **mappa quadrata di 144 × 144 px** centrata sul tuo token. Mostra l'**arte originale della scena** — sfondo, tile e immagini dei token — **pixelata** e ridotta a 16 livelli di verde, con i segni tattici disegnati sopra in modo netto. È il disegno attuale della zona C ([ADR-0014](Decisioni-Architetturali), punto 5).
 
-> Gli screenshot di questa wiki mostrano ancora la mappa schematica della prima versione (muri e griglia su fondo scuro). La mappa schematica resta come **riserva** quando la scena non ha un'immagine o l'immagine non si carica.
+> Gli screenshot di questa wiki mostrano la mappa con l'arte originale pixelata (cripta generata per la demo). La mappa schematica (muri e griglia su fondo scuro) resta come **riserva** quando la scena non ha un'immagine o l'immagine non si carica.
 
 ## 👓 Come nasce l'immagine
 
