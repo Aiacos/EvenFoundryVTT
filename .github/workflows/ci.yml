@@ -136,8 +136,12 @@ jobs:
       - name: Wiki link check (docs/wiki)
         run: node scripts/check-wiki-links.mjs docs/wiki
 
+      # Builds the module first: dist/module.js is a generated asset referenced by
+      # module.json, so a clean runner must produce it before the check.
       - name: Module runtime assets (module.json references)
-        run: node scripts/check-module-assets.mjs packages/foundry-module
+        run: |
+          pnpm --filter @evf/foundry-module build
+          node scripts/check-module-assets.mjs packages/foundry-module
 
       # Even Hub packaging: app.json version = g2-app package version, icon shipped.
       - name: Even Hub manifest (app.json version + icon)
