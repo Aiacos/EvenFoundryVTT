@@ -9,9 +9,10 @@
  * 2. Launches `evenhub-simulator <url>?demo=tour --automation-port <port>` (`--sim` or
  *    `$EVF_SIMULATOR` overrides the command, e.g. `npx -y @evenrealities/evenhub-simulator@0.9.5`).
  * 3. Waits for `EVF_READY`, then for every `EVF_SCENE i/n name layout` marker saves the
- *    glasses screenshot to `.sim-artifacts/`, checks it (lit pixels in the three
- *    columns; INV-1 gutter pixels identical across thirds scenes), probes real input on
- *    list scenes (`down` must change the display) and advances with `double_click`.
+ *    glasses screenshot to `.sim-artifacts/`, checks it (lit pixels in the five sheet
+ *    zones; INV-1 gutter pixels at x = 144 / 432 / 288 identical across sheet scenes),
+ *    probes real input on list scenes (`down` must change the display) and advances with
+ *    `double_click`.
  * 4. Fails on `[uncaught]` / `[unhandledrejection]` entries in the simulator console.
  *
  * Exit codes: 0 pass · 1 fail · 2 simulator unavailable (skip — hardware-style defer
@@ -47,8 +48,8 @@ const ARTIFACTS = join(PACKAGE_DIR, '.sim-artifacts');
 const EXPECTED_SIM_VERSION = '0.9.5';
 /** Scenes whose list cursor must visibly move on a real `down` input. */
 const INPUT_PROBES: readonly string[] = ['actions', 'target'];
-/** Extra wait after a scene marker: paced map image tiles land after the text. */
-const SHOT_DELAY_MS = 900;
+/** Extra wait after a scene marker: the paced image zones land after the text. */
+const SHOT_DELAY_MS = 1800;
 const INPUT_DELAY_MS = 700;
 
 class Unavailable extends Error {}
@@ -211,7 +212,7 @@ async function run(): Promise<number> {
   out('EVF_READY');
 
   const problems: string[] = [];
-  const thirds: { name: string; signature: string }[] = [];
+  const sheetScenes: { name: string; signature: string }[] = [];
   const report: Record<string, unknown>[] = [];
   let total = 1;
   for (let i = 1; i <= total; i++) {
@@ -223,7 +224,7 @@ async function run(): Promise<number> {
     await writeFile(join(ARTIFACTS, file), shot.png);
     const sceneProblems = checkScene(marker, shot.img);
     if (marker.layout !== 'full') {
-      thirds.push({ name: marker.name, signature: gutterSignature(shot.img) });
+      sheetScenes.push({ name: marker.name, signature: gutterSignature(shot.img) });
     }
     if (INPUT_PROBES.includes(marker.name)) {
       await input('down');
@@ -244,7 +245,7 @@ async function run(): Promise<number> {
     if (i < total) await input('double_click');
   }
 
-  problems.push(...checkGutters(thirds));
+  problems.push(...checkGutters(sheetScenes));
   await pollConsole();
   const errors = findConsoleErrors(consoleSeen);
   problems.push(...errors.map((e) => `console: ${e.message}`));

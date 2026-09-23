@@ -40,6 +40,7 @@ describe('demoResult', () => {
       expect(r?.damage === undefined).toBe(r?.outcome === 'miss');
     }
     expect(demoResult('opportunity-attack', 1)).toBeNull();
+    expect(a?.outcome).toBe('hit');
   });
 });
 
@@ -55,6 +56,20 @@ describe('createDemoTransport', () => {
     expect(store.get().lastResult).toBeNull();
     await vi.advanceTimersByTimeAsync(DEMO_TIMING.result);
     expect(store.get().lastResult?.toolId).toBe('weapon-attack');
+    expect(store.get().actionEconomy).toBeNull();
+    store.update({
+      actionEconomy: {
+        actorId: 'a',
+        actionsUsed: 0,
+        bonusActionsUsed: 0,
+        reactionsUsed: 0,
+        multiAttackInProgress: false,
+        recipientUserId: 'u',
+      },
+    });
+    void transport.invoke('weapon-attack', {});
+    await vi.advanceTimersByTimeAsync(DEMO_TIMING.ack + DEMO_TIMING.result);
+    expect(store.get().actionEconomy?.actionsUsed).toBe(1);
     expect(log.entries()[0]).toMatchObject({ source: 'demo', message: 'invoke weapon-attack' });
   });
 

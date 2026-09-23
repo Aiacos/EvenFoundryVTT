@@ -1,34 +1,42 @@
 /**
- * View composer: maps (app state, UI state) to the layout mode and the fitted
- * content of every text region. Pure — the INV-1 tests and `startHud` share it.
+ * View composer: maps (app state, UI state) to the layout mode, the fitted content of
+ * every text region and the pixels of every image zone. Pure — the INV-1 tests, the
+ * golden fixtures and `startHud` share it.
  *
- * @see docs/design/g2-thirds-layout.md M01–M11
+ * @see docs/design/g2-sheet-ux.html S1–S12
  */
+import type { Pixmap } from '@evf/shared-render';
 import type { AppState } from '../state/app-store.js';
 import type { HudStrings } from './i18n.js';
 import type { UiState } from './input/ui-state.js';
-import { type LayoutMode, TEXT, type TextContent, type TextRegion } from './layout.js';
+import { type LayoutMode, TEXT, type TextContent, type TextRegion, type Zone } from './layout.js';
+import { effectivePage, isMyTurn, sheetModel } from './model.js';
 import { screenOf } from './screen.js';
 import { contextView, offlineView } from './text/context.js';
-import { connectingScreen, unpairedScreen } from './text/fullscreen.js';
-import { block } from './text/measure.js';
-import { sheetBody, sheetHeader, turnBudget } from './text/sheet.js';
+import { block, fit, spread } from './text/measure.js';
+import type { FullScreen } from './zones/fullscreen.js';
+import { renderHeader } from './zones/header.js';
+import type { Luma } from './zones/luma.js';
+import { renderMap, type Viewport } from './zones/map.js';
+import { renderPortrait } from './zones/portrait.js';
+import { renderSheet } from './zones/sheet.js';
 
-/** Full brightness (firmware default). */
+/** Full firmware brightness. */
 const BRIGHT = 4;
-/** Dimmed brightness for frozen data (M11). */
-const DIM = 2;
+/** S12: frozen zones dimmed to ~45 % (design `dim`). */
+const OFFLINE_DIM = 0.45;
 
-/** Layout mode for the current state (`mapFallback` = glyph map after image failures). */
-export function layoutModeFor(app: AppState, mapFallback: boolean): LayoutMode {
+/** Layout mode for the current state. */
+export function layoutModeFor(app: AppState): LayoutMode {
   const screen = screenOf(app);
-  if (screen === 'unpaired' || screen === 'connecting') return 'full';
-  return mapFallback ? 'thirds-glyph' : 'thirds';
+  return screen === 'unpaired' || screen === 'connecting' ? 'full' : 'sheet';
 }
 
-function fitted(region: TextRegion, lines: readonly string[], color = BRIGHT): TextContent {
-  const spec = TEXT[region];
-  return { content: block(lines, spec.budgetPx, spec.lines), color };
+/** Full screen to draw in `full` mode. */
+export function fullScreenOf(app: AppState): FullScreen {
+  return screenOf(app) === 'connecting'
+    ? { kind: 'connect', connection: app.connection }
+    : { kind: 'pair', revoked: app.connection.status === 'revoked' };
 }
 
 export interface ViewInput {
@@ -36,8 +44,6 @@ export interface ViewInput {
   ui: UiState;
   strings: HudStrings;
   now: number;
-  /** Glyph-map lines for column B (only used in `thirds-glyph` mode). */
-  glyphMap: readonly string[];
 }
 
 /**
@@ -49,26 +55,70 @@ export function renderTexts(
   mode: LayoutMode,
   v: ViewInput,
 ): Partial<Record<TextRegion, TextContent>> {
+  const bg = { content: ' ', color: BRIGHT };
+  if (mode === 'full') return { bg };
   const { app, ui, strings: s, now } = v;
-  const screen = screenOf(app);
-  if (mode === 'full') {
-    const lines =
-      screen === 'connecting'
-        ? connectingScreen(app.connection, s)
-        : unpairedScreen(app.connection.status === 'revoked', s);
-    return { bg: { content: ' ', color: BRIGHT }, full: fitted('full', lines) };
-  }
-  const offline = screen === 'offline';
-  const sheetColor = offline ? DIM : BRIGHT;
-  const ctx = offline ? offlineView(app, s, now) : contextView(app, ui, s, now);
-  const out: Partial<Record<TextRegion, TextContent>> = {
-    bg: { content: ' ', color: BRIGHT },
-    aHead: fitted('aHead', sheetHeader(app.character, app.combat, s), sheetColor),
-    aBody: fitted('aBody', sheetBody(app.character, ui.sheetPage, s, turnBudget(app)), sheetColor),
-    cHead: fitted('cHead', ctx.head),
-    cBody: fitted('cBody', ctx.body),
-    cFoot: fitted('cFoot', [ctx.foot]),
+  const body = TEXT.ctxBody;
+  const ctx =
+    screenOf(app) === 'offline'
+      ? offlineView(app, s, now)
+      : contextView(app, ui, s, now, body.budgetPx);
+  return {
+    bg,
+    ctxHead: { content: spread(ctx.title, ctx.right, TEXT.ctxHead.budgetPx), color: BRIGHT },
+    ctxBody: { content: block(ctx.body, body.budgetPx, body.lines), color: BRIGHT },
+    ctxFoot: { content: fit(ctx.hint, TEXT.ctxFoot.budgetPx), color: BRIGHT },
   };
-  if (mode === 'thirds-glyph') out.mapGlyph = fitted('mapGlyph', v.glyphMap, sheetColor);
-  return out;
+}
+
+/** Inputs of the image zones that live outside the store (decoded pictures, viewport). */
+export interface ZoneExtras {
+  /** Decoded portrait (actor image → token image), null → class emblem. */
+  portrait: Luma | null;
+  /** Decoded scene background, null → grid dots. */
+  background: Luma | null;
+  /** Map viewport (cells), null when there is no scene. */
+  viewport: Viewport | null;
+  /** Reticle override (target picker cursor). */
+  targetId?: string;
+  /** Reach dots around the own token (weapon target picker). */
+  reach: boolean;
+}
+
+/**
+ * Renders the four image zones of the sheet layout (dimmed while offline).
+ *
+ * @returns One pixmap per zone, sized to its container.
+ */
+export function renderZones(v: ViewInput, extras: ZoneExtras): Record<Zone, Pixmap> {
+  const { app, ui, strings: s } = v;
+  const model = sheetModel(app, s);
+  const ch = app.character;
+  const zones: Record<Zone, Pixmap> = {
+    header: renderHeader(model, s),
+    map: renderMap(
+      extras.viewport ? app.map : null,
+      {
+        cellPx: app.settings.mapCellPx,
+        viewport: extras.viewport ?? { x: 0, y: 0 },
+        background: extras.background,
+        reach: extras.reach,
+        ...(extras.targetId === undefined ? {} : { targetId: extras.targetId }),
+      },
+      s,
+    ),
+    sheet: renderSheet(model, effectivePage(ch, ui.sheetPage), s),
+    portrait: renderPortrait(
+      {
+        picture: extras.portrait,
+        emblem: model?.emblem ?? 'star',
+        level: ch?.level ?? 1,
+        hot: isMyTurn(ch, app.combat),
+        down: ch !== null && ch.hp <= 0,
+      },
+      s,
+    ),
+  };
+  if (screenOf(app) === 'offline') for (const p of Object.values(zones)) p.scale(OFFLINE_DIM);
+  return zones;
 }

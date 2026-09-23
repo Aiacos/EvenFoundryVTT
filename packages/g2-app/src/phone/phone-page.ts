@@ -151,13 +151,13 @@ function buildConnectionView(
   );
   const follow = el('input', { id: 'evf-follow', type: 'checkbox', name: 'followToken' });
   follow.addEventListener('change', () => session.updateSettings({ followToken: follow.checked }));
-  const autoCombat = el('input', {
-    id: 'evf-auto-combat',
+  const autoSheet = el('input', {
+    id: 'evf-auto-sheet',
     type: 'checkbox',
-    name: 'autoCombatPage',
+    name: 'autoSheetPage',
   });
-  autoCombat.addEventListener('change', () =>
-    session.updateSettings({ autoCombatPage: autoCombat.checked }),
+  autoSheet.addEventListener('change', () =>
+    session.updateSettings({ autoSheetPage: autoSheet.checked }),
   );
   const settings = el('div', { class: 'evf-card evf-settings' }, [
     el('label', { for: 'evf-locale' }, [t.language]),
@@ -167,7 +167,7 @@ function buildConnectionView(
     el('span', {}, []),
     el('label', { class: 'evf-check' }, [follow, t.followToken]),
     el('span', {}, [t.sheet]),
-    el('label', { class: 'evf-check' }, [autoCombat, t.autoCombat]),
+    el('label', { class: 'evf-check' }, [autoSheet, t.autoSheet]),
   ]);
 
   const reconnect = el(
@@ -221,7 +221,7 @@ function buildConnectionView(
       locale.value = state.settings.locale;
       cell.value = String(state.settings.mapCellPx);
       follow.checked = state.settings.followToken;
-      autoCombat.checked = state.settings.autoCombatPage;
+      autoSheet.checked = state.settings.autoSheetPage;
       disconnect.disabled = c.status === 'offline' && c.retryInMs === undefined;
       version.textContent = `${t.foundryVersion}: ${info.foundryVersion ?? t.unknown}`;
       errors.replaceChildren(

@@ -1,11 +1,13 @@
 /**
  * startHud integration with a recording fake bridge: page lifecycle (create once,
- * rebuild only on mode/locale change), flicker-free diff updates, gestures, map
- * pacing + glyph fallback, invoke round-trip, reaction clearing, dispose.
+ * rebuild only on mode/locale change), flicker-free text diffs, paced image zones
+ * (priority, hash skip, retry), gestures, invoke round-trip, reaction / roll-request
+ * clearing, offline dimming, dispose.
  */
 import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { online } from '../../demo/fixtures.js';
+import { character, online } from '../../demo/fixtures.js';
+import { demoDecoder } from '../../demo/portrait-art.js';
 import {
   type AppActions,
   type AppState,
@@ -94,6 +96,7 @@ describe('startHud', () => {
   let store: AppStore;
   let actions: ReturnType<typeof fakeActions>;
   let dispose: () => void;
+  const options = { decoder: demoDecoder };
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -108,29 +111,41 @@ describe('startHud', () => {
     vi.useRealTimers();
   });
 
-  it('creates the start-up page once (M09), then rebuilds into the thirds layout when online', async () => {
+  const imageNames = () =>
+    fb.of('image').map((c) => (c.arg as { containerName: string }).containerName);
+
+  it('creates the start-up page once (S10 full screen), then rebuilds into the sheet layout', async () => {
     store = createAppStore(initialState());
-    dispose = startHud(fb.bridge, store, actions);
-    await flush();
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(fb.of('create')).toHaveLength(1);
-    expect(fb.names(fb.of('create')[0])).toEqual(['evf-bg', 'full']);
+    expect(fb.names(fb.of('create')[0])).toEqual(['evf-bg']);
+    expect(imageNames()).toEqual(['full-tl', 'full-tr', 'full-bl', 'full-br']);
     store.update(itState());
     await flush();
     expect(fb.of('create')).toHaveLength(1);
     expect(fb.of('rebuild')).toHaveLength(1);
-    expect(fb.names(fb.of('rebuild')[0])).toEqual([
-      'evf-bg',
-      'a-head',
-      'a-body',
-      'c-head',
-      'c-body',
-      'c-foot',
-    ]);
+    expect(fb.names(fb.of('rebuild')[0])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
   });
 
-  it('pushes only changed regions with textContainerUpgrade', async () => {
+  it('sends the image zones one at a time in priority order, ≥100 ms apart, skipping unchanged ones', async () => {
     store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    const first = imageNames();
+    expect(first.slice(0, 4)).toEqual(['z-header', 'z-map', 'z-sheet', 'z-portrait']);
+    expect(first).toHaveLength(4);
+    const n = fb.of('image').length;
+    await vi.advanceTimersByTimeAsync(TICK_MS * 3);
+    expect(fb.of('image').length).toBe(n);
+    store.update({ character: { ...character(), hp: 20 } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(imageNames().slice(n)).toEqual(['z-header']);
+  });
+
+  it('pushes only changed text regions with textContainerUpgrade', async () => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     const before = fb.texts().length;
     store.update({
@@ -140,7 +155,7 @@ describe('startHud', () => {
     });
     await flush();
     const changed = fb.texts().slice(before);
-    expect(changed.map((t) => t.containerName)).toEqual(['c-body']);
+    expect(changed.map((t) => t.containerName)).toEqual(['ctx-body']);
     expect(changed[0]?.content).toContain('Mira: ciao');
     await vi.advanceTimersByTimeAsync(TICK_MS * 3);
     expect(fb.texts().length).toBe(before + 1);
@@ -148,19 +163,19 @@ describe('startHud', () => {
 
   it('double-tap at root opens the system exit dialog; tap opens actions', async () => {
     store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     fb.emit(tap);
     await flush();
     expect(
-      fb.texts().some((t) => t.containerName === 'c-head' && t.content.startsWith('AZIONI')),
+      fb.texts().some((t) => t.containerName === 'ctx-head' && t.content.startsWith('Azioni')),
     ).toBe(true);
     fb.emit(down);
     await flush();
     const body =
       fb
         .texts()
-        .filter((t) => t.containerName === 'c-body')
+        .filter((t) => t.containerName === 'ctx-body')
         .at(-1)?.content ?? '';
     expect(body.split('\n')[1]).toMatch(/^▶/);
     fb.emit(dbl); // back to root
@@ -171,8 +186,13 @@ describe('startHud', () => {
 
   it('invokes tools via AppActions and shows the outcome (ok and failure)', async () => {
     store = createAppStore(itState({ map: null }));
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
+    const body = () =>
+      fb
+        .texts()
+        .filter((t) => t.containerName === 'ctx-body')
+        .at(-1)?.content;
     fb.emit(tap); // actions
     fb.emit(tap); // weapon → target
     fb.emit(tap); // no target → invoke
@@ -181,31 +201,31 @@ describe('startHud', () => {
       'weapon-attack',
       expect.objectContaining({ item_id: 'w1', targets: [] }),
     );
-    expect(fb.texts().at(-1)?.content).toBe('eseguito');
+    expect(body()).toBe('eseguito');
     actions.invoke.mockResolvedValueOnce({ ok: false, error: { code: 'x', message: 'rifiutato' } });
     fb.emit(tap); // result → actions
     fb.emit(tap);
     fb.emit(tap);
     await flush();
-    expect(fb.texts().at(-1)?.content).toBe('non riuscito\nrifiutato');
+    expect(body()).toBe('non riuscito\nrifiutato');
     actions.invoke.mockRejectedValueOnce(new Error('socket'));
     fb.emit(tap);
     fb.emit(tap);
     fb.emit(tap);
     await flush();
-    expect(fb.texts().at(-1)?.content).toBe('non riuscito\nsocket');
+    expect(body()).toBe('non riuscito\nsocket');
     actions.invoke.mockRejectedValueOnce('raw');
     fb.emit(tap);
     fb.emit(tap);
     fb.emit(tap);
     await flush();
-    expect(fb.texts().at(-1)?.content).toBe('non riuscito\nraw');
+    expect(body()).toBe('non riuscito\nraw');
   });
 
-  it('routes settings and reconnect effects to AppActions; clears handled reactions', async () => {
+  it('routes settings and reconnect effects; clears handled reactions and roll requests', async () => {
     const mid = itState();
     store = createAppStore({ ...mid, settings: { ...mid.settings, mapCellPx: 8 } });
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     fb.emit({ menuItemClickEvent: { itemID: 2 } } as EvenHubEvent);
     expect(actions.updateSettings).toHaveBeenCalledWith({ mapCellPx: 12 });
@@ -214,45 +234,55 @@ describe('startHud', () => {
     store.update({ reaction: { kind: 'shield', sourceName: 'Orco', expiresAt: 60_000 } });
     await flush();
     expect(
-      fb.texts().some((t) => t.containerName === 'c-head' && t.content.includes('REAZIONE')),
+      fb.texts().some((t) => t.containerName === 'ctx-head' && t.content.includes('Reazione')),
     ).toBe(true);
     fb.emit(dbl);
     expect(store.get().reaction).toBeNull();
-  });
-
-  it('streams map tiles paced and falls back to glyphs after repeated failures', async () => {
-    store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
-    await vi.advanceTimersByTimeAsync(300);
-    expect(fb.of('image').map((c) => (c.arg as { containerID: number }).containerID)).toEqual([
-      7, 8,
-    ]);
-    fb.results.image = 'sendFailed';
-    fb.emit({ sysEvent: { eventType: 4 } } as EvenHubEvent); // foreground → resend (fails, retried once)
-    await vi.advanceTimersByTimeAsync(2600);
-    const glyph = fb.of('rebuild').at(-1);
-    expect(fb.names(glyph)).toContain('map-glyph');
-    fb.results.image = 'success';
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(fb.names(fb.of('rebuild').at(-1))).not.toContain('map-glyph');
-  });
-
-  it('rebuilds when the language changes and dims the sheet offline', async () => {
-    store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
+    store.update({ rollRequest: { messageId: 'm', kind: 'save', ability: 'wis', dc: 15 } });
     await flush();
+    expect(
+      fb
+        .texts()
+        .some((t) => t.containerName === 'ctx-head' && t.content.includes('Prova richiesta')),
+    ).toBe(true);
+    fb.emit(tap);
+    expect(store.get().rollRequest).toBeNull();
+  });
+
+  it('retries a failed image send and re-sends every zone after returning to the foreground', async () => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    const n = fb.of('image').length;
+    fb.results.image = 'sendFailed';
+    fb.emit({ sysEvent: { eventType: 4 } } as EvenHubEvent); // foreground → resend
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fb.of('image').length).toBeGreaterThan(n);
+    fb.results.image = 'success';
+    await vi.advanceTimersByTimeAsync(5000);
+    const last = imageNames().slice(-4).sort();
+    expect(last).toEqual(['z-header', 'z-map', 'z-portrait', 'z-sheet']);
+    expect(console.warn).toHaveBeenCalledWith('[hud] image header rejected: sendFailed');
+  });
+
+  it('rebuilds when the language changes and dims the zones offline', async () => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
     store.update({ settings: { ...store.get().settings, locale: 'en' } });
     await flush();
     expect(fb.of('rebuild')).toHaveLength(1);
-    store.update({ connection: { status: 'offline' } });
-    await flush();
-    expect(fb.texts().find((t) => t.containerName === 'a-body')?.textColor).toBe(2);
+    const n = fb.of('image').length;
+    store.update({ connection: { status: 'offline', cause: 'network' } });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(imageNames().slice(n).sort()).toEqual(['z-header', 'z-map', 'z-portrait', 'z-sheet']);
+    expect(fb.texts().at(-3)?.content).toContain('Offline');
   });
 
   it('retries a rejected start-up page and a failed text upgrade', async () => {
     fb.results.create = 1;
     store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     fb.results.create = new Error('ble');
     await vi.advanceTimersByTimeAsync(TICK_MS);
@@ -280,7 +310,7 @@ describe('startHud', () => {
 
   it('logs a failed exit call and stops everything on dispose', async () => {
     store = createAppStore(itState());
-    dispose = startHud(fb.bridge, store, actions);
+    dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     (
       fb.bridge as unknown as { shutDownPageContainer: () => Promise<boolean> }
@@ -299,6 +329,17 @@ describe('startHud', () => {
     store.update({ log: null });
     await vi.advanceTimersByTimeAsync(TICK_MS * 5);
     expect(fb.calls.length).toBe(n);
+  });
+
+  it('falls back to the class emblem when no decoder is available', async () => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(imageNames()).toContain('z-portrait');
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('[hud] image decode failed'),
+      expect.any(Error),
+    );
   });
 });
 

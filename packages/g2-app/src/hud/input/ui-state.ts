@@ -1,8 +1,8 @@
 /**
- * HUD-local UI state (column C state machine + sheet page + advantage toggle).
+ * HUD-local UI state (zone E state machine + sheet page + advantage toggle).
  * Never persisted and never written to the {@link AppStore}.
  *
- * @see docs/design/g2-thirds-layout.md §Modello di input
+ * @see docs/design/g2-sheet-ux.html §Interazione
  */
 import type { ActionResultPayload } from '@evf/shared-protocol';
 
@@ -15,7 +15,8 @@ export type View =
   | 'items'
   | 'options'
   | 'result'
-  | 'reaction';
+  | 'reaction'
+  | 'request';
 
 export type Advantage = 'normal' | 'advantage' | 'disadvantage';
 
@@ -24,7 +25,7 @@ export type Pending =
   | { kind: 'weapon'; itemId: string; name: string }
   | { kind: 'spell'; spellId: string; name: string; level: number; slot: number | null };
 
-/** M06 result panel. */
+/** S6 result panel. */
 export interface ResultState {
   title: string;
   /** Epoch ms when the panel was (re)shown; drives the 8 s auto-close. */
@@ -35,7 +36,8 @@ export interface ResultState {
   payload: ActionResultPayload | null;
 }
 
-export type SheetPage = 0 | 1 | 2 | 3;
+/** Zone D page chosen by the player or the automatic rule (0 PF shows death saves). */
+export type SheetPage = 'abilities' | 'saves';
 
 export interface UiState {
   view: View;
@@ -47,7 +49,7 @@ export interface UiState {
   advantage: Advantage;
   pending: Pending | null;
   result: ResultState | null;
-  /** Epoch ms when the reaction prompt expires (M07). */
+  /** Epoch ms when the reaction prompt expires (S7). */
   reactionDeadline: number | null;
 }
 
@@ -56,7 +58,7 @@ export function initialUi(): UiState {
     view: 'root',
     cursor: 0,
     scroll: 0,
-    sheetPage: 0,
+    sheetPage: 'abilities',
     advantage: 'normal',
     pending: null,
     result: null,

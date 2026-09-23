@@ -43,9 +43,8 @@ function env(request: string, overrides: Partial<DemoEnvironment> = {}) {
 
 describe('layoutOf', () => {
   it('derives the layout from the containers on the glasses', () => {
-    expect(layoutOf({ 'evf-bg': ' ', full: 'x' })).toBe('full');
-    expect(layoutOf({ 'a-head': 'x', 'map-glyph': 'y' })).toBe('thirds-glyph');
-    expect(layoutOf({ 'a-head': 'x' })).toBe('thirds');
+    expect(layoutOf({ 'evf-bg': ' ' })).toBe('full');
+    expect(layoutOf({ 'evf-bg': ' ', 'ctx-body': 'x' })).toBe('sheet');
   });
 });
 
@@ -55,16 +54,16 @@ describe('startDemo', () => {
     const demo = await startDemo(e);
     await vi.advanceTimersByTimeAsync(2000);
     await demo.settled;
-    expect(markers()).toEqual(['EVF_SCENE 1/1 actions thirds', 'EVF_READY']);
+    expect(markers()).toEqual(['EVF_SCENE 1/1 actions sheet', 'EVF_READY']);
     expect(fake.of('create')).toHaveLength(1);
-    // Scripted tap + down reached the real HUD: column C shows the actions list.
-    expect(demo.tap?.mirror()['c-head']).toMatch(/ACTIONS|AZIONI/);
+    // The scripted tap reached the real HUD: zone E shows the actions list.
+    expect(demo.tap?.mirror()['ctx-head']).toMatch(/Actions|Azioni/);
     expect(root.querySelector('[data-view="connection"]')).not.toBeNull();
     // Single scenario: a real double-press goes to the HUD (actions → root), no advance.
     fake.emit(gestureEvent('double'));
     await vi.advanceTimersByTimeAsync(2000);
     expect(demo.current()).toBe('actions');
-    expect(demo.tap?.mirror()['c-head']).not.toMatch(/ACTIONS|AZIONI/);
+    expect(demo.tap?.mirror()['ctx-head']).not.toMatch(/Actions|Azioni/);
     demo.stop();
     expect(root.childElementCount).toBe(0);
     expect(fake.listenerCount()).toBe(0);
@@ -74,11 +73,11 @@ describe('startDemo', () => {
     const { fake, e } = env('tour');
     const demo = await startDemo(e);
     await vi.advanceTimersByTimeAsync(2000);
-    expect(markers()).toEqual(['EVF_SCENE 1/11 explore thirds', 'EVF_READY']);
+    expect(markers()).toEqual(['EVF_SCENE 1/12 explore sheet', 'EVF_READY']);
     fake.emit(gestureEvent('double'));
     await vi.advanceTimersByTimeAsync(2000);
     expect(demo.current()).toBe('combat-my-turn');
-    expect(markers()[2]).toBe('EVF_SCENE 2/11 combat-my-turn thirds');
+    expect(markers()[2]).toBe('EVF_SCENE 2/12 combat-my-turn sheet');
     expect(fake.of('create')).toHaveLength(1);
     expect(fake.of('rebuild').length).toBeGreaterThanOrEqual(1);
     expect(fake.of('shutdown')).toHaveLength(0);
@@ -96,12 +95,12 @@ describe('startDemo', () => {
     expect(demo.current()).toBe('result');
     expect(log.entries().some((x) => x.message === 'invoke weapon-attack')).toBe(true);
     expect(demo.store.get().lastResult?.toolId).toBe('weapon-attack');
-    expect(demo.tap?.mirror()['c-head']).toMatch(/RESULT|ESITO/);
-    for (let i = 0; i < 3; i++) {
+    expect(demo.tap?.mirror()['ctx-head']).toMatch(/Result|Esito/);
+    for (let i = 0; i < 4; i++) {
       void demo.next();
       await vi.advanceTimersByTimeAsync(2000);
     }
-    expect(markers()).toContain('EVF_SCENE 9/11 unpaired full');
+    expect(markers()).toContain('EVF_SCENE 10/12 unpaired full');
     demo.stop();
   });
 
@@ -110,7 +109,7 @@ describe('startDemo', () => {
     const demo = await startDemo(e);
     await vi.advanceTimersByTimeAsync(4000);
     expect(demo.store.get().connection.status).toBe('offline');
-    expect(markers()).toEqual(['EVF_SCENE 1/1 offline thirds', 'EVF_READY']);
+    expect(markers()).toEqual(['EVF_SCENE 1/1 offline sheet', 'EVF_READY']);
     demo.stop();
 
     info.mockClear();

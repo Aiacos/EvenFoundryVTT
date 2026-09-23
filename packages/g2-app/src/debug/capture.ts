@@ -87,7 +87,7 @@ export function captureGlobalErrors(log: DebugLog, target: ErrorEventTarget): ()
 export type Marker = 'EVF_READY' | 'EVF_SCENE';
 
 /**
- * Emits one marker line (`EVF_READY`, `EVF_SCENE 3/11 actions thirds`) on the console
+ * Emits one marker line (`EVF_READY`, `EVF_SCENE 3/12 actions sheet`) on the console
  * (`info` level) and in the debug log.
  */
 export function emitMarker(

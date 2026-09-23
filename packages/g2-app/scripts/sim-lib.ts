@@ -6,20 +6,55 @@
  * background `alpha = 0`, lit pixels `alpha > 0` (never convert to RGB).
  *
  * @see everything-evenhub:simulator-automation (API + RGBA format)
- * @see docs/design/g2-thirds-layout.md (three 192 px columns)
+ * @see docs/design/g2-sheet-ux.html §Architettura della schermata (zones A–E)
  */
 import UPNG from 'upng-js';
 
 export const SCREEN_W = 576;
 export const SCREEN_H = 288;
-export const COLUMN_W = 192;
+
+/** A named screen rectangle. */
+export interface Rect {
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Sheet-layout zones (A portrait, B header, C map, D sheet, E context). */
+export const ZONE_RECTS: readonly Rect[] = [
+  { name: 'A', x: 0, y: 0, w: 144, h: 144 },
+  { name: 'B', x: 144, y: 0, w: 288, h: 144 },
+  { name: 'C', x: 432, y: 0, w: 144, h: 144 },
+  { name: 'D', x: 0, y: 144, w: 288, h: 144 },
+  { name: 'E', x: 288, y: 144, w: 288, h: 144 },
+];
+
+/** A one-pixel-wide vertical probe `x`, rows `y0 … y1`. */
+export interface Gutter {
+  x: number;
+  y0: number;
+  y1: number;
+}
 
 /**
- * Pixel columns checked for INV-1 gutter consistency: the frame borders flanking the map
- * column (column A right border x=191 at the x=192 gutter, column C left border x=384).
- * The map column's own edge pixels (192, 383) carry map content and legitimately vary.
+ * Pixel columns checked for INV-1 consistency on sheet scenes: the zone gutters
+ * (x = 144 / 432 in the top band, x = 288 in the bottom band) and the frame columns next
+ * to them (portrait frame x = 141, map frame x = 433, context body border x = 288).
+ * Their lit masks must be identical in every sheet scene — a zone that moved or grew
+ * changes them.
  */
-export const GUTTER_COLUMNS: readonly number[] = [COLUMN_W - 1, 2 * COLUMN_W];
+export const GUTTERS: readonly Gutter[] = [
+  { x: 141, y0: 0, y1: 143 },
+  { x: 143, y0: 0, y1: 143 },
+  { x: 144, y0: 0, y1: 143 },
+  { x: 431, y0: 0, y1: 143 },
+  { x: 432, y0: 0, y1: 143 },
+  { x: 433, y0: 0, y1: 143 },
+  { x: 287, y0: 144, y1: 287 },
+  { x: 288, y0: 144, y1: 287 },
+];
 
 /** Decoded RGBA image. */
 export interface RgbaImage {
@@ -43,25 +78,22 @@ export function isLit(img: RgbaImage, x: number, y: number): boolean {
   return (img.data[(y * img.width + x) * 4 + 3] ?? 0) > 0;
 }
 
-/** Lit pixel count of each 192 px column `[A, B, C]`. */
-export function columnLitCounts(img: RgbaImage): [number, number, number] {
-  const counts: [number, number, number] = [0, 0, 0];
-  for (let y = 0; y < img.height; y++) {
-    for (let x = 0; x < img.width; x++) {
-      if (!isLit(img, x, y)) continue;
-      const col = Math.min(2, Math.floor(x / COLUMN_W)) as 0 | 1 | 2;
-      counts[col] += 1;
-    }
-  }
-  return counts;
+/** Lit pixel count inside each rectangle. */
+export function litCounts(img: RgbaImage, rects: readonly Rect[] = ZONE_RECTS): number[] {
+  return rects.map((r) => {
+    let n = 0;
+    for (let y = r.y; y < r.y + r.h; y++)
+      for (let x = r.x; x < r.x + r.w; x++) if (isLit(img, x, y)) n++;
+    return n;
+  });
 }
 
-/** Lit mask of the gutter columns: one `0/1` string per column, joined with `|`. */
-export function gutterSignature(img: RgbaImage, columns = GUTTER_COLUMNS): string {
-  return columns
-    .map((x) => {
+/** Lit mask of the gutter probes: one `0/1` string per probe, joined with `|`. */
+export function gutterSignature(img: RgbaImage, gutters: readonly Gutter[] = GUTTERS): string {
+  return gutters
+    .map((g) => {
       let bits = '';
-      for (let y = 0; y < img.height; y++) bits += isLit(img, x, y) ? '1' : '0';
+      for (let y = g.y0; y <= g.y1; y++) bits += isLit(img, g.x, y) ? '1' : '0';
       return bits;
     })
     .join('|');
@@ -77,7 +109,7 @@ export function diffPixels(a: RgbaImage, b: RgbaImage): number {
   return n;
 }
 
-export type SceneLayout = 'full' | 'thirds' | 'thirds-glyph';
+export type SceneLayout = 'full' | 'sheet';
 
 /** Parsed `EVF_SCENE <i>/<n> <name> <layout>` marker. */
 export interface SceneMarker {
@@ -87,7 +119,7 @@ export interface SceneMarker {
   layout: SceneLayout;
 }
 
-const SCENE = /^EVF_SCENE (\d+)\/(\d+) ([\w-]+) (full|thirds|thirds-glyph)$/;
+const SCENE = /^EVF_SCENE (\d+)\/(\d+) ([\w-]+) (full|sheet)$/;
 
 /** Parses a scene marker line, or `null` for any other message. */
 export function parseSceneMarker(message: string): SceneMarker | null {
@@ -127,7 +159,7 @@ export function lastId(entries: readonly ConsoleEntry[]): number | null {
 }
 
 /**
- * Per-scene checks: screen size; thirds layouts light each of the three columns; full
+ * Per-scene checks: screen size; sheet layouts light each of the five zones; full
  * screens light something.
  *
  * @returns Problems (empty = pass).
@@ -136,17 +168,19 @@ export function checkScene(marker: SceneMarker, img: RgbaImage): string[] {
   if (img.width !== SCREEN_W || img.height !== SCREEN_H) {
     return [`${marker.name}: screenshot ${img.width}×${img.height}, expected 576×288`];
   }
-  const counts = columnLitCounts(img);
   if (marker.layout === 'full') {
-    return counts.some((c) => c > 0) ? [] : [`${marker.name}: glasses display is blank`];
+    return litCounts(img, [{ name: 'screen', x: 0, y: 0, w: SCREEN_W, h: SCREEN_H }])[0]
+      ? []
+      : [`${marker.name}: glasses display is blank`];
   }
-  return (['A', 'B', 'C'] as const).flatMap((col, i) =>
-    (counts[i] ?? 0) > 0 ? [] : [`${marker.name}: column ${col} has no lit pixels`],
+  const counts = litCounts(img);
+  return ZONE_RECTS.flatMap((z, i) =>
+    (counts[i] ?? 0) > 0 ? [] : [`${marker.name}: zone ${z.name} has no lit pixels`],
   );
 }
 
 /**
- * INV-1 pixel check: every thirds scene must share the same gutter signature.
+ * INV-1 pixel check: every sheet scene must share the same gutter signature.
  *
  * @returns Problems naming the scenes that deviate from the first one.
  */

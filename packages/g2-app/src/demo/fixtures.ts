@@ -1,9 +1,13 @@
 /**
- * Canonical HUD states M01–M11 (min/max content variants) — shared by demo mode
- * (`?demo=`) and the INV-1 / HUD unit tests, so both render the same data.
+ * Canonical HUD states S1–S12 of docs/design/g2-sheet-ux.html — Thorin, hill dwarf,
+ * Cleric 5 (War domain), with the stats of the design's `PC` object — plus a `max`
+ * content variant (long names, 3-digit PF, every condition) for the INV-1 width budgets.
+ * Shared by demo mode (`?demo=`), the golden fixtures and the HUD unit tests, so all of
+ * them render the same data.
  */
 import {
   ABILITY_KEYS,
+  type AbilityKey,
   type ActionEconomyPayload,
   type ActionResultPayload,
   type CharacterSnapshot,
@@ -12,6 +16,7 @@ import {
   type MapSnapshot,
   type MovementBudgetPayload,
   SKILL_KEYS,
+  type SkillKey,
   type Skills,
 } from '@evf/shared-protocol';
 import { initialUi, type UiState } from '../hud/input/ui-state.js';
@@ -19,212 +24,279 @@ import { type AppState, initialState } from '../state/app-store.js';
 
 export type Variant = 'min' | 'max';
 
+/** Design `PC`: ability scores. */
+const SCORES: Record<AbilityKey, number> = { str: 16, dex: 10, con: 14, int: 10, wis: 18, cha: 12 };
+const SAVE_PROF: ReadonlySet<AbilityKey> = new Set(['str', 'wis', 'cha']);
+const PROF = 3;
+/** Skill proficiency: Intuizione, Medicina ● · Religione ◉ (design `PC.skills`). */
+const SKILL_PROF: Partial<Record<SkillKey, 1 | 2>> = { ins: 1, med: 1, rel: 2 };
+const SKILL_ABILITY: Record<SkillKey, AbilityKey> = {
+  acr: 'dex',
+  ani: 'wis',
+  arc: 'int',
+  ath: 'str',
+  dec: 'cha',
+  his: 'int',
+  ins: 'wis',
+  itm: 'cha',
+  inv: 'int',
+  med: 'wis',
+  nat: 'int',
+  prc: 'wis',
+  prf: 'cha',
+  per: 'cha',
+  rel: 'int',
+  slt: 'dex',
+  ste: 'dex',
+  sur: 'wis',
+};
+
+const mod = (k: AbilityKey): number => Math.floor((SCORES[k] - 10) / 2);
+
 function abilities(): CharacterSnapshot['abilities'] {
-  const mods = { str: 4, dex: 1, con: 3, int: 0, wis: 1, cha: -1 } as const;
   return Object.fromEntries(
     ABILITY_KEYS.map((k) => [
       k,
       {
-        value: 10 + mods[k] * 2,
-        mod: mods[k],
-        save: mods[k] + (k === 'str' || k === 'con' ? 3 : 0),
-        proficient: k === 'str' || k === 'con',
-        dc: 13,
+        value: SCORES[k],
+        mod: mod(k),
+        save: mod(k) + (SAVE_PROF.has(k) ? PROF : 0),
+        proficient: SAVE_PROF.has(k),
+        dc: 8 + PROF + mod(k),
       },
     ]),
   ) as CharacterSnapshot['abilities'];
 }
 
 function skills(): Skills {
-  const prof: Partial<Record<(typeof SKILL_KEYS)[number], 0 | 1 | 2>> = {
-    ath: 2,
-    itm: 1,
-    prc: 1,
-    sur: 1,
-  };
   return Object.fromEntries(
-    SKILL_KEYS.map((k, i) => [
-      k,
-      {
-        total: (i % 5) - 1 + (prof[k] ?? 0) * 3,
-        ability: 'wis',
-        proficient: prof[k] ?? 0,
-        passive: 14,
-      },
-    ]),
+    SKILL_KEYS.map((k) => {
+      const tier = SKILL_PROF[k] ?? 0;
+      const total = mod(SKILL_ABILITY[k]) + tier * PROF;
+      return [k, { total, ability: SKILL_ABILITY[k], proficient: tier, passive: 10 + total }];
+    }),
   ) as Skills;
 }
+
+/** URL of the demo portrait (served by the demo decoder, never fetched). */
+export const DEMO_PORTRAIT_URL = 'demo/thorin.webp';
 
 export function character(v: Variant = 'min'): CharacterSnapshot {
   const max = v === 'max';
   return {
     actorId: 'actor-1',
     name: max ? 'Thorin Scudodiquercia il Magnifico' : 'Thorin',
-    hp: max ? 345 : 7,
-    maxHp: max ? 999 : 9,
-    tempHp: max ? 120 : 0,
+    hp: max ? 345 : 27,
+    maxHp: max ? 999 : 38,
+    tempHp: max ? 120 : 5,
     ac: max ? 25 : 18,
     level: max ? 20 : 5,
-    conditions: max ? ['Benedetto', 'Avvelenato', 'Spaventato', 'Prono'] : [],
-    exhaustion: 0,
+    conditions: max
+      ? ['concentrating', 'blessed', 'poisoned', 'frightened', 'prone', 'restrained']
+      : ['concentrating', 'blessed'],
+    exhaustion: max ? 3 : 0,
     death: { success: 0, failure: 0 },
     world: { modernRules: true },
     inventory: [
       {
         id: 'w1',
-        name: max ? 'Ascia bipenne +3 del Drago Rosso' : 'Ascia',
+        name: max ? 'Martello da guerra +3 del Drago Rosso' : 'Martello da guerra',
         type: 'weapon',
-        damage: '1d12+4',
+        damage: '1d8+3',
+        toHit: '+6',
       },
-      { id: 'w2', name: 'Giavellotto', type: 'weapon', damage: '1d6+4' },
+      { id: 'w2', name: 'Giavellotto', type: 'weapon', damage: '1d6+3', toHit: '+6' },
       {
         id: 'p1',
-        name: max ? 'Pozione di guarigione superiore' : 'Pozione',
+        name: max ? 'Pozione di guarigione superiore' : 'Pozione di guarigione',
         type: 'consumable',
-        quantity: 3,
+        quantity: 2,
       },
     ],
-    spells: max
-      ? {
-          slots: [
-            { level: 1, value: 3, max: 4 },
-            { level: 2, value: 1, max: 3 },
-            { level: 3, value: 0, max: 2 },
-          ],
-          spells: [
-            {
-              id: 's0',
-              name: 'Fiamma sacra',
-              level: 0,
-              school: 'evo',
-              activation: 'action',
-              range: '60ft',
-              effect: '1d8',
-              prepared: false,
-              alwaysPrepared: false,
-              concentration: false,
-            },
-            {
-              id: 's1',
-              name: 'Cura ferite',
-              level: 1,
-              school: 'evo',
-              activation: 'action',
-              range: 'tocco',
-              effect: '1d8',
-              prepared: true,
-              alwaysPrepared: false,
-              concentration: false,
-            },
-            {
-              id: 's2',
-              name: 'Benedizione',
-              level: 1,
-              school: 'enc',
-              activation: 'action',
-              range: '30ft',
-              effect: '',
-              prepared: true,
-              alwaysPrepared: false,
-              concentration: true,
-            },
-          ],
-        }
-      : { slots: [], spells: [] },
+    spells: {
+      slots: [
+        { level: 1, value: 3, max: 4 },
+        { level: 2, value: 2, max: 3 },
+        { level: 3, value: 1, max: 2 },
+      ],
+      spells: [
+        spell('s0', 'Fiamma sacra', 0, '60 ft', false),
+        spell('s1', 'Cura ferite', 1, 'tocco', false),
+        spell('s2', 'Benedizione', 1, '30 ft', true),
+        spell('s3', 'Spiriti guardiani', 3, '15 ft', true),
+      ],
+    },
     abilities: abilities(),
     skills: skills(),
+    portrait: { url: DEMO_PORTRAIT_URL },
+    details: {
+      classId: 'cleric',
+      className: 'Chierico',
+      subclass: 'Dominio della Guerra',
+      race: max ? 'Nano delle colline di Ferrosangue' : 'Nano delle colline',
+      inspiration: true,
+      speed: 25,
+      proficiency: PROF,
+      initiative: 0,
+      darkvision: 60,
+    },
   };
 }
 
-export function combat(myTurn: boolean, v: Variant = 'min'): CombatSnapshot {
+function spell(
+  id: string,
+  name: string,
+  level: number,
+  range: string,
+  concentration: boolean,
+): CharacterSnapshot['spells']['spells'][number] {
+  return {
+    id,
+    name,
+    level,
+    school: 'evo',
+    activation: 'action',
+    range,
+    effect: '',
+    prepared: true,
+    alwaysPrepared: false,
+    concentration,
+  };
+}
+
+/** Initiative of the design (S2): Thorin, Goblin A, Mira, Hobgoblin. */
+export function combat(
+  current: 'thorin' | 'goblin-b',
+  v: Variant = 'min',
+  round = 3,
+): CombatSnapshot {
   const long = v === 'max';
+  const names = long
+    ? [
+        'Thorin Scudodiquercia il Magnifico',
+        'Goblin A',
+        'Mira la Veggente dei Sette Mari',
+        'Hobgoblin',
+      ]
+    : ['Thorin', 'Goblin A', 'Mira', 'Hobgoblin'];
   return {
     combatId: 'c1',
-    round: long ? 123 : 3,
+    round: long ? 123 : round,
     turn: 0,
-    currentCombatantId: myTurn ? 'k1' : 'k2',
+    currentCombatantId: current === 'thorin' ? 'k1' : 'k5',
     combatants: [
       {
         id: 'k1',
-        name: long ? 'Thorin Scudodiquercia il Magnifico' : 'Thorin',
+        name: names[0] ?? '',
         actorId: 'actor-1',
         initiative: 19,
-        hp: 45,
-        maxHp: 68,
-        isCurrentTurn: myTurn,
+        hp: long ? 345 : 27,
+        maxHp: long ? 999 : 38,
+        isCurrentTurn: current === 'thorin',
       },
       {
         id: 'k2',
-        name: 'Goblin A',
+        name: names[1] ?? '',
         actorId: 'g1',
         initiative: 17,
         hp: null,
         maxHp: null,
-        isCurrentTurn: !myTurn,
+        isCurrentTurn: false,
       },
       {
         id: 'k3',
-        name: 'Mira',
+        name: names[2] ?? '',
         actorId: 'm1',
         initiative: 15,
         hp: 31,
         maxHp: 38,
         isCurrentTurn: false,
       },
+      {
+        id: 'k4',
+        name: names[3] ?? '',
+        actorId: 'h1',
+        initiative: 12,
+        hp: null,
+        maxHp: null,
+        isCurrentTurn: false,
+      },
+      {
+        id: 'k5',
+        name: 'Goblin B',
+        actorId: 'g2',
+        initiative: 9,
+        hp: null,
+        maxHp: null,
+        isCurrentTurn: current === 'goblin-b',
+      },
     ],
   };
 }
 
+/** Exploration log of S1 (newest last, as the projector sends it). */
 export function log(v: Variant = 'min'): LogSnapshot {
-  if (v === 'min') return { events: [] };
+  if (v === 'max') {
+    return {
+      events: Array.from({ length: 10 }, (_, i) => ({
+        id: `e${i}`,
+        timestamp: 1000 + i,
+        actorName: 'Mira la Veggente dei Sette Mari',
+        kind: 'roll' as const,
+        description: 'Percezione con vantaggio e ispirazione bardica',
+        result: { kind: i % 2 ? ('hit' as const) : ('pass' as const), value: 17 },
+      })),
+    };
+  }
   return {
-    events: Array.from({ length: 10 }, (_, i) => ({
-      id: `e${i}`,
-      timestamp: 1000 + i,
-      actorName: 'Mira la Veggente dei Sette Mari',
-      kind: 'roll' as const,
-      description: 'Percezione con vantaggio e ispirazione bardica',
-      result: { kind: i % 2 ? ('hit' as const) : ('pass' as const), value: 17 },
-    })),
+    events: [
+      { id: 'e1', timestamp: 1, actorName: 'Bram', kind: 'chat', description: 'si muove di 20 ft' },
+      {
+        id: 'e2',
+        timestamp: 2,
+        actorName: 'GM',
+        kind: 'chat',
+        description: '«Senti passi a nord»',
+      },
+      {
+        id: 'e3',
+        timestamp: 3,
+        actorName: 'Mira',
+        kind: 'roll',
+        description: 'Percezione',
+        result: { kind: 'pass', value: 17 },
+      },
+    ],
   };
 }
 
+/** Crypt of the design map (S1–S9): a room with pillars, a door and a corridor. */
 export function mapSnap(extra: Partial<MapSnapshot> = {}): MapSnapshot {
   return {
     sceneId: 'scene-1',
     name: "Cripta di Vel'Nar",
-    cols: 40,
-    rows: 40,
+    cols: 30,
+    rows: 30,
     gridPx: 100,
     darkness: 0,
-    // Two rooms joined by a corridor with a door, around the tokens (cells 14–38).
     walls: [
-      // Room A (14,12)–(27,28)
-      { c: [14, 12, 27, 12] },
-      { c: [14, 28, 27, 28] },
-      { c: [14, 12, 14, 28] },
-      { c: [27, 12, 27, 18] },
-      { c: [27, 18, 27, 20], door: true },
-      { c: [27, 20, 27, 28] },
-      // Corridor (27,18)–(31,20)
-      { c: [27, 18, 31, 18] },
-      { c: [27, 20, 31, 20] },
-      // Room B (31,14)–(38,26)
-      { c: [31, 14, 38, 14] },
-      { c: [31, 26, 38, 26] },
-      { c: [38, 14, 38, 26] },
-      { c: [31, 14, 31, 18] },
-      { c: [31, 20, 31, 26] },
-      // Pillars in room A
-      { c: [17, 15, 18, 15] },
-      { c: [17, 25, 18, 25] },
+      { c: [9, 8, 16, 8] },
+      { c: [9, 17, 16, 17] },
+      { c: [9, 8, 9, 17] },
+      { c: [16, 8, 16, 11] },
+      { c: [16, 11, 16, 13], door: true },
+      { c: [16, 13, 16, 17] },
+      { c: [16, 11, 21, 11] },
+      { c: [16, 13, 21, 13] },
+      { c: [11, 10, 11.3, 10] },
+      { c: [11, 15, 11.3, 15] },
     ],
     tokens: [
-      { id: 't-self', name: 'Thorin', kind: 'self', x: 20, y: 20, w: 1, h: 1 },
-      { id: 't-ally', name: 'Mira', kind: 'ally', x: 22, y: 20, w: 1, h: 1, hp: 0.8 },
-      { id: 't-gob', name: 'Goblin A', kind: 'enemy', x: 21, y: 21, w: 1, h: 1, hp: 0.4 },
-      { id: 't-npc', name: 'Mercante', kind: 'neutral', x: 16, y: 22, w: 1, h: 1 },
-      { id: 't-boss', name: 'Hobgoblin', kind: 'enemy', x: 34, y: 19, w: 2, h: 2, hp: 1 },
+      { id: 't-self', name: 'Thorin', kind: 'self', x: 12, y: 12, w: 1, h: 1 },
+      { id: 't-ally', name: 'Mira', kind: 'ally', x: 14, y: 12, w: 1, h: 1, hp: 0.8 },
+      { id: 't-gob', name: 'Goblin A', kind: 'enemy', x: 13, y: 13, w: 1, h: 1, hp: 0.6 },
+      { id: 't-gob2', name: 'Goblin B', kind: 'enemy', x: 14, y: 10, w: 1, h: 1, hp: 1 },
+      { id: 't-boss', name: 'Hobgoblin', kind: 'enemy', x: 18, y: 12, w: 1, h: 1, hp: 1 },
     ],
     selfTokenId: 't-self',
     ...extra,
@@ -237,35 +309,35 @@ export function result(): ActionResultPayload {
     toolId: 'weapon-attack',
     d20: 16,
     outcome: 'hit',
-    damage: '11 taglienti',
+    damage: '9 contundenti',
     status: 'success',
     recipientUserId: 'u1',
   };
 }
 
-/** Action economy of the paired actor (`actionsUsed` 1 after attacking, M06). */
-export function economy(actionsUsed: 0 | 1 = 0): ActionEconomyPayload {
+/** Action economy of the paired actor (`actionsUsed` 1 after attacking, S6). */
+export function economy(actionsUsed: 0 | 1 = 0, reactionsUsed: 0 | 1 = 0): ActionEconomyPayload {
   return {
     actorId: 'actor-1',
     actionsUsed,
     bonusActionsUsed: 0,
-    reactionsUsed: 0,
+    reactionsUsed,
     multiAttackInProgress: false,
     recipientUserId: 'u1',
   };
 }
 
-/** Movement budget of the paired actor (max variant: fast actor, over budget). */
+/** Movement budget of the paired actor (max variant: over budget). */
 export function movement(v: Variant = 'min'): MovementBudgetPayload {
   return v === 'max'
     ? { actorId: 'actor-1', walkSpeed: 120, usedThisTurn: 125, remainingFeet: -5 }
-    : { actorId: 'actor-1', walkSpeed: 30, usedThisTurn: 5, remainingFeet: 25 };
+    : { actorId: 'actor-1', walkSpeed: 25, usedThisTurn: 0, remainingFeet: 25 };
 }
 
 export function online(v: Variant = 'min', patch: Partial<AppState> = {}): AppState {
   return {
     ...initialState(),
-    connection: { status: 'online', server: 'foundry.example', lastSyncAt: 0 },
+    connection: { status: 'online', server: 'foundry.casa-rossi.it', lastSyncAt: 0 },
     character: character(v),
     map: mapSnap(),
     log: log(v),
@@ -274,57 +346,85 @@ export function online(v: Variant = 'min', patch: Partial<AppState> = {}): AppSt
 }
 
 export interface MockState {
+  /** Design screen id `S1`–`S12`. */
   id: string;
   app: AppState;
   ui: UiState;
 }
 
-/** M01–M11 mock states for a variant. */
+/** S1–S12 states for a content variant. */
 export function mockStates(v: Variant): MockState[] {
   const ui = initialUi();
-  const inCombat = online(v, {
-    combat: combat(true, v),
+  const myTurn = online(v, {
+    combat: combat('thorin', v),
     actionEconomy: economy(),
     movement: movement(v),
   });
-  const pendingWeapon = { kind: 'weapon' as const, itemId: 'w1', name: 'Ascia' };
+  const hammer = { kind: 'weapon' as const, itemId: 'w1', name: 'Martello da guerra' };
+  const ch = character(v);
   return [
-    { id: 'M01', app: online(v), ui },
-    { id: 'M02', app: inCombat, ui: { ...ui, sheetPage: 1 } },
-    { id: 'M03', app: inCombat, ui: { ...ui, sheetPage: 1, view: 'actions', cursor: 1 } },
+    { id: 'S1', app: online(v), ui },
+    { id: 'S2', app: myTurn, ui },
+    { id: 'S3', app: myTurn, ui: { ...ui, view: 'actions' } },
+    { id: 'S4', app: myTurn, ui: { ...ui, view: 'target', pending: hammer } },
+    { id: 'S5', app: myTurn, ui: { ...ui, view: 'spells', cursor: 1 } },
     {
-      id: 'M04',
-      app: inCombat,
-      ui: { ...ui, sheetPage: 1, view: 'target', pending: pendingWeapon },
-    },
-    { id: 'M05', app: online('max'), ui: { ...ui, sheetPage: 3, view: 'spells', cursor: 2 } },
-    {
-      id: 'M06',
-      app: { ...inCombat, lastResult: result(), actionEconomy: economy(1) },
+      id: 'S6',
+      app: {
+        ...myTurn,
+        lastResult: result(),
+        actionEconomy: economy(1),
+        map: mapSnap({ targetId: 't-gob' }),
+      },
       ui: {
         ...ui,
-        sheetPage: 1,
         view: 'result',
-        result: { title: 'Ascia → Goblin A', shownAt: 0, ack: 'ok', payload: result() },
+        result: { title: 'Martello → Goblin A', shownAt: 0, ack: 'ok', payload: result() },
       },
     },
     {
-      id: 'M07',
+      id: 'S7',
       app: {
-        ...online(v, { combat: combat(false, v) }),
-        reaction: { kind: 'opportunity-attack', sourceName: 'Goblin A', expiresAt: 10_000 },
+        ...online(v, {
+          combat: combat('goblin-b', v),
+          actionEconomy: economy(),
+          movement: movement(v),
+        }),
+        reaction: { kind: 'opportunity-attack', sourceName: 'Goblin B', expiresAt: 130_000 },
       },
-      ui: { ...ui, sheetPage: 1, view: 'reaction', reactionDeadline: 6_000 },
+      // Fixture clock: 120 s (S12 "dati di 2 min fa" with lastSyncAt 0) → 6 s left.
+      ui: { ...ui, view: 'reaction', reactionDeadline: 126_000 },
     },
-    { id: 'M08', app: online(v), ui: { ...ui, sheetPage: 2 } },
-    { id: 'M09', app: initialState(), ui },
     {
-      id: 'M10',
+      id: 'S8',
+      app: online(v, { rollRequest: { messageId: 'm1', kind: 'save', ability: 'wis' } }),
+      ui: { ...ui, view: 'request', sheetPage: 'saves' },
+    },
+    {
+      id: 'S9',
+      app: online(v, {
+        character: {
+          ...ch,
+          hp: 0,
+          tempHp: 0,
+          conditions: ['unconscious'],
+          death: { success: 1, failure: 2 },
+        },
+        combat: combat('thorin', v, 4),
+        actionEconomy: economy(),
+        movement: movement(v),
+      }),
+      ui,
+    },
+    { id: 'S10', app: initialState(), ui },
+    {
+      id: 'S11',
       app: {
         ...initialState(),
         connection: {
           status: 'connecting',
-          server: v === 'max' ? 'foundry.una-casa-molto-lontana.example.org' : 'foundry.casa.it',
+          server:
+            v === 'max' ? 'foundry.una-casa-molto-lontana.example.org' : 'foundry.casa-rossi.it',
           userName: 'Luca (G2)',
           gmName: 'Anna',
           actorName: 'Thorin',
@@ -334,14 +434,14 @@ export function mockStates(v: Variant): MockState[] {
       ui,
     },
     {
-      id: 'M11',
+      id: 'S12',
       app: online(v, {
         connection: {
           status: 'offline',
           retryInMs: 8000,
           attempt: 3,
           lastSyncAt: 0,
-          cause: 'network',
+          cause: 'no-gm',
         },
       }),
       ui,

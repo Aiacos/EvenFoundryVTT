@@ -3,7 +3,7 @@
  * `actionEconomy`, `movement` and `settings` in the {@link AppStore}; implements
  * {@link AppActions} for the HUD.
  *
- * Lifecycle (mocks M09 unpaired · M10 connecting · M11 offline):
+ * Lifecycle (screens S10 unpaired · S11 connecting · S12 offline):
  *
  * ```
  * unpaired ──pair──▶ connecting ─(server, login, socket, hello→welcome, snapshots)─▶ online
@@ -47,7 +47,9 @@ import {
   R1_MOVEMENT_BUDGET_TYPE,
   R1_MULTIATTACK_PROGRESS_TYPE,
   R1_REACTION_AVAILABLE_TYPE,
+  R1_ROLL_REQUEST_TYPE,
   ReactionAvailablePayloadSchema,
+  RollRequestPayloadSchema,
   SCENE_VIEWPORT_DELTA_TYPE,
   SealedEnvelopeSchema,
   SNAPSHOT_TOPICS,
@@ -251,7 +253,7 @@ export class DirectSession implements AppActions {
 
   /**
    * Starts the session: persists fragment credentials (QR path) if given, then connects
-   * with whatever is stored, or shows `unpaired` (M09 / P03).
+   * with whatever is stored, or shows `unpaired` (S10 / P03).
    */
   async start(fragment: Credentials | null): Promise<void> {
     if (fragment !== null) await this.deps.credentials.save(fragment);
@@ -639,6 +641,9 @@ export class DirectSession implements AppActions {
         break;
       case R1_REACTION_AVAILABLE_TYPE:
         this.applyDelta(topic, ReactionAvailablePayloadSchema, data, (reaction) => ({ reaction }));
+        break;
+      case R1_ROLL_REQUEST_TYPE:
+        this.applyDelta(topic, RollRequestPayloadSchema, data, (rollRequest) => ({ rollRequest }));
         break;
       default:
         this.record('warn', `unhandled delta topic ${topic}`);

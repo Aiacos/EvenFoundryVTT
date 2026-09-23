@@ -1,14 +1,20 @@
 /**
- * Column-C input state machine — pure reducer (docs/design/g2-thirds-layout.md
- * §Modello di input, state diagram):
+ * Zone E input state machine — pure reducer (docs/design/g2-sheet-ux.html
+ * §Interazione, state diagram):
  *
  * ```
  * root ─tap→ actions ─tap(weapon)→ target ─tap→ result
  *              └─tap(spells)→ spells ─tap→ slot ─tap→ target
  * "reaction available" ─→ reaction (priority, 10 s timeout)
+ * "GM roll request" ─→ request (sheet page → «Tiri salvezza · Abilità»)
  * ●● = back one level; ●● at root = exit (shutDownPageContainer(1))
  * result: tap → actions, ●● / 8 s → root
  * ```
+ *
+ * Automatic sheet page (design §Pagina automatica, `settings.autoSheetPage`): a GM
+ * check/save request opens «Tiri salvezza · Abilità», the request being handled returns
+ * to «Caratteristiche»; 0 PF shows the death saves regardless (view-level rule). A
+ * manual choice («Scheda» in the menu / options) stays until the next such event.
  *
  * Gestures are the canonical R1/G2 set (press, double-press, swipe up/down); the
  * long-press contextual menu only duplicates entries reachable through
@@ -16,15 +22,15 @@
  */
 import type { AppSettings, AppState } from '../../state/app-store.js';
 import { type HudStrings, nextLocaleSetting } from '../i18n.js';
+import { isMyTurn } from '../model.js';
 import { screenOf } from '../screen.js';
 import { GLYPH } from '../text/measure.js';
-import { isMyTurn } from '../text/sheet.js';
 import { buildEntries, type Intent, MENU_OPS, type MenuOp } from './entries.js';
-import type { Advantage, SheetPage, UiState, View } from './ui-state.js';
+import type { Advantage, UiState, View } from './ui-state.js';
 
 /** Reaction prompt lifetime cap (design: priority prompt, 10 s). */
 export const REACTION_TIMEOUT_MS = 10_000;
-/** Result panel auto-close (design M06: timeout 8 s). */
+/** Result panel auto-close (design S6: «doppio tap / 8 s»). */
 export const RESULT_TIMEOUT_MS = 8_000;
 
 const CELL_SIZES: readonly AppSettings['mapCellPx'][] = [6, 8, 12];
@@ -48,7 +54,8 @@ export type HudEffect =
   | { t: 'exit' }
   | { t: 'settings'; patch: Partial<AppSettings> }
   | { t: 'reconnect' }
-  | { t: 'clearReaction' };
+  | { t: 'clearReaction' }
+  | { t: 'clearRequest' };
 
 export interface ReduceContext {
   app: AppState;
@@ -116,7 +123,10 @@ function applyOp(op: MenuOp, ui: UiState, ctx: ReduceContext): ReduceResult {
   const idx = CELL_SIZES.indexOf(s.mapCellPx);
   switch (op) {
     case 'nextPage':
-      return { ui: { ...ui, sheetPage: ((ui.sheetPage + 1) % 4) as SheetPage }, effects: [] };
+      return {
+        ui: { ...ui, sheetPage: ui.sheetPage === 'abilities' ? 'saves' : 'abilities' },
+        effects: [],
+      };
     case 'zoomIn': {
       const next = CELL_SIZES[Math.min(idx + 1, CELL_SIZES.length - 1)] ?? s.mapCellPx;
       return {
@@ -232,6 +242,8 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
       };
     case 'ignore':
       return { ui: go(ui, 'root', { reactionDeadline: null }), effects: [{ t: 'clearReaction' }] };
+    case 'dismissRequest':
+      return { ui: go(ui, 'root'), effects: [{ t: 'clearRequest' }] };
   }
 }
 
@@ -247,9 +259,13 @@ function back(ui: UiState): UiState {
 function onState(ui: UiState, prev: AppState, ctx: ReduceContext): ReduceResult {
   const app = ctx.app;
   let next = ui;
-  if (app.settings.autoCombatPage) {
-    if (!prev.combat && app.combat) next = { ...next, sheetPage: 1 };
-    else if (prev.combat && !app.combat) next = { ...next, sheetPage: 0 };
+  const auto = app.settings.autoSheetPage;
+  if (app.rollRequest && app.rollRequest !== prev.rollRequest) {
+    if (auto) next = { ...next, sheetPage: 'saves' };
+    if (next.view !== 'reaction') next = go(next, 'request');
+  } else if (!app.rollRequest && prev.rollRequest) {
+    if (auto) next = { ...next, sheetPage: 'abilities' };
+    if (next.view === 'request') next = go(next, 'root');
   }
   if (app.reaction && app.reaction !== prev.reaction && next.view !== 'reaction') {
     const deadline = Math.min(app.reaction.expiresAt, ctx.now + REACTION_TIMEOUT_MS);
@@ -278,7 +294,7 @@ function onTick(ui: UiState, ctx: ReduceContext): ReduceResult {
   return { ui, effects: [] };
 }
 
-/** Gestures while M09/M10/M11 are shown. */
+/** Gestures while S10/S11/S12 are shown. */
 function reduceStatusScreen(ui: UiState, input: HudInput, offline: boolean): ReduceResult {
   if (input.t === 'double') return { ui, effects: [{ t: 'exit' }] };
   if (offline && input.t === 'tap') return { ui, effects: [{ t: 'reconnect' }] };
@@ -332,6 +348,7 @@ export function reduce(ui: UiState, input: HudInput, ctx: ReduceContext): Reduce
       }
       if (input.t === 'double') {
         if (ui.view === 'reaction') return confirm({ k: 'ignore' }, ui, ctx);
+        if (ui.view === 'request') return confirm({ k: 'dismissRequest' }, ui, ctx);
         return { ui: back(ui), effects: [] };
       }
       const entry = entries[Math.min(ui.cursor, entries.length - 1)];

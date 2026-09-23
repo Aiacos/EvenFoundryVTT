@@ -26,7 +26,7 @@ import { filterG2Users, type JoinUser, parseJoinUsers } from './credentials.js';
 /** Error classes surfaced to the session state machine. */
 export type FoundryErrorKind = 'auth' | 'network' | 'server';
 
-/** Typed failure from the Foundry client; `kind` drives the M11 cause / revocation. */
+/** Typed failure from the Foundry client; `kind` drives the S12 cause / revocation. */
 export class FoundryClientError extends Error {
   constructor(
     readonly kind: FoundryErrorKind,

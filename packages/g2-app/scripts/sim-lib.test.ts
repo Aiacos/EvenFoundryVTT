@@ -4,18 +4,19 @@ import {
   type ConsoleEntry,
   checkGutters,
   checkScene,
-  columnLitCounts,
   decodePng,
   diffPixels,
   findConsoleErrors,
-  GUTTER_COLUMNS,
+  GUTTERS,
   gutterSignature,
   hasMarker,
   lastId,
+  litCounts,
   parseSceneMarker,
   type RgbaImage,
   SCREEN_H,
   SCREEN_W,
+  ZONE_RECTS,
 } from './sim-lib.js';
 
 /** Blank simulator-style frame (green, alpha 0) with `lit` pixels set opaque. */
@@ -26,14 +27,14 @@ function frame(lit: ReadonlyArray<readonly [number, number]>, w = SCREEN_W, h = 
   return { width: w, height: h, data } satisfies RgbaImage;
 }
 
-/** Thirds frame: both frame borders drawn full-height + one lit pixel per column. */
-function thirds(extra: ReadonlyArray<readonly [number, number]> = []): RgbaImage {
+/** Sheet frame: portrait / map frame columns + one lit pixel per zone. */
+function sheet(extra: ReadonlyArray<readonly [number, number]> = []): RgbaImage {
   const lit: [number, number][] = [];
-  for (let y = 0; y < SCREEN_H; y++) lit.push([191, y], [384, y]);
-  return frame([...lit, [10, 10], [300, 150], [500, 20], ...extra]);
+  for (let y = 2; y < 142; y++) lit.push([141, y], [433, y]);
+  return frame([...lit, [10, 10], [300, 20], [500, 20], [100, 200], [400, 200], ...extra]);
 }
 
-const marker = (layout: 'full' | 'thirds', name = 'explore') => ({
+const marker = (layout: 'full' | 'sheet', name = 'explore') => ({
   index: 1,
   total: 2,
   name,
@@ -51,36 +52,37 @@ describe('PNG decoding', () => {
     expect(img.width).toBe(SCREEN_W);
     expect(img.height).toBe(SCREEN_H);
     expect(diffPixels(img, src)).toBe(0);
-    expect(columnLitCounts(img)).toEqual([1, 0, 1]);
+    expect(litCounts(img)).toEqual([1, 0, 0, 0, 1]);
   });
 });
 
-describe('column analysis', () => {
-  it('counts lit pixels per 192 px column', () => {
+describe('zone analysis', () => {
+  it('counts lit pixels per sheet zone', () => {
+    expect(ZONE_RECTS.map((z) => z.name)).toEqual(['A', 'B', 'C', 'D', 'E']);
     expect(
-      columnLitCounts(
+      litCounts(
         frame([
-          [191, 0],
-          [192, 0],
-          [383, 5],
-          [384, 5],
-          [575, 1],
+          [143, 0],
+          [144, 0],
+          [431, 5],
+          [432, 5],
+          [287, 144],
+          [288, 287],
         ]),
       ),
-    ).toEqual([1, 2, 2]);
+    ).toEqual([1, 2, 1, 1, 1]);
   });
 
-  it('signs the gutter columns row by row', () => {
-    expect(GUTTER_COLUMNS).toEqual([191, 384]);
+  it('signs the gutter probes row by row', () => {
+    expect(GUTTERS.map((g) => g.x)).toEqual([141, 143, 144, 431, 432, 433, 287, 288]);
     const sig = gutterSignature(
       frame([
-        [191, 0],
-        [384, 287],
+        [141, 0],
+        [288, 287],
       ]),
-    );
-    const [a, c] = sig.split('|');
-    expect(a).toBe(`1${'0'.repeat(287)}`);
-    expect(c).toBe(`${'0'.repeat(287)}1`);
+    ).split('|');
+    expect(sig[0]).toBe(`1${'0'.repeat(143)}`);
+    expect(sig[7]).toBe(`${'0'.repeat(143)}1`);
   });
 
   it('diffs lit states, infinitely for size mismatches', () => {
@@ -99,26 +101,28 @@ describe('column analysis', () => {
 
 describe('scene checks', () => {
   it('parses scene markers', () => {
-    expect(parseSceneMarker('EVF_SCENE 3/11 combat-my-turn thirds')).toEqual({
+    expect(parseSceneMarker('EVF_SCENE 3/12 combat-my-turn sheet')).toEqual({
       index: 3,
-      total: 11,
+      total: 12,
       name: 'combat-my-turn',
-      layout: 'thirds',
+      layout: 'sheet',
     });
-    expect(parseSceneMarker(' EVF_SCENE 9/11 unpaired full ')?.layout).toBe('full');
-    expect(parseSceneMarker('EVF_SCENE 1/1 x thirds-glyph')?.layout).toBe('thirds-glyph');
+    expect(parseSceneMarker(' EVF_SCENE 10/12 unpaired full ')?.layout).toBe('full');
+    expect(parseSceneMarker('EVF_SCENE 1/1 x thirds')).toBeNull();
     expect(parseSceneMarker('EVF_SCENE 1/1 x diagonal')).toBeNull();
     expect(parseSceneMarker('EVF_READY')).toBeNull();
   });
 
-  it('requires lit pixels in all three thirds columns', () => {
-    expect(checkScene(marker('thirds'), thirds())).toEqual([]);
+  it('requires lit pixels in all five sheet zones', () => {
+    expect(checkScene(marker('sheet'), sheet())).toEqual([]);
     const noMap = frame([
       [10, 10],
-      [500, 10],
+      [300, 10],
+      [100, 200],
+      [400, 200],
     ]);
-    expect(checkScene(marker('thirds', 'offline'), noMap)).toEqual([
-      'offline: column B has no lit pixels',
+    expect(checkScene(marker('sheet', 'offline'), noMap)).toEqual([
+      'offline: zone C has no lit pixels',
     ]);
   });
 
@@ -127,22 +131,22 @@ describe('scene checks', () => {
     expect(checkScene(marker('full', 'unpaired'), frame([]))).toEqual([
       'unpaired: glasses display is blank',
     ]);
-    expect(checkScene(marker('thirds'), frame([], 10, 10))).toEqual([
+    expect(checkScene(marker('sheet'), frame([], 10, 10))).toEqual([
       'explore: screenshot 10×10, expected 576×288',
     ]);
   });
 
-  it('flags scenes whose gutter pixels deviate from the first thirds scene', () => {
-    const ok = gutterSignature(thirds());
-    const broken = gutterSignature(frame([[191, 0]]));
+  it('flags scenes whose gutter pixels deviate from the first sheet scene', () => {
+    const ok = gutterSignature(sheet());
+    const broken = gutterSignature(frame([[141, 2]]));
     expect(checkGutters([])).toEqual([]);
     expect(
       checkGutters([
         { name: 'explore', signature: ok },
-        { name: 'actions', signature: gutterSignature(thirds([[300, 1]])) },
+        { name: 'actions', signature: gutterSignature(sheet([[300, 1]])) },
         { name: 'spells', signature: broken },
       ]),
-    ).toEqual(['spells: gutter pixels differ from explore (575 px)']);
+    ).toEqual(['spells: gutter pixels differ from explore (279 px)']);
   });
 });
 

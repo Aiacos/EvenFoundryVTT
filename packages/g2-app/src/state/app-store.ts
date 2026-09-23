@@ -6,7 +6,7 @@
  * reads state and calls {@link AppActions}. Plain observable, no framework: G2 output
  * is SDK container calls, not DOM (Specs.md §3.1).
  *
- * @see docs/design/g2-thirds-layout.md
+ * @see docs/design/g2-sheet-ux.html
  * @see docs/architecture/0012-direct-foundry-streaming.md
  */
 import type {
@@ -18,13 +18,14 @@ import type {
   MapSnapshot,
   MovementBudgetPayload,
   ReactionAvailablePayload,
+  RollRequestPayload,
   SnapshotTopic,
 } from '@evf/shared-protocol';
 
-/** Connection lifecycle shown by mocks M09 (unpaired), M10 (connecting), M11 (offline). */
+/** Connection lifecycle shown by screens S10 (unpaired), S11 (connecting), S12 (offline). */
 export type ConnectionStatus = 'unpaired' | 'connecting' | 'online' | 'offline' | 'revoked';
 
-/** Progress steps rendered by M10 while connecting. */
+/** Progress steps rendered by S11 while connecting. */
 export interface ConnectSteps {
   server: boolean;
   login: boolean;
@@ -43,7 +44,7 @@ export interface ConnectionState {
   worldTitle?: string;
   /** Foundry UI language from `welcome` — used when `settings.locale` is 'auto'. */
   foundryLocale?: string;
-  /** Epoch ms of the last successful snapshot/delta (M11 "Dati mostrati: 2 min fa"). */
+  /** Epoch ms of the last successful snapshot/delta (S12 "dati di 2 min fa"). */
   lastSyncAt?: number;
   /** Offline only: next retry countdown and attempt counter. */
   retryInMs?: number;
@@ -58,7 +59,11 @@ export interface AppSettings {
   locale: 'auto' | 'it' | 'en';
   mapCellPx: 6 | 8 | 12;
   followToken: boolean;
-  autoCombatPage: boolean;
+  /**
+   * Automatic sheet page (design §Pagina automatica): GM-requested check/save →
+   * «Tiri salvezza · Abilità», request handled → «Caratteristiche». Off = manual only.
+   */
+  autoSheetPage: boolean;
 }
 
 export interface AppState {
@@ -68,16 +73,18 @@ export interface AppState {
   combat: CombatSnapshot | null;
   map: MapSnapshot | null;
   log: LogSnapshot | null;
-  /** Pending reaction prompt (M07); cleared by the HUD after choice/timeout. */
+  /** Pending reaction prompt (S7); cleared by the HUD after choice/timeout. */
   reaction: ReactionAvailablePayload | null;
-  /** Latest action result for the paired actor (M06). */
+  /** Pending GM roll request (S8); cleared by the HUD once the player dismissed it. */
+  rollRequest: RollRequestPayload | null;
+  /** Latest action result for the paired actor (S6). */
   lastResult: ActionResultPayload | null;
   /**
-   * Action / Bonus / Reaction usage of the paired actor this turn (M02, M06
-   * "Azione ● Bonus ● Reaz ●"); null outside combat or before the first update.
+   * Action / Bonus / Reaction usage of the paired actor this turn (header row
+   * "● Azione ▲ Bonus ◆ Reazione", S2/S6); null outside combat or before the first update.
    */
   actionEconomy: ActionEconomyPayload | null;
-  /** Movement budget of the paired actor this turn (M02 "Movimento 30/30 ft"); null outside combat. */
+  /** Movement budget of the paired actor this turn (header "25 FT"); null outside combat. */
   movement: MovementBudgetPayload | null;
 }
 
@@ -98,7 +105,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   locale: 'auto',
   mapCellPx: 12,
   followToken: true,
-  autoCombatPage: true,
+  autoSheetPage: true,
 };
 
 /** Initial state before credentials are read. */
@@ -111,6 +118,7 @@ export function initialState(): AppState {
     map: null,
     log: null,
     reaction: null,
+    rollRequest: null,
     lastResult: null,
     actionEconomy: null,
     movement: null,

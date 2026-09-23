@@ -15,10 +15,11 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { type BridgeLease, type BridgeTap, isDoublePress, tapBridge } from '../debug/bridge-tap.js';
 import { emitMarker } from '../debug/capture.js';
 import type { DebugLog } from '../debug/debug-log.js';
-import type { StartHud } from '../direct/app.js';
+import type { HudOptions } from '../hud/index.js';
 import { mountPhonePage } from '../phone/phone-page.js';
-import { type AppStore, createAppStore } from '../state/app-store.js';
+import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
 import { createDemoTransport, type DemoTimers } from './demo-actions.js';
+import { demoDecoder } from './portrait-art.js';
 import { buildScenario, playlist, type ScenarioName } from './scenarios.js';
 
 /** Bridge quiet time before a scene counts as rendered. */
@@ -33,7 +34,13 @@ export interface DemoEnvironment {
   log: DebugLog;
   deviceLanguage: () => string;
   getBridge: () => Promise<EvenAppBridge | null>;
-  startHud: StartHud;
+  /** HUD entry point (`startHud`); the demo injects its portrait decoder. */
+  startHud: (
+    bridge: EvenAppBridge,
+    store: AppStore,
+    actions: AppActions,
+    options: HudOptions,
+  ) => () => void;
   timers: DemoTimers;
 }
 
@@ -50,10 +57,9 @@ export interface DemoHandle {
   stop(): void;
 }
 
-/** Layout reported in the scene marker, derived from the containers on the glasses. */
-export function layoutOf(display: Record<string, string>): 'full' | 'thirds' | 'thirds-glyph' {
-  if ('full' in display) return 'full';
-  return 'map-glyph' in display ? 'thirds-glyph' : 'thirds';
+/** Layout reported in the scene marker, derived from the text containers on the glasses. */
+export function layoutOf(display: Record<string, string>): 'full' | 'sheet' {
+  return 'ctx-body' in display ? 'sheet' : 'full';
 }
 
 /**
@@ -123,7 +129,7 @@ export async function startDemo(env: DemoEnvironment): Promise<DemoHandle> {
     store.update(scenario.initial);
     const own = tap.lease();
     lease = own;
-    stopHud = env.startHud(own.bridge, store, transport);
+    stopHud = env.startHud(own.bridge, store, transport, { decoder: demoDecoder });
     store.update(scenario.patch);
     for (const g of scenario.gestures) tap.inject(g);
 

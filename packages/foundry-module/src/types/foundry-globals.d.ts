@@ -223,6 +223,16 @@ interface Dnd5eAttributes {
   };
   ac: { value: number };
   exhaustion: number;
+  /** Inspiration toggle (dnd5e character data model; «Ispirazione eroica» in 2024). */
+  inspiration?: boolean;
+  /** Proficiency bonus (prepared from the character level). */
+  prof?: number;
+  /** Initiative; `total` is prepared by `AttributesFields.prepareInitiative`. */
+  init?: { total?: number };
+  /** Movement speeds in `units` (walk used by the sheet HUD). */
+  movement?: { walk?: number | null; units?: string };
+  /** Sense ranges (dnd5e 5.x `senses.ranges.*`; the flat `senses.darkvision` is deprecated). */
+  senses?: { ranges?: Record<string, number | null | undefined> };
   /**
    * Death saving throw progress (Phase 4b). May be undefined on freshly-created
    * actors that have never rolled a death save — character-reader.ts defends
@@ -237,6 +247,8 @@ interface Dnd5eAttributes {
 /** Subset of the dnd5e 5.x actor system details used by character-reader. */
 interface Dnd5eDetails {
   level: number;
+  /** Species item (dnd5e 4+: `details.race` is a LocalDocumentField to an Item), or an id. */
+  race?: { name?: string } | string | null;
 }
 
 /**
@@ -498,6 +510,13 @@ interface FoundryItem {
    * 'weapon', 'equipment', 'consumable', 'tool', 'loot', 'spell', 'feat', 'background', 'class', 'subclass', 'container'.
    */
   type: string;
+  /**
+   * Prepared summary labels (dnd5e `Item5e#_prepareLabels`): `toHit` of the first attack
+   * activity and the simplified damage formulas.
+   *
+   * @see https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/documents/item.mjs (_prepareLabels)
+   */
+  labels?: { toHit?: string; damages?: Array<{ formula?: string }> };
   /** dnd5e 5.x system data for this item. */
   system: {
     /**
@@ -673,6 +692,18 @@ interface FoundryActor {
    * @see .planning/phases/13-v2-stretch/13-03-PLAN.md (D-13-05)
    */
   img?: string;
+  /**
+   * Class items keyed by identifier (dnd5e `Actor5e#classes`); each class item exposes
+   * `system.levels` and its `subclass` item.
+   *
+   * @see https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/documents/actor/actor.mjs (get classes)
+   */
+  classes?: Record<
+    string,
+    { name: string; system?: { levels?: number }; subclass?: { name: string } | null }
+  >;
+  /** Prototype token (`texture.src` = token image, portrait fallback of the sheet HUD). */
+  prototypeToken?: { texture?: { src?: string | null } };
 }
 
 // ─── Foundry Token (minimal read shape) ───────────────────────────────────────

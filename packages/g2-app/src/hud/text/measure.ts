@@ -8,11 +8,11 @@
  * Glyph policy: the firmware silently drops code points it has no glyph for, and
  * pretext reports an advance width of 0 for them. {@link sanitize} removes those
  * code points before measuring, so what we measure is what the glasses draw.
- * Note: several glyphs listed as "verified" in docs/design/g2-thirds-layout.md
- * (`▮ ▯ ◉ ⚠ ✓ ✖ ⌖ ▓ ░`) have advance width 0 in pretext 0.1.4 and are therefore
- * never emitted; {@link GLYPH} holds the font-present substitutes.
+ * Note: several glyphs of the design mocks (`◉ ⚠ ✓ ⇅ ▸`) have advance width 0 in
+ * pretext 0.1.4 and are therefore never emitted in zone E; {@link GLYPH} holds the
+ * font-present substitutes (image zones draw their own bitmap glyphs).
  *
- * @see docs/design/g2-thirds-layout.md §Griglia e budget container
+ * @see docs/design/g2-sheet-ux.html §Architettura della schermata (zone E)
  * @see https://www.npmjs.com/package/@evenrealities/pretext (0.1.4)
  */
 import { getAdvW, getTextWidth } from '@evenrealities/pretext';
@@ -78,30 +78,29 @@ export function fit(text: string, maxPx: number): string {
 }
 
 /**
- * Lays out cells at fixed pixel columns: each cell is fitted to its width and padded
- * with spaces so the next cell starts as close as possible to its column (±space).
- * The last cell is fitted to its width without padding.
- *
- * @param cells - `[text, widthPx]` pairs, left to right.
- * @returns One line of text.
+ * Lays out `left` and `right` on one line of `px`: `right` is fitted first (to whatever
+ * `left` leaves free, but never less than half the line) and pushed to the right edge
+ * with spaces (±1 space: the firmware font has no alignment), `left` gets the rest.
  */
-export function row(cells: ReadonlyArray<readonly [string, number]>): string {
-  let out = '';
-  let target = 0;
-  cells.forEach(([text, width], i) => {
-    target += width;
-    const cell = fit(text, width);
-    out += cell;
-    if (i < cells.length - 1) {
-      let w = getTextWidth(out);
-      while (w + SPACE_PX <= target) {
-        out += ' ';
-        w += SPACE_PX;
-      }
-      if (!out.endsWith(' ')) out += ' ';
+export function spread(left: string, right: string, px: number): string {
+  // Two spaces of slack: measured widths are not strictly additive (kerning).
+  const free = px - getTextWidth(fit(left, px)) - 2 * SPACE_PX;
+  const r = fit(right, Math.max(Math.floor(px / 2), free));
+  if (r === '') return fit(left, px);
+  const rw = getTextWidth(r);
+  // Measured widths are not strictly additive (kerning): re-check the joined line.
+  for (let budget = px - rw - SPACE_PX; budget > 0; budget -= SPACE_PX) {
+    let out = fit(left, budget);
+    let w = getTextWidth(out);
+    while (w + SPACE_PX + rw <= px) {
+      out += ' ';
+      w += SPACE_PX;
     }
-  });
-  return out;
+    if (!out.endsWith(' ')) out += ' ';
+    while (out.endsWith('  ') && getTextWidth(out + r) > px) out = out.slice(0, -1);
+    if (getTextWidth(out + r) <= px) return out + r;
+  }
+  return r;
 }
 
 /**
@@ -134,9 +133,4 @@ export function windowAround<T>(items: readonly T[], focus: number, max: number)
   if (items.length <= max) return [...items];
   const start = Math.min(Math.max(0, focus - Math.floor(max / 2)), items.length - max);
   return items.slice(start, start + max);
-}
-
-/** Formats a signed modifier: `+3`, `-1`, `+0`. */
-export function signed(n: number): string {
-  return n >= 0 ? `+${n}` : `${n}`;
 }

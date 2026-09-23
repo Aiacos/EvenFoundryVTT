@@ -1,18 +1,21 @@
 /**
- * Selectable entries of the context column (C) lists — shared by the renderer
+ * Selectable entries of the context zone (E) lists — shared by the renderer
  * (`text/context.ts`) and the input reducer (`state-machine.ts`) so the cursor
  * index always maps to the entry the player sees.
+ *
+ * Each entry is a `left` label and a right-aligned `right` value — attacks carry bonus
+ * and damage like the paper «Attacchi» table, spells their level and range (S3, S5).
  *
  * Tool names/inputs match the GM projector's `dispatchTool` registry
  * (`packages/foundry-module/src/write-path/handlers/index.ts`: kebab-case ids) and
  * the Zod input schemas in `@evf/shared-protocol` tools.
  *
- * @see docs/design/g2-thirds-layout.md §Modello di input (M03–M05, M07)
+ * @see docs/design/g2-sheet-ux.html §Interazione (S3–S5, S7, S8)
  */
 import type { AppState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
+import { isMyTurn } from '../model.js';
 import { GLYPH } from '../text/measure.js';
-import { isMyTurn } from '../text/sheet.js';
 import type { Pending, UiState } from './ui-state.js';
 
 /** Contextual-menu / options operations (all reachable by tap via "Opzioni…"). */
@@ -52,21 +55,31 @@ export type Intent =
   | { k: 'item'; itemId: string; name: string }
   | { k: 'op'; op: MenuOp }
   | { k: 'react'; tool: string; input: Record<string, unknown>; name: string }
-  | { k: 'ignore' };
+  | { k: 'ignore' }
+  | { k: 'dismissRequest' };
 
 export interface Entry {
-  /** Cells `[text, px]` laid out by `row()`; single cell = plain label. */
-  cells: ReadonlyArray<readonly [string, number]>;
+  left: string;
+  /** Right-aligned value (bonus · damage, level · range, distance); '' for none. */
+  right: string;
   intent: Intent;
 }
 
-/** Cursor cell (`▶` = 20 px) + entry cells = column C budget (186 px). */
-export const CURSOR_PX = 22;
-/** Entry cells sum to this width. */
-const LABEL_PX = 164;
+function label(text: string, intent: Intent): Entry {
+  return { left: text, right: '', intent };
+}
 
-function label(text: string): Entry['cells'] {
-  return [[text, LABEL_PX]];
+/** `+6 · 1d8+3` (either part may be missing). */
+function attackSummary(toHit: string | undefined, damage: string | undefined): string {
+  return [toHit, damage].filter((p) => p !== undefined && p !== '').join(` ${GLYPH.dot} `);
+}
+
+/** Spell-slot pips `■■■□` (value filled of max, capped at 6 each). */
+export function slotPips(value: number, max: number): string {
+  return (
+    GLYPH.barFull.repeat(Math.min(Math.max(0, value), 6)) +
+    GLYPH.barEmpty.repeat(Math.min(Math.max(0, max - value), 6))
+  );
 }
 
 /** Distance in feet (5 ft per cell, Chebyshev) between two token top-left cells. */
@@ -81,21 +94,22 @@ function actionEntries(app: AppState, s: HudStrings): Entry[] {
     for (const it of ch.inventory) {
       if (it.type !== 'weapon') continue;
       out.push({
-        cells: label(`${s.attack}: ${it.name}`),
+        left: it.name,
+        right: attackSummary(it.toHit, it.damage),
         intent: { k: 'weapon', itemId: it.id, name: it.name },
       });
     }
     if (ch.spells.spells.length > 0) {
-      out.push({ cells: label(s.spellsMenu), intent: { k: 'open', view: 'spells' } });
+      out.push(label(s.spellsMenu, { k: 'open', view: 'spells' }));
     }
     if (ch.inventory.some((i) => i.type === 'consumable')) {
-      out.push({ cells: label(s.itemsMenu), intent: { k: 'open', view: 'items' } });
+      out.push(label(s.itemsMenu, { k: 'open', view: 'items' }));
     }
     if (isMyTurn(ch, app.combat)) {
-      out.push({ cells: label(s.endTurn), intent: { k: 'op', op: 'endTurn' } });
+      out.push(label(s.endTurn, { k: 'op', op: 'endTurn' }));
     }
   }
-  out.push({ cells: label(s.optionsMenu), intent: { k: 'open', view: 'options' } });
+  out.push(label(s.optionsMenu, { k: 'open', view: 'options' }));
   return out;
 }
 
@@ -104,13 +118,17 @@ function spellEntries(app: AppState, s: HudStrings): Entry[] {
   return spells
     .filter((sp) => sp.level === 0 || sp.prepared || sp.alwaysPrepared)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((sp) => ({
-      cells: [
-        [`${sp.level === 0 ? s.cantrip : `${sp.level}°`} ${sp.name}`, 114],
-        [sp.concentration ? s.concentration : sp.range, 50],
-      ],
-      intent: { k: 'spell', spellId: sp.id, name: sp.name, level: sp.level },
-    }));
+    .map((sp) => {
+      // Cantrips show only «trucchetto» (design S5); leveled spells level · range.
+      const level = sp.level === 0 ? s.cantrip : `${sp.level}°`;
+      const range =
+        sp.level > 0 && sp.range !== '' && sp.range !== '--' ? ` ${GLYPH.dot} ${sp.range}` : '';
+      return {
+        left: sp.concentration ? `${sp.name}  ${s.concentration}` : sp.name,
+        right: `${level}${range}`,
+        intent: { k: 'spell', spellId: sp.id, name: sp.name, level: sp.level },
+      };
+    });
 }
 
 function slotEntries(app: AppState, pending: Pending | null): Entry[] {
@@ -121,14 +139,8 @@ function slotEntries(app: AppState, pending: Pending | null): Entry[] {
       // Level 10 = pact magic: `cast-spell` accepts 0–9 only (CastSpellInputSchema).
       .filter((sl) => sl.level >= pending.level && sl.level <= 9 && sl.value > 0)
       .map((sl) => ({
-        cells: [
-          [`${sl.level}°`, 32],
-          [
-            GLYPH.full.repeat(Math.min(sl.value, 6)) +
-              GLYPH.empty.repeat(Math.min(sl.max - sl.value, 6)),
-            132,
-          ],
-        ],
+        left: `${sl.level}°`,
+        right: slotPips(sl.value, sl.max),
         intent: { k: 'slot', level: sl.level },
       }))
   );
@@ -136,10 +148,7 @@ function slotEntries(app: AppState, pending: Pending | null): Entry[] {
 
 function targetEntries(app: AppState, s: HudStrings): Entry[] {
   const map = app.map;
-  const noTarget: Entry = {
-    cells: label(s.noTarget),
-    intent: { k: 'target', tokenId: null, name: '' },
-  };
+  const noTarget = label(s.noTarget, { k: 'target', tokenId: null, name: '' });
   if (!map) return [noTarget];
   const self = map.tokens.find((t) => t.id === map.selfTokenId);
   const order = { enemy: 0, neutral: 1, ally: 2, self: 3 } as const;
@@ -148,13 +157,13 @@ function targetEntries(app: AppState, s: HudStrings): Entry[] {
     .map((t) => ({ t, ft: self ? distanceFt(self.x, self.y, t.x, t.y) : null }))
     .sort((a, b) => order[a.t.kind] - order[b.t.kind] || (a.ft ?? 0) - (b.ft ?? 0));
   return [
-    ...tokens.map(({ t, ft }) => ({
-      cells: [
-        [t.name, 116],
-        [ft === null ? '' : `${ft} ${s.ft}`, 48],
-      ] as const,
-      intent: { k: 'target', tokenId: t.id, name: t.name } as const,
-    })),
+    ...tokens.map(
+      ({ t, ft }): Entry => ({
+        left: t.name,
+        right: ft === null ? '' : `${ft} ft`,
+        intent: { k: 'target', tokenId: t.id, name: t.name },
+      }),
+    ),
     noTarget,
   ];
 }
@@ -163,10 +172,8 @@ function itemEntries(app: AppState): Entry[] {
   return (app.character?.inventory ?? [])
     .filter((i) => i.type === 'consumable')
     .map((i) => ({
-      cells: [
-        [i.name, 126],
-        [i.quantity && i.quantity > 1 ? `×${i.quantity}` : '', 38],
-      ],
+      left: i.name,
+      right: i.quantity && i.quantity > 1 ? `×${i.quantity}` : '',
       intent: { k: 'item', itemId: i.id, name: i.name },
     }));
 }
@@ -195,21 +202,26 @@ function opLabel(op: MenuOp, app: AppState, ui: UiState, s: HudStrings): string 
 
 function optionEntries(app: AppState, ui: UiState, s: HudStrings): Entry[] {
   const myTurn = isMyTurn(app.character, app.combat);
-  return MENU_OPS.filter((op) => op !== 'endTurn' || myTurn).map((op) => ({
-    cells: label(opLabel(op, app, ui, s)),
-    intent: { k: 'op', op },
-  }));
+  return MENU_OPS.filter((op) => op !== 'endTurn' || myTurn).map((op) =>
+    label(opLabel(op, app, ui, s), { k: 'op', op }),
+  );
 }
 
 function reactionEntries(app: AppState, s: HudStrings): Entry[] {
   const r = app.reaction;
   const ch = app.character;
-  const ignore: Entry = { cells: label(s.ignore), intent: { k: 'ignore' } };
+  const ignore = label(s.ignore, { k: 'ignore' });
   if (!r || !ch) return [ignore];
   const source = app.map?.tokens.find((t) => t.name === r.sourceName)?.id ?? r.sourceName;
   const actor = ch.actorId;
-  const react = (name: string, tool: string, input: Record<string, unknown>): Entry => ({
-    cells: label(name),
+  const react = (
+    name: string,
+    tool: string,
+    input: Record<string, unknown>,
+    right = '',
+  ): Entry => ({
+    left: name,
+    right,
     intent: { k: 'react', tool, input, name },
   });
   switch (r.kind) {
@@ -218,11 +230,12 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
         ...ch.inventory
           .filter((i) => i.type === 'weapon')
           .map((w) =>
-            react(`${s.opportunityAttack}: ${w.name}`, 'opportunity-attack', {
-              actor_id: actor,
-              item_id: w.id,
-              target_id: source,
-            }),
+            react(
+              `${s.opportunityAttack}: ${w.name}`,
+              'opportunity-attack',
+              { actor_id: actor, item_id: w.id, target_id: source },
+              w.toHit ?? '',
+            ),
           ),
         ignore,
       ];
@@ -259,6 +272,8 @@ export function buildEntries(app: AppState, ui: UiState, s: HudStrings): Entry[]
       return optionEntries(app, ui, s);
     case 'reaction':
       return reactionEntries(app, s);
+    case 'request':
+      return [label(s.requestOk, { k: 'dismissRequest' })];
     case 'root':
     case 'result':
       return [];

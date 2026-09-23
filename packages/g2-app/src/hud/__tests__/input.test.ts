@@ -1,5 +1,5 @@
 /**
- * Column-C state machine (docs/design/g2-thirds-layout.md §Modello di input) and
+ * Zone E state machine (docs/design/g2-sheet-ux.html §Interazione) and
  * Even Hub event mapping. Tool inputs are validated against the shared-protocol Zod
  * schemas the GM projector's `dispatchTool` uses.
  */
@@ -56,19 +56,19 @@ describe('root', () => {
   });
 });
 
-describe('weapon attack flow (M03 → M04 → M06)', () => {
+describe('weapon attack flow (S3 → S4 → S6)', () => {
   it('actions → weapon → target → roll invokes weapon-attack with the chosen target', () => {
     const app = online('max');
     const { ui, effects } = drive(app, [{ t: 'tap' }, { t: 'tap' }, { t: 'down' }, { t: 'tap' }]);
     expect(ui.view).toBe('result');
-    // Targets list enemies first, nearest first: Goblin A (5 ft), Hobgoblin (70 ft), …
-    expect(ui.result?.title).toBe('Ascia bipenne +3 del Drago Rosso → Hobgoblin');
+    // Targets list enemies first, nearest first: Goblin A (5 ft), Goblin B (10 ft), …
+    expect(ui.result?.title).toBe('Martello da guerra +3 del Drago Rosso → Goblin B');
     const [call] = invokes(effects);
     expect(call?.tool).toBe('weapon-attack');
     expect(WeaponAttackInputSchema.parse(call?.input)).toEqual({
       actor_id: 'actor-1',
       item_id: 'w1',
-      targets: ['t-boss'],
+      targets: ['t-gob2'],
       advantage: 'normal',
       count: 1,
     });
@@ -94,7 +94,7 @@ describe('weapon attack flow (M03 → M04 → M06)', () => {
   });
 });
 
-describe('spell flow (M05)', () => {
+describe('spell flow (S5)', () => {
   const app = online('max');
   const toSpells: HudInput[] = [{ t: 'tap' }, { t: 'down' }, { t: 'down' }, { t: 'tap' }];
 
@@ -140,6 +140,7 @@ describe('items and options', () => {
       { t: 'tap' },
       { t: 'down' },
       { t: 'down' },
+      { t: 'down' },
       { t: 'tap' },
       { t: 'tap' },
     ]);
@@ -161,6 +162,7 @@ describe('items and options', () => {
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },
+      { t: 'down' },
       { t: 'tap' },
     ]).ui;
     expect(opts.view).toBe('options');
@@ -171,7 +173,7 @@ describe('items and options', () => {
     );
     const effectsOf = (i: number) =>
       drive(app, [...Array(i).fill({ t: 'down' }), { t: 'tap' }], opts);
-    expect(effectsOf(0).ui.sheetPage).toBe(1);
+    expect(effectsOf(0).ui.sheetPage).toBe('saves');
     expect(effectsOf(1).effects).toEqual([{ t: 'settings', patch: { mapCellPx: 12 } }]);
     expect(effectsOf(2).effects).toEqual([{ t: 'settings', patch: { mapCellPx: 6 } }]);
     expect(effectsOf(3).effects).toEqual([{ t: 'settings', patch: { followToken: false } }]);
@@ -187,7 +189,7 @@ describe('items and options', () => {
     const adv = menuIdOf('advantage');
     expect(drive(online(), Array(3).fill({ t: 'menu', id: adv })).ui.advantage).toBe('normal');
     const page = menuIdOf('nextPage');
-    expect(drive(online(), Array(4).fill({ t: 'menu', id: page })).ui.sheetPage).toBe(0);
+    expect(drive(online(), Array(2).fill({ t: 'menu', id: page })).ui.sheetPage).toBe('abilities');
     expect(drive(online(), [{ t: 'menu', id: 99 }]).effects).toEqual([]);
   });
 
@@ -218,8 +220,8 @@ describe('items and options', () => {
   });
 });
 
-describe('end turn (M03 «Fine turno»)', () => {
-  const myTurn = () => online('min', { combat: combat(true) });
+describe('end turn (S3 «Fine turno»)', () => {
+  const myTurn = () => online('min', { combat: combat('thorin') });
   const endTurnIndex = (app: AppState) =>
     buildEntries(app, { ...initialUi(), view: 'actions' }, s).findIndex(
       (e) => e.intent.k === 'op' && e.intent.op === 'endTurn',
@@ -227,7 +229,7 @@ describe('end turn (M03 «Fine turno»)', () => {
 
   it('is offered in the actions list only during the player’s turn', () => {
     expect(endTurnIndex(myTurn())).toBeGreaterThanOrEqual(0);
-    expect(endTurnIndex(online('min', { combat: combat(false) }))).toBe(-1);
+    expect(endTurnIndex(online('min', { combat: combat('goblin-b') }))).toBe(-1);
     expect(endTurnIndex(online())).toBe(-1);
     const opts = buildEntries(myTurn(), { ...initialUi(), view: 'options' }, s);
     expect(opts.map((e) => (e.intent.k === 'op' ? e.intent.op : ''))).toContain('endTurn');
@@ -248,7 +250,7 @@ describe('end turn (M03 «Fine turno»)', () => {
     expect(drive(myTurn(), [menu]).effects).toEqual([
       { t: 'invoke', tool: 'end-turn', input: { actor_id: 'actor-1' } },
     ]);
-    const refused = drive(online('min', { combat: combat(false) }), [menu]);
+    const refused = drive(online('min', { combat: combat('goblin-b') }), [menu]);
     expect(refused.effects).toEqual([]);
     expect(refused.ui.view).toBe('result');
     expect(refused.ui.result?.ack).toEqual({ error: s.errors['wrong-turn'] });
@@ -256,7 +258,7 @@ describe('end turn (M03 «Fine turno»)', () => {
   });
 });
 
-describe('result (M06)', () => {
+describe('result (S6)', () => {
   const resultUi: UiState = {
     ...initialUi(),
     view: 'result',
@@ -286,7 +288,7 @@ describe('result (M06)', () => {
   });
 });
 
-describe('reaction (M07)', () => {
+describe('reaction (S7)', () => {
   const reaction = {
     kind: 'opportunity-attack' as const,
     sourceName: 'Goblin A',
@@ -353,26 +355,49 @@ describe('reaction (M07)', () => {
   });
 });
 
-describe('store-driven transitions', () => {
-  it('auto page switches Principale ⇄ Combattimento when combat starts/ends', () => {
+describe('GM roll request and automatic sheet page (S8)', () => {
+  const request = { messageId: 'm1', kind: 'save' as const, ability: 'wis' as const, dc: 15 };
+
+  it('a request opens the request view on «Tiri salvezza · Abilità»; handling it returns', () => {
     const prev = online();
-    const fight = { ...prev, combat: combat(true) };
-    const start = reduce(initialUi(), { t: 'state', prev }, { app: fight, now: 0, strings: s }).ui;
-    expect(start.sheetPage).toBe(1);
-    const end = reduce(
-      { ...start, sheetPage: 2 },
-      { t: 'state', prev: fight },
-      { app: prev, now: 0, strings: s },
-    ).ui;
-    expect(end.sheetPage).toBe(0);
-    const manual = { ...fight, settings: { ...fight.settings, autoCombatPage: false } };
+    const asked = { ...prev, rollRequest: request };
+    const open = reduce(initialUi(), { t: 'state', prev }, { app: asked, now: 0, strings: s }).ui;
+    expect(open).toMatchObject({ view: 'request', sheetPage: 'saves' });
+    expect(buildEntries(asked, open, s).map((e) => e.intent)).toEqual([{ k: 'dismissRequest' }]);
+    expect(drive(asked, [{ t: 'tap' }], open)).toMatchObject({
+      ui: { view: 'root' },
+      effects: [{ t: 'clearRequest' }],
+    });
+    expect(drive(asked, [{ t: 'double' }], open).effects).toEqual([{ t: 'clearRequest' }]);
+    const handled = reduce(open, { t: 'state', prev: asked }, { app: prev, now: 0, strings: s }).ui;
+    expect(handled).toMatchObject({ view: 'root', sheetPage: 'abilities' });
+  });
+
+  it('a pending reaction keeps priority; manual mode never switches the page', () => {
+    const prev = online();
+    const reacting = { ...initialUi(), view: 'reaction' as const };
+    const reaction = { kind: 'shield' as const, sourceName: 'Orco', expiresAt: 9e9 };
     expect(
-      reduce(initialUi(), { t: 'state', prev }, { app: manual, now: 0, strings: s }).ui.sheetPage,
-    ).toBe(0);
+      reduce(
+        reacting,
+        { t: 'state', prev: { ...prev, reaction } },
+        { app: { ...prev, reaction, rollRequest: request }, now: 0, strings: s },
+      ).ui.view,
+    ).toBe('reaction');
+    const asked = { ...prev, rollRequest: request };
+    const manual = { ...asked, settings: { ...asked.settings, autoSheetPage: false } };
+    const ui = reduce(initialUi(), { t: 'state', prev }, { app: manual, now: 0, strings: s }).ui;
+    expect(ui).toMatchObject({ view: 'request', sheetPage: 'abilities' });
+    const back = reduce(
+      { ...ui, view: 'actions' },
+      { t: 'state', prev: manual },
+      { app: { ...manual, rollRequest: null }, now: 0, strings: s },
+    ).ui;
+    expect(back).toMatchObject({ view: 'actions', sheetPage: 'abilities' });
   });
 });
 
-describe('status screens (M09–M11)', () => {
+describe('status screens (S10–S12)', () => {
   it('unpaired / connecting: only double-tap (exit / cancel) does something', () => {
     const unpaired = initialState();
     expect(drive(unpaired, [{ t: 'double' }]).effects).toEqual([{ t: 'exit' }]);
@@ -383,7 +408,7 @@ describe('status screens (M09–M11)', () => {
     expect(drive(connecting, [{ t: 'double' }]).effects).toEqual([{ t: 'exit' }]);
   });
 
-  it('offline (M11): tap or menu reconnect retries, double exits', () => {
+  it('offline (S12): tap or menu reconnect retries, double exits', () => {
     const off = online('min', { connection: { status: 'offline' } });
     expect(drive(off, [{ t: 'tap' }]).effects).toEqual([{ t: 'reconnect' }]);
     expect(drive(off, [{ t: 'menu', id: menuIdOf('reconnect') }]).effects).toEqual([

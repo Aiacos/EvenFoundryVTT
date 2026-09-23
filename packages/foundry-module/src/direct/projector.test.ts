@@ -383,6 +383,24 @@ describe('Projector — pushes', () => {
     });
   });
 
+  it('PJ-12b a dnd5e roll-request card is also relayed as r1.roll.request', async () => {
+    projector.start();
+    await goOnline();
+    f.fire('createChatMessage', {
+      id: 'm9',
+      whisper: [],
+      content:
+        '<div class="card-buttons"><button data-type="save" data-ability="wis" data-dc="14" data-action="rollRequest">SAG</button></div>',
+    });
+    await until(2);
+    await flush();
+    const msgs = await received();
+    expect(msgs.map((m) => m.topic)).toEqual(['log.delta', 'r1.roll.request']);
+    expect(msgs[1]).toMatchObject({
+      data: { messageId: 'm9', kind: 'save', ability: 'wis', dc: 14 },
+    });
+  });
+
   it('PJ-13 map refresh is throttled to one snapshot per second per device', async () => {
     projector.start();
     await goOnline();

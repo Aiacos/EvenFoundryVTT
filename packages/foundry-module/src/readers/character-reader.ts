@@ -43,6 +43,7 @@ import type {
   Abilities,
   AbilityKey,
   AbilityScore,
+  CharacterSheetDetails,
   CharacterSnapshot,
   InventoryItem,
   InventoryItemType,
@@ -144,11 +145,21 @@ function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryI
         ? Array.from(propertiesRaw as Set<string>)
         : [];
 
+    // Prepared labels (dnd5e Item5e#_prepareLabels): attack bonus and the simplified
+    // damage formula including the ability modifier ('1d8 + 3' → '1d8+3').
+    const labels = (item.labels as FoundryItem['labels'] | undefined) ?? {};
+    const toHit =
+      typeof labels.toHit === 'string' && labels.toHit !== '' ? labels.toHit : undefined;
+    const labelFormula = labels.damages?.[0]?.formula?.replace(/\s+/g, '');
+    const formula =
+      labelFormula !== undefined && labelFormula !== '' ? labelFormula : damageFormula;
+
     const entry: InventoryItem = {
       id: (item.id as string | undefined) ?? String(Math.random()),
       name: (item.name as string | undefined) ?? 'Unknown Item',
       type,
-      ...(damageFormula !== undefined && { damage: damageFormula }),
+      ...(formula !== undefined && { damage: formula }),
+      ...(toHit !== undefined && toHit.length <= 8 && { toHit }),
       ...(tags.length > 0 && { tags }),
       ...(weight !== undefined && { weight }),
       ...(quantity !== 1 && { quantity }),
@@ -504,6 +515,49 @@ function extractSkills(actor: ReturnType<typeof game.actors.get>): Skills {
   return out;
 }
 
+/** Name of a dnd5e `details.race` value (species Item, or a bare id string). */
+function raceName(race: Dnd5eDetails['race']): string | undefined {
+  if (typeof race === 'object' && race !== null && typeof race.name === 'string') return race.name;
+  return undefined;
+}
+
+/** Non-negative integer or `fallback`. */
+function wholeOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.round(value))
+    : fallback;
+}
+
+/**
+ * Sheet header data of the G2 sheet HUD (docs/design/g2-sheet-ux.html zone B):
+ * highest-level class + subclass, species, inspiration, walk speed, proficiency,
+ * initiative total and darkvision. Paths verified against dnd5e release-5.3.3
+ * (`character.mjs`, `templates/attributes.mjs`, `shared/senses-field.mjs`,
+ * `Actor5e#classes`) on 2026-09-23 (INV-2).
+ *
+ * @internal
+ */
+function extractDetails(actor: FoundryActor): CharacterSheetDetails {
+  const attrs = actor.system.attributes;
+  const classes = Object.entries(actor.classes ?? {}).sort(
+    ([, a], [, b]) => (b.system?.levels ?? 0) - (a.system?.levels ?? 0),
+  );
+  const [classId, main] = classes[0] ?? [undefined, undefined];
+  const race = raceName(actor.system.details.race);
+  const init = attrs.init?.total;
+  return {
+    ...(classId !== undefined && { classId }),
+    ...(main !== undefined && { className: main.name }),
+    ...(main?.subclass?.name !== undefined && { subclass: main.subclass.name }),
+    ...(race !== undefined && { race }),
+    inspiration: attrs.inspiration === true,
+    speed: wholeOr(attrs.movement?.walk, 0),
+    proficiency: typeof attrs.prof === 'number' ? Math.round(attrs.prof) : 0,
+    initiative: typeof init === 'number' && Number.isFinite(init) ? Math.round(init) : 0,
+    darkvision: wholeOr(attrs.senses?.ranges?.darkvision, 0),
+  };
+}
+
 /**
  * Returns a character snapshot for the given actor ID, or null.
  *
@@ -568,6 +622,9 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
   // unchanged — the G2 app decides whether to render or skip.
   const img = actor.img;
   const portraitField = typeof img === 'string' && img.length > 0 ? { portrait: { url: img } } : {};
+  const tokenSrc = actor.prototypeToken?.texture?.src;
+  const tokenField =
+    typeof tokenSrc === 'string' && tokenSrc.length > 0 ? { token: { url: tokenSrc } } : {};
 
   return {
     actorId: actor.id,
@@ -586,6 +643,8 @@ export function getCharacterSnapshot(actorId: string): CharacterSnapshot | null 
     abilities: extractAbilities(actor),
     skills: extractSkills(actor),
     ...portraitField,
+    ...tokenField,
+    details: extractDetails(actor),
   };
 }
 

@@ -1,14 +1,15 @@
 /**
- * Maps the transport connection status to the HUD screen (mocks M09–M11).
+ * Maps the transport connection status to the HUD screen (docs/design/g2-sheet-ux.html
+ * S10–S12).
  */
 import type { AppState } from '../state/app-store.js';
 
-/** `unpaired` = M09, `connecting` = M10, `offline` = M11 (frozen thirds), `hud` = M01–M08. */
+/** `unpaired` = S10, `connecting` = S11, `offline` = S12 (dimmed sheet), `hud` = S1–S9. */
 export type Screen = 'unpaired' | 'connecting' | 'offline' | 'hud';
 
 /**
- * A reconnect attempt with a character already on screen stays in M11 (frozen data)
- * instead of flashing the full-screen M10, which would force a flickering rebuild.
+ * A reconnect attempt with a character already on screen stays in S12 (frozen data)
+ * instead of flashing the full-screen S11, which would force a flickering rebuild.
  */
 export function screenOf(app: AppState): Screen {
   switch (app.connection.status) {

@@ -1018,6 +1018,75 @@ describe('getCharacterSnapshot', () => {
     expect(result.success).toBe(true);
   });
 
+  // ── CR-SHEET: G2 sheet HUD header data (docs/design/g2-sheet-ux.html zone B) ──
+
+  it('CR-SHEET-1: class/subclass/species/inspiration/speed/prof/init/darkvision + token image', async () => {
+    const base = makeActor({ id: 'pc-sheet-1' });
+    const actor = {
+      ...base,
+      system: {
+        ...base.system,
+        attributes: {
+          ...base.system.attributes,
+          inspiration: true,
+          prof: 3,
+          init: { total: 0 },
+          movement: { walk: 25, units: 'ft' },
+          senses: { ranges: { darkvision: 60 } },
+        },
+        details: { level: 5, race: { name: 'Nano delle colline' } },
+      },
+      classes: {
+        fighter: { name: 'Guerriero', system: { levels: 1 }, subclass: null },
+        cleric: {
+          name: 'Chierico',
+          system: { levels: 4 },
+          subclass: { name: 'Dominio della Guerra' },
+        },
+      },
+      prototypeToken: { texture: { src: 'tokens/thorin.webp' } },
+    };
+    vi.stubGlobal('game', makeGameMock([actor as unknown as ReturnType<typeof makeActor>]));
+    const snap = getCharacterSnapshot('pc-sheet-1');
+    expect(snap?.details).toEqual({
+      classId: 'cleric',
+      className: 'Chierico',
+      subclass: 'Dominio della Guerra',
+      race: 'Nano delle colline',
+      inspiration: true,
+      speed: 25,
+      proficiency: 3,
+      initiative: 0,
+      darkvision: 60,
+    });
+    expect(snap?.token).toEqual({ url: 'tokens/thorin.webp' });
+    const { CharacterSnapshotSchema } = await import('@evf/shared-protocol');
+    expect(CharacterSnapshotSchema.safeParse(snap).success).toBe(true);
+  });
+
+  it('CR-SHEET-2: fresh actor → defensive details, no token field', () => {
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-sheet-2' })]));
+    const snap = getCharacterSnapshot('pc-sheet-2');
+    expect(snap?.details).toEqual({
+      inspiration: false,
+      speed: 0,
+      proficiency: 0,
+      initiative: 0,
+      darkvision: 0,
+    });
+    expect(snap).not.toHaveProperty('token');
+  });
+
+  it('CR-SHEET-3: weapon labels → toHit and the simplified damage formula', () => {
+    const sword = {
+      ...makeItem({ id: 'w-lab', damage: '1d8' }),
+      labels: { toHit: '+6', damages: [{ formula: '1d8 + 3' }] },
+    };
+    vi.stubGlobal('game', makeGameMock([makeActor({ id: 'pc-sheet-3', items: [sword] })]));
+    const snap = getCharacterSnapshot('pc-sheet-3');
+    expect(snap?.inventory[0]).toMatchObject({ toHit: '+6', damage: '1d8+3' });
+  });
+
   // ── CR-PORT: Plan 13-03 portrait passthrough tests ────────────────────────
 
   it('CR-PORT-01: actor with img → portrait.url surfaced in snapshot', async () => {

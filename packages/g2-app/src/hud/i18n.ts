@@ -1,11 +1,14 @@
 /**
  * HUD strings — Italian (MVP) + English (canonical fallback), Specs.md §7.16.
  *
- * Every string is a plain template; width budgeting happens in the renderers via
- * pixel measurement (`text/measure.ts`), and the INV-1 tests render every state in
- * both locales at min/max content.
+ * Two families:
+ * - image-zone strings (header, sheet, portrait, map, full screens) are drawn with the
+ *   caps bitmap faces of `@evf/shared-render` and upper-cased at draw time; the glyph
+ *   coverage test renders every one of them in both locales;
+ * - context strings (zone E) go to firmware text containers and are width-budgeted by
+ *   pretext measurement (`text/measure.ts`).
  *
- * @see docs/design/g2-thirds-layout.md
+ * @see docs/design/g2-sheet-ux.html
  */
 import type { AbilityKey, SkillKey } from '@evf/shared-protocol';
 import type { AppSettings } from '../state/app-store.js';
@@ -18,54 +21,124 @@ export function nextLocaleSetting(current: AppSettings['locale']): AppSettings['
   return current === 'auto' ? 'it' : current === 'it' ? 'en' : 'auto';
 }
 
+/** Condition chip family: hourglass (concentration), skull (harmful), star (other). */
+export type ConditionKind = 'conc' | 'bad' | 'good';
+
+/**
+ * dnd5e status ids (`actor.statuses`) the HUD labels; unknown ids are shown verbatim.
+ * Kinds follow the design: concentration = hourglass, incapacitating/harmful = skull.
+ */
+export const CONDITION_KINDS: Readonly<Record<string, ConditionKind>> = {
+  concentrating: 'conc',
+  blinded: 'bad',
+  charmed: 'bad',
+  deafened: 'bad',
+  frightened: 'bad',
+  grappled: 'bad',
+  incapacitated: 'bad',
+  paralyzed: 'bad',
+  petrified: 'bad',
+  poisoned: 'bad',
+  prone: 'bad',
+  restrained: 'bad',
+  stunned: 'bad',
+  unconscious: 'bad',
+  dead: 'bad',
+  bleeding: 'bad',
+  cursed: 'bad',
+  surprised: 'bad',
+  sleeping: 'bad',
+  silenced: 'bad',
+  exhaustion: 'bad',
+  invisible: 'good',
+  hiding: 'good',
+  dodging: 'good',
+  flying: 'good',
+  hovering: 'good',
+  ethereal: 'good',
+  burrowing: 'good',
+  marked: 'good',
+  stable: 'good',
+  transformed: 'good',
+  blessed: 'good',
+};
+
+/** Labels of {@link CONDITION_KINDS} ids. */
+export type ConditionLabels = Readonly<Record<keyof typeof CONDITION_KINDS, string>>;
+
 export interface HudStrings {
-  pages: readonly [string, string, string, string];
+  // ── Zone A/B/C/D (bitmap caps) ──────────────────────────────────────────────
   level: string;
-  exploration: string;
   yourTurn: string;
   turnOf: string;
-  hp: string;
+  hitPoints: string;
   ac: string;
   temp: string;
+  initiativeShort: string;
+  speedShort: string;
+  profShort: string;
+  economyShort: { action: string; bonus: string; reaction: string };
+  ft: string;
+  noConditions: string;
+  conditions: ConditionLabels;
+  /** Exhaustion chip (`ESAUSTO 2`). */
+  exhaustion: (n: number) => string;
   abilities: Record<AbilityKey, string>;
   skills: Record<SkillKey, string>;
-  slots: string;
-  conditions: string;
-  noConditions: string;
-  exhaustion: string;
-  deathSaves: string;
-  passivePerception: string;
-  weapons: string;
-  items: string;
-  spells: string;
-  noSpells: string;
-  concentration: string;
-  scene: string;
+  tabs: { abilities: string; saves: string };
+  savesTitle: string;
+  skillsTitle: string;
+  profLegend: string;
+  passivePerception: (n: number) => string;
+  darkvision: (ft: number) => string;
+  passiveInsight: (ins: number, inv: number) => string;
+  deathTitle: string;
+  deathSuccess: string;
+  deathFailure: string;
+  deathHint: string;
+  north: string;
+  // ── Full screens S10 / S11 (bitmap caps) ─────────────────────────────────────
+  appTitle: string;
+  unpairedSubtitle: string;
+  revokedSubtitle: string;
+  pairSteps: readonly (readonly [string, string])[];
+  scan: string;
+  exitHint: string;
+  connectingTo: (server: string) => string;
+  steps: {
+    server: string;
+    login: (user: string) => string;
+    gm: (gm: string) => string;
+    character: (actor: string) => string;
+    scene: string;
+  };
+  cancelHint: string;
+  // ── Zone E (firmware text) ────────────────────────────────────────────────────
+  exploration: string;
   noScene: string;
-  log: string;
   emptyLog: string;
-  party: string;
   initiative: string;
-  recent: string;
+  round: (n: number) => string;
   actions: string;
-  attack: string;
   spellsMenu: string;
   itemsMenu: string;
   optionsMenu: string;
+  spells: string;
+  items: string;
   options: string;
-  target: string;
-  noTarget: string;
-  ft: string;
-  advantage: Record<'normal' | 'advantage' | 'disadvantage', string>;
   slotTitle: string;
   noSlots: string;
+  target: string;
+  noTarget: string;
   cantrip: string;
+  advantage: Record<'normal' | 'advantage' | 'disadvantage', string>;
   result: string;
   pending: string;
   outcomes: Record<
     'hit' | 'miss' | 'save_success' | 'save_fail' | 'damage_dealt' | 'no_roll',
     string
   >;
+  concentration: string;
   damage: string;
   done: string;
   failed: string;
@@ -79,22 +152,28 @@ export interface HudStrings {
     string
   >;
   reactionTitle: string;
-  reactionTrigger: string;
-  expiresIn: string;
+  expiresIn: (seconds: number) => string;
+  reactionTrigger: (source: string) => string;
   ignore: string;
   opportunityAttack: string;
   shield: string;
   counterspell: string;
+  requestTitle: string;
+  requestFrom: string;
+  requestSave: (ability: string) => string;
+  requestCheck: (ability: string) => string;
+  requestSkill: (skill: string) => string;
+  requestDc: (dc: number) => string;
+  requestRoll: string;
+  requestOk: string;
+  downTitle: string;
+  downRoll: string;
+  downTally: (success: number, failure: number) => string;
   offlineTitle: string;
   offlineCauses: Record<'no-gm' | 'network' | 'auth' | 'background', string>;
   retryIn: (seconds: number, attempt: number) => string;
   dataAge: (minutes: number) => string;
   frozen: string;
-  /** Action economy row labels (Action / Bonus action / Reaction), ≤ 42 px each. */
-  economy: { action: string; bonus: string; reaction: string };
-  /** Movement row prefix (`Mov 25/30 ft`). */
-  movement: string;
-  /** Actions-list / menu / result title for ending the turn (M03). */
   endTurn: string;
   menu: {
     nextPage: string;
@@ -106,7 +185,6 @@ export interface HudStrings {
     language: string;
     reconnect: string;
   };
-  /** Options list (column C) labels, showing the current value. */
   option: {
     nextPage: string;
     zoom: (dir: '+' | '-', px: number) => string;
@@ -115,35 +193,64 @@ export interface HudStrings {
   };
   footer: {
     root: string;
+    combat: string;
     list: string;
     target: string;
     result: string;
     reaction: string;
+    request: string;
     offline: string;
-    exit: string;
-    cancel: string;
-  };
-  unpaired: readonly string[];
-  revoked: string;
-  connectingTo: (server: string) => string;
-  steps: {
-    server: string;
-    login: (user: string) => string;
-    gm: (gm: string) => string;
-    character: (actor: string) => string;
-    scene: string;
   };
 }
 
 const IT: HudStrings = {
-  pages: ['Principale', 'Combattimento', 'Abilità & TS', 'Incantesimi/Inv.'],
-  level: 'Liv',
-  exploration: 'Esplorazione',
+  level: 'LIV',
   yourTurn: 'TUO TURNO',
-  turnOf: 'Turno',
-  hp: 'PF',
+  turnOf: 'TURNO',
+  hitPoints: 'PUNTI FERITA',
   ac: 'CA',
-  temp: 'temp',
+  temp: 'TEMP',
+  initiativeShort: 'INIZ',
+  speedShort: 'VEL',
+  profShort: 'COMP',
+  economyShort: { action: 'AZ', bonus: 'BON', reaction: 'REA' },
+  ft: 'FT',
+  noConditions: 'NESSUNA CONDIZIONE',
+  conditions: {
+    concentrating: 'CONC.',
+    blinded: 'ACCECATO',
+    charmed: 'AFFASCINATO',
+    deafened: 'ASSORDATO',
+    frightened: 'SPAVENTATO',
+    grappled: 'AFFERRATO',
+    incapacitated: 'INCAPACITATO',
+    paralyzed: 'PARALIZZATO',
+    petrified: 'PIETRIFICATO',
+    poisoned: 'AVVELENATO',
+    prone: 'PRONO',
+    restrained: 'TRATTENUTO',
+    stunned: 'STORDITO',
+    unconscious: 'PRIVO DI SENSI',
+    dead: 'MORTO',
+    bleeding: 'SANGUINANTE',
+    cursed: 'MALEDETTO',
+    surprised: 'SORPRESO',
+    sleeping: 'ADDORMENTATO',
+    silenced: 'SILENZIATO',
+    exhaustion: 'ESAUSTO',
+    invisible: 'INVISIBILE',
+    hiding: 'NASCOSTO',
+    dodging: 'SCHIVATA',
+    flying: 'IN VOLO',
+    hovering: 'SOSPESO',
+    ethereal: 'ETEREO',
+    burrowing: 'SCAVA',
+    marked: 'MARCHIATO',
+    stable: 'STABILE',
+    transformed: 'TRASFORMATO',
+    blessed: 'BENEDETTO',
+  },
+  exhaustion: (n) => `ESAUSTO ${n}`,
   abilities: { str: 'FOR', dex: 'DES', con: 'COS', int: 'INT', wis: 'SAG', cha: 'CAR' },
   skills: {
     acr: 'Acrobazia',
@@ -153,50 +260,68 @@ const IT: HudStrings = {
     dec: 'Inganno',
     his: 'Storia',
     ins: 'Intuizione',
-    itm: 'Intimidazione',
+    itm: 'Intimidire',
     inv: 'Indagare',
     med: 'Medicina',
     nat: 'Natura',
     prc: 'Percezione',
-    prf: 'Intrattenimento',
+    prf: 'Intrattenere',
     per: 'Persuasione',
     rel: 'Religione',
     slt: 'Rapidità di mano',
     ste: 'Furtività',
     sur: 'Sopravvivenza',
   },
-  slots: 'Slot',
-  conditions: 'Condizioni',
-  noConditions: 'nessuna',
-  exhaustion: 'Esaurimento',
-  deathSaves: 'TS morte',
-  passivePerception: 'Perc. passiva',
-  weapons: 'Armi',
-  items: 'Oggetti',
-  spells: 'Incantesimi',
-  noSpells: 'nessun incantesimo',
-  concentration: 'conc.',
-  scene: 'SCENA',
+  tabs: { abilities: 'CARATTERISTICHE', saves: 'TIRI SALVEZZA · ABILITÀ' },
+  savesTitle: 'TIRI SALVEZZA',
+  skillsTitle: 'ABILITÀ',
+  profLegend: '● COMP · ◉ MAESTRIA',
+  passivePerception: (n) => `PERCEZIONE PASSIVA ${n}`,
+  darkvision: (ft) => `SCUROVISIONE ${ft}`,
+  passiveInsight: (ins, inv) => `INTUIZIONE PASSIVA ${ins} · INDAGARE PASSIVO ${inv}`,
+  deathTitle: 'TIRI CONTRO LA MORTE',
+  deathSuccess: 'SUCCESSI',
+  deathFailure: 'FALLIMENTI',
+  deathHint: 'TIRA IL D20 SUL TAVOLO · GUARIRE AZZERA',
+  north: 'N',
+  appTitle: 'EVENFOUNDRYVTT',
+  unpairedSubtitle: 'OCCHIALI NON ANCORA ASSOCIATI',
+  revokedSubtitle: 'ASSOCIAZIONE REVOCATA DAL GM',
+  pairSteps: [
+    ['SU FOUNDRY: IMPOSTAZIONI › EVENFOUNDRYVTT', '› «ASSOCIA OCCHIALI G2» MOSTRA UN QR'],
+    ['SUL TELEFONO: EVEN REALITIES APP', '› INQUADRA IL QR'],
+    ['INDOSSA GLI OCCHIALI: LA SCHEDA COMPARE', 'DA SOLA, COLLEGATA AL TUO PERSONAGGIO'],
+  ],
+  scan: 'SCANSIONA',
+  exitHint: '●● ESCI',
+  connectingTo: (s) => `COLLEGAMENTO A ${s}`,
+  steps: {
+    server: 'SERVER RAGGIUNGIBILE (HTTPS)',
+    login: (u) => `ACCESSO COME «${u}»`,
+    gm: (g) => `GM CONNESSO: ${g}`,
+    character: (a) => `RICEVO LA SCHEDA DI ${a}…`,
+    scene: 'RICEVO LA SCENA',
+  },
+  cancelHint: '●● ANNULLA',
+  exploration: 'esplorazione',
   noScene: 'nessuna scena',
-  log: 'Registro',
-  emptyLog: '(vuoto)',
-  party: 'Party',
-  initiative: 'INIZIATIVA',
-  recent: 'Ultimi eventi',
-  actions: 'AZIONI',
-  attack: 'Attacca',
+  emptyLog: '(nessun evento)',
+  initiative: 'Iniziativa',
+  round: (n) => `round ${n}`,
+  actions: 'Azioni',
   spellsMenu: 'Incantesimi…',
-  itemsMenu: 'Oggetto…',
+  itemsMenu: 'Oggetti…',
   optionsMenu: 'Opzioni…',
-  options: 'OPZIONI',
-  target: 'BERSAGLIO',
-  noTarget: '(nessun bersaglio)',
-  ft: 'ft',
-  advantage: { normal: 'Vantaggio: no', advantage: 'Vantaggio: sì', disadvantage: 'Svantaggio' },
-  slotTitle: 'SLOT',
+  spells: 'Incantesimi',
+  items: 'Oggetti',
+  options: 'Opzioni',
+  slotTitle: 'Slot',
   noSlots: 'nessuno slot libero',
-  cantrip: 'T',
-  result: 'ESITO',
+  target: 'Bersaglio',
+  noTarget: '(nessun bersaglio)',
+  cantrip: 'trucchetto',
+  advantage: { normal: 'Vantaggio: no', advantage: 'Vantaggio: sì', disadvantage: 'Svantaggio' },
+  result: 'Esito',
   pending: 'in corso…',
   outcomes: {
     hit: 'COLPITO',
@@ -206,6 +331,7 @@ const IT: HudStrings = {
     damage_dealt: 'danni inflitti',
     no_roll: 'eseguito',
   },
+  concentration: 'C',
   damage: 'Danni',
   done: 'eseguito',
   failed: 'non riuscito',
@@ -217,28 +343,37 @@ const IT: HudStrings = {
     'concentration-required': 'serve concentrazione',
     'gm-rejected': 'rifiutato dal GM',
   },
-  reactionTitle: 'REAZIONE',
-  reactionTrigger: 'Innesco',
-  expiresIn: 'scade',
+  reactionTitle: '▲ Reazione',
+  expiresIn: (s) => `scade ${s} s`,
+  reactionTrigger: (src) => `Innesco: ${src}`,
   ignore: 'Ignora',
-  opportunityAttack: 'Att. opp.',
+  opportunityAttack: 'Attacco di opportunità',
   shield: 'Scudo (1°)',
-  counterspell: 'Controincant. 3°',
-  offlineTitle: 'OFFLINE',
+  counterspell: 'Controincantesimo (3°)',
+  requestTitle: 'Prova richiesta',
+  requestFrom: 'dal GM',
+  requestSave: (a) => `Tiro salvezza su ${a}`,
+  requestCheck: (a) => `Prova di ${a}`,
+  requestSkill: (sk) => `Prova di ${sk}`,
+  requestDc: (dc) => `CD ${dc}`,
+  requestRoll: 'Tira il d20 sul tavolo',
+  requestOk: 'Fatto',
+  downTitle: 'Sei a terra',
+  downRoll: 'Tiro salvezza contro la morte',
+  downTally: (s, f) => `Successi ${s}/3 · Fallimenti ${f}/3`,
+  offlineTitle: '▲ Offline',
   offlineCauses: {
-    'no-gm': 'nessun GM connesso',
+    'no-gm': 'Nessun GM connesso',
     network: 'Foundry non risponde',
-    auth: 'accesso rifiutato',
-    background: 'telefono in background',
+    auth: 'Accesso rifiutato',
+    background: 'Telefono in background',
   },
-  retryIn: (s, n) => `Riprovo tra ${s} s (#${n})`,
-  dataAge: (m) => `Dati: ${m} min fa`,
-  frozen: 'dati congelati',
-  economy: { action: 'Az', bonus: 'Bon', reaction: 'Rea' },
-  movement: 'Mov',
+  retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
+  dataAge: (m) => `dati di ${m} min fa`,
+  frozen: 'Scheda e mappa congelate',
   endTurn: 'Fine turno',
   menu: {
-    nextPage: 'Scheda: pagina succ.',
+    nextPage: 'Scheda',
     zoomIn: 'Mappa: zoom +',
     zoomOut: 'Mappa: zoom -',
     follow: 'Mappa: segui/libera',
@@ -248,49 +383,71 @@ const IT: HudStrings = {
     reconnect: 'Riconnetti',
   },
   option: {
-    nextPage: 'Scheda: pag. succ.',
+    nextPage: 'Scheda: pagina successiva',
     zoom: (d, px) => `Zoom ${d} (${px} px)`,
     follow: (on) => `Segui token: ${on ? 'sì' : 'no'}`,
     language: (l) => `Lingua: ${l === 'auto' ? 'auto' : l.toUpperCase()}`,
   },
   footer: {
-    root: '● azioni  ●● esci',
-    list: '● ok  ●● indietro',
-    target: '● tira  ●● indietro',
-    result: '● azioni ●● chiudi',
-    reaction: '● ok ●● ignora',
-    offline: '● riprova  ●● esci',
-    exit: '●● esci',
-    cancel: '●● annulla',
-  },
-  unpaired: [
-    'Occhiali non ancora associati a Foundry.',
-    '1. Su Foundry: Impostazioni > Configura moduli > EvenFoundryVTT',
-    '    > «Associa occhiali G2»: appare un QR',
-    '2. Sul telefono: Even Realities App > scansiona il QR',
-    '3. Fatto. Nessun server da installare, nessun URL.',
-    'Aiuto: apri questa app sul telefono, pagina «Connessione».',
-  ],
-  revoked: 'Associazione revocata dal GM.',
-  connectingTo: (s) => `Collegamento a ${s} …`,
-  steps: {
-    server: 'server raggiungibile (HTTPS)',
-    login: (u) => `accesso come «${u}»`,
-    gm: (g) => `GM connesso: ${g}`,
-    character: (a) => `ricevo scheda di ${a}`,
-    scene: 'ricevo scena',
+    root: '●  azioni     ●●  esci',
+    combat: '●  azioni   ↕  scorri   ●●  esci',
+    list: '↕ scegli   ● ok   ●● indietro',
+    target: '↕ bersaglio  ● tira  ●● indietro',
+    result: '●  azioni     ●●  chiudi',
+    reaction: '↕ scegli   ● ok   ●● ignora',
+    request: '●  fatto     ●●  chiudi',
+    offline: '●  riprova ora     ●●  esci',
   },
 };
 
 const EN: HudStrings = {
-  pages: ['Main', 'Combat', 'Skills & Saves', 'Spells/Items'],
-  level: 'Lv',
-  exploration: 'Exploration',
+  level: 'LV',
   yourTurn: 'YOUR TURN',
-  turnOf: 'Turn',
-  hp: 'HP',
+  turnOf: 'TURN',
+  hitPoints: 'HIT POINTS',
   ac: 'AC',
-  temp: 'temp',
+  temp: 'TEMP',
+  initiativeShort: 'INIT',
+  speedShort: 'SPD',
+  profShort: 'PROF',
+  economyShort: { action: 'ACT', bonus: 'BON', reaction: 'REA' },
+  ft: 'FT',
+  noConditions: 'NO CONDITIONS',
+  conditions: {
+    concentrating: 'CONC.',
+    blinded: 'BLINDED',
+    charmed: 'CHARMED',
+    deafened: 'DEAFENED',
+    frightened: 'FRIGHTENED',
+    grappled: 'GRAPPLED',
+    incapacitated: 'INCAPACITATED',
+    paralyzed: 'PARALYZED',
+    petrified: 'PETRIFIED',
+    poisoned: 'POISONED',
+    prone: 'PRONE',
+    restrained: 'RESTRAINED',
+    stunned: 'STUNNED',
+    unconscious: 'UNCONSCIOUS',
+    dead: 'DEAD',
+    bleeding: 'BLEEDING',
+    cursed: 'CURSED',
+    surprised: 'SURPRISED',
+    sleeping: 'SLEEPING',
+    silenced: 'SILENCED',
+    exhaustion: 'EXHAUSTED',
+    invisible: 'INVISIBLE',
+    hiding: 'HIDDEN',
+    dodging: 'DODGING',
+    flying: 'FLYING',
+    hovering: 'HOVERING',
+    ethereal: 'ETHEREAL',
+    burrowing: 'BURROWING',
+    marked: 'MARKED',
+    stable: 'STABLE',
+    transformed: 'TRANSFORMED',
+    blessed: 'BLESSED',
+  },
+  exhaustion: (n) => `EXHAUSTED ${n}`,
   abilities: { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' },
   skills: {
     acr: 'Acrobatics',
@@ -312,38 +469,56 @@ const EN: HudStrings = {
     ste: 'Stealth',
     sur: 'Survival',
   },
-  slots: 'Slots',
-  conditions: 'Conditions',
-  noConditions: 'none',
-  exhaustion: 'Exhaustion',
-  deathSaves: 'Death saves',
-  passivePerception: 'Passive Perc.',
-  weapons: 'Weapons',
-  items: 'Items',
-  spells: 'Spells',
-  noSpells: 'no spells',
-  concentration: 'conc.',
-  scene: 'SCENE',
+  tabs: { abilities: 'ABILITIES', saves: 'SAVES · SKILLS' },
+  savesTitle: 'SAVING THROWS',
+  skillsTitle: 'SKILLS',
+  profLegend: '● PROF · ◉ EXPERTISE',
+  passivePerception: (n) => `PASSIVE PERCEPTION ${n}`,
+  darkvision: (ft) => `DARKVISION ${ft}`,
+  passiveInsight: (ins, inv) => `PASSIVE INSIGHT ${ins} · PASSIVE INVESTIGATION ${inv}`,
+  deathTitle: 'DEATH SAVES',
+  deathSuccess: 'SUCCESSES',
+  deathFailure: 'FAILURES',
+  deathHint: 'ROLL THE D20 AT THE TABLE · HEALING RESETS',
+  north: 'N',
+  appTitle: 'EVENFOUNDRYVTT',
+  unpairedSubtitle: 'GLASSES NOT PAIRED YET',
+  revokedSubtitle: 'PAIRING REVOKED BY THE GM',
+  pairSteps: [
+    ['ON FOUNDRY: SETTINGS › EVENFOUNDRYVTT', '› «PAIR G2 GLASSES» SHOWS A QR CODE'],
+    ['ON THE PHONE: EVEN REALITIES APP', '› SCAN THE QR CODE'],
+    ['WEAR THE GLASSES: THE SHEET APPEARS', 'BY ITSELF, LINKED TO YOUR CHARACTER'],
+  ],
+  scan: 'SCAN',
+  exitHint: '●● EXIT',
+  connectingTo: (s) => `CONNECTING TO ${s}`,
+  steps: {
+    server: 'SERVER REACHABLE (HTTPS)',
+    login: (u) => `SIGNED IN AS «${u}»`,
+    gm: (g) => `GM CONNECTED: ${g}`,
+    character: (a) => `RECEIVING ${a}'S SHEET…`,
+    scene: 'RECEIVING THE SCENE',
+  },
+  cancelHint: '●● CANCEL',
+  exploration: 'exploring',
   noScene: 'no scene',
-  log: 'Log',
-  emptyLog: '(empty)',
-  party: 'Party',
-  initiative: 'INITIATIVE',
-  recent: 'Recent events',
-  actions: 'ACTIONS',
-  attack: 'Attack',
+  emptyLog: '(no events)',
+  initiative: 'Initiative',
+  round: (n) => `round ${n}`,
+  actions: 'Actions',
   spellsMenu: 'Spells…',
-  itemsMenu: 'Item…',
+  itemsMenu: 'Items…',
   optionsMenu: 'Options…',
-  options: 'OPTIONS',
-  target: 'TARGET',
-  noTarget: '(no target)',
-  ft: 'ft',
-  advantage: { normal: 'Advantage: no', advantage: 'Advantage: yes', disadvantage: 'Disadvantage' },
-  slotTitle: 'SLOT',
+  spells: 'Spells',
+  items: 'Items',
+  options: 'Options',
+  slotTitle: 'Slot',
   noSlots: 'no free slot',
-  cantrip: 'C',
-  result: 'RESULT',
+  target: 'Target',
+  noTarget: '(no target)',
+  cantrip: 'cantrip',
+  advantage: { normal: 'Advantage: no', advantage: 'Advantage: yes', disadvantage: 'Disadvantage' },
+  result: 'Result',
   pending: 'in progress…',
   outcomes: {
     hit: 'HIT',
@@ -353,6 +528,7 @@ const EN: HudStrings = {
     damage_dealt: 'damage dealt',
     no_roll: 'done',
   },
+  concentration: 'C',
   damage: 'Damage',
   done: 'done',
   failed: 'failed',
@@ -364,28 +540,37 @@ const EN: HudStrings = {
     'concentration-required': 'concentration required',
     'gm-rejected': 'rejected by GM',
   },
-  reactionTitle: 'REACTION',
-  reactionTrigger: 'Trigger',
-  expiresIn: 'ends',
+  reactionTitle: '▲ Reaction',
+  expiresIn: (s) => `ends in ${s} s`,
+  reactionTrigger: (src) => `Trigger: ${src}`,
   ignore: 'Ignore',
-  opportunityAttack: 'Opp. att.',
+  opportunityAttack: 'Opportunity attack',
   shield: 'Shield (1st)',
-  counterspell: 'Counterspell 3rd',
-  offlineTitle: 'OFFLINE',
+  counterspell: 'Counterspell (3rd)',
+  requestTitle: 'Roll requested',
+  requestFrom: 'by the GM',
+  requestSave: (a) => `${a} saving throw`,
+  requestCheck: (a) => `${a} check`,
+  requestSkill: (sk) => `${sk} check`,
+  requestDc: (dc) => `DC ${dc}`,
+  requestRoll: 'Roll the d20 at the table',
+  requestOk: 'Done',
+  downTitle: 'You are down',
+  downRoll: 'Death saving throw',
+  downTally: (s, f) => `Successes ${s}/3 · Failures ${f}/3`,
+  offlineTitle: '▲ Offline',
   offlineCauses: {
-    'no-gm': 'no GM connected',
+    'no-gm': 'No GM connected',
     network: 'Foundry not responding',
-    auth: 'login rejected',
-    background: 'phone in background',
+    auth: 'Login rejected',
+    background: 'Phone in background',
   },
-  retryIn: (s, n) => `Retry in ${s} s (#${n})`,
-  dataAge: (m) => `Data: ${m} min ago`,
-  frozen: 'data frozen',
-  economy: { action: 'Act', bonus: 'Bon', reaction: 'Rea' },
-  movement: 'Mov',
+  retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
+  dataAge: (m) => `data from ${m} min ago`,
+  frozen: 'Sheet and map frozen',
   endTurn: 'End turn',
   menu: {
-    nextPage: 'Sheet: next page',
+    nextPage: 'Sheet',
     zoomIn: 'Map: zoom +',
     zoomOut: 'Map: zoom -',
     follow: 'Map: follow/free',
@@ -401,31 +586,14 @@ const EN: HudStrings = {
     language: (l) => `Language: ${l === 'auto' ? 'auto' : l.toUpperCase()}`,
   },
   footer: {
-    root: '● actions  ●● exit',
-    list: '● ok  ●● back',
-    target: '● roll  ●● back',
-    result: '● actions ●● close',
-    reaction: '● ok ●● ignore',
-    offline: '● retry  ●● exit',
-    exit: '●● exit',
-    cancel: '●● cancel',
-  },
-  unpaired: [
-    'Glasses not paired with Foundry yet.',
-    '1. On Foundry: Settings > Configure modules > EvenFoundryVTT',
-    '    > «Pair G2 glasses»: a QR code appears',
-    '2. On the phone: Even Realities App > scan the QR',
-    '3. Done. No server to install, no URL to type.',
-    'Help: open this app on the phone, «Connection» page.',
-  ],
-  revoked: 'Pairing revoked by the GM.',
-  connectingTo: (s) => `Connecting to ${s} …`,
-  steps: {
-    server: 'server reachable (HTTPS)',
-    login: (u) => `signed in as «${u}»`,
-    gm: (g) => `GM connected: ${g}`,
-    character: (a) => `receiving sheet of ${a}`,
-    scene: 'receiving scene',
+    root: '●  actions     ●●  exit',
+    combat: '● actions   ↕ scroll   ●● exit',
+    list: '↕ choose   ● ok   ●● back',
+    target: '↕ target   ● roll   ●● back',
+    result: '●  actions     ●●  close',
+    reaction: '↕ choose   ● ok   ●● ignore',
+    request: '●  done     ●●  close',
+    offline: '●  retry now     ●●  exit',
   },
 };
 

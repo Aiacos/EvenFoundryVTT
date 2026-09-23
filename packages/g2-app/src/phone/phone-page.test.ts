@@ -166,12 +166,12 @@ describe('P02 connection page', () => {
     change('#evf-locale', (el) => (el.value = 'en'));
     change('#evf-map-cell', (el) => (el.value = '12'));
     change('#evf-follow', (el) => (el.checked = false));
-    change('#evf-auto-combat', (el) => (el.checked = false));
+    change('#evf-auto-sheet', (el) => (el.checked = false));
     expect(vi.mocked(fake.session.updateSettings).mock.calls).toEqual([
       [{ locale: 'en' }],
       [{ mapCellPx: 12 }],
       [{ followToken: false }],
-      [{ autoCombatPage: false }],
+      [{ autoSheetPage: false }],
     ]);
     root.querySelector<HTMLButtonElement>('[data-action="reconnect"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-action="disconnect"]')?.click();

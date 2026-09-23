@@ -1,6 +1,6 @@
 /**
  * Narrow ambient types for the `upng-js@2.1.0` decoder used by `sim-lib.ts` (the package
- * ships no `.d.ts`). The app-side encoder surface is declared in `src/hud/map/upng-js.d.ts`.
+ * ships no `.d.ts`). The app-side encoder surface is declared in `src/hud/zones/upng-js.d.ts`.
  *
  * @see https://github.com/photopea/UPNG.js (README: `decode`, `toRGBA8`, `encode`)
  */

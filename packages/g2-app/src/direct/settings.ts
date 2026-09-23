@@ -17,7 +17,7 @@ const SettingsSchema = z.strictObject({
   locale: z.enum(['auto', 'it', 'en']),
   mapCellPx: z.union([z.literal(6), z.literal(8), z.literal(12)]),
   followToken: z.boolean(),
-  autoCombatPage: z.boolean(),
+  autoSheetPage: z.boolean(),
 }) satisfies z.ZodType<AppSettings>;
 
 /**

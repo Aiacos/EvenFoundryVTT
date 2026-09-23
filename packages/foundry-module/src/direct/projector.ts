@@ -39,6 +39,7 @@ import {
   type ProjectorMessage,
   R1_ACTION_ECONOMY_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
+  R1_ROLL_REQUEST_TYPE,
   SealedEnvelopeSchema,
   type SnapshotTopic,
   seal,
@@ -64,6 +65,7 @@ import {
   touchDevice,
   updateDeviceMeta,
 } from './pairing-store.js';
+import { parseRollRequest, type RollRequestMessage } from './roll-request.js';
 
 /** After a key rotation the previous key stays accepted this long (ms). */
 export const KEY_GRACE_MS = 60_000;
@@ -386,14 +388,24 @@ export class Projector {
     this.graceKeys.delete(g2UserId);
   }
 
+  /**
+   * Relays a new chat message to the devices that may see it: as a log event and, for
+   * a dnd5e roll-request card, as an `r1.roll.request` delta (sheet page switch, S8).
+   */
   private pushLogMessage(message: unknown): void {
     if (typeof message !== 'object' || message === null) return;
-    const chat = message as ChatMessageLike;
+    const chat = message as ChatMessageLike & RollRequestMessage;
     const event = toLogEvent(chat);
-    if (event === null) return;
+    const request = parseRollRequest(chat);
+    if (event === null && request === null) return;
     for (const { meta, key } of this.onlineDevices()) {
       if (!isMessageVisibleTo(chat, [meta.playerUserId, meta.g2UserId])) continue;
-      this.fireAndForget(this.sendDelta(meta.g2UserId, key, LOG_DELTA_TYPE, event));
+      if (event !== null) {
+        this.fireAndForget(this.sendDelta(meta.g2UserId, key, LOG_DELTA_TYPE, event));
+      }
+      if (request !== null) {
+        this.fireAndForget(this.sendDelta(meta.g2UserId, key, R1_ROLL_REQUEST_TYPE, request));
+      }
     }
   }
 

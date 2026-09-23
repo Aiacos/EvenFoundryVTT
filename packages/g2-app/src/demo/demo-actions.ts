@@ -4,7 +4,7 @@
  *
  * - `invoke` acknowledges after {@link DEMO_TIMING.ack} and, for a tool known to the
  *   protocol, publishes an `r1.action.result`-shaped `lastResult` after
- *   {@link DEMO_TIMING.result} — the same two-step flow as the GM projector (M06).
+ *   {@link DEMO_TIMING.result} — the same two-step flow as the GM projector (S6).
  * - `reconnect` walks `connecting → online`; `disconnect` / `forget` mirror P02.
  *
  * Every call is recorded in the debug log (`source: 'demo'`).
@@ -40,11 +40,14 @@ export interface DemoTimers {
 /** Fake transport = HUD actions + phone session. */
 export type DemoTransport = AppActions & PhoneSession;
 
-/** Deterministic d20 for a tool (stable across runs so screenshots are comparable). */
+/**
+ * Deterministic d20 for a tool (stable across runs so screenshots are comparable);
+ * `weapon-attack` rolls 15, a hit like the design's S6.
+ */
 function d20For(tool: string): number {
   let h = 0;
   for (const ch of tool) h = (h * 31 + ch.charCodeAt(0)) % 997;
-  return (h % 20) + 1;
+  return 20 - (h % 20);
 }
 
 /**
@@ -101,7 +104,17 @@ export function createDemoTransport(deps: {
           resolve({ ok: true, data: { demo: true } });
           const result = demoResult(tool, n);
           if (result === null) return;
-          timers.setTimeout(() => store.update({ lastResult: result }), DEMO_TIMING.result);
+          // Like the projector: the result card, and the action spent in the economy (S6).
+          timers.setTimeout(
+            () =>
+              store.update((st) => ({
+                lastResult: result,
+                ...(st.actionEconomy
+                  ? { actionEconomy: { ...st.actionEconomy, actionsUsed: 1 } }
+                  : {}),
+              })),
+            DEMO_TIMING.result,
+          );
         }, DEMO_TIMING.ack);
       });
     },

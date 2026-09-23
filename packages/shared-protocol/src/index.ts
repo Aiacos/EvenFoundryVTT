@@ -23,6 +23,8 @@ export {
   type AbilityScore,
   AbilityScoreSchema,
   CHARACTER_DELTA_TYPE,
+  type CharacterSheetDetails,
+  CharacterSheetDetailsSchema,
   type CharacterSnapshot,
   CharacterSnapshotSchema,
   type DeathSaves,
@@ -175,6 +177,13 @@ export {
   type ReactionAvailablePayload,
   ReactionAvailablePayloadSchema,
 } from './payloads/reaction.js';
+
+// ─── v0.10 sheet HUD — GM roll requests (docs/design/g2-sheet-ux.html S8) ──────
+export {
+  R1_ROLL_REQUEST_TYPE,
+  type RollRequestPayload,
+  RollRequestPayloadSchema,
+} from './payloads/roll-request.js';
 
 // ─── Phase 7 additions (Plan 07-05) — drop-concentration internal schema ─────
 // Module-internal schema for the evf.dropConcentration socketlib handler.
