@@ -35,7 +35,7 @@ There is **one** thing to install: the Foundry module. It also serves the glasse
 
 | Who | Where | What |
 |---|---|---|
-| GM | Foundry → *Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses** | pick player + character → a QR appears (valid 5 min, single use) |
+| GM | Foundry sidebar → *Players* → right-click a player → **Pair G2 glasses** (or *Configure Settings* → *EvenFoundryVTT*) | player + character preselected → a QR appears (valid 5 min, single use); the dialog turns to *Glasses connected* on success |
 | Player | Even Realities App → **scan the QR** | the glasses app opens already connected to that character |
 | Player | R1 ring / temple touchpad | tap = actions · swipe = move cursor · double-tap = back (exit at root) · long-press = shortcuts menu |
 
