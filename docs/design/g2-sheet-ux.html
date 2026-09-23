@@ -157,7 +157,7 @@ footer{color:var(--muted); font-size:.85rem; border-top:1px solid var(--rule); p
     <div class="sec-head">
       <span class="eyebrow">Architettura della schermata</span>
       <h2>Cinque zone, quattro immagini, un solo punto di input</h2>
-      <p class="lede">La griglia nasce dal budget SDK. Nella fascia alta tre immagini da 144 px di altezza affiancate coprono esattamente 576 px. Nella fascia bassa la scheda a schede (immagine) sta accanto al pannello contesto: è testo firmware, perché è l'unica zona che si scorre e si seleziona.</p>
+      <p class="lede">Decisione: <a href="../architecture/0014-dnd-sheet-hud-pixel-renderer.md">ADR-0014</a>. La griglia nasce dal budget SDK. Nella fascia alta tre immagini da 144 px di altezza affiancate coprono esattamente 576 px. Nella fascia bassa la scheda a schede (immagine) sta accanto al pannello contesto: è testo firmware, perché è l'unica zona che si scorre e si seleziona.</p>
     </div>
     <div class="screen"><canvas id="zones" width="576" height="288" aria-label="Diagramma delle zone della schermata"></canvas></div>
     <div class="table-wrap">
@@ -246,6 +246,49 @@ stateDiagram-v2
       <p class="lede">Personaggio d'esempio: <b>Thorin</b>, nano delle colline, Chierico 5 (Dominio della Guerra). Combatte con il martello e lancia incantesimi, così tutte le pagine della scheda hanno contenuto reale.</p>
     </div>
     <div class="shots" id="shots"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Mappa · zona C</span>
+      <h2>L'arte originale della scena, pixelata</h2>
+      <p class="lede">La mappa quadrata usa lo sfondo vero della scena Foundry (più tile e immagini dei token), scaricato dal telefono dallo stesso server. Viene ritagliata attorno al tuo token, ridotta a blocchi, portata a 16 livelli con dithering Floyd–Steinberg come nella vecchia pipeline raster, e oscurata oltre il raggio visivo del personaggio.</p>
+    </div>
+    <div class="screen"><canvas id="mapstages" width="464" height="144" aria-label="Tre fasi della mappa: originale, pixelata, sulla G2"></canvas></div>
+    <div class="grid2">
+      <div class="card"><h3>1 · Originale</h3><p>Sfondo e tile della scena alla risoluzione della finestra (12×12 caselle). Nell'esempio è una cripta generata a codice; nell'app è l'immagine della tua scena.</p></div>
+      <div class="card"><h3>2 · Pixelata</h3><p>Media per blocchi (dimensione pixel 1, 2 o 3, predefinita 2): il dettaglio che il display non può mostrare diventa texture leggibile invece di rumore.</p></div>
+      <div class="card"><h3>3 · Sulla G2</h3><p>Floyd–Steinberg a serpentina fino al livello 11, così PF e CA restano i segni più luminosi. Oltre il raggio visivo resta al 20%: niente zone inesplorate rivelate. Token, mirino e portata sono disegnati sopra, nitidi.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Associazione · ADR-0013</span>
+      <h2>Ogni giocatore ha la sua chiave</h2>
+      <p class="lede">Il GM abilita gli occhiali una volta sola; poi ogni giocatore si associa da solo dal proprio Foundry e custodisce la propria chiave. Il Foundry del giocatore, se è aperto, serve i suoi occhiali; altrimenti fa da riserva il GM.</p>
+    </div>
+    <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant GM as Foundry del GM
+  participant P as Foundry del giocatore
+  participant G as Occhiali (Even App)
+  GM->>GM: «Abilita occhiali per i giocatori» — crea «Luca (G2)»
+  GM->>P: password cifrata per la chiave pubblica di Luca
+  P->>P: «Associa i miei occhiali» — genera la chiave del dispositivo
+  P->>GM: chiave del dispositivo cifrata per la chiave pubblica del GM (riserva)
+  P-->>G: QR (URL Foundry + utente + password + chiave)
+  G->>P: hello sigillato (Luca online: risponde il suo Foundry)
+  P->>G: welcome + chiave ruotata (QR monouso)
+  Note over P,G: Luca chiude il portatile
+  G->>GM: richieste sigillate (risponde il GM, che ha la chiave di riserva)
+    </pre>
+    <div class="grid2">
+      <div class="card"><h3>Chi risponde agli occhiali</h3><p>Il Foundry del giocatore se è connesso; altrimenti il GM attivo, se ha la chiave di riserva. Solo chi è eletto esegue le azioni: niente doppio attacco nei passaggi di consegne.</p></div>
+      <div class="card"><h3>Cosa vede chi</h3><p>I messaggi viaggiano cifrati con la chiave del dispositivo: gli altri giocatori vedono solo testo cifrato. Password e chiavi passano sempre cifrate per la chiave pubblica del destinatario.</p></div>
+      <div class="card"><h3>Cosa resta al GM</h3><p>Abilitare i giocatori (Foundry permette solo al GM di creare utenti e password), rigenerare una password, revocare un dispositivo, associare chi non ha Foundry aperto.</p></div>
+    </div>
   </section>
 
   <section>
@@ -396,26 +439,71 @@ stateDiagram-v2
   }
 
   // ── Zone C: square map 144×144 ───────────────────────────────────────────
+  // ── Zone C: square map 144×144 — original scene art, pixelated + FS-dithered ──
+  // Procedural stand-in for a Foundry scene background (the real app fetches the scene
+  // image same-origin): stone floor, walls, rug, table, pillars, brazier.
+  const ART_N=144, CELL=12, SELF=[4,5];
+  function hash(x,y){ let h=(x*374761393+y*668265263)^0x5bf03635; h=(h^(h>>>13))*1274126177; return ((h^(h>>>16))>>>0)/4294967295; }
+  let ART=null;
+  function artLuma(){
+    if(ART) return ART;
+    const L=new Float32Array(ART_N*ART_N);
+    const inRect=(x,y,x0,y0,x1,y1)=>x>=x0&&x<x1&&y>=y0&&y<y1;
+    for(let y=0;y<ART_N;y++) for(let x=0;x<ART_N;x++){
+      let v=28+hash(x>>1,y>>1)*22;                                         // raw rock
+      const room=inRect(x,y,12,12,96,120), corr=inRect(x,y,96,48,144,72);
+      if(room||corr){ v=138+hash(x,y)*30-15; if(x%12===0||y%12===0) v=92; } // flagstones + grout
+      if(inRect(x,y,40,40,76,100)){ const d=(Math.abs((x-58)%12-6)+Math.abs((y-70)%12-6)); v= d<5?200:118; } // rug
+      if(inRect(x,y,18,84,40,104)) v=70+hash(x,y)*10;                       // table
+      const wall=(inRect(x,y,8,8,100,12)||inRect(x,y,8,120,100,124)||inRect(x,y,8,8,12,124)||inRect(x,y,96,8,100,48)||inRect(x,y,96,72,100,124)||inRect(x,y,96,44,144,48)||inRect(x,y,96,72,144,76));
+      if(wall) v=58+hash(x,y)*20;
+      for(const [px,py] of [[42,42],[42,102]]){ const r=Math.hypot(x-px,y-py); if(r<6) v=215-r*6; }
+      const br=Math.hypot(x-78,y-26); if(br<16) v=Math.max(v,255-br*7);     // brazier glow
+      L[y*ART_N+x]=Math.max(0,Math.min(255,v));
+    }
+    return ART=L;
+  }
+  // Block-average pixelate, then Floyd–Steinberg (serpentine) to levels 0..maxL,
+  // then darken outside the sight radius. Returns a level per block.
+  function pixelFS(L,px,maxL,sightCells){
+    const n=ART_N/px, out=new Float32Array(n*n);
+    for(let by=0;by<n;by++) for(let bx=0;bx<n;bx++){ let sum=0; for(let y=0;y<px;y++) for(let x=0;x<px;x++) sum+=L[(by*px+y)*ART_N+bx*px+x]; out[by*n+bx]=Math.pow(sum/(px*px)/255,0.9)*maxL; }
+    const lv=new Uint8Array(n*n);
+    for(let y=0;y<n;y++){ const ltr=y%2===0; for(let k=0;k<n;k++){ const x=ltr?k:n-1-k, i=y*n+x, old=out[i], q=Math.max(0,Math.min(maxL,Math.round(old))), e=old-q; lv[i]=q; const d=ltr?1:-1;
+      if(x+d>=0&&x+d<n) out[i+d]+=e*7/16; if(y+1<n){ if(x-d>=0&&x-d<n) out[i+n-d]+=e*3/16; out[i+n]+=e*5/16; if(x+d>=0&&x+d<n) out[i+n+d]+=e*1/16; } } }
+    if(sightCells){ const cx=(SELF[0]+.5)*CELL/px, cy=(SELF[1]+.5)*CELL/px, R=sightCells*CELL/px; for(let y=0;y<n;y++) for(let x=0;x<n;x++){ const d=Math.hypot(x+.5-cx,y+.5-cy); if(d>R) lv[y*n+x]=Math.round(lv[y*n+x]*0.2); } }
+    return {n,lv};
+  }
+  function drawLevels(c,x,y,{n,lv},px){ for(let j=0;j<n;j++) for(let i=0;i<n;i++){ const l=lv[j*n+i]; if(l){ c.fillStyle=G(l); c.fillRect(x+i*px,y+j*px,px,px);} } }
+  function mapMarkers(c,ox,oy,st){
+    const tok=(gx,gy,kind)=>{ const px=ox+gx*CELL, py=oy+gy*CELL;
+      if(kind==='self'){ box(c,px,py,CELL,CELL,15,2); c.fillStyle=G(0); c.fillRect(px+2,py+2,CELL-4,CELL-4); c.fillStyle=G(15); c.fillRect(px+3,py+3,CELL-6,CELL-6);}
+      else if(kind==='ally'){ c.fillStyle=G(0); c.fillRect(px+1,py+1,CELL-2,CELL-2); c.fillStyle=G(12); c.fillRect(px+2,py+2,CELL-4,CELL-4);}
+      else { c.fillStyle=G(0); c.fillRect(px+1,py+1,CELL-2,CELL-2); c.fillStyle=G(13); c.fillRect(px+2,py+2,CELL-4,CELL-4); line(c,px+2,py+2,px+CELL-3,py+CELL-3,0); line(c,px+CELL-3,py+2,px+2,py+CELL-3,0);} };
+    tok(SELF[0],SELF[1],'self'); tok(6,5,'ally'); tok(5,6,'enemy'); tok(6,3,'enemy'); tok(9,5,'enemy');
+    if(st.target){ const [tx,ty]=st.target, px=ox+tx*CELL+CELL/2, py=oy+ty*CELL+CELL/2; circle(c,px,py,9,15,false); line(c,px-13,py,px-10,py,15); line(c,px+10,py,px+13,py,15); line(c,px,py-13,px,py-10,15); line(c,px,py+10,px,py+13,15); }
+    if(st.reach){ c.fillStyle=G(14); for(let gy=4;gy<=6;gy++) for(let gx=3;gx<=5;gx++){ if(!(gx===4&&gy===5)&&!(gx===5&&gy===6)) c.fillRect(ox+gx*CELL+5,oy+gy*CELL+5,2,2); } }
+  }
   function mapZone(c,x,y,st){
-    box(c,x+1,y+1,142,142,6,4);
-    c.save(); rr(c,x+3,y+3,138,138,3); c.clip();
-    const cell=12, ox=x+2, oy=y+2;
-    for(let gy=0;gy<12;gy++) for(let gx=0;gx<12;gx++){ c.fillStyle=G(2); c.fillRect(ox+gx*cell,oy+gy*cell,1,1); }
-    // room floor tint (explored + lit)
-    c.fillStyle=G(1); c.fillRect(ox+cell*1,oy+cell*1,cell*7,cell*9);
-    const W=(a,b,cx2,d,door)=>line(c,ox+a*cell,oy+b*cell,ox+cx2*cell,oy+d*cell,door?11:10,door);
-    W(1,1,8,1); W(1,10,8,10); W(1,1,1,10); W(8,1,8,4); W(8,4,8,6,true); W(8,6,8,10); W(8,4,12,4); W(8,6,12,6);
-    c.fillStyle=G(10); c.fillRect(ox+3*cell,oy+3*cell,4,4); c.fillRect(ox+3*cell,oy+8*cell,4,4); // pillars
-    const tok=(gx,gy,kind)=>{ const px=ox+gx*cell, py=oy+gy*cell;
-      if(kind==='self'){ box(c,px,py,cell,cell,15,2); c.fillStyle=G(15); c.fillRect(px+3,py+3,cell-6,cell-6);}
-      else if(kind==='ally'){ c.fillStyle=G(12); c.fillRect(px+2,py+2,cell-4,cell-4);}
-      else { c.fillStyle=G(13); c.fillRect(px+2,py+2,cell-4,cell-4); line(c,px+2,py+2,px+cell-3,py+cell-3,0); line(c,px+cell-3,py+2,px+2,py+cell-3,0);} };
-    tok(4,5,'self'); tok(6,5,'ally'); tok(5,6,'enemy'); tok(6,3,'enemy'); tok(10,5,'enemy');
-    if(st.target){ const [tx,ty]=st.target, px=ox+tx*cell+cell/2, py=oy+ty*cell+cell/2; circle(c,px,py,9,15,false); line(c,px-13,py,px-10,py,15); line(c,px+10,py,px+13,py,15); line(c,px,py-13,px,py-10,15); line(c,px,py+10,px,py+13,15); }
-    if(st.reach){ c.fillStyle=G(4); for(let gy=4;gy<=6;gy++) for(let gx=3;gx<=5;gx++){ if(!(gx===4&&gy===5)) { c.fillRect(ox+gx*cell+5,oy+gy*cell+5,2,2);} } }
+    c.save(); rr(c,x+2,y+2,140,140,3); c.clip();
+    drawLevels(c,x,y,pixelFS(artLuma(),2,11,6),2);
+    mapMarkers(c,x,y,st);
     c.restore();
-    txt(c,'N',x+132,y+14,F.labB(8),11,'center'); line(c,x+132,y+16,x+132,y+22,11);
-    c.fillStyle=G(9); c.fillRect(x+8,y+134,cell,2); txt(c,'5 FT',x+24,y+137,F.lab(8),8);
+    box(c,x+1,y+1,142,142,6,4);
+    c.fillStyle=G(0); c.fillRect(x+124,y+4,16,22); txt(c,'N',x+132,y+14,F.labB(8),13,'center'); line(c,x+132,y+16,x+132,y+22,13);
+    c.fillStyle=G(0); c.fillRect(x+5,y+128,44,12); c.fillStyle=G(11); c.fillRect(x+8,y+134,CELL,2); txt(c,'5 FT',x+24,y+137,F.lab(8),10);
+  }
+  // Three-stage demo for the "Mappa" section: original · pixelated · on the G2.
+  function mapStages(cv){
+    const c=cv.getContext('2d'); c.imageSmoothingEnabled=false; c.fillStyle='#000'; c.fillRect(0,0,cv.width,cv.height);
+    const L=artLuma(), img=c.createImageData(ART_N,ART_N);
+    for(let i=0;i<L.length;i++){ const v=L[i]; img.data[i*4]=v*.92; img.data[i*4+1]=v*.86; img.data[i*4+2]=v*.74; img.data[i*4+3]=255; }
+    c.putImageData(img,0,0);
+    const blk=pixelFS(L,2,15,0); // pixelated, no mask, shown as plain grey blocks
+    const n=ART_N/2; for(let j=0;j<n;j++) for(let i=0;i<n;i++){ let s=0; for(let yy=0;yy<2;yy++) for(let xx=0;xx<2;xx++) s+=L[(j*2+yy)*ART_N+i*2+xx]; const g=Math.round(s/4); c.fillStyle=`rgb(${g},${g},${g})`; c.fillRect(160+i*2,j*2,2,2); }
+    void blk;
+    drawLevels(c,320,0,pixelFS(L,2,11,6),2); mapMarkers(c,320,0,{target:[5,6],reach:true});
+    const d=c.getImageData(320,0,144,144); for(let i=0;i<d.data.length;i+=4){ const l=Math.round(d.data[i+1]/16.4); const p=PAL[Math.min(15,l)]; d.data[i]=p[0]; d.data[i+1]=p[1]; d.data[i+2]=p[2]; } c.putImageData(d,320,0);
   }
 
   // ── Zone D: tabbed sheet 288×144 ─────────────────────────────────────────
@@ -559,6 +647,7 @@ stateDiagram-v2
   function drawAll(){
     render(document.getElementById('hero'), SCREENS[1].st, zones);
     canvases.forEach(([cv,st])=>render(cv,st,zones));
+    mapStages(document.getElementById('mapstages'));
     const z=document.getElementById('zones'); render(z, SCREENS[0].st, true);
   }
   mountShots();

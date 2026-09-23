@@ -10,6 +10,8 @@ informed: all packages
 
 ## Status
 
+> **AMENDED** — 2026-09-23 by [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md) (pairing, key custody, projector location) and [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md) (point 6, map rendering).
+
 **ACCEPTED** — 2026-09-23. Supersedes the deployment topology of Specs.md §11.5.3
 (Docker Compose bridge) and the transport sections of [ADR-0002](./0002-protocol-versioning.md)
 (bridge WS envelope). Partially supersedes [ADR-0004](./0004-voice-via-mcp-not-internal.md):

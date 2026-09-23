@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-05-11
 deciders: aiacos (DM/PO/sole-developer)
 consulted: Claude Code (Opus 4.7, planning/research agent)
@@ -9,6 +9,8 @@ informed: future contributors
 # ADR-0004: Voice via MCP — NOT internal LLM, NOT EvenAI hijack
 
 ## Status
+
+> **SUPERSEDED by [ADR-0012](./0012-direct-foundry-streaming.md)** — 2026-09-23. Voice (Deepgram proxy) and `foundry-mcp` were removed with the bridge; a future voice/MCP design needs a new ADR on top of the direct channel.
 
 **ACCEPTED** — 2026-05-11. Binds V2 OPZIONALE Phase 11 (foundry-mcp server), Phase 12 (Voice UX Tuning); locks the architecture so that no MVP code path takes voice as an internal dependency.
 

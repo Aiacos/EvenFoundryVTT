@@ -117,18 +117,23 @@ status-HUD R1 chip) was removed with that engine. See Specs.md history.
 
 ## 🛡️ 6. INV-6 — GM Authority Preservation (Phase 7 ratification)
 
-**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0012).
+**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0012). **Origin amended:** 2026-09-23 (ADR-0013).
 
 > Every Foundry write-path mutation (cast spell, weapon attack, use item, move token, drop
-> concentration, place template) MUST execute on the GM client through `dispatchTool`
-> ([ADR-0011](./0011-foundry-write-path-single-workflow-origin.md), single-workflow-origin).
+> concentration, place template, end turn) MUST execute through `dispatchTool` on **exactly
+> one Foundry client per device at a time — the elected projector**: the player's own client
+> when that player is online, otherwise the active GM
+> ([ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) as amended by
+> [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md)). GM authority is preserved by
+> Foundry's own permission model: a player client can only perform what that player could
+> perform in Foundry; GM-only steps (e.g. damage to NPCs) go through MidiQOL's GM socket.
 > No code outside `packages/foundry-module/src/write-path/` may call `activity.use()`.
 
 The path is now: G2 gesture → g2-app sealed `invoke` on `module.evenfoundryvtt` →
-Foundry relay → GM-client **projector** (`packages/foundry-module/src/direct/projector.ts`)
-→ `dispatchTool` → write-path handler → `MidiQOL.completeActivityUse` (when active) or
-`activity.use()`. The projector already runs in the GM client, so socketlib
-`executeAsGM` is no longer used.
+Foundry relay → elected **projector** client (`packages/foundry-module/src/direct/projector.ts`;
+player's client if online, else active GM) → `dispatchTool` → write-path handler →
+`MidiQOL.completeActivityUse` (when active) or `activity.use()`. Non-elected clients ignore
+the message and never execute `invoke`. socketlib `executeAsGM` is no longer used.
 
 ### Enforcement
 
@@ -160,7 +165,9 @@ Foundry relay → GM-client **projector** (`packages/foundry-module/src/direct/p
 - **SC-07-01**: `dispatchTool` end-to-end latency (gesture → GM handler return) ≤ 800 ms
   over HTTPS with the GM projector online.
 - **SC-07-02**: concurrent actions from two paired devices are serialized correctly on
-  the GM client.
+  their elected projectors (player clients and/or GM).
+- **ADR-0013 hand-over**: a player's client going offline mid-session hands the device to
+  the GM fallback without a duplicated action.
 - **ADR-0012 sideload gate**: QR load, SDK bridge injection, cookie persistence and
   socket reconnect (`pnpm --filter @evf/validation-harness validate:direct-sideload`).
 - **SC-06-01 / SC-06-03**: gesture timings and menu-open latency on real G2 + R1.

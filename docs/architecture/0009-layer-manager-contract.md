@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-05-15
 last_amended: 2026-05-15
 deciders: aiacos (DM/PO/sole-developer)
@@ -10,6 +10,8 @@ informed: future contributors
 # ADR-0009: Layer Manager Contract — mount/destroy/bundle API + capture-container invariant
 
 ## Status
+
+> **SUPERSEDED by [ADR-0014](./0014-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. No layer manager: the HUD builds one page with fixed zones and updates them in place.
 
 **ACCEPTED** — 2026-05-15. Binds Phase 4a (G2 Engine + Raster + Status HUD), Phase 4b (Overlay Slot + Map Mode Toggle), and Phase 5 (Panel Plugin System).
 
