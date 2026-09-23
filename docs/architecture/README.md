@@ -19,6 +19,7 @@ Format: [MADR 4.0](https://adr.github.io/madr/) (locked per ADR-0008 + CONTEXT.m
 | [ADR-0010](./0010-panel-plugin-registry.md) | Panel Plugin Registry — discovery, metadata contract, capability gating | accepted | Phase 5 entry |
 | [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) | Foundry Write Path — Single-Workflow-Origin Discipline | accepted | Phase 7 entry |
 | [ADR-0012](./0012-direct-foundry-streaming.md) | Direct Foundry → G2 Streaming (bridge + Docker removed) | accepted | v0.10 entry — supersedes §11.5.3 topology + ADR-0002 transport |
+| [ADR-0013](./0013-player-owned-glasses-hybrid-projector.md) | Player-Owned Glasses — self-service pairing + hybrid projector | accepted | v0.10 — amends ADR-0012 pairing/custody + ADR-0011 origin |
 
 **Numbering:** ADR-0007 reserved for RTL languages (V2 stretch — not yet authored). ADR-0010 is the Phase 5 entry for the panel plugin registry. ADR-0011 is the Phase 7 entry for the write-path single-workflow-origin discipline. ADR-0012 (v0.10.0) removes the bridge, Docker Compose and `foundry-mcp`. Numbering is sequential; gaps reserve future numbers if a placeholder is anticipated.
 
