@@ -1,0 +1,63 @@
+# EVF Wiki Sync — publishes docs/wiki/ to the GitHub wiki
+#
+# docs/wiki/ is the source of truth (versioned with the code, reviewed in PRs,
+# link-checked in CI). This workflow mirrors it to the GitHub wiki repository
+# (<repo>.wiki.git) on every push to main that touches docs/wiki/.
+#
+# One-time prerequisite (GitHub limitation): the wiki git repository only exists
+# after the first page is created from the web UI (Wiki → "Create the first page").
+# Until then this job logs a notice and exits successfully.
+#
+# Pages are mirrored as-is: file names become page titles (Home.md, _Sidebar.md,
+# _Footer.md are GitHub wiki conventions). Deleting a file in docs/wiki/ deletes
+# the page. Relative links between pages use the page name without `.md`.
+
+name: Wiki Sync
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/wiki/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write # pushing to <repo>.wiki.git uses the repository token
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate wiki links
+        run: node scripts/check-wiki-links.mjs docs/wiki
+
+      - name: Mirror docs/wiki to the GitHub wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          WIKI_URL="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git"
+          if ! git clone --depth 1 "$WIKI_URL" wiki-remote 2>/dev/null; then
+            echo "::notice::GitHub wiki not initialised yet — create the first page in the web UI, then re-run."
+            exit 0
+          fi
+          rsync -a --delete --exclude '.git' docs/wiki/ wiki-remote/
+          cd wiki-remote
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          git commit -m "docs: sync wiki from ${SHA::7}"
+          git push origin HEAD

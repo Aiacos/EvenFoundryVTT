@@ -21,7 +21,7 @@
  * Single-workflow-origin discipline (ADR-0011): this file is the ONLY place
  * in the EVF codebase that calls `activity.use()` / `MidiQOL.completeActivityUse`
  * for spell casting. CI Gate 8 prevents `activity.use(` from appearing in
- * g2-app or bridge.
+ * g2-app.
  *
  * # Error codes
  * - `actor_not_found`        — `args.actor_id` not in `game.actors`
@@ -29,9 +29,9 @@
  * - `no_activity`            — `item.system.activities?.contents[0]` is undefined
  * - `concentration-required` — Spell requires concentration and actor already has
  *                              an active concentration effect (Plan 09-03).
- *                              `detectActiveConcentration` fires, bridge emits
+ *                              `detectActiveConcentration` fires, the projector pushes
  *                              `conc.conflict` envelope, `activity.use()` is NOT called.
- * - `no_gm_connected`        — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
+ * - `no_gm_connected`        — dnd5e threw "No connected GM" (Pitfall 5)
  * - `<message>`              — any other dnd5e error (string from caught Error)
  *
  * # Threat model
@@ -51,7 +51,6 @@
 
 import { CastSpellInputSchema, CONC_CONFLICT_TYPE } from '@evf/shared-protocol';
 import { detectActiveConcentration } from '../concentration-detector.js';
-import { traceCurrent } from '../debug-trace.js';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── Injected emitter ─────────────────────────────────────────────────────────
@@ -70,7 +69,7 @@ let concConflictEmitter: ((type: string, payload: unknown) => void) | null = nul
 /**
  * Inject the concentration conflict emitter from module.ts.
  *
- * Called in `Hooks.once('ready', ...)` after `bridgeDeltaEmitter` is available.
+ * Called in `Hooks.once('ready', ...)` after the projector is started.
  * Pass `null` to reset to no-op (used in tests to clean up after each case).
  *
  * @param emitter - Callback accepting `(type, payload)`, or null to reset.
@@ -108,9 +107,9 @@ function extractChatCardId(result: unknown): string | null {
 /**
  * Detects a GM-offline signal from a thrown error.
  *
- * socketlib.executeAsGM rejects with a message containing "No connected GM"
+ * dnd5e rejects with a message containing "No connected GM"
  * (or similar) when no GM client is available. We normalise this to the
- * `no_gm_connected` error code so the bridge can return HTTP 503 (Pitfall 5).
+ * `no_gm_connected` error code so the G2 app can show a "GM offline" toast (Pitfall 5).
  *
  * @param err - The caught error value
  * @returns true if the error indicates no GM is connected
@@ -193,7 +192,7 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
     // - slot_level 1..9 → include spell.slot: 'spell<N>' override (dnd5e 5.3.3 verified API).
     //   Pact slots (level 10) are Phase 13 stretch — omit for MVP.
     // Defense-in-depth: slot_level is already validated z.number().int().min(0).max(9) by
-    // CastSpellInputSchema at bridge gate (T-09-04-a). The string template
+    // CastSpellInputSchema at the dispatchTool gate (T-09-04-a). The string template
     // `spell${args.slot_level}` only receives a validated integer (T-09-04-b).
     // dnd5e activity.use throws on unknown slot key → caught and normalised below (T-09-04-c).
     const slotOverride =
@@ -209,19 +208,17 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       //   ONLY game.user.targets (the GM here) — mutating it is the documented
       //   v13 per-user pitfall (research §3), so we WARN once and NEVER mutate.
       if (isMidiQolActive()) {
-        // Trace beacon: a frozen `…:midi.use:pending` in the bridge log = MidiQOL's
-        // completeActivityUse never resolved (its own target/usage prompt is awaiting input).
-        traceCurrent('cast-spell:midi.completeActivityUse:pending');
         const result = await MidiQOL!.completeActivityUse(
           activity,
           { midiOptions: { targetUuids: args.targets, ...slotOverride } },
           { configure: false },
           { create: true },
         );
-        traceCurrent('cast-spell:midi.completeActivityUse:returned');
         return { success: true, data: { chatCardId: extractChatCardId(result) } };
       }
-      if (args.targets.length > 0) {
+      // On a player-client projector (ADR-0017) the targets were already made this
+      // player's own Foundry targets, which vanilla dnd5e reads; only a GM client lacks them.
+      if (args.targets.length > 0 && game.user?.isGM) {
         console.warn(
           '[cast-spell] explicit-target auto-application requires MidiQOL (midi-qol) ' +
             'and is not active — targets were not applied to this cast.',
@@ -233,12 +230,8 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       // foundryvtt/dnd5e module/documents/activity/mixin.mjs, `if (dialogConfig.configure
       // && activity._requiresConfigurationDialog(...))`). Passing `configure: false` inside
       // the usage object left the dialog enabled, so every spell cast awaited a usage
-      // dialog no one could answer from the glasses → 10s foundry_timeout hang.
-      // Trace beacon: a frozen `…:activity.use:pending` in the bridge log = vanilla dnd5e
-      // `activity.use` never resolved (a usage/scaling/consume prompt is awaiting input).
-      traceCurrent('cast-spell:activity.use:pending');
+      // dialog no one could answer from the glasses → ~10 s hang.
       const result = await activity.use({ ...slotOverride }, { configure: false });
-      traceCurrent('cast-spell:activity.use:returned');
       return { success: true, data: { chatCardId: extractChatCardId(result) } };
     } catch (err) {
       if (isNoGmError(err)) {

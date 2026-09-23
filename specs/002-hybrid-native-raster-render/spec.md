@@ -2,6 +2,8 @@
 
 **Branch**: `feat/layered-native-render` | **Date**: 2026-06-26 | **Supersedes default of**: v0.10.0 Canvas Compositor Raster Substrate (kept as fallback)
 
+> **Status: SUPERSEDED (2026-09-23)** by [`specs/003-direct-streaming`](../003-direct-streaming/spec.md) and [ADR-0018](../../docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md): the hybrid/canvas/showcase substrates were removed; the HUD is the D&D-sheet layout on the pixel renderer. Kept as history.
+
 ## Problem
 
 The v0.10.0 milestone made the **CanvasCompositor raster substrate** the default render path: the

@@ -7,7 +7,7 @@
  * an `r1.action.result` envelope via the injected `emit` callback.
  *
  * The callback is wired by `module.ts` to:
- *   `bridgeDeltaEmitter(R1_ACTION_RESULT_TYPE, payload)`
+ *   `projector.pushDelta(R1_ACTION_RESULT_TYPE, payload)`
  *
  * ## RESEARCH §Q1 — createChatMessage hook timing
  *
@@ -25,11 +25,10 @@
  * would suppress GM audit log entries and break normal session communication.
  * TypeScript `void` return type on the handler enforces this contract.
  *
- * ## 14-socketlib-handler invariant
+ * ## Emission
  *
- * This module registers NO new socketlib handlers. The total count remains 14.
- * Emission is via the existing `bridgeDeltaEmitter` channel (fire-and-forget
- * POST to bridge). Source: Phase 7 Plan 06 ADR-0011 invariant closure.
+ * Emission is via the injected `emit` callback — `projector.pushDelta` in
+ * production (fire-and-forget sealed delta to the paired G2 devices, ADR-0016).
  *
  * ## Fault tolerance
  *
@@ -240,12 +239,12 @@ function resolveRecipientUserId(msg: unknown, audit: AuditEntry): string {
  * The handler inspects incoming ChatMessage documents for `flags.evf.audit` presence
  * (written by `writeAuditLog` after every `dispatchTool` call). When found, it
  * extracts the result fields and calls `emit(payload)` to dispatch the
- * `r1.action.result` envelope via `bridgeDeltaEmitter`.
+ * `r1.action.result` envelope via `projector.pushDelta`.
  *
  * Regular chat messages (player whispers, GM narration, dnd5e cards without EVF
  * audit flags) are silently ignored — `emit` is never called.
  *
- * @param emit - Callback to emit the action result payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the action result payload via projector.pushDelta.
  *               Wrapped in try/catch — if emit throws, the Foundry session continues.
  * @returns Unsubscribe closure — calls `Hooks.off(hookId)`. Discarded by module.ts
  *          for MVP (module lifecycle is for-the-session).

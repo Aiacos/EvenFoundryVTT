@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-05-15
 deciders: planner
 consulted: planner-checker
@@ -9,6 +9,8 @@ informed: executor
 # ADR-0010: Panel Plugin Registry — discovery, metadata contract, capability gating
 
 ## Status
+
+> **SUPERSEDED by [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md)** — 2026-09-23. No overlay panels: lists (actions, targets, spells) live in the context zone E.
 
 **ACCEPTED** — 2026-05-15. Binds Phase 5 (Panel Plugin System + Read-Only Panels)
 and all downstream phases that ship overlay panels (Phase 6 Quick Actions, Phase 7

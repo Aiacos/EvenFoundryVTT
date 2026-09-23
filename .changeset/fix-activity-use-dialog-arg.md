@@ -9,8 +9,8 @@ argument and defaults it to `true` (INV-2: foundryvtt/dnd5e
 `module/documents/activity/mixin.mjs` — `if (dialogConfig.configure && …)`), so the
 configuration dialog stayed enabled and `activity.use` awaited a dialog no one can
 answer from the glasses → every spell cast / item use / attack hung until the
-bridge's 10s `foundry_timeout`. Verified live in the EvenHub simulator: cast-spell
-timed out at exactly 10s; skill-check (which already used the 2nd arg) worked.
+invoke timed out (~10 s). Verified live: cast-spell timed out; skill-check (which
+already used the 2nd arg) worked.
 
 Corrected `cast-spell`, `use-item`, `cast-shield`, `cast-counterspell`,
 `weapon-attack`, and `opportunity-attack` to `use(usage, { configure: false }[, message])`

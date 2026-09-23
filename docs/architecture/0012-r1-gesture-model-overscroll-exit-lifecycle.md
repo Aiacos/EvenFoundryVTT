@@ -10,6 +10,8 @@ informed: executor
 
 ## Status
 
+> **Status note (v0.12.0, 2026-09-23)** — **Remains canonical** for the R1/G2 gesture model (including Amendment 2: menu opens on tap from the base view; root double-tap → `shutDownPageContainer(1)`; lifecycle handlers). The LayerManager/dispatcher implementation named here was replaced; [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md) implements the same semantics in `packages/g2-app/src/hud/input/`. Long-press (SDK ≥ 0.0.14, Even App ≥ 2.2.9) is used only as a duplicate shortcut, never as the sole path to a function.
+
 **ACCEPTED** — 2026-05-31. Supersedes the `// TODO(ADR-0009)` long-press source-channel
 stub in `packages/g2-app/src/engine/layer-types.ts`. Binds GEST-01, EXIT-01, LIFE-01
 (REQUIREMENTS v2). Implementation is an atomic INV-3 change spanning `shared-protocol`,

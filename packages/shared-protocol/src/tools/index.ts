@@ -32,6 +32,7 @@ import { WeaponAttackInputSchema } from './weapon-attack.js';
 export { type CastCounterspellInput, CastCounterspellInputSchema } from './cast-counterspell.js';
 export { type CastShieldInput, CastShieldInputSchema } from './cast-shield.js';
 export { type CastSpellInput, CastSpellInputSchema } from './cast-spell.js';
+export { END_TURN_TOOL, type EndTurnInput, EndTurnInputSchema } from './end-turn.js';
 export { type MoveTokenInput, MoveTokenInputSchema } from './move-token.js';
 export { type OpportunityAttackInput, OpportunityAttackInputSchema } from './opportunity-attack.js';
 export { type PlaceTemplateInput, PlaceTemplateInputSchema } from './place-template.js';
@@ -82,7 +83,7 @@ export const TOOL_REGISTRY: readonly ToolEntry[] = [
   },
   {
     name: 'skill_check',
-    description: 'Roll a skill check via actor.rollSkill()',
+    description: 'Roll a skill check, ability check or saving throw',
     inputSchema: SkillCheckInputSchema.toJSONSchema(),
   },
   {

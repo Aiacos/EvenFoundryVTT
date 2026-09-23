@@ -96,7 +96,7 @@ describe('useItemHandler', () => {
     expect(result).toEqual({ success: true, data: { chatCardId: 'cm-use-7' } });
     // Regression (260621): configure-false MUST be the SECOND (dialog) arg of dnd5e 5.x
     // `use(usage, dialog, message)` — in the usage arg it left the usage dialog enabled,
-    // hanging every activity use until the bridge's 10s foundry_timeout.
+    // hanging every activity use until the glasses' invoke times out.
     expect(activity.use).toHaveBeenCalledWith({}, { configure: false });
   });
 

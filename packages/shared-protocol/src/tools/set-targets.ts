@@ -5,10 +5,6 @@
  * user (defaulting to the current user if `user_id` is omitted). Token IDs
  * must be non-empty strings; Phase 07 validates them against active tokens.
  *
- * Phase 03 stub: the bridge dispatches this to the Foundry module which returns
- * `{ status: 'phase-07-pending' }`. Phase 07 replaces the stub with a real
- * TokenLayer targets update.
- *
  * @see docs/architecture/0003-tool-registry-pattern.md (ADR-0003)
  * @see Specs.md §5.3 (Tool Registry)
  */

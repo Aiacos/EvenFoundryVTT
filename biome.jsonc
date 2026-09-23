@@ -10,6 +10,7 @@
     "includes": [
       "**",
       "!**/dist/**/*",
+      "!packages/foundry-module/g2/**/*",
       "!**/node_modules/**/*",
       "!**/coverage/**/*",
       "!**/.changeset/**/*",
@@ -54,17 +55,6 @@
   "overrides": [
     {
       "includes": ["packages/*/tests/**", "packages/*/**/__tests__/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
-          }
-        }
-      }
-    },
-    {
-      // Dev CLI scripts (tools/) — console IS their output channel.
-      "includes": ["tools/**"],
       "linter": {
         "rules": {
           "suspicious": {

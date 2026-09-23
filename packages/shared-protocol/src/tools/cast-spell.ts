@@ -5,10 +5,6 @@
  * token targets. The `slot_level` field accepts 0 as the edition-agnostic
  * cantrip / at-will marker (works for both PHB 2014 and PHB 2024 per Specs.md §11.5.1).
  *
- * Phase 03 stub: the bridge dispatches this to the Foundry module which returns
- * `{ status: 'phase-07-pending' }`. Phase 07 replaces the stub with a real
- * `activity.use()` call (or `MidiQOL.completeActivityUse` when present).
- *
  * @see docs/architecture/0003-tool-registry-pattern.md (ADR-0003)
  * @see Specs.md §5.3 (Tool Registry)
  */

@@ -14,7 +14,7 @@
  *   4. Mints UUID v4 `placementId`, stores the template array in `PLACEMENT_CONTEXTS` Map
  *      with 60s TTL (lazy eviction on read).
  *   5. Returns `{ success: true, data: { placementId, total, templates: [...] } }`.
- *      The bridge fans out one `template.placement.requested` envelope per template index.
+ *      The G2 app requests one placement per template index.
  *
  * **confirmTemplatePlacementHandler** (`'confirm-template-placement'`):
  *   1. Receives `{ placementId, templateIndex, x, y }`.
@@ -138,7 +138,7 @@ type ConfirmTemplatePlacementArgs = {
 /**
  * Generates a UUID v4 using the Web Crypto API.
  *
- * Available in both browser (g2-app) and Node 24 (bridge/module) environments.
+ * Available in the browser (GM client) and Node 24 (tests).
  * Uses `crypto.randomUUID()` when available (Node 14.17+ / modern browsers),
  * falling back to a manual hex construction for test environments that provide
  * a `crypto.getRandomValues` mock.
@@ -178,7 +178,7 @@ function generateUUID(): string {
  * Resolves actor → item → first activity → calls AbilityTemplate.fromActivity(activity)
  * synchronously → mints placementId → stores context → returns template array description.
  *
- * The bridge fans out one `template.placement.requested` envelope per template
+ * The G2 app requests one placement per template
  * index by reading the response `data.templates` array (Plan 07-06 integration smoke
  * verifies the fan-out path end-to-end).
  *
@@ -225,7 +225,7 @@ export const placeTemplateHandler: ToolHandler<PlaceTemplateArgs> = {
       cachedAt: Date.now(),
     });
 
-    // Step 7: return placement description (bridge fans out envelopes per index)
+    // Step 7: return placement description (the G2 app places one template per index)
     return {
       success: true,
       data: {
@@ -251,8 +251,7 @@ export const placeTemplateHandler: ToolHandler<PlaceTemplateArgs> = {
  * pending placement context by `placementId`, and commits the template via
  * `canvas.scene.createEmbeddedDocuments('MeasuredTemplate', [templateData])`.
  *
- * Registered in `socketlib-handlers.ts` under the `evf.confirmTemplatePlacement` handler ID
- * (replaces the `evf.skillCheck` stub in-place — count stays 14, Plan 07-03 rename).
+ * Registered in `handlers/index.ts` as the `confirm-template-placement` tool.
  *
  * # Error codes
  * - `placement_expired` — placementId not found or TTL exceeded (60s)

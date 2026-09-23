@@ -12,6 +12,7 @@ export const TEST_IDS = [
   '10-0-8-queue-depth',
   '10-0-9-palette-calibration',
   'midiqol-config-probe',
+  'adr-0016-direct-sideload',
 ] as const;
 export const TestId = z.enum(TEST_IDS);
 export type TestId = z.infer<typeof TestId>;
@@ -174,6 +175,21 @@ export const MidiQolConfigResult = EvidenceMeta.extend({
 });
 export type MidiQolConfigResult = z.infer<typeof MidiQolConfigResult>;
 
+// ADR-0016 direct-sideload GO/NO-GO (software checks + manual hardware checklist).
+// T-00-01: carries NO Foundry URL, credentials or QR payload — only check verdicts.
+export const DirectSideloadResult = EvidenceMeta.extend({
+  test_id: z.literal('adr-0016-direct-sideload'),
+  skip_hardware: z.boolean(),
+  checks: z.array(
+    z.object({
+      id: z.string().min(1),
+      verdict: z.enum(['pass', 'fail', 'skipped']),
+      detail: z.string(),
+    }),
+  ),
+});
+export type DirectSideloadResult = z.infer<typeof DirectSideloadResult>;
+
 // Discriminated union of all results — for run-all.ts orchestrator (Plan 02).
 export const AnyResult = z.discriminatedUnion('test_id', [
   BleMultiEnvResult,
@@ -183,5 +199,6 @@ export const AnyResult = z.discriminatedUnion('test_id', [
   R1TimingResult,
   PaletteCalibrationResult,
   MidiQolConfigResult,
+  DirectSideloadResult,
 ]);
 export type AnyResult = z.infer<typeof AnyResult>;

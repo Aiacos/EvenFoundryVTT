@@ -63,7 +63,7 @@ function makeActor(opts: { id?: string; item?: ReturnType<typeof makeWeaponItem>
 
 function makeGameGlobal(
   actor: ReturnType<typeof makeActor> | null = makeActor(),
-  opts: { midiActive?: boolean; targets?: Set<unknown> } = {},
+  opts: { midiActive?: boolean; targets?: Set<unknown>; isGM?: boolean } = {},
 ) {
   const midiActive = opts.midiActive ?? false;
   return {
@@ -80,7 +80,7 @@ function makeGameGlobal(
     },
     i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
     combat: null,
-    user: { isGM: false, targets: opts.targets ?? new Set() },
+    user: { isGM: opts.isGM ?? false, targets: opts.targets ?? new Set() },
     messages: { contents: [], get: vi.fn() },
     // FIX-B/C: capability detection surface. midi-qol module reports `active`
     // per the `midiActive` flag (default false → all existing cases stay vanilla).
@@ -605,7 +605,10 @@ describe('weaponAttackHandler', () => {
       const actor = makeActor({ id: 'actor-a', item });
 
       const userTargets = new Set();
-      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false, targets: userTargets }));
+      vi.stubGlobal(
+        'game',
+        makeGameGlobal(actor, { midiActive: false, targets: userTargets, isGM: true }),
+      );
       vi.stubGlobal('MidiQOL', undefined);
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -632,6 +635,25 @@ describe('weaponAttackHandler', () => {
       expect(msg).toMatch(/target/i);
       expect(msg).toMatch(/midi-?qol/i);
 
+      warnSpy.mockRestore();
+    });
+
+    it("V2b: on a player-client projector (ADR-0017) targets are the player's own → no targets warning", async () => {
+      const activity = makeAttackActivity({ chatCardId: 'cm-p' });
+      const item = makeWeaponItem({ id: 'sword-1', activities: [activity] });
+      const actor = makeActor({ id: 'actor-a', item });
+      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false, isGM: false }));
+      vi.stubGlobal('MidiQOL', undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { weaponAttackHandler } = await import('./weapon-attack.js');
+      const result = await weaponAttackHandler.handle({
+        actor_id: 'actor-a',
+        item_id: 'sword-1',
+        targets: ['tok-a'],
+        advantage: 'normal',
+      });
+      expect(result.success).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 

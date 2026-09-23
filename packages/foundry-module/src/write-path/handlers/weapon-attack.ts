@@ -45,14 +45,13 @@
  * After each successful iteration, `emitMultiAttackProgress` is called with
  * `{ attackId, current, total, chatCardId, actorId }`. The emitter is injected
  * via `setMultiAttackProgressEmitter` in `module.ts`'s `ready` hook — defaults
- * to a no-op so unit tests do not need to inject. NO new socketlib handler is
- * registered (handler count stays 14).
+ * to a no-op so unit tests do not need to inject.
  *
  * ## Error codes
  * - `actor_not_found`     — `args.actor_id` not in `game.actors`
  * - `item_not_found`      — `args.item_id` not in `actor.items.contents`
  * - `no_attack_activity`  — no activity with `type === 'attack'` found on item
- * - `no_gm_connected`     — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
+ * - `no_gm_connected`     — dnd5e threw "No connected GM" (Pitfall 5)
  * - `<message>`           — any other dnd5e error (fails on the failing iteration)
  *
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)
@@ -71,7 +70,7 @@ import type { ToolHandler, ToolResult } from '../tool-registry.js';
  * Module-scoped progress emitter function.
  *
  * Defaults to no-op so unit tests work without injection. `module.ts` wires
- * the real `bridgeDeltaEmitter` call via `setMultiAttackProgressEmitter`.
+ * the real `projector.pushDelta` call via `setMultiAttackProgressEmitter`.
  *
  * Using a mutable closure rather than a module-level `let` binding allows
  * both the setter and the emitter call sites to share state cleanly without
@@ -85,7 +84,7 @@ let _progressEmitter: ((payload: MultiAttackProgressPayload) => void) | null = n
  * Call with a function to wire the real emitter (module.ts `ready` hook).
  * Call with `null` to restore the no-op default (test teardown).
  *
- * @param fn - Emitter function that forwards the payload to the bridge, or null
+ * @param fn - Emitter function that forwards the payload to the projector, or null
  *             to reset to the no-op default.
  */
 export function setMultiAttackProgressEmitter(
@@ -213,10 +212,16 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
           // non-deterministic double-execution hazard; research §2). MidiQOL is
           // the automation layer. We NEVER call rollAttack, NEVER register a
           // roll hook, and NEVER mutate game.user.targets.
-          if (!vanillaWarned && (args.advantage !== 'normal' || args.targets.length > 0)) {
+          // On a player-client projector (ADR-0017) targets are already the player's
+          // own Foundry targets (read by vanilla dnd5e); only a GM client lacks them.
+          const lost = [
+            args.advantage !== 'normal' ? 'advantage' : '',
+            args.targets.length > 0 && game.user?.isGM ? 'targets' : '',
+          ].filter((x) => x !== '');
+          if (!vanillaWarned && lost.length > 0) {
             console.warn(
-              '[weapon-attack] advantage/target auto-application requires MidiQOL (midi-qol) ' +
-                'and is not active — advantage/targets were not applied to this roll.',
+              `[weapon-attack] ${lost.join('/')} auto-application requires MidiQOL (midi-qol) ` +
+                `and is not active — ${lost.join('/')} not applied to this roll.`,
             );
             vanillaWarned = true;
           }

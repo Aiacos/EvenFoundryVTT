@@ -188,7 +188,7 @@ describe('writeAuditLog', () => {
 
   // ── Regression (260621): a HUNG ChatMessage.create must not stall dispatch ───
   // A player/headless executor can have ChatMessage.create never settle; without a
-  // bound, dispatchTool awaits it forever and the bridge hits its 10s foundry_timeout
+  // bound, dispatchTool awaits it forever and the glasses' invoke times out
   // even though the action already executed. writeAuditLog must resolve within
   // AUDIT_WRITE_TIMEOUT_MS regardless.
   it('resolves (does not hang) when ChatMessage.create never settles — bounded by timeout', async () => {

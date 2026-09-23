@@ -19,12 +19,11 @@
  * or `updateCombat` cancels the Foundry hook chain. TypeScript `void` return type
  * enforces this contract.
  *
- * ## 17-socketlib-handler invariant
+ * ## Emission
  *
- * This module registers NO new socketlib handlers. The total count remains 17
- * (updated in Plan 13-01). Emission is via the existing `bridgeDeltaEmitter`
- * channel (fire-and-forget POST to bridge). Per ADR-0011 single-workflow-origin
- * discipline.
+ * Emission is via the injected `emit` callback — `projector.pushDelta` in
+ * production (fire-and-forget sealed delta, ADR-0016). Read-only: per ADR-0011
+ * single-workflow-origin discipline this module never mutates game state.
  *
  * ## Threat model
  *
@@ -158,6 +157,24 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** An actor shown on a G2 device and the user its economy payloads are addressed to. */
+export interface TrackedActor {
+  actorId: string;
+  recipientUserId: string;
+}
+
+/**
+ * Current action economy of `actorId` this turn (all slots free when nothing was
+ * consumed). Read by the projector to prime a G2 device right after `hello` (ADR-0016).
+ *
+ * @param actorId - Foundry actor id.
+ * @param recipientUserId - User the payload is addressed to when no state exists yet.
+ * @returns The payload the tracker would emit now.
+ */
+export function getActionEconomy(actorId: string, recipientUserId: string): ActionEconomyPayload {
+  return buildPayload(actorId, getOrInit(actorId, recipientUserId));
+}
+
 /**
  * Register the `createChatMessage` + `updateCombat` hook subscribers.
  *
@@ -171,14 +188,19 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
  *     and `_attackIdSeen` entirely when a combat is removed, so a freshly created
  *     combat does not inherit stale counters or attack-dedup entries.
  *
- * @param emit - Callback to emit the action economy payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the action economy payload via projector.pushDelta.
  *               Fire-and-forget; failures are swallowed with console.warn.
+ * @param trackedActors - Actors that also receive a fresh (all-free) payload on every
+ *               turn/round change even if they consumed nothing yet — the GM projector
+ *               passes the paired actors so a G2 device always learns its economy
+ *               (ADR-0016). Defaults to none (only actors with state are reset).
  * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (R3).
  *          Discarded by module.ts for MVP (module lifecycle is for-the-session).
  */
 export function registerCombatActionTracker(
   emit: (payload: ActionEconomyPayload) => void,
+  trackedActors: () => readonly TrackedActor[] = () => [],
 ): () => void {
   // ── createChatMessage hook ──────────────────────────────────────────────────
   const createChatHookId = Hooks.on('createChatMessage', (...args: unknown[]): void => {
@@ -293,6 +315,10 @@ export function registerCombatActionTracker(
         // Clear attackId dedup for this actor (turn reset = new action pool)
         _attackIdSeen.delete(actorId);
         emit(buildPayload(actorId, resetState));
+      }
+      for (const tracked of trackedActors()) {
+        if (_state.has(tracked.actorId)) continue;
+        emit(getActionEconomy(tracked.actorId, tracked.recipientUserId));
       }
     } catch (err) {
       console.warn('[combat-action-tracker] updateCombat handler threw', err);

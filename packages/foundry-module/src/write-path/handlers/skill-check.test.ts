@@ -26,6 +26,8 @@ function makeActor(opts: { id?: string; throws?: Error | string; rollReturn?: un
       }
       return opts.rollReturn ?? [{ total: 17 }];
     }),
+    rollSavingThrow: vi.fn(async () => [{ total: 9 }]),
+    rollAbilityCheck: vi.fn(async () => [{ total: 11 }]),
   };
 }
 
@@ -104,6 +106,48 @@ describe('skillCheckHandler', () => {
         advantage: false,
         disadvantage: true,
       },
+      { configure: false },
+    );
+  });
+
+  it('rolls a saving throw / ability check by ability, fast-forwarded', async () => {
+    const actor = makeActor({ id: 'actor-s' });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+    const { skillCheckHandler } = await import('./skill-check.js');
+    const save = await skillCheckHandler.handle({
+      actor_id: 'actor-s',
+      kind: 'save',
+      ability: 'dex',
+      advantage: 'advantage',
+    });
+    expect(actor.rollSavingThrow).toHaveBeenCalledWith(
+      { ability: 'dex', advantage: true, disadvantage: false },
+      { configure: false },
+    );
+    expect(save).toEqual({
+      success: true,
+      data: { kind: 'save', ability: 'dex', advantage: 'advantage', result: [{ total: 9 }] },
+    });
+    const check = await skillCheckHandler.handle({
+      actor_id: 'actor-s',
+      kind: 'check',
+      ability: 'str',
+    });
+    expect(actor.rollAbilityCheck).toHaveBeenCalledWith(
+      { ability: 'str', advantage: false, disadvantage: false },
+      { configure: false },
+    );
+    expect(check.success).toBe(true);
+    expect(actor.rollSkill).not.toHaveBeenCalled();
+  });
+
+  it('forwards an ability override to rollSkill', async () => {
+    const actor = makeActor({ id: 'actor-o' });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+    const { skillCheckHandler } = await import('./skill-check.js');
+    await skillCheckHandler.handle({ actor_id: 'actor-o', skill: 'ath', ability: 'dex' });
+    expect(actor.rollSkill).toHaveBeenCalledWith(
+      { skill: 'ath', ability: 'dex', advantage: false, disadvantage: false },
       { configure: false },
     );
   });

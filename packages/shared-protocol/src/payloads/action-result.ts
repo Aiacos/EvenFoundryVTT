@@ -4,7 +4,7 @@
  * Emitted by the Foundry module's `action-result-watcher.ts` when
  * `createChatMessage` fires for a chat card bearing `flags.evf.audit.idempotencyKey`.
  * The watcher extracts d20/outcome/damage from the card and emits an
- * `r1.action.result` envelope via `bridgeDeltaEmitter(R1_ACTION_RESULT_TYPE, payload)`.
+ * `r1.action.result` delta, relayed to the glasses by the direct projector.
  *
  * g2-app's `action-result-dispatcher.ts` receives this envelope, validates it
  * with a double trust boundary (outer `EnvelopeSchema` + inner this schema), then

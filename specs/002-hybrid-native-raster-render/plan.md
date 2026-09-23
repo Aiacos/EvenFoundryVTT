@@ -2,6 +2,8 @@
 
 **Branch**: `feat/layered-native-render` | **Spec**: [spec.md](./spec.md)
 
+> **Status: SUPERSEDED (2026-09-23)** by [`specs/003-direct-streaming`](../003-direct-streaming/spec.md) and [ADR-0018](../../docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md): the hybrid/canvas/showcase substrates were removed; the HUD is the D&D-sheet layout on the pixel renderer. Kept as history.
+
 Slices are ordered so each lands green (lint + typecheck + test) and is independently committable.
 Live simulator verification gates the slices that change on-glasses rendering.
 
