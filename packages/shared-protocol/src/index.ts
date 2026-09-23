@@ -375,3 +375,6 @@ export {
   DisplayOpPayloadSchema,
   R1_DEBUG_DISPLAYOP_TYPE,
 } from './debug/debug-events.js';
+
+// ─── Direct channel (ADR-0012) ───────────────────────────────────────────────
+export * from './direct/index.js';
