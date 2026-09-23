@@ -6,13 +6,19 @@ import {
   makeUser,
 } from '../__tests__/direct-fixtures.js';
 import {
+  codeGroups,
   createPairG2App,
   formatLastSeen,
   formatRemaining,
+  PAIR_APP_ID,
   PAIR_TEMPLATE,
   type PairContext,
+  sessionView,
+  toCheckRows,
 } from './PairG2App.js';
-import { getDevice, upsertDevice } from './pairing-store.js';
+import { PAIRING_TTL_MS } from './pairing-flow.js';
+import { getDevice, updateDeviceMeta, upsertDevice } from './pairing-store.js';
+import type { PairTarget } from './players-menu.js';
 import type { Projector } from './projector.js';
 
 interface AppLike {
@@ -21,6 +27,8 @@ interface AppLike {
   confirmingRevoke: string | null;
   selectedPlayer: string | null;
   selectedActor: string | null;
+  connected: { label: string; actorName: string } | null;
+  checks: unknown;
   element: HTMLElement;
   render: ReturnType<typeof vi.fn>;
   _prepareContext(): Promise<PairContext>;
@@ -31,10 +39,21 @@ interface AppLike {
   copyCode(): Promise<void>;
   askRevoke(id: string | undefined): Promise<void>;
   revoke(id: string | undefined): Promise<void>;
+  recheck(): Promise<void>;
+  pairAnother(): Promise<void>;
+  preselect(target: PairTarget): void;
+}
+
+interface AppClassLike {
+  new (): AppLike;
+  openFor(target: PairTarget): Promise<AppLike>;
 }
 
 let f: FoundryMock;
-const projector = { isOnline: vi.fn(() => false), revoke: vi.fn(async () => undefined) };
+const projector = {
+  isOnline: vi.fn((_id: string, _now?: number) => false),
+  revoke: vi.fn(async () => undefined),
+};
 
 function makeApp(): AppLike {
   const App = createPairG2App(projector as unknown as Projector);
@@ -79,11 +98,14 @@ describe('PairG2App', () => {
     };
     expect(App.DEFAULT_OPTIONS.id).toBe('evf-pair-g2');
     expect(App.DEFAULT_OPTIONS.window.title).toBe('evf.pair.title');
+    expect(App.DEFAULT_OPTIONS.id).toBe(PAIR_APP_ID);
     expect(Object.keys(App.DEFAULT_OPTIONS.actions)).toEqual([
       'pair',
       'copyCode',
       'revoke',
       'confirmRevoke',
+      'recheck',
+      'pairAnother',
     ]);
     expect(App.PARTS.main.template).toBe(PAIR_TEMPLATE);
   });
@@ -111,7 +133,9 @@ describe('PairG2App', () => {
     ]);
     expect(ctx.actors.find((a) => a.selected)?.id).toBe('mira');
     expect(ctx.session).toBeNull();
-    expect(ctx.checks).toMatchObject({ served: true, socket: true });
+    expect(ctx.connected).toBeNull();
+    expect(ctx.checks.find((c) => c.key === 'served')?.state).toBe('ok');
+    expect(ctx.checks.find((c) => c.key === 'socket')?.state).toBe('ok');
     expect(ctx.devices).toEqual([
       {
         g2UserId: 'g2x',
@@ -134,11 +158,15 @@ describe('PairG2App', () => {
     expect(session).not.toBeNull();
     const ctx = await app._prepareContext();
     expect(ctx.session?.remaining).toBe('05:00');
+    expect(ctx.session?.codeGroups).toHaveLength(4);
+    expect(ctx.session?.secondsTotal).toBe(300);
     expect(ctx.baseUrlHint).toMatch(/\/modules\/evenfoundryvtt\/g2\/index\.html$/);
 
-    app.element.innerHTML = '<strong data-countdown></strong>';
+    app.element.innerHTML =
+      '<strong data-countdown></strong><progress data-countdown-bar max="300" value="300"></progress>';
     await app.tick((session?.expiresAt ?? 0) - 61_000);
-    expect(app.element.textContent).toBe('01:01');
+    expect(app.element.querySelector('[data-countdown]')?.textContent).toBe('01:01');
+    expect(app.element.querySelector('progress')?.value).toBe(61);
     const keyBefore = getDevice(session?.g2UserId ?? '')?.key;
     await app.tick((session?.expiresAt ?? 0) + 1);
     expect(app.session).toBeNull();
@@ -233,6 +261,15 @@ describe('PairG2App', () => {
     }
     expect(app.selectedPlayer).toBe('p2');
     expect(app.selectedActor).toBe('mira');
+    expect(app.render).toHaveBeenCalledTimes(1); // player change redraws
+
+    // Picking a player with an assigned character preselects that character.
+    app.element.innerHTML = '<select data-field="player"><option value="p1">L</option></select>';
+    app.selectedActor = 'thorin';
+    await app._onRender();
+    app.element.querySelector('select')?.dispatchEvent(new Event('change'));
+    expect(app.selectedPlayer).toBe('p1');
+    expect(app.selectedActor).toBe('mira');
 
     app.session = { g2UserId: 'u', code: 'c', expiresAt: Date.now() + 100_000 };
     const tick = vi.spyOn(app, 'tick').mockResolvedValue(undefined);
@@ -266,6 +303,130 @@ describe('PairG2App', () => {
     await actions.copyCode?.call(app, ev, target);
     await actions.revoke?.call(app, ev, target);
     await actions.confirmRevoke?.call(app, ev, target);
-    expect(calls).toEqual(['pair', 'copy', 'ask:u9', 'revoke:u9']);
+    app.recheck = async () => void calls.push('recheck');
+    app.pairAnother = async () => void calls.push('another');
+    await actions.recheck?.call(app, ev, target);
+    await actions.pairAnother?.call(app, ev, target);
+    expect(calls).toEqual(['pair', 'copy', 'ask:u9', 'revoke:u9', 'recheck', 'another']);
+  });
+
+  it('PA-10 success state: the tick switches to «connected» once the device said hello', async () => {
+    const app = makeApp();
+    app.selectedPlayer = 'p1';
+    app.selectedActor = 'thorin';
+    await app.pair();
+    const session = app.session;
+    const id = session?.g2UserId ?? '';
+    await app.tick((session?.expiresAt ?? 0) - 10_000);
+    expect(app.connected).toBeNull(); // still pending
+
+    // The projector consumes the one-time credentials on `hello`.
+    await updateDeviceMeta(id, { pendingRotation: false });
+    app.render.mockClear();
+    await app.tick((session?.expiresAt ?? 0) - 9_000);
+    expect(app.session).toBeNull();
+    expect(app.expired).toBe(false);
+    expect(app.connected).toEqual({ label: 'Luca (G2)', actorName: 'Thorin' });
+    expect(f.notifications.info).toHaveBeenCalledWith(
+      'evf.pair.connected.toast:{"actor":"Thorin"}',
+    );
+    expect(app.render).toHaveBeenCalledTimes(1);
+    const ctx = await app._prepareContext();
+    expect(ctx.connected).toEqual({ label: 'Luca (G2)', actorName: 'Thorin' });
+
+    await app.pairAnother();
+    expect(app.connected).toBeNull();
+  });
+
+  it('PA-11 success state also when the projector sees the device online (rotation failed)', async () => {
+    const app = makeApp();
+    app.selectedPlayer = 'p2';
+    app.selectedActor = 'mira';
+    await app.pair();
+    const session = app.session;
+    projector.isOnline.mockImplementation((id: string) => id === session?.g2UserId);
+    await app.tick((session?.expiresAt ?? 0) - 1_000);
+    expect(app.connected).toEqual({ label: 'Bea (G2)', actorName: 'Mira' });
+    // A new QR leaves the success state.
+    projector.isOnline.mockReturnValue(false);
+    await app.pair();
+    expect(app.connected).toBeNull();
+  });
+
+  it('PA-12 preselect + openFor: player and character preselected, open instance reused', async () => {
+    const App = createPairG2App(projector as unknown as Projector) as unknown as AppClassLike;
+    const opened = await App.openFor({ playerUserId: 'p2', actorId: 'thorin' });
+    expect(opened.selectedPlayer).toBe('p2');
+    expect(opened.selectedActor).toBe('thorin');
+    expect(opened.render).toHaveBeenCalledWith({ force: true });
+    const ctx = await opened._prepareContext();
+    expect(ctx.players.find((p) => p.selected)?.id).toBe('p2');
+    expect(ctx.actors.find((a) => a.selected)?.id).toBe('thorin');
+
+    // Already open (registered under PAIR_APP_ID) → same instance, new selection.
+    opened.connected = { label: 'x', actorName: 'y' };
+    (foundry.applications as { instances?: Map<string, unknown> }).instances = new Map([
+      [PAIR_APP_ID, opened],
+    ]);
+    const again = await App.openFor({ playerUserId: 'p1', actorId: null });
+    expect(again).toBe(opened);
+    expect(again.selectedPlayer).toBe('p1');
+    expect(again.connected).toBeNull();
+    // No actor given → the player's assigned character.
+    expect((await again._prepareContext()).actors.find((a) => a.selected)?.id).toBe('mira');
+  });
+
+  it('PA-13 recheck re-runs the environment checks', async () => {
+    const app = makeApp();
+    await app._prepareContext();
+    expect(app.checks).not.toBeNull();
+    await app.recheck();
+    expect(app.checks).toBeNull();
+    expect(app.render).toHaveBeenCalled();
+  });
+});
+
+describe('view helpers', () => {
+  it('toCheckRows: pills ok / error / warn with a fix + guide only on failure', () => {
+    const rows = toCheckRows({ https: false, publicHost: true, served: false, socket: false });
+    expect(rows.map((r) => [r.key, r.state])).toEqual([
+      ['https', 'error'],
+      ['publicHost', 'ok'],
+      ['served', 'error'],
+      ['socket', 'warn'],
+    ]);
+    const [https, publicHost, served, socket] = rows;
+    expect(https).toMatchObject({
+      icon: 'fas fa-circle-xmark',
+      label: 'evf.pair.check.https',
+      fix: 'evf.pair.check.https_fix',
+    });
+    expect(https?.guide).toMatch(/setup-guide\.md#-https-reachable-from-the-phone$/);
+    expect(publicHost).toMatchObject({ icon: 'fas fa-circle-check', fix: null, guide: null });
+    expect(served?.guide).toMatch(/#-install-the-module$/);
+    expect(socket).toMatchObject({
+      icon: 'fas fa-triangle-exclamation',
+      fix: 'evf.pair.check.socket_fix',
+    });
+  });
+
+  it('codeGroups + sessionView', () => {
+    expect(codeGroups('ABCD-EFGH-JKMN-PQRS')).toEqual(['ABCD', 'EFGH', 'JKMN', 'PQRS']);
+    const view = sessionView(
+      {
+        g2UserId: 'u',
+        label: 'L (G2)',
+        actorId: 'a',
+        actorName: 'A',
+        code: 'ABCD-EFGH-JKMN-PQRS',
+        url: 'https://x/#evf=1',
+        qrSvg: '<svg/>',
+        expiresAt: 100_000,
+      },
+      100_000 - 90_500,
+    );
+    expect(view).toMatchObject({ remaining: '01:31', secondsLeft: 91 });
+    expect(view.secondsTotal).toBe(PAIRING_TTL_MS / 1000);
+    expect(sessionView({ ...view, expiresAt: 0 }, 5).secondsLeft).toBe(0);
   });
 });

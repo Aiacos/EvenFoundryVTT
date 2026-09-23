@@ -2,6 +2,8 @@
   "evf.settings.pair_button": "Pair G2 glasses",
   "evf.settings.pair_hint": "Create the dedicated \"(G2)\" user for a player and show the QR to scan with the Even Realities App.",
 
+  "evf.players_menu.pair": "Pair G2 glasses",
+
   "evf.pair.title": "EvenFoundryVTT · G2 glasses",
   "evf.pair.player": "Player",
   "evf.pair.character": "Character",
@@ -14,21 +16,34 @@
   "evf.pair.single_use": "and is valid for a single pairing.",
   "evf.pair.manual_code": "Manual code:",
   "evf.pair.expired": "The QR has expired and its credentials were rotated. Generate a new QR.",
-  "evf.pair.generate": "Generate new QR",
+  "evf.pair.generate": "Generate QR",
   "evf.pair.copy_code": "Copy manual code",
   "evf.pair.code_copied": "Manual code copied.",
   "evf.pair.revoked": "Device revoked.",
+  "evf.pair.regenerate": "Generate new QR",
+  "evf.pair.idle_hint": "Pick the player and the character, then press «Generate QR». The player scans it with the Even Realities App — nothing to type.",
+  "evf.pair.qr_alt": "Pairing QR code",
+  "evf.pair.manual_hint": "No camera? On the glasses page pick the «(G2)» user and type this code.",
 
   "evf.pair.check.https": "valid HTTPS",
   "evf.pair.check.served": "module served",
   "evf.pair.check.socket": "socket active",
-  "evf.pair.check.https_warning": "Foundry is not served over HTTPS: the Even Realities App will not load the glasses app. Put Foundry behind a valid certificate.",
+  "evf.pair.check.heading": "Connection checks",
+  "evf.pair.check.recheck": "Check again",
+  "evf.pair.check.guide_link": "Setup guide →",
+  "evf.pair.check.publicHost": "public address",
+  "evf.pair.check.https_fix": "Foundry is not served over HTTPS: the Even Realities App will not load the glasses app. Put Foundry behind a valid certificate (reverse proxy, Tailscale or native TLS).",
+  "evf.pair.check.publicHost_fix": "You opened Foundry from localhost: the QR would point the phone at itself. Reopen Foundry from the address the phone uses, then generate the QR.",
+  "evf.pair.check.served_fix": "The glasses app is not reachable under /modules/evenfoundryvtt/g2/. Make sure the module is installed and enabled, and that your proxy forwards /modules.",
+  "evf.pair.check.socket_fix": "The Foundry socket is disconnected. Reload Foundry; behind a proxy, make sure the WebSocket upgrade is forwarded.",
 
   "evf.pair.devices.heading": "Paired devices",
   "evf.pair.devices.empty": "No paired devices yet.",
   "evf.pair.devices.never": "never connected",
   "evf.pair.devices.seen_seconds": "last contact {seconds} s ago",
   "evf.pair.devices.seen_minutes": "last contact {minutes} min ago",
+  "evf.pair.devices.online": "online",
+  "evf.pair.devices.offline": "offline",
 
   "evf.pair.revoke.button": "Revoke",
   "evf.pair.revoke.confirm": "Revoke this device? The \"(G2)\" user will be deleted.",
@@ -38,5 +53,10 @@
   "evf.pair.error.pair": "Pairing failed — see the browser console.",
   "evf.pair.error.expire": "Could not invalidate the expired QR — revoke the device to be safe.",
   "evf.pair.error.revoke": "Revocation failed — see the browser console.",
-  "evf.pair.error.clipboard": "Clipboard not available — copy the code by hand."
+  "evf.pair.error.clipboard": "Clipboard not available — copy the code by hand.",
+
+  "evf.pair.connected.title": "Glasses connected",
+  "evf.pair.connected.body": "the glasses are receiving the session. The QR has been used and its credentials rotated.",
+  "evf.pair.connected.another": "Pair other glasses",
+  "evf.pair.connected.toast": "G2 glasses connected · {actor}"
 }

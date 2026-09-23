@@ -11,7 +11,7 @@ name: Foundry Module Release
 #   3. Builds the g2-app Vite bundle INTO packages/foundry-module/g2/ (ADR-0012:
 #      the phone WebView loads it same-origin from /modules/evenfoundryvtt/g2/)
 #   4. Patches module.json `version` + `download` from the tag
-#   5. Zips the runtime assets (module.json + dist/ + g2/ + lang/ + templates/)
+#   5. Zips the runtime assets (module.json + dist/ + g2/ + lang/ + templates/ + styles/)
 #   6. Extracts release notes from Changesets CHANGELOG.md (falls back to --generate-notes on first release)
 #   7. Creates the GitHub Release on the tag
 #   8. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
@@ -129,7 +129,10 @@ jobs:
           cp -r g2 release-tree/
           cp -r lang release-tree/
           cp -r templates release-tree/
+          cp -r styles release-tree/
           ls -R release-tree
+          # Every runtime path module.json references must be in the tree.
+          node ../../scripts/check-module-assets.mjs release-tree
 
       - name: Create evenfoundryvtt.zip
         working-directory: packages/foundry-module/release-tree

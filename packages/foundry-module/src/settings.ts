@@ -2,8 +2,9 @@
  * @evf/foundry-module — settings registration.
  *
  * Registers the hidden pairing settings (device metadata world-scope, device keys
- * client-scope — see `direct/pairing-store.ts`) and the GM-only settings menu
- * «Associa occhiali G2» that opens the pairing window (mock P01).
+ * client-scope — see `direct/pairing-store.ts`), the GM-only settings menu
+ * «Associa occhiali G2» that opens the pairing window (mock P01), and the same entry
+ * in the Players list context menu (`direct/players-menu.ts`).
  *
  * Also reads `detectedLocale` from `game.i18n.lang` (I18N-01, locale detection at
  * module boot).
@@ -14,6 +15,7 @@
 
 import { createPairG2App } from './direct/PairG2App.js';
 import { registerPairingSettings } from './direct/pairing-store.js';
+import { registerPlayersMenu } from './direct/players-menu.js';
 import type { Projector } from './direct/projector.js';
 import { MODULE_ID } from './module-id.js';
 
@@ -37,12 +39,18 @@ export function registerSettings(projector: Projector): void {
 
   registerPairingSettings();
 
+  const PairG2App = createPairG2App(projector);
   game.settings.registerMenu(MODULE_ID, 'pairG2', {
     name: 'evf.settings.pair_button',
     label: 'evf.settings.pair_button',
     hint: 'evf.settings.pair_hint',
     icon: 'fas fa-glasses',
-    type: createPairG2App(projector),
+    type: PairG2App,
     restricted: true,
+  });
+  registerPlayersMenu((target) => {
+    PairG2App.openFor(target).catch((err: unknown) => {
+      console.error('[EVF] could not open the pairing window', err);
+    });
   });
 }

@@ -1,0 +1,475 @@
+/*
+ * «Associa occhiali G2» window (mock P01) — templates/pair-g2.hbs.
+ *
+ * Everything is scoped under `.evf-pair`. Colours come from Foundry's theme variables
+ * (v13+ `.theme-light` / `.theme-dark` applications) with fallbacks, so the window
+ * follows the GM's interface theme. Accent = the EVF sheet red (docs/design/g2-sheet-ux.html).
+ */
+
+.evf-pair {
+  --evf-ink: var(--color-text-primary, #1a2026);
+  --evf-muted: var(--color-text-secondary, #56616b);
+  --evf-rule: var(--color-border, #cdd3d8);
+  --evf-panel: rgb(127 127 127 / 0.08);
+  --evf-accent: #9b2226;
+  --evf-accent-ink: #fff;
+  --evf-ok: var(--color-level-success, #2f7d4a);
+  --evf-warn: var(--color-level-warning, #a15c00);
+  --evf-error: var(--color-level-error, #b3261e);
+  --evf-mono: var(
+    --font-monospace,
+    "IBM Plex Mono",
+    ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    monospace
+  );
+  --evf-radius: 6px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  color: var(--evf-ink);
+}
+
+.theme-dark .evf-pair {
+  --evf-ink: var(--color-text-primary, #e3e7ea);
+  --evf-muted: var(--color-text-secondary, #9aa5ae);
+  --evf-rule: var(--color-border, #2c343b);
+  --evf-accent: #c0393d;
+  --evf-ok: var(--color-level-success, #5cc185);
+  --evf-warn: var(--color-level-warning, #e7a33e);
+  --evf-error: var(--color-level-error, #ef6f68);
+}
+
+.evf-pair h3 {
+  margin: 0;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.evf-pair ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evf-pair__muted {
+  margin: 0;
+  color: var(--evf-muted);
+  font-size: 0.85rem;
+}
+
+.evf-pair__label {
+  color: var(--evf-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Player / character pickers ───────────────────────────────────────── */
+
+.evf-pair__pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.evf-pair__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.evf-pair__field > span {
+  color: var(--evf-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Stage: QR + guide ────────────────────────────────────────────────── */
+
+.evf-pair__stage {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  padding: 1rem;
+  border: 1px solid var(--evf-rule);
+  border-radius: var(--evf-radius);
+  background: var(--evf-panel);
+}
+
+.evf-pair__qr {
+  flex: 0 0 auto;
+  width: 256px;
+  height: 256px;
+  padding: 16px; /* white quiet zone, independent of the theme */
+  box-sizing: content-box;
+  background: #fff;
+  border-radius: var(--evf-radius);
+}
+
+.evf-pair__qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.evf-pair__guide {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.evf-pair__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.evf-pair__steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.evf-pair__step-no {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  background: var(--evf-accent);
+  color: var(--evf-accent-ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.evf-pair[data-state="idle"] .evf-pair__step-no {
+  background: transparent;
+  color: var(--evf-accent);
+  box-shadow: inset 0 0 0 2px var(--evf-accent);
+}
+
+/* Countdown: text + progress bar */
+
+.evf-pair__countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.evf-pair__countdown-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.evf-pair__timer {
+  font-family: var(--evf-mono);
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.evf-pair progress {
+  width: 100%;
+  height: 6px;
+  border: none;
+  border-radius: 3px;
+  background: var(--evf-rule);
+  appearance: none;
+  overflow: hidden;
+}
+
+.evf-pair progress::-webkit-progress-bar {
+  background: var(--evf-rule);
+}
+
+.evf-pair progress::-webkit-progress-value {
+  background: var(--evf-accent);
+  transition: width 0.9s linear;
+}
+
+.evf-pair progress::-moz-progress-bar {
+  background: var(--evf-accent);
+}
+
+/* Manual code */
+
+.evf-pair__code {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.evf-pair__code-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.evf-pair__code-value {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--evf-rule);
+  border-radius: var(--evf-radius);
+  background: transparent;
+  color: var(--evf-ink);
+  font-family: var(--evf-mono);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.evf-pair__code-value span + span::before {
+  content: "-";
+  margin-right: 0.2rem;
+  color: var(--evf-muted);
+}
+
+.evf-pair__icon-btn {
+  flex: 0 0 auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  line-height: 1;
+}
+
+/* ── Success state ────────────────────────────────────────────────────── */
+
+.evf-pair__success {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1rem;
+  border: 1px solid var(--evf-ok);
+  border-radius: var(--evf-radius);
+  background: color-mix(in srgb, var(--evf-ok) 12%, transparent);
+}
+
+.evf-pair__success > div {
+  flex: 1 1 auto;
+}
+
+.evf-pair__success-icon {
+  color: var(--evf-ok);
+  font-size: 2.2rem;
+}
+
+.evf-pair__success-title {
+  margin: 0 0 0.2rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.evf-pair__success button {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+/* ── Checks: status pills + actionable notices ────────────────────────── */
+
+.evf-pair__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evf-pair__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.evf-pair__link-btn {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 0.4rem;
+  border: none;
+  background: none;
+  color: var(--evf-muted);
+  font-size: 0.8rem;
+}
+
+.evf-pair__link-btn:hover {
+  color: var(--evf-ink);
+  box-shadow: none;
+}
+
+.evf-pair__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.evf-pair__pill {
+  --evf-tone: var(--evf-ok);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--evf-tone) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--evf-tone) 12%, transparent);
+  font-size: 0.85rem;
+}
+
+.evf-pair__pill i {
+  color: var(--evf-tone);
+}
+
+.evf-pair__pill--warn,
+.evf-pair__notice,
+.evf-pair__notice--warn {
+  --evf-tone: var(--evf-warn);
+}
+
+.evf-pair__pill--error,
+.evf-pair__notice--error {
+  --evf-tone: var(--evf-error);
+}
+
+.evf-pair__notice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--evf-tone);
+  border-radius: 0 var(--evf-radius) var(--evf-radius) 0;
+  background: color-mix(in srgb, var(--evf-tone) 10%, transparent);
+  font-size: 0.85rem;
+}
+
+.evf-pair__notice i {
+  margin-top: 0.15rem;
+  color: var(--evf-tone);
+}
+
+.evf-pair__notice a {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.evf-pair__url {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--evf-muted);
+  overflow-wrap: anywhere;
+}
+
+.evf-pair__url code {
+  font-family: var(--evf-mono);
+}
+
+/* ── Paired devices ───────────────────────────────────────────────────── */
+
+.evf-pair__devices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.evf-pair__device {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.4rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--evf-rule);
+}
+
+.evf-pair__device:last-child {
+  border-bottom: none;
+}
+
+.evf-pair__dot {
+  flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--evf-muted);
+}
+
+.evf-pair__dot--on {
+  background: var(--evf-ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--evf-ok) 25%, transparent);
+}
+
+.evf-pair__device-name {
+  font-weight: 600;
+}
+
+.evf-pair__device-seen {
+  margin-left: auto;
+}
+
+.evf-pair__device > button,
+.evf-pair__confirm button {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.evf-pair__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.evf-pair__danger {
+  border-color: var(--evf-error);
+  background: var(--evf-error);
+  color: #fff;
+}
+
+/* ── Footer: one primary action ───────────────────────────────────────── */
+
+.evf-pair__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.evf-pair__primary {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 12rem;
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--evf-accent);
+  background: var(--evf-accent);
+  color: var(--evf-accent-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.evf-pair__primary:hover,
+.evf-pair__primary:focus-visible {
+  background: color-mix(in srgb, var(--evf-accent) 85%, #000);
+  color: var(--evf-accent-ink);
+}
+
+/* Narrow viewport: stack the QR above the guide. */
+@media (max-width: 640px) {
+  .evf-pair__stage {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .evf-pair__pickers {
+    grid-template-columns: 1fr;
+  }
+}

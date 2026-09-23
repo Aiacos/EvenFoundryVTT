@@ -17,6 +17,7 @@
     "verified": "14"
   },
   "esmodules": ["dist/module.js"],
+  "styles": ["styles/pair-g2.css"],
   "languages": [
     {
       "lang": "en",

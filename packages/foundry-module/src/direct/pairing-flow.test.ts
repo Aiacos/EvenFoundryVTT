@@ -10,6 +10,7 @@ import {
   checkEnvironment,
   expirePairing,
   foundryBaseUrl,
+  isLoopbackHost,
   PAIRING_TTL_MS,
   revokePairing,
   startPairing,
@@ -130,6 +131,7 @@ describe('pairing-flow', () => {
       https: window.location.protocol === 'https:',
       served: true,
       socket: true,
+      publicHost: !isLoopbackHost(window.location.hostname),
     });
     expect(fetchMock).toHaveBeenCalledWith(
       `${window.location.origin}/vtt/modules/evenfoundryvtt/g2/index.html`,
@@ -139,5 +141,27 @@ describe('pairing-flow', () => {
     );
     (f.game.socket as { connected: boolean }).connected = false;
     expect(await checkEnvironment()).toMatchObject({ served: false, socket: false });
+  });
+
+  it('PF-08 isLoopbackHost flags addresses the phone cannot reach', () => {
+    for (const host of [
+      'localhost',
+      'LOCALHOST',
+      'foundry.localhost',
+      '127.0.0.1',
+      '127.1.2.3',
+      '[::1]',
+      '::1',
+    ]) {
+      expect(isLoopbackHost(host)).toBe(true);
+    }
+    for (const host of [
+      'foundry.example.com',
+      '192.168.1.10',
+      'vtt.tail1234.ts.net',
+      '1127.0.0.1',
+    ]) {
+      expect(isLoopbackHost(host)).toBe(false);
+    }
   });
 });

@@ -61,6 +61,24 @@ export interface EnvironmentCheck {
   served: boolean;
   /** This client's Foundry socket is connected. */
   socket: boolean;
+  /**
+   * The GM browser is NOT on a loopback address. The QR is built from
+   * `window.location`, so a GM on `http://localhost:30000` would hand the phone a URL
+   * it cannot open (setup guide §HTTPS reachable from the phone).
+   */
+  publicHost: boolean;
+}
+
+/** True for `localhost`, `*.localhost`, `127.x.x.x` and `[::1]` host names. */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    /^127(?:\.\d{1,3}){3}$/.test(host) ||
+    host === '[::1]' ||
+    host === '::1'
+  );
 }
 
 /**
@@ -156,7 +174,7 @@ export async function revokePairing(
   await removeDevice(g2UserId);
 }
 
-/** Runs the three checks of mock P01 (HTTPS · module served · socket). */
+/** Runs the checks of mock P01 (HTTPS · module served · socket · public address). */
 export async function checkEnvironment(): Promise<EnvironmentCheck> {
   let served = false;
   try {
@@ -170,5 +188,6 @@ export async function checkEnvironment(): Promise<EnvironmentCheck> {
     https: window.location.protocol === 'https:',
     served,
     socket: game.socket?.connected === true,
+    publicHost: !isLoopbackHost(window.location.hostname),
   };
 }

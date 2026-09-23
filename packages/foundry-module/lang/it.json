@@ -2,6 +2,8 @@
   "evf.settings.pair_button": "Associa occhiali G2",
   "evf.settings.pair_hint": "Crea l'utente dedicato «(G2)» per un giocatore e mostra il QR da inquadrare con la Even Realities App.",
 
+  "evf.players_menu.pair": "Associa occhiali G2",
+
   "evf.pair.title": "EvenFoundryVTT · Occhiali G2",
   "evf.pair.player": "Giocatore",
   "evf.pair.character": "Personaggio",
@@ -14,21 +16,34 @@
   "evf.pair.single_use": "e vale una sola associazione.",
   "evf.pair.manual_code": "Codice manuale:",
   "evf.pair.expired": "Il QR è scaduto e le credenziali sono state ruotate. Genera un nuovo QR.",
-  "evf.pair.generate": "Genera nuovo QR",
+  "evf.pair.generate": "Genera QR",
   "evf.pair.copy_code": "Copia codice manuale",
   "evf.pair.code_copied": "Codice manuale copiato.",
   "evf.pair.revoked": "Dispositivo revocato.",
+  "evf.pair.regenerate": "Genera nuovo QR",
+  "evf.pair.idle_hint": "Scegli giocatore e personaggio, poi premi «Genera QR». Il giocatore lo inquadra con la Even Realities App — niente da digitare.",
+  "evf.pair.qr_alt": "QR di associazione",
+  "evf.pair.manual_hint": "Niente fotocamera? Nella pagina degli occhiali scegli l'utente «(G2)» e digita questo codice.",
 
   "evf.pair.check.https": "HTTPS valido",
   "evf.pair.check.served": "modulo servito",
   "evf.pair.check.socket": "socket attivo",
-  "evf.pair.check.https_warning": "Foundry non è servito in HTTPS: la Even Realities App non caricherà l'app degli occhiali. Metti Foundry dietro un certificato valido.",
+  "evf.pair.check.heading": "Verifiche di connessione",
+  "evf.pair.check.recheck": "Ricontrolla",
+  "evf.pair.check.guide_link": "Guida di configurazione →",
+  "evf.pair.check.publicHost": "indirizzo pubblico",
+  "evf.pair.check.https_fix": "Foundry non è servito in HTTPS: la Even Realities App non caricherà l'app degli occhiali. Metti Foundry dietro un certificato valido (reverse proxy, Tailscale o TLS nativo).",
+  "evf.pair.check.publicHost_fix": "Hai aperto Foundry da localhost: il QR farebbe puntare il telefono a se stesso. Riapri Foundry dall'indirizzo usato dal telefono, poi genera il QR.",
+  "evf.pair.check.served_fix": "L'app degli occhiali non risponde sotto /modules/evenfoundryvtt/g2/. Verifica che il modulo sia installato e attivo e che il proxy inoltri /modules.",
+  "evf.pair.check.socket_fix": "Il socket di Foundry è disconnesso. Ricarica Foundry; dietro un proxy verifica che l'upgrade WebSocket sia inoltrato.",
 
   "evf.pair.devices.heading": "Dispositivi associati",
   "evf.pair.devices.empty": "Nessun dispositivo associato.",
   "evf.pair.devices.never": "mai connesso",
   "evf.pair.devices.seen_seconds": "ultimo contatto {seconds} s fa",
   "evf.pair.devices.seen_minutes": "ultimo contatto {minutes} min fa",
+  "evf.pair.devices.online": "in linea",
+  "evf.pair.devices.offline": "non in linea",
 
   "evf.pair.revoke.button": "Revoca",
   "evf.pair.revoke.confirm": "Revocare questo dispositivo? L'utente «(G2)» verrà eliminato.",
@@ -38,5 +53,10 @@
   "evf.pair.error.pair": "Associazione non riuscita — vedi la console del browser.",
   "evf.pair.error.expire": "Impossibile invalidare il QR scaduto — per sicurezza revoca il dispositivo.",
   "evf.pair.error.revoke": "Revoca non riuscita — vedi la console del browser.",
-  "evf.pair.error.clipboard": "Appunti non disponibili — copia il codice a mano."
+  "evf.pair.error.clipboard": "Appunti non disponibili — copia il codice a mano.",
+
+  "evf.pair.connected.title": "Occhiali collegati",
+  "evf.pair.connected.body": "gli occhiali ricevono la sessione. Il QR è stato usato e le credenziali ruotate.",
+  "evf.pair.connected.another": "Associa altri occhiali",
+  "evf.pair.connected.toast": "Occhiali G2 collegati · {actor}"
 }
