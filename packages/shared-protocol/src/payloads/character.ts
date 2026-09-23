@@ -573,6 +573,8 @@ export type BiographySnapshot = z.infer<typeof BiographySnapshotSchema>;
  *
  * - `classId` / `className` / `subclass` — `actor.classes` key (dnd5e identifier, e.g.
  *   `cleric`) of the highest-level class, its item name and its `subclass` item name;
+ * - `classLabel`             — every class item name, highest level first, joined with
+ *   `' / '` (multiclass «Fighter / Wizard»; a single class → its name);
  * - `race`                   — `system.details.race` item name (species);
  * - `inspiration`            — `system.attributes.inspiration`;
  * - `speed`                  — `system.attributes.movement.walk` (scene units, ft);
@@ -586,6 +588,7 @@ export type BiographySnapshot = z.infer<typeof BiographySnapshotSchema>;
 export const CharacterSheetDetailsSchema = z.object({
   classId: z.string().optional(),
   className: z.string().optional(),
+  classLabel: z.string().optional(),
   subclass: z.string().optional(),
   race: z.string().optional(),
   inspiration: z.boolean(),
@@ -699,9 +702,9 @@ export const CharacterSnapshotSchema = z.strictObject({
    * Character portrait URL from `actor.img` (Plan 13-03 — STRETCH-06 optional addition).
    *
    * Optional — omitted entirely for actors where `actor.img` is absent or an empty string.
-   * The bridge validates and resolves the URL against the Foundry world origin (T-13-02).
+   * The glasses resolve it against the Foundry world origin they are connected to.
    * NOTE: z.string().min(1) accepts any non-empty string (including relative paths like
-   * `worlds/foo/p.webp`) — URL validation is the bridge's responsibility, not the schema's.
+   * `worlds/foo/p.webp`) — URL validation is the consumer's responsibility, not the schema's.
    */
   portrait: z.object({ url: z.string().min(1) }).optional(),
   /**

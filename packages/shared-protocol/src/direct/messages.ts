@@ -77,6 +77,11 @@ export const WelcomeSchema = z.strictObject({
   worldTitle: z.string(),
   /** Foundry UI language (`game.i18n.lang`) so the app can follow it when set to 'auto'. */
   locale: z.string().min(2).max(10).optional(),
+  /**
+   * Version of the `evenfoundryvtt` module answering (`game.modules.get(id).version`),
+   * so the app can show it and warn when it differs from its own build.
+   */
+  moduleVersion: z.string().min(1).max(32).optional(),
   rotate: RotateSchema.optional(),
 });
 

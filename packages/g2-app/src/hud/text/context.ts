@@ -170,6 +170,8 @@ function listHead(
     }
     case 'items':
       return { title: s.items, right: '' };
+    case 'feats':
+      return { title: s.feats, right: '' };
     default:
       return { title: s.options, right: '' };
   }
@@ -231,14 +233,19 @@ function requestView(app: AppState, ui: UiState, s: HudStrings, budget: number):
   if (req) {
     const [label, value] = requestLine(req, app, s);
     lines.push(spread(label, value, budget));
-    lines.push(
-      req.dc === undefined ? s.requestRoll : `${s.requestDc(req.dc)} ${GLYPH.dot} ${s.requestRoll}`,
-    );
+    if (req.dc !== undefined) lines.push(s.requestDc(req.dc));
   }
+  // Choices: «Fatto» (rolled with real dice at the table) or «Tira in Foundry».
+  const choices = listBody(
+    buildEntries(app, ui, s),
+    ui.cursor,
+    CONTEXT_BODY_LINES - lines.length,
+    budget,
+  );
   return {
     title: s.requestTitle,
     right: s.requestFrom,
-    body: [...lines, ...listBody(buildEntries(app, ui, s), ui.cursor, 1, budget)],
+    body: [...lines, ...choices],
     hint: s.footer.request,
   };
 }

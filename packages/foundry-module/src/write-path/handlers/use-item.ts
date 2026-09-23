@@ -87,7 +87,7 @@ export const useItemHandler: ToolHandler<(typeof UseItemInputSchema)['_input']> 
     // true (INV-2: foundryvtt/dnd5e module/documents/activity/mixin.mjs). Passing
     // `{ configure: false }` as the FIRST (usage) arg leaves the dialog enabled, so
     // `activity.use` awaits a configuration dialog that no one can answer from the
-    // glasses → the request hangs until the bridge's 10s foundry_timeout. The flag MUST
+    // glasses → the request hangs until the glasses' invoke times out. The flag MUST
     // be the dialog arg, mirroring the working skill-check handler's `rollSkill(cfg, { configure: false })`.
     try {
       const result = await activity.use({}, { configure: false });

@@ -2,8 +2,11 @@
   "package_id": "io.github.aiacos.foundryvtt",
   "edition": "202601",
   "name": "FoundryVTT G2 HUD",
-  "version": "0.2.0",
-  "min_sdk_version": "0.0.14",
+  "description": "Foundry VTT D&D 5e character sheet HUD on Even Realities G2, streamed directly from your Foundry server and driven by R1 ring gestures.",
+  "icon": "icon.png",
+  "version": "0.2.5",
+  "min_app_version": "2.0.0",
+  "min_sdk_version": "0.0.15",
   "entrypoint": "index.html",
   "permissions": [
     {

@@ -70,7 +70,10 @@ function makeApp(): AppLike {
 beforeEach(() => {
   f = installFoundry({
     users: [makeUser('p1', 'Luca', { character: { id: 'mira' } }), makeUser('p2', 'Bea')],
-    actors: [makeActor('thorin', 'Thorin'), makeActor('mira', 'Mira')],
+    actors: [
+      makeActor('thorin', 'Thorin', { ownership: { p1: 3, p2: 3 } }),
+      makeActor('mira', 'Mira', { ownership: { p1: 3, p2: 3 } }),
+    ],
   });
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
   projector.isOnline.mockReturnValue(false);
@@ -190,7 +193,7 @@ describe('PairG2App', () => {
     f.actors.clear();
     await app.pair();
     expect(f.notifications.error).toHaveBeenCalledWith('evf.pair.error.select');
-    f.actors.set('thorin', makeActor('thorin', 'Thorin'));
+    f.actors.set('thorin', makeActor('thorin', 'Thorin', { ownership: { p2: 3 } }));
     f.createUser.mockRejectedValueOnce(new Error('denied'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     app.selectedPlayer = 'p2';
@@ -361,6 +364,17 @@ describe('PairG2App', () => {
     projector.isOnline.mockReturnValue(false);
     await app.pair();
     expect(app.connected).toBeNull();
+  });
+
+  it('PA-12b roster: only the characters the chosen player owns; a stale selection falls back', async () => {
+    const app = makeApp();
+    (f.actors.get('mira') as { ownership: Record<string, number> }).ownership = { p1: 3 };
+    app.selectedPlayer = 'p2';
+    app.selectedActor = 'mira'; // not owned by p2 → ignored
+    const ctx = await app._prepareContext();
+    expect(ctx.actors).toEqual([{ id: 'thorin', name: 'Thorin', selected: true }]);
+    (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
+    expect((await app._prepareContext()).actors).toEqual([]);
   });
 
   it('PA-12 preselect + openFor: player and character preselected, open instance reused', async () => {
@@ -555,6 +569,7 @@ describe('view helpers', () => {
     becomeClient(f, 'gm1', browsers, null);
     const mira = f.actors.get('mira') as { ownership: Record<string, number> };
     mira.ownership = { p1: 3 };
+    (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
     const g2Id = await enableGlasses('p1');
     becomeClient(f, 'p1', browsers, null);
     app = await Self.openFor(null);

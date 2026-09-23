@@ -16,7 +16,7 @@ import {
   initialState,
 } from '../../state/app-store.js';
 import { BRIDGE_CALL_TIMEOUT_MS, createBridgeQueue } from '../bridge-queue.js';
-import { startHud, TICK_MS } from '../index.js';
+import { PLACE_RETRY_MS, startHud, TICK_MS } from '../index.js';
 import { menuIdOf } from '../input/state-machine.js';
 
 interface Call {
@@ -82,7 +82,7 @@ function fakeActions(): AppActions & { invoke: ReturnType<typeof vi.fn> } {
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
-const tap = { sysEvent: {} } as EvenHubEvent;
+const tap = { sysEvent: { eventSource: 2 } } as EvenHubEvent;
 const dbl = { sysEvent: { eventType: 3 } } as EvenHubEvent;
 const down = { textEvent: { eventType: 2 } } as EvenHubEvent;
 
@@ -120,7 +120,7 @@ describe('startHud', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(fb.of('create')).toHaveLength(1);
     expect(fb.names(fb.of('create')[0])).toEqual(['evf-bg']);
-    expect(imageNames()).toEqual(['full-tl', 'full-tr', 'full-bl', 'full-br']);
+    expect(imageNames()).toEqual(['img-tl', 'img-tr', 'img-bl', 'img-br']);
     store.update(itState());
     await flush();
     expect(fb.of('create')).toHaveLength(1);
@@ -128,19 +128,52 @@ describe('startHud', () => {
     expect(fb.names(fb.of('rebuild')[0])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
   });
 
-  it('sends the image zones one at a time in priority order, ≥100 ms apart, skipping unchanged ones', async () => {
+  it('sends the three sheet tiles one at a time in priority order, ≥100 ms apart, per-tile hash skip', async () => {
     store = createAppStore(itState());
     dispose = startHud(fb.bridge, store, actions, options);
     await vi.advanceTimersByTimeAsync(1000);
     const first = imageNames();
-    expect(first.slice(0, 4)).toEqual(['z-header', 'z-map', 'z-sheet', 'z-portrait']);
-    expect(first).toHaveLength(4);
+    expect(first).toEqual(['img-tl', 'img-tr', 'img-bl']);
+    expect(fb.of('image').map((c) => (c.arg as { containerID: number }).containerID)).toEqual([
+      0, 1, 2,
+    ]);
     const n = fb.of('image').length;
     await vi.advanceTimersByTimeAsync(TICK_MS * 3);
     expect(fb.of('image').length).toBe(n);
-    store.update({ character: { ...character(), hp: 20 } });
+    // CA lives in tile tl only → one send.
+    store.update({ character: { ...character(), ac: 19 } });
     await vi.advanceTimersByTimeAsync(500);
-    expect(imageNames().slice(n)).toEqual(['z-header']);
+    expect(imageNames().slice(n)).toEqual(['img-tl']);
+    // The PF box straddles the two top tiles → two sends.
+    const m = fb.of('image').length;
+    store.update({ character: { ...character(), ac: 19, hp: 20 } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(imageNames().slice(m)).toEqual(['img-tl', 'img-tr']);
+  });
+
+  it('holds map frames to ≤ 1 fps inside tile tr without delaying header changes', async () => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    const map = store.get().map;
+    if (!map) throw new Error('fixture has a map');
+    const moved = (dx: number) => ({
+      ...map,
+      tokens: map.tokens.map((t, i) => (i === 0 ? { ...t, x: t.x + dx } : t)),
+    });
+    const n = fb.of('image').length;
+    store.update({ map: moved(1) });
+    await vi.advanceTimersByTimeAsync(150);
+    store.update({ map: moved(2) });
+    await vi.advanceTimersByTimeAsync(150);
+    const early = imageNames().slice(n);
+    expect(early.filter((x) => x === 'img-tr')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(
+      imageNames()
+        .slice(n)
+        .filter((x) => x === 'img-tr'),
+    ).toHaveLength(2);
   });
 
   it('pushes only changed text regions with textContainerUpgrade', async () => {
@@ -260,9 +293,9 @@ describe('startHud', () => {
     expect(fb.of('image').length).toBeGreaterThan(n);
     fb.results.image = 'success';
     await vi.advanceTimersByTimeAsync(5000);
-    const last = imageNames().slice(-4).sort();
-    expect(last).toEqual(['z-header', 'z-map', 'z-portrait', 'z-sheet']);
-    expect(console.warn).toHaveBeenCalledWith('[hud] image header rejected: sendFailed');
+    const last = imageNames().slice(-3).sort();
+    expect(last).toEqual(['img-bl', 'img-tl', 'img-tr']);
+    expect(console.warn).toHaveBeenCalledWith('[hud] image tl rejected: sendFailed');
   });
 
   it('rebuilds when the language changes and dims the zones offline', async () => {
@@ -275,20 +308,79 @@ describe('startHud', () => {
     const n = fb.of('image').length;
     store.update({ connection: { status: 'offline', cause: 'network' } });
     await vi.advanceTimersByTimeAsync(1500);
-    expect(imageNames().slice(n).sort()).toEqual(['z-header', 'z-map', 'z-portrait', 'z-sheet']);
+    expect(imageNames().slice(n).sort()).toEqual(['img-bl', 'img-tl', 'img-tr']);
     expect(fb.texts().at(-3)?.content).toContain('Offline');
   });
 
-  it('retries a rejected start-up page and a failed text upgrade', async () => {
-    fb.results.create = 1;
+  it('falls back to the full-screen 2×2 layout when the host rejects the sheet start-up page', async () => {
+    const real = fb.bridge.createStartUpPageContainer.bind(fb.bridge);
+    let calls = 0;
+    // First call (sheet) → StartUpPageCreateResult.invalid, then success.
+    (fb.bridge as { createStartUpPageContainer: unknown }).createStartUpPageContainer = async (
+      arg: Parameters<typeof real>[0],
+    ) => {
+      const r = await real(arg);
+      calls += 1;
+      return calls === 1 ? 1 : r;
+    };
     store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    const creates = fb.of('create');
+    expect(creates).toHaveLength(2);
+    expect(fb.names(creates[0])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+    expect(fb.names(creates[1])).toEqual(['evf-bg']);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('createStartUpPageContainer rejected the sheet page'),
+    );
+    // The sheet is still drawn: three sheet tiles + zone E as pixels in tile br.
+    expect(imageNames().sort()).toEqual(['img-bl', 'img-br', 'img-tl', 'img-tr']);
+    const n = fb.of('image').length;
+    fb.emit(tap); // actions list → context tile changes, no text container exists
+    await vi.advanceTimersByTimeAsync(500);
+    expect(imageNames().slice(n)).toContain('img-br');
+    expect(fb.of('text')).toHaveLength(0);
+    // The fallback is sticky: a later locale change rebuilds `full` again.
+    store.update({ settings: { ...store.get().settings, locale: 'en' } });
+    await flush();
+    expect(fb.names(fb.of('rebuild')[0])).toEqual(['evf-bg']);
+  });
+
+  it('falls back when a rebuild into the sheet layout is rejected or fails', async () => {
+    fb.results.rebuild = false;
+    store = createAppStore(initialState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await flush();
+    store.update(itState());
+    await flush();
+    fb.results.rebuild = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    const rebuilds = fb.of('rebuild');
+    expect(fb.names(rebuilds[0])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+    expect(fb.names(rebuilds[1])).toEqual(['evf-bg']);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('rebuildPageContainer rejected the sheet page (false)'),
+    );
+  });
+
+  it('retries a rejected full-screen page after the backoff, and a failed text upgrade', async () => {
+    fb.results.create = 1;
+    store = createAppStore(initialState());
     dispose = startHud(fb.bridge, store, actions, options);
     await flush();
     fb.results.create = new Error('ble');
     await vi.advanceTimersByTimeAsync(TICK_MS);
+    expect(fb.of('create')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
+    expect(fb.of('create')).toHaveLength(2);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('rejected the full page (Error: ble) — retrying'),
+    );
     fb.results.create = 0;
-    await vi.advanceTimersByTimeAsync(TICK_MS);
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS + TICK_MS);
     expect(fb.of('create')).toHaveLength(3);
+    store.update(itState());
+    await flush();
     fb.results.text = false;
     fb.emit(tap);
     await flush();
@@ -298,14 +390,36 @@ describe('startHud', () => {
     fb.results.text = true;
     await vi.advanceTimersByTimeAsync(TICK_MS);
     expect(fb.texts().length).toBeGreaterThan(failed + 1);
-    fb.results.rebuild = false;
-    store.update({ settings: { ...store.get().settings, locale: 'en' } });
-    await flush();
-    expect(console.warn).toHaveBeenCalled();
-    fb.results.rebuild = new Error('x');
     fb.results.image = new Error('x');
     fb.emit({ sysEvent: { eventType: 5 } } as EvenHubEvent);
     await vi.advanceTimersByTimeAsync(TICK_MS);
+  });
+
+  it('survives a store that replays its state synchronously inside subscribe (TDZ, 0601238)', async () => {
+    // Real iPhone WebView crash: a bus replaying cached state inside `subscribe` fired a
+    // callback before a later `const` was initialised → ReferenceError, white page.
+    const inner = createAppStore(itState());
+    const replaying: AppStore = {
+      ...inner,
+      subscribe(listener) {
+        listener(inner.get(), inner.get());
+        return inner.subscribe(listener);
+      },
+    };
+    store = replaying;
+    expect(() => {
+      dispose = startHud(fb.bridge, replaying, actions, options);
+    }).not.toThrow();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fb.of('create')).toHaveLength(1);
+    expect(imageNames()).toEqual(['img-tl', 'img-tr', 'img-bl']);
+  });
+
+  it('relies on a store that never replays synchronously on subscribe', () => {
+    const s = createAppStore(itState());
+    const listener = vi.fn();
+    s.subscribe(listener);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('logs a failed exit call and stops everything on dispose', async () => {
@@ -335,7 +449,7 @@ describe('startHud', () => {
     store = createAppStore(itState());
     dispose = startHud(fb.bridge, store, actions);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(imageNames()).toContain('z-portrait');
+    expect(imageNames()).toContain('img-tl');
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining('[hud] image decode failed'),
       expect.any(Error),

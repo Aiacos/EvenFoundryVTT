@@ -8,7 +8,8 @@
  * full screens), and the `max` content variant (long names, 345/999 PF, every condition)
  * in both locales. The same states also assert that zone frames never move (INV-1).
  */
-import { matchPixelFixture, type Pixmap } from '@evf/shared-render';
+import type { Pixmap } from '@evf/shared-render';
+import { matchPixelFixture } from '@evf/shared-render/testing';
 import { describe, expect, it } from 'vitest';
 import { type MockState, mockStates, type Variant } from '../../demo/fixtures.js';
 import { demoArtPicture } from '../../demo/map-art.js';

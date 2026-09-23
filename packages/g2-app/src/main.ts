@@ -72,6 +72,7 @@ async function bootApp(mount: HTMLElement, log: DebugLog | null): Promise<void> 
     storage: browserStorage(),
     deviceLanguage: () => navigator.language,
     appVersion: __EVF_APP_VERSION__,
+    moduleVersion: __EVF_MODULE_VERSION__,
     getBridge: async () => {
       const bridge = await getBridge();
       if (bridge === null || log === null) return bridge;

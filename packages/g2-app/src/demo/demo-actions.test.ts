@@ -106,7 +106,12 @@ describe('createDemoTransport', () => {
     expect(transport.locale()).toBe('en');
     transport.refresh('map');
     expect(log.tail(1)[0]?.message).toBe('refresh map');
-    expect(transport.info()).toEqual({ latencyMs: 42, foundryVersion: 'demo', diagnostics: [] });
+    expect(transport.info()).toEqual({
+      latencyMs: 42,
+      foundryVersion: 'demo',
+      moduleVersion: 'demo',
+      diagnostics: [],
+    });
     const off = transport.subscribeInfo(() => {});
     expect(off()).toBeUndefined();
   });

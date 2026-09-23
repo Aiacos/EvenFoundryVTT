@@ -81,6 +81,7 @@ const PARENT: Readonly<Partial<Record<View, View>>> = {
   actions: 'root',
   spells: 'actions',
   items: 'actions',
+  feats: 'actions',
   options: 'actions',
   slot: 'spells',
   result: 'root',
@@ -168,6 +169,8 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
   switch (intent.k) {
     case 'open':
       return { ui: go(ui, intent.view), effects: [] };
+    case 'back':
+      return { ui: back(ui), effects: [] };
     case 'weapon':
       return {
         ui: go(ui, 'target', {
@@ -194,6 +197,18 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
       if (!p || !actorId) return { ui, effects: [] };
       const targets = intent.tokenId ? [intent.tokenId] : [];
       const title = intent.tokenId ? `${p.name} ${GLYPH.arrow} ${intent.name}` : p.name;
+      if (p.kind === 'item') {
+        return {
+          ui: showResult(ui, title, ctx.now),
+          effects: [
+            {
+              t: 'invoke',
+              tool: 'use-item',
+              input: { actor_id: actorId, item_id: p.itemId, targets },
+            },
+          ],
+        };
+      }
       const effect: HudEffect =
         p.kind === 'weapon'
           ? {
@@ -220,16 +235,12 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
       return { ui: showResult(ui, title, ctx.now), effects: [effect] };
     }
     case 'item':
-      if (!actorId) return { ui, effects: [] };
+      // Consumables pick a target like weapons (or «no target» = self / untargeted).
       return {
-        ui: showResult(ui, intent.name, ctx.now),
-        effects: [
-          {
-            t: 'invoke',
-            tool: 'use-item',
-            input: { actor_id: actorId, item_id: intent.itemId, targets: [] },
-          },
-        ],
+        ui: go(ui, 'target', {
+          pending: { kind: 'item', itemId: intent.itemId, name: intent.name },
+        }),
+        effects: [],
       };
     case 'op': {
       const r = applyOp(intent.op, ui, ctx);
@@ -244,6 +255,18 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
       return { ui: go(ui, 'root', { reactionDeadline: null }), effects: [{ t: 'clearReaction' }] };
     case 'dismissRequest':
       return { ui: go(ui, 'root'), effects: [{ t: 'clearRequest' }] };
+    case 'roll':
+      return {
+        ui: showResult(ui, intent.name, ctx.now),
+        effects: [
+          { t: 'clearRequest' },
+          {
+            t: 'invoke',
+            tool: 'skill-check',
+            input: { ...intent.input, advantage: ui.advantage },
+          },
+        ],
+      };
   }
 }
 
@@ -251,7 +274,7 @@ function back(ui: UiState): UiState {
   if (ui.view === 'target') {
     const p = ui.pending;
     if (p?.kind === 'spell') return go(ui, p.level === 0 ? 'spells' : 'slot');
-    return go(ui, 'actions', { pending: null });
+    return go(ui, p?.kind === 'item' ? 'items' : 'actions', { pending: null });
   }
   return go(ui, PARENT[ui.view] ?? 'root');
 }

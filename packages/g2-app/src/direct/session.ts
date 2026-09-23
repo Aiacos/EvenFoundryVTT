@@ -113,6 +113,8 @@ export interface DiagnosticEntry {
 export interface SessionInfo {
   latencyMs: number | null;
   foundryVersion: string | null;
+  /** `evenfoundryvtt` version reported by the projector (`welcome.moduleVersion`). */
+  moduleVersion: string | null;
   diagnostics: readonly DiagnosticEntry[];
 }
 
@@ -130,6 +132,8 @@ export interface SessionDeps {
   base: string;
   createClient: (base: string) => FoundryClientLike;
   appVersion: string;
+  /** Module version this bundle was built with; a different `welcome.moduleVersion` warns. */
+  moduleVersion?: string;
   settingsStorage: KeyValueStorage | null;
   deviceLanguage: () => string;
   now?: () => number;
@@ -241,6 +245,7 @@ export class DirectSession implements AppActions {
 
   private latencyMs: number | null = null;
   private foundryVersion: string | null = null;
+  private moduleVersion: string | null = null;
   private readonly diagnostics: DiagnosticEntry[] = [];
   private readonly infoListeners = new Set<(info: SessionInfo) => void>();
 
@@ -358,6 +363,7 @@ export class DirectSession implements AppActions {
     return {
       latencyMs: this.latencyMs,
       foundryVersion: this.foundryVersion,
+      moduleVersion: this.moduleVersion,
       diagnostics: [...this.diagnostics],
     };
   }
@@ -567,6 +573,7 @@ export class DirectSession implements AppActions {
     }
     this.welcomed = true;
     this.attempt = 0;
+    this.checkModuleVersion(msg.moduleVersion);
     const c = this.store.get().connection;
     this.setConnection({
       ...c,
@@ -583,6 +590,20 @@ export class DirectSession implements AppActions {
       this.goOnline();
     }, SESSION_TIMING.snapshotTimeout);
     for (const topic of SNAPSHOT_TOPICS) this.refresh(topic);
+  }
+
+  /** Records the projector's module version; warns when the bundle was built for another. */
+  private checkModuleVersion(reported: string | undefined): void {
+    this.moduleVersion = reported ?? null;
+    const built = this.deps.moduleVersion;
+    if (reported !== undefined && built !== undefined && reported !== built) {
+      this.record(
+        'warn',
+        `Foundry module ${reported} ≠ glasses app built for ${built} — update the glasses app`,
+      );
+    } else {
+      this.emitInfo();
+    }
   }
 
   private onSnapshot(topic: SnapshotTopic, data: unknown): void {

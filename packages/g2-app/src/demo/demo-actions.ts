@@ -85,6 +85,7 @@ export function createDemoTransport(deps: {
   const info = (): SessionInfo => ({
     latencyMs: 42,
     foundryVersion: 'demo',
+    moduleVersion: 'demo',
     diagnostics: [],
   });
 

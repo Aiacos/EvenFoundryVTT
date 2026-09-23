@@ -45,6 +45,7 @@ describe('foregroundTransition', () => {
       ({ sysEvent: { eventType } }) as unknown as EvenHubEvent;
     expect(foregroundTransition(sys(OsEventTypeList.FOREGROUND_ENTER_EVENT))).toBe('enter');
     expect(foregroundTransition(sys(OsEventTypeList.FOREGROUND_EXIT_EVENT))).toBe('exit');
+    expect(foregroundTransition(sys(OsEventTypeList.ABNORMAL_EXIT_EVENT))).toBe('abnormal');
     expect(foregroundTransition(sys(OsEventTypeList.CLICK_EVENT))).toBeNull();
     expect(foregroundTransition({} as EvenHubEvent)).toBeNull();
   });
@@ -102,6 +103,11 @@ describe('startApp', () => {
     await settle();
     expect(env.createClient.mock.calls.length).toBe(clientsBefore + 1);
     expect(app.store.get().connection).toMatchObject({ status: 'offline', cause: 'network' });
+    // ABNORMAL_EXIT (app-submission QA): graceful close, like a background transition.
+    onEvent({
+      sysEvent: { eventType: OsEventTypeList.ABNORMAL_EXIT_EVENT },
+    } as unknown as EvenHubEvent);
+    expect(app.store.get().connection).toMatchObject({ status: 'offline', cause: 'background' });
     app.stop();
     expect(stopEvents).toHaveBeenCalled();
   });

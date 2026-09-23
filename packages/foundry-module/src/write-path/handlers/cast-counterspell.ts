@@ -133,7 +133,7 @@ export const castCounterspellHandler: ToolHandler<(typeof CastCounterspellInputS
       // dnd5e 5.x `use(usage, dialog, message)`: slot override is the usage arg and
       // `{ configure: false }` MUST be the dialog arg (INV-2: foundryvtt/dnd5e
       // module/documents/activity/mixin.mjs). In the usage arg it left the dialog enabled
-      // → the cast hangs until the bridge's 10s foundry_timeout.
+      // → the cast hangs until the glasses' invoke times out.
       const slotLevel = args.slot_level ?? 3;
       try {
         const result = await (

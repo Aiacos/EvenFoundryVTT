@@ -24,6 +24,7 @@ import {
   normalizeManualCode,
 } from '@evf/shared-protocol';
 import QRCode from 'qrcode';
+import { userOwnsActor } from './election.js';
 import {
   deleteG2User,
   ensureG2User,
@@ -101,7 +102,8 @@ export function foundryBaseUrl(): string {
  * code. A self-service pairing of the same player is superseded (its flags cleared);
  * an enabled player gets the new password re-delivered sealed.
  *
- * @throws when player or actor do not exist, or Foundry refuses a document write
+ * @throws when player or actor do not exist, the player does not own the actor, or
+ *   Foundry refuses a document write
  */
 export async function startPairing(
   playerUserId: string,
@@ -112,6 +114,9 @@ export async function startPairing(
   if (player === undefined) throw new Error(`player ${playerUserId} not found`);
   const actor = game.actors.get(actorId);
   if (actor === undefined) throw new Error(`actor ${actorId} not found`);
+  if (!userOwnsActor(actorId, playerUserId)) {
+    throw new Error(`player ${playerUserId} does not own actor ${actorId}`);
+  }
 
   const code = generateManualCode();
   const password = normalizeManualCode(code);

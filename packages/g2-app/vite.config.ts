@@ -16,12 +16,17 @@ import { defineConfig } from 'vite';
 
 const here = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
 const appJson = JSON.parse(readFileSync(here('./app.json'), 'utf8')) as { version: string };
+/** The module this bundle ships in: the app warns when Foundry runs another version. */
+const modulePkg = JSON.parse(readFileSync(here('../foundry-module/package.json'), 'utf8')) as {
+  version: string;
+};
 
 export default defineConfig({
   root: here('./src'),
   base: './',
   define: {
     __EVF_APP_VERSION__: JSON.stringify(appJson.version),
+    __EVF_MODULE_VERSION__: JSON.stringify(modulePkg.version),
   },
   build: {
     target: 'es2023',

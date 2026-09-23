@@ -17,6 +17,7 @@ import {
   type CreateStartUpPageContainer,
   type EvenAppBridge,
   type EvenHubEvent,
+  EventSourceType,
   ImageRawDataUpdateResult,
   MenuItemClickEvent,
   OsEventTypeList,
@@ -73,7 +74,13 @@ export function gestureEvent(gesture: TapGesture): EvenHubEvent {
   }
   switch (gesture) {
     case 'tap':
-      return { sysEvent: new Sys_ItemEvent({ eventType: OsEventTypeList.CLICK_EVENT }) };
+      // A real press carries its touch source (the HUD ignores source-less clicks).
+      return {
+        sysEvent: new Sys_ItemEvent({
+          eventType: OsEventTypeList.CLICK_EVENT,
+          eventSource: EventSourceType.TOUCH_EVENT_FROM_RING,
+        }),
+      };
     case 'double':
       return { sysEvent: new Sys_ItemEvent({ eventType: OsEventTypeList.DOUBLE_CLICK_EVENT }) };
     case 'up':

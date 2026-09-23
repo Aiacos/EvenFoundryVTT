@@ -9,6 +9,7 @@ import {
   CastShieldInputSchema,
   CastSpellInputSchema,
   OpportunityAttackInputSchema,
+  SkillCheckInputSchema,
   UseItemInputSchema,
   WeaponAttackInputSchema,
 } from '@evf/shared-protocol';
@@ -134,24 +135,59 @@ describe('spell flow (S5)', () => {
 });
 
 describe('items and options', () => {
-  it('items → use-item', () => {
+  it('items → target → use-item (a consumable picks its target like a weapon)', () => {
     const app = online();
-    const { effects, ui } = drive(app, [
+    const toTarget: HudInput[] = [
       { t: 'tap' },
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },
       { t: 'tap' },
       { t: 'tap' },
-    ]);
+    ];
+    const picking = drive(app, toTarget);
+    expect(picking.ui).toMatchObject({ view: 'target', pending: { kind: 'item', itemId: 'p1' } });
+    expect(picking.effects).toEqual([]);
+    // First target (nearest enemy) → targets [tokenId].
+    const { effects, ui } = drive(app, [{ t: 'tap' }], picking.ui);
     expect(ui.view).toBe('result');
     const call = invokes(effects)[0];
     expect(call?.tool).toBe('use-item');
-    expect(UseItemInputSchema.parse(call?.input)).toEqual({
-      actor_id: 'actor-1',
-      item_id: 'p1',
-      targets: [],
+    const parsed = UseItemInputSchema.parse(call?.input);
+    expect(parsed).toMatchObject({ actor_id: 'actor-1', item_id: 'p1' });
+    expect(parsed.targets).toHaveLength(1);
+    // «No target» (last entry) → untargeted use; double-press returns to the items list.
+    const entries = buildEntries(app, picking.ui, s);
+    const none = drive(app, [{ t: 'tap' }], { ...picking.ui, cursor: entries.length - 1 });
+    expect(UseItemInputSchema.parse(invokes(none.effects)[0]?.input).targets).toEqual([]);
+    expect(drive(app, [{ t: 'double' }], picking.ui).ui).toMatchObject({
+      view: 'items',
+      pending: null,
     });
+  });
+
+  it('feats: read-only list under Talenti…, origin feats tagged, tap/double return', () => {
+    const feats = [
+      { category: 'feat', name: 'Robusto', isOrigin: true, description: '' },
+      { category: 'class', name: 'Canalizzare divinità', isOrigin: false, description: '' },
+    ];
+    const app = online('min', { character: { ...character(), feats } });
+    const actions = drive(app, [{ t: 'tap' }]).ui;
+    const entries = buildEntries(app, actions, s);
+    const at = entries.findIndex((e) => e.left === s.featsMenu);
+    expect(at).toBeGreaterThan(0);
+    expect(buildEntries(online(), actions, s).some((e) => e.left === s.featsMenu)).toBe(false);
+    const open = drive(app, [{ t: 'tap' }], { ...actions, cursor: at }).ui;
+    expect(open.view).toBe('feats');
+    expect(buildEntries(app, open, s).map((e) => [e.left, e.right])).toEqual([
+      ['Robusto', s.featOrigin],
+      ['Canalizzare divinità', ''],
+    ]);
+    expect(drive(app, [{ t: 'tap' }], open)).toEqual({
+      ui: expect.objectContaining({ view: 'actions' }),
+      effects: [],
+    });
+    expect(drive(app, [{ t: 'double' }], open).ui.view).toBe('actions');
   });
 
   it('every menu operation is reachable by tap through Opzioni…', () => {
@@ -363,10 +399,22 @@ describe('GM roll request and automatic sheet page (S8)', () => {
     const asked = { ...prev, rollRequest: request };
     const open = reduce(initialUi(), { t: 'state', prev }, { app: asked, now: 0, strings: s }).ui;
     expect(open).toMatchObject({ view: 'request', sheetPage: 'saves' });
-    expect(buildEntries(asked, open, s).map((e) => e.intent)).toEqual([{ k: 'dismissRequest' }]);
+    expect(buildEntries(asked, open, s).map((e) => e.intent.k)).toEqual(['dismissRequest', 'roll']);
     expect(drive(asked, [{ t: 'tap' }], open)).toMatchObject({
       ui: { view: 'root' },
       effects: [{ t: 'clearRequest' }],
+    });
+    // «Tira in Foundry»: clears the request and rolls the save via skill-check.
+    const rolled = drive(asked, [{ t: 'down' }, { t: 'tap' }], open);
+    expect(rolled.ui.view).toBe('result');
+    expect(rolled.effects[0]).toEqual({ t: 'clearRequest' });
+    const call = invokes(rolled.effects)[0];
+    expect(call?.tool).toBe('skill-check');
+    expect(SkillCheckInputSchema.parse(call?.input)).toEqual({
+      actor_id: 'actor-1',
+      kind: 'save',
+      ability: 'wis',
+      advantage: 'normal',
     });
     expect(drive(asked, [{ t: 'double' }], open).effects).toEqual([{ t: 'clearRequest' }]);
     const handled = reduce(open, { t: 'state', prev: asked }, { app: prev, now: 0, strings: s }).ui;
@@ -425,9 +473,15 @@ describe('status screens (S10–S12)', () => {
 
 describe('toGestureEvent', () => {
   it('maps SDK events to HUD inputs', () => {
-    const sys = (eventType?: OsEventTypeList) =>
-      toGestureEvent({ sysEvent: { eventType } as never });
+    const sys = (eventType?: OsEventTypeList, eventSource: number | null = 2) =>
+      toGestureEvent({ sysEvent: { eventType, eventSource: eventSource ?? undefined } as never });
     expect(sys(undefined)).toEqual({ t: 'tap' });
+    // Clicks count only from a real touch source (glasses R 1, ring 2, glasses L 3).
+    expect(sys(OsEventTypeList.CLICK_EVENT, 1)).toEqual({ t: 'tap' });
+    expect(sys(OsEventTypeList.CLICK_EVENT, 3)).toEqual({ t: 'tap' });
+    expect(sys(undefined, null)).toBeNull();
+    expect(sys(OsEventTypeList.CLICK_EVENT, 0)).toBeNull();
+    expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT, null)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.FOREGROUND_ENTER_EVENT)).toEqual({ t: 'foreground' });
     expect(sys(OsEventTypeList.SCROLL_TOP_EVENT)).toEqual({ t: 'up' });

@@ -34,6 +34,7 @@
  * @see docs/design/g2-thirds-layout.md §P01
  */
 import { listPlayerCharacters } from '../readers/character-reader.js';
+import { userOwnsActor } from './election.js';
 import { isG2User } from './g2-user.js';
 import {
   eligiblePlayers,
@@ -370,13 +371,18 @@ export function createPairG2App(projector: Projector, mode: PairMode = 'gm') {
       now: number,
     ): Pick<PairContext, 'selfBlock' | 'enablement' | 'players' | 'actors' | 'devices'> {
       const players = game.users.contents.filter((u) => !u.isGM && !isG2User(u));
-      const actors = listPlayerCharacters();
       const player = this.selectedPlayer ?? players[0]?.id ?? null;
+      // Roster: only the characters the chosen player owns (the projector re-checks the
+      // ownership live on every request, so pairing any other actor could never be used).
+      const actors =
+        player === null
+          ? []
+          : listPlayerCharacters().filter((a) => userOwnsActor(a.actorId, player));
+      const owned = new Set(actors.map((a) => a.actorId));
       const actor =
-        this.selectedActor ??
-        game.users.get(player ?? '')?.character?.id ??
-        actors[0]?.actorId ??
-        null;
+        [this.selectedActor, game.users.get(player ?? '')?.character?.id, actors[0]?.actorId].find(
+          (id): id is string => typeof id === 'string' && owned.has(id),
+        ) ?? null;
       const isOnline = (id: string): boolean => projector.isOnline(id, now);
       return {
         selfBlock: null,

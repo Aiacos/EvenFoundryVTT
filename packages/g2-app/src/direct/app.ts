@@ -36,6 +36,8 @@ export interface AppEnvironment {
   storage: KeyValueStorage | null;
   deviceLanguage: () => string;
   appVersion: string;
+  /** Module version the bundle was built with (mismatch warning). */
+  moduleVersion?: string;
   /** Resolves the Even App bridge, or `null` in a plain browser (desktop preview). */
   getBridge: () => Promise<EvenAppBridge | null>;
   startHud: StartHud;
@@ -52,17 +54,21 @@ export interface AppHandle {
 }
 
 /**
- * Maps an Even Hub event to a foreground transition.
+ * Maps an Even Hub event to a lifecycle transition.
  *
  * Per the SDK 0.0.15 `Sys_ItemEvent` model, lifecycle arrives on `event.sysEvent.eventType`
- * (`FOREGROUND_ENTER_EVENT` = 4, `FOREGROUND_EXIT_EVENT` = 5).
+ * (`FOREGROUND_ENTER_EVENT` = 4, `FOREGROUND_EXIT_EVENT` = 5, `ABNORMAL_EXIT_EVENT` = 6).
+ * The app-submission QA requires handling the abnormal exit (remote ADR-0012 LIFE-01):
+ * the host is tearing the plugin down, so the socket is closed gracefully instead of
+ * being dropped mid-frame (Foundry then sees a clean disconnect of this device).
  *
- * @returns `'enter' | 'exit'`, or `null` for any other event
+ * @returns `'enter' | 'exit' | 'abnormal'`, or `null` for any other event
  */
-export function foregroundTransition(event: EvenHubEvent): 'enter' | 'exit' | null {
+export function foregroundTransition(event: EvenHubEvent): 'enter' | 'exit' | 'abnormal' | null {
   const type = event.sysEvent?.eventType;
   if (type === OsEventTypeList.FOREGROUND_ENTER_EVENT) return 'enter';
   if (type === OsEventTypeList.FOREGROUND_EXIT_EVENT) return 'exit';
+  if (type === OsEventTypeList.ABNORMAL_EXIT_EVENT) return 'abnormal';
   return null;
 }
 
@@ -85,6 +91,7 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     base,
     createClient: env.createClient ?? ((b) => new FoundryClient(b)),
     appVersion: env.appVersion,
+    ...(env.moduleVersion === undefined ? {} : { moduleVersion: env.moduleVersion }),
     settingsStorage: env.storage,
     deviceLanguage: env.deviceLanguage,
   });
@@ -98,6 +105,8 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     credentials.attachMirror(bridge);
     stopEvents = bridge.onEvenHubEvent((event) => {
       const transition = foregroundTransition(event);
+      // An abnormal exit closes like a background transition: graceful socket close, and
+      // a later FOREGROUND_ENTER (host restored the plugin) reconnects.
       if (transition !== null) active.onForeground(transition === 'enter');
     });
     stopHud = env.startHud(bridge, store, active);

@@ -164,6 +164,34 @@ describe('spell field fallbacks & activation mapping', () => {
     expect(entry?.prepared).toBe(true);
   });
 
+  it('dnd5e 5.3 numeric prepared: 0 unprepared, 1 prepared, 2 always prepared', () => {
+    const items = [0, 1, 2].map((prepared) =>
+      spell({ level: 3, method: 'spell', prepared }, { id: `p${prepared}`, name: `P${prepared}` }),
+    );
+    vi.stubGlobal('game', gameWith(actorWith({}, items)));
+    const byName = new Map(
+      (getCharacterSnapshot('a1')?.spells.spells ?? []).map((e) => [e.name, e]),
+    );
+    expect(byName.get('P0')).toMatchObject({ prepared: false, alwaysPrepared: false });
+    expect(byName.get('P1')).toMatchObject({ prepared: true, alwaysPrepared: false });
+    expect(byName.get('P2')).toMatchObject({ prepared: true, alwaysPrepared: true });
+  });
+
+  it('dnd5e 5.3 methods: innate → always prepared, atwill → prepared, cantrip → prepared', () => {
+    const items = [
+      spell({ level: 2, method: 'innate', prepared: 0 }, { id: 'Innate', name: 'Innate' }),
+      spell({ level: 2, method: 'atwill', prepared: 0 }, { id: 'AtWill', name: 'AtWill' }),
+      spell({ level: 0, method: 'spell', prepared: 0 }, { id: 'Cantrip', name: 'Cantrip' }),
+    ];
+    vi.stubGlobal('game', gameWith(actorWith({}, items)));
+    const byName = new Map(
+      (getCharacterSnapshot('a1')?.spells.spells ?? []).map((e) => [e.name, e]),
+    );
+    expect(byName.get('Innate')).toMatchObject({ prepared: true, alwaysPrepared: true });
+    expect(byName.get('AtWill')).toMatchObject({ prepared: true, alwaysPrepared: false });
+    expect(byName.get('Cantrip')).toMatchObject({ prepared: true, alwaysPrepared: false });
+  });
+
   it('legacy preparation "innate" → alwaysPrepared', () => {
     const s = spell({ level: 3, preparation: { mode: 'innate' } });
     vi.stubGlobal('game', gameWith(actorWith({}, [s])));

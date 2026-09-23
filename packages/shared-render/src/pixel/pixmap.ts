@@ -227,18 +227,34 @@ export class Pixmap {
     }
   }
 
-  /** Copies `src` with its top-left at (x, y); level 0 is copied too (opaque blit). */
+  /**
+   * Copies `src` with its top-left at (x, y); level 0 is copied too (opaque blit),
+   * clipped to the current clip rectangle. Row-wise typed-array copies (the tile
+   * composer blits full zones on every HUD render).
+   */
   blit(src: Pixmap, x: number, y: number): void {
-    for (let yy = 0; yy < src.height; yy++) {
-      for (let xx = 0; xx < src.width; xx++) this.set(x + xx, y + yy, src.get(xx, yy));
+    const c = this.clip;
+    const x0 = Math.max(x, c.x0);
+    const x1 = Math.min(x + src.width - 1, c.x1);
+    const y0 = Math.max(y, c.y0);
+    const y1 = Math.min(y + src.height - 1, c.y1);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x0 > x1 || y0 > y1) return;
+    for (let yy = y0; yy <= y1; yy++) {
+      const from = (yy - y) * src.width + (x0 - x);
+      this.data.set(src.data.subarray(from, from + x1 - x0 + 1), yy * this.width + x0);
     }
   }
 
-  /** Copy of the `w × h` region at (x, y). */
+  /** Copy of the `w × h` region at (x, y) (pixels outside this pixmap read as 0). */
   crop(x: number, y: number, w: number, h: number): Pixmap {
     const out = new Pixmap(w, h);
-    for (let yy = 0; yy < h; yy++)
-      for (let xx = 0; xx < w; xx++) out.set(xx, yy, this.get(x + xx, y + yy));
+    const x0 = Math.max(x, 0);
+    const x1 = Math.min(x + w - 1, this.width - 1);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x0 > x1) return out;
+    for (let yy = Math.max(y, 0); yy <= Math.min(y + h - 1, this.height - 1); yy++) {
+      const from = yy * this.width + x0;
+      out.data.set(this.data.subarray(from, from + x1 - x0 + 1), (yy - y) * w + (x0 - x));
+    }
     return out;
   }
 

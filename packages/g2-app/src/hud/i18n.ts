@@ -122,9 +122,13 @@ export interface HudStrings {
   actions: string;
   spellsMenu: string;
   itemsMenu: string;
+  featsMenu: string;
   optionsMenu: string;
   spells: string;
   items: string;
+  feats: string;
+  /** Right-column tag of a PHB 2024 origin feat. */
+  featOrigin: string;
   options: string;
   slotTitle: string;
   noSlots: string;
@@ -164,8 +168,10 @@ export interface HudStrings {
   requestCheck: (ability: string) => string;
   requestSkill: (skill: string) => string;
   requestDc: (dc: number) => string;
-  requestRoll: string;
+  /** «Done»: the player rolled real dice at the table. */
   requestOk: string;
+  /** Roll the request in Foundry (`skill-check` tool). */
+  requestRollFoundry: string;
   downTitle: string;
   downRoll: string;
   downTally: (success: number, failure: number) => string;
@@ -311,9 +317,12 @@ const IT: HudStrings = {
   actions: 'Azioni',
   spellsMenu: 'Incantesimi…',
   itemsMenu: 'Oggetti…',
+  featsMenu: 'Talenti…',
   optionsMenu: 'Opzioni…',
   spells: 'Incantesimi',
   items: 'Oggetti',
+  feats: 'Talenti',
+  featOrigin: 'origine',
   options: 'Opzioni',
   slotTitle: 'Slot',
   noSlots: 'nessuno slot libero',
@@ -356,8 +365,8 @@ const IT: HudStrings = {
   requestCheck: (a) => `Prova di ${a}`,
   requestSkill: (sk) => `Prova di ${sk}`,
   requestDc: (dc) => `CD ${dc}`,
-  requestRoll: 'Tira il d20 sul tavolo',
-  requestOk: 'Fatto',
+  requestOk: 'Fatto · d20 al tavolo',
+  requestRollFoundry: 'Tira in Foundry',
   downTitle: 'Sei a terra',
   downRoll: 'Tiro salvezza contro la morte',
   downTally: (s, f) => `Successi ${s}/3 · Fallimenti ${f}/3`,
@@ -395,7 +404,7 @@ const IT: HudStrings = {
     target: '↕ bersaglio  ● tira  ●● indietro',
     result: '●  azioni     ●●  chiudi',
     reaction: '↕ scegli   ● ok   ●● ignora',
-    request: '●  fatto     ●●  chiudi',
+    request: '↕ scegli   ● ok   ●● chiudi',
     offline: '●  riprova ora     ●●  esci',
   },
 };
@@ -508,9 +517,12 @@ const EN: HudStrings = {
   actions: 'Actions',
   spellsMenu: 'Spells…',
   itemsMenu: 'Items…',
+  featsMenu: 'Feats…',
   optionsMenu: 'Options…',
   spells: 'Spells',
   items: 'Items',
+  feats: 'Feats',
+  featOrigin: 'origin',
   options: 'Options',
   slotTitle: 'Slot',
   noSlots: 'no free slot',
@@ -553,8 +565,8 @@ const EN: HudStrings = {
   requestCheck: (a) => `${a} check`,
   requestSkill: (sk) => `${sk} check`,
   requestDc: (dc) => `DC ${dc}`,
-  requestRoll: 'Roll the d20 at the table',
-  requestOk: 'Done',
+  requestOk: 'Done · d20 at the table',
+  requestRollFoundry: 'Roll in Foundry',
   downTitle: 'You are down',
   downRoll: 'Death saving throw',
   downTally: (s, f) => `Successes ${s}/3 · Failures ${f}/3`,
@@ -592,7 +604,7 @@ const EN: HudStrings = {
     target: '↕ target   ● roll   ●● back',
     result: '●  actions     ●●  close',
     reaction: '↕ choose   ● ok   ●● ignore',
-    request: '●  done     ●●  close',
+    request: '↕ choose   ● ok   ●● close',
     offline: '●  retry now     ●●  exit',
   },
 };

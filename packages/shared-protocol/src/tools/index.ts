@@ -83,7 +83,7 @@ export const TOOL_REGISTRY: readonly ToolEntry[] = [
   },
   {
     name: 'skill_check',
-    description: 'Roll a skill check via actor.rollSkill()',
+    description: 'Roll a skill check, ability check or saving throw',
     inputSchema: SkillCheckInputSchema.toJSONSchema(),
   },
   {

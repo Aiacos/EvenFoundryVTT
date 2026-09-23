@@ -7,7 +7,12 @@ import { phoneStrings } from './i18n.js';
 import { DEBUG_TAIL, mountPhonePage, type PhoneSession, statusLine } from './phone-page.js';
 
 function fakeSession(overrides: Partial<PhoneSession> = {}) {
-  let info: SessionInfo = { latencyMs: null, foundryVersion: null, diagnostics: [] };
+  let info: SessionInfo = {
+    latencyMs: null,
+    foundryVersion: null,
+    moduleVersion: null,
+    diagnostics: [],
+  };
   const infoListeners = new Set<(i: SessionInfo) => void>();
   let locale: 'it' | 'en' = 'it';
   const session = {
@@ -151,10 +156,11 @@ describe('P02 connection page', () => {
     fake.setInfo({
       latencyMs: 84,
       foundryVersion: '14.360',
+      moduleVersion: '0.2.0',
       diagnostics: [{ at: 0, level: 'error', message: 'no-gm: no welcome' }],
     });
     expect(field(root, 'latency')).toBe('84 ms');
-    expect(field(root, 'version')).toBe('Versione Foundry: 14.360');
+    expect(field(root, 'version')).toBe('Versione Foundry: 14.360 · Modulo EVF: 0.2.0');
     expect(root.querySelector('[data-level="error"]')?.textContent).toContain('no-gm: no welcome');
 
     const change = (selector: string, set: (el: HTMLInputElement & HTMLSelectElement) => void) => {

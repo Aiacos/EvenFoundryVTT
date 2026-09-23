@@ -48,13 +48,14 @@ jobs:
         run: pnpm test:coverage
 
       # D-1.10 gate 5: // TODO discipline (INV-4)
-      # Fails on any `// TODO` NOT immediately followed by `(#NN)` or `(ADR-NNNN)`.
+      # Fails on any `// TODO` NOT followed by `(#NN)` or `(ADR-NNNN)`; one optional space
+      # before the parenthesis is tolerated (`// TODO (#12)`, remote e1b2409).
       # Uses `git grep -P` (PCRE): the negative lookahead is not valid ERE — the former
       # `grep -E` form errored/never matched, so the gate silently passed. `git grep`
       # scans tracked files only (no node_modules / build output).
       - name: TODO discipline grep
         run: |
-          if git grep -nP '// TODO(?!\((#[0-9]+|ADR-[0-9]+)\))' -- \
+          if git grep -nP '// TODO(?! ?\((#[0-9]+|ADR-[0-9]+)\))' -- \
               'packages/*.ts' 'packages/*.tsx' 'packages/*.js' 'packages/*.mjs' \
               'scripts/*.mjs' 'scripts/*.ts'; then
             echo "::error::Found // TODO without (#issue) or (ADR-NNNN) reference (INV-4)"
@@ -137,6 +138,12 @@ jobs:
 
       - name: Module runtime assets (module.json references)
         run: node scripts/check-module-assets.mjs packages/foundry-module
+
+      # Even Hub packaging: app.json version = g2-app package version, icon shipped.
+      - name: Even Hub manifest (app.json version + icon)
+        run: |
+          node scripts/sync-app-json.mjs --check
+          test -f packages/foundry-module/g2/icon.png || { echo "::error file=packages/g2-app/app.json::icon.png missing from the g2 build (packages/g2-app/src/public/icon.png)"; exit 1; }
 
   commit-lint-pr-title:
     runs-on: ubuntu-latest

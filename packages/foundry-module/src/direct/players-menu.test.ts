@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type FoundryMock, installFoundry, makeUser } from '../__tests__/direct-fixtures.js';
+import {
+  type FoundryMock,
+  installFoundry,
+  makeActor,
+  makeUser,
+} from '../__tests__/direct-fixtures.js';
 import { enableGlasses } from './glasses-access.js';
 import {
   buildPairMenuEntry,
@@ -19,6 +24,7 @@ beforeEach(() => {
       makeUser('p2', 'Bea'),
       makeUser('g2x', 'Luca (G2)', { flags: { evenfoundryvtt: { g2For: 'p1' } } }),
     ],
+    actors: [makeActor('mira', 'Mira', { ownership: { p1: 3 } })],
   });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -59,6 +65,9 @@ describe('players-menu', () => {
   it('PM-02 pairTargetFor: players only, with their assigned character preselected', () => {
     expect(pairTargetFor('p1')).toEqual({ playerUserId: 'p1', actorId: 'mira' });
     expect(pairTargetFor('p2')).toEqual({ playerUserId: 'p2', actorId: null });
+    // An assigned character the player does not own is not preselected.
+    (f.actors.get('mira') as { ownership: Record<string, number> }).ownership = {};
+    expect(pairTargetFor('p1')).toEqual({ playerUserId: 'p1', actorId: null });
     expect(pairTargetFor('gm1')).toBeNull(); // GM
     expect(pairTargetFor('g2x')).toBeNull(); // a "(G2)" user
     expect(pairTargetFor('nobody')).toBeNull();

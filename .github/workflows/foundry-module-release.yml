@@ -10,11 +10,12 @@ name: Foundry Module Release
 #   2. Builds the Foundry module (pnpm + tsup, bundles @evf/shared-protocol + qrcode)
 #   3. Builds the g2-app Vite bundle INTO packages/foundry-module/g2/ (ADR-0016:
 #      the phone WebView loads it same-origin from /modules/evenfoundryvtt/g2/)
-#   4. Patches module.json `version` + `download` from the tag
+#   4. Patches module.json `version` + `download` from the tag and version-stamps
+#      the esmodule + stylesheet filenames (cache-bust); syncs app.json + packs the .ehpk
 #   5. Zips the runtime assets (module.json + dist/ + g2/ + lang/ + templates/ + styles/)
 #   6. Extracts release notes from Changesets CHANGELOG.md (falls back to --generate-notes on first release)
 #   7. Creates the GitHub Release on the tag
-#   8. Uploads module.json + evenfoundryvtt.zip as release assets (REL-01)
+#   8. Uploads module.json + evenfoundryvtt.zip (REL-01) + evenfoundryvtt.ehpk as release assets
 #
 # ADR-0016 removed the Node bridge + Docker Compose: there is no GHCR image
 # (former REL-02) and no standalone g2-app-dist.zip (former REL-03) — the g2-app
@@ -101,23 +102,65 @@ jobs:
             exit 1
           fi
 
-      - name: Patch module.json (version + download URL)
+      - name: Patch module.json (version + download URL + cache-busting asset names)
         working-directory: packages/foundry-module
         env:
           VERSION: ${{ steps.vars.outputs.version }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
           # Use a tiny Node one-liner — robust JSON edit, no jq dependency.
+          #
+          # CACHE-BUSTING (REL-05, remote 7f37b5f): Foundry/Forge loads the esmodule and
+          # the stylesheet by STABLE URLs (`dist/module.js`, `styles/pair-g2.css`), so a
+          # CDN/browser HTTP cache kept serving the OLD bundle after an upgrade (module
+          # reported the new version while executing stale code). Every release therefore
+          # version-stamps both filenames (`dist/module-<ver>.js`, `styles/pair-g2-<ver>.css`)
+          # and repoints module.json at them. The committed module.json keeps the plain
+          # names for local dev; the g2/ Vite assets are already content-hashed. The zip
+          # excludes *.map, so the dangling sourceMappingURL comment is harmless.
           node -e "
             const fs = require('node:fs');
             const path = 'module.json';
+            const ver = process.env.VERSION;
             const m = JSON.parse(fs.readFileSync(path, 'utf-8'));
-            m.version = process.env.VERSION;
+            m.version = ver;
             m.download = 'https://github.com/${{ github.repository }}/releases/download/' + process.env.TAG + '/evenfoundryvtt.zip';
+            const stamp = (file) => {
+              const dot = file.lastIndexOf('.');
+              const stamped = file.slice(0, dot) + '-' + ver + file.slice(dot);
+              if (!fs.existsSync(file)) { console.error('::error::missing ' + file); process.exit(1); }
+              fs.renameSync(file, stamped);
+              if (fs.existsSync(file + '.map')) fs.renameSync(file + '.map', stamped + '.map');
+              return stamped;
+            };
+            m.esmodules = (m.esmodules || []).map(stamp);
+            m.styles = (m.styles || []).map(stamp);
             fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\\n');
-            console.log('Patched module.json → version=' + m.version + ', download=' + m.download);
+            console.log('Patched module.json → version=' + m.version + ', esmodules=' + JSON.stringify(m.esmodules) + ', styles=' + JSON.stringify(m.styles) + ', download=' + m.download);
           "
-          cat module.json | head -20
+          head -30 module.json
+          ls -la dist styles
+
+      # Keep app.json in lockstep with the g2-app package version (remote 1fb33ce):
+      # Even Hub rejects a local pack whose manifest version differs from the bundle.
+      - name: Sync app.json version from g2-app package.json
+        run: |
+          node -e "const fs=require('node:fs'); \
+            const ver=require('./packages/g2-app/package.json').version; \
+            const p='packages/g2-app/app.json'; \
+            const j=JSON.parse(fs.readFileSync(p,'utf8')); \
+            j.version=ver; \
+            fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n'); \
+            console.log('app.json version =', ver)"
+
+      # Same pack as evenhub-pack.yml: the .ehpk wraps the exact g2/ bundle Foundry serves
+      # (ADR-0016). Attached to every release so the Even Hub listing / sideload build
+      # always matches the module release.
+      - name: Pack evenfoundryvtt.ehpk
+        run: |
+          npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/foundry-module/g2 -o packages/foundry-module/evenfoundryvtt.ehpk
+          test -f packages/foundry-module/evenfoundryvtt.ehpk
+          ls -lh packages/foundry-module/evenfoundryvtt.ehpk
 
       - name: Assemble release tree
         working-directory: packages/foundry-module
@@ -159,7 +202,10 @@ jobs:
           NOTES_FILE="/tmp/release-notes.md"
           FOUND=0
 
-          # foundry-module CHANGELOG.md (primary — always include if present)
+          # foundry-module CHANGELOG.md (primary — include if a matching entry exists).
+          # GRACEFUL (remote 729521d): a missing entry is a "no match" signal, not a
+          # release failure — `&& FOUND=1 || true` keeps the step green and falls through
+          # to the g2-app block and, if nothing matched, the --generate-notes fallback.
           if test -f "packages/foundry-module/CHANGELOG.md"; then
             node -e "
               const fs = require('node:fs');
@@ -167,10 +213,9 @@ jobs:
               const log = fs.readFileSync('packages/foundry-module/CHANGELOG.md', 'utf-8');
               const escaped = ver.replace(/\\./g, '\\\\.');
               const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
-              if (!m) { console.error('No foundry-module CHANGELOG entry for ' + ver); process.exit(1); }
+              if (!m) { process.exit(1); }
               fs.appendFileSync('${NOTES_FILE}', m[0].trim() + '\\n');
-            "
-            FOUND=1
+            " && FOUND=1 || true
           fi
 
           # g2-app CHANGELOG.md (append if present)
@@ -229,7 +274,7 @@ jobs:
       # REL-01 regression: module.json (manifest URL: /releases/latest/download/module.json)
       # + evenfoundryvtt.zip are the two canonical Foundry install assets. --clobber ensures
       # safe re-runs without manual deletion. These assets MUST remain present in every release.
-      - name: Upload module.json + zip to GitHub Release
+      - name: Upload module.json + zip + ehpk to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.vars.outputs.tag }}
@@ -240,6 +285,7 @@ jobs:
           gh release upload "$TAG" \
             packages/foundry-module/module.json \
             packages/foundry-module/evenfoundryvtt.zip \
+            packages/foundry-module/evenfoundryvtt.ehpk \
             --clobber
 
       - name: Print install manifest URL

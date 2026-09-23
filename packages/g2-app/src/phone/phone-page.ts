@@ -241,7 +241,7 @@ function buildConnectionView(
       follow.checked = state.settings.followToken;
       autoSheet.checked = state.settings.autoSheetPage;
       disconnect.disabled = c.status === 'offline' && c.retryInMs === undefined;
-      version.textContent = `${t.foundryVersion}: ${info.foundryVersion ?? t.unknown}`;
+      version.textContent = `${t.foundryVersion}: ${info.foundryVersion ?? t.unknown} · ${t.moduleVersion}: ${info.moduleVersion ?? t.unknown}`;
       errors.replaceChildren(
         ...(info.diagnostics.length === 0
           ? [el('li', {}, [t.noErrors])]

@@ -12,6 +12,7 @@
  *
  * @see docs/design/g2-sheet-ux.html §Interazione (S3–S5, S7, S8)
  */
+import type { RollRequestPayload } from '@evf/shared-protocol';
 import type { AppState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
 import { isMyTurn } from '../model.js';
@@ -48,7 +49,9 @@ export const MENU_OPS: readonly MenuOp[] = [
 /** What confirming an entry does. */
 export type Intent =
   | { k: 'weapon'; itemId: string; name: string }
-  | { k: 'open'; view: 'spells' | 'items' | 'options' }
+  | { k: 'open'; view: 'spells' | 'items' | 'feats' | 'options' }
+  /** Read-only entry (feats): confirming returns to the parent list. */
+  | { k: 'back' }
   | { k: 'spell'; spellId: string; name: string; level: number }
   | { k: 'slot'; level: number }
   | { k: 'target'; tokenId: string | null; name: string }
@@ -56,7 +59,16 @@ export type Intent =
   | { k: 'op'; op: MenuOp }
   | { k: 'react'; tool: string; input: Record<string, unknown>; name: string }
   | { k: 'ignore' }
-  | { k: 'dismissRequest' };
+  | { k: 'dismissRequest' }
+  | { k: 'roll'; input: RollInput; name: string };
+
+/** `skill-check` tool input answering a GM roll request (kind skill / check / save). */
+export interface RollInput {
+  actor_id: string;
+  kind: 'skill' | 'check' | 'save';
+  skill?: string;
+  ability?: string;
+}
 
 export interface Entry {
   left: string;
@@ -104,6 +116,9 @@ function actionEntries(app: AppState, s: HudStrings): Entry[] {
     }
     if (ch.inventory.some((i) => i.type === 'consumable')) {
       out.push(label(s.itemsMenu, { k: 'open', view: 'items' }));
+    }
+    if ((ch.feats?.length ?? 0) > 0) {
+      out.push(label(s.featsMenu, { k: 'open', view: 'feats' }));
     }
     if (isMyTurn(ch, app.combat)) {
       out.push(label(s.endTurn, { k: 'op', op: 'endTurn' }));
@@ -176,6 +191,46 @@ function itemEntries(app: AppState): Entry[] {
       right: i.quantity && i.quantity > 1 ? `×${i.quantity}` : '',
       intent: { k: 'item', itemId: i.id, name: i.name },
     }));
+}
+
+/**
+ * The `skill-check` roll for a GM request, read exactly like the request line of zone E
+ * (a skill request without a skill code falls back to the ability check).
+ */
+export function requestRoll(
+  req: RollRequestPayload,
+  actorId: string,
+  s: HudStrings,
+): { input: RollInput; name: string } {
+  if (req.kind === 'skill' && req.skill) {
+    const input: RollInput = { actor_id: actorId, kind: 'skill', skill: req.skill };
+    if (req.ability) input.ability = req.ability;
+    return { input, name: s.requestSkill(s.skills[req.skill]) };
+  }
+  const ability = req.ability ?? 'str';
+  const kind = req.kind === 'save' ? 'save' : 'check';
+  return {
+    input: { actor_id: actorId, kind, ability },
+    name: (kind === 'save' ? s.requestSave : s.requestCheck)(s.abilities[ability]),
+  };
+}
+
+function requestEntries(app: AppState, s: HudStrings): Entry[] {
+  const done = label(s.requestOk, { k: 'dismissRequest' });
+  const req = app.rollRequest;
+  const actorId = app.character?.actorId;
+  if (!req || !actorId) return [done];
+  const roll = requestRoll(req, actorId, s);
+  return [done, label(s.requestRollFoundry, { k: 'roll', ...roll })];
+}
+
+/** Feats and features (read-only reference list; origin feats tagged). */
+function featEntries(app: AppState, s: HudStrings): Entry[] {
+  return (app.character?.feats ?? []).map((f) => ({
+    left: f.name,
+    right: f.isOrigin ? s.featOrigin : '',
+    intent: { k: 'back' },
+  }));
 }
 
 /** Options-list label of an operation, including its current value. */
@@ -268,12 +323,14 @@ export function buildEntries(app: AppState, ui: UiState, s: HudStrings): Entry[]
       return targetEntries(app, s);
     case 'items':
       return itemEntries(app);
+    case 'feats':
+      return featEntries(app, s);
     case 'options':
       return optionEntries(app, ui, s);
     case 'reaction':
       return reactionEntries(app, s);
     case 'request':
-      return [label(s.requestOk, { k: 'dismissRequest' })];
+      return requestEntries(app, s);
     case 'root':
     case 'result':
       return [];

@@ -193,6 +193,13 @@ export const HARDWARE_CHECKLIST: ReadonlyArray<HardwareStep> = [
     id: 'hw-socket-reconnect',
     prompt: 'socket.io reconnects after foreground re-entry and the HUD resumes live updates',
   },
+  {
+    // Real-G2 page geometry (remote d97b12e): the host rejects image containers off the
+    // proven 288 × 144 grid; the HUD then falls back to the full-screen 2 × 2 layout.
+    id: 'hw-sheet-grid',
+    prompt:
+      'The sheet HUD page is accepted on the real G2 (portrait/header/map top band + sheet visible; no "rejected the sheet page" line in phone Diagnostica with ?debug=1)',
+  },
 ];
 
 /** NO-GO fallback documented by ADR-0016. */

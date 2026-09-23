@@ -31,6 +31,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # release-tag.mjs dispatches foundry-module-release.yml via `gh workflow run`,
+  # which needs actions:write on the default GITHUB_TOKEN.
+  actions: write
 
 # Never cancel-in-progress: a half-cancelled tag push is worse than queueing.
 concurrency:
@@ -60,7 +63,8 @@ jobs:
       - name: Create Release PR or publish
         uses: changesets/action@v1
         with:
-          version: pnpm changeset version
+          # changeset version + app.json version sync (scripts/sync-app-json.mjs).
+          version: pnpm run version-packages
           publish: pnpm run release:tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

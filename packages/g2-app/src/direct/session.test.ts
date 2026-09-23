@@ -69,6 +69,7 @@ function setup() {
     base: 'https://foundry.example/vtt',
     createClient: () => client,
     appVersion: '0.2.0',
+    moduleVersion: '0.2.0',
     settingsStorage: storage,
     deviceLanguage: () => 'it-IT',
     random: () => 0,
@@ -383,6 +384,30 @@ describe('connect flow', () => {
     release(late);
     await started;
     expect(late.disconnected).toBe(true);
+  });
+});
+
+describe('module version (welcome.moduleVersion)', () => {
+  it('shows the projector module version and warns when the bundle was built for another', async () => {
+    const same = setup();
+    await goOnline(same, { moduleVersion: '0.2.0' });
+    expect(same.session.info().moduleVersion).toBe('0.2.0');
+    expect(same.session.info().diagnostics).toEqual([]);
+    same.session.dispose();
+
+    const older = setup();
+    await goOnline(older, { moduleVersion: '0.1.55' });
+    expect(older.session.info().moduleVersion).toBe('0.1.55');
+    expect(older.session.info().diagnostics.map((d) => d.message)).toContain(
+      'Foundry module 0.1.55 ≠ glasses app built for 0.2.0 — update the glasses app',
+    );
+    older.session.dispose();
+
+    const legacy = setup();
+    await goOnline(legacy);
+    expect(legacy.session.info().moduleVersion).toBeNull();
+    expect(legacy.session.info().diagnostics).toEqual([]);
+    legacy.session.dispose();
   });
 });
 

@@ -347,8 +347,8 @@ describe('getCharacterSnapshot', () => {
 
   it('coerces null hp.temp to 0 (dnd5e leaves temp null with no temporary HP)', () => {
     // Regression: dnd5e sets hp.temp to null (NOT 0) when an actor has no temp HP.
-    // The bridge's CharacterSnapshotSchema requires tempHp: number().nonnegative(),
-    // so a passthrough null made the bridge silently drop the WHOLE snapshot
+    // CharacterSnapshotSchema requires tempHp: number().nonnegative(),
+    // so a passthrough null made the consumer silently drop the WHOLE snapshot
     // (POST /internal/delta → 200, but GET /v1/character/:id → 404). character-reader
     // must coerce null → 0.
     const actor = makeActor({
@@ -1196,6 +1196,7 @@ describe('getCharacterSnapshot', () => {
     expect(snap?.details).toEqual({
       classId: 'cleric',
       className: 'Chierico',
+      classLabel: 'Chierico / Guerriero',
       subclass: 'Dominio della Guerra',
       race: 'Nano delle colline',
       inspiration: true,

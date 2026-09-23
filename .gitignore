@@ -54,7 +54,7 @@ Thumbs.db
 .sim-run/
 
 # Scratch + build dirs (never commit; only ignore — do not delete existing files)
-# _*.ts: ad-hoc scratch scripts (e.g. packages/bridge/_seed.ts, packages/foundry-module/_scene_e2e.ts)
+# _*.ts: ad-hoc scratch scripts (e.g. packages/foundry-module/_scene_e2e.ts)
 _*.ts
 # release/: foundry-module staging output (packages/foundry-module/release/)
 release/

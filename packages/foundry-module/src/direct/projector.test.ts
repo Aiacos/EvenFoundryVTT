@@ -98,7 +98,7 @@ beforeEach(async () => {
   g2 = makeUser('g2a', 'Luca (G2)', { flags: { evenfoundryvtt: { g2For: 'p1' } } });
   f = installFoundry({
     users: [makeUser('p1', 'Luca'), g2],
-    actors: [makeActor('thorin', 'Thorin')],
+    actors: [makeActor('thorin', 'Thorin', { ownership: { p1: 3 } })],
   });
   await upsertDevice(meta(), KEY);
   projector = new Projector();
@@ -176,6 +176,34 @@ describe('Projector — hello / welcome / rotation', () => {
     expect(error).toHaveBeenCalled();
   });
 
+  it('PJ-01b welcome carries the answering module version when Foundry reports one', async () => {
+    f.game.modules = {
+      get: (id: string) =>
+        id === 'evenfoundryvtt' ? { active: true, version: '0.2.0' } : undefined,
+    };
+    await appSend({ t: 'hello', rid: 'r1', proto: 1, app: 'g2' });
+    const [welcome] = await received();
+    expect(welcome).toMatchObject({ t: 'welcome', moduleVersion: '0.2.0' });
+  });
+
+  it('PJ-01c a reconnect (new hello) resyncs every snapshot, map included, at once', async () => {
+    await appSend({ t: 'hello', rid: 'r1', proto: 1, app: 'g2' });
+    await appSend({ t: 'hello', rid: 'r2', proto: 1, app: 'g2' });
+    const msgs = await received();
+    expect(msgs.map((m) => (m.t === 'welcome' ? `welcome:${m.rid}` : m.what))).toEqual([
+      'welcome:r1',
+      'character',
+      'map',
+      'combat',
+      'log',
+      'welcome:r2',
+      'character',
+      'map',
+      'combat',
+      'log',
+    ]);
+  });
+
   it('PJ-04 hello for a deleted actor → result actor_missing', async () => {
     f.actors.clear();
     await appSend({ t: 'hello', rid: 'r1', proto: 1, app: 'g2' });
@@ -229,6 +257,59 @@ describe('Projector — get / ping / invoke', () => {
       ['d', 'item_not_found'],
     ]);
     expect(dispatchTool).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Projector — live ownership check', () => {
+  it('PJ-21 revoking ownership after pairing denies hello / get / invoke (forbidden_actor) and audits', async () => {
+    const actor = f.actors.get('thorin') as { ownership: Record<string, number> };
+    actor.ownership = {};
+    const create = vi.fn(async () => ({}));
+    vi.stubGlobal('ChatMessage', { create });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await appSend({ t: 'hello', rid: 'h', proto: 1, app: 'g2' });
+    await appSend({ t: 'get', rid: 'g', what: 'character' });
+    await appSend({ t: 'invoke', rid: 'i', tool: 'use-item', input: { item_id: 'x' } });
+    await flush();
+    const msgs = await received();
+    expect(msgs.map((m) => [m.t, m.rid, (m.error as { code: string } | undefined)?.code])).toEqual([
+      ['result', 'h', 'forbidden_actor'],
+      ['result', 'g', 'forbidden_actor'],
+      ['result', 'i', 'forbidden_actor'],
+    ]);
+    expect(dispatchTool).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(
+      create.mock.calls.map(
+        (c) =>
+          (c as unknown as [{ flags: { evf: { audit: { tool: string; result: unknown } } } }])[0]
+            .flags.evf.audit,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        tool: 'hello',
+        result: { success: false, error: 'forbidden_actor' },
+      }),
+      expect.objectContaining({ tool: 'get:character', actorId: 'thorin' }),
+      expect.objectContaining({ tool: 'use-item', idempotencyKey: 'i', payload: { item_id: 'x' } }),
+    ]);
+  });
+
+  it('PJ-22 ownership is re-read live: granting it back lets the next invoke through', async () => {
+    const actor = f.actors.get('thorin') as { ownership: Record<string, number> };
+    actor.ownership = {};
+    vi.stubGlobal('ChatMessage', { create: vi.fn(async () => ({})) });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await appSend({ t: 'invoke', rid: 'a', tool: 'use-item', input: {} });
+    actor.ownership = { default: 3 };
+    dispatchTool.mockResolvedValueOnce({ success: true, data: null });
+    await appSend({ t: 'invoke', rid: 'b', tool: 'use-item', input: {} });
+    const msgs = await received();
+    expect(msgs.map((m) => [m.rid, m.ok])).toEqual([
+      ['a', false],
+      ['b', true],
+    ]);
   });
 });
 

@@ -10,7 +10,8 @@
  *    `$EVF_SIMULATOR` overrides the command, e.g. `npx -y @evenrealities/evenhub-simulator@0.9.5`).
  * 3. Waits for `EVF_READY`, then for every `EVF_SCENE i/n name layout` marker saves the
  *    glasses screenshot to `.sim-artifacts/`, checks it (lit pixels in the five sheet
- *    zones; INV-1 gutter pixels at x = 144 / 432 / 288 identical across sheet scenes),
+ *    zones, header rules continuous across the x = 287 | 288 top-tile seam; INV-1 gutter
+ *    pixels at x = 144 / 432 / 288 identical across sheet scenes),
  *    probes real input on list scenes (`down` must change the display) and advances with
  *    `double_click`.
  * 4. Fails on `[uncaught]` / `[unhandledrejection]` entries in the simulator console.

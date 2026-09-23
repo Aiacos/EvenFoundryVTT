@@ -27,6 +27,8 @@
  * @see https://foundryvtt.com/api/v14/interfaces/foundry.ContextMenuEntry.html — label / icon / visible / onClick
  * @see docs/design/g2-thirds-layout.md §P01
  */
+
+import { userOwnsActor } from './election.js';
 import { isG2User } from './g2-user.js';
 import { getAccess } from './glasses-access.js';
 
@@ -64,13 +66,16 @@ export function rowUserId(row: RowLike): string | null {
 
 /**
  * The pairing target for a user id, or null when that user cannot own glasses
- * (unknown, a GM, or itself a "(G2)" user).
+ * (unknown, a GM, or itself a "(G2)" user). The assigned character is preselected only
+ * when the player owns it.
  */
 export function pairTargetFor(userId: string | null): PairTarget | null {
   if (userId === null) return null;
   const user = game.users.get(userId);
   if (user === undefined || user.isGM || isG2User(user)) return null;
-  return { playerUserId: user.id, actorId: user.character?.id ?? null };
+  const character = user.character?.id;
+  const actorId = character !== undefined && userOwnsActor(character, user.id) ? character : null;
+  return { playerUserId: user.id, actorId };
 }
 
 /** Foundry major version (`game.release.generation`); 13 when unknown. */

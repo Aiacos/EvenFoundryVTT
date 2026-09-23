@@ -1,7 +1,10 @@
 /**
- * Container budget, zOrder and SDK page validity for every layout mode, and the zone
- * grid of docs/design/g2-sheet-ux.html §Architettura della schermata (INV-1: the five
- * zones tile the 576 × 288 canvas exactly, without overlap).
+ * Container budget, zOrder and SDK page validity for every layout mode, the zone grid
+ * of docs/design/g2-sheet-ux.html §Architettura della schermata (INV-1: the five zones
+ * tile the 576 × 288 canvas exactly, without overlap), and one regression test per
+ * real-G2 host fact (inventory §2): image containers only on the proven 288 × 144 grid,
+ * declaration-order container ids (images first), a single `' '` capture container, and
+ * no visible text container under an image.
  */
 import { utf8ByteLength, validateEvenHubPageContainer } from '@evenrealities/even_hub_sdk';
 import { describe, expect, it } from 'vitest';
@@ -11,13 +14,15 @@ import { menuIdOf } from '../input/state-machine.js';
 import {
   buildRebuildPage,
   buildStartupPage,
-  IMAGE,
+  containerId,
   type LayoutMode,
   MODE_REGIONS,
   SCREEN_H,
   SCREEN_W,
   TEXT,
+  TILE,
   TILES,
+  ZONE,
   ZONES,
 } from '../layout.js';
 
@@ -38,7 +43,7 @@ describe('layout', () => {
         page.textObject?.filter((t) => t.isEventCapture === 1).map((t) => t.containerName),
       ).toEqual(['evf-bg']);
     }
-    expect(MODE_REGIONS.sheet.image).toHaveLength(4);
+    expect(MODE_REGIONS.sheet.image).toHaveLength(3);
     expect(MODE_REGIONS.sheet.text).toHaveLength(4);
     expect(MODE_REGIONS.full.image).toHaveLength(4);
   });
@@ -94,17 +99,13 @@ describe('layout', () => {
       return hits.every((n) => n === 1);
     };
     const e = { x: TEXT.ctxHead.x, y: TEXT.ctxHead.y, w: TEXT.ctxHead.w, h: 144 };
-    expect(cover([...ZONES.map((z) => IMAGE[z]), e])).toBe(true);
-    expect(cover(TILES.map((t) => IMAGE[t]))).toBe(true);
-    expect(IMAGE.portrait).toMatchObject({ x: 0, y: 0, w: 144, h: 144 });
-    expect(IMAGE.header).toMatchObject({ x: 144, y: 0, w: 288, h: 144 });
-    expect(IMAGE.map).toMatchObject({ x: 432, y: 0, w: 144, h: 144 });
-    expect(IMAGE.sheet).toMatchObject({ x: 0, y: 144, w: 288, h: 144 });
-    for (const img of Object.values(IMAGE)) {
-      expect(img.w).toBeLessThanOrEqual(288);
-      expect(img.h).toBeLessThanOrEqual(144);
-      expect(Math.min(img.w, img.h)).toBeGreaterThanOrEqual(20);
-    }
+    expect(cover([...ZONES.map((z) => ZONE[z]), e])).toBe(true);
+    expect(cover(TILES.map((t) => TILE[t]))).toBe(true);
+    expect(cover([...MODE_REGIONS.sheet.image.map((t) => TILE[t]), e])).toBe(true);
+    expect(ZONE.portrait).toEqual({ x: 0, y: 0, w: 144, h: 144 });
+    expect(ZONE.header).toEqual({ x: 144, y: 0, w: 288, h: 144 });
+    expect(ZONE.map).toEqual({ x: 432, y: 0, w: 144, h: 144 });
+    expect(ZONE.sheet).toEqual({ x: 0, y: 144, w: 288, h: 144 });
   });
 
   it('stacks zone E as head (1 line) + framed body (3 lines) + foot (1 line) = 144 px', () => {
@@ -128,5 +129,97 @@ describe('layout', () => {
     expect(body?.borderWidth).toBe(1);
     expect(head?.borderWidth).toBe(0);
     expect(bg?.borderWidth).toBe(0);
+  });
+});
+
+/** Rectangles overlap (positive area). */
+function overlaps(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+describe('real-G2 host facts (regression)', () => {
+  const pages = MODES.flatMap((mode) => [
+    { mode, kind: 'startup', page: buildStartupPage(mode, {}, menu('it')) },
+    { mode, kind: 'rebuild', page: buildRebuildPage(mode, {}, menu('en')) },
+  ]);
+  const GRID = [
+    [0, 0],
+    [288, 0],
+    [0, 144],
+    [288, 144],
+  ];
+
+  it('H1: image containers sit only at the 2×2 grid origins, sized 288 × 144 (d97b12e)', () => {
+    for (const { mode, kind, page } of pages) {
+      for (const img of page.imageObject ?? []) {
+        expect(
+          GRID.some(([x, y]) => img.xPosition === x && img.yPosition === y),
+          `${mode}/${kind} ${img.containerName} at ${img.xPosition},${img.yPosition}`,
+        ).toBe(true);
+        expect([img.width, img.height]).toEqual([288, 144]);
+      }
+      const origins = (page.imageObject ?? []).map((i) => `${i.xPosition},${i.yPosition}`);
+      expect(new Set(origins).size).toBe(origins.length);
+    }
+    // Sheet: the two top tiles carry zones A+B+C, bl carries zone D; br stays reserved.
+    expect(MODE_REGIONS.sheet.image).toEqual(['tl', 'tr', 'bl']);
+    expect(MODE_REGIONS.full.image).toEqual(['tl', 'tr', 'bl', 'br']);
+  });
+
+  it('H3: container ids follow the host declaration order — images first, then text', () => {
+    for (const { mode, kind, page } of pages) {
+      const images = (page.imageObject ?? []).map((c) => c.containerID);
+      const texts = (page.textObject ?? []).map((c) => c.containerID);
+      expect([...images, ...texts], `${mode}/${kind}`).toEqual(
+        Array.from({ length: images.length + texts.length }, (_, i) => i),
+      );
+    }
+    expect(containerId('full', 'tl')).toBe(0);
+    expect(containerId('full', 'br')).toBe(3);
+    expect(containerId('full', 'bg')).toBe(4);
+    expect(containerId('sheet', 'bl')).toBe(2);
+    expect(containerId('sheet', 'bg')).toBe(3);
+    expect(containerId('sheet', 'ctxFoot')).toBe(6);
+    // Image ids are identical across modes (a stale in-flight send stays on its tile).
+    for (const t of MODE_REGIONS.sheet.image)
+      expect(containerId('sheet', t)).toBe(containerId('full', t));
+    expect(() => containerId('sheet', 'br')).toThrow(/not declared in the sheet layout/);
+    expect(() => containerId('full', 'ctxBody')).toThrow(/not declared/);
+  });
+
+  it('H5: exactly one capture container, full screen, content always a single space', () => {
+    for (const { mode, kind, page } of pages) {
+      const capture = (page.textObject ?? []).filter((t) => t.isEventCapture === 1);
+      expect(capture, `${mode}/${kind}`).toHaveLength(1);
+      expect(capture[0]).toMatchObject({
+        containerName: 'evf-bg',
+        content: ' ',
+        xPosition: 0,
+        yPosition: 0,
+        width: SCREEN_W,
+        height: SCREEN_H,
+      });
+    }
+    const page = buildStartupPage('sheet', { bg: { content: 'leak', color: 4 } }, []);
+    expect(page.textObject?.[0]?.content).toBe(' ');
+  });
+
+  it('H4: no visible text container overlaps an image (images draw above text)', () => {
+    for (const { mode, kind, page } of pages) {
+      const texts = (page.textObject ?? []).filter((t) => t.isEventCapture !== 1);
+      for (const t of texts) {
+        for (const i of page.imageObject ?? []) {
+          const a = { x: t.xPosition ?? 0, y: t.yPosition ?? 0, w: t.width ?? 0, h: t.height ?? 0 };
+          const b = { x: i.xPosition ?? 0, y: i.yPosition ?? 0, w: i.width ?? 0, h: i.height ?? 0 };
+          expect(
+            overlaps(a, b),
+            `${mode}/${kind} ${t.containerName} under ${i.containerName}`,
+          ).toBe(false);
+        }
+      }
+    }
   });
 });

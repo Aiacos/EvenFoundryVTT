@@ -8,7 +8,10 @@
  * (`election.ts`: the player's own client when connected and holding the key, else a
  * GM that can open the key) — answers:
  *
- * - `hello`  → `welcome` (+ one-time key rotation; the password too when a GM answers
+ * Every `hello` / `get` / `invoke` first re-checks, live, that the paired player still
+ * owns the projected actor (`forbidden_actor` otherwise, audited).
+ *
+ * - `hello`  → `welcome` (module version, + one-time key rotation; the password too when a GM answers
  *   for a device it paired) then full snapshots
  * - `get`    → `snapshot` of character / combat / log / map for the paired actor
  * - `invoke` → `dispatchTool` (ADR-0011 single-workflow-origin, one origin per device
@@ -52,6 +55,7 @@ import {
   type SnapshotTopic,
   seal,
 } from '@evf/shared-protocol';
+import { MODULE_ID } from '../module-id.js';
 import { getCharacterSnapshot } from '../readers/character-reader.js';
 import { getCombatSnapshot } from '../readers/combat-reader.js';
 import {
@@ -60,10 +64,12 @@ import {
   isMessageVisibleTo,
   toLogEvent,
 } from '../readers/log-reader.js';
+import { writeAuditLog } from '../write-path/audit-log.js';
 import { getActionEconomy } from '../write-path/combat-action-tracker.js';
 import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
+import { hashBearer } from '../write-path/idempotency-cache.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
-import { type DeviceContext, deviceContext } from './election.js';
+import { type DeviceContext, deviceContext, userOwnsActor } from './election.js';
 import { generatePassword, setG2Password } from './g2-user.js';
 import { deliverPassword } from './glasses-access.js';
 import { myPrivateKey } from './identity-keys.js';
@@ -267,6 +273,7 @@ export class Projector {
         await this.onHello(ctx, key, message.rid);
         return;
       case 'get':
+        if (!(await this.authorized(meta, key, message.rid, `get:${message.what}`, null))) return;
         await this.send(meta.g2UserId, key, {
           t: 'snapshot',
           rid: message.rid,
@@ -283,6 +290,48 @@ export class Projector {
     }
   }
 
+  /**
+   * Live ownership check (evaluated on every hello / get / invoke, never cached): the
+   * player bound to the device must still OWN the projected actor, so revoking the
+   * ownership after pairing takes effect immediately. A denial answers
+   * `forbidden_actor`, is logged and leaves a GM-whispered audit entry (fire-and-forget).
+   *
+   * @returns whether the request may proceed
+   */
+  private async authorized(
+    meta: DeviceMeta,
+    key: string,
+    rid: string,
+    what: string,
+    input: unknown,
+  ): Promise<boolean> {
+    if (userOwnsActor(meta.actorId, meta.playerUserId)) return true;
+    const error = 'forbidden_actor';
+    console.warn(
+      `[EVF] projector: denied ${what} from ${meta.g2UserId} — player ${meta.playerUserId} no longer owns actor ${meta.actorId}`,
+    );
+    this.fireAndForget(
+      hashBearer(principalOf(meta.g2UserId)).then((hash) =>
+        writeAuditLog({
+          tool: what,
+          payload: input,
+          idempotencyKey: rid,
+          actorId: meta.actorId,
+          result: { success: false, error },
+          timestamp: Date.now(),
+          bearer_id: hash.slice(0, 8),
+        }),
+      ),
+    );
+    await this.send(meta.g2UserId, key, {
+      t: 'result',
+      rid,
+      ok: false,
+      error: { code: error, message: 'the paired player no longer owns this character' },
+    });
+    return false;
+  }
+
   private async onHello(ctx: DeviceContext, key: string, rid: string): Promise<void> {
     const meta = servedMeta(ctx);
     const actor = game.actors.get(meta.actorId);
@@ -295,6 +344,8 @@ export class Projector {
       });
       return;
     }
+    if (!(await this.authorized(meta, key, rid, 'hello', null))) return;
+    const moduleVersion = game.modules?.get(MODULE_ID)?.version;
     const welcome: WelcomeMessage = {
       t: 'welcome',
       rid,
@@ -304,6 +355,7 @@ export class Projector {
       gmName: game.users.activeGM?.name ?? '',
       worldTitle: game.world?.title ?? '',
       ...(game.i18n?.lang ? { locale: game.i18n.lang } : {}),
+      ...(moduleVersion ? { moduleVersion } : {}),
     };
 
     if (ctx.selfDevice?.pendingRotation === true && game.user.id === meta.playerUserId) {
@@ -404,6 +456,7 @@ export class Projector {
       this.send(meta.g2UserId, key, { t: 'result', rid, ok: false, error: { code, message } });
 
     if (!isToolId(tool)) return fail('unknown_tool', `unknown tool "${tool}"`);
+    if (!(await this.authorized(meta, key, rid, tool, input))) return;
     if (typeof input !== 'object' || input === null || Array.isArray(input)) {
       return fail('invalid_input', 'input must be an object');
     }

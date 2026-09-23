@@ -148,6 +148,17 @@ describe('message schemas', () => {
         gmName: 'Anna',
         worldTitle: 'W',
       },
+      {
+        t: 'welcome',
+        rid: '1',
+        actorId: 'a',
+        actorName: 'Thorin',
+        userName: 'Luca (G2)',
+        gmName: 'Anna',
+        worldTitle: 'W',
+        locale: 'it',
+        moduleVersion: '0.2.0',
+      },
       { t: 'snapshot', what: 'character', data: {} },
       { t: 'delta', seq: 3, topic: 'character.delta', data: {} },
       { t: 'result', rid: '3', ok: true, data: null },
@@ -157,6 +168,16 @@ describe('message schemas', () => {
     ]) {
       expect(ProjectorMessageSchema.safeParse(m).success).toBe(true);
     }
+    const welcome = {
+      t: 'welcome',
+      rid: '1',
+      actorId: 'a',
+      actorName: '',
+      userName: '',
+      gmName: '',
+      worldTitle: '',
+    };
+    expect(ProjectorMessageSchema.safeParse({ ...welcome, moduleVersion: '' }).success).toBe(false);
   });
 });
 

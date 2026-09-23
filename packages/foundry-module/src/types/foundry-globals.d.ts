@@ -627,7 +627,8 @@ interface FoundryItem {
      * object: `method` ← preparation.mode, `prepared` ← preparation.prepared).
      */
     method?: string;
-    prepared?: boolean;
+    /** dnd5e ≥ 5.1: 0 unprepared · 1 prepared · 2 always prepared (boolean before). */
+    prepared?: number | boolean;
     /** @deprecated dnd5e < 5.1 only — superseded by `method`/`prepared` above. */
     preparation?: {
       mode?: string;
@@ -807,6 +808,8 @@ interface FoundryActor {
   rollSkill?(
     config: {
       skill: string;
+      /** Ability override (defaults to the skill's ability). */
+      ability?: string;
       advantage?: boolean;
       disadvantage?: boolean;
     },
@@ -816,6 +819,26 @@ interface FoundryActor {
      * when the roll is driven headlessly from the glasses (no human at this
      * client to confirm the dialog).
      */
+    dialog?: { configure?: boolean },
+  ): Promise<unknown>;
+  /**
+   * Roll a saving throw (dnd5e 5.x `Actor5e#rollSavingThrow(config, dialog, message)`,
+   * `config.ability` = ability key). Optional: guarded with `?.` by the skill-check handler.
+   *
+   * @see https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/documents/actor/actor.mjs (rollSavingThrow, verified 2026-09-23)
+   */
+  rollSavingThrow?(
+    config: { ability: string; advantage?: boolean; disadvantage?: boolean },
+    dialog?: { configure?: boolean },
+  ): Promise<unknown>;
+  /**
+   * Roll an ability check (dnd5e 5.x `Actor5e#rollAbilityCheck(config, dialog, message)`,
+   * `config.ability` = ability key). Optional: guarded with `?.` by the skill-check handler.
+   *
+   * @see https://github.com/foundryvtt/dnd5e/blob/release-5.3.3/module/documents/actor/actor.mjs (rollAbilityCheck, verified 2026-09-23)
+   */
+  rollAbilityCheck?(
+    config: { ability: string; advantage?: boolean; disadvantage?: boolean },
     dialog?: { configure?: boolean },
   ): Promise<unknown>;
   /**
@@ -858,12 +881,6 @@ interface FoundryCombatant {
   actor: FoundryActor | null;
   /** Initiative roll result (null if not yet rolled). */
   initiative: number | null;
-  /**
-   * The combatant's TokenDocument (null if the combat has no token for it).
-   * `token.uuid` is the canonical Foundry token UUID (e.g. `Scene.X.Token.Y`) that
-   * MidiQOL's `midiOptions.targetUuids` expects — the combatant `id` is NOT a token UUID.
-   */
-  token: { readonly uuid: string } | null;
 }
 
 // ─── Foundry Combat (minimal read shape) ──────────────────────────────────────
@@ -1267,11 +1284,8 @@ declare const game: {
    */
   modules: { get(id: string): { active: boolean; version?: string } | undefined };
   /**
-   * The active world descriptor. `world.id` is the world identifier provisioned to the
-   * bridge alongside a bearer (PairModal reads it at render time on the no-arg
-   * registerMenu construction path).
+   * The active world descriptor (`world.title` is shown on the glasses' welcome).
    *
-   * @see packages/foundry-module/src/pair/PairModal.ts
    * @see https://foundryvtt.com/api/v13/classes/foundry.packages.BaseWorld.html
    */
   world: { id: string };

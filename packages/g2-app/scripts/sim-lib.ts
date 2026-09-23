@@ -56,6 +56,16 @@ export const GUTTERS: readonly Gutter[] = [
   { x: 288, y0: 144, y1: 287 },
 ];
 
+/**
+ * Tile-seam probes (real-G2 grid): zones A + B + C are sent as two 288 × 144 tiles that
+ * meet at x = 287 | 288 inside the header. The header rules (y = 40 and y = 106) cross
+ * the seam, so both sides must be lit in every sheet scene — a missing, shifted or
+ * rejected top tile breaks the rule at the seam.
+ */
+export const SEAM_POINTS: ReadonlyArray<{ x: number; y: number }> = [286, 287, 288, 289].flatMap(
+  (x) => [40, 106].map((y) => ({ x, y })),
+);
+
 /** Decoded RGBA image. */
 export interface RgbaImage {
   width: number;
@@ -159,8 +169,8 @@ export function lastId(entries: readonly ConsoleEntry[]): number | null {
 }
 
 /**
- * Per-scene checks: screen size; sheet layouts light each of the five zones; full
- * screens light something.
+ * Per-scene checks: screen size; sheet layouts light each of the five zones and keep the
+ * header rules continuous across the top-tile seam; full screens light something.
  *
  * @returns Problems (empty = pass).
  */
@@ -174,9 +184,16 @@ export function checkScene(marker: SceneMarker, img: RgbaImage): string[] {
       : [`${marker.name}: glasses display is blank`];
   }
   const counts = litCounts(img);
-  return ZONE_RECTS.flatMap((z, i) =>
+  const zones = ZONE_RECTS.flatMap((z, i) =>
     (counts[i] ?? 0) > 0 ? [] : [`${marker.name}: zone ${z.name} has no lit pixels`],
   );
+  const seam = SEAM_POINTS.filter((p) => !isLit(img, p.x, p.y));
+  return seam.length === 0
+    ? zones
+    : [
+        ...zones,
+        `${marker.name}: header rule broken at the top-tile seam (${seam.map((p) => `${p.x},${p.y}`).join(' ')})`,
+      ];
 }
 
 /**

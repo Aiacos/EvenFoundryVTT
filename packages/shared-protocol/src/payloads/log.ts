@@ -103,7 +103,7 @@ export type LogEvent = z.infer<typeof LogEventSchema>;
 /**
  * Envelope for a batch of log events (wire snapshot shape).
  *
- * Used by the bridge `log.delta` event channel.
+ * Used as the `log` snapshot of the direct channel.
  * Mirrors the `CombatSnapshotSchema` envelope shape for consistency.
  */
 export const LogSnapshotSchema = z.strictObject({

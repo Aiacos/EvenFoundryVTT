@@ -18,6 +18,7 @@
     "test:coverage": "vitest --run --coverage",
     "changeset": "changeset",
     "changeset:status": "changeset status --since=origin/main",
+    "version-packages": "changeset version && node scripts/sync-app-json.mjs",
     "release:tag": "node scripts/release-tag.mjs",
     "prepare": "husky || true"
   },

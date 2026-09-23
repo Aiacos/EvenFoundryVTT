@@ -7,7 +7,7 @@
 import { disc, drawText, fitText, LABEL_FONT, MEDIUM_FONT, Pixmap } from '@evf/shared-render';
 import type { ConnectionState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
-import { IMAGE, SCREEN_H, SCREEN_W, TILES, type Tile } from '../layout.js';
+import { SCREEN_H, SCREEN_W } from '../layout.js';
 
 /** What the full screen shows. */
 export type FullScreen =
@@ -88,12 +88,4 @@ export function renderFullScreen(screen: FullScreen, s: HudStrings): Pixmap {
   if (screen.kind === 'pair') pairScreen(p, screen.revoked, s);
   else connectScreen(p, screen.connection, s);
   return p;
-}
-
-/** Splits a 576 × 288 screen into the four 288 × 144 image tiles. */
-export function splitTiles(screen: Pixmap): Array<[Tile, Pixmap]> {
-  return TILES.map((t) => {
-    const b = IMAGE[t];
-    return [t, screen.crop(b.x, b.y, b.w, b.h)];
-  });
 }

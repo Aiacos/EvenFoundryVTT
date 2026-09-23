@@ -19,12 +19,12 @@ import {
 import { getDevice } from './pairing-store.js';
 
 let f: FoundryMock;
-const thorin = () => makeActor('thorin', 'Thorin');
+const thorin = () => makeActor('thorin', 'Thorin', { ownership: { p1: 3 } });
 
 beforeEach(() => {
   f = installFoundry({
     users: [makeUser('p1', 'Luca')],
-    actors: [thorin(), makeActor('mira', 'Mira')],
+    actors: [thorin(), makeActor('mira', 'Mira', { ownership: { p1: 3 } })],
   });
 });
 afterEach(() => {
@@ -69,6 +69,7 @@ describe('pairing-flow', () => {
       createdAt: 5_000,
     });
     expect((f.actors.get('thorin') as { ownership: Record<string, number> }).ownership).toEqual({
+      p1: 3,
       [g2?.id ?? '']: 3,
     });
   });
@@ -85,6 +86,8 @@ describe('pairing-flow', () => {
   it('PF-04 startPairing rejects unknown player / actor', async () => {
     await expect(startPairing('nobody', 'thorin')).rejects.toThrow(/player/);
     await expect(startPairing('p1', 'nobody')).rejects.toThrow(/actor/);
+    (f.actors.get('mira') as { ownership: Record<string, number> }).ownership = {};
+    await expect(startPairing('p1', 'mira')).rejects.toThrow(/does not own actor mira/);
   });
 
   it('PF-05 expirePairing rotates unused credentials only', async () => {

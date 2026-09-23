@@ -12,12 +12,13 @@ import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
 import { type SheetModel, sheetModel } from '../model.js';
 import { fullScreenOf, renderZones } from '../view.js';
-import { renderFullScreen, splitTiles } from '../zones/fullscreen.js';
+import { renderFullScreen } from '../zones/fullscreen.js';
 import { HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
 import { computeViewport, LEVEL, MAP_VIEW, renderMap } from '../zones/map.js';
 import { encodePng } from '../zones/png.js';
 import { ditherInto, PICTURE, renderPortrait } from '../zones/portrait.js';
+import { splitTiles } from '../zones/tiles.js';
 
 const s = strings('it');
 afterEach(() => vi.restoreAllMocks());
@@ -188,7 +189,7 @@ describe('full screens', () => {
     );
     const whole = new Pixmap(576, 288);
     const tiles = splitTiles(screen);
-    expect(tiles.map(([t]) => t)).toEqual(['fullTL', 'fullTR', 'fullBL', 'fullBR']);
+    expect(tiles.map(([t]) => t)).toEqual(['tl', 'tr', 'bl', 'br']);
     const origin = [
       [0, 0],
       [288, 0],

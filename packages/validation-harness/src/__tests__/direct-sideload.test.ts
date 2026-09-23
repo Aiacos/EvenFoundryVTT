@@ -131,18 +131,25 @@ describe('evaluateApiStatus', () => {
 });
 
 describe('hardware checklist', () => {
-  it('covers the four ADR-0016 confirmation steps', () => {
+  it('covers the ADR-0016 confirmation steps and the real-G2 sheet grid', () => {
     expect(HARDWARE_CHECKLIST.map((s) => s.id)).toEqual([
       'hw-qr-load',
       'hw-sdk-bridge',
       'hw-cookie-persist',
       'hw-socket-reconnect',
+      'hw-sheet-grid',
     ]);
   });
 
   it('maps operator answers to pass/fail and unanswered steps to skipped', () => {
     const results = evaluateHardwareAnswers({ 'hw-qr-load': true, 'hw-sdk-bridge': false });
-    expect(results.map((r) => r.verdict)).toEqual(['pass', 'fail', 'skipped', 'skipped']);
+    expect(results.map((r) => r.verdict)).toEqual([
+      'pass',
+      'fail',
+      'skipped',
+      'skipped',
+      'skipped',
+    ]);
   });
 });
 

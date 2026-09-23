@@ -3,7 +3,7 @@
  *
  * Covers Plan 4b-06 Task 1 behaviour CS-DS-1..CS-DS-8 — the death-saves schema
  * extension landed atomically alongside the character-reader.ts producer and the
- * downstream g2-app + bridge consumer fixtures (Pitfall 3 mitigation: no
+ * downstream g2-app consumer fixtures (Pitfall 3 mitigation: no
  * `.optional()` window of drift).
  *
  *   - CS-DS-1  happy-path: success=0, failure=0 (idle character) parses
@@ -492,7 +492,7 @@ describe('CharacterSnapshotSchema — portrait extension (CS-PORT)', () => {
     expect(result.data.portrait).toBeUndefined();
   });
 
-  // CS-PORT-03: portrait with absolute external URL → accepted (bridge validates, not schema)
+  // CS-PORT-03: portrait with absolute external URL → accepted (consumer validates, not schema)
   it('CS-PORT-03: portrait with absolute HTTPS URL is accepted by schema', () => {
     const result = CharacterSnapshotSchema.safeParse({
       ...VALID_SNAPSHOT,

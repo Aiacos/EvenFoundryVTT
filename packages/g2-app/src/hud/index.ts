@@ -4,10 +4,18 @@
  *
  * `startHud` builds the G2 page once (`createStartUpPageContainer`), then on every store
  * change / gesture / 1 s tick re-renders and pushes only what changed:
- * `textContainerUpgrade` (instant, flicker-free) for zone E, and the image zones through
- * the paced, hash-skipping {@link ZoneSender} (header > map > sheet > portrait).
- * `rebuildPageContainer` runs only when the layout mode changes (sheet ⇄ full-screen
- * S10/S11) or the menu labels change language — never during play.
+ * `textContainerUpgrade` (instant, flicker-free) for zone E, and the image tiles through
+ * the paced, hash-skipping {@link ZoneSender}. Zones A + B + C are composed into one
+ * 576 × 144 top band sent as the two top 288 × 144 tiles, zone D is the bottom-left tile
+ * (the proven real-G2 grid — see `layout.ts`); the map inside the band is held to ≤ 1 fps
+ * by {@link MapFrameGate}. `rebuildPageContainer` runs only when the layout mode changes
+ * (sheet ⇄ full-screen S10/S11) or the menu labels change language — never during play.
+ *
+ * Page probe (real-G2 fact, remote d97b12e): a host that rejects the `sheet` page
+ * (`createStartUpPageContainer` ≠ success / `rebuildPageContainer` ≠ true) is logged on
+ * the debug channel and the HUD falls back to the full-screen 2 × 2 layout for the rest of
+ * the session — the sheet is then drawn as four tiles, zone E as pixels — never a dead
+ * screen.
  *
  * The HUD reads {@link AppState} and calls {@link AppActions}; the only store writes are
  * clearing a handled reaction prompt (`reaction`) and a handled GM roll request
@@ -15,12 +23,14 @@
  *
  * @see docs/architecture/0016-direct-foundry-streaming.md
  */
+
 import {
   type EvenAppBridge,
   ImageRawDataUpdate,
   StartUpPageCreateResult,
   TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk';
+import type { Pixmap } from '@evf/shared-render';
 import {
   type AppActions,
   type AppState,
@@ -36,18 +46,19 @@ import { initialUi, type UiState } from './input/ui-state.js';
 import {
   buildRebuildPage,
   buildStartupPage,
-  IMAGE,
+  containerId,
   type LayoutMode,
   type MenuEntry,
   TEXT,
   type TextContent,
   type TextRegion,
-  ZONES,
+  TILE,
 } from './layout.js';
 import { ArtCache, type ArtDecoder, browserArtDecoder } from './map-art/image.js';
 import { type ArtLayer, collectArt } from './map-art/layers.js';
+import { screenOf } from './screen.js';
 import { fullScreenOf, layoutModeFor, renderTexts, renderZones, type ViewInput } from './view.js';
-import { renderFullScreen, splitTiles } from './zones/fullscreen.js';
+import { renderFullScreen } from './zones/fullscreen.js';
 import {
   browserDecoder,
   type DecodeDeps,
@@ -56,11 +67,16 @@ import {
   type LumaDecoder,
 } from './zones/luma.js';
 import { computeViewport, type Viewport } from './zones/map.js';
+import { MapFrameGate } from './zones/map-gate.js';
 import { PICTURE } from './zones/portrait.js';
+import { contextTile, type SheetTile, sheetTiles, splitTiles } from './zones/tiles.js';
 import { ZoneSender } from './zones/zone-sender.js';
 
 /** UI clock period: reaction countdown, result auto-close, "min ago" labels. */
 export const TICK_MS = 1000;
+/** Minimum wait before retrying a page placement the host rejected. */
+export const PLACE_RETRY_MS = 2000;
+const SHEET_TILES: readonly SheetTile[] = ['tl', 'tr', 'bl'];
 /** Foundry's default actor image: treated as "no portrait" (emblem instead). */
 const PLACEHOLDER_IMAGE = /mystery-man/i;
 
@@ -128,6 +144,13 @@ export function startHud(
   let mode: LayoutMode | null = null;
   let pageLocale: HudLocale | null = null;
   let creating = false;
+  /** The host rejected the `sheet` page: the HUD runs in the `full` 2 × 2 layout. */
+  let sheetRejected = false;
+  /** Earliest time a rejected placement may be retried. */
+  let placeRetryAt = 0;
+  let placeTimer: ReturnType<typeof setTimeout> | null = null;
+  let mapTimer: ReturnType<typeof setTimeout> | null = null;
+  const mapGate = new MapFrameGate();
   const shown = new Map<TextRegion, TextContent>();
   let viewport: { key: string; vp: Viewport } | null = null;
 
@@ -136,14 +159,19 @@ export function startHud(
   const pictures = new LumaCache(decoder, () => render());
   const sceneArt = new ArtCache(options.artDecoder ?? defaultArtDecoder(), () => render());
 
-  const sender = new ZoneSender((region, png) => {
-    const box = IMAGE[region];
+  const sender = new ZoneSender((tile, png) => {
+    const id = containerId(mode ?? 'full', tile);
     return queue.run(() =>
       bridge.updateImageRawData(
-        new ImageRawDataUpdate({ containerID: box.id, containerName: box.name, imageData: png }),
+        new ImageRawDataUpdate({ containerID: id, containerName: TILE[tile].name, imageData: png }),
       ),
     );
   });
+
+  /** Page layout for the state (the `full` fallback once the host rejected `sheet`). */
+  function pageModeFor(app: AppState): LayoutMode {
+    return sheetRejected ? 'full' : layoutModeFor(app);
+  }
 
   /** Portrait picture: actor image, else token image, else null (class emblem). */
   function portrait(app: AppState): Luma | null {
@@ -175,14 +203,14 @@ export function startHud(
     return vp;
   }
 
-  function upgrade(region: TextRegion, content: TextContent): void {
+  function upgrade(page: LayoutMode, region: TextRegion, content: TextContent): void {
     const spec = TEXT[region];
     shown.set(region, content);
     queue
       .run(() =>
         bridge.textContainerUpgrade(
           new TextContainerUpgrade({
-            containerID: spec.id,
+            containerID: containerId(page, region),
             containerName: spec.name,
             contentOffset: 0,
             contentLength: 0,
@@ -213,6 +241,7 @@ export function startHud(
     creating = true;
     shown.clear();
     sender.reset();
+    mapGate.reset();
     const call = first
       ? queue.run(() => bridge.createStartUpPageContainer(buildStartupPage(next, texts, menu)))
       : queue.run(() => bridge.rebuildPageContainer(buildRebuildPage(next, texts, menu)));
@@ -221,7 +250,7 @@ export function startHud(
         creating = false;
         const ok = first ? res === StartUpPageCreateResult.success : res === true;
         if (!ok) {
-          console.warn(`[hud] ${first ? 'create' : 'rebuild'} page (${next}) rejected`, res);
+          rejected(first, next, String(res));
           return;
         }
         mode = next;
@@ -231,14 +260,48 @@ export function startHud(
       },
       (err: unknown) => {
         creating = false;
-        console.warn(`[hud] ${first ? 'create' : 'rebuild'} page (${next}) failed`, err);
+        rejected(first, next, String(err));
       },
     );
   }
 
+  /**
+   * Page probe: a rejected/failed `sheet` placement switches to the `full` fallback at
+   * once; a rejected `full` placement is retried after {@link PLACE_RETRY_MS}.
+   */
+  function rejected(first: boolean, next: LayoutMode, why: string): void {
+    const call = first ? 'createStartUpPageContainer' : 'rebuildPageContainer';
+    if (next === 'sheet') {
+      sheetRejected = true;
+      console.warn(`[hud] ${call} rejected the sheet page (${why}) — full-screen 2×2 fallback`);
+      render();
+      return;
+    }
+    console.warn(`[hud] ${call} rejected the ${next} page (${why}) — retrying`);
+    placeRetryAt = Date.now() + PLACE_RETRY_MS;
+    if (placeTimer === null) {
+      placeTimer = setTimeout(() => {
+        placeTimer = null;
+        render();
+      }, PLACE_RETRY_MS);
+    }
+  }
+
+  /** Map frame through the ≤ 1 fps gate; re-renders when a withheld frame is due. */
+  function gatedMap(fresh: Pixmap, key: string): Pixmap {
+    const { pix, retryInMs } = mapGate.take(fresh, key);
+    if (retryInMs > 0 && mapTimer === null) {
+      mapTimer = setTimeout(() => {
+        mapTimer = null;
+        render();
+      }, retryInMs);
+    }
+    return pix;
+  }
+
   function pushImages(next: LayoutMode, v: ViewInput, loc: HudLocale): void {
     const app = v.app;
-    if (next === 'full') {
+    if (layoutModeFor(app) === 'full') {
       for (const [tile, pix] of splitTiles(renderFullScreen(fullScreenOf(app), v.strings))) {
         sender.submit(tile, pix);
       }
@@ -252,24 +315,28 @@ export function startHud(
       reach: ui.view === 'target' && ui.pending?.kind === 'weapon',
       ...(targetId === undefined ? {} : { targetId }),
     });
-    for (const zone of ZONES) sender.submit(zone, zones[zone]);
+    zones.map = gatedMap(zones.map, `${next}|${screenOf(app)}|${app.map?.sceneId ?? ''}`);
+    const tiles = sheetTiles(zones);
+    for (const tile of SHEET_TILES) sender.submit(tile, tiles[tile]);
+    // `full` fallback: zone E has no text containers — draw it into the fourth tile.
+    if (next === 'full') sender.submit('br', contextTile(renderTexts('sheet', v)));
   }
 
   function render(): void {
     const app = store.get();
     const loc = locale();
-    const next = layoutModeFor(app);
+    const next = pageModeFor(app);
     const v: ViewInput = { app, ui, strings: strings(loc), now: Date.now() };
     const texts = renderTexts(next, v);
     if (creating) return;
     if (mode !== next || pageLocale !== loc) {
-      placePage(next, loc, texts);
+      if (Date.now() >= placeRetryAt) placePage(next, loc, texts);
       return;
     }
     for (const [region, content] of Object.entries(texts) as [TextRegion, TextContent][]) {
       const prev = shown.get(region);
       if (prev?.content !== content.content || prev.color !== content.color)
-        upgrade(region, content);
+        upgrade(next, region, content);
     }
     pushImages(next, v, loc);
   }
@@ -328,6 +395,7 @@ export function startHud(
     if (g.t === 'foreground') {
       // The glasses may have dropped image content while we were in background.
       sender.reset();
+      mapGate.reset();
       render();
       return;
     }
@@ -341,6 +409,8 @@ export function startHud(
     offEvents();
     offStore();
     clearInterval(tick);
+    if (placeTimer !== null) clearTimeout(placeTimer);
+    if (mapTimer !== null) clearTimeout(mapTimer);
     sender.dispose();
   };
 }

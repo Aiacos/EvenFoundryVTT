@@ -109,7 +109,7 @@ describe('castSpellHandler', () => {
     // Regression (260621): the slot override is the FIRST (usage) arg and
     // `{ configure: false }` is the SECOND (dialog) arg — dnd5e 5.x
     // `use(usage, dialog, message)`. Passing configure in the usage arg left the
-    // usage dialog enabled, hanging every cast until the bridge's 10s foundry_timeout.
+    // usage dialog enabled, hanging every cast until the glasses' invoke times out.
     expect(activity.use).toHaveBeenCalledWith({ spell: { slot: 'spell3' } }, { configure: false });
   });
 

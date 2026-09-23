@@ -6,10 +6,6 @@
  * a boolean pair to simplify downstream dispatch and keep the JSON Schema
  * self-documenting.
  *
- * Phase 03 stub: the bridge dispatches this to the Foundry module which returns
- * `{ status: 'phase-07-pending' }`. Phase 07 replaces the stub with a real
- * `activity.use()` call (or `MidiQOL.completeActivityUse` when present).
- *
  * @see docs/architecture/0003-tool-registry-pattern.md (ADR-0003)
  * @see Specs.md §5.3 (Tool Registry)
  */

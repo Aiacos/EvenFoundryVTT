@@ -1,28 +1,31 @@
 /**
- * ZoneSender — paced, prioritised `updateImageRawData` pipeline for the image zones
+ * ZoneSender — paced, prioritised `updateImageRawData` pipeline for the image tiles
  * (docs/design/g2-sheet-ux.html §Vincolo hardware, SDK notes):
  *
  * - one image in flight at a time, ≥ {@link MIN_GAP_MS} between two sends;
- * - per-zone hash: a zone whose pixels did not change is never re-sent;
- * - latest wins: a newer pixmap replaces a queued one of the same zone;
- * - priority: header (PF / turn) > map > sheet > portrait (full-screen tiles in reading
- *   order); the context zone is text and never waits here;
- * - the map is limited to one frame per {@link MAP_MIN_INTERVAL_MS} (≤ 1 fps);
- * - a failed send forgets the zone hash and retries after {@link RETRY_MS}.
+ * - per-tile hash: a tile whose pixels did not change is never re-sent (an AC change
+ *   resends only `tl`; the PF box straddles the two top tiles, so a PF change resends
+ *   `tl` + `tr`; a map frame resends only `tr`);
+ * - latest wins: a newer pixmap replaces a queued one of the same tile;
+ * - priority: reading order `tl` (PF digits, CA, portrait) > `tr` (turn chip, map) >
+ *   `bl` (sheet) > `br`; the context zone is text and never waits here;
+ * - a failed send forgets the tile hash and retries after {@link RETRY_MS}.
  *
- * PNG encoding happens only when a zone is about to be sent (superseded frames cost
+ * The map's ≤ 1 fps cadence is enforced upstream, when the top band is composed
+ * (`startHud`), because the map shares tile `tr` with the header.
+ *
+ * PNG encoding happens only when a tile is about to be sent (superseded frames cost
  * nothing).
  */
 import type { Pixmap } from '@evf/shared-render';
-import { type ImageRegion, TILES, ZONES } from '../layout.js';
+import { TILES, type Tile } from '../layout.js';
 import { encodePng } from './png.js';
 
 export const MIN_GAP_MS = 100;
-export const MAP_MIN_INTERVAL_MS = 1000;
 export const RETRY_MS = 2000;
 
 /** Sends one encoded image; resolves to the SDK `ImageRawDataUpdateResult`. */
-export type SendImage = (region: ImageRegion, png: Uint8Array) => Promise<unknown>;
+export type SendImage = (region: Tile, png: Uint8Array) => Promise<unknown>;
 
 /** Timer surface (injectable for tests). */
 export interface SenderTimers {
@@ -31,7 +34,7 @@ export interface SenderTimers {
   clearTimeout(handle: unknown): void;
 }
 
-const PRIORITY: readonly ImageRegion[] = [...ZONES, ...TILES];
+const PRIORITY: readonly Tile[] = TILES;
 
 const realTimers: SenderTimers = {
   now: () => Date.now(),
@@ -41,10 +44,10 @@ const realTimers: SenderTimers = {
 
 export class ZoneSender {
   /** Hash of what the glasses show per region. */
-  private readonly shown = new Map<ImageRegion, number>();
-  private readonly pending = new Map<ImageRegion, Pixmap>();
-  /** Earliest time a region may be sent again (map pacing, retry backoff). */
-  private readonly notBefore = new Map<ImageRegion, number>();
+  private readonly shown = new Map<Tile, number>();
+  private readonly pending = new Map<Tile, Pixmap>();
+  /** Earliest time a tile may be sent again (retry backoff). */
+  private readonly notBefore = new Map<Tile, number>();
   private busy = false;
   private timer: unknown = null;
   private lastSendAt = Number.NEGATIVE_INFINITY;
@@ -58,7 +61,7 @@ export class ZoneSender {
   ) {}
 
   /** Queues `pix` for `region` unless the glasses already show exactly these pixels. */
-  submit(region: ImageRegion, pix: Pixmap): void {
+  submit(region: Tile, pix: Pixmap): void {
     if (this.disposed) return;
     if (this.shown.get(region) === pix.hash()) {
       this.pending.delete(region);
@@ -83,8 +86,8 @@ export class ZoneSender {
     this.timer = null;
   }
 
-  private next(now: number): { region: ImageRegion; wait: number } | null {
-    let best: { region: ImageRegion; wait: number } | null = null;
+  private next(now: number): { region: Tile; wait: number } | null {
+    let best: { region: Tile; wait: number } | null = null;
     for (const region of PRIORITY) {
       if (!this.pending.has(region)) continue;
       const wait = Math.max(0, (this.notBefore.get(region) ?? 0) - now);
@@ -126,7 +129,6 @@ export class ZoneSender {
     this.lastSendAt = now;
     const epoch = this.epoch;
     const hash = pix.hash();
-    if (region === 'map') this.notBefore.set(region, now + MAP_MIN_INTERVAL_MS);
     let ok = false;
     try {
       const result = String(await this.send(region, encodePng(pix)));

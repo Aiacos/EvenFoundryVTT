@@ -3,7 +3,7 @@
  *
  * Emitted by the Foundry module's `reaction-watcher.ts` when `dnd5e.preUseActivity`
  * fires for an NPC activity that targets the player. The module emits this envelope
- * via `bridgeDeltaEmitter('r1.reaction.available', payload)` → bridge → g2-app.
+ * as the `r1.reaction.available` delta → direct projector → g2-app.
  *
  * g2-app's `reaction-toast-dispatcher.ts` receives this envelope, validates it
  * with double trust boundary (outer EnvelopeSchema + inner this schema), then

@@ -13,6 +13,7 @@ export type View =
   | 'slot'
   | 'target'
   | 'items'
+  | 'feats'
   | 'options'
   | 'result'
   | 'reaction'
@@ -20,9 +21,10 @@ export type View =
 
 export type Advantage = 'normal' | 'advantage' | 'disadvantage';
 
-/** Action being composed while navigating spells → slot → target. */
+/** Action being composed while navigating spells → slot → target (or item → target). */
 export type Pending =
   | { kind: 'weapon'; itemId: string; name: string }
+  | { kind: 'item'; itemId: string; name: string }
   | { kind: 'spell'; spellId: string; name: string; level: number; slot: number | null };
 
 /** S6 result panel. */

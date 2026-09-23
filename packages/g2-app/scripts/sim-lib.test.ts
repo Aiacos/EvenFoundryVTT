@@ -16,6 +16,7 @@ import {
   type RgbaImage,
   SCREEN_H,
   SCREEN_W,
+  SEAM_POINTS,
   ZONE_RECTS,
 } from './sim-lib.js';
 
@@ -27,10 +28,11 @@ function frame(lit: ReadonlyArray<readonly [number, number]>, w = SCREEN_W, h = 
   return { width: w, height: h, data } satisfies RgbaImage;
 }
 
-/** Sheet frame: portrait / map frame columns + one lit pixel per zone. */
+/** Sheet frame: portrait / map frame columns, header rules + one lit pixel per zone. */
 function sheet(extra: ReadonlyArray<readonly [number, number]> = []): RgbaImage {
   const lit: [number, number][] = [];
   for (let y = 2; y < 142; y++) lit.push([141, y], [433, y]);
+  for (let x = 150; x <= 426; x++) lit.push([x, 40], [x, 106]);
   return frame([...lit, [10, 10], [300, 20], [500, 20], [100, 200], [400, 200], ...extra]);
 }
 
@@ -120,9 +122,28 @@ describe('scene checks', () => {
       [300, 10],
       [100, 200],
       [400, 200],
+      ...SEAM_POINTS.map((p) => [p.x, p.y] as const),
     ]);
     expect(checkScene(marker('sheet', 'offline'), noMap)).toEqual([
       'offline: zone C has no lit pixels',
+    ]);
+  });
+
+  it('requires the header rules to stay continuous across the top-tile seam', () => {
+    expect(SEAM_POINTS).toHaveLength(8);
+    const broken = frame([
+      [10, 10],
+      [300, 20],
+      [500, 20],
+      [100, 200],
+      [400, 200],
+      [286, 40],
+      [287, 40],
+      [286, 106],
+      [287, 106],
+    ]);
+    expect(checkScene(marker('sheet', 'seam'), broken)).toEqual([
+      'seam: header rule broken at the top-tile seam (288,40 288,106 289,40 289,106)',
     ]);
   });
 

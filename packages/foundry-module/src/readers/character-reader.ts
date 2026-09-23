@@ -205,6 +205,15 @@ function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryI
 }
 
 /**
+ * Normalises a spell's preparation state: dnd5e ≥ 5.1 stores a number (0 unprepared,
+ * 1 prepared, 2 always prepared), older data a boolean (true → 1).
+ */
+function preparationLevel(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  return raw === true ? 1 : 0;
+}
+
+/**
  * Extract spellbook data from actor.system.spells + actor.items spell entries.
  *
  * Spell slots: reads `actor.system.spells.spell{1-9}` + `actor.system.spells.pact`
@@ -216,6 +225,7 @@ function extractInventory(actor: ReturnType<typeof game.actors.get>): InventoryI
  *
  * @internal
  */
+
 function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook {
   if (actor === undefined) return { slots: [], spells: [] };
 
@@ -254,21 +264,20 @@ function extractSpellbook(actor: ReturnType<typeof game.actors.get>): Spellbook 
     // Read the NEW top-level fields first; only touch the deprecated `preparation`
     // object as a fallback for dnd5e < 5.1 (reading preparation.mode/.prepared on
     // 5.1+ logs a compatibility-warning flood). INV-2: dnd5e 5.1 migration notes.
+    // In 5.1+ `prepared` is a NUMBER: 0 unprepared, 1 prepared, 2 always prepared
+    // (the legacy `always` mode became `prepared: 2`); older data carries a boolean.
     const methodRaw = system.method as string | undefined;
-    const preparedRaw = system.prepared as boolean | undefined;
+    const preparedRaw = system.prepared as number | boolean | undefined;
     const legacyPrep =
       methodRaw === undefined && preparedRaw === undefined
         ? ((system.preparation as Record<string, unknown>) ?? {})
         : {};
     const preparationMode = methodRaw ?? (legacyPrep.mode as string | undefined) ?? 'prepared';
+    const preparedLevel = preparationLevel(preparedRaw ?? legacyPrep.prepared);
+    const isAlwaysPrepared =
+      preparedLevel === 2 || preparationMode === 'always' || preparationMode === 'innate';
     const isPrepared =
-      preparedRaw === true ||
-      legacyPrep.prepared === true ||
-      preparationMode === 'always' ||
-      preparationMode === 'innate' ||
-      level === 0; // cantrips are always prepared
-
-    const isAlwaysPrepared = preparationMode === 'always' || preparationMode === 'innate';
+      preparedLevel >= 1 || isAlwaysPrepared || preparationMode === 'atwill' || level === 0; // cantrips are always prepared
 
     // Assumption A2: concentration flag lives at item.system.components.concentration
     const isConcentration = (components.concentration as boolean | undefined) === true;
@@ -575,7 +584,8 @@ function wholeOr(value: unknown, fallback: number): number {
 
 /**
  * Sheet header data of the G2 sheet HUD (docs/design/g2-sheet-ux.html zone B):
- * highest-level class + subclass, species, inspiration, walk speed, proficiency,
+ * highest-level class + subclass, the class label (multiclass `Fighter / Wizard`,
+ * highest level first), species, inspiration, walk speed, proficiency,
  * initiative total and darkvision. Paths verified against dnd5e release-5.3.3
  * (`character.mjs`, `templates/attributes.mjs`, `shared/senses-field.mjs`,
  * `Actor5e#classes`) on 2026-09-23 (INV-2).
@@ -590,8 +600,13 @@ function extractDetails(actor: FoundryActor): CharacterSheetDetails {
   const [classId, main] = classes[0] ?? [undefined, undefined];
   const race = raceName(actor.system.details.race);
   const init = attrs.init?.total;
+  const classLabel = classes
+    .map(([, c]) => c.name)
+    .filter((n) => typeof n === 'string' && n !== '')
+    .join(' / ');
   return {
     ...(classId !== undefined && { classId }),
+    ...(classLabel !== '' && { classLabel }),
     ...(main !== undefined && { className: main.name }),
     ...(main?.subclass?.name !== undefined && { subclass: main.subclass.name }),
     ...(race !== undefined && { race }),

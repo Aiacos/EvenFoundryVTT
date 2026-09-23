@@ -140,6 +140,37 @@ describe('Pixmap', () => {
     expect([clampLevel(-3), clampLevel(7.6), clampLevel(99)]).toEqual([0, 8, 15]);
   });
 
+  it('blit and crop clip exactly like per-pixel get/set (edges, clip rect, fractions)', () => {
+    const src = new Pixmap(7, 5);
+    for (let i = 0; i < src.data.length; i++) src.data[i] = (i * 7) % 16;
+    const slowBlit = (dst: Pixmap, x: number, y: number) => {
+      for (let yy = 0; yy < src.height; yy++)
+        for (let xx = 0; xx < src.width; xx++) dst.set(x + xx, y + yy, src.get(xx, yy));
+    };
+    for (const [x, y] of [
+      [-3, -2],
+      [4, 3],
+      [0, 0],
+      [8, 1],
+      [-7, 0],
+    ] as const) {
+      const fast = new Pixmap(9, 6);
+      const slow = new Pixmap(9, 6);
+      fast.pushClip(1, 1, 6, 4);
+      slow.pushClip(1, 1, 6, 4);
+      fast.blit(src, x, y);
+      slowBlit(slow, x, y);
+      expect(fast.toHexRows(), `${x},${y}`).toEqual(slow.toHexRows());
+      const cropped = src.crop(x, y, 5, 4);
+      for (let yy = 0; yy < 4; yy++)
+        for (let xx = 0; xx < 5; xx++) expect(cropped.get(xx, yy)).toBe(src.get(x + xx, y + yy));
+    }
+    const untouched = new Pixmap(4, 4);
+    untouched.blit(src, 0.5, 0);
+    expect(untouched.hash()).toBe(new Pixmap(4, 4).hash());
+    expect(src.crop(0.5, 0, 2, 2).hash()).toBe(new Pixmap(2, 2).hash());
+  });
+
   it('samples Bézier curves ending on their end point', () => {
     expect(quadratic({ x: 0, y: 0 }, { x: 5, y: 10 }, { x: 10, y: 0 }, 4).at(-1)).toEqual({
       x: 10,

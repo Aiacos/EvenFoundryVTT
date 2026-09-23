@@ -108,7 +108,8 @@ describe('zone E content (IT, design persona)', () => {
     expect(body('S7').split('\n')[2]).toBe('Innesco: Goblin B');
     expect(head('S8')).toMatch(/^Prova richiesta +dal GM$/);
     expect(body('S8').split('\n')[0]).toMatch(/^Tiro salvezza su SAG +\+7$/);
-    expect(body('S8').split('\n')[2]).toMatch(/^▶ +Fatto$/);
+    expect(body('S8').split('\n')[1]).toMatch(/^▶ +Fatto · d20 al tavolo$/);
+    expect(body('S8').split('\n')[2]).toMatch(/^ +Tira in Foundry$/);
     expect(head('S9')).toMatch(/^Sei a terra +round 4$/);
     expect(body('S9')).toBe('Tiro salvezza contro la morte\nSuccessi 1/3 · Fallimenti 2/3');
     expect(head('S12')).toMatch(/^▲ Offline +dati di 2 min fa$/);
@@ -125,10 +126,14 @@ describe('zone E content (IT, design persona)', () => {
     expect(at({ messageId: 'a', kind: 'check', ability: 'str', dc: 12 })[0]).toMatch(
       /^STR check +\+3$/,
     );
-    expect(at({ messageId: 'a', kind: 'check', ability: 'str', dc: 12 })[1]).toBe(
-      'DC 12 · Roll the d20 at the table',
-    );
-    expect(at({ messageId: 'a', kind: 'skill', skill: 'rel' })[0]).toMatch(/^Religion check +\+6$/);
+    expect(at({ messageId: 'a', kind: 'check', ability: 'str', dc: 12 })[1]).toBe('DC 12');
+    // Without a DC both choices fit: «Done» (real dice) and «Roll in Foundry».
+    const skill = at({ messageId: 'a', kind: 'skill', skill: 'rel' });
+    expect(skill[0]).toMatch(/^Religion check +\+6$/);
+    expect(skill.slice(1)).toEqual([
+      expect.stringMatching(/^▶ +Done/),
+      expect.stringMatching(/Roll in Foundry$/),
+    ]);
     expect(at({ messageId: 'a', kind: 'check' })[0]).toMatch(/^STR check/);
     expect(at(null)).toHaveLength(1);
     const noCaster = online('min', {
