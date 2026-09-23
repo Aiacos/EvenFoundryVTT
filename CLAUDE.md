@@ -76,6 +76,99 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 - **INV-3 Documentation coherence** — `Specs.md` + `README.md` + `docs/showcase/index.html` update **in the same commit** for any cross-cutting change (version, fps target, phase count, hardware spec, library version, locale set, ADR list). No half-updated states. Cross-reference integrity is a hard gate.
 - **INV-4 Code quality** (binds Phase 1+ when code lands) — clean, optimized, documented, **zero dead/unreachable code** tolerated. Biome + TypeScript strict + Vitest coverage gate enforce in CI. `// TODO` requires `(#issue)` or `(ADR-NNNN)`. JSDoc/TSDoc on every public API. Hot-path benchmarks gate regressions.
 
+## Engineering Constitution (ALWAYS APPLY)
+
+Standing principles that bind every change — code, docs, CI, and agent workflow. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
+
+### P1 · 💎 Code quality
+
+- Readable, intention-revealing code that matches the surrounding idiom (naming, comment density, module layout). Small single-purpose functions; pure logic separated from I/O (Foundry hooks, WS, Even Hub bridge calls).
+- TypeScript strict, no `any` / non-null `!` without a justifying comment; Zod schemas in `shared-protocol` are the single source of truth for wire shapes — never redefine a type locally.
+- Zero dead code, unused exports, commented-out blocks, or orphan files (INV-4). `// TODO` only with `(#issue)` or `(ADR-NNNN)`.
+- TSDoc on every public API: purpose, params, return, thrown errors, and the `Specs.md §` it implements.
+- Errors are never swallowed: every `catch` either recovers explicitly, degrades with a documented fallback (e.g. raster → glyph), or rethrows with context. Log via `pino` (bridge) / debug channel (g2-app), never bare `console.log` in shipped code.
+
+### P2 · 🧪 Testing standards
+
+- Every behavior change ships with tests in the same commit; every bug fix ships with a regression test that fails before the fix.
+- Test pyramid: unit (pure logic, reducers, formatters) → integration (bridge ↔ foundry-module via mocks, WS protocol round-trips) → snapshot (INV-1 ASCII layouts, all states × IT/EN × min/max content widths) → E2E/simulator where hardware-like behavior matters.
+- Coverage gate ≥ 80% (vitest v8) is a floor, not a target: cover edge cases (empty/overflow/unicode/locale, disconnect/reconnect, stale tokens), not lines.
+- Tests are deterministic: no real timers, network, or randomness without fakes/seeds. Flaky tests are bugs — fix or quarantine with an issue link, never retry-until-green.
+- Hardware-only checks follow the defer pattern: written as GO/NO-GO harness scripts in `validation-harness`, runnable with `--skip-hardware`, never blocking software CI.
+
+### P3 · 👓 User experience consistency
+
+- Core Value first: if a design forces the player to look at phone or laptop, it is wrong.
+- One visual language on G2: phosphor-green CRT/VFD style, same frame glyphs, dividers, column grid, and status-HUD placement across every panel (INV-1). Reuse `shared-render` primitives — never hand-roll a frame.
+- One input grammar on R1: only canonical gestures (`press / double-press / swipe-up / swipe-down`); the same gesture means the same thing on every panel. No duration-based input.
+- All user-facing strings go through i18n (IT + EN, EN canonical fallback), width-budgeted at build time. Feedback is always visual (toast / HUD) — G2 has no speaker.
+- Foundry module UI, setup guide, and showcase use the same terminology as the glasses UI (one glossary, no synonyms).
+
+### P4 · ⚡ Performance requirements
+
+- Budgets are contracts: 5 fps committed / 15 fps stretch (§7.4b.6.1), BLE ≥ 200 kbps sustained, raster pipeline off the main thread (Worker + OffscreenCanvas).
+- Hot paths (raster pipeline, delta hashing, render diff, WS fan-out) have benchmarks under `docs/perf/` and regressions > 10% fail review. Measure before optimizing; state the number in the commit/PR.
+- Prefer delta over full updates, cache static layers, avoid allocations in per-frame loops, debounce Foundry hook storms. Bundle size of `g2-app` is tracked; no heavy deps without justification (see §Technology Stack "What NOT to Use").
+
+### P5 · 🐞 Auto-debug & validation system
+
+- Every feature must be observable and drivable without glasses: emit structured events to the Debug Console (`EVF_DEBUG=true`, `/debug/{state,events,stream,inject,dispatch-tool,simulate-gesture}`) and keep the g2-app display mirror in sync.
+- Debug surfaces are dev-only and fail closed (404 when off, secret-gated) — never reachable in production builds.
+- Validate before claiming done: `pnpm lint:ci && pnpm typecheck && pnpm test:coverage`, plus `inv:all` for invariant-touching changes and the Even Hub simulator for display/input changes. Report real output; never claim "works" without evidence.
+- Debug autonomously first (reproduce → isolate via debug endpoints/logs → fix → regression test); ask the user only for hardware-gated steps.
+
+### P6 · 🔬 Research & document SDKs and libraries
+
+- Before using or upgrading an SDK/library API (Even Hub SDK, Foundry, dnd5e, socketlib, MidiQOL, MCP SDK, Fastify, …), verify it against the canonical upstream source (INV-2) and the `everything-evenhub:*` skills — never from memory or blogs.
+- Record what you learned where the next person will find it: the relevant ADR, `Specs.md §`, or a TSDoc `@see` link to the upstream doc/version. Hand-typed SDK declarations (e.g. `even-hub.d.ts`) cite their source URL and verification date.
+- Version pins are checked with live `npm view`; drift is logged (CRITICAL / IMPORTANT / NICE-TO-HAVE) per INV-2.
+
+### P7 · 📚 Technical & user documentation
+
+- Docs are part of the change, not a follow-up: code + tests + docs land in the same commit/PR (INV-3 for cross-cutting changes: `Specs.md` + `README.md` + showcase together).
+- Technical docs (`docs/architecture/` ADRs, `Specs.md`, `docs/runbook.md`) explain *why*; user docs (`README.md`, `docs/setup-guide.md`, `docs/wiki/`) explain *how*, with copy-pasteable commands that were actually run.
+- New architectural decisions get an ADR; stale docs are fixed or deleted when noticed — outdated docs are bugs.
+
+### P8 · 🧹 Repository hygiene & cleanup
+
+- Leave the repo cleaner than you found it: remove unused files, scripts, deps, fixtures, stale branches/worktrees, and generated artifacts that slipped in.
+- No secrets, local paths, `.env`, build output, or scratch files committed; temp work goes to the scratchpad, not the repo.
+- Completed planning artifacts are archived (`/gsd-cleanup`), not left to rot at the top level. Every file in the repo has an owner and a reason to exist.
+
+### P9 · 🚀 CI/CD
+
+- CI is the enforcement of this constitution: every principle that can be checked mechanically gets a gate (lint, typecheck, coverage, TODO discipline, snapshot drift, changeset, ADR-0011 guard, …). Never bypass with `--no-verify`, skipped jobs, or lowered thresholds.
+- Keep pipelines fast, deterministic and useful: pinned actions and tool versions, cached pnpm store, clear job names, actionable failure messages. Remove gates that no longer protect anything; add one when a bug class escapes.
+- Release flow stays GitFlow + Changesets (`develop` → `main`, Version Packages PR, release workflows). Workflows are tested on a branch before merge; a red `develop` is fixed before new feature work.
+
+### P10 · 🤖 Subagent usage
+
+- Delegate to subagents for independent, parallelizable work (multi-file exploration, parallel INV-2 WebFetch rounds, focused reviews: code, silent-failure, types, tests) — launch independent agents in a single message.
+- Do small, known-location work directly; don't spawn agents for a single lookup or a one-file edit, and never delegate the same search twice.
+- Give each agent a self-contained brief (goal, files, constraints, expected output format) and verify its result before acting on it — subagent output is input, not truth. Use GSD agents inside GSD workflows; keep workflows proportionate to the task.
+
+### P11 · 🏷️ Consistent chapter icons
+
+Every `##` heading in `README.md`, `docs/**/*.md`, wiki pages and the showcase uses one leading emoji from this canonical map — same concept, same icon, everywhere. Extend the map here before introducing a new icon; never use two icons for one concept.
+
+| Concept | Icon | Concept | Icon |
+|---|---|---|---|
+| Overview / What is it | 🎲 | Hardware (G2 / R1) | 🥽 |
+| Quick summary / In one sentence | 💡 | Stack / Dependencies | 🧰 |
+| Installation / Setup | 📦 | Research / SDK notes | 🔬 |
+| Configuration | ⚙️ | Documentation / Guides | 📚 |
+| Usage / Gestures | 🕹️ | Testing | 🧪 |
+| UX / UI design | 👓 | Debug / Troubleshooting | 🐞 |
+| Architecture | 🏗️ | Performance | ⚡ |
+| Highlights / Features | ✨ | Security / Auth | 🔐 |
+| Code quality | 💎 | CI/CD / Release | 🚀 |
+| Invariants / Principles | 🛡️ | Contributing / Cleanup | 🧹 |
+| Status / Progress | 📊 | Agents / Automation | 🤖 |
+| Roadmap / Milestones | 🗺️ | Voice / MCP (V2) | 🎙️ |
+| Changelog | 📝 | Inspiration | 🎨 |
+| Icons / Conventions | 🏷️ | License | ⚖️ |
+| Author / Credits | 👤 | | |
+
 ## Pre-bump checklist (manual until CI lands)
 
 Before bumping `Specs.md` version (e.g., v0.9.10 → v0.9.11):
