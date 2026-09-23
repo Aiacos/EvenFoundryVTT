@@ -5,6 +5,12 @@
 > I mock sono generati e **validati in larghezza** da uno script (ogni riga = 97 caratteri,
 > 24 righe) e sono il riferimento per gli snapshot test INV-1 in `packages/g2-app`.
 
+> ⚠️ **SUPERSEDED (2026-09-23, giro UX 2)** — sostituito dalla proposta «Scheda da tavolo G2»
+> ([`g2-sheet-ux.html`](g2-sheet-ux.html)): ritratto 144² in alto a sinistra, intestazione con scudo CA /
+> PF / INIZ·VEL·COMP ed economia d'azione, mappa quadrata 144² in alto a destra, scheda a due pagine
+> (Caratteristiche · TS e abilità) in basso a sinistra, pannello contesto in basso a destra. Il flusso di
+> associazione e il modello di input qui descritti restano validi.
+
 ## 🎲 Obiettivo
 
 - **Scheda PG sempre visibile** su 1/3 del display (sinistra).

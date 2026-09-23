@@ -1,0 +1,561 @@
+<title>Scheda da tavolo G2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=Pixelify+Sans:wght@500;700&family=Rubik:wght@400;500&family=Silkscreen:wght@400;700&display=swap">
+<style>
+:root{
+  --ground:#eef0f1; --panel:#f8f9f9; --ink:#1a2026; --muted:#56616b; --rule:#cdd3d8;
+  --accent:#9b2226; --accent-soft:#f3e3e1; --screen-edge:#0b0f0c; --chip:#e3e7ea;
+  --display:'Cinzel', 'Trajan Pro', Georgia, serif;
+  --sans:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#12161a; --panel:#181d22; --ink:#e3e7ea; --muted:#9aa5ae; --rule:#2c343b;
+    --accent:#e0686b; --accent-soft:#3a1d1f; --screen-edge:#000; --chip:#232a31;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#12161a; --panel:#181d22; --ink:#e3e7ea; --muted:#9aa5ae; --rule:#2c343b;
+  --accent:#e0686b; --accent-soft:#3a1d1f; --screen-edge:#000; --chip:#232a31;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground); color:var(--ink); font:16px/1.6 var(--sans); padding-inline:clamp(16px,4vw,48px); padding-block:32px 80px}
+main{max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:72px}
+h1,h2,h3{font-family:var(--display); letter-spacing:.04em; text-wrap:balance; margin:0}
+h1{font-size:clamp(2rem,4.2vw,3.1rem); line-height:1.1}
+h2{font-size:1.55rem; line-height:1.2}
+h3{font-size:1.05rem; letter-spacing:.06em}
+p{margin:0; max-width:68ch}
+.eyebrow{font:500 .72rem/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+.lede{font-size:1.12rem; color:var(--muted)}
+section{display:flex; flex-direction:column; gap:20px}
+.sec-head{display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--rule); padding-top:20px}
+.hero{display:grid; gap:28px}
+.hero-top{display:flex; flex-direction:column; gap:14px}
+.screen{background:var(--screen-edge); border-radius:14px; padding:clamp(8px,1.4vw,16px); max-width:100%}
+.screen canvas{display:block; width:100%; height:auto; image-rendering:pixelated; image-rendering:crisp-edges}
+.screen-wrap{position:relative}
+.toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.toggle{font:500 .8rem var(--mono); background:var(--chip); color:var(--ink); border:1px solid var(--rule); border-radius:999px; padding:6px 14px; cursor:pointer}
+.toggle[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:#fff}
+.toggle:focus-visible, a:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:24px}
+.card{background:var(--panel); border:1px solid var(--rule); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; gap:8px}
+.card h3{color:var(--ink)}
+.card p{color:var(--muted); font-size:.95rem}
+.principles{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:18px; list-style:none; padding:0; margin:0}
+.principles li{border-left:3px solid var(--accent); padding:4px 0 4px 14px; display:flex; flex-direction:column; gap:4px}
+.principles b{font-family:var(--display); letter-spacing:.04em}
+.principles span{color:var(--muted); font-size:.94rem}
+.table-wrap{overflow-x:auto; border:1px solid var(--rule); border-radius:10px; background:var(--panel)}
+table{border-collapse:collapse; width:100%; min-width:680px; font-size:.92rem}
+th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+th{font:600 .72rem/1.2 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); background:var(--chip)}
+tr:last-child td{border-bottom:0}
+td code, p code, li code{font:.86em var(--mono); background:var(--chip); padding:1px 5px; border-radius:4px}
+.tag{display:inline-block; font:500 .7rem var(--mono); padding:2px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent); white-space:nowrap}
+.shots{display:flex; flex-direction:column; gap:56px}
+.shot{display:grid; grid-template-columns:minmax(0,1.9fr) minmax(0,1fr); gap:28px; align-items:start}
+@media (max-width:900px){ .shot{grid-template-columns:1fr} }
+.shot-notes{display:flex; flex-direction:column; gap:10px}
+.shot-notes .id{font:500 .75rem var(--mono); color:var(--accent); letter-spacing:.1em}
+.shot-notes ul{margin:0; padding-left:18px; color:var(--muted); font-size:.93rem; display:flex; flex-direction:column; gap:4px}
+.shot-notes .when{font-size:.95rem}
+.icons{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px}
+.icon-cell{background:var(--screen-edge); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px; align-items:center}
+.icon-cell canvas{width:96px; height:96px; image-rendering:pixelated}
+.icon-cell span{font:500 .78rem var(--mono); color:#7ee39a; text-align:center}
+.icon-cell small{font:.72rem var(--sans); color:#8fb89a; text-align:center; line-height:1.35}
+.levels{display:flex; flex-wrap:wrap; gap:4px}
+.lv{flex:1 1 40px; min-width:40px; height:54px; border-radius:6px; display:flex; align-items:flex-end; justify-content:center; font:500 .7rem var(--mono); padding-bottom:4px}
+.q{counter-reset:q; list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px}
+.q li{counter-increment:q; background:var(--panel); border:1px solid var(--rule); border-radius:10px; padding:14px 18px 14px 52px; position:relative}
+.q li::before{content:counter(q); position:absolute; left:16px; top:13px; font:700 1rem var(--display); color:var(--accent)}
+.q li b{display:block}
+.q li span{color:var(--muted); font-size:.93rem}
+pre.mermaid{background:var(--panel); border:1px solid var(--rule); border-radius:10px; padding:16px; overflow-x:auto}
+footer{color:var(--muted); font-size:.85rem; border-top:1px solid var(--rule); padding-top:18px}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important} }
+</style>
+
+<main>
+  <header class="hero">
+    <div class="hero-top">
+      <span class="eyebrow">EvenFoundryVTT · proposta UX v0.10 · giro 2 · 23 settembre 2026</span>
+      <h1>La scheda del personaggio, portata sugli occhiali</h1>
+      <p class="lede">Una HUD per Even Realities G2 che si legge come la scheda cartacea di D&amp;D 5e e come D&amp;D Beyond: box delle caratteristiche, CA nello scudo, punti ferita, cerchi di competenza. In più una mappa quadrata del combattimento, tutto in 576 × 288 pixel di verde a 16 livelli.</p>
+    </div>
+    <div class="toolbar">
+      <button class="toggle" id="zones-toggle" type="button" aria-pressed="false">Mostra zone e container SDK</button>
+      <span style="color:var(--muted);font-size:.88rem">Schermate disegnate a 576×288 e quantizzate a 16 livelli di grigio-verde, come sul display reale.</span>
+    </div>
+    <div class="screen"><canvas id="hero" width="576" height="288" aria-label="Schermata principale: combattimento, tuo turno"></canvas></div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Brief</span>
+      <h2>Per chi, dove, in quanto tempo</h2>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Luca, il giocatore</h3><p>Gioca in presenza, con miniature e dadi veri. Oggi tiene il telefono sul tavolo per consultare la scheda su D&amp;D Beyond e perde il filo della scena. Vuole sapere <b>quanti PF ha, se è il suo turno, cosa può fare</b> senza abbassare lo sguardo.</p></div>
+      <div class="card"><h3>Il contesto d'uso</h3><p>Sguardi di 1–2 secondi, testa alta, luce ambiente variabile, rumore del tavolo. Input solo dall'anello R1 o dalla tempia: tap, doppio tap, swipe, pressione lunga. Niente tastiera, niente audio in uscita.</p></div>
+      <div class="card"><h3>Il vincolo hardware</h3><p>576×288 px, verde a 16 livelli. Al massimo <b>4 immagini ≤ 288×144</b> e 8 contenitori testo per pagina. Una sola immagine alla volta, a ≥ 100 ms di distanza. Il font firmware è proporzionale, senza dimensioni e senza simboli D&amp;D.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Principi</span>
+      <h2>Cinque regole che guidano ogni pixel</h2>
+    </div>
+    <ul class="principles">
+      <li><b>Si legge come una scheda</b><span>Stessi simboli e stessa posizione dell'informazione della scheda cartacea e di D&amp;D Beyond: chi gioca da anni la riconosce senza impararla.</span></li>
+      <li><b>Prima i numeri che uccidono</b><span>PF, CA e turno sono i tre valori più grandi e più luminosi. Tutto il resto è secondario e più scuro.</span></li>
+      <li><b>Un solo punto d'interazione</b><span>I gesti agiscono sempre sul pannello contesto in basso a destra. Il resto dello schermo si aggiorna da solo e non cattura mai input.</span></li>
+      <li><b>Due pagine, scelte dal gioco</b><span>Caratteristiche di default; Tiri salvezza e abilità quando il GM chiede una prova; tiri contro la morte a 0 PF. Attacchi e incantesimi vivono nel pannello contesto, dove si scelgono.</span></li>
+      <li><b>Mai uno schermo muto</b><span>Ogni stato (non associato, in collegamento, offline, GM assente) ha una schermata che dice cosa succede e cosa fare.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Riferimenti</span>
+      <h2>Dalla scheda cartacea e da D&amp;D Beyond alla G2</h2>
+      <p class="lede">Inventario degli elementi della scheda 5e (2014 e 2024) e della vista di D&amp;D Beyond, con dove finiscono sugli occhiali.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Elemento</th><th>Cartaceo</th><th>D&amp;D Beyond</th><th>Sulla G2</th><th>Visibilità</th></tr></thead>
+        <tbody>
+          <tr><td>Classe armatura</td><td>scudo al centro</td><td>scudo accanto alle caratteristiche</td><td>scudo 44×52 px nell'intestazione, cifra grande</td><td><span class="tag">sempre</span></td></tr>
+          <tr><td>Punti ferita (attuali / max / temp)</td><td>riquadro al centro</td><td>box PF con cura/danno</td><td>box con cuore, cifre grandi, barra e badge TEMP</td><td><span class="tag">sempre</span></td></tr>
+          <tr><td>Caratteristiche</td><td>6 box: modificatore grande, punteggio nell'ovale</td><td>6 box in riga, stessa gerarchia</td><td>6 box 44×100 identici al cartaceo</td><td>pagina «Caratteristiche»</td></tr>
+          <tr><td>Iniziativa · Velocità · Competenza</td><td>tre box vicino alla CA</td><td>statistiche in testata</td><td>tre mini-box sotto i PF</td><td><span class="tag">sempre</span></td></tr>
+          <tr><td>Ispirazione</td><td>casella in alto a sinistra</td><td>interruttore</td><td>stella accesa o spenta vicino al nome</td><td><span class="tag">sempre</span></td></tr>
+          <tr><td>Tiri salvezza · Abilità</td><td>cerchi pieni = competente</td><td>pallini, doppio pallino = maestria</td><td>● competente · ◉ maestria · ○ no</td><td>pagina «TS e abilità»</td></tr>
+          <tr><td>Attacchi e incantesimi</td><td>tabella nome / bonus / danno</td><td>tab Azioni</td><td>righe del pannello contesto con bonus e danno a destra</td><td>menu azioni</td></tr><tr><td>Economia d'azione</td><td>—</td><td>Azione · Bonus · Reazione</td><td>● ▲ ◆ + movimento nella riga bassa dell'intestazione</td><td>in combattimento</td></tr>
+          <tr><td>Slot incantesimo</td><td>caselle da barrare</td><td>pallini per livello</td><td>■□ per livello nel titolo della lista incantesimi</td><td>lista incantesimi</td></tr>
+          <tr><td>Tiri contro la morte</td><td>3 successi · 3 fallimenti</td><td>stesso</td><td>6 cerchi grandi, sostituiscono la scheda a 0 PF</td><td>solo a 0 PF</td></tr>
+          <tr><td>Condizioni · Concentrazione</td><td>—</td><td>elenco condizioni</td><td>chip nell'intestazione con round rimanenti</td><td>quando presenti</td></tr>
+          <tr><td>Ritratto</td><td>disegno/foto</td><td>avatar in testata</td><td>144×144 in alto a sinistra, dall'immagine dell'attore Foundry</td><td><span class="tag">sempre</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Architettura della schermata</span>
+      <h2>Cinque zone, quattro immagini, un solo punto di input</h2>
+      <p class="lede">La griglia nasce dal budget SDK. Nella fascia alta tre immagini da 144 px di altezza affiancate coprono esattamente 576 px. Nella fascia bassa la scheda a schede (immagine) sta accanto al pannello contesto: è testo firmware, perché è l'unica zona che si scorre e si seleziona.</p>
+    </div>
+    <div class="screen"><canvas id="zones" width="576" height="288" aria-label="Diagramma delle zone della schermata"></canvas></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Zona</th><th>Area (x, y, l × a)</th><th>Container SDK</th><th>Aggiornamento</th><th>Cattura input</th></tr></thead>
+        <tbody>
+          <tr><td>A · Ritratto</td><td><code>0, 0, 144 × 144</code></td><td>image #1</td><td>al cambio di scena o condizione (attenuato a 0 PF)</td><td>no</td></tr>
+          <tr><td>B · Intestazione</td><td><code>144, 0, 288 × 144</code></td><td>image #2</td><td>su variazione di PF, CA, turno, condizioni</td><td>no</td></tr>
+          <tr><td>C · Mappa</td><td><code>432, 0, 144 × 144</code></td><td>image #3</td><td>≤ 1 fps, solo se cambia (hash)</td><td>no</td></tr>
+          <tr><td>D · Scheda a schede</td><td><code>0, 144, 288 × 144</code></td><td>image #4</td><td>al cambio di scheda o di dati</td><td>no</td></tr>
+          <tr><td>E · Contesto</td><td><code>288, 144, 288 × 144</code></td><td>text / list × 3 (titolo, corpo, suggerimento)</td><td>istantaneo, <code>textContainerUpgrade</code> senza flicker</td><td>sì (tramite sfondo)</td></tr>
+          <tr><td>Sfondo</td><td><code>0, 0, 576 × 288</code></td><td>text <code>' '</code>, <code>isEventCapture: 1</code>, z minimo</td><td>mai</td><td>sì</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--muted)">Budget usato: <b>4 / 4 immagini</b> e <b>4 / 8 testo</b>. Restano 4 contenitori testo per toast e avvisi. Con questa griglia non serve mai <code>rebuildPageContainer</code> durante il gioco, quindi niente flicker.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Linguaggio visivo</span>
+      <h2>Simboli della scheda, disegnati per 16 livelli di verde</h2>
+      <p class="lede">Ogni icona è pixel art da 12–52 px, disegnata dal nostro renderer (il font firmware non ha questi simboli). La luminosità stabilisce la gerarchia: 15 per i valori critici, 11 per il testo, 7 per le etichette, 3–4 per le cornici.</p>
+    </div>
+    <div class="icons" id="icons"></div>
+    <h3>Livelli di luminosità e ruolo</h3>
+    <div class="levels" id="levels"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ruolo</th><th>Carattere</th><th>Altezza</th><th>Livello</th><th>Esempio</th></tr></thead>
+        <tbody>
+          <tr><td>Cifre critiche (PF, CA, modificatori)</td><td>pixel bold</td><td>18–22 px</td><td>15</td><td><code>45</code> <code>18</code> <code>+3</code></td></tr>
+          <tr><td>Nome del personaggio</td><td>pixel bold</td><td>16 px</td><td>15</td><td><code>THORIN</code></td></tr>
+          <tr><td>Valori secondari</td><td>pixel</td><td>12 px</td><td>11</td><td><code>/38</code> <code>+6</code></td></tr>
+          <tr><td>Etichette (maiuscoletto)</td><td>bitmap 8 px</td><td>8 px</td><td>7–9</td><td><code>CA</code> <code>PUNTI FERITA</code></td></tr>
+          <tr><td>Testo contesto</td><td>firmware</td><td>~20 px riga</td><td>chiaro</td><td>registro, liste</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Interazione</span>
+      <h2>Quattro gesti, sempre con lo stesso significato</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Gesto (anello R1 o tempia)</th><th>Sulla radice</th><th>In una lista</th><th>Su un esito</th></tr></thead>
+        <tbody>
+          <tr><td>Tap</td><td>apre <b>Azioni</b></td><td>conferma la voce</td><td>azione successiva suggerita (es. 2° attacco)</td></tr>
+          <tr><td>Swipe su / giù</td><td>scorre registro o iniziativa</td><td>sposta il cursore ▶</td><td>—</td></tr>
+          <tr><td>Doppio tap</td><td>esce dall'app (obbligo Even Hub)</td><td>indietro di un livello</td><td>chiude</td></tr>
+          <tr><td>Pressione lunga (extra)</td><td colspan="3">menu di sistema con scorciatoie, tutte raggiungibili anche col tap: scheda successiva · zoom mappa · segui token · vantaggio · fine turno · lingua · riconnetti</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  [*] --> Radice
+  Radice --> Azioni: tap
+  Azioni --> Bersaglio: attacco
+  Azioni --> Incantesimi: incantesimi
+  Incantesimi --> Slot: incantesimo con slot
+  Slot --> Bersaglio
+  Incantesimi --> Bersaglio: trucchetto
+  Bersaglio --> Esito: tap = tira
+  Esito --> Radice: doppio tap / 8 s
+  Azioni --> Radice: doppio tap
+  Radice --> Reazione: evento Foundry (priorità, 10 s)
+  Reazione --> Radice
+  Radice --> Offline: connessione persa
+  Offline --> Radice: ricollegato
+    </pre>
+    <div class="grid2">
+      <div class="card"><h3>Pagina automatica della scheda (zona D)</h3><p>Default → <b>Caratteristiche</b> · prova o tiro salvezza richiesto dal GM → <b>TS e abilità</b> · 0 PF → <b>Tiri contro la morte</b>. Se il giocatore cambia pagina a mano, la scelta resta fino al prossimo evento.</p></div>
+      <div class="card"><h3>Segnali di turno</h3><p>Quando tocca a te, il chip <b>▲ TUO TURNO</b> si accende nell'intestazione, il bordo del ritratto passa al livello 15 e il pannello contesto mostra l'iniziativa. Non ci sono animazioni: la G2 non le supporta.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Schermate</span>
+      <h2>Undici momenti di una sessione</h2>
+      <p class="lede">Personaggio d'esempio: <b>Thorin</b>, nano delle colline, Chierico 5 (Dominio della Guerra). Combatte con il martello e lancia incantesimi, così tutte le pagine della scheda hanno contenuto reale.</p>
+    </div>
+    <div class="shots" id="shots"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Casi limite e accessibilità</span>
+      <h2>Quello che rompe i layout, deciso in anticipo</h2>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Numeri lunghi</h3><p>PF 7 e PF 345/999 occupano lo stesso box. Le cifre si stringono in un font condensato oltre le 3 cifre, e il box non cambia mai dimensione (INV-1).</p></div>
+      <div class="card"><h3>Nomi lunghi e lingue</h3><p>Il nome si tronca con «…» in base alla larghezza in pixel misurata. Le etichette esistono in IT ed EN e sono verificate sulla larghezza della versione più lunga.</p></div>
+      <div class="card"><h3>Niente ritratto</h3><p>Se l'attore non ha immagine si usa lo stemma della classe (martello per il chierico) su fondo tratteggiato, mai un riquadro vuoto.</p></div>
+      <div class="card"><h3>Leggibilità in luce</h3><p>Nessun testo sotto gli 8 px e nessuna informazione affidata solo al livello di grigio: competente e no si distinguono per forma (● e ○), non per luminosità.</p></div>
+      <div class="card"><h3>Banda BLE</h3><p>Tra 10 e 30 KB/s. Le immagini statiche (ritratto, caratteristiche) partono una volta sola; la mappa usa delta per tile ed è limitata a 1 fps; PF e turno arrivano in meno di 300 ms.</p></div>
+      <div class="card"><h3>2014 e 2024</h3><p>Etichette e regole seguono <code>core.modernRules</code>: ad esempio «Ispirazione eroica» nella versione 2024. La struttura della scheda non cambia.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Decisioni prese · giro 2</span>
+      <h2>Cosa hai scelto e cosa è cambiato</h2>
+    </div>
+    <ol class="q">
+      <li><b>Mappa quadrata 144×144 in alto a destra</b><span>12×12 caselle (60 ft), centrata sul tuo token, mirino e portata disegnati in pixel.</span></li>
+      <li><b>Ritratto dall'immagine dell'attore, fallback token</b><span>Poi lo stemma della classe se mancano entrambi. Dithering a 16 livelli dentro una cornice come D&amp;D Beyond.</span></li>
+      <li><b>Scheda con due pagine: Caratteristiche · TS e abilità</b><span>Attacchi e incantesimi passano al pannello contesto con bonus, danni e slot in riga. L'economia d'azione sale nell'intestazione. I tiri contro la morte restano uno stato a 0 PF.</span></li>
+    </ol>
+  </section>
+
+  <footer>Specifica UX per EvenFoundryVTT v0.10 · decisione architetturale: ADR-0012 · schermate generate con canvas e quantizzate a 4 bit, contenuti d'esempio.</footer>
+</main>
+
+<script>
+(() => {
+  // ── Palette: 16 phosphor levels ──────────────────────────────────────────
+  const PAL = Array.from({length:16}, (_, l) => [Math.round(l*4), Math.round(l*16.4), Math.round(l*6)]);
+  const G = l => { const [r,g,b] = PAL[Math.max(0,Math.min(15,l|0))]; return `rgb(${r},${g},${b})`; };
+  const F = {
+    lab: (px=8) => `400 ${px}px Silkscreen, monospace`,
+    labB: (px=8) => `700 ${px}px Silkscreen, monospace`,
+    num: (px=22) => `700 ${px}px 'Pixelify Sans', monospace`,
+    numM: (px=13) => `500 ${px}px 'Pixelify Sans', monospace`,
+    fw: (px=17) => `400 ${px}px Rubik, system-ui, sans-serif`,
+    fwB: (px=17) => `500 ${px}px Rubik, system-ui, sans-serif`,
+  };
+
+  // ── Character data (example persona) ─────────────────────────────────────
+  const PC = {
+    name:'THORIN', sub:'NANO DELLE COLLINE · CHIERICO 5', hp:27, hpMax:38, temp:5, ac:18, init:'+0', speed:'25', prof:'+3',
+    abil:[['FOR','+3',16],['DES','+0',10],['COS','+2',14],['INT','+0',10],['SAG','+4',18],['CAR','+1',12]],
+    saves:[['FOR',1,'+6'],['DES',0,'+0'],['COS',0,'+2'],['INT',0,'+0'],['SAG',1,'+7'],['CAR',1,'+4']],
+    skills:[['Intuizione',1,'+7'],['Medicina',1,'+7'],['Religione',2,'+6'],['Percezione',0,'+4'],['Atletica',0,'+3'],['Furtività',0,'+0']],
+  };
+
+  // ── Primitives ───────────────────────────────────────────────────────────
+  function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  function box(c,x,y,w,h,l,r=3,fill=null){ rr(c,x+.5,y+.5,w-1,h-1,r); if(fill!==null){c.fillStyle=G(fill); c.fill();} c.strokeStyle=G(l); c.lineWidth=1; c.stroke(); }
+  function txt(c,s,x,y,font,l,align='left'){ c.font=font; c.fillStyle=G(l); c.textAlign=align; c.textBaseline='alphabetic'; c.fillText(s,x,y); }
+  function fitTxt(c,s,x,y,font,l,maxW,align='left'){ c.font=font; let t=s; while(t.length>1 && c.measureText(t).width>maxW){ t=t.slice(0,-2)+'…'; } txt(c,t,x,y,font,l,align); }
+  function line(c,x1,y1,x2,y2,l,dash){ c.beginPath(); c.moveTo(x1+.5,y1+.5); c.lineTo(x2+.5,y2+.5); c.strokeStyle=G(l); c.lineWidth=1; c.setLineDash(dash?[3,3]:[]); c.stroke(); c.setLineDash([]); }
+  function circle(c,x,y,r,l,filled){ c.beginPath(); c.arc(x,y,r,0,Math.PI*2); if(filled){ c.fillStyle=G(l); c.fill(); } else { c.strokeStyle=G(l); c.lineWidth=1.2; c.stroke(); } }
+  function shield(c,x,y,w,h,l,fill){ c.beginPath(); c.moveTo(x,y+4); c.lineTo(x+w/2,y); c.lineTo(x+w,y+4); c.lineTo(x+w,y+h*.5); c.quadraticCurveTo(x+w,y+h*.85,x+w/2,y+h); c.quadraticCurveTo(x,y+h*.85,x,y+h*.5); c.closePath(); if(fill!==undefined){c.fillStyle=G(fill); c.fill();} c.strokeStyle=G(l); c.lineWidth=1.5; c.stroke(); }
+  function heart(c,x,y,s,l){ c.beginPath(); c.moveTo(x+s/2,y+s*.9); c.bezierCurveTo(x-s*.2,y+s*.45,x+s*.1,y-s*.1,x+s/2,y+s*.25); c.bezierCurveTo(x+s*.9,y-s*.1,x+s*1.2,y+s*.45,x+s/2,y+s*.9); c.fillStyle=G(l); c.fill(); }
+  function star(c,x,y,r,l,filled){ c.beginPath(); for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, rad=i%2?r*.45:r; c.lineTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad);} c.closePath(); if(filled){c.fillStyle=G(l); c.fill();} else {c.strokeStyle=G(l); c.lineWidth=1; c.stroke();} }
+  function d20(c,x,y,r,l){ c.beginPath(); for(let i=0;i<6;i++){ const a=-Math.PI/2+i*Math.PI/3; c.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);} c.closePath(); c.strokeStyle=G(l); c.lineWidth=1.2; c.stroke(); c.beginPath(); for(let i=0;i<3;i++){ const a=-Math.PI/2+i*2*Math.PI/3; c.lineTo(x+Math.cos(a)*r*.62,y+Math.sin(a)*r*.62);} c.closePath(); c.stroke(); }
+  function boot(c,x,y,l){ c.fillStyle=G(l); c.fillRect(x+3,y,5,9); c.fillRect(x+3,y+8,10,4); }
+  function hourglass(c,x,y,l){ c.beginPath(); c.moveTo(x,y); c.lineTo(x+8,y); c.lineTo(x+4,y+6); c.lineTo(x+8,y+12); c.lineTo(x,y+12); c.lineTo(x+4,y+6); c.closePath(); c.strokeStyle=G(l); c.lineWidth=1; c.stroke(); }
+  function skull(c,x,y,l){ c.fillStyle=G(l); c.beginPath(); c.arc(x+6,y+5,5.5,Math.PI,0); c.lineTo(x+11.5,y+9); c.lineTo(x+.5,y+9); c.closePath(); c.fill(); c.fillRect(x+3,y+9,6,3); c.fillStyle=G(0); c.fillRect(x+2,y+5,3,3); c.fillRect(x+7,y+5,3,3); }
+  function hammer(c,x,y,s,l){ c.fillStyle=G(l); c.fillRect(x+s*.44,y+s*.3,s*.12,s*.66); c.fillRect(x+s*.18,y+s*.12,s*.64,s*.26); }
+  function actIcon(c,kind,x,y,l,filled){ // Azione ● · Bonus ▲ · Reazione ◆
+    c.beginPath();
+    if(kind==='a'){ c.arc(x+5,y+5,5,0,Math.PI*2); }
+    else if(kind==='b'){ c.moveTo(x+5,y); c.lineTo(x+10,y+10); c.lineTo(x,y+10); c.closePath(); }
+    else { c.moveTo(x+5,y); c.lineTo(x+10,y+5); c.lineTo(x+5,y+10); c.lineTo(x,y+5); c.closePath(); }
+    if(filled){ c.fillStyle=G(l); c.fill(); } else { c.strokeStyle=G(l); c.lineWidth=1.2; c.stroke(); }
+  }
+  function quantize(c,w,h,dim=1){
+    const img=c.getImageData(0,0,w,h), d=img.data;
+    for(let i=0;i<d.length;i+=4){ const lum=Math.max(d[i+1]/16.4, (d[i]*.3+d[i+1]*.59+d[i+2]*.11)/16.4*0); let l=Math.round(Math.min(15,lum)*dim); const p=PAL[l]; d[i]=p[0]; d[i+1]=p[1]; d[i+2]=p[2]; d[i+3]=255; }
+    c.putImageData(img,0,0);
+  }
+
+  // ── Zone A: portrait 144×144 ─────────────────────────────────────────────
+  function portrait(c,x,y,st){
+    const hot = st.turn;
+    box(c,x+2,y+2,140,140,hot?15:6,8);
+    c.save(); rr(c,x+4,y+4,136,136,6); c.clip();
+    for(let py=0;py<136;py++) for(let px=0;px<136;px++){ // dithered vignette
+      const dx=px-68, dy=py-60, r=Math.sqrt(dx*dx+dy*dy)/96; const v=Math.max(0,1.6-r*2.2);
+      if(((px*7+py*13)%16)/16 < v*0.35){ c.fillStyle=G(2); c.fillRect(x+4+px,y+4+py,1,1);} }
+    const cx=x+72, cy=y+62;
+    c.fillStyle=G(5); c.beginPath(); c.ellipse(cx,y+150,60,40,0,Math.PI,0); c.fill(); // shoulders
+    c.fillStyle=G(8); c.beginPath(); c.arc(cx,cy,26,0,Math.PI*2); c.fill();          // face
+    c.fillStyle=G(11); c.beginPath(); c.arc(cx,cy-8,29,Math.PI,0); c.lineTo(cx+29,cy-4); c.lineTo(cx-29,cy-4); c.fill(); // helmet
+    c.fillStyle=G(14); c.fillRect(cx-2,cy-37,4,30); // nasal/crest
+    c.fillStyle=G(0); c.fillRect(cx-12,cy+2,6,4); c.fillRect(cx+6,cy+2,6,4); // eyes
+    c.fillStyle=G(12); c.beginPath(); c.moveTo(cx-26,cy+8); c.quadraticCurveTo(cx-30,cy+52,cx,cy+66); c.quadraticCurveTo(cx+30,cy+52,cx+26,cy+8); c.quadraticCurveTo(cx,cy+22,cx-26,cy+8); c.fill(); // beard
+    c.strokeStyle=G(7); c.lineWidth=1; for(let i=-2;i<=2;i++){ c.beginPath(); c.moveTo(cx+i*8,cy+20); c.lineTo(cx+i*6,cy+56); c.stroke(); }
+    c.restore();
+    circle(c,x+124,y+124,13,15,true); txt(c,'5',x+124,y+129,F.num(15),0,'center'); // level badge
+    txt(c,'LIV',x+124,y+108,F.lab(8),9,'center');
+  }
+
+  // ── Zone B: header 288×144 ───────────────────────────────────────────────
+  function header(c,x,y,st){
+    const hp = st.hp ?? PC.hp;
+    txt(c,PC.name,x+8,y+20,F.num(18),15);
+    star(c,x+104,y+12,6,st.insp?15:6,st.insp); // inspiration
+    if(st.turn){ box(c,x+176,y+4,106,18,15,3,15); txt(c,'▲ TUO TURNO · R3',x+229,y+17,F.labB(8),0,'center'); }
+    else if(st.combat){ txt(c,'TURNO: '+st.combat,x+280,y+17,F.lab(8),8,'right'); }
+    txt(c,PC.sub,x+8,y+34,F.lab(8),8);
+    line(c,x+6,y+40,x+282,y+40,3);
+    // AC shield
+    shield(c,x+8,y+46,46,54,12,1); txt(c,'CA',x+31,y+60,F.lab(8),9,'center'); txt(c,String(PC.ac),x+31,y+84,F.num(22),15,'center');
+    // HP box
+    const hx=x+62, hy=y+46;
+    box(c,hx,hy,150,54,hp===0?15:8,4, hp===0?2:null); heart(c,hx+6,hy+5,10,hp===0?15:12); txt(c,'PUNTI FERITA',hx+20,hy+13,F.lab(8),9);
+    txt(c,String(hp),hx+10,hy+40,F.num(24),15); c.font=F.num(24); const w=c.measureText(String(hp)).width;
+    txt(c,'/'+PC.hpMax,hx+12+w,hy+40,F.numM(14),10);
+    if(PC.temp && hp>0){ box(c,hx+106,hy+22,38,18,11,3); txt(c,'+'+PC.temp,hx+125,hy+32,F.labB(8),13,'center'); txt(c,'TEMP',hx+125,hy+38.5,F.lab(6),9,'center'); }
+    const bw=138, fill=Math.round(bw*hp/PC.hpMax); c.fillStyle=G(3); c.fillRect(hx+6,hy+45,bw,4); c.fillStyle=G(hp/PC.hpMax<.34?15:12); c.fillRect(hx+6,hy+45,fill,4);
+    // stat minis
+    const mini=[['INIZ',PC.init,'d20'],['VEL',PC.speed,'boot'],['COMP',PC.prof,'prof']];
+    mini.forEach(([lab,val,ic],i)=>{ const mx=x+218, my=y+46+i*18; box(c,mx,my,64,16,6,3);
+      if(ic==='d20') d20(c,mx+9,my+8,5.5,10); else if(ic==='boot') boot(c,mx+2,my+2,10); else { circle(c,mx+9,my+8,4.5,10,true); }
+      txt(c,lab,mx+18,my+11,F.lab(8),8); txt(c,val,mx+60,my+12,F.numM(12),14,'right'); });
+    // bottom row: action economy (in combat) + conditions
+    line(c,x+6,y+106,x+282,y+106,3);
+    let cx=x+8;
+    if(st.combat || st.turn){
+      const eco=st.eco ?? [1,1,1];
+      [['a','AZ'],['b','BON'],['r','REA']].forEach(([k,l],i)=>{ actIcon(c,k,cx,y+116,eco[i]?15:6,!!eco[i]); txt(c,l,cx+13,y+125,F.lab(8),eco[i]?12:6); cx+= (i===0?30:36); });
+      boot(c,cx,y+114,10); txt(c,(st.move??25)+' FT',cx+15,y+125,F.lab(8),11); cx+=52;
+      line(c,cx-4,y+112,cx-4,y+132,3);
+    }
+    const conds = st.conds ?? [['BENEDETTO','7r','cond'],['CONC.','','conc']];
+    if(!conds.length){ txt(c,'NESSUNA CONDIZIONE',cx,y+125,F.lab(8),6); }
+    conds.forEach(([a,b,k])=>{ const label=b?a+' '+b:a; c.font=F.lab(8); const tw=c.measureText(label).width+22; if(cx+tw>x+284) return; box(c,cx,y+113,tw,18,k==='bad'?15:9,9); if(k==='conc') hourglass(c,cx+6,y+116,12); else if(k==='bad') skull(c,cx+4,y+116,14); else star(c,cx+10,y+122,4,12,true); txt(c,label,cx+18,y+125,F.lab(8),k==='bad'?15:11); cx+=tw+5; });
+  }
+
+  // ── Zone C: square map 144×144 ───────────────────────────────────────────
+  function mapZone(c,x,y,st){
+    box(c,x+1,y+1,142,142,6,4);
+    c.save(); rr(c,x+3,y+3,138,138,3); c.clip();
+    const cell=12, ox=x+2, oy=y+2;
+    for(let gy=0;gy<12;gy++) for(let gx=0;gx<12;gx++){ c.fillStyle=G(2); c.fillRect(ox+gx*cell,oy+gy*cell,1,1); }
+    // room floor tint (explored + lit)
+    c.fillStyle=G(1); c.fillRect(ox+cell*1,oy+cell*1,cell*7,cell*9);
+    const W=(a,b,cx2,d,door)=>line(c,ox+a*cell,oy+b*cell,ox+cx2*cell,oy+d*cell,door?11:10,door);
+    W(1,1,8,1); W(1,10,8,10); W(1,1,1,10); W(8,1,8,4); W(8,4,8,6,true); W(8,6,8,10); W(8,4,12,4); W(8,6,12,6);
+    c.fillStyle=G(10); c.fillRect(ox+3*cell,oy+3*cell,4,4); c.fillRect(ox+3*cell,oy+8*cell,4,4); // pillars
+    const tok=(gx,gy,kind)=>{ const px=ox+gx*cell, py=oy+gy*cell;
+      if(kind==='self'){ box(c,px,py,cell,cell,15,2); c.fillStyle=G(15); c.fillRect(px+3,py+3,cell-6,cell-6);}
+      else if(kind==='ally'){ c.fillStyle=G(12); c.fillRect(px+2,py+2,cell-4,cell-4);}
+      else { c.fillStyle=G(13); c.fillRect(px+2,py+2,cell-4,cell-4); line(c,px+2,py+2,px+cell-3,py+cell-3,0); line(c,px+cell-3,py+2,px+2,py+cell-3,0);} };
+    tok(4,5,'self'); tok(6,5,'ally'); tok(5,6,'enemy'); tok(6,3,'enemy'); tok(10,5,'enemy');
+    if(st.target){ const [tx,ty]=st.target, px=ox+tx*cell+cell/2, py=oy+ty*cell+cell/2; circle(c,px,py,9,15,false); line(c,px-13,py,px-10,py,15); line(c,px+10,py,px+13,py,15); line(c,px,py-13,px,py-10,15); line(c,px,py+10,px,py+13,15); }
+    if(st.reach){ c.fillStyle=G(4); for(let gy=4;gy<=6;gy++) for(let gx=3;gx<=5;gx++){ if(!(gx===4&&gy===5)) { c.fillRect(ox+gx*cell+5,oy+gy*cell+5,2,2);} } }
+    c.restore();
+    txt(c,'N',x+132,y+14,F.labB(8),11,'center'); line(c,x+132,y+16,x+132,y+22,11);
+    c.fillStyle=G(9); c.fillRect(x+8,y+134,cell,2); txt(c,'5 FT',x+24,y+137,F.lab(8),8);
+  }
+
+  // ── Zone D: tabbed sheet 288×144 ─────────────────────────────────────────
+  const TABS=[['car','CARATTERISTICHE'],['ts','TIRI SALVEZZA · ABILITÀ']];
+  function sheet(c,x,y,st){
+    const tab = st.tab;
+    if(tab!=='morte'){ TABS.forEach(([k,label],i)=>{ const tx=x+2+i*142, act=k===tab; if(act){ box(c,tx,y+2,140,15,12,3,12); } txt(c,label,tx+70,y+13,act?F.labB(8):F.lab(8),act?0:7,'center'); }); line(c,x+2,y+18,x+285,y+18,4); }
+    const cy=y+22;
+    if(tab==='car'){
+      PC.abil.forEach(([lab,mod,sc],i)=>{ const bx=x+4+i*47; box(c,bx,cy,44,100,8,5); txt(c,lab,bx+22,cy+12,F.labB(8),9,'center'); txt(c,mod,bx+22,cy+48,F.num(22),15,'center');
+        c.beginPath(); c.ellipse(bx+22,cy+80,15,10,0,0,Math.PI*2); c.fillStyle=G(0); c.fill(); c.strokeStyle=G(9); c.lineWidth=1.2; c.stroke(); txt(c,String(sc),bx+22,cy+85,F.numM(13),12,'center'); });
+      txt(c,'PERCEZIONE PASSIVA 14 · SCUROVISIONE 60',x+144,cy+116,F.lab(8),7,'center');
+    }
+    if(tab==='ts'){
+      txt(c,'TIRI SALVEZZA',x+8,cy+10,F.labB(8),9);
+      PC.saves.forEach(([n,p,v],i)=>{ const ry=cy+24+i*15; circle(c,x+13,ry-4,4,p?14:7,!!p); txt(c,n,x+24,ry,F.lab(8),p?12:8); txt(c,v,x+96,ry+1,F.numM(12),p?15:10,'right'); });
+      line(c,x+108,cy+2,x+108,cy+112,3);
+      txt(c,'ABILITÀ',x+118,cy+10,F.labB(8),9); txt(c,'● COMP · ◉ MAESTRIA',x+282,cy+10,F.lab(8),6,'right');
+      PC.skills.forEach(([n,p,v],i)=>{ const ry=cy+24+i*15; circle(c,x+123,ry-4,4,p?14:7,p>0); if(p===2){ circle(c,x+123,ry-4,1.8,0,true);} txt(c,n.toUpperCase(),x+134,ry,F.lab(8),p?12:8); txt(c,v,x+282,ry+1,F.numM(12),p?15:10,'right'); });
+      txt(c,'ALTRE 12 ABILITÀ NEL MENU ▸',x+196,cy+116,F.lab(8),6,'center');
+    }
+    if(tab==='morte'){
+      skull(c,x+10,y+10,15); txt(c,'TIRI CONTRO LA MORTE',x+30,y+20,F.labB(8),15);
+      line(c,x+4,y+28,x+284,y+28,4);
+      const row=(label,n,yy,l)=>{ txt(c,label,x+10,yy,F.labB(8),l); for(let i=0;i<3;i++){ circle(c,x+150+i*40,yy-5,12,l,i<n); } };
+      row('SUCCESSI',1,y+62,13); row('FALLIMENTI',2,y+100,15);
+      txt(c,'TAP SUL PANNELLO = TIRA D20 · GUARIRE AZZERA',x+144,y+134,F.lab(8),7,'center');
+    }
+  }
+
+  // ── Zone E: context (firmware text) 288×144 ──────────────────────────────
+  function context(c,x,y,st){
+    const ctx=st.ctx;
+    box(c,x+2,y+2,284,140,5,4);
+    txt(c,ctx.title,x+12,y+24,F.fwB(16),15); if(ctx.right) txt(c,ctx.right,x+276,y+24,F.fw(15),10,'right');
+    line(c,x+8,y+32,x+280,y+32,4);
+    ctx.lines.forEach((ln,i)=>{ const ly=y+54+i*21; const sel = ctx.cursor===i; if(sel){ c.fillStyle=G(3); c.fillRect(x+6,ly-15,276,20); }
+      fitTxt(c,(sel?'▶ ':'  ')+ln[0],x+10,ly,F.fw(15),sel?15:(ln[2]??12),ln[1]?180:262); if(ln[1]) txt(c,ln[1],x+276,ly,F.fw(15),sel?15:10,'right'); });
+    line(c,x+8,y+118,x+280,y+118,4);
+    txt(c,ctx.hint,x+12,y+136,F.fw(14),9);
+  }
+
+  // ── Full-screen states ───────────────────────────────────────────────────
+  function fullscreen(c,st){
+    box(c,4,4,568,280,6,8);
+    if(st.kind==='pair'){
+      txt(c,'EVENFOUNDRYVTT',24,40,F.num(20),15); txt(c,'OCCHIALI NON ANCORA ASSOCIATI',24,58,F.lab(8),9);
+      line(c,20,68,556,68,4);
+      const steps=[['1','Su Foundry: Impostazioni › EvenFoundryVTT','› «Associa occhiali G2» mostra un QR'],['2','Sul telefono: Even Realities App','› inquadra il QR'],['3','Indossa gli occhiali: la scheda compare','da sola, collegata al tuo personaggio']];
+      steps.forEach(([n,a,b],i)=>{ const yy=100+i*52; circle(c,38,yy-6,13,12,false); txt(c,n,38,yy-1,F.num(15),15,'center'); txt(c,a,62,yy-4,F.fwB(16),14); txt(c,b,62,yy+16,F.fw(15),9); });
+      // phone + qr glyph
+      box(c,430,92,86,150,11,10); box(c,446,116,54,54,13,2);
+      for(let i=0;i<7;i++) for(let j=0;j<7;j++){ if(((i*3+j*5+i*j)%4)===0 || (i<2&&j<2)||(i>4&&j<2)||(i<2&&j>4)){ c.fillStyle=G(14); c.fillRect(449+i*7,119+j*7,6,6);} }
+      txt(c,'SCANSIONA',473,196,F.labB(8),12,'center'); txt(c,'●● ESCI',540,272,F.lab(8),8,'right');
+    }
+    if(st.kind==='connect'){
+      txt(c,'EVENFOUNDRYVTT',24,40,F.num(20),15); txt(c,'COLLEGAMENTO A FOUNDRY.CASA-ROSSI.IT',24,58,F.lab(8),9); line(c,20,68,556,68,4);
+      const steps=[['Server raggiungibile (HTTPS)',1],['Accesso come «Luca (G2)»',1],['GM connesso: Anna',1],['Ricevo la scheda di Thorin…',2],['Ricevo la scena',0]];
+      steps.forEach(([s,ok],i)=>{ const yy=98+i*28; if(ok===1){ circle(c,34,yy-5,7,14,true);} else if(ok===2){ circle(c,34,yy-5,7,14,false); circle(c,34,yy-5,3,14,true);} else circle(c,34,yy-5,7,5,false); txt(c,s,52,yy,F.fw(16),ok?14:7); });
+      c.fillStyle=G(3); c.fillRect(24,250,528,8); c.fillStyle=G(13); c.fillRect(24,250,330,8); txt(c,'●● ANNULLA',552,276,F.lab(8),8,'right');
+    }
+  }
+
+  // ── Composer ─────────────────────────────────────────────────────────────
+  function render(canvas, st, showZones){
+    const c=canvas.getContext('2d'); c.imageSmoothingEnabled=false;
+    c.fillStyle='#000'; c.fillRect(0,0,576,288);
+    if(st.full){ fullscreen(c,st.full); quantize(c,576,288); if(showZones) zonesOverlay(c,true); return; }
+    portrait(c,0,0,st); header(c,144,0,st); mapZone(c,432,0,st); sheet(c,0,144,st); context(c,288,144,st);
+    quantize(c,576,288);
+    if(st.dim){ const img=c.getImageData(0,0,576,288), d=img.data; for(let i=0;i<d.length;i+=4){ const l=Math.round(d[i+1]/16.4); if(!(i/4%576>288 && Math.floor(i/4/576)>144)){ const p=PAL[Math.round(l*0.45)]; d[i]=p[0]; d[i+1]=p[1]; d[i+2]=p[2]; } } c.putImageData(img,0,0); }
+    if(showZones) zonesOverlay(c,false);
+  }
+  function zonesOverlay(c,full){
+    const Z = full ? [['SCHERMO INTERO · text × 2',0,0,576,288]] : [['A · RITRATTO · image#1',0,0,144,144],['B · INTESTAZIONE · image#2',144,0,288,144],['C · MAPPA · image#3',432,0,144,144],['D · SCHEDA · image#4',0,144,288,144],['E · CONTESTO · text×3 (input)',288,144,288,144]];
+    Z.forEach(([l,x,y,w,h])=>{ c.strokeStyle='rgba(255,90,90,.95)'; c.setLineDash([4,3]); c.lineWidth=1; c.strokeRect(x+.5,y+.5,w-1,h-1); c.setLineDash([]); c.font='700 9px "IBM Plex Mono", monospace'; const tw=c.measureText(l).width+8; c.fillStyle='rgba(155,34,38,.92)'; c.fillRect(x+3,y+3,tw,13); c.fillStyle='#fff'; c.textAlign='left'; c.fillText(l,x+7,y+13); });
+  }
+
+  // ── Screens (example session) ────────────────────────────────────────────
+  const base = { tab:'car', insp:true };
+  const SCREENS = [
+    { id:'S1', t:'Esplorazione', when:'Default fuori dal combattimento.', notes:['Scheda su «Caratt.»: sei box identici al cartaceo, modificatore grande e punteggio nell\'ovale.','Contesto: scena, registro e stato del gruppo; il tap apre le azioni.','Mappa quadrata centrata su Thorin, 12×12 caselle (60 ft).'],
+      st:{...base, ctx:{title:'Cripta di Vel\'Nar', right:'esplorazione', lines:[['Mira: Percezione 17','✓',11],['GM: «Senti passi a nord»','',11],['Bram si muove di 20 ft','',11],['Mira  ■■■■□  31/38','',13]], hint:'●  azioni     ●●  esci'}}},
+    { id:'S2', t:'Combattimento: il tuo turno', when:'Parte da sé all\'inizio del tuo turno.', notes:['Chip ▲ TUO TURNO nell\'intestazione e bordo del ritratto al massimo.','In combattimento la riga bassa dell\'intestazione mostra l\'economia d\'azione: Azione ● · Bonus ▲ · Reazione ◆ · movimento, come in D&D Beyond.','Contesto = ordine d\'iniziativa con PF alleati e salute nemici a tacche.'],
+      st:{...base, tab:'car', turn:true, combat:'THORIN', ctx:{title:'Iniziativa', right:'round 3', lines:[['Thorin','27/38',15],['Goblin A','■■□',11],['Mira','31/38',11],['Hobgoblin','■■■■',11]], hint:'●  azioni     ⇅  scorri     ●●  esci'}}},
+    { id:'S3', t:'Menu azioni', when:'Tap sulla radice.', notes:['Lista nativa del firmware: il cursore ▶ si muove con lo swipe.','Ogni attacco porta con sé bonus e danno, come la tabella «Attacchi» della scheda cartacea.','Ordine d\'uso: attacchi, incantesimi, oggetti, fine turno.'],
+      st:{...base, tab:'car', turn:true, ctx:{title:'Azioni', right:'Thorin', cursor:0, lines:[['Martello da guerra','+6 · 1d8+3',13],['Giavellotto','+6 · 1d6+3',12],['Incantesimi…','',12],['Fine turno','',12]], hint:'⇅  scegli     ●  conferma     ●●  indietro'}}},
+    { id:'S4', t:'Selezione bersaglio', when:'Dopo aver scelto un attacco.', notes:['Il mirino disegnato in pixel segue il cursore sulla mappa.','Nemici prima, poi per distanza; chi è fuori portata resta grigio.','La portata in caselle è tratteggiata intorno al tuo token.'],
+      st:{...base, tab:'car', turn:true, target:[5,6], reach:true, ctx:{title:'Bersaglio', right:'Martello +6', cursor:0, lines:[['Goblin A','5 ft',13],['Goblin B','15 ft',7],['Hobgoblin','30 ft',7],['(nessun bersaglio)','',9]], hint:'⇅  bersaglio   ●  tira   ●●  indietro'}}},
+    { id:'S5', t:'Incantesimi', when:'«Incantesimi…» nel menu azioni.', notes:['Gli incantesimi vivono nel contesto: livello a destra, «C» = concentrazione.','Nel titolo gli slot rimasti per livello (1° ■■■□ …): si decide senza aprire altro.','Dopo la scelta si passa allo slot (se serve) e al bersaglio.'],
+      st:{...base, tab:'car', turn:true, ctx:{title:'Incantesimi', right:'■■■□ ■■□ ■□', cursor:1, lines:[['Fiamma sacra','trucchetto',11],['Cura ferite','1° · tocco',13],['Benedizione  C','1° · 30 ft',12],['Spiriti guardiani  C','3° · 15 ft',12]], hint:'⇅  scegli     ●  lancia     ●●  indietro'}}},
+    { id:'S6', t:'Esito del tiro', when:'Risposta di Foundry (MidiQOL o vanilla).', notes:['Tiro, totale e CA in una riga; COLPITO o MANCATO come parola, non come colore.','I danni applicati aggiornano da soli la salute del bersaglio.','Nell\'intestazione l\'Azione si spegne: l\'economia d\'azione si legge a colpo d\'occhio.'],
+      st:{...base, tab:'car', turn:true, eco:[0,1,1], target:[5,6], ctx:{title:'Esito', right:'Martello → Goblin A', lines:[['d20 16 + 6 = 22  vs CA 15','',13],['COLPITO','',15],['Danni 1d8+3 = 9 contundenti','',12],['Goblin A  ■□□','',11]], hint:'●  fine turno     ●●  chiudi'}}},
+    { id:'S7', t:'Reazione', when:'Evento di Foundry durante il turno altrui. Ha priorità.', notes:['Il contesto si apre da solo con una scadenza visibile (10 s).','Il turno è di un altro, ma la ◆ Reazione nell\'intestazione è accesa: puoi rispondere.','Ignorare è sempre una voce esplicita, mai un timeout silenzioso.'],
+      st:{...base, tab:'car', combat:'GOBLIN B', ctx:{title:'⚠ Reazione', right:'scade 6 s', cursor:0, lines:[['Attacco di opportunità','',15],['Martello da guerra +6','',11],['Ignora','',12],['Goblin B esce dalla portata','',8]], hint:'⇅  scegli     ●  conferma'}}},
+    { id:'S8', t:'Tiri salvezza e abilità', when:'Da sola quando il GM chiede una prova o un tiro salvezza; a mano con pressione lunga › «Scheda».', notes:['Cerchi pieni = competente, cerchio con il punto = maestria, come nella scheda cartacea.','Solo le 6 abilità più rilevanti per la classe; le altre 12 sono nel menu.','Colonne numeriche allineate a destra per leggerle di colpo.'],
+      st:{...base, tab:'ts', ctx:{title:'Prova richiesta', right:'dal GM', cursor:0, lines:[['Tiro salvezza su SAG','+7',15],['Con vantaggio (Benedetto)','',11],['Tira','',12],['Annulla','',11]], hint:'⇅  scegli     ●  conferma'}}},
+    { id:'S9', t:'A 0 punti ferita', when:'Quando i PF arrivano a zero.', notes:['La scheda diventa «Tiri contro la morte»: 3 successi e 3 fallimenti come sul cartaceo.','Il box PF si inverte e il ritratto si attenua: lo stato si capisce anche in visione periferica.','Il tap tira il d20; la guarigione riporta da sola alla scheda precedente.'],
+      st:{...base, tab:'morte', hp:0, turn:true, conds:[['PRIVO DI SENSI','','bad']], ctx:{title:'Sei a terra', right:'round 4', cursor:0, lines:[['Tira salvezza contro la morte','',15],['Mira sta arrivando (turno 2)','',11],['','',11],['','',11]], hint:'●  tira d20'}}},
+    { id:'S10', t:'Primo avvio', when:'Occhiali senza associazione.', notes:['Schermo intero: tre passi numerati, la stessa sequenza della finestra su Foundry.','Nessun URL o codice da digitare sugli occhiali.','Il doppio tap esce, come richiesto da Even Hub.'], st:{ full:{kind:'pair'} } },
+    { id:'S11', t:'Collegamento in corso', when:'Dopo la scansione del QR o alla riapertura.', notes:['Ogni passo ha il suo stato (fatto, in corso, in attesa), così un errore dice dove si è fermato.','Se il GM non è online il passo 3 resta in attesa con la causa scritta.'], st:{ full:{kind:'connect'} } },
+    { id:'S12', t:'Connessione persa', when:'Socket caduto, telefono in background o GM uscito.', notes:['Scheda, mappa e ritratto restano visibili ma attenuati: dati congelati, non spariti.','Il contesto dice quando si riprova e da quanto tempo i dati sono fermi.','Il tap riprova subito.'],
+      st:{...base, dim:true, ctx:{title:'⚠ Offline', right:'dati di 2 min fa', lines:[['Foundry non risponde','',14],['Riprovo tra 8 s (tentativo 3)','',11],['Causa probabile: GM uscito','',11],['','',11]], hint:'●  riprova ora     ●●  esci'}}},
+  ];
+
+  // ── Icon sheet ───────────────────────────────────────────────────────────
+  const ICONS = [
+    ['CA','scudo della scheda', c=>{ shield(c,8,4,32,38,12,1); txt(c,'18',24,30,F.num(14),15,'center'); }],
+    ['PUNTI FERITA','cuore + barra', c=>{ heart(c,10,8,28,13); c.fillStyle=G(12); c.fillRect(6,40,26,3); c.fillStyle=G(3); c.fillRect(32,40,10,3);} ],
+    ['INIZIATIVA','d20', c=>{ d20(c,24,24,17,12); }],
+    ['VELOCITÀ','stivale', c=>{ c.save(); c.scale(2.2,2.2); boot(c,4,4,12); c.restore(); }],
+    ['ISPIRAZIONE','stella accesa/spenta', c=>{ star(c,15,24,10,14,true); star(c,35,24,10,7,false); }],
+    ['COMPETENZA','● sì · ◉ maestria · ○ no', c=>{ circle(c,10,24,5,14,true); circle(c,24,24,5,14,true); circle(c,24,24,2,0,true); circle(c,38,24,5,7,false);} ],
+    ['ECONOMIA','azione · bonus · reazione', c=>{ actIcon(c,'a',4,19,14,true); actIcon(c,'b',19,19,14,true); actIcon(c,'r',34,19,14,false);} ],
+    ['CONCENTRAZIONE','clessidra', c=>{ c.save(); c.scale(2.6,2.6); hourglass(c,5,3,13); c.restore(); }],
+    ['A TERRA','teschio', c=>{ c.save(); c.scale(2.6,2.6); skull(c,3,3,14); c.restore(); }],
+    ['BERSAGLIO','mirino in pixel', c=>{ circle(c,24,24,10,15,false); line(c,8,24,12,24,15); line(c,36,24,40,24,15); line(c,24,8,24,12,15); line(c,24,36,24,40,15);} ],
+    ['SLOT','pip per livello', c=>{ for(let k=0;k<4;k++){ if(k<3){ c.fillStyle=G(14); c.fillRect(8+k*9,18,6,12);} else { c.strokeStyle=G(6); c.strokeRect(8.5+k*9,18.5,5,11);} } }],
+    ['CARATTERISTICA','box del cartaceo', c=>{ box(c,10,2,28,44,8,4); txt(c,'SAG',24,11,F.lab(6),9,'center'); txt(c,'+4',24,28,F.num(13),15,'center'); c.beginPath(); c.ellipse(24,39,8,5,0,0,Math.PI*2); c.strokeStyle=G(9); c.stroke(); txt(c,'18',24,42,F.lab(6),12,'center'); }],
+  ];
+  function drawIcons(){
+    const host=document.getElementById('icons');
+    ICONS.forEach(([name,desc,fn])=>{ const cell=document.createElement('div'); cell.className='icon-cell'; const cv=document.createElement('canvas'); cv.width=48; cv.height=48; const c=cv.getContext('2d'); c.fillStyle='#000'; c.fillRect(0,0,48,48); fn(c); quantize(c,48,48); cv.setAttribute('aria-label',name); const s=document.createElement('span'); s.textContent=name; const sm=document.createElement('small'); sm.textContent=desc; cell.append(cv,s,sm); host.append(cell); });
+    const lv=document.getElementById('levels'); const roles={0:'sfondo',3:'cornici',7:'etichette',11:'testo',15:'critico'};
+    PAL.forEach((p,i)=>{ const d=document.createElement('div'); d.className='lv'; d.style.background=`rgb(${p.join(',')})`; d.style.color=i>8?'#021':'#7ee39a'; d.textContent=i+(roles[i]?' '+roles[i]:''); lv.append(d); });
+  }
+
+  // ── Mount ────────────────────────────────────────────────────────────────
+  let zones=false;
+  const canvases=[];
+  function mountShots(){
+    const host=document.getElementById('shots');
+    SCREENS.forEach(s=>{
+      const art=document.createElement('article'); art.className='shot';
+      const wrap=document.createElement('div'); wrap.className='screen'; const cv=document.createElement('canvas'); cv.width=576; cv.height=288; cv.setAttribute('aria-label',s.t); wrap.append(cv);
+      const notes=document.createElement('div'); notes.className='shot-notes';
+      notes.innerHTML=`<span class="id">${s.id}</span><h3>${s.t}</h3><p class="when"><b>Quando:</b> ${s.when}</p><ul>${s.notes.map(n=>`<li>${n}</li>`).join('')}</ul>`;
+      art.append(wrap,notes); host.append(art); canvases.push([cv,s.st]);
+    });
+  }
+  function drawAll(){
+    render(document.getElementById('hero'), SCREENS[1].st, zones);
+    canvases.forEach(([cv,st])=>render(cv,st,zones));
+    const z=document.getElementById('zones'); render(z, SCREENS[0].st, true);
+  }
+  mountShots();
+  const fontsReady = Promise.all([
+    document.fonts.load(F.lab(8)), document.fonts.load(F.labB(8)), document.fonts.load(F.num(22)), document.fonts.load(F.numM(13)), document.fonts.load(F.fw(15)), document.fonts.load(F.fwB(16)),
+  ]).catch(()=>{});
+  // Draw immediately with fallbacks, then again once the pixel faces arrive.
+  drawIcons(); drawAll();
+  fontsReady.then(()=>{ document.getElementById('icons').innerHTML=''; document.getElementById('levels').innerHTML=''; drawIcons(); drawAll(); });
+  const tg=document.getElementById('zones-toggle');
+  tg.addEventListener('click',()=>{ zones=!zones; tg.setAttribute('aria-pressed',String(zones)); tg.textContent = zones ? 'Nascondi zone e container SDK' : 'Mostra zone e container SDK'; drawAll(); });
+})();
+</script>
