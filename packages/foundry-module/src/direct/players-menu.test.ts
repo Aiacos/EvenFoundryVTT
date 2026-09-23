@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FoundryMock, installFoundry, makeUser } from '../__tests__/direct-fixtures.js';
+import { enableGlasses } from './glasses-access.js';
 import {
   buildPairMenuEntry,
+  buildSelfMenuEntry,
   pairTargetFor,
   registerPlayersMenu,
   rowUserId,
@@ -65,7 +67,7 @@ describe('players-menu', () => {
 
   it('PM-03 registers getUserContextOptions and adds the entry on GM clients (v13 shape)', () => {
     const open = vi.fn();
-    const id = registerPlayersMenu(open);
+    const id = registerPlayersMenu(open, vi.fn());
     expect(typeof id).toBe('number');
     expect(f.hooks.on).toHaveBeenCalledWith(USER_CONTEXT_HOOK, expect.any(Function));
     expect(USER_CONTEXT_HOOK).toBe('getUserContextOptions');
@@ -88,7 +90,7 @@ describe('players-menu', () => {
   it('PM-04 v14 entries use label / visible / onClick', () => {
     (f.game as { release?: unknown }).release = { generation: 14 };
     const open = vi.fn();
-    registerPlayersMenu(open);
+    registerPlayersMenu(open, vi.fn());
     const items: unknown[] = [];
     f.fire(USER_CONTEXT_HOOK, {}, items);
     const entry = items[0] as V14Entry;
@@ -98,16 +100,41 @@ describe('players-menu', () => {
     expect(open).toHaveBeenCalledWith({ playerUserId: 'p2', actorId: null });
   });
 
-  it('PM-05 not on player clients, not visible to non-GM, tolerant of odd hook args', () => {
+  it('PM-05 player clients get the self entry, not the GM one; tolerant of odd hook args', () => {
     const open = vi.fn();
-    registerPlayersMenu(open);
+    registerPlayersMenu(open, vi.fn());
     f.fire(USER_CONTEXT_HOOK, {}, undefined); // unexpected payload: ignored, no throw
     f.game.user.isGM = false;
     const items: unknown[] = [];
     f.fire(USER_CONTEXT_HOOK, {}, items);
-    expect(items).toEqual([]);
+    expect(items).toHaveLength(1);
+    expect((items[0] as V13Entry).name).toBe('evf.players_menu.pair_self');
     // Entry built earlier but evaluated by a non-GM: hidden.
     const entry = buildPairMenuEntry(open, 13) as V13Entry;
     expect(entry.condition(row('p1'))).toBe(false);
+  });
+
+  it('PM-06 player entry «Pair my glasses»: own row only, once enabled; v13 + v14 shapes', async () => {
+    await enableGlasses('p2');
+    const open = vi.fn();
+    const player = f.users.find((u) => u.id === 'p2');
+    if (player === undefined) throw new Error('p2');
+    f.game.user = player;
+    const v13 = buildSelfMenuEntry(open, 13) as V13Entry;
+    expect(v13.name).toBe('evf.players_menu.pair_self');
+    expect(v13.condition(row('p2'))).toBe(true);
+    expect(v13.condition(row('p1'))).toBe(false); // someone else's row
+    v13.callback(row('p1'));
+    expect(open).not.toHaveBeenCalled();
+    v13.callback(row('p2'));
+    expect(open).toHaveBeenCalledTimes(1);
+    const v14 = buildSelfMenuEntry(open, 14) as V14Entry;
+    expect(v14).toMatchObject({ label: 'evf.players_menu.pair_self', icon: 'fas fa-glasses' });
+    v14.onClick(new Event('click'), row('p2'));
+    expect(open).toHaveBeenCalledTimes(2);
+    // Not enabled → hidden.
+    const p1 = f.users.find((u) => u.id === 'p1');
+    if (p1 !== undefined) f.game.user = p1;
+    expect(v13.condition(row('p1'))).toBe(false);
   });
 });

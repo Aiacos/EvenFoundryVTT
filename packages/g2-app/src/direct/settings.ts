@@ -18,6 +18,8 @@ const SettingsSchema = z.strictObject({
   mapCellPx: z.union([z.literal(6), z.literal(8), z.literal(12)]),
   followToken: z.boolean(),
   autoSheetPage: z.boolean(),
+  /** Map pixel scale (phone P02); absent = the HUD default. */
+  mapPixelSize: z.union([z.literal(1), z.literal(2), z.literal(3)]).exactOptional(),
 }) satisfies z.ZodType<AppSettings>;
 
 /**
@@ -44,7 +46,7 @@ export function loadSettings(storage: KeyValueStorage | null, warn: StorageWarn)
     const shape = SettingsSchema.shape;
     for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
       const field = shape[key].safeParse((parsed as Record<string, unknown>)[key]);
-      if (field.success) merged[key] = field.data;
+      if (field.success && field.data !== undefined) merged[key] = field.data;
     }
   }
   return SettingsSchema.parse(merged);

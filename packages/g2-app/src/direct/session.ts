@@ -13,10 +13,14 @@
  * ```
  *
  * `FOREGROUND_EXIT` closes gracefully (cause `background`); `FOREGROUND_ENTER` reconnects
- * immediately. All traffic is sealed (AES-GCM, `from = userId`, `to = gm`); only envelopes
- * addressed to this user from the GM projector are opened.
+ * immediately. All traffic is sealed (AES-GCM, `from = userId`, `to = projector`); every
+ * envelope addressed to this user is opened, whichever Foundry client sent it: the
+ * elected projector may be the player's own browser or a GM's and may switch mid-session
+ * (ADR-0013 §Decision 6). Authenticity comes from the device key and the AAD
+ * (`projector>userId`), not from the sender id.
  *
  * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
  * @see docs/design/g2-thirds-layout.md §Associazione e connessione
  */
 import {
@@ -32,7 +36,6 @@ import {
   DIRECT_PROTOCOL_VERSION,
   DIRECT_SOCKET_EVENT,
   EVENT_LOG_DELTA_TYPE,
-  GM_ADDRESS,
   importDeviceKey,
   LOG_DELTA_TYPE,
   type LogSnapshot,
@@ -40,6 +43,7 @@ import {
   MapSnapshotSchema,
   MovementBudgetPayloadSchema,
   open,
+  PROJECTOR_ADDRESS,
   type ProjectorMessage,
   ProjectorMessageSchema,
   R1_ACTION_ECONOMY_TYPE,
@@ -500,8 +504,9 @@ export class DirectSession implements AppActions {
   private async receive(raw: unknown, epoch: number): Promise<void> {
     if (epoch !== this.epoch || this.key === null || this.creds === null) return;
     const env = SealedEnvelopeSchema.safeParse(raw);
-    // Other devices' traffic shares the relay: silently skip what is not ours.
-    if (!env.success || env.data.to !== this.creds.userId || env.data.from !== GM_ADDRESS) return;
+    // Other devices' traffic shares the relay: silently skip what is not ours. The sender
+    // is informational — any projector holding the device key may answer (ADR-0013).
+    if (!env.success || env.data.to !== this.creds.userId) return;
     const opened = await open(this.key, env.data, this.now());
     if (epoch !== this.epoch) return;
     if (!opened.ok) {
@@ -672,7 +677,7 @@ export class DirectSession implements AppActions {
     const key = this.key;
     const creds = this.creds;
     if (socket === null || key === null || creds === null) return;
-    seal(key, creds.userId, GM_ADDRESS, message, this.now()).then(
+    seal(key, creds.userId, PROJECTOR_ADDRESS, message, this.now()).then(
       (env) => socket.emit(DIRECT_SOCKET_EVENT, env),
       (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
     );

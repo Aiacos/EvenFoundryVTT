@@ -1,10 +1,14 @@
 /**
- * «Associa occhiali G2» entry in the Players list context menu (GM only).
+ * Pairing entries in the Players list context menu.
  *
- * Right-clicking a player in Foundry's sidebar Players list offers *Pair G2 glasses*,
- * which opens the pairing window (mock P01) with that player — and their assigned
- * character `user.character` — preselected. The settings menu entry stays the
- * canonical path; this one only saves the GM the trip through *Configure Settings*.
+ * - **GM**: right-clicking a player offers *Pair G2 glasses*, which opens the GM
+ *   pairing window (mock P01) with that player — and their assigned character
+ *   `user.character` — preselected.
+ * - **Player** (ADR-0013): right-clicking **themselves** offers *Pair my glasses*
+ *   (self-service window), once the GM enabled glasses for them.
+ *
+ * The settings menus stay the canonical paths; these only save the trip through
+ * *Configure Settings*.
  *
  * Hook: `getUserContextOptions(application, menuItems)` — the `getDocumentContextOptions`
  * hook family with `Document` = `User`, fired by the Players application (v13 + v14
@@ -24,6 +28,7 @@
  * @see docs/design/g2-thirds-layout.md §P01
  */
 import { isG2User } from './g2-user.js';
+import { getAccess } from './glasses-access.js';
 
 /** Hook fired while the Players list builds its per-user context menu. */
 export const USER_CONTEXT_HOOK = 'getUserContextOptions' as const;
@@ -37,8 +42,11 @@ export interface PairTarget {
   actorId: string | null;
 }
 
-/** Opens the pairing window preselected on `target`. */
+/** Opens the GM pairing window preselected on `target`. */
 export type OpenPairWindow = (target: PairTarget) => void;
+
+/** Opens the player's own (self-service) pairing window. */
+export type OpenSelfPairWindow = () => void;
 
 /**
  * Row element as handed to condition/callback: an `HTMLElement` (v13 with
@@ -72,20 +80,13 @@ function generation(): number {
   return release?.generation ?? 13;
 }
 
-/**
- * Builds the context-menu entry in the shape expected by Foundry `gen`.
- *
- * @param open - opens the pairing window
- * @param gen  - Foundry major version (13 → legacy keys, ≥ 14 → label/visible/onClick)
- */
-export function buildPairMenuEntry(open: OpenPairWindow, gen: number): Record<string, unknown> {
-  const visible = (row: RowLike): boolean =>
-    game.user.isGM && pairTargetFor(rowUserId(row)) !== null;
-  const run = (row: RowLike): void => {
-    const target = pairTargetFor(rowUserId(row));
-    if (target !== null) open(target);
-  };
-  const label = 'evf.players_menu.pair';
+/** Context-menu entry in the shape expected by Foundry `gen` (see module docs). */
+function menuEntry(
+  label: string,
+  visible: (row: RowLike) => boolean,
+  run: (row: RowLike) => void,
+  gen: number,
+): Record<string, unknown> {
   if (gen >= 14) {
     return {
       label,
@@ -98,14 +99,50 @@ export function buildPairMenuEntry(open: OpenPairWindow, gen: number): Record<st
 }
 
 /**
- * Subscribes to {@link USER_CONTEXT_HOOK}. Call once during `init`. The entry is
- * only added on GM clients (players never see it).
+ * Builds the GM entry *Pair G2 glasses*.
+ *
+ * @param open - opens the pairing window
+ * @param gen  - Foundry major version (13 → legacy keys, ≥ 14 → label/visible/onClick)
+ */
+export function buildPairMenuEntry(open: OpenPairWindow, gen: number): Record<string, unknown> {
+  const visible = (row: RowLike): boolean =>
+    game.user.isGM && pairTargetFor(rowUserId(row)) !== null;
+  const run = (row: RowLike): void => {
+    const target = pairTargetFor(rowUserId(row));
+    if (target !== null) open(target);
+  };
+  return menuEntry('evf.players_menu.pair', visible, run, gen);
+}
+
+/**
+ * Builds the player entry *Pair my glasses*: only on the player's own row, only once
+ * the GM enabled glasses for them.
+ *
+ * @param open - opens the self-service window
+ * @param gen  - Foundry major version
+ */
+export function buildSelfMenuEntry(open: OpenSelfPairWindow, gen: number): Record<string, unknown> {
+  const visible = (row: RowLike): boolean =>
+    !game.user.isGM && rowUserId(row) === game.user.id && getAccess(game.user.id) !== null;
+  const run = (row: RowLike): void => {
+    if (visible(row)) open();
+  };
+  return menuEntry('evf.players_menu.pair_self', visible, run, gen);
+}
+
+/**
+ * Subscribes to {@link USER_CONTEXT_HOOK}. Call once during `init`. GM clients get the
+ * GM entry, player clients the self-service entry.
  *
  * @returns the Foundry hook id
  */
-export function registerPlayersMenu(open: OpenPairWindow): number {
+export function registerPlayersMenu(open: OpenPairWindow, openSelf: OpenSelfPairWindow): number {
   return Hooks.on(USER_CONTEXT_HOOK, (_app: unknown, menuItems: unknown) => {
-    if (!game.user.isGM || !Array.isArray(menuItems)) return;
-    menuItems.push(buildPairMenuEntry(open, generation()));
+    if (!Array.isArray(menuItems)) return;
+    menuItems.push(
+      game.user.isGM
+        ? buildPairMenuEntry(open, generation())
+        : buildSelfMenuEntry(openSelf, generation()),
+    );
   });
 }

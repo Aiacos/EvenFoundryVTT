@@ -80,6 +80,15 @@ function skills(): Skills {
 
 /** URL of the demo portrait (served by the demo decoder, never fetched). */
 export const DEMO_PORTRAIT_URL = 'demo/thorin.webp';
+/** URL of the demo crypt art (served by the demo art decoder, never fetched). */
+export const DEMO_MAP_URL = 'demo/crypt-map.webp';
+/** Token pictures of the demo crypt (served by the demo art decoder). */
+export const DEMO_TOKEN_ART = {
+  thorin: 'demo/token-thorin.webp',
+  mira: 'demo/token-mira.webp',
+  goblin: 'demo/token-goblin.webp',
+  hobgoblin: 'demo/token-hobgoblin.webp',
+} as const;
 
 export function character(v: Variant = 'min'): CharacterSnapshot {
   const max = v === 'max';
@@ -270,7 +279,21 @@ export function log(v: Variant = 'min'): LogSnapshot {
   };
 }
 
-/** Crypt of the design map (S1–S9): a room with pillars, a door and a corridor. */
+/** Four walls of a 0.6-cell square column centred on (cx, cy). */
+function pillar(cx: number, cy: number): MapSnapshot['walls'] {
+  const [x0, y0, x1, y1] = [cx - 0.3, cy - 0.3, cx + 0.3, cy + 0.3];
+  return [
+    { c: [x0, y0, x1, y0] },
+    { c: [x1, y0, x1, y1] },
+    { c: [x1, y1, x0, y1] },
+    { c: [x0, y1, x0, y0] },
+  ];
+}
+
+/**
+ * Crypt of the design map (S1–S9): a room with pillars, an open door and a corridor,
+ * with procedural scene art (`demo/map-art.ts`) and token pictures.
+ */
 export function mapSnap(extra: Partial<MapSnapshot> = {}): MapSnapshot {
   return {
     sceneId: 'scene-1',
@@ -278,25 +301,77 @@ export function mapSnap(extra: Partial<MapSnapshot> = {}): MapSnapshot {
     cols: 30,
     rows: 30,
     gridPx: 100,
+    background: { src: DEMO_MAP_URL, x: 0, y: 0, w: 3000, h: 3000 },
     darkness: 0,
     walls: [
       { c: [9, 8, 16, 8] },
       { c: [9, 17, 16, 17] },
       { c: [9, 8, 9, 17] },
       { c: [16, 8, 16, 11] },
-      { c: [16, 11, 16, 13], door: true },
+      { c: [16, 11, 16, 13], door: true, open: true },
       { c: [16, 13, 16, 17] },
       { c: [16, 11, 21, 11] },
       { c: [16, 13, 21, 13] },
-      { c: [11, 10, 11.3, 10] },
-      { c: [11, 15, 11.3, 15] },
+      // Columns: small sight-blocking squares around the drums of the scene art.
+      ...pillar(11.15, 10),
+      ...pillar(11.15, 15),
     ],
     tokens: [
-      { id: 't-self', name: 'Thorin', kind: 'self', x: 12, y: 12, w: 1, h: 1 },
-      { id: 't-ally', name: 'Mira', kind: 'ally', x: 14, y: 12, w: 1, h: 1, hp: 0.8 },
-      { id: 't-gob', name: 'Goblin A', kind: 'enemy', x: 13, y: 13, w: 1, h: 1, hp: 0.6 },
-      { id: 't-gob2', name: 'Goblin B', kind: 'enemy', x: 14, y: 10, w: 1, h: 1, hp: 1 },
-      { id: 't-boss', name: 'Hobgoblin', kind: 'enemy', x: 18, y: 12, w: 1, h: 1, hp: 1 },
+      {
+        id: 't-self',
+        name: 'Thorin',
+        kind: 'self',
+        x: 12,
+        y: 12,
+        w: 1,
+        h: 1,
+        img: DEMO_TOKEN_ART.thorin,
+        sight: 12,
+      },
+      {
+        id: 't-ally',
+        name: 'Mira',
+        kind: 'ally',
+        x: 14,
+        y: 12,
+        w: 1,
+        h: 1,
+        hp: 0.8,
+        img: DEMO_TOKEN_ART.mira,
+      },
+      {
+        id: 't-gob',
+        name: 'Goblin A',
+        kind: 'enemy',
+        x: 13,
+        y: 13,
+        w: 1,
+        h: 1,
+        hp: 0.6,
+        img: DEMO_TOKEN_ART.goblin,
+      },
+      {
+        id: 't-gob2',
+        name: 'Goblin B',
+        kind: 'enemy',
+        x: 14,
+        y: 10,
+        w: 1,
+        h: 1,
+        hp: 1,
+        img: DEMO_TOKEN_ART.goblin,
+      },
+      {
+        id: 't-boss',
+        name: 'Hobgoblin',
+        kind: 'enemy',
+        x: 18,
+        y: 12,
+        w: 1,
+        h: 1,
+        hp: 1,
+        img: DEMO_TOKEN_ART.hobgoblin,
+      },
     ],
     selfTokenId: 't-self',
     ...extra,

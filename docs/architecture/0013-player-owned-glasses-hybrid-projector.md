@@ -73,3 +73,26 @@ at a time, still through `dispatchTool`).
 Unit tests: ECDH seal/open, password delivery, key custody for multiple GMs, election
 matrix (player active/inactive × GM active/none × key present/absent), self-service
 pairing UI, ownership mirroring. Docs: Specs changelog + README + showcase (INV-3).
+
+### Confirmation — implementation (2026-09-23)
+
+Tests covering the items above:
+
+- ECDH seal/open (round trip, wrong key, tampering, context binding, malformed input),
+  custody record schemas, key-only `rotate`: `packages/shared-protocol/src/direct/ecdh.test.ts`
+- Election matrix (player active/inactive × GM active/none × key present/absent,
+  multi-GM preference, stale GM key, unowned actor): `packages/foundry-module/src/direct/election.test.ts`
+- Enablement, sealed password delivery, re-seal on new player key, regeneration,
+  ownership mirroring: `packages/foundry-module/src/direct/glasses-access.test.ts`
+- Self-service pairing, key custody for multiple GMs, expiry, custody reconciliation:
+  `packages/foundry-module/src/direct/self-pairing.test.ts`
+- Hybrid projector (player answers + key-only rotation, GM fallback via `gmKeys`,
+  only-elected-executes, takeover on `userConnected`, player-own targets, ADR-0012
+  migration via `keyHolder`, on-behalf pairing of an enabled player):
+  `packages/foundry-module/src/direct/projector-hybrid.test.ts`
+- Identity keys, self flags, custody sync hooks, player targets:
+  `packages/foundry-module/src/direct/custody-sync.test.ts`
+- Pairing window GM/player modes and enablement UI: `packages/foundry-module/src/direct/PairG2App.test.ts`;
+  player menu entry: `players-menu.test.ts`; GM-only world writers + migration: `pairing-store.test.ts`
+- G2 app: `to: "projector"`, sender-agnostic authentication, key-only rotation persisted:
+  `packages/g2-app/src/direct/session.test.ts`, `credentials.test.ts`

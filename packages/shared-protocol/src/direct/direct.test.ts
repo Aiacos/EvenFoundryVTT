@@ -4,6 +4,7 @@ import {
   generateDeviceKey,
   importDeviceKey,
   open,
+  PROJECTOR_ADDRESS,
   SealedEnvelopeSchema,
   seal,
 } from './envelope.js';
@@ -43,7 +44,7 @@ describe('base64url', () => {
 describe('sealed envelope', () => {
   it('seals and opens a message, stripping ts', async () => {
     const key = await importDeviceKey(generateDeviceKey());
-    const env = await seal(key, 'user1', 'gm', { t: 'ping', rid: 'r1' }, 1_000);
+    const env = await seal(key, 'user1', PROJECTOR_ADDRESS, { t: 'ping', rid: 'r1' }, 1_000);
     expect(SealedEnvelopeSchema.parse(env)).toEqual(env);
     expect(env.ct).not.toContain('ping');
     await expect(open(key, env, 2_000)).resolves.toEqual({
@@ -54,7 +55,7 @@ describe('sealed envelope', () => {
 
   it('fails authentication when re-addressed (AAD binds from>to)', async () => {
     const key = await importDeviceKey(generateDeviceKey());
-    const env = await seal(key, 'user1', 'gm', { t: 'ping', rid: 'r1' });
+    const env = await seal(key, 'user1', PROJECTOR_ADDRESS, { t: 'ping', rid: 'r1' });
     await expect(open(key, { ...env, to: 'user2' })).resolves.toEqual({
       ok: false,
       reason: 'auth',
@@ -64,13 +65,13 @@ describe('sealed envelope', () => {
   it('fails authentication with a different key', async () => {
     const a = await importDeviceKey(generateDeviceKey());
     const b = await importDeviceKey(generateDeviceKey());
-    const env = await seal(a, 'u', 'gm', { t: 'ping', rid: 'r' });
+    const env = await seal(a, 'u', PROJECTOR_ADDRESS, { t: 'ping', rid: 'r' });
     await expect(open(b, env)).resolves.toEqual({ ok: false, reason: 'auth' });
   });
 
   it('rejects stale messages outside the replay window', async () => {
     const key = await importDeviceKey(generateDeviceKey());
-    const env = await seal(key, 'u', 'gm', { t: 'ping', rid: 'r' }, 0);
+    const env = await seal(key, 'u', PROJECTOR_ADDRESS, { t: 'ping', rid: 'r' }, 0);
     await expect(open(key, env, 10 * 60_000)).resolves.toEqual({ ok: false, reason: 'stale' });
   });
 

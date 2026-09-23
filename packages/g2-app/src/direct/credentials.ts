@@ -201,15 +201,17 @@ export class CredentialStore {
   }
 
   /**
-   * Applies a `welcome.rotate` atomically: the new password and key replace the old
-   * ones in a single record write, so a crash mid-way never leaves a mixed pair.
+   * Applies a `welcome.rotate` atomically: the new key (and password, when present)
+   * replace the old ones in a single record write, so a crash mid-way never leaves a
+   * mixed pair. A player-client projector rotates only the key (ADR-0013): a player
+   * cannot change a Foundry password, so the current one is kept.
    *
    * @throws Error when there are no credentials to rotate
    */
-  async rotate(rotate: { password: string; key: string }): Promise<Credentials> {
+  async rotate(rotate: { password?: string | undefined; key: string }): Promise<Credentials> {
     const current = await this.load();
     if (current === null) throw new Error('cannot rotate: no credentials');
-    const next = { ...current, password: rotate.password, key: rotate.key };
+    const next = { ...current, password: rotate.password ?? current.password, key: rotate.key };
     await this.save(next);
     return next;
   }

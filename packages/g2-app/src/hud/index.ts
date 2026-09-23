@@ -44,26 +44,32 @@ import {
   type TextRegion,
   ZONES,
 } from './layout.js';
+import { ArtCache, type ArtDecoder, browserArtDecoder } from './map-art/image.js';
+import { type ArtLayer, collectArt } from './map-art/layers.js';
 import { fullScreenOf, layoutModeFor, renderTexts, renderZones, type ViewInput } from './view.js';
 import { renderFullScreen, splitTiles } from './zones/fullscreen.js';
-import { browserDecoder, type Luma, LumaCache, type LumaDecoder } from './zones/luma.js';
+import {
+  browserDecoder,
+  type DecodeDeps,
+  type Luma,
+  LumaCache,
+  type LumaDecoder,
+} from './zones/luma.js';
 import { computeViewport, type Viewport } from './zones/map.js';
 import { PICTURE } from './zones/portrait.js';
 import { ZoneSender } from './zones/zone-sender.js';
 
 /** UI clock period: reaction countdown, result auto-close, "min ago" labels. */
 export const TICK_MS = 1000;
-/** Largest side of a decoded scene background (pixels). */
-const MAX_BACKGROUND_SIDE = 2048;
-/** Background pixels kept per scene cell (= the largest zoom level). */
-const BACKGROUND_PX_PER_CELL = 12;
 /** Foundry's default actor image: treated as "no portrait" (emblem instead). */
 const PLACEHOLDER_IMAGE = /mystery-man/i;
 
 /** Optional HUD dependencies. */
 export interface HudOptions {
-  /** Image decoder for portraits and scene backgrounds (default: browser decoder). */
+  /** Image decoder for portraits (default: browser decoder). */
   decoder?: LumaDecoder;
+  /** Scene-art decoder for the map: background, tiles, token art (default: browser decoder). */
+  artDecoder?: ArtDecoder;
 }
 
 function menuEntries(locale: HudLocale): MenuEntry[] {
@@ -78,15 +84,27 @@ function cursorTarget(app: AppState, ui: UiState, locale: HudLocale): string | u
   return intent?.k === 'target' && intent.tokenId ? intent.tokenId : undefined;
 }
 
+/** Browser image APIs, or null when the WebView lacks them (→ documented fallbacks). */
+function browserDeps(): DecodeDeps | null {
+  if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas !== 'function') return null;
+  return {
+    fetch: (url, init) => fetch(url, init),
+    createImageBitmap: (b) => createImageBitmap(b),
+    OffscreenCanvas,
+  };
+}
+
+const unavailable = () =>
+  Promise.reject(new Error('image decoding unavailable (no OffscreenCanvas)'));
+
 function defaultDecoder(): LumaDecoder {
-  if (typeof createImageBitmap === 'function' && typeof OffscreenCanvas === 'function') {
-    return browserDecoder({
-      fetch: (url, init) => fetch(url, init),
-      createImageBitmap: (b) => createImageBitmap(b),
-      OffscreenCanvas,
-    });
-  }
-  return () => Promise.reject(new Error('image decoding unavailable (no OffscreenCanvas)'));
+  const deps = browserDeps();
+  return deps ? browserDecoder(deps) : unavailable;
+}
+
+function defaultArtDecoder(): ArtDecoder {
+  const deps = browserDeps();
+  return deps ? browserArtDecoder(deps) : unavailable;
 }
 
 /**
@@ -116,6 +134,7 @@ export function startHud(
   const locale = (): HudLocale => resolveLocale(store.get(), navigator.language);
   const decoder = options.decoder ?? defaultDecoder();
   const pictures = new LumaCache(decoder, () => render());
+  const sceneArt = new ArtCache(options.artDecoder ?? defaultArtDecoder(), () => render());
 
   const sender = new ZoneSender((region, png) => {
     const box = IMAGE[region];
@@ -140,17 +159,9 @@ export function startHud(
     return null;
   }
 
-  function background(app: AppState): Luma | null {
-    const map = app.map;
-    if (!map?.background) return null;
-    const cell = BACKGROUND_PX_PER_CELL;
-    const st = pictures.get({
-      url: map.background,
-      width: Math.max(1, Math.min(MAX_BACKGROUND_SIDE, map.cols * cell)),
-      height: Math.max(1, Math.min(MAX_BACKGROUND_SIDE, map.rows * cell)),
-      fit: 'stretch',
-    });
-    return st.state === 'ready' ? st.luma : null;
+  /** Decoded scene art of the map, null → schematic map (loading, failed, none). */
+  function mapArt(app: AppState): ArtLayer[] | null {
+    return app.map ? collectArt(app.map, (req) => sceneArt.get(req)) : null;
   }
 
   function mapViewport(app: AppState): Viewport | null {
@@ -236,7 +247,7 @@ export function startHud(
     const targetId = cursorTarget(app, ui, loc);
     const zones = renderZones(v, {
       portrait: portrait(app),
-      background: background(app),
+      art: mapArt(app),
       viewport: mapViewport(app),
       reach: ui.view === 'target' && ui.pending?.kind === 'weapon',
       ...(targetId === undefined ? {} : { targetId }),

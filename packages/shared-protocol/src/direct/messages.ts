@@ -56,9 +56,13 @@ export type AppMessage = z.infer<typeof AppMessageSchema>;
 
 // ─── projector → G2 app ──────────────────────────────────────────────────────
 
-/** Fresh credentials pushed on first `welcome` so the pairing QR/code is single-use. */
+/**
+ * Fresh credentials pushed on first `welcome` so the pairing QR/code is single-use.
+ * `password` is absent when the projector is a player client (only a GM may change a
+ * Foundry password — ADR-0013): the app then keeps its current password.
+ */
 export const RotateSchema = z.strictObject({
-  password: z.string().min(12).max(128),
+  password: z.string().min(12).max(128).optional(),
   /** New AES-256 key, base64url (32 bytes). */
   key: z.string().min(43).max(44),
 });

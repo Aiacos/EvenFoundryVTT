@@ -11,6 +11,7 @@
  * WebView, Foundry browser clients and Node ≥ 20 (tests).
  *
  * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 4
+ * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md §Decision 6
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';
@@ -18,8 +19,13 @@ import { fromBase64Url, toBase64Url } from './base64url.js';
 /** Socket event name used on the Foundry relay (`module.<id>`). */
 export const DIRECT_SOCKET_EVENT = 'module.evenfoundryvtt' as const;
 
-/** Address of the projector (any GM client holding the device key). */
-export const GM_ADDRESS = 'gm' as const;
+/**
+ * Address the glasses write to: whichever Foundry client is currently elected projector
+ * for the device (the player's own client, else a GM holding the device key — ADR-0013
+ * §Decision 6). Replies are sealed `from` the same address, so the AAD `from>to` does not
+ * depend on which client answered.
+ */
+export const PROJECTOR_ADDRESS = 'projector' as const;
 
 /** Maximum clock skew / age accepted for a sealed message (ms). */
 export const MAX_ENVELOPE_AGE_MS = 120_000;

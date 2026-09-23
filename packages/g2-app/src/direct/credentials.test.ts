@@ -167,6 +167,17 @@ describe('CredentialStore', () => {
     expect(JSON.parse(storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(next);
   });
 
+  it('a key-only rotation (player-client projector, ADR-0013) keeps the password', async () => {
+    const storage = new MemoryStorage();
+    const store = new CredentialStore(storage, warn);
+    const creds = makeCredentials();
+    await store.save(creds);
+    const key = generateDeviceKey();
+    const next = await store.rotate({ key });
+    expect(next).toEqual({ ...creds, key });
+    expect(JSON.parse(storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(next);
+  });
+
   it('refuses to rotate without credentials', async () => {
     await expect(
       new CredentialStore(new MemoryStorage(), warn).rotate({ password: 'x'.repeat(12), key: 'k' }),

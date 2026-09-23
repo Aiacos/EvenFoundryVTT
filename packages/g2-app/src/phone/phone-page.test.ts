@@ -165,11 +165,13 @@ describe('P02 connection page', () => {
     };
     change('#evf-locale', (el) => (el.value = 'en'));
     change('#evf-map-cell', (el) => (el.value = '12'));
+    change('#evf-map-pixel', (el) => (el.value = '3'));
     change('#evf-follow', (el) => (el.checked = false));
     change('#evf-auto-sheet', (el) => (el.checked = false));
     expect(vi.mocked(fake.session.updateSettings).mock.calls).toEqual([
       [{ locale: 'en' }],
       [{ mapCellPx: 12 }],
+      [{ mapPixelSize: 3 }],
       [{ followToken: false }],
       [{ autoSheetPage: false }],
     ]);

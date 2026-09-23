@@ -1,9 +1,9 @@
 import {
   DIRECT_SOCKET_EVENT,
-  GM_ADDRESS,
   generateDeviceKey,
   importDeviceKey,
   open,
+  PROJECTOR_ADDRESS,
   type SealedEnvelope,
   seal,
 } from '@evf/shared-protocol';
@@ -16,7 +16,7 @@ import {
   makeUser,
 } from '../__tests__/direct-fixtures.js';
 import { type DeviceMeta, getDevice, upsertDevice } from './pairing-store.js';
-import { isActiveProjector, KEY_GRACE_MS, MAP_THROTTLE_MS, Projector } from './projector.js';
+import { KEY_GRACE_MS, MAP_THROTTLE_MS, Projector } from './projector.js';
 
 const dispatchTool = vi.hoisted(() => vi.fn());
 vi.mock('../write-path/tool-registry.js', async (importOriginal) => ({
@@ -73,7 +73,7 @@ async function appSend(
   message: object,
   key = KEY,
   from = 'g2a',
-  to: string = GM_ADDRESS,
+  to: string = PROJECTOR_ADDRESS,
 ): Promise<void> {
   const env = await seal(await importDeviceKey(key), from, to, message);
   await projector.handleEnvelope(env);
@@ -84,7 +84,7 @@ async function received(key = KEY): Promise<Array<Record<string, unknown>>> {
   const ck = await importDeviceKey(key);
   const out: Array<Record<string, unknown>> = [];
   for (const env of f.emitted as SealedEnvelope[]) {
-    expect(env.from).toBe(GM_ADDRESS);
+    expect(env.from).toBe(PROJECTOR_ADDRESS);
     const r = await open(ck, env);
     if (r.ok) out.push(r.message);
   }
@@ -306,11 +306,10 @@ describe('Projector — ignored input', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await appSend({ t: 'ping', rid: 'x' }, KEY, 'g2a', 'someone-else');
     await appSend({ t: 'ping', rid: 'x' }, KEY, 'stranger');
-    await projector.handleEnvelope({ evf: 1, to: 'gm' });
+    await projector.handleEnvelope({ evf: 1, to: PROJECTOR_ADDRESS });
     await projector.handleEnvelope('garbage');
     f.game.user.isGM = false;
     await appSend({ t: 'ping', rid: 'x' });
-    expect(isActiveProjector()).toBe(false);
     f.game.user.isGM = true;
     (f.game.users as { activeGM: unknown }).activeGM = makeUser('gm2', 'Other GM', { isGM: true });
     await appSend({ t: 'ping', rid: 'x' });
@@ -426,7 +425,7 @@ describe('Projector — pushes', () => {
     projector.start();
     const handler = f.socketHandlers.get(DIRECT_SOCKET_EVENT);
     expect(handler).toBeDefined();
-    const env = await seal(await importDeviceKey(KEY), 'g2a', GM_ADDRESS, {
+    const env = await seal(await importDeviceKey(KEY), 'g2a', PROJECTOR_ADDRESS, {
       t: 'ping',
       rid: 'via-socket',
     });

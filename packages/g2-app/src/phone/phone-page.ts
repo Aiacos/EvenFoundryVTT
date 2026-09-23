@@ -15,7 +15,12 @@
 
 import { activeDebugLog, type DebugLogReader } from '../debug/debug-log.js';
 import type { DirectSession, SessionInfo } from '../direct/session.js';
-import type { AppSettings, AppState, AppStore } from '../state/app-store.js';
+import {
+  type AppSettings,
+  type AppState,
+  type AppStore,
+  DEFAULT_MAP_PIXEL_SIZE,
+} from '../state/app-store.js';
 import { type PhoneStrings, phoneStrings } from './i18n.js';
 
 /** Session surface the phone page drives. */
@@ -144,10 +149,20 @@ function buildConnectionView(
   const cell = el(
     'select',
     { id: 'evf-map-cell', name: 'mapCellPx' },
-    [6, 8, 12].map((px) => el('option', { value: String(px) }, [t.pixelSize(px)])),
+    [6, 8, 12].map((px) => el('option', { value: String(px) }, [t.cellSize(px)])),
   );
   cell.addEventListener('change', () =>
     session.updateSettings({ mapCellPx: Number(cell.value) as AppSettings['mapCellPx'] }),
+  );
+  const pixel = el(
+    'select',
+    { id: 'evf-map-pixel', name: 'mapPixelSize' },
+    [1, 2, 3].map((n) => el('option', { value: String(n) }, [t.mapPixel(n)])),
+  );
+  pixel.addEventListener('change', () =>
+    session.updateSettings({
+      mapPixelSize: Number(pixel.value) as NonNullable<AppSettings['mapPixelSize']>,
+    }),
   );
   const follow = el('input', { id: 'evf-follow', type: 'checkbox', name: 'followToken' });
   follow.addEventListener('change', () => session.updateSettings({ followToken: follow.checked }));
@@ -164,6 +179,8 @@ function buildConnectionView(
     locale,
     el('label', { for: 'evf-map-cell' }, [t.map]),
     cell,
+    el('label', { for: 'evf-map-pixel' }, [t.mapArt]),
+    pixel,
     el('span', {}, []),
     el('label', { class: 'evf-check' }, [follow, t.followToken]),
     el('span', {}, [t.sheet]),
@@ -220,6 +237,7 @@ function buildConnectionView(
       values.latency.textContent = info.latencyMs === null ? t.unknown : `${info.latencyMs} ms`;
       locale.value = state.settings.locale;
       cell.value = String(state.settings.mapCellPx);
+      pixel.value = String(state.settings.mapPixelSize ?? DEFAULT_MAP_PIXEL_SIZE);
       follow.checked = state.settings.followToken;
       autoSheet.checked = state.settings.autoSheetPage;
       disconnect.disabled = c.status === 'offline' && c.retryInMs === undefined;

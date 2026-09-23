@@ -1,6 +1,6 @@
 /**
- * Image-zone renderers and their inputs: map (viewport, palette, reticle, reach,
- * background dither), portrait (dither, emblems, dimming), header edge cases (PF
+ * Image-zone renderers and their inputs: map (viewport, palette, reticle, reach — the
+ * scene-art renderer is covered by `map-art/*.test.ts`), portrait (dither, emblems, dimming), header edge cases (PF
  * digits, TEMP, chip overflow), full-screen tiles, PNG encoding and the luminance
  * loader. Pixel-exact layouts are pinned by `golden.test.ts`.
  */
@@ -37,7 +37,11 @@ describe('map zone', () => {
     ] as const;
 
   it('centres the own token and draws tokens by allegiance', () => {
-    const p = renderMap(snap, { cellPx: 12, viewport: vp, background: null, reach: false }, s);
+    const p = renderMap(
+      snap,
+      { cellPx: 12, viewport: vp, art: null, pixelSize: 2 as const, reach: false },
+      s,
+    );
     expect(p.get(...at(12, 12))).toBe(LEVEL.self);
     expect(p.get(...at(14, 12, 3, 4))).toBe(LEVEL.ally);
     expect(p.get(...at(13, 13, 3, 4))).toBe(LEVEL.enemy);
@@ -46,33 +50,13 @@ describe('map zone', () => {
   });
 
   it('marks the target with a reticle and shows reach dots for weapons', () => {
-    const base = { cellPx: 12, viewport: vp, background: null } as const;
+    const base = { cellPx: 12, viewport: vp, art: null, pixelSize: 2 as const } as const;
     const plain = renderMap(snap, { ...base, reach: false }, s);
     const aimed = renderMap(snap, { ...base, reach: true, targetId: 't-gob' }, s);
     const [cx, cy] = at(13.5, 13.5, 0, 0);
     expect(aimed.get(cx - 9 - 3, cy)).toBe(LEVEL.reticle);
     expect(plain.get(cx - 9 - 3, cy)).not.toBe(LEVEL.reticle);
     expect(aimed.get(...at(11, 11, 5, 5))).toBe(LEVEL.reach);
-  });
-
-  it('dithers a background under the grid limit and dims it with darkness', () => {
-    const bright = renderMap(
-      snap,
-      { cellPx: 12, viewport: vp, background: flat(8, 8, 255), reach: false },
-      s,
-    );
-    const night = renderMap(
-      { ...snap, darkness: 1 },
-      { cellPx: 12, viewport: vp, background: flat(8, 8, 255), reach: false },
-      s,
-    );
-    const sum = (p: Pixmap) => {
-      let n = 0;
-      for (let y = 30; y < 40; y++) for (let x = 30; x < 40; x++) n += p.get(x, y);
-      return n;
-    };
-    expect(bright.get(40, 40)).toBeLessThanOrEqual(LEVEL.bgMax);
-    expect(sum(night)).toBeLessThan(sum(bright));
   });
 
   it('follows the token only once it leaves the middle half; clamps small scenes', () => {
@@ -97,7 +81,7 @@ describe('map zone', () => {
   it('draws only the frame, north mark and scale without a scene', () => {
     const p = renderMap(
       null,
-      { cellPx: 8, viewport: { x: 0, y: 0 }, background: null, reach: false },
+      { cellPx: 8, viewport: { x: 0, y: 0 }, art: null, pixelSize: 2 as const, reach: false },
       s,
     );
     expect(p.get(70, 70)).toBe(0);
@@ -234,7 +218,7 @@ describe('renderZones', () => {
       result: null,
       reactionDeadline: null,
     } as const;
-    const extras = { portrait: null, background: null, viewport: null, reach: false };
+    const extras = { portrait: null, art: null, viewport: null, reach: false };
     const on = renderZones({ app: online(), ui, strings: s, now: 0 }, extras);
     const off = renderZones(
       { app: online('min', { connection: { status: 'offline' } }), ui, strings: s, now: 0 },

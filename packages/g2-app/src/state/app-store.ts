@@ -58,6 +58,11 @@ export interface ConnectionState {
 export interface AppSettings {
   locale: 'auto' | 'it' | 'en';
   mapCellPx: 6 | 8 | 12;
+  /**
+   * Pixelation block of the map art in G2 pixels (phone page P02 «Arte mappa»);
+   * omitted → {@link DEFAULT_MAP_PIXEL_SIZE}.
+   */
+  mapPixelSize?: 1 | 2 | 3;
   followToken: boolean;
   /**
    * Automatic sheet page (design §Pagina automatica): GM-requested check/save →
@@ -100,6 +105,9 @@ export interface AppActions {
   reconnect(): void;
   updateSettings(patch: Partial<AppSettings>): void;
 }
+
+/** Map art block when unset: 2 × 2 G2 pixels, the chunky look of the retired raster map. */
+export const DEFAULT_MAP_PIXEL_SIZE = 2;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   locale: 'auto',

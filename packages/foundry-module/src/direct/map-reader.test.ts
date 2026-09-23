@@ -60,8 +60,9 @@ describe('readMapSnapshot', () => {
       rows: 36,
       gridPx: 100,
       darkness: 0.4,
-      background: 'worlds/w/maps/crypt.webp',
+      background: { src: 'worlds/w/maps/crypt.webp', x: 0, y: 0, w: 2450, h: 3600 },
     });
+    expect(snap?.tiles).toBeUndefined();
     expect(snap?.tokens[0]).toMatchObject({ x: 2.5, y: 2.5, w: 2, h: 2 });
     expect(snap?.walls).toEqual([
       { c: [0, 0, 5, 0] },
@@ -131,6 +132,143 @@ describe('readMapSnapshot', () => {
     expect(snap?.background).toBeUndefined();
     expect(snap?.tokens[0]).toMatchObject({ name: '', x: 0, y: 0, w: 1, h: 1 });
     expect(MapSnapshotSchema.safeParse(snap).success).toBe(true);
+  });
+});
+
+describe('readMapSnapshot scene art', () => {
+  it('MR-06 background offset, tiles in draw order (hidden / foreign / empty dropped)', () => {
+    installFoundry({
+      scene: scene([], {
+        background: { src: '/worlds/w/maps/crypt.webp', offsetX: 12.4, offsetY: -8 },
+        tiles: {
+          contents: [
+            {
+              x: 600,
+              y: 700,
+              width: 200,
+              height: 100,
+              elevation: 1,
+              sort: 0,
+              texture: { src: 'a.webp' },
+            },
+            {
+              x: 100,
+              y: 200,
+              width: 50,
+              height: 50,
+              elevation: 0,
+              sort: 5,
+              texture: { src: 'b.webp' },
+            },
+            {
+              x: 100,
+              y: 200,
+              width: 50,
+              height: 50,
+              elevation: 0,
+              sort: 2,
+              texture: { src: 'c.webp' },
+            },
+            { x: 0, y: 0, width: 50, height: 50, hidden: true, texture: { src: 'hidden.webp' } },
+            { x: 0, y: 0, width: 50, height: 50, alpha: 0, texture: { src: 'clear.webp' } },
+            { x: 0, y: 0, width: 50, height: 50, texture: { src: 'https://cdn.other/x.webp' } },
+            { x: 0, y: 0, width: 0, height: 50, texture: { src: 'flat.webp' } },
+            { x: 0, y: 0, width: 50, height: 50 },
+          ],
+        },
+      }),
+    });
+    const snap = readMapSnapshot(viewer);
+    expect(MapSnapshotSchema.safeParse(snap).success).toBe(true);
+    expect(snap?.background).toEqual({
+      src: 'worlds/w/maps/crypt.webp',
+      x: 12,
+      y: -8,
+      w: 2450,
+      h: 3600,
+    });
+    expect(snap?.tiles).toEqual([
+      { src: 'c.webp', x: 0, y: 0, w: 50, h: 50, z: 0 },
+      { src: 'b.webp', x: 0, y: 0, w: 50, h: 50, z: 1 },
+      { src: 'a.webp', x: 500, y: 500, w: 200, h: 100, z: 2 },
+    ]);
+  });
+
+  it('MR-07 v14: background from the initial level, else the first level', () => {
+    const level = { background: { src: 'worlds/w/maps/level0.webp' } };
+    installFoundry({
+      scene: scene([], {
+        background: undefined,
+        initialLevel: 'L0',
+        levels: { get: (id: string) => (id === 'L0' ? level : undefined) },
+      }),
+    });
+    expect(readMapSnapshot(viewer)?.background?.src).toBe('worlds/w/maps/level0.webp');
+    vi.unstubAllGlobals();
+    installFoundry({ scene: scene([], { background: { src: '' }, firstLevel: level }) });
+    expect(readMapSnapshot(viewer)?.background?.src).toBe('worlds/w/maps/level0.webp');
+  });
+
+  it('MR-08 token art for every visible token, sight in cells only for self', () => {
+    installFoundry({
+      scene: scene(
+        [
+          token('tSelf', {
+            actorId: 'thorin',
+            texture: { src: '/tokens/thorin.webp' },
+            sight: { enabled: true, range: 60 },
+          }),
+          token('tGob', {
+            disposition: -1,
+            texture: { src: 'tokens/goblin.webp' },
+            sight: { enabled: true, range: 60 },
+          }),
+          token('tForeign', { texture: { src: 'https://cdn.other/t.webp' } }),
+          token('tHidden', { hidden: true, texture: { src: 'tokens/secret.webp' } }),
+        ],
+        { grid: { size: 100, distance: 5 } },
+      ),
+    });
+    const byId = Object.fromEntries((readMapSnapshot(viewer)?.tokens ?? []).map((t) => [t.id, t]));
+    expect(byId.tSelf).toMatchObject({ img: 'tokens/thorin.webp', sight: 12 });
+    expect(byId.tGob).toMatchObject({ img: 'tokens/goblin.webp' });
+    expect(byId.tGob?.sight).toBeUndefined();
+    expect(byId.tForeign?.img).toBeUndefined();
+    expect(byId.tHidden).toBeUndefined();
+  });
+
+  it('MR-09 sight omitted when disabled or unlimited; default grid distance 5', () => {
+    const self = (sight: unknown) =>
+      installFoundry({ scene: scene([token('tSelf', { actorId: 'thorin', sight })]) });
+    self({ enabled: false, range: 30 });
+    expect(readMapSnapshot(viewer)?.tokens[0]?.sight).toBeUndefined();
+    vi.unstubAllGlobals();
+    self({ enabled: true, range: null });
+    expect(readMapSnapshot(viewer)?.tokens[0]?.sight).toBeUndefined();
+    vi.unstubAllGlobals();
+    self({ enabled: true, range: 30 });
+    expect(readMapSnapshot(viewer)?.tokens[0]?.sight).toBe(6);
+  });
+
+  it('MR-12 open doors and sight-transparent walls are flagged open', () => {
+    installFoundry({
+      scene: scene([], {
+        walls: {
+          contents: [
+            { id: 'a', c: [100, 200, 200, 200], door: 1, ds: 1 },
+            { id: 'b', c: [100, 200, 200, 200], door: 1, ds: 0 },
+            { id: 'c', c: [100, 200, 200, 200], door: 0, sight: 0 },
+            { id: 'd', c: [100, 200, 200, 200], door: 0, sight: 20 },
+          ],
+        },
+      }),
+    });
+    expect(readMapSnapshot(viewer)?.walls).toEqual([
+      { c: [0, 0, 1, 0], door: true, open: true },
+      { c: [0, 0, 1, 0], door: true },
+      { c: [0, 0, 1, 0], open: true },
+      { c: [0, 0, 1, 0] },
+    ]);
   });
 });
 

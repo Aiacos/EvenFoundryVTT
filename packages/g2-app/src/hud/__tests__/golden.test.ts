@@ -11,13 +11,17 @@
 import { matchPixelFixture, type Pixmap } from '@evf/shared-render';
 import { describe, expect, it } from 'vitest';
 import { type MockState, mockStates, type Variant } from '../../demo/fixtures.js';
+import { demoArtPicture } from '../../demo/map-art.js';
 import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { type HudLocale, strings } from '../i18n.js';
 import { buildEntries } from '../input/entries.js';
 import { ZONES, type Zone } from '../layout.js';
+import type { ArtState } from '../map-art/image.js';
+import { collectArt } from '../map-art/layers.js';
 import { effectivePage } from '../model.js';
 import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
 import { renderFullScreen } from '../zones/fullscreen.js';
+import type { DecodeRequest } from '../zones/luma.js';
 import { computeViewport } from '../zones/map.js';
 
 /** Relative to this test file (`toMatchFileSnapshot` resolves it). */
@@ -25,6 +29,18 @@ const FIXTURES = '../../../../shared-render/src/fixtures/';
 /** Clock of the fixtures (`lastSyncAt` 0 → "2 min ago"). */
 const NOW = 120_000;
 const PORTRAIT = dwarfPortrait();
+/** Demo scene art resolved synchronously (the HUD decodes it through its cache). */
+const ART = new Map<string, ArtState>();
+const artLookup = (req: DecodeRequest): ArtState => {
+  const key = `${req.url}|${req.width}x${req.height}`;
+  let st = ART.get(key);
+  if (!st) {
+    const image = demoArtPicture(req);
+    st = image ? { state: 'ready', image } : { state: 'failed' };
+    ART.set(key, st);
+  }
+  return st;
+};
 
 function zonesOf(m: MockState, loc: HudLocale): Record<Zone, Pixmap> {
   const s = strings(loc);
@@ -35,7 +51,7 @@ function zonesOf(m: MockState, loc: HudLocale): Record<Zone, Pixmap> {
     { app: m.app, ui: m.ui, strings: s, now: NOW },
     {
       portrait: PORTRAIT,
-      background: null,
+      art: m.app.map ? collectArt(m.app.map, artLookup) : null,
       viewport: m.app.map ? computeViewport(m.app.map, m.app.settings.mapCellPx, true) : null,
       reach: m.ui.view === 'target' && m.ui.pending?.kind === 'weapon',
       ...(targetId === undefined ? {} : { targetId }),

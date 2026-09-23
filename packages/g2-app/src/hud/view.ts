@@ -6,10 +6,11 @@
  * @see docs/design/g2-sheet-ux.html S1–S12
  */
 import type { Pixmap } from '@evf/shared-render';
-import type { AppState } from '../state/app-store.js';
+import { type AppState, DEFAULT_MAP_PIXEL_SIZE } from '../state/app-store.js';
 import type { HudStrings } from './i18n.js';
 import type { UiState } from './input/ui-state.js';
 import { type LayoutMode, TEXT, type TextContent, type TextRegion, type Zone } from './layout.js';
+import type { ArtLayer } from './map-art/layers.js';
 import { effectivePage, isMyTurn, sheetModel } from './model.js';
 import { screenOf } from './screen.js';
 import { contextView, offlineView } from './text/context.js';
@@ -75,8 +76,8 @@ export function renderTexts(
 export interface ZoneExtras {
   /** Decoded portrait (actor image → token image), null → class emblem. */
   portrait: Luma | null;
-  /** Decoded scene background, null → grid dots. */
-  background: Luma | null;
+  /** Decoded scene art layers, null → schematic map (grid dots, walls). */
+  art: readonly ArtLayer[] | null;
   /** Map viewport (cells), null when there is no scene. */
   viewport: Viewport | null;
   /** Reticle override (target picker cursor). */
@@ -101,7 +102,8 @@ export function renderZones(v: ViewInput, extras: ZoneExtras): Record<Zone, Pixm
       {
         cellPx: app.settings.mapCellPx,
         viewport: extras.viewport ?? { x: 0, y: 0 },
-        background: extras.background,
+        art: extras.art,
+        pixelSize: app.settings.mapPixelSize ?? DEFAULT_MAP_PIXEL_SIZE,
         reach: extras.reach,
         ...(extras.targetId === undefined ? {} : { targetId: extras.targetId }),
       },

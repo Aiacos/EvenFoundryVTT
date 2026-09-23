@@ -9,11 +9,11 @@ import {
   type CharacterSnapshot,
   type CombatSnapshot,
   DIRECT_SOCKET_EVENT,
-  GM_ADDRESS,
   generateDeviceKey,
   importDeviceKey,
   type MapSnapshot,
   open,
+  PROJECTOR_ADDRESS,
   type SealedEnvelope,
   SKILL_KEYS,
   seal,
@@ -165,9 +165,14 @@ export class FakeGm {
   }
 
   /** Seals `message` for the app and delivers it on the relay. */
-  async reply(message: object, keyB64 = this.keyB64, to = this.userId): Promise<void> {
+  async reply(
+    message: object,
+    keyB64 = this.keyB64,
+    to = this.userId,
+    from: string = PROJECTOR_ADDRESS,
+  ): Promise<void> {
     const key = await importDeviceKey(keyB64);
-    this.socket.deliver(DIRECT_SOCKET_EVENT, await seal(key, GM_ADDRESS, to, message));
+    this.socket.deliver(DIRECT_SOCKET_EVENT, await seal(key, from, to, message));
   }
 }
 

@@ -7,6 +7,7 @@ import {
   generateDeviceKey,
   importDeviceKey,
   LOG_DELTA_TYPE,
+  PROJECTOR_ADDRESS,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
@@ -227,6 +228,48 @@ describe('connect flow', () => {
     h.session.refresh('log');
     await settle();
     expect((await gm.drain()).map((m) => m.t)).toEqual(['get']);
+  });
+
+  it('addresses the elected projector and applies a key-only rotation (ADR-0013)', async () => {
+    const h = setup();
+    await h.session.start(h.creds);
+    await settle();
+    const [raw] = h.socket().emitted.filter((e) => e.event === DIRECT_SOCKET_EVENT);
+    expect((raw?.args[0] as { to: string; from: string }).to).toBe(PROJECTOR_ADDRESS);
+    expect((raw?.args[0] as { to: string; from: string }).from).toBe(USER_ID);
+    h.session.dispose();
+
+    const h2 = setup();
+    const rotate = { key: generateDeviceKey() };
+    await goOnline(h2, { rotate });
+    expect(JSON.parse(h2.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual({
+      ...h2.creds,
+      key: rotate.key,
+    });
+    expect(h2.store.get().connection.status).toBe('online');
+  });
+
+  it('survives a projector switch: replies from another sender with the device key are accepted', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    // The player's browser went offline: a GM client answers now, with a sender id of
+    // its own — authenticity comes from the key, the sender is informational.
+    await gm.reply(
+      { t: 'delta', seq: 1, topic: COMBAT_STATE_DELTA_TYPE, data: makeCombat() },
+      gm.keyB64,
+      USER_ID,
+      'gm-browser',
+    );
+    await settle();
+    expect(h.store.get().combat).toEqual(makeCombat());
+    // A forged envelope (wrong key) is still rejected, whatever it claims to be.
+    await gm.reply(
+      { t: 'delta', seq: 2, topic: COMBAT_STATE_DELTA_TYPE, data: null },
+      generateDeviceKey(),
+    );
+    await settle();
+    expect(h.store.get().combat).toEqual(makeCombat());
+    expect(h.session.info().diagnostics.at(-1)?.message).toContain('envelope rejected');
   });
 
   it('ignores a welcome that does not answer our hello', async () => {
@@ -562,10 +605,15 @@ describe('online behaviour', () => {
       'envelope rejected (auth)',
       'invalid projector message',
     ]);
+    // Addressed to another device: skipped even though it is well-formed.
     const key = await importDeviceKey(h.creds.key);
-    h.socket().deliver(DIRECT_SOCKET_EVENT, await seal(key, 'user9', USER_ID, { t: 'revoked' }));
+    h.socket().deliver(
+      DIRECT_SOCKET_EVENT,
+      await seal(key, 'projector', 'user9', { t: 'revoked' }),
+    );
     await settle();
     expect(h.store.get().connection.status).toBe('online');
+    expect(h.session.info().diagnostics).toHaveLength(2);
   });
 
   it('keeps at most DIAGNOSTICS_MAX entries and notifies listeners', async () => {

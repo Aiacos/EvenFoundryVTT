@@ -437,6 +437,64 @@
   color: #fff;
 }
 
+/* ── GM: glasses enablement per player (ADR-0013) ─────────────────────── */
+
+.evf-pair__enable {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--evf-rule);
+  border-radius: var(--evf-radius);
+  background: var(--evf-panel);
+}
+
+.evf-pair__player {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.4rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--evf-rule);
+}
+
+.evf-pair__player:last-child {
+  border-bottom: none;
+}
+
+.evf-pair__player > button {
+  flex: 0 0 auto;
+  width: auto;
+  margin-left: auto;
+}
+
+.evf-pair__status {
+  --evf-tone: var(--evf-muted);
+  padding: 0.1rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--evf-tone) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--evf-tone) 12%, transparent);
+  color: var(--evf-ink);
+  font-size: 0.8rem;
+}
+
+.evf-pair__status--enabled {
+  --evf-tone: var(--evf-warn);
+}
+
+.evf-pair__status--paired {
+  --evf-tone: var(--evf-accent);
+}
+
+.evf-pair__status--online {
+  --evf-tone: var(--evf-ok);
+}
+
+.evf-pair__primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Footer: one primary action ───────────────────────────────────────── */
 
 .evf-pair__footer {

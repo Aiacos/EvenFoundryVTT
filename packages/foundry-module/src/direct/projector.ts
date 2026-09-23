@@ -1,28 +1,34 @@
 /**
- * Direct projector — the GM-client end of the G2 channel (ADR-0012 §Decision Outcome 5).
+ * Direct projector — the Foundry-client end of the G2 channel (ADR-0012 §Decision
+ * Outcome 5, amended by ADR-0013 §Decision 6).
  *
  * Listens on the Foundry socket relay (`module.evenfoundryvtt`) for sealed envelopes
- * addressed to {@link GM_ADDRESS}, authenticates them with the sender device's AES key
- * (from {@link getDevice}), and answers:
+ * addressed to {@link PROJECTOR_ADDRESS}, authenticates them with the sender device's
+ * AES key, and — **only when this client is the elected responder of that device**
+ * (`election.ts`: the player's own client when connected and holding the key, else a
+ * GM that can open the key) — answers:
  *
- * - `hello`  → `welcome` (+ one-time credential rotation) then full snapshots
+ * - `hello`  → `welcome` (+ one-time key rotation; the password too when a GM answers
+ *   for a device it paired) then full snapshots
  * - `get`    → `snapshot` of character / combat / log / map for the paired actor
- * - `invoke` → `dispatchTool` (ADR-0011 single-workflow-origin), `rid` = idempotency key;
- *   `targets` (MapSnapshot token ids) are translated to token document UUIDs here
+ * - `invoke` → `dispatchTool` (ADR-0011 single-workflow-origin, one origin per device
+ *   at a time), `rid` = idempotency key; `targets` (MapSnapshot token ids) are translated
+ *   to token document UUIDs, and on a player client also become that player's own
+ *   Foundry targets (vanilla dnd5e reads `game.user.targets`)
  * - after the hello snapshots, during combat: the paired actor's action economy and
  *   movement budget (`r1.action.economy`, `r1.movement.budget` deltas)
  * - `ping`   → `pong`
  *
  * It also pushes `delta` messages (hook subscribers, write-path watchers, chat log,
- * throttled map refreshes) to every online paired device concerned by the change.
+ * throttled map refreshes) to every online device it is elected for.
  *
- * Only the client where `game.user` is the active GM (`game.users.activeGM`) runs
- * the projector; other GM clients stay silent so replies are never duplicated.
- * Keys live in the pairing GM browser only, so that browser must be the active GM.
- *
- * Every message leaves sealed: other clients on the relay only see ciphertext.
+ * Every client runs a projector (players too). A non-elected client that can open the
+ * key still tracks the device as online, so it can take over immediately — with fresh
+ * snapshots — when the election changes (`userConnected`). Every message leaves sealed
+ * `from` {@link PROJECTOR_ADDRESS}: the glasses do not care which client answered.
  *
  * @see docs/architecture/0012-direct-foundry-streaming.md
+ * @see docs/architecture/0013-player-owned-glasses-hybrid-projector.md
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see packages/shared-protocol/src/direct/ (wire contract)
  */
@@ -30,12 +36,14 @@ import {
   type AppMessage,
   AppMessageSchema,
   DIRECT_SOCKET_EVENT,
-  GM_ADDRESS,
+  deviceKeyContext,
   generateDeviceKey,
   importDeviceKey,
   LOG_DELTA_TYPE,
   MAX_ENVELOPE_AGE_MS,
   open,
+  openSealed,
+  PROJECTOR_ADDRESS,
   type ProjectorMessage,
   R1_ACTION_ECONOMY_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
@@ -55,8 +63,12 @@ import {
 import { getActionEconomy } from '../write-path/combat-action-tracker.js';
 import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
+import { type DeviceContext, deviceContext } from './election.js';
 import { generatePassword, setG2Password } from './g2-user.js';
+import { deliverPassword } from './glasses-access.js';
+import { myPrivateKey } from './identity-keys.js';
 import { readMapSnapshot, resolveTargetUuids } from './map-reader.js';
+import { applyOwnTargets } from './own-targets.js';
 import {
   type DeviceMeta,
   getDevice,
@@ -66,6 +78,7 @@ import {
   updateDeviceMeta,
 } from './pairing-store.js';
 import { parseRollRequest, type RollRequestMessage } from './roll-request.js';
+import { rotateSelfKey } from './self-pairing.js';
 
 /** After a key rotation the previous key stays accepted this long (ms). */
 export const KEY_GRACE_MS = 60_000;
@@ -103,18 +116,24 @@ function principalOf(g2UserId: string): string {
   return `g2:${g2UserId}`;
 }
 
-/** True when this client must act as projector (GM and the designated active GM). */
-export function isActiveProjector(): boolean {
-  if (!game.user.isGM) return false;
-  const active = game.users.activeGM;
-  return active === undefined || active === null || active.id === game.user.id;
+type WelcomeMessage = Extract<ProjectorMessage, { t: 'welcome' }>;
+
+/** The metadata a device is served with: `actorId` = the effective projected actor. */
+function servedMeta(ctx: DeviceContext): DeviceMeta {
+  return { ...ctx.meta, actorId: ctx.actorId };
 }
 
 /**
- * Stateful projector. One instance per GM client, created on `ready`.
+ * Stateful projector. One instance per client (GM or player), created on `ready`.
  */
 export class Projector {
   private readonly online = new Map<string, number>();
+  /** Last key that authenticated each device (used for pushes). */
+  private readonly activeKeys = new Map<string, string>();
+  /** Last responder seen per device (detects election changes). */
+  private readonly responders = new Map<string, string | null>();
+  /** GM-sealed device keys already opened, by ciphertext. */
+  private readonly openedGmKeys = new Map<string, string | null>();
   private readonly seq = new Map<string, number>();
   private readonly graceKeys = new Map<string, { key: string; until: number }>();
   private readonly cryptoKeys = new Map<string, CryptoKey>();
@@ -140,6 +159,7 @@ export class Projector {
     }
     this.hookIds.push(
       Hooks.on('createChatMessage', (message: unknown) => this.pushLogMessage(message)),
+      Hooks.on('userConnected', () => this.onPresenceChange()),
     );
   }
 
@@ -160,24 +180,36 @@ export class Projector {
   // ─── Inbound ────────────────────────────────────────────────────────────────
 
   /**
-   * Validates, authenticates and handles one relay payload. Anything not addressed
-   * to the GM, from an unknown sender, or failing authentication is dropped.
+   * Validates, authenticates and handles one relay payload. Anything not addressed to
+   * the projector, from an unknown sender, or failing authentication is dropped; a
+   * device this client is not elected for is only marked online.
    */
   async handleEnvelope(raw: unknown, now: number = Date.now()): Promise<void> {
-    if (!isActiveProjector()) return;
     const parsed = SealedEnvelopeSchema.safeParse(raw);
-    if (!parsed.success || parsed.data.to !== GM_ADDRESS) return;
+    if (!parsed.success || parsed.data.to !== PROJECTOR_ADDRESS) return;
     const envelope = parsed.data;
     const device = getDevice(envelope.from);
-    if (device === null || device.key === null) return;
+    if (device === null) return;
+    const ctx = deviceContext(device.meta);
+    const elected = ctx.responderId === game.user.id;
+    const key = await this.localKey(ctx);
+    if (key === null) return;
 
-    const opened = await this.openWithKeys(envelope, device.key, now);
+    const opened = await this.openWithKeys(envelope, key, now);
     if (opened === null) {
-      console.warn(
-        `[EVF] projector: rejected envelope from ${envelope.from} (authentication failed)`,
-      );
+      if (elected) {
+        console.warn(
+          `[EVF] projector: rejected envelope from ${envelope.from} (authentication failed)`,
+        );
+      }
       return;
     }
+    const g2UserId = device.meta.g2UserId;
+    this.online.set(g2UserId, now);
+    this.activeKeys.set(g2UserId, key);
+    this.responders.set(g2UserId, ctx.responderId);
+    if (!elected) return;
+
     const message = AppMessageSchema.safeParse(opened);
     if (!message.success) {
       console.warn(
@@ -186,10 +218,33 @@ export class Projector {
       );
       return;
     }
+    await touchDevice(g2UserId, now);
+    await this.dispatch(ctx, key, message.data);
+  }
 
-    this.online.set(device.meta.g2UserId, now);
-    await touchDevice(device.meta.g2UserId, now);
-    await this.dispatch(device.meta, device.key, message.data);
+  /**
+   * The device key THIS client can use for `ctx`, or null: the player's own storage
+   * for a self-paired device on the player's client, the player's `gmKeys` entry for
+   * this GM (opened with this client's identity key), or this browser's storage for a
+   * device paired on the player's behalf / legacy record.
+   */
+  private async localKey(ctx: DeviceContext): Promise<string | null> {
+    const { g2UserId, playerUserId } = ctx.meta;
+    if (ctx.selfDevice === null || game.user.id === playerUserId) {
+      return getDevice(g2UserId)?.key ?? null;
+    }
+    if (!game.user.isGM) return null;
+    const entry = ctx.gmKeys[game.user.id];
+    if (entry === undefined) return null;
+    const cached = this.openedGmKeys.get(entry.blob.ct);
+    if (cached !== undefined) return cached;
+    const priv = await myPrivateKey();
+    const key =
+      priv === null
+        ? null
+        : await openSealed(priv, entry.blob, deviceKeyContext(g2UserId, game.user.id));
+    this.openedGmKeys.set(entry.blob.ct, key);
+    return key;
   }
 
   private async openWithKeys(
@@ -205,10 +260,11 @@ export class Projector {
     return retry.ok ? retry.message : null;
   }
 
-  private async dispatch(meta: DeviceMeta, key: string, message: AppMessage): Promise<void> {
+  private async dispatch(ctx: DeviceContext, key: string, message: AppMessage): Promise<void> {
+    const meta = servedMeta(ctx);
     switch (message.t) {
       case 'hello':
-        await this.onHello(meta, key, message.rid);
+        await this.onHello(ctx, key, message.rid);
         return;
       case 'get':
         await this.send(meta.g2UserId, key, {
@@ -227,7 +283,8 @@ export class Projector {
     }
   }
 
-  private async onHello(meta: DeviceMeta, key: string, rid: string): Promise<void> {
+  private async onHello(ctx: DeviceContext, key: string, rid: string): Promise<void> {
+    const meta = servedMeta(ctx);
     const actor = game.actors.get(meta.actorId);
     if (actor === undefined) {
       await this.send(meta.g2UserId, key, {
@@ -238,43 +295,81 @@ export class Projector {
       });
       return;
     }
-    const welcome: ProjectorMessage = {
+    const welcome: WelcomeMessage = {
       t: 'welcome',
       rid,
       actorId: actor.id,
       actorName: actor.name,
       userName: meta.label,
-      gmName: game.user.name ?? '',
+      gmName: game.users.activeGM?.name ?? '',
       worldTitle: game.world?.title ?? '',
       ...(game.i18n?.lang ? { locale: game.i18n.lang } : {}),
     };
 
-    if (meta.pendingRotation) {
-      // One-time credentials: set the new Foundry password first (if it fails the
-      // welcome goes out without `rotate` and the QR stays valid), send the new key
-      // sealed with the OLD key, then persist it and keep the old one for a grace period.
-      const password = generatePassword();
-      const newKey = generateDeviceKey();
-      try {
-        await setG2Password(meta.g2UserId, password);
-      } catch (err) {
-        console.error(
-          `[EVF] projector: password rotation failed for ${meta.g2UserId}; keeping pairing credentials`,
-          err,
-        );
-        await this.send(meta.g2UserId, key, welcome);
-        await this.pushAllSnapshots(meta, key);
-        return;
-      }
-      await this.send(meta.g2UserId, key, { ...welcome, rotate: { password, key: newKey } });
-      this.graceKeys.set(meta.g2UserId, { key, until: Date.now() + KEY_GRACE_MS });
-      await setDeviceKey(meta.g2UserId, newKey);
-      await updateDeviceMeta(meta.g2UserId, { pendingRotation: false });
-      await this.pushAllSnapshots(meta, newKey);
+    if (ctx.selfDevice?.pendingRotation === true && game.user.id === meta.playerUserId) {
+      await this.rotateSelfPaired(meta, key, welcome);
+      return;
+    }
+    if (ctx.selfDevice === null && meta.pendingRotation && game.user.isGM) {
+      await this.rotateGmPaired(meta, key, welcome);
       return;
     }
     await this.send(meta.g2UserId, key, welcome);
     await this.pushAllSnapshots(meta, key);
+  }
+
+  /**
+   * Player client, first `hello` after a self-service QR: only the device key rotates
+   * (a player cannot change a Foundry password); the new key is re-sealed for the GMs.
+   */
+  private async rotateSelfPaired(
+    meta: DeviceMeta,
+    key: string,
+    welcome: WelcomeMessage,
+  ): Promise<void> {
+    const newKey = generateDeviceKey();
+    await this.send(meta.g2UserId, key, { ...welcome, rotate: { key: newKey } });
+    this.graceKeys.set(meta.g2UserId, { key, until: Date.now() + KEY_GRACE_MS });
+    this.activeKeys.set(meta.g2UserId, newKey);
+    await rotateSelfKey(meta.g2UserId, newKey);
+    await this.pushAllSnapshots(meta, newKey);
+  }
+
+  /**
+   * GM client, first `hello` after a QR shown on the player's behalf: one-time
+   * credentials. The new Foundry password is set first (if it fails the welcome goes
+   * out without `rotate` and the QR stays valid), the new key is sent sealed with the
+   * OLD key, then persisted; the old key stays accepted for a grace period. When the
+   * player has glasses enabled, the new password is re-delivered sealed to them.
+   */
+  private async rotateGmPaired(
+    meta: DeviceMeta,
+    key: string,
+    welcome: WelcomeMessage,
+  ): Promise<void> {
+    const password = generatePassword();
+    const newKey = generateDeviceKey();
+    try {
+      await setG2Password(meta.g2UserId, password);
+    } catch (err) {
+      console.error(
+        `[EVF] projector: password rotation failed for ${meta.g2UserId}; keeping pairing credentials`,
+        err,
+      );
+      await this.send(meta.g2UserId, key, welcome);
+      await this.pushAllSnapshots(meta, key);
+      return;
+    }
+    await this.send(meta.g2UserId, key, {
+      ...welcome,
+      rotate: { password, key: newKey },
+    });
+    this.graceKeys.set(meta.g2UserId, { key, until: Date.now() + KEY_GRACE_MS });
+    this.activeKeys.set(meta.g2UserId, newKey);
+    await setDeviceKey(meta.g2UserId, newKey);
+    await updateDeviceMeta(meta.g2UserId, { pendingRotation: false });
+    await deliverPassword(meta.playerUserId, meta.g2UserId, password);
+    await this.pushAllSnapshots(meta, newKey);
   }
 
   private async pushAllSnapshots(meta: DeviceMeta, key: string): Promise<void> {
@@ -330,6 +425,8 @@ export class Projector {
         return fail('invalid_target', `token ${resolved.invalidId} is not visible on the scene`);
       }
       targets = resolved.uuids;
+      // A player client acts as that player: vanilla dnd5e reads `game.user.targets`.
+      if (!game.user.isGM) applyOwnTargets(ids);
     }
     const result = await dispatchTool(tool, {
       args: { ...args, ...(targets !== undefined ? { targets } : {}), actor_id: meta.actorId },
@@ -379,13 +476,37 @@ export class Projector {
     }
   };
 
-  /** Sends `{t:'revoked'}` to a device (before the GM deletes it). No-op without key. */
+  /**
+   * Sends `{t:'revoked'}` to a device (before the GM deletes it). No-op when this
+   * client cannot open the device key.
+   */
   async revoke(g2UserId: string): Promise<void> {
     const device = getDevice(g2UserId);
-    if (device === null || device.key === null) return;
-    await this.send(g2UserId, device.key, { t: 'revoked' });
+    if (device === null) return;
+    const key = this.activeKeys.get(g2UserId) ?? (await this.localKey(deviceContext(device.meta)));
+    if (key === null) return;
+    await this.send(g2UserId, key, { t: 'revoked' });
     this.online.delete(g2UserId);
+    this.activeKeys.delete(g2UserId);
     this.graceKeys.delete(g2UserId);
+  }
+
+  /**
+   * Election may have changed (a user connected or left): push full snapshots to every
+   * online device this client just became responder for, so a projector switch is
+   * seamless for the glasses.
+   */
+  private onPresenceChange(): void {
+    for (const meta of listDevices()) {
+      const key = this.activeKeys.get(meta.g2UserId);
+      if (key === undefined || !this.isOnline(meta.g2UserId)) continue;
+      const ctx = deviceContext(meta);
+      const previous = this.responders.get(meta.g2UserId);
+      this.responders.set(meta.g2UserId, ctx.responderId);
+      if (ctx.responderId === game.user.id && previous !== game.user.id) {
+        this.fireAndForget(this.pushAllSnapshots(servedMeta(ctx), key));
+      }
+    }
   }
 
   /**
@@ -422,25 +543,26 @@ export class Projector {
     state.timer = setTimeout(() => {
       state.timer = null;
       state.lastSentAt = Date.now();
-      const device = getDevice(g2UserId);
-      if (device === null || device.key === null || !this.isOnline(g2UserId)) return;
+      const target = this.onlineDevices().find((d) => d.meta.g2UserId === g2UserId);
+      if (target === undefined) return;
       this.fireAndForget(
-        this.send(g2UserId, device.key, {
+        this.send(g2UserId, target.key, {
           t: 'snapshot',
           what: 'map',
-          data: this.snapshot(device.meta, 'map'),
+          data: this.snapshot(target.meta, 'map'),
         }),
       );
     }, wait);
   }
 
+  /** Online devices this client is currently elected for, with their served metadata. */
   private onlineDevices(): Array<{ meta: DeviceMeta; key: string }> {
-    if (!isActiveProjector()) return [];
     const out: Array<{ meta: DeviceMeta; key: string }> = [];
     for (const meta of listDevices()) {
-      if (!this.isOnline(meta.g2UserId)) continue;
-      const key = getDevice(meta.g2UserId)?.key;
-      if (typeof key === 'string') out.push({ meta, key });
+      const key = this.activeKeys.get(meta.g2UserId);
+      if (key === undefined || !this.isOnline(meta.g2UserId)) continue;
+      const ctx = deviceContext(meta);
+      if (ctx.responderId === game.user.id) out.push({ meta: servedMeta(ctx), key });
     }
     return out;
   }
@@ -452,7 +574,7 @@ export class Projector {
   }
 
   private async send(g2UserId: string, key: string, message: ProjectorMessage): Promise<void> {
-    const envelope = await seal(await this.cryptoKey(key), GM_ADDRESS, g2UserId, message);
+    const envelope = await seal(await this.cryptoKey(key), PROJECTOR_ADDRESS, g2UserId, message);
     game.socket?.emit(DIRECT_SOCKET_EVENT, envelope);
   }
 

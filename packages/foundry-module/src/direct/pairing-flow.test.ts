@@ -6,6 +6,7 @@ import {
   makeActor,
   makeUser,
 } from '../__tests__/direct-fixtures.js';
+import { enableGlasses, getAccess } from './glasses-access.js';
 import {
   checkEnvironment,
   expirePairing,
@@ -55,8 +56,9 @@ describe('pairing-flow', () => {
       ),
     ).toBe(true);
     expect(payload?.u).toBe(g2?.id);
-    expect(payload?.p).toBe(session.code.replaceAll('-', ''));
-    expect(payload?.k).toBe(await deriveKeyFromManualCode(session.code, g2?.id ?? ''));
+    const code = session.code ?? '';
+    expect(payload?.p).toBe(code.replaceAll('-', ''));
+    expect(payload?.k).toBe(await deriveKeyFromManualCode(code, g2?.id ?? ''));
 
     const device = getDevice(g2?.id ?? '');
     expect(device?.key).toBe(payload?.k);
@@ -119,6 +121,26 @@ describe('pairing-flow', () => {
     });
     expect(warn).toHaveBeenCalled();
     expect(getDevice(again.g2UserId)).toBeNull();
+  });
+
+  it('PF-06b revoking an enabled player also forgets the enablement and self-pairing flags', async () => {
+    const g2Id = await enableGlasses('p1');
+    const player = f.users.find((u) => u.id === 'p1');
+    if (player === undefined) throw new Error('p1');
+    player.flags = {
+      evenfoundryvtt: {
+        device: {
+          g2UserId: g2Id,
+          actorId: 'thorin',
+          pendingRotation: false,
+          playerHasKey: true,
+          updatedAt: 1,
+        },
+      },
+    };
+    await revokePairing(g2Id, async () => undefined);
+    expect(getAccess('p1')).toBeNull();
+    expect(player.flags.evenfoundryvtt).toEqual({});
   });
 
   it('PF-07 checkEnvironment reports https / served / socket', async () => {

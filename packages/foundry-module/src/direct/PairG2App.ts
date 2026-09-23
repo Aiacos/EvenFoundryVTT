@@ -1,9 +1,16 @@
 /**
- * «Associa occhiali G2» window (mock P01) — GM only. Opened from the settings menu or
- * from the Players list context menu (`players-menu.ts`, player + character
- * preselected).
+ * Glasses pairing window (mock P01) — one component, two modes (ADR-0013):
  *
- * Three states, one screen:
+ * - **GM mode** «Associa occhiali G2» (settings menu, Players list entry on a player):
+ *   one-time enablement of player-owned glasses («Abilita occhiali per i giocatori»,
+ *   per player or all, with status not enabled / enabled / paired / online and
+ *   «Rigenera password»), pairing **on behalf** of a player without Foundry (QR shown
+ *   on the GM screen, ADR-0012 flow), and revocation;
+ * - **player mode** «Associa i miei occhiali» (player settings menu, Players list
+ *   entry on themselves): self-service QR for the player's own glasses, generated in
+ *   the player's browser (`self-pairing.ts`) — no GM needed after enablement.
+ *
+ * Three pairing states, one screen (both modes):
  * - **idle** — steps 1-2-3 and the primary *Genera QR* button;
  * - **session** — large QR, countdown (progress bar + `mm:ss`, then hidden and
  *   credentials rotated), manual 16-char code grouped `XXXX-XXXX-XXXX-XXXX` + copy;
@@ -11,12 +18,13 @@
  *   `hello` while the window is open («Occhiali collegati · Thorin»). Detected on the
  *   1-second countdown tick from state the projector already maintains: the device is
  *   online (`Projector.isOnline`) or its one-time credentials were consumed
- *   (`DeviceMeta.pendingRotation === false`, written by the projector on `hello`).
+ *   (`pendingRotation === false` — world `DeviceMeta` for GM pairing, the player's own
+ *   `device` flag for self-service — written by the projector on `hello`).
  *
  * Always visible: environment checks as status pills (HTTPS · public address · module
- * served · socket) with an actionable fix + setup-guide link per failure, and the
- * paired-device list (online dot, actor, relative last contact, *Revoca* with inline
- * confirmation). Styles: `styles/pair-g2.css` (module.json `styles`).
+ * served · socket) with an actionable fix + setup-guide link per failure; in GM mode
+ * also the paired-device list (online dot, actor, relative last contact, *Revoca* with
+ * inline confirmation). Styles: `styles/pair-g2.css` (module.json `styles`).
  *
  * Built as `HandlebarsApplicationMixin(ApplicationV2)` (Foundry v13+ API). The class
  * is created by a factory at `init` time because `foundry.applications.api` is a
@@ -27,6 +35,15 @@
  */
 import { listPlayerCharacters } from '../readers/character-reader.js';
 import { isG2User } from './g2-user.js';
+import {
+  eligiblePlayers,
+  enableGlasses,
+  getAccess,
+  openMyPassword,
+  regeneratePassword,
+} from './glasses-access.js';
+import { readSelfDevice } from './glasses-flags.js';
+import { keyIdOf, publicKeyOf } from './identity-keys.js';
 import {
   checkEnvironment,
   type EnvironmentCheck,
@@ -39,12 +56,39 @@ import {
 import { getDevice, listDevices } from './pairing-store.js';
 import type { PairTarget } from './players-menu.js';
 import type { Projector } from './projector.js';
+import {
+  expireSelfPairing,
+  ownedCharacters,
+  type SelfPairingBlock,
+  SelfPairingError,
+  startSelfPairing,
+} from './self-pairing.js';
 
 /** Template path served by Foundry. */
 export const PAIR_TEMPLATE = 'modules/evenfoundryvtt/templates/pair-g2.hbs' as const;
 
-/** ApplicationV2 id of the pairing window (one instance at a time). */
+/** ApplicationV2 id of the GM pairing window (one instance at a time). */
 export const PAIR_APP_ID = 'evf-pair-g2' as const;
+/** ApplicationV2 id of the player's own pairing window. */
+export const PAIR_SELF_APP_ID = 'evf-pair-my-g2' as const;
+
+/** Who uses the window: the GM (enablement + on-behalf) or a player (self-service). */
+export type PairMode = 'gm' | 'player';
+
+/** Glasses status of a player, as shown in the GM enablement list. */
+export type GlassesStatus = 'disabled' | 'enabled' | 'paired' | 'online';
+
+/** One row of the GM enablement list. */
+export interface EnablementRow {
+  playerUserId: string;
+  name: string;
+  status: GlassesStatus;
+  /** i18n key of the status pill. */
+  statusLabel: string;
+  enabled: boolean;
+  /** Enabled, but the password is not yet sealed for the player's current browser. */
+  waiting: boolean;
+}
 
 /** Setup guide on GitHub; anchors are the GitHub slugs of its headings. */
 const SETUP_GUIDE = 'https://github.com/Aiacos/EvenFoundryVTT/blob/main/docs/setup-guide.md';
@@ -101,6 +145,14 @@ export type SessionView = PairingSession & {
 
 /** Template context of `pair-g2.hbs`. */
 export interface PairContext {
+  mode: PairMode;
+  isGm: boolean;
+  /** Player mode: why self-service pairing is unavailable. */
+  selfBlock: SelfPairingBlock | null;
+  /** i18n key explaining {@link PairContext.selfBlock}. */
+  selfBlockLabel: string | null;
+  /** GM mode: glasses status per player. */
+  enablement: EnablementRow[];
   players: Array<{ id: string; name: string; selected: boolean }>;
   actors: Array<{ id: string; name: string; selected: boolean }>;
   session: SessionView | null;
@@ -146,9 +198,33 @@ export function formatRemaining(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/** Groups of the manual code (dash separated). */
-export function codeGroups(code: string): string[] {
-  return code.split('-').filter((g) => g.length > 0);
+/** Groups of the manual code (dash separated); none when there is no manual code. */
+export function codeGroups(code: string | null): string[] {
+  return (code ?? '').split('-').filter((g) => g.length > 0);
+}
+
+/**
+ * Glasses status of `player` (GM enablement list): online > paired > enabled >
+ * disabled. "Paired" = self-paired (player flag) or paired on behalf (GM-held key).
+ */
+export function glassesStatus(
+  player: Pick<FoundryUser, 'id' | 'flags'>,
+  isOnline: (g2UserId: string) => boolean,
+): { status: GlassesStatus; waiting: boolean } {
+  const access = getAccess(player.id);
+  const device = listDevices().find((d) => d.playerUserId === player.id);
+  const g2UserId = access?.g2UserId ?? device?.g2UserId;
+  const pub = publicKeyOf(player);
+  const waiting = access !== null && (pub === null || access.sealedFor !== keyIdOf(pub));
+  if (g2UserId === undefined) return { status: 'disabled', waiting };
+  if (isOnline(g2UserId) || game.users.get(g2UserId)?.active === true) {
+    return { status: 'online', waiting };
+  }
+  const selfPaired = readSelfDevice(player)?.g2UserId === g2UserId;
+  // keyHolder: a GM id (paired on behalf) or undefined (legacy ADR-0012 pairing).
+  const gmPaired = device !== undefined && device.keyHolder !== null;
+  if (selfPaired || gmPaired) return { status: 'paired', waiting };
+  return { status: access === null ? 'disabled' : 'enabled', waiting };
 }
 
 /** Localised "last contact" text for a device. */
@@ -180,18 +256,25 @@ interface ActionTarget {
 }
 
 /**
- * Creates the PairG2App class bound to the projector (used for online state and to
- * seal `revoked` before a device is deleted).
+ * Creates the pairing window class bound to the projector (used for online state and
+ * to seal `revoked` before a device is deleted).
+ *
+ * @param projector - this client's projector
+ * @param mode      - `'gm'` (default) or `'player'` (self-service, «Associa i miei occhiali»)
  */
-export function createPairG2App(projector: Projector) {
+export function createPairG2App(projector: Projector, mode: PairMode = 'gm') {
   const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+  const isGmMode = mode === 'gm';
 
   class PairG2App extends HandlebarsApplicationMixin(ApplicationV2) {
     static DEFAULT_OPTIONS = {
-      id: PAIR_APP_ID,
+      id: isGmMode ? PAIR_APP_ID : PAIR_SELF_APP_ID,
       tag: 'div',
       classes: ['evf-pair-g2'],
-      window: { title: 'evf.pair.title', icon: 'fas fa-glasses' },
+      window: {
+        title: isGmMode ? 'evf.pair.title' : 'evf.pair.self.title',
+        icon: 'fas fa-glasses',
+      },
       position: { width: 680, height: 'auto' },
       actions: {
         pair(this: PairG2App): Promise<void> {
@@ -212,11 +295,25 @@ export function createPairG2App(projector: Projector) {
         pairAnother(this: PairG2App): Promise<void> {
           return this.pairAnother();
         },
+        enable(this: PairG2App, _event: Event, target: ActionTarget): Promise<void> {
+          return this.enable(target.dataset.userId === undefined ? [] : [target.dataset.userId]);
+        },
+        enableAll(this: PairG2App): Promise<void> {
+          return this.enable(
+            eligiblePlayers()
+              .filter((u) => getAccess(u.id) === null)
+              .map((u) => u.id),
+          );
+        },
+        regenerate(this: PairG2App, _event: Event, target: ActionTarget): Promise<void> {
+          return this.regenerate(target.dataset.userId);
+        },
       },
     };
 
     static PARTS = { main: { template: PAIR_TEMPLATE } };
 
+    readonly mode: PairMode = mode;
     session: PairingSession | null = null;
     expired = false;
     checks: EnvironmentCheck | null = null;
@@ -227,16 +324,16 @@ export function createPairG2App(projector: Projector) {
     private ticker: ReturnType<typeof setInterval> | null = null;
 
     /**
-     * Opens the pairing window preselected on `target`, reusing the open instance
+     * Opens the window (preselected on `target` in GM mode), reusing the open instance
      * (ApplicationV2 ids are unique) when there is one.
      */
-    static async openFor(target: PairTarget): Promise<PairG2App> {
+    static async openFor(target: PairTarget | null): Promise<PairG2App> {
       // `foundry.applications.instances` (v13+ registry of rendered ApplicationV2s) is
       // outside our minimal global typings.
       const registry = (foundry.applications as { instances?: Map<string, unknown> }).instances;
-      const open = registry?.get(PAIR_APP_ID);
+      const open = registry?.get(PairG2App.DEFAULT_OPTIONS.id);
       const app = open instanceof PairG2App ? open : new PairG2App();
-      app.preselect(target);
+      if (target !== null) app.preselect(target);
       return app.render({ force: true });
     }
 
@@ -251,6 +348,27 @@ export function createPairG2App(projector: Projector) {
       this.checks ??= await checkEnvironment();
       const checkRows = toCheckRows(this.checks);
       const now = Date.now();
+      const base = {
+        mode: this.mode,
+        isGm: isGmMode,
+        session: this.session === null ? null : sessionView(this.session, now),
+        expired: this.expired,
+        connected: this.connected,
+        checks: checkRows,
+        checksOk: checkRows.every((c) => c.state === 'ok'),
+        baseUrlHint: this.session?.url.split('#')[0] ?? '',
+      };
+      const view = isGmMode ? this.gmContext(now) : await this.selfContext();
+      return {
+        ...base,
+        ...view,
+        selfBlockLabel: view.selfBlock === null ? null : `evf.pair.self.${view.selfBlock}`,
+      };
+    }
+
+    private gmContext(
+      now: number,
+    ): Pick<PairContext, 'selfBlock' | 'enablement' | 'players' | 'actors' | 'devices'> {
       const players = game.users.contents.filter((u) => !u.isGM && !isG2User(u));
       const actors = listPlayerCharacters();
       const player = this.selectedPlayer ?? players[0]?.id ?? null;
@@ -259,21 +377,28 @@ export function createPairG2App(projector: Projector) {
         game.users.get(player ?? '')?.character?.id ??
         actors[0]?.actorId ??
         null;
+      const isOnline = (id: string): boolean => projector.isOnline(id, now);
       return {
+        selfBlock: null,
+        enablement: players.map((u) => {
+          const { status, waiting } = glassesStatus(u, isOnline);
+          return {
+            playerUserId: u.id,
+            name: u.name ?? u.id,
+            status,
+            statusLabel: `evf.pair.enable.status.${status}`,
+            enabled: getAccess(u.id) !== null,
+            waiting,
+          };
+        }),
         players: players.map((u) => ({
           id: u.id,
           name: u.name ?? u.id,
           selected: u.id === player,
         })),
         actors: actors.map((a) => ({ id: a.actorId, name: a.name, selected: a.actorId === actor })),
-        session: this.session === null ? null : sessionView(this.session, now),
-        expired: this.expired,
-        connected: this.connected,
-        checks: checkRows,
-        checksOk: checkRows.every((c) => c.state === 'ok'),
-        baseUrlHint: this.session?.url.split('#')[0] ?? '',
         devices: listDevices().map((d) => {
-          const online = projector.isOnline(d.g2UserId, now);
+          const online = isOnline(d.g2UserId);
           return {
             g2UserId: d.g2UserId,
             label: d.label,
@@ -283,6 +408,26 @@ export function createPairG2App(projector: Projector) {
             confirming: this.confirmingRevoke === d.g2UserId,
           };
         }),
+      };
+    }
+
+    private async selfContext(): Promise<
+      Pick<PairContext, 'selfBlock' | 'enablement' | 'players' | 'actors' | 'devices'>
+    > {
+      const owned = ownedCharacters();
+      const device = readSelfDevice(game.user);
+      const actor =
+        this.selectedActor ?? device?.actorId ?? game.user.character?.id ?? owned[0]?.id ?? null;
+      let selfBlock: SelfPairingBlock | null = null;
+      if (getAccess(game.user.id) === null) selfBlock = 'not_enabled';
+      else if ((await openMyPassword()) === null) selfBlock = 'password_pending';
+      else if (owned.length === 0) selfBlock = 'no_actor';
+      return {
+        selfBlock,
+        enablement: [],
+        players: [],
+        actors: owned.map((a) => ({ id: a.id, name: a.name, selected: a.id === actor })),
+        devices: [],
       };
     }
 
@@ -336,7 +481,8 @@ export function createPairG2App(projector: Projector) {
       this.expired = true;
       this.stopTicker();
       try {
-        await expirePairing(g2UserId);
+        if (isGmMode) await expirePairing(g2UserId);
+        else await expireSelfPairing(g2UserId);
       } catch (err) {
         console.error('[EVF] could not rotate expired pairing credentials', err);
         ui.notifications?.error(game.i18n.localize('evf.pair.error.expire'));
@@ -344,31 +490,40 @@ export function createPairG2App(projector: Projector) {
       await this.render();
     }
 
-    /** Generates a new QR + code for the selected player / character. */
+    /**
+     * Generates a new QR + code: for the selected player / character (GM mode, on the
+     * player's behalf) or for this player's own glasses (player mode).
+     */
     async pair(): Promise<void> {
       const context = await this._prepareContext();
       const player = context.players.find((p) => p.selected)?.id;
       const actor = context.actors.find((a) => a.selected)?.id;
-      if (player === undefined || actor === undefined) {
+      if ((isGmMode && player === undefined) || actor === undefined) {
         ui.notifications?.error(game.i18n.localize('evf.pair.error.select'));
         return;
       }
       try {
-        this.session = await startPairing(player, actor);
+        this.session =
+          player === undefined ? await startSelfPairing(actor) : await startPairing(player, actor);
         this.expired = false;
         this.connected = null;
       } catch (err) {
-        console.error('[EVF] pairing failed', err);
-        ui.notifications?.error(game.i18n.localize('evf.pair.error.pair'));
+        if (err instanceof SelfPairingError) {
+          ui.notifications?.error(game.i18n.localize(`evf.pair.self.${err.reason}`));
+        } else {
+          console.error('[EVF] pairing failed', err);
+          ui.notifications?.error(game.i18n.localize('evf.pair.error.pair'));
+        }
       }
       await this.render();
     }
 
     /** Copies the manual code to the clipboard. */
     async copyCode(): Promise<void> {
-      if (this.session === null) return;
+      const code = this.session?.code;
+      if (code === undefined || code === null) return;
       try {
-        await navigator.clipboard.writeText(this.session.code);
+        await navigator.clipboard.writeText(code);
         ui.notifications?.info(game.i18n.localize('evf.pair.code_copied'));
       } catch (err) {
         console.warn('[EVF] clipboard unavailable', err);
@@ -409,9 +564,46 @@ export function createPairG2App(projector: Projector) {
       await this.render();
     }
 
+    /** «Abilita occhiali per i giocatori»: enables each player in turn (GM mode). */
+    async enable(playerUserIds: readonly string[]): Promise<void> {
+      let failed = false;
+      for (const id of playerUserIds) {
+        try {
+          await enableGlasses(id);
+        } catch (err) {
+          failed = true;
+          console.error(`[EVF] could not enable glasses for ${id}`, err);
+        }
+      }
+      if (failed) ui.notifications?.error(game.i18n.localize('evf.pair.error.enable'));
+      else if (playerUserIds.length > 0) {
+        ui.notifications?.info(
+          game.i18n.format('evf.pair.enable.done', { count: playerUserIds.length }),
+        );
+      }
+      await this.render();
+    }
+
+    /** «Rigenera password» for one enabled player (GM mode). */
+    async regenerate(playerUserId: string | undefined): Promise<void> {
+      if (playerUserId === undefined) return;
+      try {
+        await regeneratePassword(playerUserId);
+        ui.notifications?.info(game.i18n.localize('evf.pair.enable.regenerated'));
+      } catch (err) {
+        console.error('[EVF] password regeneration failed', err);
+        ui.notifications?.error(game.i18n.localize('evf.pair.error.regenerate'));
+      }
+      await this.render();
+    }
+
     /** The device of the open session said `hello` (online, or one-time creds used). */
     private hasConnected(g2UserId: string, now: number): boolean {
       if (projector.isOnline(g2UserId, now)) return true;
+      if (!isGmMode) {
+        const own = readSelfDevice(game.user);
+        return own?.g2UserId === g2UserId && !own.pendingRotation;
+      }
       return getDevice(g2UserId)?.meta.pendingRotation === false;
     }
 

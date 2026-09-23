@@ -1,16 +1,21 @@
+import { generateIdentityKeyPair } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  becomeClient,
   type FoundryMock,
   installFoundry,
   makeActor,
   makeUser,
 } from '../__tests__/direct-fixtures.js';
+import { enableGlasses, getAccess } from './glasses-access.js';
 import {
   codeGroups,
   createPairG2App,
   formatLastSeen,
   formatRemaining,
+  glassesStatus,
   PAIR_APP_ID,
+  PAIR_SELF_APP_ID,
   PAIR_TEMPLATE,
   type PairContext,
   sessionView,
@@ -42,11 +47,13 @@ interface AppLike {
   recheck(): Promise<void>;
   pairAnother(): Promise<void>;
   preselect(target: PairTarget): void;
+  enable(ids: readonly string[]): Promise<void>;
+  regenerate(id: string | undefined): Promise<void>;
 }
 
 interface AppClassLike {
   new (): AppLike;
-  openFor(target: PairTarget): Promise<AppLike>;
+  openFor(target: PairTarget | null): Promise<AppLike>;
 }
 
 let f: FoundryMock;
@@ -106,6 +113,9 @@ describe('PairG2App', () => {
       'confirmRevoke',
       'recheck',
       'pairAnother',
+      'enable',
+      'enableAll',
+      'regenerate',
     ]);
     expect(App.PARTS.main.template).toBe(PAIR_TEMPLATE);
   });
@@ -428,5 +438,165 @@ describe('view helpers', () => {
     expect(view).toMatchObject({ remaining: '01:31', secondsLeft: 91 });
     expect(view.secondsTotal).toBe(PAIRING_TTL_MS / 1000);
     expect(sessionView({ ...view, expiresAt: 0 }, 5).secondsLeft).toBe(0);
+  });
+
+  it('PA-14 GM enablement: statuses, enable one / all, regenerate, failures reported', async () => {
+    const app = makeApp();
+    let ctx = await app._prepareContext();
+    expect(ctx).toMatchObject({ mode: 'gm', isGm: true, selfBlock: null, selfBlockLabel: null });
+    expect(ctx.enablement.map((r) => [r.playerUserId, r.status, r.enabled])).toEqual([
+      ['p1', 'disabled', false],
+      ['p2', 'disabled', false],
+    ]);
+    await app.enable(['p1']);
+    expect(f.notifications.info).toHaveBeenCalledWith('evf.pair.enable.done:{"count":1}');
+    ctx = await app._prepareContext();
+    expect(ctx.enablement[0]).toMatchObject({
+      status: 'enabled',
+      statusLabel: 'evf.pair.enable.status.enabled',
+      enabled: true,
+      waiting: true, // p1 never published a key
+    });
+    const App = createPairG2App(projector as unknown as Projector) as unknown as {
+      DEFAULT_OPTIONS: {
+        actions: Record<
+          string,
+          (this: AppLike, e: Event, t: { dataset: DOMStringMap }) => Promise<void>
+        >;
+      };
+    };
+    const ev = new Event('click');
+    await App.DEFAULT_OPTIONS.actions.enableAll?.call(app, ev, { dataset: {} });
+    expect(getAccess('p2')).not.toBeNull();
+    await App.DEFAULT_OPTIONS.actions.enable?.call(app, ev, { dataset: {} }); // nothing to do
+    await App.DEFAULT_OPTIONS.actions.regenerate?.call(app, ev, { dataset: { userId: 'p1' } });
+    expect(f.notifications.info).toHaveBeenCalledWith('evf.pair.enable.regenerated');
+    await app.regenerate(undefined);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await app.enable(['gm1']);
+    expect(f.notifications.error).toHaveBeenCalledWith('evf.pair.error.enable');
+    await app.regenerate('ghost');
+    expect(f.notifications.error).toHaveBeenCalledWith('evf.pair.error.regenerate');
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('PA-15 glassesStatus: online > paired (self or on behalf) > enabled > disabled', async () => {
+    const p1 = f.users.find((u) => u.id === 'p1');
+    if (p1 === undefined) throw new Error('p1');
+    const off = (): boolean => false;
+    expect(glassesStatus(p1, off).status).toBe('disabled');
+    const g2Id = await enableGlasses('p1');
+    expect(glassesStatus(p1, off).status).toBe('enabled');
+    p1.flags = {
+      ...p1.flags,
+      evenfoundryvtt: {
+        ...p1.flags.evenfoundryvtt,
+        device: {
+          g2UserId: g2Id,
+          actorId: 'mira',
+          pendingRotation: false,
+          playerHasKey: true,
+          updatedAt: 1,
+        },
+      },
+    };
+    expect(glassesStatus(p1, off).status).toBe('paired');
+    expect(glassesStatus(p1, (id) => id === g2Id).status).toBe('online');
+    const g2 = f.users.find((u) => u.id === g2Id);
+    if (g2 === undefined) throw new Error('g2');
+    g2.active = true;
+    expect(glassesStatus(p1, off).status).toBe('online');
+    // Paired on behalf of p2 (GM-held key), not enabled.
+    const p2 = f.users.find((u) => u.id === 'p2');
+    if (p2 === undefined) throw new Error('p2');
+    await upsertDevice(
+      {
+        g2UserId: 'g2b',
+        playerUserId: 'p2',
+        actorId: 'thorin',
+        label: 'Bea (G2)',
+        createdAt: 1,
+        lastSeenAt: null,
+        pendingRotation: false,
+        keyHolder: 'gm1',
+      },
+      'k'.repeat(43),
+    );
+    expect(glassesStatus(p2, off)).toEqual({ status: 'paired', waiting: false });
+  });
+
+  it('PA-16 player mode: self-service QR, blocks explained, expiry and connection from own flags', async () => {
+    const browsers = new Map<string, Map<string, unknown>>();
+    const gmId = await generateIdentityKeyPair();
+    const pId = await generateIdentityKeyPair();
+    becomeClient(f, 'gm1', browsers, gmId);
+    const Self = createPairG2App(
+      projector as unknown as Projector,
+      'player',
+    ) as unknown as AppClassLike & {
+      DEFAULT_OPTIONS: { id: string; window: { title: string } };
+    };
+    expect(Self.DEFAULT_OPTIONS.id).toBe(PAIR_SELF_APP_ID);
+    expect(Self.DEFAULT_OPTIONS.window.title).toBe('evf.pair.self.title');
+
+    becomeClient(f, 'p1', browsers, pId);
+    let app = new (Self as unknown as new () => AppLike)();
+    let ctx = await app._prepareContext();
+    expect(ctx).toMatchObject({
+      mode: 'player',
+      isGm: false,
+      selfBlock: 'not_enabled',
+      players: [],
+      devices: [],
+    });
+    expect(ctx.selfBlockLabel).toBe('evf.pair.self.not_enabled');
+
+    becomeClient(f, 'gm1', browsers, null);
+    const mira = f.actors.get('mira') as { ownership: Record<string, number> };
+    mira.ownership = { p1: 3 };
+    const g2Id = await enableGlasses('p1');
+    becomeClient(f, 'p1', browsers, null);
+    app = await Self.openFor(null);
+    ctx = await app._prepareContext();
+    expect(ctx.selfBlock).toBeNull();
+    expect(ctx.actors).toEqual([{ id: 'mira', name: 'Mira', selected: true }]);
+
+    await app.pair();
+    const session = app.session;
+    expect(session?.g2UserId).toBe(g2Id);
+    // Expiry rotates the self key.
+    const before = getDevice(g2Id)?.key;
+    await app.tick((session?.expiresAt ?? 0) + 1);
+    expect(app.expired).toBe(true);
+    expect(getDevice(g2Id)?.key).not.toBe(before);
+
+    // New QR; the player's projector consumes it (pendingRotation false on the own flag).
+    await app.pair();
+    const p1 = f.users.find((u) => u.id === 'p1');
+    const device = p1?.flags.evenfoundryvtt?.device as { pendingRotation: boolean };
+    device.pendingRotation = false;
+    await app.tick((app.session?.expiresAt ?? 0) - 1_000);
+    expect(app.connected).toEqual({ label: 'Luca (G2)', actorName: 'Mira' });
+
+    // Owning nothing → no_actor; not-owned selection refused with its reason.
+    mira.ownership = {};
+    ctx = await app._prepareContext();
+    expect(ctx.selfBlock).toBe('no_actor');
+    app.selectedActor = 'mira';
+    ctx.actors.push({ id: 'mira', name: 'Mira', selected: true });
+    app._prepareContext = async () => ctx;
+    await app.pair();
+    expect(f.notifications.error).toHaveBeenCalledWith('evf.pair.self.no_actor');
+  });
+
+  it('PA-17 codeGroups handles a missing manual code; copy is a no-op without code', async () => {
+    expect(codeGroups(null)).toEqual([]);
+    const app = makeApp();
+    app.session = { g2UserId: 'x', code: null as unknown as string, expiresAt: 0 };
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    await app.copyCode();
+    expect(writeText).not.toHaveBeenCalled();
   });
 });

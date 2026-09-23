@@ -212,10 +212,16 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
           // non-deterministic double-execution hazard; research §2). MidiQOL is
           // the automation layer. We NEVER call rollAttack, NEVER register a
           // roll hook, and NEVER mutate game.user.targets.
-          if (!vanillaWarned && (args.advantage !== 'normal' || args.targets.length > 0)) {
+          // On a player-client projector (ADR-0013) targets are already the player's
+          // own Foundry targets (read by vanilla dnd5e); only a GM client lacks them.
+          const lost = [
+            args.advantage !== 'normal' ? 'advantage' : '',
+            args.targets.length > 0 && game.user?.isGM ? 'targets' : '',
+          ].filter((x) => x !== '');
+          if (!vanillaWarned && lost.length > 0) {
             console.warn(
-              '[weapon-attack] advantage/target auto-application requires MidiQOL (midi-qol) ' +
-                'and is not active — advantage/targets were not applied to this roll.',
+              `[weapon-attack] ${lost.join('/')} auto-application requires MidiQOL (midi-qol) ` +
+                `and is not active — ${lost.join('/')} not applied to this roll.`,
             );
             vanillaWarned = true;
           }

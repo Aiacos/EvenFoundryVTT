@@ -1,13 +1,22 @@
 /**
- * Paired-device registry for the direct G2 channel (ADR-0012 §Decision Outcome 5).
+ * Paired-device registry for the direct G2 channel (ADR-0012 §Decision Outcome 5,
+ * amended by ADR-0013).
  *
  * Storage split — the whole point of this module:
  * - **Secrets** (per-device AES-256 key, base64url) live ONLY in a hidden
- *   `scope: 'client'` setting, i.e. the browser storage of the GM client that paired
- *   the device. They never reach the Foundry server or other clients.
+ *   `scope: 'client'` setting, i.e. the browser storage of the client that paired the
+ *   device: the **player's own browser** for self-service pairing (ADR-0013), or the GM
+ *   browser for pairing on behalf of a player (ADR-0012 flow, kept). They never reach
+ *   the Foundry server in clear (player keys travel to GMs only sealed — see
+ *   `glasses-flags.ts`).
  * - **Public metadata** (which "(G2)" user, for which player/actor, label, timestamps,
- *   pending-rotation flag) lives in a hidden `scope: 'world'` setting so every GM sees
- *   the paired-device list.
+ *   pending-rotation flag, which GM holds the key) lives in a hidden `scope: 'world'`
+ *   setting readable by every client (projector election needs it). Only GMs write it:
+ *   world settings are GM-managed, so every writer here no-ops on player clients.
+ *
+ * Migration from ADR-0012 records: they have no `keyHolder`; {@link migrateKeyHolders}
+ * stamps the GM whose browser holds the key, and until then the election treats the
+ * active GM as holder (ADR-0012 behaviour).
  *
  * Values read back from settings are treated as untrusted and re-validated (a
  * corrupted or hand-edited setting degrades to "no devices", never throws).
@@ -41,9 +50,15 @@ export interface DeviceMeta {
   lastSeenAt: number | null;
   /** True until the first `hello` consumed the one-time QR/manual credentials. */
   pendingRotation: boolean;
+  /**
+   * GM user whose browser holds the device key (pairing on behalf of the player);
+   * `null` = no GM-held key (glasses enabled for self-service only); absent = legacy
+   * ADR-0012 record (the active GM is assumed to hold it).
+   */
+  keyHolder?: string | null;
 }
 
-/** A device with its secret key (null when this GM client does not hold the key). */
+/** A device with its secret key (null when this client does not hold the key). */
 export interface PairedDevice {
   meta: DeviceMeta;
   key: string | null;
@@ -77,7 +92,8 @@ function isDeviceMeta(value: unknown): value is DeviceMeta {
     typeof v.label === 'string' &&
     typeof v.createdAt === 'number' &&
     (v.lastSeenAt === null || typeof v.lastSeenAt === 'number') &&
-    typeof v.pendingRotation === 'boolean'
+    typeof v.pendingRotation === 'boolean' &&
+    (v.keyHolder === undefined || v.keyHolder === null || typeof v.keyHolder === 'string')
   );
 }
 
@@ -109,7 +125,7 @@ export function listDevices(): DeviceMeta[] {
 /**
  * Looks up a device by its "(G2)" user id.
  *
- * @returns metadata + key (key is null when this GM browser did not pair the device),
+ * @returns metadata + key (key is null when this browser did not pair the device),
  *          or null when the user id is not a paired device.
  */
 export function getDevice(g2UserId: string): PairedDevice | null {
@@ -120,29 +136,42 @@ export function getDevice(g2UserId: string): PairedDevice | null {
 
 /**
  * Creates or replaces a device: metadata to the world setting, key to the client
- * setting.
+ * setting (GM only — pairing on behalf / enablement).
  */
-export async function upsertDevice(meta: DeviceMeta, key: string): Promise<void> {
+export async function upsertDevice(meta: DeviceMeta, key: string | null): Promise<void> {
   const metas = readMetaRecord();
   metas[meta.g2UserId] = meta;
-  const keys = readKeyRecord();
-  keys[meta.g2UserId] = key;
-  await game.settings.set(MODULE_ID, DEVICE_KEYS_SETTING, keys);
+  if (key !== null) await setDeviceKey(meta.g2UserId, key);
   await game.settings.set(MODULE_ID, DEVICES_SETTING, metas);
 }
 
-/** Replaces only the secret key of an existing device (used by rotation). */
+/**
+ * Stores the secret key of a device in THIS browser (rotation, self-service pairing).
+ * Client-scope: allowed on player clients too.
+ */
 export async function setDeviceKey(g2UserId: string, key: string): Promise<void> {
   const keys = readKeyRecord();
   keys[g2UserId] = key;
   await game.settings.set(MODULE_ID, DEVICE_KEYS_SETTING, keys);
 }
 
-/** Shallow-merges `patch` into a device's metadata; no-op for unknown devices. */
+/** Forgets the key of a device in THIS browser only. */
+export async function clearDeviceKey(g2UserId: string): Promise<void> {
+  const keys = readKeyRecord();
+  if (!(g2UserId in keys)) return;
+  delete keys[g2UserId];
+  await game.settings.set(MODULE_ID, DEVICE_KEYS_SETTING, keys);
+}
+
+/**
+ * Shallow-merges `patch` into a device's metadata; no-op for unknown devices and on
+ * non-GM clients (world settings are GM-written).
+ */
 export async function updateDeviceMeta(
   g2UserId: string,
   patch: Partial<Omit<DeviceMeta, 'g2UserId'>>,
 ): Promise<void> {
+  if (!game.user.isGM) return;
   const metas = readMetaRecord();
   const current = metas[g2UserId];
   if (current === undefined) return;
@@ -162,14 +191,36 @@ export async function removeDevice(g2UserId: string): Promise<void> {
 
 /**
  * Records that a device was seen at `now`. The world setting is written at most every
- * {@link TOUCH_PERSIST_INTERVAL_MS} to avoid a database write per ping.
+ * {@link TOUCH_PERSIST_INTERVAL_MS} to avoid a database write per ping, and only by GMs.
  *
  * @returns true when the setting was written.
  */
 export async function touchDevice(g2UserId: string, now: number = Date.now()): Promise<boolean> {
+  if (!game.user.isGM) return false;
   const meta = readMetaRecord()[g2UserId];
   if (meta === undefined) return false;
   if (meta.lastSeenAt !== null && now - meta.lastSeenAt < TOUCH_PERSIST_INTERVAL_MS) return false;
   await updateDeviceMeta(g2UserId, { lastSeenAt: now });
   return true;
+}
+
+/**
+ * ADR-0012 → ADR-0013 migration (GM clients, on `ready`): every legacy record whose key
+ * sits in THIS browser gets `keyHolder = game.user.id`, so the election can pick this GM
+ * even when another GM is the designated active GM.
+ *
+ * @returns the number of migrated records
+ */
+export async function migrateKeyHolders(): Promise<number> {
+  if (!game.user.isGM) return 0;
+  const metas = readMetaRecord();
+  const keys = readKeyRecord();
+  let migrated = 0;
+  for (const meta of Object.values(metas)) {
+    if (meta.keyHolder !== undefined || keys[meta.g2UserId] === undefined) continue;
+    meta.keyHolder = game.user.id;
+    migrated++;
+  }
+  if (migrated > 0) await game.settings.set(MODULE_ID, DEVICES_SETTING, metas);
+  return migrated;
 }

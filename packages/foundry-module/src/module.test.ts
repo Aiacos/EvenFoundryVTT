@@ -1,6 +1,6 @@
 /**
- * Entry-point tests: `init` registers settings + pairing menu, `ready` starts the
- * direct projector on GM clients only (ADR-0012).
+ * Entry-point tests: `init` registers settings + pairing menus, `ready` starts the
+ * direct projector on every client (ADR-0012, ADR-0013) and syncs key custody.
  */
 import { DIRECT_SOCKET_EVENT } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,7 +38,14 @@ describe('module entry', () => {
     ).toEqual([
       ['g2Devices', 'world'],
       ['g2DeviceKeys', 'client'],
+      ['identityKey', 'client'],
+      ['g2Access', 'world'],
     ]);
+    expect(settings.registerMenu).toHaveBeenCalledWith(
+      'evenfoundryvtt',
+      'pairMyG2',
+      expect.objectContaining({ name: 'evf.settings.pair_self_button', restricted: false }),
+    );
     expect(settings.registerMenu).toHaveBeenCalledWith(
       'evenfoundryvtt',
       'pairG2',
@@ -140,11 +147,35 @@ describe('module entry', () => {
     expect(topics).toContainEqual(['r1.movement.budget', 'thorin']);
   });
 
-  it('MOD-06 ready on a player client does nothing (no relay listener, no hooks)', async () => {
+  it('MOD-06 ready on a player client also runs a projector and publishes its identity key', async () => {
     f.game.user.isGM = false;
     await load();
     f.fire('ready');
-    expect((f.game.socket as { on: ReturnType<typeof vi.fn> }).on).not.toHaveBeenCalled();
-    expect(f.hooks.on).not.toHaveBeenCalled();
+    expect((f.game.socket as { on: ReturnType<typeof vi.fn> }).on).toHaveBeenCalledWith(
+      DIRECT_SOCKET_EVENT,
+      expect.any(Function),
+    );
+    await vi.waitFor(() => expect(f.game.user.flags.evenfoundryvtt?.pub).toBeDefined(), {
+      timeout: 5_000,
+    });
+    const hooks = f.hooks.on.mock.calls.map((c) => c[0]);
+    expect(hooks).toContain('updateUser');
+    expect(hooks).not.toContain('createActor'); // ownership mirror is GM-only
+  });
+
+  it('MOD-08 ready on a GM client starts the ownership mirror; custody failures are logged', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    (f.game.settings as { set: ReturnType<typeof vi.fn> }).set.mockRejectedValue(new Error('db'));
+    await load();
+    f.fire('ready');
+    await vi.waitFor(
+      () => expect(f.hooks.on.mock.calls.map((c) => c[0])).toContain('createActor'),
+      { timeout: 5_000 },
+    );
+    expect(error).toHaveBeenCalledWith(
+      '[EVF] custody sync: publishing the identity key failed',
+      expect.any(Error),
+    );
+    error.mockRestore();
   });
 });

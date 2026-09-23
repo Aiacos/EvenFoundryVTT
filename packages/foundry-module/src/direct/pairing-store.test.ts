@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FoundryMock, installFoundry } from '../__tests__/direct-fixtures.js';
 import {
+  clearDeviceKey,
   DEVICE_KEYS_SETTING,
   DEVICES_SETTING,
   type DeviceMeta,
   getDevice,
   listDevices,
+  migrateKeyHolders,
   registerPairingSettings,
   removeDevice,
   setDeviceKey,
@@ -105,5 +107,27 @@ describe('pairing-store', () => {
     expect(await touchDevice('u1', 10_000 + TOUCH_PERSIST_INTERVAL_MS)).toBe(true);
     expect(getDevice('u1')?.meta.lastSeenAt).toBe(10_000 + TOUCH_PERSIST_INTERVAL_MS);
     expect(await touchDevice('nobody', 1)).toBe(false);
+  });
+
+  it('PS-07 world-meta writers are GM-only; clearDeviceKey forgets this browser only', async () => {
+    await upsertDevice(meta('u1'), KEY);
+    await clearDeviceKey('ghost'); // no-op
+    await clearDeviceKey('u1');
+    expect(getDevice('u1')).toEqual({ meta: meta('u1'), key: null });
+    foundry.game.user.isGM = false;
+    await updateDeviceMeta('u1', { label: 'x' });
+    expect(await touchDevice('u1', 99_999_999)).toBe(false);
+    await expect(migrateKeyHolders()).resolves.toBe(0);
+    expect(getDevice('u1')?.meta.label).toBe(meta('u1').label);
+  });
+
+  it('PS-08 keyHolder is optional, nullable or a user id; other types are rejected', async () => {
+    await upsertDevice(meta('u1', { keyHolder: null }), null);
+    await upsertDevice(meta('u2', { keyHolder: 'gm1' }), KEY);
+    expect(listDevices().map((d) => d.keyHolder)).toEqual([null, 'gm1']);
+    foundry.settings.set(`evenfoundryvtt.${DEVICES_SETTING}`, {
+      u3: { ...meta('u3'), keyHolder: 7 },
+    });
+    expect(listDevices()).toEqual([]);
   });
 });

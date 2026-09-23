@@ -31,6 +31,8 @@ import {
   grantActorOwnership,
   setG2Password,
 } from './g2-user.js';
+import { deliverPassword, removeAccess } from './glasses-access.js';
+import { writeSelfFlags } from './glasses-flags.js';
 import { getDevice, removeDevice, setDeviceKey, upsertDevice } from './pairing-store.js';
 
 /** Lifetime of a displayed QR / manual code (ms). */
@@ -43,8 +45,11 @@ export interface PairingSession {
   label: string;
   actorId: string;
   actorName: string;
-  /** Manual code grouped `XXXX-XXXX-XXXX-XXXX`. */
-  code: string;
+  /**
+   * Manual code grouped `XXXX-XXXX-XXXX-XXXX`; null when the password is not a manual
+   * code (self-service after a GM-side rotation: QR only).
+   */
+  code: string | null;
   /** QR target URL (credentials in the fragment). */
   url: string;
   /** QR as an SVG string. */
@@ -90,8 +95,11 @@ export function foundryBaseUrl(): string {
 }
 
 /**
- * Creates/refreshes the "(G2)" user for `playerUserId`, grants it `actorId`, stores
- * the device and returns the QR + manual code.
+ * Pairing **on behalf of** a player (GM mode, players without Foundry open): creates/
+ * refreshes the "(G2)" user for `playerUserId`, grants it `actorId`, stores the device
+ * with the key in THIS GM browser (`keyHolder` = this GM) and returns the QR + manual
+ * code. A self-service pairing of the same player is superseded (its flags cleared);
+ * an enabled player gets the new password re-delivered sealed.
  *
  * @throws when player or actor do not exist, or Foundry refuses a document write
  */
@@ -124,9 +132,12 @@ export async function startPairing(
       createdAt: previous?.createdAt ?? now,
       lastSeenAt: previous?.lastSeenAt ?? null,
       pendingRotation: true,
+      keyHolder: game.user.id,
     },
     key,
   );
+  await writeSelfFlags(player, { device: null, gmKeys: null });
+  await deliverPassword(playerUserId, g2.id, password, now);
 
   const url = buildPairingUrl(foundryBaseUrl(), { v: 1, u: g2.id, p: password, k: key });
   const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 1 });
@@ -151,14 +162,17 @@ export async function startPairing(
 export async function expirePairing(g2UserId: string): Promise<boolean> {
   const device = getDevice(g2UserId);
   if (device === null || !device.meta.pendingRotation) return false;
-  await setG2Password(g2UserId, generatePassword());
+  const password = generatePassword();
+  await setG2Password(g2UserId, password);
   await setDeviceKey(g2UserId, generateDeviceKey());
+  await deliverPassword(device.meta.playerUserId, g2UserId, password);
   return true;
 }
 
 /**
  * Revokes a device: `notify` first (the projector seals `{t:'revoked'}` while the key
- * still exists), then deletes the "(G2)" user and forgets metadata + key.
+ * still exists), then deletes the "(G2)" user, forgets metadata + key, the player's
+ * enablement and self-pairing flags.
  */
 export async function revokePairing(
   g2UserId: string,
@@ -170,8 +184,13 @@ export async function revokePairing(
     // The device may be offline; revocation must still happen.
     console.warn(`[EVF] could not notify ${g2UserId} of revocation`, err);
   }
+  const playerUserId = getDevice(g2UserId)?.meta.playerUserId;
   await deleteG2User(g2UserId);
   await removeDevice(g2UserId);
+  if (playerUserId === undefined) return;
+  await removeAccess(playerUserId);
+  const player = game.users.get(playerUserId);
+  if (player !== undefined) await writeSelfFlags(player, { device: null, gmKeys: null });
 }
 
 /** Runs the checks of mock P01 (HTTPS · module served · socket · public address). */

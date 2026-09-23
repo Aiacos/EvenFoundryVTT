@@ -3,7 +3,7 @@
  * g2-user, map-reader, PairG2App). Installs `game`, `Hooks`, `CONST`, `CONFIG`,
  * `foundry`, `ui` and `canvas` via `vi.stubGlobal`.
  */
-import { vi } from 'vitest';
+import { type Mock, vi } from 'vitest';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -16,8 +16,8 @@ export interface MockUser {
   targets: Set<{ id: string }>;
   flags: Record<string, Record<string, unknown> | undefined>;
   character?: { id: string } | null;
-  update: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
+  update: Mock<(changes: Record<string, unknown>) => Promise<unknown>>;
+  delete: Mock<() => Promise<unknown>>;
 }
 
 export interface FoundryMock {
@@ -37,7 +37,35 @@ export interface FoundryMock {
   game: Record<string, unknown> & { user: MockUser };
 }
 
-/** Builds a mock user; `update` merges changes into the object. */
+/**
+ * Foundry-style update merge: nested objects merge, `-=key: null` deletes `key`
+ * (foundryvtt.com/api/v13 `foundry.utils.mergeObject` semantics used by `Document#update`).
+ */
+export function mergeUpdate(
+  target: Record<string, unknown>,
+  changes: Record<string, unknown>,
+): void {
+  for (const [key, value] of Object.entries(changes)) {
+    if (key.startsWith('-=')) {
+      delete target[key.slice(2)];
+      continue;
+    }
+    const current = target[key];
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      typeof current === 'object' &&
+      current !== null
+    ) {
+      mergeUpdate(current as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      target[key] = structuredClone(value);
+    }
+  }
+}
+
+/** Builds a mock user; `update` merges changes into the object (Foundry semantics). */
 export function makeUser(id: string, name: string, extra: Partial<MockUser> = {}): MockUser {
   const user: MockUser = {
     id,
@@ -48,7 +76,7 @@ export function makeUser(id: string, name: string, extra: Partial<MockUser> = {}
     targets: new Set(),
     flags: {},
     update: vi.fn(async (changes: Record<string, unknown>) => {
-      Object.assign(user, changes);
+      mergeUpdate(user as unknown as Record<string, unknown>, changes);
       return user;
     }),
     delete: vi.fn(async () => user),
@@ -134,9 +162,12 @@ export function installFoundry(
 
   const createUser = vi.fn(async (data: Record<string, unknown>) => {
     const created = makeUser(`g2-${users.length}`, data.name as string, {
+      active: false, // a freshly created user is not logged in
       role: data.role as number,
       flags: data.flags as MockUser['flags'],
     });
+    // Kept so tests can compare the password a flow set (the real document hashes it).
+    (created as unknown as { password: unknown }).password = data.password;
     users.push(created);
     return created;
   });
@@ -230,4 +261,44 @@ export function installFoundry(
       for (const h of hookHandlers.get(event) ?? []) h.fn(...args);
     },
   };
+}
+
+/** A Foundry client's identity key pair as stored in its client setting. */
+export interface ClientIdentity {
+  publicJwk: { kty: 'EC'; crv: 'P-256'; x: string; y: string };
+  privateJwk: JsonWebKey;
+}
+
+/**
+ * Switches the mock to the browser of `userId` (ADR-0013 multi-client scenarios):
+ * `game.user` becomes that user, the client-scope identity + device-key settings are
+ * swapped for that browser's, and its public key is published on the user.
+ *
+ * @param browsers - per-user client storage, kept across switches by the caller
+ */
+export function becomeClient(
+  f: FoundryMock,
+  userId: string,
+  browsers: Map<string, Map<string, unknown>>,
+  identity: ClientIdentity | null,
+): MockUser {
+  const clientKeys = ['evenfoundryvtt.identityKey', 'evenfoundryvtt.g2DeviceKeys'];
+  const current = f.game.user.id;
+  const saved = new Map<string, unknown>();
+  for (const k of clientKeys) if (f.settings.has(k)) saved.set(k, f.settings.get(k));
+  browsers.set(current, saved);
+  const next = browsers.get(userId) ?? new Map<string, unknown>();
+  for (const k of clientKeys) f.settings.delete(k);
+  for (const [k, v] of next) f.settings.set(k, v);
+  const user = f.users.find((u) => u.id === userId);
+  if (user === undefined) throw new Error(`no mock user ${userId}`);
+  if (identity !== null) {
+    f.settings.set('evenfoundryvtt.identityKey', identity);
+    user.flags = {
+      ...user.flags,
+      evenfoundryvtt: { ...user.flags.evenfoundryvtt, pub: identity.publicJwk },
+    };
+  }
+  f.game.user = user;
+  return user;
 }

@@ -20,6 +20,16 @@ describe('settings persistence', () => {
     expect(loadSettings(storage, vi.fn())).toEqual({ ...DEFAULT_SETTINGS, mapCellPx: 6 });
   });
 
+  it('persists the optional map pixel size; invalid values are dropped', () => {
+    const storage = new MemoryStorage();
+    saveSettings(storage, { ...DEFAULT_SETTINGS, mapPixelSize: 3 }, vi.fn());
+    expect(loadSettings(storage, vi.fn()).mapPixelSize).toBe(3);
+    storage.data.set(SETTINGS_STORAGE_KEY, JSON.stringify({ mapPixelSize: 4 }));
+    const loaded = loadSettings(storage, vi.fn());
+    expect(loaded).toEqual(DEFAULT_SETTINGS);
+    expect('mapPixelSize' in loaded).toBe(false);
+  });
+
   it('falls back to defaults on corrupted JSON or non-object values', () => {
     const storage = new MemoryStorage();
     storage.data.set(SETTINGS_STORAGE_KEY, '{oops');

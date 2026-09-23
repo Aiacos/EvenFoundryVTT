@@ -19,6 +19,7 @@ import type { HudOptions } from '../hud/index.js';
 import { mountPhonePage } from '../phone/phone-page.js';
 import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
 import { createDemoTransport, type DemoTimers } from './demo-actions.js';
+import { demoArtDecoder } from './map-art.js';
 import { demoDecoder } from './portrait-art.js';
 import { buildScenario, playlist, type ScenarioName } from './scenarios.js';
 
@@ -34,7 +35,7 @@ export interface DemoEnvironment {
   log: DebugLog;
   deviceLanguage: () => string;
   getBridge: () => Promise<EvenAppBridge | null>;
-  /** HUD entry point (`startHud`); the demo injects its portrait decoder. */
+  /** HUD entry point (`startHud`); the demo injects its portrait and map-art decoders. */
   startHud: (
     bridge: EvenAppBridge,
     store: AppStore,
@@ -129,7 +130,10 @@ export async function startDemo(env: DemoEnvironment): Promise<DemoHandle> {
     store.update(scenario.initial);
     const own = tap.lease();
     lease = own;
-    stopHud = env.startHud(own.bridge, store, transport, { decoder: demoDecoder });
+    stopHud = env.startHud(own.bridge, store, transport, {
+      decoder: demoDecoder,
+      artDecoder: demoArtDecoder,
+    });
     store.update(scenario.patch);
     for (const g of scenario.gestures) tap.inject(g);
 

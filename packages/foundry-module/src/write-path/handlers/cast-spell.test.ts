@@ -55,7 +55,7 @@ function makeActor(opts: { id?: string; item?: ReturnType<typeof makeItem> | nul
 
 function makeGameGlobal(
   actor: ReturnType<typeof makeActor> | null = makeActor(),
-  opts: { midiActive?: boolean; targets?: Set<unknown> } = {},
+  opts: { midiActive?: boolean; targets?: Set<unknown>; isGM?: boolean } = {},
 ) {
   const midiActive = opts.midiActive ?? false;
   return {
@@ -72,7 +72,7 @@ function makeGameGlobal(
     },
     i18n: { lang: 'en', localize: vi.fn((k: string) => k) },
     combat: null,
-    user: { isGM: false, targets: opts.targets ?? new Set() },
+    user: { isGM: opts.isGM ?? false, targets: opts.targets ?? new Set() },
     messages: { contents: [], get: vi.fn() },
     // FIX-C: capability detection surface for midi-qol (default inactive).
     modules: {
@@ -642,7 +642,10 @@ describe('castSpellHandler', () => {
       const actor = makeActor({ id: 'actor-a', item });
 
       const userTargets = new Set();
-      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false, targets: userTargets }));
+      vi.stubGlobal(
+        'game',
+        makeGameGlobal(actor, { midiActive: false, targets: userTargets, isGM: true }),
+      );
       vi.stubGlobal('MidiQOL', undefined);
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -663,6 +666,25 @@ describe('castSpellHandler', () => {
       expect(msg).toMatch(/target/i);
       expect(msg).toMatch(/midi-?qol/i);
 
+      warnSpy.mockRestore();
+    });
+
+    it("CV1b: on a player-client projector (ADR-0013) targets are the player's own → no targets warning", async () => {
+      const activity = makeActivity({ chatCardId: 'cm-p' });
+      const item = makeItem({ id: 'spell-1', activity });
+      const actor = makeActor({ id: 'actor-a', item });
+      vi.stubGlobal('game', makeGameGlobal(actor, { midiActive: false, isGM: false }));
+      vi.stubGlobal('MidiQOL', undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { castSpellHandler } = await import('./cast-spell.js');
+      const result = await castSpellHandler.handle({
+        actor_id: 'actor-a',
+        spell_id: 'spell-1',
+        slot_level: 0,
+        targets: ['tok-a'],
+      });
+      expect(result.success).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 

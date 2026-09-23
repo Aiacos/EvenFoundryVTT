@@ -1,19 +1,57 @@
 {{!--
-  «Associa occhiali G2» (mock P01 — docs/design/g2-thirds-layout.md).
+  Glasses pairing window (mock P01 — docs/design/g2-thirds-layout.md; ADR-0013).
+  Two modes: GM («Associa occhiali G2»: enablement + pair on behalf + revoke) and
+  player («Associa i miei occhiali»: self-service QR).
   Rendered by src/direct/PairG2App.ts (HandlebarsApplicationMixin, part "main").
   Styles: styles/pair-g2.css (scoped under .evf-pair). No inline styles.
   qrSvg is generated locally by the qrcode library from our own URL (trusted SVG).
   States: idle (steps + primary CTA) · session (QR + countdown + code) · connected.
 --}}
-<section class="evf-pair" data-state="{{#if connected}}connected{{else if session}}session{{else}}idle{{/if}}">
+<section class="evf-pair" data-mode="{{mode}}" data-state="{{#if connected}}connected{{else if session}}session{{else}}idle{{/if}}">
+
+  {{#if isGm}}
+  <div class="evf-pair__enable">
+    <div class="evf-pair__section-head">
+      <h3>{{localize "evf.pair.enable.heading"}}</h3>
+      <button type="button" class="evf-pair__link-btn" data-action="enableAll"><i class="fas fa-user-plus" aria-hidden="true"></i> {{localize "evf.pair.enable.all"}}</button>
+    </div>
+    <p class="evf-pair__muted">{{localize "evf.pair.enable.hint"}}</p>
+    {{#if enablement.length}}
+    <ul>
+      {{#each enablement}}
+      <li class="evf-pair__player">
+        <span class="evf-pair__device-name">{{name}}</span>
+        <span class="evf-pair__status evf-pair__status--{{status}}">{{localize statusLabel}}</span>
+        {{#if waiting}}<span class="evf-pair__muted">{{localize "evf.pair.enable.waiting"}}</span>{{/if}}
+        {{#if enabled}}
+        <button type="button" data-action="regenerate" data-user-id="{{playerUserId}}">{{localize "evf.pair.enable.regenerate"}}</button>
+        {{else}}
+        <button type="button" data-action="enable" data-user-id="{{playerUserId}}">{{localize "evf.pair.enable.button"}}</button>
+        {{/if}}
+      </li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <p class="evf-pair__muted">{{localize "evf.pair.enable.empty"}}</p>
+    {{/if}}
+  </div>
+
+  <h3>{{localize "evf.pair.behalf.heading"}}</h3>
+  {{else}}
+  {{#if selfBlockLabel}}
+  <p class="evf-pair__notice evf-pair__notice--warn"><i class="fas fa-circle-info" aria-hidden="true"></i> {{localize selfBlockLabel}}</p>
+  {{/if}}
+  {{/if}}
 
   <div class="evf-pair__pickers">
+    {{#if isGm}}
     <label class="evf-pair__field">
       <span>{{localize "evf.pair.player"}}</span>
       <select data-field="player">
         {{#each players}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}
       </select>
     </label>
+    {{/if}}
     <label class="evf-pair__field">
       <span>{{localize "evf.pair.character"}}</span>
       <select data-field="actor">
@@ -45,7 +83,7 @@
       </ol>
 
       {{#if session}}
-      <p class="evf-pair__muted">{{localize "evf.pair.user_created"}} «{{session.label}}» · {{localize "evf.pair.role_hint"}} {{session.actorName}}</p>
+      <p class="evf-pair__muted">{{#if isGm}}{{localize "evf.pair.user_created"}}{{else}}{{localize "evf.pair.self.user"}}{{/if}} «{{session.label}}» · {{#if isGm}}{{localize "evf.pair.role_hint"}}{{else}}{{localize "evf.pair.self.actor_hint"}}{{/if}} {{session.actorName}}</p>
 
       <div class="evf-pair__countdown">
         <div class="evf-pair__countdown-row">
@@ -56,6 +94,7 @@
         <span class="evf-pair__muted">{{localize "evf.pair.single_use"}}</span>
       </div>
 
+      {{#if session.code}}
       <div class="evf-pair__code">
         <span class="evf-pair__label">{{localize "evf.pair.manual_code"}}</span>
         <div class="evf-pair__code-row">
@@ -64,11 +103,12 @@
         </div>
         <span class="evf-pair__muted">{{localize "evf.pair.manual_hint"}}</span>
       </div>
+      {{/if}}
       {{else}}
         {{#if expired}}
         <p class="evf-pair__notice evf-pair__notice--warn"><i class="fas fa-hourglass-end" aria-hidden="true"></i> {{localize "evf.pair.expired"}}</p>
         {{else}}
-        <p class="evf-pair__muted">{{localize "evf.pair.idle_hint"}}</p>
+        <p class="evf-pair__muted">{{#if isGm}}{{localize "evf.pair.idle_hint"}}{{else}}{{localize "evf.pair.self.idle_hint"}}{{/if}}</p>
         {{/if}}
       {{/if}}
     </div>
@@ -94,6 +134,7 @@
     {{#if session}}<p class="evf-pair__url"><span>URL</span> <code>{{baseUrlHint}}</code></p>{{/if}}
   </div>
 
+  {{#if isGm}}
   <div class="evf-pair__devices">
     <h3>{{localize "evf.pair.devices.heading"}}</h3>
     {{#if devices.length}}
@@ -119,9 +160,10 @@
     <p class="evf-pair__muted">{{localize "evf.pair.devices.empty"}}</p>
     {{/if}}
   </div>
+  {{/if}}
 
   <footer class="evf-pair__footer">
-    <button type="button" class="evf-pair__primary" data-action="pair">
+    <button type="button" class="evf-pair__primary" data-action="pair" {{#if selfBlockLabel}}disabled{{/if}}>
       <i class="fas fa-qrcode" aria-hidden="true"></i>
       {{#if session}}{{localize "evf.pair.regenerate"}}{{else}}{{localize "evf.pair.generate"}}{{/if}}
     </button>
