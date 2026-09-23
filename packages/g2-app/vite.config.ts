@@ -1,32 +1,34 @@
 /**
- * Vite 8 config for @evf/g2-app.
+ * Vite 8 config for @evf/g2-app — single entry, emitted into the Foundry module.
  *
- * Multi-entry build:
- *   - `main`  → src/index.ts  (Phase 4a G2 plugin host — still a placeholder)
- *   - `wizard` → src/wizard/wizard.html  (Phase 2 phone WebView onboarding wizard)
+ * ADR-0012: Foundry serves the bundle at `<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/`,
+ * so the output goes to `packages/foundry-module/g2/` (shipped in the module zip) with a
+ * relative `base` — the same build works under any routePrefix. No external CDN assets.
  *
- * Constraints:
- *   - All wizard assets must be inlineable (Even Hub CDN constraint — no external CDN requests).
- *   - Target: ES2023 (covers all modern iOS/Android WebViews).
+ * The `.ehpk` package is secondary (sideload-first): `evenhub pack app.json
+ * ../foundry-module/g2` packs the same output (`app.json` entrypoint `index.html`).
  *
- * @see Specs.md §3.3 (Even Hub network constraint — origin whitelist, no wildcards)
- * @see Specs.md §3.7 (static CDN-friendly plugin host)
- * @see .planning/phases/02-foundry-module-core-pairing-ui/02-03-PLAN.md Task 1 (Vite multi-entry)
+ * @see docs/architecture/0012-direct-foundry-streaming.md §Decision Outcome 1
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
+const here = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+const appJson = JSON.parse(readFileSync(here('./app.json'), 'utf8')) as { version: string };
+
 export default defineConfig({
+  root: here('./src'),
+  base: './',
+  define: {
+    __EVF_APP_VERSION__: JSON.stringify(appJson.version),
+  },
   build: {
     target: 'es2023',
-    outDir: 'dist',
+    outDir: here('../foundry-module/g2'),
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        // Phase 4a G2 plugin host entry (placeholder — real implementation Phase 4a)
-        main: 'src/index.html',
-        // Phase 2 phone WebView wizard entry
-        wizard: 'src/wizard/wizard.html',
-      },
+      input: here('./src/index.html'),
     },
   },
 });

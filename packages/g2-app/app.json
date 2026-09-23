@@ -2,18 +2,14 @@
   "package_id": "io.github.aiacos.foundryvtt",
   "edition": "202601",
   "name": "FoundryVTT G2 HUD",
-  "version": "0.1.0",
-  "min_app_version": "2.0.0",
-  "min_sdk_version": "0.0.10",
-  "entrypoint": "src/index.html",
+  "version": "0.2.0",
+  "min_sdk_version": "0.0.14",
+  "entrypoint": "index.html",
   "permissions": [
     {
       "name": "network",
-      "desc": "Connects to the EvenFoundryVTT bridge (WS/REST) and plugin host to stream the Foundry VTT session onto G2.",
-      "whitelist": [
-        "https://bridge.REPLACE-WITH-YOUR-ORIGIN.example",
-        "https://plugin-host.REPLACE-WITH-YOUR-ORIGIN.example"
-      ]
+      "desc": "Sideload-first: the app is served by your Foundry server and scanned by QR, so it talks to Foundry same-origin. This packaged build only reaches the Foundry origin listed here.",
+      "whitelist": ["https://foundry.REPLACE-WITH-YOUR-ORIGIN.example"]
     }
   ],
   "supported_languages": ["it", "en"]

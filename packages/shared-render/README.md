@@ -2,22 +2,27 @@
 
 ASCII grid model + INV-1 layout integrity snapshot matcher for Vitest 4.
 
-**Status:** Phase 1 scaffold. Real implementation (`ascii-grid.ts` + `snapshot.ts` + `fixtures/`) lands in Plan 03 (Wave 2).
+## Pattern (INV-1)
 
-## Pattern (D-1.11 + INV-1)
+- Character-precision rectangular grid (`AsciiGrid` — every row exactly `width` cells)
+- `frameColumns(columns, width)` frames N fixed-width columns side by side (the G2
+  thirds layout: sheet │ map │ context); `columnBoundaries(grid)` returns the
+  boundary indices per row so tests can assert they never move between states
+- `matchAsciiFixture(grid, fixturePath)` wraps Vitest's `expect.toMatchFileSnapshot()`
+- LF line endings, no BOM, no trailing whitespace (`.gitattributes` + `.editorconfig`)
 
-- Character-precision rectangular grid (`AsciiGrid` class — every row exactly `width` cells)
-- LF line endings, no BOM, no trailing whitespace (enforced by `.gitattributes` + `.editorconfig` from Plan 01)
-- Wraps Vitest 4's built-in `expect.toMatchFileSnapshot()` via custom matcher `matchAsciiFixture(grid, fixturePath)`
-- Phase 4a expands to full column-misalignment reporting per INV-1 ck 11
+Characters stand in for the proportional G2 firmware font: pixel budgets are enforced
+by the renderer (`@evenrealities/pretext` measurement in `packages/g2-app/src/hud`),
+the grid checks structure (regions, line counts, column boundaries).
 
-## Consumers
+## Fixtures
 
-- `@evf/g2-app` Phase 4a (real Status HUD + raster panel snapshots)
-- `@evf/foundry-module` Phase 2 (less critical — module UI is Foundry-shaped, not G2 ASCII)
-- `packages/g2-app/src/__tests__/example-status-hud.test.ts` (Plan 03 D-1.16 wire-up demo)
+`src/fixtures/thirds.<mock>.<locale>.<variant>.txt` — mocks M01–M11 of
+`docs/design/g2-thirds-layout.md`, rendered by
+`packages/g2-app/src/hud/__tests__/inv1-layout.test.ts` (IT min content, EN max
+content). The same test asserts identical boundaries for every state × IT/EN × min/max.
 
 ## See also
 
-- `Specs.md` §7.1a, §7.14.4 ck 11-15
-- `docs/architecture/0001-layered-ui-model.md` (Wave 2)
+- `Specs.md` §7.1a
+- `docs/design/g2-thirds-layout.md`

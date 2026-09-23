@@ -10,11 +10,13 @@
  * @see docs/architecture/0012-direct-foundry-streaming.md
  */
 import type {
+  ActionEconomyPayload,
   ActionResultPayload,
   CharacterSnapshot,
   CombatSnapshot,
   LogSnapshot,
   MapSnapshot,
+  MovementBudgetPayload,
   ReactionAvailablePayload,
   SnapshotTopic,
 } from '@evf/shared-protocol';
@@ -39,6 +41,8 @@ export interface ConnectionState {
   gmName?: string;
   actorName?: string;
   worldTitle?: string;
+  /** Foundry UI language from `welcome` — used when `settings.locale` is 'auto'. */
+  foundryLocale?: string;
   /** Epoch ms of the last successful snapshot/delta (M11 "Dati mostrati: 2 min fa"). */
   lastSyncAt?: number;
   /** Offline only: next retry countdown and attempt counter. */
@@ -68,6 +72,13 @@ export interface AppState {
   reaction: ReactionAvailablePayload | null;
   /** Latest action result for the paired actor (M06). */
   lastResult: ActionResultPayload | null;
+  /**
+   * Action / Bonus / Reaction usage of the paired actor this turn (M02, M06
+   * "Azione ● Bonus ● Reaz ●"); null outside combat or before the first update.
+   */
+  actionEconomy: ActionEconomyPayload | null;
+  /** Movement budget of the paired actor this turn (M02 "Movimento 30/30 ft"); null outside combat. */
+  movement: MovementBudgetPayload | null;
 }
 
 /** Outcome of a tool invocation relayed to the GM projector. */
@@ -101,6 +112,8 @@ export function initialState(): AppState {
     log: null,
     reaction: null,
     lastResult: null,
+    actionEconomy: null,
+    movement: null,
   };
 }
 
@@ -130,4 +143,14 @@ export function createAppStore(initial: AppState = initialState()): AppStore {
       return () => listeners.delete(listener);
     },
   };
+}
+
+/**
+ * Effective UI language: explicit setting → Foundry language from `welcome` → phone
+ * language → English (canonical fallback, Specs §7.16.5). Only `it`/`en` are shipped.
+ */
+export function resolveLocale(state: AppState, phoneLanguage = 'en'): 'it' | 'en' {
+  if (state.settings.locale !== 'auto') return state.settings.locale;
+  const candidate = (state.connection.foundryLocale ?? phoneLanguage).toLowerCase();
+  return candidate.startsWith('it') ? 'it' : 'en';
 }

@@ -1,0 +1,12 @@
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│EVENFOUNDRYVTT                                                                                                                              │
+│                                                                                                                                            │
+│Occhiali non ancora associati a Foundry.                                                                                                    │
+│1. Su Foundry: Impostazioni > Configura moduli > EvenFoundryVTT                                                                             │
+│    > «Associa occhiali G2»: appare un QR                                                                                                   │
+│2. Sul telefono: Even Realities App > scansiona il QR                                                                                       │
+│3. Fatto. Nessun server da installare, nessun URL.                                                                                          │
+│                                                                                                                                            │
+│Aiuto: apri questa app sul telefono, pagina «Connessione».                                                                                  │
+│●● esci                                                                                                                                     │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
