@@ -1,6 +1,6 @@
 # Architettura
 
-Dalla v0.10.0 **non c'è un server nostro**: l'app degli occhiali è servita da Foundry, parla con Foundry sulla stessa origine e un client Foundry fa da **projector** ([ADR-0016](Decisioni-Architetturali)). Con [ADR-0017](Decisioni-Architetturali) il projector è **ibrido**: il client del giocatore quando è online, altrimenti un GM.
+Dalla v0.12.0 **non c'è un server nostro**: l'app degli occhiali è servita da Foundry, parla con Foundry sulla stessa origine e un client Foundry fa da **projector** ([ADR-0016](Decisioni-Architetturali)). Con [ADR-0017](Decisioni-Architetturali) il projector è **ibrido**: il client del giocatore quando è online, altrimenti un GM.
 
 ## 🏗️ Vista d'insieme
 

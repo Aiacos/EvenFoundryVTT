@@ -10,6 +10,8 @@ informed: all packages
 
 ## Status
 
+> **Relates to / Supersedes (v0.12.0 port, 2026-09-23)** — renumbered from ADR-0012 of the direct-streaming branch when it was ported onto `develop` (the bridge-era line had already used 0012–0015). **Supersedes** [ADR-0015](./0015-player-view-map-capture.md) (player-view map capture → document-data map) and, partially, [ADR-0002](./0002-protocol-versioning.md) (bridge transport). Removes the implementation targets of [ADR-0003](./0003-tool-registry-pattern.md) (bridge/MCP half) and [ADR-0004](./0004-voice-via-mcp-not-internal.md). Keeps [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md). Hardware GO/NO-GO: [ADR-0005](./0005-phase0-go-no-go.md) status note.
+
 > **AMENDED** — 2026-09-23 by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md) (pairing, key custody, projector location) and [ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md) (point 6, map rendering).
 
 **ACCEPTED** — 2026-09-23. Supersedes the deployment topology of Specs.md §11.5.3

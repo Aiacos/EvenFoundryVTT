@@ -1,8 +1,19 @@
 # Foundry Module Release & Distribution
 
 How to publish EvenFoundryVTT to GitHub Releases, and how users install it on Foundry or
-The Forge. Since v0.10.0 the module zip is the **only** release artefact. It also carries
-the glasses app under `g2/` ([ADR-0016](../architecture/0016-direct-foundry-streaming.md)).
+The Forge. Since v0.12.0 the module zip is the release artefact. It also carries the
+glasses app under `g2/` ([ADR-0016](../architecture/0016-direct-foundry-streaming.md)); each
+release also attaches the Even Hub package `evenfoundryvtt.ehpk`, packed from the same `g2/`
+folder ([evenhub.md](evenhub.md)).
+
+**Versions.** The last bridge-era release is module **v0.1.55** (plus the g2-app pre-release
+`g2-app-v0.11.0`). The first release after the direct-streaming port is **v0.2.0** (breaking
+change before 1.0, so a minor bump).
+
+**Migrating from the bridge era (≤ v0.1.55).** Stop and remove the `evf-bridge` container
+(and its Compose project, Caddy/Watchtower entries, GHCR image); update the module from the
+manifest URL; then re-pair every pair of glasses from *Pair G2 glasses* or the *Players*
+list. Bearer tokens no longer exist, so old pairings do not carry over.
 
 ---
 
@@ -20,11 +31,15 @@ Both files are uploaded as release assets by
 
 ## 🚀 Publishing a release
 
-Releases follow GitFlow + Changesets: merge the *Version Packages* PR, then tag.
+Releases follow GitFlow + Changesets. Merging the *Version Packages* PR on `main` runs
+`pnpm release:tag` (`scripts/release-tag.mjs`) from `release.yml`: it reads the version
+from `packages/foundry-module/package.json`, pushes the tag `v<version>` (idempotent) and
+dispatches `foundry-module-release.yml` (a tag pushed with the default token would not
+trigger it on its own). Manual tag, if needed:
 
 ```bash
-git tag v0.10.0
-git push origin v0.10.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The workflow runs on `v*.*.*` tags (or `workflow_dispatch` with a `tag` input):
@@ -35,16 +50,20 @@ The workflow runs on `v*.*.*` tags (or `workflow_dispatch` with a `tag` input):
    (bundles `@evf/shared-protocol` + `qrcode`).
 4. Builds the g2-app **into the module**: `pnpm --filter @evf/g2-app build` →
    `packages/foundry-module/g2/`. It fails if `g2/index.html` is missing.
-5. Patches `module.json` `version` and the pinned `download` URL.
-6. Assembles `module.json` + `dist/` + **`g2/`** + `lang/` + `templates/` and zips them as
+5. Patches `module.json` `version` and the pinned `download` URL, and **version-stamps**
+   the esmodule and stylesheet filenames (`dist/module-<ver>.js`,
+   `styles/pair-g2-<ver>.css`): Foundry caches module JavaScript, so without a new filename
+   clients keep running the old build. Syncs `packages/g2-app/app.json` `version` from the
+   g2-app package and packs `evenfoundryvtt.ehpk`.
+6. Assembles `module.json` + `dist/` + **`g2/`** + `lang/` + `templates/` + `styles/` and zips them as
    `evenfoundryvtt.zip` (sourcemaps excluded). It fails if `g2/index.html` is not in the zip.
 7. Builds the release notes from the `packages/foundry-module/CHANGELOG.md` entry, plus the
    `packages/g2-app/CHANGELOG.md` entry when there is one. On a first release it falls back
    to `--generate-notes`.
 8. Creates the GitHub Release if it is missing (tags with `-` are marked pre-release) and
-   uploads `module.json` + `evenfoundryvtt.zip` with `--clobber`.
+   uploads `module.json` + `evenfoundryvtt.zip` + `evenfoundryvtt.ehpk` with `--clobber`.
 
-There is no GHCR bridge image and no standalone `g2-app-dist.zip` any more.
+There is no GHCR bridge image and no standalone `g2-app-dist.zip` any more (both removed with the bridge, ADR-0016).
 
 **Re-run:** *Actions → Foundry Module Release → Run workflow* with the tag. It is
 idempotent: an existing release is reused and assets are overwritten.

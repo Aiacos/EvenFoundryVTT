@@ -10,6 +10,8 @@ informed: executor
 
 ## Status
 
+> **Status note (v0.12.0, 2026-09-23)** — The single-workflow-origin rule **stays in force**. **Amendment 2** (owning-user execution via the Phase-8 poll channel) is **superseded by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)**: the poller and bridge are gone; the executor is the per-device elected projector (the player's own client when online, else the active GM holding the device key), still through `dispatchTool`. The `Activity#use(usage, dialog, message)` call-shape fix (`configure:false` in the **dialog** argument, commit `184f172`) is kept.
+
 > **AMENDED by [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)** — 2026-09-23. The single workflow origin is the *elected projector client* for each device (the player's own client when online, else the active GM), still through `dispatchTool`; socketlib is no longer used.
 
 **ACCEPTED** — 2026-05-16. Binds Phase 7 (Foundry Module Write Path) and all

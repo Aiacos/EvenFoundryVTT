@@ -1,6 +1,8 @@
 # EvenFoundryVTT — Docs
 
-Documentation index for **EvenFoundryVTT** v0.12.0 (direct Foundry → G2 streaming). The
+Documentation index for **EvenFoundryVTT** v0.12.0 (direct Foundry → G2 streaming, ported
+onto `develop` after the bridge-era v0.11.0; the bridge, Docker and `foundry-mcp` docs were
+removed with ADR-0016). The
 **canonical source of truth** is [`Specs.md`](../Specs.md) at the repository root. Every
 document here is a projection or expansion of it.
 
@@ -20,8 +22,8 @@ document here is a projection or expansion of it.
 | Direct streaming decision | [`architecture/0016-direct-foundry-streaming.md`](architecture/0016-direct-foundry-streaming.md) | Why the bridge, Docker and `foundry-mcp` were removed. |
 | Firmware compatibility | [`firmware-compatibility.md`](firmware-compatibility.md) | Even Hub SDK / Even App / Foundry version matrix + forward-compat policy. |
 | Invariants | [`architecture/INVARIANTS.md`](architecture/INVARIANTS.md) | INV-1..6 and how CI enforces them. |
-| ADRs | [`architecture/`](architecture/) | ADR-0001 … ADR-0018 ([index](architecture/README.md)); 0017 = player-owned glasses + hybrid projector, 0018 = D&D-sheet HUD pixel renderer. |
-| Release | [`release/foundry-module.md`](release/foundry-module.md) · [`release/evenhub.md`](release/evenhub.md) | Module zip (with `g2/`) and the secondary `.ehpk`. |
+| ADRs | [`architecture/`](architecture/) | ADR-0001 … ADR-0018 ([index](architecture/README.md)); 0012 = R1 gesture model (canonical), 0016 = direct streaming, 0017 = player-owned glasses + hybrid projector, 0018 = D&D-sheet HUD pixel renderer. 0016–0018 were renumbered from 0012–0014 in the v0.12.0 port onto `develop`. |
+| Release | [`release/foundry-module.md`](release/foundry-module.md) · [`release/evenhub.md`](release/evenhub.md) | Module zip (with `g2/`), the `.ehpk` attached to every release, bridge-era migration, Even Hub pre-submission checklist. |
 | Animated showcase | [`showcase/index.html`](showcase/index.html) | Single-file showcase (GitHub Pages). |
 
 ---
@@ -40,8 +42,9 @@ document here is a projection or expansion of it.
 | Item | Link |
 |---|---|
 | Root README (GitHub landing) | [`README.md`](../README.md) |
-| Roadmap | [`.planning/ROADMAP.md`](../.planning/ROADMAP.md) |
-| Current state | [`.planning/STATE.md`](../.planning/STATE.md) |
+| Feature specs (Spec Kit) | [`specs/`](../specs/) — one folder per feature (`NNN-name/spec.md`, `plan.md`) |
+| Project constitution | [`.specify/memory/constitution.md`](../.specify/memory/constitution.md) |
+| Releases | [GitHub Releases](https://github.com/Aiacos/EvenFoundryVTT/releases) — module zip + `module.json` + `.ehpk`; last bridge-era release v0.1.55 |
 
 ---
 
@@ -71,7 +74,7 @@ docs/
 │   └── evenhub.md               ← .ehpk packaging (secondary)
 ├── showcase/
 │   └── index.html               ← animated showcase (GitHub Pages)
-└── wiki/                        ← GitHub-wiki source (Italian): Home, _Sidebar, _Footer, 22 pages, images/
+└── wiki/                        ← GitHub-wiki source (Italian): Home, _Sidebar, _Footer, 25 pages, images/
 ```
 
 ---

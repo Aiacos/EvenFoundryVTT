@@ -10,6 +10,8 @@ informed: future contributors
 
 ## Status
 
+> **Status note (v0.12.0, 2026-09-23)** — `packages/foundry-mcp` and the bridge Deepgram proxy were removed ([ADR-0016](./0016-direct-foundry-streaming.md)); voice/MCP needs a **new ADR** as a client of the direct channel. Backlog lessons to carry into it from the bridge-era line: the portrait-fetch **SSRF-hardening pattern** (commit `eb6b0d0`: allow-listed origins, no redirects to private ranges, size/time bounds) and the MCP **per-request Streamable HTTP transport** with explicit error mapping (commit `f508336`).
+
 > **SUPERSEDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. Voice (Deepgram proxy) and `foundry-mcp` were removed with the bridge; a future voice/MCP design needs a new ADR on top of the direct channel.
 
 **ACCEPTED** — 2026-05-11. Binds V2 OPZIONALE Phase 11 (foundry-mcp server), Phase 12 (Voice UX Tuning); locks the architecture so that no MVP code path takes voice as an internal dependency.

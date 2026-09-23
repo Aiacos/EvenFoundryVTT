@@ -10,6 +10,8 @@ informed: foundry-module, g2-app, shared-protocol
 
 ## Status
 
+> **Relates to / Supersedes (v0.12.0 port, 2026-09-23)** — renumbered from ADR-0013 of the direct-streaming branch. **Supersedes** [ADR-0014](./0014-bearer-actor-authorization.md) (bearer ↔ user binding, Amendments 1 and 2 — the per-actor ownership check is carried forward as a live `userOwnsActor` check in the projector) and **Amendment 2 of** [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) (owning-user execution via the poller → per-device projector election).
+
 > **ERRATUM** — 2026-09-23: the Context quote from foundryvtt.com/article/users was a paraphrase, not the page text; replaced with the verbatim sentence (which also grants Assistant GMs user configuration). The decision is unchanged.
 
 **ACCEPTED** — 2026-09-23. Amends [ADR-0016](./0016-direct-foundry-streaming.md) (pairing,

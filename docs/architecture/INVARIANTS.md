@@ -13,10 +13,14 @@ INV-1 through INV-4 were set at project inception and live in `CLAUDE.md` §Proj
 INV-5 (Gesture Determinism) was ratified in Phase 6 Plan 01 (2026-05-16).
 INV-6 (GM Authority Preservation) was ratified in Phase 7 Plan 01 (2026-05-16).
 
-**v0.10.0 update (2026-09-23):** [ADR-0016](./0016-direct-foundry-streaming.md) removed the
+**v0.12.0 update (2026-09-23):** [ADR-0016](./0016-direct-foundry-streaming.md) removed the
 Node bridge, `foundry-mcp` and socketlib. The invariants themselves are unchanged. The
-enforcement paths below now point at the direct-streaming code (D&D-sheet HUD, GM-client
-projector).
+enforcement paths below now point at the direct-streaming code (D&D-sheet HUD
+[ADR-0018](./0018-dnd-sheet-hud-pixel-renderer.md), elected projector
+[ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)). ADR-0016…0018 were
+numbered 0012…0014 before the v0.12.0 port onto `develop`; the gesture model referenced by
+INV-5 is [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md) (R1 gestures,
+Amendment 2: tap opens the menu from the base view).
 
 **Cross-cutting note:** any new invariant MUST be added here and indexed from
 `docs/architecture/README.md`. Invariants are permanent. They change only when a new ADR
@@ -32,7 +36,11 @@ screen set in [`docs/design/g2-sheet-ux.html`](../design/g2-sheet-ux.html) (S1�
 mocks P01–P03 remain in the superseded [`g2-thirds-layout.md`](../design/g2-thirds-layout.md)).
 
 Zone boundaries (portrait 144² · header 288×144 · map 144² on top; sheet 288×144 · context
-288×144 below), frames and icons stay in the same place in every state. Variable content (HP `7` vs `700`, name length, condition overflow, IT vs EN)
+288×144 below), frames and icons stay in the same place in every state. Containers sit on
+the hardware-proven 2 × 2 grid of 288 × 144 image tiles from (0, 0): the top band 576 × 144
+(portrait · header · map) is one framebuffer split at x = 288, the sheet is the tile at
+(0, 144), zone E is firmware text at (288, 144). The real G2 host rejects off-grid image
+tiles (finding `d97b12e`, 2026-07-07), so the grid is part of the layout contract. Variable content (HP `7` vs `700`, name length, condition overflow, IT vs EN)
 is width-budgeted at build time, never best-effort.
 
 **Pixel-budget gate (zone E, firmware text):** strings are measured in pixels with
@@ -91,12 +99,12 @@ TSDoc on every public API. Hot-path benchmarks gate regressions.
 
 ## 🛡️ 5. INV-5 — Gesture Determinism (Phase 6 ratification)
 
-**Ratified:** 2026-05-16 (Phase 6 Plan 01). **Enforcement re-pointed:** 2026-09-23 (v0.10.0).
+**Ratified:** 2026-05-16 (Phase 6 Plan 01). **Enforcement re-pointed:** 2026-09-23 (v0.12.0).
 
 > Every gesture maps to **exactly one** handler call. Zero-handler cases are explicit
 > no-ops, never silent drops or multi-handler broadcasts.
 
-### Enforcement (D&D-sheet HUD, v0.10.0)
+### Enforcement (D&D-sheet HUD, v0.12.0)
 
 - **Single entry point:** `toGestureEvent` (`packages/g2-app/src/hud/input/events.ts`)
   maps each Even Hub event to at most one `HudInput`: `tap`, `double`, `up`, `down`, or
@@ -108,6 +116,8 @@ TSDoc on every public API. Hot-path benchmarks gate regressions.
   (SDK ≥ 0.0.14, Even App ≥ 2.2.9). The OS opens the page's `menuObject` and the choice
   arrives as one `menuItemClickEvent`. Every menu entry is also reachable with a tap, so
   long-press is never the only path.
+- **Gesture model:** [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md) —
+  tap at the root opens *Actions*, root double-tap → `shutDownPageContainer(1)`.
 - **Tests:** `packages/g2-app/src/hud/__tests__/input.test.ts`.
 
 The v0.9 layered-engine enforcement (`LayerManager.getTopLayer()`, `PanelGestureBus`,

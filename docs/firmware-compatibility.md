@@ -21,9 +21,9 @@ checklist). Aggregator, blog and AI-summary sources are not authoritative.
 | `socket.io-client` | 4.8.3 | 2026-09-23 | `packages/g2-app/package.json` (Foundry socket, EIO 4) |
 | G2 model identifier | `"g2"` | 2026-05-14 | `getGlassesInfo()` probe on the simulator |
 | FoundryVTT | ≥ v13.347 (v14 verified) | 2026-09-23 | `packages/foundry-module/module.json` → `compatibility`. v14 accepts the socket session only from the `session` cookie, so the page must be same-origin ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). |
-| dnd5e | ≥ 5.3.3 | 2026-05-07 | [github.com/foundryvtt/dnd5e/releases](https://github.com/foundryvtt/dnd5e/releases) |
+| dnd5e | ≥ 5.3.3 | 2026-05-07 | [github.com/foundryvtt/dnd5e/releases](https://github.com/foundryvtt/dnd5e/releases). Live findings kept from the bridge era: `Activity#use(usage, dialog, message)` takes `configure:false` in the **dialog** argument (otherwise every cast/attack waits ~10 s); spells use `method` / `prepared` (a number 0/1/2) since 5.1; `hp.temp` may be `null`. |
 | midi-qol | optional (`relationships.recommends`) | 2026-05-10 | [gitlab.com/tposney/midi-qol](https://gitlab.com/tposney/midi-qol) |
-| socketlib | **not used** since v0.10.0 | — | The projector runs in the GM client, so no `executeAsGM` round-trip is left (ADR-0016). |
+| socketlib | **not used** since v0.12.0 | — | The projector runs in a Foundry client (the player's, else a GM's — ADR-0017), so no `executeAsGM` round-trip is left (ADR-0016). |
 
 ### 📝 SDK changes that matter to us
 
@@ -46,11 +46,13 @@ Sources: [hub.evenrealities.com/docs/build/display](https://hub.evenrealities.co
 
 | Parameter | Limit | EVF usage |
 |---|---|---|
-| Canvas | 576 × 288, 4-bit greyscale green | five zones: portrait 144² · header 288×144 · map 144² · sheet 288×144 · context 288×144 |
-| Image containers | ≤ 4 per page, each ≤ 288 × 144 | 4 / 4: portrait, header, map, sheet (pixel renderer) |
+| Canvas | 576 × 288, 4-bit greyscale green | five zones: portrait 144² · header 288×144 · map 144² · sheet 288×144 · context 288×144 (zones, not containers) |
+| Image containers | ≤ 4 per page, each 20–288 × 20–144 (SDK types) | 3 / 4 on the hardware-proven 2 × 2 grid of 288 × 144 tiles: top band 576 × 144 (portrait · header · map) rendered once and split at x = 288 into tiles (0,0) + (288,0); sheet tile (0,144). Full-screen states use all 4 tiles |
+| Tile placement | real host **rejects** `rebuildPageContainer` with image tiles at off-grid offsets (0 containers → white glasses); the simulator accepts any offset (finding `d97b12e`, 2026-07-07) | images only at (0,0) (288,0) (0,144) (288,144) |
+| Container ids / z-order | host uses one id namespace per page, images first then text; images always draw **over** text regardless of `zOrder` | image ids first, then text ids; no text container under an image |
 | Text / list containers | ≤ 8 per page | 4 / 8: context title · body · hint + background capture |
 | Event capture | exactly 1 container with `isEventCapture: 1` | full-screen background text |
-| Image pacing | ≥ 100 ms between image updates (SDK 0.0.14) | one image at a time, per-zone hash, priority header > map > sheet > portrait; map ≤ 1 fps |
+| Image pacing | ≥ 100 ms between image updates (SDK 0.0.14); BLE ~10–30 KB/s | one image at a time, per-tile hash, header/map tiles first; map ≤ 1 fps (a 30 fps raster stream flooded the real G2 in the bridge era) |
 | Input | press · double-press · swipe up/down; long-press is an **extra** (0.0.14, app ≥ 2.2.9) | long-press opens the `menuObject` shortcuts. Every shortcut can also be reached with a tap. |
 | Audio out / camera | none | all feedback is visual |
 

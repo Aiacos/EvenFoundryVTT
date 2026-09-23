@@ -21,6 +21,8 @@ Tre pezzi possono guastarsi: la **pagina sul telefono**, il **server Foundry** (
 | Azione con errore `forbidden_actor` | la richiesta riguardava un altro attore | gli occhiali agiscono solo per il personaggio associato |
 | `actor_missing` al collegamento | il personaggio associato è stato eliminato | riassocia con un personaggio esistente |
 | L'attacco pubblica la scheda ma non tira | midi-qol non attivo: `activity.use()` pubblica solo la scheda | attiva midi-qol per l'automazione completa |
+| La Even App dice *«versione di prova scaduta»* | stai usando un `.ehpk` caricato sul portale come prova: i caricamenti di prova scadono | usa il **QR** (associazione o `evenhub qr` in sviluppo), che non scade; oppure ricarica un `.ehpk` nuovo ([Release](Release)) |
+| Occhiali bianchi con una build modificata, ma nel simulatore funziona | tile immagine fuori dalla griglia 288 × 144: il vero host rifiuta `rebuildPageContainer`, il simulatore no | tieni le immagini sulla griglia 2 × 2 da (0, 0) ([Renderer a pixel](Renderer-Pixel)) |
 | Nessuna pressione lunga | Even App < 2.2.9 | aggiorna l'app; ogni scorciatoia è comunque raggiungibile con tap → *Opzioni…* |
 
 ## 🐞 Dove guardare

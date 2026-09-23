@@ -99,17 +99,18 @@ List any notable events during the session. Add rows as needed.
 
 ## ⚡ Latency observations
 
-Since v0.10.0 there is no bridge hop and no perf-probe emitter. Measure end-to-end latency
+Since v0.12.0 there is no bridge hop and no perf-probe emitter. Measure end-to-end latency
 by hand: the time from an R1 gesture to the toast/HUD update on the glasses, plus the
-**Latency** row of the phone page (ping → pong through Foundry's relay and the GM
-projector). Note the map frame rate observed in the centre column (budget ≤ 1 fps).
+**Latency** row of the phone page (ping → pong through Foundry's relay and the elected
+projector: the player's client, or the GM fallback). Note the map frame rate observed in
+the top-right map zone (budget ≤ 1 fps).
 
 | Metric | Value | Target |
 |--------|-------|--------|
 | End-to-end latency p50 | _pending_ ms | ≤ 400 ms (SC-10-02) |
 | End-to-end latency p95 | _pending_ ms | — |
 | End-to-end latency p99 | _pending_ ms | — |
-| Phone page *Latency* (relay + GM projector RTT) | _pending_ ms | — |
+| Phone page *Latency* (relay + projector RTT) | _pending_ ms | — |
 | Map frame rate observed (approx.) | _pending_ fps | ≤ 1 fps (sheet layout, zone C budget) |
 
 ---
@@ -122,7 +123,7 @@ Mark complete once the criterion is verified on real hardware.
 - [ ] **SC-10-01** — Multi-session field test (≥2 D&D sessions) completed. NASA-TLX self-report
       filed for each session. Consenting DM present. Results documented in `docs/field-test-N.md`.
 - [ ] **SC-10-02** — End-to-end latency p50 ≤ 400 ms measured on real R1 + G2 + Foundry (HTTPS,
-      GM projector online). Measurement method and raw timings attached.
+      projector online). Measurement method and raw timings attached.
 - [ ] **SC-10-03** — Microwave / 2.4 GHz RF worst-case test performed in-session. Graceful degrade to
       glyph mode (INV-1 compliant) fires without session-state loss. No hung gestures or silent drops.
 

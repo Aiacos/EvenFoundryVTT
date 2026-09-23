@@ -10,6 +10,8 @@ informed: future contributors
 
 ## Status
 
+> **Status note (v0.12.0, 2026-09-23)** — **Partially superseded by [ADR-0016](./0016-direct-foundry-streaming.md).** The bridge WS envelope, resume handshake and replay buffer are gone with `packages/bridge`; the direct channel carries AES-GCM sealed envelopes on the `module.evenfoundryvtt` relay (`packages/shared-protocol/src/direct/`). The semver discipline for `@evf/shared-protocol` and idempotent tool invocation (`invocationId`) remain in force.
+
 > **SUPERSEDED by [ADR-0016](./0016-direct-foundry-streaming.md)** — 2026-09-23. The bridge WS envelope, resume and replay buffer are gone; the direct channel uses sealed `module.evenfoundryvtt` messages (`packages/shared-protocol/src/direct/`).
 
 **ACCEPTED** — 2026-05-11. Binds Phase 2 (Foundry Module Core), Phase 3 (Bridge), Phase 7 (Write Path), and indirectly all V2 phases (foundry-mcp consumes same envelope).

@@ -10,6 +10,10 @@ informed: g2-app, shared-render, foundry-module (map reader)
 
 ## Status
 
+> **Relates to / Supersedes (v0.12.0 port, 2026-09-23)** — renumbered from ADR-0014 of the direct-streaming branch. **Supersedes** [ADR-0013](./0013-hud-raster-rendering.md) (HUD raster rendering, incl. Amendment 1 and the hybrid/showcase substrates; its hardware facts are retained below). The gesture semantics are those of [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md), which **stays canonical** (tap at the base view opens the actions menu, swipe moves the cursor, double-tap goes back and exits at the root with `shutDownPageContainer(1)`); this ADR implements it in `packages/g2-app/src/hud/input/`.
+>
+> **Amendment 1 — hardware-proven tile geometry (2026-09-23).** The real G2 host rejects `rebuildPageContainer` when image containers sit at non-grid offsets (bridge-era commit `d97b12e`, 2026-07-07: tiles at (88,44) → `REJECTED`, 0 containers, blank glasses; the simulator accepts any offset). The only geometry proven on hardware is the **2×2 grid of 288×144 image tiles anchored at (0,0)**. The sheet page therefore draws the top band (A portrait x 0–143 · B header 144–431 · C map 432–575, 576×144) **once** as one framebuffer and splits it at x = 288 into the tiles (0,0) and (288,0); zone D is the tile (0,144); zone E stays firmware text at (288,144), 288×144; the background capture text (576×288, `content: ' '`, `isEventCapture: 1`) is unchanged. Budget 3/4 image + 4/8 text; the full-screen states keep four tiles. Container IDs follow the host's per-page namespace in declaration order: **image containers first, then text**. Image containers always render on top of text containers (type-based z-order), so no text region may sit under an image. Zone boundaries and pixel fixtures are unchanged; only the container split changes.
+
 **ACCEPTED** — 2026-09-23. Supersedes [ADR-0001](./0001-layered-ui-model.md) (layered
 z-model), [ADR-0006](./0006-raster-pipeline-library-stack.md) (image-q / xxhash-wasm raster
 stack), [ADR-0009](./0009-layer-manager-contract.md) (layer manager) and

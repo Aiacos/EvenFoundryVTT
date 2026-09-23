@@ -1,10 +1,39 @@
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.0.0 → 1.1.0 (2026-09-23, v0.12.0 direct-streaming port)
+Bump rationale: MINOR — one new principle (XI) and materially expanded guidance (V, IX),
+plus factual corrections after the bridge was removed (ADR-0016..0018).
+
+Modified principles:
+  IV.   Performance Budgets — v0.12 map budget (≤ 1 fps, hash skip) noted; bridge-era 5/15 fps stream kept as history.
+  V.    Autonomous Debug & Validation — rewritten around the direct model: debug loop
+        (reproduce → isolate → fix → regression test), g2-app debug channel, `?demo=` scenarios,
+        Even Hub simulator loop (`sim:check`); bridge/Docker/pv-doctor references removed.
+  IX.   Reliable, Useful CI/CD — gate rule: every mechanically checkable principle gets a CI gate;
+        never bypass (`--no-verify`, skipped jobs, lowered thresholds); remove dead gates.
+Added principles:
+  XI.   Consistent Chapter Icons — canonical heading-icon map (ported from the direct-streaming
+        branch's Engineering Constitution P11).
+Changed sections: preamble (no Node bridge); Additional Constraints (image container 20–288 ×
+  20–144, long-press only as duplicate shortcut, QR pairing shown by Foundry, voice/MCP needs a
+  new ADR); Development Workflow (Spec Kit feature folders).
+Mapping to CLAUDE.md "Engineering Constitution" P1–P11: P1≈I, P2≈II, P3≈III, P4≈IV, P5≈V,
+  P6≈VI, P7≈VII, P8≈VIII, P9≈IX, P10≈X, P11=XI.
+
+Templates requiring updates:
+  ✅ .specify/templates/plan-template.md  — Constitution Check reads this file dynamically; no edit required.
+  ✅ .specify/templates/spec-template.md  — no conflict.
+  ✅ .specify/templates/tasks-template.md — no conflict.
+  ⚠ CLAUDE.md — must carry the same P1–P11 wording (updated in the same v0.12.0 docs commit).
+
+Follow-up TODOs: none.
+
+---- previous report (1.0.0) ----
 Version change: (unversioned template) → 1.0.0
 Bump rationale: First ratified constitution; all principles newly defined (MAJOR baseline).
 
-Principles (all NEW):
+Principles (all NEW in 1.0.0):
   I.    Code Quality & Zero Dead Code
   II.   Test-First & Coverage Discipline
   III.  Layout & UX Consistency (INV-1)
@@ -31,7 +60,8 @@ Follow-up TODOs: none.
 # EvenFoundryVTT Constitution
 
 EvenFoundryVTT (EVF) projects a FoundryVTT D&D 5e session onto Even Realities G2 AR glasses
-via a Node bridge, driven by R1 ring gestures. These principles are non-negotiable rules for
+directly through the Foundry module (no server of our own since v0.12.0, ADR-0016), driven by
+R1 ring gestures. These principles are non-negotiable rules for
 every change. They extend and operationalize the four project invariants (INV-1..INV-4) in
 `Specs.md` §0.1 and `CLAUDE.md`; where this document and an invariant overlap, both bind.
 
@@ -54,8 +84,8 @@ unmaintainable surface area and hides real defects.
 New behavior MUST be covered by tests; bug fixes MUST add a regression test that fails
 before the fix. Vitest is the only test runner. The v8 coverage gate (≥80%) MUST hold.
 Pure logic MUST be unit-tested in isolation (export the function rather than reaching into
-a process); integration-level behavior (WS handlers, routes, the headless/orchestrator
-state machine, frame pipeline) MUST have integration tests. A change that lowers coverage
+a process); integration-level behavior (g2-app session ↔ projector sealed-envelope
+round-trips on a fake socket, write-path handlers, zone rendering) MUST have integration tests. A change that lowers coverage
 or disables a test without a documented reason MUST NOT merge.
 
 Rationale: deterministic correctness is the MVP's core promise; tests are the only durable
@@ -82,20 +112,30 @@ MUST be measured (telemetry: capture/encode/post timings, ingress/egress fps) an
 to a specific stage before any fix — never guessed. Any cap, truncation, sampling, or dropped
 work MUST be logged, not silent.
 
+Since v0.12.0 the map is not a stream: zone C is rebuilt on the phone from document data and
+sent at most once per second, only when its hash changes; image updates are paced ≥ 100 ms
+(SDK) and sized for the real-G2 BLE budget (~10–30 KB/s). The 5/15 fps figures above bind only
+if a streamed map returns.
+
 Rationale: glanceable AR is latency-sensitive; unmeasured "optimizations" routinely move the
 bottleneck instead of removing it (see the browser-capture network-path diagnosis, 2026-06-18).
 
 ### V. Autonomous Debug & Validation
 
-The system MUST be observable and self-diagnosable without a human babysitting `docker logs`.
-Each subsystem with live behavior MUST expose first-class diagnostics: Prometheus metrics,
-structured logs, and a purpose-built CLI/tool that speaks the real protocol (e.g.
-`tools/pv-doctor.mjs`). New live features MUST ship with the means to inspect, drive, and
-measure them end-to-end. Diagnostics MUST report outcomes faithfully — a failed step is
-reported with its evidence, never glossed.
+The system MUST be observable and drivable without glasses. Every feature MUST record
+structured events in the g2-app debug channel (`src/debug/`), add a `?demo=` scenario for every
+new HUD state, and keep the Even Hub simulator loop (`sim:check`: screenshots + input + console
+via the automation API) green. Debug surfaces are dev-only and fail closed (off in production
+builds, secret-gated when on). Debugging follows a fixed loop: **reproduce → isolate (debug
+channel, logs, simulator) → fix → regression test**, autonomously; the user is asked only for
+hardware-gated steps, which follow the defer-hardware pattern (`validation-harness`, runnable
+with `--skip-hardware`). Before claiming done, run `pnpm lint:ci && pnpm typecheck && pnpm
+test:coverage` (+ the simulator for display/input changes) and report real output. Diagnostics
+MUST report outcomes faithfully — a failed step is reported with its evidence, never glossed.
 
-Rationale: the four-boundary system (glasses ⇄ app ⇄ bridge ⇄ Foundry) is too distributed to
-debug by eyeball; verifiable instrumentation is what turned multi-hour mysteries into minutes.
+Rationale: the glasses ⇄ phone WebView ⇄ Foundry relay ⇄ projector chain is too distributed to
+debug by eyeball, and the simulator accepts things the real host rejects (e.g. non-grid image
+offsets); verifiable instrumentation is what turned multi-hour mysteries into minutes.
 
 ### VI. Source-Verified SDK & Library Research (INV-2)
 
@@ -123,8 +163,8 @@ Rationale: incoherent docs erode trust in every other claim and silently rot int
 ### VIII. Repository Hygiene
 
 The working tree MUST stay clean and intentional. Scratch files, build artifacts, secrets,
-and generated bundles MUST be gitignored, never committed (`deploy/.env`, `deploy/secrets/`,
-`release*/`, `*.ehpk`, `_*.ts`). Commits MUST be atomic and follow Conventional Commits; work
+and generated bundles MUST be gitignored, never committed (`.env*`, `release*/`, `*.ehpk`,
+`_*.ts`, `__pycache__/`). Commits MUST be atomic and follow Conventional Commits; work
 lands on a branch, never directly on `main` unless explicitly authorized. Secrets MUST NOT
 appear in code, logs, error messages, or commit history; a leaked secret MUST be rotated.
 Dead branches, stale planning dirs, and orphaned files MUST be cleaned up rather than
@@ -139,7 +179,15 @@ changeset, INV checks) MUST pass before merge and MUST NOT be weakened to pass. 
 pipeline step MUST fail loudly on real problems and MUST NOT abort a release on a benign
 condition (e.g. a missing optional changelog entry is graceful, not fatal). Workflows MUST be
 maintained as the build evolves — a recurringly-red pipeline MUST be fixed or removed, never
-ignored. Versioned artifacts (module zip, `.ehpk`, images) MUST be reproducible from a tag.
+ignored. Versioned artifacts (module zip, `.ehpk`) MUST be reproducible from a tag.
+CI is the enforcement of this constitution: every principle that can be checked mechanically
+MUST get a gate (lint, typecheck, coverage, TODO discipline, snapshot drift, changeset,
+ADR-0011 guard, socketlib confinement, module assets, wiki links, …). Gates MUST NOT be
+bypassed with `--no-verify`, skipped jobs, or lowered thresholds; a gate that no longer
+protects anything is removed, and a new gate is added when a bug class escapes. Pipelines stay
+fast and deterministic (pinned actions and tool versions, cached pnpm store, actionable
+failure messages), are tested on a branch before merge, and a red `develop` is fixed before new
+feature work.
 
 Rationale: CI that is flaky, red-by-default, or trivially bypassed provides no safety and
 trains the team to ignore it.
@@ -157,14 +205,48 @@ MUST be done directly, not delegated.
 Rationale: undirected delegation wastes tokens and context and produces unverifiable results;
 targeted orchestration multiplies throughput and confidence.
 
+### XI. Consistent Chapter Icons
+
+Every `##` heading in `README.md`, `docs/**/*.md`, wiki pages and the showcase MUST use one
+leading emoji from this canonical map — same concept, same icon, everywhere. The map MUST be
+extended here (and in `CLAUDE.md` P11) before a new icon is introduced; two icons for one
+concept are forbidden.
+
+| Concept | Icon | Concept | Icon |
+|---|---|---|---|
+| Overview / What is it | 🎲 | Hardware (G2 / R1) | 🥽 |
+| Quick summary / In one sentence | 💡 | Stack / Dependencies | 🧰 |
+| Installation / Setup | 📦 | Research / SDK notes | 🔬 |
+| Configuration | ⚙️ | Documentation / Guides | 📚 |
+| Usage / Gestures | 🕹️ | Testing | 🧪 |
+| UX / UI design | 👓 | Debug / Troubleshooting | 🐞 |
+| Architecture | 🏗️ | Performance | ⚡ |
+| Highlights / Features | ✨ | Security / Auth | 🔐 |
+| Code quality | 💎 | CI/CD / Release | 🚀 |
+| Invariants / Principles | 🛡️ | Contributing / Cleanup | 🧹 |
+| Status / Progress | 📊 | Agents / Automation | 🤖 |
+| Roadmap / Milestones | 🗺️ | Voice / MCP (V2) | 🎙️ |
+| Changelog | 📝 | Inspiration | 🎨 |
+| Icons / Conventions | 🏷️ | License | ⚖️ |
+| Author / Credits | 👤 | | |
+
+Rationale: the same concept recurring across README, wiki, docs and showcase must be
+recognisable at a glance; drifting icons are a documentation-coherence (INV-3) smell.
+
 ## Additional Constraints
 
 - **Non-negotiable hardware/platform facts** (verified upstream, do not re-litigate without
   INV-2 evidence): plugins run on the paired phone WebView, not G2 firmware; G2 has 4 mics,
-  no speaker, no camera, no arbitrary pixel drawing; max 4 image containers (each 20–200 ×
-  20–100 px); R1 gestures are press / double-press / swipe-up / swipe-down only (no
-  long-press); EvenAI is opaque (no developer API) — V2 voice is via an external MCP server.
-- **Pairing has no QR-scan path** (no camera API): pairing is Even Hub install + paste token.
+  no speaker, no camera; max 4 image containers (each 20–288 × 20–144 px, SDK 0.0.15) + 8
+  text/list, exactly one `isEventCapture:1`; image containers render on top of text; the real
+  host rejects image tiles at non-grid offsets (only the 2×2 grid of 288×144 tiles from (0,0) is
+  hardware-proven); canonical gestures are press / double-press / swipe-up / swipe-down —
+  long-press (SDK ≥ 0.0.14) may only duplicate a function reachable otherwise (ADR-0012);
+  EvenAI is opaque (no developer API) — voice/MCP needs a new ADR (ADR-0016 removed
+  `foundry-mcp`).
+- **Pairing**: Foundry shows a QR (player's or GM's screen) that the Even Realities App scans to
+  sideload the glasses app already bound to one device key (ADR-0016/0017); there is no bearer
+  token to paste and no camera use on the glasses.
 - **Determinism first**: the MVP core is gesture-explicit; voice/AI is an optional V2 stretch,
   never a dependency.
 - **Tooling is fixed**: pnpm, TypeScript strict 5.8.x, Biome, Vitest, Changesets. The pinned
@@ -173,8 +255,9 @@ targeted orchestration multiplies throughput and confidence.
 
 ## Development Workflow & Quality Gates
 
-- Substantive work flows through the GSD workflow so planning artifacts and execution context
-  stay in sync; direct repo edits outside a GSD entry point require explicit user authorization.
+- Substantive work flows through a Spec Kit feature (`specs/NNN-*/` spec → plan → tasks) so
+  planning artifacts and execution context stay in sync; direct repo edits outside that flow
+  require explicit user authorization.
 - Each change runs `pnpm lint:ci` + `pnpm typecheck` + the affected package tests before commit;
   cross-cutting changes additionally satisfy INV-3 (docs in the same commit).
 - Outward-facing or hard-to-reverse actions (publishing, releases, deploys, deletions) are
@@ -200,4 +283,4 @@ Compliance is verified at review time: every PR/review MUST confirm the change h
 principles, and any deviation MUST be justified in the PR (and, if retained, issue- or
 ADR-linked). Complexity MUST be justified against the simpler rejected alternative.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-06-18
+**Version**: 1.1.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-09-23

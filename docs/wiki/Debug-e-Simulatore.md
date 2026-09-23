@@ -30,7 +30,7 @@ __evf.events(20)         // ultimi 20 eventi del canale di debug
 __evf.dispatch('down')   // inietta un gesto: 'tap' | 'double' | 'up' | 'down' | { menu: id }
 ```
 
-`dispatch` valida l'argomento (l'input della console non è fidato) e restituisce `false` se non c'è un bridge degli occhiali.
+`dispatch` valida l'argomento (l'input della console non è fidato) e restituisce `false` se non c'è il bridge dell'SDK Even Hub (`EvenAppBridge`, cioè fuori dalla Even App o dal simulatore).
 
 ## 🧪 Simulatore Even Hub: `sim:check`
 
@@ -38,7 +38,7 @@ __evf.dispatch('down')   // inietta un gesto: 'tap' | 'double' | 'up' | 'down' |
 
 1. avvia Vite (salvo `--url`);
 2. lancia `evenhub-simulator <url>?demo=tour --automation-port <porta>`;
-3. aspetta `EVF_READY`, poi per ogni marcatore `EVF_SCENE i/n nome layout` salva lo screenshot in `packages/g2-app/.sim-artifacts/`, verifica pixel accesi nelle cinque zone e i pixel di separazione a x = 144 / 432 / 288 **identici tra le scene** (INV-1), prova l'input reale sulle liste (`down` deve cambiare il display) e avanza con `double_click`;
+3. aspetta `EVF_READY`, poi per ogni marcatore `EVF_SCENE i/n nome layout` salva lo screenshot in `packages/g2-app/.sim-artifacts/`, verifica pixel accesi nelle cinque zone e i pixel di separazione a x = 144 / 432 / 288 (confini delle zone e taglio fra le tile) **identici tra le scene** (INV-1), prova l'input reale sulle liste (`down` deve cambiare il display) e avanza con `double_click`;
 4. fallisce se la console del simulatore contiene `[uncaught]` o `[unhandledrejection]`.
 
 ```bash
@@ -48,6 +48,18 @@ WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 \
 ```
 
 Le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` servono quando il comando parte da una shell senza sessione grafica (per esempio un agente o SSH): usa i valori della tua sessione desktop. Opzioni: `--url`, `--port` (default 9898), `--vite-port` (default 5173), `--sim` (oppure `$EVF_SIMULATOR`), `--timeout` (default 60000 ms). Validato con **evenhub-simulator 0.9.5**.
+
+**Linux senza display (server, CI):** il simulatore è un'app GTK. Installa `xvfb libgtk-3-0 libglib2.0-0 libgdk-pixbuf2.0-0`, avvialo con `xvfb-run -a` e esporta **prima** queste variabili, altrimenti il simulatore si chiude con errori glycin-loaders / GdkPixbuf:
+
+```bash
+export XDG_DATA_DIRS=/usr/share:/usr/local/share:/home/linuxbrew/.linuxbrew/share
+export GDK_PIXBUF_MODULE_FILE=/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
+export GSK_RENDERER=cairo
+export LIBGL_ALWAYS_SOFTWARE=1
+pnpm sim:check -- --sim "xvfb-run -a npx -y @evenrealities/evenhub-simulator@0.9.5"
+```
+
+Il simulatore **non** riproduce tutti i limiti dell'hardware: accetta tile immagine a qualunque offset (il vero host rifiuta quelle fuori dalla griglia 288 × 144) e non mostra i problemi di banda BLE. Un passaggio nel simulatore non sostituisce la prova sugli occhiali (sezione *GO/NO-GO hardware* qui sotto).
 
 **Codici di uscita:** `0` passa · `1` fallisce · `2` simulatore non disponibile (saltato: un display o un simulatore mancante non fa mai fallire la CI software).
 

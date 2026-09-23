@@ -38,7 +38,7 @@ Non c'è un server da installare: niente Docker, niente bridge. Foundry serve la
 
 ## 📊 Stato
 
-**v0.10.0 — streaming diretto.** La verifica sull'hardware reale (sideload via QR, persistenza dei cookie, ritmo della mappa via BLE) segue il pattern *defer-hardware*: il software è verificato dai test e dal simulatore ufficiale, l'hardware con `validate:direct-sideload` ([Debug e simulatore](Debug-e-Simulatore)). Novità: [Changelog](Changelog).
+**v0.12.0 — streaming diretto.** La verifica sull'hardware reale (sideload via QR, persistenza dei cookie, ritmo della mappa via BLE) segue il pattern *defer-hardware*: il software è verificato dai test e dal simulatore ufficiale, l'hardware con `validate:direct-sideload` ([Debug e simulatore](Debug-e-Simulatore)). Novità: [Changelog](Changelog).
 
 ## ⚖️ Licenza
 

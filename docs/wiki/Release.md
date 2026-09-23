@@ -1,6 +1,8 @@
 # Release
 
-Dalla v0.10.0 l'unico artefatto di release è lo **zip del modulo Foundry**, che contiene anche l'app degli occhiali in `g2/` ([ADR-0016](Decisioni-Architetturali)). Flusso: **GitFlow + Changesets**.
+Dalla v0.12.0 l'artefatto di release è lo **zip del modulo Foundry**, che contiene anche l'app degli occhiali in `g2/` ([ADR-0016](Decisioni-Architetturali)); ogni release allega anche il pacchetto Even Hub `evenfoundryvtt.ehpk` costruito dalla stessa cartella `g2/`. Niente immagine Docker, niente `g2-app-dist.zip`. Flusso: **GitFlow + Changesets**.
+
+**Versioni**: l'ultima release basata sul bridge è la **v0.1.55** del modulo (più la pre-release `g2-app-v0.11.0`); la prima dopo il port è la **v0.2.0** (modifica incompatibile prima della 1.0 ⇒ *minor*). **Migrazione** per chi usava il bridge: spegni e rimuovi il container `evf-bridge`, aggiorna il modulo, poi riassocia ogni paio di occhiali dal pannello *Associa occhiali G2* o dalla lista *Giocatori* (i vecchi token bearer non esistono più).
 
 ## 🚀 Dal changeset al tag
 
@@ -12,8 +14,8 @@ Dalla v0.10.0 l'unico artefatto di release è lo **zip del modulo Foundry**, che
 Tag manuale, se serve:
 
 ```bash
-git tag v0.10.0
-git push origin v0.10.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## 🚀 Zip del modulo
@@ -24,11 +26,11 @@ git push origin v0.10.0
 2. `pnpm install --frozen-lockfile --ignore-scripts`;
 3. `pnpm --filter @evf/foundry-module build` → `dist/module.js`;
 4. `pnpm --filter @evf/g2-app build` → `packages/foundry-module/g2/` (fallisce se manca `g2/index.html`);
-5. aggiorna in `module.json` la `version` e l'URL `download` legato alla versione;
+5. aggiorna in `module.json` la `version` e l'URL `download` legato alla versione e **aggiunge la versione ai nomi dei file** (`dist/module-<ver>.js`, `styles/pair-g2-<ver>.css`): Foundry mette in cache il JavaScript dei moduli, e senza nome nuovo i client continuerebbero a eseguire la versione vecchia; poi allinea la `version` di `packages/g2-app/app.json` a quella del pacchetto g2-app e crea `evenfoundryvtt.ehpk`;
 6. assembla l'albero di release: `module.json` + `dist/` + **`g2/`** + `lang/` + `templates/` + **`styles/`**, poi `node scripts/check-module-assets.mjs release-tree` verifica che ogni percorso citato da `module.json` (`esmodules`, `styles`, `languages`) esista;
 7. crea `evenfoundryvtt.zip` senza sourcemap e verifica che contenga `g2/index.html`;
 8. note di rilascio dai `CHANGELOG.md` di `foundry-module` (e di `g2-app`, se presente);
-9. crea la GitHub Release (i tag con `-` sono pre-release) e carica `module.json` + `evenfoundryvtt.zip`.
+9. crea la GitHub Release (i tag con `-` sono pre-release) e carica `module.json` + `evenfoundryvtt.zip` + `evenfoundryvtt.ehpk`.
 
 | Campo di `module.json` | URL |
 |---|---|
@@ -44,7 +46,35 @@ pnpm --filter @evf/foundry-module build:all     # g2-app → g2/, poi tsup → d
 
 ## 🚀 Pacchetto Even Hub (secondario)
 
-`.github/workflows/evenhub-pack.yml` costruisce e valida un `.ehpk` a ogni push su `main` (`npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/foundry-module/g2 -o evenfoundryvtt.ehpk`). Serve a validare manifest e build; i giocatori **non** ne hanno bisogno, perché l'app si carica con il QR sideload. Dettagli: [`docs/release/evenhub.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/release/evenhub.md).
+I giocatori **non** hanno bisogno del `.ehpk`: l'app si carica con il **QR sideload** servito dal modulo ([Installazione](Installazione)). Il pacchetto serve a validare manifest e build e per un futuro listing su Even Hub.
+
+- `.github/workflows/evenhub-pack.yml` lo costruisce e lo valida a ogni push su `main` (`npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/foundry-module/g2 -o evenfoundryvtt.ehpk`); `foundry-module-release.yml` ne allega uno nuovo a ogni release.
+- `app.json` deve avere la **stessa versione** del pacchetto g2-app (per i pacchetti locali), una `description`, un'`icon` e `min_app_version`; per la revisione serve `min_sdk_version` ≥ 0.0.14.
+
+### Due strade diverse: non confonderle
+
+| | **QR (sviluppo e uso reale)** | **`.ehpk` caricato sul portale** |
+|---|---|---|
+| Strumento | `evenhub qr` → scansione con la Even Realities App | caricamento sul **portale sviluppatori** Even Hub |
+| Carica | la pagina servita da Foundry (`/modules/evenfoundryvtt/g2/`) o il server Vite di sviluppo | il bundle impacchettato |
+| Scadenza | **nessuna** | i caricamenti di prova **scadono** → *«versione di prova scaduta»* |
+| Installazione permanente | — | solo dopo una **submission approvata** da Even Realities |
+
+Doc Even Hub ([CLI](https://hub.evenrealities.com/docs/reference/cli)): *«Scan the QR code with the Even Realities App on your phone. Your app loads on the glasses with hot reload support.»* Per provare sugli occhiali usa sempre il QR: `npx @evenrealities/evenhub-cli qr --url http://<IP-LAN>:5173` (telefono e computer sulla stessa rete) durante lo sviluppo, oppure il QR dell'associazione per l'app servita da Foundry. Se devi per forza ripetere una prova col portale, rigenera un `.ehpk` nuovo e ricaricalo: un nuovo caricamento fa ripartire la finestra di prova (la scadenza è una regola del portale, non del file).
+
+### Niente submission automatica
+
+La CLI Even Hub espone solo `login` / `init` / `pack` / `qr`: **nessun comando** `publish` / `submit` / `upload`, `login` è interattivo e la submission è un **caricamento manuale sul portale** seguito da una **revisione manuale** (INV-2). L'API privata della CLI non ha un endpoint di caricamento e non va usata. Checklist completa: [`docs/release/evenhub.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/release/evenhub.md).
+
+### Icona
+
+Even Hub vuole un'icona **in scala di grigi** con **primo piano e sfondo separati** (il colore viene rifiutato; deve restare leggibile). Il repository contiene un **d20** stilizzato, rigenerabile:
+
+```bash
+python3 assets/generate-icon.py   # → assets/icon/{icon,icon-foreground,icon-background}.png (512 × 512, grigi)
+```
+
+Sul portale si caricano `assets/icon/icon-foreground.png` + `assets/icon/icon-background.png`; `icon.png` composto va nel `.ehpk` (campo `icon` di `app.json`).
 
 ## 📚 Wiki
 

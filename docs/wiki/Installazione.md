@@ -14,7 +14,7 @@ C'è **una sola cosa** da installare: il modulo Foundry **EvenFoundryVTT**. Serv
 | **Even Realities G2 + R1** | firmware aggiornato | associati al telefono con la procedura Even standard |
 | **Even Realities App** | ≥ 2.2.9 | per la pressione lunga ([compatibilità](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/firmware-compatibility.md)) |
 
-socketlib **non serve più** dalla v0.10.0.
+socketlib **non serve più** dalla v0.12.0.
 
 ## 📦 Installare il modulo
 

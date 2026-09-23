@@ -16,6 +16,8 @@ La HUD si legge come la **scheda cartacea di D&D 5e** e come **D&D Beyond**: ste
 
 Solo la zona **E** risponde ai gesti ([Gesti e comandi](Gesti-e-Comandi)).
 
+Sotto il cofano le zone A–C formano una sola **fascia alta** 576 × 144, divisa in due tile immagine 288 × 144; con la tile della scheda (D) fanno la griglia 2 × 2 di tile 288 × 144, l'unica che l'hardware reale accetta. La zona E è testo firmware nella quarta cella ([Renderer a pixel](Renderer-Pixel)).
+
 ## 👓 Zona A — Ritratto
 
 - Immagine dell'attore Foundry; se manca, il token; se mancano entrambi, lo **stemma della classe** (per esempio il martello del chierico), mai un riquadro vuoto.

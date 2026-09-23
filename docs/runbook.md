@@ -1,13 +1,18 @@
 # Runbook — EvenFoundryVTT (direct streaming)
 
-What to check when the glasses won't connect or stop updating. Since v0.10.0 there is no
+What to check when the glasses won't connect or stop updating. Since v0.12.0 there is no
 server to restart ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). Only three
 pieces can fail:
 
 1. **the phone page**: the g2-app in the Even Realities App WebView.
 2. **the Foundry server**: HTTPS, the static `/modules/evenfoundryvtt/g2/` files, the socket relay.
-3. **the GM browser**: the `evenfoundryvtt` module acting as **projector**. It holds the
-   device keys, reads dnd5e data and runs every action.
+3. **the projector**: the `evenfoundryvtt` module in a Foundry client. Per device it is the
+   **player's own client** when that player is online, otherwise an **active GM** that holds
+   the device key ([ADR-0017](architecture/0017-player-owned-glasses-hybrid-projector.md)).
+   It reads dnd5e data and runs every action; only the elected client executes `invoke`.
+
+**Bridge-era installs (module ≤ v0.1.55):** there is nothing left to operate. Stop and
+remove the `evf-bridge` container, update the module and re-pair the glasses.
 
 First-time installation is covered in the [setup guide](setup-guide.md).
 
@@ -22,7 +27,7 @@ First-time installation is covered in the [setup guide](setup-guide.md).
              [Foundry server] ── relays module.evenfoundryvtt (AES-GCM sealed envelopes)
                     │
                     ▼
-             [GM browser: projector] — answers only if game.users.activeGM is this client
+             [projector: player's client if online · else the active GM holding the device key]
 ```
 
 | Step | Who | Failure shows up as |
@@ -30,7 +35,7 @@ First-time installation is covered in the [setup guide](setup-guide.md).
 | Page load | Even App → Foundry HTTPS | blank page / certificate error |
 | Login | g2-app `POST /join` as "&lt;Player&gt; (G2)" | *credentials rejected* → first-setup page (P03) |
 | Socket | socket.io `/socket.io/` | *Foundry not responding*, retry with backoff 1→30 s |
-| `hello` → `welcome` | projector in the GM browser | *no GM connected* after 8 s without `welcome` |
+| `hello` → `welcome` | elected projector (player's client or GM) | *no GM connected* after 8 s without `welcome` |
 | Live updates | projector hooks → sealed pushes | stale sheet/map; after 2 missed pongs the page goes offline (S12) |
 
 ---
@@ -41,13 +46,13 @@ The phone page is the fastest place to look.
 
 - **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause and the retry
   countdown (*retrying in N s (attempt K)*). The causes:
-  - *no GM connected*: the projector did not answer. See [the GM section](#-diagnose-from-foundry-gm-browser).
+  - *no GM connected*: the projector did not answer. See [the GM section](#-diagnose-from-foundry-projector-browser).
   - *Foundry not responding*: network, TLS, proxy or socket problem.
   - *credentials rejected*: revoked, already used, or expired. Re-pair.
   - *app in background*: expected. The page reconnects on foreground re-entry.
 - **Server / User / Character / GM:** confirms the page talks to the right world, as the
-  right "(G2)" user, and names the projecting GM (*Anna (online)*).
-- **Latency:** ping → pong round trip through the relay and the GM browser.
+  right "(G2)" user, and names the projector (*Anna (online)*).
+- **Latency:** ping → pong round trip through the relay and the projector.
 - **Diagnostics ▸** (IT: *Diagnostica*): Foundry version (from `/api/status` when it is
   exposed), the **recent errors** list (newest first, with level), and **Forget pairing**.
 - **Reconnect** forces a new login + socket. **Disconnect** stops the session and keeps
@@ -55,7 +60,7 @@ The phone page is the fastest place to look.
 
 ---
 
-## 🐞 Diagnose from Foundry (GM browser)
+## 🐞 Diagnose from Foundry (projector browser)
 
 ### Pair dialog
 
@@ -64,9 +69,11 @@ The phone page is the fastest place to look.
 - **Checks:** *valid HTTPS · module served · socket active*. Any ✗ blocks the phone.
 - **Paired devices:** each "(G2)" user with its character and **last contact**
   (*last contact 12 s ago* / *never connected*). A device that never connects after a
-  scan means the phone never reached the projector: check HTTPS and the GM.
+  scan means the phone never reached the projector: check HTTPS and that the player or a
+  GM is online. The *Players' glasses* section shows per-player state (*not enabled* ·
+  *enabled* · *paired* · *online*); players pair themselves with **Pair my glasses**.
 
-### Browser console (F12 on the GM client)
+### Browser console (F12 on the projector client)
 
 The projector logs with the `[EVF]` prefix:
 
@@ -81,14 +88,16 @@ The projector logs with the `[EVF]` prefix:
 Useful checks in the console:
 
 ```js
-game.users.activeGM?.name                       // must be the GM who paired
+game.users.activeGM?.name                       // GM fallback (when the player is offline)
 game.settings.get('evenfoundryvtt', 'g2Devices') // public device metadata (no keys)
 game.socket.connected                            // relay available
 ```
 
-Device **keys** are stored only in a hidden client-scoped setting of the browser that
-paired. Another browser or another GM account sees the metadata but can't open the
-envelopes, and the device reports *no GM connected*.
+Device **keys** are stored in a hidden client-scoped setting of the browser that paired.
+With self-service pairing the player's browser also seals the key for every GM's public
+key, so any GM browser that published its key can take over. With a GM-direct pairing
+another browser or GM account sees the metadata but can't open the envelopes, and the
+device reports *no GM connected* when the player is offline.
 
 ### Audit log
 
@@ -177,7 +186,9 @@ character, or when the phone shows *credentials rejected*.
 
 | Symptom | Diagnosis | Recovery |
 |---|---|---|
-| *no GM connected* although the GM is in the world | The active GM is not the browser that paired (keys missing), or the GM tab is suspended | Bring the pairing GM's tab to the front, or re-pair from the active GM's browser. |
+| *no GM connected* although the GM is in the world | The player's client is offline and the active GM does not hold the device key (GM-direct pairing from another browser), or the tab is suspended | Open Foundry as the player, bring the pairing GM's tab to the front, or re-pair (self-service pairing seals the key for every GM). |
+| White glasses with a modified build; fine in the simulator | Image tiles off the 2 × 2 grid of 288 × 144: the real host rejects `rebuildPageContainer`, the simulator does not | Keep images on (0,0) (288,0) (0,144) (288,144) ([firmware matrix](firmware-compatibility.md)). |
+| Even App says *"trial version expired"* | A `.ehpk` portal trial upload expired | Use the QR (never expires); see [release/evenhub.md](release/evenhub.md). |
 | Certificate warning / blank page on the phone | Self-signed or expired certificate | Put Foundry behind Let's Encrypt, Tailscale or a trusted proxy. Re-run the harness `reachable` check. |
 | `g2-entry` NO-GO / pair dialog ✗ module served | `g2/` missing | Reinstall the release zip, or run `pnpm --filter @evf/foundry-module build:all` for a dev symlink. |
 | Connects, then *Foundry not responding* every ~minute | Proxy drops idle WebSockets or doesn't forward the upgrade | Forward `Upgrade`/`Connection` and raise the proxy read timeout. |

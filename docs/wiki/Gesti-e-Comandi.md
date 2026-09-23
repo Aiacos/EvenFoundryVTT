@@ -1,6 +1,6 @@
 # Gesti e comandi
 
-Gli occhiali si comandano con l'anello **R1** o con il touchpad sulla **tempia** della G2. I gesti ufficiali sono **tap**, **doppio tap** e **swipe su/giù**; la **pressione lunga** esiste dall'SDK 0.0.14 con Even App ≥ 2.2.9 ed è solo un **extra** ([device APIs](https://hub.evenrealities.com/docs/build/device-apis) · [menu contestuale](https://hub.evenrealities.com/docs/build/contextual-menu) · [anello](https://www.evenrealities.com/smart-ring)). Ogni gesto agisce sempre sul **pannello contesto** (zona E) e significa la stessa cosa ovunque.
+Gli occhiali si comandano con l'anello **R1** o con il touchpad sulla **tempia** della G2. I gesti ufficiali sono **tap**, **doppio tap** e **swipe su/giù**; la **pressione lunga** esiste dall'SDK 0.0.14 con Even App ≥ 2.2.9 ed è solo un **extra** ([device APIs](https://hub.evenrealities.com/docs/build/device-apis) · [menu contestuale](https://hub.evenrealities.com/docs/build/contextual-menu) · [anello](https://www.evenrealities.com/smart-ring)). Ogni gesto agisce sempre sul **pannello contesto** (zona E) e significa la stessa cosa ovunque. Il modello dei gesti è quello di [ADR-0012](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md) (emendamento 2: il menu si apre col **tap** dalla vista base; doppio tap sulla radice ⇒ `shutDownPageContainer(1)`), implementato dalla HUD a scheda di ADR-0018.
 
 ## 🕹️ Tabella dei gesti
 

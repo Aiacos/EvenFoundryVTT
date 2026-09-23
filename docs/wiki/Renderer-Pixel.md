@@ -12,16 +12,20 @@ Le zone A–D della HUD sono **immagini disegnate da noi**, non testo firmware: 
 
 ## 👓 Zone e budget SDK
 
+Le zone restano cinque, ma i **container** seguono l'unica geometria provata sull'hardware reale: la griglia **2 × 2 di tile image 288 × 144** ancorata in (0, 0). Il vero host G2 **rifiuta** `rebuildPageContainer` con tile image a offset fuori griglia (per esempio (88, 44): nessun container, occhiali bianchi), mentre il simulatore accetta qualunque offset (verifica hardware del 2026-07-07, commit `d97b12e` su `develop`).
+
 | Zona | Area (x, y, l × a) | Container | Codice |
 |---|---|---|---|
-| A · Ritratto | 0, 0, 144 × 144 | image #1 | `packages/g2-app/src/hud/zones/portrait.ts` |
-| B · Intestazione | 144, 0, 288 × 144 | image #2 | `zones/header.ts` |
-| C · Mappa | 432, 0, 144 × 144 | image #3 | `zones/map.ts` + `hud/map-art/` |
-| D · Scheda | 0, 144, 288 × 144 | image #4 | `zones/sheet.ts` |
+| A · Ritratto | 0, 0, 144 × 144 | fascia alta, tile image (0, 0) | `packages/g2-app/src/hud/zones/portrait.ts` |
+| B · Intestazione | 144, 0, 288 × 144 | fascia alta, a cavallo delle due tile (taglio a x = 288) | `zones/header.ts` |
+| C · Mappa | 432, 0, 144 × 144 | fascia alta, tile image (288, 0) | `zones/map.ts` + `hud/map-art/` |
+| D · Scheda | 0, 144, 288 × 144 | tile image (0, 144) | `zones/sheet.ts` |
 | E · Contesto | 288, 144, 288 × 144 | 3 text (titolo · corpo · suggerimento) | `hud/text/context.ts` |
 | Sfondo | 0, 0, 576 × 288 | text `' '`, `isEventCapture: 1` | — |
 
-Budget: **4 / 4 image + 4 / 8 text** per pagina ([display](https://hub.evenrealities.com/docs/build/display): ≤ 4 immagini ≤ 288 × 144, ≤ 8 contenitori testo, un solo `isEventCapture`). Nessun `rebuildPageContainer` durante il gioco; le schermate a tutto schermo (S10, S11) usano 4 tile 288 × 144 con un solo rebuild in entrata e in uscita. La riga firmware misurata è di 27 px ⇒ la zona E ha titolo 1 + corpo 3 + suggerimento 1.
+**Fascia alta**: ritratto, intestazione e mappa sono disegnati **una sola volta** in un unico framebuffer 576 × 144, poi tagliato a x = 288 in due tile 288 × 144; un cambio di PF o di mappa rinvia solo la tile interessata (hash per tile).
+
+Budget: **3 / 4 image + 4 / 8 text** per pagina ([display](https://hub.evenrealities.com/docs/build/display): ≤ 4 immagini da 20–288 × 20–144, ≤ 8 contenitori testo, un solo `isEventCapture`). ID dei container: **prima le immagini, poi i testi**, nell'ordine di dichiarazione (spazio di ID globale della pagina sull'host). Le immagini sono sempre disegnate **sopra** i testi, qualunque sia lo `zOrder`: nessun testo sotto un'immagine. Nessun `rebuildPageContainer` durante il gioco; le schermate a tutto schermo (S10, S11) usano le 4 tile 288 × 144 con un solo rebuild in entrata e in uscita. La riga firmware misurata è di 27 px ⇒ la zona E ha titolo 1 + corpo 3 + suggerimento 1.
 
 ## ⚡ Invio delle immagini
 
@@ -29,7 +33,7 @@ Budget: **4 / 4 image + 4 / 8 text** per pagina ([display](https://hub.evenreali
 
 - **una immagine alla volta**, almeno `MIN_GAP_MS = 100` ms tra due invii (`updateImageRawData`, SDK ≥ 0.0.14);
 - **hash per zona**: una zona che non cambia non viene reinviata; l'ultimo frame in coda sostituisce il precedente della stessa zona;
-- **priorità**: intestazione (PF, turno) > mappa > scheda > ritratto;
+- **priorità**: tile con intestazione (PF, turno) > mappa > scheda > ritratto;
 - **mappa ≤ 1 fps** (`MAP_MIN_INTERVAL_MS = 1000`);
 - un invio fallito dimentica l'hash e riprova dopo `RETRY_MS = 2000`;
 - la codifica PNG avviene solo al momento dell'invio: PNG **4-bit indicizzato a palette esatta**, pixel-exact (`upng-js`).
