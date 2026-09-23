@@ -1,5 +1,5 @@
 /**
- * Reader unit tests — character, combat, scene, event-log, hook-subscribers.
+ * Reader unit tests — character, combat, hook-subscribers.
  *
  * Uses vi.stubGlobal to mock Foundry globals (game, canvas, Hooks).
  * No real Foundry runtime or HTTP calls.
@@ -11,8 +11,6 @@
  *
  * @see packages/foundry-module/src/readers/character-reader.ts
  * @see packages/foundry-module/src/readers/combat-reader.ts
- * @see packages/foundry-module/src/readers/scene-reader.ts
- * @see packages/foundry-module/src/readers/event-log-reader.ts
  * @see packages/foundry-module/src/readers/hook-subscribers.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1243,72 +1241,10 @@ describe('getCombatSnapshot', () => {
   });
 });
 
-// ─── Scene reader tests ────────────────────────────────────────────────────────
-
-describe('getSceneViewport', () => {
-  let getSceneViewport: typeof import('./scene-reader.js').getSceneViewport;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    const mod = await import('./scene-reader.js');
-    getSceneViewport = mod.getSceneViewport;
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('returns zero-state when no active scene', () => {
-    vi.stubGlobal('game', makeGameMock([], null, null));
-    vi.stubGlobal('canvas', null);
-
-    const vp = getSceneViewport();
-    expect(vp.sceneId).toBe('');
-    expect(vp.viewX).toBe(0);
-    expect(vp.viewY).toBe(0);
-    expect(vp.scale).toBe(1.0);
-    expect(vp.tokenIds).toEqual([]);
-  });
-
-  it('returns correct sceneId and token list', () => {
-    const scene = {
-      id: 'scene-abc',
-      name: 'Dungeon',
-      tokens: { contents: [{ id: 'token-1' }, { id: 'token-2' }] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', {
-      stage: { pivot: { x: 100, y: 200 }, scale: { x: 1.5 } },
-    });
-
-    const vp = getSceneViewport();
-    expect(vp.sceneId).toBe('scene-abc');
-    expect(vp.sceneName).toBe('Dungeon');
-    expect(vp.viewX).toBe(100);
-    expect(vp.viewY).toBe(200);
-    expect(vp.scale).toBe(1.5);
-    expect(vp.tokenIds).toEqual(['token-1', 'token-2']);
-  });
-
-  it('defaults to scale=1.0 when canvas is null', () => {
-    const scene = {
-      id: 'scene-1',
-      name: 'Test',
-      tokens: { contents: [] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', null);
-
-    const vp = getSceneViewport();
-    expect(vp.scale).toBe(1.0);
-  });
-});
-
 // ─── Hook subscribers tests ────────────────────────────────────────────────────
 
 describe('registerHookSubscribers', () => {
   let registerHookSubscribers: typeof import('./hook-subscribers.js').registerHookSubscribers;
-  let _resetEventSeq: () => void;
 
   // Capture registered hook callbacks for manual invocation in tests
   const hookCallbacks = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -1349,12 +1285,10 @@ describe('registerHookSubscribers', () => {
 
     const mod = await import('./hook-subscribers.js');
     registerHookSubscribers = mod.registerHookSubscribers;
-    _resetEventSeq = mod._resetEventSeq;
 
     vi.stubGlobal('Hooks', makeHooksMock());
     vi.stubGlobal('game', makeGameMock([]));
     vi.stubGlobal('canvas', null);
-    _resetEventSeq();
   });
 
   afterEach(() => {
@@ -1422,28 +1356,6 @@ describe('registerHookSubscribers', () => {
     expect(emitFn).toHaveBeenCalledWith('character.delta', expect.anything());
   });
 
-  it('createChatMessage pushes to ring buffer and emits event.log.delta', () => {
-    const emitFn = vi.fn();
-    registerHookSubscribers(emitFn);
-
-    const message = {
-      content: 'You hit the goblin!',
-      flavor: '',
-      speaker: { actor: 'actor-1', scene: 'scene-1', token: 'token-1', alias: 'Aragorn' },
-    };
-    fireHook('createChatMessage', message);
-
-    expect(emitFn).toHaveBeenCalledWith(
-      'event.log.delta',
-      expect.objectContaining({
-        seq: 1,
-        type: 'chat',
-        actorId: 'actor-1',
-        content: 'You hit the goblin!',
-      }),
-    );
-  });
-
   it('targetToken emits combat.targets with user targets', () => {
     const emitFn = vi.fn();
     registerHookSubscribers(emitFn);
@@ -1472,27 +1384,6 @@ describe('registerHookSubscribers', () => {
         targets: expect.arrayContaining([
           expect.objectContaining({ tokenId: 'token-5', actorId: 'actor-orc', name: 'Orc Chief' }),
         ]),
-      }),
-    );
-  });
-
-  it('canvasReady emits scene.viewport', () => {
-    const emitFn = vi.fn();
-    const scene = {
-      id: 'scene-1',
-      name: 'Forest',
-      tokens: { contents: [] },
-    };
-    vi.stubGlobal('game', makeGameMock([], null, scene));
-    vi.stubGlobal('canvas', { stage: { pivot: { x: 0, y: 0 }, scale: { x: 1 } } });
-
-    registerHookSubscribers(emitFn);
-    fireHook('canvasReady', {});
-
-    expect(emitFn).toHaveBeenCalledWith(
-      'scene.viewport',
-      expect.objectContaining({
-        sceneId: 'scene-1',
       }),
     );
   });

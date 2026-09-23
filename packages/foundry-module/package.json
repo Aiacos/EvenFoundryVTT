@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "EVF Foundry VTT module (evenfoundryvtt) — module skeleton, settings panel, pairing UI, readers.",
+  "description": "EVF Foundry VTT module (evenfoundryvtt) — GM-client projector for the direct G2 channel (ADR-0012), pairing window, readers, write path. Ships the g2-app build under g2/.",
   "scripts": {
     "build": "tsup",
+    "build:g2": "pnpm --filter @evf/g2-app build",
+    "build:all": "pnpm run build:g2 && pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run --project @evf/foundry-module --root ../.."
   },

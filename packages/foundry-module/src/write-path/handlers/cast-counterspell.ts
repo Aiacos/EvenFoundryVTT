@@ -22,12 +22,12 @@
  * - `actor_not_found`  — `args.actor_id` not in `game.actors`
  * - `spell_not_known`  — actor has no Counterspell item matching identifier or name
  * - `no_activity`      — item found but `activities.contents[0]` undefined
- * - `no_gm_connected`  — socketlib / dnd5e threw "No connected GM" (Pitfall 5)
+ * - `no_gm_connected`  — dnd5e threw "No connected GM" (Pitfall 5)
  * - `<message>`        — any other dnd5e error
  *
  * Single-workflow-origin discipline (ADR-0011): this file is the ONLY place
  * in the EVF codebase that calls `activity.use()` for Counterspell reaction.
- * CI Gate 8 prevents `activity.use(` from appearing in g2-app or bridge.
+ * CI Gate 8 prevents `activity.use(` from appearing in g2-app.
  *
  * @see packages/foundry-module/src/write-path/tool-registry.ts (ToolHandler<T>)
  * @see .planning/phases/13-v2-stretch/13-01-PLAN.md Task 2 (D-13-02)

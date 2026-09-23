@@ -2,7 +2,7 @@
  * Foundry-side combat snapshot reader.
  *
  * Reads from `game.combat` — the active combat encounter (null when no combat is running).
- * Returns null if `game.combat` is null → bridge route returns 204 (no content).
+ * Returns null if `game.combat` is null (the projector sends `data: null`).
  *
  * Read-only contract (Phase 2): no `combat.advance()` calls.
  * Write path deferred to Phase 7.

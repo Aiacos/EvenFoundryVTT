@@ -19,16 +19,13 @@
  * # Why not an npm LRU library?
  *
  * `lru-cache` has CJS/ESM shim issues in Foundry's browser WebView context.
- * A hand-rolled 30-line Map implementation matches the bridge's proven pattern
- * (`packages/bridge/src/middleware/idempotency.ts`) and adds zero dependencies.
+ * A hand-rolled 30-line Map implementation adds zero dependencies.
  *
- * # Single-tenant sizing (vs bridge)
+ * # Sizing
  *
- * The bridge uses `MAX_ENTRIES = 10_000` (multi-bearer scenarios). The module
- * runs inside Foundry for a single paired session — `MAX_ENTRIES = 1_000`
- * is generous for all 6 tool types over any 60s window.
+ * The module runs inside the GM client for a handful of paired devices —
+ * `MAX_ENTRIES = 1_000` is generous for all tool types over any 60s window.
  *
- * @see packages/bridge/src/middleware/idempotency.ts (pattern reference)
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
@@ -36,7 +33,7 @@ import type { ToolResult } from './tool-registry.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** TTL for module idempotency cache entries — 60 seconds (matches bridge ADR-0002). */
+/** TTL for module idempotency cache entries — 60 seconds (ADR-0002). */
 export const MODULE_IDEMPOTENCY_TTL_MS = 60_000;
 
 /** Maximum number of entries in the store — T-07-05 DoS mitigation. */
@@ -62,7 +59,7 @@ export interface ModuleIdempotencyEntry {
 /**
  * In-memory idempotency store for the Foundry module write path.
  *
- * Mirrors the bridge's `IdempotencyStore` pattern with module-specific sizing.
+ * Keys are principal-bound (the projector passes `g2:<userId>` as `bearer`).
  * Cache keys are bearer-bound (see `buildCacheKey`) to prevent cross-bearer replay.
  *
  * @example

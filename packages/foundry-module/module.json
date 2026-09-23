@@ -18,24 +18,19 @@
   },
   "esmodules": ["dist/module.js"],
   "languages": [
-    { "lang": "en", "name": "English", "path": "lang/en.json" },
-    { "lang": "it", "name": "Italiano", "path": "lang/it.json" }
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    },
+    {
+      "lang": "it",
+      "name": "Italiano",
+      "path": "lang/it.json"
+    }
   ],
   "socket": true,
   "relationships": {
-    "requires": [
-      {
-        "id": "socketlib",
-        "type": "module",
-        "compatibility": {
-          "minimum": "1.0.0"
-        }
-      },
-      {
-        "id": "midi-qol",
-        "type": "module"
-      }
-    ],
     "systems": [
       {
         "id": "dnd5e",
@@ -43,6 +38,13 @@
         "compatibility": {
           "minimum": "5.3.3"
         }
+      }
+    ],
+    "recommends": [
+      {
+        "id": "midi-qol",
+        "type": "module",
+        "reason": "Full attack → damage → save automation (optional; vanilla activity.use() fallback)."
       }
     ]
   }

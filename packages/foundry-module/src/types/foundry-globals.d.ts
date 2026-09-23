@@ -1,10 +1,9 @@
 /**
- * Ambient type declarations for Foundry VTT globals used in Phase 2 Wave 0–1.
+ * Ambient type declarations for the Foundry VTT globals used by evenfoundryvtt.
  *
  * These declarations describe the subset of the Foundry v13/v14 API surface
- * consumed by the evenfoundryvtt module in Wave 0 (skeleton + settings panel)
- * and Wave 1 (bearer registry, pair modal, socketlib handlers).
- * Each wave expands this surface; Plan 05 (readers) adds game.actors, game.combat, etc.
+ * consumed by the evenfoundryvtt module: settings + pairing window, the direct
+ * projector (socket relay, users, ownership — ADR-0012), readers and write path.
  *
  * Intentionally minimal: only declare what is used. noUncheckedIndexedAccess
  * and strict mode (INV-4 §0.1) require every access to be provably safe.
@@ -28,6 +27,7 @@ interface FoundrySettings {
     data: {
       name: string;
       label: string;
+      hint?: string;
       icon: string;
       // Foundry accepts any constructor — args vary by runtime context
       type: new (
@@ -62,7 +62,7 @@ interface FoundrySettings {
    * @param key - Setting key
    * @param value - Value to store
    */
-  set(module: string, key: string, value: unknown): void;
+  set(module: string, key: string, value: unknown): Promise<unknown>;
 }
 
 /** Minimal Foundry i18n API for locale detection at module boot. */
@@ -71,86 +71,100 @@ interface FoundryI18n {
   lang: string;
   /** Localise a dot-notation key from the module's lang catalog. */
   localize(key: string): string;
+  /** Localise and interpolate `{name}` placeholders. */
+  format(key: string, data: Record<string, string | number>): string;
 }
 
 /**
- * Foundry ApplicationV2 — Wave 1 pair modal base class.
+ * Foundry UI singletons — only notifications are used (pairing window feedback).
  *
- * ApplicationV2 is the v13+ unified application framework replacing
- * the legacy Application class. Lives at `foundry.applications.api.ApplicationV2`
- * — NOT a bare global (verified at runtime against Foundry v13/v14; the bare-global
- * declaration that previously sat here lied about the runtime and caused
- * `ReferenceError: ApplicationV2 is not defined` at module-load).
+ * @see https://foundryvtt.com/api/v13/classes/foundry.applications.ui.Notifications.html
+ */
+declare const ui: {
+  notifications?: { info(message: string): void; error(message: string): void };
+};
+
+/**
+ * Foundry `foundry.*` namespace — the subset used by the pairing window.
  *
- * Key lifecycle:
- * - `getData()` — returns context for the Handlebars template
- * - `_activateListeners(html)` — binds DOM event listeners
- * - `close()` — closes the modal, clears timers
- * - `render(force?)` — renders or re-renders the modal
+ * ApplicationV2 + HandlebarsApplicationMixin live under `foundry.applications.api`
+ * (NOT bare globals in v13+). Rendering contract: `static DEFAULT_OPTIONS`
+ * (`id`, `tag`, `window.title`, `position`, `actions`), `static PARTS`
+ * (`{ key: { template } }`), `_prepareContext(options)` → template context,
+ * `_onRender(context, options)` post-render hook; `actions` handlers are called with
+ * `this` = the application and `(event, target)` where `target` carries `data-action`.
  *
- * @see https://foundryvtt.com/api/v13/classes/foundry.applications.api.ApplicationV2.html
- * @see 02-02-PLAN.md Task 2 (PairModal ApplicationV2)
+ * @see https://foundryvtt.com/api/v13/classes/foundry.applications.api.ApplicationV2.html (verified 2026-09-23)
+ * @see https://foundryvtt.com/api/v13/functions/foundry.applications.api.HandlebarsApplicationMixin.html
+ * @see https://foundryvtt.com/api/v13/functions/foundry.utils.getRoute.html (verified 2026-09-23)
  */
 declare namespace foundry {
   namespace applications {
     namespace api {
-      class ApplicationV2 {
-        /** Renders the application (force=true ensures re-render even if already open). */
-        render(force?: boolean): this | Promise<this>;
-        /** Closes the application. Returns a promise that resolves when closed. */
-        close(options?: { animate?: boolean }): Promise<void>;
-        /** Returns template context data (override in subclass). */
-        getData(): Promise<Record<string, unknown>>;
-        /** Binds DOM event listeners (override in subclass). */
-        _activateListeners(html: HTMLElement): void;
-        /** Static default options for the application (override in subclass). */
-        static get defaultOptions(): {
-          id: string;
-          title: string;
-          template: string;
-          width: number;
-          height: string | number;
-          resizable: boolean;
-          [key: string]: unknown;
-        };
+      /** Options accepted by `render()`. */
+      interface RenderOptions {
+        force?: boolean;
       }
+      class ApplicationV2 {
+        /** Root element of the rendered application. */
+        readonly element: HTMLElement;
+        /** Renders (or re-renders) the application. */
+        render(options?: boolean | RenderOptions): Promise<this>;
+        /** Closes the application. */
+        close(options?: { animate?: boolean }): Promise<this>;
+        /** Builds the template context (override in subclass). */
+        protected _prepareContext(options: RenderOptions): Promise<object>;
+        /** Post-render hook (override in subclass). */
+        protected _onRender(context: object, options: RenderOptions): Promise<void>;
+        /** Called when the application closes (override to release timers). */
+        protected _onClose(options: object): void;
+      }
+      /** Mixes Handlebars `PARTS` rendering into an ApplicationV2 subclass. */
+      function HandlebarsApplicationMixin<
+        T extends abstract new (
+          ...args: never[]
+        ) => ApplicationV2,
+      >(base: T): T;
     }
+  }
+  namespace utils {
+    /**
+     * Returns the URL route for `path`, including the server `routePrefix` if set
+     * (e.g. `getRoute('/')` → `'/foundry/'` behind a prefix).
+     */
+    function getRoute(path: string, options?: { prefix?: string | null }): string;
   }
 }
 
 /**
- * Socketlib global injected by the socketlib Foundry module.
+ * Foundry `CONST` — enum values consumed by the pairing + map code.
  *
- * Available after Foundry's "ready" hook fires (socketlib loads before "ready").
- * NOT on npm — declared as `relationships.requires.socketlib` in module.json.
+ * USER_ROLES: NONE 0 · PLAYER 1 · TRUSTED 2 · ASSISTANT 3 · GAMEMASTER 4.
+ * DOCUMENT_OWNERSHIP_LEVELS: INHERIT -1 · NONE 0 · LIMITED 1 · OBSERVER 2 · OWNER 3.
+ * TOKEN_DISPOSITIONS: SECRET -2 · HOSTILE -1 · NEUTRAL 0 · FRIENDLY 1.
+ * WALL_DOOR_TYPES: NONE 0 · DOOR 1 · SECRET 2.
  *
- * @see https://github.com/farling42/foundryvtt-socketlib
- * @see 02-02-PLAN.md Task 2 (socketlib-handlers.ts)
- * @see packages/foundry-module/module.json (relationships.requires)
+ * @see https://foundryvtt.com/api/v13/modules/foundry.CONST.html
  */
-declare const socketlib: {
-  /**
-   * Registers a complex (async, return-value) socket handler.
-   *
-   * @param moduleId - The module ID (e.g. "evenfoundryvtt")
-   * @param handlerId - Handler identifier (e.g. "evf.validateToken")
-   * @param handler - Async function executed on the GM client
-   */
-  registerComplexHandler(
-    moduleId: string,
-    handlerId: string,
-    handler: (...args: unknown[]) => unknown | Promise<unknown>,
-  ): void;
+declare const CONST: {
+  USER_ROLES: { NONE: 0; PLAYER: 1; TRUSTED: 2; ASSISTANT: 3; GAMEMASTER: 4 };
+  DOCUMENT_OWNERSHIP_LEVELS: { INHERIT: -1; NONE: 0; LIMITED: 1; OBSERVER: 2; OWNER: 3 };
+  TOKEN_DISPOSITIONS: { SECRET: -2; HOSTILE: -1; NEUTRAL: 0; FRIENDLY: 1 };
+  WALL_DOOR_TYPES: { NONE: 0; DOOR: 1; SECRET: 2 };
+};
 
-  /**
-   * Executes a handler on the GM client and returns the result.
-   *
-   * @param moduleId - The module ID
-   * @param handlerId - Handler identifier
-   * @param args - Arguments forwarded to the handler
-   * @returns Promise resolving to the handler's return value
-   */
-  executeAsGM(moduleId: string, handlerId: string, ...args: unknown[]): Promise<unknown>;
+/**
+ * Foundry `CONFIG` — only the User document class is used (to create the "(G2)" user
+ * without relying on the deprecated bare `User` global).
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.documents.User.html
+ */
+declare const CONFIG: {
+  User: {
+    documentClass: {
+      create(data: Record<string, unknown>): Promise<FoundryUser | undefined>;
+    };
+  };
 };
 
 /**
@@ -453,7 +467,7 @@ interface FoundryActivity {
    * May reject with a user-facing error string or "No connected GM" signal.
    *
    * `configure: false` skips the configuration dialog — required for programmatic
-   * invocation from the bridge (no user-facing dialog in glasses UI).
+   * invocation from the projector (no user-facing dialog in glasses UI).
    *
    * @param config - Optional use configuration
    * @param config.configure - Skip configuration dialog (always false for EVF)
@@ -559,6 +573,22 @@ interface FoundryItem {
 interface FoundryTokenDoc {
   /** Foundry token document ID. */
   id: string;
+  /** Token display name (map-reader). */
+  name?: string;
+  /** Top-left position in canvas pixels (includes scene padding). */
+  x?: number;
+  y?: number;
+  /** Size in grid units (1 = medium). */
+  width?: number;
+  height?: number;
+  /** `CONST.TOKEN_DISPOSITIONS` value. */
+  disposition?: number;
+  /** Hidden from players (GM-only token). */
+  hidden?: boolean;
+  /** Base actor id, or null for tokens without an actor. */
+  actorId?: string | null;
+  /** Token actor (synthetic for unlinked tokens), null when missing. */
+  actor?: FoundryActor | null;
 
   /**
    * Updates token document fields.
@@ -577,6 +607,17 @@ interface FoundryTokenDoc {
 interface FoundryActor {
   /** Foundry document ID. */
   id: string;
+  /**
+   * Per-user ownership map `{ [userId | 'default']: DOCUMENT_OWNERSHIP_LEVELS }`.
+   * Read by map-reader (ally detection) and written by g2-user (OWNER grant).
+   */
+  ownership?: Record<string, number>;
+  /**
+   * Updates the actor document (g2-user writes `{ ownership: { [userId]: level } }`).
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#update
+   */
+  update?(changes: Record<string, unknown>): Promise<unknown>;
   /** Actor display name. */
   name: string;
   /** Actor type ("character", "npc", "vehicle", etc.). */
@@ -618,7 +659,7 @@ interface FoundryActor {
    * default placeholder ('icons/svg/mystery-man.svg').
    *
    * character-reader.ts passes this through as `snapshot.portrait.url` when present
-   * and non-empty. Bridge validates URL safety (T-13-02 SSRF mitigation).
+   * and non-empty. The G2 app fetches it same-origin (T-13-02).
    *
    * @see packages/foundry-module/src/readers/character-reader.ts
    * @see .planning/phases/13-v2-stretch/13-03-PLAN.md (D-13-05)
@@ -675,6 +716,19 @@ interface FoundryCombat {
 interface FoundryScene {
   id: string;
   name: string;
+  /** Grid configuration (v12+: `scene.grid.size` in pixels). */
+  grid?: { size: number };
+  /**
+   * Computed canvas dimensions (`Scene#dimensions`): `sceneX/sceneY` is the padding
+   * offset of the scene rectangle, `sceneWidth/sceneHeight` its size in pixels.
+   */
+  dimensions?: { sceneX: number; sceneY: number; sceneWidth: number; sceneHeight: number };
+  /** Background texture (v12+: `scene.background.src`). */
+  background?: { src?: string | null };
+  /** Environment (v12+: `scene.environment.darknessLevel` 0–1). */
+  environment?: { darknessLevel?: number };
+  /** Wall documents: `c` = [x0, y0, x1, y1] in canvas px, `door` = WALL_DOOR_TYPES. */
+  walls?: { contents: Array<{ id: string; c: number[]; door?: number }> };
   /**
    * All token documents in this scene.
    *
@@ -719,11 +773,6 @@ interface FoundryScene {
 
 /** Minimal Foundry Canvas object for viewport reads and write-path operations. */
 interface FoundryCanvas {
-  /** The PIXI.js stage, used for viewport position. */
-  stage: {
-    pivot: { x: number; y: number };
-    scale: { x: number };
-  };
   /**
    * The currently active scene (same reference as `game.scenes.active`).
    *
@@ -759,6 +808,20 @@ interface FoundryCanvas {
  */
 interface FoundryUser {
   id: string;
+  /** User display name. */
+  name?: string;
+  /** `CONST.USER_ROLES` value. */
+  role?: number;
+  /** Module flags (`flags.evenfoundryvtt.g2For` marks a dedicated "(G2)" user). */
+  flags?: Record<string, Record<string, unknown> | undefined>;
+  /**
+   * Updates the user document (`{ password }`, `{ role }`).
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.documents.BaseUser.html (password is a schema field)
+   */
+  update?(changes: Record<string, unknown>): Promise<unknown>;
+  /** Deletes the user document (GM only). */
+  delete?(): Promise<unknown>;
   /** Set of currently targeted tokens for this user. */
   targets: Set<FoundryToken>;
   /**
@@ -814,7 +877,6 @@ interface FoundryChatMessage {
  * `flags.evf.audit` stores the structured audit entry for GM-side queries.
  *
  * @see packages/foundry-module/src/write-path/audit-log.ts (consumer)
- * @see Specs.md §5.2 (bridge logging pattern — analogous GM-side audit)
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
  */
 declare namespace ChatMessage {
@@ -941,100 +1003,6 @@ declare namespace dnd5e {
   }
 }
 
-// ─── Compendium Collection (minimal read shape) ────────────────────────────────
-
-/**
- * A single entry in a CompendiumCollection index.
- *
- * The index is a lightweight listing of all documents in the pack without
- * loading the full document data. Used by spell-pack-reader.ts to enumerate
- * available spells without expensive full-document fetches.
- *
- * @see packages/foundry-module/src/readers/spell-pack-reader.ts
- * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
- */
-interface CompendiumIndexEntry {
-  /** Foundry document ID (unique within the pack; globally unique within a world). */
-  _id: string;
-  /** Document display name (canonical English for dnd5e SRD packs). */
-  name: string;
-  /**
-   * Document type discriminant.
-   * For Item-type packs: 'spell', 'weapon', 'feat', 'equipment', 'consumable', etc.
-   * spell-pack-reader filters for `entry.type === 'spell'`.
-   */
-  type: string;
-  /** Document icon path (not used by spell-pack-reader; included for completeness). */
-  img?: string;
-}
-
-/**
- * Compendium pack metadata fields consumed by spell-pack-reader.ts.
- *
- * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
- */
-interface CompendiumMetadata {
-  /**
-   * Document type of entries in this pack.
-   * spell-pack-reader filters for `metadata.type === 'Item'`.
-   */
-  type: string;
-  /**
-   * Game system this pack belongs to (e.g. 'dnd5e', 'pf2e').
-   * spell-pack-reader filters for `metadata.system === 'dnd5e'`.
-   */
-  system: string;
-  /** Human-readable pack name. */
-  label?: string;
-}
-
-/**
- * Minimal CompendiumCollection shape consumed by spell-pack-reader.ts.
- *
- * The full Foundry CompendiumCollection has many more methods; only the
- * fields accessed by the reader are declared here (INV-4 minimal surface).
- *
- * @see https://foundryvtt.com/api/v13/classes/foundry.CompendiumCollection.html
- * @see packages/foundry-module/src/readers/spell-pack-reader.ts
- */
-interface CompendiumCollection {
-  /** Pack identifier (e.g. 'dnd5e.spells', 'dnd5e.tashas'). */
-  collection: string;
-  /** Pack metadata — type, system, label. */
-  metadata: CompendiumMetadata;
-  /**
-   * Index of all entries in this pack (loaded lazily by Foundry at init).
-   *
-   * The index is a Collection of lightweight entry stubs — much faster than
-   * loading full documents. spell-pack-reader reads `.index.contents` directly.
-   *
-   * Note: `.index` may be an empty Collection before the pack is fully indexed.
-   * The reader defends against this with `?? []` in the spread pattern.
-   */
-  index: {
-    contents: CompendiumIndexEntry[];
-    size: number;
-  };
-}
-
-/**
- * WorldCollection<CompendiumCollection> — `game.packs` global.
- *
- * Provides `get(packId)` for direct lookup and `contents` for iteration.
- * `game.packs.get('dnd5e.spells')` returns the SRD spells pack OR undefined
- * (e.g. when the system is not loaded or the pack is not installed).
- *
- * @see https://foundryvtt.com/api/v13/classes/foundry.WorldCollection.html
- */
-interface FoundryWorldPacks {
-  /** Get a compendium pack by its full pack ID (e.g. 'dnd5e.spells'). */
-  get(packId: string): CompendiumCollection | undefined;
-  /** All registered compendium packs. */
-  contents: CompendiumCollection[];
-  /** Number of packs registered. */
-  size: number;
-}
-
 /** Foundry game singleton — available globally after the "init" hook fires. */
 declare const game: {
   settings: FoundrySettings;
@@ -1045,17 +1013,6 @@ declare const game: {
   combat: FoundryCombat | null;
   /** Chat message collection (Phase 5 — log-reader.ts). */
   messages: FoundryCollection<FoundryChatMessage>;
-  /**
-   * All registered compendium packs (WorldCollection<CompendiumCollection>).
-   *
-   * Added in Quick Task 20260517: spell-pack-reader.ts iterates this to build
-   * the dynamic spell vocabulary. Filters for `metadata.type === 'Item'` +
-   * `metadata.system === 'dnd5e'` to extract dnd5e spell packs only.
-   *
-   * @see packages/foundry-module/src/readers/spell-pack-reader.ts
-   * @see https://foundryvtt.com/api/v13/classes/foundry.WorldCollection.html
-   */
-  packs: FoundryWorldPacks;
   /** All scene documents in the active world. */
   scenes: FoundryCollection<FoundryScene> & { active: FoundryScene | null };
   /** The current logged-in user. */
@@ -1070,7 +1027,30 @@ declare const game: {
    * @see packages/foundry-module/src/write-path/audit-log.ts
    * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 1
    */
-  users: FoundryCollection<FoundryUser>;
+  users: FoundryCollection<FoundryUser> & {
+    /**
+     * One active GM (non-assistant if possible) or null — the projector runs only on
+     * that client when several GMs are online.
+     *
+     * @see https://foundryvtt.com/api/v13/classes/foundry.documents.collections.Users.html#activegm
+     */
+    activeGM?: FoundryUser | null;
+  };
+  /** World metadata (`game.world.title` is shown on the glasses welcome). */
+  world?: { title: string };
+  /**
+   * socket.io client. `emit('module.<id>', data)` is relayed by the server to all
+   * other connected clients; `on('module.<id>', fn)` receives them.
+   *
+   * @see https://foundryvtt.com/article/module-development/ (§Socket)
+   */
+  socket?: {
+    /** socket.io connection state. */
+    connected?: boolean;
+    on(event: string, fn: (data: unknown) => void): void;
+    off?(event: string, fn: (data: unknown) => void): void;
+    emit(event: string, data: unknown): void;
+  };
   /**
    * Module registry — capability detection for optional module dependencies.
    *

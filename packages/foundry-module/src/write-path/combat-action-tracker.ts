@@ -19,12 +19,11 @@
  * or `updateCombat` cancels the Foundry hook chain. TypeScript `void` return type
  * enforces this contract.
  *
- * ## 17-socketlib-handler invariant
+ * ## Emission
  *
- * This module registers NO new socketlib handlers. The total count remains 17
- * (updated in Plan 13-01). Emission is via the existing `bridgeDeltaEmitter`
- * channel (fire-and-forget POST to bridge). Per ADR-0011 single-workflow-origin
- * discipline.
+ * Emission is via the injected `emit` callback — `projector.pushDelta` in
+ * production (fire-and-forget sealed delta, ADR-0012). Read-only: per ADR-0011
+ * single-workflow-origin discipline this module never mutates game state.
  *
  * ## Threat model
  *
@@ -171,7 +170,7 @@ function buildPayload(actorId: string, state: ActorEconomyState): ActionEconomyP
  *     and `_attackIdSeen` entirely when a combat is removed, so a freshly created
  *     combat does not inherit stale counters or attack-dedup entries.
  *
- * @param emit - Callback to emit the action economy payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the action economy payload via projector.pushDelta.
  *               Fire-and-forget; failures are swallowed with console.warn.
  * @returns Unsubscribe closure — calls `Hooks.off(createChatHookId)`,
  *          `Hooks.off(updateCombatHookId)` and `Hooks.off(deleteCombatHookId)` (R3).

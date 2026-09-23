@@ -11,27 +11,6 @@
  * @see docs/architecture/0003-tool-registry-pattern.md
  * @see Specs.md §4 (architecture) + §5.3 (Tool Registry)
  */
-export {
-  type ClientResume,
-  ClientResumeSchema,
-  type DeltaEnvelope,
-  DeltaEnvelopeSchema,
-  type Envelope,
-  EnvelopeSchema,
-  type ResumeFullSnapshot,
-  ResumeFullSnapshotSchema,
-  type ResumeReplay,
-  ResumeReplaySchema,
-} from './envelope.js';
-
-export {
-  type HandshakeClient,
-  HandshakeClientSchema,
-  type HandshakeServer,
-  HandshakeServerSchema,
-  SERVER_CAPS_V1,
-  type ServerCap,
-} from './handshake.js';
 
 // ─── Payload schemas (Phase 2 Plan 05 — reader API) ───────────────────────────
 
@@ -262,24 +241,10 @@ export {
 // foundry-mcp deepgram-stt.ts (Plan 12-03) produces envelopes of this shape.
 // The MCP server validates them at the WS-receive trust boundary (T-12-WIRE-01).
 
-export {
-  R1_VOICE_TRANSCRIPT_TYPE,
-  type VoiceTranscriptPayload,
-  VoiceTranscriptPayloadSchema,
-} from './payloads/voice.js';
-
 // ─── Quick Task 20260517 — spell-pack vocabulary push schema ─────────────────
 // AvailableSpellsPayloadSchema pushed by foundry-module spell-pack-reader.ts.
 // Bridge caches via spell-pack-cache.ts + serves GET /v1/spells/available.
 // foundry-mcp spell-lookup-foundry.ts fetches with 5-min TTL + Levenshtein fuzzy.
-
-export {
-  type AvailableSpellsPayload,
-  AvailableSpellsPayloadSchema,
-  R1_SPELLS_AVAILABLE_TYPE,
-  type SpellPackEntry,
-  SpellPackEntrySchema,
-} from './payloads/spell-pack.js';
 
 // ─── Quick Task 260517-k2g — entity-pack vocabulary push schema ───────────────
 // AvailableEntitiesPayloadSchema pushed by foundry-module entity-pack-reader.ts.
@@ -288,24 +253,10 @@ export {
 // GET /v1/entities/available. foundry-mcp entity-lookup-foundry.ts fetches
 // with 5-min TTL + Levenshtein fuzzy. NO offline fallback (returns null).
 
-export {
-  type AvailableEntitiesPayload,
-  AvailableEntitiesPayloadSchema,
-  type EntityPackEntry,
-  EntityPackEntrySchema,
-  R1_ENTITIES_AVAILABLE_TYPE,
-} from './payloads/entity-pack.js';
-
 // ─── Phase 13 additions (Plan 13-03 — portrait ready schema) ─────────────────
 // Portrait ready payload schema for STRETCH-06 Bio tab portrait feature.
 // Bridge emits r1.portrait.ready envelope on cache-miss render path.
 // Plan 13-04 portrait-dispatcher consumes this at the WS-receive boundary.
-
-export {
-  type PortraitReadyPayload,
-  PortraitReadyPayloadSchema,
-  R1_PORTRAIT_READY_TYPE,
-} from './payloads/portrait.js';
 
 // ─── Phase 13 additions (Plan 13-01 — ACT-04 reaction schemas) ───────────────
 // Three new ACT-04 reaction handler input schemas.
@@ -351,30 +302,11 @@ export {
 // param. Lives in shared-protocol so the bridge does NOT depend on foundry-mcp.
 // Drift-proofed against foundry-mcp's SPELL_LOOKUP via the SKT-02 test gate.
 
-export {
-  SPELL_KEYTERMS,
-  type SpellKeytermEntry,
-} from './voice/spell-keyterms.js';
-
 // ─── Quick Task 260529-h5e — Debug Console schemas (dev-only) ─────────────────
 // Lean dev-tooling contracts for the bridge debug backend (Wave 2), CRT dashboard
 // (Wave 3), and g2-app display-op mirror (Wave 4). Models the privileged dev
 // backdoor described in the plan's <security_model>. DebugGestureBodySchema.kind
 // reuses the canonical 5 R1 gesture kinds from R1GesturePayloadSchema.
-
-export {
-  type DebugDispatchBody,
-  DebugDispatchBodySchema,
-  type DebugEvent,
-  DebugEventSchema,
-  type DebugGestureBody,
-  DebugGestureBodySchema,
-  type DebugInjectBody,
-  DebugInjectBodySchema,
-  type DisplayOpPayload,
-  DisplayOpPayloadSchema,
-  R1_DEBUG_DISPLAYOP_TYPE,
-} from './debug/debug-events.js';
 
 // ─── Direct channel (ADR-0012) ───────────────────────────────────────────────
 export * from './direct/index.js';

@@ -71,6 +71,8 @@ export const WelcomeSchema = z.strictObject({
   userName: z.string(),
   gmName: z.string(),
   worldTitle: z.string(),
+  /** Foundry UI language (`game.i18n.lang`) so the app can follow it when set to 'auto'. */
+  locale: z.string().min(2).max(10).optional(),
   rotate: RotateSchema.optional(),
 });
 

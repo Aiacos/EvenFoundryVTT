@@ -18,10 +18,8 @@
  *
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-06-PLAN.md Task 1
  * @see .planning/phases/04a-g2-engine-raster-status-hud/04A-PLAN-CHECK.md §B-5 + §NF-1 + §NF-3
- * @see ./envelope.ts (real EnvelopeSchema export)
  */
 import { describe, expect, it } from 'vitest';
-import { EnvelopeSchema } from '../envelope.js';
 import {
   decodeFramePixels,
   encodeFramePixels,
@@ -192,49 +190,5 @@ describe('FramePixelsSchema + helpers re-export (FP-9)', () => {
       ts: 1,
     });
     expect(r.success).toBe(true);
-  });
-});
-
-describe('EnvelopeSchema + FramePixelsSchema cross-schema contract (FP-10)', () => {
-  it('FP-10: a valid FramePixels travels cleanly inside an EnvelopeSchema envelope', () => {
-    const framePixels: FramePixels = {
-      sceneId: 'scene1',
-      width: 288,
-      height: 144,
-      pixelsB64: encodeRaw(makeRgba(288, 144, 9)),
-      ts: Date.now(),
-    };
-    const envelope = {
-      proto: 'evf-v1' as const,
-      seq: 0,
-      ts: Date.now(),
-      type: 'frame_pixels',
-      session_id: '00000000-0000-4000-8000-000000000000',
-      payload: framePixels,
-    };
-    const outer = EnvelopeSchema.safeParse(envelope);
-    expect(outer.success).toBe(true);
-    if (outer.success) {
-      const inner = FramePixelsSchema.safeParse(outer.data.payload);
-      expect(inner.success).toBe(true);
-    }
-  });
-
-  it('FP-10 (negative): a missing session_id makes the outer envelope fail (lock NF-1 contract)', () => {
-    const envelopeWithoutSession = {
-      proto: 'evf-v1' as const,
-      seq: 0,
-      ts: Date.now(),
-      type: 'frame_pixels',
-      // session_id intentionally omitted — EnvelopeSchema requires it.
-      payload: {
-        sceneId: 'scene1',
-        width: 20,
-        height: 20,
-        pixelsB64: MIN_B64,
-        ts: Date.now(),
-      },
-    };
-    expect(EnvelopeSchema.safeParse(envelopeWithoutSession).success).toBe(false);
   });
 });

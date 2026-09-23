@@ -37,11 +37,10 @@
  * from applying the position update or combat state change. TypeScript `void` return
  * type enforces this contract.
  *
- * ## 14-socketlib-handler invariant
+ * ## Emission
  *
- * This module registers NO new socketlib handlers. The total count remains 14.
- * Emission is via the existing `bridgeDeltaEmitter` channel (fire-and-forget
- * POST to bridge).
+ * Emission is via the injected `emit` callback — `projector.pushDelta` in
+ * production (fire-and-forget sealed delta, ADR-0012).
  *
  * ## Threat model
  *
@@ -139,7 +138,7 @@ function _getPlayerActorId(): string | null {
  *     is removed, so stale `usedThisTurn` from the ended encounter cannot leak into a
  *     freshly created combat before its first turn-advance.
  *
- * @param emit - Callback to emit the movement budget payload via bridgeDeltaEmitter.
+ * @param emit - Callback to emit the movement budget payload via projector.pushDelta.
  *               Called at most once per triggering event. Never called when:
  *               - No x/y change in the token update (CMT-02)
  *               - Token is not the player's actor (CMT-02/07)

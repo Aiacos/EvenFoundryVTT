@@ -1,0 +1,69 @@
+{{!--
+  «Associa occhiali G2» (mock P01 — docs/design/g2-thirds-layout.md).
+  Rendered by src/direct/PairG2App.ts (HandlebarsApplicationMixin, part "main").
+  qrSvg is generated locally by the qrcode library from our own URL (trusted SVG).
+--}}
+<section class="evf-pair">
+  <div class="form-group">
+    <label>{{localize "evf.pair.player"}}</label>
+    <select data-field="player">
+      {{#each players}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}
+    </select>
+    <label>{{localize "evf.pair.character"}}</label>
+    <select data-field="actor">
+      {{#each actors}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}
+    </select>
+  </div>
+
+  {{#if session}}
+  <div class="evf-pair__qr" style="display:flex;gap:1rem;align-items:flex-start">
+    <div style="width:220px;background:#fff">{{{session.qrSvg}}}</div>
+    <div>
+      <ol>
+        <li>{{localize "evf.pair.step1"}}</li>
+        <li>{{localize "evf.pair.step2"}}</li>
+        <li>{{localize "evf.pair.step3"}}</li>
+      </ol>
+      <p>{{localize "evf.pair.user_created"}} «{{session.label}}»<br>{{localize "evf.pair.role_hint"}} {{session.actorName}}</p>
+      <p>{{localize "evf.pair.expires_in"}} <strong data-countdown>{{session.remaining}}</strong><br>{{localize "evf.pair.single_use"}}</p>
+      <p>{{localize "evf.pair.manual_code"}} <code>{{session.code}}</code></p>
+    </div>
+  </div>
+  <p>URL: <code>{{baseUrlHint}}</code></p>
+  {{else}}
+    {{#if expired}}<p class="notification warning">{{localize "evf.pair.expired"}}</p>{{/if}}
+  {{/if}}
+
+  {{#if checks}}
+  <p class="evf-pair__checks">
+    <span>{{#if checks.https}}✓{{else}}✗{{/if}} {{localize "evf.pair.check.https"}}</span>
+    <span>{{#if checks.served}}✓{{else}}✗{{/if}} {{localize "evf.pair.check.served"}}</span>
+    <span>{{#if checks.socket}}✓{{else}}✗{{/if}} {{localize "evf.pair.check.socket"}}</span>
+  </p>
+  {{#unless checks.https}}<p class="notification error">{{localize "evf.pair.check.https_warning"}}</p>{{/unless}}
+  {{/if}}
+
+  <h3>{{localize "evf.pair.devices.heading"}}</h3>
+  {{#if devices.length}}
+  <ul class="evf-pair__devices">
+    {{#each devices}}
+    <li>
+      {{#if online}}●{{else}}○{{/if}} {{label}} · {{actorName}} · {{lastSeen}}
+      {{#if confirming}}
+        <span>{{localize "evf.pair.revoke.confirm"}}</span>
+        <button type="button" data-action="confirmRevoke" data-user-id="{{g2UserId}}">{{localize "evf.pair.revoke.proceed"}}</button>
+      {{else}}
+        <button type="button" data-action="revoke" data-user-id="{{g2UserId}}">{{localize "evf.pair.revoke.button"}}</button>
+      {{/if}}
+    </li>
+    {{/each}}
+  </ul>
+  {{else}}
+  <p>{{localize "evf.pair.devices.empty"}}</p>
+  {{/if}}
+
+  <footer class="form-footer">
+    <button type="button" data-action="pair"><i class="fas fa-qrcode"></i> {{localize "evf.pair.generate"}}</button>
+    <button type="button" data-action="copyCode" {{#unless session}}disabled{{/unless}}>{{localize "evf.pair.copy_code"}}</button>
+  </footer>
+</section>

@@ -13,9 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ArgsValidator,
   dispatchTool,
+  isToolId,
   moduleIdempotencyStore,
   registerToolHandler,
-  TOOL_HANDLER_IDS,
+  TOOL_IDS,
   TOOL_REGISTRY,
   type ToolHandler,
   type ToolId,
@@ -36,30 +37,16 @@ function makeValidator<T>(passthrough = true): ArgsValidator<T> {
 
 // ─── ToolId type compile-time tests ──────────────────────────────────────────
 
-describe('ToolId — static type surface', () => {
-  it('TOOL_HANDLER_IDS maps all 10 ToolIds to evf.camelCase handler names', () => {
-    const expected: Record<ToolId, string> = {
-      'cast-spell': 'evf.castSpell',
-      'weapon-attack': 'evf.weaponAttack',
-      'use-item': 'evf.useItem',
-      'move-token': 'evf.moveToken',
-      'drop-concentration': 'evf.dropConcentration',
-      'place-template': 'evf.placeTemplate',
-      // Plan 07-03 (Wave 2): confirm-template-placement replaces evf.skillCheck stub in-place
-      // (count stays 14; skill-check slot renamed to evf.confirmTemplatePlacement)
-      'confirm-template-placement': 'evf.confirmTemplatePlacement',
-      // Phase 13 ACT-04 reaction handlers (Plan 13-01 — socketlib count FLIPS 14 → 17)
-      'cast-shield': 'evf.castShield',
-      'cast-counterspell': 'evf.castCounterspell',
-      'opportunity-attack': 'evf.opportunityAttack',
-    };
-    for (const [toolId, handlerId] of Object.entries(expected)) {
-      expect(TOOL_HANDLER_IDS[toolId as ToolId]).toBe(handlerId);
-    }
+describe('TOOL_IDS / isToolId', () => {
+  it('lists all 10 ToolIds', () => {
+    expect(TOOL_IDS).toHaveLength(10);
+    expect(new Set(TOOL_IDS).size).toBe(10);
   });
 
-  it('TOOL_HANDLER_IDS has exactly 10 entries (Phase 13 Plan 13-01 added 3 ACT-04 handlers)', () => {
-    expect(Object.keys(TOOL_HANDLER_IDS)).toHaveLength(10);
+  it('isToolId accepts known ids and rejects anything else', () => {
+    for (const id of TOOL_IDS) expect(isToolId(id)).toBe(true);
+    expect(isToolId('delete-world')).toBe(false);
+    expect(isToolId('')).toBe(false);
   });
 });
 

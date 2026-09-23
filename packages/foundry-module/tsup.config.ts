@@ -8,6 +8,9 @@ import { defineConfig } from 'tsup';
  * src/types/foundry-globals.d.ts — they are NOT bundled, they're provided by the
  * Foundry runtime at load time.
  *
+ * The G2 app is NOT built here: `pnpm run build:all` also runs the g2-app Vite build,
+ * whose outDir is `packages/foundry-module/g2/` (ADR-0012 same-origin hosting).
+ *
  * @see packages/foundry-module/module.json — `esmodules: ["dist/module.js"]`
  * @see ADR-0008 (code quality: tsup ESM output, sourcemap for debuggability)
  */
@@ -26,8 +29,7 @@ export default defineConfig({
   // single dist/module.js because the Foundry data folder has no node_modules.
   // @evf/shared-protocol points main/exports at src/index.ts (workspace-link
   // pattern), and Foundry's ESM loader can't resolve npm-style imports anyway —
-  // so bundle everything required at runtime. Caught the same way as the bridge
-  // image's deploy/smoke.sh first run (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
+  // so bundle everything required at runtime.
   noExternal: ['@evf/shared-protocol', 'qrcode'],
   // Target ES2022 to align with Foundry v13+ baseline (modern browser/Chrome engine)
   target: 'es2022',
