@@ -41,8 +41,8 @@ From [hub.evenrealities.com/docs/reference/changelog](https://hub.evenrealities.
 ## 🥽 Hardware limits used by the sheet layout
 
 Sources: [hub.evenrealities.com/docs/build/display](https://hub.evenrealities.com/docs/build/display) ·
-[/build/device-apis](https://hub.evenrealities.com/docs/build/device-apis) ·
-[/build/input](https://hub.evenrealities.com/docs/build/input) (fetched 2026-09-23).
+[/build/device-apis](https://hub.evenrealities.com/docs/build/device-apis) (input events) (fetched 2026-09-23;
+`/build/input` now redirects to Get Started).
 
 | Parameter | Limit | EVF usage |
 |---|---|---|

@@ -11,14 +11,16 @@ document here is a projection or expansion of it.
 | Resource | Path | Description |
 |---|---|---|
 | Canonical specification | [`Specs.md`](../Specs.md) | Requirements, architecture, hardware constraints, UI/UX mockups, roadmap. |
+| Project wiki (Italian) | [`wiki/`](wiki/Home.md) → [GitHub wiki](https://github.com/Aiacos/EvenFoundryVTT/wiki) | Player, GM and developer guides by audience; mirrored to the GitHub wiki by `.github/workflows/wiki-sync.yml`, links checked by `scripts/check-wiki-links.mjs`. |
 | Setup guide | [`setup-guide.md`](setup-guide.md) | HTTPS prerequisites → install the module → GM pairing → player QR scan → manual code, revoke, troubleshooting. |
 | Runbook | [`runbook.md`](runbook.md) | Diagnosis from the phone page and the GM browser, the `validate:direct-sideload` harness, revoke / re-pair, common errors. |
+| Design index | [`design/README.md`](design/README.md) | Current and historical design documents. |
 | Sheet layout design | [`design/g2-sheet-ux.html`](design/g2-sheet-ux.html) | «Scheda da tavolo G2»: zones, principles, gestures, 12 glasses screens (S1–S12); simulator screenshots in [`design/img/`](design/img/). INV-1 contract = `packages/shared-render/src/fixtures/sheet.*.txt`. |
 | Thirds layout (superseded) | [`design/g2-thirds-layout.md`](design/g2-thirds-layout.md) | Historical first v0.10 layout; its pairing flow and phone/Foundry mocks (P01–P03) are still current. |
 | Direct streaming decision | [`architecture/0012-direct-foundry-streaming.md`](architecture/0012-direct-foundry-streaming.md) | Why the bridge, Docker and `foundry-mcp` were removed. |
 | Firmware compatibility | [`firmware-compatibility.md`](firmware-compatibility.md) | Even Hub SDK / Even App / Foundry version matrix + forward-compat policy. |
 | Invariants | [`architecture/INVARIANTS.md`](architecture/INVARIANTS.md) | INV-1..6 and how CI enforces them. |
-| ADRs | [`architecture/`](architecture/) | ADR-0001 … ADR-0012 ([index](architecture/README.md)). |
+| ADRs | [`architecture/`](architecture/) | ADR-0001 … ADR-0014 ([index](architecture/README.md)); 0013 = player-owned glasses + hybrid projector, 0014 = D&D-sheet HUD pixel renderer. |
 | Release | [`release/foundry-module.md`](release/foundry-module.md) · [`release/evenhub.md`](release/evenhub.md) | Module zip (with `g2/`) and the secondary `.ehpk`. |
 | Animated showcase | [`showcase/index.html`](showcase/index.html) | Single-file showcase (GitHub Pages). |
 
@@ -56,8 +58,9 @@ docs/
 ├── architecture/
 │   ├── README.md                ← ADR index
 │   ├── INVARIANTS.md            ← INV-1..6
-│   └── 0001 … 0012-*.md         ← ADRs (0012 = direct streaming)
+│   └── 0001 … 0014-*.md         ← ADRs (0012 direct streaming · 0013 player-owned glasses · 0014 sheet HUD)
 ├── design/
+│   ├── README.md                ← design index
 │   ├── g2-sheet-ux.html         ← D&D-sheet HUD design (current)
 │   ├── g2-thirds-layout.md      ← superseded thirds HUD + pairing mocks P01–P03
 │   └── img/sheet-*.png          ← simulator screenshots S1–S12
@@ -68,7 +71,7 @@ docs/
 │   └── evenhub.md               ← .ehpk packaging (secondary)
 ├── showcase/
 │   └── index.html               ← animated showcase (GitHub Pages)
-└── wiki/                        ← (empty, reserved)
+└── wiki/                        ← GitHub-wiki source (Italian): Home, _Sidebar, _Footer, 22 pages, images/
 ```
 
 ---

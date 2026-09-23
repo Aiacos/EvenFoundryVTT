@@ -130,6 +130,14 @@ jobs:
           fi
           ls -la packages/foundry-module/g2
 
+      # Wiki source (docs/wiki/) is published by wiki-sync.yml on main; break it here,
+      # not after merge: unknown pages, missing images/files and orphan pages fail.
+      - name: Wiki link check (docs/wiki)
+        run: node scripts/check-wiki-links.mjs docs/wiki
+
+      - name: Module runtime assets (module.json references)
+        run: node scripts/check-module-assets.mjs packages/foundry-module
+
   commit-lint-pr-title:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

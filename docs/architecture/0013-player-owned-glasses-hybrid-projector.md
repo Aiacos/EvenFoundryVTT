@@ -2,13 +2,15 @@
 status: accepted
 date: 2026-09-23
 deciders: maintainer
-consulted: foundryvtt.com/article/users (user management rights)
+consulted: foundryvtt.com/article/users (user management rights, verbatim re-check 2026-09-23)
 informed: foundry-module, g2-app, shared-protocol
 ---
 
 # ADR-0013: Player-Owned Glasses — Self-Service Pairing + Hybrid Projector
 
 ## Status
+
+> **ERRATUM** — 2026-09-23: the Context quote from foundryvtt.com/article/users was a paraphrase, not the page text; replaced with the verbatim sentence (which also grants Assistant GMs user configuration). The decision is unchanged.
 
 **ACCEPTED** — 2026-09-23. Amends [ADR-0012](./0012-direct-foundry-streaming.md) (pairing,
 key custody, projector location) and [ADR-0011](./0011-foundry-write-path-single-workflow-origin.md)
@@ -22,10 +24,12 @@ at a time, still through `dispatchTool`).
   lost all keys.
 - Several players may wear glasses; at a physical table **some** players also have
   Foundry open on their own device, others don't (maintainer, 2026-09-23).
-- Foundry allows **only the GM** to create users and set passwords — *"Players and
-  Trusted Players cannot create new user accounts or change passwords"*
-  (foundryvtt.com/article/users). A dedicated "(G2)" user is still required (concurrent
-  logins of one user are being blocked — foundryvtt issue #14728).
+- Foundry lets **only GMs (and Assistant GMs)** configure other users, passwords included —
+  *"If you are a user with the player or trusted player role you can only open your own
+  user configuration, but gamemasters and assistant gamemasters can configure any user
+  they want"* (foundryvtt.com/article/users, re-fetched 2026-09-23). A dedicated "(G2)"
+  user is still required (concurrent logins of one user are being blocked — foundryvtt
+  issue #14728).
 
 ## Decision
 
