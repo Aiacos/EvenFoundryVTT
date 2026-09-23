@@ -4,7 +4,7 @@
  */
 import { DIRECT_SOCKET_EVENT } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type FoundryMock, installFoundry } from './__tests__/direct-fixtures.js';
+import { type FoundryMock, installFoundry, makeUser } from './__tests__/direct-fixtures.js';
 
 let f: FoundryMock;
 
@@ -48,6 +48,37 @@ describe('module entry', () => {
         type: expect.any(Function),
       }),
     );
+  });
+
+  it('MOD-02b init adds «Pair G2 glasses» to the Players list context menu', async () => {
+    await load();
+    f.fire('init');
+    expect(f.hooks.on).toHaveBeenCalledWith('getUserContextOptions', expect.any(Function));
+
+    // Clicking the entry opens the pairing window preselected on that player.
+    f.users.push(makeUser('p1', 'Luca', { character: { id: 'mira' } }));
+    const items: Array<{ callback: (li: HTMLElement) => void }> = [];
+    f.fire('getUserContextOptions', {}, items);
+    const li = document.createElement('li');
+    li.dataset.userId = 'p1';
+    items[0]?.callback(li);
+    await vi.waitFor(() => expect(f.notifications.error).not.toHaveBeenCalled());
+
+    // A failure while opening is logged, never thrown into Foundry's menu code.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    Object.defineProperty(foundry.applications, 'instances', {
+      get() {
+        throw new Error('boom');
+      },
+    });
+    items[0]?.callback(li);
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        '[EVF] could not open the pairing window',
+        expect.any(Error),
+      ),
+    );
+    error.mockRestore();
   });
 
   it('MOD-03 detectedLocale normalises the Foundry language tag', async () => {
