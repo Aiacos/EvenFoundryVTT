@@ -67,6 +67,7 @@ export function statusLine(state: AppState, t: PhoneStrings): string {
     network: t.causeNetwork,
     auth: t.causeAuth,
     background: t.causeBackground,
+    access: t.causeAccess,
   } as const;
   const parts = [t.statusOffline];
   if (c.cause !== undefined) parts.push(cause[c.cause]);
