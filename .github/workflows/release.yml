@@ -24,6 +24,10 @@
 #      starts `on: push` workflows, which is why publishing happens in this job.
 #   4. foundry-module-release.yml publishes the GitHub Release; Foundry and The Forge
 #      auto-update from /releases/latest/download/module.json.
+#   5. `sync-*` jobs: back-merge main into develop (GitFlow) through a PR from
+#      `sync/main-to-develop`, verified by the same reusable CI and merged the same way,
+#      so release version bumps never drift between the branches. Only a real merge
+#      conflict leaves the PR open for a human.
 #   No npm publish occurs (pre-1.0, privatePackages.tag=false per .changeset/config.json).
 
 name: Release
@@ -52,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+      published: ${{ steps.changesets.outputs.published }}
       pr: ${{ steps.changesets.outputs.pullRequestNumber }}
       headSha: ${{ steps.head.outputs.sha }}
     steps:
@@ -157,3 +162,90 @@ jobs:
 
       - name: Tag and dispatch the Foundry module release
         run: pnpm run release:tag
+
+  # 4. Back-merge main into develop (GitFlow) so the version bumps, CHANGELOGs and
+  #    consumed changesets of the release never drift between the two branches.
+  #    develop is protected like main (PR + required `quality-gates`), so the same
+  #    pattern applies: a sync branch at main's tip → PR → reusable CI on that commit →
+  #    check run → merge of exactly that commit. Runs after any release (hands-off or a
+  #    human-merged version PR) and whenever main is ahead of develop (e.g. a hotfix).
+  sync-prepare:
+    needs: [version, publish]
+    if: ${{ always() && (needs.publish.result == 'success' || needs.version.outputs.published == 'true' || needs.version.outputs.hasChangesets == 'false') }}
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.plan.outputs.needed }}
+      sha: ${{ steps.plan.outputs.sha }}
+      pr: ${{ steps.plan.outputs.pr }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Open or refresh the main → develop sync PR
+        id: plan
+        run: |
+          git fetch -q origin develop
+          AHEAD=$(git rev-list --count origin/develop..origin/main)
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "::notice::develop already contains main — nothing to sync."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SHA=$(git rev-parse origin/main)
+          git push --force origin "$SHA:refs/heads/sync/main-to-develop"
+          PR=$(gh pr list --repo "$REPO" --state open --base develop --head sync/main-to-develop \
+                 --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            URL=$(gh pr create --repo "$REPO" --base develop --head sync/main-to-develop \
+                    --title "chore(release): sync main into develop" \
+                    --body "Automatic GitFlow back-merge of \`main\` ($AHEAD commit(s): release version bumps, CHANGELOGs, consumed changesets) into \`develop\`. Opened and merged by release.yml after the gates pass on this commit.")
+            PR=${URL##*/}
+          fi
+          { echo "needed=true"; echo "sha=$SHA"; echo "pr=$PR"; } >> "$GITHUB_OUTPUT"
+          echo "::notice title=Sync PR::#$PR brings $AHEAD commit(s) from main into develop"
+
+  sync-gates:
+    needs: sync-prepare
+    if: ${{ always() && needs.sync-prepare.outputs.needed == 'true' }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.sync-prepare.outputs.sha }}
+
+  sync-merge:
+    needs: [sync-prepare, sync-gates]
+    if: ${{ always() && needs.sync-prepare.outputs.needed == 'true' && needs.sync-gates.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ needs.sync-prepare.outputs.pr }}
+      SHA: ${{ needs.sync-prepare.outputs.sha }}
+    steps:
+      - name: Report quality-gates on the sync commit
+        run: |
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name=quality-gates -f head_sha="$SHA" -f status=completed -f conclusion=success \
+            -f "output[title]=quality-gates (release pipeline)" \
+            -f "output[summary]=Verified by the reusable CI workflow in release run ${{ github.run_id }}."
+
+      - name: Merge the sync PR into develop
+        run: |
+          STATE=UNKNOWN
+          for _ in $(seq 1 12); do
+            STATE=$(gh pr view "$PR" --repo "$REPO" --json mergeable --jq .mergeable)
+            [ "$STATE" != "UNKNOWN" ] && break
+            sleep 5
+          done
+          if [ "$STATE" = "CONFLICTING" ]; then
+            echo "::error title=Sync needs a human::PR #$PR (main → develop) has merge conflicts — resolve them on the sync branch and merge the PR."
+            exit 1
+          fi
+          gh pr merge "$PR" --repo "$REPO" --merge --match-head-commit "$SHA" \
+            --subject "chore(release): sync main into develop (#$PR)"
+          echo "::notice title=develop synced::Merged #$PR"
+
