@@ -8,8 +8,8 @@ Dalla v0.12.0 l'artefatto di release è lo **zip del modulo Foundry**, che conti
 
 1. Ogni PR aggiunge un changeset: `pnpm changeset` (il gate 7 lo verifica con `pnpm changeset:status`). Versioni indipendenti per pacchetto, nessuna pubblicazione npm (pre-1.0, `privatePackages.tag: false` in `.changeset/config.json`).
 2. Le feature confluiscono in `develop`; `develop` → `main` per il rilascio.
-3. A ogni push su `main`, `.github/workflows/release.yml` (`changesets/action`) apre o aggiorna la PR **Version Packages**, che consuma i changeset e aggiorna versioni e `CHANGELOG.md`.
-4. Quando la PR *Version Packages* viene unita, lo stesso workflow esegue `pnpm release:tag` (`scripts/release-tag.mjs`): legge la versione da `packages/foundry-module/package.json`, crea e pubblica il tag `v<versione>` (idempotente) e avvia `foundry-module-release.yml` con `gh workflow run` — un tag pubblicato col token predefinito non avvierebbe da solo il workflow.
+3. A ogni push su `main`, `.github/workflows/release.yml` (`changesets/action`) apre o aggiorna la PR **chore(release): version packages**, che consuma i changeset e aggiorna versioni e `CHANGELOG.md`.
+4. **Senza intervento umano**: quando la CI della PR *chore(release): version packages* è verde, `.github/workflows/release-auto.yml` (evento `workflow_run`) la unisce — solo il commit verificato — ed esegue `pnpm release:tag` (`scripts/release-tag.mjs`): legge la versione da `packages/foundry-module/package.json`, crea e pubblica il tag `v<versione>` (idempotente) e avvia `foundry-module-release.yml` con `gh workflow run` — un tag pubblicato col token predefinito non avvierebbe da solo il workflow.
 
 Tag manuale, se serve:
 

@@ -66,5 +66,9 @@ jobs:
           # changeset version + app.json version sync (scripts/sync-app-json.mjs).
           version: pnpm run version-packages
           publish: pnpm run release:tag
+          # Conventional titles so commit-lint-pr-title passes on the version PR; the
+          # PR is merged hands-off by release-auto.yml once CI is green.
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
