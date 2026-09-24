@@ -1,6 +1,6 @@
 {
   "name": "@evf/g2-app",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "EVF G2 plugin host bundle — served via static HTTP to Even Realities App WebView (Phase 4a fills real implementation).",
