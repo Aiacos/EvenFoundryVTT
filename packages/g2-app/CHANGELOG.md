@@ -1,5 +1,11 @@
 # @evf/g2-app
 
+## 0.3.1
+
+### Patch Changes
+
+- 06f4d3c: Even Hub manifest: drop `min_app_version` (optional since SDK 0.0.14; the packer stamps the floor of the SDK we build against, now pinned with `--sdk-ver`). The module release ships the refreshed `.ehpk`. Adds `pnpm wizard` for one-command G2 hardware tests (LAN server + QR).
+
 ## 0.3.0
 
 ### Minor Changes
