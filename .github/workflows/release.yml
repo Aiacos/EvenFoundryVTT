@@ -56,6 +56,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+      # A Version Packages PR exists to verify + merge. Empty-only changesets (tooling,
+      # tests) bump nothing, so changesets/action opens no PR even though
+      # hasChangesets is true — then there is nothing to publish.
+      pending: ${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}
       published: ${{ steps.changesets.outputs.published }}
       pr: ${{ steps.changesets.outputs.pullRequestNumber }}
       headSha: ${{ steps.head.outputs.sha }}
@@ -91,7 +95,7 @@ jobs:
 
       - name: Resolve the Version Packages PR head commit
         id: head
-        if: steps.changesets.outputs.hasChangesets == 'true'
+        if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ steps.changesets.outputs.pullRequestNumber }}
@@ -102,7 +106,7 @@ jobs:
   #    so the release pipeline runs the gates itself instead of waiting for it.
   gates:
     needs: version
-    if: needs.version.outputs.hasChangesets == 'true'
+    if: needs.version.outputs.pending == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.version.outputs.headSha }}
@@ -114,7 +118,7 @@ jobs:
   #    GITHUB_TOKEN would not start `on: push` workflows, so publishing runs here.
   publish:
     needs: [version, gates]
-    if: needs.version.outputs.hasChangesets == 'true'
+    if: needs.version.outputs.pending == 'true'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -171,7 +175,8 @@ jobs:
   #    human-merged version PR) and whenever main is ahead of develop (e.g. a hotfix).
   sync-prepare:
     needs: [version, publish]
-    if: ${{ always() && (needs.publish.result == 'success' || needs.version.outputs.published == 'true' || needs.version.outputs.hasChangesets == 'false') }}
+    # Any successful version job, unless publishing was attempted and failed.
+    if: ${{ always() && needs.version.result == 'success' && needs.publish.result != 'failure' && needs.publish.result != 'cancelled' }}
     runs-on: ubuntu-latest
     outputs:
       needed: ${{ steps.plan.outputs.needed }}
