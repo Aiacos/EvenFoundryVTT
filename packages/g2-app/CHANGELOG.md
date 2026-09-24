@@ -1,5 +1,11 @@
 # @evf/g2-app
 
+## 0.3.2
+
+### Patch Changes
+
+- d19da6e: Login errors on The Forge: a login wall (private game) or Forge Automatic User Management taking over `/join` is now reported as a clear "The Forge is intercepting the login" cause (credentials kept) instead of showing a raw HTML page. Setup guide + wiki explain the private-game requirements.
+
 ## 0.3.1
 
 ### Patch Changes
