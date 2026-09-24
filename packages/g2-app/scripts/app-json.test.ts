@@ -1,7 +1,9 @@
 // @vitest-environment node
 /**
  * Even Hub manifest (inventory H13, remote 1fb33ce): `app.json` needs `description`,
- * `icon` (shipped from `src/public/`), `min_app_version`, a `min_sdk_version` equal to the
+ * `icon` (shipped from `src/public/`), no `min_app_version` (optional since SDK 0.0.14 —
+ * the packer stamps the SDK floor, hub.evenrealities.com/docs/ship/packaging), a
+ * `min_sdk_version` equal to the
  * SDK the bundle is built against, and a `version` equal to the package version (local
  * `.ehpk` packs are rejected otherwise — `scripts/sync-app-json.mjs` keeps it in sync).
  */
@@ -26,7 +28,8 @@ describe('app.json', () => {
   it('declares the store metadata and ships the icon', () => {
     expect(typeof app.description).toBe('string');
     expect((app.description as string).length).toBeGreaterThan(20);
-    expect(app.min_app_version).toMatch(/^\d+\.\d+\.\d+$/);
+    // Omitted on purpose: a value below the SDK floor is replaced by the packer with a warning.
+    expect(app.min_app_version).toBeUndefined();
     expect(app.icon).toBe('icon.png');
     expect(existsSync(new URL('../src/public/icon.png', import.meta.url))).toBe(true);
   });

@@ -1,5 +1,52 @@
 # @evf/shared-protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- ff883b1: ADR-0016 direct Foundry → G2 streaming. The g2-app is now built into the module
+  (`packages/foundry-module/g2/`) and served by Foundry at
+  `/modules/evenfoundryvtt/g2/index.html`; the Even Realities App loads it by scanning the
+  pairing QR shown in Foundry. The phone logs in as a dedicated "(G2)" Foundry user and talks
+  to the GM-client projector over `module.evenfoundryvtt` with AES-GCM sealed envelopes;
+  all writes still go through the GM-side `dispatchTool` pipeline (ADR-0011).
+
+  **Removed:** the Node bridge (`@evf/bridge`), the V2 MCP server (`@evf/foundry-mcp`) and the
+  Docker Compose deployment (`deploy/`). There is no longer a GHCR bridge image or a separate
+  `g2-app-dist.zip` release asset — the module zip is the only artefact. Bridge-only protocol
+  (handshake/resume/debug events), the g2-app bridge wizard and audio capture are gone; voice/MCP
+  need a new ADR before returning.
+
+- 1e3e055: ADR-0017 player-owned glasses. Each player pairs their own G2 from Foundry
+  (self-service `PairG2App` or the Players-list shortcut): the pairing QR carries an
+  ECDH-custodied, per-device credential, and writes run on the player's own client first,
+  falling back to the active GM (per-device responder election). The projector re-checks
+  actor ownership live on every invoke, so revoking ownership after pairing takes effect
+  immediately. There is no long-lived shared bearer token any more.
+
+  **Migration:** remove the bridge container and re-pair every pair of glasses from the
+  Foundry Players list — old bridge pairings are not compatible.
+
+- 1e3e055: Direct-channel hardening and ports:
+
+  - The projector re-checks on every hello / get / invoke that the paired player still owns
+    the actor (revoking ownership in Foundry takes effect at once; denials are audited).
+  - Pairing lists only characters the chosen player owns (Players-list shortcut and GM
+    pairing window) and refuses a stale selection.
+  - `welcome.moduleVersion` reports the running `evenfoundryvtt` version to the glasses.
+  - `details.classLabel` carries the multiclass label (e.g. «Fighter / Wizard»).
+  - Removed payload schemas nothing used any more (`r1`, `frame`, `perf-probe`, template /
+    scene / concentration leftovers, combatant `tokenUuid`) and stale bridge-era wording.
+
+- a823240: New `skill-check` write tool: `actor.rollSkill({ skill, advantage, disadvantage },
+{ configure: false })` (dnd5e 5.x config-object API), registered in the module
+  `ToolId`/`TOOL_IDS` and the shared `TOOL_ID_SCHEMA`, dispatched through the same
+  single-workflow-origin `dispatchTool` path as every other write tool (ADR-0011).
+  The input takes `kind: 'skill' | 'check' | 'save'` (default `skill`) with `skill` /
+  `ability`, the same vocabulary as the GM roll-request card, so the glasses can answer a
+  request with `rollSkill`, `rollAbilityCheck` or `rollSavingThrow`. `TOOL_ID_SCHEMA` also
+  gains the missing `end-turn`.
+
 ## 0.2.0
 
 ### Minor Changes

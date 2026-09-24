@@ -16,6 +16,7 @@ Tutti i comandi a 0 = repository sano.
 - `main` — rilasci. `develop` — integrazione.
 - Lavora su `feature/<nome>` partendo da `develop`, apri la PR verso `develop`.
 - `develop` → `main` porta al rilascio: la PR di versione viene unita e pubblicata in automatico ([Release](Release)).
+- Se un changeset aggiorna `@evf/g2-app`, `@evf/shared-protocol` o `@evf/shared-render`, deve aggiornare anche `@evf/foundry-module`: sono spediti dentro lo zip del modulo e il tag di release segue la sua versione (gate CI `check-changeset-module.mjs`).
 - Un `develop` rosso si ripara prima di nuove feature.
 - Le feature si pianificano con **Spec Kit**: una cartella per feature in [`specs/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/specs) (`NNN-nome/spec.md`, `plan.md`), principi in [`.specify/memory/constitution.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/.specify/memory/constitution.md).
 
