@@ -45,6 +45,11 @@ Releases follow GitFlow + Changesets and are **hands-off** after a merge to `mai
    `evenfoundryvtt.zip` (+ `.ehpk`). Foundry and **The Forge** pick the update up from the
    manifest URL `…/releases/latest/download/module.json` — no manual step.
 
+4. After the release, the same run **back-merges `main` into `develop`**: it points
+   `sync/main-to-develop` at `main`, opens the PR *chore(release): sync main into develop*,
+   runs the reusable CI on that commit and merges it. Only a real conflict leaves the PR
+   open (error annotation in the run) for a human.
+
 Rule: a changeset that bumps `@evf/g2-app`, `@evf/shared-protocol` or `@evf/shared-render` must
 also bump `@evf/foundry-module` — they ship inside the module zip and the release tag follows
 the module version (CI gate `scripts/check-changeset-module.mjs`).

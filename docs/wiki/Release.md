@@ -10,6 +10,7 @@ Dalla v0.12.0 l'artefatto di release è lo **zip del modulo Foundry**, che conti
 2. Le feature confluiscono in `develop`; `develop` → `main` per il rilascio.
 3. A ogni push su `main`, `.github/workflows/release.yml` (`changesets/action`) apre o aggiorna la PR **chore(release): version packages**, che consuma i changeset e aggiorna versioni e `CHANGELOG.md`.
 4. **Senza intervento umano**: nello stesso run di `release.yml` il job `gates` esegue la CI (`ci.yml`, riutilizzabile) sul commit della PR *chore(release): version packages*; il job `publish` registra il check `quality-gates`, unisce proprio quel commit ed esegue `pnpm release:tag` (`scripts/release-tag.mjs`): legge la versione da `packages/foundry-module/package.json`, crea e pubblica il tag `v<versione>` (idempotente) e avvia `foundry-module-release.yml` con `gh workflow run` — un tag pubblicato col token predefinito non avvierebbe da solo il workflow.
+5. Dopo la release lo stesso run **riallinea `develop`**: porta `sync/main-to-develop` sulla cima di `main`, apre la PR *chore(release): sync main into develop*, la verifica con la CI e la unisce. Solo un conflitto reale la lascia aperta per una persona.
 
 Tag manuale, se serve:
 
