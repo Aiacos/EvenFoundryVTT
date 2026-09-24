@@ -188,7 +188,9 @@ describe('connect flow', () => {
     });
     await settle();
     const gets = await gm.drain();
-    expect(gets.map((m) => m.what)).toEqual(['character', 'combat', 'map', 'log']);
+    // The four `get`s are sealed concurrently (async WebCrypto), so their arrival order
+    // is not deterministic — assert the set, not the order.
+    expect(gets.map((m) => m.what).sort()).toEqual(['character', 'combat', 'log', 'map']);
     expect(h.store.get().connection.steps?.gm).toBe(true);
     await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
     await gm.reply({ t: 'snapshot', what: 'combat', data: null });
@@ -493,7 +495,8 @@ describe('online behaviour', () => {
     expect(await gm.drain()).toEqual([]);
     vi.advanceTimersByTime(SESSION_TIMING.refreshDebounce);
     await settle();
-    expect((await gm.drain()).map((m) => m.what)).toEqual(['map', 'log']);
+    // Concurrent seals → arrival order is not deterministic; assert the set.
+    expect((await gm.drain()).map((m) => m.what).sort()).toEqual(['log', 'map']);
   });
 
   it('resyncs every topic on a sequence gap and records invalid/unknown deltas', async () => {
