@@ -1,5 +1,79 @@
 # @evf/g2-app
 
+## 0.3.0
+
+### Minor Changes
+
+- ff883b1: ADR-0016 direct Foundry → G2 streaming. The g2-app is now built into the module
+  (`packages/foundry-module/g2/`) and served by Foundry at
+  `/modules/evenfoundryvtt/g2/index.html`; the Even Realities App loads it by scanning the
+  pairing QR shown in Foundry. The phone logs in as a dedicated "(G2)" Foundry user and talks
+  to the GM-client projector over `module.evenfoundryvtt` with AES-GCM sealed envelopes;
+  all writes still go through the GM-side `dispatchTool` pipeline (ADR-0011).
+
+  **Removed:** the Node bridge (`@evf/bridge`), the V2 MCP server (`@evf/foundry-mcp`) and the
+  Docker Compose deployment (`deploy/`). There is no longer a GHCR bridge image or a separate
+  `g2-app-dist.zip` release asset — the module zip is the only artefact. Bridge-only protocol
+  (handshake/resume/debug events), the g2-app bridge wizard and audio capture are gone; voice/MCP
+  need a new ADR before returning.
+
+- 1e3e055: ADR-0017 player-owned glasses. Each player pairs their own G2 from Foundry
+  (self-service `PairG2App` or the Players-list shortcut): the pairing QR carries an
+  ECDH-custodied, per-device credential, and writes run on the player's own client first,
+  falling back to the active GM (per-device responder election). The projector re-checks
+  actor ownership live on every invoke, so revoking ownership after pairing takes effect
+  immediately. There is no long-lived shared bearer token any more.
+
+  **Migration:** remove the bridge container and re-pair every pair of glasses from the
+  Foundry Players list — old bridge pairings are not compatible.
+
+- 1e3e055: ADR-0018 D&D-sheet HUD «Scheda da tavolo G2». The glasses render a pixel HUD built with
+  `@evf/shared-render` (bitmap fonts, icons, 16-level pixmaps, INV-1 pixel golden
+  fixtures): portrait, header (HP / AC / turn / action economy / conditions), a pixelated
+  scene map, the sheet page, and a native-text context zone driven by R1 gestures
+  (ADR-0012 gesture model: tap opens actions, double-tap at root exits).
+
+  `@evf/shared-render` gains the pixel renderer (`Pixmap`, fonts, icons,
+  `matchPixelFixture`); the INV-1 fixture matchers move to a test-only `./testing` subpath so
+  the browser bundle never pulls `node:fs` / `vitest`.
+
+- 1e3e055: Ports from the bridge-era g2-app, re-implemented for the direct channel:
+
+  - GM roll request: besides «Done» (real dice at the table), the request view can roll the
+    check / skill / saving throw in Foundry (`skill-check` tool, current advantage).
+  - Consumables pick a target like weapons (`use-item` `targets`; «no target» = self).
+  - Read-only «Feats…» list (origin feats tagged) when the sheet carries feats.
+  - Phone «Diagnostics» shows the EVF module version from `welcome.moduleVersion` and warns
+    when the glasses app was built for a different module version.
+  - Lifecycle: `ABNORMAL_EXIT_EVENT` closes the connection gracefully (app-submission QA);
+    a press counts only from a real touch source (`sysEvent.eventSource` 1–3).
+  - `app.json`: description, icon, `min_app_version`, `min_sdk_version` 0.0.15 and a version
+    kept equal to the package version (`scripts/sync-app-json.mjs`, run by `version-packages`).
+
+- 1e3e055: Real-G2 page geometry. The real Even Hub host rejects a page whose image containers are
+  not on the proven grid (a rejected `rebuildPageContainer` leaves 0 containers → blank
+  glasses; the simulator accepts any offset). The sheet HUD keeps its exact look but now
+  draws the top band (portrait + header + map) into one 576 × 144 framebuffer sent as two
+  288 × 144 image tiles at (0,0) and (288,0), plus the sheet tile at (0,144); full-screen
+  states use the 2 × 2 grid of 288 × 144 tiles; the fourth slot (288,144) stays reserved in
+  the sheet layout because images draw above the zone-E text. Container ids follow the host's
+  declaration order (images first, then text: `full` 0–3 + 4, `sheet` 0–2 + 3–6), with
+  exactly one `' '` event-capture container. Tiles are hashed and resent individually (an AC
+  change resends only the left tile, the HP box straddles both top tiles), keeping priority
+  and ≥ 100 ms pacing; the map inside the right tile stays ≤ 1 fps. If the host rejects the sheet page at start-up or on
+  rebuild, the HUD logs it to the debug channel and falls back to the full-screen 2 × 2 layout
+  instead of leaving a dead screen.
+
+### Patch Changes
+
+- Updated dependencies [ff883b1]
+- Updated dependencies [1e3e055]
+- Updated dependencies [1e3e055]
+- Updated dependencies [1e3e055]
+- Updated dependencies [a823240]
+  - @evf/shared-protocol@0.3.0
+  - @evf/shared-render@0.2.0
+
 ## 0.2.2
 
 ### Patch Changes
