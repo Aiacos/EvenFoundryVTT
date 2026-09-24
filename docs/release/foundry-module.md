@@ -35,18 +35,20 @@ Releases follow GitFlow + Changesets and are **hands-off** after a merge to `mai
 
 1. `release.yml` (`changesets/action`) opens or updates the PR
    *chore(release): version packages* that consumes the changesets.
-2. CI runs on that PR. When `quality-gates` succeeds, `release-auto.yml` (`workflow_run`
-   on CI) merges **exactly the verified commit** (`--match-head-commit`) and runs
-   `pnpm release:tag` (`scripts/release-tag.mjs`) on the merged `main`: it reads the
+2. In the same run, the `gates` job executes the reusable CI workflow (`ci.yml`) on the
+   PR's head commit; the `publish` job reports it as the required `quality-gates` check,
+   merges **exactly that commit** (`--match-head-commit`) and runs `pnpm release:tag`
+   (`scripts/release-tag.mjs`) on the merged `main`: it reads the
    version from `packages/foundry-module/package.json`, pushes the tag `v<version>`
    (idempotent) and dispatches `foundry-module-release.yml`.
 3. `foundry-module-release.yml` publishes the GitHub Release with `module.json` +
    `evenfoundryvtt.zip` (+ `.ehpk`). Foundry and **The Forge** pick the update up from the
    manifest URL `…/releases/latest/download/module.json` — no manual step.
 
-Why a separate workflow: a merge or tag pushed with the default `GITHUB_TOKEN` never
-triggers other `on: push` workflows (GitHub anti-recursion rule); `workflow_run` and
-`workflow_dispatch` do. No PAT is required. Manual tag, if ever needed:
+Why the pipeline verifies and merges by itself: PRs opened by `github-actions[bot]` can
+sit in *action required* before their own CI starts, and a merge or tag pushed with the
+default `GITHUB_TOKEN` never triggers other `on: push` workflows (GitHub anti-recursion
+rule) — `workflow_call` and `workflow_dispatch` do. No PAT is required. Manual tag, if ever needed:
 
 ```bash
 git tag v0.2.0

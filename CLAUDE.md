@@ -144,7 +144,7 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 
 - CI is the enforcement of this constitution: every principle that can be checked mechanically gets a gate (lint, typecheck, coverage, TODO discipline, snapshot drift, changeset, ADR-0011 guard, …). Never bypass with `--no-verify`, skipped jobs, or lowered thresholds.
 - Keep pipelines fast, deterministic and useful: pinned actions and tool versions, cached pnpm store, clear job names, actionable failure messages. Remove gates that no longer protect anything; add one when a bug class escapes.
-- Release flow stays GitFlow + Changesets (`develop` → `main`; the version PR is merged and published hands-off by `release-auto.yml` once CI is green). Workflows are tested on a branch before merge; a red `develop` is fixed before new feature work.
+- Release flow stays GitFlow + Changesets (`develop` → `main`; the version PR is verified, merged and published hands-off inside `release.yml` (reusable CI + check run)). Workflows are tested on a branch before merge; a red `develop` is fixed before new feature work.
 
 ### P10 · 🤖 Subagent usage
 

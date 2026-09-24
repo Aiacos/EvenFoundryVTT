@@ -11,6 +11,15 @@ on:
     # a stale title-lint result that no title edit could clear (only a new push).
     types: [opened, synchronize, reopened, edited]
     branches: [main, develop]
+  # Reused by release.yml to verify the Version Packages PR head in-pipeline (PRs
+  # opened by github-actions[bot] may need approval before `pull_request` runs start).
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to verify (defaults to the triggering commit)
+        type: string
+        required: false
+        default: ''
 
 jobs:
   quality-gates:
@@ -19,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref || '' }}
           fetch-depth: 0  # changeset status --since=main needs full history
 
       - uses: pnpm/action-setup@v4
