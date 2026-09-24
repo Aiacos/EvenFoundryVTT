@@ -74,6 +74,30 @@ prefix (`foundry.utils.getRoute`) and the g2-app build uses relative paths.
 
 ---
 
+## ⚙️ Games hosted on The Forge
+
+A private Forge game (the default) answers **every** path — `/join`, `/modules/…`,
+`/socket.io` — with a redirect to its "Private Game" page until the visitor is signed in
+to The Forge (*"only users who are logged in can access the game's URL, and only then
+users who have been invited"* —
+[forums.forge-vtt.com/t/public-private-games/3588](https://forums.forge-vtt.com/t/public-private-games/3588)).
+The glasses work on a private game when:
+
+1. **Automatic User Management is off** (My Foundry → *Configure Players*). When it is on,
+   Forge logs a signed-in account straight into *its own* Foundry user and takes over
+   `/join` ([The User Manager](https://forums.forge-vtt.com/t/the-user-manager/11039)),
+   so the dedicated "(G2)" user cannot log in.
+2. The player's **Forge account is invited** to the game (invitation link).
+3. The player **signs in to The Forge once inside the Even Realities App**: scan the QR,
+   the Forge "Private Game" page opens, use *Login* (email + password; social logins may
+   be blocked inside an app WebView), then **scan the QR again**. Forge's session cookie
+   is set for `.forge-vtt.com` and lasts about 14 days, so repeat the login when it
+   expires.
+
+If the app shows *"The Forge is intercepting the login…"*, one of the three points above
+is missing. A **public** Forge game skips point 3, but exposes the Foundry join screen to
+anyone with the URL: then every Foundry user (GM included) needs a strong password.
+
 ## 📦 Install the module
 
 1. **Foundry** → *Setup* → *Add-on Modules* → *Install Module* → Manifest URL:

@@ -176,7 +176,7 @@ export interface HudStrings {
   downRoll: string;
   downTally: (success: number, failure: number) => string;
   offlineTitle: string;
-  offlineCauses: Record<'no-gm' | 'network' | 'auth' | 'background', string>;
+  offlineCauses: Record<'no-gm' | 'network' | 'auth' | 'background' | 'access', string>;
   retryIn: (seconds: number, attempt: number) => string;
   dataAge: (minutes: number) => string;
   frozen: string;
@@ -376,6 +376,7 @@ const IT: HudStrings = {
     network: 'Foundry non risponde',
     auth: 'Accesso rifiutato',
     background: 'Telefono in background',
+    access: 'Serve accesso esterno',
   },
   retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
   dataAge: (m) => `dati di ${m} min fa`,
@@ -576,6 +577,7 @@ const EN: HudStrings = {
     network: 'Foundry not responding',
     auth: 'Login rejected',
     background: 'Phone in background',
+    access: 'Outside login needed',
   },
   retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
   dataAge: (m) => `data from ${m} min ago`,

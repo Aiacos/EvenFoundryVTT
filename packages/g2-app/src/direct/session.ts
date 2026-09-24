@@ -433,6 +433,11 @@ export class DirectSession implements AppActions {
         await this.revoke('auth');
         return;
       }
+      if (error instanceof FoundryClientError && error.kind === 'access') {
+        // Credentials are kept: the fix is on the server side (e.g. make the game public).
+        this.fail('access', error.message);
+        return;
+      }
       this.fail('network', error instanceof Error ? error.message : String(error));
     }
   }
