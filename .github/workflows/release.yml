@@ -9,18 +9,22 @@
 # (workflow_dispatch DOES fire with the default token — it is user-initiated,
 # not recursive). No PAT secret is introduced.
 #
-# How this workflow operates:
-#   1. Every push to main runs changesets/action@v1.
-#   2. If unconsumed changesets exist → the action opens/updates a
-#      "Version Packages" PR that bumps per-package versions + consumes changesets.
-#      The `publish` step does NOT run while changesets are present.
-#   3. When the "Version Packages" PR is merged (no changesets left) → the action
-#      runs `release:tag` which:
-#        a. Reads the version from packages/foundry-module/package.json.
-#        b. Idempotently creates + pushes the v<version> tag (skip if already exists).
-#        c. Dispatches foundry-module-release.yml via `gh workflow run` to build
-#           and publish the Foundry module package.
-#   4. No npm publish occurs (pre-1.0, privatePackages.tag=false per .changeset/config.json).
+# How this workflow operates (hands-off — no human step, no PAT):
+#   1. `version` job: every push to main runs changesets/action@v1.
+#      - Pending changesets → opens/updates the "chore(release): version packages" PR.
+#      - No pending changesets (e.g. a human merged the version PR) → runs
+#        `release:tag` directly (tag + dispatch foundry-module-release.yml).
+#   2. `gates` job: runs the reusable CI workflow (ci.yml, workflow_call) on the exact
+#      version-PR head commit. PRs opened by github-actions[bot] may wait for manual
+#      approval before their own `pull_request` CI starts, so the pipeline verifies
+#      the commit itself instead of waiting on it.
+#   3. `publish` job: reports that result as the required `quality-gates` check run on
+#      the verified SHA, merges the PR with --match-head-commit (nothing unverified can
+#      ship), then runs `release:tag` on main. A merge pushed with GITHUB_TOKEN never
+#      starts `on: push` workflows, which is why publishing happens in this job.
+#   4. foundry-module-release.yml publishes the GitHub Release; Foundry and The Forge
+#      auto-update from /releases/latest/download/module.json.
+#   No npm publish occurs (pre-1.0, privatePackages.tag=false per .changeset/config.json).
 
 name: Release
 
@@ -29,8 +33,9 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write       # version PR branch, merge, tag push
+  pull-requests: write  # create/update + merge the Version Packages PR
+  checks: write         # report the in-pipeline quality-gates result on the PR head
   # release-tag.mjs dispatches foundry-module-release.yml via `gh workflow run`,
   # which needs actions:write on the default GITHUB_TOKEN.
   actions: write
@@ -41,8 +46,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  # 1. Changesets: open/update the Version Packages PR, or — when main has no pending
+  #    changesets (a human merged the version PR) — tag + dispatch the module release.
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+      pr: ${{ steps.changesets.outputs.pullRequestNumber }}
+      headSha: ${{ steps.head.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,14 +72,88 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Create Release PR or publish
+        id: changesets
         uses: changesets/action@v1
         with:
           # changeset version + app.json version sync (scripts/sync-app-json.mjs).
           version: pnpm run version-packages
           publish: pnpm run release:tag
-          # Conventional titles so commit-lint-pr-title passes on the version PR; the
-          # PR is merged hands-off by release-auto.yml once CI is green.
+          # Conventional titles so commit-lint-pr-title passes on the version PR.
           title: 'chore(release): version packages'
           commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the Version Packages PR head commit
+        id: head
+        if: steps.changesets.outputs.hasChangesets == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.changesets.outputs.pullRequestNumber }}
+        run: echo "sha=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" >> "$GITHUB_OUTPUT"
+
+  # 2. Verify that exact commit with the SAME CI workflow (reusable). A PR opened by
+  #    github-actions[bot] may wait for approval before its own `pull_request` CI runs,
+  #    so the release pipeline runs the gates itself instead of waiting for it.
+  gates:
+    needs: version
+    if: needs.version.outputs.hasChangesets == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.version.outputs.headSha }}
+
+  # 3. Report the verified result as the required `quality-gates` check on the PR head,
+  #    merge exactly that commit, then tag + dispatch foundry-module-release.yml — the
+  #    GitHub Release that Foundry and The Forge read at
+  #    /releases/latest/download/module.json. No human step, no PAT: a merge by
+  #    GITHUB_TOKEN would not start `on: push` workflows, so publishing runs here.
+  publish:
+    needs: [version, gates]
+    if: needs.version.outputs.hasChangesets == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ needs.version.outputs.pr }}
+      SHA: ${{ needs.version.outputs.headSha }}
+    steps:
+      - name: Report quality-gates on the verified commit
+        run: |
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name=quality-gates -f head_sha="$SHA" -f status=completed -f conclusion=success \
+            -f "output[title]=quality-gates (release pipeline)" \
+            -f "output[summary]=Verified by the reusable CI workflow in release run ${{ github.run_id }}."
+
+      - name: Merge the verified Version Packages PR
+        run: |
+          gh pr merge "$PR" --repo "$REPO" --merge --match-head-commit "$SHA" \
+            --subject "chore(release): version packages (#$PR)"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0  # tags needed for the idempotent tag check
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Guard — no pending changesets on the merged main
+        run: |
+          PENDING=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l)
+          if [ "$PENDING" -ne 0 ]; then
+            echo "::error::main still has $PENDING unconsumed changesets — refusing to tag."
+            exit 1
+          fi
+
+      - name: Tag and dispatch the Foundry module release
+        run: pnpm run release:tag
