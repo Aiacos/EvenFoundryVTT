@@ -51,7 +51,7 @@ Players don't need the `.ehpk`: the Even Realities App loads the glasses app str
 
 Each "(G2)" user has the Player role and owns only that character; every device has its own encryption key. **Hybrid projector:** while the player has Foundry open, the player's own client serves the glasses (actions run as that player); otherwise an online GM that holds the device key takes over. Revoke any device from the pairing dialog. A **manual code** fallback is shown under the QR. Step-by-step guides (Italian): **[project wiki](https://github.com/Aiacos/EvenFoundryVTT/wiki)**.
 
-## 🎮 Controls — R1 ring / G2 touchpad
+## 🕹️ Controls — R1 ring / G2 touchpad
 
 Four gestures drive everything (canonical model: [ADR-0012](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md), Amendment 2 — the menu opens on **tap**; implemented by [ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)). All input lands on the context panel (zone E); the other zones update by themselves.
 
@@ -63,6 +63,15 @@ Four gestures drive everything (canonical model: [ADR-0012](docs/architecture/00
 | Long-press *(optional)* | `LONG_PRESS_EVENT (9)`, SDK ≥ 0.0.14, Even App ≥ 2.2.9 | shortcuts menu — every entry is also reachable by tap | — |
 
 GM roll requests switch the sheet to *Saves & Skills* and tell you to roll the physical d20; at 0 HP the sheet shows death saves.
+
+## 🧪 Try it on the glasses
+
+```bash
+pnpm wizard                      # demo scenes on your LAN + QR (no Foundry needed)
+pnpm wizard --foundry https://your-foundry.example   # checks your Foundry + QR of the app it serves
+```
+
+On the phone: sign in once at [hub.evenrealities.com/login](https://hub.evenrealities.com/login) (that enables Developer Mode), reopen the Even Realities App, then **Even Hub → Scan QR**. Details: [`docs/release/evenhub.md`](docs/release/evenhub.md) — including why the app is QR-sideloaded rather than listed on the Even Hub store.
 
 ## 👓 UX / UI design
 

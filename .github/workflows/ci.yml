@@ -84,6 +84,11 @@ jobs:
         if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset:status
 
+      # Releases are tagged from @evf/foundry-module's version and its zip ships g2-app +
+      # shared-*; a bump of those without the module would never reach Foundry/The Forge.
+      - name: Changesets cover the shipped module
+        run: node scripts/check-changeset-module.mjs
+
       # D-7.01 gate 8: Single-workflow-origin guard (ADR-0011, preserved by ADR-0016)
       # The ONLY valid call sites for activity.use() are under
       #   packages/foundry-module/src/write-path/
@@ -158,6 +163,10 @@ jobs:
         run: |
           node scripts/sync-app-json.mjs --check
           test -f packages/foundry-module/g2/icon.png || { echo "::error file=packages/g2-app/app.json::icon.png missing from the g2 build (packages/g2-app/src/public/icon.png)"; exit 1; }
+
+      # Shell scripts (wizard, sim helpers) are linted like the TypeScript sources.
+      - name: ShellCheck (scripts/*.sh)
+        run: shellcheck scripts/*.sh
 
   commit-lint-pr-title:
     runs-on: ubuntu-latest

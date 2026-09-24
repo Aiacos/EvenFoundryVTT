@@ -158,7 +158,7 @@ jobs:
       # always matches the module release.
       - name: Pack evenfoundryvtt.ehpk
         run: |
-          npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/foundry-module/g2 -o packages/foundry-module/evenfoundryvtt.ehpk
+          npx --yes @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/foundry-module/g2 --sdk-ver "$(node -p "require('./packages/g2-app/package.json').dependencies['@evenrealities/even_hub_sdk']")" -o packages/foundry-module/evenfoundryvtt.ehpk
           test -f packages/foundry-module/evenfoundryvtt.ehpk
           ls -lh packages/foundry-module/evenfoundryvtt.ehpk
 
