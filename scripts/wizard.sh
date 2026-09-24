@@ -100,8 +100,9 @@ cleanup() {
     printf '\n  dev server stopped\n'
   fi
   if [[ $FIREWALL_OPENED -eq 1 ]]; then
-    sudo firewall-cmd --remove-port="${PORT}/tcp" >/dev/null 2>&1 \
-      && printf '  firewall port %s/tcp closed again\n' "$PORT" || true
+    if sudo firewall-cmd --remove-port="${PORT}/tcp" >/dev/null 2>&1; then
+      printf '  firewall port %s/tcp closed again\n' "$PORT"
+    fi
   fi
 }
 trap cleanup EXIT
@@ -142,8 +143,10 @@ open_firewall() {
   fi
   step "Firewall"
   if confirm "Open ${PORT}/tcp in firewalld until this wizard exits (sudo)?"; then
-    sudo firewall-cmd --add-port="${PORT}/tcp" >/dev/null && FIREWALL_OPENED=1 \
-      && ok "${PORT}/tcp open (runtime only — closed on exit)"
+    if sudo firewall-cmd --add-port="${PORT}/tcp" >/dev/null; then
+      FIREWALL_OPENED=1
+      ok "${PORT}/tcp open (runtime only — closed on exit)"
+    fi
   else
     warn "port left closed — the phone may not reach http://${LAN_IP}:${PORT}"
   fi
