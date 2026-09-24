@@ -4,7 +4,7 @@
   "name": "FoundryVTT G2 HUD",
   "description": "Foundry VTT D&D 5e character sheet HUD on Even Realities G2, streamed directly from your Foundry server and driven by R1 ring gestures.",
   "icon": "icon.png",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "min_sdk_version": "0.0.15",
   "entrypoint": "index.html",
   "permissions": [
