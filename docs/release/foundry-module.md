@@ -45,6 +45,10 @@ Releases follow GitFlow + Changesets and are **hands-off** after a merge to `mai
    `evenfoundryvtt.zip` (+ `.ehpk`). Foundry and **The Forge** pick the update up from the
    manifest URL `…/releases/latest/download/module.json` — no manual step.
 
+Rule: a changeset that bumps `@evf/g2-app`, `@evf/shared-protocol` or `@evf/shared-render` must
+also bump `@evf/foundry-module` — they ship inside the module zip and the release tag follows
+the module version (CI gate `scripts/check-changeset-module.mjs`).
+
 Why the pipeline verifies and merges by itself: PRs opened by `github-actions[bot]` can
 sit in *action required* before their own CI starts, and a merge or tag pushed with the
 default `GITHUB_TOKEN` never triggers other `on: push` workflows (GitHub anti-recursion

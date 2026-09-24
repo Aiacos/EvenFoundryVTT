@@ -32,6 +32,25 @@ __evf.dispatch('down')   // inietta un gesto: 'tap' | 'double' | 'up' | 'down' |
 
 `dispatch` valida l'argomento (l'input della console non è fidato) e restituisce `false` se non c'è il bridge dell'SDK Even Hub (`EvenAppBridge`, cioè fuori dalla Even App o dal simulatore).
 
+## 🧪 Occhiali veri: `pnpm wizard`
+
+`scripts/wizard.sh` prepara tutto e mostra il QR da inquadrare con la Even Realities App:
+controlla il toolchain, trova l'IP di rete e una porta libera, apre la porta nel firewall
+(chiede conferma, la richiude all'uscita), avvia l'app sulla LAN e disegna il QR ufficiale.
+
+| Comando | Cosa fa |
+|---|---|
+| `pnpm wizard` | tour delle 12 schermate demo, cambio ogni 6 s (nessun Foundry) |
+| `pnpm wizard --scene combat-my-turn` | una sola schermata, per provare i gesti |
+| `pnpm wizard --mode build` | serve il bundle di produzione (gli stessi byte del modulo) |
+| `pnpm wizard --foundry https://tuo-foundry` | controlli GO/NO-GO + QR dell'app servita da Foundry |
+| `pnpm wizard --debug` | aggiunge `?debug=1` (log nella console della Developer Mode) |
+
+Sul telefono, la prima volta: accedi una volta a `hub.evenrealities.com/login` (l'account
+diventa sviluppatore, non c'è un interruttore), chiudi e riapri l'app, poi **Even Hub →
+Scan QR**. Un'app caricata da QR si ferma quando il telefono la manda in background:
+dopo un blocco dello schermo va inquadrato di nuovo il QR.
+
 ## 🧪 Simulatore Even Hub: `sim:check`
 
 `packages/g2-app/scripts/sim-check.ts` guida il **tour demo reale dentro il simulatore ufficiale** e controlla cosa arriva al display:

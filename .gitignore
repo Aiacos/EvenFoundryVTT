@@ -65,3 +65,4 @@ release-artifacts/
 # Claude Code transient worktree state
 .claude/worktrees/
 packages/g2-app/.sim-artifacts/
+packages/g2-app/.wizard/
