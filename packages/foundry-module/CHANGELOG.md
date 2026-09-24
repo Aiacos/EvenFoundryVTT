@@ -1,5 +1,111 @@
 # @evf/foundry-module
 
+## 0.2.0
+
+### Minor Changes
+
+- ff883b1: ADR-0016 direct Foundry → G2 streaming. The g2-app is now built into the module
+  (`packages/foundry-module/g2/`) and served by Foundry at
+  `/modules/evenfoundryvtt/g2/index.html`; the Even Realities App loads it by scanning the
+  pairing QR shown in Foundry. The phone logs in as a dedicated "(G2)" Foundry user and talks
+  to the GM-client projector over `module.evenfoundryvtt` with AES-GCM sealed envelopes;
+  all writes still go through the GM-side `dispatchTool` pipeline (ADR-0011).
+
+  **Removed:** the Node bridge (`@evf/bridge`), the V2 MCP server (`@evf/foundry-mcp`) and the
+  Docker Compose deployment (`deploy/`). There is no longer a GHCR bridge image or a separate
+  `g2-app-dist.zip` release asset — the module zip is the only artefact. Bridge-only protocol
+  (handshake/resume/debug events), the g2-app bridge wizard and audio capture are gone; voice/MCP
+  need a new ADR before returning.
+
+- 1e3e055: ADR-0017 player-owned glasses. Each player pairs their own G2 from Foundry
+  (self-service `PairG2App` or the Players-list shortcut): the pairing QR carries an
+  ECDH-custodied, per-device credential, and writes run on the player's own client first,
+  falling back to the active GM (per-device responder election). The projector re-checks
+  actor ownership live on every invoke, so revoking ownership after pairing takes effect
+  immediately. There is no long-lived shared bearer token any more.
+
+  **Migration:** remove the bridge container and re-pair every pair of glasses from the
+  Foundry Players list — old bridge pairings are not compatible.
+
+- 1e3e055: Direct-channel hardening and ports:
+
+  - The projector re-checks on every hello / get / invoke that the paired player still owns
+    the actor (revoking ownership in Foundry takes effect at once; denials are audited).
+  - Pairing lists only characters the chosen player owns (Players-list shortcut and GM
+    pairing window) and refuses a stale selection.
+  - `welcome.moduleVersion` reports the running `evenfoundryvtt` version to the glasses.
+  - `details.classLabel` carries the multiclass label (e.g. «Fighter / Wizard»).
+  - Removed payload schemas nothing used any more (`r1`, `frame`, `perf-probe`, template /
+    scene / concentration leftovers, combatant `tokenUuid`) and stale bridge-era wording.
+
+- a823240: New `skill-check` write tool: `actor.rollSkill({ skill, advantage, disadvantage },
+{ configure: false })` (dnd5e 5.x config-object API), registered in the module
+  `ToolId`/`TOOL_IDS` and the shared `TOOL_ID_SCHEMA`, dispatched through the same
+  single-workflow-origin `dispatchTool` path as every other write tool (ADR-0011).
+  The input takes `kind: 'skill' | 'check' | 'save'` (default `skill`) with `skill` /
+  `ability`, the same vocabulary as the GM roll-request card, so the glasses can answer a
+  request with `rollSkill`, `rollAbilityCheck` or `rollSavingThrow`. `TOOL_ID_SCHEMA` also
+  gains the missing `end-turn`.
+
+### Patch Changes
+
+- 184f172: Fix every write-path handler that called `activity.use({ configure: false, ... })`
+  with the dialog-suppression flag in the WRONG (usage) argument. dnd5e 5.x
+  `Activity#use(usage, dialog, message)` reads `configure` from the **dialog (2nd)**
+  argument and defaults it to `true` (INV-2: foundryvtt/dnd5e
+  `module/documents/activity/mixin.mjs` — `if (dialogConfig.configure && …)`), so the
+  configuration dialog stayed enabled and `activity.use` awaited a dialog no one can
+  answer from the glasses → every spell cast / item use / attack hung until the
+  invoke timed out (~10 s). Verified live: cast-spell timed out; skill-check (which
+  already used the 2nd arg) worked.
+
+  Corrected `cast-spell`, `use-item`, `cast-shield`, `cast-counterspell`,
+  `weapon-attack`, and `opportunity-attack` to `use(usage, { configure: false }[, message])`
+  (opportunity-attack's `opportunityAttack` chat flag moved to its proper message arg).
+  Widened the `Activity#use` type to the real 3-arg signature. Tests updated to assert
+  the corrected call shape (regression).
+
+- fbb9f83: Stop the audit-log write from stalling tool dispatch. `dispatchTool` awaits
+  `writeAuditLog` before returning its result. On a player executor
+  `ChatMessage.create` can hang indefinitely — observed live: a skill roll executed (its
+  card appeared in Foundry) yet the glasses invoke still timed out because the audit write
+  never resolved. `writeAuditLog` now bounds the create with `AUDIT_WRITE_TIMEOUT_MS`
+  (2.5 s, well under the ~10 s invoke timeout), so a hung audit write resolves best-effort
+  instead of stalling the action. Regression test added.
+- 0ce4322: Stop reading the deprecated dnd5e `SpellData#preparation.{mode,prepared}` getters
+  in `extractSpellbook` (they logged a compatibility-warning flood on every
+  character snapshot for any spellcaster on dnd5e 5.1+). Now read the new top-level
+  `SpellData#method` / `SpellData#prepared` fields, falling back to the legacy
+  `preparation` object only for dnd5e < 5.1. No behavior change to the emitted
+  spellbook; removes the console-warning spam.
+  dnd5e 5.3 `prepared` is a number (0 unprepared, 1 prepared, 2 always): a spell counts as
+  prepared when `prepared >= 1` (or it is a cantrip / innate / at-will) and as always
+  prepared when `prepared === 2` (or innate); a legacy boolean is still accepted.
+- 448a56c: Fix character snapshots being silently dropped for any actor with no temporary HP.
+  dnd5e leaves `hp.temp` as `null` (not 0) when there is no temp HP; character-reader
+  passed it through as `tempHp: null`, failing `CharacterSnapshotSchema`
+  (`tempHp: number().nonnegative()`), so the snapshot never reached the glasses → empty
+  sheet. Coerced to 0.
+- 7f37b5f: Release CD now version-stamps the Foundry esmodule and stylesheet filenames
+  (`dist/module.js` → `dist/module-<version>.js`, `styles/pair-g2.css` →
+  `styles/pair-g2-<version>.css`) and points `module.json` `esmodules`/`styles` at them.
+  Every release also attaches `evenfoundryvtt.ehpk` (packed from the same `g2/` bundle,
+  `app.json` version synced from the g2-app package).
+
+  The entry-point URL was stable across releases, so a CDN/browser HTTP cache
+  keyed on `modules/evenfoundryvtt/dist/module.js` kept serving the OLD bundle even
+  after `module.json`'s version bumped — Foundry reported the new version while still
+  executing stale code (v0.1.49 spell casts kept hanging with the pre-fix handler
+  despite the fix shipping in the artifact). A per-version filename guarantees a unique
+  URL no cache can serve stale. The committed `module.json` keeps `dist/module.js` for
+  local dev; the renames happen only in the release artifact.
+
+- Updated dependencies [ff883b1]
+- Updated dependencies [1e3e055]
+- Updated dependencies [1e3e055]
+- Updated dependencies [a823240]
+  - @evf/shared-protocol@0.3.0
+
 ## 0.1.47
 
 ### Patch Changes
