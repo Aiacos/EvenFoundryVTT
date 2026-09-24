@@ -26,6 +26,8 @@ const EN = {
   causeNetwork: 'Foundry not responding',
   causeAuth: 'credentials rejected',
   causeBackground: 'app in background',
+  causeAccess:
+    'The Forge is intercepting the login: sign in to The Forge on this phone and turn off "Automatic User Management" (My Foundry → Configure Players), then scan the QR again',
   gmOnline: (name: string) => `${name} (online)`,
   autoLocale: 'Follow Foundry',
   italian: 'Italiano',
@@ -83,6 +85,8 @@ const IT: PhoneStrings = {
   causeNetwork: 'Foundry non risponde',
   causeAuth: 'credenziali rifiutate',
   causeBackground: 'app in background',
+  causeAccess:
+    "The Forge sta intercettando l'accesso: accedi a The Forge su questo telefono e disattiva «Automatic User Management» (My Foundry → Configure Players), poi inquadra di nuovo il QR",
   gmOnline: (name) => `${name} (online)`,
   autoLocale: 'Segui Foundry',
   italian: 'Italiano',

@@ -24,7 +24,7 @@ import { io as socketIo } from 'socket.io-client';
 import { filterG2Users, type JoinUser, parseJoinUsers } from './credentials.js';
 
 /** Error classes surfaced to the session state machine. */
-export type FoundryErrorKind = 'auth' | 'network' | 'server';
+export type FoundryErrorKind = 'auth' | 'network' | 'server' | 'access';
 
 /** Typed failure from the Foundry client; `kind` drives the S12 cause / revocation. */
 export class FoundryClientError extends Error {
@@ -155,7 +155,7 @@ export class FoundryClient {
     if (!res.ok) {
       throw new FoundryClientError(
         kindForStatus(res.status),
-        `POST /join → HTTP ${res.status}: ${text.slice(0, 120)}`,
+        `POST /join → HTTP ${res.status}${text.trimStart().startsWith('<') ? ' (HTML page)' : `: ${text.slice(0, 120)}`}`,
       );
     }
     if (res.redirected && new URL(res.url).pathname.endsWith('/game')) return;
@@ -163,7 +163,13 @@ export class FoundryClient {
     try {
       body = JSON.parse(text) as typeof body;
     } catch {
-      throw new FoundryClientError('server', 'POST /join returned a non-JSON body');
+      // Never surface a page body: an HTML answer means something other than Foundry's
+      // join endpoint replied — a proxy or login wall, or The Forge's Automatic User
+      // Management taking over /join for the Forge account's own Foundry user.
+      throw new FoundryClientError(
+        text.trimStart().startsWith('<') ? 'access' : 'server',
+        'POST /join returned a non-JSON body',
+      );
     }
     if (body.status === 'success') return;
     if (typeof body.redirect === 'string' && body.redirect.endsWith('/game')) return;
@@ -263,10 +269,21 @@ export class FoundryClient {
   }
 
   private async request(url: string, init: RequestInit): Promise<Response> {
+    let res: Response;
     try {
-      return await this.deps.fetch(url, { ...init, credentials: 'same-origin' });
+      res = await this.deps.fetch(url, { ...init, credentials: 'same-origin' });
     } catch (error) {
       throw new FoundryClientError('network', `${init.method ?? 'GET'} ${url}: ${String(error)}`);
     }
+    // A redirect that leaves Foundry's origin is a login wall in front of it (a private
+    // game on The Forge sends every path to forge-vtt.com/game/<name> until the phone is
+    // signed in to The Forge): the credentials are not wrong, Foundry is out of reach.
+    if (res.redirected && res.url !== '' && new URL(res.url).origin !== this.origin) {
+      throw new FoundryClientError(
+        'access',
+        `${init.method ?? 'GET'} ${url} was redirected to ${new URL(res.url).origin}${new URL(res.url).pathname}`,
+      );
+    }
+    return res;
   }
 }

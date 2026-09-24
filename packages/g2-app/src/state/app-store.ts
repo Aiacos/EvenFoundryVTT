@@ -49,8 +49,12 @@ export interface ConnectionState {
   /** Offline only: next retry countdown and attempt counter. */
   retryInMs?: number;
   attempt?: number;
-  /** Offline only: machine-readable cause (`no-gm`, `network`, `auth`, `background`). */
-  cause?: 'no-gm' | 'network' | 'auth' | 'background';
+  /**
+   * Offline only: machine-readable cause (`no-gm`, `network`, `auth`, `background`,
+   * `access` = the server answers with an outside login wall instead of Foundry, e.g. a
+   * private game on The Forge).
+   */
+  cause?: 'no-gm' | 'network' | 'auth' | 'background' | 'access';
   steps?: ConnectSteps;
 }
 

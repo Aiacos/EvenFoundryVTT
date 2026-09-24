@@ -109,6 +109,35 @@ describe('fetchJoinPage / login', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('maps a login wall (cross-origin redirect, e.g. private The Forge game) to access', async () => {
+    const wall = async () =>
+      response('<html>Private Game</html>', {
+        url: 'https://eu.forge-vtt.com/game/aiacos-vecna',
+        redirected: true,
+      });
+    expect(await kindOf(client(wall).fetchJoinPage())).toBe('access');
+    expect(await kindOf(client(wall).login('u', 'p'))).toBe('access');
+    expect(await kindOf(client(wall).probeStatus())).toBe('access');
+  });
+
+  it('never puts a page body in the error: an HTML answer to POST /join is access', async () => {
+    const page = '<!doctype html><html><head><title>EvenFoundryVTT · G2 HUD</title></head></html>';
+    const failure = async (res: Response): Promise<FoundryClientError> => {
+      try {
+        await client(async () => res).login('u', 'p');
+      } catch (error) {
+        if (error instanceof FoundryClientError) return error;
+      }
+      throw new Error('expected a FoundryClientError');
+    };
+    const err = await failure(response(page));
+    expect(err.kind).toBe('access');
+    expect(err.message).not.toContain('<');
+    expect((await failure(response(page, { status: 502 }))).message).toBe(
+      'POST /join → HTTP 502 (HTML page)',
+    );
+  });
+
   it('maps rejected credentials to auth and other failures to server', async () => {
     expect(
       await kindOf(
@@ -129,7 +158,9 @@ describe('fetchJoinPage / login', () => {
     expect(
       await kindOf(client(async () => response('boom', { status: 500 })).login('u', 'p')),
     ).toBe('server');
-    expect(await kindOf(client(async () => response('<html>')).login('u', 'p'))).toBe('server');
+    // An HTML page is not Foundry's JSON join answer: a login wall / proxy is in the way.
+    expect(await kindOf(client(async () => response('<html>')).login('u', 'p'))).toBe('access');
+    expect(await kindOf(client(async () => response('not json')).login('u', 'p'))).toBe('server');
   });
 });
 

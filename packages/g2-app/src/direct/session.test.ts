@@ -362,6 +362,20 @@ describe('connect flow', () => {
     expect(h.storage.data.has(CREDENTIALS_STORAGE_KEY)).toBe(false);
   });
 
+  it('goes offline with cause access on a login wall and KEEPS the credentials', async () => {
+    const h = setup();
+    h.client.login.mockRejectedValue(
+      new FoundryClientError(
+        'access',
+        'POST /join was redirected to https://eu.forge-vtt.com/game/x',
+      ),
+    );
+    await h.session.start(h.creds);
+    await settle();
+    expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'access' });
+    expect(h.storage.data.has(CREDENTIALS_STORAGE_KEY)).toBe(true);
+  });
+
   it('drops stale continuations when the flow is superseded', async () => {
     const h = setup();
     let release: () => void = () => {};

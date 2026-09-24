@@ -16,6 +16,28 @@ La Even Realities App carica la pagina degli occhiali **dall'origine di Foundry*
 | **Tailscale** | `tailscale serve` / `tailscale cert` sull'host di Foundry | Certificato `*.ts.net` valido; il telefono deve essere nella stessa tailnet. |
 | **TLS nativo di Foundry** | `sslCert` / `sslKey` in `options.json` ([configurazione](https://foundryvtt.com/article/configuration/)) | Usa un certificato vero (es. Let's Encrypt con challenge DNS), non autofirmato. |
 
+## ⚙️ Giochi su The Forge
+
+Un gioco **privato** su The Forge (è l'impostazione predefinita) reindirizza **ogni**
+indirizzo — `/join`, `/modules/…`, `/socket.io` — alla pagina "Private Game" finché non si
+è entrati con un account The Forge
+([Public & Private Games](https://forums.forge-vtt.com/t/public-private-games/3588)).
+Gli occhiali funzionano anche con il gioco privato se:
+
+1. **"Automatic User Management" è disattivato** (My Foundry → *Configure Players*):
+   se è attivo, The Forge fa entrare l'account con il *suo* utente Foundry e intercetta
+   `/join` ([The User Manager](https://forums.forge-vtt.com/t/the-user-manager/11039)),
+   quindi l'utente «(G2)» non può accedere;
+2. l'account The Forge del giocatore è **invitato** al gioco;
+3. sul telefono il giocatore **accede a The Forge una volta dentro l'app Even**: inquadra il
+   QR, si apre la pagina "Private Game", usa *Login* (email + password: i login social
+   possono essere bloccati dentro l'app), poi **inquadra di nuovo il QR**. Il cookie di
+   The Forge vale per `.forge-vtt.com` e dura circa 14 giorni.
+
+Se l'app scrive *«The Forge sta intercettando l'accesso…»* manca uno dei tre punti. Un gioco
+**pubblico** evita il punto 3 ma espone la schermata di accesso di Foundry a chiunque abbia
+l'URL: ogni utente Foundry, GM compreso, deve avere una password robusta.
+
 ## ⚙️ routePrefix
 
 Se Foundry gira sotto un percorso (`routePrefix: "foundry"` → `https://host/foundry/`) non serve altro: l'URL del QR include il prefisso (`foundry.utils.getRoute`) e la build della g2-app usa percorsi relativi. Dietro un proxy, il percorso inoltrato deve coincidere con il `routePrefix` e deve includere `/modules` e `/socket.io`.
