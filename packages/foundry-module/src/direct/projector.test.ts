@@ -445,6 +445,29 @@ describe('Projector — pushes', () => {
     ]);
   });
 
+  it('PJ-11b emits in seq order even when an earlier seal is slower (per-device queue)', async () => {
+    await goOnline();
+    const subtle = globalThis.crypto.subtle;
+    const original = subtle.encrypt.bind(subtle);
+    let calls = 0;
+    const spy = vi
+      .spyOn(subtle, 'encrypt')
+      .mockImplementation(async (...args: Parameters<SubtleCrypto['encrypt']>) => {
+        // The first seal is slow: without the per-device queue the second delta overtakes it.
+        if (calls++ === 0) for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+        return original(...args);
+      });
+    try {
+      projector.pushDelta('combat.turn', { round: 1 });
+      projector.pushDelta('combat.turn', { round: 2 });
+      await until(2);
+      await flush();
+      expect((await received()).map((m) => m.seq)).toEqual([1, 2]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('PJ-12 chat messages are pushed only when visible to the player', async () => {
     projector.start();
     await goOnline();

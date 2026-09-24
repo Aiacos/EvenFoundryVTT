@@ -141,6 +141,8 @@ export class Projector {
   /** GM-sealed device keys already opened, by ciphertext. */
   private readonly openedGmKeys = new Map<string, string | null>();
   private readonly seq = new Map<string, number>();
+  /** Tail of each device's outbound queue (see {@link Projector.send}). */
+  private readonly outbox = new Map<string, Promise<void>>();
   private readonly graceKeys = new Map<string, { key: string; until: number }>();
   private readonly cryptoKeys = new Map<string, CryptoKey>();
   private readonly mapThrottle = new Map<string, MapThrottle>();
@@ -626,9 +628,28 @@ export class Projector {
     return this.send(g2UserId, key, { t: 'delta', seq, topic, data });
   }
 
-  private async send(g2UserId: string, key: string, message: ProjectorMessage): Promise<void> {
-    const envelope = await seal(await this.cryptoKey(key), PROJECTOR_ADDRESS, g2UserId, message);
-    game.socket?.emit(DIRECT_SOCKET_EVENT, envelope);
+  /**
+   * Seals and emits `message`, **in call order per device**. Sealing is async (WebCrypto),
+   * so without this queue a later, faster seal could overtake an earlier one: deltas would
+   * arrive out of `seq` order (the app treats that as a gap and resyncs everything) and a
+   * message sealed with a freshly rotated key could reach the app before the `welcome`
+   * that carries that key. A failed send does not block the ones queued after it.
+   */
+  private send(g2UserId: string, key: string, message: ProjectorMessage): Promise<void> {
+    const previous = this.outbox.get(g2UserId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const envelope = await seal(
+          await this.cryptoKey(key),
+          PROJECTOR_ADDRESS,
+          g2UserId,
+          message,
+        );
+        game.socket?.emit(DIRECT_SOCKET_EVENT, envelope);
+      });
+    this.outbox.set(g2UserId, next);
+    return next;
   }
 
   private async cryptoKey(b64: string): Promise<CryptoKey> {
