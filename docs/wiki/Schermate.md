@@ -68,19 +68,19 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S10 non associato](images/sheet-unpaired.png)
 
-**Quando:** l'app non ha credenziali, o l'associazione è stata revocata. **Perché:** mai uno schermo muto — spiega in tre passi come associare ([Associare i tuoi occhiali](Associare-i-tuoi-Occhiali)).
+**Quando:** l'app non è ancora collegata, o qualcuno ha premuto **Scollega** (*OCCHIALI SCOLLEGATI DA FOUNDRY*). **Perché:** mai uno schermo muto — spiega in tre passi come collegare: su Foundry tasto destro sul tuo nome › «Collega occhiali G2», sul telefono «Scansiona QR» o il codice, poi la scheda compare da sola ([Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)).
 
 ### S11 · Collegamento — `connecting`
 
 ![S11 collegamento](images/sheet-connecting.png)
 
-**Quando:** all'avvio. **Perché:** i passi del collegamento — server raggiungibile (HTTPS), accesso come «(G2)», GM connesso, scheda, scena; doppio tap = annulla.
+**Quando:** all'avvio. **Perché:** i passi del collegamento — relay raggiungibile, Foundry del giocatore aperto, collegato a «&lt;utente&gt;», scheda, scena; doppio tap = annulla.
 
 ### S12 · Offline — `offline`
 
 ![S12 offline](images/sheet-offline.png)
 
-**Quando:** la connessione cade (nessun projector, rete, credenziali, app in background). **Perché:** la causa, il conto alla rovescia del nuovo tentativo e l'età dei dati; scheda e mappa restano congelate. Tap = *riprova ora*.
+**Quando:** la connessione cade: *Foundry del giocatore chiuso* (la scheda che trasmette non è aperta: si ricollega da sola quando la riapri), *Relay non raggiungibile*, *Telefono in background*. **Perché:** la causa, il conto alla rovescia del nuovo tentativo e l'età dei dati; scheda e mappa restano congelate. Tap = *riprova ora*.
 
 ## 📚 Vedi anche
 

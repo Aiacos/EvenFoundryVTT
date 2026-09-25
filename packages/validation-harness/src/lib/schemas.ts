@@ -12,7 +12,7 @@ export const TEST_IDS = [
   '10-0-8-queue-depth',
   '10-0-9-palette-calibration',
   'midiqol-config-probe',
-  'adr-0016-direct-sideload',
+  'adr-0019-relay',
 ] as const;
 export const TestId = z.enum(TEST_IDS);
 export type TestId = z.infer<typeof TestId>;
@@ -175,11 +175,12 @@ export const MidiQolConfigResult = EvidenceMeta.extend({
 });
 export type MidiQolConfigResult = z.infer<typeof MidiQolConfigResult>;
 
-// ADR-0016 direct-sideload GO/NO-GO (software checks + manual hardware checklist).
-// T-00-01: carries NO Foundry URL, credentials or QR payload — only check verdicts.
-export const DirectSideloadResult = EvidenceMeta.extend({
-  test_id: z.literal('adr-0016-direct-sideload'),
+// ADR-0019 relay GO/NO-GO (software checks + manual hardware checklist, research G1–G2).
+// T-00-01: carries NO relay URL or room id — only check verdicts (RTT lives in `detail`).
+export const RelayCheckResult = EvidenceMeta.extend({
+  test_id: z.literal('adr-0019-relay'),
   skip_hardware: z.boolean(),
+  default_relay: z.boolean(),
   checks: z.array(
     z.object({
       id: z.string().min(1),
@@ -188,7 +189,7 @@ export const DirectSideloadResult = EvidenceMeta.extend({
     }),
   ),
 });
-export type DirectSideloadResult = z.infer<typeof DirectSideloadResult>;
+export type RelayCheckResult = z.infer<typeof RelayCheckResult>;
 
 // Discriminated union of all results — for run-all.ts orchestrator (Plan 02).
 export const AnyResult = z.discriminatedUnion('test_id', [
@@ -199,6 +200,6 @@ export const AnyResult = z.discriminatedUnion('test_id', [
   R1TimingResult,
   PaletteCalibrationResult,
   MidiQolConfigResult,
-  DirectSideloadResult,
+  RelayCheckResult,
 ]);
 export type AnyResult = z.infer<typeof AnyResult>;

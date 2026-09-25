@@ -456,15 +456,15 @@ footer.show a { color: var(--g2); border: none; }
   ███████   ████   ███████ ██   ████  ██       ██████   ██████  ██   ████ ██████  ██   ██    ██     ╚████╔╝    ██       ██
 </pre>
     <div class="tagline"><span class="typed" id="typedHero"></span></div>
-    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / swipe / double-tap gestures from the Even R1 smart ring. Foundry shows a QR — on your own screen, or on the GM’s — you scan it, and your character streams straight to the glasses — no server to run. Eyes on the table, not on a laptop.</p>
+    <p class="subtagline">Project a glanceable HUD of your FoundryVTT D&amp;D session onto Even Realities G2 AR glasses (576&nbsp;×&nbsp;288, 4-bit greyscale phosphor green), driven by tap / swipe / double-tap gestures from the Even R1 smart ring. Your own Foundry tab shows a QR, you scan it with the FoundryVTT G2 HUD app, and your character streams to the glasses through an end-to-end-sealed relay — no GM step, no server to run. Eyes on the table, not on a laptop.</p>
 
     <div class="stats">
       <div class="stat"><span class="num">576×288</span><span class="lab">px / eye</span></div>
       <div class="stat"><span class="num">4-bit</span><span class="lab">greyscale</span></div>
       <div class="stat"><span class="num">5</span><span class="lab">zones · 2×2 grid of 288×144 tiles · 1 input panel</span></div>
-      <div class="stat"><span class="num">0</span><span class="lab">servers to run</span></div>
+      <div class="stat"><span class="num">0</span><span class="lab">servers you run · hosted relay</span></div>
       <div class="stat"><span class="num">1</span><span class="lab">QR scan to pair</span></div>
-      <div class="stat"><span class="num">v0.12.0</span><span class="lab">direct streaming · ADR-0016 · Even Hub SDK 0.0.15</span></div>
+      <div class="stat"><span class="num">v0.13.0</span><span class="lab">relay pairing · ADR-0019 · Even Hub SDK 0.0.16</span></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="https://github.com/Aiacos/EvenFoundryVTT/blob/develop/Specs.md"><span class="arrow">▶</span> READ THE SPEC</a>
@@ -478,7 +478,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="pillars">
     <span class="section-tag">◈ pillars</span>
     <h2>✨ Four ideas, no magic.</h2>
-    <p>Deterministic by design — every action is an explicit gesture → tool → Foundry. Nothing to host: Foundry itself serves the glasses app.</p>
+    <p>Deterministic by design — every action is an explicit gesture → tool → Foundry. Nothing to host: your own Foundry tab is the projector.</p>
     <div class="pillars">
       <div class="pillar">
         <div class="icon">▤</div>
@@ -497,8 +497,8 @@ footer.show a { color: var(--g2); border: none; }
       </div>
       <div class="pillar">
         <div class="icon">≣</div>
-        <h3>Zero infrastructure</h3>
-        <p>The glasses app ships inside the Foundry module and is QR-sideloaded same-origin. The player’s own Foundry client is the projector while online, a GM is the fallback; every payload on the relay is AES-256-GCM sealed. No bridge, no Docker.</p>
+        <h3>One QR, no GM</h3>
+        <p>The player’s own Foundry tab shows the QR and becomes the projector; the phone never logs into Foundry. Phone and tab meet on an opaque relay that only sees AES-256-GCM sealed frames. No bridge, no Docker, no extra Foundry user.</p>
       </div>
     </div>
   </section>
@@ -536,7 +536,7 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="hardware">
     <span class="section-tag">⌬ hardware</span>
     <h2>🥽 Validated against upstream docs.</h2>
-    <p>Every spec parameter below is cited from Even Realities and FoundryVTT documentation, last re-verified for v0.12.0 on 2026-09-23 against <code>hub.evenrealities.com/docs</code> (display, device APIs, input, changelog through SDK 0.0.14) and the npm registry (SDK 0.0.15).</p>
+    <p>Every spec parameter below is cited from Even Realities and FoundryVTT documentation, last re-verified for v0.13.0 on 2026-09-25 against <code>hub.evenrealities.com/docs</code> (networking, FAQ, testing and submission pages) and the npm registry (SDK 0.0.16).</p>
 
     <div class="hw-grid">
       <!-- G2 -->
@@ -591,11 +591,11 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>Image size</th><td>20–288 px W × 20–144 px H · ≥ 100 ms between updates</td></tr>
           <tr><th>Text container</th><td>1 000 char (2 000 with upgrade)</td></tr>
           <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
-          <tr><th>Networking</th><td>same-origin page served by Foundry (QR sideload)</td></tr>
+          <tr><th>Networking</th><td>whitelisted origins only (no wildcards) · our relay <code>wss://evf-relay.aiacos.workers.dev</code></td></tr>
           <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
           <tr><th>Microphone</th><td>4-mic array · PCM 16 kHz via SDK (unused since v0.12.0)</td></tr>
           <tr><th>Audio out</th><td>❌ no speaker · feedback is visual only</td></tr>
-          <tr><th>Camera</th><td>❌ none (intentional)</td></tr>
+          <tr><th>Camera</th><td>❌ none on the glasses · the phone camera scans the pairing QR (<code>camera</code> permission)</td></tr>
           <tr><th>Plugin runs on</th><td>paired phone WebView (not on G2 firmware)</td></tr>
         </table>
         <div class="verified">✓ verified · hub.evenrealities.com/docs/build/{display, device-apis, input}</div>
@@ -649,11 +649,11 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ SETUP / PAIRING ════════════════════════════════════════ -->
   <section class="show reveal" id="setup">
     <span class="section-tag">▣ pairing</span>
-    <h2>📦 One module, one QR — pair your own glasses.</h2>
-    <p>Install the Foundry module (manifest URL) — it also serves the glasses app. Since <a href="../architecture/0017-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0017</a> the glasses belong to the <strong>players</strong>: the GM enables them <strong>once</strong> (<em>Abilita occhiali per i giocatori</em> creates a <code>“&lt;Player&gt; (G2)”</code> user per player and seals its password for that player’s public key), then each player opens <strong>Pair my glasses</strong> (<em>Associa i miei occhiali</em>) in their own Foundry and scans the QR with the <strong>Even Realities App</strong>. While the player has Foundry open, <strong>their client is the projector</strong> and actions run as that player; otherwise an online GM that holds the device key takes over. Players without Foundry at the table are still paired by the GM with <strong>Pair G2 glasses</strong> (<em>Associa occhiali G2</em>, also on right-click in the Players list). Foundry just needs valid HTTPS reachable from the phone. Guides: the <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener" style="color:var(--g3)">project wiki</a> (Italian) and the <a href="../setup-guide.md" style="color:var(--g3)">setup guide</a>.</p>
+    <h2>📦 One QR from your own Foundry — no GM, no login.</h2>
+    <p>Install the Foundry module (manifest URL) and the <strong>FoundryVTT G2 HUD</strong> app from Even Hub (beta group until the store listing is approved). Then open <strong>Connect G2 glasses</strong> (<em>Collega occhiali G2</em>) in your own Foundry — right-click your name in the Players list, press <strong>Alt+G</strong>, or use <em>Configure Settings › EvenFoundryVTT</em> — and tap <strong>Scan QR</strong> in the app. Opening the window <em>is</em> pairing: your character is preselected, the relay is checked, the QR and a 16-character code appear at once. The tab that showed the QR is the <strong>projector</strong>; the phone never logs into Foundry, so there is no «(G2)» user, no password and no HTTPS to set up for the phone (self-hosted or The Forge, v13 or v14). A GM can connect glasses for a player without a device of their own — the GM’s tab then projects. Decision record: <a href="../architecture/0019-relay-pairing-player-projector.md" style="color:var(--g3)">ADR-0019</a>. Guides: the <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener" style="color:var(--g3)">project wiki</a> (Italian) and the <a href="../setup-guide.md" style="color:var(--g3)">setup guide</a>.</p>
 
     <div class="arch-diagram flow-diagram">
-      <svg viewBox="0 0 800 400" width="100%" role="img" aria-label="Hybrid pairing flow: the GM enables players once; the player pairs from their own Foundry and the Even App scans the QR; at play time the glasses address the projector, which is the player's client when online and the GM otherwise">
+      <svg viewBox="0 0 800 400" width="100%" role="img" aria-label="Relay pairing flow: the player opens Connect G2 glasses in their own Foundry tab, the FoundryVTT G2 HUD app scans the QR, room and key rotate on the first welcome; at play time the glasses and the player's tab exchange sealed frames through the relay">
         <defs>
           <marker id="flowArrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="var(--g2)" />
@@ -663,98 +663,95 @@ footer.show a { color: var(--g2); border: none; }
           </marker>
         </defs>
 
-        <text class="label-sm" x="20" y="22">▶ pairing · once per table, then self-service</text>
+        <text class="label-sm" x="20" y="22">▶ pairing · once per device, &lt; 30 s</text>
 
         <g>
-          <rect class="node node-mvp" x="20" y="40" width="230" height="110" />
-          <text class="label" x="135" y="66" text-anchor="middle">① GM · once</text>
-          <text class="label-sm" x="135" y="88" text-anchor="middle">Enable glasses for players</text>
-          <text class="label-sm" x="135" y="106" text-anchor="middle">«Player (G2)» user each</text>
-          <text class="label-sm" x="135" y="124" text-anchor="middle">password sealed · ECDH P-256</text>
+          <rect class="node node-mvp pulse" x="20" y="40" width="230" height="110" />
+          <text class="label" x="135" y="66" text-anchor="middle">① Player’s Foundry tab</text>
+          <text class="label-sm" x="135" y="88" text-anchor="middle">Connect G2 glasses · Alt+G</text>
+          <text class="label-sm" x="135" y="106" text-anchor="middle">Relay ✓ · QR + 16-char code</text>
+          <text class="label-sm" x="135" y="124" text-anchor="middle">5 min · single use</text>
         </g>
         <line class="arrow" style="stroke:var(--g2);marker-end:url(#flowArrow)" x1="250" y1="95" x2="285" y2="95" />
 
         <g>
-          <rect class="node node-mvp pulse" x="285" y="40" width="230" height="110" />
-          <text class="label" x="400" y="66" text-anchor="middle">② Player’s Foundry</text>
-          <text class="label-sm" x="400" y="88" text-anchor="middle">Pair my glasses → QR</text>
-          <text class="label-sm" x="400" y="106" text-anchor="middle">new device key (single use)</text>
-          <text class="label-sm" x="400" y="124" text-anchor="middle">key sealed for every GM</text>
+          <rect class="node node-mvp" x="285" y="40" width="230" height="110" />
+          <text class="label" x="400" y="66" text-anchor="middle">② FoundryVTT G2 HUD</text>
+          <text class="label-sm" x="400" y="88" text-anchor="middle">Scan QR · or Enter code</text>
+          <text class="label-sm" x="400" y="106" text-anchor="middle">room + key from the QR</text>
+          <text class="label-sm" x="400" y="124" text-anchor="middle">no Foundry credential</text>
         </g>
         <line class="arrow" style="stroke:var(--g2);marker-end:url(#flowArrow)" x1="515" y1="95" x2="550" y2="95" />
 
         <g>
           <rect class="node node-mvp" x="550" y="40" width="230" height="110" />
-          <text class="label" x="665" y="66" text-anchor="middle">③ Even Realities App</text>
-          <text class="label-sm" x="665" y="88" text-anchor="middle">scan the QR</text>
-          <text class="label-sm" x="665" y="106" text-anchor="middle">page loads same-origin</text>
+          <text class="label" x="665" y="66" text-anchor="middle">③ First welcome</text>
+          <text class="label-sm" x="665" y="88" text-anchor="middle">room + key rotate</text>
+          <text class="label-sm" x="665" y="106" text-anchor="middle">window: Glasses connected</text>
           <text class="label-sm" x="665" y="124" text-anchor="middle">glasses: Connecting → sheet</text>
         </g>
 
-        <text class="label-sm" x="20" y="192">▶ at play time · one elected projector per device</text>
+        <text class="label-sm" x="20" y="192">▶ at play time · the tab that showed the QR projects</text>
 
         <g>
           <rect class="node node-mvp" x="20" y="210" width="230" height="80" />
-          <text class="label" x="135" y="240" text-anchor="middle">G2 glasses</text>
-          <text class="label-sm" x="135" y="262" text-anchor="middle">sealed message · to: projector</text>
+          <text class="label" x="135" y="240" text-anchor="middle">G2 glasses · phone app</text>
+          <text class="label-sm" x="135" y="262" text-anchor="middle">sealed frames · to: projector</text>
         </g>
         <line class="arrow" style="stroke:var(--g2);marker-end:url(#flowArrow)" x1="250" y1="250" x2="315" y2="250" />
 
         <g>
           <polygon class="node node-mvp" points="400,205 485,250 400,295 315,250" />
-          <text class="label" x="400" y="246" text-anchor="middle">player</text>
-          <text class="label" x="400" y="264" text-anchor="middle">online?</text>
+          <text class="label" x="400" y="246" text-anchor="middle">relay</text>
+          <text class="label" x="400" y="264" text-anchor="middle">room</text>
         </g>
 
         <line class="arrow" style="stroke:var(--g2);marker-end:url(#flowArrow)" x1="485" y1="250" x2="550" y2="228" />
-        <text class="label-sm" x="502" y="226">yes</text>
+        <text class="label-sm" x="494" y="226">tab open</text>
         <g>
           <rect class="node node-mvp pulse" x="550" y="196" width="230" height="64" />
-          <text class="label" x="665" y="222" text-anchor="middle">Player’s client</text>
+          <text class="label" x="665" y="222" text-anchor="middle">Player’s Foundry tab</text>
           <text class="label-sm" x="665" y="242" text-anchor="middle">actions run as the player</text>
         </g>
 
         <line class="arrow arrow-v2" style="stroke:var(--g1);marker-end:url(#flowArrowDim)" x1="400" y1="295" x2="550" y2="330" />
-        <text class="label-sm" x="452" y="330">no</text>
+        <text class="label-sm" x="440" y="330">tab closed</text>
         <g>
           <rect class="node node-v2" x="550" y="300" width="230" height="64" />
-          <text class="label" x="665" y="326" text-anchor="middle">Active GM · fallback</text>
-          <text class="label-sm" x="665" y="346" text-anchor="middle">if it holds the device key</text>
+          <text class="label" x="665" y="326" text-anchor="middle">«Player’s Foundry closed»</text>
+          <text class="label-sm" x="665" y="346" text-anchor="middle">reconnects when the tab reopens</text>
         </g>
 
-        <text class="label-sm" x="20" y="386">Only the elected client executes actions (dispatchTool · ADR-0011 as amended by ADR-0017).</text>
+        <text class="label-sm" x="20" y="386">One projector per device executes actions (dispatchTool · ADR-0011); the relay only forwards ciphertext.</text>
       </svg>
     </div>
 
-    <p style="margin-top:2rem;">The GM dialog below (<em>Pair G2 glasses</em>) pairs a player on their behalf — for players who don’t have Foundry open at the table. Single-use QR, 5-minute expiry, connection checks and the paired-device list with <strong>Revoke</strong>.</p>
+    <p style="margin-top:2rem;">The <em>Connect G2 glasses</em> window: QR and code at once, a relay check, a 5-minute expiry, and the glasses connected to this browser with <strong>Disconnect</strong>.</p>
     <div class="hud-sim" style="max-width:820px;margin-top:1rem;">
 <pre class="screen" style="min-height:0;">
 ╭────────────────────────────────────────────────────────────────────────╮
-│ EvenFoundryVTT · G2 glasses                                            │
+│ EvenFoundryVTT · Connect G2 glasses                                    │
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │
-│  Player      [ Luca ▾ ]    Character    [ Thorin ▾ ]                   │
+│  Character  [ Thorin ▾ ]                          Relay ✓              │
 │                                                                        │
-│  ┌──────────────────────────┐   1. Open the Even Realities App         │
-│  │   ▄▄▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄▄▄   │   2. Scan the QR                         │
-│  │   █ ▄▄▄ █ ▀█▄▀ █ ▄▄▄ █   │   3. Put on the glasses: done!           │
-│  │   █ ███ █ ▄▀▀█ █ ███ █   │                                          │
-│  │   █▄▄▄▄▄█ █▀▄▀ █▄▄▄▄▄█   │   User created: «Luca (G2)»              │
-│  │   ▄▄ ▄  ▄▄▀█▄▀▄ ▄▄▄ ▄    │   role Player · owner only               │
-│  │   █▄▀██▄▄▀▄ ▀▄██▀▄▀▄█▀   │   of Thorin                              │
-│  │   ▄▄▄▄▄▄▄ ▀▄█▀ ▄ ▀█▄▀▄   │                                          │
-│  │   █ ▄▄▄ █ █▀▄▄▀▀▄█▀▄▄█   │   The QR expires in  04:52               │
-│  │   █ ███ █ ▀▄▀██▄▀▄ ▀▀    │   and is valid for a single pairing.     │
-│  │   █▄▄▄▄▄█ █▄ ▀▄█▀▄█▄▄█   │                                          │
-│  └──────────────────────────┘   Manual code: 7QK3-MX9P-2HRA-C4TE       │
+│  ┌──────────────────────────┐                                          │
+│  │   ▄▄▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄▄▄   │   1. On the phone open FoundryVTT G2 HUD │
+│  │   █ ▄▄▄ █ ▀█▄▀ █ ▄▄▄ █   │      and tap «Scan QR»                   │
+│  │   █ ███ █ ▄▀▀█ █ ███ █   │   2. The sheet appears on the glasses.   │
+│  │   █▄▄▄▄▄█ █▀▄▀ █▄▄▄▄▄█   │      Keep this Foundry tab open          │
+│  │   ▄▄ ▄  ▄▄▀█▄▀▄ ▄▄▄ ▄    │                                          │
+│  │   █▄▀██▄▄▀▄ ▀▄██▀▄▀▄█▀   │   Expires in  04:52                      │
+│  │   ▄▄▄▄▄▄▄ ▀▄█▀ ▄ ▀█▄▀▄   │   Single use: it stops working once      │
+│  │   █ ▄▄▄ █ █▀▄▄▀▀▄█▀▄▄█   │   the glasses connect.                   │
+│  │   █ ███ █ ▀▄▀██▄▀▄ ▀▀    │                                          │
+│  │   █▄▄▄▄▄█ █▄ ▀▄█▀▄█▄▄█   │   No camera? Type this code:             │
+│  └──────────────────────────┘   7QK3-MX9P-2HRA-C4TE   [ Copy code ]    │
 │                                                                        │
-│  ✓ valid HTTPS   ✓ module served   ✓ socket active                     │
+│  Glasses connected to this browser                                     │
+│   ● Thorin · online · now                         [ Disconnect ]       │
+│   ○ Mira   · waiting for the glasses              [ Disconnect ]       │
 │                                                                        │
-│  Paired devices                                                        │
-│   ● Luca (G2) · Thorin · last contact 12 s ago     [ Revoke ]          │
-│   ○ Anna (G2) · Mira   · never connected           [ Revoke ]          │
-│                                                                        │
-│  [ Generate new QR ]            [ Copy manual code ]    [ Close ]      │
 ╰────────────────────────────────────────────────────────────────────────╯
 </pre>
     </div>
@@ -762,17 +759,17 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Single-use QR</h3>
-        <p>The QR carries the page URL plus a fragment (user, password, device key) that never reaches the server. On first connect the projector rotates the device key, so a scanned QR never works twice (a GM-generated QR also expires after 5 minutes). A 16-character manual code is the fallback.</p>
+        <p>The QR opens the app page with a fragment (room, key, label) that never reaches a server; the 16-character code derives the same room and key. On first connect the room and key rotate, so a scanned QR never works twice, and an unused one expires after 5 minutes.</p>
       </div>
       <div class="pillar">
         <div class="icon">▤</div>
-        <h3>A dedicated “(G2)” user</h3>
-        <p>One Foundry user per player, role Player, owning only what the player owns. Every action runs through <code>dispatchTool</code> on the single elected projector (ADR-0011 / ADR-0017) and is audited. The GM can revoke a device or regenerate its password at any time.</p>
+        <h3>Your tab is the projector</h3>
+        <p>No second Foundry user, no password: the tab that showed the QR reads your character and runs every action through <code>dispatchTool</code> as you (ADR-0011). The pairing is stored in this browser and reconnects by itself whenever it has Foundry open.</p>
       </div>
       <div class="pillar">
         <div class="icon">⊟</div>
-        <h3>Sealed on the relay</h3>
-        <p>Foundry relays module messages to every client, so every payload is AES-256-GCM sealed with a per-device key held only by the phone and the projector clients; passwords and keys travel sealed for each recipient’s ECDH public key. Other clients see ciphertext.</p>
+        <h3>Opaque relay</h3>
+        <p>A Cloudflare Worker with one Durable Object per room forwards AES-256-GCM sealed frames between the two roles, caps frame size and rate, and stores nothing. It learns room ids, timing and sizes — never content. <a href="../privacy.md" style="color:var(--g3)">Privacy policy</a>.</p>
       </div>
     </div>
   </section>
@@ -817,11 +814,11 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ ARCHITECTURE ════════════════════════════════════════════ -->
   <section class="show reveal" id="arch">
     <span class="section-tag">⌥ architecture</span>
-    <h2>🏗️ No bridge. Foundry is the server.</h2>
-    <p>The glasses app is served by Foundry at <code>/modules/evenfoundryvtt/g2/</code> and loaded by the Even Realities App from the pairing QR. Same origin means no CORS, no whitelist, first-party cookies (Foundry v13 and v14). The <strong>projector</strong> — the player’s own Foundry client while online, otherwise a GM holding the device key — computes dnd5e derived data, answers snapshots, pushes deltas and is the only client that executes that device’s actions. Decision records: <a href="../architecture/0016-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0016</a> · <a href="../architecture/0017-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0017</a>.</p>
+    <h2>🏗️ Your tab projects. The relay only sees ciphertext.</h2>
+    <p>The phone never logs into Foundry. The glasses app (<strong>FoundryVTT G2 HUD</strong> — one bundle: Even Hub package, GitHub Pages <code>/app/</code>, Vite dev) and the player’s own Foundry tab meet in a random room on an opaque relay (<code>packages/relay</code>, Cloudflare Worker + Durable Object per room). The <strong>projector</strong> — the tab that showed the QR — computes dnd5e derived data, answers snapshots, pushes deltas, sends the scene art and is the only client that executes that device’s actions. Why: Foundry ≥ 14.361 serves module HTML as <code>text/plain</code>, players cannot create users, Forge private games gate every path, and a store app reaches only fixed whitelisted origins. Decision records: <a href="../architecture/0019-relay-pairing-player-projector.md" style="color:var(--g3)">ADR-0019</a> (supersedes the Foundry-served page of <a href="../architecture/0016-direct-foundry-streaming.md" style="color:var(--g3)">ADR-0016</a> and all of <a href="../architecture/0017-player-owned-glasses-hybrid-projector.md" style="color:var(--g3)">ADR-0017</a>).</p>
 
     <div class="arch-diagram">
-      <svg viewBox="0 0 800 480" width="100%" role="img" aria-label="Direct streaming architecture: G2 and R1 talk BLE to the Even App WebView, which talks same-origin HTTPS to Foundry, which relays sealed messages to the elected projector — the player's client when online, otherwise a GM">
+      <svg viewBox="0 0 800 480" width="100%" role="img" aria-label="Relay pairing architecture: G2 and R1 talk BLE to the FoundryVTT G2 HUD app on the phone, which talks wss to the relay, which forwards sealed frames over wss to the projector — the player's own Foundry tab">
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="var(--g1)" />
@@ -831,7 +828,7 @@ footer.show a { color: var(--g2); border: none; }
           </marker>
         </defs>
 
-        <text class="label-sm" x="20" y="20">▶ v0.12.0 · direct streaming</text>
+        <text class="label-sm" x="20" y="20">▶ v0.13.0 · relay pairing</text>
 
         <!-- G2 -->
         <g>
@@ -848,11 +845,11 @@ footer.show a { color: var(--g2); border: none; }
           <text class="label-sm" x="360" y="102" text-anchor="middle">long-press extra</text>
         </g>
 
-        <!-- Phone WebView -->
+        <!-- Phone app -->
         <g>
           <rect class="node node-mvp pulse" x="40" y="180" width="400" height="100" />
-          <text class="label" x="240" y="210" text-anchor="middle">Even Realities App · WebView (phone)</text>
-          <text class="label-sm" x="240" y="230" text-anchor="middle">g2-app served by Foundry · QR sideload</text>
+          <text class="label" x="240" y="210" text-anchor="middle">Even Realities App · FoundryVTT G2 HUD</text>
+          <text class="label-sm" x="240" y="230" text-anchor="middle">.ehpk · GitHub Pages /app/ · Vite dev</text>
           <text class="label-sm" x="240" y="246" text-anchor="middle">pixel renderer · sheet · map 144² · context</text>
           <text class="label-sm" x="240" y="262" text-anchor="middle">sealed session (AES-256-GCM)</text>
         </g>
@@ -861,46 +858,47 @@ footer.show a { color: var(--g2); border: none; }
         <line class="arrow arrow-mvp" x1="360" y1="120" x2="360" y2="180" marker-end="url(#arrowhead-mvp)" />
         <text class="label-sm" x="366" y="155">BLE</text>
 
-        <!-- Foundry server -->
+        <!-- Relay -->
         <g>
           <rect class="node node-mvp" x="40" y="340" width="400" height="100" />
-          <text class="label" x="240" y="370" text-anchor="middle">Foundry server · v13.347+ / v14 · HTTPS</text>
-          <text class="label-sm" x="240" y="390" text-anchor="middle">static /modules/evenfoundryvtt/g2/</text>
-          <text class="label-sm" x="240" y="406" text-anchor="middle">POST /join · socket.io</text>
-          <text class="label-sm" x="240" y="422" text-anchor="middle">relays module.evenfoundryvtt (ciphertext)</text>
+          <text class="label" x="240" y="370" text-anchor="middle">Relay · wss://evf-relay.aiacos.workers.dev</text>
+          <text class="label-sm" x="240" y="390" text-anchor="middle">Cloudflare Worker · one Durable Object per room</text>
+          <text class="label-sm" x="240" y="406" text-anchor="middle">projector ⇄ glasses · 1 MiB · 60 frames/s</text>
+          <text class="label-sm" x="240" y="422" text-anchor="middle">opaque sealed frames · stores nothing</text>
         </g>
         <line class="arrow arrow-mvp" x1="240" y1="280" x2="240" y2="340" marker-end="url(#arrowhead-mvp)" />
-        <text class="label-sm" x="246" y="315">same-origin HTTPS · WSS</text>
+        <text class="label-sm" x="246" y="315">wss</text>
 
         <!-- Pairing -->
         <g>
           <rect class="node node-v2" x="500" y="180" width="280" height="100" />
-          <text class="label" x="640" y="210" text-anchor="middle">Pairing (ADR-0017)</text>
-          <text class="label-sm" x="640" y="230" text-anchor="middle">GM enables once · «Player (G2)»</text>
-          <text class="label-sm" x="640" y="246" text-anchor="middle">player pairs from own Foundry</text>
-          <text class="label-sm" x="640" y="262" text-anchor="middle">single-use QR · manual code</text>
+          <text class="label" x="640" y="210" text-anchor="middle">Pairing (ADR-0019)</text>
+          <text class="label-sm" x="640" y="230" text-anchor="middle">Connect G2 glasses · Alt+G</text>
+          <text class="label-sm" x="640" y="246" text-anchor="middle">one QR · 16-char code · no GM</text>
+          <text class="label-sm" x="640" y="262" text-anchor="middle">room + key rotate on welcome</text>
         </g>
         <line class="arrow arrow-v2" x1="500" y1="230" x2="440" y2="230" marker-end="url(#arrowhead)" />
         <text class="label-sm" x="446" y="222">scan</text>
 
-        <!-- elected projector -->
+        <!-- projector -->
         <g>
           <rect class="node node-mvp pulse" x="500" y="340" width="280" height="100" />
-          <text class="label" x="640" y="370" text-anchor="middle">Projector · player or GM</text>
+          <text class="label" x="640" y="370" text-anchor="middle">Player’s Foundry tab = projector</text>
           <text class="label-sm" x="640" y="390" text-anchor="middle">dnd5e readers · dispatchTool</text>
           <text class="label-sm" x="640" y="406" text-anchor="middle">activity.use · MidiQOL (opt)</text>
-          <text class="label-sm" x="640" y="422" text-anchor="middle">ONE ELECTED CLIENT PER DEVICE</text>
+          <text class="label-sm" x="640" y="422" text-anchor="middle">scene art sent once · v13 / v14 · Forge</text>
         </g>
-        <line class="arrow arrow-mvp" x1="440" y1="390" x2="500" y2="390" marker-end="url(#arrowhead-mvp)" />
-        <text class="label-sm" x="446" y="383">relay</text>
+        <line class="arrow arrow-mvp" x1="500" y1="390" x2="440" y2="390" marker-end="url(#arrowhead-mvp)" />
+        <text class="label-sm" x="452" y="383">wss</text>
         <line class="arrow arrow-v2" x1="640" y1="340" x2="640" y2="280" marker-end="url(#arrowhead)" />
 
         <!-- Removed -->
         <g>
           <rect class="node node-v2" x="500" y="40" width="280" height="80" />
-          <text class="label" x="640" y="68" text-anchor="middle">Removed in v0.12.0</text>
-          <text class="label-sm" x="640" y="86" text-anchor="middle">Node bridge · Docker Compose</text>
-          <text class="label-sm" x="640" y="102" text-anchor="middle">foundry-mcp · voice proxy</text>
+          <text class="label" x="640" y="62" text-anchor="middle">Removed in v0.13.0</text>
+          <text class="label-sm" x="640" y="80" text-anchor="middle">Foundry-served page · «(G2)» users</text>
+          <text class="label-sm" x="640" y="96" text-anchor="middle">GM enablement · ECDH custody · election</text>
+          <text class="label-sm" x="640" y="112" text-anchor="middle">(v0.12.0: bridge · Docker · foundry-mcp)</text>
         </g>
       </svg>
     </div>
@@ -910,10 +908,10 @@ footer.show a { color: var(--g2); border: none; }
   <section class="show reveal" id="pipeline">
     <span class="section-tag">⊞ map · arte originale pixelata</span>
     <h2>⚡ Your battle map, pixelated for 16 greens.</h2>
-    <p>Zone C shows the scene’s <strong>original art</strong> — background, tiles and token art — not a schematic. The projector’s scene reader sends only compact scene data (<code>MapSnapshot</code>: grid, walls, tiles, visible tokens, image URLs); the <strong>phone</strong> fetches the pictures same-origin from Foundry and renders the square in plain, deterministic TypeScript (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md" style="color:var(--g3)">ADR-0018</a>). Darkness outside your token’s sight means the map never reveals rooms your character can’t see. Inspired by the <em>Doom-on-exotic-devices</em> pattern and <em>ditherpunk</em>.</p>
+    <p>Zone C shows the scene’s <strong>original art</strong> — background, tiles and token art — not a schematic. The projector’s scene reader sends only compact scene data (<code>MapSnapshot</code>: grid, walls, tiles, visible tokens, asset references); the projector loads the pictures in its own tab (Forge CDN art included), downsizes them and sends each one <strong>once</strong> as an <code>asset</code>; the <strong>phone</strong> renders the square in plain, deterministic TypeScript (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md" style="color:var(--g3)">ADR-0018</a>). Darkness outside your token’s sight means the map never reveals rooms your character can’t see. Inspired by the <em>Doom-on-exotic-devices</em> pattern and <em>ditherpunk</em>.</p>
     <div class="pipeline">
       <div class="pipe-step"><div class="num">01</div><span class="nm">Scene data</span><div class="det">MapSnapshot from the projector</div><div class="det">cells · walls · tokens</div></div>
-      <div class="pipe-step"><div class="num">02</div><span class="nm">Fetch art</span><div class="det">background · ≤ 32 tiles · token art</div><div class="det">same-origin</div></div>
+      <div class="pipe-step"><div class="num">02</div><span class="nm">Art assets</span><div class="det">background ≤ 768 px · tiles/tokens ≤ 128 px</div><div class="det">sent once by the projector</div></div>
       <div class="pipe-step"><div class="num">03</div><span class="nm">Crop</span><div class="det">window on your token</div><div class="det">follow or free</div></div>
       <div class="pipe-step"><div class="num">04</div><span class="nm">Pixelate</span><div class="det">block average</div><div class="det">pixel 1 / 2 / 3 (default 2)</div></div>
       <div class="pipe-step"><div class="num">05</div><span class="nm">Tone + dither</span><div class="det">G2 tone curve</div><div class="det">Floyd–Steinberg · 16 levels</div></div>
@@ -1035,7 +1033,7 @@ footer.show a { color: var(--g2); border: none; }
   <!-- ═══ ROADMAP ═════════════════════════════════════════════════ -->
   <section class="show reveal" id="roadmap">
     <span class="section-tag">⤳ roadmap</span>
-    <h2>🗺️ Phase 0–13, then v0.12 direct streaming.</h2>
+    <h2>🗺️ Phase 0–13, then direct streaming and relay pairing.</h2>
     <div class="timeline">
       <div class="phase mvp"><div class="head"><span class="ph">P0</span><span class="wks">Week 0</span></div><div class="ttl">Hardware / SDK validation</div><div class="det">R1 events · <code>updateImageRawData</code> format · BLE bandwidth · partial-update API · DLE 4.2+ · GO/NO-GO decision tree (Branch A / B / C)</div></div>
       <div class="phase mvp"><div class="head"><span class="ph">P1</span><span class="wks">Week 1–2</span></div><div class="ttl">Foundation</div><div class="det">monorepo skeleton (pnpm + TypeScript) · shared protocol · CI pipeline · ADR-0001 to ADR-0004</div></div>
@@ -1057,7 +1055,9 @@ footer.show a { color: var(--g2); border: none; }
       <div class="divider">— bridge era (superseded) —</div>
       <div class="phase v2"><div class="head"><span class="ph">v0.9.14–0.11</span><span class="wks">2026-06/07</span></div><div class="ttl">Raster substrates on the bridge</div><div class="det">27 px status sheet · canvas-compositor raster (v0.10.0) · showcase whole-HUD raster (v0.11.0) · headless player-view map capture · bearer pairing — released up to foundry-module <code>v0.1.55</code>; <strong>superseded in v0.12.0</strong> (ADR-0016/0017/0018). Kept: the hardware lessons (grid-anchored tiles, image-over-text z-order, capture <code>' '</code>, real-G2 BLE pacing) and the Foundry fixes (<code>Activity#use</code> dialog arg, null temp HP, spell <code>method</code>/<code>prepared</code>, skill checks).</div></div>
       <div class="divider">— v0.12.0 · direct streaming —</div>
-      <div class="phase mvp"><div class="head"><span class="ph">v0.12</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · hybrid projector (player or GM, ADR-0017) · AES-GCM sealed relay · D&amp;D-sheet HUD · pixelated original map (ADR-0018) · Even Hub SDK 0.0.15 · next: hardware UAT (<code>validate:direct-sideload</code>)</div></div>
+      <div class="phase mvp"><div class="head"><span class="ph">v0.12</span><span class="wks">2026-09</span></div><div class="ttl">Direct Foundry → G2 streaming</div><div class="det">bridge + Docker + foundry-mcp removed · g2-app served by Foundry + QR sideload · hybrid projector (player or GM, ADR-0017) · AES-GCM sealed relay · D&amp;D-sheet HUD · pixelated original map (ADR-0018) · Even Hub SDK 0.0.15 — Foundry-served page and «(G2)» users <strong>superseded in v0.13.0</strong></div></div>
+      <div class="divider">— v0.13.0 · relay pairing —</div>
+      <div class="phase mvp"><div class="head"><span class="ph">v0.13</span><span class="wks">2026-09</span></div><div class="ttl">Relay pairing · your tab projects</div><div class="det">phone never logs into Foundry · player’s Foundry tab = projector · one QR, no GM · opaque sealed relay (Cloudflare Worker + Durable Object per room) · FoundryVTT G2 HUD on Even Hub + GitHub Pages + <code>pnpm dev:glasses</code> · Even Hub SDK 0.0.16 (ADR-0019) · next: Even Hub beta → store, hardware UAT (<code>validate:relay</code>)</div></div>
     </div>
   </section>
 
@@ -1102,13 +1102,13 @@ footer.show a { color: var(--g2); border: none; }
       <span class="chip">FoundryVTT v13.347+ / v14</span>
       <span class="chip">dnd5e 5.x</span>
       <span class="chip">MidiQOL (opt)</span>
-      <span class="chip">Even Hub SDK 0.0.15</span>
+      <span class="chip">Even Hub SDK 0.0.16</span>
       <span class="chip">@evenrealities/pretext</span>
-      <span class="chip">socket.io-client</span>
+      <span class="chip">Cloudflare Workers + Durable Objects</span>
       <span class="chip">WebCrypto AES-GCM</span>
       <span class="chip">Zod</span>
       <span class="chip">upng-js v2</span>
-      <span class="chip">WebCrypto ECDH P-256</span>
+      <span class="chip">jsQR</span>
       <span class="chip">qrcode</span>
     </div>
   </section>
@@ -1122,11 +1122,11 @@ footer.show a { color: var(--g2); border: none; }
                         ▓                                  ▓
                         ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 </div>
-    <p>EvenFoundryVTT — v0.12.0 · direct streaming (2026-09-23).<br/>
+    <p>EvenFoundryVTT — design specification v0.13.0 · relay pairing (2026-09-25).<br/>
        Author: Lorenzo (Aiacos) · <a href="mailto:uni.lorenzo.a@gmail.com">uni.lorenzo.a@gmail.com</a> ·
        <a href="https://github.com/Aiacos/EvenFoundryVTT" target="_blank" rel="noopener">github.com/Aiacos/EvenFoundryVTT</a> ·
        MIT License</p>
-    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.12.0:</strong> the Node bridge, Docker Compose and <code>foundry-mcp</code> are gone (<a href="../architecture/0016-direct-foundry-streaming.md">ADR-0016</a>). One artefact ships: the Foundry module (<code>releases/latest/download/module.json</code>), which also serves the glasses app at <code>/modules/evenfoundryvtt/g2/</code>. The GM enables players once and each player pairs from their own Foundry with one QR (<a href="../architecture/0017-player-owned-glasses-hybrid-projector.md">ADR-0017</a>); the Even Realities App loads the page same-origin; the player’s client — or a GM as fallback — projects the character, combat, log and a pixelated map of the original scene art (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md">ADR-0018</a>) over an AES-256-GCM sealed relay. Guides: <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener">project wiki</a>. The G2 UI is the D&amp;D-sheet layout («Scheda da tavolo G2») on Even Hub SDK 0.0.15. Hardware verification (QR sideload, cookie persistence, BLE map pacing) follows the defer-hardware pattern via <code>validate:direct-sideload</code>. Earlier milestones (v0.9.11 → v0.11.0, bridge era, last released as <code>v0.1.55</code>) are kept in the repository history. <strong>Distribution:</strong> each release tag <code>vX.Y.Z</code> publishes the Foundry module zip + <code>module.json</code> and attaches the Even Hub <code>.ehpk</code>; the next release after the port is <code>v0.2.0</code> (migration: remove the old bridge container and re-pair the glasses — bearer tokens no longer exist). For testing use the QR sideload / <code>evenhub qr</code> dev mode: Even Hub portal <em>trial</em> uploads expire, and the portal submission is manual (the Even Hub CLI has no submit command).</p>
+    <p style="margin-top:.8rem;font-size:0.82rem;color:var(--g2);line-height:1.55;max-width:1000px;margin-left:auto;margin-right:auto;text-align:left;"><strong>v0.13.0:</strong> the phone no longer logs into Foundry (<a href="../architecture/0019-relay-pairing-player-projector.md">ADR-0019</a>). The player opens <em>Connect G2 glasses</em> in their own Foundry tab and scans one QR with the <strong>FoundryVTT G2 HUD</strong> app; that tab is the projector and streams the character, combat, log and a pixelated map of the original scene art (<a href="../architecture/0018-dnd-sheet-hud-pixel-renderer.md">ADR-0018</a>) through an opaque relay that only forwards AES-256-GCM sealed frames. Gone: the Foundry-served page, «(G2)» users, GM enablement, ECDH custody and election (<a href="../architecture/0017-player-owned-glasses-hybrid-projector.md">ADR-0017</a>, superseded), plus the need for HTTPS reachable from the phone. Works on Foundry v13 and v14, self-hosted and The Forge. Guides: <a href="https://github.com/Aiacos/EvenFoundryVTT/wiki" target="_blank" rel="noopener">project wiki</a> · <a href="../privacy.md">privacy</a>. The G2 UI is the D&amp;D-sheet layout («Scheda da tavolo G2») on Even Hub SDK 0.0.16. Live and hardware checks follow the defer-hardware pattern via <code>validate:relay</code>. Earlier milestones — v0.12.0 direct streaming (<a href="../architecture/0016-direct-foundry-streaming.md">ADR-0016</a>, release <code>v0.2.0</code>) and the bridge era (v0.9.11 → v0.11.0, last released as <code>v0.1.55</code>) — are kept in the repository history. <strong>Distribution:</strong> each release tag <code>vX.Y.Z</code> publishes the Foundry module zip + <code>module.json</code> and attaches the Even Hub <code>.ehpk</code>; players install the app from the Even Hub beta group until the store listing is approved (a portal submission is manual — the Even Hub CLI has no submit command); developer-mode phones can scan the QR with the Even Realities App, which opens the GitHub Pages copy at <code>/app/</code>. Migration: re-pair the glasses once from <em>Connect G2 glasses</em>.</p>
   </footer>
 
 </div><!-- /bezel -->
@@ -1139,7 +1139,7 @@ footer.show a { color: var(--g2); border: none; }
     'D&D 5e on AR glasses, controlled by a smart ring.',
     'Phosphor-green tactical HUD over your real table.',
     'FoundryVTT is the source of truth. The DM is still in charge.',
-    'No bridge, no Docker: Foundry shows a QR, you scan it.'
+    'No GM, no login: your Foundry tab shows a QR, you scan it.'
   ];
   let li = 0, ci = 0, deleting = false;
   const speed = 38, pause = 1700, delspeed = 18;

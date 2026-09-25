@@ -11,12 +11,10 @@
 # artifact so the latest publishable package is always available. The portal
 # submission step is manual — see docs/release/evenhub.md.
 #
-# ADR-0016 (direct Foundry streaming): the PRIMARY distribution is now the QR
-# sideload of the bundle Foundry serves at /modules/evenfoundryvtt/g2/index.html
-# (Vite outDir = packages/foundry-module/g2/). A packaged .ehpk cannot reach an
-# arbitrary user Foundry origin (fixed app.json whitelist + no CORS bypass — see
-# ADR-0016 Considered Options B), so this artefact is kept only for manifest/build
-# validation and a future Even Hub listing; it packs that same build output.
+# ADR-0019 (relay pairing): the .ehpk IS the player distribution — the installed app
+# survives the phone lock (only Beta/Released installs pass the 5-minute lock test)
+# and reaches only the relay whitelisted in app.json. The same build (packages/g2-app/
+# dist) is published on GitHub Pages as the page the pairing QR opens (pages.yml).
 name: Even Hub Pack
 
 on:
@@ -44,11 +42,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # ADR-0016: vite emits into packages/foundry-module/g2/ (no packages/g2-app/dist).
-      - name: Build g2-app
+      - name: Build g2-app (relay-only contract, ADR-0019)
         run: |
           pnpm --filter @evf/g2-app build
-          test -f packages/foundry-module/g2/index.html
+          node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
 
       # Keep app.json version in lockstep with the g2-app package version so each
       # packaged .ehpk carries the released version (Changesets-managed).
@@ -66,7 +63,7 @@ jobs:
       # availability check is intentionally omitted — it is an online/auth-gated
       # check; run it manually pre-submission per docs/release/evenhub.md.)
       - name: Pack .ehpk
-        run: npx --yes @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/foundry-module/g2 --sdk-ver "$(node -p "require('./packages/g2-app/package.json').dependencies['@evenrealities/even_hub_sdk']")" -o evenfoundryvtt.ehpk
+        run: npx --yes @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist --sdk-ver "$(node -p "require('./packages/g2-app/package.json').dependencies['@evenrealities/even_hub_sdk']")" -o evenfoundryvtt.ehpk
 
       - name: Verify .ehpk produced
         run: test -f evenfoundryvtt.ehpk && ls -lh evenfoundryvtt.ehpk

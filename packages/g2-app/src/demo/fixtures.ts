@@ -499,11 +499,13 @@ export function mockStates(v: Variant): MockState[] {
         connection: {
           status: 'connecting',
           server:
-            v === 'max' ? 'foundry.una-casa-molto-lontana.example.org' : 'foundry.casa-rossi.it',
-          userName: 'Luca (G2)',
+            v === 'max'
+              ? 'evf-relay.una-casa-molto-lontana.workers.dev'
+              : 'evf-relay.aiacos.workers.dev',
+          userName: 'Luca',
           gmName: 'Anna',
           actorName: 'Thorin',
-          steps: { server: true, login: true, gm: true, character: false, scene: false },
+          steps: { relay: true, projector: true, paired: true, character: false, scene: false },
         },
       },
       ui,
@@ -516,7 +518,7 @@ export function mockStates(v: Variant): MockState[] {
           retryInMs: 8000,
           attempt: 3,
           lastSyncAt: 0,
-          cause: 'no-gm',
+          cause: 'no-projector',
         },
       }),
       ui,

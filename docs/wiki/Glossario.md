@@ -8,22 +8,21 @@ Un solo nome per ogni concetto, lo stesso sugli occhiali, in Foundry e nei docum
 |---|---|
 | **G2** | occhiali AR Even Realities: display 576 × 288 px verde a 16 livelli, niente altoparlante né fotocamera ([device APIs](https://hub.evenrealities.com/docs/build/device-apis)) |
 | **R1** | anello smart Even Realities: tap, doppio tap, swipe su/giù; pressione lunga come extra ([anello](https://www.evenrealities.com/smart-ring)) |
-| **Even Realities App** (Even App) | app sul telefono che associa G2 e R1 e carica la pagina degli occhiali nella sua WebView |
+| **Even Realities App** (Even App) | app sul telefono che associa G2 e R1 ed esegue le app degli occhiali nella sua WebView |
 | **Even Hub** | piattaforma e SDK per le app degli occhiali ([hub.evenrealities.com](https://hub.evenrealities.com/docs)) |
-| **QR sideload** | la Even App inquadra un QR con un URL e carica quella pagina come app degli occhiali |
-| **g2-app** | l'app degli occhiali (pacchetto `packages/g2-app`), servita da Foundry in `/modules/evenfoundryvtt/g2/` |
-| **Modulo** / `evenfoundryvtt` | il modulo Foundry: projector, associazione, readers, write path, e contenitore della g2-app |
-| **Utente «(G2)»** | utente Foundry dedicato «&lt;Giocatore&gt; (G2)», ruolo Giocatore, proprietario solo del personaggio |
-| **Projector** | il client Foundry che risponde agli occhiali: il client del giocatore se online, altrimenti il GM attivo con la chiave del dispositivo |
-| **Elezione** | la regola che sceglie il projector per ogni dispositivo; solo l'eletto esegue `invoke` |
-| **Relay** | l'inoltro Foundry dei messaggi `module.evenfoundryvtt` a tutti i client |
+| **FoundryVTT G2 HUD** | nome dell'app degli occhiali su Even Hub (pacchetto `packages/g2-app`, un solo bundle per `.ehpk`, GitHub Pages `/app/` e Vite) |
+| **QR in modalità sviluppatore** | la Even Realities App (*Even Hub → Scan QR*) apre la pagina del QR come app degli occhiali, senza installarla; si ferma quando il telefono va in background |
+| **Modulo** / `evenfoundryvtt` | il modulo Foundry: projector, collegamento, readers, write path |
+| **Projector** | la scheda di Foundry che ha mostrato il QR (di solito del giocatore, oppure del GM per chi non ha un dispositivo): trasmette il personaggio ed esegue le azioni; una sola per browser (Web Lock) |
+| **Relay** | inoltro WebSocket a stanze (`packages/relay`, `wss://evf-relay.aiacos.workers.dev`) dove si incontrano projector e occhiali; inoltra buste cifrate senza leggerle |
+| **Stanza** | id casuale da 128 bit che projector e occhiali condividono sul relay; cambia al primo collegamento |
 | **Busta sigillata** | `{evf, to, from, iv, ct}`: messaggio cifrato AES-256-GCM con la chiave del dispositivo |
 | **Chiave del dispositivo** | chiave AES-256 condivisa tra occhiali e projector; ruota al primo collegamento |
-| **Chiave pubblica / privata** | coppia ECDH P-256 di ogni client (ADR-0017); la pubblica è in `flags.evenfoundryvtt.pub` |
-| **Abilitazione** | passo una tantum del GM che crea gli utenti «(G2)» dei giocatori |
-| **Associazione** | collegare un paio di occhiali a un personaggio (self-service, dal GM o con codice manuale) |
-| **Codice manuale** | 16 caratteri `XXXX-XXXX-XXXX-XXXX` in alternativa al QR |
-| **Revoca** | eliminazione di un dispositivo associato e del suo utente «(G2)» |
+| **Collega occhiali G2** | la finestra del modulo (tasto destro sul proprio nome, **Alt+G** o *Configura impostazioni*) che mostra QR e codice; aprirla è già collegare |
+| **Scansiona QR** / **Inserisci codice** | i due modi, sulla pagina del telefono, di leggere il collegamento |
+| **Codice** | 16 caratteri `XXXX-XXXX-XXXX-XXXX` in alternativa al QR; stanza e chiave derivano dal codice |
+| **Scollega** | dimentica gli occhiali nel browser che li trasmette e li avvisa (S10) |
+| **Foundry del giocatore chiuso** | stato offline degli occhiali quando la scheda che li trasmette non è aperta; si ricollegano da soli |
 | **Scheda da tavolo G2** | il layout della HUD in cinque zone A–E |
 | **Zona A–E** | Ritratto · Intestazione · Mappa · Scheda · Contesto |
 | **Pannello contesto** | zona E, l'unica che risponde ai gesti |

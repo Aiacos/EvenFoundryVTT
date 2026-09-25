@@ -1,29 +1,30 @@
 /**
- * @evf/foundry-module — settings registration.
+ * @evf/foundry-module — settings registration (ADR-0019).
  *
- * Registers the hidden pairing settings (device metadata world-scope, device keys
- * client-scope — see `direct/pairing-store.ts`; identity key client-scope —
- * `direct/identity-keys.ts`; sealed glasses passwords world-scope —
- * `direct/glasses-access.ts`), the GM-only settings menu «Associa occhiali G2»
- * (enablement + pairing on behalf, mock P01), the player menu «Associa i miei occhiali»
- * (self-service, ADR-0017), and the same entries in the Players list context menu
- * (`direct/players-menu.ts`).
+ * - hidden client-scope pairing store (`direct/pairing-store.ts`);
+ * - «Collega occhiali G2» settings menu (every user — players pair their own glasses),
+ *   plus the Players-list entry and the `Alt+G` keybinding (`direct/players-menu.ts`);
+ * - two client-scope advanced settings, left at their defaults by everyone except
+ *   developers and self-hosters: the glasses-app page the QR opens and the relay origin.
  *
  * Also reads `detectedLocale` from `game.i18n.lang` (I18N-01, locale detection at
  * module boot).
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 3
- * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
- * @see docs/design/g2-thirds-layout.md §P01
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
  */
 
-import { registerAccessSettings } from './direct/glasses-access.js';
-import { registerIdentitySettings } from './direct/identity-keys.js';
+import { DEFAULT_APP_URL, DEFAULT_RELAY_URL } from '@evf/shared-protocol';
 import { createPairG2App } from './direct/PairG2App.js';
+import type { PairingEndpoints } from './direct/pairing-flow.js';
 import { registerPairingSettings } from './direct/pairing-store.js';
-import { registerPlayersMenu } from './direct/players-menu.js';
+import { registerPairShortcuts } from './direct/players-menu.js';
 import type { Projector } from './direct/projector.js';
 import { MODULE_ID } from './module-id.js';
+
+/** Setting key: page of the glasses app the pairing QR opens. */
+export const APP_URL_SETTING = 'appUrl' as const;
+/** Setting key: relay origin (`wss://…`). */
+export const RELAY_URL_SETTING = 'relayUrl' as const;
 
 /**
  * Locale detected from `game.i18n.lang` at module init time.
@@ -31,11 +32,25 @@ import { MODULE_ID } from './module-id.js';
  */
 export let detectedLocale = 'en';
 
+/** Reads a string setting, falling back to `fallback` when empty or unset. */
+function stringSetting(key: string, fallback: string): string {
+  const value = game.settings.get(MODULE_ID, key);
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback;
+}
+
+/** Current app page + relay (module settings, defaults = production). */
+export function pairingEndpoints(): PairingEndpoints {
+  return {
+    appUrl: stringSetting(APP_URL_SETTING, DEFAULT_APP_URL),
+    relayUrl: stringSetting(RELAY_URL_SETTING, DEFAULT_RELAY_URL),
+  };
+}
+
 /**
- * Registers settings + the pairing menu. Must be called inside `Hooks.once("init")`.
+ * Registers settings, the pairing menu and its shortcuts. Must be called inside
+ * `Hooks.once("init")`.
  *
- * @param projector - projector instance shared with the pairing window (online
- *                    state, sealed revocation notice)
+ * @param projector - projector instance shared with the pairing window
  */
 export function registerSettings(projector: Projector): void {
   // I18N-01: detect locale at module boot, normalise to primary tag. Guarded because
@@ -44,36 +59,36 @@ export function registerSettings(projector: Projector): void {
   detectedLocale = lang.split('-')[0] || 'en';
 
   registerPairingSettings();
-  registerIdentitySettings();
-  registerAccessSettings();
+  game.settings.register(MODULE_ID, APP_URL_SETTING, {
+    name: 'evf.settings.app_url',
+    hint: 'evf.settings.app_url_hint',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: DEFAULT_APP_URL,
+  });
+  game.settings.register(MODULE_ID, RELAY_URL_SETTING, {
+    name: 'evf.settings.relay_url',
+    hint: 'evf.settings.relay_url_hint',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: DEFAULT_RELAY_URL,
+    requiresReload: true,
+  });
 
-  const PairG2App = createPairG2App(projector, 'gm');
-  const PairMyG2App = createPairG2App(projector, 'player');
+  const PairG2App = createPairG2App(projector, pairingEndpoints);
   game.settings.registerMenu(MODULE_ID, 'pairG2', {
     name: 'evf.settings.pair_button',
     label: 'evf.settings.pair_button',
     hint: 'evf.settings.pair_hint',
     icon: 'fas fa-glasses',
     type: PairG2App,
-    restricted: true,
-  });
-  game.settings.registerMenu(MODULE_ID, 'pairMyG2', {
-    name: 'evf.settings.pair_self_button',
-    label: 'evf.settings.pair_self_button',
-    hint: 'evf.settings.pair_self_hint',
-    icon: 'fas fa-glasses',
-    type: PairMyG2App,
     restricted: false,
   });
-  const report = (err: unknown): void => {
-    console.error('[EVF] could not open the pairing window', err);
-  };
-  registerPlayersMenu(
-    (target) => {
-      PairG2App.openFor(target).catch(report);
-    },
-    () => {
-      PairMyG2App.openFor(null).catch(report);
-    },
-  );
+  registerPairShortcuts((actorId) => {
+    PairG2App.openFor(actorId).catch((err: unknown) => {
+      console.error('[EVF] could not open the pairing window', err);
+    });
+  });
 }

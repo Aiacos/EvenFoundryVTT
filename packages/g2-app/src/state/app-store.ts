@@ -25,19 +25,25 @@ import type {
 /** Connection lifecycle shown by screens S10 (unpaired), S11 (connecting), S12 (offline). */
 export type ConnectionStatus = 'unpaired' | 'connecting' | 'online' | 'offline' | 'revoked';
 
-/** Progress steps rendered by S11 while connecting. */
+/** Progress steps rendered by S11 while connecting (ADR-0019). */
 export interface ConnectSteps {
-  server: boolean;
-  login: boolean;
-  gm: boolean;
+  /** The relay accepted the link. */
+  relay: boolean;
+  /** The projector (the player's Foundry tab) is in the room. */
+  projector: boolean;
+  /** The projector answered `welcome`. */
+  paired: boolean;
   character: boolean;
   scene: boolean;
 }
 
 export interface ConnectionState {
   status: ConnectionStatus;
-  /** Foundry host shown to the user (no credentials). */
+  /** Relay host shown to the user. */
   server?: string;
+  /** Character label from the pairing QR, shown before the first `welcome`. */
+  label?: string;
+  /** Foundry user whose tab projects (from `welcome`). */
   userName?: string;
   gmName?: string;
   actorName?: string;
@@ -50,11 +56,11 @@ export interface ConnectionState {
   retryInMs?: number;
   attempt?: number;
   /**
-   * Offline only: machine-readable cause (`no-gm`, `network`, `auth`, `background`,
-   * `access` = the server answers with an outside login wall instead of Foundry, e.g. a
-   * private game on The Forge).
+   * Offline only: machine-readable cause — `no-projector` (the Foundry tab that paired
+   * the glasses is closed; reconnects by itself when it opens), `network` (relay
+   * unreachable), `background` (phone app in background).
    */
-  cause?: 'no-gm' | 'network' | 'auth' | 'background' | 'access';
+  cause?: 'no-projector' | 'network' | 'background';
   steps?: ConnectSteps;
 }
 

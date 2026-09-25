@@ -3,7 +3,7 @@
 **👓 Giocatori**
 
 - [Guida rapida](Guida-Rapida-Giocatore)
-- [Associare i tuoi occhiali](Associare-i-tuoi-Occhiali)
+- [Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)
 - [Leggere la HUD](Leggere-la-HUD)
 - [Gesti e comandi](Gesti-e-Comandi)
 - [Mappa](Mappa)
@@ -12,9 +12,9 @@
 **⚙️ Game Master**
 
 - [Installazione](Installazione)
-- [HTTPS e rete](HTTPS-e-Rete)
-- [Abilitare i giocatori](Abilitare-i-Giocatori)
-- [Revoca e sicurezza](Revoca-e-Sicurezza)
+- [Rete e relay](HTTPS-e-Rete)
+- [Collegare per un giocatore](Abilitare-i-Giocatori)
+- [Scollegare e sicurezza](Revoca-e-Sicurezza)
 - [Risoluzione problemi](Risoluzione-Problemi)
 
 **🏗️ Sviluppatori**

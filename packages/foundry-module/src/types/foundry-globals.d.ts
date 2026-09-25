@@ -3,7 +3,7 @@
  *
  * These declarations describe the subset of the Foundry v13/v14 API surface
  * consumed by the evenfoundryvtt module: settings + pairing window, the direct
- * projector (socket relay, users, ownership — ADR-0016), readers and write path.
+ * projector (users, ownership, keybindings — ADR-0019), readers and write path.
  *
  * Intentionally minimal: only declare what is used. noUncheckedIndexedAccess
  * and strict mode (INV-4 §0.1) require every access to be provably safe.
@@ -148,9 +148,8 @@ declare namespace foundry {
 }
 
 /**
- * Foundry `CONST` — enum values consumed by the pairing + map code.
+ * Foundry `CONST` — enum values consumed by the ownership check and the map code.
  *
- * USER_ROLES: NONE 0 · PLAYER 1 · TRUSTED 2 · ASSISTANT 3 · GAMEMASTER 4.
  * DOCUMENT_OWNERSHIP_LEVELS: INHERIT -1 · NONE 0 · LIMITED 1 · OBSERVER 2 · OWNER 3.
  * TOKEN_DISPOSITIONS: SECRET -2 · HOSTILE -1 · NEUTRAL 0 · FRIENDLY 1.
  * WALL_DOOR_TYPES: NONE 0 · DOOR 1 · SECRET 2.
@@ -158,24 +157,9 @@ declare namespace foundry {
  * @see https://foundryvtt.com/api/v13/modules/foundry.CONST.html
  */
 declare const CONST: {
-  USER_ROLES: { NONE: 0; PLAYER: 1; TRUSTED: 2; ASSISTANT: 3; GAMEMASTER: 4 };
   DOCUMENT_OWNERSHIP_LEVELS: { INHERIT: -1; NONE: 0; LIMITED: 1; OBSERVER: 2; OWNER: 3 };
   TOKEN_DISPOSITIONS: { SECRET: -2; HOSTILE: -1; NEUTRAL: 0; FRIENDLY: 1 };
   WALL_DOOR_TYPES: { NONE: 0; DOOR: 1; SECRET: 2 };
-};
-
-/**
- * Foundry `CONFIG` — only the User document class is used (to create the "(G2)" user
- * without relying on the deprecated bare `User` global).
- *
- * @see https://foundryvtt.com/api/v13/classes/foundry.documents.User.html
- */
-declare const CONFIG: {
-  User: {
-    documentClass: {
-      create(data: Record<string, unknown>): Promise<FoundryUser | undefined>;
-    };
-  };
 };
 
 /**
@@ -734,15 +718,9 @@ interface FoundryActor {
   id: string;
   /**
    * Per-user ownership map `{ [userId | 'default']: DOCUMENT_OWNERSHIP_LEVELS }`.
-   * Read by map-reader (ally detection) and written by g2-user (OWNER grant).
+   * Read by the projector's live ownership check and map-reader (ally detection).
    */
   ownership?: Record<string, number>;
-  /**
-   * Updates the actor document (g2-user writes `{ ownership: { [userId]: level } }`).
-   *
-   * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#update
-   */
-  update?(changes: Record<string, unknown>): Promise<unknown>;
   /** Actor display name. */
   name: string;
   /** Actor type ("character", "npc", "vehicle", etc.). */
@@ -1009,18 +987,6 @@ interface FoundryUser {
   id: string;
   /** User display name. */
   name?: string;
-  /** `CONST.USER_ROLES` value. */
-  role?: number;
-  /** Module flags (`flags.evenfoundryvtt.g2For` marks a dedicated "(G2)" user). */
-  flags?: Record<string, Record<string, unknown> | undefined>;
-  /**
-   * Updates the user document (`{ password }`, `{ role }`).
-   *
-   * @see https://foundryvtt.com/api/v13/classes/foundry.documents.BaseUser.html (password is a schema field)
-   */
-  update?(changes: Record<string, unknown>): Promise<unknown>;
-  /** Deletes the user document (GM only). */
-  delete?(): Promise<unknown>;
   /** Set of currently targeted tokens for this user. */
   targets: Set<FoundryToken>;
   /**
@@ -1038,25 +1004,6 @@ interface FoundryUser {
    * for GMs or players who have not yet selected a character.
    */
   character?: { id: string } | null;
-  /**
-   * Read a module flag from this User document (world data, readable by any user).
-   * Used by character-reader to check per-user `streamConsent` (ADR-0015 §C).
-   * Canonical Foundry `Document#getFlag`.
-   */
-  getFlag(scope: string, key: string): unknown;
-  /**
-   * Set a module flag on this User document. A user may set flags on their OWN
-   * User (default OWNER permission). Used to persist the player's `streamConsent`
-   * opt-in so the stream leader can read it. Canonical Foundry `Document#setFlag`.
-   */
-  setFlag(scope: string, key: string, value: unknown): Promise<unknown>;
-  /**
-   * Remove a module flag from this User document. A user may unset flags on their OWN
-   * User (default OWNER permission) — used by the PairModal so a non-GM player can
-   * REVOKE their own self-service `pendingPair` device. Canonical Foundry
-   * `Document#unsetFlag`.
-   */
-  unsetFlag(scope: string, key: string): Promise<unknown>;
 }
 
 // ─── Collection helper (Foundry Collection<T>) ────────────────────────────────
@@ -1257,17 +1204,21 @@ declare const game: {
   /** World metadata (`game.world.title` is shown on the glasses welcome). */
   world?: { title: string };
   /**
-   * socket.io client. `emit('module.<id>', data)` is relayed by the server to all
-   * other connected clients; `on('module.<id>', fn)` receives them.
+   * Keybinding registry (`init` only): «Collega occhiali G2» shortcut.
    *
-   * @see https://foundryvtt.com/article/module-development/ (§Socket)
+   * @see https://foundryvtt.com/api/v13/classes/foundry.helpers.interaction.ClientKeybindings.html#register
    */
-  socket?: {
-    /** socket.io connection state. */
-    connected?: boolean;
-    on(event: string, fn: (data: unknown) => void): void;
-    off?(event: string, fn: (data: unknown) => void): void;
-    emit(event: string, data: unknown): void;
+  keybindings: {
+    register(
+      module: string,
+      action: string,
+      data: {
+        name: string;
+        hint?: string;
+        editable: Array<{ key: string; modifiers?: string[] }>;
+        onDown?: () => boolean | undefined;
+      },
+    ): void;
   };
   /**
    * Module registry — capability detection for optional module dependencies.

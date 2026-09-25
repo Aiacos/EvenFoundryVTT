@@ -5,8 +5,8 @@
  * Reads **document data only** (`scene.grid`, `scene.dimensions`, `scene.background`,
  * `scene.tiles`, `scene.walls`, `scene.tokens`) — never the PIXI canvas — so it is
  * cheap enough to run on every throttled token/wall change and works even when the GM
- * is viewing another scene. The phone fetches the referenced images itself (same
- * origin) and composites them.
+ * is viewing another scene. The projector then turns the referenced images into
+ * `asset` messages (`map-assets.ts`): the phone never reaches Foundry (ADR-0019).
  *
  * Geometry is converted from canvas pixels (which include the scene padding) to grid
  * cells relative to the scene rectangle's top-left, rounded to 1/100 cell; scene art
@@ -14,7 +14,7 @@
  *
  * Privacy: hidden tokens and hidden tiles are dropped, secret doors are reported as
  * plain walls, HP fractions are only included for the viewer's own and allied tokens,
- * and only same-origin images are referenced.
+ * and only same-origin paths or http(s) URLs are referenced (loaded by the projector tab).
  *
  * @see https://foundryvtt.com/api/v13/interfaces/foundry.documents.types.SceneData.html — `grid`, `background`, `environment`, `tiles`
  * @see https://foundryvtt.com/api/v13/interfaces/foundry.documents.types.GridData.html — `size`, `distance` ("distance units … represented by a single grid space")
@@ -39,10 +39,8 @@ import {
 export interface MapViewer {
   /** Actor projected on the glasses. */
   actorId: string;
-  /** Human player owning the device (ally detection via actor ownership). */
-  playerUserId: string;
-  /** The device's "(G2)" user (its targets drive `targetId`). */
-  g2UserId: string;
+  /** User of the projecting tab: ally detection (actor ownership) and `targetId`. */
+  userId: string;
 }
 
 /** Fallback grid size (Foundry default) when a scene has none. */
@@ -110,7 +108,7 @@ export function classifyToken(token: FoundryTokenDoc, viewer: MapViewer): TokenK
   const dispositions = CONST.TOKEN_DISPOSITIONS;
   if (
     token.disposition === dispositions.FRIENDLY ||
-    token.actor?.ownership?.[viewer.playerUserId] === owner
+    token.actor?.ownership?.[viewer.userId] === owner
   ) {
     return 'ally';
   }
@@ -126,22 +124,20 @@ function hpFraction(token: FoundryTokenDoc): number | undefined {
 }
 
 /**
- * Converts an image path (scene background, tile or token texture) to a same-origin
- * relative URL, or undefined when it points at another origin (the phone could not
- * fetch it without CORS).
+ * Normalises an image path (scene background, tile or token texture) for the projector
+ * tab to load: a same-origin path becomes relative (resolved against the Foundry page, so
+ * a routePrefix is honoured); an absolute http(s) URL of another origin (e.g. The Forge
+ * assets CDN) is kept and loaded with CORS; anything else is dropped.
  */
-export function toRelativeBackground(
-  src: string | null | undefined,
-  origin: string,
-): string | undefined {
+export function toArtSrc(src: string | null | undefined, origin: string): string | undefined {
   if (typeof src !== 'string' || src === '') return undefined;
   if (!/^[a-z][a-z0-9+.-]*:/i.test(src)) return src.replace(/^\/+/, '');
   try {
     const url = new URL(src);
-    if (url.origin !== origin) return undefined;
-    return `${url.pathname.replace(/^\/+/, '')}${url.search}`;
+    if (url.origin === origin) return `${url.pathname.replace(/^\/+/, '')}${url.search}`;
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined;
   } catch {
-    // Not a parseable absolute URL → not usable as a same-origin background.
+    // Not a parseable absolute URL → not loadable.
     return undefined;
   }
 }
@@ -170,7 +166,7 @@ function readBackground(
   origin: string,
 ): MapImage | undefined {
   const tex = backgroundTexture(scene);
-  const src = toRelativeBackground(tex?.src, origin);
+  const src = toArtSrc(tex?.src, origin);
   if (src === undefined || !(width > 0) || !(height > 0)) return undefined;
   return {
     src,
@@ -182,7 +178,7 @@ function readBackground(
 }
 
 /**
- * Visible, same-origin, non-transparent tiles relative to the scene rectangle, in draw
+ * Visible, loadable, non-transparent tiles relative to the scene rectangle, in draw
  * order (elevation, then sort), capped at {@link MAX_MAP_TILES}. Rotation is ignored
  * (tiles are drawn axis-aligned — a documented approximation).
  */
@@ -190,7 +186,7 @@ function readTiles(scene: SceneArtRead, sceneX: number, sceneY: number, origin: 
   const out: Array<MapTile & { order: [number, number] }> = [];
   for (const tile of scene.tiles?.contents ?? []) {
     if (tile.hidden === true || (tile.alpha ?? 1) <= 0) continue;
-    const src = toRelativeBackground(tile.texture?.src, origin);
+    const src = toArtSrc(tile.texture?.src, origin);
     const w = tile.width ?? 0;
     const h = tile.height ?? 0;
     if (src === undefined || !(w > 0) || !(h > 0)) continue;
@@ -301,7 +297,7 @@ export function readMapSnapshot(viewer: MapViewer): MapSnapshot | null {
     if (kind === 'self' && selfTokenId === undefined) selfTokenId = token.id;
     const hp = kind === 'self' || kind === 'ally' ? hpFraction(token) : undefined;
     const tokenArt = token as FoundryTokenDoc & TokenArtRead;
-    const img = toRelativeBackground(tokenArt.texture?.src, origin);
+    const img = toArtSrc(tokenArt.texture?.src, origin);
     const sight = kind === 'self' ? sightCells(tokenArt, gridDistance) : undefined;
     tokens.push({
       id: token.id,
@@ -318,7 +314,7 @@ export function readMapSnapshot(viewer: MapViewer): MapSnapshot | null {
   }
 
   const visibleIds = new Set(tokens.map((t) => t.id));
-  const targets = game.users.get(viewer.g2UserId)?.targets ?? new Set<FoundryToken>();
+  const targets = game.users.get(viewer.userId)?.targets ?? new Set<FoundryToken>();
   const targetId = [...targets].map((t) => t.id).find((id) => visibleIds.has(id));
   const background = readBackground(art, dims.sceneWidth, dims.sceneHeight, origin);
   const tiles = readTiles(art, dims.sceneX, dims.sceneY, origin);

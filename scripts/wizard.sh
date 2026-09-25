@@ -9,16 +9,19 @@
 #   demo     (default) local Vite dev server on the LAN with scripted HUD scenes
 #            (?demo=…) — no Foundry needed. Checks the real-host page geometry,
 #            fonts, map and gestures.
-#   build    production bundle (vite build → foundry-module/g2) served on the LAN with
+#   build    production bundle (vite build → packages/g2-app/dist) served on the LAN with
 #            `vite preview` — same demo scenes, but the exact bytes that ship.
-#   foundry  your Foundry server (--foundry URL): runs the sideload GO/NO-GO checks and
-#            shows the QR of the app served by Foundry. For one-scan pairing use the QR
-#            in Foundry's «Associa occhiali G2» dialog instead; this QR opens the phone
-#            page for the manual-code fallback.
+#   live     the real pairing flow against YOUR Foundry (ADR-0019), with the app from
+#            this checkout: serves it on the LAN, checks the relay, and tells you the
+#            module setting to change («Glasses app page» = this LAN URL). Then open
+#            «Collega occhiali G2» in Foundry (Alt+G) and scan ITS QR with the Even
+#            Realities App. `--local-relay` also runs the relay here (`wrangler dev`) —
+#            only for an http:// Foundry (an https page cannot open ws:// on the LAN).
+#            `pnpm dev:glasses` = this mode.
 #
 # Usage
-#   scripts/wizard.sh [--mode demo|build|foundry] [--scene tour|explore|combat-my-turn|…]
-#                     [--dwell MS] [--port N] [--foundry URL] [--ip ADDR] [--no-firewall]
+#   scripts/wizard.sh [--mode demo|build|live] [--scene tour|explore|combat-my-turn|…]
+#                     [--dwell MS] [--port N] [--local-relay] [--ip ADDR] [--no-firewall]
 #                     [--debug] [--yes] [--help]
 #
 # Needs: bash, Node 24 + pnpm (repo toolchain), curl. The QR is drawn by the official
@@ -33,7 +36,9 @@ SCENE="tour"
 DWELL=""
 PORT="5173"
 PORT_EXPLICIT=0
-FOUNDRY_URL=""
+LOCAL_RELAY=0
+RELAY_PORT="8787"
+DEV_RELAY=""
 LAN_IP=""
 FIREWALL=1
 DEBUG=0
@@ -44,7 +49,8 @@ SCENES="tour explore combat-my-turn actions target spells result reaction saves 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${ROOT}/packages/g2-app/.wizard"
 SERVER_PID=""
-FIREWALL_OPENED=0
+RELAY_PID=""
+FIREWALL_PORTS=()
 
 # ─── output helpers ──────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -57,7 +63,7 @@ ok()   { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
 die()  { printf '  %s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 confirm() { # confirm "question" → 0 yes / 1 no (default no; --yes answers yes)
   [[ $ASSUME_YES -eq 1 ]] && return 0
@@ -74,7 +80,7 @@ while [[ $# -gt 0 ]]; do
     --scene) SCENE="${2:-}"; shift 2 ;;
     --dwell) DWELL="${2:-}"; shift 2 ;;
     --port) PORT="${2:-}"; PORT_EXPLICIT=1; shift 2 ;;
-    --foundry) FOUNDRY_URL="${2:-}"; MODE="foundry"; shift 2 ;;
+    --local-relay) LOCAL_RELAY=1; shift ;;
     --ip) LAN_IP="${2:-}"; shift 2 ;;
     --no-firewall) FIREWALL=0; shift ;;
     --debug) DEBUG=1; shift ;;
@@ -84,9 +90,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "$MODE" in demo|build|foundry) ;; *) die "--mode must be demo, build or foundry" ;; esac
+case "$MODE" in demo|build|live) ;; *) die "--mode must be demo, build or live" ;; esac
 [[ "$PORT" =~ ^[0-9]+$ ]] || die "--port must be a number"
-if [[ "$MODE" != "foundry" ]] && ! grep -qw -- "$SCENE" <<<"$SCENES"; then
+if [[ "$MODE" != "live" ]] && ! grep -qw -- "$SCENE" <<<"$SCENES"; then
   die "unknown --scene '$SCENE' (one of: $SCENES)"
 fi
 [[ -z "$DWELL" || "$DWELL" =~ ^[0-9]+$ ]] || die "--dwell must be milliseconds"
@@ -94,16 +100,19 @@ if [[ "$SCENE" == "tour" && -z "$DWELL" ]]; then DWELL=6000; fi
 
 # ─── cleanup on exit ─────────────────────────────────────────────────────────
 cleanup() {
-  if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
-    kill "$SERVER_PID" 2>/dev/null || true
-    wait "$SERVER_PID" 2>/dev/null || true
-    printf '\n  dev server stopped\n'
-  fi
-  if [[ $FIREWALL_OPENED -eq 1 ]]; then
-    if sudo firewall-cmd --remove-port="${PORT}/tcp" >/dev/null 2>&1; then
-      printf '  firewall port %s/tcp closed again\n' "$PORT"
+  local pid port
+  for pid in "$SERVER_PID" "$RELAY_PID"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
     fi
-  fi
+  done
+  if [[ -n "$SERVER_PID" ]]; then printf '\n  dev servers stopped\n'; fi
+  for port in "${FIREWALL_PORTS[@]}"; do
+    if sudo firewall-cmd --remove-port="${port}/tcp" >/dev/null 2>&1; then
+      printf '  firewall port %s/tcp closed again\n' "$port"
+    fi
+  done
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -132,23 +141,24 @@ detect_ip() {
   ok "$LAN_IP (phone and PC must be on this network; client-isolated Wi-Fi won't work)"
 }
 
-open_firewall() {
+open_firewall() { # open_firewall PORT
+  local port="$1"
   [[ $FIREWALL -eq 1 ]] || return 0
   command -v firewall-cmd >/dev/null || return 0
   sudo -n true 2>/dev/null || [[ -t 0 ]] || { warn "firewalld present; run with a TTY or --no-firewall"; return 0; }
   if ! firewall-cmd --state >/dev/null 2>&1; then return 0; fi
-  if firewall-cmd --query-port="${PORT}/tcp" >/dev/null 2>&1; then
-    ok "firewall already allows ${PORT}/tcp"
+  if firewall-cmd --query-port="${port}/tcp" >/dev/null 2>&1; then
+    ok "firewall already allows ${port}/tcp"
     return 0
   fi
   step "Firewall"
-  if confirm "Open ${PORT}/tcp in firewalld until this wizard exits (sudo)?"; then
-    if sudo firewall-cmd --add-port="${PORT}/tcp" >/dev/null; then
-      FIREWALL_OPENED=1
-      ok "${PORT}/tcp open (runtime only — closed on exit)"
+  if confirm "Open ${port}/tcp in firewalld until this wizard exits (sudo)?"; then
+    if sudo firewall-cmd --add-port="${port}/tcp" >/dev/null; then
+      FIREWALL_PORTS+=("$port")
+      ok "${port}/tcp open (runtime only — closed on exit)"
     fi
   else
-    warn "port left closed — the phone may not reach http://${LAN_IP}:${PORT}"
+    warn "port left closed — the phone may not reach ${LAN_IP}:${port}"
   fi
 }
 
@@ -176,13 +186,14 @@ start_server() {
     step "Production build"
     (cd "$ROOT" && pnpm --filter @evf/g2-app build >"$LOG_DIR/build.log" 2>&1) \
       || die "build failed — see $LOG_DIR/build.log"
-    ok "bundle in packages/foundry-module/g2"
+    ok "bundle in packages/g2-app/dist"
     cmd="preview"
   else
     cmd="dev"
   fi
   step "Starting the app on the LAN (vite ${cmd})"
-  (cd "$ROOT/packages/g2-app" && exec pnpm exec vite "$cmd" --host 0.0.0.0 --port "$PORT" --strictPort) \
+  (cd "$ROOT/packages/g2-app" && VITE_RELAY_URL="$DEV_RELAY" \
+    exec pnpm exec vite "$cmd" --host 0.0.0.0 --port "$PORT" --strictPort) \
     >"$log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 60); do
@@ -196,15 +207,33 @@ start_server() {
   die "server did not answer within 30 s — see $log"
 }
 
-check_foundry() {
-  step "Foundry checks (${FOUNDRY_URL})"
-  [[ "$FOUNDRY_URL" =~ ^https:// ]] \
-    || warn "not HTTPS — the Even App WebView needs a trusted certificate for the real flow"
-  if (cd "$ROOT" && FOUNDRY_URL="$FOUNDRY_URL" pnpm --silent --filter @evf/validation-harness \
-        validate:direct-sideload:skip-hardware); then
-    ok "sideload checks passed"
+start_relay() { # --local-relay: the relay of this checkout on the LAN (wrangler dev)
+  step "Starting the relay on the LAN (wrangler dev :${RELAY_PORT})"
+  mkdir -p "$LOG_DIR"
+  (cd "$ROOT/packages/relay" && exec npx wrangler dev --ip 0.0.0.0 --port "$RELAY_PORT") \
+    >"$LOG_DIR/relay.log" 2>&1 &
+  RELAY_PID=$!
+  for _ in $(seq 1 90); do
+    if curl -fs -o /dev/null "http://127.0.0.1:${RELAY_PORT}/health" 2>/dev/null; then
+      DEV_RELAY="ws://${LAN_IP}:${RELAY_PORT}"
+      ok "relay on ${DEV_RELAY} (log: packages/g2-app/.wizard/relay.log)"
+      return 0
+    fi
+    kill -0 "$RELAY_PID" 2>/dev/null || die "relay exited — see $LOG_DIR/relay.log"
+    sleep 0.5
+  done
+  die "relay did not answer within 45 s — see $LOG_DIR/relay.log"
+}
+
+check_relay() { # the production relay must answer before a live test
+  local url
+  url="$(sed -n "s/.*DEFAULT_RELAY_URL = 'wss:\/\/\([^']*\)'.*/https:\/\/\1/p" \
+    "$ROOT/packages/shared-protocol/src/direct/relay.ts")"
+  step "Relay (${url})"
+  if curl -fsS --max-time 10 "${url}/health" >/dev/null 2>&1; then
+    ok "production relay answers"
   else
-    warn "some checks failed — fix them before scanning (see docs/setup-guide.md)"
+    warn "production relay not reachable — deploy it (docs/runbook.md) or use --local-relay"
   fi
 }
 
@@ -231,20 +260,34 @@ EOF
 # ─── main ────────────────────────────────────────────────────────────────────
 printf '%sEvenFoundryVTT · G2 test wizard%s  (mode: %s)\n' "$B" "$N" "$MODE"
 
-if [[ "$MODE" == "foundry" ]]; then
-  [[ -n "$FOUNDRY_URL" ]] || die "--mode foundry needs --foundry https://your-foundry.example"
+if [[ "$MODE" == "live" ]]; then
   check_toolchain
-  check_foundry
-  base="${FOUNDRY_URL%/}"
-  show_qr "${base}/modules/evenfoundryvtt/g2/index.html"
-  printf '  For one-scan pairing use the QR in Foundry → «Associa occhiali G2» instead.\n'
+  detect_ip
+  pick_port
+  open_firewall "$PORT"
+  if [[ $LOCAL_RELAY -eq 1 ]]; then
+    open_firewall "$RELAY_PORT"
+    start_relay
+  else
+    check_relay
+  fi
+  start_server
+  printf '\n  %sIn Foundry%s (module settings › EvenFoundryVTT, this browser only)\n' "$B" "$N"
+  printf '    • Glasses app page (advanced) = %shttp://%s:%s/%s\n' "$B" "$LAN_IP" "$PORT" "$N"
+  if [[ -n "$DEV_RELAY" ]]; then
+    printf '    • Relay (advanced)           = %s%s%s   (http:// Foundry only)\n' "$B" "$DEV_RELAY" "$N"
+  fi
+  printf '  Then press %sAlt+G%s («Collega occhiali G2») and scan THAT QR with the Even\n' "$B" "$N"
+  printf '  Realities App (Developer Mode → Even Hub → Scan QR). Edits hot-reload on the glasses.\n'
+  printf '\n  Press %sCtrl-C%s to stop.\n' "$B" "$N"
+  wait "$SERVER_PID"
   exit 0
 fi
 
 check_toolchain
 detect_ip
 pick_port
-open_firewall
+open_firewall "$PORT"
 start_server
 
 query="demo=${SCENE}"

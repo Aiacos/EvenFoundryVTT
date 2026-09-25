@@ -1,31 +1,26 @@
 /**
- * Sealed envelope for the Foundry `module.evenfoundryvtt` relay.
+ * Sealed envelope carried by the relay room (ADR-0019).
  *
- * Foundry relays module socket messages to **every** connected client, so the
- * plaintext never travels: AES-256-GCM with the per-device pairing key, a random
- * 96-bit IV and `from>to` as additional authenticated data (a ciphertext re-addressed
- * to another device fails authentication). A `ts` inside the plaintext bounds replay;
- * request ids double as idempotency keys on the projector.
+ * The relay is a third party and only forwards opaque frames, so the plaintext never
+ * travels: AES-256-GCM with the per-device pairing key, a random 96-bit IV and
+ * `from>to` as additional authenticated data (a ciphertext reflected back to its sender
+ * fails authentication). A `ts` inside the plaintext bounds replay; request ids double
+ * as idempotency keys on the projector.
  *
  * Uses WebCrypto only (`globalThis.crypto.subtle`) — available in the Even App
  * WebView, Foundry browser clients and Node ≥ 20 (tests).
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 4
- * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md §Decision 6
+ * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 4 (envelope)
+ * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 4
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';
 
-/** Socket event name used on the Foundry relay (`module.<id>`). */
-export const DIRECT_SOCKET_EVENT = 'module.evenfoundryvtt' as const;
-
-/**
- * Address the glasses write to: whichever Foundry client is currently elected projector
- * for the device (the player's own client, else a GM holding the device key — ADR-0017
- * §Decision 6). Replies are sealed `from` the same address, so the AAD `from>to` does not
- * depend on which client answered.
- */
+/** Address of the Foundry tab that serves the device (AAD `from`/`to`). */
 export const PROJECTOR_ADDRESS = 'projector' as const;
+
+/** Address of the G2 app (AAD `from`/`to`); the room already isolates the device. */
+export const GLASSES_ADDRESS = 'glasses' as const;
 
 /** Maximum clock skew / age accepted for a sealed message (ms). */
 export const MAX_ENVELOPE_AGE_MS = 120_000;

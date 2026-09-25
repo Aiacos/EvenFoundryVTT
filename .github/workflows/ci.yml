@@ -117,7 +117,7 @@ jobs:
           fi
 
       # ADR-0016 gate 9: socketlib is a Foundry-side (GM client) dependency only.
-      # The phone g2-app talks raw socket.io on `module.evenfoundryvtt`; shared-* are
+      # The phone g2-app talks only to the relay (ADR-0019); shared-* are
       # environment-agnostic. Any socketlib import/call outside packages/foundry-module
       # is an architecture leak. (Replaces the former fixed handler-count assertion:
       # the gate must not depend on how many handlers foundry-module registers.)
@@ -134,17 +134,28 @@ jobs:
             exit 1
           fi
 
-      # ADR-0016 gate 10: the g2-app is served by Foundry from the module folder.
-      # `vite build` must emit into packages/foundry-module/g2/ with an index.html
-      # entry, or the QR-sideload URL /modules/evenfoundryvtt/g2/index.html 404s.
-      - name: Build g2-app into foundry-module/g2 (ADR-0016)
+      # ADR-0019 gate 10: one glasses-app bundle (packages/g2-app/dist) for the Even Hub
+      # package and the GitHub Pages page; it talks only to the relay its app.json
+      # whitelists, and carries no Foundry login / socket.io code (research F1).
+      - name: Build g2-app + relay-only contract (ADR-0019)
         run: |
           pnpm --filter @evf/g2-app build
-          if ! test -f packages/foundry-module/g2/index.html; then
-            echo "::error file=packages/g2-app/vite.config.ts::g2-app build did not emit packages/foundry-module/g2/index.html (ADR-0016 hosting contract)."
+          if ! test -f packages/g2-app/dist/index.html; then
+            echo "::error file=packages/g2-app/vite.config.ts::g2-app build did not emit packages/g2-app/dist/index.html."
             exit 1
           fi
-          ls -la packages/foundry-module/g2
+          node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
+
+      # ADR-0019 end-to-end: the relay of this commit (wrangler dev) + the real glasses
+      # session + a projector speaking the real sealed protocol: code → rotate → new
+      # room → online → map asset → invoke → projector away / back. Then the harness.
+      - name: Relay end-to-end (wrangler dev + g2-app session + validate:relay)
+        run: |
+          (cd packages/relay && pnpm exec wrangler dev --port 8799 --ip 127.0.0.1 >/tmp/relay.log 2>&1 &)
+          for _ in $(seq 1 90); do curl -fs http://127.0.0.1:8799/health >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8799/health || { cat /tmp/relay.log; exit 1; }
+          EVF_RELAY_URL=ws://127.0.0.1:8799 pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts
+          RELAY_URL=ws://127.0.0.1:8799 pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 
       # Wiki source (docs/wiki/) is published by wiki-sync.yml on main; break it here,
       # not after merge: unknown pages, missing images/files and orphan pages fail.
@@ -162,7 +173,7 @@ jobs:
       - name: Even Hub manifest (app.json version + icon)
         run: |
           node scripts/sync-app-json.mjs --check
-          test -f packages/foundry-module/g2/icon.png || { echo "::error file=packages/g2-app/app.json::icon.png missing from the g2 build (packages/g2-app/src/public/icon.png)"; exit 1; }
+          test -f packages/g2-app/dist/icon.png || { echo "::error file=packages/g2-app/app.json::icon.png missing from the g2 build (packages/g2-app/src/public/icon.png)"; exit 1; }
 
       # Shell scripts (wizard, sim helpers) are linted like the TypeScript sources.
       - name: ShellCheck (scripts/*.sh)

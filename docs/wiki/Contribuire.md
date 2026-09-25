@@ -16,7 +16,7 @@ Tutti i comandi a 0 = repository sano.
 - `main` — rilasci. `develop` — integrazione.
 - Lavora su `feature/<nome>` partendo da `develop`, apri la PR verso `develop`.
 - `develop` → `main` porta al rilascio: la PR di versione viene unita e pubblicata in automatico ([Release](Release)).
-- Se un changeset aggiorna `@evf/g2-app`, `@evf/shared-protocol` o `@evf/shared-render`, deve aggiornare anche `@evf/foundry-module`: sono spediti dentro lo zip del modulo e il tag di release segue la sua versione (gate CI `check-changeset-module.mjs`).
+- Se un changeset aggiorna `@evf/g2-app`, `@evf/shared-protocol` o `@evf/shared-render`, deve aggiornare anche `@evf/foundry-module`: il tag di release (zip del modulo + `.ehpk` dell'app) segue la sua versione (gate CI `check-changeset-module.mjs`). Il relay (`@evf/relay`) si pubblica a parte con *Relay Deploy* ([Release](Release)).
 - Un `develop` rosso si ripara prima di nuove feature.
 - Le feature si pianificano con **Spec Kit**: una cartella per feature in [`specs/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/specs) (`NNN-nome/spec.md`, `plan.md`), principi in [`.specify/memory/constitution.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/.specify/memory/constitution.md).
 
@@ -34,8 +34,8 @@ Esempi:
 
 ```
 feat(g2-app): arte originale pixelata nella mappa
-fix(foundry-module): elezione del projector quando il GM cambia
-docs(*): wiki e showcase per ADR-0017
+fix(foundry-module): la scheda riapre la stanza del relay dopo il riavvio
+docs(*): wiki e showcase per ADR-0019
 ```
 
 ## 🧹 Checklist della PR

@@ -65,9 +65,9 @@ function mediumStrings(s: HudStrings): string[] {
   return [
     s.appTitle,
     ...s.pairSteps.map(([a]) => a),
-    s.steps.server,
-    s.steps.login('Luca (G2)'),
-    s.steps.gm('Anna'),
+    s.steps.relay,
+    s.steps.projector,
+    s.steps.paired('Luca'),
     s.steps.character('Thorin'),
     s.steps.scene,
     character('min').name,

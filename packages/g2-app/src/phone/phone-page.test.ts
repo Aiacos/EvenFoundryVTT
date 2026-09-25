@@ -7,20 +7,15 @@ import { phoneStrings } from './i18n.js';
 import { DEBUG_TAIL, mountPhonePage, type PhoneSession, statusLine } from './phone-page.js';
 
 function fakeSession(overrides: Partial<PhoneSession> = {}) {
-  let info: SessionInfo = {
-    latencyMs: null,
-    foundryVersion: null,
-    moduleVersion: null,
-    diagnostics: [],
-  };
+  let info: SessionInfo = { latencyMs: null, moduleVersion: null, diagnostics: [] };
   const infoListeners = new Set<(i: SessionInfo) => void>();
   let locale: 'it' | 'en' = 'it';
   const session = {
     reconnect: vi.fn(),
     disconnect: vi.fn(),
     forget: vi.fn(async () => {}),
-    pairManual: vi.fn(async () => {}),
-    listUsers: vi.fn(async () => [{ id: 'u1', name: 'Luca (G2)' }]),
+    pairCode: vi.fn(async (_code: string) => {}),
+    pairScanned: vi.fn(async (_text: string) => {}),
     updateSettings: vi.fn(),
     locale: () => locale,
     info: () => info,
@@ -46,8 +41,8 @@ function online(): Partial<AppState> {
   return {
     connection: {
       status: 'online',
-      server: 'foundry.casa-rossi.it',
-      userName: 'Luca (G2)',
+      server: 'evf-relay.aiacos.workers.dev',
+      userName: 'Luca',
       gmName: 'Anna',
       actorName: 'Thorin',
     },
@@ -65,14 +60,14 @@ describe('statusLine', () => {
     expect(statusLine({ ...s, connection: { status: 'connecting' } }, t)).toBe('Collegamento…');
     expect(
       statusLine(
-        { ...s, connection: { status: 'offline', cause: 'no-gm', retryInMs: 7_400, attempt: 3 } },
+        { ...s, connection: { status: 'offline', cause: 'network', retryInMs: 7_400, attempt: 3 } },
         t,
       ),
-    ).toBe('Non collegato · nessun GM connesso · riprovo tra 8 s (tent. 3)');
+    ).toBe('Non collegato · relay non raggiungibile · riprovo tra 8 s (tent. 3)');
     expect(statusLine({ ...s, connection: { status: 'offline' } }, phoneStrings('en'))).toBe(
       'Offline',
     );
-    for (const cause of ['network', 'auth', 'background'] as const) {
+    for (const cause of ['no-projector', 'network', 'background'] as const) {
       expect(statusLine({ ...s, connection: { status: 'offline', cause } }, t)).not.toBe(
         'Non collegato',
       );
@@ -81,60 +76,89 @@ describe('statusLine', () => {
 });
 
 describe('P03 setup page', () => {
-  it('renders explanation, lists (G2) users and submits the manual code', async () => {
+  const photo = { path: 'p', name: 'p', mimeType: 'image/jpeg', size: 1, base64: 'AA' };
+  const scanDeps = (text: string | null) => ({
+    decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+    readQr: vi.fn(async () => text),
+  });
+
+  it('without the Even App bridge: explanation + code form only; submits the code', async () => {
     const store = createAppStore();
     const { session } = fakeSession();
     const root = document.createElement('main');
-    mountPhonePage(root, store, session);
+    mountPhonePage(root, store, session, null);
     expect(root.querySelector('h1')?.textContent).toBe('G2 HUD · Prima configurazione');
     expect(root.lang).toBe('it');
-    await settle(2);
-    const select = root.querySelector<HTMLSelectElement>('#evf-user');
-    expect([...(select?.options ?? [])].map((o) => o.textContent)).toEqual(['Luca (G2)']);
+    expect(root.querySelector('[data-action="scan"]')).toBeNull();
     const code = root.querySelector<HTMLInputElement>('#evf-code');
-    if (code === null || select === null) throw new Error('form missing');
+    if (code === null) throw new Error('form missing');
     code.value = '7QK3-MX9P-2HRA-C4TE';
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
-    expect(session.pairManual).toHaveBeenCalledWith('u1', '7QK3-MX9P-2HRA-C4TE');
+    expect(session.pairCode).toHaveBeenCalledWith('7QK3-MX9P-2HRA-C4TE');
     await settle(2);
     expect(field(root, 'error')).toBe('');
   });
 
-  it('shows an error for an invalid code and for a missing user', async () => {
-    const store = createAppStore();
+  it('shows an error for an invalid code and the revoked notice', async () => {
+    const store = createAppStore({ ...initialState(), connection: { status: 'revoked' } });
     const { session } = fakeSession({
-      pairManual: vi.fn(async () => {
+      pairCode: vi.fn(async () => {
         throw new Error('invalid manual code');
       }),
-      listUsers: vi.fn(async () => []),
     });
     const root = document.createElement('main');
-    mountPhonePage(root, store, session);
-    await settle(2);
-    expect(field(root, 'error')).toContain('Nessun utente');
-    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
-    expect(field(root, 'error')).toBe('Scegli un utente.');
-    const select = root.querySelector<HTMLSelectElement>('#evf-user');
-    const option = document.createElement('option');
-    option.value = 'x';
-    option.textContent = 'X (G2)';
-    select?.append(option);
-    if (select) select.value = 'x';
+    mountPhonePage(root, store, session, null);
+    expect(root.querySelector<HTMLElement>('.evf-notice')?.hidden).toBe(false);
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
     await settle(2);
     expect(field(root, 'error')).toContain('Codice non valido');
   });
 
-  it('reports user-list failures and shows the revoked notice', async () => {
-    const store = createAppStore({ ...initialState(), connection: { status: 'revoked' } });
-    const { session } = fakeSession({
-      listUsers: vi.fn(async () => Promise.reject(new Error('x'))),
-    });
+  it('«Scansiona QR»: photo → QR text → pairScanned; cancel does nothing', async () => {
+    const store = createAppStore();
+    const { session } = fakeSession();
+    const camera = { captureImageFromCamera: vi.fn(async () => photo) };
     const root = document.createElement('main');
-    mountPhonePage(root, store, session);
+    mountPhonePage(root, store, session, camera, null, scanDeps('https://x/#evf=abc'));
+    const scan = root.querySelector<HTMLButtonElement>('[data-action="scan"]');
+    expect(scan?.textContent).toBe('Scansiona QR');
+    scan?.click();
+    expect(scan?.disabled).toBe(true);
     await settle(2);
-    expect(field(root, 'error')).toBe('Impossibile leggere gli utenti da Foundry.');
-    expect(root.querySelector<HTMLElement>('.evf-notice')?.hidden).toBe(false);
+    expect(session.pairScanned).toHaveBeenCalledWith('https://x/#evf=abc');
+    expect(scan?.disabled).toBe(false);
+    camera.captureImageFromCamera.mockResolvedValueOnce(null as never);
+    scan?.click();
+    await settle(2);
+    expect(session.pairScanned).toHaveBeenCalledOnce();
+  });
+
+  it('reports a photo without a QR and a QR that is not ours', async () => {
+    const store = createAppStore();
+    const { session } = fakeSession({
+      pairScanned: vi.fn(async () => {
+        throw new Error('not a pairing QR');
+      }),
+    });
+    const camera = { captureImageFromCamera: vi.fn(async () => photo) };
+    const root = document.createElement('main');
+    mountPhonePage(root, store, session, camera, null, scanDeps(null));
+    root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(root, 'error')).toBe('Nessun QR nella foto: inquadra tutto il QR e riprova.');
+    const other = document.createElement('main');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mountPhonePage(other, store, session, camera, null, scanDeps('https://example.com'));
+    other.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(other, 'error')).toBe('Questo non è un QR di associazione EvenFoundryVTT.');
+  });
+
+  it('ignores a scan click when no camera is attached (defensive)', () => {
+    const store = createAppStore();
+    const root = document.createElement('main');
+    mountPhonePage(root, store, fakeSession().session, null);
+    expect(root.querySelector('[data-action="scan"]')).toBeNull();
   });
 });
 
@@ -143,11 +167,11 @@ describe('P02 connection page', () => {
     const store = createAppStore({ ...initialState(), ...online() });
     const fake = fakeSession();
     const root = document.createElement('main');
-    const unmount = mountPhonePage(root, store, fake.session);
+    const unmount = mountPhonePage(root, store, fake.session, null);
     expect(root.querySelector('h1')?.textContent).toBe('G2 HUD · Connessione');
     expect(field(root, 'status')).toBe('Collegato');
-    expect(field(root, 'server')).toBe('foundry.casa-rossi.it');
-    expect(field(root, 'user')).toBe('Luca (G2)');
+    expect(field(root, 'server')).toBe('evf-relay.aiacos.workers.dev');
+    expect(field(root, 'user')).toBe('Luca');
     expect(field(root, 'character')).toBe('Thorin');
     expect(field(root, 'gm')).toBe('Anna (online)');
     expect(field(root, 'latency')).toBe('—');
@@ -155,13 +179,14 @@ describe('P02 connection page', () => {
 
     fake.setInfo({
       latencyMs: 84,
-      foundryVersion: '14.360',
       moduleVersion: '0.2.0',
-      diagnostics: [{ at: 0, level: 'error', message: 'no-gm: no welcome' }],
+      diagnostics: [{ at: 0, level: 'error', message: 'network: relay down' }],
     });
     expect(field(root, 'latency')).toBe('84 ms');
-    expect(field(root, 'version')).toBe('Versione Foundry: 14.360 · Modulo EVF: 0.2.0');
-    expect(root.querySelector('[data-level="error"]')?.textContent).toContain('no-gm: no welcome');
+    expect(field(root, 'version')).toBe('Modulo EVF: 0.2.0');
+    expect(root.querySelector('[data-level="error"]')?.textContent).toContain(
+      'network: relay down',
+    );
 
     const change = (selector: string, set: (el: HTMLInputElement & HTMLSelectElement) => void) => {
       const el = root.querySelector<HTMLInputElement & HTMLSelectElement>(selector);
@@ -195,7 +220,7 @@ describe('P02 connection page', () => {
     const store = createAppStore({ ...initialState(), ...online() });
     const fake = fakeSession();
     const root = document.createElement('main');
-    mountPhonePage(root, store, fake.session);
+    mountPhonePage(root, store, fake.session, null);
     const details = root.querySelector('details');
     if (details === null) throw new Error('no details');
     details.open = true;
@@ -211,7 +236,7 @@ describe('P02 connection page', () => {
     expect(root.querySelector('details')).toBe(details);
     expect(details.open).toBe(true);
     expect(field(root, 'status')).toBe(
-      'Non collegato · Foundry non risponde · riprovo tra 3 s (tent. 2)',
+      'Non collegato · relay non raggiungibile · riprovo tra 3 s (tent. 2)',
     );
     expect(field(root, 'gm')).toBe('Anna');
     expect(field(root, 'server')).toBe('—');
@@ -239,7 +264,7 @@ describe('debug channel tail', () => {
   it('is absent unless a debug log is registered (fail-closed)', () => {
     const root = document.createElement('main');
     const store = createAppStore({ ...initialState(), ...online() });
-    mountPhonePage(root, store, fakeSession().session);
+    mountPhonePage(root, store, fakeSession().session, null);
     expect(root.querySelector('[data-field="debug-log"]')).toBeNull();
     store.update({ connection: { status: 'unpaired' } });
     expect(root.querySelector('[data-field="debug-log"]')).toBeNull();
@@ -251,7 +276,7 @@ describe('debug channel tail', () => {
     try {
       const root = document.createElement('main');
       const store = createAppStore({ ...initialState(), ...online() });
-      const unmount = mountPhonePage(root, store, fakeSession().session);
+      const unmount = mountPhonePage(root, store, fakeSession().session, null);
       expect(tailItems(root)).toEqual(['Nessun evento di debug.']);
       const list = root.querySelector('details [data-field="debug-log"]');
       expect(list).not.toBeNull();
@@ -275,7 +300,7 @@ describe('debug channel tail', () => {
     log.push('error', 'uncaught', 'boom');
     const root = document.createElement('main');
     const store = createAppStore();
-    mountPhonePage(root, store, fakeSession().session, log);
+    mountPhonePage(root, store, fakeSession().session, null, log);
     expect(
       root.querySelector('[data-view="setup"] details [data-field="debug-log"]'),
     ).not.toBeNull();

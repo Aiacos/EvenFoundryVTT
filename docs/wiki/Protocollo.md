@@ -2,11 +2,14 @@
 
 Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-protocol/src/direct): gli schemi Zod sono l'unica fonte dei tipi sul filo (principio P1). Crittografia solo WebCrypto (`globalThis.crypto.subtle`): funziona nella WebView della Even App, nei client Foundry e in Node ≥ 20 per i test.
 
-## 🏗️ Trasporto
+## 🏗️ Trasporto (ADR-0019)
 
-1. La pagina (`/modules/evenfoundryvtt/g2/index.html`) accede con `POST /join` sulla stessa origine → cookie `session` di prima parte.
-2. Apre socket.io (`/socket.io/`, EIO 4) come utente «(G2)».
-3. Tutto il traffico dell'app usa l'evento **`module.evenfoundryvtt`** (`DIRECT_SOCKET_EVENT`), che Foundry inoltra a tutti i client.
+1. Projector (scheda di Foundry) e app aprono ciascuno un WebSocket verso il relay: `relayRoomUrl(relay, stanza, ruolo)` = `wss://evf-relay.aiacos.workers.dev/r/<stanza>?role=projector|glasses` (`DEFAULT_RELAY_URL`; il payload del QR può portare un relay diverso).
+2. Il relay tiene **una connessione per ruolo** (la più nuova chiude la vecchia con `4000`, `RELAY_CLOSE_REPLACED`) e inoltra ogni frame all'altro ruolo, senza leggerlo; senza l'altro ruolo il frame è scartato.
+3. Frame di controllo del relay (`RelayControlSchema`): `{"relay":"peer-up"}` quando entrambi i ruoli sono presenti, `{"relay":"peer-down"}` quando l'altro se ne va davvero (non quando viene sostituito).
+4. Limiti: frame > 1 MiB (`MAX_RELAY_FRAME_BYTES`) chiudono il mittente con `1009`; più di 60 frame al secondo con `1008`. Salute: `GET /health` → `200 ok` con CORS `*` (`relayHealthUrl`).
+
+Tutti gli altri frame sono buste sigillate. Il telefono non apre mai connessioni verso Foundry.
 
 ## 🔐 Busta sigillata
 
@@ -17,7 +20,7 @@ Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/A
 | Campo | Significato |
 |---|---|
 | `evf` | versione della busta (1) |
-| `to` / `from` | indirizzi (id utente «(G2)», oppure `projector` — `PROJECTOR_ADDRESS`) |
+| `to` / `from` | indirizzi: `glasses` (`GLASSES_ADDRESS`) o `projector` (`PROJECTOR_ADDRESS`) |
 | `iv` | IV casuale da 96 bit |
 | `ct` | `AES-256-GCM(chiave dispositivo, JSON(messaggio + ts), AAD = "from>to")` |
 
@@ -27,40 +30,31 @@ Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/A
 
 ## 🏗️ Messaggi
 
-Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anche la **chiave di idempotenza** di `invoke`. Versione del protocollo: `DIRECT_PROTOCOL_VERSION = 1`.
+Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anche la **chiave di idempotenza** di `invoke`. Versione del protocollo: `DIRECT_PROTOCOL_VERSION = 2`.
 
 | Direzione | `t` | Campi principali |
 |---|---|---|
-| app → projector | `hello` | `rid`, `proto: 1`, `app`, `locale?` |
+| app → projector | `hello` | `rid`, `proto: 2`, `app`, `locale?` |
 | app → projector | `get` | `rid`, `what`: `character` · `combat` · `map` · `log` |
 | app → projector | `invoke` | `rid`, `tool` (id kebab-case del registro `dispatchTool`), `input` |
 | app → projector | `ping` | `rid` |
-| projector → app | `welcome` | `rid`, `actorId`, `actorName`, `userName`, `gmName`, `worldTitle`, `locale?`, `rotate?` |
+| projector → app | `welcome` | `rid`, `actorId`, `actorName`, `userName`, `gmName`, `worldTitle`, `locale?`, `moduleVersion?`, `rotate?` |
 | projector → app | `snapshot` | `rid?`, `what`, `data` (validato dal consumatore con lo schema del topic) |
 | projector → app | `delta` | `seq`, `topic`, `data` |
 | projector → app | `result` | `rid`, `ok: true` + `data` · oppure `ok: false` + `error {code, message}` |
 | projector → app | `pong` | `rid` |
-| projector → app | `revoked` | — |
+| projector → app | `revoked` | — (dopo **Scollega**) |
+| projector → app | `asset` | `id`, `data` (`data:image/png` o `image/jpeg` in base64, ≤ 900 000 car.): un'immagine della scena, inviata una volta per connessione prima dello snapshot che la cita |
 
-`rotate = { password?, key }`: nuove credenziali al primo `welcome` (QR monouso). `password` manca quando risponde il client di un giocatore, perché solo un GM può cambiare una password Foundry (ADR-0017).
+`rotate = { room, key }`: stanza e chiave nuove al primo `welcome` (QR monouso); entrambe le parti passano alla nuova stanza e l'app ripete `hello`.
 
 **Tempi dell'app** (`SESSION_TIMING` in `packages/g2-app/src/direct/session.ts`): `welcome` entro 8 s, snapshot e `invoke` entro 10 s, heartbeat ogni 20 s, offline dopo 2 pong persi, nuovo tentativo con attesa 1 s → 30 s e jitter fino al 20 %.
 
-## 🔐 Payload di associazione
+## 🔐 Payload di collegamento
 
-- **QR**: `<origine>[/<prefisso>]/modules/evenfoundryvtt/g2/index.html#evf=<payload>`; `payload = base64url(JSON {v:1, u, p, k})` — `u` id utente «(G2)», `p` password (12–128 car.), `k` chiave AES-256 base64url. Il frammento non arriva mai al server.
-- **Codice manuale**: 16 caratteri Crockford base32 (`MANUAL_CODE_LENGTH`), mostrato come `XXXX-XXXX-XXXX-XXXX`; il codice è la password e la chiave è `HKDF-SHA256(codice, salt = userId)`.
-
-## 🔐 Sigilli a chiave pubblica (ADR-0017)
-
-`SealedBlob = { v: 1, epk: <JWK P-256 effimera>, iv, ct }`, costruito in `ecdh.ts`:
-
-1. coppia effimera P-256 per ogni sigillo;
-2. `Z = ECDH(privata effimera, pubblica destinatario)`;
-3. `K = HKDF-SHA256(Z, salt = x‖y effimeri, info = "evf-seal-v1|" + contesto)`;
-4. `ct = AES-256-GCM(K, iv 96 bit, AAD = contesto)`.
-
-La chiave pubblica di ogni client è in `flags.evenfoundryvtt.pub` (`IdentityPublicJwkSchema`: `kty: EC`, `crv: P-256`, `x`, `y`).
+- **QR**: `<pagina dell'app>#evf=<payload>` (predefinita `https://aiacos.github.io/EvenFoundryVTT/app/`); `payload = base64url(JSON {v:2, r, k, l?, relay?})` — `r` stanza (id casuale da 128 bit, base64url), `k` chiave AES-256 base64url, `l` etichetta (nome del personaggio), `relay` relay alternativo `wss://`/`ws://`. Il frammento non arriva mai a un server. L'app legge lo stesso payload sia dall'URL (QR inquadrato con la Even Realities App) sia dalla foto di «Scansiona QR» (`readPairingText`).
+- **Codice manuale**: 16 caratteri Crockford base32 (`MANUAL_CODE_LENGTH`, 80 bit), mostrato come `XXXX-XXXX-XXXX-XXXX`; `deriveCodePairing` ricava stanza (128 bit, info `evf-room`) e chiave (256 bit, info `evf-key`) con HKDF-SHA256, quindi al telefono non serve altro.
+- Nessun utente, password o URL di Foundry arriva al telefono.
 
 ## 🗺️ MapSnapshot
 
@@ -71,7 +65,7 @@ Descrizione compatta della scena da cui il telefono disegna la zona C ([Mappa](M
 | `sceneId`, `name` | scena |
 | `cols`, `rows` | dimensione in celle |
 | `gridPx` | dimensione della cella in pixel di scena (converte l'arte in celle) |
-| `background?` | immagine `{src, x, y, w, h}` in pixel di scena, URL relativo stessa origine |
+| `background?` | immagine `{src, x, y, w, h}` in pixel di scena; `src` = `evf-asset:<id>` di un messaggio `asset` (`ASSET_REF_PREFIX`); lo stesso per le immagini di `tiles` e `tokens` |
 | `tiles?` | fino a `MAX_MAP_TILES = 32` tile, `z` crescente (prima i più profondi) |
 | `darkness` | oscurità della scena 0 (giorno) – 1 (notte) |
 | `walls` | segmenti `c: [x1, y1, x2, y2]` in celle, `door?`, `open?` (non blocca la vista) |
@@ -82,5 +76,5 @@ La geometria è in **celle** (numeri decimali ammessi), l'arte in **pixel di sce
 
 ## 📚 Vedi anche
 
-- [Architettura](Architettura) · [Revoca e sicurezza](Revoca-e-Sicurezza)
-- [ADR-0016](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0016-direct-foundry-streaming.md) · [ADR-0017](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0017-player-owned-glasses-hybrid-projector.md)
+- [Architettura](Architettura) · [Scollegare e sicurezza](Revoca-e-Sicurezza)
+- [ADR-0019](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0019-relay-pairing-player-projector.md) · [ADR-0016](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/architecture/0016-direct-foundry-streaming.md) (busta sigillata) · relay: [`packages/relay/README.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/packages/relay/README.md)

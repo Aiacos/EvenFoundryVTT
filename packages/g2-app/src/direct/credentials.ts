@@ -1,54 +1,56 @@
 /**
- * Pairing credentials for the direct Foundry channel (ADR-0016 §Decision Outcome 3).
+ * Pairing credentials of the glasses app (ADR-0019 §Decision Outcome 3).
+ *
+ * A pairing is a relay room + an AES-256 device key (+ an optional relay override and a
+ * label). There is no Foundry URL, user or password: the phone never reaches Foundry.
  *
  * Sources, in order:
- * 1. **QR path** — `location.hash` carries `#evf=<payload>` ({@link readPairingFragment});
- *    the fragment is consumed once and stripped from the URL with `history.replaceState`
- *    so it never lingers in history or screenshots.
- * 2. **Persisted** — browser `localStorage` (survives WebView suspend/update per
- *    hub.evenrealities.com/docs/build/background-lifecycle: "localStorage — Always
- *    survives (persisted to disk)"), mirrored best-effort into the Even Hub SDK
- *    key-value store (`setLocalStorage` / `getLocalStorage`, SDK 0.0.15).
- * 3. **Manual path** — the user picks a "(G2)" Foundry user and types the 16-char code:
- *    password = normalised code, key = HKDF(code, userId) ({@link deriveKeyFromManualCode}).
+ * 1. **QR path** — `location.hash` carries `#evf=<payload>` (the Even Realities App
+ *    opened the hosted page from the QR), or the in-app camera read the same QR
+ *    ({@link credentialsFromPayload}). The fragment is consumed once and stripped from
+ *    the URL with `history.replaceState`.
+ * 2. **Persisted** — browser `localStorage` ("survives suspension, kill, and update",
+ *    hub.evenrealities.com/docs/reference/faq), mirrored into the Even Hub SDK key-value
+ *    store (`setLocalStorage` / `getLocalStorage`), which the everything-evenhub
+ *    `device-features` guide recommends because WebView storage is not always reliable.
+ * 3. **Code path** — the 16-char code shown under the QR: room and key by HKDF
+ *    ({@link credentialsFromCode}).
  *
- * The Foundry base (`origin` + optional routePrefix) is derived from the page URL, since
- * the app is served by Foundry itself at `<base>/modules/evenfoundryvtt/g2/index.html`.
- *
- * @see docs/architecture/0016-direct-foundry-streaming.md
- * @see docs/design/g2-thirds-layout.md §Associazione e connessione
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
  */
 import {
-  deriveKeyFromManualCode,
-  normalizeManualCode,
+  DeviceKeySchema,
+  deriveCodePairing,
+  type PairingPayload,
+  RoomIdSchema,
   readPairingFragment,
 } from '@evf/shared-protocol';
 import { z } from 'zod';
 
-/** Persisted credential record (device-local; never sent anywhere but Foundry `/join`). */
+/** Persisted credential record (device-local). */
 export interface Credentials {
-  /** Foundry base URL: origin plus routePrefix, no trailing slash. */
-  base: string;
-  /** Foundry user id of the dedicated "(G2)" user. */
-  userId: string;
-  /** Foundry password of that user. */
-  password: string;
+  /** Relay room shared with the projector. */
+  room: string;
   /** AES-256 device key, base64url. */
   key: string;
+  /** Label to show before the first `welcome` (character name), if known. */
+  label?: string;
+  /** Relay override (development / self-hosted), else the relay the app was built for. */
+  relay?: string;
 }
 
-/** localStorage / SDK key holding the JSON credential record. */
-export const CREDENTIALS_STORAGE_KEY = 'evf.direct.credentials.v1';
-
-/** Path segment that marks where the module assets start inside the page URL. */
-const MODULE_PATH_MARKER = '/modules/evenfoundryvtt/';
+/** localStorage / SDK key holding the JSON credential record (v2: relay pairing). */
+export const CREDENTIALS_STORAGE_KEY = 'evf.direct.credentials.v2';
 
 /** Local persistence shape — validated on read so a corrupted entry is ignored, not trusted. */
 const StoredCredentialsSchema = z.strictObject({
-  base: z.string().min(1),
-  userId: z.string().min(1).max(64),
-  password: z.string().min(1).max(128),
-  key: z.string().min(43).max(44),
+  room: RoomIdSchema,
+  key: DeviceKeySchema,
+  label: z.string().max(64).optional(),
+  relay: z
+    .string()
+    .regex(/^wss?:\/\/[^\s#?]+$/)
+    .optional(),
 });
 
 /** Subset of the Even Hub SDK bridge used as a secondary credential store. */
@@ -60,16 +62,14 @@ export interface SdkKeyValue {
 /** Minimal `Storage` surface (browser `localStorage`) — injectable for tests. */
 export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-/**
- * Derives the Foundry base URL from the page location.
- *
- * `https://h/foundry/modules/evenfoundryvtt/g2/index.html` → `https://h/foundry`.
- * Outside the module path (dev preview) the bare origin is returned.
- */
-export function deriveFoundryBase(location: Pick<Location, 'origin' | 'pathname'>): string {
-  const idx = location.pathname.indexOf(MODULE_PATH_MARKER);
-  const prefix = idx >= 0 ? location.pathname.slice(0, idx) : '';
-  return `${location.origin}${prefix.replace(/\/+$/, '')}`;
+/** Credentials carried by a pairing payload (QR fragment or camera scan). */
+export function credentialsFromPayload(payload: PairingPayload): Credentials {
+  return {
+    room: payload.r,
+    key: payload.k,
+    ...(payload.l !== undefined ? { label: payload.l } : {}),
+    ...(payload.relay !== undefined ? { relay: payload.relay } : {}),
+  };
 }
 
 /**
@@ -81,68 +81,23 @@ export function deriveFoundryBase(location: Pick<Location, 'origin' | 'pathname'
  * @returns credentials, or `null` when no valid payload is present
  */
 export function consumePairingFragment(
-  location: Pick<Location, 'origin' | 'pathname' | 'search' | 'hash'>,
+  location: Pick<Location, 'pathname' | 'search' | 'hash'>,
   history: Pick<History, 'replaceState'>,
 ): Credentials | null {
   if (!/(^#|&)evf=/.test(location.hash)) return null;
   const payload = readPairingFragment(location.hash);
   history.replaceState(null, '', `${location.pathname}${location.search}`);
-  if (payload === null) return null;
-  return {
-    base: deriveFoundryBase(location),
-    userId: payload.u,
-    password: payload.p,
-    key: payload.k,
-  };
+  return payload === null ? null : credentialsFromPayload(payload);
 }
 
 /**
- * Builds credentials for the manual path (P03).
+ * Builds credentials from the 16-char code (room + key by HKDF, default relay).
  *
  * @throws Error('invalid manual code') when the code does not normalise to 16 chars
  */
-export async function credentialsFromManualCode(
-  base: string,
-  userId: string,
-  code: string,
-): Promise<Credentials> {
-  const password = normalizeManualCode(code);
-  if (password === null) throw new Error('invalid manual code');
-  return { base, userId, password, key: await deriveKeyFromManualCode(password, userId) };
-}
-
-/** A Foundry user offered by the `/join` page. */
-export interface JoinUser {
-  id: string;
-  name: string;
-}
-
-/** Suffix that identifies users created by the pairing dialog (P01). */
-export const G2_USER_SUFFIX = '(G2)';
-
-/**
- * Parses the user `<select>` of Foundry's `/join` HTML (fallback when `getJoinData` over
- * the socket is unavailable). Accepts both `name="userid"` (v13) and `name="userId"` (v14).
- * Only users whose name ends with "(G2)" are returned; disabled/empty options are skipped.
- */
-export function parseJoinUsers(html: string): JoinUser[] {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const select = doc.querySelector('select[name="userid"], select[name="userId"]');
-  if (select === null) return [];
-  const users: JoinUser[] = [];
-  for (const option of Array.from(select.querySelectorAll('option'))) {
-    const id = option.value.trim();
-    const name = (option.textContent ?? '').trim();
-    if (id !== '' && !option.disabled) users.push({ id, name });
-  }
-  return filterG2Users(users);
-}
-
-/** Keeps only "(G2)" users, sorted by name. */
-export function filterG2Users(users: readonly JoinUser[]): JoinUser[] {
-  return users
-    .filter((u) => u.name.trim().endsWith(G2_USER_SUFFIX))
-    .sort((a, b) => a.name.localeCompare(b.name));
+export async function credentialsFromCode(code: string): Promise<Credentials> {
+  const { room, key } = await deriveCodePairing(code);
+  return { room, key };
 }
 
 /** Diagnostic sink for storage failures (never fatal). */
@@ -201,17 +156,16 @@ export class CredentialStore {
   }
 
   /**
-   * Applies a `welcome.rotate` atomically: the new key (and password, when present)
-   * replace the old ones in a single record write, so a crash mid-way never leaves a
-   * mixed pair. A player-client projector rotates only the key (ADR-0017): a player
-   * cannot change a Foundry password, so the current one is kept.
+   * Applies a `welcome.rotate` atomically: new room and key replace the old ones in a
+   * single record write (label and relay are kept), so a crash mid-way never leaves a
+   * mixed pair.
    *
    * @throws Error when there are no credentials to rotate
    */
-  async rotate(rotate: { password?: string | undefined; key: string }): Promise<Credentials> {
+  async rotate(rotate: { room: string; key: string }): Promise<Credentials> {
     const current = await this.load();
     if (current === null) throw new Error('cannot rotate: no credentials');
-    const next = { ...current, password: rotate.password ?? current.password, key: rotate.key };
+    const next = { ...current, room: rotate.room, key: rotate.key };
     await this.save(next);
     return next;
   }
@@ -232,7 +186,13 @@ export class CredentialStore {
     if (raw === null || raw === undefined || raw === '') return null;
     try {
       const parsed = StoredCredentialsSchema.safeParse(JSON.parse(raw));
-      return parsed.success ? parsed.data : null;
+      if (!parsed.success) return null;
+      const { label, relay, ...base } = parsed.data;
+      return {
+        ...base,
+        ...(label !== undefined ? { label } : {}),
+        ...(relay !== undefined ? { relay } : {}),
+      };
     } catch {
       // Corrupted JSON is equivalent to "no credentials" — the user re-pairs.
       return null;

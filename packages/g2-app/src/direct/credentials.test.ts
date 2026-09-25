@@ -1,65 +1,44 @@
-import { buildPairingUrl, deriveKeyFromManualCode, generateDeviceKey } from '@evf/shared-protocol';
+import {
+  buildPairingUrl,
+  deriveCodePairing,
+  generateDeviceKey,
+  generateRoomId,
+} from '@evf/shared-protocol';
 import { describe, expect, it, vi } from 'vitest';
-import { MemoryStorage, makeCredentials, USER_ID } from './__fixtures__/direct-fixtures.js';
+import { MemoryStorage, makeCredentials } from './__fixtures__/direct-fixtures.js';
 import {
   CREDENTIALS_STORAGE_KEY,
   CredentialStore,
   consumePairingFragment,
-  credentialsFromManualCode,
-  deriveFoundryBase,
-  parseJoinUsers,
+  credentialsFromCode,
+  credentialsFromPayload,
   type SdkKeyValue,
 } from './credentials.js';
 
 function locationOf(url: string) {
   const u = new URL(url);
-  return { origin: u.origin, pathname: u.pathname, search: u.search, hash: u.hash };
+  return { pathname: u.pathname, search: u.search, hash: u.hash };
 }
 
-describe('deriveFoundryBase', () => {
-  it('keeps the routePrefix before /modules/evenfoundryvtt/', () => {
-    expect(
-      deriveFoundryBase(locationOf('https://h.example/vtt/modules/evenfoundryvtt/g2/index.html')),
-    ).toBe('https://h.example/vtt');
-    expect(
-      deriveFoundryBase(locationOf('https://h.example/modules/evenfoundryvtt/g2/index.html')),
-    ).toBe('https://h.example');
-  });
-
-  it('falls back to the bare origin outside the module path (dev preview)', () => {
-    expect(deriveFoundryBase(locationOf('http://localhost:5173/index.html'))).toBe(
-      'http://localhost:5173',
-    );
-  });
-});
-
 describe('consumePairingFragment', () => {
-  const payload = { v: 1 as const, u: USER_ID, p: 'correct-horse-battery', k: generateDeviceKey() };
+  const payload = { v: 2 as const, r: generateRoomId(), k: generateDeviceKey(), l: 'Thorin' };
 
-  it('parses the QR fragment, derives base and strips the fragment', () => {
-    const url = buildPairingUrl('https://h.example/vtt', payload);
+  it('parses the QR fragment and strips it from the URL', () => {
+    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/index.html', payload);
     const history = { replaceState: vi.fn() };
-    const creds = consumePairingFragment(locationOf(`${url.replace('#', '?x=1#')}`), history);
-    expect(creds).toEqual({
-      base: 'https://h.example/vtt',
-      userId: payload.u,
-      password: payload.p,
-      key: payload.k,
-    });
+    const creds = consumePairingFragment(locationOf(url.replace('#', '?x=1#')), history);
+    expect(creds).toEqual({ room: payload.r, key: payload.k, label: 'Thorin' });
     expect(history.replaceState).toHaveBeenCalledWith(
       null,
       '',
-      '/vtt/modules/evenfoundryvtt/g2/index.html?x=1',
+      '/EvenFoundryVTT/app/index.html?x=1',
     );
   });
 
   it('strips a malformed evf fragment and returns null', () => {
     const history = { replaceState: vi.fn() };
     expect(
-      consumePairingFragment(
-        locationOf('https://h.example/modules/evenfoundryvtt/g2/index.html#evf=garbage'),
-        history,
-      ),
+      consumePairingFragment(locationOf('https://h.example/#evf=garbage'), history),
     ).toBeNull();
     expect(history.replaceState).toHaveBeenCalledOnce();
   });
@@ -71,47 +50,23 @@ describe('consumePairingFragment', () => {
   });
 });
 
-describe('credentialsFromManualCode', () => {
-  it('uses the normalised code as password and HKDF key', async () => {
-    const creds = await credentialsFromManualCode('https://h', 'user1', '7qk3 mx9p 2hra c4te');
-    expect(creds).toEqual({
-      base: 'https://h',
-      userId: 'user1',
-      password: '7QK3MX9P2HRAC4TE',
-      key: await deriveKeyFromManualCode('7QK3-MX9P-2HRA-C4TE', 'user1'),
+describe('credentialsFromPayload / credentialsFromCode', () => {
+  it('keeps the relay override and the label only when present', () => {
+    const r = generateRoomId();
+    const k = generateDeviceKey();
+    expect(credentialsFromPayload({ v: 2, r, k })).toEqual({ room: r, key: k });
+    expect(credentialsFromPayload({ v: 2, r, k, relay: 'ws://x:1' })).toEqual({
+      room: r,
+      key: k,
+      relay: 'ws://x:1',
     });
   });
 
-  it('rejects malformed codes', async () => {
-    await expect(credentialsFromManualCode('https://h', 'u', 'short')).rejects.toThrow(
-      'invalid manual code',
+  it('derives room and key from the code', async () => {
+    expect(await credentialsFromCode('7qk3 mx9p 2hra c4te')).toEqual(
+      await deriveCodePairing('7QK3-MX9P-2HRA-C4TE'),
     );
-  });
-});
-
-describe('parseJoinUsers', () => {
-  const html = `<!doctype html><html><body><form id="join-game">
-    <select name="userid">
-      <option value="">Select user</option>
-      <option value="gm0000000000000a">Anna</option>
-      <option value="zz00000000000001">Zoe (G2)</option>
-      <option value="lu00000000000002"> Luca (G2) </option>
-      <option value="off0000000000003" disabled>Old (G2)</option>
-    </select><input name="password" type="password"></form></body></html>`;
-
-  it('lists only enabled "(G2)" users sorted by name', () => {
-    expect(parseJoinUsers(html)).toEqual([
-      { id: 'lu00000000000002', name: 'Luca (G2)' },
-      { id: 'zz00000000000001', name: 'Zoe (G2)' },
-    ]);
-  });
-
-  it('accepts the v14 camelCase select name', () => {
-    expect(parseJoinUsers(html.replace('name="userid"', 'name="userId"'))).toHaveLength(2);
-  });
-
-  it('returns an empty list when no select is present (client-rendered join page)', () => {
-    expect(parseJoinUsers('<html><body><div id="setup"></div></body></html>')).toEqual([]);
+    await expect(credentialsFromCode('short')).rejects.toThrow('invalid manual code');
   });
 });
 
@@ -154,33 +109,27 @@ describe('CredentialStore', () => {
     expect(await new CredentialStore(storage, warn).load()).toBeNull();
     storage.data.set(CREDENTIALS_STORAGE_KEY, JSON.stringify({ base: 'x' }));
     expect(await new CredentialStore(storage, warn).load()).toBeNull();
+    // A v1 (Foundry login) record under the old key is simply not read: re-pair.
+    storage.data.set('evf.direct.credentials.v1', JSON.stringify({ userId: 'u' }));
+    storage.data.delete(CREDENTIALS_STORAGE_KEY);
+    expect(await new CredentialStore(storage, warn).load()).toBeNull();
   });
 
-  it('rotates password and key atomically in one record', async () => {
+  it('rotates room and key atomically in one record, keeping label and relay', async () => {
     const storage = new MemoryStorage();
     const store = new CredentialStore(storage, warn);
-    await store.save(makeCredentials());
-    const key = generateDeviceKey();
-    const next = await store.rotate({ password: 'rotated-password-123', key });
-    expect(next.password).toBe('rotated-password-123');
-    expect(next.key).toBe(key);
-    expect(JSON.parse(storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(next);
-  });
-
-  it('a key-only rotation (player-client projector, ADR-0017) keeps the password', async () => {
-    const storage = new MemoryStorage();
-    const store = new CredentialStore(storage, warn);
-    const creds = makeCredentials();
+    const creds = makeCredentials({ relay: 'ws://10.0.0.2:8787' });
     await store.save(creds);
-    const key = generateDeviceKey();
-    const next = await store.rotate({ key });
-    expect(next).toEqual({ ...creds, key });
+    const rotate = { room: generateRoomId(), key: generateDeviceKey() };
+    const next = await store.rotate(rotate);
+    expect(next).toEqual({ ...creds, ...rotate });
     expect(JSON.parse(storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(next);
+    expect(await new CredentialStore(storage, warn).load()).toEqual(next);
   });
 
   it('refuses to rotate without credentials', async () => {
     await expect(
-      new CredentialStore(new MemoryStorage(), warn).rotate({ password: 'x'.repeat(12), key: 'k' }),
+      new CredentialStore(new MemoryStorage(), warn).rotate({ room: 'r', key: 'k' }),
     ).rejects.toThrow('no credentials');
   });
 

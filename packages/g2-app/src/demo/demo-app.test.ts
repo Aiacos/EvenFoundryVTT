@@ -48,7 +48,10 @@ describe('layoutOf', () => {
   });
 });
 
-describe('startDemo', () => {
+// Full demo scenes run the real pixel renderer end-to-end: ~1 s each normally, but v8
+// coverage instrumentation (CI gate `test:coverage`) pushed them past Vitest's 5 s default
+// on slower runners — a timing flake, not a hang (reproduced on develop, 2026-09-25).
+describe('startDemo', { timeout: 20_000 }, () => {
   it('plays a single scenario, emits the scene marker then EVF_READY', async () => {
     const { fake, root, e } = env('actions');
     const demo = await startDemo(e);

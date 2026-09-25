@@ -1,18 +1,19 @@
 /**
- * Single entry of the sideloaded G2 app (ADR-0016): binds the browser environment to
+ * Single entry of the glasses app (ADR-0019): binds the browser environment to
  * {@link startApp}. All logic lives in `direct/app.ts` (testable); this file only reads
  * globals.
  *
  * Debug surfaces (P5) are wired here and fail closed — without `?debug=1` / `?demo=…`
  * none of them exists:
- * - `?demo=<scenario>|tour` boots `demo/demo-app.ts` instead of the Foundry session;
+ * - `?demo=<scenario>|tour` boots `demo/demo-app.ts` instead of the relay session;
  * - both modes create the debug channel (console.warn/error + uncaught errors + session
  *   diagnostics), tap the bridge (display mirror, `EVF_READY` marker) and expose
  *   `window.__evf`.
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
  */
 import { type EvenAppBridge, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
+import { DEFAULT_RELAY_URL } from '@evf/shared-protocol';
 import { type BridgeTap, tapBridge } from './debug/bridge-tap.js';
 import { captureConsole, captureGlobalErrors, emitMarker } from './debug/capture.js';
 import { createDebugLog, type DebugLog, setActiveDebugLog } from './debug/debug-log.js';
@@ -54,7 +55,7 @@ if (root === null) throw new Error('index.html is missing #evf-phone');
 
 const flags = parseDebugFlags(window.location.search);
 
-/** Real app (Foundry session); `log` is non-null in `?debug=1` mode only. */
+/** Real app (relay session); `log` is non-null in `?debug=1` mode only. */
 async function bootApp(mount: HTMLElement, log: DebugLog | null): Promise<void> {
   let tap: BridgeTap | null = null;
   let store: AppStore | null = null;
@@ -72,7 +73,7 @@ async function bootApp(mount: HTMLElement, log: DebugLog | null): Promise<void> 
     storage: browserStorage(),
     deviceLanguage: () => navigator.language,
     appVersion: __EVF_APP_VERSION__,
-    moduleVersion: __EVF_MODULE_VERSION__,
+    relayUrl: __EVF_RELAY_URL__ || DEFAULT_RELAY_URL,
     getBridge: async () => {
       const bridge = await getBridge();
       if (bridge === null || log === null) return bridge;

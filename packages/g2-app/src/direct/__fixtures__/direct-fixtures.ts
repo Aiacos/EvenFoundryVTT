@@ -1,15 +1,16 @@
 /**
- * Test fixtures for the direct channel: schema-valid snapshots, an in-memory storage,
- * a fake socket.io socket and a fake GM projector that seals replies with the real
- * AES-GCM envelope (`@evf/shared-protocol`).
+ * Test fixtures for the direct channel: schema-valid snapshots, an in-memory storage, a
+ * fake relay link and a fake projector that seals replies with the real AES-GCM envelope
+ * (`@evf/shared-protocol`).
  */
 import {
   ABILITY_KEYS,
   type ActionResultPayload,
   type CharacterSnapshot,
   type CombatSnapshot,
-  DIRECT_SOCKET_EVENT,
+  GLASSES_ADDRESS,
   generateDeviceKey,
+  generateRoomId,
   importDeviceKey,
   type MapSnapshot,
   open,
@@ -19,19 +20,14 @@ import {
   seal,
 } from '@evf/shared-protocol';
 import type { Credentials, KeyValueStorage } from '../credentials.js';
-import type { SocketLike } from '../foundry-client.js';
+import type { OpenRelay, RelayLink } from '../relay-client.js';
 
+/** Foundry user id of the projecting player (action results name it). */
 export const USER_ID = 'aB3dE5fG7hI9jK1l';
 
 /** Fresh QR-style credentials. */
 export function makeCredentials(overrides: Partial<Credentials> = {}): Credentials {
-  return {
-    base: 'https://foundry.example/vtt',
-    userId: USER_ID,
-    password: 'correct-horse-battery',
-    key: generateDeviceKey(),
-    ...overrides,
-  };
+  return { room: generateRoomId(), key: generateDeviceKey(), label: 'Thorin', ...overrides };
 }
 
 export function makeCharacter(overrides: Partial<CharacterSnapshot> = {}): CharacterSnapshot {
@@ -105,74 +101,104 @@ export class MemoryStorage implements KeyValueStorage {
   }
 }
 
-type Listener = (...args: never[]) => void;
-
-/** In-memory socket.io double: records emits, lets tests deliver server events. */
-export class FakeSocket implements SocketLike {
-  readonly listeners = new Map<string, Set<Listener>>();
-  readonly emitted: Array<{ event: string; args: unknown[] }> = [];
-  disconnected = false;
-
-  on(event: string, listener: Listener): this {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event)?.add(listener);
-    return this;
+/** In-memory relay link: records sent frames, lets tests deliver frames / peer events. */
+export class FakeLink implements RelayLink {
+  readonly sent: unknown[] = [];
+  closed = false;
+  open = true;
+  private frame: (frame: unknown) => void = () => {};
+  private peer: (up: boolean) => void = () => {};
+  private closeListener: (code: number) => void = () => {};
+  constructor(
+    readonly relay: string,
+    readonly room: string,
+  ) {}
+  send(frame: object): boolean {
+    if (!this.open) return false;
+    this.sent.push(frame);
+    return true;
   }
-  off(event: string, listener?: Listener): this {
-    if (listener === undefined) this.listeners.delete(event);
-    else this.listeners.get(event)?.delete(listener);
-    return this;
+  onFrame(listener: (frame: unknown) => void): void {
+    this.frame = listener;
   }
-  emit(event: string, ...args: unknown[]): this {
-    this.emitted.push({ event, args });
-    return this;
+  onPeer(listener: (up: boolean) => void): void {
+    this.peer = listener;
   }
-  disconnect(): this {
-    this.disconnected = true;
-    return this;
+  onClose(listener: (code: number) => void): void {
+    this.closeListener = listener;
   }
-  /** Simulates a server → client event. */
-  deliver(event: string, ...args: unknown[]): void {
-    for (const l of [...(this.listeners.get(event) ?? [])])
-      (l as (...a: unknown[]) => void)(...args);
+  close(): void {
+    this.closed = true;
+    this.open = false;
+  }
+  /** Relay → app frame. */
+  deliver(frame: unknown): void {
+    this.frame(frame);
+  }
+  /** Relay control: the projector joined / left. */
+  setPeer(up: boolean): void {
+    this.peer(up);
+  }
+  /** The relay dropped the socket. */
+  drop(code = 1006): void {
+    this.open = false;
+    this.closeListener(code);
   }
 }
 
-/** Plaintext app message as decrypted by the fake GM. */
+/** A fake relay: `open` resolves a new {@link FakeLink} (or fails when `failing`). */
+export class FakeRelay {
+  readonly links: FakeLink[] = [];
+  failing: Error | null = null;
+  readonly open: OpenRelay = async (relay, room) => {
+    if (this.failing !== null) throw this.failing;
+    const link = new FakeLink(relay, room);
+    this.links.push(link);
+    return link;
+  };
+  /** The most recent link. */
+  get last(): FakeLink {
+    const link = this.links[this.links.length - 1];
+    if (link === undefined) throw new Error('no relay link opened');
+    return link;
+  }
+}
+
+/** Plaintext app message as decrypted by the fake projector. */
 export type Decoded = Record<string, unknown> & { t: string; rid?: string };
 
-/** Fake GM projector bound to one socket and one device key. */
-export class FakeGm {
+/** Fake projector on one link with one device key. */
+export class FakeProjector {
   private cursor = 0;
   constructor(
-    readonly socket: FakeSocket,
+    readonly link: FakeLink,
     public keyB64: string,
-    readonly userId = USER_ID,
   ) {}
 
-  /** Decrypts every envelope the app emitted since the last call. */
+  /** Decrypts every frame the app sent since the last call. */
   async drain(): Promise<Decoded[]> {
     const key = await importDeviceKey(this.keyB64);
     const out: Decoded[] = [];
-    const pending = this.socket.emitted.slice(this.cursor);
-    this.cursor = this.socket.emitted.length;
-    for (const { event, args } of pending) {
-      if (event !== DIRECT_SOCKET_EVENT) continue;
-      const opened = await open(key, args[0] as SealedEnvelope);
+    const pending = this.link.sent.slice(this.cursor);
+    this.cursor = this.link.sent.length;
+    for (const frame of pending) {
+      const env = frame as SealedEnvelope;
+      if (env.from !== GLASSES_ADDRESS || env.to !== PROJECTOR_ADDRESS) continue;
+      const opened = await open(key, env);
       if (opened.ok) out.push(opened.message as Decoded);
     }
     return out;
   }
 
-  /** Seals `message` for the app and delivers it on the relay. */
+  /** Seals `message` for the app and delivers it on the link. */
   async reply(
     message: object,
     keyB64 = this.keyB64,
-    to = this.userId,
     from: string = PROJECTOR_ADDRESS,
+    to: string = GLASSES_ADDRESS,
   ): Promise<void> {
     const key = await importDeviceKey(keyB64);
-    this.socket.deliver(DIRECT_SOCKET_EVENT, await seal(key, from, to, message));
+    this.link.deliver(await seal(key, from, to, message));
   }
 }
 

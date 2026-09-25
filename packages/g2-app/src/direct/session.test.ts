@@ -1,13 +1,16 @@
 import {
+  buildPairingUrl,
   CHARACTER_DELTA_TYPE,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
-  DIRECT_SOCKET_EVENT,
+  DEFAULT_RELAY_URL,
+  deriveCodePairing,
   EVENT_LOG_DELTA_TYPE,
+  formatManualCode,
   generateDeviceKey,
+  generateRoomId,
   importDeviceKey,
   LOG_DELTA_TYPE,
-  PROJECTOR_ADDRESS,
   R1_ACTION_ECONOMY_TYPE,
   R1_ACTION_RESULT_TYPE,
   R1_MOVEMENT_BUDGET_TYPE,
@@ -20,8 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppStore, DEFAULT_SETTINGS } from '../state/app-store.js';
 import {
   type Decoded,
-  FakeGm,
-  FakeSocket,
+  FakeProjector,
+  FakeRelay,
   MemoryStorage,
   makeActionResult,
   makeCharacter,
@@ -29,14 +32,14 @@ import {
   makeCredentials,
   makeMap,
   settle,
-  USER_ID,
 } from './__fixtures__/direct-fixtures.js';
 import { CREDENTIALS_STORAGE_KEY, CredentialStore } from './credentials.js';
-import { FoundryClientError } from './foundry-client.js';
 import {
+  ASSETS_MAX,
   backoffDelay,
   DIAGNOSTICS_MAX,
   DirectSession,
+  hydrateMap,
   LOG_TAIL_MAX,
   mergeLog,
   SESSION_TIMING,
@@ -47,69 +50,54 @@ function logEvent(id: string, timestamp: number) {
   return { id, timestamp, actorName: 'Mira', kind: 'chat' as const, description: id };
 }
 
-function setup() {
+function setup(relayUrl?: string) {
   const store = createAppStore();
   const storage = new MemoryStorage();
   const credentials = new CredentialStore(storage, () => {});
-  let socket = new FakeSocket();
-  const client = {
-    probeStatus: vi.fn(async () => ({ active: true, version: '14.360', generation: 14 })),
-    fetchJoinPage: vi.fn(async () => '<html></html>'),
-    login: vi.fn(async (_u: string, _p: string) => {}),
-    openSocket: vi.fn(async () => {
-      socket = new FakeSocket();
-      return socket;
-    }),
-    listG2Users: vi.fn(async () => [{ id: 'u', name: 'Luca (G2)' }]),
-  };
+  const relay = new FakeRelay();
   let n = 0;
   const session = new DirectSession({
     store,
     credentials,
-    base: 'https://foundry.example/vtt',
-    createClient: () => client,
-    appVersion: '0.2.0',
-    moduleVersion: '0.2.0',
+    openRelay: relay.open,
+    ...(relayUrl !== undefined ? { relayUrl } : {}),
+    appVersion: '0.4.0',
     settingsStorage: storage,
     deviceLanguage: () => 'it-IT',
     random: () => 0,
     uuid: () => `rid-${++n}`,
   });
   const creds = makeCredentials();
-  const h = {
+  return {
     store,
     storage,
     credentials,
-    client,
+    relay,
     session,
     creds,
-    socket: () => socket,
-    gm: () => new FakeGm(socket, creds.key),
+    gm: () => new FakeProjector(relay.last, creds.key),
   };
-  return h;
 }
 
 type Harness = ReturnType<typeof setup>;
 
-/** Drives start → hello → welcome → snapshots → online. Returns the GM double. */
-async function goOnline(h: Harness, welcomeExtra: object = {}): Promise<FakeGm> {
+const WELCOME = {
+  t: 'welcome',
+  actorId: 'actor1',
+  actorName: 'Thorin',
+  userName: 'Luca',
+  gmName: 'Anna',
+  worldTitle: 'Cripta',
+};
+
+/** Drives start → hello → welcome → snapshots → online. Returns the projector double. */
+async function goOnline(h: Harness, welcomeExtra: object = {}): Promise<FakeProjector> {
   await h.session.start(h.creds);
   await settle();
   const gm = h.gm();
   const [hello] = await gm.drain();
-  await gm.reply({
-    t: 'welcome',
-    rid: hello?.rid,
-    actorId: 'actor1',
-    actorName: 'Thorin',
-    userName: 'Luca (G2)',
-    gmName: 'Anna',
-    worldTitle: 'Cripta',
-    ...welcomeExtra,
-  });
+  await gm.reply({ ...WELCOME, rid: hello?.rid, ...welcomeExtra });
   await settle();
-  if ('rotate' in welcomeExtra)
-    gm.keyB64 = (welcomeExtra as { rotate: { key: string } }).rotate.key;
   await gm.drain();
   await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
   await gm.reply({ t: 'snapshot', what: 'map', data: makeMap() });
@@ -152,278 +140,220 @@ describe('pure helpers', () => {
   });
 });
 
-describe('connect flow', () => {
+describe('connect flow (relay, ADR-0019)', () => {
   it('shows unpaired without credentials', async () => {
     const h = setup();
     await h.session.start(null);
     expect(h.store.get().connection).toEqual({ status: 'unpaired' });
-    expect(h.client.fetchJoinPage).not.toHaveBeenCalled();
+    expect(h.relay.links).toHaveLength(0);
   });
 
-  it('walks M10 steps to online and fills identity + snapshots', async () => {
+  it('walks relay → projector → paired → character → scene to online', async () => {
     const h = setup();
-    const statuses: string[] = [];
-    h.store.subscribe((s) =>
-      statuses.push(`${s.connection.status}:${JSON.stringify(s.connection.steps ?? {})}`),
-    );
     await h.session.start(h.creds);
     await settle();
-    expect(h.client.login).toHaveBeenCalledWith(USER_ID, h.creds.password);
-    const gm = h.gm();
-    const [hello] = await gm.drain();
-    expect(hello).toMatchObject({ t: 'hello', proto: 1, app: '0.2.0', locale: 'it' });
+    expect(h.relay.last.relay).toBe(DEFAULT_RELAY_URL);
+    expect(h.relay.last.room).toBe(h.creds.room);
     expect(h.store.get().connection).toMatchObject({
       status: 'connecting',
-      server: 'foundry.example',
-      steps: { server: true, login: true, gm: false, character: false, scene: false },
+      server: 'evf-relay.aiacos.workers.dev',
+      label: 'Thorin',
+      steps: { relay: true, projector: false, paired: false },
     });
-    await gm.reply({
-      t: 'welcome',
-      rid: hello?.rid,
-      actorId: 'actor1',
-      actorName: 'Thorin',
-      userName: 'Luca (G2)',
-      gmName: 'Anna',
-      worldTitle: 'Cripta',
-    });
+    const gm = h.gm();
+    const [hello] = await gm.drain();
+    expect(hello).toMatchObject({ t: 'hello', proto: 2, app: '0.4.0', locale: 'it' });
+    h.relay.last.setPeer(true);
+    expect(h.store.get().connection.steps?.projector).toBe(true);
     await settle();
-    const gets = await gm.drain();
-    // The four `get`s are sealed concurrently (async WebCrypto), so their arrival order
-    // is not deterministic — assert the set, not the order.
-    expect(gets.map((m) => m.what).sort()).toEqual(['character', 'combat', 'log', 'map']);
-    expect(h.store.get().connection.steps?.gm).toBe(true);
+    const [again] = await gm.drain();
+    await gm.reply({ ...WELCOME, rid: again?.rid, locale: 'en', moduleVersion: '0.3.0' });
+    await settle();
+    expect(h.store.get().connection).toMatchObject({
+      status: 'connecting',
+      userName: 'Luca',
+      actorName: 'Thorin',
+      foundryLocale: 'en',
+      steps: { paired: true },
+    });
+    expect(h.session.info().moduleVersion).toBe('0.3.0');
+    expect((await gm.drain()).map((m) => m.what).sort()).toEqual([
+      'character',
+      'combat',
+      'log',
+      'map',
+    ]);
     await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
-    await gm.reply({ t: 'snapshot', what: 'combat', data: null });
     await gm.reply({ t: 'snapshot', what: 'map', data: makeMap() });
     await settle();
-    const s = h.store.get();
-    expect(s.connection).toEqual({
-      status: 'online',
-      server: 'foundry.example',
-      userName: 'Luca (G2)',
-      gmName: 'Anna',
-      actorName: 'Thorin',
-      worldTitle: 'Cripta',
-      lastSyncAt: 1_000_000,
-    });
-    expect(s.character?.name).toBe('Thorin');
-    expect(s.map?.name).toBe('Cripta');
-    expect(s.combat).toBeNull();
-    expect(statuses.some((x) => x.startsWith('connecting'))).toBe(true);
-    expect(h.session.info().foundryVersion).toBe('14.360');
+    expect(h.store.get().connection.status).toBe('online');
+    expect(h.store.get().character?.name).toBe('Thorin');
+  });
+
+  it('uses the build relay, and a pairing override before it', async () => {
+    const h = setup('ws://10.0.0.2:8787');
+    await h.session.start(h.creds);
+    await settle();
+    expect(h.relay.last.relay).toBe('ws://10.0.0.2:8787');
+    await h.session.start(makeCredentials({ relay: 'wss://self.example' }));
+    await settle();
+    expect(h.relay.last.relay).toBe('wss://self.example');
   });
 
   it('persists fragment credentials before connecting', async () => {
     const h = setup();
-    await goOnline(h);
-    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(h.creds);
-  });
-
-  it('applies welcome.rotate atomically and switches to the new key', async () => {
-    const h = setup();
-    const rotate = { password: 'rotated-password-1', key: generateDeviceKey() };
-    const gm = await goOnline(h, { rotate });
-    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual({
-      ...h.creds,
-      ...rotate,
+    await h.session.start(h.creds);
+    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toMatchObject({
+      room: h.creds.room,
     });
-    expect(h.store.get().connection.status).toBe('online');
-    h.session.refresh('log');
-    await settle();
-    expect((await gm.drain()).map((m) => m.t)).toEqual(['get']);
   });
 
-  it('addresses the elected projector and applies a key-only rotation (ADR-0017)', async () => {
+  it('rotation: persists the new room + key and reconnects there (single-use QR)', async () => {
     const h = setup();
     await h.session.start(h.creds);
     await settle();
-    const [raw] = h.socket().emitted.filter((e) => e.event === DIRECT_SOCKET_EVENT);
-    expect((raw?.args[0] as { to: string; from: string }).to).toBe(PROJECTOR_ADDRESS);
-    expect((raw?.args[0] as { to: string; from: string }).from).toBe(USER_ID);
-    h.session.dispose();
-
-    const h2 = setup();
-    const rotate = { key: generateDeviceKey() };
-    await goOnline(h2, { rotate });
-    expect(JSON.parse(h2.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual({
-      ...h2.creds,
-      key: rotate.key,
-    });
-    expect(h2.store.get().connection.status).toBe('online');
+    const gm = h.gm();
+    const [hello] = await gm.drain();
+    const rotate = { room: generateRoomId(), key: generateDeviceKey() };
+    await gm.reply({ ...WELCOME, rid: hello?.rid, rotate });
+    await settle();
+    expect(h.relay.links).toHaveLength(2);
+    expect(h.relay.links[0]?.closed).toBe(true);
+    expect(h.relay.last.room).toBe(rotate.room);
+    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toMatchObject(rotate);
+    const next = new FakeProjector(h.relay.last, rotate.key);
+    expect((await next.drain())[0]?.t).toBe('hello');
   });
 
-  it('survives a projector switch: replies from another sender with the device key are accepted', async () => {
+  it('regression (real relay): peer-up racing the first hello — a welcome to either hello counts', async () => {
     const h = setup();
-    const gm = await goOnline(h);
-    // The player's browser went offline: a GM client answers now, with a sender id of
-    // its own — authenticity comes from the key, the sender is informational.
-    await gm.reply(
-      { t: 'delta', seq: 1, topic: COMBAT_STATE_DELTA_TYPE, data: makeCombat() },
-      gm.keyB64,
-      USER_ID,
-      'gm-browser',
-    );
+    await h.session.start(h.creds);
+    h.relay.last.setPeer(true); // the relay's peer-up for a newcomer arrives right after open
     await settle();
-    expect(h.store.get().combat).toEqual(makeCombat());
-    // A forged envelope (wrong key) is still rejected, whatever it claims to be.
-    await gm.reply(
-      { t: 'delta', seq: 2, topic: COMBAT_STATE_DELTA_TYPE, data: null },
-      generateDeviceKey(),
-    );
+    const gm = h.gm();
+    const hellos = await gm.drain();
+    expect(hellos.map((m) => m.t)).toEqual(['hello', 'hello']);
+    // The projector answered the FIRST one (it rotates, then leaves the room).
+    const rotate = { room: generateRoomId(), key: generateDeviceKey() };
+    await gm.reply({ ...WELCOME, rid: hellos[0]?.rid, rotate });
     await settle();
-    expect(h.store.get().combat).toEqual(makeCombat());
-    expect(h.session.info().diagnostics.at(-1)?.message).toContain('envelope rejected');
+    expect(h.relay.last.room).toBe(rotate.room);
+  });
+
+  it('keeps saying hello every welcomeTimeout while the projector is away (no lost hello)', async () => {
+    const h = setup();
+    await h.session.start(h.creds);
+    await settle();
+    const gm = h.gm();
+    await gm.drain();
+    vi.advanceTimersByTime(SESSION_TIMING.welcomeTimeout);
+    await settle();
+    vi.advanceTimersByTime(SESSION_TIMING.welcomeTimeout);
+    await settle();
+    expect((await gm.drain()).map((m) => m.t)).toEqual(['hello', 'hello']);
+    expect(
+      h.session.info().diagnostics.filter((d) => d.message.startsWith('no-projector')),
+    ).toHaveLength(1);
   });
 
   it('ignores a welcome that does not answer our hello', async () => {
     const h = setup();
     await h.session.start(h.creds);
     await settle();
-    const gm = h.gm();
-    await gm.drain();
-    await gm.reply({
-      t: 'welcome',
-      rid: 'other',
-      actorId: 'a',
-      actorName: '',
-      userName: '',
-      gmName: '',
-      worldTitle: '',
-    });
+    await h.gm().reply({ ...WELCOME, rid: 'other' });
     await settle();
-    expect(h.store.get().connection.steps?.gm).toBe(false);
+    expect(h.store.get().connection.status).toBe('connecting');
   });
 
-  it('goes offline with cause no-gm when welcome does not arrive in 8 s, then retries', async () => {
+  it('no projector: offline without retry, link kept; peer-up says hello again', async () => {
     const h = setup();
     await h.session.start(h.creds);
     await settle();
     vi.advanceTimersByTime(SESSION_TIMING.welcomeTimeout);
+    expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'no-projector' });
+    expect(h.store.get().connection.retryInMs).toBeUndefined();
+    expect(h.relay.last.closed).toBe(false);
+    const gm = h.gm();
+    await gm.drain();
+    h.relay.last.setPeer(true);
     expect(h.store.get().connection).toMatchObject({
-      status: 'offline',
-      cause: 'no-gm',
-      attempt: 1,
-      retryInMs: 1_000,
-      server: 'foundry.example',
+      status: 'connecting',
+      steps: { relay: true, projector: true },
     });
-    expect(h.socket().disconnected).toBe(true);
-    vi.advanceTimersByTime(1_000);
     await settle();
-    expect(h.client.openSocket).toHaveBeenCalledTimes(2);
-    expect(h.store.get().connection.status).toBe('connecting');
+    const [hello] = await gm.drain();
+    expect(hello?.t).toBe('hello');
   });
 
-  it('backs off exponentially on network errors and counts down', async () => {
+  it('projector leaves while online: offline no-projector, data kept; returns: online again', async () => {
     const h = setup();
-    h.client.login.mockRejectedValue(new FoundryClientError('network', 'down'));
-    await h.session.start(h.creds);
+    const gm = await goOnline(h);
+    h.relay.last.setPeer(false);
+    expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'no-projector' });
+    expect(h.store.get().character?.name).toBe('Thorin');
+    h.relay.last.setPeer(false);
+    h.relay.last.setPeer(true);
     await settle();
-    const seen: number[] = [];
-    for (let i = 0; i < 7; i++) {
-      const c = h.store.get().connection;
-      expect(c).toMatchObject({ status: 'offline', cause: 'network', attempt: i + 1 });
-      seen.push(c.retryInMs ?? -1);
-      if (i === 3) {
-        // 8 s step: the 1 s countdown tick updates the remaining time.
-        vi.advanceTimersByTime(SESSION_TIMING.countdownTick);
-        expect(h.store.get().connection.retryInMs).toBe(7_000);
-        vi.advanceTimersByTime(7_000);
-      } else {
-        vi.advanceTimersByTime(c.retryInMs ?? 0);
-      }
-      await settle();
-    }
-    expect(seen).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
+    const [hello] = await gm.drain();
+    await gm.reply({ ...WELCOME, rid: hello?.rid });
+    await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
+    await gm.reply({ t: 'snapshot', what: 'map', data: makeMap() });
+    await settle();
+    expect(h.store.get().connection.status).toBe('online');
+    h.relay.last.setPeer(true); // already welcomed: nothing
   });
 
-  it('treats server errors and unexpected throws as network outages', async () => {
+  it('backs off exponentially when the relay is unreachable and counts down', async () => {
     const h = setup();
-    h.client.fetchJoinPage.mockRejectedValueOnce(new FoundryClientError('server', 'HTTP 503'));
+    h.relay.failing = new Error('relay did not answer');
     await h.session.start(h.creds);
-    await settle();
-    expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'network' });
-    h.client.openSocket.mockRejectedValueOnce('weird');
-    h.session.reconnect();
     await settle();
     expect(h.store.get().connection).toMatchObject({
       status: 'offline',
       cause: 'network',
       attempt: 1,
+      retryInMs: 1_000,
     });
-    expect(h.session.info().diagnostics.at(-1)?.message).toContain('weird');
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(h.store.get().connection).toMatchObject({ attempt: 2, retryInMs: 2_000 });
+    vi.advanceTimersByTime(SESSION_TIMING.countdownTick);
+    expect(h.store.get().connection.retryInMs).toBe(1_000);
+    h.relay.failing = null;
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(h.store.get().connection.status).toBe('connecting');
   });
 
-  it('revokes and clears credentials when login is rejected', async () => {
+  it('non-Error failures are reported as network outages', async () => {
     const h = setup();
-    h.client.login.mockRejectedValue(new FoundryClientError('auth', 'HTTP 401'));
+    h.relay.failing = 'boom' as unknown as Error;
     await h.session.start(h.creds);
     await settle();
-    expect(h.store.get().connection).toEqual({ status: 'revoked', cause: 'auth' });
-    expect(h.storage.data.has(CREDENTIALS_STORAGE_KEY)).toBe(false);
+    expect(h.session.info().diagnostics.at(-1)?.message).toBe('network: boom');
   });
 
-  it('goes offline with cause access on a login wall and KEEPS the credentials', async () => {
-    const h = setup();
-    h.client.login.mockRejectedValue(
-      new FoundryClientError(
-        'access',
-        'POST /join was redirected to https://eu.forge-vtt.com/game/x',
-      ),
-    );
-    await h.session.start(h.creds);
-    await settle();
-    expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'access' });
-    expect(h.storage.data.has(CREDENTIALS_STORAGE_KEY)).toBe(true);
-  });
-
-  it('drops stale continuations when the flow is superseded', async () => {
+  it('drops a link that opens after the flow was superseded', async () => {
     const h = setup();
     let release: () => void = () => {};
-    h.client.login.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
-    const started = h.session.start(h.creds);
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const open = h.relay.open;
+    (h.session as unknown as { deps: { openRelay: typeof open } }).deps.openRelay = async (
+      relay,
+      room,
+    ) => {
+      await gate;
+      return open(relay, room);
+    };
+    const first = h.session.start(h.creds);
     await settle();
     h.session.disconnect();
     release();
-    await started;
-    expect(h.client.openSocket).not.toHaveBeenCalled();
-    expect(h.store.get().connection.status).toBe('offline');
-  });
-
-  it('closes a socket that opens after the flow was superseded', async () => {
-    const h = setup();
-    const late = new FakeSocket();
-    let release: (s: FakeSocket) => void = () => {};
-    h.client.openSocket.mockImplementationOnce(() => new Promise<FakeSocket>((r) => (release = r)));
-    const started = h.session.start(h.creds);
+    await first;
     await settle();
-    h.session.disconnect();
-    release(late);
-    await started;
-    expect(late.disconnected).toBe(true);
-  });
-});
-
-describe('module version (welcome.moduleVersion)', () => {
-  it('shows the projector module version and warns when the bundle was built for another', async () => {
-    const same = setup();
-    await goOnline(same, { moduleVersion: '0.2.0' });
-    expect(same.session.info().moduleVersion).toBe('0.2.0');
-    expect(same.session.info().diagnostics).toEqual([]);
-    same.session.dispose();
-
-    const older = setup();
-    await goOnline(older, { moduleVersion: '0.1.55' });
-    expect(older.session.info().moduleVersion).toBe('0.1.55');
-    expect(older.session.info().diagnostics.map((d) => d.message)).toContain(
-      'Foundry module 0.1.55 ≠ glasses app built for 0.2.0 — update the glasses app',
-    );
-    older.session.dispose();
-
-    const legacy = setup();
-    await goOnline(legacy);
-    expect(legacy.session.info().moduleVersion).toBeNull();
-    expect(legacy.session.info().diagnostics).toEqual([]);
-    legacy.session.dispose();
+    expect(h.relay.last.closed).toBe(true);
   });
 });
 
@@ -611,10 +541,10 @@ describe('online behaviour', () => {
     });
   });
 
-  it('goes offline when the socket disconnects', async () => {
+  it('goes offline when the relay link drops', async () => {
     const h = setup();
     await goOnline(h);
-    h.socket().deliver('disconnect', 'transport close');
+    h.relay.last.drop(1006);
     expect(h.store.get().connection).toMatchObject({
       status: 'offline',
       cause: 'network',
@@ -633,29 +563,62 @@ describe('online behaviour', () => {
     expect(h.storage.data.has(CREDENTIALS_STORAGE_KEY)).toBe(false);
   });
 
-  it('ignores foreign traffic and records undecryptable or malformed envelopes', async () => {
+  it('records unexpected frames, undecryptable or malformed envelopes', async () => {
     const h = setup();
     const gm = await goOnline(h);
-    h.socket().deliver(DIRECT_SOCKET_EVENT, { hello: 'world' });
+    h.relay.last.deliver({ hello: 'world' });
     await gm.reply({ t: 'pong', rid: 'x' }, h.creds.key, 'someone-else');
-    await settle();
-    expect(h.session.info().diagnostics).toEqual([]);
     await gm.reply({ t: 'pong', rid: 'x' }, generateDeviceKey());
     await gm.reply({ t: 'bogus' });
+    // Reflected back (glasses → glasses): dropped, never processed.
+    const key = await importDeviceKey(h.creds.key);
+    h.relay.last.deliver(await seal(key, 'projector', 'projector', { t: 'revoked' }));
     await settle();
     expect(h.session.info().diagnostics.map((d) => d.message)).toEqual([
+      'unexpected relay frame dropped',
+      'unexpected relay frame dropped',
       'envelope rejected (auth)',
       'invalid projector message',
+      'unexpected relay frame dropped',
     ]);
-    // Addressed to another device: skipped even though it is well-formed.
-    const key = await importDeviceKey(h.creds.key);
-    h.socket().deliver(
-      DIRECT_SOCKET_EVENT,
-      await seal(key, 'projector', 'user9', { t: 'revoked' }),
-    );
-    await settle();
     expect(h.store.get().connection.status).toBe('online');
-    expect(h.session.info().diagnostics).toHaveLength(2);
+  });
+
+  it('hydrates map pictures from asset messages (unknown refs dropped)', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    const data = 'data:image/jpeg;base64,AAAA';
+    await gm.reply({ t: 'asset', id: 'bg', data });
+    await gm.reply({ t: 'asset', id: 'bg', data });
+    await gm.reply({
+      t: 'snapshot',
+      what: 'map',
+      data: {
+        ...makeMap(),
+        background: { src: 'evf-asset:bg', x: 0, y: 0, w: 1000, h: 1000 },
+        tiles: [{ src: 'evf-asset:missing', x: 0, y: 0, w: 10, h: 10, z: 0 }],
+        tokens: [
+          { id: 't', name: 'T', kind: 'self', x: 1, y: 1, w: 1, h: 1, img: 'evf-asset:bg' },
+          { id: 'u', name: 'U', kind: 'enemy', x: 2, y: 2, w: 1, h: 1, img: 'evf-asset:gone' },
+        ],
+      },
+    });
+    await settle();
+    const map = h.store.get().map;
+    expect(map?.background?.src).toBe(data);
+    expect(map?.tiles).toBeUndefined();
+    expect(map?.tokens[0]?.img).toBe(data);
+    expect(map?.tokens[1]?.img).toBeUndefined();
+  });
+
+  it('keeps at most ASSETS_MAX pictures', () => {
+    const assets = new Map<string, string>();
+    const map = hydrateMap(
+      { ...makeMap(), background: { src: 'plain.png', x: 0, y: 0, w: 1, h: 1 } },
+      assets,
+    );
+    expect(map.background).toBeUndefined();
+    expect(ASSETS_MAX).toBeGreaterThan(64);
   });
 
   it('keeps at most DIAGNOSTICS_MAX entries and notifies listeners', async () => {
@@ -677,10 +640,12 @@ describe('online behaviour', () => {
     await h.session.start(h.creds);
     await settle();
     const gm = h.gm();
-    const [hello] = await gm.drain();
+    h.relay.last.setPeer(true);
+    await settle();
+    const hellos = await gm.drain();
     await gm.reply({
       t: 'welcome',
-      rid: hello?.rid,
+      rid: hellos.at(-1)?.rid,
       actorId: 'a',
       actorName: 'T',
       userName: 'U',
@@ -698,15 +663,15 @@ describe('lifecycle and user actions', () => {
   it('closes on FOREGROUND_EXIT and reconnects on FOREGROUND_ENTER', async () => {
     const h = setup();
     await goOnline(h);
-    const socket = h.socket();
+    const link = h.relay.last;
     h.session.onForeground(false);
-    expect(socket.disconnected).toBe(true);
+    expect(link.closed).toBe(true);
     expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'background' });
     vi.advanceTimersByTime(60_000);
-    expect(h.client.openSocket).toHaveBeenCalledTimes(1);
+    expect(h.relay.links).toHaveLength(1);
     h.session.onForeground(true);
     await settle();
-    expect(h.client.openSocket).toHaveBeenCalledTimes(2);
+    expect(h.relay.links).toHaveLength(2);
   });
 
   it('ignores foreground events when unpaired or already online', async () => {
@@ -718,7 +683,7 @@ describe('lifecycle and user actions', () => {
     await goOnline(h);
     h.session.onForeground(true);
     await settle();
-    expect(h.client.openSocket).toHaveBeenCalledTimes(1);
+    expect(h.relay.links).toHaveLength(1);
   });
 
   it('disconnect pauses without retry; reconnect resumes; forget unpairs', async () => {
@@ -728,29 +693,44 @@ describe('lifecycle and user actions', () => {
     expect(h.store.get().connection.status).toBe('offline');
     expect(h.store.get().connection.retryInMs).toBeUndefined();
     vi.advanceTimersByTime(60_000);
-    expect(h.client.openSocket).toHaveBeenCalledTimes(1);
+    expect(h.relay.links).toHaveLength(1);
     h.session.reconnect();
     await settle();
-    expect(h.client.openSocket).toHaveBeenCalledTimes(2);
+    expect(h.relay.links).toHaveLength(2);
     await h.session.forget();
     expect(h.store.get().connection).toEqual({ status: 'unpaired' });
     h.session.disconnect();
     expect(h.store.get().connection.status).toBe('unpaired');
   });
 
-  it('pairs manually and lists users', async () => {
+  it('pairs with the 16-char code: room and key by HKDF', async () => {
     const h = setup();
     await h.session.start(null);
-    await expect(h.session.listUsers()).resolves.toEqual([{ id: 'u', name: 'Luca (G2)' }]);
-    await h.session.pairManual('u', '7QK3-MX9P-2HRA-C4TE');
-    const stored = JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '');
-    expect(stored).toMatchObject({
-      base: 'https://foundry.example/vtt',
-      userId: 'u',
-      password: '7QK3MX9P2HRAC4TE',
-    });
-    expect(h.client.login).toHaveBeenCalledWith('u', '7QK3MX9P2HRAC4TE');
-    await expect(h.session.pairManual('u', 'bad')).rejects.toThrow('invalid manual code');
+    await h.session.pairCode('7qk3 mx9p 2hra c4te');
+    const expected = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(expected);
+    expect(h.relay.last.room).toBe(expected.room);
+    await expect(h.session.pairCode('bad')).rejects.toThrow('invalid manual code');
+    expect(formatManualCode('7QK37QK3')).toBe('7QK3-7QK3');
+  });
+
+  it('pairs with a scanned QR text; rejects anything else', async () => {
+    const h = setup();
+    await h.session.start(null);
+    const room = generateRoomId();
+    const key = generateDeviceKey();
+    await h.session.pairScanned(
+      buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/', {
+        v: 2,
+        r: room,
+        k: key,
+        l: 'Mira',
+        relay: 'ws://10.0.0.2:8787',
+      }),
+    );
+    expect(h.relay.last).toMatchObject({ room, relay: 'ws://10.0.0.2:8787' });
+    expect(h.store.get().connection.label).toBe('Mira');
+    await expect(h.session.pairScanned('https://example.com')).rejects.toThrow('not a pairing QR');
   });
 
   it('persists settings and resolves the locale', () => {
@@ -764,5 +744,14 @@ describe('lifecycle and user actions', () => {
     });
     expect(h.session.locale()).toBe('en');
     h.session.dispose();
+  });
+
+  it('a frame sent on a closed link is recorded, not thrown', async () => {
+    const h = setup();
+    await goOnline(h);
+    h.relay.last.open = false;
+    h.session.refresh('map');
+    await settle();
+    expect(h.session.info().diagnostics.at(-1)?.message).toBe('get dropped: relay link closed');
   });
 });

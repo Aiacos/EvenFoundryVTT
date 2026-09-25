@@ -1,13 +1,19 @@
 /**
- * Pairing credentials shared from the Foundry module (GM) to the G2 app.
+ * Pairing secrets handed from a Foundry client (the projector) to the G2 app (ADR-0019).
  *
- * - **QR path**: `<origin>/modules/evenfoundryvtt/g2/index.html#evf=<payload>`; the URL
- *   fragment never reaches the server. `payload` = base64url(JSON {v,u,p,k}).
- * - **Manual path**: the user picks the "(G2)" Foundry user and types a 16-char
- *   Crockford-base32 code; the code is the Foundry password and the AES key is
- *   HKDF-SHA256(code, salt = userId). Both are rotated on the first `welcome`.
+ * A pairing is a relay **room** (128-bit random id) plus a 256-bit AES device **key**.
+ * Nothing about Foundry — no user, no password, no URL — ever reaches the phone.
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 3
+ * - **QR path**: `<app-url>#evf=<payload>`; the URL fragment never reaches any server.
+ *   `payload` = base64url(JSON {v:2, r, k, l?, relay?}). The same QR is scanned by the
+ *   Even Realities App (sideload of the hosted page) or by the installed app's camera.
+ * - **Manual path**: a 16-char Crockford-base32 code (80 bits). Room and key are both
+ *   derived from it with HKDF-SHA256 ({@link deriveCodePairing}), so the phone needs
+ *   nothing else.
+ *
+ * Both are single-use: the projector rotates room and key on the first `welcome`.
+ *
+ * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 3
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';
@@ -15,22 +21,39 @@ import { fromBase64Url, toBase64Url } from './base64url.js';
 /** URL fragment key carrying the pairing payload. */
 export const PAIRING_FRAGMENT_KEY = 'evf' as const;
 
-/** Module-relative path of the G2 app entrypoint served by Foundry. */
-export const G2_APP_PATH = 'modules/evenfoundryvtt/g2/index.html' as const;
+/** Relay room id: base64url, 22 chars = 128 bits (the relay accepts 22–64). */
+export const RoomIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/);
+
+/** AES-256 device key, base64url (32 bytes). */
+export const DeviceKeySchema = z.string().min(43).max(44);
 
 export const PairingPayloadSchema = z.strictObject({
-  v: z.literal(1),
-  /** Foundry user id of the dedicated "(G2)" user. */
-  u: z.string().min(1).max(64),
-  /** Foundry password of that user. */
-  p: z.string().min(12).max(128),
+  v: z.literal(2),
+  /** Relay room id. */
+  r: RoomIdSchema,
   /** AES-256 device key, base64url. */
-  k: z.string().min(43).max(44),
+  k: DeviceKeySchema,
+  /** Human label shown on the phone before the first `welcome` (character name). */
+  l: z.string().max(64).optional(),
+  /**
+   * Relay origin override (`wss://…` / `ws://…` for development or a self-hosted relay).
+   * Absent = the relay the app was built for.
+   */
+  relay: z
+    .string()
+    .regex(/^wss?:\/\/[^\s#?]+$/)
+    .max(256)
+    .optional(),
 });
 export type PairingPayload = z.infer<typeof PairingPayloadSchema>;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+/** Generates a fresh random 128-bit room id. */
+export function generateRoomId(): string {
+  return toBase64Url(globalThis.crypto.getRandomValues(new Uint8Array(16)));
+}
 
 /** Serialises a payload for the URL fragment. */
 export function encodePairingPayload(payload: PairingPayload): string {
@@ -49,12 +72,12 @@ export function decodePairingPayload(encoded: string): PairingPayload | null {
 }
 
 /**
- * Builds the QR URL for a Foundry origin (may include a routePrefix path, e.g.
- * `https://host/foundry`). Trailing slashes are normalised.
+ * Builds the QR URL: the glasses-app page plus the payload in the fragment.
+ *
+ * @param appUrl - Page URL of the glasses app (any existing fragment is dropped).
  */
-export function buildPairingUrl(foundryBase: string, payload: PairingPayload): string {
-  const base = foundryBase.replace(/\/+$/, '');
-  return `${base}/${G2_APP_PATH}#${PAIRING_FRAGMENT_KEY}=${encodePairingPayload(payload)}`;
+export function buildPairingUrl(appUrl: string, payload: PairingPayload): string {
+  return `${appUrl.split('#')[0]}#${PAIRING_FRAGMENT_KEY}=${encodePairingPayload(payload)}`;
 }
 
 /** Extracts the pairing payload from `location.hash` (`#evf=…`), if any. */
@@ -62,6 +85,15 @@ export function readPairingFragment(hash: string): PairingPayload | null {
   const params = new URLSearchParams(hash.replace(/^#/, ''));
   const value = params.get(PAIRING_FRAGMENT_KEY);
   return value === null ? null : decodePairingPayload(value);
+}
+
+/**
+ * Extracts the pairing payload from any scanned text: a full pairing URL (the `#evf=`
+ * fragment is what matters, whatever the origin) or a bare fragment.
+ */
+export function readPairingText(text: string): PairingPayload | null {
+  const hashAt = text.indexOf('#');
+  return readPairingFragment(hashAt >= 0 ? text.slice(hashAt) : text);
 }
 
 // ─── Manual code ─────────────────────────────────────────────────────────────
@@ -98,8 +130,33 @@ export function normalizeManualCode(input: string): string | null {
   return cleaned;
 }
 
-/** Derives the base64url AES key for the manual path (HKDF-SHA256, salt = userId). */
-export async function deriveKeyFromManualCode(code: string, userId: string): Promise<string> {
+/** Room + key derived from a manual code. */
+export interface CodePairing {
+  room: string;
+  key: string;
+}
+
+async function hkdf(material: CryptoKey, info: string, bits: number): Promise<Uint8Array> {
+  const out = await globalThis.crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: encoder.encode('evf-pair-v2'),
+      info: encoder.encode(info),
+    },
+    material,
+    bits,
+  );
+  return new Uint8Array(out);
+}
+
+/**
+ * Derives the relay room (128 bits) and the AES key (256 bits) of a manual code with
+ * HKDF-SHA256 (distinct `info` labels, so knowing the room reveals nothing of the key).
+ *
+ * @throws Error('invalid manual code') when the code does not normalise to 16 chars
+ */
+export async function deriveCodePairing(code: string): Promise<CodePairing> {
   const normalized = normalizeManualCode(code);
   if (normalized === null) throw new Error('invalid manual code');
   const material = await globalThis.crypto.subtle.importKey(
@@ -109,15 +166,8 @@ export async function deriveKeyFromManualCode(code: string, userId: string): Pro
     false,
     ['deriveBits'],
   );
-  const bits = await globalThis.crypto.subtle.deriveBits(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: encoder.encode(userId),
-      info: encoder.encode('evf-pair-v1'),
-    },
-    material,
-    256,
-  );
-  return toBase64Url(new Uint8Array(bits));
+  return {
+    room: toBase64Url(await hkdf(material, 'evf-room', 128)),
+    key: toBase64Url(await hkdf(material, 'evf-key', 256)),
+  };
 }

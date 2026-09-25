@@ -8,8 +8,8 @@ import { defineConfig } from 'tsup';
  * src/types/foundry-globals.d.ts — they are NOT bundled, they're provided by the
  * Foundry runtime at load time.
  *
- * The G2 app is NOT built here: `pnpm run build:all` also runs the g2-app Vite build,
- * whose outDir is `packages/foundry-module/g2/` (ADR-0016 same-origin hosting).
+ * The glasses app is NOT part of the module (ADR-0019): it ships as the Even Hub package
+ * and the GitHub Pages page `/app/`, built from `packages/g2-app`.
  *
  * @see packages/foundry-module/module.json — `esmodules: ["dist/module.js"]`
  * @see ADR-0008 (code quality: tsup ESM output, sourcemap for debuggability)

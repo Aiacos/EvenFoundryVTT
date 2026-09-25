@@ -1,40 +1,37 @@
 # Setup Guide — EvenFoundryVTT
 
-How to get a D&D 5e character from Foundry onto the G2 glasses. There is **one** thing to
-install, the Foundry module. It also serves the glasses app. You don't need a bridge,
-Docker or a second server
-([ADR-0016](architecture/0016-direct-foundry-streaming.md)). Glasses belong to the
-players: the GM enables them once, then each player pairs from their own Foundry
-([ADR-0017](architecture/0017-player-owned-glasses-hybrid-projector.md)).
+How to get a D&D 5e character from Foundry onto the G2 glasses. The GM installs **one**
+Foundry module; each player installs the **FoundryVTT G2 HUD** app from Even Hub and
+scans one QR. There is no GM setup, no extra Foundry user and no Foundry login on the
+phone ([ADR-0019](architecture/0019-relay-pairing-player-projector.md)).
 
-> **Coming from the bridge era (module ≤ v0.1.55)?** Stop and remove the `evf-bridge`
-> container, update the module, and re-pair every pair of glasses. Bearer tokens and the
-> bridge URL no longer exist.
+> **Coming from v0.12 (module ≤ 0.2.x)?** The glasses app no longer ships inside the
+> module and the "(G2)" users are gone. Update the module, install **FoundryVTT G2 HUD**
+> on the phone and connect every pair of glasses once more (below). You can delete the
+> old "&lt;Player&gt; (G2)" users from *User Management*.
 
-**Canonical references:** [ADR-0016](architecture/0016-direct-foundry-streaming.md) ·
-[ADR-0017](architecture/0017-player-owned-glasses-hybrid-projector.md) ·
+**Canonical references:** [ADR-0019](architecture/0019-relay-pairing-player-projector.md) ·
+[`packages/relay/README.md`](../packages/relay/README.md) ·
 [`docs/design/g2-sheet-ux.html`](design/g2-sheet-ux.html) (glasses screens S10–S12) ·
-[`docs/design/g2-thirds-layout.md`](design/g2-thirds-layout.md) §Associazione e connessione
-(pairing flow, phone/Foundry mocks P01–P03) · [`packages/foundry-module/README.md`](../packages/foundry-module/README.md).
+[`packages/foundry-module/README.md`](../packages/foundry-module/README.md) ·
+[privacy](privacy.md).
 
 ---
 
 ## 🎲 How it works in 30 seconds
 
 ```
-player's (or GM's) browser (Foundry, module = projector) ──shows QR──▶ player's phone (Even Realities App)
-        ▲                                                   │ loads https://<foundry>/modules/evenfoundryvtt/g2/index.html
-        └──── Foundry server relays module.evenfoundryvtt ◀──┘ (same origin, AES-GCM sealed)
+player's Foundry tab (module = projector) ⇄ wss://evf-relay.aiacos.workers.dev ⇄ phone (FoundryVTT G2 HUD) ⇄ BLE ⇄ G2
+                    └──────────── AES-256-GCM sealed end to end: the relay only forwards ciphertext ────────────┘
 ```
 
-1. **Once**, the GM presses **Enable glasses for players**: the module creates a Foundry
-   user **"&lt;Player&gt; (G2)"** per player and seals its password for that player's
-   public key (ECDH P-256).
-2. The player opens **Pair my glasses** in their own Foundry, picks a character and gets a
-   QR (valid 5 min, single use). The GM can also pair on a player's behalf.
-3. The player scans the QR with the Even Realities App. The glasses app opens already
-   connected. While the player's Foundry is open, **their client is the projector**
-   (actions run as that player); otherwise an online GM holding the device key takes over.
+1. The player opens **Connect G2 glasses** (IT: **Collega occhiali G2**) in their own
+   Foundry. The window shows a QR and a 16-character code right away.
+2. The player scans it with the **FoundryVTT G2 HUD** app. The phone never logs into
+   Foundry: it joins a private relay room with a key only the two ends know.
+3. From then on **that Foundry tab is the projector**: it reads the character, combat,
+   chat log and scene, runs the actions chosen on the glasses, and streams the HUD through
+   the relay. The glasses reconnect by themselves whenever that browser has Foundry open.
 
 ---
 
@@ -42,63 +39,20 @@ player's (or GM's) browser (Foundry, module = projector) ──shows QR──▶
 
 | Component | Required | Notes |
 |---|---|---|
-| **FoundryVTT** | v13.347+ (v14 verified) | Self-hosted or hosted. v12 is not supported (dnd5e Activity system). |
+| **FoundryVTT** | v13.347+ (v14 verified) | Self-hosted (HTTP or HTTPS, LAN or public) or **The Forge**. v12 is not supported (dnd5e Activity system). |
 | **dnd5e system** | ≥ 5.3.3 | PHB 2014 and PHB 2024 both work (`core.modernRules`). |
 | **midi-qol** | optional | Full attack → damage → save automation when active; vanilla `activity.use()` otherwise. |
-| **Valid HTTPS** | required | Foundry must be reachable **from the phone** over a certificate the phone trusts (see below). |
-| **A projector online** | required during play | The player's own Foundry client, or else a GM browser holding the device key, computes dnd5e data and executes actions. |
+| **Relay reachable from the Foundry tab** | required | The browser that shows the QR must open `wss://evf-relay.aiacos.workers.dev`. The pairing window checks it for you. |
+| **The player's Foundry tab open** | required during play | That tab is the projector. A GM tab can stand in for a player without a device (below). |
 | **Even Realities G2 + R1** | current firmware | Paired to the phone with the standard Even setup. |
-| **Even Realities App** | ≥ 2.2.9 | Needed for the long-press shortcuts menu ([firmware matrix](firmware-compatibility.md)). |
+| **Even Realities App** | ≥ 2.2.10 | Floor stamped by SDK 0.0.16 ([firmware matrix](firmware-compatibility.md)). |
 
-socketlib is **no longer needed**.
-
-### 🔐 HTTPS reachable from the phone
-
-The Even Realities App loads the glasses page from Foundry's own origin, and the phone
-WebView **rejects self-signed certificates**. A plain `http://192.168.x.x:30000` LAN
-address does not work. Pick one of these:
-
-| Option | How | Notes |
-|---|---|---|
-| **Reverse proxy + Let's Encrypt** | Caddy, nginx or Traefik in front of Foundry on a public DNS name | Follow [foundryvtt.com/article/nginx](https://foundryvtt.com/article/nginx/). The proxy **must forward the WebSocket upgrade** (`Upgrade` / `Connection: upgrade` headers; Caddy does it by default). Set `proxySSL: true` and `proxyPort: 443` in Foundry's `options.json`. |
-| **Tailscale** | `tailscale serve` / `tailscale cert` on the Foundry host | Valid `*.ts.net` certificate. The phone must be on the same tailnet. |
-| **Foundry native TLS** | `sslCert` / `sslKey` in `options.json` ([foundryvtt.com/article/configuration](https://foundryvtt.com/article/configuration/)) | Use a real certificate (e.g. Let's Encrypt via DNS challenge), not a self-signed one. |
-
-**routePrefix:** if Foundry runs under a path (`routePrefix: "foundry"` →
-`https://host/foundry/`), you don't need to do anything extra. The QR URL includes the
-prefix (`foundry.utils.getRoute`) and the g2-app build uses relative paths.
-
-> **Open Foundry from the public URL when you pair.** The QR is built from the address in
-> the GM's browser bar. If the GM is on `http://localhost:30000`, the QR points to
-> `localhost` and the phone cannot open it.
+You **don't** need a public HTTPS address, a reverse proxy, port forwarding, socketlib or
+any GM enablement: the phone never talks to Foundry, only to the relay.
 
 ---
 
-## ⚙️ Games hosted on The Forge
-
-A private Forge game (the default) answers **every** path — `/join`, `/modules/…`,
-`/socket.io` — with a redirect to its "Private Game" page until the visitor is signed in
-to The Forge (*"only users who are logged in can access the game's URL, and only then
-users who have been invited"* —
-[forums.forge-vtt.com/t/public-private-games/3588](https://forums.forge-vtt.com/t/public-private-games/3588)).
-The glasses work on a private game when:
-
-1. **Automatic User Management is off** (My Foundry → *Configure Players*). When it is on,
-   Forge logs a signed-in account straight into *its own* Foundry user and takes over
-   `/join` ([The User Manager](https://forums.forge-vtt.com/t/the-user-manager/11039)),
-   so the dedicated "(G2)" user cannot log in.
-2. The player's **Forge account is invited** to the game (invitation link).
-3. The player **signs in to The Forge once inside the Even Realities App**: scan the QR,
-   the Forge "Private Game" page opens, use *Login* (email + password; social logins may
-   be blocked inside an app WebView), then **scan the QR again**. Forge's session cookie
-   is set for `.forge-vtt.com` and lasts about 14 days, so repeat the login when it
-   expires.
-
-If the app shows *"The Forge is intercepting the login…"*, one of the three points above
-is missing. A **public** Forge game skips point 3, but exposes the Foundry join screen to
-anyone with the URL: then every Foundry user (GM included) needs a strong password.
-
-## 📦 Install the module
+## 📦 Install the module (GM, once)
 
 1. **Foundry** → *Setup* → *Add-on Modules* → *Install Module* → Manifest URL:
 
@@ -106,82 +60,45 @@ anyone with the URL: then every Foundry user (GM included) needs a strong passwo
    https://github.com/Aiacos/EvenFoundryVTT/releases/latest/download/module.json
    ```
 
+   **The Forge:** *Bazaar* → *Install Module from a Manifest* → the same URL.
 2. Launch the world and enable **EvenFoundryVTT** under *Manage Modules*.
 3. Optional: install and enable **midi-qol** (the module lists it under `recommends`).
 
-The release zip already contains the glasses app under `g2/`. Foundry serves it at
-`https://<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html`.
+That's all the GM does. Nothing to enable per player.
+
+## 📦 Install the glasses app (player, once)
+
+On the phone, install **FoundryVTT G2 HUD** from Even Hub in the Even Realities App.
+Until the app is listed in the store, the maintainer invites the table's players to the
+**beta group**: accept the invite, then install it from Even Hub like any other app. The
+installed app keeps running when the phone locks.
 
 ---
 
-## ⚙️ Enable the players (GM, once)
+## 🕹️ Connect your glasses (player)
 
-As GM: *Game Settings* → *Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses**
-(IT: **Associa occhiali G2**; menu key `pairG2`) → section *Players' glasses* →
-**Enable glasses for players** (or **Enable** next to one player). For each player the
-module creates the user **"&lt;Player&gt; (G2)"** (role Player, ownership mirrored from the
-player) with a random password sealed for the player's public key. **Regenerate password**
-(e.g. after a lost phone) forces that player to pair again. A player who has never opened
-the world with the module active has no public key yet: pair on their behalf (below).
-
-## 🕹️ Pair my glasses (player)
-
-1. In **your own** Foundry: *Configure Settings* → *EvenFoundryVTT* → **Pair my glasses**,
-   or right-click your own name in the *Players* list. The entry appears once the GM has
-   enabled you.
-2. Pick the character → **Generate QR**. Your browser creates the device key, seals it for
-   every GM (so a GM can take over when you are offline) and shows the QR.
-3. Scan it (next section).
-
-## ⚙️ Pair on a player's behalf (GM)
-
-For players who don't have Foundry open.
-
-1. As GM: **Pair G2 glasses** from *Configure Settings* → *EvenFoundryVTT*, or right-click a
-   player in the *Players* list → **Pair G2 glasses** (player preselected).
-2. Pick the **Player** and the **Character**, then press **Generate new QR**.
-3. The window (mock P01) shows:
-   - the **QR**. It works once and expires after **5 minutes**. After that it is hidden
-     and the credentials are rotated.
-   - the **manual code** (16 characters, e.g. `7QK3-MX9P-2HRA-C4TE`) under the QR.
-   - three checks: **valid HTTPS · module served · socket active**. All three must be ✓.
-   - the **paired devices**, with their last contact and a **Revoke** button.
-4. The module creates or refreshes the user **"&lt;Player&gt; (G2)"**: role Player, owner of
-   that character only. Don't delete it by hand. Use **Revoke**.
-
-> **Where the keys live.** With the GM-direct flow the device key is stored in the browser
-> of the GM who paired (client-scoped setting). With self-service pairing the player's
-> browser seals the key for every GM's public key, so any GM browser can be the fallback.
-
----
-
-## 🕹️ Connect (player)
-
-1. Open the **Even Realities App** and **scan the QR** shown in Foundry.
-2. The app loads the glasses page. It saves the credentials, removes them from the URL,
-   logs in as the "(G2)" user and says hello to the projector.
-3. The glasses show **Connecting** (S11), then the D&D-sheet HUD (S1): portrait, header
-   (AC, HP, turn) and square map on top, ability page and context panel below.
+1. In **your own** Foundry, open **Connect G2 glasses** in the fewest clicks:
+   - right-click **your name** in the *Players* list › **Connect G2 glasses**, or
+   - press **Alt+G** (rebindable in *Configure Controls*), or
+   - *Game Settings* › *Configure Settings* › *EvenFoundryVTT* › **Connect G2 glasses**.
+2. The window opens ready: your character is preselected (the assigned one, else the first
+   you own), the relay is checked and the **QR** plus a **16-character code**
+   (e.g. `7QK3-MX9P-2HRA-C4TE`) are shown. Both expire after **5 minutes** and work once.
+3. On the phone open **FoundryVTT G2 HUD** › **Scan QR** (IT: **Scansiona QR**) and frame
+   the QR. No camera, or camera permission denied? Tap **Enter code** (IT:
+   **Inserisci codice**) and type the code (with or without dashes).
+4. The window switches to **Glasses connected · &lt;character&gt;** by itself, and the
+   glasses show **Connecting** (S11), then the D&D-sheet HUD (S1): portrait, header (AC,
+   HP, turn) and square map on top, ability page and context panel below.
 
    ![Glasses after pairing: exploration screen](design/img/sheet-explore.png)
-4. On the first connection the projector **rotates** the device key (and, when a GM
-   answers, the password), so the QR you scanned stops working.
 
-The phone screen shows the **Connection** page (mock P02): status, server, user,
-character, GM, latency, language, map pixel size, *Follow my token*, *Auto Combat page*,
-**Reconnect**, **Disconnect** and **Diagnostics**.
+**Keep that Foundry tab open while you play.** The pairing is stored in **this browser**:
+next session, just open Foundry there and the glasses reconnect by themselves. On the first
+connection the room and key rotate, so the QR you scanned stops working.
 
-### Manual code fallback
-
-Use this when the QR can't be scanned, or when the app opens without saved credentials
-(mock P03):
-
-1. On the phone, open `https://<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html`
-   in the Even Realities App.
-2. Pick the **"&lt;Player&gt; (G2)"** user. The list is read from the same Foundry server.
-3. Type the **16-character code** shown under the QR (with or without dashes) → **Connect**.
-
-The code follows the same rules as the QR: single use, valid for 5 minutes.
+The phone shows the **Connection** page: status, relay, Foundry, character, latency,
+language, map options, **Reconnect**, **Disconnect** and **Diagnostics**.
 
 ### Gestures
 
@@ -198,15 +115,27 @@ the menu opens on tap from the base view).
 
 ---
 
-## 🔐 Revoke or re-pair
+## 🕹️ Connect for a player without a device (GM)
 
-- **Revoke:** in *Pair G2 glasses* → **Revoke** next to the device → confirm. The glasses
-  receive a sealed `revoked` message and go back to the "not paired" screen (S10). Then
-  the "(G2)" user is deleted and the key is forgotten.
-- **Re-pair:** the player presses **Pair my glasses** again, or the GM runs the pairing
-  again for the same player. The module refreshes the same
-  "(G2)" user (it is tagged by player), creates a new key and shows a new QR.
+For a player who has glasses but no computer at the table:
+
+1. As GM, right-click **that player** in the *Players* list › **Connect G2 glasses** (their
+   assigned character is preselected; the picker lists every character, so you can choose another).
+2. The player scans the QR (or types the code) with **FoundryVTT G2 HUD**.
+3. **Your** GM tab is now their projector: keep it open during play. The pairing lives in
+   your browser, and actions still run only for that character.
+
+---
+
+## 🔐 Disconnect or reconnect
+
+- **Disconnect:** open **Connect G2 glasses** in the browser that paired → list
+  **Glasses connected to this browser** (status *online* / *waiting for the glasses* /
+  *relay unreachable*) → **Disconnect** → confirm. The glasses receive a sealed `revoked`
+  message and go back to the "not paired" screen (S10).
 - **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials.
+- **New browser, cleared browser data, other character, lost phone:** disconnect (if the old
+  browser is still there) and connect again — a new QR, a new room and a new key.
 
 ---
 
@@ -214,46 +143,59 @@ the menu opens on tap from the base view).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Glasses stuck on *Connecting*, phone says **"no GM connected"** | No projector answered within 8 s: the player's Foundry is closed **and** no online GM holds the device key | Open Foundry as the player, or have a GM join. For GM-direct pairings the key lives only in the browser that paired: open the world there, or re-pair. |
-| Even App says **"trial version expired"** | You are running a `.ehpk` uploaded to the Even Hub portal as a trial; trial uploads expire | Use the QR (pairing or `evenhub qr`), which never expires. See [release/evenhub.md](release/evenhub.md). |
-| Phone page doesn't load / blank after scanning | Self-signed or invalid certificate, or HTTP URL | Use a trusted certificate (Let's Encrypt, Tailscale, reverse proxy). The pair dialog must show ✓ **valid HTTPS**. |
-| QR opens `localhost` or a LAN IP | The GM opened Foundry from a local address | Open Foundry from its public HTTPS URL, then press **Generate new QR**. |
-| ✗ **module served** in the pair dialog | `g2/` missing from the module folder (dev build without `build:g2`) | Reinstall the release zip, or run `pnpm --filter @evf/foundry-module build:all`. |
-| ✗ **socket active**, or connection drops after a few seconds | Proxy doesn't forward the WebSocket upgrade | Add the `Upgrade` / `Connection` headers (nginx) and check `routePrefix` matches the proxied path. |
-| *"credentials rejected"*, back to the first-setup page | Pairing revoked, QR already used, or code expired | Ask the GM to **Generate new QR** and scan again. |
-| *"app in background"* | The Even App went to the background (phone locked, app switched) | Nothing to do. The session reconnects when the app returns to the foreground. |
-| Map frozen, or schematic map instead of the scene art | Weak BLE (the map is ≤ 1 fps with 100 ms image pacing), or the scene has no background image | Move the phone closer to the glasses. The schematic map is the planned fallback. |
-| Action fails with `forbidden_actor` / `actor_missing` | The character was deleted or ownership changed | Re-pair and choose the right character. |
+| Pairing window: **"This browser cannot reach the relay `wss://…`"** (IT: *Questo browser non raggiunge il relay*) with **How to fix** | A corporate/school firewall, proxy or browser extension blocks `evf-relay.aiacos.workers.dev`, or a Content-Security-Policy on your Foundry host forbids outbound WebSockets | Try another network or browser, allow `https://evf-relay.aiacos.workers.dev` and `wss://evf-relay.aiacos.workers.dev`, then **Try again**. Advanced: run your own relay and set **Relay (advanced)** in the module settings ([runbook](runbook.md#-relay-and-pages); works only with the QR opened in developer mode, because the store app reaches only the default relay). |
+| Glasses/phone: **"Player's Foundry closed"** (IT: *Foundry del giocatore chiuso*) | The Foundry tab that paired these glasses is not open (closed, logged out, other computer) | Open Foundry in that browser. The glasses reconnect by themselves, nothing to scan. |
+| Phone: **"relay not reachable"** | The phone has no internet, or the relay is down | Check the phone's connection. The app retries with backoff (1 → 30 s). |
+| QR hidden, **"The QR expired unused"** | 5 minutes passed, or the QR was already used | **New QR**. |
+| **Scan QR** does nothing / camera prompt denied | Camera permission refused | Use **Enter code** with the 16-character code under the QR, or allow the camera for the Even Realities App in the phone settings. |
+| Two Foundry tabs open, only one updates the glasses | By design: one tab per browser projects a device (Web Lock); the others wait | Nothing to do. Closing the projecting tab hands over to the next one. |
+| Glasses stop when the phone locks | You opened the app by scanning the Foundry QR in **developer mode** (a sideloaded page) | Install **FoundryVTT G2 HUD** from Even Hub (beta or store): the installed app survives the lock. |
+| Even App says **"trial version expired"** | A portal *trial* upload expired | Install the beta/store build, or re-scan the QR in developer mode ([release/evenhub.md](release/evenhub.md)). |
+| **The Forge** game | — | Works as is, private or public, User Manager on or off: nothing to configure. |
+| Map frozen, or schematic map instead of the scene art | Weak BLE (the map is ≤ 1 fps with 100 ms image pacing), or the scene art could not be loaded in the projector tab | Move the phone closer to the glasses. The schematic map is the planned fallback; the projector console logs `[EVF] map picture skipped (…)`. |
+| Action fails with `forbidden_actor` / `actor_missing` | The character was deleted or you no longer own it | Connect again and pick the right character. |
 
 For deeper diagnosis see the [runbook](runbook.md).
 
 ---
 
-## 🧪 Developer setup
+## 🧪 Developer and tester setup
 
-Commands verified against the workspace `package.json` files:
+**Try the app without Even Hub (developer mode).** Sign in once at
+`https://hub.evenrealities.com/login` with your Even account (that turns the account into a
+developer account; there is no toggle), force-quit and reopen the Even Realities App, then
+**Even Hub → Scan QR** and scan the QR of the Foundry pairing window. It opens the hosted app
+page (`https://aiacos.github.io/EvenFoundryVTT/app/`) already paired. A sideloaded page
+**dies when the phone locks**: fine for development, not for a session — players use the
+Even Hub app.
+
+**Work on the code** (commands from the workspace `package.json` files):
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @evf/foundry-module build:all     # g2-app → packages/foundry-module/g2/, then tsup → dist/module.js
+pnpm --filter @evf/foundry-module build          # tsup → packages/foundry-module/dist/module.js
 ln -s "$PWD/packages/foundry-module" "<FoundryData>/Data/modules/evenfoundryvtt"   # dev install
 pnpm lint:ci && pnpm typecheck && pnpm test:coverage
 
-# GO/NO-GO sideload check against your Foundry (see runbook)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
+pnpm wizard                                      # demo HUD scenes on the LAN + QR, no Foundry needed
+pnpm dev:glasses                                 # this checkout's app on the LAN against YOUR Foundry
+RELAY_URL=wss://evf-relay.aiacos.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 ```
 
-`packages/foundry-module/g2/` is build output and is git-ignored. Rebuild it after every
-g2-app change (`pnpm --filter @evf/g2-app build`) and reload the phone page.
+`pnpm dev:glasses` (= `scripts/wizard.sh --mode live`) serves the app on the LAN, checks the
+relay and prints the LAN URL to put in the module setting **Glasses app page (advanced)**;
+then open **Connect G2 glasses** (Alt+G) and scan its QR in developer mode. Add
+`--local-relay` to run the relay locally with `wrangler dev` (only with an `http://` Foundry:
+an HTTPS page cannot open `ws://` on the LAN). `bash scripts/wizard.sh --help` lists every flag.
 
 ---
 
 ## 📚 See also
 
-- [Runbook](runbook.md) — diagnosis, revoke, re-pair, the sideload harness.
-- [ADR-0016](architecture/0016-direct-foundry-streaming.md) — why there is no bridge.
-- [ADR-0017](architecture/0017-player-owned-glasses-hybrid-projector.md) — player-owned glasses and the hybrid projector.
+- [Runbook](runbook.md) — diagnosis, relay and Pages operation, self-hosting a relay.
+- [ADR-0019](architecture/0019-relay-pairing-player-projector.md) — why the phone never logs into Foundry.
+- [Even Hub packaging](release/evenhub.md) — the `.ehpk`, beta group and store review.
 - [Project wiki](wiki/Home.md) (Italian) — the same steps by audience.
 - [G2 sheet UX](design/g2-sheet-ux.html) — glasses HUD design and screens.
-- [G2 thirds layout](design/g2-thirds-layout.md) — superseded glasses layout; pairing flow and phone/Foundry mocks P01–P03 still current.
 - [Firmware compatibility](firmware-compatibility.md) — SDK / Even App versions.
+- [Privacy](privacy.md) — what the relay and the app see.
