@@ -77,8 +77,7 @@ import { resolveLocale } from '../state/app-store.js';
 import {
   type CredentialStore,
   type Credentials,
-  credentialsFromCode,
-  credentialsFromPayload,
+  credentialsFromLink,
   type KeyValueStorage,
 } from './credentials.js';
 import { type OpenRelay, type RelayLink, relayHost } from './relay-client.js';
@@ -172,7 +171,6 @@ const REFRESH_TOPICS: Readonly<Record<string, SnapshotTopic>> = {
 function identityOf(c: ConnectionState): Omit<ConnectionState, 'status'> {
   const out: Omit<ConnectionState, 'status'> = {};
   if (c.server !== undefined) out.server = c.server;
-  if (c.label !== undefined) out.label = c.label;
   if (c.userName !== undefined) out.userName = c.userName;
   if (c.gmName !== undefined) out.gmName = c.gmName;
   if (c.actorName !== undefined) out.actorName = c.actorName;
@@ -336,7 +334,7 @@ export class DirectSession implements AppActions {
    * @throws Error('invalid manual code') when the code is malformed
    */
   async pairCode(code: string): Promise<void> {
-    await this.pairWith(await credentialsFromCode(code));
+    await this.pairWith(await credentialsFromLink({ code }));
   }
 
   /**
@@ -345,9 +343,9 @@ export class DirectSession implements AppActions {
    * @throws Error('not a pairing QR') when the text carries no pairing payload
    */
   async pairScanned(text: string): Promise<void> {
-    const payload = readPairingText(text);
-    if (payload === null) throw new Error('not a pairing QR');
-    await this.pairWith(credentialsFromPayload(payload));
+    const link = readPairingText(text);
+    if (link === null) throw new Error('not a pairing QR');
+    await this.pairWith(await credentialsFromLink(link));
   }
 
   private async pairWith(creds: Credentials): Promise<void> {
@@ -426,7 +424,6 @@ export class DirectSession implements AppActions {
       ...identityOf(this.store.get().connection),
       status: 'connecting',
       server: relayHost(relay),
-      ...(creds.label !== undefined ? { label: creds.label } : {}),
       steps: { ...NO_STEPS },
     });
     try {

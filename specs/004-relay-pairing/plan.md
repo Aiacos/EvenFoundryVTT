@@ -76,7 +76,7 @@ pairing ≤ 30 s (SC-001)
 
 ### 2. Shared protocol — `packages/shared-protocol/src/direct`
 
-- `pairing.ts` → payload **v2** `{v:2, r, k, l?, relay?}` (Zod), `encode/readPairingFragment`;
+- `pairing.ts` → pairing link `#c=<CODE>[&relay=]` (ADR-0019 Amd 1; the v2 JSON payload was too long to scan), `buildPairingUrl` / `readPairingFragment` / `readPairingText`;
   manual code: `room = HKDF(code,'evf-room')`, `key = HKDF(code,'evf-key')`.
 - `messages.ts`: `hello` without user id; `welcome.rotate` = `{room, key}`; `DIRECT_PROTOCOL_VERSION = 2`;
   map snapshot gains `tiles: [{i, hash, png}]` (base64 4-bit PNG) replacing image URLs.

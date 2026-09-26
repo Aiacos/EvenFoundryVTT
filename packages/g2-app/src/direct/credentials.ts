@@ -1,14 +1,14 @@
 /**
  * Pairing credentials of the glasses app (ADR-0019 §Decision Outcome 3).
  *
- * A pairing is a relay room + an AES-256 device key (+ an optional relay override and a
- * label). There is no Foundry URL, user or password: the phone never reaches Foundry.
+ * A pairing is a relay room + an AES-256 device key (+ an optional relay override). There
+ * is no Foundry URL, user or password: the phone never reaches Foundry.
  *
  * Sources, in order:
- * 1. **QR path** — `location.hash` carries `#evf=<payload>` (the Even Realities App
- *    opened the hosted page from the QR), or the in-app camera read the same QR
- *    ({@link credentialsFromPayload}). The fragment is consumed once and stripped from
- *    the URL with `history.replaceState`.
+ * 1. **QR path** — `location.hash` carries `#c=<code>` (the Even Realities App opened the
+ *    hosted page from the QR), or the in-app camera read the same QR
+ *    ({@link credentialsFromLink}). The fragment is consumed once and stripped from the URL
+ *    with `history.replaceState`.
  * 2. **Persisted** — browser `localStorage` ("survives suspension, kill, and update",
  *    hub.evenrealities.com/docs/reference/faq), mirrored into the Even Hub SDK key-value
  *    store (`setLocalStorage` / `getLocalStorage`), which the everything-evenhub
@@ -21,7 +21,8 @@
 import {
   DeviceKeySchema,
   deriveCodePairing,
-  type PairingPayload,
+  type PairingLink,
+  RelayUrlSchema,
   RoomIdSchema,
   readPairingFragment,
 } from '@evf/shared-protocol';
@@ -33,8 +34,6 @@ export interface Credentials {
   room: string;
   /** AES-256 device key, base64url. */
   key: string;
-  /** Label to show before the first `welcome` (character name), if known. */
-  label?: string;
   /** Relay override (development / self-hosted), else the relay the app was built for. */
   relay?: string;
 }
@@ -46,11 +45,7 @@ export const CREDENTIALS_STORAGE_KEY = 'evf.direct.credentials.v2';
 const StoredCredentialsSchema = z.strictObject({
   room: RoomIdSchema,
   key: DeviceKeySchema,
-  label: z.string().max(64).optional(),
-  relay: z
-    .string()
-    .regex(/^wss?:\/\/[^\s#?]+$/)
-    .optional(),
+  relay: RelayUrlSchema.optional(),
 });
 
 /** Subset of the Even Hub SDK bridge used as a secondary credential store. */
@@ -62,42 +57,33 @@ export interface SdkKeyValue {
 /** Minimal `Storage` surface (browser `localStorage`) — injectable for tests. */
 export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-/** Credentials carried by a pairing payload (QR fragment or camera scan). */
-export function credentialsFromPayload(payload: PairingPayload): Credentials {
-  return {
-    room: payload.r,
-    key: payload.k,
-    ...(payload.l !== undefined ? { label: payload.l } : {}),
-    ...(payload.relay !== undefined ? { relay: payload.relay } : {}),
-  };
-}
-
 /**
- * Reads `#evf=…` from the page URL, strips the fragment, and returns credentials.
+ * Reads `#c=…` from the page URL and strips the fragment.
  *
- * The fragment is removed whenever it contains an `evf` key — even if malformed — so a
+ * The fragment is removed whenever it contains a `c` key — even if malformed — so a
  * broken QR never stays in the address bar.
  *
- * @returns credentials, or `null` when no valid payload is present
+ * @returns the pairing link, or `null` when no valid code is present
  */
 export function consumePairingFragment(
   location: Pick<Location, 'pathname' | 'search' | 'hash'>,
   history: Pick<History, 'replaceState'>,
-): Credentials | null {
-  if (!/(^#|&)evf=/.test(location.hash)) return null;
-  const payload = readPairingFragment(location.hash);
+): PairingLink | null {
+  if (!/(^#|&)c=/.test(location.hash)) return null;
+  const link = readPairingFragment(location.hash);
   history.replaceState(null, '', `${location.pathname}${location.search}`);
-  return payload === null ? null : credentialsFromPayload(payload);
+  return link;
 }
 
 /**
- * Builds credentials from the 16-char code (room + key by HKDF, default relay).
+ * Credentials of a pairing link (QR) or of a typed code: room + key by HKDF, plus the
+ * relay override when the link carries one.
  *
  * @throws Error('invalid manual code') when the code does not normalise to 16 chars
  */
-export async function credentialsFromCode(code: string): Promise<Credentials> {
-  const { room, key } = await deriveCodePairing(code);
-  return { room, key };
+export async function credentialsFromLink(link: PairingLink): Promise<Credentials> {
+  const { room, key } = await deriveCodePairing(link.code);
+  return { room, key, ...(link.relay !== undefined ? { relay: link.relay } : {}) };
 }
 
 /** Diagnostic sink for storage failures (never fatal). */
@@ -157,7 +143,7 @@ export class CredentialStore {
 
   /**
    * Applies a `welcome.rotate` atomically: new room and key replace the old ones in a
-   * single record write (label and relay are kept), so a crash mid-way never leaves a
+   * single record write (the relay override is kept), so a crash mid-way never leaves a
    * mixed pair.
    *
    * @throws Error when there are no credentials to rotate
@@ -187,12 +173,8 @@ export class CredentialStore {
     try {
       const parsed = StoredCredentialsSchema.safeParse(JSON.parse(raw));
       if (!parsed.success) return null;
-      const { label, relay, ...base } = parsed.data;
-      return {
-        ...base,
-        ...(label !== undefined ? { label } : {}),
-        ...(relay !== undefined ? { relay } : {}),
-      };
+      const { relay, ...base } = parsed.data;
+      return { ...base, ...(relay !== undefined ? { relay } : {}) };
     } catch {
       // Corrupted JSON is equivalent to "no credentials" — the user re-pairs.
       return null;

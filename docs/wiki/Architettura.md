@@ -48,7 +48,7 @@ sequenceDiagram
   PL-->>App: welcome, poi snapshot / asset / delta
 ```
 
-- Il QR è `https://aiacos.github.io/EvenFoundryVTT/app/#evf=<payload>` con `payload = base64url({v:2, r, k, l, relay?})`; dal codice di 16 caratteri stanza e chiave derivano con HKDF-SHA256.
+- Il QR è `https://aiacos.github.io/EvenFoundryVTT/app/#c=<CODICE>` (circa 63 caratteri): porta solo il codice di 16 caratteri, da cui stanza e chiave derivano con HKDF-SHA256; `&relay=` compare solo in sviluppo o con un relay self-hosted.
 - QR e codice sono **monouso** (rotazione al primo `welcome`) e **scadono in 5 minuti**.
 - Se il projector esce dalla stanza, gli occhiali ricevono `peer-down` e mostrano **«Foundry del giocatore chiuso»** (causa `no-projector`) tenendo aperta la connessione: al `peer-up` successivo ripartono da soli. Le altre cause offline sono `network` (*Relay non raggiungibile*) e `background`.
 - Passi di S11: relay raggiungibile → Foundry del giocatore aperto → collegato a «&lt;utente&gt;» → scheda → scena.

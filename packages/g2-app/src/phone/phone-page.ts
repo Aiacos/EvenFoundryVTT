@@ -228,7 +228,7 @@ function buildConnectionView(
       values.status.dataset.status = c.status;
       values.server.textContent = c.server ?? t.unknown;
       values.user.textContent = c.userName ?? t.unknown;
-      values.character.textContent = c.actorName ?? c.label ?? t.unknown;
+      values.character.textContent = c.actorName ?? t.unknown;
       values.gm.textContent =
         c.gmName === undefined
           ? t.unknown

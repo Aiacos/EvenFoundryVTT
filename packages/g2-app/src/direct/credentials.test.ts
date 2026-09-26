@@ -10,8 +10,7 @@ import {
   CREDENTIALS_STORAGE_KEY,
   CredentialStore,
   consumePairingFragment,
-  credentialsFromCode,
-  credentialsFromPayload,
+  credentialsFromLink,
   type SdkKeyValue,
 } from './credentials.js';
 
@@ -20,14 +19,17 @@ function locationOf(url: string) {
   return { pathname: u.pathname, search: u.search, hash: u.hash };
 }
 
-describe('consumePairingFragment', () => {
-  const payload = { v: 2 as const, r: generateRoomId(), k: generateDeviceKey(), l: 'Thorin' };
+const CODE = '7QK3MX9P2HRAC4TE';
 
-  it('parses the QR fragment and strips it from the URL', () => {
-    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/index.html', payload);
+describe('consumePairingFragment', () => {
+  it('reads the code from the QR fragment and strips it from the URL', () => {
+    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/index.html', {
+      code: CODE,
+    });
     const history = { replaceState: vi.fn() };
-    const creds = consumePairingFragment(locationOf(url.replace('#', '?x=1#')), history);
-    expect(creds).toEqual({ room: payload.r, key: payload.k, label: 'Thorin' });
+    expect(consumePairingFragment(locationOf(url.replace('#', '?x=1#')), history)).toEqual({
+      code: CODE,
+    });
     expect(history.replaceState).toHaveBeenCalledWith(
       null,
       '',
@@ -35,11 +37,9 @@ describe('consumePairingFragment', () => {
     );
   });
 
-  it('strips a malformed evf fragment and returns null', () => {
+  it('strips a malformed code fragment and returns null', () => {
     const history = { replaceState: vi.fn() };
-    expect(
-      consumePairingFragment(locationOf('https://h.example/#evf=garbage'), history),
-    ).toBeNull();
+    expect(consumePairingFragment(locationOf('https://h.example/#c=garbage'), history)).toBeNull();
     expect(history.replaceState).toHaveBeenCalledOnce();
   });
 
@@ -50,23 +50,15 @@ describe('consumePairingFragment', () => {
   });
 });
 
-describe('credentialsFromPayload / credentialsFromCode', () => {
-  it('keeps the relay override and the label only when present', () => {
-    const r = generateRoomId();
-    const k = generateDeviceKey();
-    expect(credentialsFromPayload({ v: 2, r, k })).toEqual({ room: r, key: k });
-    expect(credentialsFromPayload({ v: 2, r, k, relay: 'ws://x:1' })).toEqual({
-      room: r,
-      key: k,
+describe('credentialsFromLink', () => {
+  it('derives room and key from the code; keeps a relay override', async () => {
+    const derived = await deriveCodePairing(CODE);
+    expect(await credentialsFromLink({ code: '7qk3 mx9p 2hra c4te' })).toEqual(derived);
+    expect(await credentialsFromLink({ code: CODE, relay: 'ws://x:1' })).toEqual({
+      ...derived,
       relay: 'ws://x:1',
     });
-  });
-
-  it('derives room and key from the code', async () => {
-    expect(await credentialsFromCode('7qk3 mx9p 2hra c4te')).toEqual(
-      await deriveCodePairing('7QK3-MX9P-2HRA-C4TE'),
-    );
-    await expect(credentialsFromCode('short')).rejects.toThrow('invalid manual code');
+    await expect(credentialsFromLink({ code: 'short' })).rejects.toThrow('invalid manual code');
   });
 });
 

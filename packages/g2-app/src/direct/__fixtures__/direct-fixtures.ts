@@ -27,7 +27,7 @@ export const USER_ID = 'aB3dE5fG7hI9jK1l';
 
 /** Fresh QR-style credentials. */
 export function makeCredentials(overrides: Partial<Credentials> = {}): Credentials {
-  return { room: generateRoomId(), key: generateDeviceKey(), label: 'Thorin', ...overrides };
+  return { room: generateRoomId(), key: generateDeviceKey(), ...overrides };
 }
 
 export function makeCharacter(overrides: Partial<CharacterSnapshot> = {}): CharacterSnapshot {

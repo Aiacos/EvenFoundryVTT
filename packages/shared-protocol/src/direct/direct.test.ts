@@ -12,24 +12,16 @@ import { MapSnapshotSchema } from './map.js';
 import { AppMessageSchema, ProjectorMessageSchema } from './messages.js';
 import {
   buildPairingUrl,
-  decodePairingPayload,
   deriveCodePairing,
-  encodePairingPayload,
   generateManualCode,
   generateRoomId,
   normalizeManualCode,
-  type PairingPayload,
   readPairingFragment,
   readPairingText,
 } from './pairing.js';
 import { RelayControlSchema, relayHealthUrl, relayRoomUrl } from './relay.js';
 
-const PAYLOAD: PairingPayload = {
-  v: 2,
-  r: generateRoomId(),
-  k: generateDeviceKey(),
-  l: 'Thorin',
-};
+const CODE = '7QK3MX9P2HRAC4TE';
 
 describe('base64url', () => {
   it('round-trips arbitrary bytes without padding', () => {
@@ -83,36 +75,39 @@ describe('sealed envelope', () => {
   });
 });
 
-describe('pairing payload', () => {
-  it('encodes and decodes', () => {
-    expect(decodePairingPayload(encodePairingPayload(PAYLOAD))).toEqual(PAYLOAD);
-  });
-
-  it('returns null for garbage', () => {
-    expect(decodePairingPayload('not-json')).toBeNull();
-    expect(decodePairingPayload(toBase64Url(new TextEncoder().encode('{"v":2}')))).toBeNull();
-  });
-
-  it('builds the app URL with the payload in the fragment and reads it back', () => {
-    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/#old', PAYLOAD);
-    expect(url.startsWith('https://aiacos.github.io/EvenFoundryVTT/app/#evf=')).toBe(true);
-    expect(readPairingFragment(new URL(url).hash)).toEqual(PAYLOAD);
+describe('pairing link (QR)', () => {
+  it('carries only the code: short URL, fragment replaced', () => {
+    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/#old', {
+      code: '7qk3-mx9p-2hra-c4te',
+    });
+    expect(url).toBe(`https://aiacos.github.io/EvenFoundryVTT/app/#c=${CODE}`);
+    expect(url.length).toBeLessThanOrEqual(64);
+    expect(readPairingFragment(new URL(url).hash)).toEqual({ code: CODE });
     expect(readPairingFragment('')).toBeNull();
+    expect(readPairingFragment('#c=short')).toBeNull();
   });
 
-  it('reads a scanned QR text whatever its origin, or a bare fragment', () => {
-    const url = buildPairingUrl('http://192.168.1.5:5173/', PAYLOAD);
-    expect(readPairingText(url)).toEqual(PAYLOAD);
-    expect(readPairingText(url.slice(url.indexOf('#') + 1))).toEqual(PAYLOAD);
-    expect(readPairingText('https://example.com/no-payload')).toBeNull();
-  });
-
-  it('accepts only ws(s) relay overrides and 128-bit+ room ids', () => {
-    const dev = { ...PAYLOAD, relay: 'ws://192.168.1.5:8787' };
-    expect(decodePairingPayload(encodePairingPayload(dev))).toEqual(dev);
-    expect(() => encodePairingPayload({ ...PAYLOAD, relay: 'https://x.example' })).toThrow();
-    expect(() => encodePairingPayload({ ...PAYLOAD, r: 'short' })).toThrow();
+  it('adds a ws(s) relay only for dev / self-host, and rejects bad input', () => {
+    const url = buildPairingUrl('http://192.168.1.5:5173/', {
+      code: CODE,
+      relay: 'ws://192.168.1.5:8787',
+    });
+    expect(readPairingFragment(new URL(url).hash)).toEqual({
+      code: CODE,
+      relay: 'ws://192.168.1.5:8787',
+    });
+    expect(readPairingFragment(`#c=${CODE}&relay=https://x.example`)).toBeNull();
+    expect(() => buildPairingUrl('https://a/', { code: 'nope' })).toThrow('invalid pairing code');
+    expect(() => buildPairingUrl('https://a/', { code: CODE, relay: 'https://x' })).toThrow();
     expect(generateRoomId()).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  });
+
+  it('reads a scanned QR text whatever its origin, a bare fragment or just the code', () => {
+    const url = buildPairingUrl('http://192.168.1.5:5173/', { code: CODE });
+    expect(readPairingText(url)).toEqual({ code: CODE });
+    expect(readPairingText(`c=${CODE}`)).toEqual({ code: CODE });
+    expect(readPairingText(' 7QK3-MX9P-2HRA-C4TE ')).toEqual({ code: CODE });
+    expect(readPairingText('https://example.com/no-payload')).toBeNull();
   });
 });
 

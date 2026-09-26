@@ -52,7 +52,7 @@ Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anch
 
 ## 🔐 Payload di collegamento
 
-- **QR**: `<pagina dell'app>#evf=<payload>` (predefinita `https://aiacos.github.io/EvenFoundryVTT/app/`); `payload = base64url(JSON {v:2, r, k, l?, relay?})` — `r` stanza (id casuale da 128 bit, base64url), `k` chiave AES-256 base64url, `l` etichetta (nome del personaggio), `relay` relay alternativo `wss://`/`ws://`. Il frammento non arriva mai a un server. L'app legge lo stesso payload sia dall'URL (QR inquadrato con la Even Realities App) sia dalla foto di «Scansiona QR» (`readPairingText`).
+- **QR**: `<pagina dell'app>#c=<CODICE>` (predefinita `https://aiacos.github.io/EvenFoundryVTT/app/`, circa 63 caratteri, QR piccolo con margine di 4 moduli) — solo il codice di 16 caratteri; stanza e chiave si derivano con HKDF come per il codice digitato. `&relay=ws(s)://…` compare solo per un relay alternativo (sviluppo, self-hosting). Il frammento non arriva mai a un server. L'app legge lo stesso link dall'URL (QR inquadrato con la Even Realities App), dalla foto di «Scansiona QR» o dal solo codice (`readPairingText`).
 - **Codice manuale**: 16 caratteri Crockford base32 (`MANUAL_CODE_LENGTH`, 80 bit), mostrato come `XXXX-XXXX-XXXX-XXXX`; `deriveCodePairing` ricava stanza (128 bit, info `evf-room`) e chiave (256 bit, info `evf-key`) con HKDF-SHA256, quindi al telefono non serve altro.
 - Nessun utente, password o URL di Foundry arriva al telefono.
 
