@@ -3,43 +3,45 @@
  * `actionEconomy`, `movement` and `settings` in the {@link AppStore}; implements
  * {@link AppActions} for the HUD.
  *
- * Lifecycle (screens S10 unpaired · S11 connecting · S12 offline):
+ * Lifecycle (screens S10 unpaired · S11 connecting · S12 offline), ADR-0019:
  *
  * ```
- * unpaired ──pair──▶ connecting ─(server, login, socket, hello→welcome, snapshots)─▶ online
- *     ▲                  │  ▲                                                         │
- *     │ revoked/auth     ▼  │ backoff 1→30 s (+jitter)                  socket lost / │
- *     └──────────────── offline ◀──────── 2 missed pongs · no welcome in 8 s (no-gm) ─┘
+ * unpaired ──pair──▶ connecting ─(relay, projector in the room, hello→welcome, snapshots)─▶ online
+ *     ▲                  │  ▲                                                               │
+ *     │ revoked          ▼  │ backoff 1→30 s (+jitter)             relay lost · 2 missed pongs │
+ *     └──────────────── offline ◀─────────────────────────────────────────────────────────────┘
+ *                         ▲ │ no-projector: the relay link stays open; the projector
+ *                         └─┘ joining the room (`peer-up`) re-sends `hello` at once
  * ```
  *
  * `FOREGROUND_EXIT` closes gracefully (cause `background`); `FOREGROUND_ENTER` reconnects
- * immediately. All traffic is sealed (AES-GCM, `from = userId`, `to = projector`); every
- * envelope addressed to this user is opened, whichever Foundry client sent it: the
- * elected projector may be the player's own browser or a GM's and may switch mid-session
- * (ADR-0017 §Decision 6). Authenticity comes from the device key and the AAD
- * (`projector>userId`), not from the sender id.
+ * immediately. All traffic is sealed (AES-GCM, `from = glasses`, `to = projector`). The
+ * first `welcome` after a QR/code rotates room and key: they are persisted, then the
+ * session reconnects in the new room (single-use QR).
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md
- * @see docs/architecture/0017-player-owned-glasses-hybrid-projector.md
- * @see docs/design/g2-thirds-layout.md §Associazione e connessione
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
+ * @see docs/architecture/0016-direct-foundry-streaming.md (sealed protocol)
  */
 import {
   ActionEconomyPayloadSchema,
   ActionResultPayloadSchema,
   type AppMessage,
+  ASSET_REF_PREFIX,
   CHARACTER_DELTA_TYPE,
   CharacterSnapshotSchema,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TARGETS_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
   CombatSnapshotSchema,
+  DEFAULT_RELAY_URL,
   DIRECT_PROTOCOL_VERSION,
-  DIRECT_SOCKET_EVENT,
   EVENT_LOG_DELTA_TYPE,
+  GLASSES_ADDRESS,
   importDeviceKey,
   LOG_DELTA_TYPE,
   type LogSnapshot,
   LogSnapshotSchema,
+  type MapSnapshot,
   MapSnapshotSchema,
   MovementBudgetPayloadSchema,
   open,
@@ -54,6 +56,7 @@ import {
   R1_ROLL_REQUEST_TYPE,
   ReactionAvailablePayloadSchema,
   RollRequestPayloadSchema,
+  readPairingText,
   SCENE_VIEWPORT_DELTA_TYPE,
   SealedEnvelopeSchema,
   SNAPSHOT_TOPICS,
@@ -74,11 +77,11 @@ import { resolveLocale } from '../state/app-store.js';
 import {
   type CredentialStore,
   type Credentials,
-  credentialsFromManualCode,
-  type JoinUser,
+  credentialsFromCode,
+  credentialsFromPayload,
   type KeyValueStorage,
 } from './credentials.js';
-import { type FoundryClient, FoundryClientError, type SocketLike } from './foundry-client.js';
+import { type OpenRelay, type RelayLink, relayHost } from './relay-client.js';
 import { loadSettings, saveSettings } from './settings.js';
 
 /** Timing contract (ms). Exported for tests and documentation. */
@@ -102,6 +105,9 @@ export const LOG_TAIL_MAX = 50;
 /** Diagnostic entries kept for the phone "Diagnostica" section. */
 export const DIAGNOSTICS_MAX = 20;
 
+/** Scene pictures kept for the map (`asset` messages, one scene's worth). */
+export const ASSETS_MAX = 128;
+
 /** One diagnostic line (phone P02 "Diagnostica"). */
 export interface DiagnosticEntry {
   at: number;
@@ -112,28 +118,20 @@ export interface DiagnosticEntry {
 /** Non-store session facts shown on the phone page. */
 export interface SessionInfo {
   latencyMs: number | null;
-  foundryVersion: string | null;
   /** `evenfoundryvtt` version reported by the projector (`welcome.moduleVersion`). */
   moduleVersion: string | null;
   diagnostics: readonly DiagnosticEntry[];
 }
 
-/** Subset of {@link FoundryClient} the session needs (injectable). */
-export type FoundryClientLike = Pick<
-  FoundryClient,
-  'probeStatus' | 'fetchJoinPage' | 'login' | 'openSocket' | 'listG2Users'
->;
-
 /** Collaborators and environment of a {@link DirectSession}. */
 export interface SessionDeps {
   store: AppStore;
   credentials: CredentialStore;
-  /** Foundry base derived from the page URL (manual pairing target). */
-  base: string;
-  createClient: (base: string) => FoundryClientLike;
+  /** Opens relay links (browser WebSocket; tests inject a fake). */
+  openRelay: OpenRelay;
+  /** Relay the app was built for (credentials may override it: dev / self-host). */
+  relayUrl?: string;
   appVersion: string;
-  /** Module version this bundle was built with; a different `welcome.moduleVersion` warns. */
-  moduleVersion?: string;
   settingsStorage: KeyValueStorage | null;
   deviceLanguage: () => string;
   now?: () => number;
@@ -142,9 +140,9 @@ export interface SessionDeps {
 }
 
 const NO_STEPS: ConnectSteps = {
-  server: false,
-  login: false,
-  gm: false,
+  relay: false,
+  projector: false,
+  paired: false,
   character: false,
   scene: false,
 };
@@ -174,6 +172,7 @@ const REFRESH_TOPICS: Readonly<Record<string, SnapshotTopic>> = {
 function identityOf(c: ConnectionState): Omit<ConnectionState, 'status'> {
   const out: Omit<ConnectionState, 'status'> = {};
   if (c.server !== undefined) out.server = c.server;
+  if (c.label !== undefined) out.label = c.label;
   if (c.userName !== undefined) out.userName = c.userName;
   if (c.gmName !== undefined) out.gmName = c.gmName;
   if (c.actorName !== undefined) out.actorName = c.actorName;
@@ -212,6 +211,32 @@ interface PendingInvoke {
 type OfflineCause = NonNullable<ConnectionState['cause']>;
 
 /**
+ * Replaces `evf-asset:<id>` references with the pictures received in `asset` messages;
+ * a picture not received (yet) is dropped (the phone then draws the schematic map).
+ */
+export function hydrateMap(map: MapSnapshot, assets: ReadonlyMap<string, string>): MapSnapshot {
+  const resolve = (src: string): string | undefined =>
+    src.startsWith(ASSET_REF_PREFIX) ? assets.get(src.slice(ASSET_REF_PREFIX.length)) : undefined;
+  const { background, tiles, ...base } = map;
+  const bgSrc = background === undefined ? undefined : resolve(background.src);
+  const hydratedTiles = (tiles ?? []).flatMap((t) => {
+    const src = resolve(t.src);
+    return src === undefined ? [] : [{ ...t, src }];
+  });
+  return {
+    ...base,
+    ...(background !== undefined && bgSrc !== undefined
+      ? { background: { ...background, src: bgSrc } }
+      : {}),
+    ...(hydratedTiles.length > 0 ? { tiles: hydratedTiles } : {}),
+    tokens: map.tokens.map(({ img, ...token }) => {
+      const src = img === undefined ? undefined : resolve(img);
+      return src === undefined ? token : { ...token, img: src };
+    }),
+  };
+}
+
+/**
  * Direct-channel session: construct with {@link SessionDeps}, then call {@link DirectSession.start}.
  */
 export class DirectSession implements AppActions {
@@ -223,13 +248,11 @@ export class DirectSession implements AppActions {
   /** Bumped on every connect/close; async continuations from older epochs are dropped. */
   private epoch = 0;
   private attempt = 0;
-  private socket: SocketLike | null = null;
-  private socketListener: ((raw: unknown) => void) | null = null;
-  private disconnectListener: (() => void) | null = null;
+  private link: RelayLink | null = null;
   private key: CryptoKey | null = null;
-  private creds: Credentials | null = null;
   private welcomed = false;
-  private helloRid = '';
+  /** Every `hello` of the current link: the `welcome` may answer any of them. */
+  private readonly helloRids = new Set<string>();
   private lastSeq = -1;
   private inbox: Promise<void> = Promise.resolve();
 
@@ -242,9 +265,9 @@ export class DirectSession implements AppActions {
   private readonly pending = new Map<string, PendingInvoke>();
   private pendingPing: { rid: string; sentAt: number } | null = null;
   private missedPongs = 0;
+  private readonly assets = new Map<string, string>();
 
   private latencyMs: number | null = null;
-  private foundryVersion: string | null = null;
   private moduleVersion: string | null = null;
   private readonly diagnostics: DiagnosticEntry[] = [];
   private readonly infoListeners = new Set<(info: SessionInfo) => void>();
@@ -308,25 +331,34 @@ export class DirectSession implements AppActions {
   }
 
   /**
-   * Manual pairing (P03): derives credentials from the typed code and connects.
+   * Pairs with the 16-char code shown under the QR (P03) and connects.
    *
    * @throws Error('invalid manual code') when the code is malformed
    */
-  async pairManual(userId: string, code: string): Promise<void> {
-    const creds = await credentialsFromManualCode(this.deps.base, userId, code);
+  async pairCode(code: string): Promise<void> {
+    await this.pairWith(await credentialsFromCode(code));
+  }
+
+  /**
+   * Pairs with the text of a scanned QR (the in-app camera, P03) and connects.
+   *
+   * @throws Error('not a pairing QR') when the text carries no pairing payload
+   */
+  async pairScanned(text: string): Promise<void> {
+    const payload = readPairingText(text);
+    if (payload === null) throw new Error('not a pairing QR');
+    await this.pairWith(credentialsFromPayload(payload));
+  }
+
+  private async pairWith(creds: Credentials): Promise<void> {
     await this.deps.credentials.save(creds);
     this.attempt = 0;
     await this.connect();
   }
 
-  /** Lists "(G2)" users on this Foundry for the manual form. */
-  listUsers(): Promise<JoinUser[]> {
-    return this.deps.createClient(this.deps.base).listG2Users();
-  }
-
   /** {@inheritDoc AppActions.invoke} — 10 s timeout yields `{code:'timeout'}`. */
   invoke(tool: string, input: unknown): Promise<InvokeResult> {
-    if (this.socket === null || !this.welcomed) {
+    if (this.link === null || !this.welcomed) {
       return Promise.resolve({ ok: false, error: { code: 'offline', message: 'not connected' } });
     }
     const rid = this.uuid();
@@ -342,7 +374,7 @@ export class DirectSession implements AppActions {
 
   /** {@inheritDoc AppActions.refresh} */
   refresh(topic: SnapshotTopic): void {
-    if (this.socket === null || !this.welcomed) return;
+    if (this.link === null || !this.welcomed) return;
     this.send({ t: 'get', rid: this.uuid(), what: topic });
   }
 
@@ -358,11 +390,10 @@ export class DirectSession implements AppActions {
     return resolveLocale(this.store.get(), this.deps.deviceLanguage());
   }
 
-  /** Current non-store facts (latency, Foundry version, diagnostics). */
+  /** Current non-store facts (latency, module version, diagnostics). */
   info(): SessionInfo {
     return {
       latencyMs: this.latencyMs,
-      foundryVersion: this.foundryVersion,
       moduleVersion: this.moduleVersion,
       diagnostics: [...this.diagnostics],
     };
@@ -390,75 +421,110 @@ export class DirectSession implements AppActions {
       this.clearData({ status: 'unpaired' });
       return;
     }
-    this.creds = creds;
-    const client = this.deps.createClient(creds.base);
+    const relay = creds.relay ?? this.deps.relayUrl ?? DEFAULT_RELAY_URL;
     this.setConnection({
       ...identityOf(this.store.get().connection),
       status: 'connecting',
-      server: new URL(creds.base).host,
+      server: relayHost(relay),
+      ...(creds.label !== undefined ? { label: creds.label } : {}),
       steps: { ...NO_STEPS },
     });
     try {
-      const status = await client.probeStatus();
-      this.foundryVersion = status?.version ?? null;
-      await client.fetchJoinPage();
-      if (epoch !== this.epoch) return;
-      this.markStep('server');
-      await client.login(creds.userId, creds.password);
-      if (epoch !== this.epoch) return;
-      this.markStep('login');
       this.key = await importDeviceKey(creds.key);
-      const socket = await client.openSocket();
+      const link = await this.deps.openRelay(relay, creds.room);
       if (epoch !== this.epoch) {
-        socket.disconnect();
+        link.close();
         return;
       }
-      this.attach(socket, epoch);
-      this.helloRid = this.uuid();
-      this.welcomeTimer = setTimeout(
-        () => this.fail('no-gm', 'no welcome from GM'),
-        SESSION_TIMING.welcomeTimeout,
-      );
-      this.send({
-        t: 'hello',
-        rid: this.helloRid,
-        proto: DIRECT_PROTOCOL_VERSION,
-        app: this.deps.appVersion,
-        locale: this.locale(),
-      });
+      this.attach(link, epoch);
+      this.markStep('relay');
+      this.sayHello();
     } catch (error) {
       if (epoch !== this.epoch) return;
-      if (error instanceof FoundryClientError && error.kind === 'auth') {
-        this.record('error', `login rejected: ${error.message}`);
-        await this.revoke('auth');
-        return;
-      }
-      if (error instanceof FoundryClientError && error.kind === 'access') {
-        // Credentials are kept: the fix is on the server side (e.g. make the game public).
-        this.fail('access', error.message);
-        return;
-      }
       this.fail('network', error instanceof Error ? error.message : String(error));
     }
   }
 
-  private attach(socket: SocketLike, epoch: number): void {
-    this.socket = socket;
+  private attach(link: RelayLink, epoch: number): void {
+    this.link = link;
     this.lastSeq = -1;
-    this.socketListener = (raw: unknown): void => {
+    link.onFrame((raw) => {
       this.inbox = this.inbox.then(() => this.receive(raw, epoch));
-    };
-    this.disconnectListener = (): void => {
-      if (epoch === this.epoch) this.fail('network', 'socket disconnected');
-    };
-    socket.on(DIRECT_SOCKET_EVENT, this.socketListener);
-    socket.on('disconnect', this.disconnectListener);
+    });
+    link.onPeer((up) => {
+      if (epoch === this.epoch) this.onPeer(up);
+    });
+    link.onClose((code) => {
+      if (epoch === this.epoch) this.fail('network', `relay link closed (${code})`);
+    });
   }
 
-  /** Tears down socket, timers and pending requests; bumps the epoch. */
+  /**
+   * Sends `hello` and waits for the `welcome`. Without an answer the projector (the
+   * player's Foundry tab) is not in the room: the session shows `no-projector`, keeps the
+   * relay link and says `hello` again every {@link SESSION_TIMING.welcomeTimeout} — and at
+   * once when the relay reports the projector joining ({@link onPeer}). Several `hello`s
+   * may be in flight (the relay's `peer-up` races the first one): the `welcome` may answer
+   * any of them.
+   */
+  private sayHello(): void {
+    if (this.welcomeTimer !== null) clearTimeout(this.welcomeTimer);
+    const rid = this.uuid();
+    this.helloRids.add(rid);
+    this.welcomeTimer = setTimeout(() => {
+      this.welcomeTimer = null;
+      this.waitForProjector();
+      this.sayHello();
+    }, SESSION_TIMING.welcomeTimeout);
+    this.send({
+      t: 'hello',
+      rid,
+      proto: DIRECT_PROTOCOL_VERSION,
+      app: this.deps.appVersion,
+      locale: this.locale(),
+    });
+  }
+
+  /** Projector absent: offline (`no-projector`), link kept, no retry countdown. */
+  private waitForProjector(): void {
+    this.stopHeartbeat();
+    this.welcomed = false;
+    const c = this.store.get().connection;
+    if (c.status === 'offline' && c.cause === 'no-projector') return;
+    this.record('warn', 'no-projector: the Foundry tab that paired these glasses is not open');
+    this.setConnection({
+      ...identityOf(this.store.get().connection),
+      status: 'offline',
+      cause: 'no-projector',
+    });
+  }
+
+  /** Relay presence of the projector. */
+  private onPeer(up: boolean): void {
+    if (up) {
+      this.markStep('projector');
+      if (this.welcomed) return;
+      const c = this.store.get().connection;
+      if (c.status === 'offline') {
+        this.setConnection({
+          ...identityOf(c),
+          status: 'connecting',
+          steps: { ...NO_STEPS, relay: true, projector: true },
+        });
+      }
+      this.sayHello();
+      return;
+    }
+    if (!this.welcomed) return;
+    this.waitForProjector();
+    this.sayHello();
+  }
+
+  /** Tears down the link, timers and pending requests; bumps the epoch. */
   private close(): void {
     this.epoch++;
     this.welcomed = false;
+    this.helloRids.clear();
     for (const t of [this.retryTimer, this.welcomeTimer, this.snapshotTimer])
       if (t !== null) clearTimeout(t);
     for (const t of [this.countdownTimer, this.heartbeatTimer]) if (t !== null) clearInterval(t);
@@ -473,13 +539,15 @@ export class DirectSession implements AppActions {
     this.pending.clear();
     this.pendingPing = null;
     this.missedPongs = 0;
-    if (this.socket !== null) {
-      if (this.socketListener !== null) this.socket.off(DIRECT_SOCKET_EVENT, this.socketListener);
-      if (this.disconnectListener !== null) this.socket.off('disconnect', this.disconnectListener);
-      this.socket.disconnect();
-    }
-    this.socket = null;
-    this.socketListener = this.disconnectListener = null;
+    this.link?.close();
+    this.link = null;
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+    this.pendingPing = null;
+    this.missedPongs = 0;
   }
 
   /** Goes offline and schedules a reconnect with exponential backoff. */
@@ -504,20 +572,21 @@ export class DirectSession implements AppActions {
     }, SESSION_TIMING.countdownTick);
   }
 
-  private async revoke(cause?: 'auth'): Promise<void> {
+  private async revoke(): Promise<void> {
     this.close();
     await this.deps.credentials.clear();
-    this.clearData(cause === undefined ? { status: 'revoked' } : { status: 'revoked', cause });
+    this.clearData({ status: 'revoked' });
   }
 
   // ─── Inbound ─────────────────────────────────────────────────────────────
 
   private async receive(raw: unknown, epoch: number): Promise<void> {
-    if (epoch !== this.epoch || this.key === null || this.creds === null) return;
+    if (epoch !== this.epoch || this.key === null) return;
     const env = SealedEnvelopeSchema.safeParse(raw);
-    // Other devices' traffic shares the relay: silently skip what is not ours. The sender
-    // is informational — any projector holding the device key may answer (ADR-0017).
-    if (!env.success || env.data.to !== this.creds.userId) return;
+    if (!env.success || env.data.to !== GLASSES_ADDRESS || env.data.from !== PROJECTOR_ADDRESS) {
+      this.record('warn', 'unexpected relay frame dropped');
+      return;
+    }
     const opened = await open(this.key, env.data, this.now());
     if (epoch !== this.epoch) return;
     if (!opened.ok) {
@@ -557,8 +626,17 @@ export class DirectSession implements AppActions {
         }
         return;
       case 'revoked':
-        this.record('error', 'pairing revoked by GM');
+        this.record('error', 'pairing revoked from Foundry');
         return this.revoke();
+      case 'asset':
+        this.assets.delete(msg.id);
+        this.assets.set(msg.id, msg.data);
+        while (this.assets.size > ASSETS_MAX) {
+          const oldest = this.assets.keys().next().value;
+          if (oldest === undefined) break;
+          this.assets.delete(oldest);
+        }
+        return;
     }
   }
 
@@ -566,28 +644,33 @@ export class DirectSession implements AppActions {
     msg: Extract<ProjectorMessage, { t: 'welcome' }>,
     epoch: number,
   ): Promise<void> {
-    if (this.welcomed || msg.rid !== this.helloRid) return;
+    if (this.welcomed || !this.helloRids.has(msg.rid)) return;
+    this.helloRids.clear();
     if (this.welcomeTimer !== null) clearTimeout(this.welcomeTimer);
     this.welcomeTimer = null;
     if (msg.rotate !== undefined) {
-      // Persist first, then switch keys: a crash in between keeps a usable pair on disk.
-      this.creds = await this.deps.credentials.rotate(msg.rotate);
-      const key = await importDeviceKey(msg.rotate.key);
+      // Single-use QR/code: persist the fresh room + key, then meet the projector there.
+      await this.deps.credentials.rotate(msg.rotate);
       if (epoch !== this.epoch) return;
-      this.key = key;
+      this.record('warn', 'pairing secrets rotated — moving to the new room');
+      this.attempt = 0;
+      await this.connect();
+      return;
     }
     this.welcomed = true;
     this.attempt = 0;
-    this.checkModuleVersion(msg.moduleVersion);
+    this.moduleVersion = msg.moduleVersion ?? null;
+    this.emitInfo();
     const c = this.store.get().connection;
     this.setConnection({
       ...c,
+      status: c.status === 'offline' ? 'connecting' : c.status,
       userName: msg.userName,
       gmName: msg.gmName,
       actorName: msg.actorName,
       worldTitle: msg.worldTitle,
       ...(msg.locale !== undefined ? { foundryLocale: msg.locale } : {}),
-      steps: { ...(c.steps ?? NO_STEPS), server: true, login: true, gm: true },
+      steps: { ...(c.steps ?? NO_STEPS), relay: true, projector: true, paired: true },
     });
     this.heartbeatTimer = setInterval(() => this.heartbeat(), SESSION_TIMING.heartbeatInterval);
     this.snapshotTimer = setTimeout(() => {
@@ -597,35 +680,25 @@ export class DirectSession implements AppActions {
     for (const topic of SNAPSHOT_TOPICS) this.refresh(topic);
   }
 
-  /** Records the projector's module version; warns when the bundle was built for another. */
-  private checkModuleVersion(reported: string | undefined): void {
-    this.moduleVersion = reported ?? null;
-    const built = this.deps.moduleVersion;
-    if (reported !== undefined && built !== undefined && reported !== built) {
-      this.record(
-        'warn',
-        `Foundry module ${reported} ≠ glasses app built for ${built} — update the glasses app`,
-      );
-    } else {
-      this.emitInfo();
-    }
-  }
-
   private onSnapshot(topic: SnapshotTopic, data: unknown): void {
     const parsed = SNAPSHOT_SCHEMAS[topic].safeParse(data);
     if (!parsed.success) {
       this.record('warn', `invalid ${topic} snapshot`);
       return;
     }
+    const value =
+      topic === 'map' && parsed.data !== null
+        ? hydrateMap(parsed.data as MapSnapshot, this.assets)
+        : parsed.data;
     this.store.update({
-      [topic]: parsed.data,
+      [topic]: value,
       ...(topic === 'combat' && parsed.data === null ? NO_TURN_STATE : {}),
     } as Partial<AppState>);
     this.touchSync();
     if (topic === 'character') this.markStep('character');
     if (topic === 'map') this.markStep('scene');
     const steps = this.store.get().connection.steps;
-    if (steps?.gm === true && steps.character && steps.scene) this.goOnline();
+    if (steps?.paired === true && steps.character && steps.scene) this.goOnline();
   }
 
   private onDelta(seq: number, topic: string, data: unknown): void {
@@ -699,12 +772,13 @@ export class DirectSession implements AppActions {
   // ─── Outbound & helpers ──────────────────────────────────────────────────
 
   private send(message: AppMessage): void {
-    const socket = this.socket;
+    const link = this.link;
     const key = this.key;
-    const creds = this.creds;
-    if (socket === null || key === null || creds === null) return;
-    seal(key, creds.userId, PROJECTOR_ADDRESS, message, this.now()).then(
-      (env) => socket.emit(DIRECT_SOCKET_EVENT, env),
+    if (link === null || key === null) return;
+    seal(key, GLASSES_ADDRESS, PROJECTOR_ADDRESS, message, this.now()).then(
+      (env) => {
+        if (!link.send(env)) this.record('warn', `${message.t} dropped: relay link closed`);
+      },
       (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
     );
   }
@@ -756,7 +830,6 @@ export class DirectSession implements AppActions {
   }
 
   private clearData(connection: ConnectionState): void {
-    this.creds = null;
     this.key = null;
     this.store.update({
       connection,

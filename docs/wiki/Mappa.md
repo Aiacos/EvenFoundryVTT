@@ -6,9 +6,9 @@ La zona C, in alto a destra, è una **mappa quadrata di 144 × 144 px** centrata
 
 ## 👓 Come nasce l'immagine
 
-Tutto avviene sul **telefono**, a partire dai dati compatti della scena che il projector invia (`MapSnapshot`, vedi [Protocollo](Protocollo)):
+La pixelatura avviene sul **telefono**, a partire dai dati compatti della scena che il projector invia (`MapSnapshot` e immagini `asset`, vedi [Protocollo](Protocollo)):
 
-1. **Arte originale** — il telefono scarica sfondo, tile (fino a 32, nell'ordine di profondità) e immagini dei token **dalla stessa origine** di Foundry: niente CORS, niente proxy.
+1. **Arte originale** — sfondo, tile (fino a 32, nell'ordine di profondità) e immagini dei token li carica **la scheda di Foundry che trasmette** (stessa origine, o il CDN di The Forge), li riduce una volta e li manda al telefono come messaggi `asset` cifrati: il telefono non scarica niente da Foundry.
 2. **Ritaglio** — una finestra intorno al tuo token (o ferma, se hai disattivato *segui*).
 3. **Pixelatura** — riduzione a blocchi (media di ogni blocco *pixel × pixel*). La **dimensione del pixel** è 1, 2 o 3 (predefinita **2**). I blocchi sono ancorati ai pixel della scena, così non «strisciano» quando la mappa scorre.
 4. **Tono e dithering** — curva di tono per il waveguide della G2, poi **Floyd–Steinberg** a 16 livelli di verde. L'arte resta sotto il mezzo tono: i numeri della HUD e i segni tattici restano sempre più luminosi.

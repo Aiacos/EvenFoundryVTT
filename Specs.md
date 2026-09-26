@@ -1,22 +1,22 @@
 ---
 title: EvenFoundryVTT — Requirements, Architecture & Execution Plan
 created: 2026-05-09
-updated: 2026-09-23
+updated: 2026-09-25
 status: draft
 tags: [project, foundry, even-g2, even-r1, rpg, d&d, voice-ai, ar]
 ---
 
-# EvenFoundryVTT — Project Specification (v0.12.0)
+# EvenFoundryVTT — Project Specification (v0.13.0)
 
 ## 0. Executive Summary
 
 **EvenFoundryVTT** porta una sessione di D&D 5e su FoundryVTT direttamente sugli occhiali AR **Even Realities G2**, controllata dall'**anello R1**.
 
-**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, swipe-up, swipe-down, double-tap), tutto sincronizzato in real-time con FoundryVTT **direttamente** (v0.12.0, [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)): l'app per gli occhiali è servita dal modulo Foundry stesso, associata con un QR e collegata via socket Foundry con envelope cifrati — nessun Bridge, nessun Docker. Ogni giocatore associa i propri occhiali dal proprio Foundry ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md)); la HUD è la «Scheda da tavolo G2» disegnata da un renderer a pixel ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md), §7.0). Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
+**MVP**: HUD glanceable sul G2 (mappa + scheda PG + combat tracker + log + spellbook + inventory), navigazione e azione gesture-driven via R1 (tap, swipe-up, swipe-down, double-tap), tutto sincronizzato in real-time con FoundryVTT (v0.13.0, [ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)): il giocatore apre «Collega occhiali G2» nel **proprio** Foundry e inquadra un solo QR con l'app **FoundryVTT G2 HUD**; la scheda di Foundry che ha mostrato il QR è il **proiettore** e parla con gli occhiali attraverso un **relay** opaco che vede solo envelope cifrati AES-256-GCM. Il telefono non accede mai a Foundry: niente GM, niente utente «(G2)», niente password, niente HTTPS pubblico. L'app è un pacchetto Even Hub (più una copia su GitHub Pages e il dev server Vite); nessun Bridge, nessun Docker. La HUD è la «Scheda da tavolo G2» disegnata da un renderer a pixel ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md), §7.0). Le azioni di gioco (attacco, cast, use item) si eseguono **manualmente**: scroll fino allo spell/arma → tap → conferma target.
 
-**Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 non integra AI direttamente — resta deterministico. **v0.12.0:** `foundry-mcp` è stato rimosso insieme al Bridge (ADR-0016); voice/MCP potrà tornare solo come client del canale diretto, con un nuovo ADR.
+**Stretch (V2)** — modulo opzionale: **AI vocale** che traduce frasi naturali in azioni Foundry (es. *"lancio palla di fuoco sui goblin"* → cast Fireball + targets + save). Architettura prevista: **MCP server** (`foundry-mcp`) che espone i tool Foundry secondo Model Context Protocol; consumabile da qualunque client LLM compatibile (Claude Desktop oggi, future app domani). Il G2 non integra AI direttamente — resta deterministico. **v0.12.0:** `foundry-mcp` è stato rimosso insieme al Bridge (ADR-0016); voice/MCP potrà tornare solo come client del canale diretto (dalla v0.13.0 il relay, ADR-0019), con un nuovo ADR.
 
-**Stato (v0.12.0)**: monorepo attivo (`foundry-module`, `g2-app`, `shared-protocol`, `shared-render`, `validation-harness`). La linea v0.9.14 → v0.11.0 (Bridge, streaming raster del canvas, bearer token; ultimo rilascio `v0.1.55`) è conservata nella storia e nel Changelog; v0.12.0 la sostituisce con lo streaming diretto. Verifiche hardware con il pattern defer-hardware (ADR-0005, `validate:direct-sideload`).
+**Stato (v0.13.0)**: monorepo attivo (`foundry-module`, `g2-app`, `relay`, `shared-protocol`, `shared-render`, `validation-harness`). La linea v0.9.14 → v0.11.0 (Bridge, streaming raster del canvas, bearer token; ultimo rilascio `v0.1.55`) e la v0.12.0 (pagina servita da Foundry, utenti «(G2)», projector ibrido; rilascio `v0.2.0`) sono conservate nella storia e nel Changelog; v0.13.0 le sostituisce con l'associazione via relay ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)). Verifiche live e hardware con il pattern defer-hardware (ADR-0005, `validate:relay`).
 
 ---
 
@@ -151,7 +151,30 @@ Il giocatore di ruolo **non distoglie mai lo sguardo dalla scena fisica** (mappa
 
 ## 2. System Architecture
 
-### 2.0 Direct Streaming Architecture (v0.12.0 — canonico)
+### 2.0 Relay Pairing Architecture (v0.13.0 — canonico)
+
+```
+[G2 glasses] ⇄ BLE ⇄ [Even App — FoundryVTT G2 HUD] ⇄ wss ⇄ [relay] ⇄ wss ⇄ [scheda Foundry del giocatore = PROIETTORE]
+                      .ehpk · GitHub Pages /app/ · Vite    stanza opaca,      modulo evenfoundryvtt: readers dnd5e ·
+                                                           frame cifrati      dispatchTool (ADR-0011) · pairing · arte mappa
+```
+
+- **Il telefono non accede mai a Foundry** ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)). Motivi verificati 2026-09-25 (`specs/004-relay-pairing/research.md`): Foundry ≥ **14.361** serve l'HTML dei moduli come `text/plain` (la pagina servita da Foundry di ADR-0016 non si carica su v14); i giocatori non possono creare utenti (l'utente «(G2)» richiedeva un GM) e un secondo login dello stesso utente dipende dal bug aperto #14728; i giochi privati di The Forge chiudono ogni percorso dietro login Forge + invito; un'app Even Hub da store raggiunge solo origini fisse in whitelist (niente wildcard, niente deep link).
+- **Proiettore** = la scheda di Foundry di chi ha mostrato il QR (il giocatore; facoltativamente un GM per un giocatore senza dispositivo). Legge il PG, compone gli input della mappa, risponde a `hello/get/invoke/ping`, spinge `delta` ed è l'**unico** client che esegue `invoke` per quel dispositivo (ADR-0011, INV-6). Un Web Lock per dispositivo garantisce una sola scheda per browser.
+- **Relay** = `packages/relay`: Cloudflare Worker + **un Durable Object per stanza** (WebSocket Hibernation), `GET /r/<stanza>?role=projector|glasses` e `GET /health`; un socket per ruolo, frame di controllo `peer-up`/`peer-down`, tetto di 1 MiB per frame e 60 frame/s, **non memorizza nulla**. Origine di produzione `wss://evf-relay.evf-relay.workers.dev` (`DEFAULT_RELAY_URL`), deploy con `.github/workflows/relay-deploy.yml`; un URL self-host è un override opzionale (solo sideload).
+- **Trasporto**: envelope `{evf,to,from,iv,ct}` AES-256-GCM di ADR-0016 (chiave per dispositivo, AAD `from>to`, finestra anti-replay 120 s) sul WebSocket del relay invece del relay Foundry `module.evenfoundryvtt`. Il relay vede solo metadati (id stanza, tempi, dimensioni), mai il contenuto.
+- **Associazione** («Collega occhiali G2»): dalla lista Giocatori (clic destro sul proprio nome; il GM su qualunque giocatore), scorciatoia **Alt+G** o Impostazioni › EvenFoundryVTT. Aprire la finestra **è** l'associazione: PG preselezionato (assegnato, altrimenti il primo posseduto), controllo del relay (`/health`, «Relay ✗» con link di aiuto se bloccato), QR + codice di 16 caratteri subito, scadenza 5 min, monouso (stanza e chiave ruotano al primo `welcome`); la finestra passa da sola a «Occhiali collegati · <PG>». QR = `https://aiacos.github.io/EvenFoundryVTT/app/#evf=<{v:2,r:stanza,k:chiave,l:etichetta,relay?}>`; il codice deriva stanza e chiave con HKDF. L'associazione è salvata **in questo browser** (impostazione client), elencata in «Occhiali collegati a questo browser» (online · in attesa · relay non raggiungibile) con «Scollega», e si ricollega da sola quando quel browser ha Foundry aperto.
+- **App per gli occhiali** = un solo bundle (`packages/g2-app/dist`) in tre modi: **pacchetto Even Hub** «FoundryVTT G2 HUD» (giocatori: gruppo beta, poi store; sopravvive al blocco del telefono; «Scansiona QR» con la fotocamera del telefono o «Inserisci codice»), **GitHub Pages** `/app/` (la pagina che il QR apre con Even Realities App › Scan QR in modalità sviluppatore), **Vite dev** in LAN (`pnpm dev:glasses`). `app.json`: SDK ≥ 0.0.16, whitelist `https://` + `wss://evf-relay.evf-relay.workers.dev`, permesso `camera`. Informativa privacy: `docs/privacy.md`.
+- **Mappa**: il proiettore carica l'arte della scena nella propria scheda (stessa origine, o CDN Forge con CORS), la riduce (sfondo JPEG ≤ 768 px, tile/token PNG ≤ 128 px) e invia ogni immagine **una volta** come messaggio `asset`; il `MapSnapshot` la referenzia come `evf-asset:<id>`. Pixelazione e dither sul telefono invariati (§7.0).
+- **Stati offline** su occhiali e telefono: `no-projector` («Foundry del giocatore chiuso» — il collegamento al relay resta aperto e si riprende da solo quando la scheda si riapre), `network` («Relay non raggiungibile»), `background`. Passi di collegamento S11: relay raggiungibile → Foundry del giocatore aperto → collegato a «utente» → scheda → scena.
+- **Requisiti Foundry**: nessun HTTPS pubblico (un Foundry `http://` in LAN funziona col relay di produzione); v13/v14, self-hosted e The Forge (giochi privati, User Manager acceso o spento: irrilevante).
+- **Sostituisce** (v0.12.0): pagina servita da Foundry + sideload same-origin + `/join`/socket.io (ADR-0016 §1–4, §6), utenti «(G2)», abilitazione GM, password sigillate, chiavi d'identità ECDH e custodia, elezione del projector (ADR-0017 per intero). Restano canonici l'envelope e il ruolo di projector di ADR-0016, ADR-0011 (single workflow origin), ADR-0012 (gesti R1) e ADR-0018 (HUD a scheda).
+- **Contratto**: [ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md) · `packages/relay/` · `packages/shared-protocol/src/direct/` (envelope, messaggi, payload di pairing v2).
+
+#### 2.0.1 Direct Streaming via Foundry (v0.12.0 — storico)
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — La pagina servita da Foundry non si carica su Foundry ≥ 14.361 (`text/plain`), l'utente «(G2)» richiedeva un GM e il telefono non raggiunge i giochi privati di The Forge: il telefono non accede più a Foundry, il proiettore è la scheda del giocatore e il trasporto è il relay (§2.0). Conservato come storico; il contratto vivo è indicato qui.
+
 
 ```
 [G2 glasses] ⇄ BLE ⇄ [Even App WebView ── pagina servita da Foundry: /modules/evenfoundryvtt/g2/]
@@ -245,6 +268,8 @@ Il blocco V2 è completamente disaccoppiato: si avvia/spegne separatamente, non 
 
 ### 2.2 Data Flow
 
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Letture: hook Foundry → proiettore (scheda del giocatore) → `delta` sigillato sul relay (§2.0) → HUD; scritture: gesto → `invoke` sigillato → proiettore → `dispatchTool` (ADR-0011). Il relay Foundry `module.evenfoundryvtt` e l'elezione non si usano più.
+
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Letture: hook Foundry → projector (client del giocatore o GM) → `delta` sigillato sul relay `module.evenfoundryvtt` → HUD. Scritture: gesto → `invoke` sigillato → projector eletto → `dispatchTool` → `activity.use()` / MidiQOL (ADR-0011). Il percorso vocale via MCP è rimosso. Conservato come storico; il contratto vivo è indicato qui.
 
 **Read path (HUD aggiornato in real-time, MVP)**:
@@ -279,6 +304,8 @@ Player parla → MCP client (es. Claude Desktop) capture audio + STT
 Latenza target end-to-end (V2): dipende dal client MCP scelto. Tipicamente **~1.5–3 s p50** in base a STT+LLM provider.
 
 ### 2.3 Trust & Authority
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Nessun utente «(G2)»: le azioni girano come il giocatore nella sua scheda di Foundry (il proiettore, §2.0), che esegue ogni `invoke` con i permessi del giocatore; il telefono non possiede credenziali Foundry. Il principio «Foundry single source of truth» resta valido.
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md))** — Identità = utente Foundry dedicato «(G2)» (ruolo Player, OWNER solo del proprio PG); le azioni girano sul client del giocatore quando è online, altrimenti sul GM attivo che possiede la chiave del dispositivo (§2.0). Il principio «Foundry single source of truth» resta valido. Conservato come storico; il contratto vivo è indicato qui.
 
@@ -384,6 +411,8 @@ I dispatcher router-level che implementano questo: `quick-action-overscroll-disp
 
 **Implicazione**: il **Bridge service è obbligatorio** (anche solo come reverse-proxy CORS-friendly) — non è più "optional" come nella v0.1.
 
+> **v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)):** l'unica origine in whitelist è il relay del progetto (`https://` + `wss://evf-relay.evf-relay.workers.dev`, le due grafie finché il gate G2 non conferma quale serve); il relay risponde con CORS e l'app non contatta mai l'origine di Foundry. HTTPS resta obbligatorio per l'app e il relay; **Foundry non ha più bisogno di HTTPS pubblico**. Re-verified ✓ 2026-09-25: whitelist per origine completa, niente wildcard, WebSocket soggetti alla stessa whitelist (*«Expect drops when the WebView backgrounds»*, `reference/faq`), whitelist non è un bypass CORS (`build/networking`).
+
 ### 3.4 Foundry VTT (verificato su github.com/foundryvtt/dnd5e)
 
 - **Versione minima**: Foundry **v13.347** (richiesto da dnd5e 5.x), **v14 verified**. Sistema **dnd5e ≥ 5.x** (Activity system obbligatorio). **v12 NON è più supportato** da dnd5e 5.0.x in poi (verificato su `system.json` upstream 2026-05).
@@ -394,6 +423,7 @@ I dispatcher router-level che implementano questo: `quick-action-overscroll-disp
 - **Targeting v13**: `Token#setTarget` non accetta più parametro `user` — il bridge deve agire come l'utente del player; **`TokenLayer#setTargets(tokens)`** (singolare `Token`, NON `Tokens`) per multi-target.
 - **Hooks chiave per write path**: `dnd5e.preUseActivity`, `dnd5e.postUseActivity`, `dnd5e.preRollAttackV2` / `dnd5e.rollAttackV2` / `dnd5e.postRollAttackV2`, `dnd5e.preRollDamageV2` / `dnd5e.rollDamageV2`, `dnd5e.preCreateActivityTemplate`. **Nota dnd5e 5.x**: i pre-roll moderni sono i **V2** (V1 deprecati). Future-proof: usare V2 ovunque.
 - **Permission boundaries**: un player può eseguire `activity.use()` solo su actor posseduto. Per azioni GM-side, forward via `socketlib.executeAsGM`.
+- **HTML dei moduli (v14)**: da Foundry **14.361** i file HTML statici sono serviti come `text/plain` e *«will no longer render as HTML»* (`foundryvtt.com/releases/14.361`; riabilitazione rifiutata, issue #14375 NOT_PLANNED) ⇒ un modulo non può più servire una pagina web (da cui ADR-0019). **Utenti**: un Player/Trusted Player *«can only open your own user configuration»* (`foundryvtt.com/article/users`) ⇒ non può creare utenti; nessun token/API esterna (#3568, #11239).
 - **i18n / Localization** (verificato su `foundryvtt.com/api/classes/foundry.helpers.Localization.html`): `game.i18n` (istanza `Localization`) espone `lang` (current BCP-47 code, es. `"it"`, `"en"`), `defaultLanguage`, `localize(key)`, `format(key, data)`, `has(key)`. Setting core: `core.language`. Modules registrano cataloghi via `manifest.languages: [{lang, name, path}]`. dnd5e ufficialmente fornisce IT + EN + altri. **Strategia evenfoundryvtt**: la lingua iniziale viene **dedotta da `game.i18n.lang`** al boot; runtime override possibile dal G2 senza cambiare il setting Foundry server-side (vedi §7.16).
 
 ### 3.5 G2 SDK Audio Surface (verificato su `hub.evenrealities.com/docs/guides/device-apis` + `BxNxM/even-dev` simulator)
@@ -517,7 +547,11 @@ Verbatim simulator README: *"G2 plugins are web apps where **your code runs on a
 - **Audio mic** (§3.5) arriva al WebView in PCM 16 kHz mono già decoded.
 - **Nessun "on-glasses LLM"** disponibile (§3.6 vincolo).
 
+> **v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)):** il modello a 3 hop resta; il *plugin host* è il pacchetto Even Hub `.ehpk` installato (giocatori) oppure GitHub Pages `/app/` / Vite in LAN (sideload in modalità sviluppatore) e il backend è il relay (§2.0), non Foundry né un Bridge. Re-verified ✓ 2026-09-25: il sideload *«dies the second the phone locks»* (`test/local-testing`), una build privata *«survive[s] briefly but not 5 minutes»* e solo le installazioni Beta/Released superano il test di blocco di 5 minuti (`test/beta-testing`) ⇒ per giocare serve l'installazione beta/store; il sideload è uno strumento di sviluppo.
+
 ### 3.8 Plugin Configuration Surface (Even Realities App)
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — La configurazione è il QR di «Collega occhiali G2» letto con «Scansiona QR» (fotocamera del telefono, `captureImageFromCamera()` + decoder JS) o il codice di 16 caratteri con «Inserisci codice»; nessun URL, token o password (§2.0).
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — La configurazione è ora il QR mostrato da Foundry + la pagina telefono P02/P03 (`docs/design/g2-thirds-layout.md` §Associazione); nessun URL o token da incollare. Conservato come storico; il contratto vivo è indicato qui.
 
@@ -606,6 +640,9 @@ Auth: bearer token per-player, derivato dal Foundry user. Rate limit: 10 req/s p
 | Event capture | `isEventCapture: 1` su un container, riceve `onTap`, `onScroll`, `onLongPress` |
 | Audio | **`bridge.audioControl(true \| false)`** + `event.audioEvent.audioPcm` → **PCM 16 kHz s16le mono** (verificato §3.5). Mic input only — no audio output (G2 has no speaker, vedi §3.1) |
 | Networking | `fetch`, `WebSocket` (whitelist obbligatoria) |
+| Fotocamera telefono (v0.13.0) | `captureImageFromCamera(): Promise<AppImageAsset \| null>` (SDK ≥ 0.0.11, permesso `camera`) per leggere il QR di associazione; nessun decoder QR nell'SDK ⇒ decodifica in JS (`jsqr`) |
+
+> **v0.13.0:** SDK **0.0.16** (npm, 2026-09-24; `index.d.ts` identico a 0.0.15), `min_sdk_version` 0.0.16. Niente appunti né deep link (`reference/faq`) ⇒ QR con la fotocamera o codice digitato.
 
 ### 4.4 Even R1 Ring SDK
 
@@ -656,6 +693,8 @@ Spec: https://modelcontextprotocol.io/. SDK ufficiali in TypeScript e Python.
 ### 4.8 Dependency: socketlib, MidiQOL
 
 > **v0.12.0:** `socketlib` non è più una dipendenza richiesta (`module.json` non la dichiara): il canale diretto usa il relay `module.evenfoundryvtt` e l'elezione del projector (ADR-0017); l'uso residuo di socketlib è confinato da un gate CI. MidiQOL resta opzionale.
+>
+> **v0.13.0:** il traffico degli occhiali passa dal relay esterno (§2.0), non più da `module.evenfoundryvtt`; l'elezione è rimossa ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)). socketlib resta non richiesto.
 
 - **socketlib** (https://github.com/farling42/foundryvtt-socketlib) — pattern: `const socket = socketlib.registerModule("evenfoundryvtt"); socket.register("handlerName", fn); await socket.executeAsGM("handlerName", ...args)`. NON è static — registra il modulo per ottenere l'instance. Altri metodi: `executeAsUser`, `executeForAllGMs`, `executeForOtherGMs`, `executeForEveryone`, `executeForOthers`, `executeForUsers`.
 - **MidiQOL** (https://gitlab.com/tposney/midi-qol) — wrapper full-flow attack→damage→save→effect. Forte raccomandazione per ridurre LOC nel modulo.
@@ -841,6 +880,8 @@ Layer JS dentro G2 app che traduce eventi R1 in azioni applicative. Vedi §3.2 p
 Principio guida: **ogni componente cambiabile dal mondo esterno è un plugin con un contratto**. SDK Even cambia? Si aggiorna `providers/g2-sdk-vXX`. Esce un anello R2? Si aggiunge `providers/ring-r2`. dnd5e v6 ridisegna activity? Si pinna `foundry-adapter@v5` e si scrive `foundry-adapter@v6` in parallelo. Niente breaking change a cascata.
 
 #### 5.6.1 Boundary Map (chi parla con chi)
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Confini attuali: G2 ⇄ Even App (FoundryVTT G2 HUD) ⇄ relay (frame opachi) ⇄ scheda Foundry del giocatore = proiettore (§2.0).
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Confini attuali: G2 ⇄ WebView (Even App) ⇄ Foundry (same-origin, relay sigillato) ⇄ projector (§2.0). Conservato come storico; il contratto vivo è indicato qui.
 
@@ -1058,6 +1099,8 @@ evenfoundryvtt/
 ├─ scripts/
 └─ .github/workflows/           # CI: lint, type-check, test, build, release
 ```
+
+> **v0.13.0:** package reali — `foundry-module`, `g2-app`, `relay` (Cloudflare Worker, [ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)), `shared-protocol`, `shared-render`, `validation-harness`; `bridge` e `foundry-mcp` rimossi in v0.12.0.
 
 Tooling consigliato: **pnpm workspaces** + **TypeScript** (anche per il G2 plugin) + **Vitest** + **Biome** (lint/format) + **Changesets** (release).
 
@@ -1306,11 +1349,11 @@ La **banda superiore 576 × 144** (A · B · C) è disegnata **una volta** in un
 |---|---|---|---|---|---|
 | A · Ritratto | 0, 0, 144 × 144 | T1 | immagine attore → token → stemma di classe; tetto a mezzo tono (livello ≤ 8), attenuato a 0 PF; bordo a 15 nel tuo turno | cambio scena/condizione | no |
 | B · Intestazione | 144, 0, 288 × 144 | T1 + T2 | nome + ispirazione ★, razza · classe; **scudo CA**, **box PF** (attuali/max, badge TEMP, barra), mini-box INIZ · VEL · COMP; economia d'azione ● Azione ▲ Bonus ◆ Reazione + movimento (in combattimento); chip condizioni/concentrazione; chip **▲ TUO TURNO** + round | PF, CA, turno, condizioni | no |
-| C · Mappa | 432, 0, 144 × 144 | T2 | mappa quadrata centrata sul tuo token, celle 12 px (12 × 12 ≈ 60 ft): **arte originale della scena** (sfondo, tile, immagini dei token, scaricati same-origin) pixelata a blocchi (pixel 1/2/3, default 2), dither Floyd–Steinberg a 16 livelli, nero fuori dal raggio visivo del proprio token (12 celle se ignoto) e dietro i muri; marcatori vettoriali, mirino e portata sopra; riserva schematica senza arte ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)) | ≤ 1 fps, solo se cambia l'hash | no |
+| C · Mappa | 432, 0, 144 × 144 | T2 | mappa quadrata centrata sul tuo token, celle 12 px (12 × 12 ≈ 60 ft): **arte originale della scena** (sfondo, tile, immagini dei token, caricati dal proiettore nella sua scheda e inviati una volta come `asset`, v0.13.0) pixelata a blocchi (pixel 1/2/3, default 2), dither Floyd–Steinberg a 16 livelli, nero fuori dal raggio visivo del proprio token (12 celle se ignoto) e dietro i muri; marcatori vettoriali, mirino e portata sopra; riserva schematica senza arte ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)) | ≤ 1 fps, solo se cambia l'hash | no |
 | D · Scheda | 0, 144, 288 × 144 | T3 | due pagine: **Caratteristiche** (6 box modificatore/punteggio + passive) · **Tiri salvezza · Abilità** (● competente · ◉ maestria · ○ no); a 0 PF **Tiri contro la morte** (3 + 3 cerchi) | cambio pagina o dati | no |
 | E · Contesto | 288, 144, 288 × 144 | — (testo firmware) | registro, iniziativa, azioni, bersagli, incantesimi, esiti, reazioni, prove richieste | istantaneo (`textContainerUpgrade`, niente flicker) | **sì** (unica zona interattiva) |
 
-**Budget**: **3 / 4 image + 4 / 8 text** in gioco; restano 1 image e 4 text container di riserva. Le schermate a tutto schermo (S10 non associato, S11 collegamento) usano i **4 tile 288 × 144** della stessa griglia + sfondo, con un solo rebuild in entrata/uscita. Invio immagini: uno alla volta, passo ≥ 100 ms, hash per tile, priorità banda superiore (PF/turno) > scheda. Se il host rifiuta comunque la pagina (`rebuildPageContainer !== true`) la g2-app lo registra e ripiega sulla modalità a tutto schermo; la geometria è un item GO/NO-GO hardware (ADR-0005, `validate:direct-sideload`).
+**Budget**: **3 / 4 image + 4 / 8 text** in gioco; restano 1 image e 4 text container di riserva. Le schermate a tutto schermo (S10 non associato, S11 collegamento) usano i **4 tile 288 × 144** della stessa griglia + sfondo, con un solo rebuild in entrata/uscita. Invio immagini: uno alla volta, passo ≥ 100 ms, hash per tile, priorità banda superiore (PF/turno) > scheda. Se il host rifiuta comunque la pagina (`rebuildPageContainer !== true`) la g2-app lo registra e ripiega sulla modalità a tutto schermo; la geometria è un item GO/NO-GO hardware (ADR-0005).
 
 **Pagina automatica della zona D**: default **Caratteristiche** · prova o tiro salvezza richiesto dal GM (`r1.roll.request`) → **Tiri salvezza · Abilità** (il contesto mostra «Tira il d20 sul tavolo») · **0 PF** → **Tiri contro la morte** (prevale su ogni scelta). Se il giocatore cambia pagina a mano (menu Azioni col tap; la pressione lunga è solo una scorciatoia duplicata), la scelta resta fino al prossimo evento.
 
@@ -1320,7 +1363,7 @@ La **banda superiore 576 × 144** (A · B · C) è disegnata **una volta** in un
 2. **Prima i numeri che uccidono** — PF, CA e turno sono i valori più grandi e più luminosi (livello 15); testo 11, etichette 7–9, cornici 3–5; il ritratto non supera mai il mezzo tono.
 3. **Un solo punto d'interazione** — i gesti agiscono sempre sulla zona E; il resto si aggiorna da solo.
 4. **Due pagine, scelte dal gioco** — attacchi e incantesimi vivono nel pannello contesto, dove si scelgono.
-5. **Mai uno schermo muto** — non associato, in collegamento, offline, GM assente: ogni stato ha una schermata che dice cosa fare.
+5. **Mai uno schermo muto** — non associato, in collegamento, offline, Foundry del giocatore chiuso: ogni stato ha una schermata che dice cosa fare.
 
 **Rendering**: le zone A–D sono disegnate dal renderer a pixel `packages/shared-render/src/pixel/` (framebuffer 4-bit deterministico, tre font bitmap disegnati a mano con accenti IT, set di icone D&D) perché il font firmware è proporzionale, senza dimensioni e senza i simboli D&D; codifica PNG 4-bit indicizzata pixel-exact. Solo la zona E usa il testo firmware (riga 27 px ⇒ 5 righe in 144 px). Le prove richieste dal GM non si tirano dagli occhiali (nessun handler Foundry per il tiro remoto): il contesto dice «Tira il d20 sul tavolo».
 
@@ -1619,6 +1662,8 @@ Stato di default (nessun overlay aperto). La mappa cattura input.
 **Vincolo hardware** (§3.1): l'image container max è **200×100 px** e ne sono disponibili **4 per pagina**. **400×200 = massimo teorico possibile** sul G2. Una versione "full-screen 576×288 raster" non è fisicamente realizzabile con l'hardware attuale.
 
 ### 7.4a Map Rendering Pipeline
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Il telefono non scarica più l'arte da Foundry: il proiettore la carica nella propria scheda, la riduce (sfondo ≤ 768 px, tile/token ≤ 128 px) e la invia una volta come `asset` referenziato da `evf-asset:<id>` nel `MapSnapshot` (§2.0).
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Nessuna trasformazione Bridge: il projector invia `MapSnapshot` (dati del documento scena: muri, token, luci) e il telefono compone la zona C con l'arte originale della scena pixelata ([ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md), §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
@@ -2833,18 +2878,18 @@ Quando l'AI ha bassa confidenza o il bersaglio è ambiguo. Modal full-screen per
 
 ### 7.12 Boot Splash (page indipendente, prima del main)
 
-> **v0.12.0:** sugli occhiali il boot è la schermata a tutto schermo **S11 «collegamento»** (4 tile 288×144, §7.0); il mockup sotto resta il riferimento di versione (pre-bump checklist) con la riga Bridge sostituita dall'origine Foundry.
+> **v0.12.0:** sugli occhiali il boot è la schermata a tutto schermo **S11 «collegamento»** (4 tile 288×144, §7.0); il mockup sotto resta il riferimento di versione (pre-bump checklist). **v0.13.0:** la riga di connessione mostra il relay (§2.0) invece dell'origine Foundry.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                           ║
-║                              EVENFOUNDRYVTT  v0.12.0                                      ║
+║                              EVENFOUNDRYVTT  v0.13.0                                      ║
 ║                              ─────────────────                                            ║
 ║                                                                                           ║
 ║                              [ ✓ ] G2 display 576×288                                     ║
 ║                              [ ✓ ] R1 ring paired (92%)                                   ║
-║                              [ ⟳ ] Foundry https://foundry.lan (same-origin)              ║
-║                              [   ] Foundry sync                                           ║
+║                              [ ⟳ ] Relay wss://evf-relay.evf-relay.workers.dev               ║
+║                              [   ] Player's Foundry tab                                   ║
 ║                              [   ] Character: Thorin                                      ║
 ║                                                                                           ║
 ║                              loading_                                                     ║
@@ -3049,6 +3094,8 @@ Gesture-friendly toggle on G2? ──yes──▶ G2 device-local override (#3)
 **Implicazioni di INV-3 (doc coherence)**: ogni nuova setting deve essere documentata nella superficie che ospita, con cross-ref. Non duplicare; se serve in due posti, usare `#2 phone-side` come canonical.
 
 #### 7.14.7 Phone-Side Configuration UI (Even Realities App)
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Sulla pagina telefono: «Scansiona QR» / «Inserisci codice», elenco occhiali e stato del collegamento (§2.0); schermate occhiali S10–S12 in §7.0.
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Sostituita dal pairing QR diretto (mock P01–P03 in `docs/design/g2-thirds-layout.md` §Associazione; schermate occhiali S10–S12 in §7.0). Conservato come storico; il contratto vivo è indicato qui.
 
@@ -3556,6 +3603,8 @@ SCIMITAR (bonus) vs Goblin → 22 vs AC 14  HIT  → 6 slashing
 
 ## 9. Privacy & Security
 
+> **v0.13.0 (canonico, [ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)):** il telefono non riceve credenziali Foundry. Tra app e proiettore passano solo envelope AES-256-GCM (chiave per dispositivo, AAD `from>to`, anti-replay 120 s); il relay inoltra frame opachi, non memorizza nulla e conosce solo metadati (id stanza, tempi, dimensioni). La chiave vive solo sul telefono (`localStorage` + `bridge.setLocalStorage`) e nel browser del proiettore; QR monouso 5 min (stanza e chiave ruotano al primo `welcome`), revoca con «Scollega». La foto del QR è decodificata sul telefono e mai caricata. Informativa: `docs/privacy.md` (pubblicata su GitHub Pages). Le voci sotto (Bridge, bearer, socketlib) sono storiche.
+
 - **Audio** non lascia mai la LAN nel modello "homelab" (STT locale via distil-whisper). Default cloud richiede consenso esplicito.
 - **Auth** bridge: token bearer per-player, generato dal modulo Foundry, **non-scadente** (campaign-long; nessuna rotazione).
 - **Rate limit**: 10 req/s per token; audio max 30 s per request.
@@ -3568,7 +3617,9 @@ SCIMITAR (bonus) vs Goblin → 22 vs AC 14  HIT  → 6 slashing
 
 ## 10. Roadmap (Aggiornata v0.9 — 15 fps target + dual-edition support)
 
-> **v0.12.0:** le fasi 0–13 sotto sono la roadmap storica della linea MVP (chiusa software-complete in v0.11.0). Il lavoro corrente è tracciato con Spec Kit (`specs/003-direct-streaming/`); il gate hardware aggiunto è `validate:direct-sideload` + GO/NO-GO della geometria a tile 2×2 (ADR-0005). Bridge (Phase 3), `foundry-mcp` (Phase 11) e voice (Phase 12) sono rimossi da ADR-0016.
+> **v0.12.0:** le fasi 0–13 sotto sono la roadmap storica della linea MVP (chiusa software-complete in v0.11.0). Bridge (Phase 3), `foundry-mcp` (Phase 11) e voice (Phase 12) sono rimossi da ADR-0016.
+>
+> **v0.13.0:** il lavoro corrente è tracciato con Spec Kit (`specs/004-relay-pairing/`; `003-direct-streaming` è il port v0.12.0). Gate (defer-hardware, ADR-0005): `validate:relay[:skip-hardware]` (health, CORS, round-trip di stanza, frame oltre il limite) con checklist manuale **G1** (relay raggiungibile da una scheda Forge v14 privata e da v13/v14 self-hosted) e **G2** (grafia della whitelist nella build Even Hub, lettura QR con fotocamera iOS + Android, credenziali che sopravvivono a kill + blocco di 5 minuti); **G3** costo reale del Durable Object per sessione, da misurare al primo deploy; più il GO/NO-GO della geometria a tile 2×2. Prossimi passi: gruppo beta Even Hub → listing sullo store, UAT hardware G2 + R1, tiri di prova/salvezza dagli occhiali. `validate:direct-sideload` è rimosso.
 
 > **MVP** = Phase 0–10 (HUD + R1 + manual action) → **13 settimane** (Week 0 + Week 1-13 implementation). **V2 opzionale** = Phase 11+ (voice via MCP + stretch features) → 14-16 weeks.
 
@@ -3905,6 +3956,11 @@ Decisione Phase 0 → Phase 1 commencement deve essere documentata in `docs/arch
 | Privacy audio cloud | High | Low | Default opt-in, locale come prima opzione |
 | GM perde controllo (azione AI sbagliata) | High | Low | Activity passa per Foundry rules; GM può sempre annullare via chat |
 | Battery R1 / G2 sessione lunga | Low | Medium | R1 4 giorni OK; G2 — verificare con field test |
+| Relay non disponibile o quota free esaurita (v0.13.0) | High | Low | Piano free Cloudflare condiviso da tutti i tavoli (100 000 richieste/giorno; messaggi WebSocket in uscita gratuiti, in entrata 20:1): traffico solo delta + mappa con hash ≤ 1 fps; gate G3 misura il costo reale; URL self-host come override (sideload); lo stato «Relay non raggiungibile» è esplicito su occhiali e finestra |
+| Relay bloccato dalla rete/CSP della scheda Foundry (v0.13.0) | Medium | Low | Controllo `/health` all'apertura di «Collega occhiali G2» («Relay ✗» + link di aiuto); gate G1 (Forge v14 privato, self-hosted v13/v14) |
+| Scheda del proiettore chiusa durante il gioco (v0.13.0) | Medium | Medium | Stato «Foundry del giocatore chiuso» sugli occhiali, ripresa automatica alla riapertura; un GM può associare e proiettare per un giocatore senza dispositivo |
+| Review Even Hub / listing ritardato (v0.13.0) | Medium | Medium | Gruppo beta Even Hub per i giocatori del tavolo; GitHub Pages `/app/` per telefoni in modalità sviluppatore; domini backend e privacy documentati (`docs/privacy.md`) |
+| ~~Pagina servita da Foundry / HTTPS dal telefono / gate Forge (v0.12.0)~~ | — | — | **Chiuso in v0.13.0** da ADR-0019: il telefono non accede più a Foundry |
 
 ---
 
@@ -3930,6 +3986,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 
 ### 11.5.3 Bridge deployment topology
 
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Deployment = modulo Foundry (manifest) + app «FoundryVTT G2 HUD» come pacchetto Even Hub (beta → store; copia su GitHub Pages `/app/` via `pages.yml`) + relay del progetto su Cloudflare (`relay-deploy.yml`, piano free). Foundry non deve essere raggiungibile dal telefono né avere HTTPS pubblico (§2.0).
+
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Nessun deployment: il modulo Foundry serve l'app G2 (§2.0); serve solo Foundry raggiungibile in HTTPS con certificato valido. Conservato come storico; il contratto vivo è indicato qui.
 
 - **Decisione MVP**: **Docker Compose homelab default**. Bridge gira su same LAN del Foundry server (latency network ≤5 ms tipico). Phone Even App si collega via WiFi locale.
@@ -3937,6 +3995,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 - **Rationale**: homelab è il setup tipico Foundry (single-DM, 4-6 player). Cloud è opzionale per chi non ha port-forwarding o gioca remoto.
 
 ### 11.5.4 Authentication scheme
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Auth = possesso della chiave AES-256 del dispositivo, consegnata dal QR (o dal codice di 16 caratteri via HKDF) mostrato nella scheda Foundry già autenticata del giocatore; QR monouso 5 min, stanza e chiave ruotate al primo `welcome`; revoca con «Scollega». Nessun utente «(G2)», nessuna password, nessuna custodia ECDH; le azioni girano con i permessi del giocatore nella sua scheda (§2.0).
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md))** — Auth = utente Foundry dedicato «(G2)» + chiave AES-GCM per dispositivo, QR monouso ruotato al primo `welcome`; password e chiavi sigillate ECDH P-256; autorizzazione per-attore = ownership live del PG (idea ereditata da ADR-0014 remoto) (§2.0). Nessun bearer token. Conservato come storico; il contratto vivo è indicato qui.
 
@@ -3954,6 +4014,8 @@ Decisioni minori risolte in v0.8 oltre P0/P1/P2:
 - **Rationale**: opaque token è più semplice di JWT per single-tenant homelab. JWT come future option se multi-tenant cloud deploy. Il copy/paste è l'unico pattern realizzabile per il phone-side bootstrap (nessuna app può scansionare un QR — niente fotocamera).
 
 ### 11.5.5 Storage backend
+
+> ⚠️ **SUPERSEDED in v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md))** — Nessun record di pairing nel mondo: l'associazione vive nell'impostazione client del browser del proiettore e nel telefono (`localStorage` + `bridge.setLocalStorage`, che *«survives suspension, kill, and update»*, `reference/faq`); il relay non memorizza nulla.
 
 > ⚠️ **SUPERSEDED in v0.12.0 ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md))** — Niente cache Bridge (Tier 1/2). Restano: stato Foundry (unica fonte), record di pairing nel mondo (sigillati), `localStorage` della WebView per chiave del dispositivo e preferenze (persiste a sospensione/aggiornamento, INV-2 2026-09-23). Conservato come storico; il contratto vivo è indicato qui.
 
@@ -4204,8 +4266,8 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 23. ~~**Multi-player priority**~~ — **RESOLVED v0.8** in §10 Phase 13 V2 stretch (single-player first, multi-player post-field-test).
 24. **D&D edition target** — RESOLVED §11.5.1 v0.9 update (**dual-support PHB 2014 AND PHB 2024** via setting `core.modernRules`; entrambe edition supportate al lancio).
 25. **License** — RESOLVED §11.5.2 (MIT all packages).
-26. **Bridge deployment** — RESOLVED §11.5.3 (Docker Compose homelab MVP, cloud stretch).
-27. **Authentication** — RESOLVED §11.5.4 (bearer opaque token **non-scadente / campaign-long**, self-service pairing; JWT future). Vedi ADR-0014 Amd 2.
+26. **Bridge deployment** — RESOLVED §11.5.3 (Docker Compose homelab MVP, cloud stretch). **v0.13.0:** nessun Bridge; modulo + app Even Hub + relay Cloudflare (ADR-0019).
+27. **Authentication** — RESOLVED §11.5.4 (bearer opaque token **non-scadente / campaign-long**, self-service pairing; JWT future). Vedi ADR-0014 Amd 2. **v0.13.0:** chiave per dispositivo dal QR, nessuna credenziale Foundry sul telefono (ADR-0019).
 28. **Storage** — RESOLVED §11.5.5 (in-memory LRU MVP, Redis stretch).
 
 ---
@@ -4249,6 +4311,15 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 - Foundry Localization API — https://foundryvtt.com/api/classes/foundry.helpers.Localization.html
 - dnd5e language catalogs — https://github.com/foundryvtt/dnd5e/tree/master/lang
 - Foundry localization guide — https://foundryvtt.com/article/localization/
+- Foundry 14.361 release notes (HTML servito come `text/plain`) — https://foundryvtt.com/releases/14.361
+- Issue #14375 (text/html non riabilitato, NOT_PLANNED) — https://github.com/foundryvtt/foundryvtt/issues/14375
+- Issue #14728 (doppio login dello stesso utente, aperta) — https://github.com/foundryvtt/foundryvtt/issues/14728
+- The Forge — giochi pubblici/privati — https://forums.forge-vtt.com/t/public-private-games/3588 · User Manager — https://forums.forge-vtt.com/t/the-user-manager/11039
+
+### Relay (v0.13.0, ADR-0019)
+- Durable Objects pricing — https://developers.cloudflare.com/durable-objects/platform/pricing/
+- Durable Objects WebSocket best practices (Hibernation) — https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+- Even Hub networking / FAQ / testing / submission — https://hub.evenrealities.com/docs/build/networking · https://hub.evenrealities.com/docs/reference/faq · https://hub.evenrealities.com/docs/test/local-testing · https://hub.evenrealities.com/docs/test/beta-testing · https://hub.evenrealities.com/docs/ship/app-submission
 
 ### Foundry Bridges & Automation
 - socketlib — https://github.com/farling42/foundryvtt-socketlib
@@ -4295,6 +4366,23 @@ Comportamento atteso in scenari di degrado o crash. Documenta le decisioni impli
 
 ## Changelog
 
+- **2026-09-25 (v0.13.0 — Relay pairing: la scheda Foundry del giocatore proietta, il telefono non accede mai a Foundry)** — **Bump v0.12.0 → v0.13.0.** [ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md) (ACCEPTED 2026-09-25) supera ADR-0016 §1–4 e §6 (hosting su Foundry, identità «(G2)», pairing, trasporto sul socket Foundry, arte scaricata dal telefono) e **ADR-0017 per intero** (abilitazione GM, password sigillate, custodia ECDH, elezione); restano l'envelope e il ruolo di projector di ADR-0016, ADR-0011 e ADR-0018. Feature Spec Kit `specs/004-relay-pairing/`.
+  - **Razionale:** l'utente vuole collegare gli occhiali **senza GM**, **senza perdere il login nel proprio browser**, con un QR, e un percorso semplice sia per lo sviluppo sia per il rilascio Even Hub. Quattro fatti verificati rendono insostenibile ADR-0016/0017: la pagina servita da Foundry non si carica su v14 (F1), il login del telefono richiede un GM o rompe la sessione del browser (F2), The Forge blocca il telefono (F3), un'app da store raggiunge solo origini fisse (F4). L'unico disegno che li soddisfa tutti: il telefono non accede a Foundry, la scheda del giocatore è il proiettore, un relay opaco su un'origine fissa del progetto.
+  - **Cosa cambia:** §2.0 riscritto (relay, proiettore, associazione «Collega occhiali G2» da lista Giocatori / Alt+G / Impostazioni, QR `https://aiacos.github.io/EvenFoundryVTT/app/#evf=<v2>` + codice di 16 caratteri via HKDF, associazione salvata nel browser con «Scollega», stati `no-projector`/`network`/`background`); nuovo package `packages/relay` (Cloudflare Worker + un Durable Object per stanza, WebSocket Hibernation, `/r/<stanza>?role=projector|glasses`, `/health`, 1 MiB/frame, 60 frame/s, nessuna memorizzazione, `wss://evf-relay.evf-relay.workers.dev`); app «FoundryVTT G2 HUD» come pacchetto Even Hub (SDK 0.0.16, whitelist relay, permesso `camera`, «Scansiona QR»/«Inserisci codice»), copia GitHub Pages `/app/` (`pages.yml`) e dev loop `pnpm dev:glasses` (`--local-relay` per un Foundry `http://`) + `pnpm --filter @evf/relay dev`; mappa: il proiettore invia l'arte ridotta una volta come `asset` (`evf-asset:<id>`), l'arte su CDN Forge ora funziona; requisiti Foundry ridotti (niente HTTPS pubblico, v13/v14, self-hosted e Forge con User Manager acceso o spento). Aggiornati §0, §2.0 (v0.12.0 spostato in §2.0.1 storico), §2.2, §2.3, §3.3, §3.4, §3.7, §3.8, §4.3, §4.8, §5.6.1, §5.6.10, §7.0, §7.4a, §7.12 (boot splash v0.13.0, riga relay), §7.14.7, §9, §10, §11 (rischi relay/quota, relay bloccato, scheda chiusa, review Even Hub), §11.5.3–§11.5.5, §12.D, §13.
+  - **Rimosso:** utenti «(G2)», abilitazione GM «Abilita occhiali per i giocatori», password sigillate, chiavi d'identità ECDH + custodia, elezione del projector, client `/join` + socket.io (dipendenza `socket.io-client`), `g2/` servito da Foundry (l'app non è più nel zip del modulo), vecchia forma del Gate CI 10, `validate:direct-sideload`, script `build:all`/`build:g2`, la procedura The Forge «Automatic User Management» (non più necessaria). Le associazioni esistenti vanno rifatte una volta.
+  - **Nuovi gate/strumenti:** Gate CI 10 = `scripts/check-relay-origin.mjs --bundle packages/g2-app/dist` (whitelist = `DEFAULT_RELAY_URL`, `camera` dichiarato, nessun `/join`/socket.io nel bundle); step CI «Relay end-to-end» (`wrangler dev` + sessione occhiali reale `packages/g2-app/src/direct/relay.e2e.test.ts` + `validate:relay`); `validate:relay[:skip-hardware]` con checklist manuale G1–G2; `relay-deploy.yml`; `pages.yml`.
+  - **Misure:** associazione E2E locale (codice → rotazione → online) 133 ms; RTT del relay 8 ms in locale; bundle relay 3 KiB gzip; `.ehpk` 212 KB; chunk principale g2 470 KB (150 KB gzip) + chunk jsQR caricato al bisogno 130 KB.
+  - **Passi una tantum del maintainer (gated):** account Cloudflare (sottodominio workers.dev `evf-relay`, relay pubblicato il 2026-09-26), segreti `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`, workflow «Relay Deploy»; GitHub Pages › Source = GitHub Actions; portale Even Hub: caricare il `.ehpk` del rilascio, creare il gruppo beta con i giocatori del tavolo, URL privacy `https://aiacos.github.io/EvenFoundryVTT/privacy.html`, poi invio alla review.
+  - **Versioni** (changeset minor): `@evf/foundry-module` → linea 0.3.x, `@evf/g2-app` e `@evf/shared-protocol` minor, nuovo `@evf/relay` 0.1.0.
+  - **Re-verified ✓ / Drift (INV-2, 2026-09-25 — 4 round paralleli + ri-verifica diretta di ogni citazione, `specs/004-relay-pairing/research.md`):**
+    - **Drift: CRITICAL — Foundry ≥ 14.361 serve l'HTML dei moduli come `text/plain`** (*«when static HTML files are accessed directly by the Electron client or browsers they will no longer render as HTML»*, `foundryvtt.com/releases/14.361`; riabilitazione rifiutata, `github.com/foundryvtt/foundryvtt/issues/14375` NOT_PLANNED) ⇒ la pagina `/modules/evenfoundryvtt/g2/index.html` di ADR-0016 mostra il sorgente su ogni server v14 ≥ 14.361; l'affermazione «funziona su v13 e v14» della v0.12.0 era falsa. L'unica esecuzione registrata di `validate:direct-sideload` si era fermata al 302 di Forge prima di questo controllo.
+    - **Drift: IMPORTANT — login dello stesso utente due volte è un bug in correzione** (`github.com/foundryvtt/foundryvtt/issues/14728`, aperta: correzione attesa = rifiutare il doppio login o disconnettere la sessione precedente) ⇒ mai progettare sul login del telefono come utente del giocatore.
+    - **Re-verified ✓** i giocatori non creano utenti (*«you can only open your own user configuration»*, `foundryvtt.com/article/users`); nessuna API esterna/token (#3568 aperta, #11239 NOT_PLANNED); il relay dei moduli inoltra a tutti i client (`foundryvtt.com/article/module-development`).
+    - **Re-verified ✓** The Forge: giochi privati accessibili solo a utenti loggati e invitati (`forums.forge-vtt.com/t/public-private-games/3588`; `HEAD` sul game host → 302 per ogni percorso, 2026-09-25); il User Manager prende `/join` (`forums.forge-vtt.com/t/the-user-manager/11039`); nessun header CSP rilevato.
+    - **Re-verified ✓** Even Hub: whitelist per origine completa, niente wildcard, vale per fetch/XHR/WebSocket (`hub.evenrealities.com/docs/build/networking`, `/reference/faq`); nessuna origine a runtime né deep link (`/reference/faq`, `/ship/app-submission`); `captureImageFromCamera()` con permesso `camera`, nessun appunti; `localStorage` sopravvive a sospensione/kill/aggiornamento; il sideload muore al blocco del telefono (`/test/local-testing`), solo Beta/Released superano i 5 minuti (`/test/beta-testing`).
+    - **Drift: NICE-TO-HAVE — SDK 0.0.15 → 0.0.16** (npm, 2026-09-24; `index.d.ts` identico) ⇒ `min_sdk_version` 0.0.16.
+    - **Re-verified ✓** Cloudflare: messaggi WebSocket in uscita gratuiti, in entrata 20:1, oggetti ibernati non fatturati a durata, piano free 100 000 richieste/giorno (`developers.cloudflare.com/durable-objects/platform/pricing`, `/best-practices/websockets`). Spike `wrangler` 4.140.0: stanza non valida → 404, 100 tile da 6 KB in 45 ms in locale; due correzioni di protocollo (`peer-up` al nuovo arrivato, nessun `peer-down` alla sostituzione di un socket).
+  - **INV-3:** Specs.md + README.md (badge, installazione, uso, architettura, stato, roadmap, stack, documentazione) + docs/showcase/index.html (hero, pillar, hardware, associazione, architettura, mappa, roadmap, stack, footer) aggiornati insieme; versione v0.13.0 su badge README, hero showcase e boot splash §7.12.
 - **2026-09-23 (v0.12.0 — port dello streaming diretto su `develop`)** — **Bump v0.11.0 → v0.12.0.** Il ramo `feature/direct-streaming-v2` (22 commit dal merge-base 25cd90f del 2026-05-31) è stato fuso su `origin/develop` (627 commit, fino a d97b12e del 2026-07-07) con storia remota **conservata**. Il numero v0.10.0 del ramo collideva con il milestone remoto v0.10.0 (e v0.11.0 era già usato) ⇒ **v0.12.0**.
   - **Rinumerazione ADR** (sed meccanico prima del merge, in quest'ordine): ADR-0014 → **ADR-0018** (HUD scheda D&D, renderer a pixel) · ADR-0013 → **ADR-0017** (occhiali dei giocatori, projector ibrido) · ADR-0012 → **ADR-0016** (streaming diretto Foundry → G2). Le ADR remote 0012–0015 mantengono numero e contenuto; ricevono solo note di stato: **0012** (modello gesti R1, Amd 2 «il menu si apre col tap») **resta canonica** ed è implementata da ADR-0018; **0013** (+Amd 1, HUD raster) superata da ADR-0018 (fatti hardware mantenuti); **0014** (+Amd 1, 2, bearer ↔ autorizzazione per attore) superata da ADR-0017 (controllo di ownership per attore ereditato); **0015** (cattura mappa player-view) superata da ADR-0016; **0009/0010** superate da ADR-0018; **0011** Amd 2 superata da ADR-0017 (la regola single-workflow-origin resta); **0002** parzialmente superata da ADR-0016; **0003/0004**: `foundry-mcp` rimosso, voice/MCP richiede un nuovo ADR. Indice: `docs/architecture/README.md`.
   - **Mantenuto dalla linea v0.9.14 → v0.11.0:** storia e Changelog; §3.2 mapping R1 e ADR-0012; fix Foundry/dnd5e trovati dal vivo — `Activity#use(usage, dialog, message)` con `configure:false` nell'argomento **dialog** (184f172: prima ogni cast/attacco/uso restava appeso ~10 s), `hp.temp` nullo ⇒ 0 (448a56c), id di riserva stabile per oggetti senza id (079e6d6), `method`/`prepared` degli incantesimi dnd5e 5.1 (0ce4322, con `prepared` numerico 0/1/2), quantità 0 ammessa (b6d7d14), scrittura dell'audit log limitata a 2,5 s (fbb9f83), handler `skill-check`, CA dei combattenti, reader talenti/biografia; cache-bust del nome file esmodule (7f37b5f); canale di rilascio (tag `vX.Y.Z` via `scripts/release-tag.mjs` → `foundry-module-release.yml`, manifest `releases/latest/download/module.json`, `.ehpk` allegato); fatti Even Hub (le prove caricate sul portale **scadono** ⇒ test con `evenhub qr`/sideload; nessun comando CLI di submit; `app.json` versione = versione del package, icona e descrizione richieste).

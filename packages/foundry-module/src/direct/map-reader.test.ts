@@ -1,11 +1,11 @@
 import { MapSnapshotSchema } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFoundry, makeActor, makeUser } from '../__tests__/direct-fixtures.js';
-import { readMapSnapshot, resolveTargetUuids, toRelativeBackground } from './map-reader.js';
+import { readMapSnapshot, resolveTargetUuids, toArtSrc } from './map-reader.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-const viewer = { actorId: 'thorin', playerUserId: 'p1', g2UserId: 'g2a' };
+const viewer = { actorId: 'thorin', userId: 'p1' };
 
 function token(id: string, extra: Record<string, unknown> = {}) {
   return {
@@ -98,8 +98,8 @@ describe('readMapSnapshot', () => {
     expect(snap?.selfTokenId).toBe('tSelf');
   });
 
-  it('MR-04 targetId comes from the G2 user targets, only if the token is visible', () => {
-    const g2 = makeUser('g2a', 'Luca (G2)', {
+  it('MR-04 targetId comes from the projecting user targets, only if the token is visible', () => {
+    const g2 = makeUser('p1', 'Luca', {
       targets: new Set([{ id: 'tHidden' }, { id: 'tGob' }]),
     });
     installFoundry({
@@ -136,7 +136,7 @@ describe('readMapSnapshot', () => {
 });
 
 describe('readMapSnapshot scene art', () => {
-  it('MR-06 background offset, tiles in draw order (hidden / foreign / empty dropped)', () => {
+  it('MR-06 background offset, tiles in draw order (hidden / unloadable / empty dropped)', () => {
     installFoundry({
       scene: scene([], {
         background: { src: '/worlds/w/maps/crypt.webp', offsetX: 12.4, offsetY: -8 },
@@ -171,7 +171,7 @@ describe('readMapSnapshot scene art', () => {
             },
             { x: 0, y: 0, width: 50, height: 50, hidden: true, texture: { src: 'hidden.webp' } },
             { x: 0, y: 0, width: 50, height: 50, alpha: 0, texture: { src: 'clear.webp' } },
-            { x: 0, y: 0, width: 50, height: 50, texture: { src: 'https://cdn.other/x.webp' } },
+            { x: 0, y: 0, width: 50, height: 50, texture: { src: 'data:image/png;base64,AA' } },
             { x: 0, y: 0, width: 0, height: 50, texture: { src: 'flat.webp' } },
             { x: 0, y: 0, width: 50, height: 50 },
           ],
@@ -233,7 +233,8 @@ describe('readMapSnapshot scene art', () => {
     expect(byId.tSelf).toMatchObject({ img: 'tokens/thorin.webp', sight: 12 });
     expect(byId.tGob).toMatchObject({ img: 'tokens/goblin.webp' });
     expect(byId.tGob?.sight).toBeUndefined();
-    expect(byId.tForeign?.img).toBeUndefined();
+    // Another origin (e.g. The Forge CDN) is kept: the projector tab loads it with CORS.
+    expect(byId.tForeign?.img).toBe('https://cdn.other/t.webp');
     expect(byId.tHidden).toBeUndefined();
   });
 
@@ -272,23 +273,24 @@ describe('readMapSnapshot scene art', () => {
   });
 });
 
-describe('toRelativeBackground', () => {
+describe('toArtSrc', () => {
   const origin = 'https://vtt.example';
   it('keeps relative paths, strips leading slash', () => {
-    expect(toRelativeBackground('/worlds/a.png', origin)).toBe('worlds/a.png');
-    expect(toRelativeBackground('worlds/a.png', origin)).toBe('worlds/a.png');
+    expect(toArtSrc('/worlds/a.png', origin)).toBe('worlds/a.png');
+    expect(toArtSrc('worlds/a.png', origin)).toBe('worlds/a.png');
   });
-  it('converts same-origin absolute URLs and drops foreign ones', () => {
-    expect(toRelativeBackground('https://vtt.example/worlds/a.png?v=2', origin)).toBe(
-      'worlds/a.png?v=2',
+  it('makes same-origin URLs relative, keeps foreign http(s) ones, drops the rest', () => {
+    expect(toArtSrc('https://vtt.example/worlds/a.png?v=2', origin)).toBe('worlds/a.png?v=2');
+    expect(toArtSrc('https://assets.forge-vtt.com/u/a.png', origin)).toBe(
+      'https://assets.forge-vtt.com/u/a.png',
     );
-    expect(toRelativeBackground('https://cdn.other/a.png', origin)).toBeUndefined();
-    expect(toRelativeBackground('http://[bad', origin)).toBeUndefined();
+    expect(toArtSrc('data:image/png;base64,AAAA', origin)).toBeUndefined();
+    expect(toArtSrc('http://[bad', origin)).toBeUndefined();
   });
   it('empty / missing → undefined', () => {
-    expect(toRelativeBackground('', origin)).toBeUndefined();
-    expect(toRelativeBackground(null, origin)).toBeUndefined();
-    expect(toRelativeBackground(undefined, origin)).toBeUndefined();
+    expect(toArtSrc('', origin)).toBeUndefined();
+    expect(toArtSrc(null, origin)).toBeUndefined();
+    expect(toArtSrc(undefined, origin)).toBeUndefined();
   });
 });
 

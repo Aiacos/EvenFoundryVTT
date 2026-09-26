@@ -114,7 +114,7 @@ describe('zone E content (IT, design persona)', () => {
     expect(body('S9')).toBe('Tiro salvezza contro la morte\nSuccessi 1/3 · Fallimenti 2/3');
     expect(head('S12')).toMatch(/^▲ Offline +dati di 2 min fa$/);
     expect(body('S12')).toBe(
-      'Nessun GM connesso\nRiprovo tra 8 s (tentativo 3)\nScheda e mappa congelate',
+      'Foundry del giocatore chiuso\nRiprovo tra 8 s (tentativo 3)\nScheda e mappa congelate',
     );
   });
 

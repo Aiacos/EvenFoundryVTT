@@ -1,10 +1,12 @@
 /**
- * App bootstrap for the sideloaded G2 app (ADR-0016): wires store → credentials →
- * session → phone page → HUD, and routes Even Hub foreground events to the session.
+ * App bootstrap of the glasses app (ADR-0019): wires store → credentials → session →
+ * phone page → HUD, and routes Even Hub foreground events to the session. The same code
+ * runs as the Even Hub package, as the hosted page opened by the pairing QR, and on the
+ * Vite dev server.
  *
  * Kept free of globals so it is testable; `src/main.ts` passes the browser environment.
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
  * @see hub.evenrealities.com/docs/build/background-lifecycle (foreground/background, storage)
  */
 import {
@@ -14,14 +16,9 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { mountPhonePage } from '../phone/phone-page.js';
 import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
-import {
-  CredentialStore,
-  consumePairingFragment,
-  deriveFoundryBase,
-  type KeyValueStorage,
-} from './credentials.js';
-import { FoundryClient } from './foundry-client.js';
-import { DirectSession, type FoundryClientLike } from './session.js';
+import { CredentialStore, consumePairingFragment, type KeyValueStorage } from './credentials.js';
+import { createRelayOpener, type OpenRelay } from './relay-client.js';
+import { DirectSession } from './session.js';
 
 /** HUD entry point signature (implemented in `src/hud/index.ts`). */
 export type StartHud = (bridge: EvenAppBridge, store: AppStore, actions: AppActions) => () => void;
@@ -30,19 +27,19 @@ export type StartHud = (bridge: EvenAppBridge, store: AppStore, actions: AppActi
 export interface AppEnvironment {
   /** Element that hosts the phone page. */
   root: HTMLElement;
-  location: Pick<Location, 'origin' | 'pathname' | 'search' | 'hash'>;
+  location: Pick<Location, 'pathname' | 'search' | 'hash'>;
   history: Pick<History, 'replaceState'>;
   /** `localStorage`, or `null` when blocked. */
   storage: KeyValueStorage | null;
   deviceLanguage: () => string;
   appVersion: string;
-  /** Module version the bundle was built with (mismatch warning). */
-  moduleVersion?: string;
+  /** Relay the app was built for (`VITE_RELAY_URL`); pairings may override it. */
+  relayUrl: string;
   /** Resolves the Even App bridge, or `null` in a plain browser (desktop preview). */
   getBridge: () => Promise<EvenAppBridge | null>;
   startHud: StartHud;
-  /** Foundry client factory override (tests). */
-  createClient?: (base: string) => FoundryClientLike;
+  /** Relay opener override (tests). */
+  openRelay?: OpenRelay;
 }
 
 /** Handle returned by {@link startApp}. */
@@ -59,8 +56,8 @@ export interface AppHandle {
  * Per the SDK 0.0.15 `Sys_ItemEvent` model, lifecycle arrives on `event.sysEvent.eventType`
  * (`FOREGROUND_ENTER_EVENT` = 4, `FOREGROUND_EXIT_EVENT` = 5, `ABNORMAL_EXIT_EVENT` = 6).
  * The app-submission QA requires handling the abnormal exit (remote ADR-0012 LIFE-01):
- * the host is tearing the plugin down, so the socket is closed gracefully instead of
- * being dropped mid-frame (Foundry then sees a clean disconnect of this device).
+ * the host is tearing the plugin down, so the relay link is closed gracefully instead of
+ * being dropped mid-frame (the projector then sees a clean `peer-down`).
  *
  * @returns `'enter' | 'exit' | 'abnormal'`, or `null` for any other event
  */
@@ -78,7 +75,6 @@ export function foregroundTransition(event: EvenHubEvent): 'enter' | 'exit' | 'a
  */
 export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   const store = createAppStore();
-  const base = deriveFoundryBase(env.location);
   // Storage warnings raised before the session exists are routed to it once created.
   let session: DirectSession | null = null;
   const credentials = new CredentialStore(env.storage, (message, error) =>
@@ -88,24 +84,23 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   session = new DirectSession({
     store,
     credentials,
-    base,
-    createClient: env.createClient ?? ((b) => new FoundryClient(b)),
+    openRelay: env.openRelay ?? createRelayOpener(),
+    relayUrl: env.relayUrl,
     appVersion: env.appVersion,
-    ...(env.moduleVersion === undefined ? {} : { moduleVersion: env.moduleVersion }),
     settingsStorage: env.storage,
     deviceLanguage: env.deviceLanguage,
   });
   const active = session;
-  const unmountPhone = mountPhonePage(env.root, store, active);
-
   const bridge = await env.getBridge();
+  const unmountPhone = mountPhonePage(env.root, store, active, bridge);
+
   let stopHud = (): void => {};
   let stopEvents = (): void => {};
   if (bridge !== null) {
     credentials.attachMirror(bridge);
     stopEvents = bridge.onEvenHubEvent((event) => {
       const transition = foregroundTransition(event);
-      // An abnormal exit closes like a background transition: graceful socket close, and
+      // An abnormal exit closes like a background transition: graceful link close, and
       // a later FOREGROUND_ENTER (host restored the plugin) reconnects.
       if (transition !== null) active.onForeground(transition === 'enter');
     });

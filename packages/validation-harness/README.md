@@ -25,7 +25,7 @@ packages/validation-harness/
 │   ├── 10-0-8-queue-depth.ts
 │   ├── 10-0-9-palette-calibration.ts
 │   ├── midiqol-config-probe.ts
-│   ├── direct-sideload.ts        # ADR-0016 GO/NO-GO (helpers in src/direct-sideload.ts)
+│   ├── relay-check.ts            # ADR-0019 relay GO/NO-GO (helpers in src/relay-check.ts)
 │   └── run-all.ts                # orchestrator with --skip-hardware flag
 ├── tests/
 │   └── path-resolution.test.ts   # smoke test for Pitfall 8 (writer → repo-root)
@@ -59,9 +59,10 @@ pnpm --filter @evf/validation-harness validate:queue-depth
 pnpm --filter @evf/validation-harness validate:palette-calibration
 pnpm --filter @evf/validation-harness validate:midiqol-probe
 
-# ADR-0016 direct sideload (Foundry serves the g2-app; QR loads it in the Even App)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload   # interactive hardware checklist
+# ADR-0019 room relay (projector tab ⇄ relay ⇄ glasses); RELAY_URL optional, defaults to DEFAULT_RELAY_URL
+pnpm --filter @evf/validation-harness validate:relay:skip-hardware
+RELAY_URL=ws://127.0.0.1:8787 pnpm --filter @evf/validation-harness validate:relay:skip-hardware   # local `wrangler dev`
+pnpm --filter @evf/validation-harness validate:relay   # interactive hardware checklist (gates G1–G2)
 ```
 
 Evidence is always written to **repo-root** `docs/perf/phase-0/` regardless of cwd, via

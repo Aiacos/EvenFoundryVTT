@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "test_id": "adr-0019-relay",
+  "timestamp": "2026-09-26T14:12:01.584Z",
+  "verdict": "pass",
+  "rationale": "software checks GO; hardware checklist deferred (--skip-hardware)",
+  "skip_hardware": true,
+  "default_relay": false,
+  "checks": [
+    {
+      "id": "health",
+      "verdict": "pass",
+      "detail": "HTTP 200 ok"
+    },
+    {
+      "id": "cors",
+      "verdict": "pass",
+      "detail": "Access-Control-Allow-Origin: *"
+    },
+    {
+      "id": "room-roundtrip",
+      "verdict": "pass",
+      "detail": "peer-up ×2, verbatim both ways, peer-down; RTT 50.1 ms"
+    },
+    {
+      "id": "oversize",
+      "verdict": "pass",
+      "detail": "sender closed with 1009 (message too big)"
+    }
+  ]
+}

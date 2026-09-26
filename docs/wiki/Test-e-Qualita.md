@@ -41,7 +41,7 @@ pnpm test:coverage    # vitest con copertura v8
 pnpm --filter @evf/validation-harness inv:all   # suite degli invarianti
 ```
 
-**Copertura**: soglia **80 %** su righe, rami e funzioni (`vitest.config.ts`), una base minima, non un obiettivo. Piramide: unità → integrazione (sessione g2-app ↔ projector con round-trip di buste sigillate su un socket finto) → snapshot INV-1 → simulatore.
+**Copertura**: soglia **80 %** su righe, rami e funzioni (`vitest.config.ts`), una base minima, non un obiettivo. Piramide: unità → integrazione (sessione g2-app ↔ projector con round-trip di buste sigillate su un relay finto, e su un relay vero nel test end-to-end) → snapshot INV-1 → simulatore.
 
 ## 🚀 Gate della CI
 
@@ -58,7 +58,8 @@ pnpm --filter @evf/validation-harness inv:all   # suite degli invarianti
 | 7 | `pnpm changeset:status` (solo PR, non sulla PR *Version Packages*) | PR senza changeset |
 | 8 | guardia ADR-0011 | `activity.use(` fuori da `packages/foundry-module/src/write-path/` |
 | 9 | confinamento socketlib (ADR-0016) | uso di socketlib fuori da `packages/foundry-module` |
-| 10 | build della g2-app in `foundry-module/g2` (ADR-0016) | build che non emette `packages/foundry-module/g2/index.html` |
+| 10 | build della g2-app + contratto solo-relay (ADR-0019) | build senza `packages/g2-app/dist/index.html`; `scripts/check-relay-origin.mjs --bundle packages/g2-app/dist`: whitelist diversa da `DEFAULT_RELAY_URL`, permesso `camera` mancante, `/join` o socket.io nel bundle |
+| — | relay end-to-end (ADR-0019) | `wrangler dev` del relay di questo commit, poi `EVF_RELAY_URL=… pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts` (codice → rotazione → online → asset → `invoke` → projector assente e di ritorno) e `validate:relay:skip-hardware` |
 
 Job **commit-lint-pr-title** (solo PR): il titolo della PR passa da commitlint. In locale, Husky esegue Biome sui file in stage (pre-commit) e commitlint sul messaggio (commit-msg). Il workflow **Wiki Sync** valida i link della wiki con `node scripts/check-wiki-links.mjs docs/wiki` ([Release](Release)).
 

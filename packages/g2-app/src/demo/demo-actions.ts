@@ -84,7 +84,6 @@ export function createDemoTransport(deps: {
   let seq = 0;
   const info = (): SessionInfo => ({
     latencyMs: 42,
-    foundryVersion: 'demo',
     moduleVersion: 'demo',
     diagnostics: [],
   });
@@ -135,12 +134,16 @@ export function createDemoTransport(deps: {
       log.push('info', 'demo', 'forget pairing');
       store.update({ connection: { status: 'unpaired' } });
     },
-    async pairManual(userId: string) {
-      log.push('info', 'demo', `pair ${userId}`);
-      store.update({ connection: { status: 'connecting', server: 'demo', userName: userId } });
+    async pairCode(code: string) {
+      log.push('info', 'demo', `pair code ${code}`);
+      store.update({ connection: { status: 'connecting', server: 'demo', userName: 'Demo' } });
       timers.setTimeout(goOnline, DEMO_TIMING.reconnect);
     },
-    listUsers: async () => [{ id: 'demo-user', name: 'Demo (G2)' }],
+    async pairScanned(text: string) {
+      log.push('info', 'demo', `pair scanned ${text.slice(0, 32)}`);
+      store.update({ connection: { status: 'connecting', server: 'demo', userName: 'Demo' } });
+      timers.setTimeout(goOnline, DEMO_TIMING.reconnect);
+    },
     updateSettings(patch: Partial<AppSettings>) {
       log.push('info', 'demo', 'settings', patch);
       store.update((s) => ({ settings: { ...s.settings, ...patch } }));

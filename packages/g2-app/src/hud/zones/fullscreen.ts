@@ -46,12 +46,18 @@ function pairScreen(p: Pixmap, revoked: boolean, s: HudStrings): void {
 
 function connectScreen(p: Pixmap, c: ConnectionState, s: HudStrings): void {
   frame(p, s, s.connectingTo(c.server ?? '—'));
-  const st = c.steps ?? { server: false, login: false, gm: false, character: false, scene: false };
+  const st = c.steps ?? {
+    relay: false,
+    projector: false,
+    paired: false,
+    character: false,
+    scene: false,
+  };
   const steps: Array<[boolean, string]> = [
-    [st.server, s.steps.server],
-    [st.login, s.steps.login(c.userName ?? '—')],
-    [st.gm, s.steps.gm(c.gmName ?? '—')],
-    [st.character, s.steps.character(c.actorName ?? '—')],
+    [st.relay, s.steps.relay],
+    [st.projector, s.steps.projector],
+    [st.paired, s.steps.paired(c.userName ?? '—')],
+    [st.character, s.steps.character(c.actorName ?? c.label ?? '—')],
     [st.scene, s.steps.scene],
   ];
   const current = steps.findIndex(([done]) => !done);

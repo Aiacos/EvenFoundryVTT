@@ -1,33 +1,28 @@
+import { generateDeviceKey, generateRoomId } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FoundryMock, installFoundry } from '../__tests__/direct-fixtures.js';
 import {
-  clearDeviceKey,
-  DEVICE_KEYS_SETTING,
-  DEVICES_SETTING,
-  type DeviceMeta,
-  getDevice,
-  listDevices,
-  migrateKeyHolders,
+  getPairing,
+  listPairings,
+  PAIRINGS_SETTING,
+  type Pairing,
+  pruneExpired,
   registerPairingSettings,
-  removeDevice,
-  setDeviceKey,
-  TOUCH_PERSIST_INTERVAL_MS,
-  touchDevice,
-  updateDeviceMeta,
-  upsertDevice,
+  removePairing,
+  savePairing,
+  updatePairing,
 } from './pairing-store.js';
 
-const KEY = 'k'.repeat(43);
-
-function meta(id: string, extra: Partial<DeviceMeta> = {}): DeviceMeta {
+function pairing(id: string, extra: Partial<Pairing> = {}): Pairing {
   return {
-    g2UserId: id,
-    playerUserId: `p-${id}`,
+    deviceId: id,
+    room: generateRoomId(),
+    key: generateDeviceKey(),
     actorId: `a-${id}`,
-    label: `${id} (G2)`,
+    label: `Hero ${id}`,
     createdAt: 1000,
     lastSeenAt: null,
-    pendingRotation: true,
+    expiresAt: null,
     ...extra,
   };
 }
@@ -39,95 +34,56 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('pairing-store', () => {
-  it('PS-01 registers a world-scope metadata setting and a client-scope key setting', () => {
+describe('pairing store (client scope, ADR-0019)', () => {
+  it('PS-01 registers one hidden client-scope setting', () => {
     registerPairingSettings();
-    const register = (foundry.game.settings as { register: ReturnType<typeof vi.fn> }).register;
-    expect(register).toHaveBeenCalledWith(
-      'evenfoundryvtt',
-      DEVICES_SETTING,
-      expect.objectContaining({ scope: 'world', config: false }),
-    );
-    expect(register).toHaveBeenCalledWith(
-      'evenfoundryvtt',
-      DEVICE_KEYS_SETTING,
-      expect.objectContaining({ scope: 'client', config: false }),
-    );
-  });
-
-  it('PS-02 secret split: the key never lands in the world setting', async () => {
-    await upsertDevice(meta('u1'), KEY);
-    const world = JSON.stringify(foundry.settings.get(`evenfoundryvtt.${DEVICES_SETTING}`));
-    expect(world).not.toContain(KEY);
-    expect(foundry.settings.get(`evenfoundryvtt.${DEVICE_KEYS_SETTING}`)).toEqual({ u1: KEY });
-    expect(getDevice('u1')).toEqual({ meta: meta('u1'), key: KEY });
-  });
-
-  it('PS-03 list is sorted by createdAt; unknown device → null; missing key → key null', async () => {
-    await upsertDevice(meta('b', { createdAt: 2000 }), KEY);
-    await upsertDevice(meta('a', { createdAt: 1000 }), KEY);
-    expect(listDevices().map((d) => d.g2UserId)).toEqual(['a', 'b']);
-    expect(getDevice('zzz')).toBeNull();
-    foundry.settings.set(`evenfoundryvtt.${DEVICE_KEYS_SETTING}`, {});
-    expect(getDevice('a')?.key).toBeNull();
-  });
-
-  it('PS-04 corrupted settings degrade to empty', () => {
-    foundry.settings.set(`evenfoundryvtt.${DEVICES_SETTING}`, {
-      bad: { g2UserId: 'bad' },
-      mismatch: meta('other'),
-      ok: meta('ok'),
+    const settings = foundry.game.settings as { register: ReturnType<typeof vi.fn> };
+    expect(settings.register).toHaveBeenCalledWith('evenfoundryvtt', PAIRINGS_SETTING, {
+      scope: 'client',
+      config: false,
+      type: Object,
+      default: {},
     });
-    foundry.settings.set(`evenfoundryvtt.${DEVICE_KEYS_SETTING}`, { ok: 42 });
-    expect(listDevices().map((d) => d.g2UserId)).toEqual(['ok']);
-    expect(getDevice('ok')?.key).toBeNull();
-    foundry.settings.set(`evenfoundryvtt.${DEVICES_SETTING}`, 'garbage');
-    foundry.settings.set(`evenfoundryvtt.${DEVICE_KEYS_SETTING}`, null);
-    expect(listDevices()).toEqual([]);
   });
 
-  it('PS-05 setDeviceKey / updateDeviceMeta / removeDevice', async () => {
-    await upsertDevice(meta('u1'), KEY);
-    await setDeviceKey('u1', 'n'.repeat(43));
-    await updateDeviceMeta('u1', { pendingRotation: false });
-    await updateDeviceMeta('ghost', { pendingRotation: false });
-    expect(getDevice('u1')).toEqual({
-      meta: meta('u1', { pendingRotation: false }),
-      key: 'n'.repeat(43),
+  it('PS-02 saves, lists (oldest first), gets, updates and removes', async () => {
+    await savePairing(pairing('b', { createdAt: 2000 }));
+    await savePairing(pairing('a', { createdAt: 1000 }));
+    expect(listPairings().map((p) => p.deviceId)).toEqual(['a', 'b']);
+    expect(getPairing('a')?.label).toBe('Hero a');
+    expect(await updatePairing('a', { lastSeenAt: 5 })).toMatchObject({ lastSeenAt: 5 });
+    expect(await updatePairing('nope', { lastSeenAt: 5 })).toBeNull();
+    await removePairing('a');
+    await removePairing('a');
+    expect(getPairing('a')).toBeNull();
+    expect(listPairings()).toHaveLength(1);
+  });
+
+  it('PS-03 ignores corrupted or mismatched records instead of throwing', () => {
+    foundry.settings.set(`evenfoundryvtt.${PAIRINGS_SETTING}`, {
+      good: pairing('good'),
+      wrongId: pairing('other'),
+      bad: { deviceId: 'bad', room: 'x' },
     });
-    await removeDevice('u1');
-    expect(getDevice('u1')).toBeNull();
-    expect(foundry.settings.get(`evenfoundryvtt.${DEVICE_KEYS_SETTING}`)).toEqual({});
+    expect(listPairings().map((p) => p.deviceId)).toEqual(['good']);
+    foundry.settings.set(`evenfoundryvtt.${PAIRINGS_SETTING}`, 'garbage');
+    expect(listPairings()).toEqual([]);
   });
 
-  it('PS-06 touch persists lastSeen at most once per interval', async () => {
-    await upsertDevice(meta('u1'), KEY);
-    expect(await touchDevice('u1', 10_000)).toBe(true);
-    expect(await touchDevice('u1', 10_000 + TOUCH_PERSIST_INTERVAL_MS - 1)).toBe(false);
-    expect(await touchDevice('u1', 10_000 + TOUCH_PERSIST_INTERVAL_MS)).toBe(true);
-    expect(getDevice('u1')?.meta.lastSeenAt).toBe(10_000 + TOUCH_PERSIST_INTERVAL_MS);
-    expect(await touchDevice('nobody', 1)).toBe(false);
+  it('PS-04 rejects invalid pairings on write', async () => {
+    await expect(savePairing({ ...pairing('x'), room: 'short' })).rejects.toThrow();
   });
 
-  it('PS-07 world-meta writers are GM-only; clearDeviceKey forgets this browser only', async () => {
-    await upsertDevice(meta('u1'), KEY);
-    await clearDeviceKey('ghost'); // no-op
-    await clearDeviceKey('u1');
-    expect(getDevice('u1')).toEqual({ meta: meta('u1'), key: null });
-    foundry.game.user.isGM = false;
-    await updateDeviceMeta('u1', { label: 'x' });
-    expect(await touchDevice('u1', 99_999_999)).toBe(false);
-    await expect(migrateKeyHolders()).resolves.toBe(0);
-    expect(getDevice('u1')?.meta.label).toBe(meta('u1').label);
-  });
-
-  it('PS-08 keyHolder is optional, nullable or a user id; other types are rejected', async () => {
-    await upsertDevice(meta('u1', { keyHolder: null }), null);
-    await upsertDevice(meta('u2', { keyHolder: 'gm1' }), KEY);
-    expect(listDevices().map((d) => d.keyHolder)).toEqual([null, 'gm1']);
-    foundry.settings.set(`evenfoundryvtt.${DEVICES_SETTING}`, {
-      u3: { ...meta('u3'), keyHolder: 7 },
-    });
-    expect(listDevices()).toEqual([]);
+  it('PS-05 prunes only expired, never-connected pairings', async () => {
+    await savePairing(pairing('old', { expiresAt: 100 }));
+    await savePairing(pairing('fresh', { expiresAt: 10_000 }));
+    await savePairing(pairing('paired'));
+    expect(await pruneExpired(500)).toEqual(['old']);
+    expect(await pruneExpired(500)).toEqual([]);
+    expect(
+      listPairings()
+        .map((p) => p.deviceId)
+        .sort(),
+    ).toEqual(['fresh', 'paired']);
   });
 });

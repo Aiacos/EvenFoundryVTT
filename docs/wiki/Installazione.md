@@ -1,22 +1,22 @@
-# Installazione (GM)
+# Installazione
 
-C'è **una sola cosa** da installare: il modulo Foundry **EvenFoundryVTT**. Serve anche l'app per gli occhiali, quindi non ci sono server, container o secondi domini ([ADR-0016](Decisioni-Architetturali)).
+Due cose da installare: il **modulo Foundry** (una volta, il GM) e l'**app «FoundryVTT G2 HUD»** sul telefono (ogni giocatore con gli occhiali). Non ci sono server da gestire: il relay che li unisce è gestito dal progetto ([Rete e relay](HTTPS-e-Rete), [ADR-0019](Decisioni-Architetturali)).
 
 ## 🥽 Requisiti
 
 | Componente | Richiesto | Note |
 |---|---|---|
-| **FoundryVTT** | ≥ v13.347 (v14 verificato) | v12 non è supportato (sistema Activity di dnd5e) |
+| **FoundryVTT** | ≥ v13.347 (v13 e v14) | self-hosted o **The Forge**, anche giochi privati; v12 non è supportato (sistema Activity di dnd5e) |
 | **Sistema dnd5e** | ≥ 5.3.3 | PHB 2014 e PHB 2024 (`core.modernRules`) |
 | **midi-qol** | facoltativo (consigliato) | automazione completa attacco → danni → tiro salvezza → effetto; senza, `activity.use()` pubblica solo la scheda dell'attività |
-| **HTTPS valido** | obbligatorio | Foundry raggiungibile **dal telefono** con un certificato che il telefono accetta ([HTTPS e rete](HTTPS-e-Rete)) |
-| **Un projector online** | durante il gioco | il client del giocatore, oppure un GM ([Architettura](Architettura)) |
+| **Relay raggiungibile** | dal browser del giocatore | la scheda di Foundry deve poter aprire `wss://evf-relay.evf-relay.workers.dev`; **non** serve HTTPS pubblico per Foundry ([Rete e relay](HTTPS-e-Rete)) |
+| **Scheda di Foundry aperta** | durante il gioco | quella del giocatore che ha collegato gli occhiali (o del GM che li ha collegati per lui) |
 | **Even Realities G2 + R1** | firmware aggiornato | associati al telefono con la procedura Even standard |
 | **Even Realities App** | ≥ 2.2.9 | per la pressione lunga ([compatibilità](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/firmware-compatibility.md)) |
 
-socketlib **non serve più** dalla v0.12.0.
+socketlib non serve.
 
-## 📦 Installare il modulo
+## 📦 Il modulo (GM)
 
 1. **Foundry** → *Setup* → *Add-on Modules* → *Install Module* → **Manifest URL**:
 
@@ -28,29 +28,33 @@ socketlib **non serve più** dalla v0.12.0.
 2. Avvia il mondo e attiva **EvenFoundryVTT** in *Manage Modules*.
 3. Facoltativo: installa e attiva **midi-qol** (il modulo lo elenca tra i `recommends`).
 
-Il pacchetto contiene già l'app degli occhiali nella cartella `g2/`. Foundry la serve a:
+Non c'è altro da configurare: niente utenti da creare, niente giocatori da abilitare. Ogni giocatore collega i propri occhiali dal proprio Foundry ([Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)).
 
-```
-https://<foundry>[/<routePrefix>]/modules/evenfoundryvtt/g2/index.html
-```
+## 📦 L'app degli occhiali (giocatori)
 
-## ⚙️ Dopo l'installazione
+L'app si chiama **FoundryVTT G2 HUD** ed è distribuita da **Even Hub**:
 
-1. Verifica HTTPS e WebSocket: [HTTPS e rete](HTTPS-e-Rete).
-2. Abilita i giocatori (una volta) o associa gli occhiali per loro: [Abilitare i giocatori](Abilitare-i-Giocatori).
-3. La finestra di associazione mostra tre verifiche — **HTTPS valido · modulo servito · socket attivo** — più **indirizzo pubblico**: tutte devono essere ✓.
+- **finché non è nello store**: il maintainer aggiunge il tuo account Even Realities al **gruppo beta** del tavolo; l'app compare nella Even Realities App e si installa come le altre;
+- **dopo la revisione**: si installa dallo store di Even Hub.
 
-## 🧪 Installazione di sviluppo
+L'app installata sopravvive al telefono bloccato e salva il collegamento: la prima volta tocchi **«Scansiona QR»** (serve il permesso della fotocamera) o **«Inserisci codice»**, poi non devi più fare niente.
+
+## 🧪 Sviluppo e prova senza store
+
+Con l'**app Even Realities in modalità sviluppatore** puoi usare l'app senza installarla: inquadra il **QR mostrato da Foundry** con *Even Hub → Scan QR*. Il QR apre la pagina pubblicata su GitHub Pages (`https://aiacos.github.io/EvenFoundryVTT/app/`) con il collegamento già dentro. Un'app caricata da QR si ferma quando il telefono va in background: dopo un blocco dello schermo va inquadrato di nuovo.
+
+Dal repository:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @evf/foundry-module build:all   # g2-app → packages/foundry-module/g2/, poi tsup → dist/module.js
+pnpm --filter @evf/foundry-module build          # tsup → packages/foundry-module/dist/module.js
 ln -s "$PWD/packages/foundry-module" "<FoundryData>/Data/modules/evenfoundryvtt"
+pnpm dev:glasses                                 # app di questo checkout sulla LAN + controllo del relay
 ```
 
-`packages/foundry-module/g2/` è output di build (ignorato da git): ricostruiscilo dopo ogni modifica alla g2-app (`pnpm --filter @evf/g2-app build`) e ricarica la pagina sul telefono.
+`pnpm dev:glasses` stampa l'indirizzo LAN dell'app: mettilo nell'impostazione del modulo **«Pagina dell'app occhiali (avanzato)»**, poi apri **«Collega occhiali G2»** (Alt+G) e inquadra il QR. Dettagli: [Debug e simulatore](Debug-e-Simulatore).
 
 ## 📚 Vedi anche
 
 - Guida completa in inglese: [`docs/setup-guide.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/setup-guide.md)
-- Distribuzione del modulo: [Release](Release)
+- Distribuzione del modulo e dell'app: [Release](Release)

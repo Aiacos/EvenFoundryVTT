@@ -1,6 +1,22 @@
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.1.0 → 1.2.0 (2026-09-26)
+Bump rationale: MINOR — one new principle (XII Living Tracking Files) + icon-map entry
+(Tasks / TODO ✅); factual refresh of Additional Constraints after ADR-0019 (relay pairing).
+Added principles:
+  XII.  Living Tracking Files — root `TODO.md`, `SECURITY.md`, `CHANGELOG.md` as checkable,
+        referenced lists; format enforced by `scripts/check-tracking-files.mjs` (CI).
+Modified principles:
+  XI.   Consistent Chapter Icons — map gains «Tasks / TODO ✅».
+Changed sections: Additional Constraints (pairing = relay QR/code per ADR-0019; SDK 0.0.16).
+Mapping to CLAUDE.md "Engineering Constitution" P1–P12: … P11=XI, P12=XII.
+Templates requiring updates:
+  ✅ .specify/templates/* — read this file dynamically; no edit required.
+  ✅ CLAUDE.md — P12 + icon row added in the same commit.
+Follow-up TODOs: none.
+
+---- previous report (1.1.0) ----
 Version change: 1.0.0 → 1.1.0 (2026-09-23, v0.12.0 direct-streaming port)
 Bump rationale: MINOR — one new principle (XI) and materially expanded guidance (V, IX),
 plus factual corrections after the bridge was removed (ADR-0016..0018).
@@ -228,25 +244,41 @@ concept are forbidden.
 | Roadmap / Milestones | 🗺️ | Voice / MCP (V2) | 🎙️ |
 | Changelog | 📝 | Inspiration | 🎨 |
 | Icons / Conventions | 🏷️ | License | ⚖️ |
-| Author / Credits | 👤 | | |
+| Author / Credits | 👤 | Tasks / TODO | ✅ |
 
 Rationale: the same concept recurring across README, wiki, docs and showcase must be
 recognisable at a glance; drifting icons are a documentation-coherence (INV-3) smell.
+
+### XII. Living Tracking Files
+
+The root files `TODO.md`, `SECURITY.md` and `CHANGELOG.md` MUST exist and stay current, short
+and easy to update: checkable lists (`- [ ]` / `- [x]`), one line per item, and a reference on
+every item (spec task, ADR, issue/PR, file path or `Specs.md §`). `TODO.md` holds open work only
+(tick in the finishing commit, move to `CHANGELOG.md` when shipped); `SECURITY.md` holds supported
+versions, the private reporting path, a short threat model and a checklist of controls each
+linked to its proof, and MUST be updated by any change to auth, crypto, pairing, the relay,
+permissions or secrets; `CHANGELOG.md` is the human release index (Unreleased → `vX.Y.Z`) that
+links — never duplicates — the Changesets package changelogs and the `Specs.md` changelog. The
+format MUST be enforced in CI (`scripts/check-tracking-files.mjs`).
+
+Rationale: humans and agents resume work from these files; a stale or verbose tracker is worse
+than none, and a reference on every line makes each item verifiable.
 
 ## Additional Constraints
 
 - **Non-negotiable hardware/platform facts** (verified upstream, do not re-litigate without
   INV-2 evidence): plugins run on the paired phone WebView, not G2 firmware; G2 has 4 mics,
-  no speaker, no camera; max 4 image containers (each 20–288 × 20–144 px, SDK 0.0.15) + 8
+  no speaker, no camera; max 4 image containers (each 20–288 × 20–144 px, SDK 0.0.16) + 8
   text/list, exactly one `isEventCapture:1`; image containers render on top of text; the real
   host rejects image tiles at non-grid offsets (only the 2×2 grid of 288×144 tiles from (0,0) is
   hardware-proven); canonical gestures are press / double-press / swipe-up / swipe-down —
   long-press (SDK ≥ 0.0.14) may only duplicate a function reachable otherwise (ADR-0012);
   EvenAI is opaque (no developer API) — voice/MCP needs a new ADR (ADR-0016 removed
   `foundry-mcp`).
-- **Pairing**: Foundry shows a QR (player's or GM's screen) that the Even Realities App scans to
-  sideload the glasses app already bound to one device key (ADR-0016/0017); there is no bearer
-  token to paste and no camera use on the glasses.
+- **Pairing**: the Foundry tab that shows «Collega occhiali G2» displays a QR + 16-char code
+  (relay room + AES-256 key, single use); the glasses app reads it with the phone camera or the
+  typed code; the phone never logs into Foundry and there is no camera on the glasses
+  (ADR-0019).
 - **Determinism first**: the MVP core is gesture-explicit; voice/AI is an optional V2 stretch,
   never a dependency.
 - **Tooling is fixed**: pnpm, TypeScript strict 5.8.x, Biome, Vitest, Changesets. The pinned
@@ -283,4 +315,4 @@ Compliance is verified at review time: every PR/review MUST confirm the change h
 principles, and any deviation MUST be justified in the PR (and, if retained, issue- or
 ADR-linked). Complexity MUST be justified against the simpler rejected alternative.
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-09-23
+**Version**: 1.2.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-09-26

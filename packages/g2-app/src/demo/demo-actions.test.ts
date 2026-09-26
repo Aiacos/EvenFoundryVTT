@@ -91,8 +91,8 @@ describe('createDemoTransport', () => {
     expect(store.get().connection.status).toBe('offline');
     await transport.forget();
     expect(store.get().connection).toEqual({ status: 'unpaired' });
-    await expect(transport.listUsers()).resolves.toEqual([{ id: 'demo-user', name: 'Demo (G2)' }]);
-    await transport.pairManual('demo-user', 'ABCD-EFGH-IJKL-MNOP');
+    await transport.pairScanned('https://aiacos.github.io/EvenFoundryVTT/app/#evf=x');
+    await transport.pairCode('ABCD-EFGH-IJKL-MNOP');
     expect(store.get().connection.status).toBe('connecting');
     await vi.advanceTimersByTimeAsync(DEMO_TIMING.reconnect);
     expect(store.get().connection.status).toBe('online');
@@ -108,7 +108,6 @@ describe('createDemoTransport', () => {
     expect(log.tail(1)[0]?.message).toBe('refresh map');
     expect(transport.info()).toEqual({
       latencyMs: 42,
-      foundryVersion: 'demo',
       moduleVersion: 'demo',
       diagnostics: [],
     });

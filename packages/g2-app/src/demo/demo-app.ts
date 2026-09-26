@@ -88,7 +88,8 @@ export async function startDemo(env: DemoEnvironment): Promise<DemoHandle> {
   const first: ScenarioName = head;
   let current = first;
   store.update(buildScenario(first, timers.now()).initial);
-  const unmountPhone = mountPhonePage(env.root, store, transport, log);
+  // The demo pairs with its fixtures: no camera scan.
+  const unmountPhone = mountPhonePage(env.root, store, transport, null, log);
 
   const bridge = await env.getBridge();
   if (bridge === null) {

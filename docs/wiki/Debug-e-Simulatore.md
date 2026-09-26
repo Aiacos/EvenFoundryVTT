@@ -8,10 +8,10 @@ Parsati in modo rigoroso da `packages/g2-app/src/debug/flags.ts`:
 
 | Parametro | Effetto |
 |---|---|
-| `?demo=<scenario>` | demo offline (non contatta mai Foundry), implica il debug |
+| `?demo=<scenario>` | demo offline (non contatta mai il relay), implica il debug |
 | `?demo=tour` | tutte le 12 schermate in sequenza |
 | `?dwell=<ms>` | avanzamento automatico del tour ogni `ms` (≥ 1000); senza, si avanza con un doppio tap vero |
-| `?debug=1` | canale di debug + `window.__evf` sull'app reale collegata a Foundry |
+| `?debug=1` | canale di debug + `window.__evf` sull'app reale collegata tramite il relay |
 
 Scenari (`packages/g2-app/src/demo/scenarios.ts`): `explore` (S1) · `combat-my-turn` (S2) · `actions` (S3) · `target` (S4) · `spells` (S5) · `result` (S6) · `reaction` (S7) · `saves` (S8) · `dying` (S9) · `unpaired` (S10) · `connecting` (S11) · `offline` (S12). Vedi [Schermate](Schermate).
 
@@ -32,7 +32,7 @@ __evf.dispatch('down')   // inietta un gesto: 'tap' | 'double' | 'up' | 'down' |
 
 `dispatch` valida l'argomento (l'input della console non è fidato) e restituisce `false` se non c'è il bridge dell'SDK Even Hub (`EvenAppBridge`, cioè fuori dalla Even App o dal simulatore).
 
-## 🧪 Occhiali veri: `pnpm wizard`
+## 🧪 Occhiali veri: `pnpm wizard` e `pnpm dev:glasses`
 
 `scripts/wizard.sh` prepara tutto e mostra il QR da inquadrare con la Even Realities App:
 controlla il toolchain, trova l'IP di rete e una porta libera, apre la porta nel firewall
@@ -40,16 +40,19 @@ controlla il toolchain, trova l'IP di rete e una porta libera, apre la porta nel
 
 | Comando | Cosa fa |
 |---|---|
-| `pnpm wizard` | tour delle 12 schermate demo, cambio ogni 6 s (nessun Foundry) |
+| `pnpm wizard` | tour delle 12 schermate demo, cambio ogni 6 s (nessun Foundry, nessun relay) |
 | `pnpm wizard --scene combat-my-turn` | una sola schermata, per provare i gesti |
-| `pnpm wizard --mode build` | serve il bundle di produzione (gli stessi byte del modulo) |
-| `pnpm wizard --foundry https://tuo-foundry` | controlli GO/NO-GO + QR dell'app servita da Foundry |
+| `pnpm wizard --mode build` | serve il bundle di produzione (`packages/g2-app/dist`, gli stessi byte del `.ehpk` e di GitHub Pages) |
+| `pnpm dev:glasses` (= `--mode live`) | collegamento vero con il **tuo** Foundry: serve l'app di questo checkout sulla LAN, controlla il relay e stampa l'indirizzo da mettere nell'impostazione **«Pagina dell'app occhiali (avanzato)»**; poi apri **«Collega occhiali G2»** (Alt+G) e inquadra **quel** QR |
+| `pnpm dev:glasses --local-relay` | avvia anche il relay in locale (`wrangler dev`); solo con un Foundry `http://` (una pagina `https://` non apre `ws://`) — imposta **«Relay (avanzato)»** all'indirizzo stampato |
 | `pnpm wizard --debug` | aggiunge `?debug=1` (log nella console della Developer Mode) |
+
+Il relay da solo: `pnpm --filter @evf/relay dev` (`wrangler dev` → `http://localhost:8787`).
 
 Sul telefono, la prima volta: accedi una volta a `hub.evenrealities.com/login` (l'account
 diventa sviluppatore, non c'è un interruttore), chiudi e riapri l'app, poi **Even Hub →
 Scan QR**. Un'app caricata da QR si ferma quando il telefono la manda in background:
-dopo un blocco dello schermo va inquadrato di nuovo il QR.
+dopo un blocco dello schermo va inquadrato di nuovo il QR (l'app installata da Even Hub no).
 
 ## 🧪 Simulatore Even Hub: `sim:check`
 
@@ -82,22 +85,33 @@ Il simulatore **non** riproduce tutti i limiti dell'hardware: accetta tile immag
 
 **Codici di uscita:** `0` passa · `1` fallisce · `2` simulatore non disponibile (saltato: un display o un simulatore mancante non fa mai fallire la CI software).
 
+## 🧪 Test end-to-end sul relay
+
+La sessione vera degli occhiali (`DirectSession`) contro un relay vero e un projector finto che parla il protocollo sigillato reale: codice → rotazione → nuova stanza → online → asset della mappa → `invoke` → projector assente e di ritorno.
+
+```bash
+pnpm --filter @evf/relay dev &                                   # relay locale su :8787
+EVF_RELAY_URL=ws://127.0.0.1:8787 pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts
+```
+
+Senza `EVF_RELAY_URL` il test è saltato. La CI lo esegue a ogni push (passo *Relay end-to-end*, con `wrangler dev` e poi `validate:relay`) ([Test e qualità](Test-e-Qualita)).
+
 ## 🧪 GO/NO-GO hardware
 
 Pattern *defer-hardware*: i controlli che richiedono occhiali veri sono script in `packages/validation-harness`, eseguibili con `--skip-hardware`, e non bloccano mai la CI.
 
 ```bash
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload
-pnpm --filter @evf/validation-harness validate:all:skip-hardware   # tutte le verifiche Phase 0 senza hardware
-pnpm --filter @evf/validation-harness inv:all                      # suite degli invarianti
+pnpm --filter @evf/validation-harness validate:relay:skip-hardware   # relay: salute, CORS, stanza, dimensioni
+pnpm --filter @evf/validation-harness validate:relay                 # + checklist sì/no su telefono, G2 e R1
+pnpm --filter @evf/validation-harness validate:all:skip-hardware     # tutte le verifiche Phase 0 senza hardware
+pnpm --filter @evf/validation-harness inv:all                        # suite degli invarianti
 ```
 
-Le prove finiscono in `docs/perf/phase-0/` (per il sideload: `adr-0016-direct-sideload-<ISO>.json`, solo i verdetti — mai URL, credenziali o payload del QR). Dettagli dei controlli: [HTTPS e rete](HTTPS-e-Rete).
+`RELAY_URL` (facoltativo) punta a un altro relay. Le prove finiscono in `docs/perf/phase-0/` (`adr-0019-relay-<ISO>.json`, solo i verdetti — mai URL, id di stanza o chiavi). Dettagli dei controlli: [Rete e relay](HTTPS-e-Rete).
 
 ## 🐞 Debug dal lato Foundry
 
-Nel browser del projector i log hanno il prefisso `[EVF]`; ogni azione lascia un audit `flags.evf.audit`. Comandi utili: [Risoluzione problemi](Risoluzione-Problemi).
+Nel browser che trasmette (il projector) i log hanno il prefisso `[EVF]`; ogni azione lascia un audit `flags.evf.audit`. Comandi utili: [Risoluzione problemi](Risoluzione-Problemi).
 
 ## 📚 Vedi anche
 

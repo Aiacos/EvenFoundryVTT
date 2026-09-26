@@ -1,0 +1,74 @@
+# GitHub Pages — docs site + the hosted glasses app (ADR-0019).
+#
+# Publishes docs/ (showcase, guides — rendered by the same Jekyll build GitHub Pages
+# used before) and the glasses app under /app/: the page the pairing QR opens in the
+# Even Realities App (https://aiacos.github.io/EvenFoundryVTT/app/, DEFAULT_APP_URL).
+#
+# One-time maintainer setting: Settings › Pages › Build and deployment › Source =
+# "GitHub Actions" (docs/runbook.md §Relay and Pages).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build the glasses app (relay-only contract)
+        run: |
+          pnpm --filter @evf/g2-app build
+          node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build docs (Jekyll, as GitHub Pages did)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Add the glasses app under /app/
+        run: |
+          sudo mkdir -p _site/app
+          sudo cp -r packages/g2-app/dist/. _site/app/
+          test -f _site/app/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

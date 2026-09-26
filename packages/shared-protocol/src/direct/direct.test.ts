@@ -13,19 +13,22 @@ import { AppMessageSchema, ProjectorMessageSchema } from './messages.js';
 import {
   buildPairingUrl,
   decodePairingPayload,
-  deriveKeyFromManualCode,
+  deriveCodePairing,
   encodePairingPayload,
   generateManualCode,
+  generateRoomId,
   normalizeManualCode,
   type PairingPayload,
   readPairingFragment,
+  readPairingText,
 } from './pairing.js';
+import { RelayControlSchema, relayHealthUrl, relayRoomUrl } from './relay.js';
 
 const PAYLOAD: PairingPayload = {
-  v: 1,
-  u: 'aB3dE5fG7hI9jK1l',
-  p: 'correct-horse-battery',
+  v: 2,
+  r: generateRoomId(),
   k: generateDeviceKey(),
+  l: 'Thorin',
 };
 
 describe('base64url', () => {
@@ -90,13 +93,47 @@ describe('pairing payload', () => {
     expect(decodePairingPayload(toBase64Url(new TextEncoder().encode('{"v":2}')))).toBeNull();
   });
 
-  it('builds a same-origin URL honouring routePrefix and reads it back', () => {
-    const url = buildPairingUrl('https://host.example/foundry/', PAYLOAD);
-    expect(
-      url.startsWith('https://host.example/foundry/modules/evenfoundryvtt/g2/index.html#evf='),
-    ).toBe(true);
+  it('builds the app URL with the payload in the fragment and reads it back', () => {
+    const url = buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/#old', PAYLOAD);
+    expect(url.startsWith('https://aiacos.github.io/EvenFoundryVTT/app/#evf=')).toBe(true);
     expect(readPairingFragment(new URL(url).hash)).toEqual(PAYLOAD);
     expect(readPairingFragment('')).toBeNull();
+  });
+
+  it('reads a scanned QR text whatever its origin, or a bare fragment', () => {
+    const url = buildPairingUrl('http://192.168.1.5:5173/', PAYLOAD);
+    expect(readPairingText(url)).toEqual(PAYLOAD);
+    expect(readPairingText(url.slice(url.indexOf('#') + 1))).toEqual(PAYLOAD);
+    expect(readPairingText('https://example.com/no-payload')).toBeNull();
+  });
+
+  it('accepts only ws(s) relay overrides and 128-bit+ room ids', () => {
+    const dev = { ...PAYLOAD, relay: 'ws://192.168.1.5:8787' };
+    expect(decodePairingPayload(encodePairingPayload(dev))).toEqual(dev);
+    expect(() => encodePairingPayload({ ...PAYLOAD, relay: 'https://x.example' })).toThrow();
+    expect(() => encodePairingPayload({ ...PAYLOAD, r: 'short' })).toThrow();
+    expect(generateRoomId()).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  });
+});
+
+describe('relay contract', () => {
+  it('builds room and health URLs from any relay spelling', () => {
+    expect(relayRoomUrl('wss://relay.example/', 'room_1', 'glasses')).toBe(
+      'wss://relay.example/r/room_1?role=glasses',
+    );
+    expect(relayRoomUrl('https://relay.example', 'r', 'projector')).toBe(
+      'wss://relay.example/r/r?role=projector',
+    );
+    expect(relayRoomUrl('http://10.0.0.2:8787', 'r', 'projector')).toBe(
+      'ws://10.0.0.2:8787/r/r?role=projector',
+    );
+    expect(relayHealthUrl('wss://relay.example/')).toBe('https://relay.example/health');
+    expect(relayHealthUrl('ws://10.0.0.2:8787')).toBe('http://10.0.0.2:8787/health');
+  });
+
+  it('parses the relay control frames only', () => {
+    expect(RelayControlSchema.safeParse({ relay: 'peer-up' }).success).toBe(true);
+    expect(RelayControlSchema.safeParse({ relay: 'other' }).success).toBe(false);
   });
 });
 
@@ -114,19 +151,21 @@ describe('manual code', () => {
     expect(normalizeManualCode('UUUU-UUUU-UUUU-UUUU')).toBeNull();
   });
 
-  it('derives a stable 32-byte key bound to the user id', async () => {
-    const a = await deriveKeyFromManualCode('7QK3-MX9P-2HRA-C4TE', 'user1');
-    expect(await deriveKeyFromManualCode('7qk3mx9p2hrac4te', 'user1')).toBe(a);
-    expect(await deriveKeyFromManualCode('7QK3-MX9P-2HRA-C4TE', 'user2')).not.toBe(a);
-    expect(fromBase64Url(a).byteLength).toBe(32);
-    await expect(deriveKeyFromManualCode('short', 'u')).rejects.toThrow('invalid manual code');
+  it('derives a stable room (16 bytes) and an independent key (32 bytes)', async () => {
+    const a = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+    expect(await deriveCodePairing('7qk3mx9p2hrac4te')).toEqual(a);
+    expect((await deriveCodePairing('7QK3-MX9P-2HRA-C4TA')).room).not.toBe(a.room);
+    expect(fromBase64Url(a.room).byteLength).toBe(16);
+    expect(fromBase64Url(a.key).byteLength).toBe(32);
+    expect(a.key.startsWith(a.room)).toBe(false);
+    await expect(deriveCodePairing('short')).rejects.toThrow('invalid manual code');
   });
 });
 
 describe('message schemas', () => {
   it('accepts every app message kind and rejects unknown ones', () => {
     for (const m of [
-      { t: 'hello', rid: '1', proto: 1, app: '0.10.0', locale: 'it' },
+      { t: 'hello', rid: '1', proto: 2, app: '0.10.0', locale: 'it' },
       { t: 'get', rid: '2', what: 'map' },
       { t: 'invoke', rid: '3', tool: 'weapon-attack', input: { itemId: 'x' } },
       { t: 'ping', rid: '4' },
@@ -165,6 +204,17 @@ describe('message schemas', () => {
       { t: 'result', rid: '3', ok: false, error: { code: 'E', message: 'm' } },
       { t: 'pong', rid: '4' },
       { t: 'revoked' },
+      { t: 'asset', id: 'bg_1', data: 'data:image/jpeg;base64,/9j/4AAQ' },
+      {
+        t: 'welcome',
+        rid: '1',
+        actorId: 'a',
+        actorName: 'Thorin',
+        userName: 'Luca',
+        gmName: '',
+        worldTitle: 'W',
+        rotate: { room: generateRoomId(), key: generateDeviceKey() },
+      },
     ]) {
       expect(ProjectorMessageSchema.safeParse(m).success).toBe(true);
     }
@@ -178,6 +228,13 @@ describe('message schemas', () => {
       worldTitle: '',
     };
     expect(ProjectorMessageSchema.safeParse({ ...welcome, moduleVersion: '' }).success).toBe(false);
+    expect(
+      ProjectorMessageSchema.safeParse({ ...welcome, rotate: { key: generateDeviceKey() } })
+        .success,
+    ).toBe(false);
+    for (const data of ['https://evil.example/x.png', 'data:text/html;base64,PGh0bWw+']) {
+      expect(ProjectorMessageSchema.safeParse({ t: 'asset', id: 'a', data }).success).toBe(false);
+    }
   });
 });
 

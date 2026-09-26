@@ -20,12 +20,15 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Workflow
 
-### 1. Branch from `main`
+### 1. Branch from `develop`
 
-EVF uses **trunk-based development** (Specs §11.5.6 + ADR-0008 + D-1.13). Feature branches live <24h. No long-lived `develop` or `release` branches.
+EVF uses **GitFlow + Changesets** (CLAUDE.md P9): features branch from `develop`, PRs target
+`develop`, releases go `develop` → `main` through `release.yml`. Before you start, read
+[`TODO.md`](TODO.md) (open work), and keep it, [`SECURITY.md`](SECURITY.md) and
+[`CHANGELOG.md`](CHANGELOG.md) updated in the same PR (CLAUDE.md P12).
 
 ```bash
-git checkout main
+git checkout develop
 git pull
 git checkout -b feat/your-thing
 ```

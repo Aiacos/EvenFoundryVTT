@@ -1,14 +1,15 @@
 /**
- * Vite 8 config for @evf/g2-app — single entry, emitted into the Foundry module.
+ * Vite 8 config for @evf/g2-app — one bundle, three ways to run it (ADR-0019):
  *
- * ADR-0016: Foundry serves the bundle at `<foundry>[/<prefix>]/modules/evenfoundryvtt/g2/`,
- * so the output goes to `packages/foundry-module/g2/` (shipped in the module zip) with a
- * relative `base` — the same build works under any routePrefix. No external CDN assets.
+ * - Even Hub package: `evenhub pack app.json dist` (the store / beta install);
+ * - hosted page: the same `dist/` published by GitHub Pages under `/app/` (the page the
+ *   pairing QR opens in the Even Realities App);
+ * - development: `vite --host` on the LAN, sideloaded with `evenhub qr`.
  *
- * The `.ehpk` package is secondary (sideload-first): `evenhub pack app.json
- * ../foundry-module/g2` packs the same output (`app.json` entrypoint `index.html`).
+ * Relative `base` so the bundle works under any path. No external CDN assets.
+ * `VITE_RELAY_URL` bakes a non-default relay in (dev / self-host builds).
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 1
+ * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 6
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -16,21 +17,17 @@ import { defineConfig } from 'vite';
 
 const here = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
 const appJson = JSON.parse(readFileSync(here('./app.json'), 'utf8')) as { version: string };
-/** The module this bundle ships in: the app warns when Foundry runs another version. */
-const modulePkg = JSON.parse(readFileSync(here('../foundry-module/package.json'), 'utf8')) as {
-  version: string;
-};
 
 export default defineConfig({
   root: here('./src'),
   base: './',
   define: {
     __EVF_APP_VERSION__: JSON.stringify(appJson.version),
-    __EVF_MODULE_VERSION__: JSON.stringify(modulePkg.version),
+    __EVF_RELAY_URL__: JSON.stringify(process.env.VITE_RELAY_URL ?? ''),
   },
   build: {
     target: 'es2023',
-    outDir: here('../foundry-module/g2'),
+    outDir: here('./dist'),
     emptyOutDir: true,
     rollupOptions: {
       input: here('./src/index.html'),

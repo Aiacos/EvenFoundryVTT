@@ -7,7 +7,8 @@
  * scene rectangle's top-left, so the payload is resolution-independent and small.
  * Scene art (background, tiles) is positioned in **scene pixels** relative to the
  * same corner — the phone divides by {@link MapSnapshot.gridPx}. Image `src`s are
- * same-origin relative URLs (the g2-app page is served by Foundry, ADR-0016).
+ * `evf-asset:<id>` references: the projector sends each picture once in an `asset`
+ * message, because the phone never reaches Foundry (ADR-0019 §Decision Outcome 5).
  * Tokens are already filtered by the projector to what the paired actor may see.
  */
 import { z } from 'zod';
@@ -28,7 +29,7 @@ export const MapTokenSchema = z.strictObject({
   h: z.number().positive(),
   /** 0–1 health fraction when the viewer may see it; omitted otherwise. */
   hp: z.number().min(0).max(1).optional(),
-  /** Same-origin relative URL of the token art, if any. */
+  /** `evf-asset:<id>` reference of the token art, if any. */
   img: z.string().min(1).optional(),
   /**
    * Sight radius in cells — only on the viewer's own token, omitted when the token has
@@ -51,7 +52,7 @@ export type MapWall = z.infer<typeof MapWallSchema>;
 
 /** A scene image placed in scene pixels relative to the scene rectangle's top-left. */
 export const MapImageSchema = z.strictObject({
-  /** Same-origin relative URL. */
+  /** `evf-asset:<id>` reference (see `AssetSchema`). */
   src: z.string().min(1),
   x: z.number(),
   y: z.number(),

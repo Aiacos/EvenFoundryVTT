@@ -1,64 +1,59 @@
-# HTTPS e rete
+# Rete e relay
 
-La Even Realities App carica la pagina degli occhiali **dall'origine di Foundry** e la WebView del telefono **rifiuta i certificati autofirmati**. Un indirizzo LAN come `http://192.168.x.x:30000` **non funziona**.
+Dalla v0.13.0 **il telefono non si collega mai a Foundry** ([ADR-0019](Decisioni-Architetturali)). Occhiali e scheda di Foundry si incontrano su un **relay**: tutti e due aprono una connessione in **uscita** verso lo stesso indirizzo fisso. Per questo **non serve più HTTPS pubblico** per Foundry, né reverse proxy, né porte aperte.
 
-## 🏗️ Perché Foundry deve servire la pagina
+## 🏗️ Cosa deve raggiungere cosa
 
-- Le app Even Hub impacchettate hanno una whitelist di origini **fissa per build, senza wildcard**, e la whitelist **non aggira il CORS** ([networking](https://hub.evenrealities.com/docs/build/networking)): un'app pacchettizzata non può raggiungere il Foundry di chiunque.
-- Foundry v14 accetta la sessione socket **solo dal cookie `session`**, quindi serve un contesto first-party.
-- Soluzione: la pagina è servita da Foundry stesso e caricata con il **QR sideload** ([architettura Even Hub](https://hub.evenrealities.com/docs/get-started/architecture)). Stessa origine ⇒ niente CORS, niente whitelist, cookie di prima parte ([ADR-0016](Decisioni-Architetturali)).
-
-## ⚙️ Tre modi per avere HTTPS valido
-
-| Opzione | Come | Note |
+| Da | Verso | Serve |
 |---|---|---|
-| **Reverse proxy + Let's Encrypt** | Caddy, nginx o Traefik davanti a Foundry, su un nome DNS pubblico | Segui [foundryvtt.com/article/nginx](https://foundryvtt.com/article/nginx/). Il proxy **deve inoltrare l'upgrade WebSocket** (`Upgrade` / `Connection: upgrade`; Caddy lo fa da solo). In `options.json` di Foundry: `proxySSL: true`, `proxyPort: 443`. |
-| **Tailscale** | `tailscale serve` / `tailscale cert` sull'host di Foundry | Certificato `*.ts.net` valido; il telefono deve essere nella stessa tailnet. |
-| **TLS nativo di Foundry** | `sslCert` / `sslKey` in `options.json` ([configurazione](https://foundryvtt.com/article/configuration/)) | Usa un certificato vero (es. Let's Encrypt con challenge DNS), non autofirmato. |
+| la scheda di Foundry del giocatore (browser) | `wss://evf-relay.evf-relay.workers.dev` | sì: è l'unico requisito di rete per Foundry |
+| l'app sul telefono | `wss://evf-relay.evf-relay.workers.dev` | sì (l'app Even Hub ha solo questo indirizzo in whitelist) |
+| il telefono | il server Foundry | **no** |
+| il server Foundry | il relay | **no**: la connessione parte dal browser, non dal server |
 
-## ⚙️ Giochi su The Forge
+Il relay è un Cloudflare Worker con un Durable Object per stanza: una connessione per ruolo (`projector` / `glasses`), messaggi fino a 1 MiB, al massimo 60 messaggi al secondo, **nessun dato salvato**. Vede solo buste cifrate ([Scollegare e sicurezza](Revoca-e-Sicurezza)). Salute: `https://evf-relay.evf-relay.workers.dev/health` → `ok`.
 
-Un gioco **privato** su The Forge (è l'impostazione predefinita) reindirizza **ogni**
-indirizzo — `/join`, `/modules/…`, `/socket.io` — alla pagina "Private Game" finché non si
-è entrati con un account The Forge
-([Public & Private Games](https://forums.forge-vtt.com/t/public-private-games/3588)).
-Gli occhiali funzionano anche con il gioco privato se:
+## ⚙️ Dove funziona
 
-1. **"Automatic User Management" è disattivato** (My Foundry → *Configure Players*):
-   se è attivo, The Forge fa entrare l'account con il *suo* utente Foundry e intercetta
-   `/join` ([The User Manager](https://forums.forge-vtt.com/t/the-user-manager/11039)),
-   quindi l'utente «(G2)» non può accedere;
-2. l'account The Forge del giocatore è **invitato** al gioco;
-3. sul telefono il giocatore **accede a The Forge una volta dentro l'app Even**: inquadra il
-   QR, si apre la pagina "Private Game", usa *Login* (email + password: i login social
-   possono essere bloccati dentro l'app), poi **inquadra di nuovo il QR**. Il cookie di
-   The Forge vale per `.forge-vtt.com` e dura circa 14 giorni.
+- **Foundry self-hosted** in LAN, anche `http://192.168.x.x:30000`: il telefono non lo deve raggiungere.
+- **Foundry dietro reverse proxy / Tailscale / TLS nativo**: nessuna configurazione in più.
+- **The Forge**, anche con **gioco privato** e *User Manager* attivo o no: funziona **senza configurazioni**. Il telefono non passa dal login di The Forge; l'arte della scena la carica la scheda del giocatore, che è già dentro il gioco ([Mappa](Mappa)).
+- Foundry **v13 e v14**.
 
-Se l'app scrive *«The Forge sta intercettando l'accesso…»* manca uno dei tre punti. Un gioco
-**pubblico** evita il punto 3 ma espone la schermata di accesso di Foundry a chiunque abbia
-l'URL: ogni utente Foundry, GM compreso, deve avere una password robusta.
+Quando il browser non raggiunge il relay, la finestra *Collega occhiali G2* lo dice subito (**«Questo browser non raggiunge il relay»**, con **Come risolvere** e **Riprova**) e non mostra un QR che non funzionerebbe. Cause tipiche: firewall o proxy aziendale che blocca i WebSocket o il dominio `workers.dev`, estensioni del browser, rete senza Internet.
 
-## ⚙️ routePrefix
+## ⚙️ Impostazioni avanzate del modulo
 
-Se Foundry gira sotto un percorso (`routePrefix: "foundry"` → `https://host/foundry/`) non serve altro: l'URL del QR include il prefisso (`foundry.utils.getRoute`) e la build della g2-app usa percorsi relativi. Dietro un proxy, il percorso inoltrato deve coincidere con il `routePrefix` e deve includere `/modules` e `/socket.io`.
+Due impostazioni per browser (`scope: 'client'`), da lasciare ai valori predefiniti salvo sviluppo o self-hosting:
 
-## 🐞 L'indirizzo con cui apri Foundry conta
+| Impostazione | Predefinito | Uso |
+|---|---|---|
+| **Relay (avanzato)** | `wss://evf-relay.evf-relay.workers.dev` | un relay tuo o di sviluppo; il QR lo porta agli occhiali |
+| **Pagina dell'app occhiali (avanzato)** | `https://aiacos.github.io/EvenFoundryVTT/app/` | la pagina aperta dal QR (per esempio l'indirizzo LAN di `pnpm dev:glasses`) |
 
-Il QR è costruito dall'indirizzo nella barra del browser di chi lo genera. Se apri Foundry da `http://localhost:30000`, il QR punta a `localhost` e il telefono non lo può aprire: la verifica **indirizzo pubblico** della finestra di associazione diventa ✗. **Riapri Foundry dall'indirizzo pubblico** e genera un nuovo QR.
+## 📦 Self-hosting del relay
+
+Il relay è il pacchetto [`packages/relay`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/relay) (nessun segreto né variabile):
+
+```bash
+CLOUDFLARE_API_TOKEN=… pnpm --filter @evf/relay deploy   # → https://evf-relay.<account>.workers.dev
+pnpm --filter @evf/relay dev                             # oppure wrangler dev in locale → http://localhost:8787
+```
+
+Poi metti `wss://evf-relay.<account>.workers.dev` in **Relay (avanzato)**. Limite: l'app installata da Even Hub raggiunge **solo** il relay in whitelist nel suo `app.json` (niente wildcard); un relay tuo funziona con la versione web aperta dal QR (modalità sviluppatore) o con un `.ehpk` costruito da te con la whitelist cambiata. Un relay locale `ws://` funziona solo con un Foundry `http://`: una pagina `https://` non può aprire `ws://`.
 
 ## 🧪 Verifica GO/NO-GO
 
-Il pacchetto `validation-harness` controlla che la tua istanza possa servire l'app:
-
 ```bash
 # Solo controlli software (senza telefono)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
-
-# Completo: controlli software + checklist interattiva sì/no (serve un terminale, telefono, G2 e R1)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload
+pnpm --filter @evf/validation-harness validate:relay:skip-hardware
+# Completo: controlli software + checklist interattiva sì/no (telefono, G2, R1)
+pnpm --filter @evf/validation-harness validate:relay
+# Un relay diverso (tuo, o wrangler dev)
+RELAY_URL=ws://127.0.0.1:8787 pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 ```
 
-`FOUNDRY_URL` è l'indirizzo base **compreso il routePrefix**. Controlli: `https`, `reachable`, `g2-entry`, `api-status` (informativo) e, nella versione completa, `hw-qr-load`, `hw-sdk-bridge`, `hw-cookie-persist`, `hw-socket-reconnect`. Codici di uscita: `0` GO · `1` NO-GO · `2` saltato · `3` errore d'uso. In caso di NO-GO lo script stampa la riserva documentata: Foundry e la pagina dietro un **sottodominio reverse-proxy dello stesso sito**.
+Controlli: `health`, `cors`, `room-roundtrip` (andata e ritorno in una stanza casuale, con il tempo misurato) e `oversize` (informativo). Codici di uscita: `0` GO · `1` NO-GO · `2` saltato · `3` errore d'uso. Le prove finiscono in `docs/perf/phase-0/adr-0019-relay-<ISO>.json`, solo i verdetti (mai URL o id di stanza).
 
 ## 📚 Vedi anche
 

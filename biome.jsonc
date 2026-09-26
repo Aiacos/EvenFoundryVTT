@@ -10,7 +10,7 @@
     "includes": [
       "**",
       "!**/dist/**/*",
-      "!packages/foundry-module/g2/**/*",
+      "!packages/relay/.wrangler/**/*",
       "!**/node_modules/**/*",
       "!**/coverage/**/*",
       "!**/.changeset/**/*",
