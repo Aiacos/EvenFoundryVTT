@@ -64,7 +64,7 @@ node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
 
 ## 🚀 Passi una tantum del maintainer
 
-1. **Cloudflare**: account con sottodominio `workers.dev` `aiacos` (oppure cambia `DEFAULT_RELAY_URL` e la whitelist di `app.json` con quello vero); token API (*Edit Cloudflare Workers*) nei segreti del repository `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`; avvia **Relay Deploy**.
+1. **Cloudflare**: relay già pubblicato sul sottodominio `workers.dev` `evf-relay` (se cambia, aggiorna insieme `DEFAULT_RELAY_URL` e la whitelist di `app.json`); token API (*Edit Cloudflare Workers*) nei segreti del repository `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`; avvia **Relay Deploy**.
 2. **GitHub** › *Settings* › *Pages* › *Source* = **GitHub Actions**.
 3. **Portale Even Hub**: carica il `.ehpk` della release come build, crea un **gruppo beta** con i giocatori del tavolo, URL dell'informativa privacy = `https://aiacos.github.io/EvenFoundryVTT/privacy.html`; poi invia per la revisione.
 
@@ -75,7 +75,7 @@ Dettagli: [`docs/runbook.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/deve
 Il `.ehpk` è **la distribuzione per i giocatori**: l'app installata ha il relay in whitelist, il permesso `camera` per «Scansiona QR» e sopravvive al telefono bloccato.
 
 - `.github/workflows/evenhub-pack.yml` lo costruisce e lo valida a ogni push su `main` (`npx --yes @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist … -o evenfoundryvtt.ehpk`); `foundry-module-release.yml` ne allega uno nuovo a ogni release.
-- `app.json` (nome **FoundryVTT G2 HUD**) deve avere la **stessa versione** del pacchetto g2-app, una `description`, un'`icon`, `min_app_version` e `min_sdk_version`; la whitelist di rete contiene solo `https://` e `wss://evf-relay.aiacos.workers.dev` (niente wildcard).
+- `app.json` (nome **FoundryVTT G2 HUD**) deve avere la **stessa versione** del pacchetto g2-app, una `description`, un'`icon`, `min_app_version` e `min_sdk_version`; la whitelist di rete contiene solo `https://` e `wss://evf-relay.evf-relay.workers.dev` (niente wildcard).
 
 ### Tre modi di caricare l'app: non confonderli
 

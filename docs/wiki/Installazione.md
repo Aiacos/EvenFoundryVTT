@@ -9,7 +9,7 @@ Due cose da installare: il **modulo Foundry** (una volta, il GM) e l'**app «Fou
 | **FoundryVTT** | ≥ v13.347 (v13 e v14) | self-hosted o **The Forge**, anche giochi privati; v12 non è supportato (sistema Activity di dnd5e) |
 | **Sistema dnd5e** | ≥ 5.3.3 | PHB 2014 e PHB 2024 (`core.modernRules`) |
 | **midi-qol** | facoltativo (consigliato) | automazione completa attacco → danni → tiro salvezza → effetto; senza, `activity.use()` pubblica solo la scheda dell'attività |
-| **Relay raggiungibile** | dal browser del giocatore | la scheda di Foundry deve poter aprire `wss://evf-relay.aiacos.workers.dev`; **non** serve HTTPS pubblico per Foundry ([Rete e relay](HTTPS-e-Rete)) |
+| **Relay raggiungibile** | dal browser del giocatore | la scheda di Foundry deve poter aprire `wss://evf-relay.evf-relay.workers.dev`; **non** serve HTTPS pubblico per Foundry ([Rete e relay](HTTPS-e-Rete)) |
 | **Scheda di Foundry aperta** | durante il gioco | quella del giocatore che ha collegato gli occhiali (o del GM che li ha collegati per lui) |
 | **Even Realities G2 + R1** | firmware aggiornato | associati al telefono con la procedura Even standard |
 | **Even Realities App** | ≥ 2.2.9 | per la pressione lunga ([compatibilità](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/firmware-compatibility.md)) |

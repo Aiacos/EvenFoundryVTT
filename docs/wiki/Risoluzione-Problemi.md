@@ -6,7 +6,7 @@ Tre pezzi possono guastarsi: l'**app sul telefono**, il **relay** e la **scheda 
 
 | Sintomo | Causa | Soluzione |
 |---|---|---|
-| Nella finestra *Collega occhiali G2*: **«Questo browser non raggiunge il relay»** (Relay ✗), niente QR | il browser non apre `wss://evf-relay.aiacos.workers.dev`: firewall o proxy aziendale, estensione che blocca i WebSocket, rete senza Internet; con un relay locale `ws://`, pagina di Foundry in `https://` | cambia rete o sblocca il dominio, disattiva l'estensione, poi **Riprova**; per un relay di sviluppo usa un Foundry `http://` ([Rete e relay](HTTPS-e-Rete)) |
+| Nella finestra *Collega occhiali G2*: **«Questo browser non raggiunge il relay»** (Relay ✗), niente QR | il browser non apre `wss://evf-relay.evf-relay.workers.dev`: firewall o proxy aziendale, estensione che blocca i WebSocket, rete senza Internet; con un relay locale `ws://`, pagina di Foundry in `https://` | cambia rete o sblocca il dominio, disattiva l'estensione, poi **Riprova**; per un relay di sviluppo usa un Foundry `http://` ([Rete e relay](HTTPS-e-Rete)) |
 | Occhiali: **▲ Offline · Foundry del giocatore chiuso** | la scheda di Foundry che ha collegato questi occhiali non è aperta | riapri Foundry **in quel browser**: gli occhiali si ricollegano da soli, senza toccare niente |
 | Occhiali: **Relay non raggiungibile** | il telefono non raggiunge il relay (niente rete, rete che blocca i WebSocket) | controlla la rete del telefono; l'app riprova da sola (tap = *riprova ora*) |
 | Occhiali: **Telefono in background** | la Even App è andata in background (telefono bloccato, cambio app) | niente: la sessione si ricollega quando l'app torna in primo piano. Con la versione web caricata da QR, dopo un blocco dello schermo reinquadra il QR |
@@ -51,7 +51,7 @@ game.messages.contents.filter((m) => m.flags?.evf?.audit).slice(-20)
   .forEach((m) => console.log(m.flags.evf.audit));
 ```
 
-**Il relay** — `https://evf-relay.aiacos.workers.dev/health` deve rispondere `ok`; `pnpm --filter @evf/validation-harness validate:relay:skip-hardware` lo verifica da riga di comando ([Debug e simulatore](Debug-e-Simulatore)).
+**Il relay** — `https://evf-relay.evf-relay.workers.dev/health` deve rispondere `ok`; `pnpm --filter @evf/validation-harness validate:relay:skip-hardware` lo verifica da riga di comando ([Debug e simulatore](Debug-e-Simulatore)).
 
 ## 📚 Vedi anche
 

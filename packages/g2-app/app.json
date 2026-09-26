@@ -11,7 +11,10 @@
     {
       "name": "network",
       "desc": "Talks only to the EvenFoundryVTT relay, which forwards end-to-end encrypted messages between these glasses and the player's own Foundry tab. No Foundry login on the phone.",
-      "whitelist": ["https://evf-relay.aiacos.workers.dev", "wss://evf-relay.aiacos.workers.dev"]
+      "whitelist": [
+        "https://evf-relay.evf-relay.workers.dev",
+        "wss://evf-relay.evf-relay.workers.dev"
+      ]
     },
     {
       "name": "camera",

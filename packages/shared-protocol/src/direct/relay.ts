@@ -43,7 +43,7 @@ export type RelayControl = z.infer<typeof RelayControlSchema>;
  * Production relay (`packages/relay`, `wrangler deploy`). Must match the deployed Worker
  * and the `.ehpk` whitelist (checked by `scripts/check-relay-origin.mjs`).
  */
-export const DEFAULT_RELAY_URL = 'wss://evf-relay.aiacos.workers.dev' as const;
+export const DEFAULT_RELAY_URL = 'wss://evf-relay.evf-relay.workers.dev' as const;
 
 /** Hosted glasses app (GitHub Pages, `/app/`): the page the pairing QR opens. */
 export const DEFAULT_APP_URL = 'https://aiacos.github.io/EvenFoundryVTT/app/' as const;

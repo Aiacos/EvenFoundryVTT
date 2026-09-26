@@ -4,7 +4,7 @@ Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/A
 
 ## 🏗️ Trasporto (ADR-0019)
 
-1. Projector (scheda di Foundry) e app aprono ciascuno un WebSocket verso il relay: `relayRoomUrl(relay, stanza, ruolo)` = `wss://evf-relay.aiacos.workers.dev/r/<stanza>?role=projector|glasses` (`DEFAULT_RELAY_URL`; il payload del QR può portare un relay diverso).
+1. Projector (scheda di Foundry) e app aprono ciascuno un WebSocket verso il relay: `relayRoomUrl(relay, stanza, ruolo)` = `wss://evf-relay.evf-relay.workers.dev/r/<stanza>?role=projector|glasses` (`DEFAULT_RELAY_URL`; il payload del QR può portare un relay diverso).
 2. Il relay tiene **una connessione per ruolo** (la più nuova chiude la vecchia con `4000`, `RELAY_CLOSE_REPLACED`) e inoltra ogni frame all'altro ruolo, senza leggerlo; senza l'altro ruolo il frame è scartato.
 3. Frame di controllo del relay (`RelayControlSchema`): `{"relay":"peer-up"}` quando entrambi i ruoli sono presenti, `{"relay":"peer-down"}` quando l'altro se ne va davvero (non quando viene sostituito).
 4. Limiti: frame > 1 MiB (`MAX_RELAY_FRAME_BYTES`) chiudono il mittente con `1009`; più di 60 frame al secondo con `1008`. Salute: `GET /health` → `200 ok` con CORS `*` (`relayHealthUrl`).

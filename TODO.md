@@ -6,10 +6,9 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
 
 ## 🔐 Maintainer — one-time setup (relay pairing, ADR-0019)
 
-- [ ] Cloudflare: workers.dev subdomain `aiacos` (or change `DEFAULT_RELAY_URL` in
-      [`relay.ts`](packages/shared-protocol/src/direct/relay.ts) + [`app.json`](packages/g2-app/app.json) together) —
-      [runbook §Relay and Pages](docs/runbook.md)
-- [ ] Repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, then run **Relay Deploy** —
+- [x] Cloudflare: relay deployed at `wss://evf-relay.evf-relay.workers.dev` (subdomain `evf-relay`,
+      `validate:relay` GO, 2026-09-26) — [runbook §Relay and Pages](docs/runbook.md)
+- [ ] Repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (automatic redeploys; first deploy was manual) —
       [`relay-deploy.yml`](.github/workflows/relay-deploy.yml)
 - [ ] Settings › Pages › Source = **GitHub Actions** — [`pages.yml`](.github/workflows/pages.yml)
 - [ ] Even Hub portal: upload the release `.ehpk`, beta group with the table's players, privacy URL

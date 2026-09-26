@@ -7,7 +7,7 @@ can fail:
 
 1. **the glasses app**: **FoundryVTT G2 HUD** in the Even Realities App WebView (Even Hub
    install, or the GitHub Pages page `/app/` in developer mode).
-2. **the relay**: `wss://evf-relay.aiacos.workers.dev`, a Cloudflare Worker with one Durable
+2. **the relay**: `wss://evf-relay.evf-relay.workers.dev`, a Cloudflare Worker with one Durable
    Object per room ([`packages/relay`](../packages/relay/README.md)). It forwards sealed
    frames and stores nothing.
 3. **the projector**: the `evenfoundryvtt` module in the Foundry tab that showed the QR (the
@@ -25,7 +25,7 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 
 ```
 [G2] ⇄ BLE ⇄ [Even App WebView: FoundryVTT G2 HUD]
-                    │ wss://evf-relay.aiacos.workers.dev/r/<room>?role=glasses
+                    │ wss://evf-relay.evf-relay.workers.dev/r/<room>?role=glasses
                     ▼
              [relay: Worker + Durable Object "room"] ── opaque AES-256-GCM frames, nothing stored
                     ▲
@@ -114,14 +114,15 @@ Each entry holds `tool`, `payload`, `idempotencyKey` (the request `rid`), `actor
 
 Operator tasks for the shared infrastructure. The production relay origin is
 `DEFAULT_RELAY_URL` in `packages/shared-protocol/src/direct/relay.ts`
-(`wss://evf-relay.aiacos.workers.dev`), and it must match the `.ehpk` whitelist in
+(`wss://evf-relay.evf-relay.workers.dev`), and it must match the `.ehpk` whitelist in
 `packages/g2-app/app.json` (CI Gate 10, `scripts/check-relay-origin.mjs`).
 
 ### One-time setup (maintainer)
 
-1. **Cloudflare:** create the account and the workers.dev subdomain **`aiacos`**. If you get a
-   different subdomain, change `DEFAULT_RELAY_URL` **and** both whitelist entries in
-   `packages/g2-app/app.json` in the same commit.
+1. **Cloudflare:** the project's account uses the workers.dev subdomain **`evf-relay`** (first
+   deploy 2026-09-26 with `npx wrangler login` + `npx wrangler deploy` in `packages/relay`). If
+   the relay ever moves, change `DEFAULT_RELAY_URL` **and** both whitelist entries in
+   `packages/g2-app/app.json` in the same commit (CI Gate 10 checks they match).
 2. **Secrets:** create an API token (template *Edit Cloudflare Workers*) and add the repo
    secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 3. **Deploy:** *Actions → Relay Deploy → Run workflow* (`.github/workflows/relay-deploy.yml`;
@@ -136,8 +137,8 @@ Operator tasks for the shared infrastructure. The production relay origin is
 ### Verify
 
 ```bash
-curl https://evf-relay.aiacos.workers.dev/health            # → ok
-RELAY_URL=wss://evf-relay.aiacos.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
+curl https://evf-relay.evf-relay.workers.dev/health            # → ok
+RELAY_URL=wss://evf-relay.evf-relay.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 curl -sI https://aiacos.github.io/EvenFoundryVTT/app/ | head -1   # → HTTP/2 200
 ```
 
@@ -198,11 +199,11 @@ play and scan the new QR. If the phone is stuck on old credentials, use *Diagnos
 
 | Symptom | Diagnosis | Recovery |
 |---|---|---|
-| Pairing window: *cannot reach the relay* | Firewall, proxy, extension or CSP blocks `evf-relay.aiacos.workers.dev`; or the relay is down | `curl https://evf-relay.aiacos.workers.dev/health` from that network. Allow the origin, change network, or self-host a relay (above). |
+| Pairing window: *cannot reach the relay* | Firewall, proxy, extension or CSP blocks `evf-relay.evf-relay.workers.dev`; or the relay is down | `curl https://evf-relay.evf-relay.workers.dev/health` from that network. Allow the origin, change network, or self-host a relay (above). |
 | *Player's Foundry closed* although Foundry is open | Open in a different browser/profile than the one that paired, or the tab is suspended | Use the pairing browser, bring the tab to the front, or connect again from this browser. |
 | Glasses stop on phone lock | App sideloaded from the QR in developer mode | Install **FoundryVTT G2 HUD** from Even Hub (beta/store). |
 | Even App says *"trial version expired"* | A portal trial upload expired | Beta build or re-scan in developer mode; see [release/evenhub.md](release/evenhub.md). |
-| Relay Deploy green but `/health` fails | Secrets missing (job warned and skipped) or subdomain ≠ `aiacos` | Add the secrets; align `DEFAULT_RELAY_URL` + `app.json` with the real subdomain. |
+| Relay Deploy green but `/health` fails | Secrets missing (job warned and skipped) or subdomain ≠ `evf-relay` | Add the secrets; align `DEFAULT_RELAY_URL` + `app.json` with the real subdomain. |
 | `/app/` returns 404 | Pages source not set to GitHub Actions, or `pages.yml` not run yet | Set the source, then *Actions → Pages → Run workflow*. |
 | White glasses with a modified build; fine in the simulator | Image tiles off the 2 × 2 grid of 288 × 144: the real host rejects `rebuildPageContainer` | Keep images on (0,0) (288,0) (0,144) (288,144) ([firmware matrix](firmware-compatibility.md)). |
 | Sheet updates, map frozen or schematic | BLE throughput low (map ≤ 1 fps, 100 ms pacing), or scene art not loadable in the tab | Move the phone closer; check `[EVF] map picture skipped` in the console. |

@@ -591,7 +591,7 @@ footer.show a { color: var(--g2); border: none; }
           <tr><th>Image size</th><td>20–288 px W × 20–144 px H · ≥ 100 ms between updates</td></tr>
           <tr><th>Text container</th><td>1 000 char (2 000 with upgrade)</td></tr>
           <tr><th>List container</th><td>20 items × 64 char, no in-place updates</td></tr>
-          <tr><th>Networking</th><td>whitelisted origins only (no wildcards) · our relay <code>wss://evf-relay.aiacos.workers.dev</code></td></tr>
+          <tr><th>Networking</th><td>whitelisted origins only (no wildcards) · our relay <code>wss://evf-relay.evf-relay.workers.dev</code></td></tr>
           <tr><th>Layout</th><td>absolute pixel from top-left, no DOM/CSS</td></tr>
           <tr><th>Microphone</th><td>4-mic array · PCM 16 kHz via SDK (unused since v0.12.0)</td></tr>
           <tr><th>Audio out</th><td>❌ no speaker · feedback is visual only</td></tr>
@@ -861,7 +861,7 @@ footer.show a { color: var(--g2); border: none; }
         <!-- Relay -->
         <g>
           <rect class="node node-mvp" x="40" y="340" width="400" height="100" />
-          <text class="label" x="240" y="370" text-anchor="middle">Relay · wss://evf-relay.aiacos.workers.dev</text>
+          <text class="label" x="240" y="370" text-anchor="middle">Relay · wss://evf-relay.evf-relay.workers.dev</text>
           <text class="label-sm" x="240" y="390" text-anchor="middle">Cloudflare Worker · one Durable Object per room</text>
           <text class="label-sm" x="240" y="406" text-anchor="middle">projector ⇄ glasses · 1 MiB · 60 frames/s</text>
           <text class="label-sm" x="240" y="422" text-anchor="middle">opaque sealed frames · stores nothing</text>

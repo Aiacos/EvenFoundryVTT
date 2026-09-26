@@ -156,7 +156,7 @@ describe('connect flow (relay, ADR-0019)', () => {
     expect(h.relay.last.room).toBe(h.creds.room);
     expect(h.store.get().connection).toMatchObject({
       status: 'connecting',
-      server: 'evf-relay.aiacos.workers.dev',
+      server: 'evf-relay.evf-relay.workers.dev',
       label: 'Thorin',
       steps: { relay: true, projector: false, paired: false },
     });

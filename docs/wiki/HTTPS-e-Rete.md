@@ -6,12 +6,12 @@ Dalla v0.13.0 **il telefono non si collega mai a Foundry** ([ADR-0019](Decisioni
 
 | Da | Verso | Serve |
 |---|---|---|
-| la scheda di Foundry del giocatore (browser) | `wss://evf-relay.aiacos.workers.dev` | sì: è l'unico requisito di rete per Foundry |
-| l'app sul telefono | `wss://evf-relay.aiacos.workers.dev` | sì (l'app Even Hub ha solo questo indirizzo in whitelist) |
+| la scheda di Foundry del giocatore (browser) | `wss://evf-relay.evf-relay.workers.dev` | sì: è l'unico requisito di rete per Foundry |
+| l'app sul telefono | `wss://evf-relay.evf-relay.workers.dev` | sì (l'app Even Hub ha solo questo indirizzo in whitelist) |
 | il telefono | il server Foundry | **no** |
 | il server Foundry | il relay | **no**: la connessione parte dal browser, non dal server |
 
-Il relay è un Cloudflare Worker con un Durable Object per stanza: una connessione per ruolo (`projector` / `glasses`), messaggi fino a 1 MiB, al massimo 60 messaggi al secondo, **nessun dato salvato**. Vede solo buste cifrate ([Scollegare e sicurezza](Revoca-e-Sicurezza)). Salute: `https://evf-relay.aiacos.workers.dev/health` → `ok`.
+Il relay è un Cloudflare Worker con un Durable Object per stanza: una connessione per ruolo (`projector` / `glasses`), messaggi fino a 1 MiB, al massimo 60 messaggi al secondo, **nessun dato salvato**. Vede solo buste cifrate ([Scollegare e sicurezza](Revoca-e-Sicurezza)). Salute: `https://evf-relay.evf-relay.workers.dev/health` → `ok`.
 
 ## ⚙️ Dove funziona
 
@@ -28,7 +28,7 @@ Due impostazioni per browser (`scope: 'client'`), da lasciare ai valori predefin
 
 | Impostazione | Predefinito | Uso |
 |---|---|---|
-| **Relay (avanzato)** | `wss://evf-relay.aiacos.workers.dev` | un relay tuo o di sviluppo; il QR lo porta agli occhiali |
+| **Relay (avanzato)** | `wss://evf-relay.evf-relay.workers.dev` | un relay tuo o di sviluppo; il QR lo porta agli occhiali |
 | **Pagina dell'app occhiali (avanzato)** | `https://aiacos.github.io/EvenFoundryVTT/app/` | la pagina aperta dal QR (per esempio l'indirizzo LAN di `pnpm dev:glasses`) |
 
 ## 📦 Self-hosting del relay

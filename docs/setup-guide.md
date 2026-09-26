@@ -21,7 +21,7 @@ phone ([ADR-0019](architecture/0019-relay-pairing-player-projector.md)).
 ## 🎲 How it works in 30 seconds
 
 ```
-player's Foundry tab (module = projector) ⇄ wss://evf-relay.aiacos.workers.dev ⇄ phone (FoundryVTT G2 HUD) ⇄ BLE ⇄ G2
+player's Foundry tab (module = projector) ⇄ wss://evf-relay.evf-relay.workers.dev ⇄ phone (FoundryVTT G2 HUD) ⇄ BLE ⇄ G2
                     └──────────── AES-256-GCM sealed end to end: the relay only forwards ciphertext ────────────┘
 ```
 
@@ -42,7 +42,7 @@ player's Foundry tab (module = projector) ⇄ wss://evf-relay.aiacos.workers.dev
 | **FoundryVTT** | v13.347+ (v14 verified) | Self-hosted (HTTP or HTTPS, LAN or public) or **The Forge**. v12 is not supported (dnd5e Activity system). |
 | **dnd5e system** | ≥ 5.3.3 | PHB 2014 and PHB 2024 both work (`core.modernRules`). |
 | **midi-qol** | optional | Full attack → damage → save automation when active; vanilla `activity.use()` otherwise. |
-| **Relay reachable from the Foundry tab** | required | The browser that shows the QR must open `wss://evf-relay.aiacos.workers.dev`. The pairing window checks it for you. |
+| **Relay reachable from the Foundry tab** | required | The browser that shows the QR must open `wss://evf-relay.evf-relay.workers.dev`. The pairing window checks it for you. |
 | **The player's Foundry tab open** | required during play | That tab is the projector. A GM tab can stand in for a player without a device (below). |
 | **Even Realities G2 + R1** | current firmware | Paired to the phone with the standard Even setup. |
 | **Even Realities App** | ≥ 2.2.10 | Floor stamped by SDK 0.0.16 ([firmware matrix](firmware-compatibility.md)). |
@@ -143,7 +143,7 @@ For a player who has glasses but no computer at the table:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Pairing window: **"This browser cannot reach the relay `wss://…`"** (IT: *Questo browser non raggiunge il relay*) with **How to fix** | A corporate/school firewall, proxy or browser extension blocks `evf-relay.aiacos.workers.dev`, or a Content-Security-Policy on your Foundry host forbids outbound WebSockets | Try another network or browser, allow `https://evf-relay.aiacos.workers.dev` and `wss://evf-relay.aiacos.workers.dev`, then **Try again**. Advanced: run your own relay and set **Relay (advanced)** in the module settings ([runbook](runbook.md#-relay-and-pages); works only with the QR opened in developer mode, because the store app reaches only the default relay). |
+| Pairing window: **"This browser cannot reach the relay `wss://…`"** (IT: *Questo browser non raggiunge il relay*) with **How to fix** | A corporate/school firewall, proxy or browser extension blocks `evf-relay.evf-relay.workers.dev`, or a Content-Security-Policy on your Foundry host forbids outbound WebSockets | Try another network or browser, allow `https://evf-relay.evf-relay.workers.dev` and `wss://evf-relay.evf-relay.workers.dev`, then **Try again**. Advanced: run your own relay and set **Relay (advanced)** in the module settings ([runbook](runbook.md#-relay-and-pages); works only with the QR opened in developer mode, because the store app reaches only the default relay). |
 | Glasses/phone: **"Player's Foundry closed"** (IT: *Foundry del giocatore chiuso*) | The Foundry tab that paired these glasses is not open (closed, logged out, other computer) | Open Foundry in that browser. The glasses reconnect by themselves, nothing to scan. |
 | Phone: **"relay not reachable"** | The phone has no internet, or the relay is down | Check the phone's connection. The app retries with backoff (1 → 30 s). |
 | QR hidden, **"The QR expired unused"** | 5 minutes passed, or the QR was already used | **New QR**. |
@@ -179,7 +179,7 @@ pnpm lint:ci && pnpm typecheck && pnpm test:coverage
 
 pnpm wizard                                      # demo HUD scenes on the LAN + QR, no Foundry needed
 pnpm dev:glasses                                 # this checkout's app on the LAN against YOUR Foundry
-RELAY_URL=wss://evf-relay.aiacos.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
+RELAY_URL=wss://evf-relay.evf-relay.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 ```
 
 `pnpm dev:glasses` (= `scripts/wizard.sh --mode live`) serves the app on the LAN, checks the

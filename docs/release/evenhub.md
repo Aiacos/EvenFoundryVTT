@@ -3,7 +3,7 @@
 Since [ADR-0019](../architecture/0019-relay-pairing-player-projector.md) the glasses app
 **FoundryVTT G2 HUD** reaches players as an Even Hub package. It no longer ships inside the
 Foundry module (Foundry ≥ 14.361 serves module HTML as `text/plain`). The installed app
-talks only to the fixed relay `wss://evf-relay.aiacos.workers.dev`, which is exactly what a
+talks only to the fixed relay `wss://evf-relay.evf-relay.workers.dev`, which is exactly what a
 store package allows: one origin-complete whitelist, no wildcards. It survives the phone
 lock, which a QR-sideloaded page does not.
 
@@ -57,7 +57,7 @@ it through `scripts/sync-app-json.mjs`).
 | `min_app_version` | **omitted** | stamped by the packer from the SDK floor: **2.2.10** |
 | `description` / `icon` | present | `icon.png` from `assets/icon/` (see below) |
 | `entrypoint` | `index.html` | in `packages/g2-app/dist/` |
-| `permissions[network].whitelist` | `https://evf-relay.aiacos.workers.dev`, `wss://evf-relay.aiacos.workers.dev` | = `DEFAULT_RELAY_URL`; CI Gate 10 fails on drift |
+| `permissions[network].whitelist` | `https://evf-relay.evf-relay.workers.dev`, `wss://evf-relay.evf-relay.workers.dev` | = `DEFAULT_RELAY_URL`; CI Gate 10 fails on drift |
 | `permissions[camera]` | declared | in-app **Scan QR** of the pairing QR; the photo is decoded on the phone |
 | `supported_languages` | `["it","en"]` | |
 
@@ -107,7 +107,7 @@ Process from hub.evenrealities.com/docs (reference/app-submission, test/beta-tes
       `npx @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist --sdk-ver 0.0.16 -c`
       (after `evenhub login`).
 - [ ] **Build clean**: no sourcemaps; `?demo` / `?debug` surfaces stay opt-in.
-- [ ] **Relay live**: `curl https://evf-relay.aiacos.workers.dev/health` → `ok` before
+- [ ] **Relay live**: `curl https://evf-relay.evf-relay.workers.dev/health` → `ok` before
       submitting (the reviewer pairs against the production relay).
 
 ---

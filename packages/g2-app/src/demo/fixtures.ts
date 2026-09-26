@@ -501,7 +501,7 @@ export function mockStates(v: Variant): MockState[] {
           server:
             v === 'max'
               ? 'evf-relay.una-casa-molto-lontana.workers.dev'
-              : 'evf-relay.aiacos.workers.dev',
+              : 'evf-relay.evf-relay.workers.dev',
           userName: 'Luca',
           gmName: 'Anna',
           actorName: 'Thorin',

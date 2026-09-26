@@ -14,7 +14,7 @@ Un solo nome per ogni concetto, lo stesso sugli occhiali, in Foundry e nei docum
 | **QR in modalità sviluppatore** | la Even Realities App (*Even Hub → Scan QR*) apre la pagina del QR come app degli occhiali, senza installarla; si ferma quando il telefono va in background |
 | **Modulo** / `evenfoundryvtt` | il modulo Foundry: projector, collegamento, readers, write path |
 | **Projector** | la scheda di Foundry che ha mostrato il QR (di solito del giocatore, oppure del GM per chi non ha un dispositivo): trasmette il personaggio ed esegue le azioni; una sola per browser (Web Lock) |
-| **Relay** | inoltro WebSocket a stanze (`packages/relay`, `wss://evf-relay.aiacos.workers.dev`) dove si incontrano projector e occhiali; inoltra buste cifrate senza leggerle |
+| **Relay** | inoltro WebSocket a stanze (`packages/relay`, `wss://evf-relay.evf-relay.workers.dev`) dove si incontrano projector e occhiali; inoltra buste cifrate senza leggerle |
 | **Stanza** | id casuale da 128 bit che projector e occhiali condividono sul relay; cambia al primo collegamento |
 | **Busta sigillata** | `{evf, to, from, iv, ct}`: messaggio cifrato AES-256-GCM con la chiave del dispositivo |
 | **Chiave del dispositivo** | chiave AES-256 condivisa tra occhiali e projector; ruota al primo collegamento |

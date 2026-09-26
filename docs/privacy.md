@@ -17,7 +17,7 @@ Foundry tab is end-to-end encrypted.
 
 - **Your Foundry tab ⇄ the relay ⇄ the app.** Your Foundry browser tab (the
   EvenFoundryVTT module) and the app meet in a random "room" on the relay
-  **`evf-relay.aiacos.workers.dev`** (a Cloudflare Worker operated by the
+  **`evf-relay.evf-relay.workers.dev`** (a Cloudflare Worker operated by the
   EvenFoundryVTT project, source: `packages/relay`). Every message is sealed with
   AES-256-GCM using a key that only your Foundry tab and your phone know (it is in the
   pairing QR / code and rotates on first use). The relay forwards opaque bytes: it cannot
@@ -32,7 +32,7 @@ Foundry tab is end-to-end encrypted.
 
 | Permission | Why | What happens to the data |
 |---|---|---|
-| **Network** — `https://` and `wss://evf-relay.aiacos.workers.dev` only | To exchange the encrypted messages with your Foundry tab | Encrypted end-to-end; nothing stored by the relay |
+| **Network** — `https://` and `wss://evf-relay.evf-relay.workers.dev` only | To exchange the encrypted messages with your Foundry tab | Encrypted end-to-end; nothing stored by the relay |
 | **Camera** | «Scansiona QR / Scan QR»: to read the pairing QR shown in Foundry | The photo is decoded on the phone and discarded; it is never uploaded |
 
 ## 📦 Stored on your phone

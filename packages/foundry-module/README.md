@@ -8,7 +8,7 @@ every client, and the tab that showed a pairing QR becomes the **projector** of 
 glasses: it reads the character, combat, chat log and map, runs every glasses action through
 `dispatchTool` ([ADR-0011](../../docs/architecture/0011-foundry-write-path-single-workflow-origin.md))
 and streams sealed messages through an opaque relay room
-([`packages/relay`](../relay/README.md), `wss://evf-relay.aiacos.workers.dev`). The phone
+([`packages/relay`](../relay/README.md), `wss://evf-relay.evf-relay.workers.dev`). The phone
 never logs into Foundry: no GM step, no extra Foundry user, no password.
 
 The glasses app is **not** in this module any more: it ships as the Even Hub package
@@ -49,7 +49,7 @@ Full walkthrough: [setup guide](../../docs/setup-guide.md).
 | `pairG2` (menu) | — | — | «Connect G2 glasses» window, open to every user |
 | `g2Pairings` | client, hidden | `{}` | pairings of **this browser** (room, key, actor, label) |
 | `appUrl` — *Glasses app page (advanced)* | client | `https://aiacos.github.io/EvenFoundryVTT/app/` | page the QR opens (dev: the LAN URL printed by `pnpm dev:glasses`) |
-| `relayUrl` — *Relay (advanced)* | client | `wss://evf-relay.aiacos.workers.dev` | self-hosted relay (sideloaded app only; carried by the QR, not by the code) |
+| `relayUrl` — *Relay (advanced)* | client | `wss://evf-relay.evf-relay.workers.dev` | self-hosted relay (sideloaded app only; carried by the QR, not by the code) |
 
 ## 🔐 Security / Auth
 

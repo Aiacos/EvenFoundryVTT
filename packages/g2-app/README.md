@@ -8,7 +8,7 @@ gestures ([ADR-0012](../../docs/architecture/0012-r1-gesture-model-overscroll-ex
 fed by the player's own Foundry tab through the relay
 ([ADR-0019](../../docs/architecture/0019-relay-pairing-player-projector.md)). It runs in the
 Even Realities App WebView on the phone; it never talks to Foundry, only to
-`wss://evf-relay.aiacos.workers.dev` with AES-256-GCM sealed frames.
+`wss://evf-relay.evf-relay.workers.dev` with AES-256-GCM sealed frames.
 
 One bundle (`dist/`), three ways to load it:
 

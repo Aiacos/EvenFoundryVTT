@@ -41,7 +41,7 @@ function online(): Partial<AppState> {
   return {
     connection: {
       status: 'online',
-      server: 'evf-relay.aiacos.workers.dev',
+      server: 'evf-relay.evf-relay.workers.dev',
       userName: 'Luca',
       gmName: 'Anna',
       actorName: 'Thorin',
@@ -170,7 +170,7 @@ describe('P02 connection page', () => {
     const unmount = mountPhonePage(root, store, fake.session, null);
     expect(root.querySelector('h1')?.textContent).toBe('G2 HUD · Connessione');
     expect(field(root, 'status')).toBe('Collegato');
-    expect(field(root, 'server')).toBe('evf-relay.aiacos.workers.dev');
+    expect(field(root, 'server')).toBe('evf-relay.evf-relay.workers.dev');
     expect(field(root, 'user')).toBe('Luca');
     expect(field(root, 'character')).toBe('Thorin');
     expect(field(root, 'gm')).toBe('Anna (online)');

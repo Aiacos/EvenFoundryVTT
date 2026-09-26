@@ -17,7 +17,7 @@ Perché: Foundry ≥ 14.361 serve l'HTML dei moduli come `text/plain` (la pagina
 - La mappa con l'arte della scena funziona anche con il CDN di The Forge: le immagini le prepara la scheda del giocatore ([Mappa](Mappa)).
 
 **Architettura e strumenti**
-- Nuovo pacchetto `packages/relay` (Cloudflare Worker + Durable Object per stanza) su `wss://evf-relay.aiacos.workers.dev`; protocollo v2 con `rotate {room, key}` e messaggi `asset` ([Protocollo](Protocollo), [Architettura](Architettura)).
+- Nuovo pacchetto `packages/relay` (Cloudflare Worker + Durable Object per stanza) su `wss://evf-relay.evf-relay.workers.dev`; protocollo v2 con `rotate {room, key}` e messaggi `asset` ([Protocollo](Protocollo), [Architettura](Architettura)).
 - Rimossi: utenti «(G2)», password sigillate, chiavi ECDH e custodia, elezione del projector, `/join` + socket.io nell'app, cartella `g2/` nello zip del modulo, `validate:direct-sideload`, `build:all` / `build:g2`.
 - Nuovi: `pnpm dev:glasses`, `validate:relay`, test end-to-end sul relay in CI, gate 10 «solo relay», workflow `pages.yml` e `relay-deploy.yml` ([Debug e simulatore](Debug-e-Simulatore), [Release](Release)).
 - **Migrazione**: i collegamenti della v0.12 non valgono più; ogni giocatore collega di nuovo gli occhiali (una volta).

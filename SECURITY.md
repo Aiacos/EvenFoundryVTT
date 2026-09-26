@@ -6,7 +6,7 @@
 |---|---|
 | Foundry module `evenfoundryvtt` | latest release ([releases](https://github.com/Aiacos/EvenFoundryVTT/releases/latest)) |
 | Glasses app «FoundryVTT G2 HUD» | latest Even Hub build / GitHub Pages `/app/` |
-| Relay `wss://evf-relay.aiacos.workers.dev` | always the `main` deployment |
+| Relay `wss://evf-relay.evf-relay.workers.dev` | always the `main` deployment |
 
 ## 🐞 Reporting a vulnerability
 

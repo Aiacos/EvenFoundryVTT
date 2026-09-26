@@ -86,7 +86,9 @@ describe('relay client (glasses end)', () => {
   });
 
   it('RCL-04 relayHost shows the host of any relay spelling', () => {
-    expect(relayHost('wss://evf-relay.aiacos.workers.dev')).toBe('evf-relay.aiacos.workers.dev');
+    expect(relayHost('wss://evf-relay.evf-relay.workers.dev')).toBe(
+      'evf-relay.evf-relay.workers.dev',
+    );
     expect(relayHost('ws://10.0.0.2:8787')).toBe('10.0.0.2:8787');
     expect(relayHost('not a url')).toBe('not a url');
   });
