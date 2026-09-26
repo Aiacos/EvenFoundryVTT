@@ -329,12 +329,15 @@ export class DirectSession implements AppActions {
   }
 
   /**
-   * Pairs with the 16-char code shown under the QR (P03) and connects.
+   * Pairs with what the player typed or pasted on P03 — the 16-char code shown under the QR
+   * or the whole pairing link — and connects.
    *
-   * @throws Error('invalid manual code') when the code is malformed
+   * @throws Error('invalid manual code') when the text carries no valid code
    */
-  async pairCode(code: string): Promise<void> {
-    await this.pairWith(await credentialsFromLink({ code }));
+  async pairCode(text: string): Promise<void> {
+    const link = readPairingText(text);
+    if (link === null) throw new Error('invalid manual code');
+    await this.pairWith(await credentialsFromLink(link));
   }
 
   /**

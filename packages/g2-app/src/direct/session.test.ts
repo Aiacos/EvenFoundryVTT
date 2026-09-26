@@ -713,6 +713,14 @@ describe('lifecycle and user actions', () => {
     expect(formatManualCode('7QK37QK3')).toBe('7QK3-7QK3');
   });
 
+  it('the code field also accepts the whole pairing link (pasted or typed)', async () => {
+    const h = setup();
+    await h.session.start(null);
+    await h.session.pairCode('Https://aiacos.github.io/EvenFoundryVTT/app/#c=7qk3-mx9p-2hra-c4te');
+    const { room } = await deriveCodePairing('7QK3MX9P2HRAC4TE');
+    expect(h.relay.last.room).toBe(room);
+  });
+
   it('pairs with a scanned QR text; rejects anything else', async () => {
     const h = setup();
     await h.session.start(null);

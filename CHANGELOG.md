@@ -7,6 +7,16 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] «Scansiona QR» reads photos of a screen far more reliably (1024 → 640 → 400 px ladder,
+      native `BarcodeDetector` when present: 7/16 → 14/16 simulated photos) and explains a
+      missing camera instead of doing nothing — [g2-app qr-scan](packages/g2-app/src/phone/qr-scan.ts)
+- [x] The code field takes the whole pairing link too: no 24-character cap, no forced capitals
+      — [g2-app phone page](packages/g2-app/src/phone/phone-page.ts)
+- [x] `pnpm dev:glasses` prints the QR of the LAN app (`--code` pairs in one scan) —
+      [scripts/wizard.sh](scripts/wizard.sh)
+
+## 📦 v0.3.1 — 2026-09-26
+
 - [x] Short pairing QR: only the code (`…/app/#c=<CODE>`, ~63 chars) — scannable by the Even
       Realities App and short enough to type — [ADR-0019 Amd 1](docs/architecture/0019-relay-pairing-player-projector.md)
 

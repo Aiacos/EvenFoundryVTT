@@ -84,9 +84,10 @@ installed app keeps running when the phone locks.
 2. The window opens ready: your character is preselected (the assigned one, else the first
    you own), the relay is checked and the **QR** plus a **16-character code**
    (e.g. `7QK3-MX9P-2HRA-C4TE`) are shown. Both expire after **5 minutes** and work once.
-3. On the phone open **FoundryVTT G2 HUD** › **Scan QR** (IT: **Scansiona QR**) and frame
-   the QR. No camera, or camera permission denied? Tap **Enter code** (IT:
-   **Inserisci codice**) and type the code (with or without dashes).
+3. On the phone open **FoundryVTT G2 HUD** › **Scan QR** (IT: **Scansiona QR**) and take a
+   photo with the QR filling most of the frame. No camera, or camera permission denied? Type
+   the code (with or without dashes, any case) in the **Code** field — it also takes the whole
+   pairing link, pasted.
 4. The window switches to **Glasses connected · &lt;character&gt;** by itself, and the
    glasses show **Connecting** (S11), then the D&D-sheet HUD (S1): portrait, header (AC,
    HP, turn) and square map on top, ability page and context panel below.
@@ -147,7 +148,8 @@ For a player who has glasses but no computer at the table:
 | Glasses/phone: **"Player's Foundry closed"** (IT: *Foundry del giocatore chiuso*) | The Foundry tab that paired these glasses is not open (closed, logged out, other computer) | Open Foundry in that browser. The glasses reconnect by themselves, nothing to scan. |
 | Phone: **"relay not reachable"** | The phone has no internet, or the relay is down | Check the phone's connection. The app retries with backoff (1 → 30 s). |
 | QR hidden, **"The QR expired unused"** | 5 minutes passed, or the QR was already used | **New QR**. |
-| **Scan QR** does nothing / camera prompt denied | Camera permission refused | Use **Enter code** with the 16-character code under the QR, or allow the camera for the Even Realities App in the phone settings. |
+| **Scan QR**: *No QR found in the photo* | QR too small or blurred in the photo (screen moiré) | Move closer so the QR fills the frame, hold still, or type the 16-character code under the QR. |
+| **Scan QR**: *camera not available* / *no photo received* | Camera permission refused, or a sideloaded page without camera access | Type the code under the QR (or paste the whole link) in the **Code** field, or allow the camera for the Even Realities App in the phone settings. |
 | Two Foundry tabs open, only one updates the glasses | By design: one tab per browser projects a device (Web Lock); the others wait | Nothing to do. Closing the projecting tab hands over to the next one. |
 | Glasses stop when the phone locks | You opened the app by scanning the Foundry QR in **developer mode** (a sideloaded page) | Install **FoundryVTT G2 HUD** from Even Hub (beta or store): the installed app survives the lock. |
 | Even App says **"trial version expired"** | A portal *trial* upload expired | Install the beta/store build, or re-scan the QR in developer mode ([release/evenhub.md](release/evenhub.md)). |
@@ -183,8 +185,9 @@ RELAY_URL=wss://evf-relay.evf-relay.workers.dev pnpm --filter @evf/validation-ha
 ```
 
 `pnpm dev:glasses` (= `scripts/wizard.sh --mode live`) serves the app on the LAN, checks the
-relay and prints the LAN URL to put in the module setting **Glasses app page (advanced)**;
-then open **Connect G2 glasses** (Alt+G) and scan its QR in developer mode. Add
+relay and prints its QR: scan it in developer mode, then type in the app the code that
+**Connect G2 glasses** (Alt+G) shows — or pass it with `--code XXXX-XXXX-XXXX-XXXX` and one
+scan pairs. Add
 `--local-relay` to run the relay locally with `wrangler dev` (only with an `http://` Foundry:
 an HTTPS page cannot open `ws://` on the LAN). `bash scripts/wizard.sh --help` lists every flag.
 
