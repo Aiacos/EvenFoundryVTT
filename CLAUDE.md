@@ -76,7 +76,7 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Constitution (READ FIRST, EVERY CHANGE)
 
-**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons (v1.1.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
+**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons · XII living tracking files `TODO.md` / `SECURITY.md` / `CHANGELOG.md` (v1.2.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
 
 ## Project Invariants (NON-NEGOTIABLE)
 
@@ -89,7 +89,7 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Engineering Constitution (ALWAYS APPLY)
 
-Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
+Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI · P12=XII); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
 
 ### P1 · 💎 Code quality
 
@@ -178,7 +178,29 @@ Every `##` heading in `README.md`, `docs/**/*.md`, wiki pages and the showcase u
 | Roadmap / Milestones | 🗺️ | Voice / MCP (V2) | 🎙️ |
 | Changelog | 📝 | Inspiration | 🎨 |
 | Icons / Conventions | 🏷️ | License | ⚖️ |
-| Author / Credits | 👤 | | |
+| Author / Credits | 👤 | Tasks / TODO | ✅ |
+
+### P12 · ✅ Living tracking files (TODO · SECURITY · CHANGELOG)
+
+Three root files are the project's working memory for humans and agents. Keep them short, plain
+and cheap to update — checkable lists with references, never prose essays.
+
+- **[`TODO.md`](TODO.md)** — open work only, grouped by area (`##` with the P11 icons): every item is
+  `- [ ]` + a reference (spec task, ADR, issue/PR, file path or `Specs.md §`). Tick it in the commit
+  that finishes it; when it ships, move the line to `CHANGELOG.md` and delete it from `TODO.md`. A
+  code `// TODO` still needs `(#issue)` / `(ADR-NNNN)` (INV-4); larger follow-ups go here.
+- **[`SECURITY.md`](SECURITY.md)** — supported versions, how to report (private, never a public
+  issue), the threat model in a few bullets, and a checklist of security controls, each `- [x]`
+  linked to the code/ADR that proves it. A change that touches auth, crypto, pairing, the relay,
+  permissions or secrets updates it in the same commit; re-verify the list at every release.
+- **[`CHANGELOG.md`](CHANGELOG.md)** — one line per user-visible change, newest first, each with its
+  reference (PR, ADR, spec): `## 🚀 Unreleased` collects the lines as PRs land (`- [x]` done,
+  `- [ ]` still to do before the release); the release turns it into `## 📦 vX.Y.Z — date`. It is the
+  human index; per-package details stay in the Changesets `CHANGELOG.md`s and design history in the
+  `Specs.md` changelog — link, don't duplicate.
+- Same rules everywhere: checkboxes, one line per item (wrap with an indented continuation),
+  a reference on every item, P11 icons on every `##`, updated in the same commit as the change
+  (P7). `scripts/check-tracking-files.mjs` enforces the format in CI (P9).
 
 ## Pre-bump checklist (manual until CI lands)
 
