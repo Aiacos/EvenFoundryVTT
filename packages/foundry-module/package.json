@@ -1,9 +1,9 @@
 {
   "name": "@evf/foundry-module",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "EVF Foundry VTT module (evenfoundryvtt) \u2014 GM-client projector for the direct G2 channel (ADR-0016), pairing window, readers, write path. Ships the g2-app build under g2/.",
+  "description": "EVF Foundry VTT module (evenfoundryvtt) — GM-client projector for the direct G2 channel (ADR-0016), pairing window, readers, write path. Ships the g2-app build under g2/.",
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

@@ -1,9 +1,9 @@
 {
   "name": "@evf/g2-app",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "EVF glasses app \u2014 Even Hub G2 plugin: D&D-sheet HUD streamed from the player's Foundry tab through the relay (ADR-0019).",
+  "description": "EVF glasses app — Even Hub G2 plugin: D&D-sheet HUD streamed from the player's Foundry tab through the relay (ADR-0019).",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
