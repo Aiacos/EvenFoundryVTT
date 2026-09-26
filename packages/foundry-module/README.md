@@ -100,7 +100,7 @@ Full walkthrough: [setup guide](../../docs/setup-guide.md).
 pnpm --filter @evf/foundry-module build        # tsup → dist/module.js (bundles @evf/shared-protocol + qrcode)
 pnpm --filter @evf/foundry-module test
 pnpm --filter @evf/foundry-module typecheck
-pnpm dev:glasses                               # app from this checkout on the LAN + relay check (set «Glasses app page»)
+pnpm dev:glasses                               # app from this checkout on the LAN + relay check + its QR
 ```
 
 For development, symlink this folder into `<FoundryData>/Data/modules/evenfoundryvtt`. The

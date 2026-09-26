@@ -145,13 +145,42 @@ describe('P03 setup page', () => {
     mountPhonePage(root, store, session, camera, null, scanDeps(null));
     root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
     await settle(2);
-    expect(field(root, 'error')).toBe('Nessun QR nella foto: inquadra tutto il QR e riprova.');
+    expect(field(root, 'error')).toBe(phoneStrings('it').noQrInPhoto);
     const other = document.createElement('main');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     mountPhonePage(other, store, session, camera, null, scanDeps('https://example.com'));
     other.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
     await settle(2);
     expect(field(other, 'error')).toBe('Questo non è un QR di associazione EvenFoundryVTT.');
+  });
+
+  it('camera failure and an empty capture explain themselves instead of doing nothing', async () => {
+    const store = createAppStore();
+    const { session } = fakeSession();
+    const camera = {
+      captureImageFromCamera: vi.fn(async () => {
+        throw new Error('denied');
+      }),
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const root = document.createElement('main');
+    mountPhonePage(root, store, session, camera, null, scanDeps('x'));
+    root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(root, 'error')).toBe(phoneStrings('it').cameraUnavailable);
+    camera.captureImageFromCamera.mockResolvedValueOnce(null as never);
+    root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(root, 'error')).toBe(phoneStrings('it').noPhoto);
+    expect(session.pairScanned).not.toHaveBeenCalled();
+  });
+
+  it('the code field takes a whole pasted link: no length cap, no forced capitals', () => {
+    const root = document.createElement('main');
+    mountPhonePage(root, createAppStore(), fakeSession().session, null);
+    const code = root.querySelector<HTMLInputElement>('#evf-code');
+    expect(code?.getAttribute('autocapitalize')).toBe('none');
+    expect(Number(code?.getAttribute('maxlength'))).toBeGreaterThanOrEqual(256);
   });
 
   it('ignores a scan click when no camera is attached (defensive)', () => {

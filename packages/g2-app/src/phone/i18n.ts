@@ -50,10 +50,13 @@ const EN = {
   easiestSteps:
     'right-click your name in the Players list › «Connect G2 glasses» (or Alt+G), then scan the QR.',
   scan: 'Scan QR',
-  noQrInPhoto: 'No QR found in the photo: frame the whole QR and try again.',
+  noQrInPhoto:
+    'No QR found in the photo: fill the frame with the QR, hold still and try again — or type the code below.',
+  noPhoto: 'No photo received. If the camera does not open, type the code below.',
+  cameraUnavailable: 'The camera is not available here: type the code shown under the QR below.',
   notPairingQr: 'That is not an EvenFoundryVTT pairing QR.',
   orCode: 'or enter the code',
-  code: 'Code',
+  code: 'Code (or the whole link)',
   connect: 'Connect',
   invalidCode: 'Invalid code: 16 characters, e.g. 7QK3-MX9P-2HRA-C4TE.',
   help: 'The code is shown under the QR in Foundry (single use, 5 min). No Foundry login is needed on the phone.',
@@ -106,10 +109,13 @@ const IT: PhoneStrings = {
   easiestSteps:
     'tasto destro sul tuo nome nella lista giocatori › «Collega occhiali G2» (o Alt+G), poi inquadra il QR.',
   scan: 'Scansiona QR',
-  noQrInPhoto: 'Nessun QR nella foto: inquadra tutto il QR e riprova.',
+  noQrInPhoto:
+    "Nessun QR nella foto: riempi l'inquadratura col QR, tieni fermo e riprova — o digita il codice qui sotto.",
+  noPhoto: 'Nessuna foto ricevuta. Se la fotocamera non si apre, digita il codice qui sotto.',
+  cameraUnavailable: 'Fotocamera non disponibile qui: digita il codice mostrato sotto il QR.',
   notPairingQr: 'Questo non è un QR di associazione EvenFoundryVTT.',
   orCode: 'oppure inserisci il codice',
-  code: 'Codice',
+  code: 'Codice (o il link intero)',
   connect: 'Collega',
   invalidCode: 'Codice non valido: 16 caratteri, es. 7QK3-MX9P-2HRA-C4TE.',
   help: 'Il codice è sotto il QR su Foundry (monouso, 5 min). Sul telefono non serve nessun login a Foundry.',

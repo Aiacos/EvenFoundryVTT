@@ -74,7 +74,7 @@ pnpm dev:glasses --local-relay   # …and the relay too (wrangler dev) — http:
 pnpm --filter @evf/relay dev     # the relay alone (wrangler dev)
 ```
 
-`pnpm dev:glasses` prints a LAN URL: set the module setting «Glasses app page (advanced)» to it, then open **Connect G2 glasses** (Alt+G) and scan that QR. On the phone: sign in once at [hub.evenrealities.com/login](https://hub.evenrealities.com/login) (that enables Developer Mode), reopen the Even Realities App, then **Even Hub → Scan QR**. Details: [`docs/release/evenhub.md`](docs/release/evenhub.md).
+`pnpm dev:glasses` prints the QR of this checkout's app on the LAN: scan it, then type in the app the code that **Connect G2 glasses** (Alt+G) shows (or pass it with `--code` and one scan pairs). On the phone: sign in once at [hub.evenrealities.com/login](https://hub.evenrealities.com/login) (that enables Developer Mode), reopen the Even Realities App, then **Even Hub → Scan QR**. Details: [`docs/release/evenhub.md`](docs/release/evenhub.md).
 
 ## 👓 UX / UI design
 

@@ -277,10 +277,18 @@ function buildSetupView(
     error.textContent = '';
     scan.disabled = true;
     scanQr(camera, scanDeps)
-      .then((text) => (text === null ? undefined : session.pairScanned(text)))
+      .then((text) => {
+        // No photo: cancelled, or a host that silently denies the camera — say what to do.
+        if (text === null) error.textContent = t.noPhoto;
+        else return session.pairScanned(text);
+      })
       .catch((err: unknown) => {
-        error.textContent = err instanceof QrScanError ? t.noQrInPhoto : t.notPairingQr;
-        if (!(err instanceof QrScanError)) console.warn(`[phone] scan failed: ${String(err)}`);
+        if (err instanceof QrScanError) {
+          error.textContent = err.reason === 'camera' ? t.cameraUnavailable : t.noQrInPhoto;
+          return;
+        }
+        error.textContent = t.notPairingQr;
+        console.warn(`[phone] scan failed: ${String(err)}`);
       })
       .finally(() => {
         scan.disabled = false;
@@ -293,10 +301,13 @@ function buildSetupView(
     type: 'text',
     inputmode: 'text',
     autocomplete: 'off',
-    autocapitalize: 'characters',
+    // The field also takes the whole pairing link (pasted, or typed when a scan fails):
+    // no forced capitals (the code is normalised anyway) and room for a long URL.
+    autocapitalize: 'none',
+    autocorrect: 'off',
     spellcheck: 'false',
     placeholder: 'XXXX-XXXX-XXXX-XXXX',
-    maxlength: '24',
+    maxlength: '512',
     required: '',
   });
   const submit = el('button', { type: 'submit' }, [t.connect]);

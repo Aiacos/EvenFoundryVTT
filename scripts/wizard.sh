@@ -12,16 +12,16 @@
 #   build    production bundle (vite build → packages/g2-app/dist) served on the LAN with
 #            `vite preview` — same demo scenes, but the exact bytes that ship.
 #   live     the real pairing flow against YOUR Foundry (ADR-0019), with the app from
-#            this checkout: serves it on the LAN, checks the relay, and tells you the
-#            module setting to change («Glasses app page» = this LAN URL). Then open
-#            «Collega occhiali G2» in Foundry (Alt+G) and scan ITS QR with the Even
-#            Realities App. `--local-relay` also runs the relay here (`wrangler dev`) —
-#            only for an http:// Foundry (an https page cannot open ws:// on the LAN).
-#            `pnpm dev:glasses` = this mode.
+#            this checkout: serves it on the LAN, checks the relay and prints the QR of
+#            the dev app. Scan it with the Even Realities App, then type on the phone the
+#            code Foundry shows in «Collega occhiali G2» (Alt+G) — or pass that code with
+#            `--code XXXX-XXXX-XXXX-XXXX` and the QR pairs in one scan. `--local-relay`
+#            also runs the relay here (`wrangler dev`) — only for an http:// Foundry (an
+#            https page cannot open ws:// on the LAN). `pnpm dev:glasses` = this mode.
 #
 # Usage
 #   scripts/wizard.sh [--mode demo|build|live] [--scene tour|explore|combat-my-turn|…]
-#                     [--dwell MS] [--port N] [--local-relay] [--ip ADDR] [--no-firewall]
+#                     [--dwell MS] [--port N] [--local-relay] [--code CODE] [--ip ADDR] [--no-firewall]
 #                     [--debug] [--yes] [--help]
 #
 # Needs: bash, Node 24 + pnpm (repo toolchain), curl. The QR is drawn by the official
@@ -37,6 +37,7 @@ DWELL=""
 PORT="5173"
 PORT_EXPLICIT=0
 LOCAL_RELAY=0
+PAIR_CODE=""
 RELAY_PORT="8787"
 DEV_RELAY=""
 LAN_IP=""
@@ -63,7 +64,7 @@ ok()   { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
 die()  { printf '  %s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 
-usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 confirm() { # confirm "question" → 0 yes / 1 no (default no; --yes answers yes)
   [[ $ASSUME_YES -eq 1 ]] && return 0
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --dwell) DWELL="${2:-}"; shift 2 ;;
     --port) PORT="${2:-}"; PORT_EXPLICIT=1; shift 2 ;;
     --local-relay) LOCAL_RELAY=1; shift ;;
+    --code) PAIR_CODE="${2:-}"; shift 2 ;;
     --ip) LAN_IP="${2:-}"; shift 2 ;;
     --no-firewall) FIREWALL=0; shift ;;
     --debug) DEBUG=1; shift ;;
@@ -96,6 +98,11 @@ if [[ "$MODE" != "live" ]] && ! grep -qw -- "$SCENE" <<<"$SCENES"; then
   die "unknown --scene '$SCENE' (one of: $SCENES)"
 fi
 [[ -z "$DWELL" || "$DWELL" =~ ^[0-9]+$ ]] || die "--dwell must be milliseconds"
+if [[ -n "$PAIR_CODE" ]]; then
+  # Same normalisation as the app: uppercase, no separators, O→0, I/L→1; 16 chars.
+  PAIR_CODE="$(tr '[:lower:]' '[:upper:]' <<<"$PAIR_CODE" | tr -d ' -' | tr 'O' '0' | tr 'IL' '11')"
+  [[ "$PAIR_CODE" =~ ^[0-9A-HJKMNP-TV-Z]{16}$ ]] || die "--code must be the 16-character code shown in Foundry"
+fi
 if [[ "$SCENE" == "tour" && -z "$DWELL" ]]; then DWELL=6000; fi
 
 # ─── cleanup on exit ─────────────────────────────────────────────────────────
@@ -272,13 +279,23 @@ if [[ "$MODE" == "live" ]]; then
     check_relay
   fi
   start_server
-  printf '\n  %sIn Foundry%s (module settings › EvenFoundryVTT, this browser only)\n' "$B" "$N"
-  printf '    • Glasses app page (advanced) = %shttp://%s:%s/%s\n' "$B" "$LAN_IP" "$PORT" "$N"
-  if [[ -n "$DEV_RELAY" ]]; then
-    printf '    • Relay (advanced)           = %s%s%s   (http:// Foundry only)\n' "$B" "$DEV_RELAY" "$N"
+  app_url="http://${LAN_IP}:${PORT}/"
+  fragment=""
+  if [[ -n "$PAIR_CODE" ]]; then
+    fragment="#c=${PAIR_CODE}"
+    [[ -n "$DEV_RELAY" ]] && fragment="${fragment}&relay=${DEV_RELAY}"
   fi
-  printf '  Then press %sAlt+G%s («Collega occhiali G2») and scan THAT QR with the Even\n' "$B" "$N"
-  printf '  Realities App (Developer Mode → Even Hub → Scan QR). Edits hot-reload on the glasses.\n'
+  show_qr "${app_url}${fragment}"
+  if [[ -n "$PAIR_CODE" ]]; then
+    printf '  This QR carries the code: one scan pairs the glasses with the Foundry tab that showed it.\n'
+  else
+    printf '  %sThen%s: in Foundry press %sAlt+G%s («Collega occhiali G2») and type the code it shows\n' "$B" "$N" "$B" "$N"
+    printf '  in the app on the phone («Inserisci codice») — or re-run with %s--code XXXX-XXXX-XXXX-XXXX%s.\n' "$B" "$N"
+  fi
+  if [[ -n "$DEV_RELAY" ]]; then
+    printf '  In Foundry set %sRelay (advanced)%s = %s%s%s (module settings; http:// Foundry only).\n' "$B" "$N" "$B" "$DEV_RELAY" "$N"
+  fi
+  printf '  Edits hot-reload on the glasses. The QR expires with the Foundry code (5 min, single use).\n'
   printf '\n  Press %sCtrl-C%s to stop.\n' "$B" "$N"
   wait "$SERVER_PID"
   exit 0

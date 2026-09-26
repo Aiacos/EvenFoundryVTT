@@ -108,6 +108,8 @@ describe('pairing link (QR)', () => {
     expect(readPairingText(`c=${CODE}`)).toEqual({ code: CODE });
     expect(readPairingText(' 7QK3-MX9P-2HRA-C4TE ')).toEqual({ code: CODE });
     expect(readPairingText('https://example.com/no-payload')).toBeNull();
+    // A keyboard that capitalises what is typed by hand: keys are case-insensitive.
+    expect(readPairingText(`HTTPS://X.EXAMPLE/APP/#C=${CODE}`)).toEqual({ code: CODE });
   });
 });
 

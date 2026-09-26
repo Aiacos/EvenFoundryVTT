@@ -52,7 +52,7 @@ ln -s "$PWD/packages/foundry-module" "<FoundryData>/Data/modules/evenfoundryvtt"
 pnpm dev:glasses                                 # app di questo checkout sulla LAN + controllo del relay
 ```
 
-`pnpm dev:glasses` stampa l'indirizzo LAN dell'app: mettilo nell'impostazione del modulo **«Pagina dell'app occhiali (avanzato)»**, poi apri **«Collega occhiali G2»** (Alt+G) e inquadra il QR. Dettagli: [Debug e simulatore](Debug-e-Simulatore).
+`pnpm dev:glasses` stampa il QR dell'app di questo checkout sulla LAN: inquadralo, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — o passalo con `--code` e basta una scansione. Dettagli: [Debug e simulatore](Debug-e-Simulatore).
 
 ## 📚 Vedi anche
 
