@@ -1,4 +1,5 @@
 ---
+'@evf/foundry-module': patch
 '@evf/g2-app': patch
 '@evf/shared-protocol': patch
 ---
