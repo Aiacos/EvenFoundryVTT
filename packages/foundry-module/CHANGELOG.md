@@ -1,5 +1,13 @@
 # @evf/foundry-module
 
+## 0.3.2
+
+### Patch Changes
+
+- 35d7fcf: Pairing on the phone: «Scansiona QR» decodes screen photos at 1024 → 640 → 400 px (plus the native `BarcodeDetector` where available) and says when the camera is unavailable; the code field accepts the whole pairing link, without a length cap or forced capitals; link keys are read case-insensitively.
+- Updated dependencies [35d7fcf]
+  - @evf/shared-protocol@0.4.2
+
 ## 0.3.1
 
 ### Patch Changes
