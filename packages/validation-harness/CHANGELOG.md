@@ -1,5 +1,12 @@
 # @evf/validation-harness
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [4d4d7c5]
+  - @evf/shared-protocol@0.4.1
+
 ## 0.3.0
 
 ### Minor Changes
