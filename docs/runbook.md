@@ -1,103 +1,95 @@
-# Runbook — EvenFoundryVTT (direct streaming)
+# Runbook — EvenFoundryVTT (relay pairing)
 
-What to check when the glasses won't connect or stop updating. Since v0.12.0 there is no
-server to restart ([ADR-0016](architecture/0016-direct-foundry-streaming.md)). Only three
-pieces can fail:
+What to check when the glasses won't connect or stop updating, and how to operate the
+shared pieces (relay, GitHub Pages, Even Hub build). Since ADR-0019 the phone never talks
+to Foundry ([ADR-0019](architecture/0019-relay-pairing-player-projector.md)). Four pieces
+can fail:
 
-1. **the phone page**: the g2-app in the Even Realities App WebView.
-2. **the Foundry server**: HTTPS, the static `/modules/evenfoundryvtt/g2/` files, the socket relay.
-3. **the projector**: the `evenfoundryvtt` module in a Foundry client. Per device it is the
-   **player's own client** when that player is online, otherwise an **active GM** that holds
-   the device key ([ADR-0017](architecture/0017-player-owned-glasses-hybrid-projector.md)).
-   It reads dnd5e data and runs every action; only the elected client executes `invoke`.
+1. **the glasses app**: **FoundryVTT G2 HUD** in the Even Realities App WebView (Even Hub
+   install, or the GitHub Pages page `/app/` in developer mode).
+2. **the relay**: `wss://evf-relay.evf-relay.workers.dev`, a Cloudflare Worker with one Durable
+   Object per room ([`packages/relay`](../packages/relay/README.md)). It forwards sealed
+   frames and stores nothing.
+3. **the projector**: the `evenfoundryvtt` module in the Foundry tab that showed the QR (the
+   player's, or a GM's for a player without a device). It reads dnd5e data, runs every
+   action through `dispatchTool` and streams the HUD.
+4. **the network path of the projector tab** to the relay (firewall, proxy, CSP).
 
-**Bridge-era installs (module ≤ v0.1.55):** there is nothing left to operate. Stop and
-remove the `evf-bridge` container, update the module and re-pair the glasses.
-
-First-time installation is covered in the [setup guide](setup-guide.md).
+Upgrading from v0.12 (module ≤ 0.2.x): the "(G2)" users, GM enablement and the
+Foundry-served `g2/` page are gone. Every pair of glasses must be connected once more
+([setup guide](setup-guide.md)).
 
 ---
 
 ## 🏗️ What talks to what
 
 ```
-[G2] ⇄ BLE ⇄ [Even App WebView: /modules/evenfoundryvtt/g2/index.html]
-                    │ POST /join (cookie) + socket.io, same origin
+[G2] ⇄ BLE ⇄ [Even App WebView: FoundryVTT G2 HUD]
+                    │ wss://evf-relay.evf-relay.workers.dev/r/<room>?role=glasses
                     ▼
-             [Foundry server] ── relays module.evenfoundryvtt (AES-GCM sealed envelopes)
-                    │
-                    ▼
-             [projector: player's client if online · else the active GM holding the device key]
+             [relay: Worker + Durable Object "room"] ── opaque AES-256-GCM frames, nothing stored
+                    ▲
+                    │ wss://…/r/<room>?role=projector
+             [projector: the Foundry tab that paired (player, or GM for a player without a device)]
 ```
 
 | Step | Who | Failure shows up as |
 |---|---|---|
-| Page load | Even App → Foundry HTTPS | blank page / certificate error |
-| Login | g2-app `POST /join` as "&lt;Player&gt; (G2)" | *credentials rejected* → first-setup page (P03) |
-| Socket | socket.io `/socket.io/` | *Foundry not responding*, retry with backoff 1→30 s |
-| `hello` → `welcome` | elected projector (player's client or GM) | *no GM connected* after 8 s without `welcome` |
-| Live updates | projector hooks → sealed pushes | stale sheet/map; after 2 missed pongs the page goes offline (S12) |
+| Relay check | pairing window → `GET /health` | window: *This browser cannot reach the relay* + **How to fix** |
+| Pairing | QR / 16-char code → room + key | phone: *That is not an EvenFoundryVTT pairing QR* / *Invalid code* |
+| Room join | both ends open `/r/<room>` | phone: *relay not reachable*, retry with backoff 1 → 30 s |
+| `peer-up` → `hello` → `welcome` | projector tab present in the room | glasses: *Player's Foundry closed* (`no-projector`), link kept open |
+| Live updates | projector hooks → sealed pushes | stale sheet/map; the phone page goes offline (S12) |
 
 ---
 
 ## 🐞 Diagnose from the phone
 
-The phone page is the fastest place to look.
-
-- **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause and the retry
-  countdown (*retrying in N s (attempt K)*). The causes:
-  - *no GM connected*: the projector did not answer. See [the GM section](#-diagnose-from-foundry-projector-browser).
-  - *Foundry not responding*: network, TLS, proxy or socket problem.
-  - *credentials rejected*: revoked, already used, or expired. Re-pair.
-  - *app in background*: expected. The page reconnects on foreground re-entry.
-- **Server / User / Character / GM:** confirms the page talks to the right world, as the
-  right "(G2)" user, and names the projector (*Anna (online)*).
-- **Latency:** ping → pong round trip through the relay and the projector.
-- **Diagnostics ▸** (IT: *Diagnostica*): Foundry version (from `/api/status` when it is
-  exposed), the **recent errors** list (newest first, with level), and **Forget pairing**.
-- **Reconnect** forces a new login + socket. **Disconnect** stops the session and keeps
-  the credentials.
+- **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause:
+  - *the Foundry tab that paired these glasses is closed* (HUD: *Player's Foundry closed*):
+    open Foundry in that browser; it reconnects by itself, no countdown.
+  - *relay not reachable*: the phone has no internet or the relay is down (check
+    [health](#-relay-and-pages)).
+  - *app in background*: expected; the page reconnects on foreground re-entry.
+- **Relay / Foundry / Character / GM:** confirms the relay origin in use, the Foundry user
+  whose tab projects, the paired character and the world's GM.
+- **Latency:** ping → pong through the relay and the projector.
+- **Diagnostics ▸** (IT: *Diagnostica*): module version, recent errors (newest first), the
+  debug log, and **Forget pairing**.
+- **Reconnect** reopens the relay socket. **Disconnect** stops the session and keeps the
+  credentials.
 
 ---
 
-## 🐞 Diagnose from Foundry (projector browser)
+## 🐞 Diagnose from Foundry (projector tab)
 
-### Pair dialog
+### Pairing window
 
-*Configure Settings* → *EvenFoundryVTT* → **Pair G2 glasses**:
+**Connect G2 glasses** (Players list right-click, **Alt+G**, or *Configure Settings* ›
+*EvenFoundryVTT*):
 
-- **Checks:** *valid HTTPS · module served · socket active*. Any ✗ blocks the phone.
-- **Paired devices:** each "(G2)" user with its character and **last contact**
-  (*last contact 12 s ago* / *never connected*). A device that never connects after a
-  scan means the phone never reached the projector: check HTTPS and that the player or a
-  GM is online. The *Players' glasses* section shows per-player state (*not enabled* ·
-  *enabled* · *paired* · *online*); players pair themselves with **Pair my glasses**.
+- **Relay:** checked on open. *This browser cannot reach the relay `<url>`* means the tab
+  cannot open the relay (firewall, proxy, extension, CSP). **Try again** re-checks.
+- **Glasses connected to this browser:** each pairing with its character, status
+  (*online* · *waiting for the glasses* · *relay unreachable*), last contact and
+  **Disconnect**. Pairings live in a hidden client-scope setting of **this browser**: another
+  browser or computer doesn't see them.
 
-### Browser console (F12 on the projector client)
-
-The projector logs with the `[EVF]` prefix:
+### Browser console (F12 on the projector tab)
 
 | Message | Meaning |
 |---|---|
-| `[EVF] projector: rejected envelope from <id> (authentication failed)` | The device used an old or unknown key: an old QR, or keys from another GM browser. Re-pair. |
-| `[EVF] projector: malformed message from <id>` | Protocol mismatch between the g2-app and the module. Update the module so both come from the same release. |
-| `[EVF] projector: password rotation failed …` | The one-time rotation failed. The pairing credentials stay valid. Check that the GM may edit users. |
-| `[EVF] projector: failed to push to a G2 device` | Socket emit failed. Usually transient. |
-| `[EVF] could not notify <id> of revocation` | The device was offline during revoke. The user is still deleted. |
+| `[EVF] relay <url> unreachable: …` | The relay health check failed from this tab. |
+| `[EVF] relay: another projector took over this device — standing by` | A newer projector socket joined the same room (another browser with the same pairing). This tab stops reconnecting. |
+| `[EVF] projector: rejected a frame for <device> (…)` | Wrong or old key (an old QR, a stale pairing). Connect again. |
+| `[EVF] projector: malformed message for <device>` | Protocol mismatch: update the module and the app so both come from the same release. |
+| `[EVF] projector lock for <device> failed` | Web Locks error; the tab could not become the projector. Reload it. |
+| `[EVF] map picture skipped (<src>): …` | Scene art could not be loaded or downsized in the tab (CORS, missing file). The glasses fall back to the schematic map. |
+| `[EVF] projector: failed to push to a G2 device` | Send failed; usually transient. |
+| `[EVF] could not notify <device> of the revocation` | The glasses were offline during **Disconnect**; the pairing is forgotten anyway. |
 
-Useful checks in the console:
-
-```js
-game.users.activeGM?.name                       // GM fallback (when the player is offline)
-game.settings.get('evenfoundryvtt', 'g2Devices') // public device metadata (no keys)
-game.socket.connected                            // relay available
-```
-
-Device **keys** are stored in a hidden client-scoped setting of the browser that paired.
-With self-service pairing the player's browser also seals the key for every GM's public
-key, so any GM browser that published its key can take over. With a GM-direct pairing
-another browser or GM account sees the metadata but can't open the envelopes, and the
-device reports *no GM connected* when the player is offline.
+Only **one tab per browser** projects a device (Web Lock); other tabs of the same browser
+wait and take over when it closes.
 
 ### Audit log
 
@@ -114,71 +106,92 @@ game.messages.contents
 
 Each entry holds `tool`, `payload`, `idempotencyKey` (the request `rid`), `actorId`,
 `result`, `timestamp` and `bearer_id`. `bearer_id` is a hash of the device principal
-`g2:<userId>`, never a secret.
+`g2:<deviceId>`, never a secret.
 
 ---
 
-## 🧪 Sideload GO/NO-GO harness
+## 🚀 Relay and Pages
 
-`validate:direct-sideload` checks that a Foundry instance can serve the glasses app to
-the Even Realities App (ADR-0016 §Confirmation). Script:
-[`packages/validation-harness/scripts/direct-sideload.ts`](../packages/validation-harness/scripts/direct-sideload.ts).
+Operator tasks for the shared infrastructure. The production relay origin is
+`DEFAULT_RELAY_URL` in `packages/shared-protocol/src/direct/relay.ts`
+(`wss://evf-relay.evf-relay.workers.dev`), and it must match the `.ehpk` whitelist in
+`packages/g2-app/app.json` (CI Gate 10, `scripts/check-relay-origin.mjs`).
+
+### One-time setup (maintainer)
+
+1. **Cloudflare:** the project's account uses the workers.dev subdomain **`evf-relay`** (first
+   deploy 2026-09-26 with `npx wrangler login` + `npx wrangler deploy` in `packages/relay`). If
+   the relay ever moves, change `DEFAULT_RELAY_URL` **and** both whitelist entries in
+   `packages/g2-app/app.json` in the same commit (CI Gate 10 checks they match).
+2. **Secrets:** create an API token (template *Edit Cloudflare Workers*) and add the repo
+   secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+3. **Deploy:** *Actions → Relay Deploy → Run workflow* (`.github/workflows/relay-deploy.yml`;
+   it also runs on every merge to `main` touching `packages/relay/`). Without the secrets the
+   job tests the relay and only warns. With them it runs `wrangler deploy` and checks
+   `/health` of the production origin.
+4. **GitHub Pages:** *Settings › Pages › Build and deployment › Source* = **GitHub Actions**.
+   `.github/workflows/pages.yml` then publishes `docs/` plus the glasses app under `/app/`
+   (`https://aiacos.github.io/EvenFoundryVTT/app/`, the page the pairing QR opens) and the
+   privacy page (`…/privacy.html`) on every merge to `main`.
+
+### Verify
 
 ```bash
-# Software checks only (CI-safe, no phone needed)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware
-
-# Full run: software checks + interactive y/n hardware checklist (needs a TTY, phone, G2, R1)
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload
+curl https://evf-relay.evf-relay.workers.dev/health            # → ok
+RELAY_URL=wss://evf-relay.evf-relay.workers.dev pnpm --filter @evf/validation-harness validate:relay:skip-hardware
+curl -sI https://aiacos.github.io/EvenFoundryVTT/app/ | head -1   # → HTTP/2 200
 ```
 
-`FOUNDRY_URL` is the Foundry base URL **including any routePrefix**
-(e.g. `https://host/foundry`). The only flag is `--skip-hardware`.
+`validate:relay` checks health, CORS, a room round-trip (with RTT) and, informationally, the 1 MiB
+frame cap (exit `0` GO · `1` NO-GO · `2` skipped · `3` usage error). The full run (`validate:relay`, needs a TTY, phone, G2) adds the
+manual checklist **G1** (relay reachable from a Forge v14 private game tab and from
+self-hosted v13/v14) and **G2** (store/private-build whitelist, camera QR decode on iOS and
+Android, credentials survive app kill + 5-minute lock). Evidence goes to `docs/perf/phase-0/`.
 
-| Check | GO when | NO-GO typical cause |
-|---|---|---|
-| `https` | the URL is `https://` | HTTP URL |
-| `reachable` | Foundry root answers over TLS | `DEPTH_ZERO_SELF_SIGNED_CERT`, `ENOTFOUND`, 5xx |
-| `g2-entry` | `/modules/evenfoundryvtt/g2/index.html` → 200 `text/html` | module not enabled, zip without `g2/` |
-| `api-status` | informational: reports the Foundry version | *skipped* when hidden by a proxy (never NO-GO) |
-| `hw-qr-load` | the Even App scans the QR and loads the page | certificate, URL |
-| `hw-sdk-bridge` | `EvenAppBridge` is injected; the g2-app draws on the G2 | page opened outside the Even App |
-| `hw-cookie-persist` | the session cookie survives foreground exit → enter | WebView cookie policy |
-| `hw-socket-reconnect` | socket.io reconnects and the HUD resumes | proxy WebSocket timeout |
+### Quota monitoring
 
-The script also prints the URL form the QR encodes (with placeholders).
+The relay runs on the Cloudflare **free plan**: 100 000 requests/day; outgoing WebSocket
+messages are free, incoming ones count 20 : 1 as requests. Idle rooms cost nothing
+(WebSocket Hibernation). Watch *Cloudflare dashboard → Workers & Pages → evf-relay →
+Metrics* (requests, errors, Durable Object usage) and log the measured requests per session
+as gate **G3**. Hitting the daily limit shows as *relay not reachable* for everyone until the
+daily reset: move to the paid plan or ask heavy tables to self-host.
 
-**Exit codes:** `0` GO · `1` NO-GO · `2` skipped (`FOUNDRY_URL` unset, or the full run has
-no TTY) · `3` usage error (unknown flag, invalid URL).
+### Self-hosting a relay
 
-**Evidence:** `docs/perf/phase-0/adr-0016-direct-sideload-<ISO>.json`, holding the check
-verdicts only. URLs, credentials and QR payloads are never written. On NO-GO the script
-prints the documented fallback: serve Foundry and the g2 bundle behind a **same-site
-reverse-proxy subdomain**.
+```bash
+pnpm --filter @evf/relay dev                                   # wrangler dev → http://localhost:8787
+CLOUDFLARE_API_TOKEN=… pnpm --filter @evf/relay deploy          # → https://evf-relay.<your-subdomain>.workers.dev
+```
+
+Then set **Relay (advanced)** (`relayUrl`, client scope) in the module settings of the
+projector browser to `wss://…` and reload. The QR carries the override to the glasses, so
+**pair with the QR, not the code** (the code always means the default relay). A self-hosted
+relay works only with the **sideloaded** app (developer mode → Scan QR, or `pnpm dev:glasses`):
+the Even Hub build whitelists only the default relay. An `https://` Foundry page cannot open
+`ws://`; use `wss://` or an `http://` Foundry for a LAN relay.
 
 ---
 
-## 🔐 Revoke
+## 🔐 Disconnect
 
-1. GM: **Pair G2 glasses** → **Revoke** next to the device → **Confirm revoke**.
-2. The module sends a sealed `{t:'revoked'}` to the device, deletes the "(G2)" user and
-   forgets the key. The glasses go back to the "not paired" screen (S10).
-3. If the device was offline, the console logs `could not notify … of revocation`. The
-   user is deleted anyway, so the next login fails with *credentials rejected*.
+1. In the browser that paired: **Connect G2 glasses** → **Disconnect** next to the glasses →
+   confirm.
+2. The module sends a sealed `{t:'revoked'}` and forgets the pairing. The glasses go back to
+   the "not paired" screen (S10).
+3. If the glasses were offline, the console logs `could not notify … of the revocation`. The
+   pairing is forgotten anyway; the glasses show *Player's Foundry closed* until the player
+   uses **Forget pairing** or connects again.
 
-Revoke right away if a phone is lost. Don't delete the "(G2)" user from *User
-Management*, because the device metadata would stay behind.
+Lost phone: disconnect right away. The relay room dies with the key; nothing else to revoke.
 
-## 🔐 Re-pair
+## 🔐 Connect again
 
-Re-pair when you changed the GM browser or computer, cleared browser data, changed the
-character, or when the phone shows *credentials rejected*.
-
-1. From the browser **the GM will use during play**, open **Pair G2 glasses**.
-2. Pick the same player: the same "(G2)" user is refreshed (tagged
-   `flags.evenfoundryvtt.g2For`). Pick the character → **Generate new QR**.
-3. On the phone: scan again. If the page is stuck on old credentials, use
-   *Diagnostics* → **Forget pairing** first.
+Connect again when you changed browser or computer, cleared browser data, changed the
+character, or the glasses stay on *Player's Foundry closed* with the tab open (the pairing is
+missing in this browser). Open **Connect G2 glasses** in the browser that will project during
+play and scan the new QR. If the phone is stuck on old credentials, use *Diagnostics* →
+**Forget pairing** first.
 
 ---
 
@@ -186,24 +199,24 @@ character, or when the phone shows *credentials rejected*.
 
 | Symptom | Diagnosis | Recovery |
 |---|---|---|
-| *no GM connected* although the GM is in the world | The player's client is offline and the active GM does not hold the device key (GM-direct pairing from another browser), or the tab is suspended | Open Foundry as the player, bring the pairing GM's tab to the front, or re-pair (self-service pairing seals the key for every GM). |
-| White glasses with a modified build; fine in the simulator | Image tiles off the 2 × 2 grid of 288 × 144: the real host rejects `rebuildPageContainer`, the simulator does not | Keep images on (0,0) (288,0) (0,144) (288,144) ([firmware matrix](firmware-compatibility.md)). |
-| Even App says *"trial version expired"* | A `.ehpk` portal trial upload expired | Use the QR (never expires); see [release/evenhub.md](release/evenhub.md). |
-| Certificate warning / blank page on the phone | Self-signed or expired certificate | Put Foundry behind Let's Encrypt, Tailscale or a trusted proxy. Re-run the harness `reachable` check. |
-| `g2-entry` NO-GO / pair dialog ✗ module served | `g2/` missing | Reinstall the release zip, or run `pnpm --filter @evf/foundry-module build:all` for a dev symlink. |
-| Connects, then *Foundry not responding* every ~minute | Proxy drops idle WebSockets or doesn't forward the upgrade | Forward `Upgrade`/`Connection` and raise the proxy read timeout. |
-| *credentials rejected* right after scanning | The QR had expired (5 min) or was already used | Generate a new QR. |
-| Sheet updates, map frozen or glyph-only | BLE throughput low; the map is ≤ 1 fps with 100 ms image pacing | Move the phone closer to the glasses. The map recovers after two good frames. |
-| Actions return `forbidden_actor` | The request targeted another actor | Only the paired character can act. Re-pair for a different character. |
-| Actions return `actor_missing` on connect | The paired character was deleted | Re-pair with an existing character. |
+| Pairing window: *cannot reach the relay* | Firewall, proxy, extension or CSP blocks `evf-relay.evf-relay.workers.dev`; or the relay is down | `curl https://evf-relay.evf-relay.workers.dev/health` from that network. Allow the origin, change network, or self-host a relay (above). |
+| *Player's Foundry closed* although Foundry is open | Open in a different browser/profile than the one that paired, or the tab is suspended | Use the pairing browser, bring the tab to the front, or connect again from this browser. |
+| Glasses stop on phone lock | App sideloaded from the QR in developer mode | Install **FoundryVTT G2 HUD** from Even Hub (beta/store). |
+| Even App says *"trial version expired"* | A portal trial upload expired | Beta build or re-scan in developer mode; see [release/evenhub.md](release/evenhub.md). |
+| Relay Deploy green but `/health` fails | Secrets missing (job warned and skipped) or subdomain ≠ `evf-relay` | Add the secrets; align `DEFAULT_RELAY_URL` + `app.json` with the real subdomain. |
+| `/app/` returns 404 | Pages source not set to GitHub Actions, or `pages.yml` not run yet | Set the source, then *Actions → Pages → Run workflow*. |
+| White glasses with a modified build; fine in the simulator | Image tiles off the 2 × 2 grid of 288 × 144: the real host rejects `rebuildPageContainer` | Keep images on (0,0) (288,0) (0,144) (288,144) ([firmware matrix](firmware-compatibility.md)). |
+| Sheet updates, map frozen or schematic | BLE throughput low (map ≤ 1 fps, 100 ms pacing), or scene art not loadable in the tab | Move the phone closer; check `[EVF] map picture skipped` in the console. |
+| Actions return `forbidden_actor` / `actor_missing` | Wrong or deleted character | Connect again with an existing character you own. |
 | Attack posts a card but no rolls | midi-qol not active: vanilla `activity.use()` only posts the card | Enable midi-qol for full automation. |
 
 ---
 
 ## 📚 See also
 
-- [Setup guide](setup-guide.md) · [Firmware compatibility](firmware-compatibility.md)
-- [ADR-0016](architecture/0016-direct-foundry-streaming.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
+- [Setup guide](setup-guide.md) · [Firmware compatibility](firmware-compatibility.md) · [Privacy](privacy.md)
+- [ADR-0019](architecture/0019-relay-pairing-player-projector.md) · [ADR-0011](architecture/0011-foundry-write-path-single-workflow-origin.md)
+- [`packages/relay/README.md`](../packages/relay/README.md) — relay wire contract
+- [Even Hub packaging](release/evenhub.md) · [Module release](release/foundry-module.md)
 - [G2 sheet UX](design/g2-sheet-ux.html) — S10 not paired · S11 connecting · S12 offline ([screenshots](design/img/))
-- [G2 thirds layout](design/g2-thirds-layout.md) — superseded layout; pairing mocks P01–P03 still current
 - [`packages/foundry-module/README.md`](../packages/foundry-module/README.md) — security model

@@ -2,16 +2,23 @@
   "package_id": "io.github.aiacos.foundryvtt",
   "edition": "202601",
   "name": "FoundryVTT G2 HUD",
-  "description": "Foundry VTT D&D 5e character sheet HUD on Even Realities G2, streamed directly from your Foundry server and driven by R1 ring gestures.",
+  "description": "Foundry VTT D&D 5e character sheet HUD on Even Realities G2: your character, the scene map and your actions, streamed from your own Foundry tab and driven by R1 ring gestures.",
   "icon": "icon.png",
   "version": "0.3.2",
-  "min_sdk_version": "0.0.15",
+  "min_sdk_version": "0.0.16",
   "entrypoint": "index.html",
   "permissions": [
     {
       "name": "network",
-      "desc": "Sideload-first: the app is served by your Foundry server and scanned by QR, so it talks to Foundry same-origin. This packaged build only reaches the Foundry origin listed here.",
-      "whitelist": ["https://foundry.REPLACE-WITH-YOUR-ORIGIN.example"]
+      "desc": "Talks only to the EvenFoundryVTT relay, which forwards end-to-end encrypted messages between these glasses and the player's own Foundry tab. No Foundry login on the phone.",
+      "whitelist": [
+        "https://evf-relay.evf-relay.workers.dev",
+        "wss://evf-relay.evf-relay.workers.dev"
+      ]
+    },
+    {
+      "name": "camera",
+      "desc": "Scans the pairing QR shown in Foundry («Collega occhiali G2»). The photo is decoded on the phone and never uploaded."
     }
   ],
   "supported_languages": ["it", "en"]

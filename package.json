@@ -21,7 +21,8 @@
     "version-packages": "changeset version && node scripts/sync-app-json.mjs",
     "release:tag": "node scripts/release-tag.mjs",
     "prepare": "husky || true",
-    "wizard": "bash scripts/wizard.sh"
+    "wizard": "bash scripts/wizard.sh",
+    "dev:glasses": "bash scripts/wizard.sh --mode live"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",

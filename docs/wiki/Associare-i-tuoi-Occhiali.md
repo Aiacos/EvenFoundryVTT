@@ -1,73 +1,65 @@
-# Associare i tuoi occhiali
+# Collegare i tuoi occhiali
 
-Gli occhiali si collegano a Foundry come un utente dedicato **«&lt;Giocatore&gt; (G2)»**, proprietario solo del tuo personaggio. Ci sono tre strade: scegli la prima che puoi usare.
+Colleghi gli occhiali **dal tuo Foundry**, in meno di 30 secondi, senza chiedere niente al GM. La tua scheda di Foundry diventa il **projector** dei tuoi occhiali: legge il tuo personaggio ed esegue le azioni a tuo nome. Il telefono non accede mai a Foundry ([Architettura](Architettura)).
 
-| Strada | Quando | Chi agisce |
-|---|---|---|
-| **A · Da solo, dal tuo Foundry** | hai Foundry aperto sul tuo computer o tablet | tu |
-| **B · Con il QR del GM** | non hai Foundry aperto, oppure la strada A non è disponibile | il GM mostra il QR, tu lo inquadri |
-| **C · Codice manuale** | non riesci a inquadrare il QR | tu digiti 16 caratteri |
+## 🕹️ In tre passi
 
-In tutti i casi serve che Foundry sia raggiungibile dal telefono in **HTTPS valido** ([HTTPS e rete](HTTPS-e-Rete)).
+1. **In Foundry** apri **«Collega occhiali G2»** in uno di questi modi:
+   - tasto destro sul **tuo nome** nella lista *Giocatori* (in basso a sinistra) › **Collega occhiali G2**;
+   - la scorciatoia **Alt+G** (modificabile in *Configura controlli*);
+   - *Configura impostazioni* › *EvenFoundryVTT* › **Collega occhiali G2**.
+2. La finestra mostra **subito** il QR e il codice di 16 caratteri. Il personaggio è già scelto (quello assegnato, altrimenti il primo che possiedi); se ne hai più di uno, cambialo dal menu *Personaggio*.
+3. **Sul telefono** apri **FoundryVTT G2 HUD** e tocca **«Scansiona QR»** — oppure, senza fotocamera, **«Inserisci codice»** e digita il codice (con o senza trattini, es. `7QK3-MX9P-2HRA-C4TE`) → **Collega**.
 
-## 🕹️ A · Associazione self-service (ADR-0017)
+Gli occhiali mostrano **Collegamento** (S11) e poi la scheda (S1); in Foundry la finestra passa da sola a **«Occhiali collegati»** e compare la notifica *Occhiali G2 collegati: &lt;personaggio&gt;*.
 
-Prerequisito: il GM ha fatto **una volta** l'abilitazione dei giocatori ([Abilitare i giocatori](Abilitare-i-Giocatori)).
+> In modalità sviluppatore puoi anche inquadrare il QR con l'app **Even Realities** (*Even Hub → Scan QR*): apre la versione web dell'app con il collegamento già dentro ([Installazione](Installazione)).
 
-1. Nel **tuo** Foundry apri **«Associa i miei occhiali»**: da *Configure Settings* (Configura impostazioni) → *EvenFoundryVTT*, oppure clic destro sul **tuo** nome nella lista **Giocatori**. La voce compare solo dopo che il GM ti ha abilitato.
-2. Nella finestra **«EvenFoundryVTT · I miei occhiali G2»** scegli il personaggio e premi **Genera QR**: il tuo browser genera la chiave del dispositivo e mostra il QR.
-3. Sul telefono apri la **Even Realities App** e **inquadra il QR**.
-4. L'app degli occhiali salva le credenziali, le toglie dall'indirizzo, accede come «(G2)» e saluta il projector. Gli occhiali mostrano **Collegamento** (S11), poi la scheda (S1).
-5. Al primo collegamento la chiave del dispositivo viene **ruotata**: il QR che hai inquadrato non funziona più (monouso).
+## 🔐 Regole del QR
 
-Cosa succede dietro le quinte: la password dell'utente «(G2)» ti arriva **sigillata per la tua chiave pubblica** (ECDH P-256 → HKDF → AES-GCM), quindi solo il tuo browser la può aprire. Il tuo browser, a sua volta, sigilla la chiave del dispositivo per ogni GM, così un GM può fare da riserva quando non sei online ([Architettura](Architettura)).
+- **Scade dopo 5 minuti** (conto alla rovescia *Scade tra* nella finestra); poi **Nuovo QR**.
+- **Monouso**: appena gli occhiali si collegano, stanza e chiave cambiano e il QR (e il codice) non valgono più.
+- Se in cima alla finestra compare **«Questo browser non raggiunge il relay»**, il QR non viene mostrato: segui **Come risolvere** e premi **Riprova** ([Rete e relay](HTTPS-e-Rete)).
 
-Messaggi possibili nella finestra:
+## 🕹️ Durante il gioco
 
-| Messaggio | Significato |
+- **Tieni aperta la scheda di Foundry** che ha mostrato il QR: è lei che trasmette il personaggio. Può stare in un'altra finestra o in background.
+- Il collegamento resta **in quel browser**: ogni volta che lo apri su Foundry, gli occhiali si ricollegano **da soli**. Se chiudi Foundry, gli occhiali mostrano **«Foundry del giocatore chiuso»** e aspettano senza fare niente; riaprilo e riparte.
+- Con due schede di Foundry aperte nello stesso browser ne trasmette una sola; se la chiudi, subentra l'altra.
+- Da un **altro computer** (o un altro browser) gli occhiali non si collegano: lì non c'è il collegamento. Ricollegali da lì con un nuovo QR.
+
+## ⚙️ «Occhiali collegati a questo browser»
+
+La parte bassa della finestra elenca gli occhiali collegati da questo browser:
+
+| Stato | Significato |
 |---|---|
-| *Il GM non ha ancora abilitato gli occhiali per te* | chiedi al GM «Abilita occhiali per i giocatori» |
-| *L'accesso degli occhiali attende il browser del GM* | la password arriva appena un GM è collegato: tieni Foundry aperto |
-| *Non possiedi un personaggio da mostrare sugli occhiali* | chiedi al GM la proprietà del personaggio |
+| **online** | occhiali collegati adesso |
+| **in attesa degli occhiali** | la scheda è pronta, gli occhiali non sono collegati (spenti, app chiusa, telefono in background) |
+| **relay non raggiungibile** | questo browser non raggiunge il relay |
 
-> Quando il tuo Foundry è aperto, **sei tu il projector** dei tuoi occhiali: le azioni partono dal tuo client e le schede in chat mostrano il tuo nome. Quando lo chiudi, subentra il GM.
-
-## 🕹️ B · Con il QR del GM
-
-1. Il GM apre **«Associa occhiali G2»** (menu *Configura impostazioni* → *EvenFoundryVTT*, oppure clic destro sul tuo nome nella lista *Giocatori*), sceglie te e il personaggio e preme **Genera QR**.
-2. Inquadri il QR con la **Even Realities App**.
-3. Il QR **scade dopo 5 minuti** e vale **una sola associazione**: al primo collegamento password e chiave vengono ruotate. La finestra del GM passa a **«Occhiali collegati»**.
-
-## 🕹️ C · Codice manuale
-
-Serve quando la fotocamera non collabora, o quando l'app si apre senza credenziali salvate (schermata *Prima configurazione*).
-
-1. Nella Even Realities App apri `https://<foundry>[/<prefisso>]/modules/evenfoundryvtt/g2/index.html`.
-2. Scegli l'utente **«&lt;Giocatore&gt; (G2)»** (la lista è letta dallo stesso server Foundry).
-3. Digita il **codice di 16 caratteri** mostrato sotto il QR (con o senza trattini, es. `7QK3-MX9P-2HRA-C4TE`) → **Collega**.
-
-Il codice segue le stesse regole del QR del GM: monouso, 5 minuti. Nell'associazione self-service si usa il QR.
+Accanto a ogni voce: l'ultimo contatto (*ora*, *N min fa*, *mai collegati*) e **Scollega**, che avvisa gli occhiali e dimentica il collegamento ([Scollegare e sicurezza](Revoca-e-Sicurezza)). **Collega altri occhiali** mostra un nuovo QR.
 
 ## ⚙️ La pagina sul telefono
 
-Dopo l'associazione il telefono mostra la pagina **G2 HUD · Connessione**:
+Dopo il collegamento l'app mostra **G2 HUD · Connessione**:
 
 | Voce | Cosa dice |
 |---|---|
-| **Stato** | *Collegato* / *Collegamento…* / *Non collegato*, con causa e «riprovo tra N s (tent. K)» |
-| **Server · Utente · PG · GM** | il mondo, l'utente «(G2)», il personaggio e chi fa da projector |
-| **Latenza** | andata e ritorno ping → pong attraverso Foundry |
+| **Stato** | *Collegato* / *Collegamento…* / *Non collegato*, con la causa (*la scheda di Foundry che ha collegato questi occhiali è chiusa*, *relay non raggiungibile*, *app in background*) e «riprovo tra N s» |
+| **Relay · Foundry · PG · GM** | il relay, il mondo e l'utente Foundry che trasmette, il personaggio, il GM |
+| **Latenza** | andata e ritorno ping → pong attraverso il relay |
 | **Lingua** | *Segui Foundry* · *Italiano* · *English* |
-| **Mappa** · **Arte mappa** | dimensione delle caselle (*Casella 6/8/12 px*), dimensione del pixel dell'arte (*Pixel ×1/×2/×3*), *Segui il mio token* ([Mappa](Mappa)) |
+| **Mappa** · **Arte mappa** | *Casella 6/8/12 px*, *Pixel ×1/×2/×3*, *Segui il mio token* ([Mappa](Mappa)) |
 | **Scheda** | *Pagina scheda automatica* |
-| Pulsanti | **Riconnetti** · **Disconnetti** · **Diagnostica** (versione Foundry, errori recenti, log di debug, **Dimentica associazione**) |
+| Pulsanti | **Riconnetti** · **Disconnetti** · **Diagnostica** (versione del modulo, errori recenti, log di debug, **Dimentica associazione**) |
 
 Le preferenze restano sul telefono e non modificano mai le impostazioni del mondo.
 
 ## 🐞 Se qualcosa non va
 
-- *credenziali rifiutate* → QR già usato, scaduto o revocato: rifai l'associazione.
-- *nessun GM connesso* → nessun projector risponde (né il tuo client né un GM con la chiave).
-- Pagina bianca → certificato non valido.
+- *Foundry del giocatore chiuso* → riapri Foundry nel browser che ha mostrato il QR.
+- *Relay non raggiungibile* → rete del telefono o del computer ([Rete e relay](HTTPS-e-Rete)).
+- Il QR non si legge → usa **«Inserisci codice»**; QR scaduto → **Nuovo QR**.
 
 Tabella completa: [Risoluzione problemi](Risoluzione-Problemi).

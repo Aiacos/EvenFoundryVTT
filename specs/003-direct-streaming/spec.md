@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-23
 
-**Status**: In progress (merged onto `develop` history; code ports and hardware GO/NO-GO pending)
+**Status**: Done (shipped in v0.2.0); pairing / hosting / transport **superseded** by [`004-relay-pairing`](../004-relay-pairing/spec.md) (ADR-0019, 2026-09-25) — the D&D-sheet HUD, readers and write path stay.
 
 **Input**: Maintainer request: "port the direct-streaming branch (no bridge, player-owned glasses, D&D-sheet HUD) onto `origin/develop`, keeping the remote history and every real-hardware fix found there."
 

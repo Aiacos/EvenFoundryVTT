@@ -1,8 +1,13 @@
 /**
- * Entry-point tests: `init` registers settings + pairing menus, `ready` starts the
- * direct projector on every client (ADR-0016, ADR-0017) and syncs key custody.
+ * Entry-point tests: `init` registers settings + «Collega occhiali G2» (menu, Players
+ * list, keybinding); `ready` starts the projector on every client (ADR-0019).
  */
-import { DIRECT_SOCKET_EVENT } from '@evf/shared-protocol';
+import {
+  DEFAULT_APP_URL,
+  DEFAULT_RELAY_URL,
+  generateDeviceKey,
+  generateRoomId,
+} from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FoundryMock, installFoundry, makeUser } from './__tests__/direct-fixtures.js';
 
@@ -11,6 +16,19 @@ let f: FoundryMock;
 beforeEach(() => {
   vi.resetModules();
   f = installFoundry();
+  // No real sockets in tests: the projector's relay links never connect.
+  vi.stubGlobal(
+    'WebSocket',
+    class {
+      readyState = 0;
+      onopen = null;
+      onmessage = null;
+      onclose = null;
+      onerror = null;
+      send(): void {}
+      close(): void {}
+    },
+  );
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,7 +44,7 @@ describe('module entry', () => {
     expect(f.hooks.once).toHaveBeenCalledWith('ready', expect.any(Function));
   });
 
-  it('MOD-02 init registers the hidden pairing settings and the restricted pairing menu', async () => {
+  it('MOD-02 init registers the client settings and an unrestricted pairing menu', async () => {
     await load();
     f.fire('init');
     const settings = f.game.settings as {
@@ -36,42 +54,39 @@ describe('module entry', () => {
     expect(
       settings.register.mock.calls.map((c) => [c[1], (c[2] as { scope: string }).scope]),
     ).toEqual([
-      ['g2Devices', 'world'],
-      ['g2DeviceKeys', 'client'],
-      ['identityKey', 'client'],
-      ['g2Access', 'world'],
+      ['g2Pairings', 'client'],
+      ['appUrl', 'client'],
+      ['relayUrl', 'client'],
     ]);
     expect(settings.registerMenu).toHaveBeenCalledWith(
       'evenfoundryvtt',
-      'pairMyG2',
-      expect.objectContaining({ name: 'evf.settings.pair_self_button', restricted: false }),
-    );
-    expect(settings.registerMenu).toHaveBeenCalledWith(
-      'evenfoundryvtt',
       'pairG2',
-      expect.objectContaining({
-        name: 'evf.settings.pair_button',
-        restricted: true,
-        type: expect.any(Function),
-      }),
+      expect.objectContaining({ name: 'evf.settings.pair_button', restricted: false }),
     );
+    expect(f.keybindings.has('evenfoundryvtt.pairGlasses')).toBe(true);
   });
 
-  it('MOD-02b init adds «Pair G2 glasses» to the Players list context menu', async () => {
+  it('MOD-02b pairing endpoints default to production and honour overrides', async () => {
     await load();
     f.fire('init');
-    expect(f.hooks.on).toHaveBeenCalledWith('getUserContextOptions', expect.any(Function));
+    const { pairingEndpoints } = await import('./settings.js');
+    expect(pairingEndpoints()).toEqual({ appUrl: DEFAULT_APP_URL, relayUrl: DEFAULT_RELAY_URL });
+    f.settings.set('evenfoundryvtt.relayUrl', ' ws://10.0.0.2:8787 ');
+    f.settings.set('evenfoundryvtt.appUrl', '');
+    expect(pairingEndpoints()).toEqual({
+      appUrl: DEFAULT_APP_URL,
+      relayUrl: 'ws://10.0.0.2:8787',
+    });
+  });
 
-    // Clicking the entry opens the pairing window preselected on that player.
-    f.users.push(makeUser('p1', 'Luca', { character: { id: 'mira' } }));
+  it('MOD-02c the Players list entry and the keybinding open the window; failures are logged', async () => {
+    await load();
+    f.fire('init');
+    f.users.push(makeUser('p1', 'Luca'));
     const items: Array<{ callback: (li: HTMLElement) => void }> = [];
     f.fire('getUserContextOptions', {}, items);
     const li = document.createElement('li');
     li.dataset.userId = 'p1';
-    items[0]?.callback(li);
-    await vi.waitFor(() => expect(f.notifications.error).not.toHaveBeenCalled());
-
-    // A failure while opening is logged, never thrown into Foundry's menu code.
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     Object.defineProperty(foundry.applications, 'instances', {
       get() {
@@ -79,6 +94,7 @@ describe('module entry', () => {
       },
     });
     items[0]?.callback(li);
+    f.keybindings.get('evenfoundryvtt.pairGlasses')?.onDown?.();
     await vi.waitFor(() =>
       expect(error).toHaveBeenCalledWith(
         '[EVF] could not open the pairing window',
@@ -104,77 +120,59 @@ describe('module entry', () => {
     expect(detectedLocale).toBe('en');
   });
 
-  it('MOD-05 ready on a GM client starts the projector and wires delta sources', async () => {
+  it('MOD-05 ready starts the projector and wires every delta source', async () => {
     await load();
+    f.fire('init');
     f.fire('ready');
-    expect((f.game.socket as { on: ReturnType<typeof vi.fn> }).on).toHaveBeenCalledWith(
-      DIRECT_SOCKET_EVENT,
-      expect.any(Function),
-    );
-    const hooks = f.hooks.on.mock.calls.map((c) => c[0]);
-    for (const h of [
-      'updateToken',
-      'createChatMessage',
-      'updateActor',
-      'updateCombat',
-      'dnd5e.preUseActivity',
-    ]) {
-      expect(hooks).toContain(h);
-    }
+    await vi.waitFor(() => {
+      const hooks = f.hooks.on.mock.calls.map((c) => c[0]);
+      for (const h of [
+        'updateToken',
+        'createChatMessage',
+        'updateActor',
+        'updateCombat',
+        'dnd5e.preUseActivity',
+      ]) {
+        expect(hooks).toContain(h);
+      }
+    });
   });
 
-  it('MOD-07 combat trackers follow the paired actors (not the GM character) on turn change', async () => {
+  it('MOD-06 combat trackers follow the paired actors on turn change', async () => {
     const mod = await load();
     f.fire('init');
     const store = await import('./direct/pairing-store.js');
-    await store.upsertDevice(
-      {
-        g2UserId: 'g2a',
-        playerUserId: 'p1',
-        actorId: 'thorin',
-        label: 'Luca (G2)',
-        createdAt: 0,
-        lastSeenAt: null,
-        pendingRotation: false,
-      },
-      'k',
-    );
+    await store.savePairing({
+      deviceId: 'dev1',
+      room: generateRoomId(),
+      key: generateDeviceKey(),
+      actorId: 'thorin',
+      label: 'Thorin',
+      createdAt: 0,
+      lastSeenAt: null,
+      expiresAt: null,
+    });
     const push = vi.spyOn(mod.projector, 'pushDelta');
     f.fire('ready');
+    await vi.waitFor(() =>
+      expect(f.hooks.on.mock.calls.map((c) => c[0])).toContain('updateCombat'),
+    );
     f.fire('updateCombat', {}, { turn: 1 }, {}, 'gm1');
     const topics = push.mock.calls.map((c) => [c[0], (c[1] as { actorId?: string }).actorId]);
     expect(topics).toContainEqual(['r1.action.economy', 'thorin']);
     expect(topics).toContainEqual(['r1.movement.budget', 'thorin']);
+    mod.projector.stop();
   });
 
-  it('MOD-06 ready on a player client also runs a projector and publishes its identity key', async () => {
-    f.game.user.isGM = false;
-    await load();
-    f.fire('ready');
-    expect((f.game.socket as { on: ReturnType<typeof vi.fn> }).on).toHaveBeenCalledWith(
-      DIRECT_SOCKET_EVENT,
-      expect.any(Function),
-    );
-    await vi.waitFor(() => expect(f.game.user.flags.evenfoundryvtt?.pub).toBeDefined(), {
-      timeout: 5_000,
-    });
-    const hooks = f.hooks.on.mock.calls.map((c) => c[0]);
-    expect(hooks).toContain('updateUser');
-    expect(hooks).not.toContain('createActor'); // ownership mirror is GM-only
-  });
-
-  it('MOD-08 ready on a GM client starts the ownership mirror; custody failures are logged', async () => {
+  it('MOD-07 a failing projector start is logged, never thrown into Foundry', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    (f.game.settings as { set: ReturnType<typeof vi.fn> }).set.mockRejectedValue(new Error('db'));
+    (f.game.settings as { get: ReturnType<typeof vi.fn> }).get.mockImplementation(() => {
+      throw new Error('storage');
+    });
     await load();
     f.fire('ready');
-    await vi.waitFor(
-      () => expect(f.hooks.on.mock.calls.map((c) => c[0])).toContain('createActor'),
-      { timeout: 5_000 },
-    );
-    expect(error).toHaveBeenCalledWith(
-      '[EVF] custody sync: publishing the identity key failed',
-      expect.any(Error),
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith('[EVF] projector failed to start', expect.any(Error)),
     );
     error.mockRestore();
   });

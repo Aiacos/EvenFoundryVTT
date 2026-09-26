@@ -1,9 +1,10 @@
 /**
  * Phone-side page shown inside the Even Realities App WebView.
  *
- * - **P03** (`unpaired` / `revoked`): explanation + manual "(G2)" user / 16-char code form.
- * - **P02** (otherwise): status, server, user, character, GM, latency, device settings,
- *   Reconnect / Disconnect and a collapsible diagnostics section.
+ * - **P03** (`unpaired` / `revoked`): «Scansiona QR» (in-app camera, when the Even App
+ *   bridge is there) + the 16-char code form — one tap, or one code, and nothing else.
+ * - **P02** (otherwise): status, relay, Foundry user, character, GM, latency, device
+ *   settings, Reconnect / Disconnect and a collapsible diagnostics section.
  * - In debug/demo mode only (a debug log is registered), the tail of the debug channel is
  *   listed in "Diagnostica" (P02) or in its own disclosure (P03).
  *
@@ -22,6 +23,7 @@ import {
   DEFAULT_MAP_PIXEL_SIZE,
 } from '../state/app-store.js';
 import { type PhoneStrings, phoneStrings } from './i18n.js';
+import { type CameraLike, type QrScanDeps, QrScanError, scanQr } from './qr-scan.js';
 
 /** Session surface the phone page drives. */
 export type PhoneSession = Pick<
@@ -29,8 +31,8 @@ export type PhoneSession = Pick<
   | 'reconnect'
   | 'disconnect'
   | 'forget'
-  | 'pairManual'
-  | 'listUsers'
+  | 'pairCode'
+  | 'pairScanned'
   | 'updateSettings'
   | 'locale'
   | 'info'
@@ -63,11 +65,9 @@ export function statusLine(state: AppState, t: PhoneStrings): string {
   if (c.status === 'online') return t.statusOnline;
   if (c.status === 'connecting') return t.statusConnecting;
   const cause = {
-    'no-gm': t.causeNoGm,
+    'no-projector': t.causeNoProjector,
     network: t.causeNetwork,
-    auth: t.causeAuth,
     background: t.causeBackground,
-    access: t.causeAccess,
   } as const;
   const parts = [t.statusOffline];
   if (c.cause !== undefined) parts.push(cause[c.cause]);
@@ -228,7 +228,7 @@ function buildConnectionView(
       values.status.dataset.status = c.status;
       values.server.textContent = c.server ?? t.unknown;
       values.user.textContent = c.userName ?? t.unknown;
-      values.character.textContent = c.actorName ?? t.unknown;
+      values.character.textContent = c.actorName ?? c.label ?? t.unknown;
       values.gm.textContent =
         c.gmName === undefined
           ? t.unknown
@@ -242,7 +242,7 @@ function buildConnectionView(
       follow.checked = state.settings.followToken;
       autoSheet.checked = state.settings.autoSheetPage;
       disconnect.disabled = c.status === 'offline' && c.retryInMs === undefined;
-      version.textContent = `${t.foundryVersion}: ${info.foundryVersion ?? t.unknown} · ${t.moduleVersion}: ${info.moduleVersion ?? t.unknown}`;
+      version.textContent = `${t.moduleVersion}: ${info.moduleVersion ?? t.unknown}`;
       errors.replaceChildren(
         ...(info.diagnostics.length === 0
           ? [el('li', {}, [t.noErrors])]
@@ -262,12 +262,31 @@ function buildConnectionView(
 function buildSetupView(
   session: PhoneSession,
   t: PhoneStrings,
+  camera: CameraLike | null,
+  scanDeps: QrScanDeps | undefined,
   debugLog: DebugLogReader | null,
 ): View {
   const notice = el('p', { class: 'evf-notice', role: 'alert', hidden: '' }, [t.revokedNotice]);
-  const users = el('select', { id: 'evf-user', name: 'user', required: '' }, [
-    el('option', { value: '' }, [t.loadingUsers]),
+  const error = el('p', { class: 'evf-error', role: 'alert', 'data-field': 'error' });
+
+  const scan = el('button', { type: 'button', class: 'evf-primary', 'data-action': 'scan' }, [
+    t.scan,
   ]);
+  scan.addEventListener('click', () => {
+    if (camera === null) return;
+    error.textContent = '';
+    scan.disabled = true;
+    scanQr(camera, scanDeps)
+      .then((text) => (text === null ? undefined : session.pairScanned(text)))
+      .catch((err: unknown) => {
+        error.textContent = err instanceof QrScanError ? t.noQrInPhoto : t.notPairingQr;
+        if (!(err instanceof QrScanError)) console.warn(`[phone] scan failed: ${String(err)}`);
+      })
+      .finally(() => {
+        scan.disabled = false;
+      });
+  });
+
   const code = el('input', {
     id: 'evf-code',
     name: 'code',
@@ -280,25 +299,17 @@ function buildSetupView(
     maxlength: '24',
     required: '',
   });
-  const submit = el('button', { type: 'submit', class: 'evf-primary' }, [t.connect]);
-  const error = el('p', { class: 'evf-error', role: 'alert', 'data-field': 'error' });
+  const submit = el('button', { type: 'submit' }, [t.connect]);
   const form = el('form', { class: 'evf-card evf-form', novalidate: '' }, [
-    el('label', { for: 'evf-user' }, [t.user]),
-    users,
     el('label', { for: 'evf-code' }, [t.code]),
     code,
     submit,
-    error,
   ]);
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     error.textContent = '';
-    if (users.value === '') {
-      error.textContent = t.chooseUser;
-      return;
-    }
     submit.disabled = true;
-    session.pairManual(users.value, code.value).then(
+    session.pairCode(code.value).then(
       () => {
         submit.disabled = false;
       },
@@ -309,30 +320,17 @@ function buildSetupView(
     );
   });
 
-  session.listUsers().then(
-    (list) => {
-      users.replaceChildren(
-        ...(list.length === 0
-          ? [el('option', { value: '' }, [t.noUsers])]
-          : list.map((u) => el('option', { value: u.id }, [u.name]))),
-      );
-      if (list.length === 0) error.textContent = t.noUsers;
-    },
-    () => {
-      users.replaceChildren(el('option', { value: '' }, [t.usersFailed]));
-      error.textContent = t.usersFailed;
-    },
-  );
-
   const node = el('section', { 'data-view': 'setup' }, [
     header(t.titleSetup),
     el('div', { class: 'evf-card' }, [
       notice,
       el('p', {}, [t.noPairing]),
       el('p', {}, [t.easiest, ' ', t.easiestSteps]),
+      ...(camera === null ? [] : [scan]),
     ]),
     el('p', { class: 'evf-divider' }, [t.orCode]),
     form,
+    error,
     el('p', { class: 'evf-dim' }, [t.help]),
   ]);
   const debugTail = debugLog === null ? null : buildDebugTail(debugLog, t);
@@ -355,15 +353,19 @@ function buildSetupView(
  * info. The view is rebuilt only when its kind (P02/P03) or locale changes, so form input
  * and the diagnostics disclosure state survive updates.
  *
+ * @param camera - The Even App bridge camera (null in a plain browser: no «Scansiona QR»).
  * @param debugLog - Debug channel to list (defaults to the registered one; `null` in
  *   normal sessions, which hides the debug tail).
+ * @param scanDeps - QR decoding overrides (tests).
  * @returns unmount function
  */
 export function mountPhonePage(
   root: HTMLElement,
   store: AppStore,
   session: PhoneSession,
+  camera: CameraLike | null,
   debugLog: DebugLogReader | null = activeDebugLog(),
+  scanDeps?: QrScanDeps,
 ): () => void {
   let key = '';
   let view: View | null = null;
@@ -380,7 +382,7 @@ export function mountPhonePage(
       const t = phoneStrings(locale);
       view =
         kind === 'setup'
-          ? buildSetupView(session, t, debugLog)
+          ? buildSetupView(session, t, camera, scanDeps, debugLog)
           : buildConnectionView(session, t, debugLog);
       root.lang = locale;
       root.replaceChildren(view.node);

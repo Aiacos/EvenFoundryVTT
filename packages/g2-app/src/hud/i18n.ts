@@ -11,7 +11,7 @@
  * @see docs/design/g2-sheet-ux.html
  */
 import type { AbilityKey, SkillKey } from '@evf/shared-protocol';
-import type { AppSettings } from '../state/app-store.js';
+import type { AppSettings, ConnectionState } from '../state/app-store.js';
 
 /** Effective HUD locale (resolved by `resolveLocale` in `state/app-store.ts`). */
 export type HudLocale = 'it' | 'en';
@@ -106,9 +106,9 @@ export interface HudStrings {
   exitHint: string;
   connectingTo: (server: string) => string;
   steps: {
-    server: string;
-    login: (user: string) => string;
-    gm: (gm: string) => string;
+    relay: string;
+    projector: string;
+    paired: (user: string) => string;
     character: (actor: string) => string;
     scene: string;
   };
@@ -176,7 +176,7 @@ export interface HudStrings {
   downRoll: string;
   downTally: (success: number, failure: number) => string;
   offlineTitle: string;
-  offlineCauses: Record<'no-gm' | 'network' | 'auth' | 'background' | 'access', string>;
+  offlineCauses: Record<NonNullable<ConnectionState['cause']>, string>;
   retryIn: (seconds: number, attempt: number) => string;
   dataAge: (minutes: number) => string;
   frozen: string;
@@ -292,19 +292,19 @@ const IT: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'OCCHIALI NON ANCORA ASSOCIATI',
-  revokedSubtitle: 'ASSOCIAZIONE REVOCATA DAL GM',
+  revokedSubtitle: 'OCCHIALI SCOLLEGATI DA FOUNDRY',
   pairSteps: [
-    ['SU FOUNDRY: IMPOSTAZIONI › EVENFOUNDRYVTT', '› «ASSOCIA OCCHIALI G2» MOSTRA UN QR'],
-    ['SUL TELEFONO: EVEN REALITIES APP', '› INQUADRA IL QR'],
+    ['SU FOUNDRY: TASTO DESTRO SUL TUO NOME', '› «COLLEGA OCCHIALI G2» MOSTRA UN QR'],
+    ['SUL TELEFONO: APP «FOUNDRYVTT G2 HUD»', '› «SCANSIONA QR» O INSERISCI IL CODICE'],
     ['INDOSSA GLI OCCHIALI: LA SCHEDA COMPARE', 'DA SOLA, COLLEGATA AL TUO PERSONAGGIO'],
   ],
   scan: 'SCANSIONA',
   exitHint: '●● ESCI',
   connectingTo: (s) => `COLLEGAMENTO A ${s}`,
   steps: {
-    server: 'SERVER RAGGIUNGIBILE (HTTPS)',
-    login: (u) => `ACCESSO COME «${u}»`,
-    gm: (g) => `GM CONNESSO: ${g}`,
+    relay: 'RELAY RAGGIUNGIBILE',
+    projector: 'FOUNDRY DEL GIOCATORE APERTO',
+    paired: (u) => `COLLEGATO A «${u}»`,
     character: (a) => `RICEVO LA SCHEDA DI ${a}…`,
     scene: 'RICEVO LA SCENA',
   },
@@ -372,11 +372,9 @@ const IT: HudStrings = {
   downTally: (s, f) => `Successi ${s}/3 · Fallimenti ${f}/3`,
   offlineTitle: '▲ Offline',
   offlineCauses: {
-    'no-gm': 'Nessun GM connesso',
-    network: 'Foundry non risponde',
-    auth: 'Accesso rifiutato',
+    'no-projector': 'Foundry del giocatore chiuso',
+    network: 'Relay non raggiungibile',
     background: 'Telefono in background',
-    access: 'Serve accesso esterno',
   },
   retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
   dataAge: (m) => `dati di ${m} min fa`,
@@ -493,19 +491,19 @@ const EN: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'GLASSES NOT PAIRED YET',
-  revokedSubtitle: 'PAIRING REVOKED BY THE GM',
+  revokedSubtitle: 'GLASSES DISCONNECTED FROM FOUNDRY',
   pairSteps: [
-    ['ON FOUNDRY: SETTINGS › EVENFOUNDRYVTT', '› «PAIR G2 GLASSES» SHOWS A QR CODE'],
-    ['ON THE PHONE: EVEN REALITIES APP', '› SCAN THE QR CODE'],
+    ['ON FOUNDRY: RIGHT-CLICK YOUR NAME', '› «CONNECT G2 GLASSES» SHOWS A QR CODE'],
+    ['ON THE PHONE: «FOUNDRYVTT G2 HUD» APP', '› «SCAN QR» OR ENTER THE CODE'],
     ['WEAR THE GLASSES: THE SHEET APPEARS', 'BY ITSELF, LINKED TO YOUR CHARACTER'],
   ],
   scan: 'SCAN',
   exitHint: '●● EXIT',
   connectingTo: (s) => `CONNECTING TO ${s}`,
   steps: {
-    server: 'SERVER REACHABLE (HTTPS)',
-    login: (u) => `SIGNED IN AS «${u}»`,
-    gm: (g) => `GM CONNECTED: ${g}`,
+    relay: 'RELAY REACHABLE',
+    projector: "PLAYER'S FOUNDRY TAB OPEN",
+    paired: (u) => `LINKED TO «${u}»`,
     character: (a) => `RECEIVING ${a}'S SHEET…`,
     scene: 'RECEIVING THE SCENE',
   },
@@ -573,11 +571,9 @@ const EN: HudStrings = {
   downTally: (s, f) => `Successes ${s}/3 · Failures ${f}/3`,
   offlineTitle: '▲ Offline',
   offlineCauses: {
-    'no-gm': 'No GM connected',
-    network: 'Foundry not responding',
-    auth: 'Login rejected',
+    'no-projector': "Player's Foundry closed",
+    network: 'Relay unreachable',
     background: 'Phone in background',
-    access: 'Outside login needed',
   },
   retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
   dataAge: (m) => `data from ${m} min ago`,

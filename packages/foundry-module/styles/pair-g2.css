@@ -1,9 +1,9 @@
 /*
- * «Associa occhiali G2» window (mock P01) — templates/pair-g2.hbs.
+ * «Collega occhiali G2» window (ADR-0019) — templates/pair-g2.hbs.
  *
  * Everything is scoped under `.evf-pair`. Colours come from Foundry's theme variables
  * (v13+ `.theme-light` / `.theme-dark` applications) with fallbacks, so the window
- * follows the GM's interface theme. Accent = the EVF sheet red (docs/design/g2-sheet-ux.html).
+ * follows the user's interface theme. Accent = the EVF sheet red (docs/design/g2-sheet-ux.html).
  */
 
 .evf-pair {
@@ -281,64 +281,13 @@
   width: auto;
 }
 
-/* ── Checks: status pills + actionable notices ────────────────────────── */
+/* ── Notices (no character, relay unreachable, expired) ─────────────────── */
 
-.evf-pair__checks {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.evf-pair__section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.evf-pair__link-btn {
-  flex: 0 0 auto;
-  width: auto;
-  padding: 0 0.4rem;
-  border: none;
-  background: none;
-  color: var(--evf-muted);
-  font-size: 0.8rem;
-}
-
-.evf-pair__link-btn:hover {
-  color: var(--evf-ink);
-  box-shadow: none;
-}
-
-.evf-pair__pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.evf-pair__pill {
-  --evf-tone: var(--evf-ok);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--evf-tone) 55%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--evf-tone) 12%, transparent);
-  font-size: 0.85rem;
-}
-
-.evf-pair__pill i {
-  color: var(--evf-tone);
-}
-
-.evf-pair__pill--warn,
 .evf-pair__notice,
 .evf-pair__notice--warn {
   --evf-tone: var(--evf-warn);
 }
 
-.evf-pair__pill--error,
 .evf-pair__notice--error {
   --evf-tone: var(--evf-error);
 }
@@ -363,17 +312,6 @@
 .evf-pair__notice a {
   font-weight: 600;
   white-space: nowrap;
-}
-
-.evf-pair__url {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--evf-muted);
-  overflow-wrap: anywhere;
-}
-
-.evf-pair__url code {
-  font-family: var(--evf-mono);
 }
 
 /* ── Paired devices ───────────────────────────────────────────────────── */
@@ -405,9 +343,14 @@
   box-shadow: inset 0 0 0 2px var(--evf-muted);
 }
 
-.evf-pair__dot--on {
-  background: var(--evf-ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--evf-ok) 25%, transparent);
+.evf-pair__dot--online {
+  background: var(--color-level-success, #3fb950);
+  box-shadow: none;
+}
+
+.evf-pair__dot--waiting {
+  background: var(--color-level-warning, #d29922);
+  box-shadow: none;
 }
 
 .evf-pair__device-name {
@@ -435,64 +378,6 @@
   border-color: var(--evf-error);
   background: var(--evf-error);
   color: #fff;
-}
-
-/* ── GM: glasses enablement per player (ADR-0017) ─────────────────────── */
-
-.evf-pair__enable {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--evf-rule);
-  border-radius: var(--evf-radius);
-  background: var(--evf-panel);
-}
-
-.evf-pair__player {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-height: 2.4rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--evf-rule);
-}
-
-.evf-pair__player:last-child {
-  border-bottom: none;
-}
-
-.evf-pair__player > button {
-  flex: 0 0 auto;
-  width: auto;
-  margin-left: auto;
-}
-
-.evf-pair__status {
-  --evf-tone: var(--evf-muted);
-  padding: 0.1rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--evf-tone) 55%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--evf-tone) 12%, transparent);
-  color: var(--evf-ink);
-  font-size: 0.8rem;
-}
-
-.evf-pair__status--enabled {
-  --evf-tone: var(--evf-warn);
-}
-
-.evf-pair__status--paired {
-  --evf-tone: var(--evf-accent);
-}
-
-.evf-pair__status--online {
-  --evf-tone: var(--evf-ok);
-}
-
-.evf-pair__primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ── Footer: one primary action ───────────────────────────────────────── */

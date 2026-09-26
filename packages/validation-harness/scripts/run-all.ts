@@ -77,10 +77,10 @@ const TESTS: ReadonlyArray<TestPlan> = [
     description: 'Palette calibration ramp + perceptual derivation (Pitfall 15)',
   },
   {
-    id: 'adr-0016-direct-sideload',
-    file: 'direct-sideload.ts',
+    id: 'adr-0019-relay',
+    file: 'relay-check.ts',
     hardware: true,
-    description: 'ADR-0016 QR sideload served by Foundry (needs FOUNDRY_URL + phone + G2)',
+    description: 'ADR-0019 room relay + pairing (RELAY_URL optional; Foundry + phone + G2)',
   },
 ];
 

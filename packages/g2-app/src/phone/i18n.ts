@@ -1,7 +1,7 @@
 /**
  * Phone page strings (P02 / P03), IT + EN — EN is the canonical fallback (Specs.md §7.16.5).
- * Terminology matches the glasses UI and the Foundry pairing dialog (P01): "Associa
- * occhiali G2", "(G2)" user, 16-char code.
+ * Terminology matches the glasses UI and the Foundry pairing window (ADR-0019): «Collega
+ * occhiali G2», «Scansiona QR», 16-char code.
  *
  * @see docs/design/g2-thirds-layout.md §P02 §P03
  */
@@ -10,8 +10,8 @@ const EN = {
   titleConnection: 'G2 HUD · Connection',
   titleSetup: 'G2 HUD · First setup',
   status: 'Status',
-  server: 'Server',
-  user: 'User',
+  server: 'Relay',
+  user: 'Foundry',
   character: 'Character',
   gm: 'GM',
   latency: 'Latency',
@@ -22,12 +22,10 @@ const EN = {
   statusConnecting: 'Connecting…',
   statusOffline: 'Offline',
   retryIn: (s: number, attempt: number) => `retrying in ${s} s (attempt ${attempt})`,
-  causeNoGm: 'no GM connected',
-  causeNetwork: 'Foundry not responding',
-  causeAuth: 'credentials rejected',
+  causeNoProjector:
+    'the Foundry tab that paired these glasses is closed — open Foundry there and they reconnect by themselves',
+  causeNetwork: 'relay not reachable',
   causeBackground: 'app in background',
-  causeAccess:
-    'The Forge is intercepting the login: sign in to The Forge on this phone and turn off "Automatic User Management" (My Foundry → Configure Players), then scan the QR again',
   gmOnline: (name: string) => `${name} (online)`,
   autoLocale: 'Follow Foundry',
   italian: 'Italiano',
@@ -40,7 +38,6 @@ const EN = {
   reconnect: 'Reconnect',
   disconnect: 'Disconnect',
   diagnostics: 'Diagnostics',
-  foundryVersion: 'Foundry version',
   moduleVersion: 'EVF module',
   noErrors: 'No recent errors.',
   debugLog: 'Debug log (latest first)',
@@ -48,18 +45,18 @@ const EN = {
   forget: 'Forget pairing',
   unknown: '—',
   noPairing: 'No pairing found.',
-  revokedNotice: 'The pairing was revoked or the code expired. Pair again.',
-  easiest: 'The easiest way:',
-  easiestSteps: 'in Foundry open “Pair G2 glasses” and scan the QR with the Even App.',
+  revokedNotice: 'The glasses were disconnected from Foundry. Connect them again.',
+  easiest: 'In Foundry:',
+  easiestSteps:
+    'right-click your name in the Players list › «Connect G2 glasses» (or Alt+G), then scan the QR.',
+  scan: 'Scan QR',
+  noQrInPhoto: 'No QR found in the photo: frame the whole QR and try again.',
+  notPairingQr: 'That is not an EvenFoundryVTT pairing QR.',
   orCode: 'or enter the code',
   code: 'Code',
   connect: 'Connect',
-  loadingUsers: 'Loading users…',
-  noUsers: 'No “(G2)” user on this server. Ask the GM to pair the glasses first.',
-  usersFailed: 'Could not read users from Foundry.',
   invalidCode: 'Invalid code: 16 characters, e.g. 7QK3-MX9P-2HRA-C4TE.',
-  chooseUser: 'Choose a user.',
-  help: '“(G2)” users are read from this Foundry server. The code is shown under the QR in Foundry (single use, 5 min).',
+  help: 'The code is shown under the QR in Foundry (single use, 5 min). No Foundry login is needed on the phone.',
 };
 
 /** String table shape (EN is canonical). */
@@ -69,8 +66,8 @@ const IT: PhoneStrings = {
   titleConnection: 'G2 HUD · Connessione',
   titleSetup: 'G2 HUD · Prima configurazione',
   status: 'Stato',
-  server: 'Server',
-  user: 'Utente',
+  server: 'Relay',
+  user: 'Foundry',
   character: 'PG',
   gm: 'GM',
   latency: 'Latenza',
@@ -81,12 +78,10 @@ const IT: PhoneStrings = {
   statusConnecting: 'Collegamento…',
   statusOffline: 'Non collegato',
   retryIn: (s, attempt) => `riprovo tra ${s} s (tent. ${attempt})`,
-  causeNoGm: 'nessun GM connesso',
-  causeNetwork: 'Foundry non risponde',
-  causeAuth: 'credenziali rifiutate',
+  causeNoProjector:
+    'la scheda di Foundry che ha collegato questi occhiali è chiusa — riapri Foundry lì e si ricollegano da soli',
+  causeNetwork: 'relay non raggiungibile',
   causeBackground: 'app in background',
-  causeAccess:
-    "The Forge sta intercettando l'accesso: accedi a The Forge su questo telefono e disattiva «Automatic User Management» (My Foundry → Configure Players), poi inquadra di nuovo il QR",
   gmOnline: (name) => `${name} (online)`,
   autoLocale: 'Segui Foundry',
   italian: 'Italiano',
@@ -99,7 +94,6 @@ const IT: PhoneStrings = {
   reconnect: 'Riconnetti',
   disconnect: 'Disconnetti',
   diagnostics: 'Diagnostica',
-  foundryVersion: 'Versione Foundry',
   moduleVersion: 'Modulo EVF',
   noErrors: 'Nessun errore recente.',
   debugLog: 'Log di debug (più recenti in alto)',
@@ -107,18 +101,18 @@ const IT: PhoneStrings = {
   forget: 'Dimentica associazione',
   unknown: '—',
   noPairing: 'Nessuna associazione trovata.',
-  revokedNotice: 'L’associazione è stata revocata o il codice è scaduto. Associa di nuovo.',
-  easiest: 'Il modo più semplice:',
-  easiestSteps: 'su Foundry apri «Associa occhiali G2» e inquadra il QR con la Even App.',
+  revokedNotice: 'Gli occhiali sono stati scollegati da Foundry. Collegali di nuovo.',
+  easiest: 'Su Foundry:',
+  easiestSteps:
+    'tasto destro sul tuo nome nella lista giocatori › «Collega occhiali G2» (o Alt+G), poi inquadra il QR.',
+  scan: 'Scansiona QR',
+  noQrInPhoto: 'Nessun QR nella foto: inquadra tutto il QR e riprova.',
+  notPairingQr: 'Questo non è un QR di associazione EvenFoundryVTT.',
   orCode: 'oppure inserisci il codice',
   code: 'Codice',
   connect: 'Collega',
-  loadingUsers: 'Carico gli utenti…',
-  noUsers: 'Nessun utente «(G2)» su questo server. Chiedi al GM di associare prima gli occhiali.',
-  usersFailed: 'Impossibile leggere gli utenti da Foundry.',
   invalidCode: 'Codice non valido: 16 caratteri, es. 7QK3-MX9P-2HRA-C4TE.',
-  chooseUser: 'Scegli un utente.',
-  help: 'Utenti «(G2)» letti da questo server Foundry. Il codice è sotto il QR su Foundry (monouso, 5 min).',
+  help: 'Il codice è sotto il QR su Foundry (monouso, 5 min). Sul telefono non serve nessun login a Foundry.',
 };
 
 /** Returns the string table for a locale. */

@@ -9,10 +9,10 @@
   </head>
   <body>
     <!--
-      Single entry of the G2 app, served by Foundry at
-      <foundry>[/<prefix>]/modules/evenfoundryvtt/g2/index.html and QR-sideloaded into the
-      Even Realities App (ADR-0016). The phone page mounts in #evf-phone; the glasses HUD is
-      driven through the Even Hub SDK bridge.
+      Single entry of the G2 app (ADR-0019): the Even Hub package, the hosted page the
+      pairing QR opens (GitHub Pages /app/) and the Vite dev server all load this file. The
+      phone page mounts in #evf-phone; the glasses HUD is driven through the Even Hub SDK
+      bridge.
     -->
     <main id="evf-phone"></main>
     <script type="module" src="./main.ts"></script>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-**v0.12.0 — direct Foundry → G2 streaming, ported onto `develop`** ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md) · [ADR-0017](docs/architecture/0017-player-owned-glasses-hybrid-projector.md) · [ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md)). The bridge-era line v0.9.14 → v0.11.0 (releases up to `v0.1.55`) is kept in git history and in the `Specs.md` changelog; its Node bridge, `packages/foundry-mcp`, `deploy/` (Docker Compose), bearer pairing, canvas/player-view map capture, raster HUD substrates and voice were **removed**. The g2-app is built into `packages/foundry-module/g2/`, Foundry serves it at `/modules/evenfoundryvtt/g2/index.html`, and the Even Realities App loads it by QR sideload. The **projector** is the player's own Foundry client when online, else an active GM holding the device key (hybrid, ADR-0017).
+**v0.13.0 — relay pairing: the player's own Foundry tab projects, the phone never logs into Foundry** ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md) · [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md) sealed protocol · [ADR-0018](docs/architecture/0018-dnd-sheet-hud-pixel-renderer.md) HUD). The bridge era (v0.9.14 → v0.11.0, releases up to `v0.1.55`) and the Foundry-served sideload of v0.12.0 (ADR-0016 §1–4 / ADR-0017: "(G2)" users, GM enablement, ECDH custody, election — broken on Foundry ≥ 14.361, which serves module HTML as `text/plain`) are history in git and the `Specs.md` changelog. Now: the tab that shows «Collega occhiali G2» is the **projector**; it meets the glasses in a room of the **relay** (`packages/relay`, Cloudflare Worker + Durable Object, `wss://evf-relay.evf-relay.workers.dev`) with AES-GCM sealed frames. The glasses app is one bundle (`packages/g2-app/dist`) shipped as the Even Hub `.ehpk` (players), on GitHub Pages `/app/` (the page the QR opens) and via Vite in development.
 
 **Config (root):**
 
@@ -15,29 +15,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `vitest.config.ts` — Vitest 4 `test.projects` workspace API + v8 coverage 80%
 - `.changeset/config.json` — independent per-package semver
 - `commitlint.config.js` + `.husky/{pre-commit,commit-msg}` — Conventional Commits enforcement
-- `.nvmrc=24`, `.npmrc`, `.gitattributes`, `.editorconfig`, `.gitignore` (`packages/foundry-module/g2/` is build output, never committed)
+- `.nvmrc=24`, `.npmrc`, `.gitattributes`, `.editorconfig`, `.gitignore` (`dist/`, `.wrangler/` are build/dev output, never committed)
 
 **Packages:**
 
-- `packages/foundry-module/` — Foundry module `evenfoundryvtt`: dnd5e readers, write path (`dispatchTool`, ADR-0011; `Activity#use(usage, dialog, message)` with `configure:false` in the **dialog** arg; `skill-check` handler), `src/direct/` projector + election + self-service pairing (menus "Pair G2 glasses" / "Pair my glasses"), ships `g2/`
-- `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.15): `src/direct/` (credentials, `/join` + socket.io client, sealed session), `src/hud/` (D&D-sheet layout on the 2×2 288×144 tile grid, zone renderers + tile sender, input state machine), `src/map-art/` (pixelated original scene art), `src/phone/` (phone page P02/P03)
-- `packages/shared-protocol/` — Zod schemas + `direct/` envelope (WebCrypto AES-GCM), messages, pairing payload, map snapshot
+- `packages/foundry-module/` — Foundry module `evenfoundryvtt`: dnd5e readers, write path (`dispatchTool`, ADR-0011; `Activity#use(usage, dialog, message)` with `configure:false` in the **dialog** arg; `skill-check` handler), `src/direct/` projector (relay connection per paired device, Web Lock = one tab per browser, map `asset` pictures) + «Collega occhiali G2» window (Players list right-click, `Alt+G`, settings menu; pairings in a client setting)
+- `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.16): `src/direct/` (relay client, credentials v2, sealed session), `src/hud/` (D&D-sheet layout on the 2×2 288×144 tile grid, zone renderers + tile sender, input state machine, `map-art/` pixelated scene art), `src/phone/` (phone page P02/P03: «Scansiona QR» via `captureImageFromCamera` + `jsqr`, code entry)
+- `packages/relay/` — opaque WebSocket room relay (Cloudflare Worker + one Durable Object per room, Hibernation API; `wrangler dev` / `wrangler deploy`)
+- `packages/shared-protocol/` — Zod schemas + `direct/` envelope (WebCrypto AES-GCM), messages (v2: `rotate {room,key}`, `asset`), pairing payload v2, relay contract (`DEFAULT_RELAY_URL`, `DEFAULT_APP_URL`), map snapshot
 - `packages/shared-render/` — ASCII grid (browser-safe `./ascii-grid` subpath) + INV-1 matchers, `src/pixel/` 4-bit pixel renderer + bitmap fonts + D&D icons, per-zone golden fixtures `sheet.*.txt`
-- `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:direct-sideload`
+- `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:relay`
 
-**Architecture:** `docs/architecture/` — ADR-0001…0018 (index with statuses in `docs/architecture/README.md`; 0007 reserved). Current: 0011 write path · **0012 R1 gesture model (canonical, remote)** · 0016 direct streaming · 0017 player-owned glasses · 0018 D&D-sheet HUD. Superseded: bridge-era 0013 (raster HUD → 0018), 0014 (bearer authz → 0017), 0015 (player-view capture → 0016), 0009/0010 (→ 0018). Plus `INVARIANTS.md` (INV-1…6); design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
+**Architecture:** `docs/architecture/` — ADR-0001…0019 (index with statuses in `docs/architecture/README.md`; 0007 reserved). Current: 0011 write path · **0012 R1 gesture model (canonical, remote)** · 0016 sealed protocol + projector role · 0018 D&D-sheet HUD · **0019 relay pairing**. Superseded: 0017 (→ 0019), 0016 §1–4/§6 (→ 0019), bridge-era 0013 (raster HUD → 0018), 0014 (bearer authz → 0017), 0015 (player-view capture → 0016), 0009/0010 (→ 0018). Plus `INVARIANTS.md` (INV-1…6); design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
 
 **Documentation:**
 
-- `Specs.md` (**canonical source of truth**, v0.12.0; superseded bridge-era sections carry `SUPERSEDED in v0.12.0` banners) — requirements, hardware constraints, APIs, data models, UI/UX mockups, roadmap, risk register
+- `Specs.md` (**canonical source of truth**, v0.13.0; superseded sections carry `SUPERSEDED in v0.12.0` / `SUPERSEDED in v0.13.0` banners) — requirements, hardware constraints, APIs, data models, UI/UX mockups, roadmap, risk register
 - `README.md` — projection of `Specs.md` for GitHub readers; must stay coherent (see INV-3)
-- `docs/showcase/index.html` — animated single-file showcase (GitHub Pages); `docs/index.html` redirects to it
+- `docs/showcase/index.html` — animated single-file showcase (GitHub Pages); `docs/index.html` redirects to it; `docs/privacy.md` = Even Hub privacy policy (→ `/privacy.html`)
 - `docs/wiki/` — project wiki (Italian, 25 pages), mirrored to the GitHub wiki by `wiki-sync.yml`; check with `node scripts/check-wiki-links.mjs docs/wiki`
-- `specs/NNN-*/` — Spec Kit features (`003-direct-streaming` = this port; `002` superseded) · `.specify/memory/constitution.md`
+- `specs/NNN-*/` — Spec Kit features (`004-relay-pairing` = current; `003-direct-streaming` done, pairing superseded by 004; `002` superseded) · `.specify/memory/constitution.md`
 - `docs/setup-guide.md` · `docs/runbook.md` · `docs/firmware-compatibility.md` · `docs/release/{foundry-module,evenhub}.md`
 - `LICENSE` (MIT)
 
-**CI:** `.github/workflows/ci.yml` — D-1.10 gates 1–7 + Gate 8 (`activity.use(` only under `foundry-module/src/write-path`) + Gate 9 (no socketlib outside `foundry-module`) + Gate 10 (g2-app builds into `foundry-module/g2/index.html`). Release: `release.yml` (Changesets; `scripts/release-tag.mjs` tags `vX.Y.Z` and dispatches) → `foundry-module-release.yml` (module zip incl. `g2/`, version-stamped esmodule filename, `.ehpk` attached), `evenhub-pack.yml` (`.ehpk` validation), `wiki-sync.yml`. Last bridge-era release `v0.1.55`; next `v0.2.0`.
+**CI:** `.github/workflows/ci.yml` — D-1.10 gates 1–7 + Gate 8 (`activity.use(` only under `foundry-module/src/write-path`) + Gate 9 (no socketlib outside `foundry-module`) + Gate 10 (`scripts/check-relay-origin.mjs --bundle packages/g2-app/dist`: whitelist = `DEFAULT_RELAY_URL`, camera declared, no Foundry login / socket.io in the bundle) + "Relay end-to-end" (`wrangler dev` + real glasses session + `validate:relay`). Release: `release.yml` (Changesets; `scripts/release-tag.mjs` tags `vX.Y.Z` and dispatches) → `foundry-module-release.yml` (module zip **without** `g2/`, version-stamped esmodule filename, `.ehpk` attached), `evenhub-pack.yml` (`.ehpk` validation), `pages.yml` (docs + `/app/`; Pages source = GitHub Actions), `relay-deploy.yml` (`wrangler deploy`, needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`), `wiki-sync.yml`.
 
 ### Build/Test/Lint Commands
 
@@ -54,10 +55,15 @@ pnpm changeset                # add a changeset for the current PR
 pnpm changeset:status         # check changeset declared since origin/main
 
 # Per-package (filter via pnpm)
-pnpm --filter @evf/g2-app build                  # vite → packages/foundry-module/g2/
-pnpm --filter @evf/foundry-module build:all      # g2-app build, then tsup → dist/module.js
+pnpm --filter @evf/g2-app build                  # vite → packages/g2-app/dist (.ehpk + Pages /app/)
+pnpm --filter @evf/foundry-module build          # tsup → dist/module.js
+pnpm --filter @evf/relay dev                     # relay on http://127.0.0.1:8787 (wrangler dev)
+pnpm dev:glasses                                 # wizard --mode live: app on the LAN for a real pairing
+pnpm wizard                                      # demo scenes on the glasses (no Foundry)
 pnpm --filter @evf/validation-harness inv:all    # invariant suite
-FOUNDRY_URL=https://foundry.example.org pnpm --filter @evf/validation-harness validate:direct-sideload:skip-hardware   # ADR-0016 software GO/NO-GO
+RELAY_URL=ws://127.0.0.1:8787 pnpm --filter @evf/validation-harness validate:relay:skip-hardware   # ADR-0019 software GO/NO-GO
+EVF_RELAY_URL=ws://127.0.0.1:8787 pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts  # real-relay E2E
+npx @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist --sdk-ver 0.0.16 -o evenfoundryvtt.ehpk
 pnpm --filter @evf/validation-harness validate:all:skip-hardware    # Phase 0 software-only smoke
 ```
 
@@ -70,7 +76,7 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Constitution (READ FIRST, EVERY CHANGE)
 
-**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons (v1.1.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
+**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons · XII living tracking files `TODO.md` / `SECURITY.md` / `CHANGELOG.md` (v1.2.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
 
 ## Project Invariants (NON-NEGOTIABLE)
 
@@ -83,7 +89,7 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Engineering Constitution (ALWAYS APPLY)
 
-Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
+Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI · P12=XII); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
 
 ### P1 · 💎 Code quality
 
@@ -172,7 +178,29 @@ Every `##` heading in `README.md`, `docs/**/*.md`, wiki pages and the showcase u
 | Roadmap / Milestones | 🗺️ | Voice / MCP (V2) | 🎙️ |
 | Changelog | 📝 | Inspiration | 🎨 |
 | Icons / Conventions | 🏷️ | License | ⚖️ |
-| Author / Credits | 👤 | | |
+| Author / Credits | 👤 | Tasks / TODO | ✅ |
+
+### P12 · ✅ Living tracking files (TODO · SECURITY · CHANGELOG)
+
+Three root files are the project's working memory for humans and agents. Keep them short, plain
+and cheap to update — checkable lists with references, never prose essays.
+
+- **[`TODO.md`](TODO.md)** — open work only, grouped by area (`##` with the P11 icons): every item is
+  `- [ ]` + a reference (spec task, ADR, issue/PR, file path or `Specs.md §`). Tick it in the commit
+  that finishes it; when it ships, move the line to `CHANGELOG.md` and delete it from `TODO.md`. A
+  code `// TODO` still needs `(#issue)` / `(ADR-NNNN)` (INV-4); larger follow-ups go here.
+- **[`SECURITY.md`](SECURITY.md)** — supported versions, how to report (private, never a public
+  issue), the threat model in a few bullets, and a checklist of security controls, each `- [x]`
+  linked to the code/ADR that proves it. A change that touches auth, crypto, pairing, the relay,
+  permissions or secrets updates it in the same commit; re-verify the list at every release.
+- **[`CHANGELOG.md`](CHANGELOG.md)** — one line per user-visible change, newest first, each with its
+  reference (PR, ADR, spec): `## 🚀 Unreleased` collects the lines as PRs land (`- [x]` done,
+  `- [ ]` still to do before the release); the release turns it into `## 📦 vX.Y.Z — date`. It is the
+  human index; per-package details stay in the Changesets `CHANGELOG.md`s and design history in the
+  `Specs.md` changelog — link, don't duplicate.
+- Same rules everywhere: checkboxes, one line per item (wrap with an indented continuation),
+  a reference on every item, P11 icons on every `##`, updated in the same commit as the change
+  (P7). `scripts/check-tracking-files.mjs` enforces the format in CI (P9).
 
 ## Pre-bump checklist (manual until CI lands)
 
@@ -187,32 +215,33 @@ Before bumping `Specs.md` version (e.g., v0.9.10 → v0.9.11):
 
 ## Architecture mental model
 
-EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. Since v0.12.0 there is **no server of our own** ([ADR-0016](docs/architecture/0016-direct-foundry-streaming.md)):
+EvenFoundryVTT projects a Foundry VTT D&D 5e session onto Even Realities G2 AR glasses, driven by R1 ring gestures. Since v0.13.0 ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)) the phone **never logs into Foundry**:
 
 ```
-[ G2 glasses ] ⇄ BLE ⇄ [ Even App WebView — page served by Foundry: /modules/evenfoundryvtt/g2/ ]
-                                   │ same-origin HTTPS: POST /join (cookie) + socket.io
+[ G2 glasses ] ⇄ BLE ⇄ [ Even App: FoundryVTT G2 HUD (.ehpk · Pages /app/ · Vite dev) ]
+                                   │ wss — AES-256-GCM sealed frames only
                                    ▼
-                           [ Foundry server ] ── relays module.evenfoundryvtt (AES-GCM sealed)
+             [ relay: Cloudflare Worker + Durable Object per room (packages/relay) ]
+                                   ▲ wss
                                    │
-                                   ▼
-   [ PROJECTOR = player's own browser when online · else an active GM holding the device key ]
-     evenfoundryvtt module: dnd5e readers · dispatchTool write path (ADR-0011) · pairing
+   [ PROJECTOR = the Foundry tab that showed the QR (the player's; a GM's for a player without a device) ]
+     evenfoundryvtt module: dnd5e readers · dispatchTool write path (ADR-0011) · pairing window
 ```
 
 Crucial constraints baked into the spec (do not re-litigate without upstream evidence):
 
 - **Plugins run on the paired phone WebView, not on G2 firmware.** G2 is a thin client: display + 4-mic + IMU + touchpads. See §3.7.
-- **Same-origin sideload is load-bearing**: Even Hub whitelists are fixed per build (no wildcards) and do not bypass CORS; Foundry v14 accepts the socket session only from the first-party `session` cookie. Hence the page is served by Foundry and QR-sideloaded, and Foundry must be on **valid HTTPS** reachable from the phone.
-- **Identity** (ADR-0017): one Foundry user `"<Player> (G2)"` per player (role Player, owner of one actor), created when the GM enables players once; its password is sealed with ECDH P-256 for the player's public key. The player pairs from their own Foundry ("Pair my glasses") or the GM pairs on their behalf (Players list); QR 5 min single use (key rotates on first `welcome`) + 16-char manual code.
-- **Privacy & authority**: every relay payload is a sealed envelope (AES-256-GCM, AAD `from>to`, 120 s anti-replay). Device keys are sealed per holder; per device the player's client answers when online, else the active GM with the key; only the elected client executes `invoke` (ADR-0011, INV-6).
-- **G2 has no speaker / no audio output / no camera**. All feedback is visual (toast, HUD). Voice/MCP removed in v0.12.0; may return as a client of the direct channel via a new ADR. Native EvenAI has no developer API (§3.6).
+- **Why a relay** (research `specs/004-relay-pairing/research.md`, verified 2026-09-25): Foundry ≥ 14.361 serves module HTML as `text/plain` (#14375 NOT_PLANNED) — a Foundry-served app page cannot load; players cannot create users and a second login of the same user is bug #14728 (to be fixed) — the phone must not log into Foundry; The Forge private games gate the game host; an Even Hub store app reaches only fixed whitelisted origins (no wildcards, no deep links) and only Beta/Released installs survive the 5-minute phone lock. Foundry therefore needs **no public HTTPS**; only the projector tab must reach the relay.
+- **Pairing** («Collega occhiali G2»: right-click own name in the Players list, `Alt+G`, or settings): opening the window checks the relay (`/health`) and shows the QR (`https://aiacos.github.io/EvenFoundryVTT/app/#evf=<{v:2,r,k,l,relay?}>`) + 16-char code (room + key by HKDF) at once; single use (room + key rotate on the first `welcome`), 5 min; the pairing lives in that browser's client setting and reconnects by itself whenever that browser has Foundry open. No GM, no Foundry user, no password.
+- **Privacy & authority**: every relay frame is a sealed envelope (AES-256-GCM, AAD `from>to` with `projector`/`glasses`, 120 s anti-replay); the relay forwards opaque frames only (≤ 1 MiB, ≤ 60/s) and stores nothing. Only the projector executes `invoke`, via `dispatchTool` (ADR-0011, INV-6); ownership is re-checked live on every request. Inbound frames are handled one at a time per device (two racing `hello`s must not rotate twice).
+- **Map pictures**: the projector loads scene art in its tab (same origin, or Forge CDN with CORS), downsizes each once (background JPEG ≤ 768 px, pieces PNG ≤ 128 px) and sends it as an `asset` message; snapshots reference `evf-asset:<id>`. The phone's pixelation is unchanged.
+- **G2 has no speaker / no audio output / no camera** (the *phone* camera is used only for «Scansiona QR»). All feedback is visual (toast, HUD). Voice/MCP removed in v0.12.0; may return as a client of the direct channel via a new ADR. Native EvenAI has no developer API (§3.6).
 - **Page geometry is hardware-proven, not simulator-proven** (Specs §7.0): the real G2 host **rejects** pages whose image containers sit off the (0,0)-anchored grid (d97b12e: tiles at (88,44) → `REJECTED`, white glasses); the simulator accepts any offset. Only the 2×2 grid of 288×144 (or 200×100) tiles is proven. Image containers always render **on top of** text regardless of `zOrderIndex`; ids are declared images first, then text; `containerID` is mandatory on updates; the capture container has content `' '` and there is exactly one.
 - **Sheet layout** (Specs §7.0): top band 576×144 = portrait 144² · header 288×144 (AC, HP, turn, action economy) · square map 144² (original scene art pixelated, ≤ 1 fps), rendered once and split at x = 288 into two tiles; sheet tile 288×144 at (0,144) (Abilities · Saves & Skills, death saves at 0 HP); context panel 288×144 at (288,144) = firmware text, the only zone that takes input. 3/4 images drawn by our pixel renderer (firmware font lacks D&D glyphs), one at a time ≥ 100 ms apart; 4/8 text. See `docs/design/g2-sheet-ux.html`.
 - **Input** (ADR-0012, Amd 2): tap at the base view opens the Actions menu; swipe up/down moves the cursor; double-tap = back, at root exits (`shutDownPageContainer(1)`); long-press is an **extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9) opening the `menuObject` shortcuts, never the only path. Lifecycle: FOREGROUND_ENTER/EXIT (+ ABNORMAL_EXIT) handled.
 - **Foundry/dnd5e facts found live** (keep them): `Activity#use(usage, dialog, message)` — `configure:false` belongs in the dialog arg or every use hangs ~10 s; `hp.temp` may be null; spell `prepared` is a number (0/1/2) since dnd5e 5.1; items can have quantity 0; Foundry caches module JS (esmodule filename is version-stamped at release); the browser bundle must never import `node:fs`.
 - **Locale follows Foundry** (`game.i18n.lang`) with device-local override (phone page or glasses menu). See §7.16.
-- **Hardware assumptions are gated** by GO/NO-GO harness scripts (defer-hardware pattern), incl. `validate:direct-sideload`. See §10.0.
+- **Hardware assumptions are gated** by GO/NO-GO harness scripts (defer-hardware pattern), incl. `validate:relay` (G1 relay reachable from Forge/self-hosted tabs, G2 store build: camera scan + 5-minute lock, G3 relay cost). See §10.0.
 
 ### Even Hub canonical developer docs (INV-2 source of truth)
 
@@ -223,8 +252,8 @@ The Even Hub developer documentation is the canonical upstream for every G2/plug
 - **Input & events** — gestures now documented in <https://hub.evenrealities.com/docs/build/device-apis> (the old `guides/input-events` redirects) and <https://hub.evenrealities.com/docs/build/contextual-menu>: press / double-press / swipe-up / swipe-down (`CLICK_EVENT(0)`, `DOUBLE_CLICK_EVENT(3)`, `SCROLL_TOP_EVENT(1)`, `SCROLL_BOTTOM_EVENT(2)`); `LONG_PRESS_EVENT(9)` + `menuObject` since SDK 0.0.14 / Even App 2.2.9, as an extra only (GEST-01 closed by design, Specs changelog v0.12.0).
 - **CLI reference** — <https://hub.evenrealities.com/docs/reference/cli> — commands are `login` / `init` / `qr` / `pack` only; **there is NO non-interactive `publish`/`submit`/`upload` command** (portal submission is manual + review-gated). `evenhub pack app.json dist -o myapp.ehpk` (`-c` runs the online package_id availability check).
 - **Packaging & App Submission** — <https://hub.evenrealities.com/docs/reference/packaging> · <https://hub.evenrealities.com/docs/reference/app-submission> — `.ehpk` manifest fields + the manual portal review/approval gate.
-- **npm packages**: `@evenrealities/even_hub_sdk` 0.0.15 (plugin SDK, used directly with its own types), `@evenrealities/evenhub-simulator` (local preview: `evenhub-simulator http://localhost:5173`), `@evenrealities/evenhub-cli` (init/pack used by the CD).
-- **Our runbook**: `docs/release/evenhub.md` operationalizes the above (build into `packages/foundry-module/g2` → `app.json` version = package version → `pack` → artifact + release asset; manual portal submit). Portal **trial uploads expire** — test with the Foundry pairing QR / `evenhub qr` sideload instead. CD: `.github/workflows/evenhub-pack.yml`.
+- **npm packages**: `@evenrealities/even_hub_sdk` 0.0.16 (plugin SDK, used directly with its own types; `index.d.ts` identical to 0.0.15), `@evenrealities/evenhub-simulator` (local preview: `evenhub-simulator http://localhost:5173`), `@evenrealities/evenhub-cli` (init/pack used by the CD).
+- **Our runbook**: `docs/release/evenhub.md` operationalizes the above (build `packages/g2-app/dist` → `app.json` version = package version → `pack` → artifact + release asset; manual portal upload → beta group → review). The `.ehpk` is the player distribution (whitelist = relay `https://` + `wss://`, `camera`). Portal **trial uploads expire** — develop with the Foundry QR / `evenhub qr` sideload. CD: `.github/workflows/evenhub-pack.yml`.
 
 ## Working in this repo
 
@@ -237,7 +266,7 @@ The Even Hub developer documentation is the canonical upstream for every G2/plug
 
 ## Roadmap snapshot
 
-v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) and v0.9.14 → v0.11.0 (bridge-era raster HUD substrates, bearer pairing, player-view capture; releases up to `v0.1.55`) are shipped history. **v0.12.0** (current): direct Foundry → G2 streaming ported onto `develop`, player-owned glasses, D&D-sheet HUD on the 2×2 tile grid, pixelated original-art map (Spec Kit `specs/003-direct-streaming/`, release `v0.2.0`). Next: hardware UAT on G2 + R1 (`validate:direct-sideload`, tile geometry, cookie persistence, BLE map pacing), skill/save rolls from the glasses, and — only with a new ADR — voice/MCP as a client of the direct channel.
+v0.9.11 → v0.9.13 (bridge-based MVP, quick wins, sheet data) and v0.9.14 → v0.11.0 (bridge-era raster HUD substrates, bearer pairing, player-view capture; releases up to `v0.1.55`) are shipped history. **v0.12.0**: direct Foundry → G2 streaming, D&D-sheet HUD on the 2×2 tile grid, pixelated original-art map (release `v0.2.0`). **v0.13.0** (current): relay pairing (ADR-0019, Spec Kit `specs/004-relay-pairing/`): no GM, no phone login, one QR, Even Hub listable. Next: maintainer one-time setup (Cloudflare relay deploy, Pages source = Actions, Even Hub beta group), hardware UAT on G2 + R1 (`validate:relay` G1–G3, tile geometry, BLE map pacing), skill/save rolls from the glasses, and — only with a new ADR — voice/MCP as a client of the direct channel.
 
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
@@ -250,32 +279,33 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 ### Constraints
 
-- **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image container 20–288 × 20–144 px (SDK 0.0.15) **solo sulla griglia ancorata a (0,0)** sul G2 reale (tile fuori griglia ⇒ pagina rifiutata, d97b12e), immagini sempre sopra al testo, ≥ 100 ms tra update immagine, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
+- **Hardware G2**: 576×288 4-bit greyscale, 4 image + 8 text/list container per pagina, 1 container con `isEventCapture: 1`, image container 20–288 × 20–144 px (SDK 0.0.16) **solo sulla griglia ancorata a (0,0)** sul G2 reale (tile fuori griglia ⇒ pagina rifiutata, d97b12e), immagini sempre sopra al testo, ≥ 100 ms tra update immagine, no speaker, no camera. — *Vincolo Even Realities, non negoziabile.*
 - **Hardware R1**: BLE → smartphone Even App → G2; gesture canoniche = `press / double-press / swipe-up / swipe-down`; **long-press solo come extra** (SDK ≥ 0.0.14, Even App ≥ 2.2.9: apre il menu contestuale `menuObject`, mai unico accesso a una funzione); nessun input testuale. — *hub.evenrealities.com/docs/reference/changelog + /build/input (re-verified 2026-09-23). Il drift GEST-01 è chiuso dalla v0.12.0; modello canonico ADR-0012 (Amd 2: il menu si apre col tap).*
-- **Plugin execution model**: il g2-app è servito da **Foundry stesso** (`/modules/evenfoundryvtt/g2/index.html`) e caricato dall'Even Realities App via QR sideload nel WebView del telefono. Il G2 firmware NON esegue il nostro codice. — *ADR-0016; hub.evenrealities.com/docs/get-started/architecture.*
-- **Network**: Foundry su HTTPS **valido** raggiungibile dal telefono (no self-signed); tutto il traffico è same-origin (`/join` + socket.io), quindi nessuna whitelist/CORS per il sideload. Il `.ehpk` (secondario) resta vincolato alla whitelist `app.json` (origin completo, no wildcards). — *Vincolo Even Hub + ADR-0016.*
+- **Plugin execution model**: l'app occhiali gira nel WebView del telefono (Even Realities App): installata da Even Hub (`.ehpk`, per i giocatori — sopravvive al blocco del telefono), oppure aperta dal QR come pagina GitHub Pages `/app/` o dal dev server Vite (sviluppo — muore al blocco). Il G2 firmware NON esegue il nostro codice. Foundry ≥ 14.361 serve l'HTML dei moduli come `text/plain`: nessuna pagina servita da Foundry. — *ADR-0019; hub.evenrealities.com/docs/get-started/architecture, test/beta-testing; foundryvtt.com/releases/14.361.*
+- **Network**: il telefono parla **solo** col relay (`wss://evf-relay.evf-relay.workers.dev`, whitelist `app.json` `https://` + `wss://`, origin completo, no wildcards); la scheda Foundry del proiettore deve raggiungere lo stesso relay (la finestra mostra «Relay ✗» altrimenti). Foundry **non** serve più HTTPS pubblico. — *Vincolo Even Hub + ADR-0019.*
 - **BLE bandwidth**: ~10–30 KB/s reali (FAQ Even Hub); a 30 fps il G2 reale si saturava ⇒ mappa ≤ 1 fps solo su cambio hash, un'immagine alla volta. — *hub.evenrealities.com/docs/reference/faq + lezione be5167e.*
 - **D&D edition**: dual-support PHB 2014 + PHB 2024 via `core.modernRules`. Setting MVP. — *§11.5.1.*
 - **License**: MIT su tutti i package del monorepo. — *§11.5.2.*
-- **Deployment**: solo il modulo Foundry (zip GitHub Release con `g2/`); niente bridge, niente Docker Compose (rimossi in v0.12.0). Serve un projector online: il client Foundry del giocatore o un GM con la chiave del dispositivo. — *ADR-0016/0017 (supersede §11.5.3).*
-- **Auth**: utente Foundry dedicato `"<Giocatore> (G2)"` (password sigillata ECDH P-256 per il giocatore) + chiave AES-256 per dispositivo; QR monouso 5 min (la chiave ruota al primo `welcome`) o codice manuale di 16 caratteri; revoca dalla finestra di associazione; ownership del PG verificata dal vivo. Nessun bearer token. — *ADR-0016/0017 (supersede §11.5.4 e l'ADR-0014 remoto).*
+- **Deployment**: modulo Foundry (zip GitHub Release, senza `g2/`) + app occhiali su Even Hub (`.ehpk`, gruppo beta poi store) + pagina GitHub Pages `/app/` + relay Cloudflare (Worker + Durable Object, piano gratuito, gestito dal progetto; self-host opzionale). Serve la scheda Foundry del proiettore aperta (quella del giocatore, o del GM per chi non ha un dispositivo). — *ADR-0019 (supersede §11.5.3 e ADR-0016/0017 per la distribuzione).*
+- **Auth**: nessun login Foundry sul telefono, nessun utente "(G2)", nessun GM: stanza del relay (128 bit) + chiave AES-256 per dispositivo nel QR (o derivate da un codice di 16 caratteri via HKDF); monouso 5 min (stanza e chiave ruotano al primo `welcome`); pairing salvato nel browser del proiettore; «Scollega» dalla finestra; ownership del PG verificata dal vivo. — *ADR-0019 (supersede §11.5.4, ADR-0017).*
 - **Tooling fissato**: TypeScript strict + Biome lint/format + Vitest coverage gate; CI fail su `// TODO` senza issue-link. — *INV-4 §0.1.*
 <!-- GSD:project-end -->
 
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
 
-> **v0.12.0 (2026-09-23)** — rewritten after [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md). The original research snapshot (GSD `.planning/research/STACK.md`, 2026-05-10, removed with `.planning/` — recoverable from git) described a Node bridge + Docker + `foundry-mcp`; those rows are collapsed into *Removed in v0.12.0* below. Authoritative pins live in the `package.json` files (exact versions, re-check with `npm view` per INV-2).
+> **v0.13.0 (2026-09-25)** — relay row added, `socket.io-client` removed ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md)). **v0.12.0 (2026-09-23)** — rewritten after [ADR-0016](docs/architecture/0016-direct-foundry-streaming.md). The original research snapshot (GSD `.planning/research/STACK.md`, 2026-05-10, removed with `.planning/` — recoverable from git) described a Node bridge + Docker + `foundry-mcp`; those rows are collapsed into *Removed in v0.12.0* below. Authoritative pins live in the `package.json` files (exact versions, re-check with `npm view` per INV-2).
 
 ### Current stack (by package)
 
 | Package | Runtime deps (pinned) | Notes |
 |---|---|---|
-| `g2-app` | `@evenrealities/even_hub_sdk` 0.0.15 · `@evenrealities/pretext` 0.1.4 · `socket.io-client` 4.8.3 · `upng-js` 2.1.0 · `zod` 4.4.3 · Vite 8.0.11 (dev) | Built into `packages/foundry-module/g2/`, relative `base`, no CDN assets. `app.json` version = package version, `min_sdk_version` ≥ 0.0.14, icon + description for submission. |
-| `foundry-module` | `qrcode` 1.5.4 · `@evf/shared-protocol` · `tsup` 8.5.1 (dev) | Foundry ≥ 13.347 (v14 verified), dnd5e ≥ 5.3.3, midi-qol optional (`recommends`). socketlib **not used**. |
+| `g2-app` | `@evenrealities/even_hub_sdk` 0.0.16 · `@evenrealities/pretext` 0.1.4 · `jsqr` 1.4.0 (lazy chunk) · `upng-js` 2.1.0 · `zod` 4.4.3 · Vite 8.0.11 (dev) | Built into `packages/g2-app/dist` (the `.ehpk` + Pages `/app/`), relative `base`, no CDN assets. `app.json` version = package version, `min_sdk_version` 0.0.16, whitelist = relay (`https://` + `wss://`), `camera`. |
+| `foundry-module` | `qrcode` 1.5.4 · `zod` 4.4.3 · `@evf/shared-protocol` · `tsup` 8.5.1 (dev) | Foundry ≥ 13.347 (v14 verified), dnd5e ≥ 5.3.3, midi-qol optional (`recommends`). socketlib **not used**. |
+| `relay` | — (Workers runtime) · `wrangler` 4.140.0 · `@cloudflare/workers-types` (dev) | Cloudflare Worker + `Room` Durable Object (SQLite class, Hibernation API); free plan: 100k requests/day, outgoing WS free, incoming 20:1. |
 | `shared-protocol` | `zod` 4.4.3 · WebCrypto (AES-256-GCM, HKDF-SHA256) | Zod = single source of truth for wire shapes; `direct/` envelope/messages/pairing/map. |
 | `shared-render` | — | ASCII grid (`./ascii-grid` browser-safe subpath) + `src/pixel/` renderer + INV-1 matchers (test-only, never in the browser bundle). |
-| `validation-harness` | `zod` 4.4.3 · `upng-js` 2.1.0 · `csv-stringify` 6.5.2 · `tsx` | GO/NO-GO scripts, `inv:all`, `validate:direct-sideload`. |
+| `validation-harness` | `zod` 4.4.3 · `upng-js` 2.1.0 · `csv-stringify` 6.5.2 · `@evf/shared-protocol` · `tsx` | GO/NO-GO scripts, `inv:all`, `validate:relay`. |
 | Workspace tooling | TypeScript 5.8.3 · pnpm 10.33.4 · Node 24 LTS (`.nvmrc`) · Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 · happy-dom 20.9.0 · Biome 2.4.15 · Changesets 2.31.0 · Playwright 1.59.1 · commitlint + husky | Stay on TS 5.8.x until the ecosystem (Vitest, Biome) catches up with 6.x. |
 
 ### Removed in v0.12.0 (ADR-0016)
@@ -286,23 +316,24 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 
 | Avoid | Why | Use instead |
 |---|---|---|
-| A server/bridge between Foundry and the phone | ADR-0016: zero-infrastructure goal; cross-origin fails (whitelist per build, no CORS bypass, v14 cookie-only session) | Same-origin page served by Foundry + `module.evenfoundryvtt` relay |
-| Plaintext payloads on `module.evenfoundryvtt` | The relay broadcasts to every client | Sealed envelopes (`@evf/shared-protocol` `direct/envelope.ts`) |
+| A per-table server / bridge, or the phone logging into Foundry | ADR-0019: Foundry ≥ 14.361 won't render module HTML; no GM-free phone identity (#14728); Forge gate; store whitelist is fixed | The shared opaque relay on a fixed origin (`packages/relay`) + the player's tab as projector |
+| Plaintext payloads on the relay | The relay is a third party | Sealed envelopes (`@evf/shared-protocol` `direct/envelope.ts`) |
+| A Foundry-served page (`/modules/<id>/…html`) | `text/plain` since 14.361 | GitHub Pages `/app/` or the `.ehpk` |
 | socketlib / `activity.use()` outside `foundry-module/src/write-path` | ADR-0011 single-workflow-origin; CI Gates 8/9 | `dispatchTool` in the GM-client projector |
 | `jimp`, `pngjs`, `fast-png`, `pako`/`fflate` for the map | Wrong dither / bit depth / double compression (§11.5.7) | `upng-js` 4-bit exact palette + per-tile hashes (SDK LZ4 in transit) |
 | Image tiles off the (0,0)-anchored 288×144 grid | Real G2 host rejects the page (d97b12e); simulator hides it | 2×2 tile grid (Specs §7.0) |
 | React / Vue / Svelte in `g2-app` | Glasses output is SDK container calls; phone page is plain DOM | Plain TS modules + app store |
 | ESLint + Prettier, Jest, `ts-node` | Dual tooling / ESM pain / deprecated | Biome, Vitest, `tsx` |
 | EvenAI native LLM | No developer API (§3.6) | — (voice/MCP only via a future ADR) |
-| Wildcards in `app.json` whitelist | Even Hub forbids them | Origin-complete URL (only relevant for the secondary `.ehpk`) |
+| Wildcards in `app.json` whitelist | Even Hub forbids them | Origin-complete relay URL (`https://` + `wss://`), checked by CI Gate 10 |
 
 ### Version compatibility
 
 | A | Compatible with | Notes |
 |---|---|---|
-| `@evenrealities/even_hub_sdk` 0.0.15 | Even Realities App ≥ 2.2.9 (long-press/menu); npm metadata `minAppVersion` 2.2.10 | See `docs/firmware-compatibility.md`. |
+| `@evenrealities/even_hub_sdk` 0.0.16 | Even Realities App ≥ 2.2.10 (packer stamps `min_app_version` 2.2.10) | See `docs/firmware-compatibility.md`. |
 | `evenfoundryvtt` module | Foundry ≥ 13.347 (v14 verified) · dnd5e ≥ 5.3.3 | v12 not supported (Activity system). |
-| `socket.io-client` 4.8.x | Foundry socket.io server (EIO 4) | Undocumented `/join` + handshake → guarded by `validate:direct-sideload`. |
+| `wrangler` 4.140.0 | Workers runtime `compatibility_date` 2026-09-01 | Relay dev/deploy; the CI E2E runs `wrangler dev`. |
 | Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 | match major+minor | Always co-bump. |
 <!-- GSD:stack-end -->
 
@@ -350,9 +381,9 @@ Check against them. Trivial fixes may be made directly; keep changes atomic and 
 <!-- GSD:profile-end -->
 
 <!-- SPECKIT START -->
-Active feature: **003-direct-streaming** — port of direct Foundry → G2 streaming onto `develop`
-(v0.12.0): bridge/Docker/foundry-mcp removed (ADR-0016), player-owned glasses with hybrid
-projector (ADR-0017), D&D-sheet HUD on the pixel renderer and the hardware-proven 2×2 tile grid
-(ADR-0018), fixes carried over from the v0.11 line. Read `specs/003-direct-streaming/plan.md`
-(spec: `specs/003-direct-streaming/spec.md`; tasks alongside).
+Active feature: **004-relay-pairing** (v0.13.0, ADR-0019) — the player's own Foundry tab is the
+projector, the phone never logs into Foundry: opaque E2E relay (`packages/relay`, Cloudflare Worker
++ Durable Object), one QR / 16-char code, no GM; glasses app as Even Hub `.ehpk` + GitHub Pages
+`/app/` + Vite dev. Implemented; open items = maintainer one-time setup and hardware UAT (tasks
+Phase 7). Read `specs/004-relay-pairing/plan.md` (spec, research, tasks alongside).
 <!-- SPECKIT END -->

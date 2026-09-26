@@ -1,8 +1,17 @@
 # Release
 
-Dalla v0.12.0 l'artefatto di release è lo **zip del modulo Foundry**, che contiene anche l'app degli occhiali in `g2/` ([ADR-0016](Decisioni-Architetturali)); ogni release allega anche il pacchetto Even Hub `evenfoundryvtt.ehpk` costruito dalla stessa cartella `g2/`. Niente immagine Docker, niente `g2-app-dist.zip`. Flusso: **GitFlow + Changesets**.
+Dalla v0.13.0 ([ADR-0019](Decisioni-Architetturali)) ci sono **quattro** cose da distribuire, ognuna con il suo workflow:
 
-**Versioni**: l'ultima release basata sul bridge è la **v0.1.55** del modulo (più la pre-release `g2-app-v0.11.0`); la prima dopo il port è la **v0.2.0** (modifica incompatibile prima della 1.0 ⇒ *minor*). **Migrazione** per chi usava il bridge: spegni e rimuovi il container `evf-bridge`, aggiorna il modulo, poi riassocia ogni paio di occhiali dal pannello *Associa occhiali G2* o dalla lista *Giocatori* (i vecchi token bearer non esistono più).
+| Artefatto | Per chi | Workflow |
+|---|---|---|
+| **zip del modulo** `evenfoundryvtt.zip` (+ `module.json`) — **senza** `g2/` | GM (manifest Foundry / The Forge) | `foundry-module-release.yml` |
+| **`evenfoundryvtt.ehpk`** — l'app «FoundryVTT G2 HUD» | giocatori, tramite Even Hub (gruppo beta, poi store) | `foundry-module-release.yml` (asset della release) · `evenhub-pack.yml` (validazione) |
+| **app web** su GitHub Pages `/app/` (+ la documentazione di `docs/`) | la pagina aperta dal QR in modalità sviluppatore | `pages.yml` |
+| **relay** `evf-relay` (Cloudflare Worker) | tutti: è dove si incontrano scheda e occhiali | `relay-deploy.yml` |
+
+L'app degli occhiali è **un solo bundle** (`packages/g2-app/dist`) per `.ehpk` e Pages; non è più nello zip del modulo perché Foundry ≥ 14.361 serve l'HTML dei moduli come `text/plain`. Flusso: **GitFlow + Changesets**.
+
+**Versioni**: la v0.12.0 è uscita come modulo **v0.2.x**; la v0.13.0 arriva con il prossimo *minor* del modulo (linea 0.3.0), con `g2-app` *minor* e `relay` 0.1.0. **Migrazione** dalla v0.12: i vecchi collegamenti non valgono più; ogni giocatore collega di nuovo gli occhiali dal proprio Foundry ([Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)). Gli utenti «(G2)» rimasti nel mondo si possono cancellare.
 
 ## 🚀 Dal changeset al tag
 
@@ -15,23 +24,24 @@ Dalla v0.12.0 l'artefatto di release è lo **zip del modulo Foundry**, che conti
 Tag manuale, se serve:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-## 🚀 Zip del modulo
+## 🚀 Zip del modulo e `.ehpk`
 
 `.github/workflows/foundry-module-release.yml` (tag `v*.*.*` o avvio manuale con input `tag`):
 
 1. valida il formato del tag `vMAJOR.MINOR.PATCH[-prerelease]`;
 2. `pnpm install --frozen-lockfile --ignore-scripts`;
 3. `pnpm --filter @evf/foundry-module build` → `dist/module.js`;
-4. `pnpm --filter @evf/g2-app build` → `packages/foundry-module/g2/` (fallisce se manca `g2/index.html`);
-5. aggiorna in `module.json` la `version` e l'URL `download` legato alla versione e **aggiunge la versione ai nomi dei file** (`dist/module-<ver>.js`, `styles/pair-g2-<ver>.css`): Foundry mette in cache il JavaScript dei moduli, e senza nome nuovo i client continuerebbero a eseguire la versione vecchia; poi allinea la `version` di `packages/g2-app/app.json` a quella del pacchetto g2-app e crea `evenfoundryvtt.ehpk`;
-6. assembla l'albero di release: `module.json` + `dist/` + **`g2/`** + `lang/` + `templates/` + **`styles/`**, poi `node scripts/check-module-assets.mjs release-tree` verifica che ogni percorso citato da `module.json` (`esmodules`, `styles`, `languages`) esista;
-7. crea `evenfoundryvtt.zip` senza sourcemap e verifica che contenga `g2/index.html`;
-8. note di rilascio dai `CHANGELOG.md` di `foundry-module` (e di `g2-app`, se presente);
-9. crea la GitHub Release (i tag con `-` sono pre-release) e carica `module.json` + `evenfoundryvtt.zip` + `evenfoundryvtt.ehpk`.
+4. `pnpm --filter @evf/g2-app build` → `packages/g2-app/dist`, poi `node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist` (whitelist = relay predefinito, permesso `camera`, niente `/join` né socket.io nel bundle);
+5. aggiorna in `module.json` la `version` e l'URL `download` legato alla versione e **aggiunge la versione ai nomi dei file** (`dist/module-<ver>.js`, `styles/pair-g2-<ver>.css`): Foundry mette in cache il JavaScript dei moduli, e senza nome nuovo i client continuerebbero a eseguire la versione vecchia;
+6. allinea la `version` di `packages/g2-app/app.json` a quella del pacchetto g2-app e crea `evenfoundryvtt.ehpk` da `packages/g2-app/dist`;
+7. assembla l'albero di release: `module.json` + `dist/` + `lang/` + `templates/` + `styles/`, poi `node scripts/check-module-assets.mjs release-tree` verifica che ogni percorso citato da `module.json` esista;
+8. crea `evenfoundryvtt.zip` senza sourcemap e **fallisce se contiene ancora `g2/`**;
+9. note di rilascio dai `CHANGELOG.md` di `foundry-module` (e di `g2-app`, se presente);
+10. crea la GitHub Release (i tag con `-` sono pre-release) e carica `module.json` + `evenfoundryvtt.zip` + `evenfoundryvtt.ehpk`.
 
 | Campo di `module.json` | URL |
 |---|---|
@@ -42,26 +52,41 @@ git push origin v0.2.0
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @evf/foundry-module build:all     # g2-app → g2/, poi tsup → dist/
+pnpm --filter @evf/foundry-module build          # tsup → dist/
+pnpm --filter @evf/g2-app build                  # → packages/g2-app/dist
+node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
 ```
 
-## 🚀 Pacchetto Even Hub (secondario)
+## 🚀 Relay e GitHub Pages
 
-I giocatori **non** hanno bisogno del `.ehpk`: l'app si carica con il **QR sideload** servito dal modulo ([Installazione](Installazione)). Il pacchetto serve a validare manifest e build e per un futuro listing su Even Hub.
+- **`relay-deploy.yml`** — a ogni merge su `main` che tocca `packages/relay/**` (o avvio manuale): test del relay, `wrangler deploy`, poi controllo di `/health` sull'indirizzo di produzione. Senza i segreti Cloudflare si limita ai test e a un avviso. L'indirizzo pubblicato deve coincidere con `DEFAULT_RELAY_URL` e con la whitelist del `.ehpk`.
+- **`pages.yml`** — a ogni push su `main`: costruisce l'app (con il controllo del relay), la documentazione di `docs/` con Jekyll e pubblica tutto su GitHub Pages, con l'app in `/app/` (`https://aiacos.github.io/EvenFoundryVTT/app/`, la pagina del QR) e l'informativa privacy in `privacy.html`.
 
-- `.github/workflows/evenhub-pack.yml` lo costruisce e lo valida a ogni push su `main` (`npx --yes @evenrealities/evenhub-cli pack packages/g2-app/app.json packages/foundry-module/g2 -o evenfoundryvtt.ehpk`); `foundry-module-release.yml` ne allega uno nuovo a ogni release.
-- `app.json` deve avere la **stessa versione** del pacchetto g2-app (per i pacchetti locali), una `description`, un'`icon` e `min_app_version`; per la revisione serve `min_sdk_version` ≥ 0.0.14.
+## 🚀 Passi una tantum del maintainer
 
-### Due strade diverse: non confonderle
+1. **Cloudflare**: relay già pubblicato sul sottodominio `workers.dev` `evf-relay` (se cambia, aggiorna insieme `DEFAULT_RELAY_URL` e la whitelist di `app.json`); token API (*Edit Cloudflare Workers*) nei segreti del repository `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`; avvia **Relay Deploy**.
+2. **GitHub** › *Settings* › *Pages* › *Source* = **GitHub Actions**.
+3. **Portale Even Hub**: carica il `.ehpk` della release come build, crea un **gruppo beta** con i giocatori del tavolo, URL dell'informativa privacy = `https://aiacos.github.io/EvenFoundryVTT/privacy.html`; poi invia per la revisione.
 
-| | **QR (sviluppo e uso reale)** | **`.ehpk` caricato sul portale** |
-|---|---|---|
-| Strumento | `evenhub qr` → scansione con la Even Realities App | caricamento sul **portale sviluppatori** Even Hub |
-| Carica | la pagina servita da Foundry (`/modules/evenfoundryvtt/g2/`) o il server Vite di sviluppo | il bundle impacchettato |
-| Scadenza | **nessuna** | i caricamenti di prova **scadono** → *«versione di prova scaduta»* |
-| Installazione permanente | — | solo dopo una **submission approvata** da Even Realities |
+Dettagli: [`docs/runbook.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/docs/runbook.md) (sezione *Relay and Pages*).
 
-Doc Even Hub ([CLI](https://hub.evenrealities.com/docs/reference/cli)): *«Scan the QR code with the Even Realities App on your phone. Your app loads on the glasses with hot reload support.»* Per provare sugli occhiali usa sempre il QR: `npx @evenrealities/evenhub-cli qr --url http://<IP-LAN>:5173` (telefono e computer sulla stessa rete) durante lo sviluppo, oppure il QR dell'associazione per l'app servita da Foundry. Se devi per forza ripetere una prova col portale, rigenera un `.ehpk` nuovo e ricaricalo: un nuovo caricamento fa ripartire la finestra di prova (la scadenza è una regola del portale, non del file).
+## 🚀 Pacchetto Even Hub
+
+Il `.ehpk` è **la distribuzione per i giocatori**: l'app installata ha il relay in whitelist, il permesso `camera` per «Scansiona QR» e sopravvive al telefono bloccato.
+
+- `.github/workflows/evenhub-pack.yml` lo costruisce e lo valida a ogni push su `main` (`npx --yes @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist … -o evenfoundryvtt.ehpk`); `foundry-module-release.yml` ne allega uno nuovo a ogni release.
+- `app.json` (nome **FoundryVTT G2 HUD**) deve avere la **stessa versione** del pacchetto g2-app, una `description`, un'`icon`, `min_app_version` e `min_sdk_version`; la whitelist di rete contiene solo `https://` e `wss://evf-relay.evf-relay.workers.dev` (niente wildcard).
+
+### Tre modi di caricare l'app: non confonderli
+
+| | **Even Hub (gruppo beta / store)** | **QR in modalità sviluppatore** | **`.ehpk` di prova sul portale** |
+|---|---|---|---|
+| Per chi | giocatori | sviluppo e prove rapide | prove del pacchetto |
+| Carica | il `.ehpk` installato | la pagina di GitHub Pages `/app/` (dal QR di Foundry) o il server Vite (`pnpm dev:glasses`, `evenhub qr`) | il bundle impacchettato |
+| Telefono bloccato | **sopravvive** | l'app si ferma: reinquadra il QR | sopravvive |
+| Scadenza | nessuna | nessuna | i caricamenti di prova **scadono** → *«versione di prova scaduta»* |
+
+Doc Even Hub ([CLI](https://hub.evenrealities.com/docs/reference/cli)): *«Scan the QR code with the Even Realities App on your phone. Your app loads on the glasses with hot reload support.»* Durante lo sviluppo: `npx @evenrealities/evenhub-cli qr --url http://<IP-LAN>:5173` (telefono e computer sulla stessa rete), oppure `pnpm dev:glasses` ([Debug e simulatore](Debug-e-Simulatore)).
 
 ### Niente submission automatica
 

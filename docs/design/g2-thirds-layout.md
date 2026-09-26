@@ -100,6 +100,12 @@ inizia/finisce il combattimento) o dal menu contestuale; non cattura mai input.
 
 ## 🔐 Associazione e connessione
 
+> ⚠️ **SUPERSEDED (2026-09-25, [ADR-0019](../architecture/0019-relay-pairing-player-projector.md))** —
+> flusso storico v0.12. Oggi non ci sono utenti «(G2)», abilitazione GM né pagina servita da Foundry:
+> il giocatore apre «Collega occhiali G2» (clic destro sul proprio nome o Alt+G), inquadra il QR con
+> l'app «FoundryVTT G2 HUD» (o inserisce il codice) e la sua scheda di Foundry proietta tramite il
+> relay. Istruzioni correnti: [setup guide](../setup-guide.md). I mock P01–P03 qui sotto sono storia.
+
 1. **GM su Foundry**: *Impostazioni ▸ Configura impostazioni ▸ EvenFoundryVTT ▸ Associa occhiali G2*
    (P01). Sceglie giocatore e PG. Il modulo crea/aggiorna l'utente `«<Giocatore> (G2)»`
    (ruolo Giocatore, proprietario solo del PG), genera password e chiave `K`, mostra il QR.

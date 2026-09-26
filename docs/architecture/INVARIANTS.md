@@ -22,6 +22,12 @@ numbered 0012…0014 before the v0.12.0 port onto `develop`; the gesture model r
 INV-5 is [ADR-0012](./0012-r1-gesture-model-overscroll-exit-lifecycle.md) (R1 gestures,
 Amendment 2: tap opens the menu from the base view).
 
+**v0.13.0 update (2026-09-25):** [ADR-0019](./0019-relay-pairing-player-projector.md)
+replaced the Foundry-served page, the "(G2)" users and the elected GM fallback: the
+projector is the Foundry tab that showed the pairing QR, and it talks to the glasses through
+an opaque relay room. The invariants are unchanged; INV-6's transport and hardware gates
+below follow ADR-0019.
+
 **Cross-cutting note:** any new invariant MUST be added here and indexed from
 `docs/architecture/README.md`. Invariants are permanent. They change only when a new ADR
 supersedes them with explicit rationale.
@@ -127,23 +133,26 @@ status-HUD R1 chip) was removed with that engine. See Specs.md history.
 
 ## 🛡️ 6. INV-6 — GM Authority Preservation (Phase 7 ratification)
 
-**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0016). **Origin amended:** 2026-09-23 (ADR-0017).
+**Ratified:** 2026-05-16 (Phase 7 Plan 01). **Transport updated:** 2026-09-23 (ADR-0016), 2026-09-25 (ADR-0019). **Origin amended:** 2026-09-23 (ADR-0017), 2026-09-25 (ADR-0019: the projector is the pairing tab; ADR-0017's election is retired).
 
 > Every Foundry write-path mutation (cast spell, weapon attack, use item, move token, drop
 > concentration, place template, end turn) MUST execute through `dispatchTool` on **exactly
-> one Foundry client per device at a time — the elected projector**: the player's own client
-> when that player is online, otherwise the active GM
+> one Foundry client per device at a time — the projector**: the Foundry tab that paired
+> the device (the player's own, or a GM's for a player without a device)
 > ([ADR-0011](./0011-foundry-write-path-single-workflow-origin.md) as amended by
-> [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md)). GM authority is preserved by
+> [ADR-0019](./0019-relay-pairing-player-projector.md), which retired the
+> [ADR-0017](./0017-player-owned-glasses-hybrid-projector.md) election). GM authority is preserved by
 > Foundry's own permission model: a player client can only perform what that player could
 > perform in Foundry; GM-only steps (e.g. damage to NPCs) go through MidiQOL's GM socket.
 > No code outside `packages/foundry-module/src/write-path/` may call `activity.use()`.
 
-The path is now: G2 gesture → g2-app sealed `invoke` on `module.evenfoundryvtt` →
-Foundry relay → elected **projector** client (`packages/foundry-module/src/direct/projector.ts`;
-player's client if online, else active GM) → `dispatchTool` → write-path handler →
-`MidiQOL.completeActivityUse` (when active) or `activity.use()`. Non-elected clients ignore
-the message and never execute `invoke`. socketlib `executeAsGM` is no longer used.
+The path is now (ADR-0019): G2 gesture → g2-app sealed `invoke` → relay room
+(`packages/relay`, opaque frames) → the **projector** tab that paired the device
+(`packages/foundry-module/src/direct/projector.ts`; the player's own tab, or a GM's for a
+player without a device; one tab per browser via a Web Lock, a newer projector socket
+replaces the old one) → `dispatchTool` → write-path handler →
+`MidiQOL.completeActivityUse` (when active) or `activity.use()`. No other client receives
+the message. socketlib `executeAsGM` is no longer used.
 
 ### Enforcement
 
@@ -172,14 +181,15 @@ the message and never execute `invoke`. socketlib `executeAsGM` is no longer use
 
 ### Hardware-pending carry-forwards
 
-- **SC-07-01**: `dispatchTool` end-to-end latency (gesture → GM handler return) ≤ 800 ms
-  over HTTPS with the GM projector online.
+- **SC-07-01**: `dispatchTool` end-to-end latency (gesture → projector handler return)
+  ≤ 800 ms through the production relay.
 - **SC-07-02**: concurrent actions from two paired devices are serialized correctly on
-  their elected projectors (player clients and/or GM).
-- **ADR-0017 hand-over**: a player's client going offline mid-session hands the device to
-  the GM fallback without a duplicated action.
-- **ADR-0016 sideload gate**: QR load, SDK bridge injection, cookie persistence and
-  socket reconnect (`pnpm --filter @evf/validation-harness validate:direct-sideload`).
+  their projector tabs (player and/or GM).
+- **ADR-0019 relay gates** G1–G2: relay reachable from a Forge v14 private game tab and
+  self-hosted v13/v14; store/private-build whitelist, camera QR decode, credentials survive
+  app kill + 5-minute lock (`pnpm --filter @evf/validation-harness validate:relay`).
+  (The ADR-0016 `validate:direct-sideload` gate and the ADR-0017 hand-over check were retired
+  with ADR-0019.)
 - **SC-06-01 / SC-06-03**: gesture timings and menu-open latency on real G2 + R1.
   (SC-06-02, the long-press false-trigger check, is now the OS's job: long-press is
   handled by the firmware menu.)

@@ -1,18 +1,19 @@
 /**
- * Direct-channel messages exchanged between the G2 app and the GM-client projector
- * over the Foundry `module.evenfoundryvtt` socket relay (always inside a sealed
- * envelope — see `envelope.ts`).
+ * Direct-channel messages exchanged between the G2 app and the projector (the Foundry
+ * tab that showed the pairing QR) through a relay room — always inside a sealed
+ * envelope (see `envelope.ts`).
  *
  * `t` discriminates the message; `rid` correlates a request with its response and is
  * reused as the idempotency key for `invoke` (ADR-0011 dispatch pipeline).
  *
  * @see docs/architecture/0016-direct-foundry-streaming.md
- * @see docs/design/g2-thirds-layout.md §Associazione e connessione
+ * @see docs/architecture/0019-relay-pairing-player-projector.md
  */
 import { z } from 'zod';
+import { DeviceKeySchema, RoomIdSchema } from './pairing.js';
 
 /** Protocol revision carried by `hello`; bump on any breaking change to this file. */
-export const DIRECT_PROTOCOL_VERSION = 1 as const;
+export const DIRECT_PROTOCOL_VERSION = 2 as const;
 
 /** Snapshot topics the app can request with `get`. */
 export const SNAPSHOT_TOPICS = ['character', 'combat', 'map', 'log'] as const;
@@ -57,14 +58,14 @@ export type AppMessage = z.infer<typeof AppMessageSchema>;
 // ─── projector → G2 app ──────────────────────────────────────────────────────
 
 /**
- * Fresh credentials pushed on first `welcome` so the pairing QR/code is single-use.
- * `password` is absent when the projector is a player client (only a GM may change a
- * Foundry password — ADR-0017): the app then keeps its current password.
+ * Fresh secrets pushed on the first `welcome` so the pairing QR/code is single-use: the
+ * app persists them, then both ends move to the new room with the new key.
  */
 export const RotateSchema = z.strictObject({
-  password: z.string().min(12).max(128).optional(),
+  /** New relay room id. */
+  room: RoomIdSchema,
   /** New AES-256 key, base64url (32 bytes). */
-  key: z.string().min(43).max(44),
+  key: DeviceKeySchema,
 });
 
 export const WelcomeSchema = z.strictObject({
@@ -114,6 +115,23 @@ export const PongSchema = z.strictObject({ t: z.literal('pong'), rid: Rid });
 
 export const RevokedSchema = z.strictObject({ t: z.literal('revoked') });
 
+/** Prefix of a map image reference resolved from an `asset` message (see `map.ts`). */
+export const ASSET_REF_PREFIX = 'evf-asset:' as const;
+
+/**
+ * A scene picture prepared by the projector (the phone never reaches Foundry): sent once
+ * per id per connection, before the map snapshot that references it as
+ * `evf-asset:<id>`. `data` is a `data:image/(png|jpeg);base64,…` URL.
+ */
+export const AssetSchema = z.strictObject({
+  t: z.literal('asset'),
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  data: z
+    .string()
+    .max(900_000)
+    .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/),
+});
+
 export const ProjectorMessageSchema = z.union([
   WelcomeSchema,
   SnapshotMessageSchema,
@@ -121,5 +139,6 @@ export const ProjectorMessageSchema = z.union([
   ResultSchema,
   PongSchema,
   RevokedSchema,
+  AssetSchema,
 ]);
 export type ProjectorMessage = z.infer<typeof ProjectorMessageSchema>;

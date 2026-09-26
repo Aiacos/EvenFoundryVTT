@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "test_id": "adr-0016-direct-sideload",
+  "timestamp": "2026-09-24T11:06:10.152Z",
+  "verdict": "fail",
+  "rationale": "NO-GO: g2-entry",
+  "skip_hardware": true,
+  "checks": [
+    {
+      "id": "https",
+      "verdict": "pass",
+      "detail": "Foundry base URL uses HTTPS"
+    },
+    {
+      "id": "reachable",
+      "verdict": "pass",
+      "detail": "HTTP 302"
+    },
+    {
+      "id": "g2-entry",
+      "verdict": "fail",
+      "detail": "HTTP 302 — is the evenfoundryvtt module installed + enabled, with g2/ in its zip?"
+    },
+    {
+      "id": "api-status",
+      "verdict": "skipped",
+      "detail": "not exposed (HTTP 302)"
+    }
+  ]
+}

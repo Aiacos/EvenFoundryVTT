@@ -3,8 +3,8 @@
  * Release-coverage gate for pending changesets.
  *
  * Releases are tagged from `@evf/foundry-module`'s version (scripts/release-tag.mjs), and
- * the module zip ships the packages below (the g2 app is built into `g2/`, the shared
- * packages are bundled into both). A changeset that bumps one of them WITHOUT bumping
+ * that release ships the packages below (the glasses app as the attached `.ehpk` and the
+ * Pages `/app/` build — ADR-0019 —, the shared packages bundled into both). A changeset that bumps one of them WITHOUT bumping
  * `@evf/foundry-module` would never produce a new Foundry / The Forge release, so the
  * change would silently never reach users. This check fails in that case.
  *
