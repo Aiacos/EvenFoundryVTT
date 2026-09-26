@@ -1,6 +1,6 @@
 import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk';
 import { OsEventTypeList } from '@evenrealities/even_hub_sdk';
-import { buildPairingUrl, generateDeviceKey, generateRoomId } from '@evf/shared-protocol';
+import { buildPairingUrl, deriveCodePairing } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStorage, settle } from './__fixtures__/direct-fixtures.js';
 import { foregroundTransition, startApp } from './app.js';
@@ -56,7 +56,8 @@ describe('startApp', () => {
   });
 
   it('inside the Even App: consumes the QR fragment, mirrors storage, starts the HUD, routes lifecycle', async () => {
-    const payload = { v: 2 as const, r: generateRoomId(), k: generateDeviceKey() };
+    const code = '7QK3MX9P2HRAC4TE';
+    const pairing = await deriveCodePairing(code);
     let onEvent: (e: EvenHubEvent) => void = () => {};
     const stopEvents = vi.fn();
     const bridge = {
@@ -67,15 +68,12 @@ describe('startApp', () => {
         return stopEvents;
       }),
     } as unknown as EvenAppBridge;
-    const env = environment(buildPairingUrl(APP, payload), bridge);
+    const env = environment(buildPairingUrl(APP, { code }), bridge);
     const app = await startApp(env);
     await settle();
     expect(env.history.replaceState).toHaveBeenCalled();
-    expect(JSON.parse(env.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual({
-      room: payload.r,
-      key: payload.k,
-    });
-    expect(env.openRelay).toHaveBeenCalledWith('wss://relay.example', payload.r);
+    expect(JSON.parse(env.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(pairing);
+    expect(env.openRelay).toHaveBeenCalledWith('wss://relay.example', pairing.room);
     expect(bridge.setLocalStorage).toHaveBeenCalled();
     expect(env.startHud).toHaveBeenCalledWith(bridge, app.store, app.session);
     expect(app.store.get().connection).toMatchObject({ status: 'offline', cause: 'network' });

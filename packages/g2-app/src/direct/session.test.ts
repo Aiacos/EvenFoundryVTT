@@ -157,7 +157,6 @@ describe('connect flow (relay, ADR-0019)', () => {
     expect(h.store.get().connection).toMatchObject({
       status: 'connecting',
       server: 'evf-relay.evf-relay.workers.dev',
-      label: 'Thorin',
       steps: { relay: true, projector: false, paired: false },
     });
     const gm = h.gm();
@@ -717,19 +716,15 @@ describe('lifecycle and user actions', () => {
   it('pairs with a scanned QR text; rejects anything else', async () => {
     const h = setup();
     await h.session.start(null);
-    const room = generateRoomId();
-    const key = generateDeviceKey();
+    const code = '7QK3MX9P2HRAC4TE';
     await h.session.pairScanned(
       buildPairingUrl('https://aiacos.github.io/EvenFoundryVTT/app/', {
-        v: 2,
-        r: room,
-        k: key,
-        l: 'Mira',
+        code,
         relay: 'ws://10.0.0.2:8787',
       }),
     );
+    const { room } = await deriveCodePairing(code);
     expect(h.relay.last).toMatchObject({ room, relay: 'ws://10.0.0.2:8787' });
-    expect(h.store.get().connection.label).toBe('Mira');
     await expect(h.session.pairScanned('https://example.com')).rejects.toThrow('not a pairing QR');
   });
 

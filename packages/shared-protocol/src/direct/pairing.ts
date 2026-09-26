@@ -1,25 +1,29 @@
 /**
- * Pairing secrets handed from a Foundry client (the projector) to the G2 app (ADR-0019).
+ * Pairing secrets handed from a Foundry client (the projector) to the G2 app (ADR-0019,
+ * Amendment 1).
  *
- * A pairing is a relay **room** (128-bit random id) plus a 256-bit AES device **key**.
- * Nothing about Foundry — no user, no password, no URL — ever reaches the phone.
+ * A pairing is a relay **room** plus an AES-256 device **key**, both derived with HKDF from
+ * one 16-char Crockford-base32 **code** (80 bits, {@link deriveCodePairing}). Nothing about
+ * Foundry — no user, no password, no URL — ever reaches the phone.
  *
- * - **QR path**: `<app-url>#evf=<payload>`; the URL fragment never reaches any server.
- *   `payload` = base64url(JSON {v:2, r, k, l?, relay?}). The same QR is scanned by the
- *   Even Realities App (sideload of the hosted page) or by the installed app's camera.
- * - **Manual path**: a 16-char Crockford-base32 code (80 bits). Room and key are both
- *   derived from it with HKDF-SHA256 ({@link deriveCodePairing}), so the phone needs
- *   nothing else.
+ * - **QR path**: `<app-url>#c=<CODE>[&relay=<ws(s)://…>]` — the code only, so the QR stays
+ *   small (≈ 63 characters, QR version 4) and scannable from a screen, and the link is short
+ *   enough to type. The URL fragment never reaches any server. `relay` is present only for
+ *   development / self-hosted relays.
+ * - **Manual path**: the same code typed on the phone page.
  *
- * Both are single-use: the projector rotates room and key on the first `welcome`.
+ * Single use: the projector rotates room and key to fresh random values on the first
+ * `welcome`, and an unused code expires after 5 minutes.
  *
- * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 3
+ * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 3 + Amendment 1
  */
 import { z } from 'zod';
-import { fromBase64Url, toBase64Url } from './base64url.js';
+import { toBase64Url } from './base64url.js';
 
-/** URL fragment key carrying the pairing payload. */
-export const PAIRING_FRAGMENT_KEY = 'evf' as const;
+/** URL fragment key carrying the pairing code. */
+export const PAIRING_CODE_KEY = 'c' as const;
+/** URL fragment key carrying a non-default relay (development / self-hosting). */
+export const PAIRING_RELAY_KEY = 'relay' as const;
 
 /** Relay room id: base64url, 22 chars = 128 bits (the relay accepts 22–64). */
 export const RoomIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/);
@@ -27,73 +31,65 @@ export const RoomIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/);
 /** AES-256 device key, base64url (32 bytes). */
 export const DeviceKeySchema = z.string().min(43).max(44);
 
-export const PairingPayloadSchema = z.strictObject({
-  v: z.literal(2),
-  /** Relay room id. */
-  r: RoomIdSchema,
-  /** AES-256 device key, base64url. */
-  k: DeviceKeySchema,
-  /** Human label shown on the phone before the first `welcome` (character name). */
-  l: z.string().max(64).optional(),
-  /**
-   * Relay origin override (`wss://…` / `ws://…` for development or a self-hosted relay).
-   * Absent = the relay the app was built for.
-   */
-  relay: z
-    .string()
-    .regex(/^wss?:\/\/[^\s#?]+$/)
-    .max(256)
-    .optional(),
-});
-export type PairingPayload = z.infer<typeof PairingPayloadSchema>;
+/** Relay override accepted in a pairing link: `ws://` or `wss://`, no query or fragment. */
+export const RelayUrlSchema = z
+  .string()
+  .regex(/^wss?:\/\/[^\s#?&]+$/)
+  .max(256);
+
+/** What a pairing link (QR) carries. */
+export interface PairingLink {
+  /** Normalised 16-char code (no dashes). */
+  code: string;
+  /** Relay override; absent = the relay the app was built for. */
+  relay?: string;
+}
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 /** Generates a fresh random 128-bit room id. */
 export function generateRoomId(): string {
   return toBase64Url(globalThis.crypto.getRandomValues(new Uint8Array(16)));
 }
 
-/** Serialises a payload for the URL fragment. */
-export function encodePairingPayload(payload: PairingPayload): string {
-  return toBase64Url(encoder.encode(JSON.stringify(PairingPayloadSchema.parse(payload))));
-}
-
-/** Parses a fragment value; returns `null` for anything malformed. */
-export function decodePairingPayload(encoded: string): PairingPayload | null {
-  try {
-    const json: unknown = JSON.parse(decoder.decode(fromBase64Url(encoded)));
-    const parsed = PairingPayloadSchema.safeParse(json);
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Builds the QR URL: the glasses-app page plus the payload in the fragment.
+ * Builds the QR URL: the glasses-app page plus the code (and a non-default relay) in the
+ * fragment.
  *
  * @param appUrl - Page URL of the glasses app (any existing fragment is dropped).
+ * @throws Error when the code or the relay is invalid
  */
-export function buildPairingUrl(appUrl: string, payload: PairingPayload): string {
-  return `${appUrl.split('#')[0]}#${PAIRING_FRAGMENT_KEY}=${encodePairingPayload(payload)}`;
+export function buildPairingUrl(appUrl: string, link: PairingLink): string {
+  const code = normalizeManualCode(link.code);
+  if (code === null) throw new Error('invalid pairing code');
+  const relay =
+    link.relay === undefined ? '' : `&${PAIRING_RELAY_KEY}=${RelayUrlSchema.parse(link.relay)}`;
+  return `${appUrl.split('#')[0]}#${PAIRING_CODE_KEY}=${code}${relay}`;
 }
 
-/** Extracts the pairing payload from `location.hash` (`#evf=…`), if any. */
-export function readPairingFragment(hash: string): PairingPayload | null {
+/** Extracts the pairing link from `location.hash` (`#c=…`), if any. */
+export function readPairingFragment(hash: string): PairingLink | null {
   const params = new URLSearchParams(hash.replace(/^#/, ''));
-  const value = params.get(PAIRING_FRAGMENT_KEY);
-  return value === null ? null : decodePairingPayload(value);
+  const raw = params.get(PAIRING_CODE_KEY);
+  const code = raw === null ? null : normalizeManualCode(raw);
+  if (code === null) return null;
+  const relay = params.get(PAIRING_RELAY_KEY);
+  if (relay === null) return { code };
+  const parsed = RelayUrlSchema.safeParse(relay);
+  return parsed.success ? { code, relay: parsed.data } : null;
 }
 
 /**
- * Extracts the pairing payload from any scanned text: a full pairing URL (the `#evf=`
- * fragment is what matters, whatever the origin) or a bare fragment.
+ * Extracts the pairing link from any scanned text: a full pairing URL (the fragment is what
+ * matters, whatever the origin), a bare fragment, or just the code.
  */
-export function readPairingText(text: string): PairingPayload | null {
-  const hashAt = text.indexOf('#');
-  return readPairingFragment(hashAt >= 0 ? text.slice(hashAt) : text);
+export function readPairingText(text: string): PairingLink | null {
+  const trimmed = text.trim();
+  const hashAt = trimmed.indexOf('#');
+  if (hashAt >= 0) return readPairingFragment(trimmed.slice(hashAt));
+  if (trimmed.includes('=')) return readPairingFragment(trimmed);
+  const code = normalizeManualCode(trimmed);
+  return code === null ? null : { code };
 }
 
 // ─── Manual code ─────────────────────────────────────────────────────────────

@@ -2,8 +2,9 @@
  * Pairing flow behind the «Collega occhiali G2» window (ADR-0019 §Decision Outcome 3).
  *
  * One pairing session = one 16-char code (Crockford base32, 80 bits). The relay room and
- * the device key are both derived from it (`deriveCodePairing`), and the QR carries the
- * same room + key, so QR and code are two views of one single-use secret. The pairing is
+ * the device key are both derived from it (`deriveCodePairing`), and the QR carries just
+ * that code (`<app>#c=<CODE>`, ≈ 63 chars — small, scannable from a screen, short enough to
+ * type), so QR and code are two views of one single-use secret. The pairing is
  * stored in THIS browser with `expiresAt`; the projector rotates room and key on the
  * first `hello` (QR spent). An unused session expires after {@link PAIRING_TTL_MS} and is
  * forgotten.
@@ -19,7 +20,6 @@ import {
   deriveCodePairing,
   generateManualCode,
   generateRoomId,
-  type PairingPayload,
   relayHealthUrl,
 } from '@evf/shared-protocol';
 import QRCode from 'qrcode';
@@ -36,8 +36,10 @@ export interface PairingSession {
   actorName: string;
   /** Code grouped `XXXX-XXXX-XXXX-XXXX`. */
   code: string;
-  /** QR target URL (secrets in the fragment). */
+  /** QR target URL (the code in the fragment). */
   url: string;
+  /** The glasses-app page without secrets: typed by hand, then the code on the phone. */
+  appUrl: string;
   /** QR as an SVG string. */
   qrSvg: string;
   /** Epoch ms after which the session is expired. */
@@ -81,17 +83,15 @@ export async function startPairing(
     lastSeenAt: null,
     expiresAt,
   });
-  const payload: PairingPayload = {
-    v: 2,
-    r: room,
-    k: key,
-    l: label,
+  const url = buildPairingUrl(endpoints.appUrl, {
+    code,
     // Only non-default relays travel in the QR (development, self-hosting).
     ...(endpoints.relayUrl === DEFAULT_RELAY_URL ? {} : { relay: endpoints.relayUrl }),
-  };
-  const url = buildPairingUrl(endpoints.appUrl, payload);
-  const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 1 });
-  return { deviceId, actorId, actorName: actor.name, code, url, qrSvg, expiresAt };
+  });
+  // Quiet zone of 4 modules: the QR standard's minimum, and what phone scanners expect.
+  const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
+  const appUrl = endpoints.appUrl.split('#')[0] ?? endpoints.appUrl;
+  return { deviceId, actorId, actorName: actor.name, code, url, appUrl, qrSvg, expiresAt };
 }
 
 /**

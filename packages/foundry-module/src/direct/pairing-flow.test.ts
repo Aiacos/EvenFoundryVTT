@@ -77,13 +77,12 @@ describe('startPairing (no GM, no Foundry user)', () => {
     expect(stored?.room).toBe(derived.room);
     expect(stored?.key).toBe(derived.key);
     expect(normalizeManualCode(session.code)).not.toBeNull();
-    expect(session.url.startsWith(`${APP}#evf=`)).toBe(true);
-    expect(readPairingText(session.url)).toEqual({
-      v: 2,
-      r: derived.room,
-      k: derived.key,
-      l: 'Thorin',
-    });
+    expect(session.url).toBe(`${APP}#c=${normalizeManualCode(session.code)}`);
+    expect(session.url.length).toBeLessThanOrEqual(64);
+    expect(session.appUrl).toBe(APP);
+    expect(readPairingText(session.url)).toEqual({ code: normalizeManualCode(session.code) });
+    // Quiet zone of 4 modules around a small (version 4, 33 modules) QR: 41 × 41 viewBox.
+    expect(session.qrSvg).toContain('viewBox="0 0 41 41"');
   });
 
   it('PF-02 embeds a non-default relay (dev / self-host) in the QR', async () => {

@@ -14,7 +14,7 @@ Dalla v0.13.0 il telefono **non accede mai a Foundry**: niente utenti «(G2)», 
 | **Stanza del relay** (id casuale da 128 bit) | negli stessi due posti | il relay la vede per instradare, ma non ha la chiave |
 | **Codice di 16 caratteri** | nella finestra *Collega occhiali G2* | chi lo legge: stanza e chiave derivano dal codice (HKDF-SHA256), per questo è monouso e scade in 5 minuti |
 
-Il QR porta stanza e chiave nel **frammento dell'URL** (`#evf=…`), che il browser non invia mai al server. Il collegamento **non** va sul server di Foundry né agli altri client: nessuna impostazione del mondo, nessun flag utente.
+Il QR porta il codice (da cui derivano stanza e chiave) nel **frammento dell'URL** (`#c=…`), che il browser non invia mai al server. Il collegamento **non** va sul server di Foundry né agli altri client: nessuna impostazione del mondo, nessun flag utente.
 
 ## 🔐 Cosa vede chi
 

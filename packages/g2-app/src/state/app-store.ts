@@ -41,8 +41,6 @@ export interface ConnectionState {
   status: ConnectionStatus;
   /** Relay host shown to the user. */
   server?: string;
-  /** Character label from the pairing QR, shown before the first `welcome`. */
-  label?: string;
   /** Foundry user whose tab projects (from `welcome`). */
   userName?: string;
   gmName?: string;

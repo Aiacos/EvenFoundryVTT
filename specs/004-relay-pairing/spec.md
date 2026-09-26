@@ -125,7 +125,7 @@ projector.
   Foundry origin.
 - **FR-002** Pairing MUST need no GM action and no user creation (players can't create
   users: foundryvtt.com/article/users).
-- **FR-003** The QR MUST encode `https://<app-origin>/…#evf=<payload v2>` with a 128-bit
+- **FR-003** (Amd 1) The QR MUST encode `https://<app-origin>/…#c=<CODE>` — the 16-char code only, small enough to scan from a screen and type — superseding the original `#evf=<payload v2>` with a 128-bit
   room id and a 256-bit key; the fragment never reaches any server.
 - **FR-004** A 16-character code MUST be offered as fallback; room and key derive from it
   by HKDF.
@@ -150,7 +150,7 @@ projector.
 - **Pairing** — `{deviceId, room, key, actorId, label, createdAt}`; projector copy in client
   storage, phone copy in app storage.
 - **Relay room** — ephemeral pair of sockets tagged `projector` / `glasses`; no stored data.
-- **Pairing payload v2** — `{v:2, r, k, l?, relay?}` (fragment).
+- **Pairing link** — `#c=<CODE>[&relay=…]` (fragment; ADR-0019 Amendment 1).
 
 ## Success Criteria *(mandatory)*
 

@@ -5,7 +5,12 @@ details: Changesets changelogs of [foundry-module](packages/foundry-module/CHANG
 [g2-app](packages/g2-app/CHANGELOG.md), [shared-protocol](packages/shared-protocol/CHANGELOG.md).
 Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md).
 
-## 🚀 Unreleased (v0.13.0)
+## 🚀 Unreleased
+
+- [x] Short pairing QR: only the code (`…/app/#c=<CODE>`, ~63 chars) — scannable by the Even
+      Realities App and short enough to type — [ADR-0019 Amd 1](docs/architecture/0019-relay-pairing-player-projector.md)
+
+## 📦 v0.3.0 — 2026-09-26 (spec v0.13.0)
 
 - [x] Relay pairing: one QR or code, no GM, no Foundry login on the phone; «Collega occhiali G2»
       via right-click on your name or Alt+G — [PR #60](https://github.com/Aiacos/EvenFoundryVTT/pull/60),
@@ -13,8 +18,8 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 - [x] Glasses app on Even Hub («Scansiona QR» with the phone camera) and GitHub Pages `/app/`;
       no longer inside the module zip — [PR #60](https://github.com/Aiacos/EvenFoundryVTT/pull/60)
 - [x] Map art from The Forge CDN now shows on the glasses — [PR #60](https://github.com/Aiacos/EvenFoundryVTT/pull/60)
-- [ ] Migration note for players: pair the glasses again once; old "(G2)" users can be deleted —
-      [`.changeset/relay-pairing-adr-0019.md`](.changeset/relay-pairing-adr-0019.md)
+- [x] Migration note for players: pair the glasses again once; old "(G2)" users can be deleted —
+      [release notes](https://github.com/Aiacos/EvenFoundryVTT/releases/tag/v0.3.0)
 
 ## 📦 v0.2.2 — 2026-09-24
 
