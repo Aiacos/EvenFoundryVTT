@@ -16,7 +16,12 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { mountPhonePage } from '../phone/phone-page.js';
 import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
-import { CredentialStore, consumePairingFragment, type KeyValueStorage } from './credentials.js';
+import {
+  CredentialStore,
+  consumePairingFragment,
+  credentialsFromLink,
+  type KeyValueStorage,
+} from './credentials.js';
 import { createRelayOpener, type OpenRelay } from './relay-client.js';
 import { DirectSession } from './session.js';
 
@@ -80,7 +85,7 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   const credentials = new CredentialStore(env.storage, (message, error) =>
     session?.reportWarning(message, error),
   );
-  const fragment = consumePairingFragment(env.location, env.history);
+  const link = consumePairingFragment(env.location, env.history);
   session = new DirectSession({
     store,
     credentials,
@@ -106,7 +111,7 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     });
     stopHud = env.startHud(bridge, store, active);
   }
-  await active.start(fragment);
+  await active.start(link === null ? null : await credentialsFromLink(link));
   return {
     store,
     session: active,

@@ -14,7 +14,7 @@ Tests are written first in every phase (Constitution II). `[P]` = parallelizable
 
 ## Phase 2 — Protocol v2 (shared-protocol)
 
-- [x] T006 [P] Tests + impl: pairing payload v2 `{v:2,r,k,l?,relay?}` encode/read; code → HKDF room/key
+- [x] T006 [P] Tests + impl: pairing link `#c=<CODE>` (Amd 1, was payload v2 JSON) encode/read; code → HKDF room/key
 - [x] T007 [P] Tests + impl: messages v2 (`hello` w/o user, `welcome.rotate {room,key}`, `asset`), relay contract (`relay.ts`)
 - [x] T008 Delete `ecdh.ts`, `custody.ts` and their exports/tests
 

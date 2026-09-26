@@ -21,6 +21,7 @@
   "evf.pair.copy_code": "Copy code",
   "evf.pair.code_copied": "Code copied.",
   "evf.pair.manual_hint": "In the glasses app: «Enter code».",
+  "evf.pair.manual_url": "Developer mode without the QR: open this address in the Even Realities App, then type the code",
   "evf.pair.expired": "The QR expired unused.",
   "evf.pair.new_qr": "New QR",
   "evf.pair.relay_down": "This browser cannot reach the relay",

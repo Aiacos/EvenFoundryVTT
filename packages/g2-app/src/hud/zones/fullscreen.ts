@@ -57,7 +57,7 @@ function connectScreen(p: Pixmap, c: ConnectionState, s: HudStrings): void {
     [st.relay, s.steps.relay],
     [st.projector, s.steps.projector],
     [st.paired, s.steps.paired(c.userName ?? '—')],
-    [st.character, s.steps.character(c.actorName ?? c.label ?? '—')],
+    [st.character, s.steps.character(c.actorName ?? '—')],
     [st.scene, s.steps.scene],
   ];
   const current = steps.findIndex(([done]) => !done);

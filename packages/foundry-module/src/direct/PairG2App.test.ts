@@ -105,6 +105,7 @@ describe('formatters', () => {
         actorName: 'A',
         code: 'AAAA-BBBB-CCCC-DDDD',
         url: 'u',
+        appUrl: 'a',
         qrSvg: '<svg/>',
         expiresAt: 10_000,
       },

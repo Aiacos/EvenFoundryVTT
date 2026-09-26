@@ -60,7 +60,7 @@ self-hosted and Forge · listable on Even Hub · one dev command · E2E privacy 
    two roles, keeps one socket per role, caps frame size and rate, and stores nothing.
    Frames ≤ 1 MiB (map pictures travel inside), ≤ 60 frames/s per socket. Fixed origin
    owned by the project; a self-host URL is an opt-in override (sideload only).
-3. **Pairing** = QR `https://<app-origin>/#evf=<{v:2, r:room128, k:key256, l, relay?}>` or a
+3. **Pairing** = QR `https://<app-origin>/#evf=<{v:2, r:room128, k:key256, l, relay?}>` (see **Amendment 1**: now `#c=<CODE>`) or a
    16-char code (room/key by HKDF). Room and key rotate on the first `welcome`. Pairings
    persist on both sides and are revocable. The phone never holds a Foundry credential.
 4. **Transport** = ADR-0016 sealed envelopes (AES-256-GCM, AAD `from>to`, anti-replay) over
@@ -117,4 +117,23 @@ self-hosted and Forge · listable on Even Hub · one dev command · E2E privacy 
   declared, no Foundry login / socket.io in the bundle); `validate:relay` harness (G1 software
   part GO on a local relay; G1 on Forge/self-hosted tabs, G2 and G3 are defer-hardware /
   post-deploy items in `specs/004-relay-pairing/tasks.md` Phase 7).
+
+### Amendment 1 — code-only QR (2026-09-26)
+
+**Why:** the v0.13.0 QR carried a base64url JSON payload `{v:2, r, k, l, relay?}` — 201
+characters, QR version 10 (57 × 57 modules) with a 1-module quiet zone. On hardware the Even
+Realities App's developer "Scan QR" did not recognise it from a laptop screen, and the manual
+URL field truncated it (maintainer report, 2026-09-26).
+
+**Decision:** the QR carries only the 16-char code: `<app-url>#c=<CODE>[&relay=<ws(s)://…>]`
+(≈ 63 characters, QR version 4, 33 × 33 modules, quiet zone 4 modules). Room and key are derived
+from the code with HKDF exactly as for the typed code; the relay override appears only for
+development / self-hosting; the pre-`welcome` label is dropped (the `welcome` names the
+character). The pairing window also shows the plain app address (44 characters) for developer
+mode without a camera: open it, then type the code.
+
+**Security:** the secret shown on screen is now 80 bits (was 128 + 256) — the same as the code
+that was always displayed next to the QR; it is single use (room + key rotate to fresh random
+values on the first `welcome`) and expires in 5 minutes, so an online guess over the relay is
+infeasible.
 
