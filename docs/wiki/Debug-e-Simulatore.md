@@ -43,7 +43,7 @@ controlla il toolchain, trova l'IP di rete e una porta libera, apre la porta nel
 | `pnpm wizard` | tour delle 12 schermate demo, cambio ogni 6 s (nessun Foundry, nessun relay) |
 | `pnpm wizard --scene combat-my-turn` | una sola schermata, per provare i gesti |
 | `pnpm wizard --mode build` | serve il bundle di produzione (`packages/g2-app/dist`, gli stessi byte del `.ehpk` e di GitHub Pages) |
-| `pnpm dev:glasses` (= `--mode live`) | collegamento vero con il **tuo** Foundry: serve l'app di questo checkout sulla LAN, controlla il relay e stampa l'indirizzo da mettere nell'impostazione **«Pagina dell'app occhiali (avanzato)»**; poi apri **«Collega occhiali G2»** (Alt+G) e inquadra **quel** QR |
+| `pnpm dev:glasses` (= `--mode live`) | collegamento vero con il **tuo** Foundry: serve l'app di questo checkout sulla LAN, controlla il relay e ne stampa il QR: inquadralo in Developer Mode, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — oppure `--code XXXX-XXXX-XXXX-XXXX` e basta una scansione. Non digitare URL nel campo link manuale della Even App: tronca e mette la maiuscola |
 | `pnpm dev:glasses --local-relay` | avvia anche il relay in locale (`wrangler dev`); solo con un Foundry `http://` (una pagina `https://` non apre `ws://`) — imposta **«Relay (avanzato)»** all'indirizzo stampato |
 | `pnpm wizard --debug` | aggiunge `?debug=1` (log nella console della Developer Mode) |
 

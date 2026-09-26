@@ -139,8 +139,11 @@ pnpm dev:glasses                             # live pairing against your Foundry
 npx @evenrealities/evenhub-cli qr --url http://<LAN-IP>:<port>/?demo=tour   # by hand
 ```
 
-`pnpm dev:glasses` prints the LAN URL to set as **Glasses app page (advanced)** in the module
-settings; then open **Connect G2 glasses** (Alt+G) and scan its QR in developer mode. By hand,
+`pnpm dev:glasses` prints the QR of this checkout's app on the LAN: scan it in developer mode
+(**Even Hub → Scan QR**), then type in the app the code that **Connect G2 glasses** (Alt+G)
+shows in Foundry — or run `pnpm dev:glasses --code XXXX-XXXX-XXXX-XXXX` and one scan pairs.
+Don't type URLs in the Even App's manual link field: it caps the length and capitalises the
+first letter (the Even Hub docs list manual links in Dev Preview as a known issue). By hand,
 Vite must listen on the LAN (`vite --host 0.0.0.0`; `pnpm --filter … dev -- --host` does
 **not** forward the flag). `bash scripts/wizard.sh --help` lists every flag.
 

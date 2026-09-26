@@ -67,14 +67,20 @@ export function buildPairingUrl(appUrl: string, link: PairingLink): string {
   return `${appUrl.split('#')[0]}#${PAIRING_CODE_KEY}=${code}${relay}`;
 }
 
-/** Extracts the pairing link from `location.hash` (`#c=…`), if any. */
+/**
+ * Extracts the pairing link from `location.hash` (`#c=…`), if any. Keys are matched
+ * case-insensitively: a link typed on a phone keyboard often arrives capitalised.
+ */
 export function readPairingFragment(hash: string): PairingLink | null {
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const params = new Map<string, string>();
+  new URLSearchParams(hash.replace(/^#/, '')).forEach((value, key) => {
+    params.set(key.toLowerCase(), value);
+  });
   const raw = params.get(PAIRING_CODE_KEY);
-  const code = raw === null ? null : normalizeManualCode(raw);
+  const code = raw === undefined ? null : normalizeManualCode(raw);
   if (code === null) return null;
   const relay = params.get(PAIRING_RELAY_KEY);
-  if (relay === null) return { code };
+  if (relay === undefined) return { code };
   const parsed = RelayUrlSchema.safeParse(relay);
   return parsed.success ? { code, relay: parsed.data } : null;
 }

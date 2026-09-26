@@ -13,7 +13,8 @@ Tre pezzi possono guastarsi: l'**app sul telefono**, il **relay** e la **scheda 
 | **QR scaduto** (*Il QR è scaduto senza essere usato.*) | sono passati 5 minuti | **Nuovo QR** |
 | Il QR è già stato usato, o il codice non funziona | QR e codice sono monouso: dopo il primo collegamento stanza e chiave cambiano | **Collega altri occhiali** per un nuovo QR |
 | *Codice non valido* | meno o più di 16 caratteri | copia il codice sotto il QR (*Copia codice*); trattini e maiuscole non contano |
-| «Scansiona QR» non scatta la foto | permesso della fotocamera negato alla Even App | usa **«Inserisci codice»**, oppure riattiva il permesso nelle impostazioni del telefono |
+| «Scansiona QR» non scatta la foto / *Fotocamera non disponibile* | permesso della fotocamera negato alla Even App, o pagina caricata in Developer Mode senza fotocamera | digita il codice sotto il QR (o incolla il link intero) nel campo **Codice**, oppure riattiva il permesso nelle impostazioni del telefono |
+| *Nessun QR nella foto* | QR troppo piccolo o mosso nella foto (effetto moiré dello schermo) | avvicinati finché il QR riempie l'inquadratura e tieni fermo, o digita il codice |
 | *Nessun QR nella foto* / *Questo non è un QR di associazione EvenFoundryVTT* | foto sfocata o QR sbagliato | inquadra tutto il QR della finestra *Collega occhiali G2* |
 | **Due schede** di Foundry aperte: una sola trasmette | per ogni occhiali trasmette una sola scheda per browser (Web Lock) | normale; se chiudi quella attiva subentra l'altra. In console: `[EVF] relay: another projector took over this device — standing by` |
 | Occhiali non si collegano da un altro computer | il collegamento vive nel browser che ha mostrato il QR | usa quel browser, oppure collegali di nuovo dal nuovo |
