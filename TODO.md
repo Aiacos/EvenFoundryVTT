@@ -8,7 +8,7 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
 
 - [x] Cloudflare: relay deployed at `wss://evf-relay.evf-relay.workers.dev` (subdomain `evf-relay`,
       `validate:relay` GO, 2026-09-26) — [runbook §Relay and Pages](docs/runbook.md)
-- [ ] Repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (automatic redeploys; first deploy was manual) —
+- [x] Repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` set 2026-09-26 (automatic redeploys; local copy in `~/.config/evenfoundryvtt/cloudflare.env`) —
       [`relay-deploy.yml`](.github/workflows/relay-deploy.yml)
 - [ ] Settings › Pages › Source = **GitHub Actions** — [`pages.yml`](.github/workflows/pages.yml)
 - [ ] Even Hub portal: upload the release `.ehpk`, beta group with the table's players, privacy URL
