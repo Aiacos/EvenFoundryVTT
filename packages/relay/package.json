@@ -1,6 +1,6 @@
 {
   "name": "@evf/relay",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "EVF relay — opaque WebSocket room relay (Cloudflare Worker + one Durable Object per room) between a Foundry projector tab and the G2 app (ADR-0019).",
