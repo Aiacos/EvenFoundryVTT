@@ -37,6 +37,7 @@ interface AppLike {
   tick(now?: number): Promise<void>;
   newQr(): Promise<void>;
   cancelQr(): Promise<void>;
+  toggleQrSize(): Promise<void>;
   copyCode(): Promise<void>;
   recheck(): Promise<void>;
   askRevoke(id: string | undefined): Promise<void>;
@@ -152,6 +153,7 @@ describe('PairG2App (opening it is pairing)', () => {
     expect(Object.keys(App.DEFAULT_OPTIONS.actions)).toEqual([
       'newQr',
       'cancelQr',
+      'toggleQrSize',
       'copyCode',
       'recheck',
       'revoke',
@@ -578,6 +580,25 @@ describe('«Annulla QR»', () => {
     await app.newQr();
     expect(app.cancelled).toBe(false);
     expect(app.session?.deviceId).not.toBe(shown.deviceId);
+    app._onClose();
+  });
+});
+
+describe('«Ingrandisci QR»', () => {
+  it('PA-18 toggles a big QR (a phone photo needs it large) and keeps it across a new QR', async () => {
+    const app = new (appClass())();
+    await app._onRender();
+    expect((await app._prepareContext()).bigQr).toBe(false);
+    app.render.mockClear();
+    await app.toggleQrSize();
+    expect(app.render).toHaveBeenCalled();
+    expect((await app._prepareContext()).bigQr).toBe(true);
+    const first = app.session as PairingSession;
+    await app.newQr();
+    expect(app.session?.deviceId).not.toBe(first.deviceId);
+    expect((await app._prepareContext()).bigQr).toBe(true);
+    await app.toggleQrSize();
+    expect((await app._prepareContext()).bigQr).toBe(false);
     app._onClose();
   });
 });

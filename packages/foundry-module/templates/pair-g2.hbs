@@ -6,7 +6,7 @@
   States: no-actor · preparing · relay-down · session (QR + countdown + code + live status + «Annulla QR») · expired · cancelled · connected.
   A non-default app page / relay shows a notice with «Ripristina predefinito» on top.
 --}}
-<section class="evf-pair" data-state="{{#if connected}}connected{{else if session}}session{{else if expired}}expired{{else if cancelled}}cancelled{{else}}idle{{/if}}">
+<section class="evf-pair{{#if bigQr}} evf-pair--big-qr{{/if}}" data-state="{{#if connected}}connected{{else if session}}session{{else if expired}}expired{{else if cancelled}}cancelled{{else}}idle{{/if}}">
 
   {{#each endpointNotices}}
   <div class="evf-pair__notice evf-pair__notice--{{tone}} evf-pair__endpoint" role="alert" data-endpoint-notice="{{kind}}">
@@ -39,7 +39,7 @@
   </div>
   {{else if session}}
   <div class="evf-pair__stage">
-    <div class="evf-pair__qr" aria-label="{{localize "evf.pair.qr_alt"}}">{{{session.qrSvg}}}</div>
+    <div class="evf-pair__qr" role="button" tabindex="0" data-action="toggleQrSize" aria-label="{{localize "evf.pair.qr_alt"}}">{{{session.qrSvg}}}</div>
     <div class="evf-pair__guide">
       <ol class="evf-pair__steps">
         <li><span class="evf-pair__step-no">1</span>{{localize "evf.pair.step1"}}</li>
@@ -52,6 +52,7 @@
         </div>
         <progress data-countdown-bar max="{{session.secondsTotal}}" value="{{session.secondsLeft}}"></progress>
         <span class="evf-pair__muted">{{localize "evf.pair.single_use"}}</span>
+        <button type="button" class="evf-pair__qr-size" data-action="toggleQrSize"><i class="fas {{#if bigQr}}fa-compress{{else}}fa-expand{{/if}}" aria-hidden="true"></i> {{#if bigQr}}{{localize "evf.pair.qr_smaller"}}{{else}}{{localize "evf.pair.qr_bigger"}}{{/if}}</button>
         <button type="button" class="evf-pair__cancel" data-action="cancelQr"><i class="fas fa-ban" aria-hidden="true"></i> {{localize "evf.pair.cancel_qr"}}</button>
       </div>
       <ul class="evf-pair__live" aria-live="polite">

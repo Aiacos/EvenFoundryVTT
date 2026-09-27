@@ -44,7 +44,8 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
       [ADR-0019 Amd 2](docs/architecture/0019-relay-pairing-player-projector.md)
 - [ ] Secure context of the sideloaded Pages page and of the installed `.ehpk` on iOS + Android (boot line
       `secure yes/no · crypto …`) — [ADR-0019 Amd 2](docs/architecture/0019-relay-pairing-player-projector.md)
-- [ ] Camera (`captureImageFromCamera`) on a sideloaded page; log the raw result shape once —
+- [ ] Camera (`captureImageFromCamera`) on a sideloaded page and in the installed app: photo size / type
+      shown in *Nessun QR nella foto (…)*; decode rate with «Ingrandisci QR» at 15–30 cm —
       [`qr-scan.ts`](packages/g2-app/src/phone/qr-scan.ts)
 - [ ] The Forge v14: ESC/✕ on the pairing window, `wss` to the relay under Forge's CSP, pairing after
       window close — [specs/004 T028](specs/004-relay-pairing/tasks.md)

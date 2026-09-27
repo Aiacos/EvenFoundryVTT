@@ -62,4 +62,14 @@ describe('pairing window assets', () => {
       }
     }
   });
+
+  it('PAS-05 the QR can be enlarged: button + clickable QR wired to toggleQrSize, big layout styled', () => {
+    const hbs = read('templates/pair-g2.hbs');
+    const css = read('styles/pair-g2.css');
+    expect(hbs.match(/data-action="toggleQrSize"/g)?.length).toBe(2);
+    expect(hbs).toContain('evf.pair.qr_bigger');
+    expect(hbs).toContain('evf.pair.qr_smaller');
+    expect(hbs).toMatch(/evf-pair--big-qr/);
+    expect(css).toMatch(/\.evf-pair--big-qr \.evf-pair__qr\s*\{[^}]*width:\s*min\(68vh, 520px\)/);
+  });
 });
