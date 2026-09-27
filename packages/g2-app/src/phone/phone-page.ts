@@ -368,12 +368,19 @@ function buildConnectionView(
 
 /** Scan button + code form + error line, shared by P03 and the P02 «Collega di nuovo». */
 interface PairControls {
-  /** «Scansiona QR», or null without the Even App camera. */
-  scan: HTMLButtonElement | null;
+  /** «Scansiona QR» + its framing hint, or null without the Even App camera. */
+  scan: HTMLElement | null;
   form: HTMLFormElement;
   error: HTMLElement;
   /** Shows a pairing-link failure of the session (once per distinct message). */
   update(info: SessionInfo): void;
+}
+
+/** Phone text for a failed scan: the cause, and for «no QR» the photo it looked at. */
+function scanErrorText(err: QrScanError, t: PhoneStrings): string {
+  if (err.reason === 'camera') return t.cameraUnavailable;
+  if (err.reason === 'format') return t.photoFormat(err.detail);
+  return err.detail === '' ? t.noQrInPhoto : `${t.noQrInPhoto} (${err.detail})`;
 }
 
 function buildPairControls(
@@ -384,7 +391,7 @@ function buildPairControls(
 ): PairControls {
   const error = el('p', { class: 'evf-error', role: 'alert', 'data-field': 'error' });
 
-  let scan: HTMLButtonElement | null = null;
+  let scan: HTMLElement | null = null;
   if (camera !== null) {
     const button = el('button', { type: 'button', class: 'evf-primary', 'data-action': 'scan' }, [
       t.scan,
@@ -400,17 +407,16 @@ function buildPairControls(
         })
         .catch((err: unknown) => {
           error.textContent =
-            err instanceof QrScanError
-              ? err.reason === 'camera'
-                ? t.cameraUnavailable
-                : t.noQrInPhoto
-              : pairingErrorText(err, t);
+            err instanceof QrScanError ? scanErrorText(err, t) : pairingErrorText(err, t);
         })
         .finally(() => {
           button.disabled = false;
         });
     });
-    scan = button;
+    scan = el('div', { class: 'evf-scan' }, [
+      button,
+      el('p', { class: 'evf-dim', 'data-field': 'scan-hint' }, [t.scanHint]),
+    ]);
   }
 
   const code = el('input', {

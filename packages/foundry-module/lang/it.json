@@ -18,6 +18,8 @@
   "evf.pair.expires_in": "Scade tra",
   "evf.pair.single_use": "Monouso: smette di funzionare appena gli occhiali si collegano.",
   "evf.pair.cancel_qr": "Annulla QR",
+  "evf.pair.qr_bigger": "Ingrandisci QR",
+  "evf.pair.qr_smaller": "Riduci QR",
   "evf.pair.live.relay_up": "Relay collegato",
   "evf.pair.live.relay_down": "Relay non collegato: questa scheda non raggiunge il relay",
   "evf.pair.live.glasses_in": "Occhiali nella stanza",

@@ -173,6 +173,8 @@ export interface PairContext {
   expired: boolean;
   /** The player cancelled the shown QR («Annulla QR»): no new one until «Nuovo QR». */
   cancelled: boolean;
+  /** «Ingrandisci QR» is on: the QR is drawn about twice as large, steps below it. */
+  bigQr: boolean;
   /** Character name of the device that just connected. */
   connected: string | null;
   devices: DeviceRow[];
@@ -248,6 +250,9 @@ export function createPairG2App(
         cancelQr(this: PairG2App): Promise<void> {
           return this.cancelQr();
         },
+        toggleQrSize(this: PairG2App): Promise<void> {
+          return this.toggleQrSize();
+        },
         copyCode(this: PairG2App): Promise<void> {
           return this.copyCode();
         },
@@ -284,6 +289,8 @@ export function createPairG2App(
 
     expired = false;
     cancelled = false;
+    /** «Ingrandisci QR»: the QR drawn about twice as large (kept across new QRs). */
+    bigQr = false;
     connected: string | null = null;
     relayOk: boolean | null = null;
     selectedActor: string | null = null;
@@ -345,6 +352,7 @@ export function createPairG2App(
         live: session === null ? [] : liveItems(projector.diagnostics(session.deviceId)),
         expired: this.expired,
         cancelled: this.cancelled,
+        bigQr: this.bigQr,
         connected: this.connected,
         devices: listPairings()
           .filter((p) => p.expiresAt === null)
@@ -502,6 +510,16 @@ export function createPairG2App(
       this.cancelled = true;
       await this.discardSession();
       ui.notifications?.info(game.i18n.localize('evf.pair.cancelled_toast'));
+      await this.render();
+    }
+
+    /**
+     * «Ingrandisci QR» / «Riduci QR» (or a click on the QR): a phone *photo* needs the QR
+     * large — at 256 px it fills ~13 % of a photo taken from 30 cm, where decoding succeeds
+     * ~40 % of the time; twice as large, ~90 % (g2-app `qr-scan.ts` SCAN_PLAN measurements).
+     */
+    async toggleQrSize(): Promise<void> {
+      this.bigQr = !this.bigQr;
       await this.render();
     }
 

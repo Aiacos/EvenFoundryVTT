@@ -16,6 +16,7 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import { phoneStrings } from '../phone/i18n.js';
 import { mountPhonePage } from '../phone/phone-page.js';
+import { lenientCamera } from '../phone/qr-scan.js';
 import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
 import {
   type BootLink,
@@ -166,7 +167,13 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   let unmountPhone = (): void => {};
   try {
     const bridge = await env.getBridge();
-    unmountPhone = mountPhonePage(env.root, store, active, bridge);
+    // The camera goes through the lenient parser: the SDK's own drops partial host results.
+    unmountPhone = mountPhonePage(
+      env.root,
+      store,
+      active,
+      bridge === null ? null : lenientCamera(bridge),
+    );
     if (bridge !== null) {
       credentials.attachMirror(bridge);
       stopEvents = bridge.onEvenHubEvent((event) => {

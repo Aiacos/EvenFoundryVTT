@@ -5,6 +5,7 @@ import { PAIRING_ERROR, type SessionInfo } from '../direct/session.js';
 import { type AppState, createAppStore, initialState } from '../state/app-store.js';
 import { phoneStrings } from './i18n.js';
 import { DEBUG_TAIL, mountPhonePage, type PhoneSession, statusLine } from './phone-page.js';
+import { QrScanError } from './qr-scan.js';
 
 const PHOTO = { path: 'p', name: 'p', mimeType: 'image/jpeg', size: 1, base64: 'AA' };
 
@@ -101,7 +102,12 @@ describe('statusLine', () => {
 describe('P03 setup page', () => {
   const photo = { path: 'p', name: 'p', mimeType: 'image/jpeg', size: 1, base64: 'AA' };
   const scanDeps = (text: string | null) => ({
-    decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+    load: vi.fn(async () => ({
+      width: 1,
+      height: 1,
+      pixels: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+      close: () => {},
+    })),
     readQr: vi.fn(async () => text),
   });
 
@@ -168,13 +174,39 @@ describe('P03 setup page', () => {
     mountPhonePage(root, store, session, camera, null, scanDeps(null));
     root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
     await settle(2);
-    expect(field(root, 'error')).toBe(phoneStrings('it').noQrInPhoto);
+    // The message names the photo (size · type · weight) for a support screenshot.
+    expect(field(root, 'error')).toBe(
+      `${phoneStrings('it').noQrInPhoto} (1×1 · image/jpeg · 0.0 MB)`,
+    );
     const other = document.createElement('main');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     mountPhonePage(other, store, session, camera, null, scanDeps('https://example.com'));
     other.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
     await settle(2);
     expect(field(other, 'error')).toBe('Questo non è un QR di associazione EvenFoundryVTT.');
+  });
+
+  it('tells how to frame the QR before the photo, and names an undecodable photo type', async () => {
+    const store = createAppStore();
+    const { session } = fakeSession();
+    const camera = {
+      captureImageFromCamera: vi.fn(async () => ({ ...photo, mimeType: 'image/heic' })),
+    };
+    const root = document.createElement('main');
+    const deps = {
+      load: vi.fn(async () => {
+        throw new QrScanError('format', 'image/heic');
+      }),
+      readQr: vi.fn(async () => null),
+    };
+    mountPhonePage(root, store, session, camera, null, deps);
+    expect(field(root, 'scan-hint')).toBe(phoneStrings('it').scanHint);
+    root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(root, 'error')).toBe(phoneStrings('it').photoFormat('image/heic'));
+    const plain = document.createElement('main');
+    mountPhonePage(plain, store, session, null);
+    expect(plain.querySelector('[data-field="scan-hint"]')).toBeNull();
   });
 
   it('camera failure and an empty capture explain themselves instead of doing nothing', async () => {
@@ -343,7 +375,12 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
     const camera = { captureImageFromCamera: vi.fn(async () => PHOTO) };
     const root = document.createElement('main');
     mountPhonePage(root, createAppStore(), session, camera, null, {
-      decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+      load: vi.fn(async () => ({
+        width: 1,
+        height: 1,
+        pixels: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+        close: () => {},
+      })),
       readQr: vi.fn(async () => 'https://x/#c=7QK3MX9P2HRAC4TE'),
     });
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
@@ -433,7 +470,12 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
     const camera = { captureImageFromCamera: vi.fn(async () => PHOTO) };
     const root = document.createElement('main');
     mountPhonePage(root, store, session, camera, null, {
-      decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+      load: vi.fn(async () => ({
+        width: 1,
+        height: 1,
+        pixels: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+        close: () => {},
+      })),
       readQr: vi.fn(async () => 'https://x/#c=7QK3MX9P2HRAC4TE'),
     });
     const repair = root.querySelector('details[data-field="repair"]');
