@@ -1,5 +1,12 @@
 # @evf/validation-harness
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [acee2a4]
+  - @evf/shared-protocol@0.4.3
+
 ## 0.3.2
 
 ### Patch Changes
