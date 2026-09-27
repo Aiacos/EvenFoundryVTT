@@ -40,7 +40,7 @@
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md (ADR-0011)
  */
 
-import { TemplatePlacementConfirmPayloadSchema } from '@evf/shared-protocol';
+import { randomId, TemplatePlacementConfirmPayloadSchema } from '@evf/shared-protocol';
 import type { ArgsValidator, ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── PLACEMENT_CONTEXTS — 60s TTL placement state store ──────────────────────
@@ -133,43 +133,6 @@ type ConfirmTemplatePlacementArgs = {
   y: number;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Generates a UUID v4 using the Web Crypto API.
- *
- * Available in the browser (GM client) and Node 24 (tests).
- * Uses `crypto.randomUUID()` when available (Node 14.17+ / modern browsers),
- * falling back to a manual hex construction for test environments that provide
- * a `crypto.getRandomValues` mock.
- *
- * @returns UUID v4 string
- */
-function generateUUID(): string {
-  // crypto.randomUUID() is available in Node 14.17+ and modern browsers.
-  // Test environments may mock crypto.getRandomValues only — handle both.
-  const cryptoGlobal = globalThis.crypto;
-  if (
-    cryptoGlobal &&
-    typeof (cryptoGlobal as { randomUUID?: () => string }).randomUUID === 'function'
-  ) {
-    return (cryptoGlobal as { randomUUID: () => string }).randomUUID();
-  }
-  // Fallback: manual UUID v4 via getRandomValues (test environments).
-  const bytes = new Uint8Array(16);
-  cryptoGlobal.getRandomValues(bytes);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant RFC4122
-  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0'));
-  return [
-    hex.slice(0, 4).join(''),
-    hex.slice(4, 6).join(''),
-    hex.slice(6, 8).join(''),
-    hex.slice(8, 10).join(''),
-    hex.slice(10).join(''),
-  ].join('-');
-}
-
 // ─── placeTemplateHandler ─────────────────────────────────────────────────────
 
 /**
@@ -219,7 +182,7 @@ export const placeTemplateHandler: ToolHandler<PlaceTemplateArgs> = {
     }
 
     // Step 6: mint placementId + store context with TTL timestamp
-    const placementId = generateUUID();
+    const placementId = randomId();
     PLACEMENT_CONTEXTS.set(placementId, {
       templates,
       cachedAt: Date.now(),

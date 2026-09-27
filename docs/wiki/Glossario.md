@@ -19,9 +19,15 @@ Un solo nome per ogni concetto, lo stesso sugli occhiali, in Foundry e nei docum
 | **Busta sigillata** | `{evf, to, from, iv, ct}`: messaggio cifrato AES-256-GCM con la chiave del dispositivo |
 | **Chiave del dispositivo** | chiave AES-256 condivisa tra occhiali e projector; ruota al primo collegamento |
 | **Collega occhiali G2** | la finestra del modulo (tasto destro sul proprio nome, **Alt+G** o *Configura impostazioni*) che mostra QR e codice; aprirla è già collegare |
-| **Scansiona QR** / **Inserisci codice** | i due modi, sulla pagina del telefono, di leggere il collegamento |
+| **Scansiona QR** / campo **Codice** | i due modi, sulla pagina del telefono, di leggere il collegamento: in *Prima configurazione*, oppure nella scheda **Collega di nuovo** della pagina *Connessione* (la finestra di Foundry lo ricorda sotto il codice) |
 | **Codice** | 16 caratteri `XXXX-XXXX-XXXX-XXXX` in alternativa al QR; stanza e chiave derivano dal codice |
 | **Scollega** | dimentica gli occhiali nel browser che li trasmette e li avvisa (S10) |
+| **Collega di nuovo** | scheda della pagina *Connessione* del telefono con **Scansiona QR** e il codice; si apre da sola quando non sei collegato |
+| **Ripristina predefinito** | pulsante della finestra *Collega occhiali G2* che rimette al valore predefinito «Pagina dell'app occhiali» o «Relay» e mostra un nuovo QR |
+| **Codice già usato** | un QR o link che quel telefono ha già usato (anche dopo *Scollega* o *Dimentica associazione*): l'app lo ignora, lo dice sul telefono e tiene l'associazione che funziona |
+| **Annulla QR** | pulsante sotto il QR nella finestra *Collega occhiali G2*: il QR e il codice smettono subito di funzionare (chiudere la finestra non li annulla) |
+| **Riga di avvio** | riga in fondo alla pagina del telefono, `app · secure · crypto · link · relay`, senza segreti: dice se la pagina è un contesto sicuro e se il codice è arrivato |
+| **Contesto sicuro** | pagina `https://` o `localhost`: solo lì il browser offre WebCrypto; altrove il canale usa il fallback software |
 | **Foundry del giocatore chiuso** | stato offline degli occhiali quando la scheda che li trasmette non è aperta; si ricollegano da soli |
 | **Scheda da tavolo G2** | il layout della HUD in cinque zone A–E |
 | **Zona A–E** | Ritratto · Intestazione · Mappa · Scheda · Contesto |

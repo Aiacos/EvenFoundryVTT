@@ -20,14 +20,12 @@ import {
   deriveCodePairing,
   generateManualCode,
   generateRoomId,
+  PAIRING_TTL_MS,
   relayHealthUrl,
 } from '@evf/shared-protocol';
 import QRCode from 'qrcode';
 import { userOwnsActor } from './ownership.js';
 import { getPairing, removePairing, savePairing } from './pairing-store.js';
-
-/** Lifetime of a displayed QR / code (ms). */
-export const PAIRING_TTL_MS = 5 * 60_000;
 
 /** A freshly generated pairing, ready to be displayed. */
 export interface PairingSession {
@@ -38,8 +36,6 @@ export interface PairingSession {
   code: string;
   /** QR target URL (the code in the fragment). */
   url: string;
-  /** The glasses-app page without secrets: typed by hand, then the code on the phone. */
-  appUrl: string;
   /** QR as an SVG string. */
   qrSvg: string;
   /** Epoch ms after which the session is expired. */
@@ -53,8 +49,10 @@ export interface PairingEndpoints {
 }
 
 /**
- * Starts a pairing of `actorId` for THIS browser's user: stores it (pending) and returns
- * the QR + code. The caller opens the projector channel for `deviceId`.
+ * Starts a pairing of `actorId` for THIS browser's user: stores it (pending, with the relay
+ * it is made on — the projector keeps serving it there even if the relay setting changes
+ * later, since the glasses keep the relay of their QR) and returns the QR + code. The
+ * caller opens the projector channel for `deviceId`.
  *
  * @throws when the actor does not exist or the current user does not own it
  */
@@ -77,6 +75,7 @@ export async function startPairing(
     deviceId,
     room,
     key,
+    relay: endpoints.relayUrl,
     actorId,
     label,
     createdAt: now,
@@ -90,8 +89,7 @@ export async function startPairing(
   });
   // Quiet zone of 4 modules: the QR standard's minimum, and what phone scanners expect.
   const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
-  const appUrl = endpoints.appUrl.split('#')[0] ?? endpoints.appUrl;
-  return { deviceId, actorId, actorName: actor.name, code, url, appUrl, qrSvg, expiresAt };
+  return { deviceId, actorId, actorName: actor.name, code, url, qrSvg, expiresAt };
 }
 
 /**

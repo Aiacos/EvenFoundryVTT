@@ -2,12 +2,13 @@ import {
   DEFAULT_RELAY_URL,
   deriveCodePairing,
   normalizeManualCode,
+  PAIRING_TTL_MS,
   readPairingText,
 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFoundry, makeActor, makeUser } from '../__tests__/direct-fixtures.js';
 import { ownedCharacters, userOwnsActor } from './ownership.js';
-import { checkRelay, expirePairing, PAIRING_TTL_MS, startPairing } from './pairing-flow.js';
+import { checkRelay, expirePairing, startPairing } from './pairing-flow.js';
 import { getPairing } from './pairing-store.js';
 
 const APP = 'https://aiacos.github.io/EvenFoundryVTT/app/';
@@ -79,7 +80,6 @@ describe('startPairing (no GM, no Foundry user)', () => {
     expect(normalizeManualCode(session.code)).not.toBeNull();
     expect(session.url).toBe(`${APP}#c=${normalizeManualCode(session.code)}`);
     expect(session.url.length).toBeLessThanOrEqual(64);
-    expect(session.appUrl).toBe(APP);
     expect(readPairingText(session.url)).toEqual({ code: normalizeManualCode(session.code) });
     // Quiet zone of 4 modules around a small (version 4, 33 modules) QR: 41 × 41 viewBox.
     expect(session.qrSvg).toContain('viewBox="0 0 41 41"');
@@ -88,6 +88,9 @@ describe('startPairing (no GM, no Foundry user)', () => {
   it('PF-02 embeds a non-default relay (dev / self-host) in the QR', async () => {
     const session = await startPairing('thorin', { appUrl: APP, relayUrl: 'ws://10.0.0.2:8787' });
     expect(readPairingText(session.url)?.relay).toBe('ws://10.0.0.2:8787');
+    // Regression: the pairing remembers its relay (the glasses keep the QR's relay), so a
+    // later «Ripristina predefinito» of the relay setting does not split the two ends.
+    expect(getPairing(session.deviceId)?.relay).toBe('ws://10.0.0.2:8787');
   });
 
   it('PF-03 refuses actors the user does not own, and unknown actors', async () => {

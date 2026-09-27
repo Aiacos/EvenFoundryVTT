@@ -35,9 +35,12 @@ export function layoutModeFor(app: AppState): LayoutMode {
 
 /** Full screen to draw in `full` mode. */
 export function fullScreenOf(app: AppState): FullScreen {
-  return screenOf(app) === 'connecting'
-    ? { kind: 'connect', connection: app.connection }
-    : { kind: 'pair', revoked: app.connection.status === 'revoked' };
+  if (screenOf(app) === 'connecting') return { kind: 'connect', connection: app.connection };
+  return {
+    kind: 'pair',
+    revoked: app.connection.status === 'revoked',
+    ...(app.connection.notice === 'code-unanswered' ? { unanswered: true as const } : {}),
+  };
 }
 
 export interface ViewInput {

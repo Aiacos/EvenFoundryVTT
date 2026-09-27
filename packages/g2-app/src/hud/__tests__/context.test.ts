@@ -57,6 +57,35 @@ describe('INV-1 zone E budgets', () => {
     }
   });
 
+  it('every offline cause (S12 and its pairing variants) fits zone E in IT and EN', () => {
+    const causes = [
+      'no-projector',
+      'network',
+      'background',
+      'code-pending',
+      'actor',
+      'replaced',
+    ] as const;
+    for (const loc of ['it', 'en'] as const) {
+      expect(Object.keys(strings(loc).offlineCauses).sort()).toEqual([...causes].sort());
+      for (const cause of causes) {
+        const app = online('min', {
+          connection: { status: 'offline', cause, retryInMs: 30_000, attempt: 12, lastSyncAt: 0 },
+        });
+        const out = renderTexts('sheet', { app, ui: initialUi(), strings: strings(loc), now: NOW });
+        const body = out.ctxBody?.content.split('\n') ?? [];
+        // Never truncated: the cause line is exactly the string (INV-1, no best effort).
+        expect(body[0], `${loc} ${cause}`).toBe(strings(loc).offlineCauses[cause]);
+        for (const l of body) {
+          expect(getTextWidth(l), `${loc} ${cause}: ${l}`).toBeLessThanOrEqual(
+            TEXT.ctxBody.budgetPx,
+          );
+          expect(sanitize(l)).toBe(l);
+        }
+      }
+    }
+  });
+
   it('full screens only carry the capture layer (their content is image tiles)', () => {
     expect(texts('S10')).toEqual({ bg: { content: ' ', color: 4 } });
     expect(Object.keys(texts('S11'))).toEqual(['bg']);

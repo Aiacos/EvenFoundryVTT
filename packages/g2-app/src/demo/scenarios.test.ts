@@ -5,9 +5,32 @@ import { buildScenario, isScenarioName, playlist, SCENARIO_NAMES, TOUR } from '.
 const NOW = 1_700_000_000_000;
 
 describe('demo scenarios', () => {
-  it('cover every design screen S1–S12 exactly once', () => {
+  it('cover every design screen S1–S12 exactly once, then the pairing variants', () => {
     const mocks = SCENARIO_NAMES.map((n) => buildScenario(n, NOW).mock);
-    expect(mocks).toEqual(Array.from({ length: 12 }, (_, i) => `S${i + 1}`));
+    expect(mocks.slice(0, 12)).toEqual(Array.from({ length: 12 }, (_, i) => `S${i + 1}`));
+    expect(mocks.slice(12)).toEqual(['S10', 'S10', 'S10', 'S12']);
+  });
+
+  it('reproduce each pairing state the session can produce (code, actor, replaced)', () => {
+    const pending = buildScenario('code-pending', NOW);
+    expect(pending.initial.connection).toMatchObject({ status: 'offline', cause: 'code-pending' });
+    expect(pending.initial.character).toBeNull();
+    // No character yet: the full S11 screen with the cause, not an empty dimmed sheet.
+    expect(screenOf(pending.initial)).toBe('connecting');
+    const unanswered = buildScenario('code-unanswered', NOW);
+    expect(unanswered.initial.connection).toEqual({
+      status: 'unpaired',
+      notice: 'code-unanswered',
+    });
+    expect(screenOf(unanswered.initial)).toBe('unpaired');
+    const actor = buildScenario('actor', NOW);
+    expect(actor.initial.connection).toMatchObject({ status: 'offline', cause: 'actor' });
+    expect(screenOf(actor.initial)).toBe('connecting');
+    // Replaced: seen live first, then taken over by another app instance (no retry).
+    const replaced = buildScenario('replaced', NOW);
+    expect(screenOf(replaced.initial)).toBe('hud');
+    expect(replaced.after?.connection).toMatchObject({ status: 'offline', cause: 'replaced' });
+    expect(replaced.after?.connection?.retryInMs).toBeUndefined();
   });
 
   it('start calm (no combat/reaction/result) and move them into the patch', () => {

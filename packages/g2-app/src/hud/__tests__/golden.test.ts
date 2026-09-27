@@ -98,6 +98,18 @@ describe('golden zone fixtures (S1–S12)', () => {
   }
 });
 
+describe('golden full screens of the pairing notices', () => {
+  for (const loc of ['it', 'en'] as const) {
+    it(`S10 code unanswered ${loc}`, async () => {
+      const screen = renderFullScreen(
+        { kind: 'pair', revoked: false, unanswered: true },
+        strings(loc),
+      );
+      await matchPixelFixture(screen, fixture('full', 'S10-code-unanswered', loc, 'min'));
+    });
+  }
+});
+
 /** `1` for lit pixels of a rectangle, row-major. */
 function mask(p: Pixmap, x0: number, y0: number, x1: number, y1: number): string {
   let out = '';

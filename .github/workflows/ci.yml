@@ -146,15 +146,31 @@ jobs:
           fi
           node scripts/check-relay-origin.mjs --bundle packages/g2-app/dist
 
-      # ADR-0019 end-to-end: the relay of this commit (wrangler dev) + the real glasses
-      # session + a projector speaking the real sealed protocol: code → rotate → new
-      # room → online → map asset → invoke → projector away / back. Then the harness.
-      - name: Relay end-to-end (wrangler dev + g2-app session + validate:relay)
+      # The browser suite of the pairing E2E runs the built bundle (step above) in headless
+      # Chromium: the revision matching the pinned @playwright/test.
+      - name: Install Chromium for the pairing E2E (Playwright)
+        run: pnpm exec playwright install --with-deps chromium
+
+      # ADR-0019 end-to-end, all local (no internet: CI never touches the production relay):
+      # the relay of this commit (wrangler dev) + the real glasses session + a projector
+      # speaking the real sealed protocol: code → rotate → new room → online → map asset →
+      # invoke → projector away / back. Then @evf/e2e: the REAL projector (module init,
+      # «Collega occhiali G2» window, Projector, RelayConnection) with the real session —
+      # window closed / reopened / «Annulla QR», expiry, spent QR reopened, clock skew — and
+      # the built bundle in Chromium on http://127.0.0.1 and on http://<runner IP> (no
+      # WebCrypto: the crypto fallback, H1). Then the harness.
+      - name: Relay end-to-end (wrangler dev + g2-app session + real projector + bundle in Chromium + validate:relay)
         run: |
           (cd packages/relay && pnpm exec wrangler dev --port 8799 --ip 127.0.0.1 >/tmp/relay.log 2>&1 &)
           for _ in $(seq 1 90); do curl -fs http://127.0.0.1:8799/health >/dev/null && break; sleep 1; done
           curl -fsS http://127.0.0.1:8799/health || { cat /tmp/relay.log; exit 1; }
           EVF_RELAY_URL=ws://127.0.0.1:8799 pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts
+          EVF_CHROMIUM="$(node -e "console.log(require('@playwright/test').chromium.executablePath())")"
+          EVF_LAN_IP="$(hostname -I | awk '{print $1}')"
+          test -x "$EVF_CHROMIUM" || { echo "::error::Chromium not found at $EVF_CHROMIUM"; exit 1; }
+          test -n "$EVF_LAN_IP" || { echo "::error::no non-loopback IP for BR-2"; exit 1; }
+          EVF_RELAY_URL=ws://127.0.0.1:8799 EVF_CHROMIUM="$EVF_CHROMIUM" EVF_LAN_IP="$EVF_LAN_IP" \
+            pnpm vitest --run packages/e2e/src/pairing.e2e.test.ts
           RELAY_URL=ws://127.0.0.1:8799 pnpm --filter @evf/validation-harness validate:relay:skip-hardware
 
       # Wiki source (docs/wiki/) is published by wiki-sync.yml on main; break it here,

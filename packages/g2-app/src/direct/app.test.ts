@@ -2,6 +2,7 @@ import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk';
 import { OsEventTypeList } from '@evenrealities/even_hub_sdk';
 import { buildPairingUrl, deriveCodePairing } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { phoneStrings } from '../phone/i18n.js';
 import { MemoryStorage, settle } from './__fixtures__/direct-fixtures.js';
 import { foregroundTransition, startApp } from './app.js';
 import { CREDENTIALS_STORAGE_KEY } from './credentials.js';
@@ -22,7 +23,7 @@ function environment(url: string, bridge: EvenAppBridge | null) {
     getBridge: async () => bridge,
     startHud: vi.fn(() => vi.fn()),
     // The relay is unreachable: every open fails.
-    openRelay: vi.fn(async () => {
+    openRelay: vi.fn(async (_relay: string, _room: string): Promise<never> => {
       throw new Error('offline');
     }),
   };
@@ -72,7 +73,11 @@ describe('startApp', () => {
     const app = await startApp(env);
     await settle();
     expect(env.history.replaceState).toHaveBeenCalled();
-    expect(JSON.parse(env.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(pairing);
+    expect(JSON.parse(env.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toMatchObject({
+      ...pairing,
+      from: pairing.room,
+    });
+    expect(app.session.info().boot.link).toBe('code');
     expect(env.openRelay).toHaveBeenCalledWith('wss://relay.example', pairing.room);
     expect(bridge.setLocalStorage).toHaveBeenCalled();
     expect(env.startHud).toHaveBeenCalledWith(bridge, app.store, app.session);
@@ -97,5 +102,120 @@ describe('startApp', () => {
     expect(app.store.get().connection).toMatchObject({ status: 'offline', cause: 'background' });
     app.stop();
     expect(stopEvents).toHaveBeenCalled();
+  });
+
+  it('reports the link state: none without a code, legacy for an old #evf= QR (P03 notice)', async () => {
+    const plain = environment(APP, null);
+    const app = await startApp(plain);
+    expect(app.session.info().boot.link).toBe('none');
+    app.stop();
+    const legacy = environment(`${APP}#evf=eyJ2IjoxfQ`, null);
+    const old = await startApp(legacy);
+    expect(old.session.info().boot.link).toBe('legacy');
+    expect(legacy.root.querySelector('[data-field="link-notice"]')?.textContent).toBe(
+      phoneStrings('en').legacyLink,
+    );
+    expect(legacy.root.querySelector('[data-field="boot"]')?.textContent).toContain('link legacy');
+    old.stop();
+  });
+
+  it('a new #c= on the already-loaded page (hashchange) pairs', async () => {
+    const env = environment(APP, null);
+    let fire: () => void = () => {};
+    const unlisten = vi.fn();
+    const app = await startApp({
+      ...env,
+      hashChanges: (listener: () => void) => {
+        fire = listener;
+        return unlisten;
+      },
+    });
+    expect(env.openRelay).not.toHaveBeenCalled();
+    fire(); // unrelated hash change: nothing happens
+    expect(env.openRelay).not.toHaveBeenCalled();
+    env.location.hash = '#c=7QK3-MX9P-2HRA-C4TE';
+    fire();
+    await settle();
+    const { room } = await deriveCodePairing('7QK3MX9P2HRAC4TE');
+    expect(env.openRelay).toHaveBeenCalledWith('wss://relay.example', room);
+    expect(app.session.info().boot.link).toBe('code');
+    env.location.hash = '#c=nope';
+    fire();
+    await settle();
+    expect(app.session.info().boot.link).toBe('invalid');
+    app.stop();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it('regression: a new QR scanned into the page while the boot still connects is paired after it', async () => {
+    const first = await deriveCodePairing('7QK3MX9P2HRAC4TE');
+    const second = await deriveCodePairing('ABCDEFGHJKMNPQRS');
+    const env = environment(buildPairingUrl(APP, { code: '7QK3MX9P2HRAC4TE' }), null);
+    let release = (): void => {};
+    env.openRelay.mockImplementation(async (_relay: string, room: string) => {
+      // The boot link's relay open hangs (slow relay: up to the 10 s open timeout).
+      if (room === first.room) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      throw new Error('offline');
+    });
+    let fire: () => void = () => {};
+    const started = startApp({
+      ...env,
+      hashChanges: (listener: () => void) => {
+        fire = listener;
+        return () => {};
+      },
+    });
+    await vi.waitFor(() =>
+      expect(env.openRelay).toHaveBeenCalledWith(expect.any(String), first.room),
+    );
+    env.location.hash = '#c=ABCD-EFGH-JKMN-PQRS';
+    fire(); // the Even App reused the page: only the fragment changed
+    release();
+    const app = await started;
+    await vi.waitFor(() =>
+      expect(env.openRelay).toHaveBeenCalledWith('wss://relay.example', second.room),
+    );
+    expect(JSON.parse(env.storage.getItem(CREDENTIALS_STORAGE_KEY) ?? '{}')).toMatchObject({
+      room: second.room,
+    });
+    app.stop();
+  });
+
+  it('a boot that fails before connecting (the bridge threw) rejects and stops listening', async () => {
+    const env = environment(APP, null);
+    const unlisten = vi.fn();
+    await expect(
+      startApp({
+        ...env,
+        getBridge: async () => {
+          throw new Error('bridge exploded');
+        },
+        hashChanges: () => unlisten,
+      }),
+    ).rejects.toThrow('bridge exploded');
+    expect(unlisten).toHaveBeenCalledOnce();
+    expect(env.openRelay).not.toHaveBeenCalled();
+  });
+
+  it('a hashchange whose pairing fails is reported, never thrown', async () => {
+    const env = environment(APP, null);
+    let fire: () => void = () => {};
+    const app = await startApp({
+      ...env,
+      hashChanges: (listener: () => void) => {
+        fire = listener;
+        return () => {};
+      },
+    });
+    vi.spyOn(app.session, 'pairLink').mockRejectedValueOnce(new Error('boom'));
+    env.location.hash = '#c=7QK3-MX9P-2HRA-C4TE';
+    fire();
+    await settle();
+    expect(app.session.info().pairingError).toBe('boom');
+    app.stop();
   });
 });

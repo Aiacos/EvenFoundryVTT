@@ -12,7 +12,15 @@ export default {
     'scope-enum': [
       1, // warn, not error — until all phase NN-NN scopes are enumerated
       'always',
-      ['g2-app', 'foundry-module', 'shared-protocol', 'shared-render', 'validation-harness', '*'],
+      [
+        'g2-app',
+        'foundry-module',
+        'shared-protocol',
+        'shared-render',
+        'validation-harness',
+        'e2e',
+        '*',
+      ],
     ],
     'subject-case': [0], // disable case enforcement (Italian commits allowed)
   },

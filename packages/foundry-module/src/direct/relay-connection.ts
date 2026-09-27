@@ -7,6 +7,10 @@
  *   must not fight.
  * - Relay control frames (`{"relay":"peer-up|peer-down"}`) become `onPeer`; every other
  *   JSON frame is handed to `onFrame` unparsed beyond JSON (the projector validates it).
+ * - Outgoing frames are paced to {@link MAX_OUTGOING_FRAMES_PER_SECOND} per rolling second,
+ *   queued in order: the relay closes a socket that sends more than 60 frames/s (1008,
+ *   `packages/relay/src/limits.ts`), and a pairing burst on a scene with many pictures
+ *   (one `asset` frame each) would otherwise cross it.
  * - {@link withProjectorLock} makes sure only ONE tab of this browser projects a device:
  *   the Web Locks API queues the other tabs until the holder closes.
  *
@@ -17,6 +21,16 @@ import { RELAY_CLOSE_REPLACED, RelayControlSchema, relayRoomUrl } from '@evf/sha
 
 /** Backoff bounds (ms). */
 export const RELAY_BACKOFF = { base: 1_000, max: 30_000 } as const;
+
+/**
+ * Frames sent per relay socket in any rolling second. The relay's abuse cap is 60
+ * (`MAX_FRAMES_PER_WINDOW`, packages/relay/src/limits.ts); 40 leaves room for clock skew
+ * between this tab and the relay and for frames already in flight.
+ */
+export const MAX_OUTGOING_FRAMES_PER_SECOND = 40;
+
+/** Length of the pacing window (ms), the relay's `RATE_WINDOW_MS`. */
+const PACING_WINDOW_MS = 1_000;
 
 /** The WebSocket surface used here (injectable for tests). */
 export interface SocketLike {
@@ -47,9 +61,20 @@ export interface RelayDeps {
   createSocket(url: string): SocketLike;
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
+  /** Clock of the pacing window (ms). */
+  now(): number;
+}
+
+/** A frame waiting for its turn on the socket it was queued for. */
+interface Outgoing {
+  data: string;
+  socket: SocketLike;
+  resolve: () => void;
+  reject: (err: Error) => void;
 }
 
 const BROWSER_DEPS: RelayDeps = {
+  now: () => Date.now(),
   createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -67,6 +92,11 @@ export class RelayConnection {
   private attempt = 0;
   private stopped = true;
   private room: string;
+  /** Frames not yet written, oldest first. */
+  private readonly queue: Outgoing[] = [];
+  /** Send times of the frames written in the current pacing window, oldest first. */
+  private readonly sentAt: number[] = [];
+  private pumpTimer: unknown = null;
 
   /**
    * @param relayBase - relay origin (`wss://…`)
@@ -98,6 +128,8 @@ export class RelayConnection {
     this.stopped = true;
     this.clearTimer();
     this.drop(1000, 'stopped');
+    if (this.pumpTimer !== null) this.deps.clearTimeout(this.pumpTimer);
+    this.pumpTimer = null;
   }
 
   /** Moves to another room (pairing rotation): reconnects there immediately. */
@@ -112,16 +144,57 @@ export class RelayConnection {
   }
 
   /**
-   * Sends a JSON-serialised frame.
+   * Queues a JSON-serialised frame on the open socket. Frames go out in call order, at
+   * most {@link MAX_OUTGOING_FRAMES_PER_SECOND} per rolling second.
    *
-   * @returns false when the socket is not open (the frame is dropped: the glasses
-   *   re-request state after reconnecting)
+   * @returns resolves once the frame is written to the socket
+   * @throws (rejects) when the socket is not open, or goes away before the frame's turn
+   *   (the frame is dropped: the glasses re-request state after reconnecting)
    */
-  send(frame: object): boolean {
+  send(frame: object): Promise<void> {
     const socket = this.socket;
-    if (socket === null || socket.readyState !== OPEN) return false;
-    socket.send(JSON.stringify(frame));
-    return true;
+    if (socket === null || socket.readyState !== OPEN) {
+      return Promise.reject(new Error('relay not connected'));
+    }
+    return new Promise((resolve, reject) => {
+      this.queue.push({ data: JSON.stringify(frame), socket, resolve, reject });
+      this.pump();
+    });
+  }
+
+  /** Writes queued frames while the pacing window has room, then waits for it. */
+  private pump(): void {
+    if (this.pumpTimer !== null) return;
+    for (let next = this.queue[0]; next !== undefined; next = this.queue[0]) {
+      const now = this.deps.now();
+      while ((this.sentAt[0] ?? Number.POSITIVE_INFINITY) <= now - PACING_WINDOW_MS) {
+        this.sentAt.shift();
+      }
+      const oldest = this.sentAt[0];
+      if (oldest !== undefined && this.sentAt.length >= MAX_OUTGOING_FRAMES_PER_SECOND) {
+        this.pumpTimer = this.deps.setTimeout(
+          () => {
+            this.pumpTimer = null;
+            this.pump();
+          },
+          oldest + PACING_WINDOW_MS - now,
+        );
+        return;
+      }
+      this.queue.shift();
+      if (next.socket !== this.socket || next.socket.readyState !== OPEN) {
+        next.reject(new Error('relay socket closed before the frame was sent'));
+        continue;
+      }
+      next.socket.send(next.data);
+      this.sentAt.push(now);
+      next.resolve();
+    }
+  }
+
+  /** Rejects every queued frame (its socket is gone). */
+  private rejectQueued(reason: string): void {
+    for (const frame of this.queue.splice(0)) frame.reject(new Error(reason));
   }
 
   private open(): void {
@@ -142,6 +215,7 @@ export class RelayConnection {
     socket.onclose = (ev) => {
       if (this.socket !== socket) return;
       this.socket = null;
+      this.rejectQueued(`relay socket closed (${ev.code})`);
       this.handlers.onPeer(false);
       this.handlers.onLink(false);
       if (this.stopped) return;
@@ -181,6 +255,7 @@ export class RelayConnection {
     if (socket === null) return;
     socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
     socket.close(code, reason);
+    this.rejectQueued(`relay socket closed (${reason})`);
     this.handlers.onPeer(false);
     this.handlers.onLink(false);
   }

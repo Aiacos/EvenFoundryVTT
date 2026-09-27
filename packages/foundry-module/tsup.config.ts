@@ -25,11 +25,20 @@ export default defineConfig({
   // runtime — those are ambient TS types in src/types/foundry-globals.d.ts,
   // not real imports, so tsup never touches them.
   //
-  // BUT: pnpm workspace deps + node_modules deps MUST be bundled into the
-  // single dist/module.js because the Foundry data folder has no node_modules.
-  // @evf/shared-protocol points main/exports at src/index.ts (workspace-link
-  // pattern), and Foundry's ESM loader can't resolve npm-style imports anyway —
-  // so bundle everything required at runtime.
+  // BUT: pnpm workspace deps + node_modules deps MUST be bundled into dist/
+  // because the Foundry data folder has no node_modules. @evf/shared-protocol
+  // points main/exports at src/index.ts (workspace-link pattern), and Foundry's
+  // ESM loader can't resolve npm-style imports anyway — so bundle everything
+  // required at runtime.
+  //
+  // The output is code-split: dist/ holds module.js plus content-hashed chunks —
+  // the lazy crypto fallback (`crypto-fallback-<hash>.js`, the dynamic import in
+  // shared-protocol `crypto.ts`, fetched only on a plain-http Foundry tab without
+  // WebCrypto) and a shared runtime chunk (`chunk-<hash>.js`) that module.js
+  // imports statically. ALL of dist/ must ship (the release copies the folder and
+  // scripts/check-module-assets.mjs follows every relative import); the hashes in
+  // the chunk names do their cache-busting, so the release version-stamps only
+  // module.js (the one stable URL Foundry loads).
   noExternal: ['@evf/shared-protocol', 'qrcode'],
   // Target ES2022 to align with Foundry v13+ baseline (modern browser/Chrome engine)
   target: 'es2022',

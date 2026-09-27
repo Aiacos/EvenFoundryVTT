@@ -41,7 +41,7 @@ L'app installata sopravvive al telefono bloccato e salva il collegamento: la pri
 
 ## 🧪 Sviluppo e prova senza store
 
-Con l'**app Even Realities in modalità sviluppatore** puoi usare l'app senza installarla: inquadra il **QR mostrato da Foundry** con *Even Hub → Scan QR*. Il QR apre la pagina pubblicata su GitHub Pages (`https://aiacos.github.io/EvenFoundryVTT/app/`) con il collegamento già dentro. Un'app caricata da QR si ferma quando il telefono va in background: dopo un blocco dello schermo va inquadrato di nuovo.
+Con l'**app Even Realities in modalità sviluppatore** puoi usare l'app senza installarla: inquadra il **QR mostrato da Foundry** con *Even Hub → Scan QR*. Il QR apre la pagina pubblicata su GitHub Pages (`https://aiacos.github.io/EvenFoundryVTT/app/`) con il collegamento già dentro; se la pagina resta su **«Prima configurazione»**, digita lì il codice mostrato sotto il QR. Un'app caricata da QR si ferma quando il telefono va in background: dopo un blocco dello schermo riaprila (anche reinquadrando lo stesso QR: il codice già usato viene ignorato e l'app riprende l'associazione salvata).
 
 Dal repository:
 
@@ -52,7 +52,7 @@ ln -s "$PWD/packages/foundry-module" "<FoundryData>/Data/modules/evenfoundryvtt"
 pnpm dev:glasses                                 # app di questo checkout sulla LAN + controllo del relay
 ```
 
-`pnpm dev:glasses` stampa il QR dell'app di questo checkout sulla LAN: inquadralo, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — o passalo con `--code` e basta una scansione. Dettagli: [Debug e simulatore](Debug-e-Simulatore).
+`pnpm dev:glasses` stampa il QR dell'app di questo checkout sulla LAN: inquadralo, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — o passalo con `--code` e basta una scansione. **Non** cambiare «Pagina dell'app occhiali (avanzato)» in Foundry: se l'hai fatto con il wizard della v0.3.0/0.3.1, premi **«Ripristina predefinito»** nella finestra. Dettagli: [Debug e simulatore](Debug-e-Simulatore).
 
 ## 📚 Vedi anche
 

@@ -15,9 +15,14 @@
 #            this checkout: serves it on the LAN, checks the relay and prints the QR of
 #            the dev app. Scan it with the Even Realities App, then type on the phone the
 #            code Foundry shows in «Collega occhiali G2» (Alt+G) — or pass that code with
-#            `--code XXXX-XXXX-XXXX-XXXX` and the QR pairs in one scan. `--local-relay`
-#            also runs the relay here (`wrangler dev`) — only for an http:// Foundry (an
-#            https page cannot open ws:// on the LAN). `pnpm dev:glasses` = this mode.
+#            `--code XXXX-XXXX-XXXX-XXXX` and the QR pairs in one scan. The LAN page is
+#            plain http (not a secure context, no WebCrypto): pairing works through the
+#            built-in crypto fallback. Leave Foundry's «Glasses app page (advanced)» at
+#            its default — only this terminal QR opens the LAN app (the v0.3.0/0.3.1
+#            wizard said otherwise: the pairing window now offers «Restore default»).
+#            `--local-relay` also runs the relay here (`wrangler dev`) — only for an
+#            http:// Foundry (an https page cannot open ws:// on the LAN).
+#            `pnpm dev:glasses` = this mode.
 #
 # Usage
 #   scripts/wizard.sh [--mode demo|build|live] [--scene tour|explore|combat-my-turn|…]
@@ -45,7 +50,7 @@ FIREWALL=1
 DEBUG=0
 ASSUME_YES=0
 EVENHUB_CLI="@evenrealities/evenhub-cli@0.1.14"
-SCENES="tour explore combat-my-turn actions target spells result reaction saves dying unpaired connecting offline"
+SCENES="tour explore combat-my-turn actions target spells result reaction saves dying unpaired connecting offline code-pending code-unanswered actor replaced"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${ROOT}/packages/g2-app/.wizard"
@@ -64,7 +69,9 @@ ok()   { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
 die()  { printf '  %s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 
-usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { # the comment block at the top of this file, up to the first code line
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
+}
 
 confirm() { # confirm "question" → 0 yes / 1 no (default no; --yes answers yes)
   [[ $ASSUME_YES -eq 1 ]] && return 0
@@ -288,14 +295,23 @@ if [[ "$MODE" == "live" ]]; then
   show_qr "${app_url}${fragment}"
   if [[ -n "$PAIR_CODE" ]]; then
     printf '  This QR carries the code: one scan pairs the glasses with the Foundry tab that showed it.\n'
+    printf '  Keep that Foundry tab open: the code works once, for 5 min (closing the window does not cancel it).\n'
+    printf '  After a phone lock re-scan this same QR: the spent code is ignored and the app resumes its pairing.\n'
   else
     printf '  %sThen%s: in Foundry press %sAlt+G%s («Collega occhiali G2») and type the code it shows\n' "$B" "$N" "$B" "$N"
     printf '  in the app on the phone («Inserisci codice») — or re-run with %s--code XXXX-XXXX-XXXX-XXXX%s.\n' "$B" "$N"
   fi
   if [[ -n "$DEV_RELAY" ]]; then
-    printf '  In Foundry set %sRelay (advanced)%s = %s%s%s (module settings; http:// Foundry only).\n' "$B" "$N" "$B" "$DEV_RELAY" "$N"
+    printf '  In Foundry set %sRelay (advanced)%s = %s%s%s (module settings; http:// Foundry only);\n' "$B" "$N" "$B" "$DEV_RELAY" "$N"
+    printf '  put it back afterwards with %sRestore default%s in the pairing window.\n' "$B" "$N"
   fi
-  printf '  Edits hot-reload on the glasses. The QR expires with the Foundry code (5 min, single use).\n'
+  printf '  This page is plain http (not a secure context): the phone boot line reads\n'
+  printf '  %ssecure no · crypto fallback%s — expected here, pairing still works.\n' "$B" "$N"
+  printf '\n  %sUsed the v0.3.0/0.3.1 wizard?%s It had you set Foundry'"'"'s %sGlasses app page (advanced)%s\n' "$Y" "$N" "$B" "$N"
+  printf '  to a LAN address, so every Foundry QR opened a page that is dead once this server stops.\n'
+  printf '  Put it back: the «Collega occhiali G2» window flags it — press %sRipristina predefinito%s\n' "$B" "$N"
+  printf '  (EN: Restore default). Foundry'"'"'s own QR must open the default https page.\n'
+  printf '\n  Edits hot-reload on the glasses.\n'
   printf '\n  Press %sCtrl-C%s to stop.\n' "$B" "$N"
   wait "$SERVER_PID"
   exit 0

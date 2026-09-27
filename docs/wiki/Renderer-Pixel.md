@@ -59,7 +59,7 @@ packages/shared-render/src/fixtures/sheet.<zona>.<schermata>.<locale>.<variante>
 ```
 
 - zone `portrait` · `header` · `map` · `sheet` · `full` (S10/S11 a tutto schermo); schermate S1–S12; locale `it` / `en`; varianti `min` / `max` (PF e nomi lunghi);
-- **76** file, una cifra esadecimale per pixel (livello 0–f), una riga per riga di pixel;
+- **78** file (76 + la variante S10 «codice senza risposta» `s10-code-unanswered` IT/EN), una cifra esadecimale per pixel (livello 0–f), una riga per riga di pixel;
 - generate e verificate da `packages/g2-app/src/hud/__tests__/golden.test.ts` con `matchPixelFixture`; lo stesso test verifica che le cornici delle zone non si spostino mai tra stati, lingue e contenuti.
 
 Aggiornare una fixture è una modifica di design: va rivista come tale (vedi [Test e qualità](Test-e-Qualita)).

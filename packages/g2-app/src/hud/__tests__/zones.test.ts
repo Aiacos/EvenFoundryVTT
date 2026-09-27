@@ -11,7 +11,7 @@ import { character, mapSnap, online } from '../../demo/fixtures.js';
 import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
 import { type SheetModel, sheetModel } from '../model.js';
-import { fullScreenOf, renderZones } from '../view.js';
+import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
 import { renderFullScreen } from '../zones/fullscreen.js';
 import { HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
@@ -204,6 +204,56 @@ describe('full screens', () => {
     expect(unpaired.hash()).not.toBe(screen.hash());
     const bare = renderFullScreen({ kind: 'connect', connection: { status: 'connecting' } }, s);
     expect(bare.get(34, 84 + 5)).toBe(14); // first step "in progress"
+  });
+});
+
+describe('full-screen subtitles (INV-1 width budget)', () => {
+  it('every S10 / S11 subtitle fits the 530 px line without truncation, IT and EN', () => {
+    for (const loc of ['it', 'en'] as const) {
+      const t = strings(loc);
+      for (const line of [t.unpairedSubtitle, t.revokedSubtitle, t.codeUnansweredSubtitle]) {
+        expect(measure(LABEL_FONT, line), `${loc}: ${line}`).toBeLessThanOrEqual(530);
+      }
+    }
+  });
+
+  it('S10 with an unanswered code shows its own subtitle (unpaired notice)', () => {
+    const app = online('min', { connection: { status: 'unpaired', notice: 'code-unanswered' } });
+    expect(fullScreenOf(app)).toEqual({ kind: 'pair', revoked: false, unanswered: true });
+    const plain = renderFullScreen({ kind: 'pair', revoked: false }, s);
+    expect(renderFullScreen(fullScreenOf(app), s).hash()).not.toBe(plain.hash());
+  });
+});
+
+describe('offline before any character (code pending, actor error, Foundry closed at first pairing)', () => {
+  it('shows the full S11 screen with the offline cause as subtitle, not an empty dimmed sheet', () => {
+    for (const cause of ['code-pending', 'actor', 'no-projector'] as const) {
+      const app = online('min', {
+        character: null,
+        map: null,
+        connection: { status: 'offline', cause, server: 'relay.example' },
+      });
+      expect(layoutModeFor(app), cause).toBe('full');
+      const screen = fullScreenOf(app);
+      expect(screen.kind).toBe('connect');
+      const connecting = renderFullScreen(
+        { kind: 'connect', connection: { status: 'connecting', server: 'relay.example' } },
+        s,
+      );
+      expect(renderFullScreen(screen, s).hash(), cause).not.toBe(connecting.hash());
+    }
+    // With a character on screen the offline state stays S12 (frozen, dimmed sheet).
+    expect(
+      layoutModeFor(online('min', { connection: { status: 'offline', cause: 'actor' } })),
+    ).toBe('sheet');
+  });
+
+  it('every offline cause fits the 530 px subtitle line, IT and EN', () => {
+    for (const loc of ['it', 'en'] as const) {
+      for (const line of Object.values(strings(loc).offlineCauses)) {
+        expect(measure(LABEL_FONT, line), `${loc}: ${line}`).toBeLessThanOrEqual(530);
+      }
+    }
   });
 });
 

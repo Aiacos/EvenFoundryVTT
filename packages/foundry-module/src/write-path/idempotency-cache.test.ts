@@ -70,6 +70,17 @@ describe('hashBearer', () => {
       expect(h).toHaveLength(16);
     }
   });
+
+  it('hashes the same on an http Foundry tab (no crypto.subtle)', async () => {
+    const secure = await hashBearer('bearer-http');
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      expect(await hashBearer('bearer-http')).toBe(secure);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 // ─── buildCacheKey ────────────────────────────────────────────────────────────

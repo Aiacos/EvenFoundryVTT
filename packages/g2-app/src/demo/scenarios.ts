@@ -6,13 +6,15 @@
  * request), then applies `patch` (so the HUD sees the same store transitions as in play:
  * reaction arrival → S7, GM roll request → S8 with the automatic sheet page) and replays
  * `gestures` through the real input path. The app states are the HUD golden-fixture
- * states (`mockStates`) — one source of truth.
+ * states (`mockStates`) — one source of truth. After S1–S12 come the pairing variants
+ * (S10 / S12 with the connection the session produces for a pending or unanswered code, a
+ * refused character and a pairing taken by another app instance).
  *
  * @see docs/design/g2-sheet-ux.html §Schermate
  */
 
 import type { TapGesture } from '../debug/bridge-tap.js';
-import type { AppState } from '../state/app-store.js';
+import type { AppState, ConnectionState } from '../state/app-store.js';
 import { mockStates } from './fixtures.js';
 
 /** Scenario names accepted by `?demo=`. */
@@ -29,6 +31,10 @@ export const SCENARIO_NAMES = [
   'unpaired',
   'connecting',
   'offline',
+  'code-pending',
+  'code-unanswered',
+  'actor',
+  'replaced',
 ] as const;
 
 export type ScenarioName = (typeof SCENARIO_NAMES)[number];
@@ -59,11 +65,16 @@ const LAST_SYNC_AGE_MS = 120_000;
 /** Reaction prompts outlive the HUD 10 s cap so the timeout path is the HUD's. */
 const REACTION_TTL_MS = 30_000;
 
+/** Relay host shown by the pairing variants. */
+const DEMO_RELAY = 'evf-relay.evf-relay.workers.dev';
+
 interface Recipe {
   mock: string;
   gestures: readonly TapGesture[];
   /** Start online and switch to the fixture's connection after the first render. */
   connectionAfter?: true;
+  /** Replaces the fixture's connection (pairing variants of S10 / S12). */
+  connection?: ConnectionState;
 }
 
 /**
@@ -85,6 +96,39 @@ const RECIPES: Readonly<Record<ScenarioName, Recipe>> = {
   unpaired: { mock: 'S10', gestures: [] },
   connecting: { mock: 'S11', gestures: [] },
   offline: { mock: 'S12', gestures: [], connectionAfter: true },
+  // First pairing, code not answered yet: no character, so the full S11 screen names the cause.
+  'code-pending': {
+    mock: 'S10',
+    gestures: [],
+    connection: {
+      status: 'offline',
+      cause: 'code-pending',
+      server: DEMO_RELAY,
+      steps: { relay: true, projector: false, paired: false, character: false, scene: false },
+    },
+  },
+  'code-unanswered': {
+    mock: 'S10',
+    gestures: [],
+    connection: { status: 'unpaired', notice: 'code-unanswered' },
+  },
+  actor: {
+    mock: 'S10',
+    gestures: [],
+    connection: {
+      status: 'offline',
+      cause: 'actor',
+      server: DEMO_RELAY,
+      steps: { relay: true, projector: true, paired: false, character: false, scene: false },
+    },
+  },
+  // Seen live, then another app instance took the pairing (relay close 4000): no retry.
+  replaced: {
+    mock: 'S12',
+    gestures: [],
+    connectionAfter: true,
+    connection: { status: 'offline', cause: 'replaced', lastSyncAt: 0 },
+  },
 };
 
 /** Type guard for `?demo=` values. */
@@ -101,10 +145,9 @@ export function buildScenario(name: ScenarioName, now: number): Scenario {
   const recipe = RECIPES[name];
   const app = mockStates('min').find((m) => m.id === recipe.mock)?.app;
   if (app === undefined) throw new Error(`demo: fixture ${recipe.mock} missing`);
+  const base = recipe.connection ?? app.connection;
   const connection =
-    app.connection.lastSyncAt === undefined
-      ? app.connection
-      : { ...app.connection, lastSyncAt: now - LAST_SYNC_AGE_MS };
+    base.lastSyncAt === undefined ? base : { ...base, lastSyncAt: now - LAST_SYNC_AGE_MS };
   const patch: Partial<AppState> = {};
   if (app.combat !== null) patch.combat = app.combat;
   if (app.reaction !== null) {

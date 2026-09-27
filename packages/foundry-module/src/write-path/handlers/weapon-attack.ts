@@ -61,7 +61,7 @@
  */
 
 import type { MultiAttackProgressPayload } from '@evf/shared-protocol';
-import { WeaponAttackInputSchema } from '@evf/shared-protocol';
+import { randomId, WeaponAttackInputSchema } from '@evf/shared-protocol';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
 
 // ─── Progress emitter (injectable — module.ts wires the real emitter) ─────────
@@ -171,7 +171,8 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
     // Defensive ?? 1: handle cases where handle() is called directly in tests without
     // schema parsing (argsSchema.default(1) applies only when going through safeParse).
     const count = args.count ?? 1;
-    const attackId = crypto.randomUUID();
+    // randomId, not crypto.randomUUID: the latter is undefined on an http Foundry tab.
+    const attackId = randomId();
     const attacks: Array<{ attackIndex: number; chatCardId: string | null }> = [];
 
     // FIX-B/FIX-C: decide the workflow origin once before the loop.

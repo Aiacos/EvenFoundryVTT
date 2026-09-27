@@ -1,13 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDebugLog, setActiveDebugLog } from '../debug/debug-log.js';
 import { settle } from '../direct/__fixtures__/direct-fixtures.js';
-import type { SessionInfo } from '../direct/session.js';
+import { PAIRING_ERROR, type SessionInfo } from '../direct/session.js';
 import { type AppState, createAppStore, initialState } from '../state/app-store.js';
 import { phoneStrings } from './i18n.js';
 import { DEBUG_TAIL, mountPhonePage, type PhoneSession, statusLine } from './phone-page.js';
 
+const PHOTO = { path: 'p', name: 'p', mimeType: 'image/jpeg', size: 1, base64: 'AA' };
+
 function fakeSession(overrides: Partial<PhoneSession> = {}) {
-  let info: SessionInfo = { latencyMs: null, moduleVersion: null, diagnostics: [] };
+  let info: SessionInfo = {
+    latencyMs: null,
+    moduleVersion: null,
+    diagnostics: [],
+    boot: BOOT,
+    pairingError: null,
+  };
   const infoListeners = new Set<(i: SessionInfo) => void>();
   let locale: 'it' | 'en' = 'it';
   const session = {
@@ -49,6 +57,14 @@ function online(): Partial<AppState> {
   };
 }
 
+const BOOT: SessionInfo['boot'] = {
+  app: '0.4.1',
+  secure: true,
+  crypto: 'webcrypto',
+  link: 'none',
+  relay: 'evf-relay.evf-relay.workers.dev',
+};
+
 const field = (root: HTMLElement, name: string) =>
   root.querySelector(`[data-field="${name}"]`)?.textContent;
 
@@ -67,7 +83,14 @@ describe('statusLine', () => {
     expect(statusLine({ ...s, connection: { status: 'offline' } }, phoneStrings('en'))).toBe(
       'Offline',
     );
-    for (const cause of ['no-projector', 'network', 'background'] as const) {
+    for (const cause of [
+      'no-projector',
+      'network',
+      'background',
+      'code-pending',
+      'actor',
+      'replaced',
+    ] as const) {
       expect(statusLine({ ...s, connection: { status: 'offline', cause } }, t)).not.toBe(
         'Non collegato',
       );
@@ -210,6 +233,8 @@ describe('P02 connection page', () => {
       latencyMs: 84,
       moduleVersion: '0.2.0',
       diagnostics: [{ at: 0, level: 'error', message: 'network: relay down' }],
+      boot: BOOT,
+      pairingError: null,
     });
     expect(field(root, 'latency')).toBe('84 ms');
     expect(field(root, 'version')).toBe('Modulo EVF: 0.2.0');
@@ -250,8 +275,8 @@ describe('P02 connection page', () => {
     const fake = fakeSession();
     const root = document.createElement('main');
     mountPhonePage(root, store, fake.session, null);
-    const details = root.querySelector('details');
-    if (details === null) throw new Error('no details');
+    const details = root.querySelector('details[data-field="diag-section"]');
+    if (!(details instanceof HTMLDetailsElement)) throw new Error('no details');
     details.open = true;
     store.update({
       connection: {
@@ -262,7 +287,7 @@ describe('P02 connection page', () => {
         gmName: 'Anna',
       },
     });
-    expect(root.querySelector('details')).toBe(details);
+    expect(root.querySelector('details[data-field="diag-section"]')).toBe(details);
     expect(details.open).toBe(true);
     expect(field(root, 'status')).toBe(
       'Non collegato · relay non raggiungibile · riprovo tra 3 s (tent. 2)',
@@ -283,6 +308,164 @@ describe('P02 connection page', () => {
     expect(root.lang).toBe('en');
     store.update({ connection: { status: 'unpaired' } });
     expect(root.querySelector('[data-view="setup"]')).not.toBeNull();
+  });
+});
+
+describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
+  const t = phoneStrings('it');
+
+  it('P03: an unexpected pairing failure is «Collegamento non riuscito: <msg>», not «Codice non valido»', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { session } = fakeSession({
+      pairCode: vi.fn(async () => {
+        throw new Error('boom');
+      }),
+    });
+    const root = document.createElement('main');
+    mountPhonePage(root, createAppStore(), session, null);
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    await settle(2);
+    expect(field(root, 'error')).toBe(t.pairFailed('boom'));
+    expect(field(root, 'error')).not.toContain('Codice non valido');
+    expect(warn).toHaveBeenCalledWith('[phone] pairing failed: Error: boom');
+  });
+
+  it('maps a spent code and a scan failure precisely', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { session } = fakeSession({
+      pairCode: vi.fn(async () => {
+        throw new Error(PAIRING_ERROR.codeUsed);
+      }),
+      pairScanned: vi.fn(async () => {
+        throw new TypeError('x is undefined');
+      }),
+    });
+    const camera = { captureImageFromCamera: vi.fn(async () => PHOTO) };
+    const root = document.createElement('main');
+    mountPhonePage(root, createAppStore(), session, camera, null, {
+      decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+      readQr: vi.fn(async () => 'https://x/#c=7QK3MX9P2HRAC4TE'),
+    });
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    await settle(2);
+    expect(field(root, 'error')).toBe(t.codeUsed);
+    root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(field(root, 'error')).toBe(t.pairFailed('x is undefined'));
+  });
+
+  it('P03 shows the boot error, the «code unanswered» and legacy notices, and the boot line', () => {
+    const store = createAppStore({
+      ...initialState(),
+      connection: { status: 'unpaired', notice: 'code-unanswered' },
+    });
+    const fake = fakeSession();
+    const root = document.createElement('main');
+    mountPhonePage(root, store, fake.session, null);
+    expect(field(root, 'unanswered')).toBe(t.codeUnanswered);
+    expect(root.querySelector<HTMLElement>('[data-field="unanswered"]')?.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>('[data-field="link-notice"]')?.hidden).toBe(true);
+    expect(field(root, 'boot')).toBe(
+      'app 0.4.1 · secure yes · crypto webcrypto · link none · relay evf-relay.evf-relay.workers.dev',
+    );
+    fake.setInfo({
+      ...fake.session.info(),
+      boot: { ...BOOT, secure: false, crypto: 'fallback', link: 'legacy' },
+      pairingError: 'crypto fallback failed to load',
+    });
+    expect(field(root, 'link-notice')).toBe(t.legacyLink);
+    expect(root.querySelector<HTMLElement>('[data-field="link-notice"]')?.hidden).toBe(false);
+    expect(field(root, 'error')).toBe(t.pairFailed('crypto fallback failed to load'));
+    expect(field(root, 'boot')).toContain('secure no · crypto fallback · link legacy');
+  });
+
+  it('P03 regression: a link with no valid code, or a code already used, names the cause', () => {
+    const fake = fakeSession();
+    const root = document.createElement('main');
+    mountPhonePage(root, createAppStore(), fake.session, null);
+    const notice = () => root.querySelector<HTMLElement>('[data-field="link-notice"]');
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'invalid' } });
+    expect(notice()?.hidden).toBe(false);
+    expect(notice()?.textContent).toBe(t.invalidLink);
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'used' } });
+    expect(notice()?.textContent).toBe(t.codeUsed); // unpaired: «make a new QR»
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'code' } });
+    expect(notice()?.hidden).toBe(true);
+  });
+
+  it('P02 regression: the spent / invalid / legacy link notices show in «Collega di nuovo» too', () => {
+    const store = createAppStore({ ...initialState(), ...online() });
+    const fake = fakeSession();
+    const root = document.createElement('main');
+    mountPhonePage(root, store, fake.session, null);
+    const notice = () =>
+      root.querySelector<HTMLElement>('details[data-field="repair"] [data-field="link-notice"]');
+    expect(notice()?.hidden).toBe(true);
+    // The Even App reloaded the scanned QR: ignored, the pairing kept — softly said.
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'used' } });
+    expect(notice()?.hidden).toBe(false);
+    expect(notice()?.textContent).toBe(t.linkUsedKept);
+    expect(notice()?.textContent).toMatch(/^Codice già usato su questo telefono/);
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'legacy' } });
+    expect(notice()?.textContent).toBe(t.legacyLink);
+    fake.setInfo({ ...fake.session.info(), boot: { ...BOOT, link: 'invalid' } });
+    expect(notice()?.textContent).toBe(t.invalidLink);
+  });
+
+  it('the «code pending» cause asks for the Foundry tab, not the window, to stay open', () => {
+    for (const locale of ['it', 'en'] as const) {
+      const s = phoneStrings(locale);
+      const line = statusLine(
+        { ...initialState(), connection: { status: 'offline', cause: 'code-pending' } },
+        s,
+      );
+      expect(line).toContain(s.causeCodePending);
+      expect(s.causeCodePending).not.toMatch(/window open|finestra .*finché|aperta la finestra/i);
+    }
+  });
+
+  it('P02 offline: «Collega di nuovo» is open with the scan button and the code field', async () => {
+    const store = createAppStore({
+      ...initialState(),
+      connection: { status: 'offline', cause: 'no-projector' },
+    });
+    const { session } = fakeSession();
+    const camera = { captureImageFromCamera: vi.fn(async () => PHOTO) };
+    const root = document.createElement('main');
+    mountPhonePage(root, store, session, camera, null, {
+      decodeImage: vi.fn(async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 })),
+      readQr: vi.fn(async () => 'https://x/#c=7QK3MX9P2HRAC4TE'),
+    });
+    const repair = root.querySelector('details[data-field="repair"]');
+    if (!(repair instanceof HTMLDetailsElement)) throw new Error('no repair card');
+    expect(repair.open).toBe(true);
+    expect(repair.querySelector('summary')?.textContent).toBe(t.repair);
+    const code = repair.querySelector<HTMLInputElement>('#evf-code');
+    if (code === null) throw new Error('no code field');
+    code.value = '7QK3-MX9P-2HRA-C4TE';
+    repair.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(session.pairCode).toHaveBeenCalledWith('7QK3-MX9P-2HRA-C4TE');
+    repair.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
+    await settle(2);
+    expect(session.pairScanned).toHaveBeenCalledWith('https://x/#c=7QK3MX9P2HRAC4TE');
+    expect(field(root, 'boot')).toContain('app 0.4.1');
+  });
+
+  it('P02: the card closes when online and reopens when the link is lost or a code is pending', () => {
+    const store = createAppStore({ ...initialState(), ...online() });
+    const root = document.createElement('main');
+    mountPhonePage(root, store, fakeSession().session, null);
+    const repair = root.querySelector<HTMLDetailsElement>('details[data-field="repair"]');
+    expect(repair?.open).toBe(false);
+    store.update({ connection: { status: 'offline', cause: 'code-pending' } });
+    expect(repair?.open).toBe(true);
+    // The player's own toggle survives updates that do not change online ↔ offline.
+    if (repair) repair.open = false;
+    store.update({ connection: { status: 'offline', cause: 'code-pending', attempt: 1 } });
+    expect(repair?.open).toBe(false);
+    store.update({ connection: { status: 'connecting' } });
+    store.update({ ...online() });
+    expect(repair?.open).toBe(false);
   });
 });
 

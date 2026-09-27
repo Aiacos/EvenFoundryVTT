@@ -9,7 +9,8 @@ export type Screen = 'unpaired' | 'connecting' | 'offline' | 'hud';
 
 /**
  * A reconnect attempt with a character already on screen stays in S12 (frozen data)
- * instead of flashing the full-screen S11, which would force a flickering rebuild.
+ * instead of flashing the full-screen S11, which would force a flickering rebuild; without
+ * a character both `connecting` and `offline` use S11.
  */
 export function screenOf(app: AppState): Screen {
   switch (app.connection.status) {
@@ -19,7 +20,10 @@ export function screenOf(app: AppState): Screen {
     case 'connecting':
       return app.character ? 'offline' : 'connecting';
     case 'offline':
-      return 'offline';
+      // Nothing to freeze before the first snapshot (code pending, actor refused, Foundry
+      // closed at the first pairing): the full S11 screen names the cause instead of an
+      // empty dimmed sheet.
+      return app.character ? 'offline' : 'connecting';
     case 'online':
       return 'hud';
   }
