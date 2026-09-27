@@ -112,6 +112,22 @@
   border-radius: var(--evf-radius);
 }
 
+.evf-pair__qr {
+  cursor: zoom-in;
+}
+
+/* «Ingrandisci QR»: about twice as large for a phone photo, steps below it. */
+.evf-pair--big-qr .evf-pair__stage {
+  flex-direction: column;
+  align-items: center;
+}
+
+.evf-pair--big-qr .evf-pair__qr {
+  width: min(68vh, 520px);
+  height: min(68vh, 520px);
+  cursor: zoom-out;
+}
+
 .evf-pair__qr svg {
   display: block;
   width: 100%;
@@ -178,6 +194,7 @@
 }
 
 /* «Annulla QR»: small, under the countdown — kills a QR someone else may have seen. */
+.evf-pair__qr-size,
 .evf-pair__cancel {
   align-self: flex-start;
   flex: 0 0 auto;

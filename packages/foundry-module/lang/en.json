@@ -18,6 +18,8 @@
   "evf.pair.expires_in": "Expires in",
   "evf.pair.single_use": "Single use: it stops working once the glasses connect.",
   "evf.pair.cancel_qr": "Cancel QR",
+  "evf.pair.qr_bigger": "Enlarge QR",
+  "evf.pair.qr_smaller": "Shrink QR",
   "evf.pair.live.relay_up": "Relay connected",
   "evf.pair.live.relay_down": "Relay not connected: this tab cannot reach the relay",
   "evf.pair.live.glasses_in": "Glasses in the room",

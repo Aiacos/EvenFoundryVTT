@@ -7,6 +7,12 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] «Scansiona QR» measured on 840 simulated phone photos of the real Foundry QR: centred-crop
+      decode steps (+18 photos, none lost), camera result read leniently (the SDK dropped partial
+      host answers), 120 s camera timeout, `<img>` fallback for HEIC, photo size/type in the error;
+      Foundry «Ingrandisci QR» (QR about 2× larger: ~40 % → ~90 % reads from 30 cm) —
+      [`qr-scan.ts`](packages/g2-app/src/phone/qr-scan.ts), [`PairG2App.ts`](packages/foundry-module/src/direct/PairG2App.ts)
+
 - [x] Pairing works on plain-http pages too (phone on `http://<LAN-IP>`, Foundry on `http://192.168…`):
       audited `@noble` crypto fallback when WebCrypto is hidden, same bytes on the wire —
       [ADR-0019 Amd 2](docs/architecture/0019-relay-pairing-player-projector.md), [`crypto.ts`](packages/shared-protocol/src/direct/crypto.ts)

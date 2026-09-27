@@ -55,8 +55,12 @@ const EN = {
   easiestSteps:
     'right-click your name in the Players list › «Connect G2 glasses» (or Alt+G), then scan the QR.',
   scan: 'Scan QR',
+  scanHint:
+    'Hold the phone 15–20 cm away: the QR should fill about half of the photo. In Foundry, «Enlarge QR» makes it bigger.',
   noQrInPhoto:
-    'No QR found in the photo: fill the frame with the QR, hold still and try again — or type the code below.',
+    'No QR found in the photo: move closer until the QR fills about half of it (or «Enlarge QR» in Foundry), hold still and try again — or type the code below.',
+  photoFormat: (mime: string) =>
+    `This photo cannot be read (${mime}): type the code shown under the QR below.`,
   noPhoto: 'No photo received. If the camera does not open, type the code below.',
   cameraUnavailable: 'The camera is not available here: type the code shown under the QR below.',
   notPairingQr: 'That is not an EvenFoundryVTT pairing QR.',
@@ -128,8 +132,12 @@ const IT: PhoneStrings = {
   easiestSteps:
     'tasto destro sul tuo nome nella lista giocatori › «Collega occhiali G2» (o Alt+G), poi inquadra il QR.',
   scan: 'Scansiona QR',
+  scanHint:
+    'Tieni il telefono a 15–20 cm: il QR deve riempire circa metà della foto. In Foundry «Ingrandisci QR» lo fa più grande.',
   noQrInPhoto:
-    "Nessun QR nella foto: riempi l'inquadratura col QR, tieni fermo e riprova — o digita il codice qui sotto.",
+    'Nessun QR nella foto: avvicinati finché il QR ne riempie circa metà (o «Ingrandisci QR» in Foundry), tieni fermo e riprova — o digita il codice qui sotto.',
+  photoFormat: (mime: string) =>
+    `Foto non leggibile (${mime}): digita il codice mostrato sotto il QR.`,
   noPhoto: 'Nessuna foto ricevuta. Se la fotocamera non si apre, digita il codice qui sotto.',
   cameraUnavailable: 'Fotocamera non disponibile qui: digita il codice mostrato sotto il QR.',
   notPairingQr: 'Questo non è un QR di associazione EvenFoundryVTT.',

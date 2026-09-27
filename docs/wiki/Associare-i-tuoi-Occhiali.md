@@ -66,7 +66,7 @@ Le preferenze restano sul telefono e non modificano mai le impostazioni del mond
 
 - *Foundry del giocatore chiuso* → riapri Foundry nel browser che ha mostrato il QR.
 - *Relay non raggiungibile* → rete del telefono o del computer ([Rete e relay](HTTPS-e-Rete)).
-- Il QR non si legge → avvicinati finché il QR riempie la foto, oppure digita il codice (maiuscole o minuscole, con o senza trattini; il campo accetta anche il link intero incollato); QR scaduto → **Nuovo QR**.
+- Il QR non si legge → in Foundry premi **«Ingrandisci QR»** (o clicca il QR) e avvicina il telefono finché il QR riempie circa metà della foto, oppure digita il codice (maiuscole o minuscole, con o senza trattini; il campo accetta anche il link intero incollato); QR scaduto → **Nuovo QR**.
 - *Nessuna risposta al codice* → il QR era scaduto, già usato o la scheda di Foundry chiusa: **Nuovo QR** in Foundry, poi **Collega di nuovo** sul telefono.
 
 Tabella completa: [Risoluzione problemi](Risoluzione-Problemi).
