@@ -1,5 +1,13 @@
 # @evf/g2-app
 
+## 0.4.3
+
+### Patch Changes
+
+- acee2a4: Pairing that survives real phones (ADR-0019 Amendment 2): the sealed channel works on plain-http pages through an audited `@noble` crypto fallback (same bytes on the wire); a phone ignores an already-used `#c=` link instead of overwriting its working pairing, clears a code nobody answered within 5 minutes and reads the link on `hashchange` and from `?c=`; the phone page gets «Collega di nuovo», a boot line (`app · secure · crypto · link · relay`) and precise errors; new states `code-pending`, `actor`, `replaced` and the S10 «no answer to the code» notice; the Foundry window keeps the QR when closed (projector-owned expiry), shows live status under the QR and «Ripristina predefinito» for a non-default app page or relay; the projector sends one full push per link and paces frames to 40/s. Review follow-ups: the phone reads the pairing link before stripping it from the live address (every QR was «no valid code» in a real browser), remembers spent codes across «Scollega» / «Dimentica associazione», gives back a pairing a reloaded link replaced if the code gets no answer, says `hello` again on `peer-up` while connected and survives a failing inbound frame; `?c=` pasted or scanned pairs; the Foundry window has «Annulla QR», keeps the QR when reopened from the Players list, and each pairing stays on the relay it was made on.
+- Updated dependencies [acee2a4]
+  - @evf/shared-protocol@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes
