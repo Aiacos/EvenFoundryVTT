@@ -32,10 +32,16 @@ Segue la lingua di Foundry (IT o EN); puoi forzarla dalla pagina del telefono o 
 No. Basta il modulo ([Installazione](Installazione)); il relay che unisce scheda e occhiali è gestito dal progetto (e si può ospitare da sé: [Rete e relay](HTTPS-e-Rete)).
 
 **Serve HTTPS o un indirizzo pubblico per Foundry?**
-No, dalla v0.13.0: il telefono non si collega mai a Foundry. Serve solo che il browser del giocatore raggiunga il relay; funziona anche un Foundry `http://` in LAN e The Forge senza configurazioni ([Rete e relay](HTTPS-e-Rete)).
+No, dalla v0.13.0: il telefono non si collega mai a Foundry. Serve solo che il browser del giocatore raggiunga il relay; funziona anche un Foundry `http://` in LAN (lì la cifratura usa un'implementazione software verificata, perché il browser nasconde WebCrypto fuori da HTTPS) e The Forge senza configurazioni ([Rete e relay](HTTPS-e-Rete)).
 
 **Gli altri giocatori possono leggere i dati dei miei occhiali?**
 No. Il canale va dalla scheda del giocatore al relay, non passa dagli altri client, ed è cifrato AES-256-GCM con la chiave del dispositivo: nemmeno il relay lo legge ([Scollegare e sicurezza](Revoca-e-Sicurezza)).
+
+**Ho chiuso la finestra «Collega occhiali G2» prima di inquadrare il QR: devo rifarlo?**
+No. Il QR resta valido per i suoi 5 minuti anche a finestra chiusa (lo tiene la scheda di Foundry, che deve restare aperta); riaprendola — anche dalla lista Giocatori — vedi lo stesso QR con il conto alla rovescia. Se qualcun altro può averlo visto (schermo condiviso, stream, foto), premi **«Annulla QR»**: smette subito di funzionare.
+
+**Il telefono dice «Codice già usato su questo telefono».**
+Hai riaperto un QR (o un link) che quel telefono ha già usato: l'app lo ignora e tiene l'associazione che funziona. Per collegare altri occhiali, o dopo *Scollega*, genera un nuovo QR ([Risoluzione problemi](Risoluzione-Problemi)).
 
 **Cambio computer o browser: perdo il collegamento?**
 Sì, il collegamento vive nel browser che ha mostrato il QR. Dal nuovo browser apri *Collega occhiali G2* e inquadra il nuovo QR (30 secondi); dal vecchio puoi premere **Scollega**.

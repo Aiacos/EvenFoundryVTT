@@ -9,9 +9,12 @@ import type { ConnectionState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
 import { SCREEN_H, SCREEN_W } from '../layout.js';
 
-/** What the full screen shows. */
+/**
+ * What the full screen shows. `pair.unanswered`: the last code got no answer (S10 with
+ * the «make a new QR» subtitle).
+ */
 export type FullScreen =
-  | { kind: 'pair'; revoked: boolean }
+  | { kind: 'pair'; revoked: boolean; unanswered?: true }
   | { kind: 'connect'; connection: ConnectionState };
 
 function frame(p: Pixmap, s: HudStrings, subtitle: string): void {
@@ -21,8 +24,16 @@ function frame(p: Pixmap, s: HudStrings, subtitle: string): void {
   p.hline(20, 556, 58, 4);
 }
 
-function pairScreen(p: Pixmap, revoked: boolean, s: HudStrings): void {
-  frame(p, s, revoked ? s.revokedSubtitle : s.unpairedSubtitle);
+function pairScreen(p: Pixmap, screen: Extract<FullScreen, { kind: 'pair' }>, s: HudStrings): void {
+  frame(
+    p,
+    s,
+    screen.revoked
+      ? s.revokedSubtitle
+      : screen.unanswered === true
+        ? s.codeUnansweredSubtitle
+        : s.unpairedSubtitle,
+  );
   s.pairSteps.forEach(([a, b], i) => {
     const y = 92 + i * 56;
     disc(p, 38, y, 13, 12, false);
@@ -45,7 +56,14 @@ function pairScreen(p: Pixmap, revoked: boolean, s: HudStrings): void {
 }
 
 function connectScreen(p: Pixmap, c: ConnectionState, s: HudStrings): void {
-  frame(p, s, s.connectingTo(c.server ?? '—'));
+  // Offline before the first snapshot: the subtitle names why (code pending, actor, …).
+  frame(
+    p,
+    s,
+    c.status === 'offline'
+      ? s.offlineCauses[c.cause ?? 'network']
+      : s.connectingTo(c.server ?? '—'),
+  );
   const st = c.steps ?? {
     relay: false,
     projector: false,
@@ -91,7 +109,7 @@ function connectScreen(p: Pixmap, c: ConnectionState, s: HudStrings): void {
  */
 export function renderFullScreen(screen: FullScreen, s: HudStrings): Pixmap {
   const p = new Pixmap(SCREEN_W, SCREEN_H);
-  if (screen.kind === 'pair') pairScreen(p, screen.revoked, s);
+  if (screen.kind === 'pair') pairScreen(p, screen, s);
   else connectScreen(p, screen.connection, s);
   return p;
 }

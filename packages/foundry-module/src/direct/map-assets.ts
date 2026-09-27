@@ -21,6 +21,7 @@ import {
   ASSET_REF_PREFIX,
   type MapImage,
   type MapSnapshot,
+  sha256Digest,
   toBase64Url,
 } from '@evf/shared-protocol';
 
@@ -40,10 +41,13 @@ export interface MapAsset {
 /** Encodes `src` into a downsized `data:` URL (rejects on any failure). */
 export type AssetEncoder = (src: string, maxSide: number, type: 'jpeg' | 'png') => Promise<string>;
 
-/** Stable asset id of a source URL: base64url of the first 16 bytes of SHA-256. */
+/**
+ * Stable asset id of a source URL: base64url of the first 16 bytes of SHA-256 (WebCrypto,
+ * or the shared-protocol fallback on an http Foundry tab — same id either way).
+ */
 export async function assetIdOf(src: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(src));
-  return toBase64Url(new Uint8Array(digest).slice(0, 16));
+  const digest = await sha256Digest(new TextEncoder().encode(src));
+  return toBase64Url(digest.slice(0, 16));
 }
 
 /** Fits `w × h` inside `max` (never upscales). */

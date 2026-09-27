@@ -448,6 +448,30 @@ describe('weaponAttackHandler', () => {
     setMultiAttackProgressEmitter(null);
   });
 
+  it('works on an http Foundry tab (no crypto.randomUUID): attackId is a UUID v4', async () => {
+    const actor = makeActor({ id: 'actor-a', item: makeWeaponItem({ id: 'sword-1' }) });
+    vi.stubGlobal('game', makeGameGlobal(actor));
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      const { weaponAttackHandler } = await import('./weapon-attack.js');
+      const result = await weaponAttackHandler.handle({
+        actor_id: 'actor-a',
+        item_id: 'sword-1',
+        targets: [],
+        advantage: 'normal',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect((result.data as { attackId: string }).attackId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   // ── FIX-B / FIX-C: capability-split advantage + targets (260529-eer) ─────────
 
   describe('MidiQOL present — completeActivityUse forwarding', () => {

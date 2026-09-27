@@ -177,6 +177,14 @@
   gap: 0.5rem;
 }
 
+/* «Annulla QR»: small, under the countdown — kills a QR someone else may have seen. */
+.evf-pair__cancel {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: auto;
+  font-size: 0.85rem;
+}
+
 .evf-pair__timer {
   font-family: var(--evf-mono);
   font-size: 1.35rem;
@@ -312,6 +320,54 @@
 .evf-pair__notice a {
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* A non-default app page / relay: the text takes the room, the reset button stays put. */
+.evf-pair__endpoint {
+  align-items: center;
+}
+
+.evf-pair__endpoint > span {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.evf-pair__endpoint > button {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+/* ── Live status under the QR ─────────────────────────────────────────── */
+
+.evf-pair__live {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.evf-pair__live-item {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  color: var(--evf-muted);
+}
+
+.evf-pair__live-item i {
+  width: 1rem;
+  text-align: center;
+}
+
+.evf-pair__live-item--ok i {
+  color: var(--evf-ok);
+}
+
+.evf-pair__live-item--wait i {
+  color: var(--evf-warn);
+}
+
+.evf-pair__live-item--error {
+  color: var(--evf-error);
 }
 
 /* ── Paired devices ───────────────────────────────────────────────────── */

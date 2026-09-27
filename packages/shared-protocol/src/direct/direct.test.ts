@@ -110,6 +110,14 @@ describe('pairing link (QR)', () => {
     expect(readPairingText('https://example.com/no-payload')).toBeNull();
     // A keyboard that capitalises what is typed by hand: keys are case-insensitive.
     expect(readPairingText(`HTTPS://X.EXAMPLE/APP/#C=${CODE}`)).toEqual({ code: CODE });
+    // Regression: the `?c=` link the app accepts in its own URL (host dropped the fragment)
+    // also pairs when pasted or scanned.
+    expect(readPairingText(`https://x.example/app/?debug=1&c=${CODE}`)).toEqual({ code: CODE });
+    expect(readPairingText(`https://x.example/app/?c=${CODE}&relay=ws://127.0.0.1:8787`)).toEqual({
+      code: CODE,
+      relay: 'ws://127.0.0.1:8787',
+    });
+    expect(readPairingText('https://x.example/app/?debug=1')).toBeNull();
   });
 });
 

@@ -11,7 +11,7 @@
  *
  * @see docs/architecture/0019-relay-pairing-player-projector.md
  */
-import { DeviceKeySchema, RoomIdSchema } from '@evf/shared-protocol';
+import { DeviceKeySchema, RelayUrlSchema, RoomIdSchema } from '@evf/shared-protocol';
 import { z } from 'zod';
 import { MODULE_ID } from '../module-id.js';
 
@@ -25,6 +25,11 @@ const PairingSchema = z.strictObject({
   room: RoomIdSchema,
   /** AES-256 device key, base64url. */
   key: DeviceKeySchema,
+  /**
+   * Relay the pairing was made on (the glasses keep the relay of their QR). Absent on
+   * records written before v0.4.2: the projector then uses the relay setting.
+   */
+  relay: RelayUrlSchema.optional(),
   /** Actor projected on the glasses. */
   actorId: z.string().min(1),
   /** Display label (character name at pairing time). */

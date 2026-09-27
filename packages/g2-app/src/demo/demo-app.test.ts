@@ -76,11 +76,11 @@ describe('startDemo', { timeout: 20_000 }, () => {
     const { fake, e } = env('tour');
     const demo = await startDemo(e);
     await vi.advanceTimersByTimeAsync(2000);
-    expect(markers()).toEqual(['EVF_SCENE 1/12 explore sheet', 'EVF_READY']);
+    expect(markers()).toEqual(['EVF_SCENE 1/16 explore sheet', 'EVF_READY']);
     fake.emit(gestureEvent('double'));
     await vi.advanceTimersByTimeAsync(2000);
     expect(demo.current()).toBe('combat-my-turn');
-    expect(markers()[2]).toBe('EVF_SCENE 2/12 combat-my-turn sheet');
+    expect(markers()[2]).toBe('EVF_SCENE 2/16 combat-my-turn sheet');
     expect(fake.of('create')).toHaveLength(1);
     expect(fake.of('rebuild').length).toBeGreaterThanOrEqual(1);
     expect(fake.of('shutdown')).toHaveLength(0);
@@ -103,7 +103,7 @@ describe('startDemo', { timeout: 20_000 }, () => {
       void demo.next();
       await vi.advanceTimersByTimeAsync(2000);
     }
-    expect(markers()).toContain('EVF_SCENE 10/12 unpaired full');
+    expect(markers()).toContain('EVF_SCENE 10/16 unpaired full');
     demo.stop();
   });
 

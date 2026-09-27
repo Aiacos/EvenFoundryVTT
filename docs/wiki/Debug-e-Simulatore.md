@@ -9,11 +9,11 @@ Parsati in modo rigoroso da `packages/g2-app/src/debug/flags.ts`:
 | Parametro | Effetto |
 |---|---|
 | `?demo=<scenario>` | demo offline (non contatta mai il relay), implica il debug |
-| `?demo=tour` | tutte le 12 schermate in sequenza |
+| `?demo=tour` | tutti gli scenari in sequenza (le 12 schermate + 4 varianti di associazione) |
 | `?dwell=<ms>` | avanzamento automatico del tour ogni `ms` (≥ 1000); senza, si avanza con un doppio tap vero |
 | `?debug=1` | canale di debug + `window.__evf` sull'app reale collegata tramite il relay |
 
-Scenari (`packages/g2-app/src/demo/scenarios.ts`): `explore` (S1) · `combat-my-turn` (S2) · `actions` (S3) · `target` (S4) · `spells` (S5) · `result` (S6) · `reaction` (S7) · `saves` (S8) · `dying` (S9) · `unpaired` (S10) · `connecting` (S11) · `offline` (S12). Vedi [Schermate](Schermate).
+Scenari (`packages/g2-app/src/demo/scenarios.ts`): `explore` (S1) · `combat-my-turn` (S2) · `actions` (S3) · `target` (S4) · `spells` (S5) · `result` (S6) · `reaction` (S7) · `saves` (S8) · `dying` (S9) · `unpaired` (S10) · `connecting` (S11) · `offline` (S12), più le varianti di associazione: `code-pending` (codice in attesa di Foundry) · `code-unanswered` (S10 «NESSUNA RISPOSTA AL CODICE») · `actor` (personaggio non disponibile) · `replaced` (presi da un'altra app). Vedi [Schermate](Schermate).
 
 ```bash
 pnpm --filter @evf/g2-app dev          # server Vite
@@ -40,14 +40,16 @@ controlla il toolchain, trova l'IP di rete e una porta libera, apre la porta nel
 
 | Comando | Cosa fa |
 |---|---|
-| `pnpm wizard` | tour delle 12 schermate demo, cambio ogni 6 s (nessun Foundry, nessun relay) |
+| `pnpm wizard` | tour degli scenari demo, cambio ogni 6 s (nessun Foundry, nessun relay) |
 | `pnpm wizard --scene combat-my-turn` | una sola schermata, per provare i gesti |
 | `pnpm wizard --mode build` | serve il bundle di produzione (`packages/g2-app/dist`, gli stessi byte del `.ehpk` e di GitHub Pages) |
-| `pnpm dev:glasses` (= `--mode live`) | collegamento vero con il **tuo** Foundry: serve l'app di questo checkout sulla LAN, controlla il relay e ne stampa il QR: inquadralo in Developer Mode, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — oppure `--code XXXX-XXXX-XXXX-XXXX` e basta una scansione. Non digitare URL nel campo link manuale della Even App: tronca e mette la maiuscola |
+| `pnpm dev:glasses` (= `--mode live`) | collegamento vero con il **tuo** Foundry: serve l'app di questo checkout sulla LAN, controlla il relay e ne stampa il QR: inquadralo in Developer Mode, poi digita nell'app il codice che mostra **«Collega occhiali G2»** (Alt+G) — oppure `--code XXXX-XXXX-XXXX-XXXX` e basta una scansione. La pagina LAN è `http://` (non è un contesto sicuro): la cifratura usa il fallback software e la riga di avvio del telefono dice `secure no · crypto fallback`, è normale. Lascia **«Pagina dell'app occhiali (avanzato)»** al valore predefinito: il QR dell'app LAN lo stampa il terminale. Non digitare URL nel campo link manuale della Even App: tronca e mette la maiuscola |
 | `pnpm dev:glasses --local-relay` | avvia anche il relay in locale (`wrangler dev`); solo con un Foundry `http://` (una pagina `https://` non apre `ws://`) — imposta **«Relay (avanzato)»** all'indirizzo stampato |
 | `pnpm wizard --debug` | aggiunge `?debug=1` (log nella console della Developer Mode) |
 
 Il relay da solo: `pnpm --filter @evf/relay dev` (`wrangler dev` → `http://localhost:8787`).
+
+> **Hai usato `pnpm dev:glasses` della v0.3.0 o v0.3.1?** Ti faceva impostare **«Pagina dell'app occhiali (avanzato)»** a `http://<IP-LAN>:<porta>/`: da allora ogni QR di Foundry apriva quella pagina, morta appena spegnevi il server (e senza WebCrypto il codice falliva comunque). Apri *Collega occhiali G2*: in cima c'è l'avviso rosso con **«Ripristina predefinito»**. Stessa cosa per **«Relay (avanzato)»** dopo `--local-relay`.
 
 Sul telefono, la prima volta: accedi una volta a `hub.evenrealities.com/login` (l'account
 diventa sviluppatore, non c'è un interruttore), chiudi e riapri l'app, poi **Even Hub →

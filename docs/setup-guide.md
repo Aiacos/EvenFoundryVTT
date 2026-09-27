@@ -84,6 +84,10 @@ installed app keeps running when the phone locks.
 2. The window opens ready: your character is preselected (the assigned one, else the first
    you own), the relay is checked and the **QR** plus a **16-character code**
    (e.g. `7QK3-MX9P-2HRA-C4TE`) are shown. Both expire after **5 minutes** and work once.
+   Closing the window does not cancel them: the QR stays valid while the Foundry tab is open,
+   and reopening the window shows the same one. Under the QR the window shows, live, **Relay
+   connected** · **Waiting for the glasses…** / **Glasses in the room**, and why it refused the
+   glasses' last message, if it did.
 3. On the phone open **FoundryVTT G2 HUD** › **Scan QR** (IT: **Scansiona QR**) and take a
    photo with the QR filling most of the frame. No camera, or camera permission denied? Type
    the code (with or without dashes, any case) in the **Code** field — it also takes the whole
@@ -99,7 +103,14 @@ next session, just open Foundry there and the glasses reconnect by themselves. O
 connection the room and key rotate, so the QR you scanned stops working.
 
 The phone shows the **Connection** page: status, relay, Foundry, character, latency,
-language, map options, **Reconnect**, **Disconnect** and **Diagnostics**.
+language, map options, **Reconnect**, **Disconnect**, **Pair again** (IT: *Collega di nuovo* —
+the same **Scan QR** button and **Code** field, open by itself whenever you are not connected)
+and **Diagnostics**. At the bottom of the page a boot line without secrets —
+`app <version> · secure yes/no · crypto webcrypto/fallback · link none/code/invalid/legacy/used · relay <host>`
+— is what to screenshot when you ask for help.
+
+Reopening a QR or link this phone has already used is harmless: the app ignores it (*Code
+already used on this phone*) and keeps the pairing that works.
 
 ### Gestures
 
@@ -134,7 +145,8 @@ For a player who has glasses but no computer at the table:
   **Glasses connected to this browser** (status *online* / *waiting for the glasses* /
   *relay unreachable*) → **Disconnect** → confirm. The glasses receive a sealed `revoked`
   message and go back to the "not paired" screen (S10).
-- **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials.
+- **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials. To
+  pair again you don't need it: **Pair again** takes a new QR or code directly.
 - **New browser, cleared browser data, other character, lost phone:** disconnect (if the old
   browser is still there) and connect again — a new QR, a new room and a new key.
 
@@ -148,6 +160,18 @@ For a player who has glasses but no computer at the table:
 | Glasses/phone: **"Player's Foundry closed"** (IT: *Foundry del giocatore chiuso*) | The Foundry tab that paired these glasses is not open (closed, logged out, other computer) | Open Foundry in that browser. The glasses reconnect by themselves, nothing to scan. |
 | Phone: **"relay not reachable"** | The phone has no internet, or the relay is down | Check the phone's connection. The app retries with backoff (1 → 30 s). |
 | QR hidden, **"The QR expired unused"** | 5 minutes passed, or the QR was already used | **New QR**. |
+| Phone: *Invalid code: 16 characters, e.g. 7QK3-MX9P-2HRA-C4TE.* | The typed text is not a 16-character code | Copy the code under the QR (**Copy code**); dashes and case don't matter. Only this error says *Invalid code*: every other failure has its own message. |
+| Phone: *Code already used on this phone* (… *make a new QR in Foundry* when unpaired, … *the current pairing is kept* when paired) | You reopened or re-scanned a QR / link this phone already used | If the glasses are connected, nothing to do: the working pairing was kept. For a new pairing: **New QR**. |
+| Phone: *No answer to the code: QR expired, cancelled or already used — make a new QR in Foundry.* · glasses (S10): **NO ANSWER TO THE CODE · MAKE A NEW QR** | No Foundry tab answered the code within 5 minutes: QR expired or used by another phone, Foundry tab closed, or clocks apart (below) | **New QR** in Foundry, then **Scan QR** or the code on the phone. |
+| Phone: *code waiting for an answer from Foundry…* · glasses: **Code waiting for Foundry** | The code is saved but no Foundry tab has answered yet | Keep the Foundry tab that shows the QR open until the window says **Glasses connected**; after 5 minutes without an answer the code is cleared. |
+| Phone: *QR from an old version of the module: update EvenFoundryVTT in Foundry.* | The QR uses the `#evf=` format of module 0.3.0 | Update the module (GM, *Manage Modules*), then **New QR**. |
+| Phone: *Pairing failed: <message>* / *The app failed to start: <message>* | An unexpected error (the message is the technical one) | Try **Pair again** / reopen the app; if it repeats, report the message with the boot line. |
+| Phone stuck on **Offline** with an old pairing | A failed attempt, or a Foundry that is gone | Open **Pair again** (it opens by itself while offline) and scan a new QR. |
+| Glasses: **Character unavailable** · phone: *Foundry cannot find your character…* | The projector refused the pairing: character deleted (`actor_missing`) or no longer yours (`forbidden_actor`) | Check ownership in Foundry, or pair a character you own; the app retries every 30 s. |
+| Glasses: **Taken by another app** · phone: *another app took this pairing…* | Another copy of the app (another QR-loaded page, another phone with the same pairing) joined in its place (relay close 4000) | Tap **Reconnect** on the phone you want to use; the app does not retry by itself, so the two don't fight. |
+| Under the QR: *Glasses message refused: phone and PC clocks are apart (over 2 minutes)* | Messages are valid for 2 minutes: the phone or PC date/time is wrong | Set automatic date and time on both, then **New QR**. |
+| Under the QR: *Glasses message refused: different key* / *invalid format* | The phone uses an older or another window's code / app and module from different releases | **Pair again** with the QR shown now / update both to the same release. |
+| Top of the window: *The QR opens a plain http:// page on the local network…* (or *The QR does not open the default glasses-app page*, *The relay is not the default one*) | **Glasses app page (advanced)** or **Relay (advanced)** is not the default — e.g. the LAN address the v0.3.0/0.3.1 `pnpm dev:glasses` wizard told you to set | **Restore default**: it puts the default back and shows a new QR. |
 | **Scan QR**: *No QR found in the photo* | QR too small or blurred in the photo (screen moiré) | Move closer so the QR fills the frame, hold still, or type the 16-character code under the QR. |
 | **Scan QR**: *camera not available* / *no photo received* | Camera permission refused, or a sideloaded page without camera access | Type the code under the QR (or paste the whole link) in the **Code** field, or allow the camera for the Even Realities App in the phone settings. |
 | Two Foundry tabs open, only one updates the glasses | By design: one tab per browser projects a device (Web Lock); the others wait | Nothing to do. Closing the projecting tab hands over to the next one. |
@@ -167,9 +191,12 @@ For deeper diagnosis see the [runbook](runbook.md).
 `https://hub.evenrealities.com/login` with your Even account (that turns the account into a
 developer account; there is no toggle), force-quit and reopen the Even Realities App, then
 **Even Hub → Scan QR** and scan the QR of the Foundry pairing window. It opens the hosted app
-page (`https://aiacos.github.io/EvenFoundryVTT/app/`) already paired. A sideloaded page
-**dies when the phone locks**: fine for development, not for a session — players use the
-Even Hub app.
+page (`https://aiacos.github.io/EvenFoundryVTT/app/`) already paired; if it stays on
+**First setup**, type the code in its **Code** field (on the *Connection* page of an older
+pairing: **Pair again**). A sideloaded page **dies when the phone locks**: fine for
+development, not for a session — players use the Even Hub app. For a verbose phone log, set
+**Glasses app page (advanced)** to `https://aiacos.github.io/EvenFoundryVTT/app/?debug=1` for one
+pairing, then **Restore default**.
 
 **Work on the code** (commands from the workspace `package.json` files):
 
@@ -190,6 +217,15 @@ relay and prints its QR: scan it in developer mode, then type in the app the cod
 scan pairs. Add
 `--local-relay` to run the relay locally with `wrangler dev` (only with an `http://` Foundry:
 an HTTPS page cannot open `ws://` on the LAN). `bash scripts/wizard.sh --help` lists every flag.
+
+The LAN page is plain `http://`, so it is not a secure context and the browser hides WebCrypto
+there: the channel then loads its audited software fallback (same algorithms, same bytes on the
+wire), and the phone boot line reads `secure no · crypto fallback` — expected. The same fallback
+covers a Foundry served over `http://192.168…`. **Leave Foundry's Glasses app page (advanced)
+at its default**: the wizard prints its own QR for the LAN app. If you followed the v0.3.0/0.3.1
+wizard, which told you to set that page to the LAN address, press **Restore default** in the
+pairing window — until you do, every Foundry QR opens a page that is dead once the dev server
+stops.
 
 ---
 

@@ -38,12 +38,37 @@ function stringSetting(key: string, fallback: string): string {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback;
 }
 
+/** Production defaults of the two pairing endpoints. */
+const DEFAULT_ENDPOINTS: PairingEndpoints = {
+  appUrl: DEFAULT_APP_URL,
+  relayUrl: DEFAULT_RELAY_URL,
+};
+
+/** Setting key of each pairing endpoint. */
+const ENDPOINT_SETTINGS: Record<keyof PairingEndpoints, string> = {
+  appUrl: APP_URL_SETTING,
+  relayUrl: RELAY_URL_SETTING,
+};
+
 /** Current app page + relay (module settings, defaults = production). */
 export function pairingEndpoints(): PairingEndpoints {
   return {
     appUrl: stringSetting(APP_URL_SETTING, DEFAULT_APP_URL),
     relayUrl: stringSetting(RELAY_URL_SETTING, DEFAULT_RELAY_URL),
   };
+}
+
+/**
+ * Puts one pairing endpoint back to its production default (the pairing window's
+ * «Ripristina predefinito»). The next QR uses it at once. Glasses already paired keep the
+ * relay of their QR, and the projector keeps serving each pairing on the relay it was made
+ * on (`Pairing.relay`), so a relay change never splits a working pairing — it applies only
+ * to pairings made from now on (and, after a reload, to records older than v0.4.2).
+ *
+ * @param which - `appUrl` (page the QR opens) or `relayUrl`
+ */
+export async function resetPairingEndpoint(which: keyof PairingEndpoints): Promise<void> {
+  await game.settings.set(MODULE_ID, ENDPOINT_SETTINGS[which], DEFAULT_ENDPOINTS[which]);
 }
 
 /**
@@ -77,7 +102,7 @@ export function registerSettings(projector: Projector): void {
     requiresReload: true,
   });
 
-  const PairG2App = createPairG2App(projector, pairingEndpoints);
+  const PairG2App = createPairG2App(projector, pairingEndpoints, resetPairingEndpoint);
   game.settings.registerMenu(MODULE_ID, 'pairG2', {
     name: 'evf.settings.pair_button',
     label: 'evf.settings.pair_button',

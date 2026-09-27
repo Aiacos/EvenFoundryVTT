@@ -27,7 +27,7 @@ Tutti i comandi a 0 = repository sano.
 | Regola | Valori |
 |---|---|
 | **tipo** (obbligatorio) | `feat` · `fix` · `docs` · `chore` · `test` · `refactor` · `perf` · `style` · `ci` |
-| **scope** (facoltativo, avviso se diverso) | `g2-app` · `foundry-module` · `shared-protocol` · `shared-render` · `validation-harness` · `*` |
+| **scope** (facoltativo, avviso se diverso) | `g2-app` · `foundry-module` · `shared-protocol` · `shared-render` · `validation-harness` · `e2e` · `*` |
 | maiuscole nel soggetto | libere (commit in italiano ammessi) |
 
 Esempi:

@@ -90,9 +90,13 @@ const WELCOME = {
   worldTitle: 'Cripta',
 };
 
-/** Drives start → hello → welcome → snapshots → online. Returns the projector double. */
+/**
+ * Drives start → peer-up (projector already in the room) → hello → welcome → snapshots →
+ * online. Returns the projector double.
+ */
 async function goOnline(h: Harness, welcomeExtra: object = {}): Promise<FakeProjector> {
   await h.session.start(h.creds);
+  h.relay.last.setPeer(true);
   await settle();
   const gm = h.gm();
   const [hello] = await gm.drain();
@@ -160,13 +164,14 @@ describe('connect flow (relay, ADR-0019)', () => {
       steps: { relay: true, projector: false, paired: false },
     });
     const gm = h.gm();
-    const [hello] = await gm.drain();
-    expect(hello).toMatchObject({ t: 'hello', proto: 2, app: '0.4.0', locale: 'it' });
+    // No hello before the relay says the projector is there (or the grace passes).
+    expect(await gm.drain()).toEqual([]);
     h.relay.last.setPeer(true);
     expect(h.store.get().connection.steps?.projector).toBe(true);
     await settle();
-    const [again] = await gm.drain();
-    await gm.reply({ ...WELCOME, rid: again?.rid, locale: 'en', moduleVersion: '0.3.0' });
+    const [hello] = await gm.drain();
+    expect(hello).toMatchObject({ t: 'hello', proto: 2, app: '0.4.0', locale: 'it' });
+    await gm.reply({ ...WELCOME, rid: hello?.rid, locale: 'en', moduleVersion: '0.3.0' });
     await settle();
     expect(h.store.get().connection).toMatchObject({
       status: 'connecting',
@@ -210,6 +215,7 @@ describe('connect flow (relay, ADR-0019)', () => {
   it('rotation: persists the new room + key and reconnects there (single-use QR)', async () => {
     const h = setup();
     await h.session.start(h.creds);
+    h.relay.last.setPeer(true);
     await settle();
     const gm = h.gm();
     const [hello] = await gm.drain();
@@ -221,13 +227,16 @@ describe('connect flow (relay, ADR-0019)', () => {
     expect(h.relay.last.room).toBe(rotate.room);
     expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toMatchObject(rotate);
     const next = new FakeProjector(h.relay.last, rotate.key);
+    h.relay.last.setPeer(true);
+    await settle();
     expect((await next.drain())[0]?.t).toBe('hello');
   });
 
-  it('regression (real relay): peer-up racing the first hello — a welcome to either hello counts', async () => {
+  it('regression (real relay): the projector joining after the grace hello — a welcome to either hello counts', async () => {
     const h = setup();
     await h.session.start(h.creds);
-    h.relay.last.setPeer(true); // the relay's peer-up for a newcomer arrives right after open
+    vi.advanceTimersByTime(SESSION_TIMING.helloGrace); // nobody there: this hello is lost…
+    h.relay.last.setPeer(true); // …or not: the projector joined while it was in flight
     await settle();
     const gm = h.gm();
     const hellos = await gm.drain();
@@ -242,6 +251,7 @@ describe('connect flow (relay, ADR-0019)', () => {
   it('keeps saying hello every welcomeTimeout while the projector is away (no lost hello)', async () => {
     const h = setup();
     await h.session.start(h.creds);
+    vi.advanceTimersByTime(SESSION_TIMING.helloGrace);
     await settle();
     const gm = h.gm();
     await gm.drain();
@@ -258,6 +268,7 @@ describe('connect flow (relay, ADR-0019)', () => {
   it('ignores a welcome that does not answer our hello', async () => {
     const h = setup();
     await h.session.start(h.creds);
+    h.relay.last.setPeer(true);
     await settle();
     await h.gm().reply({ ...WELCOME, rid: 'other' });
     await settle();
@@ -268,7 +279,7 @@ describe('connect flow (relay, ADR-0019)', () => {
     const h = setup();
     await h.session.start(h.creds);
     await settle();
-    vi.advanceTimersByTime(SESSION_TIMING.welcomeTimeout);
+    vi.advanceTimersByTime(SESSION_TIMING.helloGrace + SESSION_TIMING.welcomeTimeout);
     expect(h.store.get().connection).toMatchObject({ status: 'offline', cause: 'no-projector' });
     expect(h.store.get().connection.retryInMs).toBeUndefined();
     expect(h.relay.last.closed).toBe(false);
@@ -707,7 +718,11 @@ describe('lifecycle and user actions', () => {
     await h.session.start(null);
     await h.session.pairCode('7qk3 mx9p 2hra c4te');
     const expected = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
-    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual(expected);
+    expect(JSON.parse(h.storage.data.get(CREDENTIALS_STORAGE_KEY) ?? '')).toEqual({
+      ...expected,
+      from: expected.room,
+      pendingSince: 1_000_000,
+    });
     expect(h.relay.last.room).toBe(expected.room);
     await expect(h.session.pairCode('bad')).rejects.toThrow('invalid manual code');
     expect(formatManualCode('7QK37QK3')).toBe('7QK3-7QK3');

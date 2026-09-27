@@ -14,12 +14,13 @@ import {
   type EvenHubEvent,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk';
+import { phoneStrings } from '../phone/i18n.js';
 import { mountPhonePage } from '../phone/phone-page.js';
 import { type AppActions, type AppStore, createAppStore } from '../state/app-store.js';
 import {
+  type BootLink,
   CredentialStore,
-  consumePairingFragment,
-  credentialsFromLink,
+  consumePairingLink,
   type KeyValueStorage,
 } from './credentials.js';
 import { createRelayOpener, type OpenRelay } from './relay-client.js';
@@ -45,6 +46,11 @@ export interface AppEnvironment {
   startHud: StartHud;
   /** Relay opener override (tests). */
   openRelay?: OpenRelay;
+  /**
+   * Subscribes to `hashchange` (the host may reuse the open page and change only the
+   * fragment when a new QR is scanned); returns the unsubscribe function. Omitted = none.
+   */
+  hashChanges?: (listener: () => void) => () => void;
 }
 
 /** Handle returned by {@link startApp}. */
@@ -75,8 +81,52 @@ export function foregroundTransition(event: EvenHubEvent): 'enter' | 'exit' | 'a
 }
 
 /**
- * Boots the app: reads the pairing fragment, mounts the phone page, attaches the HUD
- * when the Even App bridge is present, and connects.
+ * Applies the pairing link read from the page URL at boot. Never rejects: a code that
+ * cannot be applied (e.g. no crypto backend on a plain-http page) is recorded —
+ * diagnostics, debug channel, phone page error line — and the session starts with the
+ * stored pairing.
+ *
+ * @param session - the app session
+ * @param boot - what {@link consumePairingLink} read from the page URL
+ */
+export async function applyLink(session: DirectSession, boot: BootLink): Promise<void> {
+  if (boot.kind !== 'code') {
+    await session.start();
+    return;
+  }
+  try {
+    await session.pairLink(boot.link);
+  } catch (error) {
+    session.reportPairingError(error);
+    await session.start();
+  }
+}
+
+/**
+ * Applies a pairing link that arrived on the open page (`hashchange`: the host reused the
+ * page for a new scan). Never rejects: a failure keeps the current connection and is
+ * reported; a URL without a pairing key is ignored.
+ *
+ * @param session - the app session
+ * @param next - what {@link consumePairingLink} read from the new URL
+ */
+export async function applyLaterLink(session: DirectSession, next: BootLink): Promise<void> {
+  if (next.kind === 'none') return;
+  session.noteLink(next.kind);
+  if (next.kind !== 'code') return;
+  try {
+    await session.pairLink(next.link);
+  } catch (error) {
+    session.reportPairingError(error);
+  }
+}
+
+/**
+ * Boots the app: reads the pairing link (`#c=` / `?c=`), mounts the phone page, attaches
+ * the HUD when the Even App bridge is present, connects, and pairs again whenever a new
+ * link arrives on the open page (`hashchange`). The `hashchange` listener is on from the
+ * start — a scan while the boot still connects (relay open up to 10 s) is not lost — and
+ * links are applied one at a time, in order, after the boot link.
  */
 export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   const store = createAppStore();
@@ -85,7 +135,7 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   const credentials = new CredentialStore(env.storage, (message, error) =>
     session?.reportWarning(message, error),
   );
-  const link = consumePairingFragment(env.location, env.history);
+  const link = consumePairingLink(env.location, env.history);
   session = new DirectSession({
     store,
     credentials,
@@ -96,30 +146,76 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     deviceLanguage: env.deviceLanguage,
   });
   const active = session;
-  const bridge = await env.getBridge();
-  const unmountPhone = mountPhonePage(env.root, store, active, bridge);
+  active.noteLink(link.kind);
+
+  // Link queue: the boot link runs once the page and the bridge are set up; later links
+  // (`hashchange`) queue behind it. Tasks never reject (applyLink / applyLaterLink).
+  let ready = (): void => {};
+  let queue = new Promise<void>((resolve) => {
+    ready = resolve;
+  }).then(() => applyLink(active, link));
+  const booted = queue;
+  const stopHashChanges =
+    env.hashChanges?.(() => {
+      const next = consumePairingLink(env.location, env.history);
+      queue = queue.then(() => applyLaterLink(active, next));
+    }) ?? (() => {});
 
   let stopHud = (): void => {};
   let stopEvents = (): void => {};
-  if (bridge !== null) {
-    credentials.attachMirror(bridge);
-    stopEvents = bridge.onEvenHubEvent((event) => {
-      const transition = foregroundTransition(event);
-      // An abnormal exit closes like a background transition: graceful link close, and
-      // a later FOREGROUND_ENTER (host restored the plugin) reconnects.
-      if (transition !== null) active.onForeground(transition === 'enter');
-    });
-    stopHud = env.startHud(bridge, store, active);
+  let unmountPhone = (): void => {};
+  try {
+    const bridge = await env.getBridge();
+    unmountPhone = mountPhonePage(env.root, store, active, bridge);
+    if (bridge !== null) {
+      credentials.attachMirror(bridge);
+      stopEvents = bridge.onEvenHubEvent((event) => {
+        const transition = foregroundTransition(event);
+        // An abnormal exit closes like a background transition: graceful link close, and
+        // a later FOREGROUND_ENTER (host restored the plugin) reconnects.
+        if (transition !== null) active.onForeground(transition === 'enter');
+      });
+      stopHud = env.startHud(bridge, store, active);
+    }
+  } catch (error) {
+    stopHashChanges();
+    stopEvents();
+    unmountPhone();
+    throw error;
   }
-  await active.start(link === null ? null : await credentialsFromLink(link));
+  ready();
+  await booted;
   return {
     store,
     session: active,
     stop() {
+      stopHashChanges();
       stopEvents();
       stopHud();
       unmountPhone();
       active.dispose();
     },
   };
+}
+
+/**
+ * Last-resort boot failure — {@link startApp} rejected although it reports pairing-link
+ * failures itself (e.g. the SDK bridge or the storage threw): logged as `[EVF]` (the debug
+ * channel captures the console when it is on) and shown on the phone page in place of a
+ * blank page.
+ *
+ * @param root - element hosting the phone page (its content is replaced)
+ * @param error - the rejection reason
+ * @param language - device language (`navigator.language`): Italian or English text
+ */
+export function showBootFailure(root: HTMLElement, error: unknown, language: string): void {
+  console.error(`[EVF] boot failed: ${String(error)}`);
+  const locale = language.toLowerCase().startsWith('it') ? 'it' : 'en';
+  const line = root.ownerDocument.createElement('p');
+  line.className = 'evf-error';
+  line.setAttribute('role', 'alert');
+  // The message only, like «Collegamento non riuscito: <msg>» (no "Error:" prefix).
+  const message = error instanceof Error ? error.message : String(error);
+  line.textContent = phoneStrings(locale).bootFailed(message);
+  root.replaceChildren(line);
 }

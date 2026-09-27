@@ -20,7 +20,7 @@ import { createDebugLog, type DebugLog, setActiveDebugLog } from './debug/debug-
 import { type DevtoolsHost, installDevtools } from './debug/devtools.js';
 import { parseDebugFlags } from './debug/flags.js';
 import { startDemo } from './demo/demo-app.js';
-import { startApp } from './direct/app.js';
+import { showBootFailure, startApp } from './direct/app.js';
 import type { DiagnosticEntry } from './direct/session.js';
 import { startHud } from './hud/index.js';
 import type { AppStore } from './state/app-store.js';
@@ -74,6 +74,10 @@ async function bootApp(mount: HTMLElement, log: DebugLog | null): Promise<void> 
     deviceLanguage: () => navigator.language,
     appVersion: __EVF_APP_VERSION__,
     relayUrl: __EVF_RELAY_URL__ || DEFAULT_RELAY_URL,
+    hashChanges: (listener) => {
+      window.addEventListener('hashchange', listener);
+      return () => window.removeEventListener('hashchange', listener);
+    },
     getBridge: async () => {
       const bridge = await getBridge();
       if (bridge === null || log === null) return bridge;
@@ -104,6 +108,11 @@ async function bootApp(mount: HTMLElement, log: DebugLog | null): Promise<void> 
   handle.session.subscribeInfo((info) => sync(info.diagnostics));
 }
 
+/** Last-resort boot failure: logged (debug channel via the console capture) and shown. */
+function bootFailed(error: unknown): void {
+  if (root !== null) showBootFailure(root, error, navigator.language);
+}
+
 if (flags.debug) {
   const log = createDebugLog();
   setActiveDebugLog(log);
@@ -111,7 +120,7 @@ if (flags.debug) {
   captureGlobalErrors(log, window);
   log.push('info', 'debug', `debug channel on (${flags.demo === null ? 'debug=1' : 'demo'})`);
   if (flags.demo === null) {
-    void bootApp(root, log);
+    bootApp(root, log).catch(bootFailed);
   } else {
     let tapRef: BridgeTap | null = null;
     let scenario = (): string | undefined => undefined;
@@ -147,5 +156,5 @@ if (flags.debug) {
     );
   }
 } else {
-  void bootApp(root, null);
+  bootApp(root, null).catch(bootFailed);
 }

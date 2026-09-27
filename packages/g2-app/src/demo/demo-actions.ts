@@ -40,6 +40,15 @@ export interface DemoTimers {
 /** Fake transport = HUD actions + phone session. */
 export type DemoTransport = AppActions & PhoneSession;
 
+/** Boot facts the demo shows on the phone diagnostic line (no relay, no pairing link). */
+const DEMO_BOOT: SessionInfo['boot'] = {
+  app: 'demo',
+  secure: true,
+  crypto: 'webcrypto',
+  link: 'none',
+  relay: 'demo',
+};
+
 /**
  * Deterministic d20 for a tool (stable across runs so screenshots are comparable);
  * `weapon-attack` rolls 15, a hit like the design's S6.
@@ -86,6 +95,8 @@ export function createDemoTransport(deps: {
     latencyMs: 42,
     moduleVersion: 'demo',
     diagnostics: [],
+    boot: DEMO_BOOT,
+    pairingError: null,
   });
 
   const goOnline = (): void => {

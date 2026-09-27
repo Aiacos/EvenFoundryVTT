@@ -110,6 +110,8 @@ describe('createDemoTransport', () => {
       latencyMs: 42,
       moduleVersion: 'demo',
       diagnostics: [],
+      boot: { app: 'demo', secure: true, crypto: 'webcrypto', link: 'none', relay: 'demo' },
+      pairingError: null,
     });
     const off = transport.subscribeInfo(() => {});
     expect(off()).toBeUndefined();

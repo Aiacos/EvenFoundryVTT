@@ -29,6 +29,7 @@
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
+import { sha256Digest } from '@evf/shared-protocol';
 import type { ToolResult } from './tool-registry.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -139,9 +140,9 @@ export class IdempotencyStore {
  * Used to construct bearer-bound cache keys (T-07-02 cross-bearer replay mitigation).
  * Truncation to 16 chars is sufficient for key uniqueness while keeping keys compact.
  *
- * Uses Web Crypto `crypto.subtle.digest('SHA-256')` — available in both:
- * - Foundry's Chromium-based browser context (GM client)
- * - Vitest Node.js test environment (Node 24+ supports `crypto.subtle`)
+ * Uses `sha256Digest` from `@evf/shared-protocol`: WebCrypto `crypto.subtle.digest` in a
+ * secure context (https / localhost Foundry, Node 24 tests), the audited noble fallback on
+ * a plain-http Foundry tab where `crypto.subtle` is undefined — same hash either way.
  *
  * The raw bearer token is NEVER stored, logged, or returned — only its hash prefix.
  * This satisfies T-02-01 (no bearer leakage in logs or cache keys).
@@ -157,8 +158,7 @@ export class IdempotencyStore {
  */
 export async function hashBearer(bearer: string): Promise<string> {
   const encoded = new TextEncoder().encode(bearer);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashArray = Array.from(await sha256Digest(encoded));
   const hex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   return hex.slice(0, 16);
 }

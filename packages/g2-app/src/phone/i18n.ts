@@ -26,6 +26,11 @@ const EN = {
     'the Foundry tab that paired these glasses is closed — open Foundry there and they reconnect by themselves',
   causeNetwork: 'relay not reachable',
   causeBackground: 'app in background',
+  causeCodePending:
+    'code waiting for an answer from Foundry — keep open the Foundry tab that showed the QR (the window may be closed)',
+  causeActor:
+    'Foundry cannot find your character (deleted, or no longer yours) — check it in Foundry',
+  causeReplaced: 'another app took this pairing — tap Reconnect to take it back here',
   gmOnline: (name: string) => `${name} (online)`,
   autoLocale: 'Follow Foundry',
   italian: 'Italiano',
@@ -60,6 +65,15 @@ const EN = {
   connect: 'Connect',
   invalidCode: 'Invalid code: 16 characters, e.g. 7QK3-MX9P-2HRA-C4TE.',
   help: 'The code is shown under the QR in Foundry (single use, 5 min). No Foundry login is needed on the phone.',
+  pairFailed: (message: string) => `Pairing failed: ${message}`,
+  codeUsed: 'Code already used on this phone: make a new QR in Foundry.',
+  codeUnanswered:
+    'No answer to the code: QR expired, cancelled or already used — make a new QR in Foundry.',
+  legacyLink: 'QR from an old version of the module: update EvenFoundryVTT in Foundry.',
+  invalidLink: 'The QR link carries no valid code: type the 16-character code shown under the QR.',
+  linkUsedKept: 'Code already used on this phone: the current pairing is kept.',
+  repair: 'Pair again',
+  bootFailed: (message: string) => `The app failed to start: ${message}`,
 };
 
 /** String table shape (EN is canonical). */
@@ -85,6 +99,11 @@ const IT: PhoneStrings = {
     'la scheda di Foundry che ha collegato questi occhiali è chiusa — riapri Foundry lì e si ricollegano da soli',
   causeNetwork: 'relay non raggiungibile',
   causeBackground: 'app in background',
+  causeCodePending:
+    'codice in attesa di risposta da Foundry — tieni aperta la scheda di Foundry che ha mostrato il QR (la finestra si può chiudere)',
+  causeActor:
+    'Foundry non trova il tuo personaggio (eliminato, o non più tuo) — controllalo in Foundry',
+  causeReplaced: "un'altra app ha preso questa associazione — tocca Riconnetti per riprenderla qui",
   gmOnline: (name) => `${name} (online)`,
   autoLocale: 'Segui Foundry',
   italian: 'Italiano',
@@ -119,6 +138,16 @@ const IT: PhoneStrings = {
   connect: 'Collega',
   invalidCode: 'Codice non valido: 16 caratteri, es. 7QK3-MX9P-2HRA-C4TE.',
   help: 'Il codice è sotto il QR su Foundry (monouso, 5 min). Sul telefono non serve nessun login a Foundry.',
+  pairFailed: (message) => `Collegamento non riuscito: ${message}`,
+  codeUsed: 'Codice già usato su questo telefono: genera un nuovo QR in Foundry.',
+  codeUnanswered:
+    'Nessuna risposta al codice: QR scaduto, annullato o già usato — genera un nuovo QR in Foundry.',
+  legacyLink: 'QR di una versione vecchia del modulo: aggiorna EvenFoundryVTT in Foundry.',
+  invalidLink:
+    'Il link del QR non contiene un codice valido: digita il codice di 16 caratteri mostrato sotto il QR.',
+  linkUsedKept: "Codice già usato su questo telefono: l'associazione attuale resta valida.",
+  repair: 'Collega di nuovo',
+  bootFailed: (message) => `L'app non si è avviata: ${message}`,
 };
 
 /** Returns the string table for a locale. */

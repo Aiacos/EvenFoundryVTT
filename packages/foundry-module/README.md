@@ -36,7 +36,9 @@ and on GitHub Pages (`https://aiacos.github.io/EvenFoundryVTT/app/`, the page th
    open it on any player's row to pair for a player without a device (the GM tab projects).
 3. The window opens ready: character preselected, relay checked, QR + 16-character code
    (5 minutes, single use). The player scans it with **FoundryVTT G2 HUD › Scan QR** or types
-   the code in **Enter code**; the window switches to **Glasses connected** by itself.
+   the code in the **Code** field (*First setup*, or **Pair again** on the *Connection* page);
+   the window switches to **Glasses connected** by itself. Closing the window keeps the QR
+   alive until it expires; **Cancel QR** kills it at once.
 4. The list **Glasses connected to this browser** shows each pairing (*online* / *waiting
    for the glasses* / *relay unreachable*) with **Disconnect**.
 
@@ -48,8 +50,8 @@ Full walkthrough: [setup guide](../../docs/setup-guide.md).
 |---|---|---|---|
 | `pairG2` (menu) | — | — | «Connect G2 glasses» window, open to every user |
 | `g2Pairings` | client, hidden | `{}` | pairings of **this browser** (room, key, actor, label) |
-| `appUrl` — *Glasses app page (advanced)* | client | `https://aiacos.github.io/EvenFoundryVTT/app/` | page the QR opens (dev: the LAN URL printed by `pnpm dev:glasses`) |
-| `relayUrl` — *Relay (advanced)* | client | `wss://evf-relay.evf-relay.workers.dev` | self-hosted relay (sideloaded app only; carried by the QR, not by the code) |
+| `appUrl` — *Glasses app page (advanced)* | client | `https://aiacos.github.io/EvenFoundryVTT/app/` | page the QR opens; only for a self-hosted app (`pnpm dev:glasses` prints its own QR — don't put a LAN URL here). A non-default value is flagged in the pairing window with **Restore default** |
+| `relayUrl` — *Relay (advanced)* | client | `wss://evf-relay.evf-relay.workers.dev` | self-hosted relay (sideloaded app only; carried by the QR, not by the code); flagged with **Restore default** when not the default |
 
 ## 🔐 Security / Auth
 
@@ -62,7 +64,12 @@ Full walkthrough: [setup guide](../../docs/setup-guide.md).
 - **Single-use pairing**: the 16-char code (Crockford base32, 80 bits) and the QR carry the
   same secret; room and key are derived by HKDF. On the first `hello` the projector rotates
   both and sends the new ones in the sealed `welcome`, so the QR is spent. Unused sessions
-  expire after 5 minutes.
+  expire after 5 minutes — the projector owns that expiry, so closing the window does not
+  cancel a QR and a late timer (sleeping laptop) still refuses a frame after `expiresAt`.
+- **http pages**: on a Foundry served over plain `http://` (not localhost) the browser hides
+  WebCrypto; sealing, HKDF, asset ids and bearer hashes then use the audited fallback of
+  `@evf/shared-protocol` `direct/crypto.ts` (lazy chunk `crypto-fallback-*.js` in `dist/`),
+  same bytes on the wire. HTTPS stays recommended.
 - **Storage**: pairings live only in a hidden `scope: 'client'` setting of the browser that
   paired — no world setting, no user flag, nothing on the Foundry server.
 - **One projector per device**: a Web Lock per device lets only one tab of the browser
@@ -81,12 +88,12 @@ Full walkthrough: [setup guide](../../docs/setup-guide.md).
 | Path | Role |
 |---|---|
 | `src/module.ts` | `init` → settings, menu, Players-list entry, `Alt+G`; `ready` → start the projector on every client and wire deltas |
-| `src/settings.ts` | settings registration, `pairingEndpoints()` (app page + relay) |
-| `src/direct/projector.ts` | per-pairing relay channel: `hello`/`get`/`invoke`/`ping`, rotation, delta fan-out, map throttle (≤ 1/s per device) |
-| `src/direct/relay-connection.ts` | projector ⇄ relay WebSocket, backoff 1 → 30 s, `peer-up`/`peer-down`, per-device Web Lock |
+| `src/settings.ts` | settings registration, `pairingEndpoints()` (app page + relay), `resetPairingEndpoint()` («Restore default») |
+| `src/direct/projector.ts` | per-pairing relay channel: `hello`/`get`/`invoke`/`ping`, rotation, one full push per link (a repeated `hello` gets only `welcome`), delta fan-out, map throttle (≤ 1/s per device), expiry of unused QRs, live `diagnostics()` for the window |
+| `src/direct/relay-connection.ts` | projector ⇄ relay WebSocket, backoff 1 → 30 s, `peer-up`/`peer-down`, per-device Web Lock, outgoing frames paced to 40/s (relay cap 60) |
 | `src/direct/pairing-flow.ts` | pairing session (code, room, key, QR), relay `/health` check, expiry, revocation |
 | `src/direct/pairing-store.ts` | client-scope pairing registry (re-validated on read) |
-| `src/direct/PairG2App.ts` + `templates/pair-g2.hbs` + `styles/pair-g2.css` | ApplicationV2 «Connect G2 glasses» window |
+| `src/direct/PairG2App.ts` + `templates/pair-g2.hbs` + `styles/pair-g2.css` | ApplicationV2 «Connect G2 glasses» window: QR kept across close/reopen, live status under the QR, endpoint notices with «Restore default» |
 | `src/direct/players-menu.ts` | Players-list context entry + `Alt+G` keybinding |
 | `src/direct/ownership.ts` | owned/assigned characters, live ownership check |
 | `src/direct/map-reader.ts` · `map-assets.ts` | `MapSnapshot` from scene data; scene art downsized in the tab and sent once as `asset` (`evf-asset:<id>`) |

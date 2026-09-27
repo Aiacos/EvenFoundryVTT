@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "outDir": "dist"
+  },
+  // The e2e drives the real sources of its two workspace dependencies: their ambient
+  // declarations (Foundry globals, the g2-app build env) come along.
+  "include": [
+    "src/**/*",
+    "../foundry-module/src/types/*.d.ts",
+    "../g2-app/src/direct/build-env.d.ts",
+    "../g2-app/src/hud/zones/upng-js.d.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,13 +1,13 @@
 # Protocollo del canale diretto
 
-Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-protocol/src/direct): gli schemi Zod sono l'unica fonte dei tipi sul filo (principio P1). Crittografia solo WebCrypto (`globalThis.crypto.subtle`): funziona nella WebView della Even App, nei client Foundry e in Node ≥ 20 per i test.
+Contratto unico in [`packages/shared-protocol/src/direct/`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-protocol/src/direct): gli schemi Zod sono l'unica fonte dei tipi sul filo (principio P1). Crittografia in `crypto.ts`: WebCrypto (`globalThis.crypto.subtle`) quando c'è — WebView della Even App su `https://`, client Foundry in `https://` o `localhost`, Node ≥ 20 per i test; sulle pagine `http://` non locali, dove il browser la nasconde, un fallback software caricato al bisogno (`crypto-fallback.ts`: `@noble/ciphers` + `@noble/hashes` 2.4.0) con gli stessi byte sul filo. `randomId()` sostituisce `crypto.randomUUID` ([ADR-0019](Decisioni-Architetturali), emendamento 2).
 
 ## 🏗️ Trasporto (ADR-0019)
 
 1. Projector (scheda di Foundry) e app aprono ciascuno un WebSocket verso il relay: `relayRoomUrl(relay, stanza, ruolo)` = `wss://evf-relay.evf-relay.workers.dev/r/<stanza>?role=projector|glasses` (`DEFAULT_RELAY_URL`; il payload del QR può portare un relay diverso).
 2. Il relay tiene **una connessione per ruolo** (la più nuova chiude la vecchia con `4000`, `RELAY_CLOSE_REPLACED`) e inoltra ogni frame all'altro ruolo, senza leggerlo; senza l'altro ruolo il frame è scartato.
 3. Frame di controllo del relay (`RelayControlSchema`): `{"relay":"peer-up"}` quando entrambi i ruoli sono presenti, `{"relay":"peer-down"}` quando l'altro se ne va davvero (non quando viene sostituito).
-4. Limiti: frame > 1 MiB (`MAX_RELAY_FRAME_BYTES`) chiudono il mittente con `1009`; più di 60 frame al secondo con `1008`. Salute: `GET /health` → `200 ok` con CORS `*` (`relayHealthUrl`).
+4. Limiti: frame > 1 MiB (`MAX_RELAY_FRAME_BYTES`) chiudono il mittente con `1009`; più di 60 frame al secondo con `1008` (il projector cadenza i propri invii a ≤ 40 al secondo, `MAX_OUTGOING_FRAMES_PER_SECOND`). Salute: `GET /health` → `200 ok` con CORS `*` (`relayHealthUrl`).
 
 Tutti gli altri frame sono buste sigillate. Il telefono non apre mai connessioni verso Foundry.
 
@@ -46,13 +46,13 @@ Discriminati da `t`; `rid` (1–64 car.) correla richiesta e risposta ed è anch
 | projector → app | `revoked` | — (dopo **Scollega**) |
 | projector → app | `asset` | `id`, `data` (`data:image/png` o `image/jpeg` in base64, ≤ 900 000 car.): un'immagine della scena, inviata una volta per connessione prima dello snapshot che la cita |
 
-`rotate = { room, key }`: stanza e chiave nuove al primo `welcome` (QR monouso); entrambe le parti passano alla nuova stanza e l'app ripete `hello`.
+`rotate = { room, key }`: stanza e chiave nuove al primo `welcome` (QR monouso); entrambe le parti passano alla nuova stanza e l'app ripete `hello`. L'app dice `hello` **una volta per ingresso nella stanza** (al `peer-up`, o dopo 1,5 s se non arriva); il projector manda lo stato completo una volta per collegamento e a un `hello` ripetuto risponde solo con `welcome`. Un `result` che rifiuta l'`hello` (`actor_missing`, `forbidden_actor`) porta l'app nello stato `actor`; la chiusura `4000` nello stato `replaced`, senza riconnessione automatica.
 
 **Tempi dell'app** (`SESSION_TIMING` in `packages/g2-app/src/direct/session.ts`): `welcome` entro 8 s, snapshot e `invoke` entro 10 s, heartbeat ogni 20 s, offline dopo 2 pong persi, nuovo tentativo con attesa 1 s → 30 s e jitter fino al 20 %.
 
 ## 🔐 Payload di collegamento
 
-- **QR**: `<pagina dell'app>#c=<CODICE>` (predefinita `https://aiacos.github.io/EvenFoundryVTT/app/`, circa 63 caratteri, QR piccolo con margine di 4 moduli) — solo il codice di 16 caratteri; stanza e chiave si derivano con HKDF come per il codice digitato. `&relay=ws(s)://…` compare solo per un relay alternativo (sviluppo, self-hosting). Il frammento non arriva mai a un server. L'app legge lo stesso link dall'URL (QR inquadrato con la Even Realities App), dalla foto di «Scansiona QR» o dal solo codice (`readPairingText`).
+- **QR**: `<pagina dell'app>#c=<CODICE>` (predefinita `https://aiacos.github.io/EvenFoundryVTT/app/`, circa 63 caratteri, QR piccolo con margine di 4 moduli) — solo il codice di 16 caratteri; stanza e chiave si derivano con HKDF come per il codice digitato. `&relay=ws(s)://…` compare solo per un relay alternativo (sviluppo, self-hosting). Il frammento non arriva mai a un server. L'app legge lo stesso link dall'URL (QR inquadrato con la Even Realities App), dalla foto di «Scansiona QR» o dal solo codice (`readPairingText`); la chiave `c` vale in qualunque maiuscola, anche come `?c=` nella query, e l'app rilegge il link su `hashchange`. Il telefono salva con l'associazione la stanza derivata dal codice (`from`) e, finché non arriva il primo `welcome`, l'ora del codice (`pendingSince`): un link con un codice già usato su quel telefono è ignorato, un codice senza risposta entro `PAIRING_TTL_MS` (5 min) è cancellato.
 - **Codice manuale**: 16 caratteri Crockford base32 (`MANUAL_CODE_LENGTH`, 80 bit), mostrato come `XXXX-XXXX-XXXX-XXXX`; `deriveCodePairing` ricava stanza (128 bit, info `evf-room`) e chiave (256 bit, info `evf-key`) con HKDF-SHA256, quindi al telefono non serve altro.
 - Nessun utente, password o URL di Foundry arriva al telefono.
 

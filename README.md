@@ -31,7 +31,7 @@ There are two pieces: the **Foundry module** (for everyone at the table) and the
    - **GitHub Pages** (developer-mode phones): the pairing QR opens `https://aiacos.github.io/EvenFoundryVTT/app/` when scanned with the Even Realities App › *Scan QR* in Developer Mode (a sideloaded page stops when the phone locks — a developer tool).
    - **Vite dev on the LAN** (contributors): `pnpm dev:glasses` — see [Try it on the glasses](#-try-it-on-the-glasses).
 
-**Requirements:** the phone never talks to your Foundry, so Foundry needs **no public HTTPS** (an `http://` LAN Foundry works) and there is no Forge setting to change — self-hosted and The Forge (private games too), Foundry v13 and v14. The player's Foundry tab and the glasses app must both reach the relay `wss://evf-relay.evf-relay.workers.dev`; the pairing window checks it and shows «Relay ✗» with a fix link if it is blocked.
+**Requirements:** the phone never talks to your Foundry, so Foundry needs **no public HTTPS** (an `http://` LAN Foundry works: where the browser hides WebCrypto the channel uses an audited software fallback, same bytes on the wire) and there is no Forge setting to change — self-hosted and The Forge (private games too), Foundry v13 and v14. The player's Foundry tab and the glasses app must both reach the relay `wss://evf-relay.evf-relay.workers.dev`; the pairing window checks it and shows «Relay ✗» with a fix link if it is blocked.
 
 > **Upgrading from v0.2.x (ADR-0016/0017)?** Pairings made before v0.13.0 must be redone once: open **Connect G2 glasses** and scan the new QR. The old «&lt;Player&gt; (G2)» users are no longer used — the GM may delete them. The glasses app no longer ships inside the module zip.
 >
@@ -50,7 +50,7 @@ Each GitHub Release (tag `vX.Y.Z`, cut by `scripts/release-tag.mjs` → `foundry
 | GM (optional) | *Players* list → right-click **any player** → **Connect G2 glasses** | pairs glasses for a player without a device of their own; the GM's tab then projects for them |
 | Player | R1 ring / temple touchpad | tap = actions · swipe = move cursor · double-tap = back (exit at root) — see [Controls](#-controls--r1-ring--g2-touchpad) |
 
-**Your Foundry tab is the projector:** the tab that showed the QR reads your character, sends the scene art and runs your actions as you ([ADR-0011](docs/architecture/0011-foundry-write-path-single-workflow-origin.md)). The pairing is stored in **this browser** and reconnects by itself whenever it has Foundry open; the window lists «Glasses connected to this browser» with their status (online · waiting for the glasses · relay unreachable) and a **Disconnect** button. If you close Foundry the glasses say «Player's Foundry closed» and come back on their own when the tab reopens. Step-by-step guides (Italian): **[project wiki](https://github.com/Aiacos/EvenFoundryVTT/wiki)**.
+**Your Foundry tab is the projector:** the tab that showed the QR reads your character, sends the scene art and runs your actions as you ([ADR-0011](docs/architecture/0011-foundry-write-path-single-workflow-origin.md)). The pairing is stored in **this browser** and reconnects by itself whenever it has Foundry open; the window lists «Glasses connected to this browser» with their status (online · waiting for the glasses · relay unreachable) and a **Disconnect** button. If you close Foundry the glasses say «Player's Foundry closed» and come back on their own when the tab reopens. Closing the pairing window does not cancel an unused QR (it stays valid for its 5 minutes); under the QR the window shows live whether the relay and the glasses are there and why a glasses message was refused (e.g. clocks apart). On the phone, **Pair again** takes a new QR or code at any time, and reopening an already-used QR is ignored instead of breaking a working pairing ([ADR-0019](docs/architecture/0019-relay-pairing-player-projector.md) Amendment 2). Step-by-step guides (Italian): **[project wiki](https://github.com/Aiacos/EvenFoundryVTT/wiki)**.
 
 ## 🕹️ Controls — R1 ring / G2 touchpad
 
@@ -75,6 +75,8 @@ pnpm --filter @evf/relay dev     # the relay alone (wrangler dev)
 ```
 
 `pnpm dev:glasses` prints the QR of this checkout's app on the LAN: scan it, then type in the app the code that **Connect G2 glasses** (Alt+G) shows (or pass it with `--code` and one scan pairs). On the phone: sign in once at [hub.evenrealities.com/login](https://hub.evenrealities.com/login) (that enables Developer Mode), reopen the Even Realities App, then **Even Hub → Scan QR**. Details: [`docs/release/evenhub.md`](docs/release/evenhub.md).
+
+Leave Foundry's **Glasses app page (advanced)** at its default — the LAN page has its own terminal QR. If the v0.3.0/0.3.1 wizard made you set it to a LAN address, the pairing window now flags it: press **Restore default**. The LAN page is plain `http://` (no WebCrypto); pairing works there through the crypto fallback.
 
 ## 👓 UX / UI design
 
@@ -149,7 +151,7 @@ Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layo
 - **G2 app**: TypeScript + Vite 8, `@evenrealities/even_hub_sdk` 0.0.16, `@evenrealities/pretext` (pixel text budgets), `upng-js` (4-bit PNG), `jsqr` (in-app QR scan); map pixelation + Floyd–Steinberg dither in plain TypeScript
 - **Foundry module**: dnd5e 5.x readers + write path, optional MidiQOL, `qrcode`
 - **Relay**: `@evf/relay` — Cloudflare Worker + Durable Objects (WebSocket Hibernation), `wrangler`
-- **Shared**: `@evf/shared-protocol` (Zod schemas + WebCrypto sealed envelope, pairing payload v2), `@evf/shared-render` (4-bit pixel renderer + bitmap fonts, INV-1 fixtures)
+- **Shared**: `@evf/shared-protocol` (Zod schemas + AES-256-GCM sealed envelope on WebCrypto, audited `@noble` fallback on plain-http pages, pairing payload v2), `@evf/shared-render` (4-bit pixel renderer + bitmap fonts, INV-1 fixtures)
 - **Tooling**: pnpm workspaces · Vitest · Biome · TypeScript strict · Changesets · GitFlow
 
 ## 📚 Documentation
@@ -169,7 +171,7 @@ Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layo
 
 ## ⚖️ License
 
-MIT — every package in the monorepo (`foundry-module`, `g2-app`, `relay`, `shared-protocol`, `shared-render`, `validation-harness`).
+MIT — every package in the monorepo (`foundry-module`, `g2-app`, `relay`, `shared-protocol`, `shared-render`, `validation-harness`, `e2e`).
 
 ## 👤 Author
 

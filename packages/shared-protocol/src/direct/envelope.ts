@@ -7,14 +7,22 @@
  * fails authentication). A `ts` inside the plaintext bounds replay; request ids double
  * as idempotency keys on the projector.
  *
- * Uses WebCrypto only (`globalThis.crypto.subtle`) — available in the Even App
- * WebView, Foundry browser clients and Node ≥ 20 (tests).
+ * Crypto goes through `crypto.ts`: WebCrypto in a secure context (the Even App WebView on
+ * https, Foundry on https/localhost, Node ≥ 20 in tests), the audited noble fallback on
+ * plain-http pages — same bytes on the wire either way.
  *
  * @see docs/architecture/0016-direct-foundry-streaming.md §Decision Outcome 4 (envelope)
  * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 4
  */
 import { z } from 'zod';
 import { fromBase64Url, toBase64Url } from './base64url.js';
+import {
+  aesGcmOpen,
+  aesGcmSeal,
+  CryptoBackendError,
+  type DeviceKey,
+  importAesKey,
+} from './crypto.js';
 
 /** Address of the Foundry tab that serves the device (AAD `from`/`to`). */
 export const PROJECTOR_ADDRESS = 'projector' as const;
@@ -34,11 +42,15 @@ export const SealedEnvelopeSchema = z.strictObject({
 });
 export type SealedEnvelope = z.infer<typeof SealedEnvelopeSchema>;
 
-/** Imports a raw 32-byte base64url key for AES-GCM. */
-export async function importDeviceKey(keyB64: string): Promise<CryptoKey> {
+/**
+ * Imports a raw 32-byte base64url key for AES-GCM (WebCrypto or fallback, see `crypto.ts`).
+ *
+ * @throws Error when the key is not valid base64url or not 32 bytes long
+ */
+export async function importDeviceKey(keyB64: string): Promise<DeviceKey> {
   const raw = fromBase64Url(keyB64);
   if (raw.byteLength !== 32) throw new Error(`device key must be 32 bytes, got ${raw.byteLength}`);
-  return globalThis.crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  return importAesKey(raw);
 }
 
 /** Generates a fresh random 32-byte device key, base64url-encoded. */
@@ -53,7 +65,7 @@ const decoder = new TextDecoder();
  * Encrypts `message` for `to`. Adds `ts` (sender clock) to the plaintext.
  */
 export async function seal(
-  key: CryptoKey,
+  key: DeviceKey,
   from: string,
   to: string,
   message: object,
@@ -61,12 +73,8 @@ export async function seal(
 ): Promise<SealedEnvelope> {
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const plaintext = encoder.encode(JSON.stringify({ ...message, ts: now }));
-  const ct = await globalThis.crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: encoder.encode(`${from}>${to}`) },
-    key,
-    plaintext,
-  );
-  return { evf: 1, to, from, iv: toBase64Url(iv), ct: toBase64Url(new Uint8Array(ct)) };
+  const ct = await aesGcmSeal(key, iv, encoder.encode(`${from}>${to}`), plaintext);
+  return { evf: 1, to, from, iv: toBase64Url(iv), ct: toBase64Url(ct) };
 }
 
 /** Why `open` refused an envelope. */
@@ -75,24 +83,27 @@ export type OpenFailure = 'malformed' | 'auth' | 'stale';
 /**
  * Decrypts and authenticates an envelope. Returns the plaintext object (with `ts`
  * stripped) or a failure reason — never throws on hostile input.
+ *
+ * @throws CryptoBackendError when the crypto backend itself cannot run
  */
 export async function open(
-  key: CryptoKey,
+  key: DeviceKey,
   envelope: SealedEnvelope,
   now: number = Date.now(),
 ): Promise<{ ok: true; message: Record<string, unknown> } | { ok: false; reason: OpenFailure }> {
-  let plain: ArrayBuffer;
+  let plain: Uint8Array;
   try {
-    plain = await globalThis.crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: fromBase64Url(envelope.iv),
-        additionalData: encoder.encode(`${envelope.from}>${envelope.to}`),
-      },
+    plain = await aesGcmOpen(
       key,
+      fromBase64Url(envelope.iv),
+      encoder.encode(`${envelope.from}>${envelope.to}`),
       fromBase64Url(envelope.ct),
     );
-  } catch {
+  } catch (err) {
+    // A backend that cannot run (fallback chunk not loadable, foreign key handle) is not
+    // the peer's fault: rethrow it. Any other decrypt failure (bad tag, bad base64url) is
+    // hostile or foreign input — reported as 'auth', never thrown (documented contract).
+    if (err instanceof CryptoBackendError) throw err;
     return { ok: false, reason: 'auth' };
   }
   let parsed: unknown;
