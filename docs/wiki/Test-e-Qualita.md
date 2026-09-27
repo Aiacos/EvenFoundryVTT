@@ -6,7 +6,7 @@ Qualità = invarianti (vincolanti) + Costituzione ingegneristica (P1–P11) + ga
 
 | | Nome | In breve |
 |---|---|---|
-| **INV-1** | Integrità del layout | ogni layout è allineato al pixel in ogni stato, contenuto e lingua; i contenuti variabili (PF `7` vs `700`, nomi lunghi, IT vs EN) hanno un budget di larghezza deciso in build. Contratto eseguibile: le 76 fixture `sheet.*.txt` ([Renderer a pixel](Renderer-Pixel)) |
+| **INV-1** | Integrità del layout | ogni layout è allineato al pixel in ogni stato, contenuto e lingua; i contenuti variabili (PF `7` vs `700`, nomi lunghi, IT vs EN) hanno un budget di larghezza deciso in build. Contratto eseguibile: le 78 fixture `sheet.*.txt` ([Renderer a pixel](Renderer-Pixel)) |
 | **INV-2** | Verifica online | ogni affermazione tecnica cita una fonte canonica (hub.evenrealities.com, foundryvtt.com, github.com/foundryvtt/dnd5e, …); aggregatori e blog non valgono. Il drift si registra nel changelog di `Specs.md` |
 | **INV-3** | Coerenza della documentazione | `Specs.md` + `README.md` + showcase si aggiornano **nello stesso commit** per ogni cambio trasversale |
 | **INV-4** | Qualità del codice | niente codice morto, `// TODO` solo con `(#issue)` o `(ADR-NNNN)`, TSDoc su ogni API pubblica |

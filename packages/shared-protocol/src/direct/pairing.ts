@@ -13,12 +13,19 @@
  * - **Manual path**: the same code typed on the phone page.
  *
  * Single use: the projector rotates room and key to fresh random values on the first
- * `welcome`, and an unused code expires after 5 minutes.
+ * `welcome`, and an unused code expires after {@link PAIRING_TTL_MS} (5 minutes).
  *
  * @see docs/architecture/0019-relay-pairing-player-projector.md §Decision Outcome 3 + Amendment 1
  */
 import { z } from 'zod';
 import { toBase64Url } from './base64url.js';
+import { hkdfSha256 } from './crypto.js';
+
+/**
+ * Lifetime of an unused code / QR (ms): the projector forgets it after this, so the glasses
+ * may give up on an unanswered code after the same time. Single source for both sides.
+ */
+export const PAIRING_TTL_MS = 5 * 60_000;
 
 /** URL fragment key carrying the pairing code. */
 export const PAIRING_CODE_KEY = 'c' as const;
@@ -86,13 +93,17 @@ export function readPairingFragment(hash: string): PairingLink | null {
 }
 
 /**
- * Extracts the pairing link from any scanned text: a full pairing URL (the fragment is what
- * matters, whatever the origin), a bare fragment, or just the code.
+ * Extracts the pairing link from any scanned or pasted text: a full pairing URL (the
+ * fragment is what matters, whatever the origin; without a fragment, its `?c=` query — the
+ * fallback the app itself accepts for hosts that drop the fragment), a bare fragment, or
+ * just the code.
  */
 export function readPairingText(text: string): PairingLink | null {
   const trimmed = text.trim();
   const hashAt = trimmed.indexOf('#');
   if (hashAt >= 0) return readPairingFragment(trimmed.slice(hashAt));
+  const queryAt = trimmed.indexOf('?');
+  if (queryAt >= 0) return readPairingFragment(trimmed.slice(queryAt + 1));
   if (trimmed.includes('=')) return readPairingFragment(trimmed);
   const code = normalizeManualCode(trimmed);
   return code === null ? null : { code };
@@ -138,38 +149,21 @@ export interface CodePairing {
   key: string;
 }
 
-async function hkdf(material: CryptoKey, info: string, bits: number): Promise<Uint8Array> {
-  const out = await globalThis.crypto.subtle.deriveBits(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: encoder.encode('evf-pair-v2'),
-      info: encoder.encode(info),
-    },
-    material,
-    bits,
-  );
-  return new Uint8Array(out);
-}
+const HKDF_SALT = encoder.encode('evf-pair-v2');
 
 /**
  * Derives the relay room (128 bits) and the AES key (256 bits) of a manual code with
  * HKDF-SHA256 (distinct `info` labels, so knowing the room reveals nothing of the key).
+ * Works without WebCrypto too (`crypto.ts` fallback): same room and key.
  *
  * @throws Error('invalid manual code') when the code does not normalise to 16 chars
  */
 export async function deriveCodePairing(code: string): Promise<CodePairing> {
   const normalized = normalizeManualCode(code);
   if (normalized === null) throw new Error('invalid manual code');
-  const material = await globalThis.crypto.subtle.importKey(
-    'raw',
-    encoder.encode(normalized),
-    'HKDF',
-    false,
-    ['deriveBits'],
-  );
+  const ikm = encoder.encode(normalized);
   return {
-    room: toBase64Url(await hkdf(material, 'evf-room', 128)),
-    key: toBase64Url(await hkdf(material, 'evf-key', 256)),
+    room: toBase64Url(await hkdfSha256(ikm, HKDF_SALT, encoder.encode('evf-room'), 16)),
+    key: toBase64Url(await hkdfSha256(ikm, HKDF_SALT, encoder.encode('evf-key'), 32)),
   };
 }

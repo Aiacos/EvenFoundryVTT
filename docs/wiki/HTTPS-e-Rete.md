@@ -15,7 +15,7 @@ Il relay è un Cloudflare Worker con un Durable Object per stanza: una connessio
 
 ## ⚙️ Dove funziona
 
-- **Foundry self-hosted** in LAN, anche `http://192.168.x.x:30000`: il telefono non lo deve raggiungere.
+- **Foundry self-hosted** in LAN, anche `http://192.168.x.x:30000`: il telefono non lo deve raggiungere. Su una pagina `http://` che non sia `localhost` il browser nasconde la crittografia WebCrypto: il modulo usa allora una sua implementazione software verificata (vedi sotto) e funziona lo stesso; HTTPS resta consigliato.
 - **Foundry dietro reverse proxy / Tailscale / TLS nativo**: nessuna configurazione in più.
 - **The Forge**, anche con **gioco privato** e *User Manager* attivo o no: funziona **senza configurazioni**. Il telefono non passa dal login di The Forge; l'arte della scena la carica la scheda del giocatore, che è già dentro il gioco ([Mappa](Mappa)).
 - Foundry **v13 e v14**.
@@ -29,7 +29,13 @@ Due impostazioni per browser (`scope: 'client'`), da lasciare ai valori predefin
 | Impostazione | Predefinito | Uso |
 |---|---|---|
 | **Relay (avanzato)** | `wss://evf-relay.evf-relay.workers.dev` | un relay tuo o di sviluppo; il QR lo porta agli occhiali |
-| **Pagina dell'app occhiali (avanzato)** | `https://aiacos.github.io/EvenFoundryVTT/app/` | la pagina aperta dal QR (per esempio l'indirizzo LAN di `pnpm dev:glasses`) |
+| **Pagina dell'app occhiali (avanzato)** | `https://aiacos.github.io/EvenFoundryVTT/app/` | la pagina aperta dal QR; solo per chi ospita l'app da sé. **Non** metterci l'indirizzo LAN di `pnpm dev:glasses`: quel comando stampa già il suo QR |
+
+Se una delle due non è al valore predefinito, la finestra *Collega occhiali G2* lo dice in cima, con il pulsante **«Ripristina predefinito»** (rimette il valore e mostra un nuovo QR). Un indirizzo `http://` in LAN è segnalato in rosso: *«Il QR apre una pagina http:// della rete locale (un server di sviluppo, es. «pnpm dev:glasses»): funziona solo finché quel server è acceso»*. **Hai seguito il wizard della v0.3.0 o v0.3.1?** Ti faceva impostare proprio quell'indirizzo, e ogni QR di Foundry apriva una pagina morta appena spegnevi il server: premi **«Ripristina predefinito»**.
+
+## 🔐 Pagine `http://` e cifratura
+
+Il browser espone la crittografia WebCrypto (`crypto.subtle`, `crypto.randomUUID`) solo nei **contesti sicuri**: pagine `https://` e `http://localhost` / `127.0.0.1`. Su `http://192.168…` (un Foundry in LAN, o l'app servita da `pnpm dev:glasses`) mancano, e fino alla v0.3.2 il collegamento falliva con *«Codice non valido»*. Ora il canale carica, solo in quel caso, un'implementazione software degli stessi algoritmi (AES-256-GCM, HKDF-SHA256, SHA-256 da `@noble/ciphers` e `@noble/hashes` 2.4.0, verificate da cure53): i messaggi sul filo sono identici, quindi un lato con WebCrypto parla con uno senza. La riga di avvio della pagina sul telefono lo dice: `secure no · crypto fallback`. Dettagli: [ADR-0019](Decisioni-Architetturali) (emendamento 2) e [Scollegare e sicurezza](Revoca-e-Sicurezza).
 
 ## 📦 Self-hosting del relay
 

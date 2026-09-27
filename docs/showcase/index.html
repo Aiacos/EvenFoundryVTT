@@ -726,7 +726,7 @@ footer.show a { color: var(--g2); border: none; }
       </svg>
     </div>
 
-    <p style="margin-top:2rem;">The <em>Connect G2 glasses</em> window: QR and code at once, a relay check, a 5-minute expiry, and the glasses connected to this browser with <strong>Disconnect</strong>.</p>
+    <p style="margin-top:2rem;">The <em>Connect G2 glasses</em> window: QR and code at once, a relay check, a 5-minute expiry, a live status under the QR (relay, glasses in the room, why a message was refused), a <strong>Restore default</strong> notice when the app page or relay is not the default, and the glasses connected to this browser with <strong>Disconnect</strong>.</p>
     <div class="hud-sim" style="max-width:820px;margin-top:1rem;">
 <pre class="screen" style="min-height:0;">
 ╭────────────────────────────────────────────────────────────────────────╮
@@ -744,7 +744,7 @@ footer.show a { color: var(--g2); border: none; }
 │  │   █▄▀██▄▄▀▄ ▀▄██▀▄▀▄█▀   │   Expires in  04:52                      │
 │  │   ▄▄▄▄▄▄▄ ▀▄█▀ ▄ ▀█▄▀▄   │   Single use: it stops working once      │
 │  │   █ ▄▄▄ █ █▀▄▄▀▀▄█▀▄▄█   │   the glasses connect.                   │
-│  │   █ ███ █ ▀▄▀██▄▀▄ ▀▀    │                                          │
+│  │   █ ███ █ ▀▄▀██▄▀▄ ▀▀    │   ● Relay connected · ○ waiting…         │
 │  │   █▄▄▄▄▄█ █▄ ▀▄█▀▄█▄▄█   │   No camera? Type this code:             │
 │  └──────────────────────────┘   7QK3-MX9P-2HRA-C4TE   [ Copy code ]    │
 │                                                                        │
@@ -759,7 +759,7 @@ footer.show a { color: var(--g2); border: none; }
       <div class="pillar">
         <div class="icon">⌬</div>
         <h3>Single-use QR</h3>
-        <p>The QR opens the app page with a fragment (room, key, label) that never reaches a server; the 16-character code derives the same room and key. On first connect the room and key rotate, so a scanned QR never works twice, and an unused one expires after 5 minutes.</p>
+        <p>The QR opens the app page with a fragment carrying only the 16-character code, which never reaches a server; room and key derive from it. On first connect the room and key rotate, so a scanned QR never works twice, and an unused one expires after 5 minutes &mdash; even if you close the window, which reopens on the same QR; &laquo;Cancel QR&raquo; kills it at once. A phone that reopens a QR it already used ignores it, says so, and keeps its working pairing.</p>
       </div>
       <div class="pillar">
         <div class="icon">▤</div>
@@ -1106,6 +1106,7 @@ footer.show a { color: var(--g2); border: none; }
       <span class="chip">@evenrealities/pretext</span>
       <span class="chip">Cloudflare Workers + Durable Objects</span>
       <span class="chip">WebCrypto AES-GCM</span>
+      <span class="chip">@noble/ciphers + hashes (http fallback)</span>
       <span class="chip">Zod</span>
       <span class="chip">upng-js v2</span>
       <span class="chip">jsQR</span>

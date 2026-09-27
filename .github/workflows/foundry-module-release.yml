@@ -114,6 +114,10 @@ jobs:
           # and repoints module.json at them. The committed module.json keeps the plain
           # names for local dev. The zip
           # excludes *.map, so the dangling sourceMappingURL comment is harmless.
+          # dist/ is code-split (tsup.config.ts): module.js imports content-hashed chunks
+          # (`chunk-<hash>.js`, the lazy `crypto-fallback-<hash>.js`) by relative path —
+          # their hashes already bust caches, so only module.js is stamped, and the whole
+          # dist/ ships (check-module-assets.mjs follows every relative import).
           node -e "
             const fs = require('node:fs');
             const path = 'module.json';

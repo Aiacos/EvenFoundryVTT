@@ -101,6 +101,8 @@ export interface HudStrings {
   appTitle: string;
   unpairedSubtitle: string;
   revokedSubtitle: string;
+  /** S10 after a code got no answer (`notice: 'code-unanswered'`). */
+  codeUnansweredSubtitle: string;
   pairSteps: readonly (readonly [string, string])[];
   scan: string;
   exitHint: string;
@@ -293,6 +295,7 @@ const IT: HudStrings = {
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'OCCHIALI NON ANCORA ASSOCIATI',
   revokedSubtitle: 'OCCHIALI SCOLLEGATI DA FOUNDRY',
+  codeUnansweredSubtitle: 'NESSUNA RISPOSTA AL CODICE · GENERA UN NUOVO QR',
   pairSteps: [
     ['SU FOUNDRY: TASTO DESTRO SUL TUO NOME', '› «COLLEGA OCCHIALI G2» MOSTRA UN QR'],
     ['SUL TELEFONO: APP «FOUNDRYVTT G2 HUD»', '› «SCANSIONA QR» O INSERISCI IL CODICE'],
@@ -375,6 +378,9 @@ const IT: HudStrings = {
     'no-projector': 'Foundry del giocatore chiuso',
     network: 'Relay non raggiungibile',
     background: 'Telefono in background',
+    'code-pending': 'Codice in attesa di Foundry',
+    actor: 'Personaggio non disponibile',
+    replaced: "Presi da un'altra app",
   },
   retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
   dataAge: (m) => `dati di ${m} min fa`,
@@ -492,6 +498,7 @@ const EN: HudStrings = {
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'GLASSES NOT PAIRED YET',
   revokedSubtitle: 'GLASSES DISCONNECTED FROM FOUNDRY',
+  codeUnansweredSubtitle: 'NO ANSWER TO THE CODE · MAKE A NEW QR',
   pairSteps: [
     ['ON FOUNDRY: RIGHT-CLICK YOUR NAME', '› «CONNECT G2 GLASSES» SHOWS A QR CODE'],
     ['ON THE PHONE: «FOUNDRYVTT G2 HUD» APP', '› «SCAN QR» OR ENTER THE CODE'],
@@ -574,6 +581,9 @@ const EN: HudStrings = {
     'no-projector': "Player's Foundry closed",
     network: 'Relay unreachable',
     background: 'Phone in background',
+    'code-pending': 'Code waiting for Foundry',
+    actor: 'Character unavailable',
+    replaced: 'Taken by another app',
   },
   retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
   dataAge: (m) => `data from ${m} min ago`,

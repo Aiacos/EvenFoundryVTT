@@ -147,6 +147,12 @@ first letter (the Even Hub docs list manual links in Dev Preview as a known issu
 Vite must listen on the LAN (`vite --host 0.0.0.0`; `pnpm --filter … dev -- --host` does
 **not** forward the flag). `bash scripts/wizard.sh --help` lists every flag.
 
+The LAN page is plain `http://`: not a secure context, so the channel uses its software crypto
+fallback (`packages/shared-protocol/src/direct/crypto.ts`, ADR-0019 Amendment 2) and the phone
+boot line reads `secure no · crypto fallback`. Leave the Foundry setting **Glasses app page
+(advanced)** at its default; the v0.3.0/0.3.1 wizard told you to point it at the LAN address —
+press **Restore default** in the pairing window to undo that.
+
 ---
 
 ## 🔬 Why submission is manual

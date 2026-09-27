@@ -36,9 +36,9 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 | Step | Who | Failure shows up as |
 |---|---|---|
 | Relay check | pairing window → `GET /health` | window: *This browser cannot reach the relay* + **How to fix** |
-| Pairing | QR / 16-char code → room + key | phone: *That is not an EvenFoundryVTT pairing QR* / *Invalid code* |
+| Pairing | QR / 16-char code → room + key | phone: *That is not an EvenFoundryVTT pairing QR* / *Invalid code* / *Code already used on this phone* / *Pairing failed: <msg>*; boot line `link none` = the code never reached the page |
 | Room join | both ends open `/r/<room>` | phone: *relay not reachable*, retry with backoff 1 → 30 s |
-| `peer-up` → `hello` → `welcome` | projector tab present in the room | glasses: *Player's Foundry closed* (`no-projector`), link kept open |
+| `peer-up` → `hello` → `welcome` | projector tab present in the room | first pairing: *Code waiting for Foundry* (`code-pending`), cleared after 5 min (S10 *NO ANSWER TO THE CODE*); later: *Player's Foundry closed* (`no-projector`), link kept open; hello refused: *Character unavailable* (`actor`) |
 | Live updates | projector hooks → sealed pushes | stale sheet/map; the phone page goes offline (S12) |
 
 ---
@@ -51,13 +51,31 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
   - *relay not reachable*: the phone has no internet or the relay is down (check
     [health](#-relay-and-pages)).
   - *app in background*: expected; the page reconnects on foreground re-entry.
+  - *code waiting for an answer from Foundry* (HUD: *Code waiting for Foundry*): the code is
+    saved, no `welcome` yet. After `PAIRING_TTL_MS` (5 min) it is cleared and the phone shows
+    *No answer to the code…*.
+  - *Foundry cannot find your character* (HUD: *Character unavailable*): the projector
+    answered `hello` with `actor_missing` / `forbidden_actor`; retries every 30 s.
+  - *another app took this pairing* (HUD: *Taken by another app*): relay close 4000; no
+    automatic reconnect — **Reconnect** takes it back.
 - **Relay / Foundry / Character / GM:** confirms the relay origin in use, the Foundry user
   whose tab projects, the paired character and the world's GM.
 - **Latency:** ping → pong through the relay and the projector.
 - **Diagnostics ▸** (IT: *Diagnostica*): module version, recent errors (newest first), the
   debug log, and **Forget pairing**.
 - **Reconnect** reopens the relay socket. **Disconnect** stops the session and keeps the
-  credentials.
+  credentials. **Pair again** (IT *Collega di nuovo*, open by itself while not online) has
+  **Scan QR** + the code field: a stale pairing is never a dead end.
+- **Boot line** (bottom of P02 and P03, no secrets, no `?debug` needed):
+  `app <ver> · secure yes|no · crypto webcrypto|fallback · link none|code|invalid|legacy|used · relay <host>`.
+  `secure no · crypto fallback` = a plain-http page (works; https recommended). `link none`
+  after a developer-mode Scan QR = the Even App did not pass `#c=` (type the code). `link used`
+  = this phone already used that code (ignored, pairing kept; the phone says so). `link invalid`
+  = the link carried no valid 16-character code (type it). `link legacy` = a `#evf=` QR
+  from module 0.3.0.
+- **Verbose log without a deploy:** set *Glasses app page (advanced)* to
+  `https://aiacos.github.io/EvenFoundryVTT/app/?debug=1` (the query survives into the QR link),
+  pair, read *Diagnostics*, then **Restore default**.
 
 ---
 
@@ -70,6 +88,16 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 
 - **Relay:** checked on open. *This browser cannot reach the relay `<url>`* means the tab
   cannot open the relay (firewall, proxy, extension, CSP). **Try again** re-checks.
+- **Endpoint notices** (top of the window): a non-default *Glasses app page* or *Relay* is
+  flagged — plain `http:`/`ws:` on a non-loopback host in red (*The QR opens a plain http://
+  page on the local network…*), anything else as a warning — with **Restore default**, which
+  writes the default and shows a new QR.
+- **Live status under the QR:** *Relay connected* / *Relay not connected*, *Waiting for the
+  glasses…* / *Glasses in the room*, and why the last glasses frame was refused: *clocks are
+  apart (over 2 minutes)* (`stale`), *different key* (`auth`: an old or foreign code),
+  *invalid format* (`malformed`: app and module versions differ). Cleared by the next good frame.
+- **Closing the window keeps the QR:** the projector owns the expiry (timer, prune at start,
+  check on each frame), so a scan after ✕/ESC still pairs and reopening shows the same QR.
 - **Glasses connected to this browser:** each pairing with its character, status
   (*online* · *waiting for the glasses* · *relay unreachable*), last contact and
   **Disconnect**. Pairings live in a hidden client-scope setting of **this browser**: another
@@ -87,6 +115,8 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 | `[EVF] map picture skipped (<src>): …` | Scene art could not be loaded or downsized in the tab (CORS, missing file). The glasses fall back to the schematic map. |
 | `[EVF] projector: failed to push to a G2 device` | Send failed; usually transient. |
 | `[EVF] could not notify <device> of the revocation` | The glasses were offline during **Disconnect**; the pairing is forgotten anyway. |
+| `[EVF] projector: could not forget the expired QR of <device>` | The projector's expiry timer failed to remove an unused pairing; reopen the window (it prunes again) or reload the tab. |
+| `[EVF] could not reset the appUrl setting` / `relayUrl` | **Restore default** failed; set the value by hand in *Configure Settings*. |
 
 Only **one tab per browser** projects a device (Web Lock); other tabs of the same browser
 wait and take over when it closes.
@@ -190,8 +220,7 @@ Lost phone: disconnect right away. The relay room dies with the key; nothing els
 Connect again when you changed browser or computer, cleared browser data, changed the
 character, or the glasses stay on *Player's Foundry closed* with the tab open (the pairing is
 missing in this browser). Open **Connect G2 glasses** in the browser that will project during
-play and scan the new QR. If the phone is stuck on old credentials, use *Diagnostics* →
-**Forget pairing** first.
+play and scan the new QR with **Pair again** on the phone (no need to *Forget pairing* first).
 
 ---
 
@@ -202,6 +231,11 @@ play and scan the new QR. If the phone is stuck on old credentials, use *Diagnos
 | Pairing window: *cannot reach the relay* | Firewall, proxy, extension or CSP blocks `evf-relay.evf-relay.workers.dev`; or the relay is down | `curl https://evf-relay.evf-relay.workers.dev/health` from that network. Allow the origin, change network, or self-host a relay (above). |
 | *Player's Foundry closed* although Foundry is open | Open in a different browser/profile than the one that paired, or the tab is suspended | Use the pairing browser, bring the tab to the front, or connect again from this browser. |
 | Glasses stop on phone lock | App sideloaded from the QR in developer mode | Install **FoundryVTT G2 HUD** from Even Hub (beta/store). |
+| Every scan says *Invalid code* / *not a pairing QR*; boot line `secure no` (v0.3.2 and older) | The QR opened a plain-http LAN page (the v0.3.0/0.3.1 `dev:glasses` wizard set *Glasses app page (advanced)* to it): no WebCrypto there | Update; press **Restore default** in the pairing window. Current builds pair on http through the crypto fallback. |
+| Phone: *No answer to the code…* | QR expired or used elsewhere, projector tab closed, or clocks > 2 min apart (the window shows *clocks are apart*) | New QR; fix date/time; keep the tab open. |
+| Phone: *Code already used on this phone* | A spent `#c=` link reopened (Even App reload, re-scan after a lock, photo of the QR) | Nothing if connected; otherwise a new QR. |
+| Glasses: *Taken by another app* | Another app instance joined the same room (relay close 4000) | **Reconnect** on the phone you want to use. |
+| Projector socket closed with 1008 right after pairing (module ≤ 0.3.2) | Double `hello` → two full pushes, > 60 frames/s on a scene with many pictures | Update: one push per link, outgoing frames paced to 40/s. |
 | Even App says *"trial version expired"* | A portal trial upload expired | Beta build or re-scan in developer mode; see [release/evenhub.md](release/evenhub.md). |
 | Relay Deploy green but `/health` fails | Secrets missing (job warned and skipped) or subdomain ≠ `evf-relay` | Add the secrets; align `DEFAULT_RELAY_URL` + `app.json` with the real subdomain. |
 | `/app/` returns 404 | Pages source not set to GitHub Actions, or `pages.yml` not run yet | Set the source, then *Actions → Pages → Run workflow*. |

@@ -8,7 +8,10 @@
  *
  * - `hello`  → `welcome`. The first `hello` after a QR/code rotates room and key
  *   (single-use QR): the `welcome` carries them, then the projector moves to the new room
- *   and the glasses follow with a fresh `hello`. Otherwise full snapshots follow.
+ *   and the glasses follow with a fresh `hello`. Otherwise full snapshots follow — once
+ *   per link: a repeated `hello` gets only a `welcome`, and any `peer-up` (a glasses socket
+ *   joining, or this tab's new socket meeting the glasses already there) starts a new link;
+ *   the glasses answer every `peer-up` with a `hello`, even while welcomed.
  * - `get`    → `snapshot` (character / combat / log / map; map pictures go first as
  *   `asset` messages, see `map-assets.ts`)
  * - `invoke` → `dispatchTool` (ADR-0011; `rid` = idempotency key); token-id targets are
@@ -19,6 +22,11 @@
  * (`forbidden_actor` otherwise, audited). Deltas from the hook subscribers, write-path
  * watchers, chat log and throttled map refreshes are pushed to every welcomed device.
  *
+ * The projector also owns the lifetime of an unused QR: a pending pairing is forgotten
+ * when its `expiresAt` passes (timer set when its channel opens; {@link Projector.start}
+ * prunes the ones that expired while no tab was open; a frame arriving after `expiresAt`
+ * before the timer fired expires it too), whether or not the pairing window is still open. {@link Projector.diagnostics} tells that window what the channel sees.
+ *
  * @see docs/architecture/0019-relay-pairing-player-projector.md
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see packages/shared-protocol/src/direct/ (wire contract)
@@ -26,12 +34,14 @@
 import {
   type AppMessage,
   AppMessageSchema,
+  type DeviceKey,
   GLASSES_ADDRESS,
   generateDeviceKey,
   generateRoomId,
   importDeviceKey,
   LOG_DELTA_TYPE,
   MapSnapshotSchema,
+  type OpenFailure,
   open,
   PROJECTOR_ADDRESS,
   type ProjectorMessage,
@@ -106,6 +116,21 @@ const MAP_HOOKS = [
 /** Link state of a device, as shown in the pairing window. */
 export type DeviceStatus = 'offline' | 'waiting' | 'online';
 
+/**
+ * What a device's channel sees right now, shown live under the pairing QR.
+ *
+ * `rejected` is why the last frame from the glasses was refused (`stale`: sealed more
+ * than 2 minutes away from this PC's clock; `auth`: another key, e.g. an old or foreign
+ * code; `malformed`: not a valid envelope or message), cleared by the next good frame.
+ */
+export interface ChannelDiagnostics {
+  /** This tab's relay socket is open. */
+  relay: boolean;
+  /** The glasses are in the relay room (`peer-up` seen). */
+  glasses: boolean;
+  rejected: OpenFailure | null;
+}
+
 /** Opens a relay connection (injectable for tests). */
 export type ConnectionFactory = (
   relayBase: string,
@@ -115,7 +140,10 @@ export type ConnectionFactory = (
 
 /** Collaborators of a {@link Projector}. */
 export interface ProjectorDeps {
-  /** Relay origin (module setting, read when a device connects). */
+  /**
+   * Relay origin (module setting, read when a device connects) for pairings that do not
+   * record their own relay (made before v0.4.2).
+   */
   relayBase: () => string;
   connect?: ConnectionFactory;
   assets?: MapAssetCache;
@@ -141,6 +169,10 @@ interface Channel {
   seenPersistedAt: number;
   mapLastSent: number;
   mapTimer: ReturnType<typeof setTimeout> | null;
+  /** Forgets the pairing when its unused QR expires (pending pairings only). */
+  expiryTimer: ReturnType<typeof setTimeout> | null;
+  /** Why the last frame from the glasses was refused, until a good one arrives. */
+  rejected: OpenFailure | null;
 }
 
 /** Principal bound to the idempotency cache for a device (never the key). */
@@ -153,7 +185,7 @@ type WelcomeMessage = Extract<ProjectorMessage, { t: 'welcome' }>;
 /** The projector of this browser tab. */
 export class Projector {
   private readonly channels = new Map<string, Channel>();
-  private readonly cryptoKeys = new Map<string, CryptoKey>();
+  private readonly cryptoKeys = new Map<string, DeviceKey>();
   private readonly listeners = new Set<() => void>();
   private readonly hookIds: number[] = [];
   private readonly connect: ConnectionFactory;
@@ -207,11 +239,26 @@ export class Projector {
       seenPersistedAt: 0,
       mapLastSent: 0,
       mapTimer: null,
+      expiryTimer: null,
+      rejected: null,
     };
     this.channels.set(deviceId, channel);
+    if (pairing.expiresAt !== null) {
+      channel.expiryTimer = setTimeout(
+        () => {
+          channel.expiryTimer = null;
+          this.expire(deviceId).catch((err: unknown) => {
+            console.error(`[EVF] projector: could not forget the expired QR of ${deviceId}`, err);
+          });
+        },
+        Math.max(0, pairing.expiresAt - this.now()),
+      );
+    }
     channel.release = this.lock(deviceId, () => {
       if (this.channels.get(deviceId) !== channel) return;
-      channel.link = this.connect(this.deps.relayBase(), pairing.room, {
+      // The relay the pairing was made on: the glasses keep dialling the relay of their QR
+      // even after the relay setting of this browser changed.
+      channel.link = this.connect(pairing.relay ?? this.deps.relayBase(), pairing.room, {
         onFrame: (frame) => {
           // Serialised: two `hello`s racing on a fresh QR (the glasses re-send on the
           // relay's `peer-up`) must not rotate the secrets twice.
@@ -223,7 +270,9 @@ export class Projector {
         },
         onPeer: (up) => {
           channel.peerUp = up;
-          if (!up) channel.welcomed = false;
+          // Down: the glasses left. Up: a glasses socket joined — a new link that needs
+          // the full state again (after its `hello`).
+          channel.welcomed = false;
           this.emit();
         },
         onLink: (up) => {
@@ -240,6 +289,13 @@ export class Projector {
     const channel = this.channels.get(deviceId);
     if (channel === undefined || !channel.linkUp) return 'offline';
     return channel.peerUp && channel.welcomed ? 'online' : 'waiting';
+  }
+
+  /** Live view of a device's channel for the pairing window (all false when not served). */
+  diagnostics(deviceId: string): ChannelDiagnostics {
+    const channel = this.channels.get(deviceId);
+    if (channel === undefined) return { relay: false, glasses: false, rejected: null };
+    return { relay: channel.linkUp, glasses: channel.peerUp, rejected: channel.rejected };
   }
 
   /** Subscribes to status changes (pairing window); returns the unsubscribe function. */
@@ -266,6 +322,14 @@ export class Projector {
     this.emit();
   }
 
+  /** The unused QR of `deviceId` expired: close its channel and forget it (no notice). */
+  private async expire(deviceId: string): Promise<void> {
+    if (getPairing(deviceId)?.expiresAt === null) return;
+    this.close(deviceId);
+    await removePairing(deviceId);
+    this.emit();
+  }
+
   // ─── Inbound ────────────────────────────────────────────────────────────────
 
   /**
@@ -274,22 +338,41 @@ export class Projector {
    */
   async handleFrame(channel: Channel, frame: unknown): Promise<void> {
     const parsed = SealedEnvelopeSchema.safeParse(frame);
-    if (!parsed.success || parsed.data.to !== PROJECTOR_ADDRESS) return;
-    if (parsed.data.from !== GLASSES_ADDRESS) return;
+    if (!parsed.success) {
+      this.noteRejection(channel, 'malformed');
+      return;
+    }
+    if (parsed.data.to !== PROJECTOR_ADDRESS || parsed.data.from !== GLASSES_ADDRESS) return;
     const opened = await open(await this.cryptoKey(channel.keyB64), parsed.data, this.now());
     if (!opened.ok) {
       console.warn(`[EVF] projector: rejected a frame for ${channel.deviceId} (${opened.reason})`);
+      this.noteRejection(channel, opened.reason);
       return;
     }
     const message = AppMessageSchema.safeParse(opened.message);
     if (!message.success) {
       console.warn(`[EVF] projector: malformed message for ${channel.deviceId}`);
+      this.noteRejection(channel, 'malformed');
       return;
     }
+    this.noteRejection(channel, null);
     const pairing = getPairing(channel.deviceId);
     if (pairing === null) return;
+    if (pairing.expiresAt !== null && pairing.expiresAt <= this.now()) {
+      // The QR expired on this tab's clock but its timer has not fired (timers are late
+      // after a sleeping laptop): single use within 5 minutes holds regardless.
+      await this.expire(channel.deviceId);
+      return;
+    }
     await this.touch(channel, pairing);
     await this.dispatch(channel, pairing, message.data);
+  }
+
+  /** Records why the last glasses frame was refused (null: accepted); emits on change. */
+  private noteRejection(channel: Channel, reason: OpenFailure | null): void {
+    if (channel.rejected === reason) return;
+    channel.rejected = reason;
+    this.emit();
   }
 
   private async dispatch(channel: Channel, pairing: Pairing, message: AppMessage): Promise<void> {
@@ -385,11 +468,16 @@ export class Projector {
       channel.keyB64 = rotate.key;
       channel.welcomed = false;
       channel.sentAssets.clear();
+      if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
+      channel.expiryTimer = null;
       channel.link?.switchRoom(rotate.room);
       this.emit();
       return;
     }
     await this.send(channel, welcome);
+    // A repeated `hello` on this link: the state is already on its way — a second full
+    // push would only double the burst (relay 60 frames/s cap on big scenes, H6).
+    if (channel.welcomed) return;
     channel.welcomed = true;
     channel.sentAssets.clear();
     this.emit();
@@ -496,8 +584,16 @@ export class Projector {
     const prepared = await this.assets.prepare(parsed.data);
     for (const asset of prepared.assets) {
       if (channel.sentAssets.has(asset.id)) continue;
-      await this.send(channel, { t: 'asset', id: asset.id, data: asset.data });
+      // Marked before the (paced) send: a concurrent map snapshot of this device must not
+      // queue the same picture again. Frames leave in queue order, so its snapshot still
+      // follows this asset.
       channel.sentAssets.add(asset.id);
+      try {
+        await this.send(channel, { t: 'asset', id: asset.id, data: asset.data });
+      } catch (err) {
+        channel.sentAssets.delete(asset.id);
+        throw err;
+      }
     }
     await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
   }
@@ -576,8 +672,9 @@ export class Projector {
   /**
    * Seals and sends `message`, **in call order per device**: sealing is async
    * (WebCrypto), so without this queue a later, faster seal could overtake an earlier
-   * one (deltas out of `seq` order, a snapshot before the `welcome`). A failed send does
-   * not block the ones queued after it.
+   * one (deltas out of `seq` order, a snapshot before the `welcome`). Resolves once the
+   * relay socket took the frame (paced, see {@link RelayConnection.send}). A failed send
+   * does not block the ones queued after it.
    */
   private send(channel: Channel, message: ProjectorMessage): Promise<void> {
     const keyB64 = channel.keyB64;
@@ -591,8 +688,13 @@ export class Projector {
           message,
           this.now(),
         );
-        if (channel.link?.send(envelope) !== true) {
-          throw new Error(`relay not connected (${message.t} to ${channel.deviceId} dropped)`);
+        const link = channel.link;
+        try {
+          if (link === null) throw new Error('relay not connected');
+          await link.send(envelope);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          throw new Error(`${reason} (${message.t} to ${channel.deviceId} dropped)`);
         }
       });
     channel.outbox = next;
@@ -611,11 +713,12 @@ export class Projector {
     if (channel === undefined) return;
     this.channels.delete(deviceId);
     if (channel.mapTimer !== null) clearTimeout(channel.mapTimer);
+    if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
     channel.link?.stop();
     channel.release();
   }
 
-  private async cryptoKey(b64: string): Promise<CryptoKey> {
+  private async cryptoKey(b64: string): Promise<DeviceKey> {
     const cached = this.cryptoKeys.get(b64);
     if (cached !== undefined) return cached;
     const imported = await importDeviceKey(b64);

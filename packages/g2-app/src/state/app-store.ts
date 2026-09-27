@@ -54,13 +54,37 @@ export interface ConnectionState {
   retryInMs?: number;
   attempt?: number;
   /**
-   * Offline only: machine-readable cause — `no-projector` (the Foundry tab that paired
-   * the glasses is closed; reconnects by itself when it opens), `network` (relay
-   * unreachable), `background` (phone app in background).
+   * Offline only: machine-readable cause (see {@link OfflineCause}).
    */
-  cause?: 'no-projector' | 'network' | 'background';
+  cause?: OfflineCause;
+  /**
+   * Unpaired only: why the pairing was dropped — `code-unanswered` (the QR / code got no
+   * answer within `PAIRING_TTL_MS`: expired, already used, or the Foundry window closed).
+   */
+  notice?: 'code-unanswered';
   steps?: ConnectSteps;
 }
+
+/**
+ * Why the glasses are offline:
+ * - `no-projector` — the Foundry tab that paired the glasses is closed; reconnects by
+ *   itself when it opens;
+ * - `network` — relay unreachable (backoff retries);
+ * - `background` — phone app in background;
+ * - `code-pending` — a QR / code was just used and Foundry has not answered it yet (the
+ *   pairing window must stay open);
+ * - `actor` — Foundry answered, but the paired character is gone or no longer the
+ *   player's (`actor_missing` / `forbidden_actor`); retried slowly;
+ * - `replaced` — another instance of the app took this pairing (relay close 4000); no
+ *   automatic retry, «Riconnetti» takes it back.
+ */
+export type OfflineCause =
+  | 'no-projector'
+  | 'network'
+  | 'background'
+  | 'code-pending'
+  | 'actor'
+  | 'replaced';
 
 /** Device-local preferences (phone page P02, persisted by the transport layer). */
 export interface AppSettings {

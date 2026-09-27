@@ -2,9 +2,16 @@
  * Phone-side page shown inside the Even Realities App WebView.
  *
  * - **P03** (`unpaired` / `revoked`): «Scansiona QR» (in-app camera, when the Even App
- *   bridge is there) + the 16-char code form — one tap, or one code, and nothing else.
+ *   bridge is there) + the 16-char code form — one tap, or one code, and nothing else —
+ *   plus the notices of a dropped pairing (revoked, code unanswered) and of the page link
+ *   (legacy QR, no valid code, code already used).
  * - **P02** (otherwise): status, relay, Foundry user, character, GM, latency, device
- *   settings, Reconnect / Disconnect and a collapsible diagnostics section.
+ *   settings, Reconnect / Disconnect, a «Collega di nuovo» card with the same scan button,
+ *   code field and page-link notice (open while not online: a stale pairing is never a
+ *   dead end) and a collapsible diagnostics section.
+ * - Both show the boot line (`app · secure · crypto · link · relay`, no secrets) and map
+ *   pairing failures precisely: invalid code, not a pairing QR, code already used,
+ *   otherwise «Collegamento non riuscito: <msg>» (logged).
  * - In debug/demo mode only (a debug log is registered), the tail of the debug channel is
  *   listed in "Diagnostica" (P02) or in its own disclosure (P03).
  *
@@ -15,7 +22,7 @@
  */
 
 import { activeDebugLog, type DebugLogReader } from '../debug/debug-log.js';
-import type { DirectSession, SessionInfo } from '../direct/session.js';
+import { type DirectSession, PAIRING_ERROR, type SessionInfo } from '../direct/session.js';
 import {
   type AppSettings,
   type AppState,
@@ -68,6 +75,9 @@ export function statusLine(state: AppState, t: PhoneStrings): string {
     'no-projector': t.causeNoProjector,
     network: t.causeNetwork,
     background: t.causeBackground,
+    'code-pending': t.causeCodePending,
+    actor: t.causeActor,
+    replaced: t.causeReplaced,
   } as const;
   const parts = [t.statusOffline];
   if (c.cause !== undefined) parts.push(cause[c.cause]);
@@ -75,6 +85,73 @@ export function statusLine(state: AppState, t: PhoneStrings): string {
     parts.push(t.retryIn(Math.ceil(c.retryInMs / 1000), c.attempt));
   }
   return parts.join(' · ');
+}
+
+/**
+ * Diagnostic line shown on P02 and P03 without `?debug`: what a support screenshot needs to
+ * tell a plain-http page (no WebCrypto), a spent or legacy link and the relay apart. Tokens
+ * are not translated (one format for every report); it carries no secret.
+ */
+export function bootLine(boot: SessionInfo['boot']): string {
+  return [
+    `app ${boot.app}`,
+    `secure ${boot.secure ? 'yes' : 'no'}`,
+    `crypto ${boot.crypto}`,
+    `link ${boot.link}`,
+    `relay ${boot.relay}`,
+  ].join(' · ');
+}
+
+/**
+ * Message for a failed pairing attempt: precise for the errors the session raises on
+ * purpose, «Collegamento non riuscito: <msg>» for anything else (also logged, so a real
+ * defect is never passed off as a typo).
+ */
+export function pairingErrorText(error: unknown, t: PhoneStrings): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === PAIRING_ERROR.invalidCode) return t.invalidCode;
+  if (message === PAIRING_ERROR.notPairingQr) return t.notPairingQr;
+  if (message === PAIRING_ERROR.codeUsed) return t.codeUsed;
+  console.warn(`[phone] pairing failed: ${String(error)}`);
+  return t.pairFailed(message);
+}
+
+/**
+ * Notice about the pairing link of the page URL (`SessionInfo.boot.link`), or null:
+ * legacy `#evf=` QR, a link without a valid code, or a code already used on this phone —
+ * «make a new QR» on P03 (`paired` false), «the current pairing is kept» on P02.
+ */
+export function linkNoticeText(
+  link: SessionInfo['boot']['link'],
+  paired: boolean,
+  t: PhoneStrings,
+): string | null {
+  switch (link) {
+    case 'legacy':
+      return t.legacyLink;
+    case 'invalid':
+      return t.invalidLink;
+    case 'used':
+      return paired ? t.linkUsedKept : t.codeUsed;
+    default:
+      return null;
+  }
+}
+
+/** The page-link notice line (`p[data-field="link-notice"]`), refreshed by `update()`. */
+function buildLinkNotice(
+  t: PhoneStrings,
+  paired: boolean,
+): { node: HTMLElement; update(info: SessionInfo): void } {
+  const node = el('p', { class: 'evf-notice', role: 'alert', 'data-field': 'link-notice' });
+  return {
+    node,
+    update(info) {
+      const text = linkNoticeText(info.boot.link, paired, t);
+      node.hidden = text === null;
+      node.textContent = text ?? '';
+    },
+  };
 }
 
 /** Debug entries listed on the phone page (most recent first). */
@@ -114,6 +191,8 @@ function header(title: string): HTMLElement {
 function buildConnectionView(
   session: PhoneSession,
   t: PhoneStrings,
+  camera: CameraLike | null,
+  scanDeps: QrScanDeps | undefined,
   debugLog: DebugLogReader | null,
 ): View {
   const values = {
@@ -204,7 +283,7 @@ function buildConnectionView(
   ]);
   forget.addEventListener('click', () => void session.forget());
   const debugTail = debugLog === null ? null : buildDebugTail(debugLog, t);
-  const diagnostics = el('details', { class: 'evf-card' }, [
+  const diagnostics = el('details', { class: 'evf-card', 'data-field': 'diag-section' }, [
     el('summary', {}, [t.diagnostics]),
     version,
     errors,
@@ -212,11 +291,29 @@ function buildConnectionView(
     forget,
   ]);
 
+  // «Collega di nuovo»: a stale or unanswered pairing is never a dead end. Driven by the
+  // status only, so old records (without `pendingSince`) are covered too.
+  const controls = buildPairControls(session, t, camera, scanDeps);
+  const linkNotice = buildLinkNotice(t, true);
+  const repair = el('details', { class: 'evf-card', 'data-field': 'repair' }, [
+    el('summary', {}, [t.repair]),
+    linkNotice.node,
+    ...(controls.scan === null
+      ? []
+      : [controls.scan, el('p', { class: 'evf-divider' }, [t.orCode])]),
+    controls.form,
+    controls.error,
+  ]);
+  let repairWanted: boolean | null = null;
+  const boot = el('p', { class: 'evf-dim', 'data-field': 'boot' });
+
   const node = el('section', { 'data-view': 'connection' }, [
     header(t.titleConnection),
     rows,
+    repair,
     settings,
     el('div', { class: 'evf-actions' }, [reconnect, disconnect]),
+    boot,
     diagnostics,
   ]);
 
@@ -224,6 +321,16 @@ function buildConnectionView(
     node,
     update(state, info) {
       const c = state.connection;
+      // Opens when the link is lost, closes once online; the player's own toggle wins
+      // until the status crosses that line again.
+      const wanted = c.status !== 'online';
+      if (wanted !== repairWanted) {
+        repairWanted = wanted;
+        repair.open = wanted;
+      }
+      controls.update(info);
+      linkNotice.update(info);
+      boot.textContent = bootLine(info.boot);
       values.status.textContent = statusLine(state, t);
       values.status.dataset.status = c.status;
       values.server.textContent = c.server ?? t.unknown;
@@ -259,41 +366,52 @@ function buildConnectionView(
   };
 }
 
-function buildSetupView(
+/** Scan button + code form + error line, shared by P03 and the P02 «Collega di nuovo». */
+interface PairControls {
+  /** «Scansiona QR», or null without the Even App camera. */
+  scan: HTMLButtonElement | null;
+  form: HTMLFormElement;
+  error: HTMLElement;
+  /** Shows a pairing-link failure of the session (once per distinct message). */
+  update(info: SessionInfo): void;
+}
+
+function buildPairControls(
   session: PhoneSession,
   t: PhoneStrings,
   camera: CameraLike | null,
   scanDeps: QrScanDeps | undefined,
-  debugLog: DebugLogReader | null,
-): View {
-  const notice = el('p', { class: 'evf-notice', role: 'alert', hidden: '' }, [t.revokedNotice]);
+): PairControls {
   const error = el('p', { class: 'evf-error', role: 'alert', 'data-field': 'error' });
 
-  const scan = el('button', { type: 'button', class: 'evf-primary', 'data-action': 'scan' }, [
-    t.scan,
-  ]);
-  scan.addEventListener('click', () => {
-    if (camera === null) return;
-    error.textContent = '';
-    scan.disabled = true;
-    scanQr(camera, scanDeps)
-      .then((text) => {
-        // No photo: cancelled, or a host that silently denies the camera — say what to do.
-        if (text === null) error.textContent = t.noPhoto;
-        else return session.pairScanned(text);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof QrScanError) {
-          error.textContent = err.reason === 'camera' ? t.cameraUnavailable : t.noQrInPhoto;
-          return;
-        }
-        error.textContent = t.notPairingQr;
-        console.warn(`[phone] scan failed: ${String(err)}`);
-      })
-      .finally(() => {
-        scan.disabled = false;
-      });
-  });
+  let scan: HTMLButtonElement | null = null;
+  if (camera !== null) {
+    const button = el('button', { type: 'button', class: 'evf-primary', 'data-action': 'scan' }, [
+      t.scan,
+    ]);
+    button.addEventListener('click', () => {
+      error.textContent = '';
+      button.disabled = true;
+      scanQr(camera, scanDeps)
+        .then((text) => {
+          // No photo: cancelled, or a host that silently denies the camera — say what to do.
+          if (text === null) error.textContent = t.noPhoto;
+          else return session.pairScanned(text);
+        })
+        .catch((err: unknown) => {
+          error.textContent =
+            err instanceof QrScanError
+              ? err.reason === 'camera'
+                ? t.cameraUnavailable
+                : t.noQrInPhoto
+              : pairingErrorText(err, t);
+        })
+        .finally(() => {
+          button.disabled = false;
+        });
+    });
+    scan = button;
+  }
 
   const code = el('input', {
     id: 'evf-code',
@@ -324,25 +442,58 @@ function buildSetupView(
       () => {
         submit.disabled = false;
       },
-      () => {
+      (err: unknown) => {
         submit.disabled = false;
-        error.textContent = t.invalidCode;
+        error.textContent = pairingErrorText(err, t);
       },
     );
   });
+
+  let shownBootError: string | null = null;
+  return {
+    scan,
+    form,
+    error,
+    update(info) {
+      if (info.pairingError === null || info.pairingError === shownBootError) return;
+      shownBootError = info.pairingError;
+      error.textContent = t.pairFailed(info.pairingError);
+    },
+  };
+}
+
+function buildSetupView(
+  session: PhoneSession,
+  t: PhoneStrings,
+  camera: CameraLike | null,
+  scanDeps: QrScanDeps | undefined,
+  debugLog: DebugLogReader | null,
+): View {
+  const notice = el('p', { class: 'evf-notice', role: 'alert', hidden: '' }, [t.revokedNotice]);
+  const unanswered = el(
+    'p',
+    { class: 'evf-notice', role: 'alert', 'data-field': 'unanswered', hidden: '' },
+    [t.codeUnanswered],
+  );
+  const linkNotice = buildLinkNotice(t, false);
+  const controls = buildPairControls(session, t, camera, scanDeps);
+  const boot = el('p', { class: 'evf-dim', 'data-field': 'boot' });
 
   const node = el('section', { 'data-view': 'setup' }, [
     header(t.titleSetup),
     el('div', { class: 'evf-card' }, [
       notice,
+      unanswered,
+      linkNotice.node,
       el('p', {}, [t.noPairing]),
       el('p', {}, [t.easiest, ' ', t.easiestSteps]),
-      ...(camera === null ? [] : [scan]),
+      ...(controls.scan === null ? [] : [controls.scan]),
     ]),
     el('p', { class: 'evf-divider' }, [t.orCode]),
-    form,
-    error,
+    controls.form,
+    controls.error,
     el('p', { class: 'evf-dim' }, [t.help]),
+    boot,
   ]);
   const debugTail = debugLog === null ? null : buildDebugTail(debugLog, t);
   if (debugTail !== null) {
@@ -352,8 +503,12 @@ function buildSetupView(
   }
   return {
     node,
-    update(state) {
+    update(state, info) {
       notice.hidden = state.connection.status !== 'revoked';
+      unanswered.hidden = state.connection.notice !== 'code-unanswered';
+      linkNotice.update(info);
+      boot.textContent = bootLine(info.boot);
+      controls.update(info);
       debugTail?.update();
     },
   };
@@ -394,7 +549,7 @@ export function mountPhonePage(
       view =
         kind === 'setup'
           ? buildSetupView(session, t, camera, scanDeps, debugLog)
-          : buildConnectionView(session, t, debugLog);
+          : buildConnectionView(session, t, camera, scanDeps, debugLog);
       root.lang = locale;
       root.replaceChildren(view.node);
     }

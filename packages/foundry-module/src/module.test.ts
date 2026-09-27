@@ -79,6 +79,21 @@ describe('module entry', () => {
     });
   });
 
+  it('MOD-02d «Ripristina predefinito» writes the production default of one endpoint', async () => {
+    await load();
+    f.fire('init');
+    const { pairingEndpoints, resetPairingEndpoint } = await import('./settings.js');
+    f.settings.set('evenfoundryvtt.appUrl', 'http://192.168.1.67:5173/');
+    f.settings.set('evenfoundryvtt.relayUrl', 'ws://192.168.1.67:8787');
+    await resetPairingEndpoint('appUrl');
+    expect(pairingEndpoints()).toEqual({
+      appUrl: DEFAULT_APP_URL,
+      relayUrl: 'ws://192.168.1.67:8787',
+    });
+    await resetPairingEndpoint('relayUrl');
+    expect(pairingEndpoints()).toEqual({ appUrl: DEFAULT_APP_URL, relayUrl: DEFAULT_RELAY_URL });
+  });
+
   it('MOD-02c the Players list entry and the keybinding open the window; failures are logged', async () => {
     await load();
     f.fire('init');

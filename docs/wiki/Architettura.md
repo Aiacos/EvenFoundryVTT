@@ -64,9 +64,10 @@ Il telefono non può scaricare l'arte da Foundry (non ci accede), quindi la cari
 | [`packages/foundry-module`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/foundry-module) | modulo `evenfoundryvtt`: projector (`src/direct/projector.ts`, `relay-connection.ts`), collegamento (`pairing-flow.ts`, `pairing-store.ts`, `PairG2App.ts`, `players-menu.ts`), scena e asset (`map-reader.ts`, `map-assets.ts`), readers dnd5e (`src/readers/`), write path (`src/write-path/`) |
 | [`packages/g2-app`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/g2-app) | app degli occhiali: sessione e client del relay (`src/direct/`), HUD (`src/hud/`), pagina telefono con «Scansiona QR» (`src/phone/`), demo e debug (`src/demo/`, `src/debug/`) |
 | [`packages/relay`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/relay) | relay a stanze: Cloudflare Worker + Durable Object (`src/room.ts`, `src/routing.ts`, `src/limits.ts`) |
-| [`packages/shared-protocol`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-protocol) | schemi Zod e crittografia WebCrypto del canale (`src/direct/`: messaggi, busta, collegamento, relay, `MapSnapshot`) |
+| [`packages/shared-protocol`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-protocol) | schemi Zod e crittografia del canale (WebCrypto, fallback software sulle pagine `http://`) (`src/direct/`: messaggi, busta, collegamento, relay, `MapSnapshot`) |
 | [`packages/shared-render`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/shared-render) | renderer a pixel 4-bit, font bitmap, icone D&D, fixture INV-1 ([Renderer a pixel](Renderer-Pixel)) |
 | [`packages/validation-harness`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/validation-harness) | verifiche GO/NO-GO hardware e degli invarianti (`validate:relay`, `validate:*`, `inv:all`) |
+| [`packages/e2e`](https://github.com/Aiacos/EvenFoundryVTT/tree/develop/packages/e2e) | solo test: E2E dell'associazione col proiettore vero, la sessione vera e il bundle in Chromium su un relay vero (step CI «Relay end-to-end») |
 
 ## 🏗️ Flusso di un'azione
 

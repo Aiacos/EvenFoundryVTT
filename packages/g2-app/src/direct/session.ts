@@ -14,6 +14,27 @@
  *                         └─┘ joining the room (`peer-up`) re-sends `hello` at once
  * ```
  *
+ * One `hello` per join: the relay announces a projector already in the room with `peer-up`
+ * right after the join, so the session says `hello` on that `peer-up` — or, without one,
+ * after {@link SESSION_TIMING.helloGrace} (dropped by the relay if nobody is there; the
+ * later `peer-up` says it again). Two `hello`s used to make the projector push everything
+ * twice (H6, relay 60 frames/s limit on big scenes).
+ *
+ * Pairing edge cases (dev-mode pairing investigation, ADR-0019 Amendment 2):
+ * - a code saved from a QR / typed is *pending* (`Credentials.pendingSince`) until the first
+ *   `welcome`: while unanswered the offline cause is `code-pending`, and after
+ *   `PAIRING_TTL_MS` the credentials are dropped (`unpaired`, notice `code-unanswered`);
+ * - the same link opened again (`Credentials.from`, or the spent-code list that survives
+ *   «Scollega» / «Dimentica associazione») is ignored: it would overwrite the rotated
+ *   pairing with the spent code room (H3); a link that replaced a confirmed pairing keeps
+ *   it as `fallback`, given back if the code gets no answer (records older than v0.4.2);
+ * - a `hello` refused with `actor_missing` / `forbidden_actor` → offline `actor`, slower
+ *   `hello` retries ({@link SESSION_TIMING.actorRetry});
+ * - relay close 4000 (another app instance took the pairing) → offline `replaced`, no
+ *   automatic retry;
+ * - `peer-up` while welcomed (the projector's socket was replaced — the relay announces no
+ *   `peer-down` then — and its new link needs the state again) → `hello` again.
+ *
  * `FOREGROUND_EXIT` closes gracefully (cause `background`); `FOREGROUND_ENTER` reconnects
  * immediately. All traffic is sealed (AES-GCM, `from = glasses`, `to = projector`). The
  * first `welcome` after a QR/code rotates room and key: they are persisted, then the
@@ -33,7 +54,10 @@ import {
   COMBAT_TARGETS_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
   CombatSnapshotSchema,
+  type CryptoBackend,
+  cryptoBackend,
   DEFAULT_RELAY_URL,
+  type DeviceKey,
   DIRECT_PROTOCOL_VERSION,
   EVENT_LOG_DELTA_TYPE,
   GLASSES_ADDRESS,
@@ -45,6 +69,8 @@ import {
   MapSnapshotSchema,
   MovementBudgetPayloadSchema,
   open,
+  PAIRING_TTL_MS,
+  type PairingLink,
   PROJECTOR_ADDRESS,
   type ProjectorMessage,
   ProjectorMessageSchema,
@@ -54,8 +80,10 @@ import {
   R1_MULTIATTACK_PROGRESS_TYPE,
   R1_REACTION_AVAILABLE_TYPE,
   R1_ROLL_REQUEST_TYPE,
+  RELAY_CLOSE_REPLACED,
   ReactionAvailablePayloadSchema,
   RollRequestPayloadSchema,
+  randomId,
   readPairingText,
   SCENE_VIEWPORT_DELTA_TYPE,
   SealedEnvelopeSchema,
@@ -72,20 +100,27 @@ import type {
   ConnectionState,
   ConnectSteps,
   InvokeResult,
+  OfflineCause,
 } from '../state/app-store.js';
 import { resolveLocale } from '../state/app-store.js';
 import {
+  type BootLink,
   type CredentialStore,
   type Credentials,
   credentialsFromLink,
   type KeyValueStorage,
+  settledCredentials,
 } from './credentials.js';
 import { type OpenRelay, type RelayLink, relayHost } from './relay-client.js';
 import { loadSettings, saveSettings } from './settings.js';
 
 /** Timing contract (ms). Exported for tests and documentation. */
 export const SESSION_TIMING = {
+  /** Wait for the relay's `peer-up` after the join before saying `hello` anyway. */
+  helloGrace: 1_500,
   welcomeTimeout: 8_000,
+  /** `hello` cadence while Foundry refuses the paired character (`actor`). */
+  actorRetry: 30_000,
   snapshotTimeout: 10_000,
   invokeTimeout: 10_000,
   heartbeatInterval: 20_000,
@@ -114,13 +149,46 @@ export interface DiagnosticEntry {
   message: string;
 }
 
+/**
+ * What happened to the pairing link of the page URL: `none` / `code` / `invalid` /
+ * `legacy` as read at boot or on a `hashchange` (`BootLink`), `used` when the code was
+ * already used on this phone and ignored.
+ */
+export type LinkState = BootLink['kind'] | 'used';
+
+/** Boot facts of the phone diagnostic line (no secrets). */
+export interface BootFacts {
+  /** App version (`app.json`, build-time). */
+  app: string;
+  /** `isSecureContext`: WebCrypto exists only on https / localhost pages. */
+  secure: boolean;
+  /** Crypto backend serving this page. */
+  crypto: CryptoBackend;
+  link: LinkState;
+  /** Host of the relay in use. */
+  relay: string;
+}
+
 /** Non-store session facts shown on the phone page. */
 export interface SessionInfo {
   latencyMs: number | null;
   /** `evenfoundryvtt` version reported by the projector (`welcome.moduleVersion`). */
   moduleVersion: string | null;
   diagnostics: readonly DiagnosticEntry[];
+  boot: BootFacts;
+  /** Last failure applying a pairing link of the page URL (shown on the phone), or null. */
+  pairingError: string | null;
 }
+
+/** Messages of the errors `pairCode` / `pairScanned` reject with (mapped by the phone page). */
+export const PAIRING_ERROR = {
+  invalidCode: 'invalid manual code',
+  notPairingQr: 'not a pairing QR',
+  codeUsed: 'code already used on this phone',
+} as const;
+
+/** Error codes of a refused `hello` that mean «this character is not available». */
+const ACTOR_REFUSALS: ReadonlySet<string> = new Set(['actor_missing', 'forbidden_actor']);
 
 /** Collaborators and environment of a {@link DirectSession}. */
 export interface SessionDeps {
@@ -136,6 +204,8 @@ export interface SessionDeps {
   now?: () => number;
   random?: () => number;
   uuid?: () => string;
+  /** `isSecureContext` of the page (default: the global). */
+  secureContext?: () => boolean;
 }
 
 const NO_STEPS: ConnectSteps = {
@@ -205,9 +275,6 @@ interface PendingInvoke {
   timer: ReturnType<typeof setTimeout>;
 }
 
-/** Offline causes (subset of {@link ConnectionState.cause}). */
-type OfflineCause = NonNullable<ConnectionState['cause']>;
-
 /**
  * Replaces `evf-asset:<id>` references with the pictures received in `asset` messages;
  * a picture not received (yet) is dropped (the phone then draws the schematic map).
@@ -247,7 +314,7 @@ export class DirectSession implements AppActions {
   private epoch = 0;
   private attempt = 0;
   private link: RelayLink | null = null;
-  private key: CryptoKey | null = null;
+  private key: DeviceKey | null = null;
   private welcomed = false;
   /** Every `hello` of the current link: the `welcome` may answer any of them. */
   private readonly helloRids = new Set<string>();
@@ -265,8 +332,18 @@ export class DirectSession implements AppActions {
   private missedPongs = 0;
   private readonly assets = new Map<string, string>();
 
+  /** Pending-code expiry (survives reconnects; see {@link armPendingExpiry}). */
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The stored pairing is a code not yet answered by a `welcome`. */
+  private codePending = false;
+  /** The last `hello` was refused with an actor error (projector present). */
+  private helloRefused = false;
+
   private latencyMs: number | null = null;
   private moduleVersion: string | null = null;
+  private linkState: LinkState = 'none';
+  private pairingError: string | null = null;
+  private relayInUse: string;
   private readonly diagnostics: DiagnosticEntry[] = [];
   private readonly infoListeners = new Set<(info: SessionInfo) => void>();
 
@@ -274,7 +351,8 @@ export class DirectSession implements AppActions {
     this.store = deps.store;
     this.now = deps.now ?? Date.now;
     this.random = deps.random ?? Math.random;
-    this.uuid = deps.uuid ?? (() => globalThis.crypto.randomUUID());
+    this.uuid = deps.uuid ?? randomId;
+    this.relayInUse = relayHost(deps.relayUrl ?? DEFAULT_RELAY_URL);
     const settings = loadSettings(deps.settingsStorage, this.reportWarning);
     this.store.update({ settings });
   }
@@ -282,12 +360,48 @@ export class DirectSession implements AppActions {
   // ─── Public API ──────────────────────────────────────────────────────────
 
   /**
-   * Starts the session: persists fragment credentials (QR path) if given, then connects
-   * with whatever is stored, or shows `unpaired` (S10 / P03).
+   * Starts the session: persists link credentials (QR path) if given — unless their code
+   * was already used on this phone (the rotated pairing is kept, `link used`) — then
+   * connects with whatever is stored, or shows `unpaired` (S10 / P03).
    */
-  async start(fragment: Credentials | null): Promise<void> {
-    if (fragment !== null) await this.deps.credentials.save(fragment);
+  async start(fragment: Credentials | null = null): Promise<void> {
+    if (fragment !== null) await this.adopt(fragment, 'link');
     await this.connect();
+  }
+
+  /**
+   * Applies the pairing link of the page URL (boot, `hashchange`): derives the code, then
+   * {@link start}s with it.
+   *
+   * @throws Error('invalid manual code') / CryptoBackendError when the code cannot be
+   *   derived — nothing is stored or connected then; the caller reports it
+   *   ({@link reportPairingError}) and starts with the stored pairing.
+   */
+  async pairLink(link: PairingLink): Promise<void> {
+    const creds = await credentialsFromLink(link);
+    this.attempt = 0;
+    await this.start(creds);
+  }
+
+  /** Records what the page URL carried (phone diagnostic line; legacy / invalid → notice). */
+  noteLink(state: BootLink['kind']): void {
+    this.linkState = state;
+    if (state === 'legacy') {
+      this.record('warn', 'legacy #evf= pairing link: the Foundry module is older than v0.13.0');
+    } else if (state === 'invalid') {
+      this.record('warn', 'pairing link without a valid 16-char code');
+    } else {
+      this.emitInfo();
+    }
+  }
+
+  /**
+   * Records a failure applying the pairing link of the page URL: diagnostics (mirrored into
+   * the debug channel) and the phone page error line.
+   */
+  reportPairingError(error: unknown): void {
+    this.pairingError = error instanceof Error ? error.message : String(error);
+    this.record('error', `pairing link failed: ${String(error)}`);
   }
 
   /** {@inheritDoc AppActions.reconnect} — resets backoff and connects now. */
@@ -306,6 +420,7 @@ export class DirectSession implements AppActions {
   /** Forgets the pairing on this device and returns to `unpaired` (P02 diagnostics). */
   async forget(): Promise<void> {
     this.close();
+    this.disarmPendingExpiry();
     await this.deps.credentials.clear();
     this.clearData({ status: 'unpaired' });
   }
@@ -333,10 +448,12 @@ export class DirectSession implements AppActions {
    * or the whole pairing link — and connects.
    *
    * @throws Error('invalid manual code') when the text carries no valid code
+   * @throws Error('code already used on this phone') when this phone already used the code
+   * @throws CryptoBackendError when no crypto backend can run on this page
    */
   async pairCode(text: string): Promise<void> {
     const link = readPairingText(text);
-    if (link === null) throw new Error('invalid manual code');
+    if (link === null) throw new Error(PAIRING_ERROR.invalidCode);
     await this.pairWith(await credentialsFromLink(link));
   }
 
@@ -344,17 +461,68 @@ export class DirectSession implements AppActions {
    * Pairs with the text of a scanned QR (the in-app camera, P03) and connects.
    *
    * @throws Error('not a pairing QR') when the text carries no pairing payload
+   * @throws Error('code already used on this phone') when this phone already used the code
+   * @throws CryptoBackendError when no crypto backend can run on this page
    */
   async pairScanned(text: string): Promise<void> {
     const link = readPairingText(text);
-    if (link === null) throw new Error('not a pairing QR');
+    if (link === null) throw new Error(PAIRING_ERROR.notPairingQr);
     await this.pairWith(await credentialsFromLink(link));
   }
 
   private async pairWith(creds: Credentials): Promise<void> {
-    await this.deps.credentials.save(creds);
+    if (!(await this.adopt(creds, 'typed'))) throw new Error(PAIRING_ERROR.codeUsed);
     this.attempt = 0;
     await this.connect();
+  }
+
+  /**
+   * Stores link credentials — a code as pending — unless the code was already used here:
+   * - the stored pairing came from the same code (`from`) and rotated since (`room ≠
+   *   from`), or the code is on the spent list (rotated, expired unanswered, then the
+   *   pairing was revoked / forgotten): replacing the pairing would put the phone back in
+   *   the dead code room (H3, BUG-1) — nothing stored;
+   * - the stored pairing is the same code, not rotated yet (still pending, or answered
+   *   without rotation): kept as is (a re-typed pending code keeps its original
+   *   `pendingSince`, the projector's 5 minutes run from the QR) and connected again.
+   *
+   * A code arriving as a link (boot, `hashchange`) over a confirmed pairing keeps that
+   * pairing as `fallback`: a relaunch reloading a spent QR over a pairing without `from`
+   * (rotated before v0.4.2) must not lose it for good. A typed code is explicit: no fallback.
+   *
+   * @returns false when the code was already used here (nothing stored)
+   */
+  private async adopt(creds: Credentials, source: 'link' | 'typed'): Promise<boolean> {
+    const credentials = this.deps.credentials;
+    const stored = await credentials.load();
+    if (creds.from !== undefined && stored?.from === creds.from && stored.room === stored.from) {
+      this.pairingError = null;
+      return true;
+    }
+    if (
+      creds.from !== undefined &&
+      (stored?.from === creds.from || (await credentials.isSpent(creds.from)))
+    ) {
+      if (source === 'link') this.linkState = 'used';
+      this.record('warn', 'code already used on this phone — keeping the current pairing');
+      return false;
+    }
+    this.pairingError = null;
+    // Only a code (`from`) waits for its first `welcome`; other records are confirmed.
+    if (creds.from === undefined) {
+      await credentials.save(creds);
+      return true;
+    }
+    const fallback =
+      source === 'link' && stored !== null && stored.pendingSince === undefined
+        ? settledCredentials(stored)
+        : stored?.fallback;
+    await credentials.save({
+      ...creds,
+      pendingSince: this.now(),
+      ...(fallback !== undefined ? { fallback } : {}),
+    });
+    return true;
   }
 
   /** {@inheritDoc AppActions.invoke} — 10 s timeout yields `{code:'timeout'}`. */
@@ -391,12 +559,20 @@ export class DirectSession implements AppActions {
     return resolveLocale(this.store.get(), this.deps.deviceLanguage());
   }
 
-  /** Current non-store facts (latency, module version, diagnostics). */
+  /** Current non-store facts (latency, module version, diagnostics, boot facts). */
   info(): SessionInfo {
     return {
       latencyMs: this.latencyMs,
       moduleVersion: this.moduleVersion,
       diagnostics: [...this.diagnostics],
+      boot: {
+        app: this.deps.appVersion,
+        secure: (this.deps.secureContext ?? (() => globalThis.isSecureContext === true))(),
+        crypto: cryptoBackend(),
+        link: this.linkState,
+        relay: this.relayInUse,
+      },
+      pairingError: this.pairingError,
     };
   }
 
@@ -409,6 +585,7 @@ export class DirectSession implements AppActions {
   /** Releases every timer and the socket (page unload / tests). */
   dispose(): void {
     this.close();
+    this.disarmPendingExpiry();
   }
 
   // ─── Connect flow ────────────────────────────────────────────────────────
@@ -422,11 +599,13 @@ export class DirectSession implements AppActions {
       this.clearData({ status: 'unpaired' });
       return;
     }
+    this.armPendingExpiry(creds);
     const relay = creds.relay ?? this.deps.relayUrl ?? DEFAULT_RELAY_URL;
+    this.relayInUse = relayHost(relay);
     this.setConnection({
       ...identityOf(this.store.get().connection),
       status: 'connecting',
-      server: relayHost(relay),
+      server: this.relayInUse,
       steps: { ...NO_STEPS },
     });
     try {
@@ -438,7 +617,7 @@ export class DirectSession implements AppActions {
       }
       this.attach(link, epoch);
       this.markStep('relay');
-      this.sayHello();
+      this.awaitPeer();
     } catch (error) {
       if (epoch !== this.epoch) return;
       this.fail('network', error instanceof Error ? error.message : String(error));
@@ -449,33 +628,63 @@ export class DirectSession implements AppActions {
     this.link = link;
     this.lastSeq = -1;
     link.onFrame((raw) => {
-      this.inbox = this.inbox.then(() => this.receive(raw, epoch));
+      // One frame at a time; a failing one (crypto chunk not loadable, storage error on
+      // the rotation) is recorded and never blocks the frames after it.
+      this.inbox = this.inbox
+        .then(() => this.receive(raw, epoch))
+        .catch((error: unknown) => this.record('error', `inbound frame failed: ${String(error)}`));
     });
     link.onPeer((up) => {
       if (epoch === this.epoch) this.onPeer(up);
     });
     link.onClose((code) => {
-      if (epoch === this.epoch) this.fail('network', `relay link closed (${code})`);
+      if (epoch !== this.epoch) return;
+      if (code === RELAY_CLOSE_REPLACED) this.replaced();
+      else this.fail('network', `relay link closed (${code})`);
     });
   }
 
   /**
+   * Just joined: the relay sends `peer-up` at once when the projector is already in the
+   * room ({@link onPeer} then says `hello`). Without it, say `hello` after
+   * {@link SESSION_TIMING.helloGrace} anyway (robust to a relay that does not announce).
+   */
+  private awaitPeer(): void {
+    this.welcomeTimer = setTimeout(() => {
+      this.welcomeTimer = null;
+      this.sayHello();
+    }, SESSION_TIMING.helloGrace);
+  }
+
+  /**
    * Sends `hello` and waits for the `welcome`. Without an answer the projector (the
-   * player's Foundry tab) is not in the room: the session shows `no-projector`, keeps the
-   * relay link and says `hello` again every {@link SESSION_TIMING.welcomeTimeout} — and at
-   * once when the relay reports the projector joining ({@link onPeer}). Several `hello`s
-   * may be in flight (the relay's `peer-up` races the first one): the `welcome` may answer
-   * any of them.
+   * player's Foundry tab) is not in the room: the session shows `no-projector` (or
+   * `code-pending`), keeps the relay link and says `hello` again every
+   * {@link SESSION_TIMING.welcomeTimeout} — and at once when the relay reports the
+   * projector joining ({@link onPeer}). After an actor refusal the cadence slows to
+   * {@link SESSION_TIMING.actorRetry}. Several `hello`s may be in flight (the projector
+   * leaving and returning): the `welcome` may answer any of them.
    */
   private sayHello(): void {
     if (this.welcomeTimer !== null) clearTimeout(this.welcomeTimer);
+    const refused = this.helloRefused;
+    this.helloRefused = false;
+    this.welcomeTimer = setTimeout(
+      () => {
+        this.welcomeTimer = null;
+        // Refused again meanwhile: the projector is there, only the character is not.
+        if (!this.helloRefused) this.waitForProjector();
+        this.sayHello();
+      },
+      refused ? SESSION_TIMING.actorRetry : SESSION_TIMING.welcomeTimeout,
+    );
+    this.sendHello();
+  }
+
+  /** Sends one `hello` (its `rid` is remembered: the `welcome` may answer any of them). */
+  private sendHello(): void {
     const rid = this.uuid();
     this.helloRids.add(rid);
-    this.welcomeTimer = setTimeout(() => {
-      this.welcomeTimer = null;
-      this.waitForProjector();
-      this.sayHello();
-    }, SESSION_TIMING.welcomeTimeout);
     this.send({
       t: 'hello',
       rid,
@@ -485,25 +694,44 @@ export class DirectSession implements AppActions {
     });
   }
 
-  /** Projector absent: offline (`no-projector`), link kept, no retry countdown. */
+  /**
+   * Projector absent: offline (`no-projector`, or `code-pending` while the code has never
+   * been answered), link kept, no retry countdown.
+   */
   private waitForProjector(): void {
     this.stopHeartbeat();
     this.welcomed = false;
+    const cause: OfflineCause = this.codePending ? 'code-pending' : 'no-projector';
     const c = this.store.get().connection;
-    if (c.status === 'offline' && c.cause === 'no-projector') return;
-    this.record('warn', 'no-projector: the Foundry tab that paired these glasses is not open');
+    if (c.status === 'offline' && c.cause === cause) return;
+    this.record(
+      'warn',
+      cause === 'code-pending'
+        ? 'code-pending: no answer to the pairing code yet — keep open the Foundry tab that showed the QR'
+        : 'no-projector: the Foundry tab that paired these glasses is not open',
+    );
     this.setConnection({
       ...identityOf(this.store.get().connection),
       status: 'offline',
-      cause: 'no-projector',
+      cause,
+      // The relay link is open; Foundry is the step still missing (S11 before any character).
+      steps: { ...NO_STEPS, relay: true },
     });
   }
 
-  /** Relay presence of the projector. */
+  /**
+   * Relay presence of the projector. A `peer-up` while welcomed means the projector has a
+   * new socket (its old one was replaced — the relay closes it with 4000 and announces no
+   * `peer-down`), whose link starts un-welcomed and pushes nothing until a `hello`: say it
+   * again, without the welcome timeout (the heartbeat watches the link).
+   */
   private onPeer(up: boolean): void {
     if (up) {
       this.markStep('projector');
-      if (this.welcomed) return;
+      if (this.welcomed) {
+        this.sendHello();
+        return;
+      }
       const c = this.store.get().connection;
       if (c.status === 'offline') {
         this.setConnection({
@@ -524,6 +752,7 @@ export class DirectSession implements AppActions {
   private close(): void {
     this.epoch++;
     this.welcomed = false;
+    this.helloRefused = false;
     this.helloRids.clear();
     for (const t of [this.retryTimer, this.welcomeTimer, this.snapshotTimer])
       if (t !== null) clearTimeout(t);
@@ -572,10 +801,82 @@ export class DirectSession implements AppActions {
     }, SESSION_TIMING.countdownTick);
   }
 
+  /**
+   * Relay close 4000: a newer socket of the glasses role (another instance of the app with
+   * this pairing) replaced ours. Retrying would steal it back in a loop: offline
+   * `replaced`, no retry — «Riconnetti» (phone P02 or the glasses) takes it back.
+   */
+  private replaced(): void {
+    this.record(
+      'error',
+      'replaced: another instance of the app took this pairing (relay close 4000) — Reconnect takes it back',
+    );
+    this.close();
+    this.setConnection({
+      ...identityOf(this.store.get().connection),
+      status: 'offline',
+      cause: 'replaced',
+    });
+  }
+
   private async revoke(): Promise<void> {
     this.close();
+    this.disarmPendingExpiry();
+    const stored = await this.deps.credentials.load();
+    if (stored?.from !== undefined) await this.deps.credentials.markSpent(stored.from);
     await this.deps.credentials.clear();
     this.clearData({ status: 'revoked' });
+  }
+
+  // ─── Pending code ────────────────────────────────────────────────────────
+
+  /**
+   * Arms the expiry of a code not yet answered (`pendingSince`): after `PAIRING_TTL_MS`
+   * the projector has forgotten it (expired, used by another device, window closed), so
+   * waiting longer can never succeed. The timer survives reconnects.
+   */
+  private armPendingExpiry(creds: Credentials): void {
+    this.disarmPendingExpiry();
+    this.codePending = creds.pendingSince !== undefined;
+    if (creds.pendingSince === undefined) return;
+    const left = creds.pendingSince + PAIRING_TTL_MS - this.now();
+    this.pendingTimer = setTimeout(() => void this.expireCode(), Math.max(0, left));
+  }
+
+  private disarmPendingExpiry(): void {
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.codePending = false;
+  }
+
+  /**
+   * The code got no `welcome` within its lifetime: it is spent (remembered, so the same
+   * link reloaded later is ignored). The pairing it replaced (`fallback`) comes back;
+   * otherwise back to P03 with a notice.
+   */
+  private async expireCode(): Promise<void> {
+    this.pendingTimer = null;
+    const credentials = this.deps.credentials;
+    const pending = await credentials.load();
+    this.close();
+    this.codePending = false;
+    if (pending?.from !== undefined) await credentials.markSpent(pending.from);
+    if (pending?.fallback !== undefined) {
+      this.record(
+        'error',
+        'code-unanswered: no answer to the pairing code within 5 min — the previous pairing is restored',
+      );
+      await credentials.save(pending.fallback);
+      this.attempt = 0;
+      await this.connect();
+      return;
+    }
+    this.record(
+      'error',
+      'code-unanswered: no answer to the pairing code within 5 min (expired, cancelled or already used)',
+    );
+    await credentials.clear();
+    this.clearData({ status: 'unpaired', notice: 'code-unanswered' });
   }
 
   // ─── Inbound ─────────────────────────────────────────────────────────────
@@ -610,6 +911,10 @@ export class DirectSession implements AppActions {
       case 'delta':
         return this.onDelta(msg.seq, msg.topic, msg.data);
       case 'result': {
+        if (this.helloRids.has(msg.rid)) {
+          if (!msg.ok) this.onHelloRefused(msg.error);
+          return;
+        }
         const p = this.pending.get(msg.rid);
         if (p === undefined) return;
         clearTimeout(p.timer);
@@ -640,14 +945,43 @@ export class DirectSession implements AppActions {
     }
   }
 
+  /**
+   * The projector answered a `hello` with an error. `actor_missing` / `forbidden_actor`:
+   * the paired character is gone or no longer the player's — offline `actor`, and the
+   * next `hello`s slow down ({@link sayHello}). Anything else is recorded.
+   */
+  private onHelloRefused(error: { code: string; message: string }): void {
+    this.record('error', `hello refused (${error.code}): ${error.message}`);
+    if (!ACTOR_REFUSALS.has(error.code)) return;
+    this.helloRefused = true;
+    this.stopHeartbeat();
+    const c = this.store.get().connection;
+    if (c.status === 'offline' && c.cause === 'actor') return;
+    this.setConnection({
+      ...identityOf(c),
+      status: 'offline',
+      cause: 'actor',
+      // Relay and projector answered; the character is what failed.
+      steps: { ...NO_STEPS, relay: true, projector: true },
+    });
+  }
+
   private async onWelcome(
     msg: Extract<ProjectorMessage, { t: 'welcome' }>,
     epoch: number,
   ): Promise<void> {
-    if (this.welcomed || !this.helloRids.has(msg.rid)) return;
+    if (!this.helloRids.has(msg.rid)) return;
+    if (this.welcomed) {
+      // The answer to a `hello` said again on `peer-up`: the projector's push follows it.
+      this.helloRids.delete(msg.rid);
+      return;
+    }
     this.helloRids.clear();
     if (this.welcomeTimer !== null) clearTimeout(this.welcomeTimer);
     this.welcomeTimer = null;
+    // The code was answered: it can no longer expire.
+    const wasPending = this.codePending;
+    this.disarmPendingExpiry();
     if (msg.rotate !== undefined) {
       // Single-use QR/code: persist the fresh room + key, then meet the projector there.
       await this.deps.credentials.rotate(msg.rotate);
@@ -657,6 +991,8 @@ export class DirectSession implements AppActions {
       await this.connect();
       return;
     }
+    if (wasPending) await this.deps.credentials.confirm();
+    if (epoch !== this.epoch) return;
     this.welcomed = true;
     this.attempt = 0;
     this.moduleVersion = msg.moduleVersion ?? null;

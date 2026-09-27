@@ -2,6 +2,21 @@
 
 Il changelog canonico è in fondo a [`Specs.md`](https://github.com/Aiacos/EvenFoundryVTT/blob/develop/Specs.md#changelog); i changelog per pacchetto sono generati da Changesets (`packages/*/CHANGELOG.md`). Qui una sintesi per chi usa il progetto.
 
+## 📝 In arrivo — collegamento che regge sui telefoni veri (2026-09-26)
+
+Perché: in modalità sviluppatore il collegamento falliva. Il wizard `pnpm dev:glasses` della v0.3.0/0.3.1 faceva impostare «Pagina dell'app occhiali» a un indirizzo `http://` della LAN, dove il browser nasconde la crittografia: ogni errore diventava *Codice non valido* ([ADR-0019](Decisioni-Architetturali), emendamento 2).
+
+**Per i giocatori**
+- Il collegamento funziona anche su pagine `http://` (Foundry in LAN, app di sviluppo): cifratura software verificata al posto di WebCrypto, stessi messaggi sul filo ([Rete e relay](HTTPS-e-Rete)).
+- Riaprire un QR già usato non rompe più l'associazione (*Codice già usato su questo telefono*); un codice senza risposta viene cancellato dopo 5 minuti con un avviso chiaro.
+- Sul telefono **Collega di nuovo** (Scansiona QR + codice) anche dopo un tentativo fallito, e una riga di avvio senza segreti per chiedere aiuto; errori precisi invece di *Codice non valido* per tutto.
+- Occhiali: nuovi stati *Codice in attesa di Foundry*, *Personaggio non disponibile*, *Presi da un'altra app* e S10 *NESSUNA RISPOSTA AL CODICE* ([Risoluzione problemi](Risoluzione-Problemi)).
+
+**In Foundry**
+- Chiudere la finestra *Collega occhiali G2* non annulla più il QR; riaprendola si rivede lo stesso.
+- Sotto il QR, lo stato dal vivo (relay, occhiali nella stanza, orologi sfasati, chiave diversa); in cima un avviso con **Ripristina predefinito** se pagina dell'app o relay non sono quelli predefiniti.
+- Dopo il collegamento lo stato parte una volta sola e con un ritmo che non supera il limite del relay, anche su scene con molte immagini.
+
 ## 📝 v0.13.0 — relay e collegamento dal Foundry del giocatore (2026-09-25)
 
 Perché: Foundry ≥ 14.361 serve l'HTML dei moduli come `text/plain` (la pagina degli occhiali servita da Foundry non si caricava più), i giocatori non possono creare utenti, i giochi privati di The Forge chiedono un login e le app Even Hub raggiungono solo indirizzi fissi ([ADR-0019](Decisioni-Architetturali)).

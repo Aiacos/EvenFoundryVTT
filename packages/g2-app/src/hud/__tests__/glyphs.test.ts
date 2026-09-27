@@ -52,6 +52,7 @@ function labelStrings(s: HudStrings): string[] {
     s.north,
     s.unpairedSubtitle,
     s.revokedSubtitle,
+    s.codeUnansweredSubtitle,
     ...s.pairSteps.map(([, b]) => b),
     s.scan,
     s.exitHint,

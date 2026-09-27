@@ -48,6 +48,17 @@ describe('map assets', () => {
     expect(await assetIdOf('y')).not.toBe(a);
   });
 
+  it('MA-02b asset ids are the same on an http Foundry tab (no crypto.subtle)', async () => {
+    const secure = await assetIdOf('worlds/w/scenes/map.webp');
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      expect(await assetIdOf('worlds/w/scenes/map.webp')).toBe(secure);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('MA-03 rewrites pictures to evf-asset refs, dedupes, drops failures, keeps order', async () => {
     const encode = vi.fn<AssetEncoder>(async (src) => {
       if (src === 'broken.png') throw new Error('HTTP 404');

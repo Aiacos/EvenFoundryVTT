@@ -23,13 +23,13 @@ One bundle (`dist/`), three ways to load it:
 | Path | Role |
 |---|---|
 | `src/main.ts` | entry: binds the browser/SDK globals, `?demo=` / `?debug=1` surfaces (fail closed) |
-| `src/direct/credentials.ts` | pairing from the QR fragment `#evf=…` or the 16-char code (HKDF → room + key); stored in `localStorage` + SDK storage |
+| `src/direct/credentials.ts` | pairing from the link `#c=<CODE>` (any key case, also `?c=`; a legacy `#evf=` is reported) or the 16-char code (HKDF → room + key); records keep `from` (the code's room: a spent link is ignored) and `pendingSince` until the first `welcome`; stored in `localStorage` + SDK storage |
 | `src/direct/relay-client.ts` | glasses ⇄ relay WebSocket (`/r/<room>?role=glasses`), `peer-up` / `peer-down` |
-| `src/direct/session.ts` | sealed session: `hello` → `welcome` (room/key rotation), snapshots, deltas, `invoke`; causes `no-projector` · `network` · `background` |
-| `src/direct/app.ts` | wires session, HUD, phone page and lifecycle |
+| `src/direct/session.ts` | sealed session: one `hello` per join (`peer-up` or 1.5 s grace) → `welcome` (room/key rotation), snapshots, deltas, `invoke`; causes `no-projector` · `network` · `background` · `code-pending` · `actor` · `replaced`; unanswered code cleared after `PAIRING_TTL_MS`; boot facts for the phone line |
+| `src/direct/app.ts` | wires session, HUD, phone page and lifecycle; reads the pairing link at boot and on `hashchange`, never rejects on a bad link (the reason is shown) |
 | `src/hud/` | sheet layout on the 2 × 2 grid of 288 × 144 tiles, zone renderers, tile sender (one image at a time, ≥ 100 ms, hash skip), input state machine |
 | `src/hud/map-art/` | scene art (`evf-asset:<id>` sent by the projector) pixelated to 4-bit, schematic fallback |
-| `src/phone/` | phone page: *Scan QR* (camera, `jsqr` lazy chunk), *Enter code*, Connection, Diagnostics |
+| `src/phone/` | phone page: *Scan QR* (camera, `jsqr` lazy chunk), *Enter code*, Connection with *Pair again*, Diagnostics, boot line `app · secure · crypto · link · relay`, precise pairing errors |
 | `src/demo/` · `src/debug/` | scripted HUD scenes (`?demo=`), debug channel |
 | `app.json` | Even Hub manifest: SDK 0.0.16, whitelist = relay (`https` + `wss`), `camera` |
 

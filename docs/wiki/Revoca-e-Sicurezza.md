@@ -26,6 +26,10 @@ Il QR porta il codice (da cui derivano stanza e chiave) nel **frammento dell'URL
 
 Ogni busta usa un IV casuale da 96 bit e `from>to` come dati autenticati; un `ts` nel testo cifrato limita il replay a **120 s**. Dettagli: [Protocollo](Protocollo).
 
+Su una pagina `http://` che non sia `localhost` (un Foundry in LAN, l'app di `pnpm dev:glasses`) il browser nasconde WebCrypto: il canale usa allora gli stessi algoritmi da `@noble/ciphers` e `@noble/hashes` 2.4.0 (librerie verificate da cure53, versioni fissate, caricate solo in quel caso) e i messaggi sul filo restano identici. La chiave sta in memoria come byte invece che come `CryptoKey` non estraibile: non è un'esposizione nuova, è già nella memoria di quel browser. Una pagina `http://` è comunque visibile alla sua rete: HTTPS resta consigliato ([Rete e relay](HTTPS-e-Rete)).
+
+Un QR o un link già usato **non** riapre niente: sul proiettore stanza e chiave sono già cambiate, e il telefono che l'ha usato lo ignora (*Codice già usato su questo telefono*) invece di sostituire l'associazione che funziona.
+
 ## 🔐 Cosa possono fare gli occhiali
 
 - Solo azioni per il **personaggio collegato**: a ogni richiesta la scheda ricontrolla dal vivo che il suo utente ne sia ancora proprietario (`forbidden_actor` altrimenti, con audit).

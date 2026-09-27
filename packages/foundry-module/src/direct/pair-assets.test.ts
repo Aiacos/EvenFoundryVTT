@@ -41,4 +41,25 @@ describe('pairing window assets', () => {
     }
     expect(Object.keys(it).sort()).toEqual(Object.keys(en).sort());
   });
+
+  it('PAS-04 regression: an endpoint notice never calls the non-default address it shows «the default»', () => {
+    // The template renders `{{localize label}} <code>{{url}}</code>` with the CURRENT value:
+    // a label ending on «use the default page:» pointed the player at the broken LAN page.
+    for (const lang of ['en', 'it']) {
+      const strings = JSON.parse(read(`lang/${lang}.json`)) as Record<string, string>;
+      for (const key of [
+        'evf.pair.notice.app_insecure',
+        'evf.pair.notice.relay_insecure',
+        'evf.pair.notice.app_custom',
+        'evf.pair.notice.relay_custom',
+      ]) {
+        const text = strings[key] ?? '';
+        expect(text, `${lang} ${key}`).toMatch(/:$/);
+        const lastSentence = text.split(/[.:]\s/).pop() ?? '';
+        expect(lastSentence, `${lang} ${key}`).not.toMatch(
+          /use the default|usa (la|il) .*predefinit/i,
+        );
+      }
+    }
+  });
 });

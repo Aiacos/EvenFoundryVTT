@@ -12,7 +12,22 @@ Tre pezzi possono guastarsi: l'**app sul telefono**, il **relay** e la **scheda 
 | Occhiali: **Telefono in background** | la Even App è andata in background (telefono bloccato, cambio app) | niente: la sessione si ricollega quando l'app torna in primo piano. Con la versione web caricata da QR, dopo un blocco dello schermo reinquadra il QR |
 | **QR scaduto** (*Il QR è scaduto senza essere usato.*) | sono passati 5 minuti | **Nuovo QR** |
 | Il QR è già stato usato, o il codice non funziona | QR e codice sono monouso: dopo il primo collegamento stanza e chiave cambiano | **Collega altri occhiali** per un nuovo QR |
-| *Codice non valido* | meno o più di 16 caratteri | copia il codice sotto il QR (*Copia codice*); trattini e maiuscole non contano |
+| *Codice non valido: 16 caratteri…* | meno o più di 16 caratteri, o caratteri che non fanno parte del codice | copia il codice sotto il QR (*Copia codice*); trattini e maiuscole non contano. Solo questo errore dice *Codice non valido*: gli altri hanno il loro messaggio |
+| Telefono: *Codice già usato su questo telefono* (… *genera un nuovo QR in Foundry* se non sei associato, … *l'associazione attuale resta valida* se lo sei) | hai riaperto (o riscansionato) un QR o un link che questo telefono ha già usato | se gli occhiali sono già collegati non serve niente: l'app ha tenuto l'associazione che funziona. Per un nuovo collegamento: **Nuovo QR** / **Collega altri occhiali** |
+| Telefono: *Nessuna risposta al codice: QR scaduto, annullato o già usato — genera un nuovo QR in Foundry.* · occhiali (S10): **NESSUNA RISPOSTA AL CODICE · GENERA UN NUOVO QR** | per 5 minuti nessuna scheda di Foundry ha risposto al codice: QR scaduto o già usato da un altro telefono, scheda di Foundry chiusa, oppure orologi sfasati (vedi sotto) | **Nuovo QR** in Foundry, poi **Scansiona QR** o il codice sul telefono |
+| Telefono: *codice in attesa di risposta da Foundry…* · occhiali: **Codice in attesa di Foundry** | il codice è salvato ma la scheda di Foundry non ha ancora risposto | tieni aperta la scheda di Foundry che mostra il QR finché la finestra dice **«Occhiali collegati»**; dopo 5 minuti senza risposta il codice viene cancellato |
+| Telefono: *QR di una versione vecchia del modulo: aggiorna EvenFoundryVTT in Foundry.* | il QR è nel formato `#evf=` del modulo 0.3.0 | aggiorna il modulo (il GM, da *Gestisci moduli*), poi **Nuovo QR** |
+| Telefono: *Collegamento non riuscito: <messaggio>* | un errore imprevisto durante il collegamento (il messaggio è quello tecnico) | riprova con **Collega di nuovo**; se si ripete, manda uno screenshot con la riga di avvio (vedi *Dove guardare*) |
+| Telefono: *L'app non si è avviata: <messaggio>* | l'app è fallita all'avvio | chiudi e riapri l'app; se si ripete, segnala il messaggio e la riga di avvio |
+| Telefono fermo su **Non collegato** con una vecchia associazione | associazione di un tentativo fallito o di un Foundry che non c'è più | apri **Collega di nuovo** (si apre da sola quando non sei collegato) e inquadra un nuovo QR: non serve più *Dimentica associazione* |
+| Occhiali: **Personaggio non disponibile** · telefono: *Foundry non trova il tuo personaggio…* | la scheda di Foundry ha rifiutato il collegamento: il personaggio è stato eliminato (`actor_missing`) o non è più tuo (`forbidden_actor`) | controllalo in Foundry (proprietà) o collega un personaggio tuo; l'app riprova ogni 30 s |
+| Occhiali: **Presi da un'altra app** · telefono: *un'altra app ha preso questa associazione…* | un'altra copia dell'app (un'altra pagina aperta dal QR, un altro telefono con la stessa associazione) si è collegata al posto di questa | tocca **Riconnetti** sul telefono che vuoi usare; l'app non riprova da sola, per non contendersi il collegamento |
+| Finestra *Collega occhiali G2*, sotto il QR: *Messaggio degli occhiali rifiutato: orologi di telefono e PC sfasati (oltre 2 minuti)* | i messaggi valgono 2 minuti: data e ora di telefono o PC sono sbagliate | imposta data e ora automatiche su entrambi, poi **Nuovo QR** |
+| … *Messaggio degli occhiali rifiutato: chiave diversa* | il telefono usa il codice di un altro QR (vecchio, o di un'altra finestra) | **Collega di nuovo** sul telefono con il QR mostrato adesso |
+| … *Messaggio degli occhiali rifiutato: formato non valido* | app e modulo di versioni diverse | aggiorna il modulo e l'app alla stessa release |
+| … **Relay non collegato: questa scheda non raggiunge il relay** | la scheda ha perso il relay dopo aver mostrato il QR | controlla la rete del PC; la scheda si ricollega da sola |
+| In cima alla finestra: *Il QR apre una pagina http:// della rete locale…* (o *Il QR non apre la pagina predefinita…*, *Relay diverso da quello predefinito…*) | **«Pagina dell'app occhiali (avanzato)»** o **«Relay (avanzato)»** non sono al valore predefinito — per esempio l'indirizzo LAN che il wizard `pnpm dev:glasses` della v0.3.0/0.3.1 faceva impostare | **«Ripristina predefinito»**: rimette il valore e mostra un nuovo QR ([Rete e relay](HTTPS-e-Rete)) |
+| Ho chiuso la finestra prima di inquadrare il QR | — | niente: il QR resta valido per 5 minuti con la scheda aperta; riapri la finestra per rivederlo |
 | «Scansiona QR» non scatta la foto / *Fotocamera non disponibile* | permesso della fotocamera negato alla Even App, o pagina caricata in Developer Mode senza fotocamera | digita il codice sotto il QR (o incolla il link intero) nel campo **Codice**, oppure riattiva il permesso nelle impostazioni del telefono |
 | *Nessun QR nella foto* | QR troppo piccolo o mosso nella foto (effetto moiré dello schermo) | avvicinati finché il QR riempie l'inquadratura e tieni fermo, o digita il codice |
 | *Nessun QR nella foto* / *Questo non è un QR di associazione EvenFoundryVTT* | foto sfocata o QR sbagliato | inquadra tutto il QR della finestra *Collega occhiali G2* |
@@ -31,9 +46,9 @@ Tre pezzi possono guastarsi: l'**app sul telefono**, il **relay** e la **scheda 
 
 ## 🐞 Dove guardare
 
-**Sul telefono** — pagina *G2 HUD · Connessione*: **Stato** con causa e conto alla rovescia, **Relay**, **Foundry** (chi trasmette), **Latenza**; *Diagnostica* mostra la versione del modulo, gli errori recenti e il log di debug.
+**Sul telefono** — pagina *G2 HUD · Connessione*: **Stato** con causa e conto alla rovescia, **Relay**, **Foundry** (chi trasmette), **Latenza**; *Diagnostica* mostra la versione del modulo, gli errori recenti e il log di debug. In fondo a *Connessione* e a *Prima configurazione* c'è la **riga di avvio** `app 0.4.2 · secure yes · crypto webcrypto · link code · relay evf-relay.evf-relay.workers.dev` (esempio, nessun segreto): `secure no · crypto fallback` = pagina `http://` (funziona, [Rete e relay](HTTPS-e-Rete)); `link none` dopo lo Scan QR = il codice non è arrivato alla pagina (digitalo); `link used` = QR già usato su questo telefono; `link invalid` = il link non conteneva un codice valido di 16 caratteri (digitalo); `link legacy` = QR del modulo 0.3.0. Per il log completo metti `?debug=1` in fondo a **«Pagina dell'app occhiali (avanzato)»** (poi **«Ripristina predefinito»**).
 
-**Nella finestra *Collega occhiali G2*** — lo stato di ogni occhiali: *online* · *in attesa degli occhiali* · *relay non raggiungibile*.
+**Nella finestra *Collega occhiali G2*** — sotto il QR lo stato dal vivo (relay, occhiali nella stanza, ultimo messaggio rifiutato); in basso lo stato di ogni occhiali: *online* · *in attesa degli occhiali* · *relay non raggiungibile*.
 
 **Nel browser che trasmette** (F12) — messaggi con prefisso `[EVF]`:
 
@@ -44,6 +59,7 @@ Tre pezzi possono guastarsi: l'**app sul telefono**, il **relay** e la **scheda 
 | `[EVF] projector: malformed message for <id>` | app e modulo di versioni diverse: aggiorna entrambi |
 | `[EVF] projector: denied … no longer owns actor …` | proprietà del personaggio persa |
 | `[EVF] projector: failed to push to a G2 device` | invio fallito, di solito transitorio |
+| `[EVF] could not reset the appUrl setting` / `relayUrl` | **«Ripristina predefinito»** non è riuscito: cambia il valore a mano in *Configura impostazioni* |
 
 **Audit** — ogni azione lascia un messaggio nascosto, solo GM, con `flags.evf.audit`:
 

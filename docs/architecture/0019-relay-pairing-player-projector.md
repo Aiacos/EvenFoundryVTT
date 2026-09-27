@@ -137,3 +137,99 @@ that was always displayed next to the QR; it is single use (room + key rotate to
 values on the first `welcome`) and expires in 5 minutes, so an online guess over the relay is
 infeasible.
 
+
+**Superseded detail (Amendment 2):** the plain app address for developer mode is no longer
+shown. The Even App's manual link field truncates and capitalises, and a typed code already
+works on the page the QR opens (P03 «Prima configurazione»).
+
+### Amendment 2 — pairing that survives real phones (2026-09-26)
+
+**Why:** in Even App developer mode, pairing still failed for the maintainer after
+Amendment 1. The investigation (real projector + real relay E2E, a headless Chromium probe,
+simulator runs) found one root cause and several traps that turned any slip into a dead end:
+
+1. **Secure context.** `pnpm dev:glasses` in v0.3.0/0.3.1 told the maintainer to set the
+   Foundry client setting «Glasses app page (advanced)» to `http://<LAN-IP>:<port>/`. A
+   plain-http page on a LAN host is not a secure context: `crypto.subtle` and
+   `crypto.randomUUID` are `undefined` (Chromium probe; WebKit's `Crypto.idl` marks both
+   `[SecureContext]`). Code derivation threw, the phone page showed «Codice non valido» / «non
+   è un QR di associazione» for every failure, and every Foundry QR kept opening that dead page.
+   The same holds for a Foundry tab served over `http://192.168…` (the projector).
+2. **Used link.** Credentials were saved before any `welcome`, and re-opening an already-used
+   `#c=` link (the Even App reloads the scanned URL; a re-scan after a lock) overwrote the
+   rotated pairing with the dead room derived from the code.
+3. **No way back.** The phone's P02 page had no scan button or code field: after any failed
+   attempt the only exit was *Diagnostica › Dimentica associazione*.
+4. **Window close.** Closing «Collega occhiali G2» (✕ / ESC) discarded the pending QR, and
+   every such failure surfaced as «Foundry del giocatore chiuso».
+5. **Burst.** The glasses said `hello` twice, and the projector answered each with the full
+   state; on a scene with many pictures that could cross the relay's 60 frames/s cap (1008)
+   and loop.
+
+**Decision:**
+
+- **Crypto everywhere.** `@evf/shared-protocol` `direct/crypto.ts` uses WebCrypto when
+  `crypto.subtle` exists and otherwise lazy-loads `crypto-fallback.ts` (AES-256-GCM, HKDF-SHA256,
+  SHA-256 from `@noble/ciphers` 2.4.0 + `@noble/hashes` 2.4.0, exact pins). The wire bytes are
+  unchanged, so each side may use either backend. `randomId()` replaces `crypto.randomUUID`.
+  An http LAN page (phone or Foundry) now pairs; https stays the recommended setup.
+- **Used-link rule.** A stored pairing remembers the room its code derived (`from`), and the
+  phone keeps a short list of spent code rooms (rotated, unanswered, then revoked or forgotten)
+  in its own storage key, which «Scollega» / «Dimentica associazione» do not wipe. A link whose
+  code is spent is ignored and the working pairing kept; the phone says so («Codice già usato
+  su questo telefono: l'associazione attuale resta valida» on P02, «…genera un nuovo QR» on
+  P03). A code still waiting for its first `welcome` (`pendingSince`) is retried, and cleared
+  after `PAIRING_TTL_MS` (5 min, shared by both sides) with the notice «Nessuna risposta al
+  codice». Pairings rotated before v0.4.2 carry no `from`: a link arriving at boot over such a
+  confirmed pairing keeps it as `fallback`, given back (and the code marked spent) if the code
+  gets no answer — so the reloaded spent QR costs one 5-minute wait at most, never the pairing.
+  The page reads the link before stripping it from the (live) address, also on `hashchange`
+  (listened to from the start of the boot, links applied in order), accepts `?c=` in its URL
+  and in a pasted / scanned link and any key case, and names a legacy `#evf=` link or a link
+  without a valid code.
+- **Re-pair UX.** P02 has a «Collega di nuovo» card (scan + code, open while not online) and
+  both pages show a boot line `app · secure · crypto · link · relay` (no secrets). Errors are
+  precise: invalid code, not a pairing QR, code already used, else «Collegamento non riuscito:
+  <msg>». New offline causes on phone and glasses: `code-pending`, `actor` (hello refused:
+  `actor_missing` / `forbidden_actor`, slower retries), `replaced` (relay close 4000: no
+  reconnect loop).
+- **Pending pairing survives window close.** The projector owns the expiry (a timer when the
+  channel opens, plus the prune at start, plus a check on each frame for late timers). Closing
+  the window only stops the countdown; reopening it within 5 minutes — from any entry point,
+  the Players list included — shows the same QR. Because closing no longer cancels, the shown
+  QR has an explicit «Annulla QR» that forgets it and closes its channel at once. Under
+  the QR the window shows live status (relay connected, glasses in the room, why the last
+  glasses frame was refused: clocks apart > 2 min, other key, malformed). A non-default app
+  page or relay is flagged there with «Ripristina predefinito». Each pairing stores the relay
+  it was made on and the projector serves it there, so resetting the relay setting never
+  separates a projector from glasses that keep their QR's relay.
+- **Frame pacing.** One full push per link: a repeated `hello` gets only a `welcome`. The
+  glasses say `hello` once per join (on `peer-up`, or after a 1.5 s grace), and again on every
+  later `peer-up` even while welcomed: a projector socket replaced by a new one (relay close
+  4000, no `peer-down`) starts an un-welcomed link that pushes nothing until a `hello`. The
+  projector's relay socket paces outgoing frames to 40 per rolling second (relay cap 60).
+
+**Security:** the fallback implements the same algorithms with the same parameters; the
+libraries are audited (cure53: `@noble/ciphers` v1.0.0, 2024; `@noble/hashes`, 2022 — earlier
+releases than the pinned 2.4.0) and pinned exactly, loaded only when WebCrypto is missing. It is
+only algorithmically constant-time (AES table lookups may leak cache timings; the GCM tag
+check is constant-time), acceptable on plain-http pages only. On the fallback the device key sits in
+page memory as bytes instead of a non-extractable `CryptoKey`; that adds no exposure, because
+the same key is already in that browser's pairing storage. A plain-http page is exposed to its
+network by nature, so https stays recommended. The used-link rule does not weaken single use:
+a spent code still opens nothing on the projector, it only stops the phone from destroying a
+working pairing. Closing the window leaves a shown code redeemable until it expires: a QR
+others may have seen must be killed with «Annulla QR». See [SECURITY.md](../../SECURITY.md).
+
+**Confirmation:** regression tests that failed before the fix —
+`packages/g2-app/src/direct/insecure-context.regression.test.ts` (BUG-2),
+`packages/g2-app/src/direct/pairing-bugs.regression.test.ts` (BUG-1, H2, H3b, H3c, H5, H6,
+H6b, hello refusals, close 4000, inbound queue), `credentials.test.ts` (link read before the
+live address is stripped), `packages/foundry-module/src/direct/projector.test.ts` (PJ-15,
+PJ-15b, PJ-17, PJ-19…21), `PairG2App.test.ts` (PA-11b, PA-12…12f, PA-17),
+`relay-connection.test.ts` (RC-06); the cross-package E2E `packages/e2e/src/pairing.e2e.test.ts`
+(real projector + real session + the built bundle in Chromium on `http://127.0.0.1` and on
+`http://<LAN-IP>`) in the CI step "Relay end-to-end", all against `wrangler dev` (window
+closed / reopened / cancelled, expiry, spent QR reopened, clock skew, the crypto fallback). Still
+hardware-gated (`TODO.md`): whether the Even App's developer Scan QR passes `#c=` through,
+whether sideloaded / installed pages are secure contexts, and the camera on a sideloaded page.

@@ -22,9 +22,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/foundry-module/` — Foundry module `evenfoundryvtt`: dnd5e readers, write path (`dispatchTool`, ADR-0011; `Activity#use(usage, dialog, message)` with `configure:false` in the **dialog** arg; `skill-check` handler), `src/direct/` projector (relay connection per paired device, Web Lock = one tab per browser, map `asset` pictures) + «Collega occhiali G2» window (Players list right-click, `Alt+G`, settings menu; pairings in a client setting)
 - `packages/g2-app/` — glasses app (Vite 8, Even Hub SDK 0.0.16): `src/direct/` (relay client, credentials v2, sealed session), `src/hud/` (D&D-sheet layout on the 2×2 288×144 tile grid, zone renderers + tile sender, input state machine, `map-art/` pixelated scene art), `src/phone/` (phone page P02/P03: «Scansiona QR» via `captureImageFromCamera` + `jsqr`, code entry)
 - `packages/relay/` — opaque WebSocket room relay (Cloudflare Worker + one Durable Object per room, Hibernation API; `wrangler dev` / `wrangler deploy`)
-- `packages/shared-protocol/` — Zod schemas + `direct/` envelope (WebCrypto AES-GCM), messages (v2: `rotate {room,key}`, `asset`), pairing payload v2, relay contract (`DEFAULT_RELAY_URL`, `DEFAULT_APP_URL`), map snapshot
+- `packages/shared-protocol/` — Zod schemas + `direct/` envelope (AES-GCM: WebCrypto, `@noble` fallback on plain-http pages — `direct/crypto.ts`), messages (v2: `rotate {room,key}`, `asset`), pairing payload v2, relay contract (`DEFAULT_RELAY_URL`, `DEFAULT_APP_URL`), map snapshot
 - `packages/shared-render/` — ASCII grid (browser-safe `./ascii-grid` subpath) + INV-1 matchers, `src/pixel/` 4-bit pixel renderer + bitmap fonts + D&D icons, per-zone golden fixtures `sheet.*.txt`
 - `packages/validation-harness/` — GO/NO-GO hardware scripts (defer-hardware pattern), `inv:all`, `validate:relay`
+- `packages/e2e/` — test-only: cross-package pairing E2E (real projector + real glasses session + the built bundle in Chromium) over a real relay; the module never imports app sources
 
 **Architecture:** `docs/architecture/` — ADR-0001…0019 (index with statuses in `docs/architecture/README.md`; 0007 reserved). Current: 0011 write path · **0012 R1 gesture model (canonical, remote)** · 0016 sealed protocol + projector role · 0018 D&D-sheet HUD · **0019 relay pairing**. Superseded: 0017 (→ 0019), 0016 §1–4/§6 (→ 0019), bridge-era 0013 (raster HUD → 0018), 0014 (bearer authz → 0017), 0015 (player-view capture → 0016), 0009/0010 (→ 0018). Plus `INVARIANTS.md` (INV-1…6); design contract `docs/design/g2-sheet-ux.html` («Scheda da tavolo G2», screens S1–S12; screenshots `docs/design/img/`); `docs/design/g2-thirds-layout.md` is superseded history (its pairing mocks P01–P03 still apply).
 
@@ -63,6 +64,7 @@ pnpm wizard                                      # demo scenes on the glasses (n
 pnpm --filter @evf/validation-harness inv:all    # invariant suite
 RELAY_URL=ws://127.0.0.1:8787 pnpm --filter @evf/validation-harness validate:relay:skip-hardware   # ADR-0019 software GO/NO-GO
 EVF_RELAY_URL=ws://127.0.0.1:8787 pnpm vitest --run packages/g2-app/src/direct/relay.e2e.test.ts  # real-relay E2E
+EVF_RELAY_URL=ws://127.0.0.1:8787 EVF_CHROMIUM=<chromium> EVF_LAN_IP=<lan ip> pnpm vitest --run packages/e2e/src/pairing.e2e.test.ts  # real projector + bundle in Chromium
 npx @evenrealities/evenhub-cli@0.1.14 pack packages/g2-app/app.json packages/g2-app/dist --sdk-ver 0.0.16 -o evenfoundryvtt.ehpk
 pnpm --filter @evf/validation-harness validate:all:skip-hardware    # Phase 0 software-only smoke
 ```
@@ -303,9 +305,10 @@ Un plugin che proietta una sessione di **D&D 5e** ospitata su **FoundryVTT** dir
 | `g2-app` | `@evenrealities/even_hub_sdk` 0.0.16 · `@evenrealities/pretext` 0.1.4 · `jsqr` 1.4.0 (lazy chunk) · `upng-js` 2.1.0 · `zod` 4.4.3 · Vite 8.0.11 (dev) | Built into `packages/g2-app/dist` (the `.ehpk` + Pages `/app/`), relative `base`, no CDN assets. `app.json` version = package version, `min_sdk_version` 0.0.16, whitelist = relay (`https://` + `wss://`), `camera`. |
 | `foundry-module` | `qrcode` 1.5.4 · `zod` 4.4.3 · `@evf/shared-protocol` · `tsup` 8.5.1 (dev) | Foundry ≥ 13.347 (v14 verified), dnd5e ≥ 5.3.3, midi-qol optional (`recommends`). socketlib **not used**. |
 | `relay` | — (Workers runtime) · `wrangler` 4.140.0 · `@cloudflare/workers-types` (dev) | Cloudflare Worker + `Room` Durable Object (SQLite class, Hibernation API); free plan: 100k requests/day, outgoing WS free, incoming 20:1. |
-| `shared-protocol` | `zod` 4.4.3 · WebCrypto (AES-256-GCM, HKDF-SHA256) | Zod = single source of truth for wire shapes; `direct/` envelope/messages/pairing/map. |
+| `shared-protocol` | `zod` 4.4.3 · WebCrypto (AES-256-GCM, HKDF-SHA256) · `@noble/ciphers` 2.4.0 + `@noble/hashes` 2.4.0 (lazy fallback when `crypto.subtle` is missing: plain-http pages, ADR-0019 Amd 2) | Zod = single source of truth for wire shapes; `direct/` envelope/messages/pairing/map. |
 | `shared-render` | — | ASCII grid (`./ascii-grid` browser-safe subpath) + `src/pixel/` renderer + INV-1 matchers (test-only, never in the browser bundle). |
 | `validation-harness` | `zod` 4.4.3 · `upng-js` 2.1.0 · `csv-stringify` 6.5.2 · `@evf/shared-protocol` · `tsx` | GO/NO-GO scripts, `inv:all`, `validate:relay`. |
+| `e2e` | `@evf/foundry-module` · `@evf/g2-app` · `@evf/shared-protocol` (workspace) · Playwright (root dev) | Test-only: pairing E2E across module + app over `wrangler dev`; CI "Relay end-to-end". |
 | Workspace tooling | TypeScript 5.8.3 · pnpm 10.33.4 · Node 24 LTS (`.nvmrc`) · Vitest 4.1.5 + `@vitest/coverage-v8` 4.1.5 · happy-dom 20.9.0 · Biome 2.4.15 · Changesets 2.31.0 · Playwright 1.59.1 · commitlint + husky | Stay on TS 5.8.x until the ecosystem (Vitest, Biome) catches up with 6.x. |
 
 ### Removed in v0.12.0 (ADR-0016)
