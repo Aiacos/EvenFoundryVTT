@@ -1,6 +1,6 @@
 {
   "name": "@evf/e2e",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "EVF cross-package end-to-end tests: the real Foundry projector (@evf/foundry-module) and the real glasses session / bundle (@evf/g2-app) over a real relay (ADR-0019).",
