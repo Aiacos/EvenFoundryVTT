@@ -49,6 +49,7 @@ export type PhoneSession = Pick<
   | 'reconnect'
   | 'disconnect'
   | 'forget'
+  | 'cancelPendingCode'
   | 'pairCode'
   | 'pairScanned'
   | 'updateSettings'
@@ -824,7 +825,8 @@ export function mountPhonePage(
     },
     cancel() {
       startedAt = null;
-      void session.forget();
+      // Like an early expiry: the pairing this code would have replaced comes back.
+      void session.cancelPendingCode();
     },
   };
   const render = (): void => {

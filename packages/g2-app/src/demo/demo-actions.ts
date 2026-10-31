@@ -145,6 +145,10 @@ export function createDemoTransport(deps: {
       log.push('info', 'demo', 'forget pairing');
       store.update({ connection: { status: 'unpaired' } });
     },
+    async cancelPendingCode() {
+      log.push('info', 'demo', 'cancel pending code');
+      store.update({ connection: { status: 'unpaired' } });
+    },
     async pairCode(code: string) {
       log.push('info', 'demo', `pair code ${code}`);
       store.update({ connection: { status: 'connecting', server: 'demo', userName: 'Demo' } });

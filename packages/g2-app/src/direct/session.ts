@@ -883,6 +883,20 @@ export class DirectSession implements AppActions {
    */
   private async expireCode(): Promise<void> {
     this.pendingTimer = null;
+    await this.dropPendingCode('expired');
+  }
+
+  /**
+   * «Annulla» on the phone's waiting step: the pending code is dropped at once, exactly like
+   * an expiry (spent, the replaced pairing comes back) but without the error notice — never
+   * {@link forget}, which would also lose the pairing the code was about to replace.
+   */
+  async cancelPendingCode(): Promise<void> {
+    this.disarmPendingExpiry();
+    await this.dropPendingCode('cancelled');
+  }
+
+  private async dropPendingCode(why: 'expired' | 'cancelled'): Promise<void> {
     const credentials = this.deps.credentials;
     const pending = await credentials.load();
     this.close();
@@ -890,19 +904,26 @@ export class DirectSession implements AppActions {
     if (pending?.from !== undefined) await credentials.markSpent(pending.from);
     if (pending?.fallback !== undefined) {
       this.record(
-        'error',
-        'code-unanswered: no answer to the pairing code within 5 min — the previous pairing is restored',
+        why === 'cancelled' ? 'warn' : 'error',
+        why === 'cancelled'
+          ? 'pairing code cancelled on the phone — the previous pairing is restored'
+          : 'code-unanswered: no answer to the pairing code within 5 min — the previous pairing is restored',
       );
       await credentials.save(pending.fallback);
       this.attempt = 0;
       await this.connect();
       return;
     }
+    await credentials.clear();
+    if (why === 'cancelled') {
+      this.record('warn', 'pairing code cancelled on the phone');
+      this.clearData({ status: 'unpaired' });
+      return;
+    }
     this.record(
       'error',
       'code-unanswered: no answer to the pairing code within 5 min (expired, cancelled or already used)',
     );
-    await credentials.clear();
     this.clearData({ status: 'unpaired', notice: 'code-unanswered' });
   }
 

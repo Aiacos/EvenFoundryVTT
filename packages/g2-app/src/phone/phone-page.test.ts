@@ -30,6 +30,7 @@ function fakeSession(overrides: Partial<PhoneSession> = {}) {
     reconnect: vi.fn(),
     disconnect: vi.fn(),
     forget: vi.fn(async () => {}),
+    cancelPendingCode: vi.fn(async () => {}),
     pairCode: vi.fn(async (_code: string) => {}),
     pairScanned: vi.fn(async (_text: string) => {}),
     updateSettings: vi.fn(),
@@ -711,7 +712,9 @@ describe('critique fixes (Impeccable 2026-10-31)', () => {
       expect(root.querySelector('[data-view="waiting"]')).not.toBeNull();
       expect(root.textContent).not.toContain(it_.statusOffline);
       root.querySelector<HTMLButtonElement>('[data-action="cancel-code"]')?.click();
-      expect(fake.session.forget).toHaveBeenCalledOnce();
+      // Regression: an early expiry, never forget() (it would lose the replaced pairing).
+      expect(fake.session.cancelPendingCode).toHaveBeenCalledOnce();
+      expect(fake.session.forget).not.toHaveBeenCalled();
     });
 
     it('the full P02 appears only after the first welcome', async () => {
