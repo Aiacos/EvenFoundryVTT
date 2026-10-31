@@ -66,11 +66,30 @@ const PLACEMENT_TTL_MS = 60_000;
  * Exported for test isolation — tests call `clearPlacementContexts()` between cases.
  * Production code MUST NOT call `clear()` directly.
  *
- * T-07-03-02: limits unbounded growth — handler checks TTL on every read, evicting
- * stale entries. Flood scenario: each unique placementId expires in 60s; total map
- * size is bounded by the rate of `place-template` invocations in the TTL window.
+ * T-07-03-02: bounded — every new placement first evicts the expired entries, then the
+ * oldest ones beyond {@link PLACEMENT_MAX} (a placement never confirmed or cancelled
+ * no longer stays for the session).
  */
 const PLACEMENT_CONTEXTS = new Map<string, PlacementContext>();
+
+/**
+ * Most pending placements kept at once (far above what one table places in 60 s); the
+ * oldest is dropped first and answers `placement_expired`.
+ */
+export const PLACEMENT_MAX = 32;
+
+/** Stores a new placement after evicting expired and over-cap entries (oldest first). */
+function rememberPlacement(placementId: string, context: PlacementContext): void {
+  for (const [id, ctx] of PLACEMENT_CONTEXTS) {
+    if (context.cachedAt - ctx.cachedAt > PLACEMENT_TTL_MS) PLACEMENT_CONTEXTS.delete(id);
+  }
+  PLACEMENT_CONTEXTS.set(placementId, context);
+  while (PLACEMENT_CONTEXTS.size > PLACEMENT_MAX) {
+    const oldest = PLACEMENT_CONTEXTS.keys().next().value;
+    if (oldest === undefined) break;
+    PLACEMENT_CONTEXTS.delete(oldest);
+  }
+}
 
 /**
  * Clears all placement contexts.
@@ -183,10 +202,7 @@ export const placeTemplateHandler: ToolHandler<PlaceTemplateArgs> = {
 
     // Step 6: mint placementId + store context with TTL timestamp
     const placementId = randomId();
-    PLACEMENT_CONTEXTS.set(placementId, {
-      templates,
-      cachedAt: Date.now(),
-    });
+    rememberPlacement(placementId, { templates, cachedAt: Date.now() });
 
     // Step 7: return placement description (the G2 app places one template per index)
     return {

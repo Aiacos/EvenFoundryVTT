@@ -360,6 +360,36 @@ describe('placeTemplateHandler', () => {
     expect(confirmResult).toEqual({ success: false, error: 'placement_expired' });
   });
 
+  it('regression: PLACEMENT_CONTEXTS is bounded — the oldest pending placement is dropped first', async () => {
+    const template = makeAbilityTemplate({ t: 'circle', distance: 20 });
+    const activity = makeActivity({ templates: [template] });
+    const item = makeItem({ id: 'spell-1', activity });
+    const actor = makeActor({ id: 'actor-a', item });
+    const scene = makeSceneGlobal();
+    vi.stubGlobal('game', makeGameGlobal(actor, scene));
+    vi.stubGlobal('canvas', makeCanvasGlobal(scene));
+    vi.stubGlobal('dnd5e', {
+      canvas: { AbilityTemplate: { fromActivity: vi.fn().mockReturnValue([template]) } },
+    });
+    const {
+      placeTemplateHandler,
+      confirmTemplatePlacementHandler,
+      clearPlacementContexts,
+      PLACEMENT_MAX,
+    } = await import('./place-template.js');
+    clearPlacementContexts();
+    const ids: string[] = [];
+    for (let i = 0; i <= PLACEMENT_MAX; i++) {
+      const r = await placeTemplateHandler.handle({ actor_id: 'actor-a', spell_id: 'spell-1' });
+      if (!r.success) throw new Error('Expected success');
+      ids.push((r.data as { placementId: string }).placementId);
+    }
+    const confirm = (placementId: string) =>
+      confirmTemplatePlacementHandler.handle({ placementId, templateIndex: 0, x: 1, y: 2 });
+    expect(await confirm(ids[0] ?? '')).toEqual({ success: false, error: 'placement_expired' });
+    expect((await confirm(ids[PLACEMENT_MAX] ?? '')).success).toBe(true);
+  });
+
   it('expires PLACEMENT_CONTEXTS after 61s (fake timers)', async () => {
     vi.useFakeTimers();
 
