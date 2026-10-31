@@ -102,10 +102,17 @@ installed app keeps running when the phone locks.
 next session, just open Foundry there and the glasses reconnect by themselves. On the first
 connection the room and key rotate, so the QR you scanned stops working.
 
-The phone shows the **Connection** page: status, relay, Foundry, character, latency,
-language, map options, **Reconnect**, **Disconnect**, **Pair again** (IT: *Collega di nuovo* —
-the same **Scan QR** button and **Code** field, open by itself whenever you are not connected)
-and **Diagnostics**. At the bottom of the page a boot line without secrets —
+While Foundry has not answered the code yet, the phone shows **Waiting for Foundry…** (IT:
+*In attesa di Foundry…*) with the time left on the code (when this phone sent it) and
+**Cancel** (back to first setup). Then it shows the **Connection** page: first a summary —
+**All set: you can put the phone away** when connected; when not, the cause and **Pair again**
+(IT: *Collega di nuovo* — the same **Scan QR** button and **Code** field, open by itself) with
+**Reconnect** next to it — then relay, Foundry, character, GM and latency (only the rows that
+have a value), **Pause** / **Resume** (IT: *Pausa* / *Riprendi*: stops the link on this phone
+only; it is not Foundry's **Disconnect**), **Preferences** (language, map, sheet; closed by
+default) and **Diagnostics**. The code field groups the 16 characters as you type
+(`7QK3-MX9P-…`) and takes the whole link, pasted. Under **Diagnostics** a boot line without
+secrets —
 `app <version> · secure yes/no · crypto webcrypto/fallback · link none/code/invalid/legacy/used · relay <host>`
 — is what to screenshot when you ask for help.
 
@@ -145,7 +152,8 @@ For a player who has glasses but no computer at the table:
   **Glasses connected to this browser** (status *online* / *waiting for the glasses* /
   *relay unreachable*) → **Disconnect** → confirm. The glasses receive a sealed `revoked`
   message and go back to the "not paired" screen (S10).
-- **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials. To
+- **On the phone:** *Diagnostics* → **Forget pairing** → **Forget** (asked first) removes the
+  local credentials. To
   pair again you don't need it: **Pair again** takes a new QR or code directly.
 - **New browser, cleared browser data, other character, lost phone:** disconnect (if the old
   browser is still there) and connect again — a new QR, a new room and a new key.
