@@ -6,6 +6,7 @@ import {
   checkScene,
   decodePng,
   diffPixels,
+  EXPECTED_SIM_VERSION,
   findConsoleErrors,
   GUTTERS,
   gutterSignature,
@@ -14,6 +15,7 @@ import {
   litCounts,
   parseSceneMarker,
   type RgbaImage,
+  resolveSimulatorCommand,
   SCREEN_H,
   SCREEN_W,
   SEAM_POINTS,
@@ -189,5 +191,23 @@ describe('console filtering', () => {
     expect(hasMarker(entries, 'EVF_READ')).toBe(false);
     expect(lastId(entries)).toBe(8);
     expect(lastId([])).toBeNull();
+  });
+});
+
+describe('resolveSimulatorCommand', () => {
+  it('defaults to the validated simulator via npx, not whatever is on PATH (regression)', () => {
+    expect(resolveSimulatorCommand()).toEqual([
+      'npx',
+      '-y',
+      `@evenrealities/evenhub-simulator@${EXPECTED_SIM_VERSION}`,
+    ]);
+  });
+
+  it('honours --sim before $EVF_SIMULATOR', () => {
+    expect(resolveSimulatorCommand('evenhub-simulator  --x', 'other')).toEqual([
+      'evenhub-simulator',
+      '--x',
+    ]);
+    expect(resolveSimulatorCommand(undefined, 'my-sim')).toEqual(['my-sim']);
   });
 });

@@ -6,8 +6,9 @@
  *                            [--sim "<simulator command>"] [--timeout 60000]
  *
  * 1. Serves the app with `vite` (unless `--url` is given).
- * 2. Launches `evenhub-simulator <url>?demo=tour --automation-port <port>` (`--sim` or
- *    `$EVF_SIMULATOR` overrides the command, e.g. `npx -y @evenrealities/evenhub-simulator@0.9.5`).
+ * 2. Launches the simulator on `<url>?demo=tour --automation-port <port>`: by default the
+ *    validated `npx -y @evenrealities/evenhub-simulator@0.9.5`; `--sim` or `$EVF_SIMULATOR`
+ *    override the command (e.g. a local build).
  * 3. Waits for `EVF_READY`, then for every `EVF_SCENE i/n name layout` marker saves the
  *    glasses screenshot to `.sim-artifacts/`, checks it (lit pixels in the five sheet
  *    zones, header rules continuous across the x = 287 | 288 top-tile seam; INV-1 gutter
@@ -34,19 +35,19 @@ import {
   checkScene,
   decodePng,
   diffPixels,
+  EXPECTED_SIM_VERSION,
   findConsoleErrors,
   gutterSignature,
   hasMarker,
   lastId,
   parseSceneMarker,
   type RgbaImage,
+  resolveSimulatorCommand,
   type SceneMarker,
 } from './sim-lib.js';
 
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ARTIFACTS = join(PACKAGE_DIR, '.sim-artifacts');
-/** Simulator version the loop was validated against. */
-const EXPECTED_SIM_VERSION = '0.9.5';
 /** Scenes whose list cursor must visibly move on a real `down` input. */
 const INPUT_PROBES: readonly string[] = ['actions', 'target'];
 /** Extra wait after a scene marker: the paced image zones land after the text. */
@@ -87,11 +88,6 @@ async function waitFor<T>(what: string, probe: () => Promise<T | null>, ms: numb
     await sleep(250);
   }
   throw new Error(`timed out waiting for ${what}`);
-}
-
-function simulatorCommand(): string[] {
-  const raw = args.sim ?? process.env.EVF_SIMULATOR ?? 'evenhub-simulator';
-  return raw.split(/\s+/).filter((p) => p !== '');
 }
 
 /** Checks the simulator can start here (binary present, display available). */
@@ -185,7 +181,7 @@ async function waitScene(index: number): Promise<SceneMarker> {
 }
 
 async function run(): Promise<number> {
-  const cmd = simulatorCommand();
+  const cmd = resolveSimulatorCommand(args.sim, process.env.EVF_SIMULATOR);
   probeSimulator(cmd);
   await rm(ARTIFACTS, { recursive: true, force: true });
   await mkdir(ARTIFACTS, { recursive: true });
