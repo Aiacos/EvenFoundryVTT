@@ -274,7 +274,7 @@ describe('writeAuditLog', () => {
     expect(chatCreateMock).not.toHaveBeenCalled();
     // A warn must be emitted so the GM can diagnose missed audit entries post-reconnect
     expect(consoleSpy).toHaveBeenCalledOnce();
-    expect(consoleSpy.mock.calls[0]![0]).toContain('no GMs connected');
+    expect(consoleSpy.mock.calls[0]?.[0]).toContain('no GMs connected');
 
     consoleSpy.mockRestore();
   });

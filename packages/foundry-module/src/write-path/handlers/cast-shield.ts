@@ -32,37 +32,9 @@
 
 import { CastShieldInputSchema } from '@evf/shared-protocol';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { extractChatCardId, isNoGmError } from './common.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Defensively extracts a chat card ID from an activity.use() result.
- *
- * dnd5e 5.x activity.use() resolves to a ChatMessage-like object on success.
- * The exact shape is version-specific; we defensively read `.id` and return
- * `null` if the shape doesn't match (non-critical — audit log captures result).
- */
-function extractChatCardId(result: unknown): string | null {
-  if (
-    result !== null &&
-    typeof result === 'object' &&
-    'id' in result &&
-    typeof (result as Record<string, unknown>).id === 'string'
-  ) {
-    return (result as { id: string }).id;
-  }
-  return null;
-}
-
-/**
- * Detects a GM-offline signal from a thrown error (Pitfall 5).
- *
- * dnd5e rejects with "No connected GM" when no GM is available.
- */
-function isNoGmError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes('no_gm_connected') || msg.includes('No connected GM');
-}
 
 /** Lowercase names to match Shield in IT/EN locale. */
 const SHIELD_NAMES = new Set(['shield', 'scudo']);
