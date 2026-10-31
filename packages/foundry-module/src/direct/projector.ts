@@ -281,9 +281,18 @@ export class Projector {
     }
     channel.release = this.lock(deviceId, () => {
       if (this.channels.get(deviceId) !== channel) return;
+      // Re-read: while this tab waited for the lock, the tab holding it may have rotated
+      // room and key (first `hello` of a QR) or forgotten the pairing.
+      const current = getPairing(deviceId);
+      if (current === null) {
+        this.close(deviceId);
+        this.emit();
+        return;
+      }
+      channel.keyB64 = current.key;
       // The relay the pairing was made on: the glasses keep dialling the relay of their QR
       // even after the relay setting of this browser changed.
-      channel.link = this.connect(pairing.relay ?? this.deps.relayBase(), pairing.room, {
+      channel.link = this.connect(current.relay ?? this.deps.relayBase(), current.room, {
         onFrame: (frame) => {
           // Serialised: two `hello`s racing on a fresh QR (the glasses re-send on the
           // relay's `peer-up`) must not rotate the secrets twice.

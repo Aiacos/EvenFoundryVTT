@@ -805,6 +805,61 @@ describe('Projector (ADR-0019)', () => {
     ]);
   });
 
+  it('PJ-27 regression: a tab queued behind the Web Lock dials the room current when it gets the lock', async () => {
+    let hold = () => {};
+    const queued = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      assets: new MapAssetCache(async () => 'data:image/jpeg;base64,AAAA'),
+      lock: (_id, h) => {
+        hold = h;
+        return () => {};
+      },
+      now: () => now,
+    });
+    projector = queued;
+    await savePairing(pairing());
+    await queued.start();
+    expect(links).toHaveLength(0);
+    // Meanwhile the tab holding the lock rotated room and key (first hello of a QR).
+    const rotated = { room: generateRoomId(), key: generateDeviceKey() };
+    await updatePairing('dev1', rotated);
+    hold();
+    expect(links[0]?.rooms).toEqual([rotated.room]);
+    const link = links[0] as FakeLink;
+    link.handlers.onPeer(true);
+    await glasses(link, { t: 'ping', rid: 'p' }, rotated.key);
+    const [pong] = await received(link, 1, rotated.key);
+    expect(pong).toEqual({ t: 'pong', rid: 'p' });
+  });
+
+  it('PJ-27b a pairing forgotten while queued behind the lock dials nothing', async () => {
+    let hold = () => {};
+    projector = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      lock: (_id, h) => {
+        hold = h;
+        return () => {};
+      },
+      now: () => now,
+    });
+    await savePairing(pairing());
+    await projector.start();
+    const { removePairing } = await import('./pairing-store.js');
+    await removePairing('dev1');
+    hold();
+    expect(links).toHaveLength(0);
+  });
+
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
