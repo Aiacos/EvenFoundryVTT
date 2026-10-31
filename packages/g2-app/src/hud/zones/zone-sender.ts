@@ -17,7 +17,9 @@
  * - latest wins: a newer pixmap replaces a queued one of the same tile;
  * - priority: reading order `tl` (PF digits, CA, portrait) > `tr` (turn chip, map) >
  *   `bl` (sheet) > `br`; the context zone is text and never waits here;
- * - a failed send forgets the tile hash and retries after {@link RETRY_MS}.
+ * - a failed send forgets the tile hash and retries after {@link RETRY_MS};
+ * - {@link ZoneSender.pause} (app in background) stops sending until
+ *   {@link ZoneSender.resume}, which forgets what the glasses show.
  *
  * The map's ≤ 1 fps cadence is enforced upstream, when the top band is composed
  * (`startHud`), because the map shares tile `tr` with the header.
@@ -63,6 +65,7 @@ export class ZoneSender {
   /** When the last send settled (the {@link MIN_GAP_MS} gap starts here). */
   private lastSendEnd = Number.NEGATIVE_INFINITY;
   private disposed = false;
+  private paused = false;
   /** Bumped by {@link reset}: results of sends started before it are ignored. */
   private epoch = 0;
 
@@ -76,7 +79,7 @@ export class ZoneSender {
    * exactly these pixels (latest wins: an older queued pixmap of the tile is dropped).
    */
   submit(region: Tile, pix: Pixmap): void {
-    if (this.disposed) return;
+    if (this.disposed || this.paused) return;
     const hash = pix.hash();
     const sending = this.inFlight?.region === region ? this.inFlight.hash : undefined;
     if ((sending ?? this.shown.get(region)) === hash) {
@@ -96,9 +99,29 @@ export class ZoneSender {
     this.notBefore.clear();
   }
 
+  /**
+   * Stops sending while the app is in the background: queued tiles are dropped and
+   * nothing is submitted or retried (a send already on the wire completes).
+   */
+  pause(): void {
+    this.paused = true;
+    this.pending.clear();
+    this.cancelTimer();
+  }
+
+  /** Resumes after {@link pause}; the glasses may have dropped images, so it also resets. */
+  resume(): void {
+    this.paused = false;
+    this.reset();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.pending.clear();
+    this.cancelTimer();
+  }
+
+  private cancelTimer(): void {
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
   }
@@ -116,11 +139,8 @@ export class ZoneSender {
 
   /** (Re)arms the timer for the next due region (a new submission may be due sooner). */
   private schedule(): void {
-    if (this.disposed || this.busy) return;
-    if (this.timer !== null) {
-      this.timers.clearTimeout(this.timer);
-      this.timer = null;
-    }
+    if (this.disposed || this.paused || this.busy) return;
+    this.cancelTimer();
     const now = this.timers.now();
     const next = this.next(now);
     if (next === null) return;
@@ -134,7 +154,7 @@ export class ZoneSender {
   private async flush(): Promise<void> {
     const now = this.timers.now();
     const next = this.next(now);
-    if (this.disposed || next === null || next.wait > 0) {
+    if (this.disposed || this.paused || next === null || next.wait > 0) {
       this.schedule();
       return;
     }

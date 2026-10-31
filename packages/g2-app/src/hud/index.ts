@@ -3,7 +3,8 @@
  * (docs/design/g2-sheet-ux.html).
  *
  * `startHud` builds the G2 page once (`createStartUpPageContainer`), then on every store
- * change / gesture / 1 s tick re-renders and pushes only what changed:
+ * change / gesture / 1 s tick re-renders and pushes only what changed (paused while the
+ * app is in the background — FOREGROUND_EXIT / ABNORMAL_EXIT → FOREGROUND_ENTER):
  * `textContainerUpgrade` (instant, flicker-free) for zone E, and the image tiles through
  * the paced, hash-skipping {@link ZoneSender}. Zones A + B + C are composed into one
  * 576 × 144 top band sent as the two top 288 × 144 tiles, zone D is the bottom-left tile
@@ -151,6 +152,8 @@ export function startHud(
   let placeRetryAt = 0;
   let placeTimer: ReturnType<typeof setTimeout> | null = null;
   let mapTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The app is in the background: no tick, no render, no bridge call until it returns. */
+  let background = false;
   const mapGate = new MapFrameGate();
   const shown = new Map<TextRegion, TextContent>();
   let viewport: { key: string; vp: Viewport } | null = null;
@@ -333,6 +336,7 @@ export function startHud(
   }
 
   function render(): void {
+    if (background) return;
     const app = store.get();
     const loc = locale();
     const next = pageModeFor(app);
@@ -399,12 +403,31 @@ export function startHud(
     render();
   }
 
+  let tick: ReturnType<typeof setInterval> | null = null;
+  function startTick(): void {
+    if (tick === null) tick = setInterval(() => dispatch({ t: 'tick' }), TICK_MS);
+  }
+  function stopTick(): void {
+    if (tick !== null) clearInterval(tick);
+    tick = null;
+  }
+
   const offEvents = bridge.onEvenHubEvent((ev) => {
     const g = toGestureEvent(ev);
     if (!g) return;
+    if (g.t === 'background') {
+      // Nothing is shown while backgrounded: stop the UI clock and the image pipeline
+      // (no BLE traffic, no retry warnings) until FOREGROUND_ENTER.
+      background = true;
+      stopTick();
+      sender.pause();
+      return;
+    }
     if (g.t === 'foreground') {
       // The glasses may have dropped image content while we were in background.
-      sender.reset();
+      background = false;
+      startTick();
+      sender.resume();
       mapGate.reset();
       render();
       return;
@@ -412,13 +435,13 @@ export function startHud(
     dispatch(g);
   });
   const offStore = store.subscribe((_state, prev) => dispatch({ t: 'state', prev }));
-  const tick = setInterval(() => dispatch({ t: 'tick' }), TICK_MS);
+  startTick();
   render();
 
   return () => {
     offEvents();
     offStore();
-    clearInterval(tick);
+    stopTick();
     if (placeTimer !== null) clearTimeout(placeTimer);
     if (mapTimer !== null) clearTimeout(mapTimer);
     sender.dispose();

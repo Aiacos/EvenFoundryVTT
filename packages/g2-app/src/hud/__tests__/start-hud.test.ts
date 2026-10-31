@@ -302,6 +302,28 @@ describe('startHud', () => {
     expect(console.warn).toHaveBeenCalledWith('[hud] image tl rejected: sendFailed');
   });
 
+  it.each([
+    [5, 'FOREGROUND_EXIT'],
+    [6, 'ABNORMAL_EXIT'],
+  ])('pauses the tick and every bridge call after %i (%s) until FOREGROUND_ENTER', async (eventType) => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    // A tile still queued when the app leaves the foreground must not be sent either.
+    store.update({ connection: { status: 'offline', cause: 'network' } });
+    await flush(); // text upgrades went out; the three changed tiles are still queued
+    const n = fb.calls.length;
+    fb.emit({ sysEvent: { eventType } } as EvenHubEvent);
+    fb.results.image = 'sendFailed';
+    store.update({ connection: online('min').connection });
+    await vi.advanceTimersByTimeAsync(10 * TICK_MS);
+    expect(fb.calls.slice(n).map((c) => c.method)).toEqual([]);
+    fb.results.image = 'success';
+    fb.emit({ sysEvent: { eventType: 4 } } as EvenHubEvent);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(imageNames().slice(-3).sort()).toEqual(['img-bl', 'img-tl', 'img-tr']);
+  });
+
   it('rebuilds when the language changes and dims the zones offline', async () => {
     store = createAppStore(itState());
     dispose = startHud(fb.bridge, store, actions, options);

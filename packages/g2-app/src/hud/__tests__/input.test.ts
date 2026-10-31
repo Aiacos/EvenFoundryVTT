@@ -484,6 +484,8 @@ describe('toGestureEvent', () => {
     expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT, null)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.FOREGROUND_ENTER_EVENT)).toEqual({ t: 'foreground' });
+    expect(sys(OsEventTypeList.FOREGROUND_EXIT_EVENT)).toEqual({ t: 'background' });
+    expect(sys(OsEventTypeList.ABNORMAL_EXIT_EVENT)).toEqual({ t: 'background' });
     expect(sys(OsEventTypeList.SCROLL_TOP_EVENT)).toEqual({ t: 'up' });
     expect(sys(OsEventTypeList.LONG_PRESS_EVENT)).toBeNull();
     const text = (eventType?: OsEventTypeList) =>
