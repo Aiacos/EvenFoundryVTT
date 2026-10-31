@@ -100,20 +100,26 @@ export interface HudStrings {
   // ── Full screens S10 / S11 (bitmap caps) ─────────────────────────────────────
   appTitle: string;
   unpairedSubtitle: string;
-  revokedSubtitle: string;
-  /** S10 after a code got no answer (`notice: 'code-unanswered'`). */
-  codeUnansweredSubtitle: string;
+  /**
+   * S10 notices as `[headline (cause), subtitle (remedy)]`: `revoked` = pairing dropped
+   * by Foundry, `unanswered` = the last code got no answer (`notice: 'code-unanswered'`).
+   */
+  pairNotices: Record<'revoked' | 'unanswered', readonly [string, string]>;
   pairSteps: readonly (readonly [string, string])[];
   scan: string;
   exitHint: string;
-  connectingTo: (server: string) => string;
+  /** S11 subtitle; `undefined` = relay host not known yet. */
+  connectingTo: (server: string | undefined) => string;
+  /** S11 steps; a name the session does not know yet is left out, never a placeholder. */
   steps: {
     relay: string;
     projector: string;
-    paired: (user: string) => string;
-    character: (actor: string) => string;
+    paired: (user: string | undefined) => string;
+    character: (actor: string | undefined) => string;
     scene: string;
   };
+  /** S11 failure: what the player does about each offline cause (medium caps). */
+  remedies: Record<NonNullable<ConnectionState['cause']>, string>;
   cancelHint: string;
   // ── Zone E (firmware text) ────────────────────────────────────────────────────
   exploration: string;
@@ -296,8 +302,13 @@ const IT: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'OCCHIALI NON ANCORA ASSOCIATI',
-  revokedSubtitle: 'OCCHIALI SCOLLEGATI DA FOUNDRY',
-  codeUnansweredSubtitle: 'NESSUNA RISPOSTA AL CODICE · GENERA UN NUOVO QR',
+  pairNotices: {
+    revoked: ['OCCHIALI SCOLLEGATI DA FOUNDRY', 'PER RICOLLEGARLI RIPETI I PASSI 1 E 2'],
+    unanswered: [
+      'NESSUNA RISPOSTA AL CODICE',
+      'IL QR È SCADUTO O GIÀ USATO: GENERANE UNO NUOVO (PASSO 1)',
+    ],
+  },
   pairSteps: [
     ['SU FOUNDRY: TASTO DESTRO SUL TUO NOME', '› «COLLEGA OCCHIALI G2» MOSTRA UN QR'],
     ['SUL TELEFONO: APP «FOUNDRYVTT G2 HUD»', '› «SCANSIONA QR» O INSERISCI IL CODICE'],
@@ -305,13 +316,21 @@ const IT: HudStrings = {
   ],
   scan: 'SCANSIONA',
   exitHint: '●● ESCI',
-  connectingTo: (s) => `COLLEGAMENTO A ${s}`,
+  connectingTo: (s) => (s ? `COLLEGAMENTO A ${s}` : 'COLLEGAMENTO AL RELAY'),
   steps: {
     relay: 'RELAY RAGGIUNGIBILE',
     projector: 'FOUNDRY DEL GIOCATORE APERTO',
-    paired: (u) => `COLLEGATO A «${u}»`,
-    character: (a) => `RICEVO LA SCHEDA DI ${a}…`,
+    paired: (u) => (u ? `COLLEGATO A «${u}»` : 'COLLEGATO AL TUO UTENTE FOUNDRY'),
+    character: (a) => (a ? `RICEVO LA SCHEDA DI ${a}…` : 'RICEVO LA SCHEDA DEL PERSONAGGIO…'),
     scene: 'RICEVO LA SCENA',
+  },
+  remedies: {
+    'no-projector': 'APRI FOUNDRY NEL BROWSER CHE HA MOSTRATO IL QR',
+    network: 'CONTROLLA LA RETE DEL TELEFONO: RIPROVO DA SOLO',
+    background: "RIAPRI L'APP SUL TELEFONO",
+    'code-pending': 'TIENI APERTA «COLLEGA OCCHIALI G2» IN FOUNDRY',
+    actor: 'ASSEGNA IL PG AL TUO UTENTE IN FOUNDRY',
+    replaced: "CHIUDI L'ALTRA APP, POI «RICONNETTI» SUL TELEFONO",
   },
   cancelHint: '●● ANNULLA',
   exploration: 'esplorazione',
@@ -503,8 +522,10 @@ const EN: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'GLASSES NOT PAIRED YET',
-  revokedSubtitle: 'GLASSES DISCONNECTED FROM FOUNDRY',
-  codeUnansweredSubtitle: 'NO ANSWER TO THE CODE · MAKE A NEW QR',
+  pairNotices: {
+    revoked: ['GLASSES DISCONNECTED FROM FOUNDRY', 'TO RECONNECT THEM REPEAT STEPS 1 AND 2'],
+    unanswered: ['NO ANSWER TO THE CODE', 'THE QR EXPIRED OR WAS USED: MAKE A NEW ONE (STEP 1)'],
+  },
   pairSteps: [
     ['ON FOUNDRY: RIGHT-CLICK YOUR NAME', '› «CONNECT G2 GLASSES» SHOWS A QR CODE'],
     ['ON THE PHONE: «FOUNDRYVTT G2 HUD» APP', '› «SCAN QR» OR ENTER THE CODE'],
@@ -512,13 +533,21 @@ const EN: HudStrings = {
   ],
   scan: 'SCAN',
   exitHint: '●● EXIT',
-  connectingTo: (s) => `CONNECTING TO ${s}`,
+  connectingTo: (s) => (s ? `CONNECTING TO ${s}` : 'CONNECTING TO THE RELAY'),
   steps: {
     relay: 'RELAY REACHABLE',
     projector: "PLAYER'S FOUNDRY TAB OPEN",
-    paired: (u) => `LINKED TO «${u}»`,
-    character: (a) => `RECEIVING ${a}'S SHEET…`,
+    paired: (u) => (u ? `LINKED TO «${u}»` : 'LINKED TO YOUR FOUNDRY USER'),
+    character: (a) => (a ? `RECEIVING ${a}'S SHEET…` : 'RECEIVING THE CHARACTER SHEET…'),
     scene: 'RECEIVING THE SCENE',
+  },
+  remedies: {
+    'no-projector': 'OPEN FOUNDRY IN THE BROWSER THAT SHOWED THE QR',
+    network: "CHECK THE PHONE'S NETWORK: RETRYING BY ITSELF",
+    background: 'REOPEN THE APP ON THE PHONE',
+    'code-pending': 'KEEP «CONNECT G2 GLASSES» OPEN IN FOUNDRY',
+    actor: 'ASSIGN THE CHARACTER TO YOUR FOUNDRY USER',
+    replaced: 'CLOSE THE OTHER APP, THEN «RECONNECT» ON THE PHONE',
   },
   cancelHint: '●● CANCEL',
   exploration: 'exploring',

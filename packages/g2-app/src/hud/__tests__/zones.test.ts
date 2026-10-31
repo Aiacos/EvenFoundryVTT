@@ -4,7 +4,7 @@
  * digits, TEMP, chip overflow), full-screen tiles, PNG encoding and the luminance
  * loader. Pixel-exact layouts are pinned by `golden.test.ts`.
  */
-import { LABEL_FONT, measure, Pixmap } from '@evf/shared-render';
+import { LABEL_FONT, MEDIUM_FONT, measure, Pixmap } from '@evf/shared-render';
 import * as UPNG from 'upng-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { character, mapSnap, online } from '../../demo/fixtures.js';
@@ -13,7 +13,7 @@ import { strings } from '../i18n.js';
 import { initialUi } from '../input/ui-state.js';
 import { type SheetModel, sheetModel } from '../model.js';
 import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
-import { renderFullScreen } from '../zones/fullscreen.js';
+import { connectLayout, pairLayout, renderFullScreen } from '../zones/fullscreen.js';
 import { HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
 import { computeViewport, LEVEL, MAP_VIEW, renderMap } from '../zones/map.js';
@@ -229,7 +229,8 @@ describe('full-screen subtitles (INV-1 width budget)', () => {
   it('every S10 / S11 subtitle fits the 530 px line without truncation, IT and EN', () => {
     for (const loc of ['it', 'en'] as const) {
       const t = strings(loc);
-      for (const line of [t.unpairedSubtitle, t.revokedSubtitle, t.codeUnansweredSubtitle]) {
+      const notices = Object.values(t.pairNotices).flat();
+      for (const line of [t.unpairedSubtitle, ...notices]) {
         expect(measure(LABEL_FONT, line), `${loc}: ${line}`).toBeLessThanOrEqual(530);
       }
     }
@@ -271,6 +272,78 @@ describe('offline before any character (code pending, actor error, Foundry close
       for (const line of Object.values(strings(loc).offlineCauses)) {
         expect(measure(LABEL_FONT, line), `${loc}: ${line}`).toBeLessThanOrEqual(530);
       }
+    }
+  });
+});
+
+describe('failure screens say what failed and what to do (Impeccable P1)', () => {
+  const causes = [
+    'no-projector',
+    'network',
+    'background',
+    'code-pending',
+    'actor',
+    'replaced',
+  ] as const;
+
+  it('puts the cause in the headline, marks the stuck step and names the remedy', () => {
+    for (const loc of ['it', 'en'] as const) {
+      const t = strings(loc);
+      for (const cause of causes) {
+        const c = {
+          status: 'offline' as const,
+          cause,
+          server: 'relay.example',
+          steps: { relay: true, projector: true, paired: false, character: false, scene: false },
+        };
+        const out = connectLayout(c, t);
+        expect(out.headline, cause).toBe(t.offlineCauses[cause]);
+        expect(out.remedy, cause).toBe(t.remedies[cause]);
+        const states = out.steps.map((st) => st.state);
+        // A pending code is a wait, not a failure: the step stays «in progress».
+        expect(states[2], cause).toBe(cause === 'code-pending' ? 'current' : 'failed');
+        expect(states.filter((st) => st === 'failed').length).toBe(
+          cause === 'code-pending' ? 0 : 1,
+        );
+      }
+    }
+  });
+
+  it('never prints a placeholder for a name the session does not know yet', () => {
+    for (const loc of ['it', 'en'] as const) {
+      const t = strings(loc);
+      const out = connectLayout({ status: 'offline', cause: 'actor' }, t);
+      const all = [out.headline, out.subtitle, ...out.steps.map((st) => st.label)].join('|');
+      expect(all, loc).not.toMatch(/—|«-»|«»/);
+    }
+  });
+
+  it('a plain connection shows progress only: app title, no failed step, no remedy', () => {
+    const out = connectLayout({ status: 'connecting', server: 'relay.example' }, s);
+    expect(out.headline).toBe(s.appTitle);
+    expect(out.remedy).toBeNull();
+    expect(out.steps[0]?.state).toBe('current');
+  });
+
+  it('S10 notices lead with the cause and give the remedy as subtitle', () => {
+    expect(pairLayout({ kind: 'pair', revoked: false }, s)).toEqual({
+      headline: s.appTitle,
+      subtitle: s.unpairedSubtitle,
+    });
+    expect(pairLayout({ kind: 'pair', revoked: true }, s)).toEqual({
+      headline: s.pairNotices.revoked[0],
+      subtitle: s.pairNotices.revoked[1],
+    });
+    expect(pairLayout({ kind: 'pair', revoked: false, unanswered: true }, s)).toEqual({
+      headline: s.pairNotices.unanswered[0],
+      subtitle: s.pairNotices.unanswered[1],
+    });
+  });
+
+  it('remedies fit the 528 px line in the medium face, IT and EN', () => {
+    for (const loc of ['it', 'en'] as const) {
+      for (const r of Object.values(strings(loc).remedies))
+        expect(measure(MEDIUM_FONT, `› ${r}`), r).toBeLessThanOrEqual(528);
     }
   });
 });
