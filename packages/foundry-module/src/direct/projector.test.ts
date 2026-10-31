@@ -379,6 +379,10 @@ describe('Projector (ADR-0019)', () => {
     const out = await received(link, 9, p.key);
     expect(out.slice(6).map((m) => m.seq)).toEqual([1, 2, 3]);
     expect(projector.projectedActors()).toEqual(['thorin']);
+    expect(projector.isProjected('thorin')).toBe(true);
+    expect(projector.isProjected('other')).toBe(false);
+    link.handlers.onPeer(false);
+    expect(projector.isProjected('thorin')).toBe(false);
   });
 
   it('PJ-10 chat messages visible to this user become log / roll-request deltas', async () => {

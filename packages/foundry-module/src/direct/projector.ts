@@ -162,6 +162,8 @@ export interface ProjectorDeps {
 /** Per-device runtime state. */
 interface Channel {
   deviceId: string;
+  /** Actor of the pairing (fixed for a pairing's lifetime). */
+  actorId: string;
   link: RelayConnection | null;
   release: () => void;
   keyB64: string;
@@ -235,6 +237,7 @@ export class Projector {
     if (pairing === null) return;
     const channel: Channel = {
       deviceId,
+      actorId: pairing.actorId,
       link: null,
       release: () => {},
       keyB64: pairing.key,
@@ -622,6 +625,17 @@ export class Projector {
       this.fireAndForget(this.sendDelta(channel, topic, data));
     }
   };
+
+  /**
+   * Whether a welcomed device of this tab shows `actorId` (cheap: no storage read) — the
+   * hook subscribers build a character snapshot only then.
+   */
+  isProjected(actorId: string): boolean {
+    for (const channel of this.channels.values()) {
+      if (channel.welcomed && channel.actorId === actorId) return true;
+    }
+    return false;
+  }
 
   /** Actors currently projected by this tab (combat trackers watch them). */
   projectedActors(): string[] {

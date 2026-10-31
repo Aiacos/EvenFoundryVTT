@@ -36,6 +36,13 @@ import { getCharacterSnapshot } from './character-reader.js';
  */
 export type EmitFn = (type: string, payload: unknown) => void;
 
+/**
+ * Whether some welcomed device projects `actorId` right now (the projector's
+ * `isProjected`). Every client runs these hooks, most with no device at all: a full
+ * character snapshot is built only for an actor someone is looking at.
+ */
+export type IsProjectedFn = (actorId: string) => boolean;
+
 // ─── Hook handlers ─────────────────────────────────────────────────────────────
 
 /**
@@ -48,10 +55,16 @@ export type EmitFn = (type: string, payload: unknown) => void;
  * @param actor   - The actor document (post-update)
  * @param changes - Partial diff of what changed (noUncheckedIndexedAccess-safe checks)
  * @param emitFn  - Delta emission function
+ * @param isProjected - Skips actors no device projects (no snapshot built)
  */
-function handleUpdateActor(actor: FoundryActor, changes: unknown, emitFn: EmitFn): void {
+function handleUpdateActor(
+  actor: FoundryActor,
+  changes: unknown,
+  emitFn: EmitFn,
+  isProjected: IsProjectedFn,
+): void {
   // Type-guard: changes must be an object for attribute inspection
-  if (typeof changes !== 'object' || changes === null) {
+  if (typeof changes !== 'object' || changes === null || !isProjected(actor.id)) {
     return;
   }
 
@@ -122,22 +135,23 @@ function handleTargetToken(user: unknown, token: unknown, targeted: unknown, emi
  * Call the cleanup function to deregister (e.g. on module teardown or in tests).
  *
  * @param emitFn - Delta emission function (injected; fire-and-forget)
+ * @param isProjected - Whether a welcomed device shows an actor (`updateActor` guard)
  * @returns Cleanup function that removes all registered hooks
  *
  * @example
  * ```ts
  * // module.ts ready hook:
- * const cleanup = registerHookSubscribers(projector.pushDelta);
+ * const cleanup = registerHookSubscribers(projector.pushDelta, (id) => projector.isProjected(id));
  * // On teardown (rarely needed in Foundry modules):
  * cleanup();
  * ```
  */
-export function registerHookSubscribers(emitFn: EmitFn): () => void {
+export function registerHookSubscribers(emitFn: EmitFn, isProjected: IsProjectedFn): () => void {
   const hookIds: number[] = [];
 
   hookIds.push(
     Hooks.on('updateActor', (actor: unknown, changes: unknown) => {
-      handleUpdateActor(actor as FoundryActor, changes, emitFn);
+      handleUpdateActor(actor as FoundryActor, changes, emitFn, isProjected);
     }),
   );
 

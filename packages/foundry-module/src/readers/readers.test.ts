@@ -2018,7 +2018,7 @@ describe('registerHookSubscribers', () => {
 
   it('registers hooks and returns a cleanup function', () => {
     const emitFn = vi.fn();
-    const cleanup = registerHookSubscribers(emitFn);
+    const cleanup = registerHookSubscribers(emitFn, () => true);
     expect(typeof cleanup).toBe('function');
     // Should have registered multiple hooks
     expect((Hooks as ReturnType<typeof makeHooksMock>).on).toHaveBeenCalled();
@@ -2026,7 +2026,7 @@ describe('registerHookSubscribers', () => {
 
   it('cleanup calls Hooks.off for all registered hooks', () => {
     const emitFn = vi.fn();
-    const cleanup = registerHookSubscribers(emitFn);
+    const cleanup = registerHookSubscribers(emitFn, () => true);
     cleanup();
     expect((Hooks as ReturnType<typeof makeHooksMock>).off).toHaveBeenCalled();
   });
@@ -2036,7 +2036,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1', hp: { value: 10, max: 20, temp: 0, tempmax: 0 } });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const changes = { system: { attributes: { hp: { value: 10 } } } };
     fireHook('updateActor', actor, changes);
@@ -2050,12 +2050,25 @@ describe('registerHookSubscribers', () => {
     );
   });
 
+  it('regression: updateActor builds nothing for an actor no device projects', () => {
+    const emitFn = vi.fn();
+    const actor = makeActor({ id: 'a1', hp: { value: 10, max: 20, temp: 0, tempmax: 0 } });
+    const get = vi.fn((id: string) => (id === 'a1' ? actor : undefined));
+    vi.stubGlobal('game', { ...makeGameMock([actor]), actors: { get, contents: [actor] } });
+    const projected = vi.fn((id: string) => id === 'other');
+    registerHookSubscribers(emitFn, projected);
+    fireHook('updateActor', actor, { system: { attributes: { hp: { value: 9 } } } });
+    expect(projected).toHaveBeenCalledWith('a1');
+    expect(get).not.toHaveBeenCalled();
+    expect(emitFn).not.toHaveBeenCalled();
+  });
+
   it('updateActor does NOT emit when unrelated fields change', () => {
     const emitFn = vi.fn();
     const actor = makeActor({ id: 'a1' });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     // Unrelated change — only flags changed
     const changes = { flags: { 'some-module': { key: 'value' } } };
@@ -2069,7 +2082,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1', statuses: new Set(['poisoned']) });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const changes = { statuses: new Set(['poisoned', 'prone']) };
     fireHook('updateActor', actor, changes);
@@ -2086,7 +2099,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1' });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     // system changed, but only currency (not under attributes), no statuses key.
     const changes = { system: { currency: { gp: 5 } } };
@@ -2097,7 +2110,7 @@ describe('registerHookSubscribers', () => {
 
   it('targetToken emits combat.targets with user targets', () => {
     const emitFn = vi.fn();
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const mockToken: {
       id: string;
