@@ -367,6 +367,32 @@ describe('startHud', () => {
     );
   });
 
+  it('retries the sheet page after a thrown/timed-out placement instead of falling back for good', async () => {
+    fb.results.create = new Error('bridge call timed out after 5000 ms');
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await flush();
+    expect(fb.of('create')).toHaveLength(1);
+    fb.results.create = 0;
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
+    const creates = fb.of('create');
+    expect(creates).toHaveLength(2);
+    // Still the sheet page: a slow BLE call is not a host rejection of the layout.
+    expect(fb.names(creates[1])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('createStartUpPageContainer failed for the sheet page'),
+    );
+    // Same for a rebuild that throws: retried as `sheet`, not degraded.
+    fb.results.rebuild = new Error('ble');
+    store.update({ settings: { ...store.get().settings, locale: 'en' } });
+    await flush();
+    fb.results.rebuild = true;
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
+    const rebuilds = fb.of('rebuild');
+    expect(rebuilds).toHaveLength(2);
+    expect(fb.names(rebuilds[1])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+  });
+
   it('retries a rejected full-screen page after the backoff, and a failed text upgrade', async () => {
     fb.results.create = 1;
     store = createAppStore(initialState());
@@ -378,7 +404,7 @@ describe('startHud', () => {
     await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
     expect(fb.of('create')).toHaveLength(2);
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('rejected the full page (Error: ble) — retrying'),
+      expect.stringContaining('failed for the full page (Error: ble) — retrying'),
     );
     fb.results.create = 0;
     await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS + TICK_MS);

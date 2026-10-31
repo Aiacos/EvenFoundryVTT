@@ -15,7 +15,8 @@
  * (`createStartUpPageContainer` ≠ success / `rebuildPageContainer` ≠ true) is logged on
  * the debug channel and the HUD falls back to the full-screen 2 × 2 layout for the rest of
  * the session — the sheet is then drawn as four tiles, zone E as pixels — never a dead
- * screen.
+ * screen. A placement that throws or times out (slow BLE) is not a rejection: the same
+ * page is retried after {@link PLACE_RETRY_MS}.
  *
  * The HUD reads {@link AppState} and calls {@link AppActions}; the only store writes are
  * clearing a handled reaction prompt (`reaction`) and a handled GM roll request
@@ -259,15 +260,19 @@ export function startHud(
         render();
       },
       (err: unknown) => {
+        // A throw / timeout is a transport failure (slow BLE), not the host refusing the
+        // layout: retry the same page, never switch to the fallback for it.
         creating = false;
-        rejected(first, next, String(err));
+        const call = first ? 'createStartUpPageContainer' : 'rebuildPageContainer';
+        retryPlacement(`${call} failed for the ${next} page (${String(err)}) — retrying`);
       },
     );
   }
 
   /**
-   * Page probe: a rejected/failed `sheet` placement switches to the `full` fallback at
-   * once; a rejected `full` placement is retried after {@link PLACE_RETRY_MS}.
+   * Page probe: a `sheet` placement the host rejects (non-success result) switches to the
+   * `full` fallback at once; a rejected `full` placement is retried after
+   * {@link PLACE_RETRY_MS}.
    */
   function rejected(first: boolean, next: LayoutMode, why: string): void {
     const call = first ? 'createStartUpPageContainer' : 'rebuildPageContainer';
@@ -277,7 +282,12 @@ export function startHud(
       render();
       return;
     }
-    console.warn(`[hud] ${call} rejected the ${next} page (${why}) — retrying`);
+    retryPlacement(`${call} rejected the ${next} page (${why}) — retrying`);
+  }
+
+  /** Logs `why` and re-renders (→ placement retry) after {@link PLACE_RETRY_MS}. */
+  function retryPlacement(why: string): void {
+    console.warn(`[hud] ${why}`);
     placeRetryAt = Date.now() + PLACE_RETRY_MS;
     if (placeTimer === null) {
       placeTimer = setTimeout(() => {
