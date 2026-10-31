@@ -74,8 +74,8 @@ review of a `*.ts.net` origin; survival of the 5-minute phone lock with the VPN 
 
 ## Decision Outcome (proposed)
 
-1. **One hub node in the project tailnet** — an always-on machine (home server, NAS or small VM)
-   named e.g. `evf-hub`, running a small WebSocket hub on `127.0.0.1` behind
+1. **One hub node in the project tailnet** — an always-on machine **at the maintainer's home
+   (home server / NAS; decided 2026-11-01)** named e.g. `evf-hub`, running a small WebSocket hub on `127.0.0.1` behind
    `tailscale serve --https=443`. Its full origin `https://evf-hub.<project-tailnet>.ts.net` (and
    `wss://` same host) replaces the relay in `app.json`'s whitelist and in
    `DEFAULT_RELAY_URL`. The hub reuses the relay's room logic (`packages/relay` ported from a
@@ -90,12 +90,12 @@ review of a `*.ts.net` origin; survival of the 5-minute phone lock with the VPN 
    the user owns several. No QR, no 16-character code, no device key, no rotation.
 4. **Transport security** — WireGuard (Tailscale) encrypts every hop; frames are no longer
    AES-sealed end to end. The hub operator (the maintainer) is inside the trust boundary and could
-   read game traffic; this is accepted for a closed group and stated in `SECURITY.md`. *Open: keep
-   the sealed envelope with a key derived per login if the maintainer wants the hub blind.*
+   read game traffic; this is accepted for a closed group and stated in `SECURITY.md` (decided 2026-11-01: «No, basta
+   Tailscale» — no application-level sealing).
 5. **What goes away** — Cloudflare Worker deployment (`relay-deploy.yml`), QR / code pairing UI
    (Foundry window «Collega occhiali G2» becomes a status window), phone «Scansiona QR» and the
-   `jsqr` chunk, pairing payload v2 + HKDF code derivation, the `@noble` crypto fallback (only if
-   4. drops sealing), `rotate`.
+   `jsqr` chunk, pairing payload v2 + HKDF code derivation, the `@noble` crypto fallback and the AES
+   envelope (4.), `rotate`.
 
 ## Spike gates (GO/NO-GO before ACCEPTED; `packages/validation-harness`, defer-hardware pattern)
 
@@ -114,8 +114,8 @@ review of a `*.ts.net` origin; survival of the 5-minute phone lock with the VPN 
   account; fewer moving parts (no rotation, no expiry races, no crypto fallback).
 - **Bad:** every player installs Tailscale on two devices and keeps it on while playing (iOS: the
   one VPN slot); the audience is restricted to the project tailnet's guests (PRODUCT.md updated);
-  the maintainer runs and secures an always-on node; the hub operator can read traffic unless
-  sealing is kept.
+  the maintainer runs and secures an always-on node at home (sessions depend on that home
+  connection); the hub operator can read game traffic (no application-level sealing).
 - **Neutral:** Foundry, dnd5e, the write path and the HUD are untouched; the projector role stays.
 
 ## Confirmation

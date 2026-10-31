@@ -87,8 +87,10 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
       `tailscale serve`, identity headers for shared users, MagicDNS in the Even WebView (iOS +
       Android, 5-min lock), Foundry tab self-hosted + Forge, free-plan count, Even Hub review of a
       `*.ts.net` origin — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
-- [ ] Maintainer: pick the always-on hub machine and the tailnet name; decide whether the hub stays
-      blind (keep sealed envelopes) — [ADR-0020 §Decision 1/4](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [x] Maintainer: hub on a home server / NAS; no application-level sealing («basta Tailscale»),
+      2026-11-01 — [ADR-0020 §Decision 1/4](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [ ] Maintainer: choose the tailnet name (fixes the `evf-hub.<tailnet>.ts.net` origin in `app.json`) —
+      [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
 - [ ] After GO: Spec Kit feature `specs/005-project-tailnet/` (hub service, identity rooms,
       remove QR pairing / relay deploy), INV-3 docs together — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
 
