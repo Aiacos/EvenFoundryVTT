@@ -1,3 +1,11 @@
 #!/usr/bin/env sh
+# Constitution XIV / CLAUDE.md P14: format + lint, typecheck, related tests on every commit.
+set -e
 pnpm biome check --write --staged --no-errors-on-unmatched
 git update-index --again
+pnpm typecheck
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.mjs')
+if [ -n "$staged" ]; then
+  # shellcheck disable=SC2086
+  pnpm vitest related --run --passWithNoTests $staged
+fi

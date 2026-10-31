@@ -1,6 +1,33 @@
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.2.0 → 1.3.0 (2026-10-31)
+Bump rationale: MINOR — three new principles and materially expanded guidance, from the
+maintainer's 15-point principle list (simplicity, architecture, research, testing, debug,
+pre-commit, CI/CD, performance, UX, subagents, plugins, docs, tracking files, icons, cleanup).
+Added principles:
+  XIII. Architecture & Design — plan first, patterns/OOP only where they remove complexity.
+  XIV.  Pre-commit Checks — `.husky/pre-commit` runs Biome on staged files, `pnpm typecheck`
+        and `vitest related --run`; never bypassed.
+  XV.   Plugins & Skills — Superpowers + Impeccable (when installed) + everything-evenhub.
+Modified principles:
+  I.    priorities: correctness, security, simplicity, readability, maintainability.
+  II.   tests assert real behavior, cover critical workflows + failure cases, mutation spot-check.
+  III.  consistent error handling and feedback.
+  IV.   measure the real workload, optimize only verified bottlenecks.
+  V.    root cause + recurrence guard.
+  VI.   document version, constraints and usage decision.
+  VII.  docs state configuration, workflows and known limitations.
+  VIII. regular dead-code/dependency hunt; cleanup verified behavior-preserving.
+  X.    explicit responsibilities per subagent.
+  XI.   map gains «Git hooks / Pre-commit 🪝» and «Plugins / Skills 🧩».
+Mapping to CLAUDE.md "Engineering Constitution": P1–P12 as before, P13=XIII, P14=XIV, P15=XV.
+Templates requiring updates:
+  ✅ .specify/templates/* — read this file dynamically; no edit required.
+  ✅ CLAUDE.md, README.md, docs/wiki/Test-e-Qualita.md — updated in the same commit.
+Follow-up TODOs: none.
+
+---- previous report (1.2.0) ----
 Version change: 1.1.0 → 1.2.0 (2026-09-26)
 Bump rationale: MINOR — one new principle (XII Living Tracking Files) + icon-map entry
 (Tasks / TODO ✅); factual refresh of Additional Constraints after ADR-0019 (relay pairing).
@@ -85,7 +112,9 @@ every change. They extend and operationalize the four project invariants (INV-1.
 
 ### I. Code Quality & Zero Dead Code
 
-Code MUST be clean, optimized, documented, and free of dead or unreachable code (INV-4).
+Correctness and security come first, then simplicity, readability and maintainability; the
+simplest correct design wins. Code MUST be clean, optimized, documented, and free of dead or
+unreachable code (INV-4).
 Biome (lint + format) and TypeScript strict (with the 6 lifted flags) MUST pass with zero
 errors on every change; warnings introduced by a change MUST be resolved or explicitly
 justified in the PR. Every exported/public API MUST carry JSDoc/TSDoc. A `// TODO` is only
@@ -109,7 +138,9 @@ proof that gestures and rendering behave identically across states and locales.
 
 ### III. Layout & UX Consistency (INV-1)
 
-Every ASCII mockup and every runtime layout MUST align character-perfect across all states,
+Interfaces, interactions, terminology, feedback and error handling MUST be consistent across
+the glasses, the phone page and the Foundry window: every user-reachable failure shows a clear,
+localized message that says what to do next. Every ASCII mockup and every runtime layout MUST align character-perfect across all states,
 contents, and locales (IT + EN). Frame corners, dividers, and columns occupy the same column
 from top to bottom, always. Variable content (HP `7` vs `700`, name length, condition
 overflow, i18n width) MUST be width-budgeted at build time, never left to best-effort.
@@ -121,7 +152,8 @@ Rationale: a misaligned or off-glasses HUD destroys the product's single core va
 
 ### IV. Performance Budgets
 
-The map stream targets 5 fps committed / 15 fps stretch; hot paths (capture, encode, delta
+Performance requirements MUST be defined, the relevant workload measured, and only verified
+bottlenecks optimized — never at the cost of correctness or maintainability. The map stream targets 5 fps committed / 15 fps stretch; hot paths (capture, encode, delta
 hash, frame fan-out) MUST stay within their documented budgets and MUST NOT regress without
 a recorded benchmark and a justification. When a performance ceiling is hit, the bottleneck
 MUST be measured (telemetry: capture/encode/post timings, ingress/egress fps) and attributed
@@ -178,6 +210,9 @@ Rationale: incoherent docs erode trust in every other claim and silently rot int
 
 ### VIII. Repository Hygiene
 
+The repo MUST be cleaned up regularly: dead code, unused exports and dependencies, obsolete
+files and redundant implementations are removed, and every cleanup is verified
+behavior-preserving by the full gate (lint, typecheck, coverage, builds) before and after.
 The working tree MUST stay clean and intentional. Scratch files, build artifacts, secrets,
 and generated bundles MUST be gitignored, never committed (`.env*`, `release*/`, `*.ehpk`,
 `_*.ts`, `__pycache__/`). Commits MUST be atomic and follow Conventional Commits; work
@@ -216,7 +251,8 @@ adversarial/independent perspective — and its scope, inputs, and expected outp
 stated up front. The orchestrator keeps the conclusion, not the file dumps; relay what
 matters. Large multi-agent fan-outs (workflows) are opt-in and run only when the user has
 asked for that scale, because they consume significant tokens. A single known-file lookup
-MUST be done directly, not delegated.
+MUST be done directly, not delegated. Each subagent gets a clearly scoped task with explicit
+responsibilities and sufficient context, and its output MUST be verified before it is acted on.
 
 Rationale: undirected delegation wastes tokens and context and produces unverifiable results;
 targeted orchestration multiplies throughput and confidence.
@@ -245,6 +281,7 @@ concept are forbidden.
 | Changelog | 📝 | Inspiration | 🎨 |
 | Icons / Conventions | 🏷️ | License | ⚖️ |
 | Author / Credits | 👤 | Tasks / TODO | ✅ |
+| Git hooks / Pre-commit | 🪝 | Plugins / Skills | 🧩 |
 
 Rationale: the same concept recurring across README, wiki, docs and showcase must be
 recognisable at a glance; drifting icons are a documentation-coherence (INV-3) smell.
@@ -263,6 +300,38 @@ format MUST be enforced in CI (`scripts/check-tracking-files.mjs`).
 
 Rationale: humans and agents resume work from these files; a stale or verbose tracker is worse
 than none, and a reference on every line makes each item verifiable.
+
+### XIII. Architecture & Design
+
+The architecture MUST be planned before implementation: substantive features go through Spec
+Kit (spec → plan → tasks) or an ADR. Design patterns are applied where they remove real
+complexity (input state machine, adapters at SDK/Foundry boundaries, renderer strategies, the
+single write-path dispatcher); object-oriented code is used where encapsulated state or a
+lifecycle benefits (sessions, connections, windows) and plain functions/data elsewhere. Layers
+stay apart (pure logic ← adapters ← I/O); speculative abstraction is forbidden.
+
+Rationale: a planned shape keeps a multi-package system coherent; patterns without a problem to
+solve are complexity.
+
+### XIV. Pre-commit Checks
+
+Every commit MUST automatically run formatting and linting (Biome on the staged files), type
+checking/compilation of every package (`pnpm typecheck`) and the tests related to the staged
+sources (`vitest related --run`), via `.husky/pre-commit`; `commit-msg` runs commitlint. Builds
+and the full coverage run are enforced by CI (IX). Failures MUST be resolved, never bypassed
+(`--no-verify`, `HUSKY=0`, skipped tests, lowered thresholds).
+
+Rationale: the cheapest place to catch a broken change is before it exists in history.
+
+### XV. Plugins & Skills
+
+The Superpowers skills (brainstorming, writing-plans, test-driven-development,
+systematic-debugging, verification-before-completion, requesting-code-review) MUST be used
+wherever they fit the task, the Impeccable design skills for UI/UX work when that plugin is
+installed, and the `everything-evenhub:*` skills for G2/SDK work (VI). Skills guide process;
+this constitution and the invariants win on conflict.
+
+Rationale: proven process skills make agent work repeatable and verifiable.
 
 ## Additional Constraints
 
@@ -290,7 +359,8 @@ than none, and a reference on every line makes each item verifiable.
 - Substantive work flows through a Spec Kit feature (`specs/NNN-*/` spec → plan → tasks) so
   planning artifacts and execution context stay in sync; direct repo edits outside that flow
   require explicit user authorization.
-- Each change runs `pnpm lint:ci` + `pnpm typecheck` + the affected package tests before commit;
+- Each commit runs the XIV pre-commit checks automatically (Biome, typecheck, related tests);
+  each PR runs `pnpm lint:ci` + `pnpm typecheck` + `pnpm test:coverage` before review;
   cross-cutting changes additionally satisfy INV-3 (docs in the same commit).
 - Outward-facing or hard-to-reverse actions (publishing, releases, deploys, deletions) are
   confirmed before execution unless durably authorized; outcomes are reported faithfully.
@@ -315,4 +385,4 @@ Compliance is verified at review time: every PR/review MUST confirm the change h
 principles, and any deviation MUST be justified in the PR (and, if retained, issue- or
 ADR-linked). Complexity MUST be justified against the simpler rejected alternative.
 
-**Version**: 1.2.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-09-26
+**Version**: 1.3.0 | **Ratified**: 2026-06-18 | **Last Amended**: 2026-10-31

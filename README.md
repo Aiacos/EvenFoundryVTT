@@ -124,7 +124,7 @@ Real simulator screenshots (all 12 screens in [`docs/design/img/`](docs/design/i
 
 ## 🛡️ Invariants & principles
 
-Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layout integrity · **INV-2** online cross-validation · **INV-3** documentation coherence · **INV-4** code quality — plus the Engineering Constitution (P1–P11) in [`CLAUDE.md`](CLAUDE.md).
+Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layout integrity · **INV-2** online cross-validation · **INV-3** documentation coherence · **INV-4** code quality — plus the Engineering Constitution (P1–P15) in [`CLAUDE.md`](CLAUDE.md).
 
 ## 📊 Status
 

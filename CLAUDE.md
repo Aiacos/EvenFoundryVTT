@@ -78,7 +78,7 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Constitution (READ FIRST, EVERY CHANGE)
 
-**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons · XII living tracking files `TODO.md` / `SECURITY.md` / `CHANGELOG.md` (v1.2.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
+**Before any substantive change, read and adhere to the project constitution: `.specify/memory/constitution.md`.** Its principles are BINDING quality gates, not suggestions: I. Code Quality & Zero Dead Code · II. Test-First & Coverage Discipline (≥80%; new behavior MUST be tested, bug fixes MUST add a regression test) · III. Layout & UX Consistency (INV-1) · IV. Performance Budgets · V. Autonomous Debug & Validation · VI. Source-Verified SDK/Library Research (INV-2) · VII. Documentation Coherence (INV-3) · plus VIII repo hygiene · IX reliable CI/CD · X disciplined subagent use · XI consistent chapter icons · XII living tracking files `TODO.md` / `SECURITY.md` / `CHANGELOG.md` · XIII architecture & design · XIV pre-commit checks · XV plugins & skills (v1.3.0). When in doubt, the constitution wins; it operationalizes the four invariants below.
 
 ## Project Invariants (NON-NEGOTIABLE)
 
@@ -91,10 +91,11 @@ pnpm install --frozen-lockfile && pnpm lint:ci && pnpm typecheck && pnpm test:co
 
 ## Engineering Constitution (ALWAYS APPLY)
 
-Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI · P12=XII); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
+Standing principles that bind every change — code, docs, CI, and agent workflow. They are the working form of the constitution in `.specify/memory/constitution.md` (P1≈I · P2≈II · P3≈III · P4≈IV · P5≈V · P6≈VI · P7≈VII · P8≈VIII · P9≈IX · P10≈X · P11=XI · P12=XII · P13=XIII · P14=XIV · P15=XV); both must say the same thing. They extend INV-1..4 (never override them); on conflict the invariants and `Specs.md` win. A change that violates a principle is not "done", even if tests pass.
 
 ### P1 · 💎 Code quality
 
+- Priorities, in order: correctness and security first, then simplicity, readability and maintainability. Prefer the simplest design that is correct; complexity must be justified against the simpler rejected alternative.
 - Readable, intention-revealing code that matches the surrounding idiom (naming, comment density, module layout). Small single-purpose functions; pure logic separated from I/O (Foundry hooks, WS, Even Hub bridge calls).
 - TypeScript strict, no `any` / non-null `!` without a justifying comment; Zod schemas in `shared-protocol` are the single source of truth for wire shapes — never redefine a type locally.
 - Zero dead code, unused exports, commented-out blocks, or orphan files (INV-4). `// TODO` only with `(#issue)` or `(ADR-NNNN)`.
@@ -107,6 +108,7 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 - Test pyramid: unit (pure logic, reducers, formatters) → integration (g2-app session ↔ projector via sealed-envelope round-trips on a fake socket) → snapshot (INV-1 ASCII layouts, all states × IT/EN × min/max content widths) → E2E/simulator where hardware-like behavior matters.
 - Coverage gate ≥ 80% (vitest v8) is a floor, not a target: cover edge cases (empty/overflow/unicode/locale, disconnect/reconnect, stale tokens), not lines.
 - Tests are deterministic: no real timers, network, or randomness without fakes/seeds. Flaky tests are bugs — fix or quarantine with an issue link, never retry-until-green.
+- Tests assert actual behavior (outputs, state, wire frames, rendered pixels), never implementation trivia; they cover the critical workflows (pairing, sealed session, write path, HUD render) and their failure cases (timeouts, bad input, disconnects, ownership denied). A test that still passes after the code it guards is broken (spot-check by mutation) is not a test — fix it.
 - Hardware-only checks follow the defer pattern: written as GO/NO-GO harness scripts in `validation-harness`, runnable with `--skip-hardware`, never blocking software CI.
 
 ### P3 · 👓 User experience consistency
@@ -115,10 +117,12 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 - One visual language on G2: phosphor-green CRT/VFD style, same frame glyphs, dividers, column grid, and status-HUD placement across every panel (INV-1). Reuse `shared-render` primitives — never hand-roll a frame.
 - One input grammar on R1 (ADR-0012): canonical gestures `press / double-press / swipe-up / swipe-down`; the same gesture means the same thing on every panel. Long-press only as an optional duplicate shortcut — no function may need it.
 - All user-facing strings go through i18n (IT + EN, EN canonical fallback), width-budgeted at build time. Feedback is always visual (toast / HUD) — G2 has no speaker.
+- Errors are handled consistently: every failure the user can hit has a clear, localized message on the surface they are looking at (glasses toast/S11 screen, Foundry window notice), says what to do next, and never leaks stack traces or secrets.
 - Foundry module UI, setup guide, and showcase use the same terminology as the glasses UI (one glossary, no synonyms).
 
 ### P4 · ⚡ Performance requirements
 
+- Define the requirement, measure the real workload, then optimize only the verified bottleneck — never at the cost of correctness or maintainability.
 - Budgets are contracts: map ≤ 1 fps and only on hash change, image updates one at a time ≥ 100 ms apart (SDK), per-tile hash skip, sized for the real-G2 BLE (~10–30 KB/s — 30 fps flooded it in the bridge era). The old 5/15 fps stream budget (§7.4b.6.1) binds only if a streamed map returns.
 - Hot paths (pixel renderer, PNG encode, map pixelation/dither, tile hashing, envelope sealing) have benchmarks under `docs/perf/` and regressions > 10% fail review. Measure before optimizing; state the number in the commit/PR.
 - Prefer delta over full updates, cache static layers, avoid allocations in per-frame loops, debounce Foundry hook storms. Bundle size of `g2-app` is tracked; no heavy deps without justification (see §Technology Stack "What NOT to Use").
@@ -128,23 +132,25 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 - Every feature must be observable and drivable without glasses: record structured events in the g2-app debug channel, add a `?demo=` scenario for every new HUD state, and keep the Even Hub simulator loop (`sim:check`: screenshots + input + console via the automation API) green.
 - Debug surfaces are dev-only and fail closed (404 when off, secret-gated) — never reachable in production builds.
 - Validate before claiming done: `pnpm lint:ci && pnpm typecheck && pnpm test:coverage`, plus `inv:all` for invariant-touching changes and the Even Hub simulator for display/input changes. Report real output; never claim "works" without evidence.
-- Debug autonomously first (reproduce → isolate via debug endpoints/logs → fix → regression test); ask the user only for hardware-gated steps.
+- Debug autonomously first (reproduce → isolate via debug endpoints/logs → find the root cause → fix → regression test that failed before the fix → check the same bug class elsewhere); ask the user only for hardware-gated steps. A recurring failure gets a mechanical guard (test, lint rule or CI gate) so it cannot come back.
 
 ### P6 · 🔬 Research & document SDKs and libraries
 
 - Before using or upgrading an SDK/library API (Even Hub SDK, Foundry, dnd5e, socketlib, MidiQOL, MCP SDK, Fastify, …), verify it against the canonical upstream source (INV-2) and the `everything-evenhub:*` skills — never from memory or blogs.
 - Record what you learned where the next person will find it: the relevant ADR, `Specs.md §`, or a TSDoc `@see` link to the upstream doc/version. Hand-typed SDK declarations (e.g. `even-hub.d.ts`) cite their source URL and verification date.
+- Document the version used, its constraints and the usage decision (why this API/library, what was rejected) next to the integration — ADR, `Specs.md §` or TSDoc.
 - Version pins are checked with live `npm view`; drift is logged (CRITICAL / IMPORTANT / NICE-TO-HAVE) per INV-2.
 
 ### P7 · 📚 Technical & user documentation
 
 - Docs are part of the change, not a follow-up: code + tests + docs land in the same commit/PR (INV-3 for cross-cutting changes: `Specs.md` + `README.md` + showcase together).
 - Technical docs (`docs/architecture/` ADRs, `Specs.md`, `docs/runbook.md`) explain *why*; user docs (`README.md`, `docs/setup-guide.md`, `docs/wiki/`) explain *how*, with copy-pasteable commands that were actually run.
-- New architectural decisions get an ADR; stale docs are fixed or deleted when noticed — outdated docs are bugs.
+- Docs must match the implementation: configuration, workflows and **known limitations** are stated, not implied. New architectural decisions get an ADR; stale docs are fixed or deleted when noticed — outdated docs are bugs.
 
 ### P8 · 🧹 Repository hygiene & cleanup
 
-- Leave the repo cleaner than you found it: remove unused files, scripts, deps, fixtures, stale branches/worktrees, and generated artifacts that slipped in.
+- Leave the repo cleaner than you found it: regularly hunt and remove dead code, unused exports and dependencies, obsolete files, scripts, fixtures, redundant implementations, stale branches/worktrees, and generated artifacts that slipped in.
+- Cleanup is a behavior-preserving change: run the full gate (`lint:ci`, `typecheck`, `test:coverage`, builds) before and after, and say what was removed and why in the commit.
 - No secrets, local paths, `.env`, build output, or scratch files committed; temp work goes to the scratchpad, not the repo.
 - Completed Spec Kit features are marked done/superseded in their `specs/NNN-*/` folder, not left to rot. Every file in the repo has an owner and a reason to exist.
 
@@ -158,7 +164,7 @@ Standing principles that bind every change — code, docs, CI, and agent workflo
 
 - Delegate to subagents for independent, parallelizable work (multi-file exploration, parallel INV-2 WebFetch rounds, focused reviews: code, silent-failure, types, tests) — launch independent agents in a single message.
 - Do small, known-location work directly; don't spawn agents for a single lookup or a one-file edit, and never delegate the same search twice.
-- Give each agent a self-contained brief (goal, files, constraints, expected output format) and verify its result before acting on it — subagent output is input, not truth. Use the Spec Kit commands for substantive features; keep workflows proportionate to the task.
+- Give each agent a clearly scoped task with explicit responsibilities and a self-contained brief (goal, files, constraints, expected output format) and verify its result before acting on it — subagent output is input, not truth. Use the Spec Kit commands for substantive features; keep workflows proportionate to the task.
 
 ### P11 · 🏷️ Consistent chapter icons
 
@@ -181,6 +187,7 @@ Every `##` heading in `README.md`, `docs/**/*.md`, wiki pages and the showcase u
 | Changelog | 📝 | Inspiration | 🎨 |
 | Icons / Conventions | 🏷️ | License | ⚖️ |
 | Author / Credits | 👤 | Tasks / TODO | ✅ |
+| Git hooks / Pre-commit | 🪝 | Plugins / Skills | 🧩 |
 
 ### P12 · ✅ Living tracking files (TODO · SECURITY · CHANGELOG)
 
@@ -203,6 +210,22 @@ and cheap to update — checkable lists with references, never prose essays.
 - Same rules everywhere: checkboxes, one line per item (wrap with an indented continuation),
   a reference on every item, P11 icons on every `##`, updated in the same commit as the change
   (P7). `scripts/check-tracking-files.mjs` enforces the format in CI (P9).
+
+### P13 · 🏗️ Architecture & design
+
+- Plan before implementing: substantive features go through Spec Kit (`/speckit.specify` → `plan` → `tasks`) or an ADR; a trivial fix still names the module it touches and why.
+- Apply a design pattern only where it removes real complexity (state machine for input, adapter for SDK/Foundry boundaries, strategy for renderers, single dispatcher for the write path); use classes/OOP where encapsulated state or a lifecycle benefits (sessions, connections, windows), plain functions and data elsewhere.
+- Keep the layers apart: pure logic ← adapters ← I/O. No speculative abstraction, no inheritance chains, no "framework" for one caller.
+
+### P14 · 🪝 Pre-commit checks
+
+- Every commit automatically runs, via `.husky/pre-commit`: Biome format + lint on the staged files, `pnpm typecheck` (compilation of every package) and `vitest related --run` for the staged sources; `commit-msg` runs commitlint. Builds (`g2-app`, `foundry-module`) and the full coverage run stay in CI (P9) and in the pre-PR validation (P5).
+- A failing check is fixed, never bypassed (`--no-verify`, `HUSKY=0`, skipped tests, lowered thresholds).
+
+### P15 · 🧩 Plugins & skills
+
+- Use the **Superpowers** skills wherever they fit (brainstorming before new features, writing-plans, test-driven-development, systematic-debugging, verification-before-completion, requesting-code-review) and the **Impeccable** design skills for any UI/UX work (Foundry window, phone page, showcase, glasses HUD) when that plugin is installed; plus the `everything-evenhub:*` skills for G2/SDK work (P6).
+- Skills guide the process; this constitution and the invariants still win on conflict.
 
 ## Pre-bump checklist (manual until CI lands)
 

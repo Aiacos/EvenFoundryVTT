@@ -7,6 +7,9 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] Constitution v1.3.0: 15 principles (new P13 architecture, P14 pre-commit checks, P15 plugins &
+      skills); every commit now runs Biome + typecheck + related tests —
+      [constitution](.specify/memory/constitution.md), [CLAUDE.md](CLAUDE.md), [`.husky/pre-commit`](.husky/pre-commit)
 - [x] «Scansiona QR» measured on 840 simulated phone photos of the real Foundry QR: centred-crop
       decode steps (+18 photos, none lost), camera result read leniently (the SDK dropped partial
       host answers), 120 s camera timeout, `<img>` fallback for HEIC, photo size/type in the error;
