@@ -6,6 +6,7 @@ import { phoneStrings } from '../phone/i18n.js';
 import { MemoryStorage, settle } from './__fixtures__/direct-fixtures.js';
 import { foregroundTransition, startApp } from './app.js';
 import { CREDENTIALS_STORAGE_KEY } from './credentials.js';
+import { SETTINGS_STORAGE_KEY } from './settings.js';
 
 const APP = 'https://aiacos.github.io/EvenFoundryVTT/app/index.html';
 
@@ -102,6 +103,28 @@ describe('startApp', () => {
     expect(app.store.get().connection).toMatchObject({ status: 'offline', cause: 'background' });
     app.stop();
     expect(stopEvents).toHaveBeenCalled();
+  });
+
+  it('restores device settings from the SDK store when WebView storage lost them, and mirrors saves', async () => {
+    const sdkStore: Record<string, string> = {
+      [SETTINGS_STORAGE_KEY]: JSON.stringify({ locale: 'it', mapCellPx: 12 }),
+    };
+    const bridge = {
+      setLocalStorage: vi.fn(async (key: string, value: string) => {
+        sdkStore[key] = value;
+        return true;
+      }),
+      getLocalStorage: vi.fn(async (key: string) => sdkStore[key] ?? ''),
+      onEvenHubEvent: vi.fn(() => vi.fn()),
+    } as unknown as EvenAppBridge;
+    const env = environment(APP, bridge);
+    const app = await startApp(env);
+    expect(app.store.get().settings).toMatchObject({ locale: 'it', mapCellPx: 12 });
+    expect(env.storage.data.get(SETTINGS_STORAGE_KEY)).toBe(sdkStore[SETTINGS_STORAGE_KEY]);
+    app.session.updateSettings({ locale: 'en' });
+    await settle();
+    expect(JSON.parse(sdkStore[SETTINGS_STORAGE_KEY] ?? '')).toMatchObject({ locale: 'en' });
+    app.stop();
   });
 
   it('reports the link state: none without a code, legacy for an old #evf= QR (P03 notice)', async () => {

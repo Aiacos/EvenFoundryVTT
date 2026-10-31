@@ -7,6 +7,14 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] Glasses HUD over BLE: no duplicate send of a tile already in flight, 100 ms image gap from the
+      end of the previous send, a timed-out bridge call no longer overlaps the next one —
+      [`zone-sender.ts`](packages/g2-app/src/hud/zones/zone-sender.ts), [`bridge-queue.ts`](packages/g2-app/src/hud/bridge-queue.ts)
+- [x] Glasses HUD: one slow page placement no longer drops the sheet for the full-screen fallback for
+      the whole session; HUD paused while the app is in the background —
+      [`index.ts`](packages/g2-app/src/hud/index.ts), [ADR-0012](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md)
+- [x] Phone settings (language, map) survive a wiped WebView storage: mirrored into the Even Hub SDK
+      store like the pairing — [`settings.ts`](packages/g2-app/src/direct/settings.ts)
 - [x] A sealed action re-sent by the relay can no longer run twice; scene pictures too big for a
       relay frame fall back to the schematic map instead of looping the projector — [`SECURITY.md`](SECURITY.md)
 - [x] Glasses → Foundry frames keep their order (two quick actions could arrive swapped) —

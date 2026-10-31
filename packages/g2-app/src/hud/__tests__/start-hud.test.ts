@@ -15,7 +15,11 @@ import {
   createAppStore,
   initialState,
 } from '../../state/app-store.js';
-import { BRIDGE_CALL_TIMEOUT_MS, createBridgeQueue } from '../bridge-queue.js';
+import {
+  BRIDGE_CALL_HARD_CAP_MS,
+  BRIDGE_CALL_TIMEOUT_MS,
+  createBridgeQueue,
+} from '../bridge-queue.js';
 import { PLACE_RETRY_MS, startHud, TICK_MS } from '../index.js';
 import { menuIdOf } from '../input/state-machine.js';
 
@@ -298,6 +302,28 @@ describe('startHud', () => {
     expect(console.warn).toHaveBeenCalledWith('[hud] image tl rejected: sendFailed');
   });
 
+  it.each([
+    [5, 'FOREGROUND_EXIT'],
+    [6, 'ABNORMAL_EXIT'],
+  ])('pauses the tick and every bridge call after %i (%s) until FOREGROUND_ENTER', async (eventType) => {
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await vi.advanceTimersByTimeAsync(1000);
+    // A tile still queued when the app leaves the foreground must not be sent either.
+    store.update({ connection: { status: 'offline', cause: 'network' } });
+    await flush(); // text upgrades went out; the three changed tiles are still queued
+    const n = fb.calls.length;
+    fb.emit({ sysEvent: { eventType } } as EvenHubEvent);
+    fb.results.image = 'sendFailed';
+    store.update({ connection: online('min').connection });
+    await vi.advanceTimersByTimeAsync(10 * TICK_MS);
+    expect(fb.calls.slice(n).map((c) => c.method)).toEqual([]);
+    fb.results.image = 'success';
+    fb.emit({ sysEvent: { eventType: 4 } } as EvenHubEvent);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(imageNames().slice(-3).sort()).toEqual(['img-bl', 'img-tl', 'img-tr']);
+  });
+
   it('rebuilds when the language changes and dims the zones offline', async () => {
     store = createAppStore(itState());
     dispose = startHud(fb.bridge, store, actions, options);
@@ -363,6 +389,32 @@ describe('startHud', () => {
     );
   });
 
+  it('retries the sheet page after a thrown/timed-out placement instead of falling back for good', async () => {
+    fb.results.create = new Error('bridge call timed out after 5000 ms');
+    store = createAppStore(itState());
+    dispose = startHud(fb.bridge, store, actions, options);
+    await flush();
+    expect(fb.of('create')).toHaveLength(1);
+    fb.results.create = 0;
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
+    const creates = fb.of('create');
+    expect(creates).toHaveLength(2);
+    // Still the sheet page: a slow BLE call is not a host rejection of the layout.
+    expect(fb.names(creates[1])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('createStartUpPageContainer failed for the sheet page'),
+    );
+    // Same for a rebuild that throws: retried as `sheet`, not degraded.
+    fb.results.rebuild = new Error('ble');
+    store.update({ settings: { ...store.get().settings, locale: 'en' } });
+    await flush();
+    fb.results.rebuild = true;
+    await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
+    const rebuilds = fb.of('rebuild');
+    expect(rebuilds).toHaveLength(2);
+    expect(fb.names(rebuilds[1])).toEqual(['evf-bg', 'ctx-head', 'ctx-body', 'ctx-foot']);
+  });
+
   it('retries a rejected full-screen page after the backoff, and a failed text upgrade', async () => {
     fb.results.create = 1;
     store = createAppStore(initialState());
@@ -374,7 +426,7 @@ describe('startHud', () => {
     await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS);
     expect(fb.of('create')).toHaveLength(2);
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('rejected the full page (Error: ble) — retrying'),
+      expect.stringContaining('failed for the full page (Error: ble) — retrying'),
     );
     fb.results.create = 0;
     await vi.advanceTimersByTimeAsync(PLACE_RETRY_MS + TICK_MS);
@@ -461,19 +513,45 @@ describe('createBridgeQueue', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('runs calls one at a time and times out hung calls', async () => {
+  it('runs calls one at a time; a timed-out call rejects its caller but still blocks the queue', async () => {
     const q = createBridgeQueue();
     const order: string[] = [];
-    const hung = q.run(() => new Promise<never>(() => undefined));
+    let slowDone = false;
+    const slow = q.run(
+      () =>
+        new Promise<string>((r) =>
+          setTimeout(() => {
+            slowDone = true;
+            r('late');
+          }, BRIDGE_CALL_TIMEOUT_MS + 3000),
+        ),
+    );
     const next = q.run(async () => {
-      order.push('next');
+      order.push(slowDone ? 'next-after-slow' : 'next-overlapping');
       return 1;
     });
-    const hungResult = hung.catch((e: Error) => e.message);
+    const slowResult = slow.catch((e: Error) => e.message);
     await vi.advanceTimersByTimeAsync(BRIDGE_CALL_TIMEOUT_MS);
-    expect(await hungResult).toBe(`bridge call timed out after ${BRIDGE_CALL_TIMEOUT_MS} ms`);
+    expect(await slowResult).toBe(`bridge call timed out after ${BRIDGE_CALL_TIMEOUT_MS} ms`);
+    expect(order).toEqual([]); // the BLE call is still running: nothing may overlap it
+    await vi.advanceTimersByTimeAsync(3000);
     expect(await next).toBe(1);
-    expect(order).toEqual(['next']);
+    expect(order).toEqual(['next-after-slow']);
     await expect(q.run(async () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+  });
+
+  it('releases the queue after the hard cap when a call never settles', async () => {
+    const q = createBridgeQueue();
+    const hung = q.run(() => new Promise<never>(() => undefined)).catch(() => 'timeout');
+    let ran = false;
+    const next = q.run(async () => {
+      ran = true;
+    });
+    await vi.advanceTimersByTimeAsync(BRIDGE_CALL_HARD_CAP_MS - 1);
+    expect(await hung).toBe('timeout');
+    expect(ran).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await next;
+    expect(ran).toBe(true);
   });
 });

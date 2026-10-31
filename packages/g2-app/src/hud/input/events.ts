@@ -1,5 +1,5 @@
 /**
- * Maps Even Hub events (SDK 0.0.15) to HUD inputs.
+ * Maps Even Hub events (SDK 0.0.16) to HUD inputs and lifecycle signals.
  *
  * The event-capture container is a full-screen text container, so:
  * - swipes arrive as `textEvent` SCROLL_TOP / SCROLL_BOTTOM;
@@ -16,8 +16,12 @@
 import { type EvenHubEvent, EventSourceType, OsEventTypeList } from '@evenrealities/even_hub_sdk';
 import type { HudInput } from './state-machine.js';
 
-/** HUD input or a lifecycle signal (`foreground` = app returned to the foreground). */
-export type GestureEvent = HudInput | { t: 'foreground' };
+/**
+ * HUD input or a lifecycle signal: `foreground` = the app returned to the foreground,
+ * `background` = it left it (FOREGROUND_EXIT, or ABNORMAL_EXIT — handled the same way, as
+ * the session does: the host may restore the plugin with a later FOREGROUND_ENTER).
+ */
+export type GestureEvent = HudInput | { t: 'foreground' } | { t: 'background' };
 
 function scroll(type: OsEventTypeList | undefined): GestureEvent | null {
   if (type === OsEventTypeList.SCROLL_TOP_EVENT) return { t: 'up' };
@@ -50,6 +54,9 @@ export function toGestureEvent(ev: EvenHubEvent): GestureEvent | null {
         return { t: 'double' };
       case OsEventTypeList.FOREGROUND_ENTER_EVENT:
         return { t: 'foreground' };
+      case OsEventTypeList.FOREGROUND_EXIT_EVENT:
+      case OsEventTypeList.ABNORMAL_EXIT_EVENT:
+        return { t: 'background' };
       default:
         return scroll(type);
     }
