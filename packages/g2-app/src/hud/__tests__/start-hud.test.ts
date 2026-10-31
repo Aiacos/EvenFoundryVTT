@@ -15,7 +15,11 @@ import {
   createAppStore,
   initialState,
 } from '../../state/app-store.js';
-import { BRIDGE_CALL_TIMEOUT_MS, createBridgeQueue } from '../bridge-queue.js';
+import {
+  BRIDGE_CALL_HARD_CAP_MS,
+  BRIDGE_CALL_TIMEOUT_MS,
+  createBridgeQueue,
+} from '../bridge-queue.js';
 import { PLACE_RETRY_MS, startHud, TICK_MS } from '../index.js';
 import { menuIdOf } from '../input/state-machine.js';
 
@@ -461,19 +465,45 @@ describe('createBridgeQueue', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('runs calls one at a time and times out hung calls', async () => {
+  it('runs calls one at a time; a timed-out call rejects its caller but still blocks the queue', async () => {
     const q = createBridgeQueue();
     const order: string[] = [];
-    const hung = q.run(() => new Promise<never>(() => undefined));
+    let slowDone = false;
+    const slow = q.run(
+      () =>
+        new Promise<string>((r) =>
+          setTimeout(() => {
+            slowDone = true;
+            r('late');
+          }, BRIDGE_CALL_TIMEOUT_MS + 3000),
+        ),
+    );
     const next = q.run(async () => {
-      order.push('next');
+      order.push(slowDone ? 'next-after-slow' : 'next-overlapping');
       return 1;
     });
-    const hungResult = hung.catch((e: Error) => e.message);
+    const slowResult = slow.catch((e: Error) => e.message);
     await vi.advanceTimersByTimeAsync(BRIDGE_CALL_TIMEOUT_MS);
-    expect(await hungResult).toBe(`bridge call timed out after ${BRIDGE_CALL_TIMEOUT_MS} ms`);
+    expect(await slowResult).toBe(`bridge call timed out after ${BRIDGE_CALL_TIMEOUT_MS} ms`);
+    expect(order).toEqual([]); // the BLE call is still running: nothing may overlap it
+    await vi.advanceTimersByTimeAsync(3000);
     expect(await next).toBe(1);
-    expect(order).toEqual(['next']);
+    expect(order).toEqual(['next-after-slow']);
     await expect(q.run(async () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+  });
+
+  it('releases the queue after the hard cap when a call never settles', async () => {
+    const q = createBridgeQueue();
+    const hung = q.run(() => new Promise<never>(() => undefined)).catch(() => 'timeout');
+    let ran = false;
+    const next = q.run(async () => {
+      ran = true;
+    });
+    await vi.advanceTimersByTimeAsync(BRIDGE_CALL_HARD_CAP_MS - 1);
+    expect(await hung).toBe('timeout');
+    expect(ran).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await next;
+    expect(ran).toBe(true);
   });
 });
