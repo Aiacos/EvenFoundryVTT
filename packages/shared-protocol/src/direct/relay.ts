@@ -45,5 +45,12 @@ export type RelayControl = z.infer<typeof RelayControlSchema>;
  */
 export const DEFAULT_RELAY_URL = 'wss://evf-relay.evf-relay.workers.dev' as const;
 
+/**
+ * Largest frame the relay forwards (1 MiB); a bigger frame makes it close the sender with
+ * 1009. Mirrors `MAX_FRAME_BYTES` in `packages/relay/src/limits.ts` (the Worker has no
+ * dependencies) — `packages/e2e/src/relay-limits.test.ts` keeps the two equal.
+ */
+export const RELAY_MAX_FRAME_BYTES = 1_048_576;
+
 /** Hosted glasses app (GitHub Pages, `/app/`): the page the pairing QR opens. */
 export const DEFAULT_APP_URL = 'https://aiacos.github.io/EvenFoundryVTT/app/' as const;

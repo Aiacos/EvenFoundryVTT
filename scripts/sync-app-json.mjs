@@ -19,13 +19,11 @@ const raw = readFileSync(appPath, 'utf8');
 const app = JSON.parse(raw);
 
 if (app.version === pkg.version) {
-  // biome-ignore lint/suspicious/noConsole: intentional CI script output
   console.log(`app.json version ${app.version} = package version`);
 } else if (process.argv.includes('--check')) {
   console.error(`app.json version ${app.version} ≠ g2-app package version ${pkg.version}`);
   process.exit(1);
 } else {
   writeFileSync(appPath, raw.replace(/("version":\s*")[^"]*(")/, `$1${pkg.version}$2`));
-  // biome-ignore lint/suspicious/noConsole: intentional CI script output
   console.log(`app.json version ${app.version} → ${pkg.version}`);
 }

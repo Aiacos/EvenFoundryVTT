@@ -6,7 +6,10 @@
  * Degradation: a failed fetch/decode is cached as "failed" so the caller falls back
  * (token image → class emblem; background → grid dots) without retry storms.
  *
- * @see docs/architecture/0016-direct-foundry-streaming.md (page served same-origin by Foundry)
+ * Sources are `data:` URLs the projector sent as `asset` messages (map pictures, the portrait):
+ * the phone runs on GitHub Pages or the `.ehpk`, never on the Foundry origin.
+ *
+ * @see docs/architecture/0019-relay-pairing-player-projector.md (assets over the relay)
  */
 
 /** 8-bit luminance picture (0 = black, 255 = white), row-major. */

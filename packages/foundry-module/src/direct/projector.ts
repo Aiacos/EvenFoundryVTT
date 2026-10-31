@@ -18,9 +18,14 @@
  *   translated to UUIDs and, on a player's tab, become that player's own targets
  * - `ping`   → `pong`
  *
+ * - hooks → deltas: map refreshes, chat log, combat tracker (`updateCombat` → `combat.turn`,
+ *   `combatStart` → `combat.state`), each built per device for its viewers
+ *
  * Every request re-checks, live, that this tab's user still owns the projected actor
  * (`forbidden_actor` otherwise, audited). Deltas from the hook subscribers, write-path
- * watchers, chat log and throttled map refreshes are pushed to every welcomed device.
+ * watchers, chat log and throttled map refreshes are pushed to every welcomed device whose
+ * actor is still owned (same live check). Chat visibility follows the glasses' viewers
+ * ({@link glassesViewers}): on a GM tab, the player who owns the character, not the GM.
  *
  * The projector also owns the lifetime of an unused QR: a pending pairing is forgotten
  * when its `expiresAt` passes (timer set when its channel opens; {@link Projector.start}
@@ -34,6 +39,11 @@
 import {
   type AppMessage,
   AppMessageSchema,
+  ASSET_REF_PREFIX,
+  CHARACTER_DELTA_TYPE,
+  type CharacterSnapshot,
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
   type DeviceKey,
   GLASSES_ADDRESS,
   generateDeviceKey,
@@ -54,7 +64,7 @@ import {
 } from '@evf/shared-protocol';
 import { MODULE_ID } from '../module-id.js';
 import { getCharacterSnapshot } from '../readers/character-reader.js';
-import { getCombatSnapshot } from '../readers/combat-reader.js';
+import { type CombatViewer, getCombatSnapshot } from '../readers/combat-reader.js';
 import {
   type ChatMessageLike,
   getLogEventTail,
@@ -66,10 +76,10 @@ import { getActionEconomy } from '../write-path/combat-action-tracker.js';
 import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
 import { hashBearer } from '../write-path/idempotency-cache.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
-import { MapAssetCache } from './map-assets.js';
-import { readMapSnapshot, resolveTargetUuids } from './map-reader.js';
+import { type MapAsset, MapAssetCache, PORTRAIT_MAX_SIDE } from './map-assets.js';
+import { isMapHookRelevant, readMapSnapshot, resolveTargetUuids } from './map-reader.js';
 import { applyOwnTargets } from './own-targets.js';
-import { userOwnsActor } from './ownership.js';
+import { glassesViewers, userOwnsActor } from './ownership.js';
 import {
   getPairing,
   listPairings,
@@ -97,7 +107,10 @@ export const SEEN_PERSIST_MS = 60_000;
  */
 const HELLO_SNAPSHOT_ORDER: readonly SnapshotTopic[] = ['character', 'map', 'combat', 'log'];
 
-/** Foundry hooks after which the map snapshot is refreshed. */
+/**
+ * Foundry hooks after which the map snapshot may need a refresh ({@link isMapHookRelevant}
+ * drops the ones of other scenes / users; the per-device digest drops unchanged maps).
+ */
 const MAP_HOOKS = [
   'createToken',
   'updateToken',
@@ -155,6 +168,8 @@ export interface ProjectorDeps {
 /** Per-device runtime state. */
 interface Channel {
   deviceId: string;
+  /** Actor of the pairing (fixed for a pairing's lifetime). */
+  actorId: string;
   link: RelayConnection | null;
   release: () => void;
   keyB64: string;
@@ -165,12 +180,24 @@ interface Channel {
   /** Tail of the inbound queue: frames are handled one at a time, in arrival order. */
   inbox: Promise<void>;
   outbox: Promise<void>;
+  /**
+   * Tail of the character-delta preparation: portraits are encoded asynchronously, so a
+   * later delta could otherwise overtake an earlier one and show stale HP.
+   */
+  characterQueue: Promise<void>;
   sentAssets: Set<string>;
   seenPersistedAt: number;
   mapLastSent: number;
+  /**
+   * Digest of the last map snapshot sent (its JSON before pictures are swapped for
+   * asset ids): a hook-driven refresh that would send the same map is skipped.
+   */
+  mapDigest: string | null;
   mapTimer: ReturnType<typeof setTimeout> | null;
   /** Forgets the pairing when its unused QR expires (pending pairings only). */
   expiryTimer: ReturnType<typeof setTimeout> | null;
+  /** A first `hello` is handing over fresh secrets: the QR must not expire under it. */
+  rotating: boolean;
   /** Why the last frame from the glasses was refused, until a good one arrives. */
   rejected: OpenFailure | null;
 }
@@ -206,10 +233,16 @@ export class Projector {
     await pruneExpired(this.now());
     for (const pairing of listPairings()) this.open(pairing.deviceId);
     for (const hook of MAP_HOOKS) {
-      this.hookIds.push(Hooks.on(hook, () => this.scheduleMapForAll()));
+      this.hookIds.push(
+        Hooks.on(hook, (...args: unknown[]) => {
+          if (isMapHookRelevant(hook, args)) this.scheduleMapForAll();
+        }),
+      );
     }
     this.hookIds.push(
       Hooks.on('createChatMessage', (message: unknown) => this.pushLogMessage(message)),
+      Hooks.on('updateCombat', () => this.pushCombat(COMBAT_TURN_DELTA_TYPE)),
+      Hooks.on('combatStart', () => this.pushCombat(COMBAT_STATE_DELTA_TYPE)),
     );
   }
 
@@ -226,6 +259,7 @@ export class Projector {
     if (pairing === null) return;
     const channel: Channel = {
       deviceId,
+      actorId: pairing.actorId,
       link: null,
       release: () => {},
       keyB64: pairing.key,
@@ -235,30 +269,32 @@ export class Projector {
       seq: 0,
       inbox: Promise.resolve(),
       outbox: Promise.resolve(),
+      characterQueue: Promise.resolve(),
       sentAssets: new Set(),
       seenPersistedAt: 0,
       mapLastSent: 0,
+      mapDigest: null,
       mapTimer: null,
       expiryTimer: null,
+      rotating: false,
       rejected: null,
     };
     this.channels.set(deviceId, channel);
-    if (pairing.expiresAt !== null) {
-      channel.expiryTimer = setTimeout(
-        () => {
-          channel.expiryTimer = null;
-          this.expire(deviceId).catch((err: unknown) => {
-            console.error(`[EVF] projector: could not forget the expired QR of ${deviceId}`, err);
-          });
-        },
-        Math.max(0, pairing.expiresAt - this.now()),
-      );
-    }
+    if (pairing.expiresAt !== null) this.armExpiry(channel, pairing.expiresAt);
     channel.release = this.lock(deviceId, () => {
       if (this.channels.get(deviceId) !== channel) return;
+      // Re-read: while this tab waited for the lock, the tab holding it may have rotated
+      // room and key (first `hello` of a QR) or forgotten the pairing.
+      const current = getPairing(deviceId);
+      if (current === null) {
+        this.close(deviceId);
+        this.emit();
+        return;
+      }
+      channel.keyB64 = current.key;
       // The relay the pairing was made on: the glasses keep dialling the relay of their QR
       // even after the relay setting of this browser changed.
-      channel.link = this.connect(pairing.relay ?? this.deps.relayBase(), pairing.room, {
+      channel.link = this.connect(current.relay ?? this.deps.relayBase(), current.room, {
         onFrame: (frame) => {
           // Serialised: two `hello`s racing on a fresh QR (the glasses re-send on the
           // relay's `peer-up`) must not rotate the secrets twice.
@@ -322,8 +358,29 @@ export class Projector {
     this.emit();
   }
 
-  /** The unused QR of `deviceId` expired: close its channel and forget it (no notice). */
+  /** Forgets the pairing of `channel` when its unused QR expires at `expiresAt`. */
+  private armExpiry(channel: Channel, expiresAt: number): void {
+    if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
+    channel.expiryTimer = setTimeout(
+      () => {
+        channel.expiryTimer = null;
+        this.expire(channel.deviceId).catch((err: unknown) => {
+          console.error(
+            `[EVF] projector: could not forget the expired QR of ${channel.deviceId}`,
+            err,
+          );
+        });
+      },
+      Math.max(0, expiresAt - this.now()),
+    );
+  }
+
+  /**
+   * The unused QR of `deviceId` expired: close its channel and forget it (no notice).
+   * No-op once the QR was used, or while its first `hello` is rotating the secrets.
+   */
   private async expire(deviceId: string): Promise<void> {
+    if (this.channels.get(deviceId)?.rotating === true) return;
     if (getPairing(deviceId)?.expiresAt === null) return;
     this.close(deviceId);
     await removePairing(deviceId);
@@ -462,14 +519,27 @@ export class Projector {
     if (pairing.expiresAt !== null) {
       // First contact through the QR/code: hand over fresh secrets and move rooms. The
       // glasses persist them, follow into the new room and say `hello` again.
+      // The QR was used in time: its expiry must not fire between the `welcome` leaving
+      // and the new secrets being stored (it would forget the pairing the glasses just
+      // moved to). Re-armed only if the `welcome` never left (the QR is still unused).
       const rotate = { room: generateRoomId(), key: generateDeviceKey() };
-      await this.send(channel, { ...welcome, rotate });
-      await updatePairing(pairing.deviceId, { ...rotate, expiresAt: null });
+      if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
+      channel.expiryTimer = null;
+      channel.rotating = true;
+      try {
+        try {
+          await this.send(channel, { ...welcome, rotate });
+        } catch (err) {
+          this.armExpiry(channel, pairing.expiresAt);
+          throw err;
+        }
+        await updatePairing(pairing.deviceId, { ...rotate, expiresAt: null });
+      } finally {
+        channel.rotating = false;
+      }
       channel.keyB64 = rotate.key;
       channel.welcomed = false;
       channel.sentAssets.clear();
-      if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
-      channel.expiryTimer = null;
       channel.link?.switchRoom(rotate.room);
       this.emit();
       return;
@@ -481,7 +551,11 @@ export class Projector {
     channel.welcomed = true;
     channel.sentAssets.clear();
     this.emit();
-    await this.pushAllSnapshots(channel, pairing);
+    // Not awaited: the push (pictures encoded on a cold cache) must not hold the inbox —
+    // an `invoke` or `ping` right after the `hello` is answered meanwhile. The push keeps
+    // its own order (each send is queued on the outbox in call order) and the `welcome`
+    // above is already queued ahead of it.
+    this.fireAndForget(this.pushAllSnapshots(channel, pairing));
   }
 
   private async pushAllSnapshots(channel: Channel, pairing: Pairing): Promise<void> {
@@ -519,23 +593,28 @@ export class Projector {
     // The HUD picks targets by MapSnapshot token id; the write path / MidiQOL
     // `targetUuids` need document UUIDs. Only tokens visible on the projected scene pass.
     let targets: string[] | undefined;
+    let ownTargets: string[] | undefined;
     if (args.targets !== undefined) {
       const ids = args.targets;
       if (!Array.isArray(ids) || !ids.every((id): id is string => typeof id === 'string')) {
         return fail('invalid_input', 'targets must be an array of token ids');
       }
+      ownTargets = ids;
       const resolved = resolveTargetUuids(ids);
       if (!resolved.ok) {
         return fail('invalid_target', `token ${resolved.invalidId} is not visible on the scene`);
       }
       targets = resolved.uuids;
-      // A player's tab acts as that player: vanilla dnd5e reads `game.user.targets`.
-      if (!game.user.isGM) applyOwnTargets(ids);
     }
+    // A player's tab acts as that player: vanilla dnd5e reads `game.user.targets`. Set
+    // only when the tool really runs — a replayed `rid` must not reset the targets.
     const result = await dispatchTool(tool, {
       args: { ...args, ...(targets !== undefined ? { targets } : {}), actor_id: pairing.actorId },
       idempotencyKey: rid,
       bearer: principalOf(pairing.deviceId),
+      onExecute: () => {
+        if (ownTargets !== undefined && !game.user.isGM) applyOwnTargets(ownTargets);
+      },
     });
     if (result.success) {
       await this.send(channel, { t: 'result', rid, ok: true, data: result.data });
@@ -552,41 +631,58 @@ export class Projector {
       case 'character':
         return getCharacterSnapshot(pairing.actorId);
       case 'combat':
-        return getCombatSnapshot();
+        return getCombatSnapshot(combatViewer(pairing.actorId));
       case 'log':
-        return { events: getLogEventTail(50, [game.user.id]) };
+        return { events: getLogEventTail(50, glassesViewers(pairing.actorId)) };
     }
   }
 
+  /**
+   * Sends the snapshot of `what` (map pictures first). `onlyIfChanged`: a hook-driven map
+   * refresh, skipped when the map equals the last one sent to this device — HP-only token
+   * updates of enemies, another user's targets… (map budget: only on change).
+   */
   private async sendSnapshot(
     channel: Channel,
     pairing: Pairing,
     what: SnapshotTopic,
     rid?: string,
+    onlyIfChanged = false,
   ): Promise<void> {
     const ridPart = rid === undefined ? {} : { rid };
     if (what !== 'map') {
+      const data = this.snapshot(pairing, what);
       await this.send(channel, {
         t: 'snapshot',
         ...ridPart,
         what,
-        data: this.snapshot(pairing, what),
+        data: what === 'character' ? await this.characterForGlasses(channel, data) : data,
       });
       return;
     }
     const raw = readMapSnapshot({ actorId: pairing.actorId, userId: game.user.id });
     const parsed = raw === null ? null : MapSnapshotSchema.safeParse(raw);
+    const digest = parsed?.success === true ? JSON.stringify(parsed.data) : 'null';
+    if (onlyIfChanged && digest === channel.mapDigest) return;
     if (parsed === null || !parsed.success) {
       if (parsed !== null) console.warn('[EVF] projector: map snapshot failed validation');
       await this.send(channel, { t: 'snapshot', ...ridPart, what, data: null });
+      channel.mapDigest = digest;
       return;
     }
     const prepared = await this.assets.prepare(parsed.data);
-    for (const asset of prepared.assets) {
+    await this.sendAssets(channel, prepared.assets);
+    await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
+    channel.mapDigest = digest;
+  }
+
+  /** Sends the pictures this device has not received yet (each one once per link). */
+  private async sendAssets(channel: Channel, assets: readonly MapAsset[]): Promise<void> {
+    for (const asset of assets) {
       if (channel.sentAssets.has(asset.id)) continue;
-      // Marked before the (paced) send: a concurrent map snapshot of this device must not
-      // queue the same picture again. Frames leave in queue order, so its snapshot still
-      // follows this asset.
+      // Marked before the (paced) send: a concurrent snapshot of this device must not
+      // queue the same picture again. Frames leave in queue order, so the snapshot that
+      // references it still follows this asset.
       channel.sentAssets.add(asset.id);
       try {
         await this.send(channel, { t: 'asset', id: asset.id, data: asset.data });
@@ -595,7 +691,33 @@ export class Projector {
         throw err;
       }
     }
-    await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
+  }
+
+  /**
+   * The character as the glasses can show it: `actor.img` / the prototype token are
+   * Foundry paths (often relative, `worlds/…`) that the phone — on GitHub Pages or the
+   * `.ehpk`, never on the Foundry origin — cannot fetch. They go out as `asset` messages
+   * (144², like the HUD portrait) and the snapshot carries `evf-asset:` references; a
+   * picture that cannot be encoded is dropped (the HUD draws the class emblem).
+   */
+  private async characterForGlasses(channel: Channel, data: unknown): Promise<unknown> {
+    if (typeof data !== 'object' || data === null) return data;
+    const character = data as CharacterSnapshot;
+    const out: Record<string, unknown> = { ...character };
+    const assets: MapAsset[] = [];
+    for (const field of ['portrait', 'token'] as const) {
+      const url = character[field]?.url;
+      if (url === undefined || url.startsWith(ASSET_REF_PREFIX)) continue;
+      const asset = await this.assets.picture(url, PORTRAIT_MAX_SIDE, 'png');
+      if (asset === null) {
+        delete out[field];
+        continue;
+      }
+      assets.push(asset);
+      out[field] = { url: `${ASSET_REF_PREFIX}${asset.id}` };
+    }
+    await this.sendAssets(channel, assets);
+    return out;
   }
 
   // ─── Outbound ───────────────────────────────────────────────────────────────
@@ -610,9 +732,28 @@ export class Projector {
   readonly pushDelta = (topic: string, data: unknown): void => {
     for (const { channel, pairing } of this.welcomedDevices()) {
       if (!concerns(pairing, data)) continue;
+      if (topic === CHARACTER_DELTA_TYPE) {
+        const next = channel.characterQueue.then(async () =>
+          this.sendDelta(channel, topic, await this.characterForGlasses(channel, data)),
+        );
+        channel.characterQueue = next.catch(() => undefined);
+        this.fireAndForget(next);
+        continue;
+      }
       this.fireAndForget(this.sendDelta(channel, topic, data));
     }
   };
+
+  /**
+   * Whether a welcomed device of this tab shows `actorId` (cheap: no storage read) — the
+   * hook subscribers build a character snapshot only then.
+   */
+  isProjected(actorId: string): boolean {
+    for (const channel of this.channels.values()) {
+      if (channel.welcomed && channel.actorId === actorId) return true;
+    }
+    return false;
+  }
 
   /** Actors currently projected by this tab (combat trackers watch them). */
   projectedActors(): string[] {
@@ -626,14 +767,25 @@ export class Projector {
   private pushLogMessage(message: unknown): void {
     if (typeof message !== 'object' || message === null) return;
     const chat = message as ChatMessageLike & RollRequestMessage;
-    if (!isMessageVisibleTo(chat, [game.user.id])) return;
     const event = toLogEvent(chat);
     const request = parseRollRequest(chat);
-    for (const { channel } of this.welcomedDevices()) {
+    for (const { channel, pairing } of this.welcomedDevices()) {
+      if (!isMessageVisibleTo(chat, glassesViewers(pairing.actorId))) continue;
       if (event !== null) this.fireAndForget(this.sendDelta(channel, LOG_DELTA_TYPE, event));
       if (request !== null) {
         this.fireAndForget(this.sendDelta(channel, R1_ROLL_REQUEST_TYPE, request));
       }
+    }
+  }
+
+  /**
+   * Pushes the combat tracker after a turn change (`combat.turn`) or a new combat
+   * (`combat.state`), built per device for its viewers (hidden combatants, enemy HP).
+   */
+  private pushCombat(topic: string): void {
+    for (const { channel, pairing } of this.welcomedDevices()) {
+      const snapshot = getCombatSnapshot(combatViewer(pairing.actorId));
+      if (snapshot !== null) this.fireAndForget(this.sendDelta(channel, topic, snapshot));
     }
   }
 
@@ -650,16 +802,22 @@ export class Projector {
       channel.mapLastSent = this.now();
       const pairing = getPairing(channel.deviceId);
       if (pairing === null || !channel.welcomed) return;
-      this.fireAndForget(this.sendSnapshot(channel, pairing, 'map'));
+      this.fireAndForget(this.sendSnapshot(channel, pairing, 'map', undefined, true));
     }, wait);
   }
 
+  /**
+   * Devices pushes may go to: welcomed, and — re-checked live like every request — whose
+   * actor this tab's user still owns (a GM removing the ownership stops the pushes at once).
+   */
   private welcomedDevices(): Array<{ channel: Channel; pairing: Pairing }> {
     const out: Array<{ channel: Channel; pairing: Pairing }> = [];
     for (const channel of this.channels.values()) {
       if (!channel.welcomed) continue;
       const pairing = getPairing(channel.deviceId);
-      if (pairing !== null) out.push({ channel, pairing });
+      if (pairing !== null && userOwnsActor(pairing.actorId, game.user.id)) {
+        out.push({ channel, pairing });
+      }
     }
     return out;
   }
@@ -735,6 +893,12 @@ export class Projector {
       console.error('[EVF] projector: failed to push to a G2 device', err);
     });
   }
+}
+
+/** The combat tracker's viewer for the glasses of `actorId` ({@link glassesViewers}). */
+function combatViewer(actorId: string): CombatViewer {
+  const userIds = glassesViewers(actorId);
+  return { actorId, userIds, gm: userIds.every((id) => game.users.get(id)?.isGM === true) };
 }
 
 /** Routing rule of {@link Projector.pushDelta}. */

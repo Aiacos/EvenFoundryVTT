@@ -1,14 +1,17 @@
 /**
- * Device-local preferences (phone page P02) persisted in `localStorage`.
+ * Device-local preferences (phone page P02) persisted in `localStorage`, mirrored into the
+ * Even Hub SDK key-value store like the credentials ({@link MirroredSettingsStorage}):
+ * WebView storage is not always reliable (everything-evenhub `device-features` guide).
  *
  * Settings never leave the phone and never modify Foundry world settings
  * (Specs.md §7.16 locale override rule).
  *
  * @see docs/design/g2-thirds-layout.md §P02
+ * @see ./credentials.ts (same localStorage-primary / SDK-mirror-secondary model)
  */
 import { z } from 'zod';
 import { type AppSettings, DEFAULT_SETTINGS } from '../state/app-store.js';
-import type { KeyValueStorage, StorageWarn } from './credentials.js';
+import type { KeyValueStorage, SdkKeyValue, StorageWarn } from './credentials.js';
 
 /** localStorage key holding the JSON settings record. */
 export const SETTINGS_STORAGE_KEY = 'evf.settings.v1';
@@ -33,6 +36,11 @@ export function loadSettings(storage: KeyValueStorage | null, warn: StorageWarn)
   } catch (error) {
     warn('localStorage getItem failed', error);
   }
+  return parseSettings(raw);
+}
+
+/** Parses a stored settings record (null = none stored); see {@link loadSettings}. */
+function parseSettings(raw: string | null): AppSettings {
   if (raw === null) return { ...DEFAULT_SETTINGS };
   let parsed: unknown;
   try {
@@ -62,5 +70,79 @@ export function saveSettings(
     storage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch (error) {
     warn('localStorage setItem failed', error);
+  }
+}
+
+/**
+ * Settings storage: `localStorage` primary, SDK key-value mirror secondary (the
+ * `CredentialStore` model). Passed to the session as its `settingsStorage`: every
+ * write goes to both backends; {@link attach} restores the record from the mirror when
+ * WebView storage lost it.
+ */
+export class MirroredSettingsStorage implements KeyValueStorage {
+  private mirror: SdkKeyValue | null = null;
+  /** A settings record was written since construction (a restore must not override it). */
+  private written = false;
+
+  /**
+   * @param local - Browser storage, or `null` when unavailable.
+   * @param warn - Diagnostics sink for recoverable mirror errors.
+   */
+  constructor(
+    private readonly local: KeyValueStorage | null,
+    private readonly warn: StorageWarn,
+  ) {}
+
+  getItem(key: string): string | null {
+    return this.local?.getItem(key) ?? null;
+  }
+
+  /** Writes `localStorage` and the mirror; a `localStorage` failure is rethrown after. */
+  setItem(key: string, value: string): void {
+    this.written = true;
+    const mirror = this.mirror;
+    if (mirror !== null) {
+      mirror.setLocalStorage(key, value).catch((error: unknown) => {
+        this.warn('sdk setLocalStorage failed', error);
+      });
+    }
+    this.local?.setItem(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.local?.removeItem(key);
+  }
+
+  /**
+   * Attaches the SDK key-value store once the Even App bridge is ready.
+   *
+   * @returns The settings restored from the mirror (also written back to `localStorage`)
+   *   when `localStorage` had none, else null (nothing to restore, read failed, or the
+   *   user saved settings meanwhile).
+   */
+  async attach(mirror: SdkKeyValue): Promise<AppSettings | null> {
+    this.mirror = mirror;
+    let local: string | null = null;
+    try {
+      local = this.local?.getItem(SETTINGS_STORAGE_KEY) ?? null;
+    } catch (error) {
+      this.warn('localStorage getItem failed', error);
+    }
+    if (local !== null) return null;
+    let raw: string;
+    try {
+      raw = await mirror.getLocalStorage(SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      this.warn('sdk getLocalStorage failed', error);
+      return null;
+    }
+    // The SDK returns '' for a missing key.
+    if (raw === '' || this.written) return null;
+    try {
+      this.local?.setItem(SETTINGS_STORAGE_KEY, raw);
+    } catch (error) {
+      this.warn('localStorage setItem failed', error);
+    }
+    return parseSettings(raw);
   }
 }

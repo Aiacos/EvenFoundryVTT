@@ -63,6 +63,7 @@
 import type { MultiAttackProgressPayload } from '@evf/shared-protocol';
 import { randomId, WeaponAttackInputSchema } from '@evf/shared-protocol';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { activeMidiQol, extractChatCardId, isNoGmError } from './common.js';
 
 // ─── Progress emitter (injectable — module.ts wires the real emitter) ─────────
 
@@ -94,43 +95,6 @@ export function setMultiAttackProgressEmitter(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Defensively extracts a chat card ID from an activity.use() result.
- */
-function extractChatCardId(result: unknown): string | null {
-  if (
-    result !== null &&
-    typeof result === 'object' &&
-    'id' in result &&
-    typeof (result as Record<string, unknown>).id === 'string'
-  ) {
-    return (result as { id: string }).id;
-  }
-  return null;
-}
-
-/**
- * Detects a GM-offline signal from a thrown error (Pitfall 5).
- */
-function isNoGmError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes('no_gm_connected') || msg.includes('No connected GM');
-}
-
-/**
- * Detects whether the MidiQOL automation module is present and active.
- *
- * The `MidiQOL` global can be `undefined` even when the module is
- * active-but-not-yet-initialized, so BOTH the `typeof` check AND the
- * `game.modules.get('midi-qol')?.active` check are required before any
- * dereference of `MidiQOL` (research §6, FIX-B/FIX-C 260529-eer).
- *
- * @returns true only when MidiQOL is defined and the module reports active.
- */
-function isMidiQolActive(): boolean {
-  return typeof MidiQOL !== 'undefined' && game.modules.get('midi-qol')?.active === true;
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -181,19 +145,19 @@ export const weaponAttackHandler: ToolHandler<(typeof WeaponAttackInputSchema)['
     //   game.user.targets mutation). We surface a SINGLE honest warn (guarded by
     //   `vanillaWarned`) when advantage/targets were requested but cannot be
     //   auto-applied — never a silent drop, never a double-roll (research §1-3).
-    const useMidi = isMidiQolActive();
+    const midi = activeMidiQol();
     let vanillaWarned = false;
 
     for (let i = 0; i < count; i++) {
       try {
         let result: unknown;
-        if (useMidi) {
+        if (midi !== null) {
           // MidiQOL drives the full attack workflow against explicit targets.
           // DESIGN: `consume.action` is passed via the usage config to preserve
           // the i===0 Extra-Attack action economy 1:1. NOTE: whether MidiQOL
           // honors this top-level consume field is NOT INV-2-verified — it is
           // hardware-deferred (research §5); tests do not over-assert it.
-          result = await MidiQOL!.completeActivityUse(
+          result = await midi.completeActivityUse(
             activity,
             {
               midiOptions: {

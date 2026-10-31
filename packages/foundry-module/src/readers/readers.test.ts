@@ -1533,6 +1533,9 @@ describe('getCharacterSnapshot — feats + biography integration (CR-FT-6 / CR-B
 
 // ─── Combat reader tests ───────────────────────────────────────────────────────
 
+/** A GM looking at the tracker: every combatant, every number. */
+const GM_VIEW = { actorId: 'gm-actor', userIds: ['gm'], gm: true };
+
 describe('getCombatSnapshot', () => {
   let getCombatSnapshot: typeof import('./combat-reader.js').getCombatSnapshot;
 
@@ -1548,7 +1551,7 @@ describe('getCombatSnapshot', () => {
 
   it('returns null when game.combat is null', () => {
     vi.stubGlobal('game', makeGameMock([], null));
-    expect(getCombatSnapshot()).toBeNull();
+    expect(getCombatSnapshot(GM_VIEW)).toBeNull();
   });
 
   it('returns correct CombatSnapshot when combat is active', () => {
@@ -1578,7 +1581,7 @@ describe('getCombatSnapshot', () => {
 
     vi.stubGlobal('game', makeGameMock([actor], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     expect(snap).not.toBeNull();
     expect(snap?.combatId).toBe('combat-1');
     expect(snap?.round).toBe(2);
@@ -1608,7 +1611,7 @@ describe('getCombatSnapshot', () => {
     };
     vi.stubGlobal('game', makeGameMock([], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     expect(snap?.currentCombatantId).toBeNull();
   });
 
@@ -1635,7 +1638,7 @@ describe('getCombatSnapshot', () => {
     };
     vi.stubGlobal('game', makeGameMock([actor], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     const lyra = snap?.combatants.find((c) => c.id === 'cbt-conc-1');
     expect(lyra).toBeDefined();
     expect(lyra?.concentration).toBeUndefined();
@@ -1662,7 +1665,7 @@ describe('getCombatSnapshot', () => {
     };
     vi.stubGlobal('game', makeGameMock([actor], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     const gandalf = snap?.combatants.find((c) => c.id === 'cbt-conc-2');
     expect(gandalf?.concentration).toEqual({ spellName: 'Bless', duration: '1 minute' });
   });
@@ -1692,7 +1695,7 @@ describe('getCombatSnapshot', () => {
     };
     vi.stubGlobal('game', makeGameMock([actor], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     const ranger = snap?.combatants.find((c) => c.id === 'cbt-conc-3');
     expect(ranger?.concentration?.spellName).toBe("Hunter's Mark");
   });
@@ -1714,7 +1717,7 @@ describe('getCombatSnapshot', () => {
     };
     vi.stubGlobal('game', makeGameMock([], combat));
 
-    const snap = getCombatSnapshot();
+    const snap = getCombatSnapshot(GM_VIEW);
     const ghost = snap?.combatants.find((c) => c.id === 'cbt-conc-4');
     expect(ghost).toBeDefined();
     expect(ghost?.concentration).toBeUndefined();
@@ -1741,7 +1744,7 @@ describe('getCombatSnapshot', () => {
       };
       vi.stubGlobal('game', makeGameMock([actor], combat));
 
-      const snap = getCombatSnapshot();
+      const snap = getCombatSnapshot(GM_VIEW);
       const paladin = snap?.combatants.find((c) => c.id === 'cbt-ac-1');
       expect(paladin?.ac).toBe(18);
     });
@@ -1763,7 +1766,7 @@ describe('getCombatSnapshot', () => {
       };
       vi.stubGlobal('game', makeGameMock([], combat));
 
-      const snap = getCombatSnapshot();
+      const snap = getCombatSnapshot(GM_VIEW);
       const unlinked = snap?.combatants.find((c) => c.id === 'cbt-ac-2');
       expect(unlinked).toBeDefined();
       expect('ac' in (unlinked ?? {})).toBe(false);
@@ -1805,7 +1808,7 @@ describe('getCombatSnapshot', () => {
       };
       vi.stubGlobal('game', makeGameMock([], combat));
 
-      const snap = getCombatSnapshot();
+      const snap = getCombatSnapshot(GM_VIEW);
       const c3 = snap?.combatants.find((c) => c.id === 'cbt-ac-3');
       expect(c3).toBeDefined();
       expect('ac' in (c3 ?? {})).toBe(false);
@@ -1872,12 +1875,89 @@ describe('getCombatSnapshot', () => {
       };
       vi.stubGlobal('game', makeGameMock([], combat));
 
-      const snap = getCombatSnapshot();
+      const snap = getCombatSnapshot(GM_VIEW);
       const floatAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4a');
       expect(floatAc?.ac).toBe(19); // Math.round(18.6) = 19
 
       const negAc = snap?.combatants.find((c) => c.id === 'cbt-ac-4b');
       expect(negAc?.ac).toBe(0); // Math.max(0, Math.round(-5)) = 0
+    });
+  });
+
+  describe('privacy for a player viewer (regression)', () => {
+    const OWNER = 3;
+    function owned(id: string, ownership: Record<string, number>) {
+      return {
+        ...makeActor({ id, hp: { value: 7, max: 30, temp: 0, tempmax: 0 }, acValue: 17 }),
+        getUserLevel: (u: { id: string }) => ownership[u.id] ?? ownership.default ?? 0,
+      };
+    }
+    function combatant(id: string, actor: unknown, extra: Record<string, unknown> = {}) {
+      return {
+        id,
+        name: id,
+        actorId: (actor as { id?: string } | null)?.id ?? null,
+        actor,
+        initiative: 10,
+        token: { disposition: 0, hidden: false },
+        ...extra,
+      };
+    }
+    function stub(contents: Array<ReturnType<typeof combatant>>, current: string) {
+      vi.stubGlobal('game', {
+        ...makeGameMock([], {
+          id: 'c',
+          round: 1,
+          turn: 0,
+          combatant: contents.find((c) => c.id === current) ?? null,
+          combatants: { contents },
+        }),
+        users: { get: (id: string) => ({ id, isGM: false }) },
+      });
+      vi.stubGlobal('CONST', {
+        DOCUMENT_OWNERSHIP_LEVELS: { NONE: 0, LIMITED: 1, OBSERVER: 2, OWNER },
+        TOKEN_DISPOSITIONS: { SECRET: -2, HOSTILE: -1, NEUTRAL: 0, FRIENDLY: 1 },
+      });
+    }
+    const PLAYER = { actorId: 'self', userIds: ['p1'], gm: false };
+
+    it('CMB-PRIV-1 hidden combatants (combatant or token) are skipped for players, kept for a GM', () => {
+      stub(
+        [
+          combatant('self', owned('self', { p1: OWNER })),
+          combatant('lurker', owned('lurker', {}), { hidden: true }),
+          combatant('ghost', owned('ghost', {}), { token: { disposition: -1, hidden: true } }),
+        ],
+        'lurker',
+      );
+      const player = getCombatSnapshot(PLAYER);
+      expect(player?.combatants.map((c) => c.id)).toEqual(['self']);
+      expect(player?.currentCombatantId).toBeNull();
+      expect(getCombatSnapshot(GM_VIEW)?.combatants).toHaveLength(3);
+      expect(getCombatSnapshot(GM_VIEW)?.currentCombatantId).toBe('lurker');
+    });
+
+    it('CMB-PRIV-2 exact HP/AC only for self, friendly or owned combatants', () => {
+      stub(
+        [
+          combatant('self', owned('self', { p1: OWNER })),
+          combatant('friend', owned('friend', {}), { token: { disposition: 1, hidden: false } }),
+          combatant('pet', owned('pet', { default: OWNER })),
+          combatant('goblin', owned('goblin', {}), { token: { disposition: -1, hidden: false } }),
+          combatant('lent', owned('lent', { default: OWNER, p1: 1 })),
+        ],
+        'self',
+      );
+      const byId = Object.fromEntries(
+        (getCombatSnapshot(PLAYER)?.combatants ?? []).map((c) => [c.id, c]),
+      );
+      for (const id of ['self', 'friend', 'pet']) {
+        expect(byId[id]).toMatchObject({ hp: 7, maxHp: 30, ac: 17 });
+      }
+      for (const id of ['goblin', 'lent']) {
+        expect(byId[id]).toMatchObject({ hp: null, maxHp: null });
+        expect(byId[id]?.ac).toBeUndefined();
+      }
     });
   });
 });
@@ -1938,7 +2018,7 @@ describe('registerHookSubscribers', () => {
 
   it('registers hooks and returns a cleanup function', () => {
     const emitFn = vi.fn();
-    const cleanup = registerHookSubscribers(emitFn);
+    const cleanup = registerHookSubscribers(emitFn, () => true);
     expect(typeof cleanup).toBe('function');
     // Should have registered multiple hooks
     expect((Hooks as ReturnType<typeof makeHooksMock>).on).toHaveBeenCalled();
@@ -1946,7 +2026,7 @@ describe('registerHookSubscribers', () => {
 
   it('cleanup calls Hooks.off for all registered hooks', () => {
     const emitFn = vi.fn();
-    const cleanup = registerHookSubscribers(emitFn);
+    const cleanup = registerHookSubscribers(emitFn, () => true);
     cleanup();
     expect((Hooks as ReturnType<typeof makeHooksMock>).off).toHaveBeenCalled();
   });
@@ -1956,7 +2036,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1', hp: { value: 10, max: 20, temp: 0, tempmax: 0 } });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const changes = { system: { attributes: { hp: { value: 10 } } } };
     fireHook('updateActor', actor, changes);
@@ -1970,12 +2050,25 @@ describe('registerHookSubscribers', () => {
     );
   });
 
+  it('regression: updateActor builds nothing for an actor no device projects', () => {
+    const emitFn = vi.fn();
+    const actor = makeActor({ id: 'a1', hp: { value: 10, max: 20, temp: 0, tempmax: 0 } });
+    const get = vi.fn((id: string) => (id === 'a1' ? actor : undefined));
+    vi.stubGlobal('game', { ...makeGameMock([actor]), actors: { get, contents: [actor] } });
+    const projected = vi.fn((id: string) => id === 'other');
+    registerHookSubscribers(emitFn, projected);
+    fireHook('updateActor', actor, { system: { attributes: { hp: { value: 9 } } } });
+    expect(projected).toHaveBeenCalledWith('a1');
+    expect(get).not.toHaveBeenCalled();
+    expect(emitFn).not.toHaveBeenCalled();
+  });
+
   it('updateActor does NOT emit when unrelated fields change', () => {
     const emitFn = vi.fn();
     const actor = makeActor({ id: 'a1' });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     // Unrelated change — only flags changed
     const changes = { flags: { 'some-module': { key: 'value' } } };
@@ -1989,7 +2082,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1', statuses: new Set(['poisoned']) });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const changes = { statuses: new Set(['poisoned', 'prone']) };
     fireHook('updateActor', actor, changes);
@@ -2006,7 +2099,7 @@ describe('registerHookSubscribers', () => {
     const actor = makeActor({ id: 'a1' });
     vi.stubGlobal('game', makeGameMock([actor]));
 
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     // system changed, but only currency (not under attributes), no statuses key.
     const changes = { system: { currency: { gp: 5 } } };
@@ -2017,7 +2110,7 @@ describe('registerHookSubscribers', () => {
 
   it('targetToken emits combat.targets with user targets', () => {
     const emitFn = vi.fn();
-    registerHookSubscribers(emitFn);
+    registerHookSubscribers(emitFn, () => true);
 
     const mockToken: {
       id: string;
@@ -2043,28 +2136,6 @@ describe('registerHookSubscribers', () => {
         targets: expect.arrayContaining([
           expect.objectContaining({ tokenId: 'token-5', actorId: 'actor-orc', name: 'Orc Chief' }),
         ]),
-      }),
-    );
-  });
-
-  it('combatStart emits combat.state', () => {
-    const emitFn = vi.fn();
-    const combat = {
-      id: 'combat-new',
-      round: 1,
-      turn: 0,
-      combatant: null,
-      combatants: { contents: [] },
-    };
-    vi.stubGlobal('game', makeGameMock([], combat));
-
-    registerHookSubscribers(emitFn);
-    fireHook('combatStart', combat);
-
-    expect(emitFn).toHaveBeenCalledWith(
-      'combat.state',
-      expect.objectContaining({
-        combatId: 'combat-new',
       }),
     );
   });

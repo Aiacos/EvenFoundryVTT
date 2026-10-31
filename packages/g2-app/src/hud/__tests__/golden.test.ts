@@ -98,7 +98,7 @@ describe('golden zone fixtures (S1–S12)', () => {
   }
 });
 
-describe('golden full screens of the pairing notices', () => {
+describe('golden full screens of the pairing notices and failures', () => {
   for (const loc of ['it', 'en'] as const) {
     it(`S10 code unanswered ${loc}`, async () => {
       const screen = renderFullScreen(
@@ -106,6 +106,21 @@ describe('golden full screens of the pairing notices', () => {
         strings(loc),
       );
       await matchPixelFixture(screen, fixture('full', 'S10-code-unanswered', loc, 'min'));
+    });
+    it(`S11 failure (character refused) ${loc}`, async () => {
+      const screen = renderFullScreen(
+        {
+          kind: 'connect',
+          connection: {
+            status: 'offline',
+            cause: 'actor',
+            server: 'evf-relay.evf-relay.workers.dev',
+            steps: { relay: true, projector: true, paired: false, character: false, scene: false },
+          },
+        },
+        strings(loc),
+      );
+      await matchPixelFixture(screen, fixture('full', 'S11-actor', loc, 'min'));
     });
   }
 });

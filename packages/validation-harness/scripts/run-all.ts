@@ -1,21 +1,18 @@
-// tests/phase-0/run-all.ts
-// Sequential orchestrator for all 7 Phase 0 validation tests.
+// packages/validation-harness/scripts/run-all.ts
+// Sequential orchestrator for the GO/NO-GO validation scripts (defer-hardware pattern).
 //
-// Usage:
-//   cd tests/phase-0 && pnpm exec tsx run-all.ts                # full suite (requires hardware + Foundry test world)
-//   cd tests/phase-0 && pnpm exec tsx run-all.ts --skip-hardware # software-only smoke (Plan 02 sampling rate)
-//   cd tests/phase-0 && pnpm exec tsx run-all.ts --only=midiqol-config-probe  # single test by name
+// Usage (from the repo root):
+//   pnpm --filter @evf/validation-harness validate:all                 # full suite (G2/R1 + live Foundry world)
+//   pnpm --filter @evf/validation-harness validate:all:skip-hardware   # software-only smoke: every `live` test skipped
+//   pnpm --filter @evf/validation-harness exec tsx scripts/run-all.ts --only=midiqol-config-probe
 //
 // Exit codes:
-//   0 — all attempted tests passed (or were correctly skipped with explicit RF_ENV=skip)
+//   0 — all attempted tests passed (or were skipped by --skip-hardware / not yet created)
 //   1 — at least one test failed
 //   2 — at least one test was skipped due to missing prereqs (Hub unavailable, Foundry off, etc.)
 //   3 — orchestrator usage error
 //
 // One process per test (child_process.spawn) so an SDK panic in one test doesn't tank the runner.
-//
-// Plan 03 hardware test scripts plug in by file presence — when 10-0-1, 10-0-2, 10-0-3 land,
-// run-all.ts picks them up with no orchestrator change.
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -27,7 +24,8 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 type TestPlan = {
   id: string;
   file: string;
-  hardware: boolean;
+  /** Needs the G2/R1 hardware or a live Foundry world — skipped by `--skip-hardware`. */
+  live: boolean;
   envs?: ReadonlyArray<'clean' | '5ghz-loaded' | '2-4ghz-microwave'>;
   description: string;
 };
@@ -36,50 +34,51 @@ const TESTS: ReadonlyArray<TestPlan> = [
   {
     id: 'midiqol-config-probe',
     file: 'midiqol-config-probe.ts',
-    hardware: false,
+    // Waits up to 60 s for a POST from a running Foundry world: not software-only.
+    live: true,
     description: 'MidiQOL autoFastForward config check (REQ MIDIQ-01)',
   },
   {
     id: '10-0-1-r1-timing',
     file: '10-0-1-r1-timing.ts',
-    hardware: true,
+    live: true,
     description: 'R1 gesture timing windows (Specs §10.0.1, n=150 per gesture)',
   },
   {
     id: '10-0-2-image-format',
     file: '10-0-2-image-format.ts',
-    hardware: true,
+    live: true,
     description: 'updateImageRawData byte format probe (Specs §10.0.2)',
   },
   {
     id: '10-0-3-ble-multi-env',
     file: '10-0-3-ble-multi-env.ts',
-    hardware: true,
+    live: true,
     envs: ['clean', '5ghz-loaded', '2-4ghz-microwave'],
     description: 'BLE bandwidth multi-env (Specs §10.0.3 + Pitfall 2)',
   },
   {
     id: '10-0-7-dle-sustained',
     file: '10-0-7-dle-sustained.ts',
-    hardware: true,
+    live: true,
     description: 'DLE 30-min sustained (Specs §10.0.7 + Pitfall 10)',
   },
   {
     id: '10-0-8-queue-depth',
     file: '10-0-8-queue-depth.ts',
-    hardware: true,
+    live: true,
     description: 'Queue depth empirical table (Specs §10.0.8)',
   },
   {
     id: '10-0-9-palette-calibration',
     file: '10-0-9-palette-calibration.ts',
-    hardware: true,
+    live: true,
     description: 'Palette calibration ramp + perceptual derivation (Pitfall 15)',
   },
   {
     id: 'adr-0019-relay',
     file: 'relay-check.ts',
-    hardware: true,
+    live: true,
     description: 'ADR-0019 room relay + pairing (RELAY_URL optional; Foundry + phone + G2)',
   },
 ];
@@ -141,8 +140,10 @@ async function main(): Promise<void> {
 
   for (const test of TESTS) {
     if (only && test.id !== only) continue;
-    if (skipHardware && test.hardware) {
-      console.log(`[SKIP-FLAG] ${test.id} — hardware-bound, skipped by --skip-hardware`);
+    if (skipHardware && test.live) {
+      console.log(
+        `[SKIP-FLAG] ${test.id} — needs hardware or a live Foundry world, skipped by --skip-hardware`,
+      );
       runs.push({ id: test.id, outcome: 'skipped-by-flag', exitCode: 0, durationMs: 0 });
       continue;
     }
@@ -193,8 +194,10 @@ async function main(): Promise<void> {
   const failed = runs.filter((r) => r.outcome === 'fail').length;
   const skipped = runs.filter((r) => r.outcome === 'skipped').length;
   const notCreated = runs.filter((r) => r.outcome === 'not-yet-created').length;
+  const byFlag = runs.filter((r) => r.outcome === 'skipped-by-flag').length;
+  const passed = runs.filter((r) => r.outcome === 'pass').length;
   console.log(
-    `Counts: ${runs.length - failed - skipped - notCreated} pass / ${failed} fail / ${skipped} skipped / ${notCreated} not-yet-created`,
+    `Counts: ${passed} pass / ${failed} fail / ${skipped} skipped / ${byFlag} skipped-by-flag / ${notCreated} not-yet-created`,
   );
 
   if (failed > 0) process.exit(1);

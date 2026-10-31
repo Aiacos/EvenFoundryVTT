@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDebugLog, setActiveDebugLog } from '../debug/debug-log.js';
 import { settle } from '../direct/__fixtures__/direct-fixtures.js';
 import { PAIRING_ERROR, type SessionInfo } from '../direct/session.js';
 import { type AppState, createAppStore, initialState } from '../state/app-store.js';
 import { phoneStrings } from './i18n.js';
-import { DEBUG_TAIL, mountPhonePage, type PhoneSession, statusLine } from './phone-page.js';
+import {
+  connectionMode,
+  DEBUG_TAIL,
+  formatCodeInput,
+  mountPhonePage,
+  type PhoneSession,
+  summaryText,
+} from './phone-page.js';
 import { QrScanError } from './qr-scan.js';
 
 const PHOTO = { path: 'p', name: 'p', mimeType: 'image/jpeg', size: 1, base64: 'AA' };
@@ -23,6 +30,7 @@ function fakeSession(overrides: Partial<PhoneSession> = {}) {
     reconnect: vi.fn(),
     disconnect: vi.fn(),
     forget: vi.fn(async () => {}),
+    cancelPendingCode: vi.fn(async () => {}),
     pairCode: vi.fn(async (_code: string) => {}),
     pairScanned: vi.fn(async (_text: string) => {}),
     updateSettings: vi.fn(),
@@ -69,21 +77,24 @@ const BOOT: SessionInfo['boot'] = {
 const field = (root: HTMLElement, name: string) =>
   root.querySelector(`[data-field="${name}"]`)?.textContent;
 
-describe('statusLine', () => {
+describe('summaryText / connectionMode', () => {
   const t = phoneStrings('it');
   it('describes each status with cause and countdown', () => {
-    const s = initialState();
-    expect(statusLine({ ...s, connection: { status: 'online' } }, t)).toBe('Collegato');
-    expect(statusLine({ ...s, connection: { status: 'connecting' } }, t)).toBe('Collegamento…');
+    expect(summaryText({ status: 'online' }, t)).toEqual({
+      headline: t.allGood,
+      detail: t.allGoodDetail,
+      retry: '',
+    });
+    expect(summaryText({ status: 'connecting' }, t).headline).toBe('Collegamento…');
     expect(
-      statusLine(
-        { ...s, connection: { status: 'offline', cause: 'network', retryInMs: 7_400, attempt: 3 } },
-        t,
-      ),
-    ).toBe('Non collegato · relay non raggiungibile · riprovo tra 8 s (tent. 3)');
-    expect(statusLine({ ...s, connection: { status: 'offline' } }, phoneStrings('en'))).toBe(
-      'Offline',
-    );
+      summaryText({ status: 'offline', cause: 'network', retryInMs: 7_400, attempt: 3 }, t),
+    ).toEqual({
+      headline: 'Non collegato',
+      detail: 'Relay non raggiungibile',
+      retry: 'Riprovo tra 8 s (tent. 3)',
+    });
+    // Offline with no cause and no retry is the phone's own «Pausa».
+    expect(summaryText({ status: 'offline' }, phoneStrings('en')).headline).toBe('Paused');
     for (const cause of [
       'no-projector',
       'network',
@@ -92,10 +103,17 @@ describe('statusLine', () => {
       'actor',
       'replaced',
     ] as const) {
-      expect(statusLine({ ...s, connection: { status: 'offline', cause } }, t)).not.toBe(
-        'Non collegato',
-      );
+      expect(summaryText({ status: 'offline', cause }, t).detail).not.toBe('');
     }
+  });
+
+  it('maps the connection to the P02 mode', () => {
+    expect(connectionMode({ status: 'online' })).toBe('healthy');
+    expect(connectionMode({ status: 'connecting' })).toBe('connecting');
+    expect(connectionMode({ status: 'offline' })).toBe('paused');
+    expect(connectionMode({ status: 'offline', cause: 'replaced' })).toBe('replaced');
+    expect(connectionMode({ status: 'offline', cause: 'network', retryInMs: 1 })).toBe('recovery');
+    expect(connectionMode({ status: 'offline', retryInMs: 1 })).toBe('recovery');
   });
 });
 
@@ -140,7 +158,7 @@ describe('P03 setup page', () => {
     expect(root.querySelector<HTMLElement>('.evf-notice')?.hidden).toBe(false);
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
     await settle(2);
-    expect(field(root, 'error')).toContain('Codice non valido');
+    expect(field(root, 'code-error')).toContain('Codice non valido');
   });
 
   it('«Scansiona QR»: photo → QR text → pairScanned; cancel does nothing', async () => {
@@ -230,11 +248,10 @@ describe('P03 setup page', () => {
     expect(session.pairScanned).not.toHaveBeenCalled();
   });
 
-  it('the code field takes a whole pasted link: no length cap, no forced capitals', () => {
+  it('the code field has room for a whole pasted link', () => {
     const root = document.createElement('main');
     mountPhonePage(root, createAppStore(), fakeSession().session, null);
     const code = root.querySelector<HTMLInputElement>('#evf-code');
-    expect(code?.getAttribute('autocapitalize')).toBe('none');
     expect(Number(code?.getAttribute('maxlength'))).toBeGreaterThanOrEqual(256);
   });
 
@@ -253,12 +270,13 @@ describe('P02 connection page', () => {
     const root = document.createElement('main');
     const unmount = mountPhonePage(root, store, fake.session, null);
     expect(root.querySelector('h1')?.textContent).toBe('G2 HUD · Connessione');
-    expect(field(root, 'status')).toBe('Collegato');
+    expect(field(root, 'headline')).toBe('Tutto ok: puoi mettere via il telefono.');
     expect(field(root, 'server')).toBe('evf-relay.evf-relay.workers.dev');
     expect(field(root, 'user')).toBe('Luca');
     expect(field(root, 'character')).toBe('Thorin');
     expect(field(root, 'gm')).toBe('Anna (online)');
-    expect(field(root, 'latency')).toBe('—');
+    expect(root.querySelector<HTMLElement>('[data-row="latency"]')?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('[data-field="version"]')?.hidden).toBe(true);
     expect(field(root, 'diagnostics')).toBe('Nessun errore recente.');
 
     fake.setInfo({
@@ -293,8 +311,9 @@ describe('P02 connection page', () => {
       [{ autoSheetPage: false }],
     ]);
     root.querySelector<HTMLButtonElement>('[data-action="reconnect"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-action="disconnect"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-action="pause"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-action="forget"]')?.click();
+    root.querySelector<HTMLButtonElement>('[data-action="forget-proceed"]')?.click();
     expect(fake.session.reconnect).toHaveBeenCalledOnce();
     expect(fake.session.disconnect).toHaveBeenCalledOnce();
     expect(fake.session.forget).toHaveBeenCalledOnce();
@@ -321,18 +340,14 @@ describe('P02 connection page', () => {
     });
     expect(root.querySelector('details[data-field="diag-section"]')).toBe(details);
     expect(details.open).toBe(true);
-    expect(field(root, 'status')).toBe(
-      'Non collegato · relay non raggiungibile · riprovo tra 3 s (tent. 2)',
-    );
+    expect(field(root, 'headline')).toBe('Non collegato');
+    expect(field(root, 'detail')).toBe('Relay non raggiungibile');
+    expect(field(root, 'retry')).toBe('Riprovo tra 3 s (tent. 2)');
     expect(field(root, 'gm')).toBe('Anna');
-    expect(field(root, 'server')).toBe('—');
-    expect(root.querySelector<HTMLButtonElement>('[data-action="disconnect"]')?.disabled).toBe(
-      false,
-    );
+    expect(field(root, 'server')).toBe(BOOT.relay);
+    expect(root.querySelector<HTMLButtonElement>('[data-action="pause"]')?.hidden).toBe(false);
     store.update({ connection: { status: 'offline' } });
-    expect(root.querySelector<HTMLButtonElement>('[data-action="disconnect"]')?.disabled).toBe(
-      true,
-    );
+    expect(root.querySelector<HTMLButtonElement>('[data-action="pause"]')?.hidden).toBe(true);
 
     fake.setLocale('en');
     store.update({ settings: { ...store.get().settings, locale: 'en' } });
@@ -357,8 +372,8 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
     mountPhonePage(root, createAppStore(), session, null);
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
     await settle(2);
-    expect(field(root, 'error')).toBe(t.pairFailed('boom'));
-    expect(field(root, 'error')).not.toContain('Codice non valido');
+    expect(field(root, 'code-error')).toBe(t.pairFailed('boom'));
+    expect(field(root, 'code-error')).not.toContain('Codice non valido');
     expect(warn).toHaveBeenCalledWith('[phone] pairing failed: Error: boom');
   });
 
@@ -385,7 +400,7 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
     });
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
     await settle(2);
-    expect(field(root, 'error')).toBe(t.codeUsed);
+    expect(field(root, 'code-error')).toBe(t.codeUsed);
     root.querySelector<HTMLButtonElement>('[data-action="scan"]')?.click();
     await settle(2);
     expect(field(root, 'error')).toBe(t.pairFailed('x is undefined'));
@@ -452,11 +467,8 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
   it('the «code pending» cause asks for the Foundry tab, not the window, to stay open', () => {
     for (const locale of ['it', 'en'] as const) {
       const s = phoneStrings(locale);
-      const line = statusLine(
-        { ...initialState(), connection: { status: 'offline', cause: 'code-pending' } },
-        s,
-      );
-      expect(line).toContain(s.causeCodePending);
+      const { detail } = summaryText({ status: 'offline', cause: 'code-pending' }, s);
+      expect(detail.toLowerCase()).toBe(s.causeCodePending.toLowerCase());
       expect(s.causeCodePending).not.toMatch(/window open|finestra .*finché|aperta la finestra/i);
     }
   });
@@ -493,17 +505,17 @@ describe('pairing errors, notices and the boot line (P0-B · P0-D)', () => {
     expect(field(root, 'boot')).toContain('app 0.4.1');
   });
 
-  it('P02: the card closes when online and reopens when the link is lost or a code is pending', () => {
+  it('P02: the card closes when online and reopens when the link is lost', () => {
     const store = createAppStore({ ...initialState(), ...online() });
     const root = document.createElement('main');
     mountPhonePage(root, store, fakeSession().session, null);
     const repair = root.querySelector<HTMLDetailsElement>('details[data-field="repair"]');
     expect(repair?.open).toBe(false);
-    store.update({ connection: { status: 'offline', cause: 'code-pending' } });
+    store.update({ connection: { status: 'offline', cause: 'no-projector' } });
     expect(repair?.open).toBe(true);
-    // The player's own toggle survives updates that do not change online ↔ offline.
+    // The player's own toggle survives updates that do not change the P02 mode.
     if (repair) repair.open = false;
-    store.update({ connection: { status: 'offline', cause: 'code-pending', attempt: 1 } });
+    store.update({ connection: { status: 'offline', cause: 'network', attempt: 1 } });
     expect(repair?.open).toBe(false);
     store.update({ connection: { status: 'connecting' } });
     store.update({ ...online() });
@@ -559,5 +571,282 @@ describe('debug channel tail', () => {
       root.querySelector('[data-view="setup"] details [data-field="debug-log"]'),
     ).not.toBeNull();
     expect(tailItems(root)[0]).toMatch(/\[uncaught\] boom$/);
+  });
+});
+
+describe('critique fixes (Impeccable 2026-10-31)', () => {
+  const it_ = phoneStrings('it');
+  const en = phoneStrings('en');
+  const mount = (state: Partial<AppState> = {}, overrides: Partial<PhoneSession> = {}) => {
+    const store = createAppStore({ ...initialState(), ...state });
+    const fake = fakeSession(overrides);
+    const root = document.createElement('main');
+    const unmount = mountPhonePage(root, store, fake.session, null);
+    return { store, fake, root, unmount };
+  };
+  /** Rendered and not tucked inside a closed disclosure (other than its summary). */
+  const visible = (node: Element): boolean => {
+    for (let n: Element | null = node; n !== null; n = n.parentElement) {
+      if (n instanceof HTMLElement && n.hidden) return false;
+      if (n !== node && n instanceof HTMLDetailsElement && !n.open) {
+        if (!(n.querySelector('summary')?.contains(node) ?? false)) return false;
+      }
+    }
+    return true;
+  };
+  const primaries = (root: HTMLElement) =>
+    [...root.querySelectorAll('.evf-primary')].filter((b) => visible(b));
+  const submitCode = (root: HTMLElement, value: string) => {
+    const code = root.querySelector<HTMLInputElement>('#evf-code');
+    if (code === null) throw new Error('no field');
+    code.value = value;
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+  };
+
+  describe('code entry', () => {
+    it('formatCodeInput groups 4-4-4-4 live, caps at 16 chars and leaves a link alone', () => {
+      expect(formatCodeInput('7qk3mx')).toBe('7QK3-MX');
+      expect(formatCodeInput('7QK3-MX9P 2hra-c4te')).toBe('7QK3-MX9P-2HRA-C4TE');
+      expect(formatCodeInput('7QK3MX9P2HRAC4TEXTRA')).toBe('7QK3-MX9P-2HRA-C4TE');
+      expect(formatCodeInput('7QK3-')).toBe('7QK3');
+      expect(formatCodeInput('')).toBe('');
+      const link = 'https://aiacos.github.io/EvenFoundryVTT/app/#c=7QK3MX9P2HRAC4TE';
+      expect(formatCodeInput(link)).toBe(link);
+      expect(formatCodeInput('c=7qk3')).toBe('c=7qk3');
+    });
+
+    it('the field groups as you type, takes a pasted link, and has code-friendly attributes', () => {
+      const { root } = mount();
+      const code = root.querySelector<HTMLInputElement>('#evf-code');
+      if (code === null) throw new Error('no field');
+      expect(code.getAttribute('autocapitalize')).toBe('characters');
+      expect(code.getAttribute('inputmode')).toBe('text');
+      code.value = '7qk3mx9p';
+      code.dispatchEvent(new Event('input'));
+      expect(code.value).toBe('7QK3-MX9P');
+      code.value = 'https://x/app/#c=7qk3';
+      code.dispatchEvent(new Event('input'));
+      expect(code.value).toBe('https://x/app/#c=7qk3');
+    });
+
+    it('a code error sits inside the form, linked to the field, and clears on edit', async () => {
+      const { root } = mount(
+        {},
+        {
+          pairCode: vi.fn(async () => {
+            throw new Error(PAIRING_ERROR.invalidCode);
+          }),
+        },
+      );
+      const form = root.querySelector('form');
+      const code = root.querySelector<HTMLInputElement>('#evf-code');
+      if (form === null || code === null) throw new Error('no form');
+      expect(code.getAttribute('aria-invalid')).toBe('false');
+      form.dispatchEvent(new Event('submit', { cancelable: true }));
+      await settle(2);
+      const error = form.querySelector('[data-field="code-error"]');
+      expect(error?.textContent).toBe(it_.invalidCode);
+      expect(code.getAttribute('aria-invalid')).toBe('true');
+      expect(code.getAttribute('aria-describedby')?.split(' ')).toContain(error?.id);
+      code.value = '7';
+      code.dispatchEvent(new Event('input'));
+      expect(code.getAttribute('aria-invalid')).toBe('false');
+      expect(error?.textContent).toBe('');
+    });
+
+    it('sets the document language to the UI locale', () => {
+      document.documentElement.lang = 'en';
+      mount();
+      expect(document.documentElement.lang).toBe('it');
+    });
+
+    it('P03: «Collega» is the primary action without a camera, secondary next to «Scansiona QR»', () => {
+      const { root } = mount();
+      const submit = root.querySelector('form button[type="submit"]');
+      expect(submit?.classList.contains('evf-primary')).toBe(true);
+      const withCamera = document.createElement('main');
+      mountPhonePage(withCamera, createAppStore(), fakeSession().session, {
+        captureImageFromCamera: vi.fn(async () => PHOTO),
+      });
+      const secondary = withCamera.querySelector('form button[type="submit"]');
+      expect(secondary?.classList.contains('evf-primary')).toBe(false);
+      expect(primaries(withCamera)).toHaveLength(1);
+    });
+
+    it('the boot line lives under «Diagnostica» on P03 and P02', () => {
+      const { root, store } = mount();
+      expect(root.querySelector('details [data-field="boot"]')).not.toBeNull();
+      store.update({ ...online() });
+      expect(
+        root.querySelector('details[data-field="diag-section"] [data-field="boot"]'),
+      ).not.toBeNull();
+    });
+
+    it('no card inside a card', () => {
+      const { root, store } = mount();
+      expect(root.querySelector('.evf-card .evf-card')).toBeNull();
+      store.update({ connection: { status: 'offline', cause: 'network' } });
+      expect(root.querySelector('.evf-card .evf-card')).toBeNull();
+    });
+  });
+
+  describe('waiting for Foundry', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('after a code: a waiting step with a countdown to the code expiry and «Annulla»', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+      vi.setSystemTime(1_000_000);
+      const { root, store, fake } = mount();
+      submitCode(root, '7QK3-MX9P-2HRA-C4TE');
+      store.update({ connection: { status: 'connecting', server: 'r' } });
+      await settle(2);
+      expect(root.querySelector('[data-view="waiting"]')).not.toBeNull();
+      expect(field(root, 'waiting')).toBe(it_.waitingTitle);
+      expect(field(root, 'expiry')).toBe(it_.codeExpiresIn('5:00'));
+      vi.advanceTimersByTime(61_000);
+      expect(field(root, 'expiry')).toBe(it_.codeExpiresIn('3:59'));
+      // Still waiting once the session reports the pending code, never «Non collegato».
+      store.update({ connection: { status: 'offline', cause: 'code-pending' } });
+      expect(root.querySelector('[data-view="waiting"]')).not.toBeNull();
+      expect(root.textContent).not.toContain(it_.statusOffline);
+      root.querySelector<HTMLButtonElement>('[data-action="cancel-code"]')?.click();
+      // Regression: an early expiry, never forget() (it would lose the replaced pairing).
+      expect(fake.session.cancelPendingCode).toHaveBeenCalledOnce();
+      expect(fake.session.forget).not.toHaveBeenCalled();
+    });
+
+    it('the full P02 appears only after the first welcome', async () => {
+      const { root, store } = mount();
+      submitCode(root, '7QK3-MX9P-2HRA-C4TE');
+      store.update({ connection: { status: 'connecting' } });
+      await settle(2);
+      expect(root.querySelector('[data-view="waiting"]')).not.toBeNull();
+      store.update({ ...online() });
+      expect(root.querySelector('[data-view="connection"]')).not.toBeNull();
+      // A later reconnect is not a pairing: plain P02.
+      store.update({ connection: { status: 'connecting' } });
+      expect(root.querySelector('[data-view="connection"]')).not.toBeNull();
+    });
+
+    it('a pending code found at launch waits without a countdown (its start is unknown)', () => {
+      const { root } = mount({ connection: { status: 'offline', cause: 'code-pending' } });
+      expect(root.querySelector('[data-view="waiting"]')).not.toBeNull();
+      expect(root.querySelector<HTMLElement>('[data-field="expiry"]')?.hidden).toBe(true);
+    });
+
+    it('a rejected code stays on P03 with the error', async () => {
+      const { root } = mount(
+        {},
+        {
+          pairCode: vi.fn(async () => {
+            throw new Error(PAIRING_ERROR.invalidCode);
+          }),
+        },
+      );
+      submitCode(root, 'nope');
+      await settle(2);
+      expect(root.querySelector('[data-view="setup"]')).not.toBeNull();
+    });
+  });
+
+  describe('P02 order, glossary and states', () => {
+    const order = (root: HTMLElement) =>
+      [...(root.querySelector('[data-view="connection"]')?.children ?? [])].map((n) =>
+        n.getAttribute('data-field'),
+      );
+
+    it('healthy: a calm summary first, rows without data hidden, settings behind «Preferenze»', () => {
+      const { root } = mount({ ...online() });
+      expect(order(root)[1]).toBe('summary');
+      expect(field(root, 'headline')).toBe(it_.allGood);
+      // Latency unknown → its row is hidden, not «—».
+      expect(root.querySelector<HTMLElement>('[data-row="latency"]')?.hidden).toBe(true);
+      expect(root.textContent).not.toContain('—');
+      const prefs = root.querySelector<HTMLDetailsElement>('details[data-field="preferences"]');
+      expect(prefs?.open).toBe(false);
+      expect(prefs?.querySelector('summary')?.textContent).toBe(it_.preferences);
+      expect(prefs?.querySelector('#evf-map-cell')).not.toBeNull();
+      expect(prefs?.querySelector('[data-field="map-help"]')?.textContent).toBe(it_.mapHelp);
+      expect(primaries(root)).toHaveLength(0);
+    });
+
+    it('offline: recovery first with one primary; «Riconnetti» secondary; no stale latency', () => {
+      const { root, fake } = mount({
+        connection: { status: 'offline', cause: 'no-projector', server: 'r', userName: 'Luca' },
+      });
+      fake.setInfo({ ...fake.session.info(), latencyMs: 42 });
+      const fields = order(root);
+      expect(fields.indexOf('summary')).toBeLessThan(fields.indexOf('repair'));
+      expect(fields.indexOf('repair')).toBeLessThan(fields.indexOf('facts'));
+      expect(root.querySelector<HTMLElement>('[data-row="latency"]')?.hidden).toBe(true);
+      expect(primaries(root)).toHaveLength(1);
+      const reconnect = root.querySelector('[data-action="reconnect"]');
+      expect(reconnect?.classList.contains('evf-primary')).toBe(false);
+      expect(field(root, 'headline')).toBe(it_.statusOffline);
+    });
+
+    it('the relay row is the same in every state (session relay as fallback)', () => {
+      const { root, store } = mount({ ...online() });
+      expect(field(root, 'server')).toBe('evf-relay.evf-relay.workers.dev');
+      store.update({ connection: { status: 'offline', cause: 'network' } });
+      expect(field(root, 'server')).toBe(BOOT.relay);
+      expect(root.querySelector<HTMLElement>('[data-row="server"]')?.hidden).toBe(false);
+    });
+
+    it('«Pausa» / «Riprendi» on the phone, never «Disconnetti» (that is the Foundry revoke)', () => {
+      const { root, store, fake } = mount({ ...online() });
+      expect(root.textContent).not.toMatch(/Disconnetti|Scollega/);
+      const pause = root.querySelector<HTMLButtonElement>('[data-action="pause"]');
+      expect(pause?.textContent).toBe(it_.pause);
+      pause?.click();
+      expect(fake.session.disconnect).toHaveBeenCalledOnce();
+      store.update({ connection: { status: 'offline', userName: 'Luca' } });
+      expect(field(root, 'headline')).toBe(it_.pausedTitle);
+      const resume = root.querySelector<HTMLButtonElement>('[data-action="resume"]');
+      expect(resume?.hidden).toBe(false);
+      expect(resume?.classList.contains('evf-primary')).toBe(true);
+      expect(root.querySelector<HTMLElement>('[data-action="pause"]')?.hidden).toBe(true);
+      const repair = root.querySelector<HTMLDetailsElement>('details[data-field="repair"]');
+      expect(repair?.open).toBe(false);
+      expect(primaries(root)).toHaveLength(1);
+      resume?.click();
+      expect(fake.session.reconnect).toHaveBeenCalledOnce();
+      for (const s of [it_, en]) expect(s.pause).not.toMatch(/disconn|scolleg/i);
+    });
+
+    it('«Dimentica associazione» asks first, inline, and can be cancelled', () => {
+      const { root, fake } = mount({ ...online() });
+      const forget = root.querySelector<HTMLButtonElement>('[data-action="forget"]');
+      const confirm = root.querySelector<HTMLElement>('[data-field="forget-confirm"]');
+      expect(confirm?.hidden).toBe(true);
+      forget?.click();
+      expect(fake.session.forget).not.toHaveBeenCalled();
+      expect(confirm?.hidden).toBe(false);
+      expect(confirm?.textContent).toContain(it_.forgetConfirm);
+      root.querySelector<HTMLButtonElement>('[data-action="forget-cancel"]')?.click();
+      expect(confirm?.hidden).toBe(true);
+      forget?.click();
+      root.querySelector<HTMLButtonElement>('[data-action="forget-proceed"]')?.click();
+      expect(fake.session.forget).toHaveBeenCalledOnce();
+    });
+
+    it('the live region announces the state, not every retry tick', () => {
+      const { root, store } = mount({
+        connection: { status: 'offline', cause: 'network', retryInMs: 8_000, attempt: 1 },
+      });
+      const live = root.querySelector('[aria-live]');
+      expect(live?.getAttribute('data-field')).toBe('summary-live');
+      const before = live?.textContent;
+      const retry = root.querySelector('[data-field="retry"]');
+      expect(retry?.closest('[aria-live]')).toBeNull();
+      expect(retry?.textContent).toContain('8 s');
+      store.update({
+        connection: { status: 'offline', cause: 'network', retryInMs: 4_000, attempt: 1 },
+      });
+      expect(live?.textContent).toBe(before);
+      expect(retry?.textContent).toContain('4 s');
+    });
   });
 });

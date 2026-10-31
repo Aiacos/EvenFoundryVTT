@@ -70,6 +70,29 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
       [`crypto-fallback.ts`](packages/shared-protocol/src/direct/crypto-fallback.ts)
 - [ ] Phone text «causeCodePending» still says to keep the window open, but closing it no longer
       cancels the QR: reword to «keep the Foundry tab open» — [`i18n.ts`](packages/g2-app/src/phone/i18n.ts)
+- [ ] Relay: drop inbound text frames carrying a top-level `relay` key so peers cannot forge
+      `peer-up` / `peer-down` (review 2026-10-31) — [`room.ts`](packages/relay/src/room.ts)
+- [ ] Relay: Worker-level rate limit per `CF-Connecting-IP` (room creation / reconnect loops can
+      burn the free-plan quota) — [`index.ts`](packages/relay/src/index.ts)
+- [ ] Relay: liveness (`setWebSocketAutoResponse` ping/pong + client heartbeat) so a phone that
+      vanished without FIN is announced `peer-down` — [`room.ts`](packages/relay/src/room.ts)
+- [ ] Relay: `webSocketClose` skips `retire` for any 4000 close, also a live socket's own — check
+      `retire`'s status guard covers replaced sockets, then drop the early return — [`room.ts`](packages/relay/src/room.ts)
+- [ ] Clock skew > 120 s: surface `stale` on the phone page (today only the Foundry window shows it) —
+      [`envelope.ts`](packages/shared-protocol/src/direct/envelope.ts)
+
+## 🔐 Project tailnet (ADR-0020, proposed 2026-11-01)
+
+- [ ] Spike gates T1–T6 on real hardware (`validate:tailnet`, defer-hardware): WebSocket through
+      `tailscale serve`, identity headers for shared users, MagicDNS in the Even WebView (iOS +
+      Android, 5-min lock), Foundry tab self-hosted + Forge, free-plan count, Even Hub review of a
+      `*.ts.net` origin — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [x] Maintainer: hub on a home server / NAS; no application-level sealing («basta Tailscale»),
+      2026-11-01 — [ADR-0020 §Decision 1/4](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [ ] Maintainer: choose the tailnet name (fixes the `evf-hub.<tailnet>.ts.net` origin in `app.json`) —
+      [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [ ] After GO: Spec Kit feature `specs/005-project-tailnet/` (hub service, identity rooms,
+      remove QR pairing / relay deploy), INV-3 docs together — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
 
 ## 🗺️ Next features
 

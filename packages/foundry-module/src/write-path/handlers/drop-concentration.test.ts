@@ -21,6 +21,7 @@ function makeEffectMock(id: string, deleteFn?: () => Promise<unknown>) {
     id,
     name: 'Concentrazione',
     flags: { dnd5e: { concentrating: true } },
+    statuses: new Set(['concentrating']),
     delete: vi.fn(deleteFn ?? (() => Promise.resolve({ id }))),
   };
 }
@@ -91,6 +92,20 @@ describe('dropConcentrationHandler', () => {
     if (!result.success) {
       expect(result.error).toBe('actor_not_found');
     }
+  });
+
+  it('regression: refuses to delete an effect that is not the concentration', async () => {
+    const actorMock = makeActorMock('actor-1', ['eff-conc-1', 'eff-bless']);
+    const bless = actorMock.effects.contents[1] as { statuses: Set<string> };
+    bless.statuses = new Set(['blessed']);
+    vi.stubGlobal('game', makeGameMock({ 'actor-1': actorMock }));
+    const { dropConcentrationHandler } = await import('./drop-concentration.js');
+    const result = await dropConcentrationHandler.handle({
+      actor_id: 'actor-1',
+      effect_id: 'eff-bless',
+    });
+    expect(result).toEqual({ success: false, error: 'effect_not_found' });
+    expect(actorMock.effects.contents[1]?.delete).not.toHaveBeenCalled();
   });
 
   it('returns effect_not_found when effectId is not on the actor', async () => {

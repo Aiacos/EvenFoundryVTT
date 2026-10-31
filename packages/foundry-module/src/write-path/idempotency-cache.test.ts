@@ -6,7 +6,7 @@
  * Covers:
  * - Cache miss returns undefined
  * - Cache hit within TTL returns entry
- * - Lazy eviction after 61s (vi.useFakeTimers)
+ * - Lazy eviction after the TTL (vi.useFakeTimers)
  * - FIFO eviction at 1001st insert
  * - clear() empties the store
  * - hashBearer returns 16-char hex string
@@ -16,6 +16,7 @@
  * @see packages/foundry-module/src/write-path/idempotency-cache.ts
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
+import { MAX_ENVELOPE_AGE_MS } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCacheKey,
@@ -28,8 +29,10 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 describe('module constants', () => {
-  it('MODULE_IDEMPOTENCY_TTL_MS is 60_000 ms', () => {
-    expect(MODULE_IDEMPOTENCY_TTL_MS).toBe(60_000);
+  it('MODULE_IDEMPOTENCY_TTL_MS outlives every replay the envelope accepts (regression)', () => {
+    // open() accepts |now - ts| <= MAX_ENVELOPE_AGE_MS, so a captured invoke can be
+    // replayed up to 2x that after its first delivery; 60 s let it run twice.
+    expect(MODULE_IDEMPOTENCY_TTL_MS).toBeGreaterThanOrEqual(2 * MAX_ENVELOPE_AGE_MS);
   });
 
   it('MODULE_IDEMPOTENCY_MAX is 1000', () => {
@@ -135,12 +138,12 @@ describe('IdempotencyStore', () => {
 
   // ── Lazy TTL eviction ───────────────────────────────────────────────────────
 
-  it('get() returns undefined for expired entry (lazy eviction after 61s)', () => {
+  it('get() returns undefined for expired entry (lazy eviction after the TTL)', () => {
     const result = { success: true as const, data: 'cached' };
     store.set('key2', { result, cachedAt: Date.now() });
 
     // Advance past 60s TTL
-    vi.advanceTimersByTime(61_000);
+    vi.advanceTimersByTime(MODULE_IDEMPOTENCY_TTL_MS + 1_000);
 
     expect(store.get('key2')).toBeUndefined();
   });
@@ -150,7 +153,7 @@ describe('IdempotencyStore', () => {
     store.set('expired-key', { result, cachedAt: Date.now() });
 
     expect(store.size).toBe(1);
-    vi.advanceTimersByTime(61_000);
+    vi.advanceTimersByTime(MODULE_IDEMPOTENCY_TTL_MS + 1_000);
     store.get('expired-key'); // trigger lazy eviction
     expect(store.size).toBe(0);
   });

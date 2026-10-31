@@ -63,14 +63,19 @@ function scrolled(lines: string[], scroll: number): string[] {
   return lines.slice(start, start + CONTEXT_BODY_LINES);
 }
 
-/** Cursor cell: `▶ ` when selected, spaces of the same width otherwise. */
+/**
+ * Cursor cell: `▶ ` when selected; `▲ ` / `▼ ` on the first / last visible row when the
+ * list continues above / below (the firmware list has no scrollbar we control); spaces of
+ * the same width otherwise. The three glyphs have the same advance (pretext 0.1.4).
+ */
 const CURSOR_ON = `${GLYPH.cursor} `;
+const MORE_ABOVE = `${GLYPH.turn} `;
+const MORE_BELOW = `${GLYPH.down} `;
 const CURSOR_OFF = ' '.repeat(Math.round(getTextWidth(CURSOR_ON) / getTextWidth(' ')));
 
 /** One list line: cursor cell + left label + right-aligned value. */
-function entryLine(e: Pick<Entry, 'left' | 'right'>, selected: boolean, budget: number): string {
-  const cursor = selected ? CURSOR_ON : CURSOR_OFF;
-  return cursor + spread(e.left, e.right, budget - getTextWidth(cursor));
+function entryLine(e: Pick<Entry, 'left' | 'right'>, cell: string, budget: number): string {
+  return cell + spread(e.left, e.right, budget - getTextWidth(cell));
 }
 
 function listBody(
@@ -80,9 +85,26 @@ function listBody(
   budget: number,
 ): string[] {
   const indexed = entries.map((e, i) => ({ e, i }));
-  return windowAround(indexed, cursor, capacity).map(({ e, i }) =>
-    entryLine(e, i === cursor, budget),
-  );
+  const shown = windowAround(indexed, cursor, capacity);
+  const first = shown[0]?.i ?? 0;
+  const last = shown.at(-1)?.i ?? 0;
+  return shown.map(({ e, i }) => {
+    let cell = CURSOR_OFF;
+    if (i === cursor) cell = CURSOR_ON;
+    else if (i === last && last < entries.length - 1) cell = MORE_BELOW;
+    else if (i === first && first > 0) cell = MORE_ABOVE;
+    return entryLine(e, cell, budget);
+  });
+}
+
+/**
+ * Head value of a list longer than the body: the position `2/6` when the head has nothing
+ * else to say. A head that already carries a value (spell slots `3/4 2/3`, the weapon
+ * bonus, the advantage state) keeps it alone — a second fraction beside slot counts
+ * reads as one more slot level; the ▲ / ▼ row cues still say the list goes on.
+ */
+function withPosition(right: string, pos: string): string {
+  return right === '' ? pos : right;
 }
 
 function rootExplore(app: AppState, ui: UiState, s: HudStrings, budget: number): ContextView {
@@ -120,13 +142,20 @@ function rootCombat(
   };
 }
 
-/** 0 PF root: death saves reminder (the sheet shows the circles). */
+/**
+ * 0 PF root: death saves reminder. The sheet draws the tally as circles; the text says
+ * what is left instead of repeating it.
+ */
 function rootDown(app: AppState, s: HudStrings): ContextView {
   const d = app.character?.death ?? { success: 0, failure: 0 };
   return {
     title: s.downTitle,
     right: app.combat ? s.round(app.combat.round) : '',
-    body: [s.downRoll, s.downTally(d.success, d.failure)],
+    body: [
+      s.downRoll,
+      s.downFailuresLeft(Math.max(1, 3 - d.failure)),
+      s.downSuccessesLeft(Math.max(1, 3 - d.success)),
+    ],
     hint: app.combat ? s.footer.combat : s.footer.root,
   };
 }
@@ -149,14 +178,18 @@ function listHead(
   ui: UiState,
   s: HudStrings,
   budget: number,
+  overflow: boolean,
 ): { title: string; right: string } {
   const p = ui.pending;
   switch (ui.view) {
-    case 'actions':
+    case 'actions': {
+      // Long list: the position replaces the name (already in the header).
+      const name = overflow ? '' : (app.character?.name ?? '');
       return {
         title: s.actions,
-        right: ui.advantage === 'normal' ? (app.character?.name ?? '') : s.advantage[ui.advantage],
+        right: ui.advantage === 'normal' ? name : s.advantage[ui.advantage],
       };
+    }
     case 'spells':
       return { title: s.spells, right: slotsSummary(app, s.spells, budget) };
     case 'slot':
@@ -177,13 +210,20 @@ function listHead(
   }
 }
 
+/** `d20 15 +6 = 21 · COLPITO` (bonus when known), or the outcome alone without a roll. */
+function rollLine(d20: number | null, bonus: number | null, outcome: string): string {
+  if (d20 === null) return outcome;
+  const sum = bonus === null ? '' : ` ${signed(bonus)} = ${d20 + bonus}`;
+  return `d20 ${d20}${sum} ${GLYPH.dot} ${outcome}`;
+}
+
+/** S6: action and target in the head, the payoff (roll, total, outcome) on line 1. */
 function resultView(ui: UiState, s: HudStrings): ContextView {
   const r = ui.result;
   const body: string[] = [];
   if (r?.payload) {
     const p = r.payload;
-    if (p.d20 !== null) body.push(`d20 ${p.d20}`);
-    body.push(s.outcomes[p.outcome]);
+    body.push(rollLine(p.d20, r.bonus, s.outcomes[p.outcome]));
     if (p.errorKind) body.push(s.errors[p.errorKind]);
     else if (p.status !== 'success') body.push(s.failed);
     else if (p.damage) body.push(`${s.damage} ${p.damage}`);
@@ -192,7 +232,12 @@ function resultView(ui: UiState, s: HudStrings): ContextView {
   } else {
     body.push(r?.ack === 'ok' ? s.done : s.pending);
   }
-  return { title: s.result, right: r?.title ?? '', body, hint: s.footer.result };
+  return {
+    title: r?.title ?? '',
+    right: r?.target ? `${GLYPH.arrow} ${r.target}` : '',
+    body,
+    hint: s.footer.result,
+  };
 }
 
 function reactionView(
@@ -204,8 +249,9 @@ function reactionView(
 ): ContextView {
   const seconds = Math.ceil(Math.max(0, (ui.reactionDeadline ?? now) - now) / 1000);
   const entries = buildEntries(app, ui, s);
+  const kind = app.reaction?.kind ?? 'opportunity-attack';
   return {
-    title: s.reactionTitle,
+    title: `${GLYPH.turn} ${s.reactionTitle[kind]}`,
     right: s.expiresIn(seconds),
     body: [
       ...listBody(entries, ui.cursor, CONTEXT_BODY_LINES - 1, budget),
@@ -294,8 +340,12 @@ export function contextView(
       return requestView(app, ui, s, budget);
     default: {
       const entries = buildEntries(app, ui, s);
+      const overflow = entries.length > CONTEXT_BODY_LINES;
+      const head = listHead(app, ui, s, budget, overflow);
+      const pos = `${Math.min(ui.cursor, entries.length - 1) + 1}/${entries.length}`;
       return {
-        ...listHead(app, ui, s, budget),
+        title: head.title,
+        right: overflow ? withPosition(head.right, pos) : head.right,
         body:
           entries.length === 0
             ? [ui.view === 'slot' ? s.noSlots : GLYPH.dash]

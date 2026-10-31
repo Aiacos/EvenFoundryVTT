@@ -160,12 +160,12 @@ async function main(): Promise<void> {
   }
 
   // Bimodality check on tap vs double-tap distribution
-  const tapAndDouble = [...allSamples['tap'], ...allSamples['double-tap']];
+  const tapAndDouble = [...allSamples.tap, ...allSamples['double-tap']];
   const dip = hartiganDipTest(tapAndDouble);
   const distinguishable = dip.pValue < THRESHOLDS.bimodality_p_threshold;
 
   // Recommended windows: tap_max = midpoint between tap p95 and double-tap mean
-  const tapP95 = gestureStats['tap']?.p95_ms ?? 250;
+  const tapP95 = gestureStats.tap?.p95_ms ?? 250;
   const doubleMean = gestureStats['double-tap']?.mean_ms ?? 400;
   const longPress1Mean = gestureStats['long-press-1s']?.mean_ms ?? 1000;
   const tapMax = Math.round(Math.max(150, Math.min(tapP95 + 50, (tapP95 + doubleMean) / 2)));

@@ -23,6 +23,8 @@ function setup(localIsGM = false) {
       makeActor('borin', 'Borin', { ownership: { default: 3 } }),
       makeActor('goblin', 'Goblin', { ownership: {} }),
       makeActor('npc', 'Npc', { type: 'npc', ownership: { p1: 3 } }),
+      // Everyone owns it except Luca, explicitly lowered to LIMITED.
+      makeActor('lent', 'Lent', { ownership: { default: 3, p1: 1 } }),
     ],
   });
   if (!localIsGM) f.game.user = luca;
@@ -42,6 +44,15 @@ describe('ownership', () => {
     expect(userOwnsActor('borin', 'p1')).toBe(true);
     expect(userOwnsActor('goblin', 'p1')).toBe(false);
     expect(userOwnsActor('missing', 'p1')).toBe(false);
+  });
+
+  it('OW-04 an explicit lower per-user level beats an OWNER default', () => {
+    expect(userOwnsActor('lent', 'p1')).toBe(false);
+    expect(ownedCharacters('p1').map((a) => a.id)).not.toContain('lent');
+  });
+
+  it('OW-05 an unknown user owns nothing', () => {
+    expect(userOwnsActor('borin', 'ghost')).toBe(false);
   });
 
   it('OW-02 a GM owns every actor', () => {

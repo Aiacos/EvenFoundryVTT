@@ -29,13 +29,19 @@
  * @see docs/architecture/0011-foundry-write-path-single-workflow-origin.md
  * @see .planning/phases/07-foundry-module-write-path/07-01-PLAN.md Task 2
  */
-import { sha256Digest } from '@evf/shared-protocol';
+import { MAX_ENVELOPE_AGE_MS, sha256Digest } from '@evf/shared-protocol';
 import type { ToolResult } from './tool-registry.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** TTL for module idempotency cache entries — 60 seconds (ADR-0002). */
-export const MODULE_IDEMPOTENCY_TTL_MS = 60_000;
+/**
+ * TTL for module idempotency cache entries. It must outlive every replay the envelope
+ * still accepts: `open()` takes a frame while |now − ts| ≤ {@link MAX_ENVELOPE_AGE_MS},
+ * so a captured `invoke` stays valid up to 2 × that after its first delivery (sender
+ * clock ahead, then behind). With the former 60 s a frame re-delivered by the relay
+ * 61–120 s later ran the action twice.
+ */
+export const MODULE_IDEMPOTENCY_TTL_MS = 2 * MAX_ENVELOPE_AGE_MS;
 
 /** Maximum number of entries in the store — T-07-05 DoS mitigation. */
 export const MODULE_IDEMPOTENCY_MAX = 1_000;

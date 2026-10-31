@@ -23,6 +23,7 @@ import {
   type HudEffect,
   type HudInput,
   menuIdOf,
+  REACTION_DOUBLE_GUARD_MS,
   REACTION_TIMEOUT_MS,
   RESULT_TIMEOUT_MS,
   reduce,
@@ -63,7 +64,11 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
     const { ui, effects } = drive(app, [{ t: 'tap' }, { t: 'tap' }, { t: 'down' }, { t: 'tap' }]);
     expect(ui.view).toBe('result');
     // Targets list enemies first, nearest first: Goblin A (5 ft), Goblin B (10 ft), …
-    expect(ui.result?.title).toBe('Martello da guerra +3 del Drago Rosso → Goblin B');
+    expect(ui.result).toMatchObject({
+      title: 'Martello da guerra +3 del Drago Rosso',
+      target: 'Goblin B',
+      bonus: 6,
+    });
     const [call] = invokes(effects);
     expect(call?.tool).toBe('weapon-attack');
     expect(WeaponAttackInputSchema.parse(call?.input)).toEqual({
@@ -89,6 +94,23 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
     expect(input.advantage).toBe('advantage');
   });
 
+  it('a Vantaggio toggle follows the weapons in Actions: one tap cycles it in place', () => {
+    const app = online();
+    const actions = drive(app, [{ t: 'tap' }]).ui;
+    expect(buildEntries(app, actions, s).map((e) => e.intent.k)).toEqual([
+      'weapon',
+      'weapon',
+      'op',
+      'open',
+      'open',
+      'open',
+    ]);
+    const { ui, effects } = drive(app, [{ t: 'down' }, { t: 'down' }, { t: 'tap' }], actions);
+    expect(ui).toMatchObject({ view: 'actions', cursor: 2, advantage: 'advantage' });
+    expect(effects).toEqual([]);
+    expect(buildEntries(app, ui, s)[2]?.left).toBe(s.advantage.advantage);
+  });
+
   it('cursor is clamped to the list', () => {
     const { ui } = drive(online(), [{ t: 'tap' }, { t: 'up' }, ...Array(20).fill({ t: 'down' })]);
     expect(ui.cursor).toBe(buildEntries(online(), ui, s).length - 1);
@@ -97,7 +119,14 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
 
 describe('spell flow (S5)', () => {
   const app = online('max');
-  const toSpells: HudInput[] = [{ t: 'tap' }, { t: 'down' }, { t: 'down' }, { t: 'tap' }];
+  // Actions: two weapons, «Vantaggio», then «Incantesimi…».
+  const toSpells: HudInput[] = [
+    { t: 'tap' },
+    { t: 'down' },
+    { t: 'down' },
+    { t: 'down' },
+    { t: 'tap' },
+  ];
 
   it('leveled spell: spells → slot → target → cast-spell with slot level', () => {
     const { ui, effects } = drive(app, [...toSpells, { t: 'down' }, { t: 'down' }, { t: 'tap' }]);
@@ -139,6 +168,7 @@ describe('items and options', () => {
     const app = online();
     const toTarget: HudInput[] = [
       { t: 'tap' },
+      { t: 'down' },
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },
@@ -195,6 +225,7 @@ describe('items and options', () => {
     const app = online('min', { settings: { ...online().settings, mapCellPx: 8 } });
     const opts = drive(app, [
       { t: 'tap' },
+      { t: 'down' },
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },
@@ -298,7 +329,7 @@ describe('result (S6)', () => {
   const resultUi: UiState = {
     ...initialUi(),
     view: 'result',
-    result: { title: 'x', shownAt: 0, ack: 'pending', payload: null },
+    result: { title: 'x', target: null, bonus: null, shownAt: 0, ack: 'pending', payload: null },
   };
 
   it('tap → actions, double → root, auto-close after 8 s', () => {
@@ -367,6 +398,32 @@ describe('reaction (S7)', () => {
     ]);
     const cleared = reduce(ui, { t: 'state', prev: app }, { app: online(), now: 0, strings: s });
     expect(cleared.ui.view).toBe('root');
+  });
+
+  it('ignores a reflex double-tap during the first second of the prompt', () => {
+    const prev = online();
+    const app = { ...prev, reaction };
+    const open = reduce(initialUi(), { t: 'state', prev }, { app, now: 1000, strings: s }).ui;
+    expect(open.reactionSince).toBe(1000);
+    const early = drive(app, [{ t: 'double' }], open, 1000 + REACTION_DOUBLE_GUARD_MS - 1);
+    expect(early).toEqual({ ui: open, effects: [] });
+    const late = drive(app, [{ t: 'double' }], open, 1000 + REACTION_DOUBLE_GUARD_MS);
+    expect(late.ui.view).toBe('root');
+    expect(late.effects).toEqual([{ t: 'clearReaction' }]);
+    // The explicit «Ignora» entry is never guarded.
+    const ignore = drive(app, [{ t: 'down' }, { t: 'down' }, { t: 'tap' }], open, 1001);
+    expect(ignore.effects).toEqual([{ t: 'clearReaction' }]);
+  });
+
+  it('rows carry only the distinguishing part: the weapon, its bonus on the right', () => {
+    const app = { ...online(), reaction };
+    const ui = { ...initialUi(), view: 'reaction' as const };
+    const rows = buildEntries(app, ui, s);
+    expect(rows.map((e) => [e.left, e.right])).toEqual([
+      ['Martello da guerra', '+6'],
+      ['Giavellotto', '+6'],
+      ['Ignora', ''],
+    ]);
   });
 
   it('shield and counterspell map to their tools; unknown source falls back to its name', () => {
@@ -484,6 +541,8 @@ describe('toGestureEvent', () => {
     expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT, null)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.DOUBLE_CLICK_EVENT)).toEqual({ t: 'double' });
     expect(sys(OsEventTypeList.FOREGROUND_ENTER_EVENT)).toEqual({ t: 'foreground' });
+    expect(sys(OsEventTypeList.FOREGROUND_EXIT_EVENT)).toEqual({ t: 'background' });
+    expect(sys(OsEventTypeList.ABNORMAL_EXIT_EVENT)).toEqual({ t: 'background' });
     expect(sys(OsEventTypeList.SCROLL_TOP_EVENT)).toEqual({ t: 'up' });
     expect(sys(OsEventTypeList.LONG_PRESS_EVENT)).toBeNull();
     const text = (eventType?: OsEventTypeList) =>

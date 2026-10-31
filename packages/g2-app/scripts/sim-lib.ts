@@ -213,3 +213,20 @@ export function checkGutters(scenes: ReadonlyArray<{ name: string; signature: st
     return [`${s.name}: gutter pixels differ from ${reference.name} (${rows} px)`];
   });
 }
+
+/** Simulator version the loop was validated against. */
+export const EXPECTED_SIM_VERSION = '0.9.5';
+
+/**
+ * The simulator command to run: `--sim`, else `$EVF_SIMULATOR`, else the validated version
+ * through `npx` — never whatever `evenhub-simulator` is on PATH (a stale global 0.7.3 never
+ * printed `EVF_READY`, so the loop timed out with no hint of the cause).
+ *
+ * @param sim - The `--sim` argument, if given
+ * @param env - The `EVF_SIMULATOR` environment value, if set
+ * @returns The command and its arguments
+ */
+export function resolveSimulatorCommand(sim?: string, env?: string): string[] {
+  const raw = sim ?? env ?? `npx -y @evenrealities/evenhub-simulator@${EXPECTED_SIM_VERSION}`;
+  return raw.split(/\s+/).filter((p) => p !== '');
+}

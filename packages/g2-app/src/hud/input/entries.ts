@@ -16,10 +16,13 @@ import type { RollRequestPayload } from '@evf/shared-protocol';
 import type { AppState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
 import { isMyTurn } from '../model.js';
-import { GLYPH } from '../text/measure.js';
+import { GLYPH, gauge } from '../text/measure.js';
 import type { Pending, UiState } from './ui-state.js';
 
-/** Contextual-menu / options operations (all reachable by tap via "Opzioni…"). */
+/**
+ * Contextual-menu / options operations (all reachable by tap via "Opzioni…";
+ * `advantage` also straight from the Actions list).
+ */
 export type MenuOp =
   | 'nextPage'
   | 'zoomIn'
@@ -57,7 +60,16 @@ export type Intent =
   | { k: 'target'; tokenId: string | null; name: string }
   | { k: 'item'; itemId: string; name: string }
   | { k: 'op'; op: MenuOp }
-  | { k: 'react'; tool: string; input: Record<string, unknown>; name: string }
+  | {
+      k: 'react';
+      tool: string;
+      input: Record<string, unknown>;
+      name: string;
+      /** Who triggered the reaction (result title), null when unnamed. */
+      target: string | null;
+      /** Attack bonus as shown (`+6`), for the result line. */
+      bonus?: string;
+    }
   | { k: 'ignore' }
   | { k: 'dismissRequest' }
   | { k: 'roll'; input: RollInput; name: string };
@@ -99,7 +111,7 @@ function distanceFt(ax: number, ay: number, bx: number, by: number): number {
   return Math.round(Math.max(Math.abs(ax - bx), Math.abs(ay - by))) * 5;
 }
 
-function actionEntries(app: AppState, s: HudStrings): Entry[] {
+function actionEntries(app: AppState, ui: UiState, s: HudStrings): Entry[] {
   const ch = app.character;
   const out: Entry[] = [];
   if (ch) {
@@ -111,6 +123,8 @@ function actionEntries(app: AppState, s: HudStrings): Entry[] {
         intent: { k: 'weapon', itemId: it.id, name: it.name },
       });
     }
+    // One tap away from the attacks it changes (also in Opzioni… and the long-press menu).
+    out.push(label(s.advantage[ui.advantage], { k: 'op', op: 'advantage' }));
     if (ch.spells.spells.length > 0) {
       out.push(label(s.spellsMenu, { k: 'open', view: 'spells' }));
     }
@@ -175,7 +189,10 @@ function targetEntries(app: AppState, s: HudStrings): Entry[] {
     ...tokens.map(
       ({ t, ft }): Entry => ({
         left: t.name,
-        right: ft === null ? '' : `${ft} ft`,
+        // Health like the initiative list, then the distance.
+        right: [gauge(t.hp, 4), ft === null ? '' : `${ft} ft`]
+          .filter((part) => part !== '')
+          .join(` ${GLYPH.dot} `),
         intent: { k: 'target', tokenId: t.id, name: t.name },
       }),
     ),
@@ -277,7 +294,14 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
   ): Entry => ({
     left: name,
     right,
-    intent: { k: 'react', tool, input, name },
+    intent: {
+      k: 'react',
+      tool,
+      input,
+      name,
+      target: r.sourceName,
+      ...(right === '' ? {} : { bonus: right }),
+    },
   });
   switch (r.kind) {
     case 'opportunity-attack':
@@ -285,8 +309,9 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
         ...ch.inventory
           .filter((i) => i.type === 'weapon')
           .map((w) =>
+            // The title names the reaction: each row only says what differs (weapon).
             react(
-              `${s.opportunityAttack}: ${w.name}`,
+              w.name,
               'opportunity-attack',
               { actor_id: actor, item_id: w.id, target_id: source },
               w.toHit ?? '',
@@ -314,7 +339,7 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
 export function buildEntries(app: AppState, ui: UiState, s: HudStrings): Entry[] {
   switch (ui.view) {
     case 'actions':
-      return actionEntries(app, s);
+      return actionEntries(app, ui, s);
     case 'spells':
       return spellEntries(app, s);
     case 'slot':

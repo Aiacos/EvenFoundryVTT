@@ -8,9 +8,9 @@ export default {
       'always',
       ['feat', 'fix', 'docs', 'chore', 'test', 'refactor', 'perf', 'style', 'ci'],
     ],
-    // Scope is optional but if present, accept package names OR plan-id NN-NN OR '*'
+    // Scope is optional; if present: a package, a repo-wide area, or '*'
     'scope-enum': [
-      1, // warn, not error — until all phase NN-NN scopes are enumerated
+      2,
       'always',
       [
         'g2-app',
@@ -19,6 +19,11 @@ export default {
         'shared-render',
         'validation-harness',
         'e2e',
+        'relay',
+        'release',
+        'ci',
+        'docs',
+        'constitution',
         '*',
       ],
     ],

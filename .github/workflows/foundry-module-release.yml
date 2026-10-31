@@ -52,12 +52,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           # pnpm cache is handled by pnpm/action-setup below
@@ -202,10 +202,10 @@ jobs:
 
           # foundry-module CHANGELOG.md (primary — include if a matching entry exists).
           # GRACEFUL (remote 729521d): a missing entry is a "no match" signal, not a
-          # release failure — `&& FOUND=1 || true` keeps the step green and falls through
+          # release failure — `if node …; then FOUND=1; fi` keeps the step green and falls through
           # to the g2-app block and, if nothing matched, the --generate-notes fallback.
           if test -f "packages/foundry-module/CHANGELOG.md"; then
-            node -e "
+            if node -e "
               const fs = require('node:fs');
               const ver = process.env.VERSION;
               const log = fs.readFileSync('packages/foundry-module/CHANGELOG.md', 'utf-8');
@@ -213,7 +213,7 @@ jobs:
               const m = log.match(new RegExp('## ' + escaped + '[\\\\s\\\\S]*?(?=\\n## |$)'));
               if (!m) { process.exit(1); }
               fs.appendFileSync('${NOTES_FILE}', m[0].trim() + '\\n');
-            " && FOUND=1 || true
+            "; then FOUND=1; fi
           fi
 
           # g2-app CHANGELOG.md (append if present)

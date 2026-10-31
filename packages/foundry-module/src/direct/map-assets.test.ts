@@ -1,10 +1,18 @@
-import { AssetSchema, type MapSnapshot, MapSnapshotSchema } from '@evf/shared-protocol';
+import {
+  ASSET_DATA_MAX,
+  AssetSchema,
+  type MapSnapshot,
+  MapSnapshotSchema,
+} from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type AssetEncoder,
   assetIdOf,
   BACKGROUND_MAX_SIDE,
+  ENCODE_CONCURRENCY,
+  FAILED_RETRY_MS,
   fitSize,
+  MAX_CACHED,
   MapAssetCache,
   PIECE_MAX_SIDE,
 } from './map-assets.js';
@@ -96,7 +104,7 @@ describe('map assets', () => {
   it('MA-05 evicts the oldest encoded pictures beyond the cache size', async () => {
     const encode = vi.fn<AssetEncoder>(async () => DATA);
     const cache = new MapAssetCache(encode);
-    const tokens = Array.from({ length: 100 }, (_, i) => ({
+    const tokens = Array.from({ length: MAX_CACHED + 4 }, (_, i) => ({
       id: `t${i}`,
       name: '',
       kind: 'neutral' as const,
@@ -108,8 +116,73 @@ describe('map assets', () => {
     }));
     const { background: _b, tiles: _t, ...bare } = SNAP;
     await cache.prepare({ ...bare, tokens });
-    expect(encode).toHaveBeenCalledTimes(100);
+    expect(encode).toHaveBeenCalledTimes(MAX_CACHED + 4);
     await cache.prepare({ ...bare, tokens: tokens.slice(0, 1) });
-    expect(encode).toHaveBeenCalledTimes(101);
+    expect(encode).toHaveBeenCalledTimes(MAX_CACHED + 5);
+  });
+
+  it('MA-06 drops a picture that would seal above the relay frame limit (regression)', async () => {
+    const huge = `data:image/jpeg;base64,${'A'.repeat(ASSET_DATA_MAX)}`;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const cache = new MapAssetCache(async (src) => (src === 'worlds/w/bg.webp' ? huge : DATA));
+    const { map, assets } = await cache.prepare(SNAP);
+    expect(map.background).toBeUndefined();
+    expect(assets.every((a) => a.data.length <= ASSET_DATA_MAX)).toBe(true);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('too large');
+  });
+
+  it('MA-07 retries a failed picture after the back-off, warning once (regression)', async () => {
+    let now = 0;
+    let fail = true;
+    const encode = vi.fn<AssetEncoder>(async () => {
+      if (fail) throw new Error('HTTP 503');
+      return DATA;
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const cache = new MapAssetCache(encode, () => now);
+    const { background: _b, tiles: _t, ...bare } = SNAP;
+    const scene = { ...bare, tokens: [], background: SNAP.background };
+    expect((await cache.prepare(scene)).map.background).toBeUndefined();
+    now = FAILED_RETRY_MS - 1;
+    await cache.prepare(scene);
+    expect(encode).toHaveBeenCalledTimes(1);
+    now = FAILED_RETRY_MS;
+    await cache.prepare(scene);
+    expect(encode).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    fail = false;
+    now = 2 * FAILED_RETRY_MS;
+    expect((await cache.prepare(scene)).map.background?.src).toMatch(/^evf-asset:/);
+  });
+
+  it('MA-08 regression: a cold scene encodes pictures in parallel, never more than the bound, assets in map order', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const encode = vi.fn<AssetEncoder>(async (src) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      return `data:image/png;base64,${src}`;
+    });
+    const cache = new MapAssetCache(encode);
+    const tokens = Array.from({ length: 12 }, (_, i) => ({
+      id: `t${i}`,
+      name: `T${i}`,
+      kind: 'enemy' as const,
+      x: i,
+      y: 0,
+      w: 1,
+      h: 1,
+      img: `tokens/${i}.png`,
+    }));
+    const { assets, map } = await cache.prepare({ ...SNAP, tiles: [], tokens });
+    expect(peak).toBe(ENCODE_CONCURRENCY);
+    expect(ENCODE_CONCURRENCY).toBeGreaterThan(1);
+    expect(assets.map((a) => a.data.split(',')[1])).toEqual([
+      'worlds/w/bg.webp',
+      ...tokens.map((t) => t.img),
+    ]);
+    expect(map.tokens.every((t) => t.img?.startsWith('evf-asset:'))).toBe(true);
   });
 });

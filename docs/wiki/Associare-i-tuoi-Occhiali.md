@@ -46,19 +46,21 @@ Accanto a ogni voce: l'ultimo contatto (*ora*, *N min fa*, *mai collegati*) e **
 
 ## ⚙️ La pagina sul telefono
 
-Dopo il collegamento l'app mostra **G2 HUD · Connessione**:
+Finché Foundry non risponde al codice l'app mostra **In attesa di Foundry…**, con il tempo che resta al codice (se l'hai inviato da questo telefono) e **Annulla** (torna alla prima configurazione). Il campo **Codice** raggruppa i 16 caratteri mentre scrivi (`7QK3-MX9P-…`) e accetta anche il link intero, incollato.
+
+Dopo il collegamento l'app mostra **G2 HUD · Connessione**, in quest'ordine: il riepilogo (**Tutto ok: puoi mettere via il telefono** quando sei collegato), poi — se non sei collegato — **Collega di nuovo**, poi i dati, i pulsanti, **Preferenze** e **Diagnostica**:
 
 | Voce | Cosa dice |
 |---|---|
 | **Stato** | *Collegato* / *Collegamento…* / *Non collegato*, con la causa (*la scheda di Foundry che ha collegato questi occhiali è chiusa*, *relay non raggiungibile*, *app in background*, *codice in attesa di risposta da Foundry*, *Foundry non trova il tuo personaggio*, *un'altra app ha preso questa associazione*) e «riprovo tra N s» |
-| **Relay · Foundry · PG · GM** | il relay, il mondo e l'utente Foundry che trasmette, il personaggio, il GM |
-| **Latenza** | andata e ritorno ping → pong attraverso il relay |
-| **Lingua** | *Segui Foundry* · *Italiano* · *English* |
-| **Mappa** · **Arte mappa** | *Casella 6/8/12 px*, *Pixel ×1/×2/×3*, *Segui il mio token* ([Mappa](Mappa)) |
-| **Scheda** | *Pagina scheda automatica* |
-| Pulsanti | **Riconnetti** · **Disconnetti** · **Diagnostica** (versione del modulo, errori recenti, log di debug, **Dimentica associazione**) |
+| **Relay · Foundry · PG · GM** | il relay, il mondo e l'utente Foundry che trasmette, il personaggio, il GM (solo le righe che hanno un valore) |
+| **Latenza** | andata e ritorno ping → pong attraverso il relay (solo da collegato) |
+| **Preferenze** › **Lingua** | *Segui Foundry* · *Italiano* · *English* |
+| **Preferenze** › **Mappa** · **Arte mappa** | *Casella 6/8/12 px* (zoom), *Pixel ×1/×2/×3* (grana dell'arte), *Segui il mio token*, con una riga che spiega cosa cambiano ([Mappa](Mappa)) |
+| **Preferenze** › **Scheda** | *Pagina scheda automatica* (apre «Tiri salvezza · Abilità» quando il GM chiede un tiro) |
+| Pulsanti | **Riconnetti** (quando non sei collegato) · **Pausa** / **Riprendi** (ferma il collegamento solo su questo telefono: non è lo **Scollega** di Foundry) · **Diagnostica** (riga di avvio, versione del modulo, errori recenti, log di debug, **Dimentica associazione** con conferma) |
 | **Collega di nuovo** | **Scansiona QR** e il campo **Codice**, come alla prima configurazione; si apre da sola quando non sei collegato, così un'associazione vecchia non è mai un vicolo cieco |
-| Riga in fondo | `app <versione> · secure yes/no · crypto webcrypto/fallback · link none/code/invalid/legacy/used · relay <host>`: senza segreti, da mandare in uno screenshot se chiedi aiuto |
+| Riga di avvio (in **Diagnostica**) | `app <versione> · secure yes/no · crypto webcrypto/fallback · link none/code/invalid/legacy/used · relay <host>`: senza segreti, da mandare in uno screenshot se chiedi aiuto |
 
 Le preferenze restano sul telefono e non modificano mai le impostazioni del mondo.
 

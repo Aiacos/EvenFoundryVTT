@@ -45,7 +45,8 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 
 ## 🐞 Diagnose from the phone
 
-- **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause:
+- **Summary** (top of P02): *All set: you can put the phone away* / *Connecting…* / *Paused* /
+  *Offline*, with the cause (the retry countdown sits below it, outside the live region):
   - *the Foundry tab that paired these glasses is closed* (HUD: *Player's Foundry closed*):
     open Foundry in that browser; it reconnects by itself, no countdown.
   - *relay not reachable*: the phone has no internet or the relay is down (check
@@ -56,17 +57,21 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
     *No answer to the code…*.
   - *Foundry cannot find your character* (HUD: *Character unavailable*): the projector
     answered `hello` with `actor_missing` / `forbidden_actor`; retries every 30 s.
-  - *another app took this pairing* (HUD: *Taken by another app*): relay close 4000; no
+  - *another app took this pairing* (HUD: *Glasses used by another app*): relay close 4000; no
     automatic reconnect — **Reconnect** takes it back.
 - **Relay / Foundry / Character / GM:** confirms the relay origin in use, the Foundry user
   whose tab projects, the paired character and the world's GM.
 - **Latency:** ping → pong through the relay and the projector.
 - **Diagnostics ▸** (IT: *Diagnostica*): module version, recent errors (newest first), the
   debug log, and **Forget pairing**.
-- **Reconnect** reopens the relay socket. **Disconnect** stops the session and keeps the
-  credentials. **Pair again** (IT *Collega di nuovo*, open by itself while not online) has
-  **Scan QR** + the code field: a stale pairing is never a dead end.
-- **Boot line** (bottom of P02 and P03, no secrets, no `?debug` needed):
+- **Reconnect** reopens the relay socket. **Pause** (IT *Pausa*) stops the session and keeps
+  the credentials; **Resume** reconnects (Foundry's **Disconnect** is the revoke — a different
+  action). **Pair again** (IT *Collega di nuovo*, open by itself while offline, listed before
+  the facts) has **Scan QR** + the code field: a stale pairing is never a dead end.
+- **Waiting step:** after a code or scan the phone shows *Waiting for Foundry…* (countdown to
+  the 5-minute expiry when this page sent the code, **Cancel** = forget the pending code) until
+  the first `welcome`, instead of an offline P02.
+- **Boot line** (under *Diagnostics* on every phone view, no secrets, no `?debug` needed):
   `app <ver> · secure yes|no · crypto webcrypto|fallback · link none|code|invalid|legacy|used · relay <host>`.
   `secure no · crypto fallback` = a plain-http page (works; https recommended). `link none`
   after a developer-mode Scan QR = the Even App did not pass `#c=` (type the code). `link used`
@@ -234,7 +239,7 @@ play and scan the new QR with **Pair again** on the phone (no need to *Forget pa
 | Every scan says *Invalid code* / *not a pairing QR*; boot line `secure no` (v0.3.2 and older) | The QR opened a plain-http LAN page (the v0.3.0/0.3.1 `dev:glasses` wizard set *Glasses app page (advanced)* to it): no WebCrypto there | Update; press **Restore default** in the pairing window. Current builds pair on http through the crypto fallback. |
 | Phone: *No answer to the code…* | QR expired or used elsewhere, projector tab closed, or clocks > 2 min apart (the window shows *clocks are apart*) | New QR; fix date/time; keep the tab open. |
 | Phone: *Code already used on this phone* | A spent `#c=` link reopened (Even App reload, re-scan after a lock, photo of the QR) | Nothing if connected; otherwise a new QR. |
-| Glasses: *Taken by another app* | Another app instance joined the same room (relay close 4000) | **Reconnect** on the phone you want to use. |
+| Glasses: *Glasses used by another app* | Another app instance joined the same room (relay close 4000) | **Reconnect** on the phone you want to use. |
 | Projector socket closed with 1008 right after pairing (module ≤ 0.3.2) | Double `hello` → two full pushes, > 60 frames/s on a scene with many pictures | Update: one push per link, outgoing frames paced to 40/s. |
 | Even App says *"trial version expired"* | A portal trial upload expired | Beta build or re-scan in developer mode; see [release/evenhub.md](release/evenhub.md). |
 | Relay Deploy green but `/health` fails | Secrets missing (job warned and skipped) or subdomain ≠ `evf-relay` | Add the secrets; align `DEFAULT_RELAY_URL` + `app.json` with the real subdomain. |

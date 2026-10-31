@@ -13,11 +13,14 @@ import { z } from 'zod';
 /**
  * Input schema for the `move_token` tool.
  *
+ * - `actor_id` — Actor acting (injected by the projector: the paired actor); the token
+ *   must belong to it.
  * - `token_id` — Foundry token document ID.
  * - `x`        — Target grid X coordinate (canvas units).
  * - `y`        — Target grid Y coordinate (canvas units).
  */
 export const MoveTokenInputSchema = z.object({
+  actor_id: z.string().min(1),
   token_id: z.string().min(1),
   x: z.number(),
   y: z.number(),

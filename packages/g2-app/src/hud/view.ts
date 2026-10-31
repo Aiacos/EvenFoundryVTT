@@ -16,7 +16,7 @@ import { screenOf } from './screen.js';
 import { contextView, offlineView } from './text/context.js';
 import { block, fit, spread } from './text/measure.js';
 import type { FullScreen } from './zones/fullscreen.js';
-import { renderHeader } from './zones/header.js';
+import { drawHeaderAlert, renderHeader } from './zones/header.js';
 import type { Luma } from './zones/luma.js';
 import { renderMap, type Viewport } from './zones/map.js';
 import { renderPortrait } from './zones/portrait.js';
@@ -24,8 +24,11 @@ import { renderSheet } from './zones/sheet.js';
 
 /** Full firmware brightness. */
 const BRIGHT = 4;
-/** S12: frozen zones dimmed to ~45 % (design `dim`). */
-const OFFLINE_DIM = 0.45;
+/**
+ * S12: frozen zones dimmed to ~30 % (design `dim`), so stale data never reads as live; the
+ * header also carries a full-brightness «■ CONGELATO» chip.
+ */
+export const OFFLINE_DIM = 0.3;
 
 /** Layout mode for the current state. */
 export function layoutModeFor(app: AppState): LayoutMode {
@@ -99,7 +102,7 @@ export function renderZones(v: ViewInput, extras: ZoneExtras): Record<Zone, Pixm
   const model = sheetModel(app, s);
   const ch = app.character;
   const zones: Record<Zone, Pixmap> = {
-    header: renderHeader(model, s),
+    header: renderHeader(model, s, ui.view === 'reaction' ? 'reaction' : null),
     map: renderMap(
       extras.viewport ? app.map : null,
       {
@@ -124,6 +127,9 @@ export function renderZones(v: ViewInput, extras: ZoneExtras): Record<Zone, Pixm
       s,
     ),
   };
-  if (screenOf(app) === 'offline') for (const p of Object.values(zones)) p.scale(OFFLINE_DIM);
+  if (screenOf(app) === 'offline') {
+    for (const p of Object.values(zones)) p.scale(OFFLINE_DIM);
+    if (model) drawHeaderAlert(zones.header, 'frozen', s);
+  }
   return zones;
 }

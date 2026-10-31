@@ -33,7 +33,6 @@ if (!version) {
 }
 
 const tag = `v${version}`;
-// biome-ignore lint/suspicious/noConsole: intentional release-script progress output
 console.log(`Release tag: ${tag}`);
 
 // Configure git bot identity for the tag in CI
@@ -58,25 +57,20 @@ try {
 }
 
 if (tagExists) {
-  // biome-ignore lint/suspicious/noConsole: intentional release-script progress output
   console.log(`Tag ${tag} already exists — skipping tag creation and dispatch.`);
   process.exit(0);
 }
 
 // Create and push the tag
-// biome-ignore lint/suspicious/noConsole: intentional release-script progress output
 console.log(`Creating tag ${tag}...`);
 execFileSync('git', ['tag', tag], { stdio: 'inherit' });
 execFileSync('git', ['push', 'origin', tag], { stdio: 'inherit' });
-// biome-ignore lint/suspicious/noConsole: intentional release-script progress output
 console.log(`Tag ${tag} pushed.`);
 
 // Dispatch foundry-module-release.yml via workflow_dispatch
 // (workflow_dispatch fires with the default token; on:push:tags does not — see header rationale)
-// biome-ignore lint/suspicious/noConsole: intentional release-script progress output
 console.log(`Dispatching foundry-module-release.yml for ${tag}...`);
 execFileSync('gh', ['workflow', 'run', 'foundry-module-release.yml', '-f', `tag=${tag}`], {
   stdio: 'inherit',
 });
-// biome-ignore lint/suspicious/noConsole: intentional release-script progress output
 console.log(`Dispatch complete.`);

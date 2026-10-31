@@ -1,4 +1,7 @@
 import {
+  CHARACTER_DELTA_TYPE,
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
   deriveCodePairing,
   GLASSES_ADDRESS,
   generateDeviceKey,
@@ -37,22 +40,28 @@ const writeAuditLog = vi.hoisted(() => vi.fn(async () => {}));
 const readMapSnapshot = vi.hoisted(() => vi.fn());
 const resolveTargetUuids = vi.hoisted(() => vi.fn());
 const applyOwnTargets = vi.hoisted(() => vi.fn());
+const getCombatSnapshot = vi.hoisted(() => vi.fn((_viewer: unknown): unknown => null));
 vi.mock('../write-path/tool-registry.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../write-path/tool-registry.js')>()),
   dispatchTool,
 }));
 vi.mock('../write-path/audit-log.js', () => ({ writeAuditLog }));
+const characterExtra = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../readers/character-reader.js', () => ({
-  getCharacterSnapshot: (id: string) => ({ actorId: id, name: 'Thorin' }),
+  getCharacterSnapshot: (id: string) => ({ actorId: id, name: 'Thorin', ...characterExtra.value }),
 }));
-vi.mock('../readers/combat-reader.js', () => ({ getCombatSnapshot: () => null }));
+vi.mock('../readers/combat-reader.js', () => ({ getCombatSnapshot }));
 vi.mock('../write-path/combat-action-tracker.js', () => ({
   getActionEconomy: (actorId: string) => ({ actorId, action: true }),
 }));
 vi.mock('../write-path/combat-movement-tracker.js', () => ({
   getMovementBudget: (actorId: string) => ({ actorId, remaining: 30 }),
 }));
-vi.mock('./map-reader.js', () => ({ readMapSnapshot, resolveTargetUuids }));
+vi.mock('./map-reader.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./map-reader.js')>()),
+  readMapSnapshot,
+  resolveTargetUuids,
+}));
 vi.mock('./own-targets.js', () => ({ applyOwnTargets }));
 
 const MAP: MapSnapshot = {
@@ -67,6 +76,11 @@ const MAP: MapSnapshot = {
   tokens: [{ id: 't1', name: 'Thorin', kind: 'self', x: 1, y: 1, w: 1, h: 1 }],
   selfTokenId: 't1',
 };
+
+/** `map` with its first token one cell to the right (a real change of the map). */
+function moved(map: MapSnapshot): MapSnapshot {
+  return { ...map, tokens: map.tokens.map((t, i) => (i === 0 ? { ...t, x: t.x + 1 } : t)) };
+}
 
 /** Fake relay link: records frames, lets the test drive peer/link events. */
 class FakeLink {
@@ -175,7 +189,11 @@ beforeEach(() => {
   links = [];
   readMapSnapshot.mockReturnValue(MAP);
   resolveTargetUuids.mockReturnValue({ ok: true, uuids: ['Scene.s1.Token.t9'] });
-  dispatchTool.mockResolvedValue({ success: true, data: { rolled: 17 } });
+  // Like the real dispatchTool: `onExecute` runs only when the handler really runs.
+  dispatchTool.mockImplementation(async (_tool: string, req: { onExecute?: () => void }) => {
+    req.onExecute?.();
+    return { success: true, data: { rolled: 17 } };
+  });
   projector = new Projector({
     relayBase: () => 'wss://relay.example',
     connect: (base, room, handlers) => {
@@ -324,10 +342,13 @@ describe('Projector (ADR-0019)', () => {
     resolveTargetUuids.mockReturnValueOnce({ ok: false, invalidId: 'tX' });
     await send('5', 'weapon-attack', { targets: ['tX'] });
     await send('6', 'weapon-attack', { item_id: 'axe', targets: ['t9'] });
-    dispatchTool.mockImplementation(async (_tool: string, req: { args: { item_id?: string } }) =>
-      req.args.item_id === 'wand'
-        ? { success: false, error: 'no_slots' }
-        : { success: true, data: { rolled: 17 } },
+    dispatchTool.mockImplementation(
+      async (_tool: string, req: { args: { item_id?: string }; onExecute?: () => void }) => {
+        req.onExecute?.();
+        return req.args.item_id === 'wand'
+          ? { success: false, error: 'no_slots' }
+          : { success: true, data: { rolled: 17 } };
+      },
     );
     await send('7', 'weapon-attack', { item_id: 'wand' });
     const out = await received(link, 7, p.key);
@@ -344,7 +365,20 @@ describe('Projector (ADR-0019)', () => {
       args: { item_id: 'axe', targets: ['Scene.s1.Token.t9'], actor_id: 'thorin' },
       idempotencyKey: '6',
       bearer: 'g2:dev1',
+      onExecute: expect.any(Function),
     });
+  });
+
+  it("PJ-07b regression: a replayed invoke (idempotent hit) does not reset the player's targets", async () => {
+    const { link, p } = await boot();
+    dispatchTool.mockResolvedValue({ success: true, data: { rolled: 17 } }); // cache hit
+    await glasses(
+      link,
+      { t: 'invoke', rid: 'r1', tool: 'weapon-attack', input: { targets: ['t9'] } },
+      p.key,
+    );
+    await received(link, 1, p.key);
+    expect(applyOwnTargets).not.toHaveBeenCalled();
   });
 
   it('PJ-08 ping → pong; a GM tab does not touch its own targets', async () => {
@@ -376,6 +410,10 @@ describe('Projector (ADR-0019)', () => {
     const out = await received(link, 9, p.key);
     expect(out.slice(6).map((m) => m.seq)).toEqual([1, 2, 3]);
     expect(projector.projectedActors()).toEqual(['thorin']);
+    expect(projector.isProjected('thorin')).toBe(true);
+    expect(projector.isProjected('other')).toBe(false);
+    link.handlers.onPeer(false);
+    expect(projector.isProjected('thorin')).toBe(false);
   });
 
   it('PJ-10 chat messages visible to this user become log / roll-request deltas', async () => {
@@ -403,6 +441,7 @@ describe('Projector (ADR-0019)', () => {
       await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
       await received(link, 6, p.key);
       now += MAP_THROTTLE_MS;
+      readMapSnapshot.mockReturnValue(moved(MAP));
       f.fire('updateToken');
       f.fire('updateToken');
       vi.advanceTimersByTime(MAP_THROTTLE_MS);
@@ -571,6 +610,43 @@ describe('Projector (ADR-0019)', () => {
     ]);
   });
 
+  it('PJ-29 regression: the portrait reaches the glasses as an asset, not a Foundry-relative URL', async () => {
+    characterExtra.value = {
+      portrait: { url: 'worlds/w/thorin.webp' },
+      token: { url: 'tokens/thorin.png' },
+    };
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'get', rid: 'c', what: 'character' }, p.key);
+      const out = await received(link, 3, p.key);
+      expect(out.map((m) => m.t)).toEqual(['asset', 'asset', 'snapshot']);
+      const ids = out.slice(0, 2).map((m) => (m as { id: string }).id);
+      const ch = (out[2] as { data: { portrait: { url: string }; token: { url: string } } }).data;
+      expect(ch.portrait.url).toBe(`evf-asset:${ids[0]}`);
+      expect(ch.token.url).toBe(`evf-asset:${ids[1]}`);
+      // Deltas carry the reference too; the pictures are not sent twice.
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await vi.waitFor(() => expect(projector.status('dev1')).toBe('online'));
+      await vi.waitFor(async () => {
+        const n = link.sent.length;
+        await new Promise((r) => setTimeout(r, 20));
+        expect(link.sent.length).toBe(n);
+      });
+      const before = link.sent.length;
+      projector.pushDelta(CHARACTER_DELTA_TYPE, {
+        actorId: 'thorin',
+        name: 'Thorin',
+        ...characterExtra.value,
+      });
+      const all = await received(link, before + 1, p.key);
+      const delta = all.at(-1) as { t: string; data: { portrait: { url: string } } };
+      expect(delta.t).toBe('delta');
+      expect(delta.data.portrait.url).toBe(`evf-asset:${ids[0]}`);
+    } finally {
+      characterExtra.value = {};
+    }
+  });
+
   it('PJ-19 regression: each pairing is served on the relay it was made on (setting only for old records)', async () => {
     await savePairing(pairing({ deviceId: 'custom', relay: 'ws://10.0.0.2:8787' }));
     await savePairing(pairing({ deviceId: 'old', createdAt: 2 }));
@@ -601,6 +677,290 @@ describe('Projector (ADR-0019)', () => {
       expect(getPairing('dev1')).not.toBeNull();
       expect(link.stopped).toBe(false);
       expect(projector.status('dev1')).toBe('waiting');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PJ-22 regression: pushes stop as soon as this tab no longer owns the projected actor', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await received(link, 6, p.key);
+      (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
+      projector.pushDelta('character.delta', { actorId: 'thorin' });
+      projector.pushDelta('combat.turn', { round: 2 });
+      f.fire('createChatMessage', { id: 'm1', content: 'Hi', whisper: [] });
+      now += MAP_THROTTLE_MS;
+      f.fire('updateToken');
+      vi.advanceTimersByTime(MAP_THROTTLE_MS);
+      await vi.advanceTimersByTimeAsync(0);
+      await new Promise((r) => setImmediate(r));
+      expect(link.sent).toHaveLength(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("PJ-23 regression: a GM tab projecting a player's character shows that player's chat, never the GM's whispers", async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm;
+    const whisper = (id: string, to: string[]) => ({
+      id,
+      content: id,
+      author: { id: 'gm1', name: 'Anna' },
+      timestamp: 5,
+      whisper: to,
+    });
+    f.game.messages = {
+      contents: [whisper('toGm', ['gm1']), whisper('toLuca', ['p1']), whisper('all', [])],
+      get: () => undefined,
+    };
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 5, p.key);
+    const log = out.find((m) => m.t === 'snapshot' && m.what === 'log') as {
+      data: { events: Array<{ id: string }> };
+    };
+    expect(log.data.events.map((e) => e.id)).toEqual(['toLuca', 'all']);
+    f.fire('createChatMessage', whisper('liveGm', ['gm1']));
+    f.fire('createChatMessage', whisper('liveLuca', ['p1']));
+    const live = await received(link, out.length + 1, p.key);
+    await new Promise((r) => setTimeout(r, 20));
+    const deltas = (await received(link, live.length, p.key)).slice(out.length);
+    expect(deltas.map((m) => (m.data as { id: string }).id)).toEqual(['liveLuca']);
+  });
+
+  it("PJ-23b a GM tab projecting the GM's own actor (no player owner) sees the GM's whispers", async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm;
+    (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 5, p.key);
+    f.fire('createChatMessage', {
+      id: 'liveGm',
+      content: 'x',
+      author: { id: 'gm1' },
+      timestamp: 5,
+      whisper: ['gm1'],
+    });
+    const live = await received(link, out.length + 1, p.key);
+    expect(live.at(-1)).toMatchObject({ topic: LOG_DELTA_TYPE, data: { id: 'liveGm' } });
+  });
+
+  it('PJ-24 regression: the combat tracker is built per device, for its viewers (hidden combatants, enemy HP)', async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm; // a GM tab projecting Luca's character
+    f.game.combat = {} as never;
+    getCombatSnapshot.mockImplementation((viewer) => ({ for: viewer }));
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 8, p.key);
+    const viewer = { actorId: 'thorin', userIds: ['p1'], gm: false };
+    expect(out.find((m) => m.what === 'combat')).toMatchObject({ data: { for: viewer } });
+    f.fire('updateCombat', {}, { turn: 1 });
+    f.fire('combatStart', {});
+    const live = (await received(link, 10, p.key)).slice(8);
+    expect(live).toEqual([
+      expect.objectContaining({ t: 'delta', topic: COMBAT_TURN_DELTA_TYPE, data: { for: viewer } }),
+      expect.objectContaining({
+        t: 'delta',
+        topic: COMBAT_STATE_DELTA_TYPE,
+        data: { for: viewer },
+      }),
+    ]);
+    // No combat: nothing pushed.
+    getCombatSnapshot.mockReturnValue(null);
+    f.fire('updateCombat', {}, { turn: 2 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(link.sent).toHaveLength(10);
+  });
+
+  it('PJ-25 regression: a map hook re-sends the map only when it changed, and other scenes cost nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await received(link, 6, p.key);
+      const settle = async () => {
+        now += MAP_THROTTLE_MS;
+        vi.advanceTimersByTime(MAP_THROTTLE_MS);
+        await vi.advanceTimersByTimeAsync(0);
+        for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      };
+      // targetToken by another user, a token of another scene: not even read.
+      readMapSnapshot.mockClear();
+      f.fire('targetToken', { id: 'someone' }, {}, true);
+      f.fire('updateToken', { parent: { id: 'elsewhere' } }, { x: 1 });
+      await settle();
+      expect(readMapSnapshot).not.toHaveBeenCalled();
+      // A relevant hook that changes nothing visible (e.g. an enemy's HP): read, not sent.
+      f.fire('updateToken', {}, { 'system.hp': 3 });
+      await settle();
+      expect(readMapSnapshot).toHaveBeenCalledTimes(1);
+      expect(link.sent).toHaveLength(6);
+      // A real change goes out; the same change again does not.
+      readMapSnapshot.mockReturnValue(moved(MAP));
+      f.fire('updateToken', {}, { x: 200 });
+      await settle();
+      const out = await received(link, 7, p.key);
+      expect(out[6]).toMatchObject({ t: 'snapshot', what: 'map' });
+      f.fire('updateToken', {}, { x: 200 });
+      await settle();
+      expect(link.sent).toHaveLength(7);
+      // An explicit get always answers.
+      await glasses(link, { t: 'get', rid: 'g', what: 'map' }, p.key);
+      vi.useRealTimers();
+      const again = await received(link, 8, p.key);
+      expect(again[7]).toMatchObject({ t: 'snapshot', rid: 'g', what: 'map' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PJ-26 regression: the hello push does not hold later frames behind picture encoding', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      assets: {
+        prepare: async (map: MapSnapshot) => {
+          await gate;
+          return { map, assets: [] };
+        },
+      } as unknown as MapAssetCache,
+      lock: (_id, hold) => {
+        hold();
+        return () => {};
+      },
+      now: () => now,
+    });
+    projector = slow;
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    await glasses(link, { t: 'ping', rid: 'p' }, p.key);
+    const early = await received(link, 3, p.key);
+    expect(early.map((m) => m.t)).toEqual(['welcome', 'snapshot', 'pong']);
+    release();
+    const all = await received(link, 6, p.key);
+    // The push keeps its own order: character, map, combat, log.
+    expect(all.filter((m) => m.t === 'snapshot').map((m) => m.what)).toEqual([
+      'character',
+      'map',
+      'combat',
+      'log',
+    ]);
+  });
+
+  it('PJ-27 regression: a tab queued behind the Web Lock dials the room current when it gets the lock', async () => {
+    let hold = () => {};
+    const queued = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      assets: new MapAssetCache(async () => 'data:image/jpeg;base64,AAAA'),
+      lock: (_id, h) => {
+        hold = h;
+        return () => {};
+      },
+      now: () => now,
+    });
+    projector = queued;
+    await savePairing(pairing());
+    await queued.start();
+    expect(links).toHaveLength(0);
+    // Meanwhile the tab holding the lock rotated room and key (first hello of a QR).
+    const rotated = { room: generateRoomId(), key: generateDeviceKey() };
+    await updatePairing('dev1', rotated);
+    hold();
+    expect(links[0]?.rooms).toEqual([rotated.room]);
+    const link = links[0] as FakeLink;
+    link.handlers.onPeer(true);
+    await glasses(link, { t: 'ping', rid: 'p' }, rotated.key);
+    const [pong] = await received(link, 1, rotated.key);
+    expect(pong).toEqual({ t: 'pong', rid: 'p' });
+  });
+
+  it('PJ-27b a pairing forgotten while queued behind the lock dials nothing', async () => {
+    let hold = () => {};
+    projector = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      lock: (_id, h) => {
+        hold = h;
+        return () => {};
+      },
+      now: () => now,
+    });
+    await savePairing(pairing());
+    await projector.start();
+    const { removePairing } = await import('./pairing-store.js');
+    await removePairing('dev1');
+    hold();
+    expect(links).toHaveLength(0);
+  });
+
+  it('PJ-28 regression: the QR expiring while its rotation is in flight forgets nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const code = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+      const { link } = await boot(pairing({ ...code, expiresAt: now + 60_000 }));
+      let release = () => {};
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const send = link.send.bind(link);
+      let sending = false;
+      link.send = async (frame: object) => {
+        sending = true;
+        await gate; // the relay socket is slow to take the welcome
+        return send(frame);
+      };
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, code.key);
+      await vi.waitFor(() => expect(sending).toBe(true));
+      vi.advanceTimersByTime(60_000); // the 5-minute window closes mid-rotation
+      release();
+      await vi.waitFor(() => expect(getPairing('dev1')?.expiresAt).toBeNull());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getPairing('dev1')).not.toBeNull();
+      expect(link.stopped).toBe(false);
+      expect(link.rooms).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PJ-28b a rotation whose welcome never left still expires with its QR', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const code = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+      const { link } = await boot(pairing({ ...code, expiresAt: now + 60_000 }));
+      link.failNext = 1;
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, code.key);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      expect(getPairing('dev1')?.room).toBe(code.room);
+      vi.advanceTimersByTime(60_000);
+      await vi.waitFor(() => expect(getPairing('dev1')).toBeNull());
     } finally {
       vi.useRealTimers();
     }
@@ -702,6 +1062,7 @@ describe('Projector (ADR-0019)', () => {
       await untilQuiet();
       // The GM switches to another scene with 30 other pictures in the same second.
       pictures = scenePictures('forest');
+      readMapSnapshot.mockReturnValue({ ...MAP, sceneId: 's2', name: 'Forest' });
       f.fire('canvasReady');
       for (let second = 0; second < 4; second++) {
         await untilQuiet();

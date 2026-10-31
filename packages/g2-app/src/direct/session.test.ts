@@ -20,6 +20,29 @@ import {
   seal,
 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * `seal` passthrough that can hold back the next call until released — lets a test make
+ * an earlier frame finish sealing *after* a later one (WebCrypto gives no ordering
+ * guarantee between concurrent `encrypt` calls).
+ */
+const sealGate = vi.hoisted(() => ({ holdNext: false, release: null as (() => void) | null }));
+vi.mock('@evf/shared-protocol', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@evf/shared-protocol')>();
+  return {
+    ...real,
+    seal: async (...args: Parameters<typeof real.seal>) => {
+      if (sealGate.holdNext) {
+        sealGate.holdNext = false;
+        await new Promise<void>((resolve) => {
+          sealGate.release = resolve;
+        });
+      }
+      return real.seal(...args);
+    },
+  };
+});
+
 import { createAppStore, DEFAULT_SETTINGS } from '../state/app-store.js';
 import {
   type Decoded,
@@ -181,12 +204,7 @@ describe('connect flow (relay, ADR-0019)', () => {
       steps: { paired: true },
     });
     expect(h.session.info().moduleVersion).toBe('0.3.0');
-    expect((await gm.drain()).map((m) => m.what).sort()).toEqual([
-      'character',
-      'combat',
-      'log',
-      'map',
-    ]);
+    expect((await gm.drain()).map((m) => m.what)).toEqual(['character', 'combat', 'map', 'log']);
     await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
     await gm.reply({ t: 'snapshot', what: 'map', data: makeMap() });
     await settle();
@@ -488,6 +506,18 @@ describe('online behaviour', () => {
     expect(h.session.info().diagnostics.at(-1)?.message).toBe('invalid map snapshot');
   });
 
+  it('sends frames in call order even when an earlier seal finishes last (regression)', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    sealGate.holdNext = true;
+    void h.session.invoke('weapon-attack', { itemId: 'axe' });
+    void h.session.invoke('cast-spell', {});
+    await settle();
+    sealGate.release?.();
+    await settle();
+    expect((await gm.drain()).map((m) => m.tool)).toEqual(['weapon-attack', 'cast-spell']);
+  });
+
   it('invokes tools with rid correlation and resolves results', async () => {
     const h = setup();
     const gm = await goOnline(h);
@@ -619,6 +649,40 @@ describe('online behaviour', () => {
     expect(map?.tiles).toBeUndefined();
     expect(map?.tokens[0]?.img).toBe(data);
     expect(map?.tokens[1]?.img).toBeUndefined();
+  });
+
+  it('hydrates the portrait from asset messages; relative Foundry paths are dropped (regression)', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    const data = 'data:image/png;base64,AAAA';
+    await gm.reply({ t: 'asset', id: 'pt', data });
+    await gm.reply({
+      t: 'snapshot',
+      what: 'character',
+      data: {
+        ...makeCharacter(),
+        portrait: { url: 'evf-asset:pt' },
+        token: { url: 'worlds/w/thorin.png' },
+      },
+    });
+    await settle();
+    expect(h.store.get().character?.portrait?.url).toBe(data);
+    // A Foundry-relative path cannot load on Pages / the .ehpk: dropped → class emblem.
+    expect(h.store.get().character?.token).toBeUndefined();
+    // Deltas too; an absolute URL (older projector) is kept as is.
+    await gm.reply({
+      t: 'delta',
+      seq: 1,
+      topic: CHARACTER_DELTA_TYPE,
+      data: {
+        ...makeCharacter(),
+        portrait: { url: 'evf-asset:pt' },
+        token: { url: 'https://forge.example/t.png' },
+      },
+    });
+    await settle();
+    expect(h.store.get().character?.portrait?.url).toBe(data);
+    expect(h.store.get().character?.token?.url).toBe('https://forge.example/t.png');
   });
 
   it('keeps at most ASSETS_MAX pictures', () => {

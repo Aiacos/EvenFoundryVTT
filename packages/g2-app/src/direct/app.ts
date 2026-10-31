@@ -26,6 +26,7 @@ import {
 } from './credentials.js';
 import { createRelayOpener, type OpenRelay } from './relay-client.js';
 import { DirectSession } from './session.js';
+import { MirroredSettingsStorage } from './settings.js';
 
 /** HUD entry point signature (implemented in `src/hud/index.ts`). */
 export type StartHud = (bridge: EvenAppBridge, store: AppStore, actions: AppActions) => () => void;
@@ -133,9 +134,9 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
   const store = createAppStore();
   // Storage warnings raised before the session exists are routed to it once created.
   let session: DirectSession | null = null;
-  const credentials = new CredentialStore(env.storage, (message, error) =>
-    session?.reportWarning(message, error),
-  );
+  const warn = (message: string, error: unknown): void => session?.reportWarning(message, error);
+  const credentials = new CredentialStore(env.storage, warn);
+  const settings = new MirroredSettingsStorage(env.storage, warn);
   const link = consumePairingLink(env.location, env.history);
   session = new DirectSession({
     store,
@@ -143,7 +144,7 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     openRelay: env.openRelay ?? createRelayOpener(),
     relayUrl: env.relayUrl,
     appVersion: env.appVersion,
-    settingsStorage: env.storage,
+    settingsStorage: settings,
     deviceLanguage: env.deviceLanguage,
   });
   const active = session;
@@ -176,6 +177,10 @@ export async function startApp(env: AppEnvironment): Promise<AppHandle> {
     );
     if (bridge !== null) {
       credentials.attachMirror(bridge);
+      // WebView storage lost the settings: take them from the SDK mirror before the HUD
+      // draws its first page (locale, map scale).
+      const restored = await settings.attach(bridge);
+      if (restored !== null) store.update({ settings: restored });
       stopEvents = bridge.onEvenHubEvent((event) => {
         const transition = foregroundTransition(event);
         // An abnormal exit closes like a background transition: graceful link close, and

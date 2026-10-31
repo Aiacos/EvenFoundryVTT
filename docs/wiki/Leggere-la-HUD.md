@@ -60,7 +60,7 @@ In fondo: *INTUIZIONE PASSIVA · INDAGARE PASSIVO*.
 
 ## 👓 Zona E — Contesto
 
-Tre righe di testo: **titolo** (a destra un dettaglio, per esempio *round 3* o *scade 9 s*), **corpo** incorniciato di tre righe con il cursore **▶**, e il **suggerimento dei gesti** in fondo:
+Tre righe di testo: **titolo** (a destra un dettaglio, per esempio *round 3* o, in una reazione, i secondi rimasti *9 s*), **corpo** incorniciato di tre righe con il cursore **▶**, e il **suggerimento dei gesti** in fondo:
 
 | Suggerimento | Leggi |
 |---|---|

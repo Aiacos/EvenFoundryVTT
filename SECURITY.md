@@ -42,6 +42,10 @@ Tick when verified; every control links its proof. Re-verify on each release.
 
 - [x] Sealed envelopes: AES-256-GCM, AAD `from>to`, 120 s anti-replay —
       [`envelope.ts`](packages/shared-protocol/src/direct/envelope.ts)
+- [x] Replayed `invoke` runs once: the idempotency cache keeps each `rid` for 2 × the 120 s
+      envelope window — [`idempotency-cache.ts`](packages/foundry-module/src/write-path/idempotency-cache.ts)
+- [x] Every sealed frame fits the relay's 1 MiB limit (`ASSET_DATA_MAX`, oversized pictures
+      dropped) — [`messages.ts`](packages/shared-protocol/src/direct/messages.ts), [`map-assets.ts`](packages/foundry-module/src/direct/map-assets.ts)
 - [x] Crypto without WebCrypto (http pages): AES-256-GCM / HKDF-SHA256 / SHA-256 from the audited
       noble libs (cure53), exact pins `@noble/ciphers` 2.4.0 + `@noble/hashes` 2.4.0, lazily loaded
       only when `crypto.subtle` is missing, byte-identical to WebCrypto —
@@ -65,7 +69,18 @@ Tick when verified; every control links its proof. Re-verify on each release.
       [`phone-page.ts`](packages/g2-app/src/phone/phone-page.ts)
 - [x] Relay limits: 1 MiB frames, 60 frames/s, one socket per role, 128-bit rooms —
       [`packages/relay`](packages/relay/README.md)
-- [x] Live ownership check + audit on denial — [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
+- [x] Live ownership check + audit on denial, via Foundry's `testUserPermission` (an explicit lower
+      per-user level beats an OWNER default) — [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts) (OW-04)
+- [x] Pushes (deltas, chat, map, combat) re-check ownership live; chat visibility follows the
+      player who owns the character, never a projecting GM's whispers —
+      [`projector.ts`](packages/foundry-module/src/direct/projector.ts) (tests PJ-22, PJ-23)
+- [x] Combat tracker on the glasses: hidden combatants left out, exact HP/AC only for friendly or
+      owned combatants — [`combat-reader.ts`](packages/foundry-module/src/readers/combat-reader.ts) (CMB-PRIV-1/2)
+- [x] Write tools bound to the paired actor: `move-token` only its own token, `drop-concentration`
+      only its concentration effect —
+      [`move-token.ts`](packages/foundry-module/src/write-path/handlers/move-token.ts), [`drop-concentration.ts`](packages/foundry-module/src/write-path/handlers/drop-concentration.ts)
+- [x] A QR expiring mid-rotation never deletes the rotated pairing; a lock-queued tab dials the
+      current room — [`projector.ts`](packages/foundry-module/src/direct/projector.ts) (tests PJ-27, PJ-28)
 - [x] No Foundry login / socket.io in the app bundle (CI Gate 10) — [`check-relay-origin.mjs`](scripts/check-relay-origin.mjs)
 - [x] Even Hub whitelist = relay origin only; camera photo decoded on the phone, never uploaded —
       [`app.json`](packages/g2-app/app.json), [`qr-scan.ts`](packages/g2-app/src/phone/qr-scan.ts)

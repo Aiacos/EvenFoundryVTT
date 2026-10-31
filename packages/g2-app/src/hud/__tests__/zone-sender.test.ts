@@ -105,6 +105,41 @@ describe('ZoneSender', () => {
     expect(sent.map((s) => s.region)).toEqual(['tl', 'tl']);
   });
 
+  it('does not re-send a tile identical to the one in flight (render during a send)', async () => {
+    sender.submit('tl', pix(4));
+    await vi.advanceTimersByTimeAsync(5); // send started, 30 ms in flight
+    sender.submit('tl', pix(4)); // e.g. the 1 s tick re-renders the same pixels
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(1);
+    // A newer pixmap queued behind the in-flight one is superseded by a re-submission
+    // of the in-flight pixels (latest wins).
+    sender.submit('bl', pix(1));
+    await vi.advanceTimersByTimeAsync(5);
+    sender.submit('bl', pix(2));
+    sender.submit('bl', pix(1));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent.map((s) => s.region)).toEqual(['tl', 'bl']);
+  });
+
+  it('keeps ≥ 100 ms between the end of a send and the start of the next', async () => {
+    const slow: Array<{ region: Tile; start: number; end: number }> = [];
+    const s = new ZoneSender(async (region) => {
+      const start = Date.now();
+      await new Promise((r) => setTimeout(r, 150));
+      slow.push({ region, start, end: Date.now() });
+      return 'success';
+    });
+    s.submit('tl', pix(1));
+    s.submit('tr', pix(2));
+    s.submit('bl', pix(3));
+    await vi.advanceTimersByTimeAsync(2000);
+    s.dispose();
+    expect(slow.map((x) => x.region)).toEqual(['tl', 'tr', 'bl']);
+    for (let i = 1; i < slow.length; i++) {
+      expect((slow[i]?.start ?? 0) - (slow[i - 1]?.end ?? 0)).toBeGreaterThanOrEqual(MIN_GAP_MS);
+    }
+  });
+
   it('stops after dispose', async () => {
     sender.submit('tl', pix(1));
     sender.dispose();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fromBase64Url, toBase64Url } from './base64url.js';
 import {
+  GLASSES_ADDRESS,
   generateDeviceKey,
   importDeviceKey,
   open,
@@ -9,7 +10,7 @@ import {
   seal,
 } from './envelope.js';
 import { MapSnapshotSchema } from './map.js';
-import { AppMessageSchema, ProjectorMessageSchema } from './messages.js';
+import { AppMessageSchema, ASSET_DATA_MAX, ProjectorMessageSchema } from './messages.js';
 import {
   buildPairingUrl,
   deriveCodePairing,
@@ -19,7 +20,12 @@ import {
   readPairingFragment,
   readPairingText,
 } from './pairing.js';
-import { RelayControlSchema, relayHealthUrl, relayRoomUrl } from './relay.js';
+import {
+  RELAY_MAX_FRAME_BYTES,
+  RelayControlSchema,
+  relayHealthUrl,
+  relayRoomUrl,
+} from './relay.js';
 
 const CODE = '7QK3MX9P2HRAC4TE';
 
@@ -122,6 +128,17 @@ describe('pairing link (QR)', () => {
 });
 
 describe('relay contract', () => {
+  it('a maximal asset still seals under the relay frame limit (regression)', async () => {
+    const key = await importDeviceKey(generateDeviceKey());
+    const data = `data:image/jpeg;base64,${'A'.repeat(ASSET_DATA_MAX - 23)}`;
+    const asset = { t: 'asset' as const, id: 'bg_1', data };
+    expect(ProjectorMessageSchema.safeParse(asset).success).toBe(true);
+    const frame = JSON.stringify(
+      await seal(key, PROJECTOR_ADDRESS, GLASSES_ADDRESS, asset, Date.now()),
+    );
+    expect(frame.length).toBeLessThan(RELAY_MAX_FRAME_BYTES);
+  });
+
   it('builds room and health URLs from any relay spelling', () => {
     expect(relayRoomUrl('wss://relay.example/', 'room_1', 'glasses')).toBe(
       'wss://relay.example/r/room_1?role=glasses',

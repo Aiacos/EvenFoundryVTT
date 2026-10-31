@@ -3,7 +3,8 @@
  * (docs/design/g2-sheet-ux.html).
  *
  * `startHud` builds the G2 page once (`createStartUpPageContainer`), then on every store
- * change / gesture / 1 s tick re-renders and pushes only what changed:
+ * change / gesture / 1 s tick re-renders and pushes only what changed (paused while the
+ * app is in the background — FOREGROUND_EXIT / ABNORMAL_EXIT → FOREGROUND_ENTER):
  * `textContainerUpgrade` (instant, flicker-free) for zone E, and the image tiles through
  * the paced, hash-skipping {@link ZoneSender}. Zones A + B + C are composed into one
  * 576 × 144 top band sent as the two top 288 × 144 tiles, zone D is the bottom-left tile
@@ -15,7 +16,8 @@
  * (`createStartUpPageContainer` ≠ success / `rebuildPageContainer` ≠ true) is logged on
  * the debug channel and the HUD falls back to the full-screen 2 × 2 layout for the rest of
  * the session — the sheet is then drawn as four tiles, zone E as pixels — never a dead
- * screen.
+ * screen. A placement that throws or times out (slow BLE) is not a rejection: the same
+ * page is retried after {@link PLACE_RETRY_MS}.
  *
  * The HUD reads {@link AppState} and calls {@link AppActions}; the only store writes are
  * clearing a handled reaction prompt (`reaction`) and a handled GM roll request
@@ -150,6 +152,8 @@ export function startHud(
   let placeRetryAt = 0;
   let placeTimer: ReturnType<typeof setTimeout> | null = null;
   let mapTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The app is in the background: no tick, no render, no bridge call until it returns. */
+  let background = false;
   const mapGate = new MapFrameGate();
   const shown = new Map<TextRegion, TextContent>();
   let viewport: { key: string; vp: Viewport } | null = null;
@@ -259,15 +263,19 @@ export function startHud(
         render();
       },
       (err: unknown) => {
+        // A throw / timeout is a transport failure (slow BLE), not the host refusing the
+        // layout: retry the same page, never switch to the fallback for it.
         creating = false;
-        rejected(first, next, String(err));
+        const call = first ? 'createStartUpPageContainer' : 'rebuildPageContainer';
+        retryPlacement(`${call} failed for the ${next} page (${String(err)}) — retrying`);
       },
     );
   }
 
   /**
-   * Page probe: a rejected/failed `sheet` placement switches to the `full` fallback at
-   * once; a rejected `full` placement is retried after {@link PLACE_RETRY_MS}.
+   * Page probe: a `sheet` placement the host rejects (non-success result) switches to the
+   * `full` fallback at once; a rejected `full` placement is retried after
+   * {@link PLACE_RETRY_MS}.
    */
   function rejected(first: boolean, next: LayoutMode, why: string): void {
     const call = first ? 'createStartUpPageContainer' : 'rebuildPageContainer';
@@ -277,7 +285,12 @@ export function startHud(
       render();
       return;
     }
-    console.warn(`[hud] ${call} rejected the ${next} page (${why}) — retrying`);
+    retryPlacement(`${call} rejected the ${next} page (${why}) — retrying`);
+  }
+
+  /** Logs `why` and re-renders (→ placement retry) after {@link PLACE_RETRY_MS}. */
+  function retryPlacement(why: string): void {
+    console.warn(`[hud] ${why}`);
     placeRetryAt = Date.now() + PLACE_RETRY_MS;
     if (placeTimer === null) {
       placeTimer = setTimeout(() => {
@@ -323,6 +336,7 @@ export function startHud(
   }
 
   function render(): void {
+    if (background) return;
     const app = store.get();
     const loc = locale();
     const next = pageModeFor(app);
@@ -389,12 +403,31 @@ export function startHud(
     render();
   }
 
+  let tick: ReturnType<typeof setInterval> | null = null;
+  function startTick(): void {
+    if (tick === null) tick = setInterval(() => dispatch({ t: 'tick' }), TICK_MS);
+  }
+  function stopTick(): void {
+    if (tick !== null) clearInterval(tick);
+    tick = null;
+  }
+
   const offEvents = bridge.onEvenHubEvent((ev) => {
     const g = toGestureEvent(ev);
     if (!g) return;
+    if (g.t === 'background') {
+      // Nothing is shown while backgrounded: stop the UI clock and the image pipeline
+      // (no BLE traffic, no retry warnings) until FOREGROUND_ENTER.
+      background = true;
+      stopTick();
+      sender.pause();
+      return;
+    }
     if (g.t === 'foreground') {
       // The glasses may have dropped image content while we were in background.
-      sender.reset();
+      background = false;
+      startTick();
+      sender.resume();
       mapGate.reset();
       render();
       return;
@@ -402,13 +435,13 @@ export function startHud(
     dispatch(g);
   });
   const offStore = store.subscribe((_state, prev) => dispatch({ t: 'state', prev }));
-  const tick = setInterval(() => dispatch({ t: 'tick' }), TICK_MS);
+  startTick();
   render();
 
   return () => {
     offEvents();
     offStore();
-    clearInterval(tick);
+    stopTick();
     if (placeTimer !== null) clearTimeout(placeTimer);
     if (mapTimer !== null) clearTimeout(mapTimer);
     sender.dispose();

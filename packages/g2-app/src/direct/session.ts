@@ -49,6 +49,7 @@ import {
   type AppMessage,
   ASSET_REF_PREFIX,
   CHARACTER_DELTA_TYPE,
+  type CharacterSnapshot,
   CharacterSnapshotSchema,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TARGETS_DELTA_TYPE,
@@ -276,6 +277,30 @@ interface PendingInvoke {
 }
 
 /**
+ * Resolves the character's portrait / token art: `evf-asset:<id>` → the received picture,
+ * an absolute `http(s):` / `data:` URL is kept (older projectors), anything else — a
+ * Foundry-relative path the phone cannot fetch from Pages or the `.ehpk` — is dropped, so
+ * the HUD draws the class emblem instead of failing a fetch for the whole session.
+ */
+export function hydrateCharacter(
+  character: CharacterSnapshot,
+  assets: ReadonlyMap<string, string>,
+): CharacterSnapshot {
+  const resolve = (url: string): string | undefined => {
+    if (url.startsWith(ASSET_REF_PREFIX)) return assets.get(url.slice(ASSET_REF_PREFIX.length));
+    return /^(https?:|data:)/i.test(url) ? url : undefined;
+  };
+  const { portrait, token, ...rest } = character;
+  const portraitUrl = portrait === undefined ? undefined : resolve(portrait.url);
+  const tokenUrl = token === undefined ? undefined : resolve(token.url);
+  return {
+    ...rest,
+    ...(portraitUrl !== undefined ? { portrait: { url: portraitUrl } } : {}),
+    ...(tokenUrl !== undefined ? { token: { url: tokenUrl } } : {}),
+  };
+}
+
+/**
  * Replaces `evf-asset:<id>` references with the pictures received in `asset` messages;
  * a picture not received (yet) is dropped (the phone then draws the schematic map).
  */
@@ -315,6 +340,8 @@ export class DirectSession implements AppActions {
   private attempt = 0;
   private link: RelayLink | null = null;
   private key: DeviceKey | null = null;
+  /** Tail of the outbound queue: frames are sealed and sent one at a time, in call order. */
+  private outbox: Promise<void> = Promise.resolve();
   private welcomed = false;
   /** Every `hello` of the current link: the `welcome` may answer any of them. */
   private readonly helloRids = new Set<string>();
@@ -856,6 +883,20 @@ export class DirectSession implements AppActions {
    */
   private async expireCode(): Promise<void> {
     this.pendingTimer = null;
+    await this.dropPendingCode('expired');
+  }
+
+  /**
+   * «Annulla» on the phone's waiting step: the pending code is dropped at once, exactly like
+   * an expiry (spent, the replaced pairing comes back) but without the error notice — never
+   * {@link forget}, which would also lose the pairing the code was about to replace.
+   */
+  async cancelPendingCode(): Promise<void> {
+    this.disarmPendingExpiry();
+    await this.dropPendingCode('cancelled');
+  }
+
+  private async dropPendingCode(why: 'expired' | 'cancelled'): Promise<void> {
     const credentials = this.deps.credentials;
     const pending = await credentials.load();
     this.close();
@@ -863,19 +904,26 @@ export class DirectSession implements AppActions {
     if (pending?.from !== undefined) await credentials.markSpent(pending.from);
     if (pending?.fallback !== undefined) {
       this.record(
-        'error',
-        'code-unanswered: no answer to the pairing code within 5 min — the previous pairing is restored',
+        why === 'cancelled' ? 'warn' : 'error',
+        why === 'cancelled'
+          ? 'pairing code cancelled on the phone — the previous pairing is restored'
+          : 'code-unanswered: no answer to the pairing code within 5 min — the previous pairing is restored',
       );
       await credentials.save(pending.fallback);
       this.attempt = 0;
       await this.connect();
       return;
     }
+    await credentials.clear();
+    if (why === 'cancelled') {
+      this.record('warn', 'pairing code cancelled on the phone');
+      this.clearData({ status: 'unpaired' });
+      return;
+    }
     this.record(
       'error',
       'code-unanswered: no answer to the pairing code within 5 min (expired, cancelled or already used)',
     );
-    await credentials.clear();
     this.clearData({ status: 'unpaired', notice: 'code-unanswered' });
   }
 
@@ -1023,9 +1071,13 @@ export class DirectSession implements AppActions {
       return;
     }
     const value =
-      topic === 'map' && parsed.data !== null
-        ? hydrateMap(parsed.data as MapSnapshot, this.assets)
-        : parsed.data;
+      parsed.data === null
+        ? null
+        : topic === 'map'
+          ? hydrateMap(parsed.data as MapSnapshot, this.assets)
+          : topic === 'character'
+            ? hydrateCharacter(parsed.data as CharacterSnapshot, this.assets)
+            : parsed.data;
     this.store.update({
       [topic]: value,
       ...(topic === 'combat' && parsed.data === null ? NO_TURN_STATE : {}),
@@ -1050,7 +1102,9 @@ export class DirectSession implements AppActions {
     }
     switch (topic) {
       case CHARACTER_DELTA_TYPE:
-        this.applyDelta(topic, CharacterSnapshotSchema, data, (character) => ({ character }));
+        this.applyDelta(topic, CharacterSnapshotSchema, data, (character) => ({
+          character: hydrateCharacter(character, this.assets),
+        }));
         break;
       case COMBAT_TURN_DELTA_TYPE:
       case COMBAT_STATE_DELTA_TYPE:
@@ -1107,15 +1161,24 @@ export class DirectSession implements AppActions {
 
   // ─── Outbound & helpers ──────────────────────────────────────────────────
 
+  /**
+   * Seals and sends `message` **in call order**: sealing is async (WebCrypto), so without
+   * this queue a later, faster seal could overtake an earlier one (an `invoke` before the
+   * `hello`, requests out of order). Mirrors the projector's per-device outbox. A failed
+   * seal is recorded and does not block the frames queued after it.
+   */
   private send(message: AppMessage): void {
     const link = this.link;
     const key = this.key;
     if (link === null || key === null) return;
-    seal(key, GLASSES_ADDRESS, PROJECTOR_ADDRESS, message, this.now()).then(
-      (env) => {
-        if (!link.send(env)) this.record('warn', `${message.t} dropped: relay link closed`);
-      },
-      (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
+    const sentAt = this.now();
+    this.outbox = this.outbox.then(() =>
+      seal(key, GLASSES_ADDRESS, PROJECTOR_ADDRESS, message, sentAt).then(
+        (env) => {
+          if (!link.send(env)) this.record('warn', `${message.t} dropped: relay link closed`);
+        },
+        (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
+      ),
     );
   }
 

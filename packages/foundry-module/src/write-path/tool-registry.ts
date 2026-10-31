@@ -264,6 +264,9 @@ export function extractActorId(args: unknown): string | null {
  * @param payload.args - Raw tool arguments (validated by handler.argsSchema)
  * @param payload.idempotencyKey - UUID v4 for cache deduplication
  * @param payload.bearer - Caller principal (the projector passes `g2:<userId>`); hashed to build the cache key
+ * @param payload.onExecute - Side effect the handler needs first (the projector sets the
+ *   player's own targets): runs only when the handler really runs, right before it —
+ *   never for a cache hit, an overlapping duplicate or invalid args
  * @returns Promise<ToolResult> — always resolves, never rejects
  *
  * @see dispatchTool pipeline spec in 07-01-PLAN.md Task 2 <behavior>
@@ -271,7 +274,7 @@ export function extractActorId(args: unknown): string | null {
  */
 export async function dispatchTool(
   toolId: ToolId,
-  payload: { args: unknown; idempotencyKey: string; bearer: string },
+  payload: { args: unknown; idempotencyKey: string; bearer: string; onExecute?: () => void },
 ): Promise<ToolResult> {
   // Step 1: compute bearer-bound cache key
   const bearerHash = await hashBearer(payload.bearer);
@@ -311,6 +314,7 @@ export async function dispatchTool(
     // Step 5: handler invocation (error isolation)
     let result: ToolResult;
     try {
+      payload.onExecute?.();
       result = await handler.handle(parseResult.data);
     } catch (err) {
       result = { success: false, error: err instanceof Error ? err.message : String(err) };

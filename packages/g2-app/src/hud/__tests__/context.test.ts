@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { character, mockStates, online } from '../../demo/fixtures.js';
 import type { AppState } from '../../state/app-store.js';
 import { strings } from '../i18n.js';
+import { buildEntries } from '../input/entries.js';
 import { initialUi } from '../input/ui-state.js';
 import { TEXT, type TextRegion } from '../layout.js';
 import { contextView } from '../text/context.js';
@@ -86,6 +87,11 @@ describe('INV-1 zone E budgets', () => {
     }
   });
 
+  it('a pairing taken by another app names the glasses, not an unnamed «them»', () => {
+    expect(strings('it').offlineCauses.replaced).toBe("Occhiali usati da un'altra app");
+    expect(strings('en').offlineCauses.replaced).toBe('Glasses used by another app');
+  });
+
   it('full screens only carry the capture layer (their content is image tiles)', () => {
     expect(texts('S10')).toEqual({ bg: { content: ' ', color: 4 } });
     expect(Object.keys(texts('S11'))).toEqual(['bg']);
@@ -113,38 +119,105 @@ describe('zone E content (IT, design persona)', () => {
   });
 
   it('S3 actions carry bonus and damage right-aligned; S5 spells show slots in the title', () => {
-    expect(head('S3')).toMatch(/^Azioni +Thorin$/);
+    expect(body('S3').split('\n')[2]).toMatch(/^▼ +Vantaggio: no$/);
+    expect(head('S3')).toMatch(/^Azioni +1\/\d$/);
     expect(body('S3').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6 · 1d8\+3$/);
     // Pips (190 px) do not fit beside the title in the firmware font: remaining/max.
+    // Slot counts keep the head to themselves (a «· 2/4» would read as one more level).
     expect(head('S5')).toMatch(/^Incantesimi +3\/4 2\/3 1\/2$/);
     expect(body('S5')).toMatch(/▶ +Benedizione {2}C +1° · 30 ft/);
     expect(body('S5')).toMatch(/Fiamma sacra +trucchetto\n/);
   });
 
+  it('a list longer than the 3 body lines says so: position in the title, ▼ on the last row', () => {
+    const n = buildEntries(
+      mockStates('min')[2]?.app ?? online(),
+      { ...initialUi(), view: 'actions' },
+      strings('it'),
+    ).length;
+    expect(n).toBeGreaterThan(3);
+    expect(head('S3')).toMatch(new RegExp(`^Azioni +1/${n}$`));
+    const rows = body('S3').split('\n');
+    expect(rows[0]).toMatch(/^▶ /);
+    expect(rows[2]).toMatch(/^▼ /);
+    // At the bottom the cue flips: ▲ on the first visible row.
+    const app = mockStates('min')[2]?.app ?? online();
+    const end = contextView(
+      app,
+      { ...initialUi(), view: 'actions', cursor: n - 1 },
+      strings('it'),
+      NOW,
+      282,
+    );
+    expect(end.body[0]).toMatch(/^▲ /);
+    expect(end.right).toBe(`${n}/${n}`);
+    // A list that fits shows no position and no cue (S8: two choices).
+    expect(body('S8')).not.toMatch(/▼|▲ /);
+  });
+
   it('S4 targets by distance with the weapon bonus in the title', () => {
+    // The weapon and its bonus outrank the position: only the ▼ cue says there is more.
     expect(head('S4')).toMatch(/^Bersaglio +Martello da guerra \+6$/);
     expect(body('S4').split('\n')).toEqual([
-      expect.stringMatching(/^▶ +Goblin A +5 ft$/),
-      expect.stringMatching(/^ +Goblin B +10 ft$/),
-      expect.stringMatching(/^ +Hobgoblin +30 ft$/),
+      // Enemy health like the initiative list, then the distance.
+      expect.stringMatching(/^▶ +Goblin A +■■□□ · 5 ft$/),
+      expect.stringMatching(/^ +Goblin B +■■■■ · 10 ft$/),
+      expect.stringMatching(/^▼ +Hobgoblin +■■■■ · 30 ft$/),
     ]);
   });
 
   it('S6 result, S7 reaction countdown, S8 GM request, S9 down, S12 offline', () => {
-    expect(head('S6')).toMatch(/^Esito +Martello → Goblin A$/);
-    expect(body('S6')).toBe('d20 16\nCOLPITO\nDanni 9 contundenti');
-    expect(head('S7')).toMatch(/^▲ Reazione +scade 6 s$/);
+    // The payoff on one line: roll, bonus, total and outcome; the target in the title.
+    expect(head('S6')).toMatch(/^Martello da guerra +→ Goblin A$/);
+    expect(body('S6')).toBe('d20 16 +6 = 22 · COLPITO\nDanni 9 contundenti');
+    // Reaction type + countdown in the title, only the weapon (and its bonus) per row.
+    expect(head('S7')).toMatch(/^▲ Attacco di opportunità +6 s$/);
+    expect(body('S7').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6$/);
     expect(body('S7').split('\n')[2]).toBe('Innesco: Goblin B');
     expect(head('S8')).toMatch(/^Prova richiesta +dal GM$/);
     expect(body('S8').split('\n')[0]).toMatch(/^Tiro salvezza su SAG +\+7$/);
     expect(body('S8').split('\n')[1]).toMatch(/^▶ +Fatto · d20 al tavolo$/);
     expect(body('S8').split('\n')[2]).toMatch(/^ +Tira in Foundry$/);
     expect(head('S9')).toMatch(/^Sei a terra +round 4$/);
-    expect(body('S9')).toBe('Tiro salvezza contro la morte\nSuccessi 1/3 · Fallimenti 2/3');
+    // The sheet draws the circles: the text says what is left, not the same tally again.
+    expect(body('S9')).toBe(
+      'Tiro salvezza contro la morte\nAncora 1 fallimento = morte\nAncora 2 successi = stabile',
+    );
     expect(head('S12')).toMatch(/^▲ Offline +dati di 2 min fa$/);
     expect(body('S12')).toBe(
       'Foundry del giocatore chiuso\nRiprovo tra 8 s (tentativo 3)\nScheda e mappa congelate',
     );
+  });
+
+  it('result: no bonus known → roll and outcome only; no roll → outcome; EN plurals', () => {
+    const s = strings('en');
+    const payload = { ...mockStates('min')[5]?.app.lastResult } as NonNullable<
+      AppState['lastResult']
+    >;
+    const ui = (bonus: number | null, d20: number | null) => ({
+      ...initialUi(),
+      view: 'result' as const,
+      result: {
+        title: 'Fire Bolt',
+        target: null,
+        bonus,
+        shownAt: 0,
+        ack: 'ok' as const,
+        payload: { ...payload, d20 },
+      },
+    });
+    const app = online();
+    expect(contextView(app, ui(null, 12), s, 0, 282).body[0]).toBe('d20 12 · HIT');
+    expect(contextView(app, ui(-1, 12), s, 0, 282).body[0]).toBe('d20 12 -1 = 11 · HIT');
+    expect(contextView(app, ui(null, null), s, 0, 282).body[0]).toBe('HIT');
+    expect(contextView(app, ui(null, 12), s, 0, 282).title).toBe('Fire Bolt');
+    const down = online('min', {
+      character: { ...character(), hp: 0, death: { success: 2, failure: 0 } },
+    });
+    expect(contextView(down, initialUi(), s, 0, 282).body.slice(1)).toEqual([
+      '3 more failures = death',
+      '1 more success = stable',
+    ]);
   });
 
   it('request lines cover checks, skills and DCs; empty lists show a dash', () => {

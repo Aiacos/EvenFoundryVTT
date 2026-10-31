@@ -7,6 +7,55 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] Glasses reaction prompt: reaction type and seconds left in the title, only the weapon per row,
+      header chip «▲ REAZIONE», a reflex ●● in the first second is ignored —
+      [`state-machine.ts`](packages/g2-app/src/hud/input/state-machine.ts), [ADR-0012](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md)
+- [x] Glasses failure screens: the cause is the headline, the stuck step is marked ✗ and the remedy
+      replaces the progress bar; unknown names never print «-» —
+      [`fullscreen.ts`](packages/g2-app/src/hud/zones/fullscreen.ts)
+- [x] Glasses lists: ▲ / ▼ on the edge rows when the list goes on, position in an empty title;
+      «Vantaggio» one tap away in Actions — [`context.ts`](packages/g2-app/src/hud/text/context.ts), [`entries.ts`](packages/g2-app/src/hud/input/entries.ts)
+- [x] Glasses result «d20 16 +6 = 22 · COLPITO» with action → target in the title; enemy health in
+      the target list; death saves say what is left; whole condition chips —
+      [`context.ts`](packages/g2-app/src/hud/text/context.ts), [`header.ts`](packages/g2-app/src/hud/zones/header.ts)
+- [x] Glasses offline: frozen zones dimmed to 30 % under a «■ CONGELATO» chip; «Occhiali usati da
+      un'altra app» — [`view.ts`](packages/g2-app/src/hud/view.ts), [`i18n.ts`](packages/g2-app/src/hud/i18n.ts)
+- [x] Phone page: «In attesa di Foundry…» step with the code countdown and «Annulla» instead of an
+      offline page; calm «Tutto ok» summary, recovery first with one primary, «Preferenze»
+      disclosure, «Pausa» / «Riprendi» (no more «Disconnetti»), confirmed «Dimentica associazione»,
+      live 4-4-4-4 code grouping, WCAG AA contrast, 44 px targets and linked errors —
+      [`phone-page.ts`](packages/g2-app/src/phone/phone-page.ts), [`phone.css`](packages/g2-app/src/phone/phone.css)
+- [x] The character portrait finally shows on the glasses (sent as a picture, not a Foundry path the
+      phone cannot load) — [`projector.ts`](packages/foundry-module/src/direct/projector.ts), [`session.ts`](packages/g2-app/src/direct/session.ts)
+- [x] The glasses' combat tracker hides hidden combatants and enemy HP/AC; pushes stop when the
+      tab loses the character; a GM tab never shows its whispers on a player's glasses —
+      [`combat-reader.ts`](packages/foundry-module/src/readers/combat-reader.ts), [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
+- [x] Ownership follows Foundry's permission test (an explicit lower level beats an OWNER default) —
+      [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
+- [x] A device moves only its own token and drops only its concentration —
+      [`move-token.ts`](packages/foundry-module/src/write-path/handlers/move-token.ts), [`drop-concentration.ts`](packages/foundry-module/src/write-path/handlers/drop-concentration.ts)
+- [x] A replayed action no longer resets the player's targets; pending template placements are
+      bounded — [`tool-registry.ts`](packages/foundry-module/src/write-path/tool-registry.ts), [`place-template.ts`](packages/foundry-module/src/write-path/handlers/place-template.ts)
+- [x] Map re-sent only when it changed (other scenes' hooks ignored); character snapshots only for
+      projected actors; pictures encoded 4 at a time without stalling requests —
+      [`projector.ts`](packages/foundry-module/src/direct/projector.ts), [`map-assets.ts`](packages/foundry-module/src/direct/map-assets.ts)
+- [x] A tab waiting for the projector lock dials the current room; a QR expiring mid-rotation no
+      longer forgets the new pairing — [`projector.ts`](packages/foundry-module/src/direct/projector.ts)
+- [x] Glasses HUD over BLE: no duplicate send of a tile already in flight, 100 ms image gap from the
+      end of the previous send, a timed-out bridge call no longer overlaps the next one —
+      [`zone-sender.ts`](packages/g2-app/src/hud/zones/zone-sender.ts), [`bridge-queue.ts`](packages/g2-app/src/hud/bridge-queue.ts)
+- [x] Glasses HUD: one slow page placement no longer drops the sheet for the full-screen fallback for
+      the whole session; HUD paused while the app is in the background —
+      [`index.ts`](packages/g2-app/src/hud/index.ts), [ADR-0012](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md)
+- [x] Phone settings (language, map) survive a wiped WebView storage: mirrored into the Even Hub SDK
+      store like the pairing — [`settings.ts`](packages/g2-app/src/direct/settings.ts)
+- [x] A sealed action re-sent by the relay can no longer run twice; scene pictures too big for a
+      relay frame fall back to the schematic map instead of looping the projector — [`SECURITY.md`](SECURITY.md)
+- [x] Glasses → Foundry frames keep their order (two quick actions could arrive swapped) —
+      [`session.ts`](packages/g2-app/src/direct/session.ts)
+- [x] Constitution v1.3.0: 15 principles (new P13 architecture, P14 pre-commit checks, P15 plugins &
+      skills); every commit now runs Biome + typecheck + related tests —
+      [constitution](.specify/memory/constitution.md), [CLAUDE.md](CLAUDE.md), [`.husky/pre-commit`](.husky/pre-commit)
 - [x] «Scansiona QR» measured on 840 simulated phone photos of the real Foundry QR: centred-crop
       decode steps (+18 photos, none lost), camera result read leniently (the SDK dropped partial
       host answers), 120 s camera timeout, `<img>` fallback for HEIC, photo size/type in the error;

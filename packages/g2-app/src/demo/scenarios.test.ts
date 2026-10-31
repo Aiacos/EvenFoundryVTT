@@ -69,7 +69,14 @@ describe('demo scenarios', () => {
   it('deliver the GM roll request (S8) and the 0 PF state (S9) as the HUD sees them in play', () => {
     expect(buildScenario('saves', NOW).patch.rollRequest).toMatchObject({ kind: 'save' });
     expect(buildScenario('dying', NOW).initial.character?.hp).toBe(0);
-    expect(buildScenario('spells', NOW).gestures).toEqual(['tap', 'down', 'down', 'tap', 'down']);
+    expect(buildScenario('spells', NOW).gestures).toEqual([
+      'tap',
+      'down',
+      'down',
+      'down',
+      'tap',
+      'down',
+    ]);
   });
 
   it('resolve playlists', () => {

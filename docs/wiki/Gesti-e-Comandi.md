@@ -22,10 +22,12 @@ La pressione lunga apre il menu di sistema della pagina (`menuObject`). Ogni voc
 | **Scheda** | alterna *Caratteristiche* ↔ *Tiri salvezza · Abilità* |
 | **Mappa: zoom +** / **Mappa: zoom -** | cambia la dimensione delle celle della mappa ([Mappa](Mappa)) |
 | **Mappa: segui/libera** | la mappa segue il tuo token oppure resta ferma |
-| **Vantaggio/Svantaggio** | ciclo *Vantaggio: no* → *Vantaggio: sì* → *Svantaggio* per il prossimo tiro |
+| **Vantaggio/Svantaggio** | ciclo *Vantaggio: no* → *Vantaggio: sì* → *Svantaggio* per il prossimo tiro (anche direttamente in *Azioni*, subito sotto le armi) |
 | **Fine turno** | termina il turno (rifiutato se non è il tuo turno) |
 | **Lingua** | ciclo auto → IT → EN |
 | **Riconnetti** | nuova connessione a Foundry |
+
+Le liste del contesto mostrano tre righe: quando ce ne sono altre, la prima / ultima riga visibile porta **▲** / **▼**; se il titolo non ha già un valore (slot, bonus dell'arma) dice anche la posizione (*Azioni  2/7*).
 
 ## 🕹️ Il flusso di un'azione
 

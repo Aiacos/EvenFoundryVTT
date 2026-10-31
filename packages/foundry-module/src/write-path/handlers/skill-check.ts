@@ -39,16 +39,9 @@
 
 import { SkillCheckInputSchema } from '@evf/shared-protocol';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { isNoGmError } from './common.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Detects a GM-offline signal from a thrown error (Pitfall 5 — mirrors use-item.ts).
- */
-function isNoGmError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes('no_gm_connected') || msg.includes('No connected GM');
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 

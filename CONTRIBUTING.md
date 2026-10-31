@@ -36,7 +36,7 @@ git checkout -b feat/your-thing
 ### 2. Make your change
 
 - Follow the existing code style (Biome enforces — `pnpm format` to auto-fix)
-- TypeScript strict + 5 flags active (`tsconfig.base.json`) — no `// @ts-ignore` without justification
+- TypeScript strict + 6 flags active (`tsconfig.base.json`) — no `// @ts-ignore` without justification
 - Public APIs documented with JSDoc/TSDoc (INV-4)
 - `// TODO` MUST include `(#issueNumber)` or `(ADR-NNNN)` reference (CI gate 5)
 
@@ -62,9 +62,9 @@ pnpm changeset
 # Answer prompts: which packages, bump type (major|minor|patch|none), summary
 ```
 
-Commit the generated `.changeset/*.md` alongside your code. CI gate 7 fails PRs that change packages without a changeset.
+Commit the generated `.changeset/*.md` alongside your code. CI gate 6 fails PRs that change packages without a changeset.
 
-Pre-1.0 policy: all packages are `0.1.0-alpha.0` and `private: true` — `pnpm changeset publish` is intentionally not run (D-1.12 + ADR-0008).
+Packages are `private: true` and versioned independently by Changesets; nothing is published to npm — `release.yml` versions, tags and ships the module zip + `.ehpk` (D-1.12 + ADR-0008).
 
 ### 5. Commit using Conventional Commits
 
@@ -82,12 +82,12 @@ Format: `<type>(<scope>): <subject>` (D-1.14)
 | `style` | Formatting, white space |
 | `ci` | CI pipeline change |
 
-Scope: package name (`g2-app`, `foundry-module`, `shared-protocol`, `shared-render`, `validation-harness`) OR plan ID (`02-01`, `01-03`) OR `*` (cross-cutting).
+Scope (optional, enforced by `commitlint.config.js`): a package (`g2-app`, `foundry-module`, `shared-protocol`, `shared-render`, `validation-harness`, `e2e`, `relay`), an area (`release`, `ci`, `docs`, `constitution`) or `*` (cross-cutting).
 
 Examples:
 
 - `feat(foundry-module): add GM-client projector for sealed envelopes`
-- `docs(02-01): plan Foundry module readers`
+- `fix(relay): close the room when both peers leave`
 - `chore: bump pnpm to 10.33.4`
 - `fix(g2-app): correct Status HUD column alignment`
 
@@ -95,18 +95,27 @@ The `commit-msg` Husky hook validates locally; CI re-validates the PR title serv
 
 ### 6. Push + Open PR
 
-CI runs the D-1.10 quality gates plus the architecture guards:
+Before that, every local commit already ran `.husky/pre-commit` (Biome on the staged files,
+`pnpm typecheck`, `vitest related --run`) and `commit-msg` (commitlint) — CLAUDE.md P14.
+
+CI (`.github/workflows/ci.yml`, job `quality-gates`) then runs:
 
 1. `pnpm install --frozen-lockfile` — lockfile drift detection
 2. `pnpm biome ci .` — lint + format (read-only)
 3. `pnpm typecheck` — TS strict per package
-4. `pnpm test:coverage` — Vitest with coverage thresholds (80% workspace-wide)
+4. `pnpm test:coverage` — Vitest with coverage thresholds (80% workspace-wide); with `CI` set
+   Vitest writes no snapshot, so it is also the snapshot-drift gate (locally:
+   `CI=true pnpm test:coverage`; never `--update=false`, Vitest 4 reads it as «update»)
 5. `// TODO` discipline grep — every TODO needs `(#N)` or `(ADR-N)`
-6. Snapshot drift check (`vitest --run --update=false`)
-7. `pnpm changeset:status --since=main` — changeset declared if package changed
+6. `pnpm changeset:status` — a changeset for every changed package (PRs only)
+7. Changesets cover the shipped module — a bump of g2-app / shared-* must also bump the module
 8. Single-workflow-origin guard (ADR-0011) — `activity.use(` only under `packages/foundry-module/src/write-path/`
-9. socketlib confinement (ADR-0016) — no socketlib usage outside `packages/foundry-module`
-10. g2-app build (ADR-0016) — `pnpm --filter @evf/g2-app build` must emit `packages/foundry-module/g2/index.html`
+9. socketlib confinement (ADR-0016) — no socketlib outside `packages/foundry-module`
+10. g2-app build + relay-only contract (ADR-0019) — `scripts/check-relay-origin.mjs --bundle packages/g2-app/dist`
+11. Relay end-to-end — `wrangler dev` + real glasses session + real projector + the bundle in Chromium + `validate:relay`
+12. Wiki links, tracking files (`TODO.md` / `SECURITY.md` / `CHANGELOG.md`), module runtime assets,
+    Even Hub manifest (`app.json` version + icon), ShellCheck on `scripts/*.sh`, actionlint on
+    `.github/workflows/`
 
 Plus a parallel job: PR title commitlint validation.
 
@@ -114,10 +123,10 @@ All gates green = ready for merge. Squash-merge is the default (PR title becomes
 
 ## Project Architecture
 
-- `Specs.md` — canonical source of truth (~4040 lines)
+- `Specs.md` — canonical source of truth
 - `README.md` + `docs/showcase/index.html` — projections of Specs (must stay coherent — INV-3)
 - `docs/architecture/` — ADRs governing architectural choices (read these before making structural changes)
-- `.planning/` — GSD workflow planning artifacts (PLAN.md, SUMMARY.md, etc.)
+- `specs/NNN-*/` — Spec Kit features (spec → plan → tasks); constitution in `.specify/memory/constitution.md`
 
 ## Project Invariants (NON-NEGOTIABLE)
 

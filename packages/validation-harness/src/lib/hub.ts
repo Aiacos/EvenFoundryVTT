@@ -36,7 +36,7 @@ export type HubLoadResult =
 // is present, so we return { available: false } and tests emit "skipped" evidence.
 export async function loadHub(opts: HubLoadOptions = {}): Promise<HubLoadResult> {
   // Read env-only credential per T-00-04 — never accept inline.
-  const token = process.env['EVEN_HUB_TOKEN'];
+  const token = process.env.EVEN_HUB_TOKEN;
   if (!token && opts.required) {
     return {
       available: false,

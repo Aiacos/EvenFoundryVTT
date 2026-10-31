@@ -102,10 +102,17 @@ installed app keeps running when the phone locks.
 next session, just open Foundry there and the glasses reconnect by themselves. On the first
 connection the room and key rotate, so the QR you scanned stops working.
 
-The phone shows the **Connection** page: status, relay, Foundry, character, latency,
-language, map options, **Reconnect**, **Disconnect**, **Pair again** (IT: *Collega di nuovo* —
-the same **Scan QR** button and **Code** field, open by itself whenever you are not connected)
-and **Diagnostics**. At the bottom of the page a boot line without secrets —
+While Foundry has not answered the code yet, the phone shows **Waiting for Foundry…** (IT:
+*In attesa di Foundry…*) with the time left on the code (when this phone sent it) and
+**Cancel** (back to first setup). Then it shows the **Connection** page: first a summary —
+**All set: you can put the phone away** when connected; when not, the cause and **Pair again**
+(IT: *Collega di nuovo* — the same **Scan QR** button and **Code** field, open by itself) with
+**Reconnect** next to it — then relay, Foundry, character, GM and latency (only the rows that
+have a value), **Pause** / **Resume** (IT: *Pausa* / *Riprendi*: stops the link on this phone
+only; it is not Foundry's **Disconnect**), **Preferences** (language, map, sheet; closed by
+default) and **Diagnostics**. The code field groups the 16 characters as you type
+(`7QK3-MX9P-…`) and takes the whole link, pasted. Under **Diagnostics** a boot line without
+secrets —
 `app <version> · secure yes/no · crypto webcrypto/fallback · link none/code/invalid/legacy/used · relay <host>`
 — is what to screenshot when you ask for help.
 
@@ -145,7 +152,8 @@ For a player who has glasses but no computer at the table:
   **Glasses connected to this browser** (status *online* / *waiting for the glasses* /
   *relay unreachable*) → **Disconnect** → confirm. The glasses receive a sealed `revoked`
   message and go back to the "not paired" screen (S10).
-- **On the phone:** *Diagnostics* → **Forget pairing** removes the local credentials. To
+- **On the phone:** *Diagnostics* → **Forget pairing** → **Forget** (asked first) removes the
+  local credentials. To
   pair again you don't need it: **Pair again** takes a new QR or code directly.
 - **New browser, cleared browser data, other character, lost phone:** disconnect (if the old
   browser is still there) and connect again — a new QR, a new room and a new key.
@@ -162,13 +170,13 @@ For a player who has glasses but no computer at the table:
 | QR hidden, **"The QR expired unused"** | 5 minutes passed, or the QR was already used | **New QR**. |
 | Phone: *Invalid code: 16 characters, e.g. 7QK3-MX9P-2HRA-C4TE.* | The typed text is not a 16-character code | Copy the code under the QR (**Copy code**); dashes and case don't matter. Only this error says *Invalid code*: every other failure has its own message. |
 | Phone: *Code already used on this phone* (… *make a new QR in Foundry* when unpaired, … *the current pairing is kept* when paired) | You reopened or re-scanned a QR / link this phone already used | If the glasses are connected, nothing to do: the working pairing was kept. For a new pairing: **New QR**. |
-| Phone: *No answer to the code: QR expired, cancelled or already used — make a new QR in Foundry.* · glasses (S10): **NO ANSWER TO THE CODE · MAKE A NEW QR** | No Foundry tab answered the code within 5 minutes: QR expired or used by another phone, Foundry tab closed, or clocks apart (below) | **New QR** in Foundry, then **Scan QR** or the code on the phone. |
+| Phone: *No answer to the code: QR expired, cancelled or already used — make a new QR in Foundry.* · glasses (S10): **NO ANSWER TO THE CODE** · *the QR expired or was used: make a new one (step 1)* | No Foundry tab answered the code within 5 minutes: QR expired or used by another phone, Foundry tab closed, or clocks apart (below) | **New QR** in Foundry, then **Scan QR** or the code on the phone. |
 | Phone: *code waiting for an answer from Foundry…* · glasses: **Code waiting for Foundry** | The code is saved but no Foundry tab has answered yet | Keep the Foundry tab that shows the QR open until the window says **Glasses connected**; after 5 minutes without an answer the code is cleared. |
 | Phone: *QR from an old version of the module: update EvenFoundryVTT in Foundry.* | The QR uses the `#evf=` format of module 0.3.0 | Update the module (GM, *Manage Modules*), then **New QR**. |
 | Phone: *Pairing failed: <message>* / *The app failed to start: <message>* | An unexpected error (the message is the technical one) | Try **Pair again** / reopen the app; if it repeats, report the message with the boot line. |
 | Phone stuck on **Offline** with an old pairing | A failed attempt, or a Foundry that is gone | Open **Pair again** (it opens by itself while offline) and scan a new QR. |
 | Glasses: **Character unavailable** · phone: *Foundry cannot find your character…* | The projector refused the pairing: character deleted (`actor_missing`) or no longer yours (`forbidden_actor`) | Check ownership in Foundry, or pair a character you own; the app retries every 30 s. |
-| Glasses: **Taken by another app** · phone: *another app took this pairing…* | Another copy of the app (another QR-loaded page, another phone with the same pairing) joined in its place (relay close 4000) | Tap **Reconnect** on the phone you want to use; the app does not retry by itself, so the two don't fight. |
+| Glasses: **Glasses used by another app** · phone: *another app took this pairing…* | Another copy of the app (another QR-loaded page, another phone with the same pairing) joined in its place (relay close 4000) | Tap **Reconnect** on the phone you want to use; the app does not retry by itself, so the two don't fight. |
 | Under the QR: *Glasses message refused: phone and PC clocks are apart (over 2 minutes)* | Messages are valid for 2 minutes: the phone or PC date/time is wrong | Set automatic date and time on both, then **New QR**. |
 | Under the QR: *Glasses message refused: different key* / *invalid format* | The phone uses an older or another window's code / app and module from different releases | **Pair again** with the QR shown now / update both to the same release. |
 | Top of the window: *The QR opens a plain http:// page on the local network…* (or *The QR does not open the default glasses-app page*, *The relay is not the default one*) | **Glasses app page (advanced)** or **Relay (advanced)** is not the default — e.g. the LAN address the v0.3.0/0.3.1 `pnpm dev:glasses` wizard told you to set | **Restore default**: it puts the default back and shows a new QR. |

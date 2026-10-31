@@ -52,6 +52,7 @@
 import { CastSpellInputSchema, CONC_CONFLICT_TYPE } from '@evf/shared-protocol';
 import { detectActiveConcentration } from '../concentration-detector.js';
 import type { ToolHandler, ToolResult } from '../tool-registry.js';
+import { activeMidiQol, extractChatCardId, isNoGmError } from './common.js';
 
 // ─── Injected emitter ─────────────────────────────────────────────────────────
 
@@ -81,57 +82,6 @@ export function setConcConflictEmitter(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Defensively extracts a chat card ID from an activity.use() result.
- *
- * dnd5e 5.x activity.use() resolves to a ChatMessage-like object on success.
- * The exact shape is version-specific; we defensively read `.id` and return
- * `null` if the shape doesn't match (non-critical — audit log captures result).
- *
- * @param result - The raw return value from activity.use()
- * @returns Chat card document ID string or null
- */
-function extractChatCardId(result: unknown): string | null {
-  if (
-    result !== null &&
-    typeof result === 'object' &&
-    'id' in result &&
-    typeof (result as Record<string, unknown>).id === 'string'
-  ) {
-    return (result as { id: string }).id;
-  }
-  return null;
-}
-
-/**
- * Detects a GM-offline signal from a thrown error.
- *
- * dnd5e rejects with a message containing "No connected GM"
- * (or similar) when no GM client is available. We normalise this to the
- * `no_gm_connected` error code so the G2 app can show a "GM offline" toast (Pitfall 5).
- *
- * @param err - The caught error value
- * @returns true if the error indicates no GM is connected
- */
-function isNoGmError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes('no_gm_connected') || msg.includes('No connected GM');
-}
-
-/**
- * Detects whether the MidiQOL automation module is present and active.
- *
- * The `MidiQOL` global can be `undefined` even when the module is
- * active-but-not-yet-initialized, so BOTH the `typeof` check AND the
- * `game.modules.get('midi-qol')?.active` check are required before any
- * dereference of `MidiQOL` (research §6, FIX-C 260529-eer).
- *
- * @returns true only when MidiQOL is defined and the module reports active.
- */
-function isMidiQolActive(): boolean {
-  return typeof MidiQOL !== 'undefined' && game.modules.get('midi-qol')?.active === true;
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -207,8 +157,9 @@ export const castSpellHandler: ToolHandler<(typeof CastSpellInputSchema)['_input
       // - MidiQOL ABSENT  → EXACTLY today's activity.use. Vanilla dnd5e reads
       //   ONLY game.user.targets (the GM here) — mutating it is the documented
       //   v13 per-user pitfall (research §3), so we WARN once and NEVER mutate.
-      if (isMidiQolActive()) {
-        const result = await MidiQOL!.completeActivityUse(
+      const midi = activeMidiQol();
+      if (midi !== null) {
+        const result = await midi.completeActivityUse(
           activity,
           { midiOptions: { targetUuids: args.targets, ...slotOverride } },
           { configure: false },

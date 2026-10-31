@@ -99,17 +99,26 @@ function clamp01(value: number): number {
 }
 
 /**
+ * Whether the ownership recorded on `actor` makes `userId` its OWNER — Foundry's
+ * `getUserLevel` (per-user level, else `default`), **ignoring the user's role**: a GM
+ * projecting does not turn every token into an ally.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#getuserlevel
+ */
+function recordedOwner(actor: FoundryActor | null | undefined, userId: string): boolean {
+  const user = game.users.get(userId);
+  if (actor === null || actor === undefined || user === undefined) return false;
+  return actor.getUserLevel(user) === CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
+}
+
+/**
  * Classifies a token for `viewer`: `self` (the paired actor), `ally` (friendly
  * disposition or owned by the player), `enemy` (hostile), else `neutral`.
  */
 export function classifyToken(token: FoundryTokenDoc, viewer: MapViewer): TokenKind {
   if (token.actorId === viewer.actorId) return 'self';
-  const owner = CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
   const dispositions = CONST.TOKEN_DISPOSITIONS;
-  if (
-    token.disposition === dispositions.FRIENDLY ||
-    token.actor?.ownership?.[viewer.userId] === owner
-  ) {
+  if (token.disposition === dispositions.FRIENDLY || recordedOwner(token.actor, viewer.userId)) {
     return 'ally';
   }
   if (token.disposition === dispositions.HOSTILE) return 'enemy';
@@ -217,6 +226,38 @@ function sightCells(token: TokenArtRead, gridDistance: number): number | undefin
 /** Scene projected on the glasses: the active scene, else the GM's viewed scene. */
 function projectedScene(): FoundryScene | null {
   return game.scenes.active ?? canvas?.scene ?? null;
+}
+
+/** Hooks whose first argument is a document embedded in a scene (`parent`). */
+const EMBEDDED_MAP_HOOK = /^(create|update|delete)(Token|Wall|Tile)$/;
+
+/**
+ * Whether a Foundry hook can change the map projected on the glasses — the projector
+ * refreshes only then (map budget, Specs §7.0: ≤ 1 fps and only on change):
+ *
+ * - token / wall / tile documents: only those of the projected scene (`document.parent`);
+ * - `updateScene`: the projected scene, or any change of `active` (the projection moves);
+ * - `targetToken`: only this tab's user (the map's `targetId` reads its targets);
+ * - anything else (`canvasReady`): always.
+ *
+ * Hook arguments are untrusted shapes; a document without a recorded parent counts.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#parent
+ * @see https://foundryvtt.com/api/v13/functions/hookEvents.updateDocument.html
+ * @see https://foundryvtt.com/api/v13/functions/hookEvents.targetToken.html
+ */
+export function isMapHookRelevant(hook: string, args: readonly unknown[]): boolean {
+  const [first, second] = args as [Record<string, unknown> | undefined, unknown];
+  if (EMBEDDED_MAP_HOOK.test(hook)) {
+    const parent = first?.parent as { id?: unknown } | null | undefined;
+    return typeof parent?.id !== 'string' || parent.id === projectedScene()?.id;
+  }
+  if (hook === 'updateScene') {
+    const changed = typeof second === 'object' && second !== null && 'active' in second;
+    return changed || first?.id === projectedScene()?.id;
+  }
+  if (hook === 'targetToken') return first?.id === game.user.id;
+  return true;
 }
 
 /** Tokens hidden from players are never projected (nor targetable). */

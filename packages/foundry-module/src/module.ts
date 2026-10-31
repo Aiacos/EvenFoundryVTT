@@ -50,7 +50,7 @@ export async function startProjector(): Promise<void> {
     (type: string) =>
     (payload: unknown): void =>
       push(type, payload);
-  registerHookSubscribers(push);
+  registerHookSubscribers(push, (actorId) => projector.isProjected(actorId));
   setMultiAttackProgressEmitter(topic(R1_MULTIATTACK_PROGRESS_TYPE));
   registerReactionWatcher(topic(R1_REACTION_AVAILABLE_TYPE));
   registerActionResultWatcher(topic(R1_ACTION_RESULT_TYPE));

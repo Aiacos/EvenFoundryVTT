@@ -25,7 +25,7 @@ import type { AnyResult } from './schemas.js';
  * from src/lib/output.ts to reach repo root.
  */
 export function computeRepoRoot(env: NodeJS.ProcessEnv, currentDir: string): string {
-  const override = env['EVF_REPO_ROOT'];
+  const override = env.EVF_REPO_ROOT;
   if (override !== undefined && override !== '') return override;
   // currentDir is packages/validation-harness/src/lib → 4 levels up = repo root
   return path.resolve(currentDir, '..', '..', '..', '..');

@@ -413,6 +413,28 @@ describe('pairing regressions (glasses side)', () => {
     again.session.dispose();
   });
 
+  it('H3d regression: «Annulla» on the waiting step gives the previous pairing back (not forget)', async () => {
+    const storage = new MemoryStorage();
+    const old = makeCredentials();
+    storage.setItem(CREDENTIALS_STORAGE_KEY, JSON.stringify(old));
+    const h = harness(storage);
+    await h.session.start(await credentialsFromLink(LINK));
+    const { room } = await deriveCodePairing(LINK.code);
+    await h.session.cancelPendingCode();
+    await settle();
+    expect(stored(storage)).toEqual({ room: old.room, key: old.key });
+    expect(h.relay.last.room).toBe(old.room);
+    expect(JSON.parse(storage.getItem(SPENT_CODES_STORAGE_KEY) ?? '[]')).toEqual([room]);
+    // Without a previous pairing it is back to the first-setup page, with no error notice.
+    const fresh = harness(new MemoryStorage());
+    await fresh.session.start(await credentialsFromLink(LINK));
+    await fresh.session.cancelPendingCode();
+    await settle();
+    expect(fresh.store.get().connection).toEqual({ status: 'unpaired' });
+    h.session.dispose();
+    fresh.session.dispose();
+  });
+
   it('H3c the welcome of the new code drops the fallback; a typed code keeps none', async () => {
     const storage = new MemoryStorage();
     storage.setItem(CREDENTIALS_STORAGE_KEY, JSON.stringify(makeCredentials()));

@@ -26,16 +26,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || '' }}
           fetch-depth: 0  # changeset status --since=main needs full history
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.33.4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -72,9 +72,13 @@ jobs:
             exit 1
           fi
 
-      # D-1.10 gate 6: snapshot drift (Vitest fails when --update=false finds mismatch)
-      - name: Snapshot drift check
-        run: pnpm vitest --run --update=false
+      # D-1.10 gate 6 (snapshot drift) is enforced by the coverage run above: with CI set,
+      # Vitest 4 resolves updateSnapshot to "none" (vitest/dist/chunks/coverage.*.js:
+      # `isCI && !UPDATE_SNAPSHOT ? "none"`), so a missing or mismatched snapshot fails it, and
+      # matchAsciiFixture throws on a missing fixture everywhere. The former second pass
+      # `vitest --run --update=false` was broken the other way round: Vitest 4 reads the
+      # string "false" as truthy and REWROTE drifted snapshots ("1 updated", exit 0) — and it
+      # cost ~27 s per run.
 
       # D-1.10 gate 7: changeset status (PR only — main branch doesn't need to declare changes)
       # Skipped on the Changesets "Version Packages" PR (head `changeset-release/*`):
@@ -148,8 +152,18 @@ jobs:
 
       # The browser suite of the pairing E2E runs the built bundle (step above) in headless
       # Chromium: the revision matching the pinned @playwright/test.
+      # Cached per pinned Playwright version: the ~150 MB download was ~20 s of every run. The
+      # runner image already ships Chrome's system libraries, so `--with-deps` (apt) is not needed.
+      - name: Cache Playwright Chromium
+        id: pw-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Chromium for the pairing E2E (Playwright)
-        run: pnpm exec playwright install --with-deps chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
 
       # ADR-0019 end-to-end, all local (no internet: CI never touches the production relay):
       # the relay of this commit (wrangler dev) + the real glasses session + a projector
@@ -200,15 +214,23 @@ jobs:
       - name: ShellCheck (scripts/*.sh)
         run: shellcheck scripts/*.sh
 
+      # Workflow files themselves: a YAML/expression error is only reported by GitHub after the
+      # push ("workflow file issue", release run 41249193063 — an unquoted `: ` in a run line).
+      # actionlint also shellchecks every `run:` block. Pinned release + checksum-verified installer.
+      - name: actionlint (.github/workflows)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
   commit-lint-pr-title:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.33.4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
