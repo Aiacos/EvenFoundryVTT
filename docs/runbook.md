@@ -45,7 +45,8 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 
 ## 🐞 Diagnose from the phone
 
-- **Status line:** *Connected* / *Connecting…* / *Offline*, with the cause:
+- **Summary** (top of P02): *All set: you can put the phone away* / *Connecting…* / *Paused* /
+  *Offline*, with the cause (the retry countdown sits below it, outside the live region):
   - *the Foundry tab that paired these glasses is closed* (HUD: *Player's Foundry closed*):
     open Foundry in that browser; it reconnects by itself, no countdown.
   - *relay not reachable*: the phone has no internet or the relay is down (check
@@ -63,10 +64,14 @@ Foundry-served `g2/` page are gone. Every pair of glasses must be connected once
 - **Latency:** ping → pong through the relay and the projector.
 - **Diagnostics ▸** (IT: *Diagnostica*): module version, recent errors (newest first), the
   debug log, and **Forget pairing**.
-- **Reconnect** reopens the relay socket. **Disconnect** stops the session and keeps the
-  credentials. **Pair again** (IT *Collega di nuovo*, open by itself while not online) has
-  **Scan QR** + the code field: a stale pairing is never a dead end.
-- **Boot line** (bottom of P02 and P03, no secrets, no `?debug` needed):
+- **Reconnect** reopens the relay socket. **Pause** (IT *Pausa*) stops the session and keeps
+  the credentials; **Resume** reconnects (Foundry's **Disconnect** is the revoke — a different
+  action). **Pair again** (IT *Collega di nuovo*, open by itself while offline, listed before
+  the facts) has **Scan QR** + the code field: a stale pairing is never a dead end.
+- **Waiting step:** after a code or scan the phone shows *Waiting for Foundry…* (countdown to
+  the 5-minute expiry when this page sent the code, **Cancel** = forget the pending code) until
+  the first `welcome`, instead of an offline P02.
+- **Boot line** (under *Diagnostics* on every phone view, no secrets, no `?debug` needed):
   `app <ver> · secure yes|no · crypto webcrypto|fallback · link none|code|invalid|legacy|used · relay <host>`.
   `secure no · crypto fallback` = a plain-http page (works; https recommended). `link none`
   after a developer-mode Scan QR = the Even App did not pass `#c=` (type the code). `link used`

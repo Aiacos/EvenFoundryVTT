@@ -7,6 +7,11 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] Phone page: «In attesa di Foundry…» step with the code countdown and «Annulla» instead of an
+      offline page; calm «Tutto ok» summary, recovery first with one primary, «Preferenze»
+      disclosure, «Pausa» / «Riprendi» (no more «Disconnetti»), confirmed «Dimentica associazione»,
+      live 4-4-4-4 code grouping, WCAG AA contrast, 44 px targets and linked errors —
+      [`phone-page.ts`](packages/g2-app/src/phone/phone-page.ts), [`phone.css`](packages/g2-app/src/phone/phone.css)
 - [x] The character portrait finally shows on the glasses (sent as a picture, not a Foundry path the
       phone cannot load) — [`projector.ts`](packages/foundry-module/src/direct/projector.ts), [`session.ts`](packages/g2-app/src/direct/session.ts)
 - [x] The glasses' combat tracker hides hidden combatants and enemy HP/AC; pushes stop when the
