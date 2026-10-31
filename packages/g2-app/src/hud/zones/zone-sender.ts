@@ -2,7 +2,13 @@
  * ZoneSender — paced, prioritised `updateImageRawData` pipeline for the image tiles
  * (docs/design/g2-sheet-ux.html §Vincolo hardware, SDK notes):
  *
- * - one image in flight at a time, ≥ {@link MIN_GAP_MS} between two sends;
+ * - one image in flight at a time, ≥ {@link MIN_GAP_MS} from the end of a send to the
+ *   start of the next. Even Hub: each `updateImageRawData` "holds the image path for
+ *   100ms" and a call arriving inside that window "is held and flushed on the next one" —
+ *   "Treat 100ms as a floor" (https://hub.evenrealities.com/docs/build/display, fetched
+ *   2026-10-31). The docs do not say whether the window starts at the call or at its
+ *   completion, so it is measured from completion: a send slower than 100 ms must not let
+ *   the next one start at once and risk being held until a later call;
  * - per-tile hash: a tile whose pixels did not change is never re-sent — neither while
  *   the glasses show it nor while it is still in flight (a re-render during a send must
  *   not queue the same tile again; an AC change
@@ -54,7 +60,8 @@ export class ZoneSender {
   private readonly notBefore = new Map<Tile, number>();
   private busy = false;
   private timer: unknown = null;
-  private lastSendAt = Number.NEGATIVE_INFINITY;
+  /** When the last send settled (the {@link MIN_GAP_MS} gap starts here). */
+  private lastSendEnd = Number.NEGATIVE_INFINITY;
   private disposed = false;
   /** Bumped by {@link reset}: results of sends started before it are ignored. */
   private epoch = 0;
@@ -117,7 +124,7 @@ export class ZoneSender {
     const now = this.timers.now();
     const next = this.next(now);
     if (next === null) return;
-    const wait = Math.max(next.wait, this.lastSendAt + MIN_GAP_MS - now);
+    const wait = Math.max(next.wait, this.lastSendEnd + MIN_GAP_MS - now);
     this.timer = this.timers.setTimeout(() => {
       this.timer = null;
       void this.flush();
@@ -136,7 +143,6 @@ export class ZoneSender {
     if (!pix) return;
     this.pending.delete(region);
     this.busy = true;
-    this.lastSendAt = now;
     const epoch = this.epoch;
     const hash = pix.hash();
     this.inFlight = { region, hash };
@@ -150,6 +156,7 @@ export class ZoneSender {
       console.warn(`[hud] image ${region} send failed`, err);
     }
     this.busy = false;
+    this.lastSendEnd = this.timers.now();
     if (epoch === this.epoch) {
       this.inFlight = null;
       if (ok) {

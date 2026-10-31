@@ -121,6 +121,25 @@ describe('ZoneSender', () => {
     expect(sent.map((s) => s.region)).toEqual(['tl', 'bl']);
   });
 
+  it('keeps ≥ 100 ms between the end of a send and the start of the next', async () => {
+    const slow: Array<{ region: Tile; start: number; end: number }> = [];
+    const s = new ZoneSender(async (region) => {
+      const start = Date.now();
+      await new Promise((r) => setTimeout(r, 150));
+      slow.push({ region, start, end: Date.now() });
+      return 'success';
+    });
+    s.submit('tl', pix(1));
+    s.submit('tr', pix(2));
+    s.submit('bl', pix(3));
+    await vi.advanceTimersByTimeAsync(2000);
+    s.dispose();
+    expect(slow.map((x) => x.region)).toEqual(['tl', 'tr', 'bl']);
+    for (let i = 1; i < slow.length; i++) {
+      expect((slow[i]?.start ?? 0) - (slow[i - 1]?.end ?? 0)).toBeGreaterThanOrEqual(MIN_GAP_MS);
+    }
+  });
+
   it('stops after dispose', async () => {
     sender.submit('tl', pix(1));
     sender.dispose();
