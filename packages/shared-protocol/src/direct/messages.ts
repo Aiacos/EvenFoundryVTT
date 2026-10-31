@@ -123,12 +123,20 @@ export const ASSET_REF_PREFIX = 'evf-asset:' as const;
  * per id per connection, before the map snapshot that references it as
  * `evf-asset:<id>`. `data` is a `data:image/(png|jpeg);base64,…` URL.
  */
+/**
+ * Longest `asset` data URL. A sealed frame is about 4/3 of its plaintext (base64url of the
+ * ciphertext) plus a small envelope, so 720 000 chars seal to ≈ 960 KB — under the relay's
+ * 1 MiB `RELAY_MAX_FRAME_BYTES`. The former 900 000 sealed to ≈ 1.2 MB: the relay
+ * ejected the projector, which reconnected and re-sent the same asset in a loop.
+ */
+export const ASSET_DATA_MAX = 720_000;
+
 export const AssetSchema = z.strictObject({
   t: z.literal('asset'),
   id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   data: z
     .string()
-    .max(900_000)
+    .max(ASSET_DATA_MAX)
     .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/),
 });
 

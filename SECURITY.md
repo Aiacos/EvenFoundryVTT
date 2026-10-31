@@ -42,6 +42,10 @@ Tick when verified; every control links its proof. Re-verify on each release.
 
 - [x] Sealed envelopes: AES-256-GCM, AAD `from>to`, 120 s anti-replay —
       [`envelope.ts`](packages/shared-protocol/src/direct/envelope.ts)
+- [x] Replayed `invoke` runs once: the idempotency cache keeps each `rid` for 2 × the 120 s
+      envelope window — [`idempotency-cache.ts`](packages/foundry-module/src/write-path/idempotency-cache.ts)
+- [x] Every sealed frame fits the relay's 1 MiB limit (`ASSET_DATA_MAX`, oversized pictures
+      dropped) — [`messages.ts`](packages/shared-protocol/src/direct/messages.ts), [`map-assets.ts`](packages/foundry-module/src/direct/map-assets.ts)
 - [x] Crypto without WebCrypto (http pages): AES-256-GCM / HKDF-SHA256 / SHA-256 from the audited
       noble libs (cure53), exact pins `@noble/ciphers` 2.4.0 + `@noble/hashes` 2.4.0, lazily loaded
       only when `crypto.subtle` is missing, byte-identical to WebCrypto —

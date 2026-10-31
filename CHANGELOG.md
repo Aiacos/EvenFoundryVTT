@@ -7,6 +7,10 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] A sealed action re-sent by the relay can no longer run twice; scene pictures too big for a
+      relay frame fall back to the schematic map instead of looping the projector — [`SECURITY.md`](SECURITY.md)
+- [x] Glasses → Foundry frames keep their order (two quick actions could arrive swapped) —
+      [`session.ts`](packages/g2-app/src/direct/session.ts)
 - [x] Constitution v1.3.0: 15 principles (new P13 architecture, P14 pre-commit checks, P15 plugins &
       skills); every commit now runs Biome + typecheck + related tests —
       [constitution](.specify/memory/constitution.md), [CLAUDE.md](CLAUDE.md), [`.husky/pre-commit`](.husky/pre-commit)

@@ -18,6 +18,7 @@
  * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas/convertToBlob
  */
 import {
+  ASSET_DATA_MAX,
   ASSET_REF_PREFIX,
   type MapImage,
   type MapSnapshot,
@@ -29,8 +30,11 @@ import {
 export const BACKGROUND_MAX_SIDE = 768;
 /** Longest side of an encoded tile / token picture (px). */
 export const PIECE_MAX_SIDE = 128;
-/** Encoded pictures kept in memory (one scene's background, tiles and token art). */
-const MAX_CACHED = 96;
+/** Encoded pictures kept (LRU); sized above a large scene so cyclic access still hits. */
+export const MAX_CACHED = 256;
+
+/** A picture that failed to encode is tried again after this long (ms), not every refresh. */
+export const FAILED_RETRY_MS = 60_000;
 
 /** A picture ready for an `asset` message. */
 export interface MapAsset {
@@ -94,12 +98,20 @@ export interface PreparedMap {
 /** Encodes and remembers scene pictures across map refreshes (one per projector). */
 export class MapAssetCache {
   private readonly entries = new Map<string, Promise<MapAsset | null>>();
+  /** When each failed key may be retried (a transient 5xx must not stick for the session). */
+  private readonly retryAt = new Map<string, number>();
+  /** Sources already warned about, so a broken picture logs once, not once per retry. */
+  private readonly warned = new Set<string>();
 
-  constructor(private readonly encode: AssetEncoder = browserAssetEncoder) {}
+  constructor(
+    private readonly encode: AssetEncoder = browserAssetEncoder,
+    private readonly now: () => number = Date.now,
+  ) {}
 
   /**
-   * Rewrites `snapshot` for the glasses. Pictures that cannot be encoded are dropped
-   * (warned once per source).
+   * Rewrites `snapshot` for the glasses. Pictures that cannot be encoded, or that encode
+   * above {@link ASSET_DATA_MAX}, are dropped (warned once per source) and retried after
+   * {@link FAILED_RETRY_MS}.
    */
   async prepare(snapshot: MapSnapshot): Promise<PreparedMap> {
     const assets = new Map<string, MapAsset>();
@@ -139,6 +151,11 @@ export class MapAssetCache {
 
   private get(src: string, maxSide: number, type: 'jpeg' | 'png'): Promise<MapAsset | null> {
     const key = `${src}|${maxSide}|${type}`;
+    const retry = this.retryAt.get(key);
+    if (retry !== undefined && this.now() >= retry) {
+      this.retryAt.delete(key);
+      this.entries.delete(key);
+    }
     const hit = this.entries.get(key);
     if (hit !== undefined) {
       this.entries.delete(key);
@@ -147,9 +164,20 @@ export class MapAssetCache {
     }
     const pending = (async (): Promise<MapAsset | null> => {
       try {
-        return { id: await assetIdOf(key), data: await this.encode(src, maxSide, type) };
+        const data = await this.encode(src, maxSide, type);
+        if (data.length > ASSET_DATA_MAX) {
+          // Would seal above the relay's 1 MiB frame limit: the relay would eject the
+          // projector, which would reconnect and send it again (a loop). Schematic instead.
+          throw new Error(`encoded picture too large (${data.length} > ${ASSET_DATA_MAX} chars)`);
+        }
+        this.warned.delete(src);
+        return { id: await assetIdOf(key), data };
       } catch (err) {
-        console.warn(`[EVF] map picture skipped (${src}): ${String(err)}`);
+        if (!this.warned.has(src)) {
+          this.warned.add(src);
+          console.warn(`[EVF] map picture skipped (${src}): ${String(err)}`);
+        }
+        this.retryAt.set(key, this.now() + FAILED_RETRY_MS);
         return null;
       }
     })();
@@ -158,6 +186,7 @@ export class MapAssetCache {
       const oldest = this.entries.keys().next().value;
       if (oldest === undefined) break;
       this.entries.delete(oldest);
+      this.retryAt.delete(oldest);
     }
     return pending;
   }
