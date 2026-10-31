@@ -54,7 +54,15 @@
   },
   "overrides": [
     {
-      "includes": ["packages/*/tests/**", "packages/*/**/__tests__/**"],
+      // Tests and CLI tools (validation scripts, repo checks, the probe module): console
+      // output is their interface, not a stray debug print.
+      "includes": [
+        "packages/*/tests/**",
+        "packages/*/**/__tests__/**",
+        "packages/validation-harness/scripts/**",
+        "packages/validation-harness/foundry-modules/**",
+        "scripts/**"
+      ],
       "linter": {
         "rules": {
           "suspicious": {

@@ -63,5 +63,4 @@ if (errors.length > 0) {
   for (const e of errors) console.error(`::error::${e}`);
   process.exit(1);
 }
-// biome-ignore lint/suspicious/noConsole: intentional CI script output
 console.log(`wiki links OK (${pages.length} pages)`);

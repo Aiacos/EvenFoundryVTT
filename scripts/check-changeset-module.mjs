@@ -34,7 +34,6 @@ if (shipped.length > 0 && !bumped.has(MODULE)) {
   );
   process.exit(1);
 }
-// biome-ignore lint/suspicious/noConsole: intentional CI script output
 console.log(
   shipped.length > 0
     ? `changesets OK: ${shipped.join(', ')} ship with a ${MODULE} bump`

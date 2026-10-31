@@ -42,5 +42,4 @@ if (missing.length > 0) {
   console.error(`::error::module.json references missing files: ${missing.join(', ')}`);
   process.exit(1);
 }
-// biome-ignore lint/suspicious/noConsole: intentional CI script output
 console.log(`module.json references OK (${refs.length})`);
