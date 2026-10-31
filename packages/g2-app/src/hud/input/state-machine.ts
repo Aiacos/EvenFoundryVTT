@@ -5,7 +5,7 @@
  * ```
  * root ─tap→ actions ─tap(weapon)→ target ─tap→ result
  *              └─tap(spells)→ spells ─tap→ slot ─tap→ target
- * "reaction available" ─→ reaction (priority, 10 s timeout)
+ * "reaction available" ─→ reaction (priority, 10 s timeout; ●● ignored for the first 1 s)
  * "GM roll request" ─→ request (sheet page → «Tiri salvezza · Abilità»)
  * ●● = back one level; ●● at root = exit (shutDownPageContainer(1))
  * result: tap → actions, ●● / 8 s → root
@@ -30,6 +30,12 @@ import type { Advantage, UiState, View } from './ui-state.js';
 
 /** Reaction prompt lifetime cap (design: priority prompt, 10 s). */
 export const REACTION_TIMEOUT_MS = 10_000;
+/**
+ * A double-tap in the first second of a reaction prompt is a reflex aimed at the panel
+ * the prompt just replaced, not a decision to ignore it: it is dropped. «Ignora» (tap)
+ * is never guarded.
+ */
+export const REACTION_DOUBLE_GUARD_MS = 1000;
 /** Result panel auto-close (design S6: «doppio tap / 8 s»). */
 export const RESULT_TIMEOUT_MS = 8_000;
 
@@ -248,11 +254,18 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
     }
     case 'react':
       return {
-        ui: { ...showResult(ui, intent.name, ctx.now), reactionDeadline: null },
+        ui: {
+          ...showResult(ui, intent.name, ctx.now),
+          reactionDeadline: null,
+          reactionSince: null,
+        },
         effects: [{ t: 'clearReaction' }, { t: 'invoke', tool: intent.tool, input: intent.input }],
       };
     case 'ignore':
-      return { ui: go(ui, 'root', { reactionDeadline: null }), effects: [{ t: 'clearReaction' }] };
+      return {
+        ui: go(ui, 'root', { reactionDeadline: null, reactionSince: null }),
+        effects: [{ t: 'clearReaction' }],
+      };
     case 'dismissRequest':
       return { ui: go(ui, 'root'), effects: [{ t: 'clearRequest' }] };
     case 'roll':
@@ -292,9 +305,9 @@ function onState(ui: UiState, prev: AppState, ctx: ReduceContext): ReduceResult 
   }
   if (app.reaction && app.reaction !== prev.reaction && next.view !== 'reaction') {
     const deadline = Math.min(app.reaction.expiresAt, ctx.now + REACTION_TIMEOUT_MS);
-    next = go(next, 'reaction', { reactionDeadline: deadline });
+    next = go(next, 'reaction', { reactionDeadline: deadline, reactionSince: ctx.now });
   } else if (!app.reaction && next.view === 'reaction') {
-    next = go(next, 'root', { reactionDeadline: null });
+    next = go(next, 'root', { reactionDeadline: null, reactionSince: null });
   }
   if (
     app.lastResult &&
@@ -309,7 +322,10 @@ function onState(ui: UiState, prev: AppState, ctx: ReduceContext): ReduceResult 
 
 function onTick(ui: UiState, ctx: ReduceContext): ReduceResult {
   if (ui.view === 'reaction' && ui.reactionDeadline !== null && ctx.now >= ui.reactionDeadline) {
-    return { ui: go(ui, 'root', { reactionDeadline: null }), effects: [{ t: 'clearReaction' }] };
+    return {
+      ui: go(ui, 'root', { reactionDeadline: null, reactionSince: null }),
+      effects: [{ t: 'clearReaction' }],
+    };
   }
   if (ui.view === 'result' && ui.result && ctx.now - ui.result.shownAt >= RESULT_TIMEOUT_MS) {
     return { ui: go(ui, 'root', { result: null }), effects: [] };
@@ -370,7 +386,11 @@ export function reduce(ui: UiState, input: HudInput, ctx: ReduceContext): Reduce
         return { ui: { ...ui, cursor }, effects: [] };
       }
       if (input.t === 'double') {
-        if (ui.view === 'reaction') return confirm({ k: 'ignore' }, ui, ctx);
+        if (ui.view === 'reaction') {
+          const fresh =
+            ui.reactionSince !== null && ctx.now - ui.reactionSince < REACTION_DOUBLE_GUARD_MS;
+          return fresh ? { ui, effects: [] } : confirm({ k: 'ignore' }, ui, ctx);
+        }
         if (ui.view === 'request') return confirm({ k: 'dismissRequest' }, ui, ctx);
         return { ui: back(ui), effects: [] };
       }

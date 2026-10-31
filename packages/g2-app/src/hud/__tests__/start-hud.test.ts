@@ -21,7 +21,7 @@ import {
   createBridgeQueue,
 } from '../bridge-queue.js';
 import { PLACE_RETRY_MS, startHud, TICK_MS } from '../index.js';
-import { menuIdOf } from '../input/state-machine.js';
+import { menuIdOf, REACTION_DOUBLE_GUARD_MS } from '../input/state-machine.js';
 
 interface Call {
   method: string;
@@ -271,8 +271,12 @@ describe('startHud', () => {
     store.update({ reaction: { kind: 'shield', sourceName: 'Orco', expiresAt: 60_000 } });
     await flush();
     expect(
-      fb.texts().some((t) => t.containerName === 'ctx-head' && t.content.includes('Reazione')),
+      fb.texts().some((t) => t.containerName === 'ctx-head' && t.content.includes('▲ Scudo')),
     ).toBe(true);
+    // A reflex double-tap right after the prompt opened is ignored; a later one ignores it.
+    fb.emit(dbl);
+    expect(store.get().reaction).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(REACTION_DOUBLE_GUARD_MS);
     fb.emit(dbl);
     expect(store.get().reaction).toBeNull();
     store.update({ rollRequest: { messageId: 'm', kind: 'save', ability: 'wis', dc: 15 } });

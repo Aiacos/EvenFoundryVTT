@@ -157,11 +157,13 @@ export interface HudStrings {
     | 'gm-rejected',
     string
   >;
-  reactionTitle: string;
+  /** Reaction prompt title per kind (zone E head, after `▲ `). */
+  reactionTitle: Record<'opportunity-attack' | 'shield' | 'counterspell', string>;
+  /** Header chip while a reaction prompt is open (bitmap caps). */
+  reactionChip: string;
   expiresIn: (seconds: number) => string;
   reactionTrigger: (source: string) => string;
   ignore: string;
-  opportunityAttack: string;
   shield: string;
   counterspell: string;
   requestTitle: string;
@@ -355,11 +357,15 @@ const IT: HudStrings = {
     'concentration-required': 'serve concentrazione',
     'gm-rejected': 'rifiutato dal GM',
   },
-  reactionTitle: '▲ Reazione',
-  expiresIn: (s) => `scade ${s} s`,
+  reactionTitle: {
+    'opportunity-attack': 'Attacco di opportunità',
+    shield: 'Scudo',
+    counterspell: 'Controincantesimo',
+  },
+  reactionChip: 'REAZIONE',
+  expiresIn: (s) => `${s} s`,
   reactionTrigger: (src) => `Innesco: ${src}`,
   ignore: 'Ignora',
-  opportunityAttack: 'Attacco di opportunità',
   shield: 'Scudo (1°)',
   counterspell: 'Controincantesimo (3°)',
   requestTitle: 'Prova richiesta',
@@ -558,11 +564,15 @@ const EN: HudStrings = {
     'concentration-required': 'concentration required',
     'gm-rejected': 'rejected by GM',
   },
-  reactionTitle: '▲ Reaction',
-  expiresIn: (s) => `ends in ${s} s`,
+  reactionTitle: {
+    'opportunity-attack': 'Opportunity attack',
+    shield: 'Shield',
+    counterspell: 'Counterspell',
+  },
+  reactionChip: 'REACTION',
+  expiresIn: (s) => `${s} s`,
   reactionTrigger: (src) => `Trigger: ${src}`,
   ignore: 'Ignore',
-  opportunityAttack: 'Opportunity attack',
   shield: 'Shield (1st)',
   counterspell: 'Counterspell (3rd)',
   requestTitle: 'Roll requested',

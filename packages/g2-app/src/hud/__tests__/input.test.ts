@@ -23,6 +23,7 @@ import {
   type HudEffect,
   type HudInput,
   menuIdOf,
+  REACTION_DOUBLE_GUARD_MS,
   REACTION_TIMEOUT_MS,
   RESULT_TIMEOUT_MS,
   reduce,
@@ -367,6 +368,32 @@ describe('reaction (S7)', () => {
     ]);
     const cleared = reduce(ui, { t: 'state', prev: app }, { app: online(), now: 0, strings: s });
     expect(cleared.ui.view).toBe('root');
+  });
+
+  it('ignores a reflex double-tap during the first second of the prompt', () => {
+    const prev = online();
+    const app = { ...prev, reaction };
+    const open = reduce(initialUi(), { t: 'state', prev }, { app, now: 1000, strings: s }).ui;
+    expect(open.reactionSince).toBe(1000);
+    const early = drive(app, [{ t: 'double' }], open, 1000 + REACTION_DOUBLE_GUARD_MS - 1);
+    expect(early).toEqual({ ui: open, effects: [] });
+    const late = drive(app, [{ t: 'double' }], open, 1000 + REACTION_DOUBLE_GUARD_MS);
+    expect(late.ui.view).toBe('root');
+    expect(late.effects).toEqual([{ t: 'clearReaction' }]);
+    // The explicit «Ignora» entry is never guarded.
+    const ignore = drive(app, [{ t: 'down' }, { t: 'down' }, { t: 'tap' }], open, 1001);
+    expect(ignore.effects).toEqual([{ t: 'clearReaction' }]);
+  });
+
+  it('rows carry only the distinguishing part: the weapon, its bonus on the right', () => {
+    const app = { ...online(), reaction };
+    const ui = { ...initialUi(), view: 'reaction' as const };
+    const rows = buildEntries(app, ui, s);
+    expect(rows.map((e) => [e.left, e.right])).toEqual([
+      ['Martello da guerra', '+6'],
+      ['Giavellotto', '+6'],
+      ['Ignora', ''],
+    ]);
   });
 
   it('shield and counterspell map to their tools; unknown source falls back to its name', () => {

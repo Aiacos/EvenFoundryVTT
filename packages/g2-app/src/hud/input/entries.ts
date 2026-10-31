@@ -285,8 +285,9 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
         ...ch.inventory
           .filter((i) => i.type === 'weapon')
           .map((w) =>
+            // The title names the reaction: each row only says what differs (weapon).
             react(
-              `${s.opportunityAttack}: ${w.name}`,
+              w.name,
               'opportunity-attack',
               { actor_id: actor, item_id: w.id, target_id: source },
               w.toHit ?? '',

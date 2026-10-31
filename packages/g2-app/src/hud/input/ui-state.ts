@@ -53,6 +53,8 @@ export interface UiState {
   result: ResultState | null;
   /** Epoch ms when the reaction prompt expires (S7). */
   reactionDeadline: number | null;
+  /** Epoch ms when the reaction prompt opened (reflex double-tap guard, S7). */
+  reactionSince: number | null;
 }
 
 export function initialUi(): UiState {
@@ -65,5 +67,6 @@ export function initialUi(): UiState {
     pending: null,
     result: null,
     reactionDeadline: null,
+    reactionSince: null,
   };
 }

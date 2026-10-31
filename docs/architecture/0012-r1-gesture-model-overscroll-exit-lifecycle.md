@@ -190,3 +190,14 @@ now goes to the modal, not the menu.
 **Implementation.** `quick-action-tap-dispatcher.ts` (`attachQuickActionTap`)
 replaces `quick-action-overscroll-dispatcher.ts`. `isAtTopBoundary()` on panels is
 retained (still used for in-panel scroll clamping) but no longer gates menu-open.
+
+## Amendment 3 — Reflex guard on the reaction prompt (2026-11-01)
+
+**Change.** On the reaction prompt (S7) a double-tap within the first
+`REACTION_DOUBLE_GUARD_MS` (1 s) after the prompt opened is dropped; after that it
+ignores the reaction as before. The tap-reachable «Ignora» entry is never guarded.
+
+**Why.** The prompt replaces whatever panel the player was on: a double-tap already in
+flight ("back") would otherwise throw away a reaction the player never saw (Impeccable
+critique 2026-10-31, P1). The meaning of ●● does not change — it is still "back / ignore"
+— only its first second on a freshly opened prompt is ignored.

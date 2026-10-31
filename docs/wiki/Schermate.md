@@ -46,7 +46,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S7 reazione](images/sheet-reaction.png)
 
-**Quando:** fuori dal tuo turno, Foundry offre una reazione (es. *Attacco di opportunità*). **Perché:** scelta rapida con *scade N s* e l'innesco; doppio tap = *Ignora*.
+**Quando:** fuori dal tuo turno, Foundry offre una reazione (es. *Attacco di opportunità*). **Perché:** il titolo dice quale reazione e quanti secondi restano (*▲ Attacco di opportunità  9 s*), ogni riga solo l'arma con il suo bonus, sotto l'innesco; nell'intestazione il chip diventa **▲ REAZIONE**. Doppio tap = *Ignora*, ma non nel primo secondo (un doppio tap riflesso non la butta via).
 
 ## 👓 Prove e pericolo
 

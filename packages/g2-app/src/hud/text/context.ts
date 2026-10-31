@@ -204,8 +204,9 @@ function reactionView(
 ): ContextView {
   const seconds = Math.ceil(Math.max(0, (ui.reactionDeadline ?? now) - now) / 1000);
   const entries = buildEntries(app, ui, s);
+  const kind = app.reaction?.kind ?? 'opportunity-attack';
   return {
-    title: s.reactionTitle,
+    title: `${GLYPH.turn} ${s.reactionTitle[kind]}`,
     right: s.expiresIn(seconds),
     body: [
       ...listBody(entries, ui.cursor, CONTEXT_BODY_LINES - 1, budget),

@@ -99,7 +99,7 @@ export function renderZones(v: ViewInput, extras: ZoneExtras): Record<Zone, Pixm
   const model = sheetModel(app, s);
   const ch = app.character;
   const zones: Record<Zone, Pixmap> = {
-    header: renderHeader(model, s),
+    header: renderHeader(model, s, ui.view === 'reaction' ? 'reaction' : null),
     map: renderMap(
       extras.viewport ? app.map : null,
       {

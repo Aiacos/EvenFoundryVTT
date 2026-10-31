@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { character, mapSnap, online } from '../../demo/fixtures.js';
 import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
+import { initialUi } from '../input/ui-state.js';
 import { type SheetModel, sheetModel } from '../model.js';
 import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
 import { renderFullScreen } from '../zones/fullscreen.js';
@@ -181,6 +182,23 @@ describe('header zone edge cases', () => {
   });
 });
 
+describe('header alert chip (reaction prompt)', () => {
+  const chip = HEADER_BOX.turnChip;
+  const lit = (p: Pixmap) => p.get(chip.x + 2, chip.y + chip.h / 2);
+  const extras = { portrait: null, art: null, viewport: null, reach: false };
+  const app = online('min', {
+    reaction: { kind: 'opportunity-attack', sourceName: 'Goblin B', expiresAt: 9e9 },
+  });
+
+  it('repaints the turn chip as «▲ REAZIONE» while the reaction prompt is open', () => {
+    const ui = { ...initialUi(), view: 'reaction' as const };
+    const prompt = renderZones({ app, ui, strings: s, now: 0 }, extras).header;
+    const calm = renderZones({ app, ui: initialUi(), strings: s, now: 0 }, extras).header;
+    expect(lit(prompt)).toBe(15);
+    expect(lit(calm)).toBe(0);
+  });
+});
+
 describe('full screens', () => {
   it('splits into four 288 × 144 tiles that reassemble the screen', () => {
     const screen = renderFullScreen(
@@ -268,6 +286,7 @@ describe('renderZones', () => {
       pending: null,
       result: null,
       reactionDeadline: null,
+      reactionSince: null,
     } as const;
     const extras = { portrait: null, art: null, viewport: null, reach: false };
     const on = renderZones({ app: online(), ui, strings: s, now: 0 }, extras);

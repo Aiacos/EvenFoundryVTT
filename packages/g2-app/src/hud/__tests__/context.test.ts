@@ -133,7 +133,9 @@ describe('zone E content (IT, design persona)', () => {
   it('S6 result, S7 reaction countdown, S8 GM request, S9 down, S12 offline', () => {
     expect(head('S6')).toMatch(/^Esito +Martello → Goblin A$/);
     expect(body('S6')).toBe('d20 16\nCOLPITO\nDanni 9 contundenti');
-    expect(head('S7')).toMatch(/^▲ Reazione +scade 6 s$/);
+    // Reaction type + countdown in the title, only the weapon (and its bonus) per row.
+    expect(head('S7')).toMatch(/^▲ Attacco di opportunità +6 s$/);
+    expect(body('S7').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6$/);
     expect(body('S7').split('\n')[2]).toBe('Innesco: Goblin B');
     expect(head('S8')).toMatch(/^Prova richiesta +dal GM$/);
     expect(body('S8').split('\n')[0]).toMatch(/^Tiro salvezza su SAG +\+7$/);
