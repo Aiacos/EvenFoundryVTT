@@ -7,14 +7,14 @@
 import { LABEL_FONT, MEDIUM_FONT, measure, Pixmap } from '@evf/shared-render';
 import * as UPNG from 'upng-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { character, mapSnap, online } from '../../demo/fixtures.js';
+import { character, combat, mapSnap, online } from '../../demo/fixtures.js';
 import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
 import { initialUi } from '../input/ui-state.js';
 import { type SheetModel, sheetModel } from '../model.js';
 import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
 import { connectLayout, pairLayout, renderFullScreen } from '../zones/fullscreen.js';
-import { HEADER_BOX, renderHeader } from '../zones/header.js';
+import { chipLayout, HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
 import { computeViewport, LEVEL, MAP_VIEW, renderMap } from '../zones/map.js';
 import { encodePng } from '../zones/png.js';
@@ -196,6 +196,22 @@ describe('header alert chip (reaction prompt)', () => {
     const calm = renderZones({ app, ui: initialUi(), strings: s, now: 0 }, extras).header;
     expect(lit(prompt)).toBe(15);
     expect(lit(calm)).toBe(0);
+  });
+});
+
+describe('header chips in combat (Impeccable minor: «BENEDET…»)', () => {
+  it('shrinks concentration to its hourglass before truncating another chip', () => {
+    const model = sheetModel(online('min', { combat: combat('thorin') }), s) as SheetModel;
+    expect(model.economy).not.toBeNull();
+    const labels = model.chips.map((c) => c.label);
+    expect(labels).toEqual(['CONC.', 'BENEDETTO']);
+    const p = renderHeader(model, s);
+    // The «BENEDETTO» chip ends before the right edge: drawn whole, not cut with «…».
+    let lastInk = 0;
+    for (let x = 0; x < 288; x++) if (p.get(x, HEADER_BOX.bottomY + 9) > 0) lastInk = x;
+    expect(lastInk).toBeLessThan(284);
+    expect(chipLayout(model.chips, 172, 284).map((c) => c.compact)).toEqual([true, false]);
+    expect(chipLayout(model.chips, 8, 284).map((c) => c.compact)).toEqual([false, false]);
   });
 });
 

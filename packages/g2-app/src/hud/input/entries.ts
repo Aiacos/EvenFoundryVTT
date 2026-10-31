@@ -16,7 +16,7 @@ import type { RollRequestPayload } from '@evf/shared-protocol';
 import type { AppState } from '../../state/app-store.js';
 import type { HudStrings } from '../i18n.js';
 import { isMyTurn } from '../model.js';
-import { GLYPH } from '../text/measure.js';
+import { GLYPH, gauge } from '../text/measure.js';
 import type { Pending, UiState } from './ui-state.js';
 
 /**
@@ -60,7 +60,16 @@ export type Intent =
   | { k: 'target'; tokenId: string | null; name: string }
   | { k: 'item'; itemId: string; name: string }
   | { k: 'op'; op: MenuOp }
-  | { k: 'react'; tool: string; input: Record<string, unknown>; name: string }
+  | {
+      k: 'react';
+      tool: string;
+      input: Record<string, unknown>;
+      name: string;
+      /** Who triggered the reaction (result title), null when unnamed. */
+      target: string | null;
+      /** Attack bonus as shown (`+6`), for the result line. */
+      bonus?: string;
+    }
   | { k: 'ignore' }
   | { k: 'dismissRequest' }
   | { k: 'roll'; input: RollInput; name: string };
@@ -180,7 +189,10 @@ function targetEntries(app: AppState, s: HudStrings): Entry[] {
     ...tokens.map(
       ({ t, ft }): Entry => ({
         left: t.name,
-        right: ft === null ? '' : `${ft} ft`,
+        // Health like the initiative list, then the distance.
+        right: [gauge(t.hp, 4), ft === null ? '' : `${ft} ft`]
+          .filter((part) => part !== '')
+          .join(` ${GLYPH.dot} `),
         intent: { k: 'target', tokenId: t.id, name: t.name },
       }),
     ),
@@ -282,7 +294,14 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
   ): Entry => ({
     left: name,
     right,
-    intent: { k: 'react', tool, input, name },
+    intent: {
+      k: 'react',
+      tool,
+      input,
+      name,
+      target: r.sourceName,
+      ...(right === '' ? {} : { bonus: right }),
+    },
   });
   switch (r.kind) {
     case 'opportunity-attack':

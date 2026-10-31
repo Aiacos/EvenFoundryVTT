@@ -24,7 +24,6 @@ import type { AppSettings, AppState } from '../../state/app-store.js';
 import { type HudStrings, nextLocaleSetting } from '../i18n.js';
 import { isMyTurn } from '../model.js';
 import { screenOf } from '../screen.js';
-import { GLYPH } from '../text/measure.js';
 import { buildEntries, type Intent, MENU_OPS, type MenuOp } from './entries.js';
 import type { Advantage, UiState, View } from './ui-state.js';
 
@@ -110,6 +109,8 @@ function endTurn(ui: UiState, ctx: ReduceContext): ReduceResult {
         pending: null,
         result: {
           title: str.endTurn,
+          target: null,
+          bonus: null,
           shownAt: now,
           ack: { error: str.errors['wrong-turn'] },
           payload: null,
@@ -163,11 +164,22 @@ function applyOp(op: MenuOp, ui: UiState, ctx: ReduceContext): ReduceResult {
   }
 }
 
-function showResult(ui: UiState, title: string, now: number): UiState {
+function showResult(
+  ui: UiState,
+  title: string,
+  now: number,
+  target: string | null = null,
+  bonus: number | null = null,
+): UiState {
   return go(ui, 'result', {
     pending: null,
-    result: { title, shownAt: now, ack: 'pending', payload: null },
+    result: { title, target, bonus, shownAt: now, ack: 'pending', payload: null },
   });
+}
+
+/** `+6` → 6; null when the bonus is missing or not a plain integer (e.g. `+1d4`). */
+function parseBonus(toHit: string | undefined): number | null {
+  return toHit !== undefined && /^[+-]?\d+$/.test(toHit.trim()) ? Number(toHit) : null;
 }
 
 function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult {
@@ -202,10 +214,10 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
       const p = ui.pending;
       if (!p || !actorId) return { ui, effects: [] };
       const targets = intent.tokenId ? [intent.tokenId] : [];
-      const title = intent.tokenId ? `${p.name} ${GLYPH.arrow} ${intent.name}` : p.name;
+      const target = intent.tokenId ? intent.name : null;
       if (p.kind === 'item') {
         return {
-          ui: showResult(ui, title, ctx.now),
+          ui: showResult(ui, p.name, ctx.now, target),
           effects: [
             {
               t: 'invoke',
@@ -238,7 +250,14 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
                 targets,
               },
             };
-      return { ui: showResult(ui, title, ctx.now), effects: [effect] };
+      const weapon =
+        p.kind === 'weapon'
+          ? ctx.app.character?.inventory.find((i) => i.id === p.itemId)
+          : undefined;
+      return {
+        ui: showResult(ui, p.name, ctx.now, target, parseBonus(weapon?.toHit)),
+        effects: [effect],
+      };
     }
     case 'item':
       // Consumables pick a target like weapons (or «no target» = self / untargeted).
@@ -255,7 +274,7 @@ function confirm(intent: Intent, ui: UiState, ctx: ReduceContext): ReduceResult 
     case 'react':
       return {
         ui: {
-          ...showResult(ui, intent.name, ctx.now),
+          ...showResult(ui, intent.name, ctx.now, intent.target, parseBonus(intent.bonus)),
           reactionDeadline: null,
           reactionSince: null,
         },

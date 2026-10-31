@@ -28,7 +28,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S4 bersaglio](images/sheet-target.png)
 
-**Quando:** dopo aver scelto un attacco o un incantesimo. **Perché:** il **mirino** compare sulla mappa sul bersaglio sotto il cursore; tap = tira.
+**Quando:** dopo aver scelto un attacco o un incantesimo. **Perché:** il **mirino** compare sulla mappa sul bersaglio sotto il cursore; ogni riga ha la salute del bersaglio (■■□□) e la distanza; tap = tira.
 
 ### S5 · Incantesimi — `spells`
 
@@ -40,7 +40,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S6 esito](images/sheet-result.png)
 
-**Quando:** Foundry ha risolto l'azione. **Perché:** il d20 tirato da Foundry, *COLPITO* / *MANCATO* e i danni; l'economia d'azione si aggiorna (○ AZ = azione usata). Tap = di nuovo *Azioni*, si chiude da solo dopo 8 s.
+**Quando:** Foundry ha risolto l'azione. **Perché:** nel titolo l'azione e il bersaglio (*Martello da guerra → Goblin A*), poi il colpo in una riga — *d20 16 +6 = 22 · COLPITO* — e i danni; l'economia d'azione si aggiorna (○ AZ = azione usata). Tap = di nuovo *Azioni*, si chiude da solo dopo 8 s.
 
 ### S7 · Reazione — `reaction`
 
@@ -60,7 +60,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S9 a terra](images/sheet-dying.png)
 
-**Quando:** i PF scendono a 0. **Perché:** ritratto attenuato, i **tiri contro la morte** (3 + 3 cerchi) sostituiscono la scheda.
+**Quando:** i PF scendono a 0. **Perché:** ritratto attenuato, i **tiri contro la morte** (3 + 3 cerchi) sostituiscono la scheda; il contesto dice cosa manca (*Ancora 1 fallimento = morte*, *Ancora 2 successi = stabile*).
 
 ## 🐞 Stati di connessione
 

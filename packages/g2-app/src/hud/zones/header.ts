@@ -152,17 +152,38 @@ function minis(p: Pixmap, m: SheetModel, s: HudStrings): void {
   });
 }
 
-function chipWidth(c: Chip): number {
-  return measure(LABEL_FONT, c.label) + 22;
+/** Gap between chips. */
+const CHIP_GAP = 5;
+/** Concentration chip reduced to its hourglass (the design's concentration icon). */
+const COMPACT_W = 20;
+
+function chipWidth(c: Chip, compact = false): number {
+  return compact ? COMPACT_W : measure(LABEL_FONT, c.label) + 22;
 }
 
-function drawChip(p: Pixmap, c: Chip, x: number, w: number): void {
+/**
+ * Whether each chip is drawn compact: when the row from `x` to `right` cannot hold every
+ * chip whole, concentration chips shrink to their hourglass first, so a condition label
+ * is not cut with `…` while room was spent on a label the icon already says.
+ */
+export function chipLayout(
+  chips: readonly Chip[],
+  x: number,
+  right: number,
+): Array<{ chip: Chip; compact: boolean }> {
+  const whole = chips.reduce((w, c) => w + chipWidth(c) + CHIP_GAP, 0) - CHIP_GAP;
+  const squeeze = x + whole > right;
+  return chips.map((chip) => ({ chip, compact: squeeze && chip.kind === 'conc' }));
+}
+
+function drawChip(p: Pixmap, c: Chip, x: number, w: number, compact: boolean): void {
   const y = HEADER_BOX.bottomY;
   const bad = c.kind === 'bad';
   p.roundRect(x, y, w, 18, 9, bad ? 15 : 9);
-  if (c.kind === 'conc') hourglass(p, x + 6, y + 3, 12);
+  if (c.kind === 'conc') hourglass(p, x + (compact ? 7 : 6), y + 3, 12);
   else if (bad) skull(p, x + 4, y + 3, 14);
   else star(p, x + 10, y + 9, 4, 12, true);
+  if (compact) return;
   drawText(p, LABEL_FONT, fitText(LABEL_FONT, c.label, w - 22), x + 18, y + 6, bad ? 15 : 11);
 }
 
@@ -194,20 +215,21 @@ function bottomRow(p: Pixmap, m: SheetModel, s: HudStrings): void {
     drawText(p, LABEL_FONT, fitText(LABEL_FONT, s.noConditions, right - x), x, y + 6, 6);
     return;
   }
-  for (let i = 0; i < m.chips.length; i++) {
-    const chip = m.chips[i] as Chip;
-    const rest = m.chips.length - i - 1;
+  const layout = chipLayout(m.chips, x, right);
+  for (let i = 0; i < layout.length; i++) {
+    const { chip, compact } = layout[i] as { chip: Chip; compact: boolean };
+    const rest = layout.length - i - 1;
     const reserve = rest > 0 ? measure(LABEL_FONT, `+${rest}`) + 15 : 0;
-    const w = chipWidth(chip);
+    const w = chipWidth(chip, compact);
     if (x + w + reserve <= right) {
-      drawChip(p, chip, x, w);
-      x += w + 5;
+      drawChip(p, chip, x, w, compact);
+      x += w + CHIP_GAP;
       continue;
     }
     // Overflow (INV-1: never clipped): a last chip is truncated with `…`, otherwise the
     // remaining chips collapse into one `+N` chip.
     if (rest === 0 && right - x >= 40) {
-      drawChip(p, chip, x, right - x);
+      drawChip(p, chip, x, right - x, false);
       return;
     }
     const n = `+${rest + 1}`;

@@ -144,7 +144,6 @@ export interface HudStrings {
   noTarget: string;
   cantrip: string;
   advantage: Record<'normal' | 'advantage' | 'disadvantage', string>;
-  result: string;
   pending: string;
   outcomes: Record<
     'hit' | 'miss' | 'save_success' | 'save_fail' | 'damage_dealt' | 'no_roll',
@@ -184,7 +183,9 @@ export interface HudStrings {
   requestRollFoundry: string;
   downTitle: string;
   downRoll: string;
-  downTally: (success: number, failure: number) => string;
+  /** Death saves left: failures before death, successes before stable (each ≥ 1). */
+  downFailuresLeft: (n: number) => string;
+  downSuccessesLeft: (n: number) => string;
   offlineTitle: string;
   offlineCauses: Record<NonNullable<ConnectionState['cause']>, string>;
   retryIn: (seconds: number, attempt: number) => string;
@@ -354,7 +355,6 @@ const IT: HudStrings = {
   noTarget: '(nessun bersaglio)',
   cantrip: 'trucchetto',
   advantage: { normal: 'Vantaggio: no', advantage: 'Vantaggio: sì', disadvantage: 'Svantaggio' },
-  result: 'Esito',
   pending: 'in corso…',
   outcomes: {
     hit: 'COLPITO',
@@ -397,7 +397,10 @@ const IT: HudStrings = {
   requestRollFoundry: 'Tira in Foundry',
   downTitle: 'Sei a terra',
   downRoll: 'Tiro salvezza contro la morte',
-  downTally: (s, f) => `Successi ${s}/3 · Fallimenti ${f}/3`,
+  downFailuresLeft: (n) =>
+    n === 1 ? 'Ancora 1 fallimento = morte' : `Ancora ${n} fallimenti = morte`,
+  downSuccessesLeft: (n) =>
+    n === 1 ? 'Ancora 1 successo = stabile' : `Ancora ${n} successi = stabile`,
   offlineTitle: '▲ Offline',
   offlineCauses: {
     'no-projector': 'Foundry del giocatore chiuso',
@@ -571,7 +574,6 @@ const EN: HudStrings = {
   noTarget: '(no target)',
   cantrip: 'cantrip',
   advantage: { normal: 'Advantage: no', advantage: 'Advantage: yes', disadvantage: 'Disadvantage' },
-  result: 'Result',
   pending: 'in progress…',
   outcomes: {
     hit: 'HIT',
@@ -614,7 +616,8 @@ const EN: HudStrings = {
   requestRollFoundry: 'Roll in Foundry',
   downTitle: 'You are down',
   downRoll: 'Death saving throw',
-  downTally: (s, f) => `Successes ${s}/3 · Failures ${f}/3`,
+  downFailuresLeft: (n) => (n === 1 ? '1 more failure = death' : `${n} more failures = death`),
+  downSuccessesLeft: (n) => (n === 1 ? '1 more success = stable' : `${n} more successes = stable`),
   offlineTitle: '▲ Offline',
   offlineCauses: {
     'no-projector': "Player's Foundry closed",

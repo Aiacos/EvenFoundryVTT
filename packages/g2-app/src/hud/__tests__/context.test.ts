@@ -153,15 +153,17 @@ describe('zone E content (IT, design persona)', () => {
     // The weapon and its bonus outrank the position: only the ▼ cue says there is more.
     expect(head('S4')).toMatch(/^Bersaglio +Martello da guerra \+6$/);
     expect(body('S4').split('\n')).toEqual([
-      expect.stringMatching(/^▶ +Goblin A +5 ft$/),
-      expect.stringMatching(/^ +Goblin B +10 ft$/),
-      expect.stringMatching(/^▼ +Hobgoblin +30 ft$/),
+      // Enemy health like the initiative list, then the distance.
+      expect.stringMatching(/^▶ +Goblin A +■■□□ · 5 ft$/),
+      expect.stringMatching(/^ +Goblin B +■■■■ · 10 ft$/),
+      expect.stringMatching(/^▼ +Hobgoblin +■■■■ · 30 ft$/),
     ]);
   });
 
   it('S6 result, S7 reaction countdown, S8 GM request, S9 down, S12 offline', () => {
-    expect(head('S6')).toMatch(/^Esito +Martello → Goblin A$/);
-    expect(body('S6')).toBe('d20 16\nCOLPITO\nDanni 9 contundenti');
+    // The payoff on one line: roll, bonus, total and outcome; the target in the title.
+    expect(head('S6')).toMatch(/^Martello da guerra +→ Goblin A$/);
+    expect(body('S6')).toBe('d20 16 +6 = 22 · COLPITO\nDanni 9 contundenti');
     // Reaction type + countdown in the title, only the weapon (and its bonus) per row.
     expect(head('S7')).toMatch(/^▲ Attacco di opportunità +6 s$/);
     expect(body('S7').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6$/);
@@ -171,11 +173,45 @@ describe('zone E content (IT, design persona)', () => {
     expect(body('S8').split('\n')[1]).toMatch(/^▶ +Fatto · d20 al tavolo$/);
     expect(body('S8').split('\n')[2]).toMatch(/^ +Tira in Foundry$/);
     expect(head('S9')).toMatch(/^Sei a terra +round 4$/);
-    expect(body('S9')).toBe('Tiro salvezza contro la morte\nSuccessi 1/3 · Fallimenti 2/3');
+    // The sheet draws the circles: the text says what is left, not the same tally again.
+    expect(body('S9')).toBe(
+      'Tiro salvezza contro la morte\nAncora 1 fallimento = morte\nAncora 2 successi = stabile',
+    );
     expect(head('S12')).toMatch(/^▲ Offline +dati di 2 min fa$/);
     expect(body('S12')).toBe(
       'Foundry del giocatore chiuso\nRiprovo tra 8 s (tentativo 3)\nScheda e mappa congelate',
     );
+  });
+
+  it('result: no bonus known → roll and outcome only; no roll → outcome; EN plurals', () => {
+    const s = strings('en');
+    const payload = { ...mockStates('min')[5]?.app.lastResult } as NonNullable<
+      AppState['lastResult']
+    >;
+    const ui = (bonus: number | null, d20: number | null) => ({
+      ...initialUi(),
+      view: 'result' as const,
+      result: {
+        title: 'Fire Bolt',
+        target: null,
+        bonus,
+        shownAt: 0,
+        ack: 'ok' as const,
+        payload: { ...payload, d20 },
+      },
+    });
+    const app = online();
+    expect(contextView(app, ui(null, 12), s, 0, 282).body[0]).toBe('d20 12 · HIT');
+    expect(contextView(app, ui(-1, 12), s, 0, 282).body[0]).toBe('d20 12 -1 = 11 · HIT');
+    expect(contextView(app, ui(null, null), s, 0, 282).body[0]).toBe('HIT');
+    expect(contextView(app, ui(null, 12), s, 0, 282).title).toBe('Fire Bolt');
+    const down = online('min', {
+      character: { ...character(), hp: 0, death: { success: 2, failure: 0 } },
+    });
+    expect(contextView(down, initialUi(), s, 0, 282).body.slice(1)).toEqual([
+      '3 more failures = death',
+      '1 more success = stable',
+    ]);
   });
 
   it('request lines cover checks, skills and DCs; empty lists show a dash', () => {

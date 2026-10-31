@@ -64,7 +64,11 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
     const { ui, effects } = drive(app, [{ t: 'tap' }, { t: 'tap' }, { t: 'down' }, { t: 'tap' }]);
     expect(ui.view).toBe('result');
     // Targets list enemies first, nearest first: Goblin A (5 ft), Goblin B (10 ft), …
-    expect(ui.result?.title).toBe('Martello da guerra +3 del Drago Rosso → Goblin B');
+    expect(ui.result).toMatchObject({
+      title: 'Martello da guerra +3 del Drago Rosso',
+      target: 'Goblin B',
+      bonus: 6,
+    });
     const [call] = invokes(effects);
     expect(call?.tool).toBe('weapon-attack');
     expect(WeaponAttackInputSchema.parse(call?.input)).toEqual({
@@ -325,7 +329,7 @@ describe('result (S6)', () => {
   const resultUi: UiState = {
     ...initialUi(),
     view: 'result',
-    result: { title: 'x', shownAt: 0, ack: 'pending', payload: null },
+    result: { title: 'x', target: null, bonus: null, shownAt: 0, ack: 'pending', payload: null },
   };
 
   it('tap → actions, double → root, auto-close after 8 s', () => {

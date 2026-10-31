@@ -144,13 +144,20 @@ function rootCombat(
   };
 }
 
-/** 0 PF root: death saves reminder (the sheet shows the circles). */
+/**
+ * 0 PF root: death saves reminder. The sheet draws the tally as circles; the text says
+ * what is left instead of repeating it.
+ */
 function rootDown(app: AppState, s: HudStrings): ContextView {
   const d = app.character?.death ?? { success: 0, failure: 0 };
   return {
     title: s.downTitle,
     right: app.combat ? s.round(app.combat.round) : '',
-    body: [s.downRoll, s.downTally(d.success, d.failure)],
+    body: [
+      s.downRoll,
+      s.downFailuresLeft(Math.max(1, 3 - d.failure)),
+      s.downSuccessesLeft(Math.max(1, 3 - d.success)),
+    ],
     hint: app.combat ? s.footer.combat : s.footer.root,
   };
 }
@@ -205,13 +212,20 @@ function listHead(
   }
 }
 
+/** `d20 15 +6 = 21 · COLPITO` (bonus when known), or the outcome alone without a roll. */
+function rollLine(d20: number | null, bonus: number | null, outcome: string): string {
+  if (d20 === null) return outcome;
+  const sum = bonus === null ? '' : ` ${signed(bonus)} = ${d20 + bonus}`;
+  return `d20 ${d20}${sum} ${GLYPH.dot} ${outcome}`;
+}
+
+/** S6: action and target in the head, the payoff (roll, total, outcome) on line 1. */
 function resultView(ui: UiState, s: HudStrings): ContextView {
   const r = ui.result;
   const body: string[] = [];
   if (r?.payload) {
     const p = r.payload;
-    if (p.d20 !== null) body.push(`d20 ${p.d20}`);
-    body.push(s.outcomes[p.outcome]);
+    body.push(rollLine(p.d20, r.bonus, s.outcomes[p.outcome]));
     if (p.errorKind) body.push(s.errors[p.errorKind]);
     else if (p.status !== 'success') body.push(s.failed);
     else if (p.damage) body.push(`${s.damage} ${p.damage}`);
@@ -220,7 +234,12 @@ function resultView(ui: UiState, s: HudStrings): ContextView {
   } else {
     body.push(r?.ack === 'ok' ? s.done : s.pending);
   }
-  return { title: s.result, right: r?.title ?? '', body, hint: s.footer.result };
+  return {
+    title: r?.title ?? '',
+    right: r?.target ? `${GLYPH.arrow} ${r.target}` : '',
+    body,
+    hint: s.footer.result,
+  };
 }
 
 function reactionView(
