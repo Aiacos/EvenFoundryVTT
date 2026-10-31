@@ -1,7 +1,7 @@
 import { MapSnapshotSchema } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFoundry, makeActor, makeUser } from '../__tests__/direct-fixtures.js';
-import { readMapSnapshot, resolveTargetUuids, toArtSrc } from './map-reader.js';
+import { isMapHookRelevant, readMapSnapshot, resolveTargetUuids, toArtSrc } from './map-reader.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -77,6 +77,7 @@ describe('readMapSnapshot', () => {
     const ownedByPlayer = makeActor('pet', 'Pet', { ownership: { p1: 3 } });
     const goblin = makeActor('gob', 'Goblin');
     installFoundry({
+      users: [makeUser('p1', 'Luca')],
       scene: scene([
         token('tSelf', { actorId: 'thorin', actor: self }),
         token('tAlly', { disposition: 1, actor: makeActor('mira', 'Mira') }),
@@ -96,6 +97,26 @@ describe('readMapSnapshot', () => {
     expect(byId.tGob?.hp).toBeUndefined();
     expect(byId.tNeutral?.kind).toBe('neutral');
     expect(snap?.selfTokenId).toBe('tSelf');
+  });
+
+  it('MR-03b ally by ownership follows Foundry levels: default OWNER counts, an explicit lower per-user level wins, a GM viewer does not make everything an ally', () => {
+    const shared = makeActor('shared', 'Shared', { ownership: { default: 3 } });
+    const lent = makeActor('lent', 'Lent', { ownership: { default: 3, p1: 1 } });
+    const goblin = makeActor('gob', 'Goblin');
+    installFoundry({
+      users: [makeUser('p1', 'Luca')],
+      scene: scene([
+        token('tShared', { actor: shared }),
+        token('tLent', { actor: lent }),
+        token('tGob', { actor: goblin }),
+      ]),
+    });
+    const kinds = (userId: string) =>
+      Object.fromEntries(
+        (readMapSnapshot({ actorId: 'thorin', userId })?.tokens ?? []).map((t) => [t.id, t.kind]),
+      );
+    expect(kinds('p1')).toEqual({ tShared: 'ally', tLent: 'neutral', tGob: 'neutral' });
+    expect(kinds('gm1').tGob).toBe('neutral');
   });
 
   it('MR-04 targetId comes from the projecting user targets, only if the token is visible', () => {
@@ -327,5 +348,33 @@ describe('resolveTargetUuids', () => {
     vi.unstubAllGlobals();
     installFoundry();
     expect(resolveTargetUuids(['tGob'])).toEqual({ ok: false, invalidId: 'tGob' });
+  });
+});
+
+describe('isMapHookRelevant (regression: hooks of other scenes cost nothing)', () => {
+  it('MR-H1 token / wall / tile documents count only on the projected scene', () => {
+    installFoundry({ scene: scene([]) });
+    const on = { parent: { id: 's1' } };
+    const off = { parent: { id: 'other' } };
+    for (const hook of ['createToken', 'updateToken', 'deleteWall', 'updateTile']) {
+      expect(isMapHookRelevant(hook, [on, {}])).toBe(true);
+      expect(isMapHookRelevant(hook, [off, {}])).toBe(false);
+    }
+    // No parent recorded: refreshed (the digest drops it if nothing changed).
+    expect(isMapHookRelevant('updateToken', [{}])).toBe(true);
+  });
+
+  it('MR-H2 scenes: the projected one, or any (de)activation; canvasReady always', () => {
+    installFoundry({ scene: scene([]) });
+    expect(isMapHookRelevant('updateScene', [{ id: 's1' }, { darkness: 1 }])).toBe(true);
+    expect(isMapHookRelevant('updateScene', [{ id: 'other' }, { name: 'x' }])).toBe(false);
+    expect(isMapHookRelevant('updateScene', [{ id: 'other' }, { active: true }])).toBe(true);
+    expect(isMapHookRelevant('canvasReady', [{}])).toBe(true);
+  });
+
+  it("MR-H3 targetToken counts only for this tab's user", () => {
+    installFoundry({ scene: scene([]) });
+    expect(isMapHookRelevant('targetToken', [{ id: 'gm1' }, {}, true])).toBe(true);
+    expect(isMapHookRelevant('targetToken', [{ id: 'p9' }, {}, true])).toBe(false);
   });
 });

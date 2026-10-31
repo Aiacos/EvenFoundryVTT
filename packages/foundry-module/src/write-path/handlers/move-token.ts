@@ -11,6 +11,8 @@
  * # Error codes
  * - `no_active_scene`  — `game.scenes.active` is null (no scene loaded)
  * - `token_not_found`  — `scene.tokens.get(args.token_id)` returned undefined
+ * - `forbidden_token`  — the token does not represent `args.actor_id` (the paired actor
+ *   the projector injects): a device moves only its own character's token
  * - `<message>`        — `tokenDoc.update()` rejected with an error
  *
  * # Threat model
@@ -50,7 +52,12 @@ export const moveTokenHandler: ToolHandler<(typeof MoveTokenInputSchema)['_input
       return { success: false, error: 'token_not_found' };
     }
 
-    // Step 3: update token position — direct document write (NOT activity.use)
+    // Step 3: a device moves only the token of the actor it acts for
+    if (tokenDoc.actorId !== args.actor_id) {
+      return { success: false, error: 'forbidden_token' };
+    }
+
+    // Step 4: update token position — direct document write (NOT activity.use)
     try {
       await tokenDoc.update({ x: args.x, y: args.y });
       return {

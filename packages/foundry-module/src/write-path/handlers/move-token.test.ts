@@ -18,9 +18,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeTokenDoc(opts: { id?: string; updateThrows?: Error | string } = {}) {
+function makeTokenDoc(
+  opts: { id?: string; actorId?: string | null; updateThrows?: Error | string } = {},
+) {
   return {
     id: opts.id ?? 'token-1',
+    actorId: opts.actorId === undefined ? 'actor-1' : opts.actorId,
     update: vi.fn().mockImplementation(async () => {
       if (opts.updateThrows !== undefined) {
         throw opts.updateThrows instanceof Error ? opts.updateThrows : new Error(opts.updateThrows);
@@ -80,6 +83,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const result = await moveTokenHandler.handle({
+      actor_id: 'actor-1',
       token_id: 'tok-1',
       x: 100,
       y: 200,
@@ -98,6 +102,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const result = await moveTokenHandler.handle({
+      actor_id: 'actor-1',
       token_id: 'tok-1',
       x: 100,
       y: 200,
@@ -113,12 +118,30 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const result = await moveTokenHandler.handle({
+      actor_id: 'actor-1',
       token_id: 'non-existent-token',
       x: 50,
       y: 75,
     });
 
     expect(result).toEqual({ success: false, error: 'token_not_found' });
+  });
+
+  it("regression: refuses to move a token that is not the acting actor's", async () => {
+    const goblin = makeTokenDoc({ id: 'tok-gob', actorId: 'goblin' });
+    const loose = makeTokenDoc({ id: 'tok-1', actorId: null });
+    for (const tokenDoc of [goblin, loose]) {
+      vi.stubGlobal('game', makeGameGlobal(makeScene({ tokenDoc })));
+      const { moveTokenHandler } = await import('./move-token.js');
+      const result = await moveTokenHandler.handle({
+        actor_id: 'actor-1',
+        token_id: tokenDoc.id,
+        x: 1,
+        y: 2,
+      });
+      expect(result).toEqual({ success: false, error: 'forbidden_token' });
+      expect(tokenDoc.update).not.toHaveBeenCalled();
+    }
   });
 
   it('returns error string when tokenDoc.update() rejects', async () => {
@@ -129,6 +152,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const result = await moveTokenHandler.handle({
+      actor_id: 'actor-1',
       token_id: 'tok-1',
       x: 100,
       y: 200,
@@ -148,7 +172,7 @@ describe('moveTokenHandler', () => {
 
     const { moveTokenHandler } = await import('./move-token.js');
 
-    await moveTokenHandler.handle({ token_id: 'tok-1', x: 10, y: 20 });
+    await moveTokenHandler.handle({ actor_id: 'actor-1', token_id: 'tok-1', x: 10, y: 20 });
 
     // tokenDoc.update called once, with just x/y
     expect(tokenDoc.update).toHaveBeenCalledTimes(1);
@@ -160,6 +184,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const parsed = moveTokenHandler.argsSchema.safeParse({
+      actor_id: 'actor-1',
       token_id: 'tok-1',
       x: 300,
       y: 150,
@@ -172,6 +197,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const parsed = moveTokenHandler.argsSchema.safeParse({
+      actor_id: 'actor-1',
       token_id: '',
       x: 100,
       y: 100,
@@ -184,6 +210,7 @@ describe('moveTokenHandler', () => {
     const { moveTokenHandler } = await import('./move-token.js');
 
     const parsed = moveTokenHandler.argsSchema.safeParse({
+      actor_id: 'actor-1',
       token_id: 'tok-1',
       x: 'not-a-number',
       y: 100,

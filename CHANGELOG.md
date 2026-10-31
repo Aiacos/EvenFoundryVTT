@@ -7,6 +7,20 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] The glasses' combat tracker hides hidden combatants and enemy HP/AC; pushes stop when the
+      tab loses the character; a GM tab never shows its whispers on a player's glasses —
+      [`combat-reader.ts`](packages/foundry-module/src/readers/combat-reader.ts), [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
+- [x] Ownership follows Foundry's permission test (an explicit lower level beats an OWNER default) —
+      [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
+- [x] A device moves only its own token and drops only its concentration —
+      [`move-token.ts`](packages/foundry-module/src/write-path/handlers/move-token.ts), [`drop-concentration.ts`](packages/foundry-module/src/write-path/handlers/drop-concentration.ts)
+- [x] A replayed action no longer resets the player's targets; pending template placements are
+      bounded — [`tool-registry.ts`](packages/foundry-module/src/write-path/tool-registry.ts), [`place-template.ts`](packages/foundry-module/src/write-path/handlers/place-template.ts)
+- [x] Map re-sent only when it changed (other scenes' hooks ignored); character snapshots only for
+      projected actors; pictures encoded 4 at a time without stalling requests —
+      [`projector.ts`](packages/foundry-module/src/direct/projector.ts), [`map-assets.ts`](packages/foundry-module/src/direct/map-assets.ts)
+- [x] A tab waiting for the projector lock dials the current room; a QR expiring mid-rotation no
+      longer forgets the new pairing — [`projector.ts`](packages/foundry-module/src/direct/projector.ts)
 - [x] Glasses HUD over BLE: no duplicate send of a tile already in flight, 100 ms image gap from the
       end of the previous send, a timed-out bridge call no longer overlaps the next one —
       [`zone-sender.ts`](packages/g2-app/src/hud/zones/zone-sender.ts), [`bridge-queue.ts`](packages/g2-app/src/hud/bridge-queue.ts)
