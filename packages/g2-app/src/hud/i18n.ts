@@ -191,6 +191,8 @@ export interface HudStrings {
   retryIn: (seconds: number, attempt: number) => string;
   dataAge: (minutes: number) => string;
   frozen: string;
+  /** Header chip over frozen data (S12, bitmap caps). */
+  frozenChip: string;
   endTurn: string;
   menu: {
     nextPage: string;
@@ -408,11 +410,12 @@ const IT: HudStrings = {
     background: 'Telefono in background',
     'code-pending': 'Codice in attesa di Foundry',
     actor: 'Personaggio non disponibile',
-    replaced: "Presi da un'altra app",
+    replaced: "Occhiali usati da un'altra app",
   },
   retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
   dataAge: (m) => `dati di ${m} min fa`,
   frozen: 'Scheda e mappa congelate',
+  frozenChip: 'CONGELATO',
   endTurn: 'Fine turno',
   menu: {
     nextPage: 'Scheda',
@@ -625,11 +628,12 @@ const EN: HudStrings = {
     background: 'Phone in background',
     'code-pending': 'Code waiting for Foundry',
     actor: 'Character unavailable',
-    replaced: 'Taken by another app',
+    replaced: 'Glasses used by another app',
   },
   retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
   dataAge: (m) => `data from ${m} min ago`,
   frozen: 'Sheet and map frozen',
+  frozenChip: 'FROZEN',
   endTurn: 'End turn',
   menu: {
     nextPage: 'Sheet',

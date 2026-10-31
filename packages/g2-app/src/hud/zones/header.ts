@@ -46,8 +46,11 @@ export const HEADER_BOX = {
   bottomY: 113,
 } as const;
 
-/** State that takes over the turn chip: an open reaction prompt. */
-export type HeaderAlert = 'reaction';
+/**
+ * State that takes over the turn chip: an open reaction prompt, or frozen data (S12 —
+ * drawn after the offline dimming, at full brightness).
+ */
+export type HeaderAlert = 'reaction' | 'frozen';
 
 /** Draws the inverted chip of the turn slot with `label` (bitmap caps, fitted). */
 function turnChip(p: Pixmap, label: string): void {
@@ -64,6 +67,19 @@ function turnChip(p: Pixmap, label: string): void {
   );
 }
 
+/**
+ * Draws `alert` in the turn-chip slot (over whatever is there).
+ *
+ * @param p - Header pixmap (288 × 144).
+ * @param alert - Which state to show.
+ * @param s - Locale strings.
+ */
+export function drawHeaderAlert(p: Pixmap, alert: HeaderAlert, s: HudStrings): void {
+  const chip = HEADER_BOX.turnChip;
+  p.fillRect(chip.x - 2, chip.y, chip.w + 4, chip.h, 0);
+  turnChip(p, alert === 'reaction' ? `▲ ${s.reactionChip}` : `■ ${s.frozenChip}`);
+}
+
 /** Economy slot widths (fixed so the movement block never moves between locales). */
 const ECONOMY_SLOTS = [32, 36, 36] as const;
 const MOVE_W = 52;
@@ -72,7 +88,7 @@ function nameRow(p: Pixmap, m: SheetModel, s: HudStrings, alert: HeaderAlert | n
   const b = HEADER_BOX.name;
   drawText(p, MEDIUM_FONT, fitText(MEDIUM_FONT, m.name, b.maxW, true), b.x, b.y, 15, 'left', true);
   star(p, HEADER_BOX.star.cx, HEADER_BOX.star.cy, 6, m.inspiration ? 15 : 6, m.inspiration);
-  if (alert === 'reaction') turnChip(p, `▲ ${s.reactionChip}`);
+  if (alert !== null) drawHeaderAlert(p, alert, s);
   else if (m.turn?.mine) turnChip(p, `▲ ${s.yourTurn} · R${m.turn.round}`);
   else if (m.turn) {
     const label = fitText(LABEL_FONT, `${s.turnOf}: ${m.turn.current}`, 150);

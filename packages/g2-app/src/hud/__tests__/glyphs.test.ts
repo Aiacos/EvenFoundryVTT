@@ -21,6 +21,7 @@ function labelStrings(s: HudStrings): string[] {
     s.level,
     `▲ ${s.yourTurn} · R123`,
     `▲ ${s.reactionChip}`,
+    `■ ${s.frozenChip}`,
     `${s.turnOf}: Goblin B`,
     s.hitPoints,
     s.ac,

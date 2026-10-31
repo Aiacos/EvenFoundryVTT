@@ -12,7 +12,7 @@ import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
 import { initialUi } from '../input/ui-state.js';
 import { type SheetModel, sheetModel } from '../model.js';
-import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
+import { fullScreenOf, layoutModeFor, OFFLINE_DIM, renderZones } from '../view.js';
 import { connectLayout, pairLayout, renderFullScreen } from '../zones/fullscreen.js';
 import { chipLayout, HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
@@ -383,7 +383,14 @@ describe('renderZones', () => {
       { app: online('min', { connection: { status: 'offline' } }), ui, strings: s, now: 0 },
       extras,
     );
-    expect(Math.max(...off.header.data)).toBeLessThan(Math.max(...on.header.data));
+    for (const z of ['map', 'sheet', 'portrait'] as const)
+      expect(Math.max(...off[z].data), z).toBeLessThanOrEqual(Math.round(15 * OFFLINE_DIM));
+    // Stale data never looks live: a full-brightness «■ CONGELATO» chip in the turn slot.
+    const chip = HEADER_BOX.turnChip;
+    expect(off.header.get(chip.x + 2, chip.y + chip.h / 2)).toBe(15);
+    expect(on.header.get(chip.x + 2, chip.y + chip.h / 2)).toBe(0);
+    const dimmed = off.header.crop(0, HEADER_BOX.rules[0], 288, 100);
+    expect(Math.max(...dimmed.data)).toBeLessThanOrEqual(Math.round(15 * OFFLINE_DIM));
     const empty = renderZones(
       { app: online('min', { character: null, map: null }), ui, strings: s, now: 0 },
       extras,

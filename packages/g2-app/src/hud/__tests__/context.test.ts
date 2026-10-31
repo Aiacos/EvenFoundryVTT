@@ -87,6 +87,11 @@ describe('INV-1 zone E budgets', () => {
     }
   });
 
+  it('a pairing taken by another app names the glasses, not an unnamed «them»', () => {
+    expect(strings('it').offlineCauses.replaced).toBe("Occhiali usati da un'altra app");
+    expect(strings('en').offlineCauses.replaced).toBe('Glasses used by another app');
+  });
+
   it('full screens only carry the capture layer (their content is image tiles)', () => {
     expect(texts('S10')).toEqual({ bg: { content: ' ', color: 4 } });
     expect(Object.keys(texts('S11'))).toEqual(['bg']);
