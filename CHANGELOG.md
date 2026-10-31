@@ -7,6 +7,8 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] The character portrait finally shows on the glasses (sent as a picture, not a Foundry path the
+      phone cannot load) — [`projector.ts`](packages/foundry-module/src/direct/projector.ts), [`session.ts`](packages/g2-app/src/direct/session.ts)
 - [x] The glasses' combat tracker hides hidden combatants and enemy HP/AC; pushes stop when the
       tab loses the character; a GM tab never shows its whispers on a player's glasses —
       [`combat-reader.ts`](packages/foundry-module/src/readers/combat-reader.ts), [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)

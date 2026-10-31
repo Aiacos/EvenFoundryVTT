@@ -49,6 +49,7 @@ import {
   type AppMessage,
   ASSET_REF_PREFIX,
   CHARACTER_DELTA_TYPE,
+  type CharacterSnapshot,
   CharacterSnapshotSchema,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TARGETS_DELTA_TYPE,
@@ -273,6 +274,30 @@ export function backoffDelay(attempt: number, random: number): number {
 interface PendingInvoke {
   resolve: (result: InvokeResult) => void;
   timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Resolves the character's portrait / token art: `evf-asset:<id>` → the received picture,
+ * an absolute `http(s):` / `data:` URL is kept (older projectors), anything else — a
+ * Foundry-relative path the phone cannot fetch from Pages or the `.ehpk` — is dropped, so
+ * the HUD draws the class emblem instead of failing a fetch for the whole session.
+ */
+export function hydrateCharacter(
+  character: CharacterSnapshot,
+  assets: ReadonlyMap<string, string>,
+): CharacterSnapshot {
+  const resolve = (url: string): string | undefined => {
+    if (url.startsWith(ASSET_REF_PREFIX)) return assets.get(url.slice(ASSET_REF_PREFIX.length));
+    return /^(https?:|data:)/i.test(url) ? url : undefined;
+  };
+  const { portrait, token, ...rest } = character;
+  const portraitUrl = portrait === undefined ? undefined : resolve(portrait.url);
+  const tokenUrl = token === undefined ? undefined : resolve(token.url);
+  return {
+    ...rest,
+    ...(portraitUrl !== undefined ? { portrait: { url: portraitUrl } } : {}),
+    ...(tokenUrl !== undefined ? { token: { url: tokenUrl } } : {}),
+  };
 }
 
 /**
@@ -1025,9 +1050,13 @@ export class DirectSession implements AppActions {
       return;
     }
     const value =
-      topic === 'map' && parsed.data !== null
-        ? hydrateMap(parsed.data as MapSnapshot, this.assets)
-        : parsed.data;
+      parsed.data === null
+        ? null
+        : topic === 'map'
+          ? hydrateMap(parsed.data as MapSnapshot, this.assets)
+          : topic === 'character'
+            ? hydrateCharacter(parsed.data as CharacterSnapshot, this.assets)
+            : parsed.data;
     this.store.update({
       [topic]: value,
       ...(topic === 'combat' && parsed.data === null ? NO_TURN_STATE : {}),
@@ -1052,7 +1081,9 @@ export class DirectSession implements AppActions {
     }
     switch (topic) {
       case CHARACTER_DELTA_TYPE:
-        this.applyDelta(topic, CharacterSnapshotSchema, data, (character) => ({ character }));
+        this.applyDelta(topic, CharacterSnapshotSchema, data, (character) => ({
+          character: hydrateCharacter(character, this.assets),
+        }));
         break;
       case COMBAT_TURN_DELTA_TYPE:
       case COMBAT_STATE_DELTA_TYPE:

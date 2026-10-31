@@ -1,4 +1,5 @@
 import {
+  CHARACTER_DELTA_TYPE,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
   deriveCodePairing,
@@ -45,8 +46,9 @@ vi.mock('../write-path/tool-registry.js', async (importOriginal) => ({
   dispatchTool,
 }));
 vi.mock('../write-path/audit-log.js', () => ({ writeAuditLog }));
+const characterExtra = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../readers/character-reader.js', () => ({
-  getCharacterSnapshot: (id: string) => ({ actorId: id, name: 'Thorin' }),
+  getCharacterSnapshot: (id: string) => ({ actorId: id, name: 'Thorin', ...characterExtra.value }),
 }));
 vi.mock('../readers/combat-reader.js', () => ({ getCombatSnapshot }));
 vi.mock('../write-path/combat-action-tracker.js', () => ({
@@ -606,6 +608,43 @@ describe('Projector (ADR-0019)', () => {
       'snapshot',
       'snapshot',
     ]);
+  });
+
+  it('PJ-29 regression: the portrait reaches the glasses as an asset, not a Foundry-relative URL', async () => {
+    characterExtra.value = {
+      portrait: { url: 'worlds/w/thorin.webp' },
+      token: { url: 'tokens/thorin.png' },
+    };
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'get', rid: 'c', what: 'character' }, p.key);
+      const out = await received(link, 3, p.key);
+      expect(out.map((m) => m.t)).toEqual(['asset', 'asset', 'snapshot']);
+      const ids = out.slice(0, 2).map((m) => (m as { id: string }).id);
+      const ch = (out[2] as { data: { portrait: { url: string }; token: { url: string } } }).data;
+      expect(ch.portrait.url).toBe(`evf-asset:${ids[0]}`);
+      expect(ch.token.url).toBe(`evf-asset:${ids[1]}`);
+      // Deltas carry the reference too; the pictures are not sent twice.
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await vi.waitFor(() => expect(projector.status('dev1')).toBe('online'));
+      await vi.waitFor(async () => {
+        const n = link.sent.length;
+        await new Promise((r) => setTimeout(r, 20));
+        expect(link.sent.length).toBe(n);
+      });
+      const before = link.sent.length;
+      projector.pushDelta(CHARACTER_DELTA_TYPE, {
+        actorId: 'thorin',
+        name: 'Thorin',
+        ...characterExtra.value,
+      });
+      const all = await received(link, before + 1, p.key);
+      const delta = all.at(-1) as { t: string; data: { portrait: { url: string } } };
+      expect(delta.t).toBe('delta');
+      expect(delta.data.portrait.url).toBe(`evf-asset:${ids[0]}`);
+    } finally {
+      characterExtra.value = {};
+    }
   });
 
   it('PJ-19 regression: each pairing is served on the relay it was made on (setting only for old records)', async () => {

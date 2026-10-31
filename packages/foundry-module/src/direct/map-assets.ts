@@ -30,6 +30,8 @@ import {
 export const BACKGROUND_MAX_SIDE = 768;
 /** Longest side of an encoded tile / token picture (px). */
 export const PIECE_MAX_SIDE = 128;
+/** Longest side of the encoded character portrait / token art (the HUD portrait is 144²). */
+export const PORTRAIT_MAX_SIDE = 144;
 /** Encoded pictures kept (LRU); sized above a large scene so cyclic access still hits. */
 export const MAX_CACHED = 256;
 
@@ -116,6 +118,16 @@ export class MapAssetCache {
     private readonly encode: AssetEncoder = browserAssetEncoder,
     private readonly now: () => number = Date.now,
   ) {}
+
+  /**
+   * One picture outside a map (the character portrait / token art): same cache, retry and
+   * size rules as {@link prepare}.
+   *
+   * @returns The asset, or `null` when it cannot be encoded (the glasses fall back)
+   */
+  picture(src: string, maxSide: number, type: 'jpeg' | 'png'): Promise<MapAsset | null> {
+    return this.get(src, maxSide, type);
+  }
 
   /**
    * Rewrites `snapshot` for the glasses. Pictures that cannot be encoded, or that encode

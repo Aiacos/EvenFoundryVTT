@@ -39,6 +39,9 @@
 import {
   type AppMessage,
   AppMessageSchema,
+  ASSET_REF_PREFIX,
+  CHARACTER_DELTA_TYPE,
+  type CharacterSnapshot,
   COMBAT_STATE_DELTA_TYPE,
   COMBAT_TURN_DELTA_TYPE,
   type DeviceKey,
@@ -73,7 +76,7 @@ import { getActionEconomy } from '../write-path/combat-action-tracker.js';
 import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
 import { hashBearer } from '../write-path/idempotency-cache.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
-import { MapAssetCache } from './map-assets.js';
+import { type MapAsset, MapAssetCache, PORTRAIT_MAX_SIDE } from './map-assets.js';
 import { isMapHookRelevant, readMapSnapshot, resolveTargetUuids } from './map-reader.js';
 import { applyOwnTargets } from './own-targets.js';
 import { glassesViewers, userOwnsActor } from './ownership.js';
@@ -177,6 +180,11 @@ interface Channel {
   /** Tail of the inbound queue: frames are handled one at a time, in arrival order. */
   inbox: Promise<void>;
   outbox: Promise<void>;
+  /**
+   * Tail of the character-delta preparation: portraits are encoded asynchronously, so a
+   * later delta could otherwise overtake an earlier one and show stale HP.
+   */
+  characterQueue: Promise<void>;
   sentAssets: Set<string>;
   seenPersistedAt: number;
   mapLastSent: number;
@@ -261,6 +269,7 @@ export class Projector {
       seq: 0,
       inbox: Promise.resolve(),
       outbox: Promise.resolve(),
+      characterQueue: Promise.resolve(),
       sentAssets: new Set(),
       seenPersistedAt: 0,
       mapLastSent: 0,
@@ -642,11 +651,12 @@ export class Projector {
   ): Promise<void> {
     const ridPart = rid === undefined ? {} : { rid };
     if (what !== 'map') {
+      const data = this.snapshot(pairing, what);
       await this.send(channel, {
         t: 'snapshot',
         ...ridPart,
         what,
-        data: this.snapshot(pairing, what),
+        data: what === 'character' ? await this.characterForGlasses(channel, data) : data,
       });
       return;
     }
@@ -661,11 +671,18 @@ export class Projector {
       return;
     }
     const prepared = await this.assets.prepare(parsed.data);
-    for (const asset of prepared.assets) {
+    await this.sendAssets(channel, prepared.assets);
+    await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
+    channel.mapDigest = digest;
+  }
+
+  /** Sends the pictures this device has not received yet (each one once per link). */
+  private async sendAssets(channel: Channel, assets: readonly MapAsset[]): Promise<void> {
+    for (const asset of assets) {
       if (channel.sentAssets.has(asset.id)) continue;
-      // Marked before the (paced) send: a concurrent map snapshot of this device must not
-      // queue the same picture again. Frames leave in queue order, so its snapshot still
-      // follows this asset.
+      // Marked before the (paced) send: a concurrent snapshot of this device must not
+      // queue the same picture again. Frames leave in queue order, so the snapshot that
+      // references it still follows this asset.
       channel.sentAssets.add(asset.id);
       try {
         await this.send(channel, { t: 'asset', id: asset.id, data: asset.data });
@@ -674,8 +691,33 @@ export class Projector {
         throw err;
       }
     }
-    await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
-    channel.mapDigest = digest;
+  }
+
+  /**
+   * The character as the glasses can show it: `actor.img` / the prototype token are
+   * Foundry paths (often relative, `worlds/…`) that the phone — on GitHub Pages or the
+   * `.ehpk`, never on the Foundry origin — cannot fetch. They go out as `asset` messages
+   * (144², like the HUD portrait) and the snapshot carries `evf-asset:` references; a
+   * picture that cannot be encoded is dropped (the HUD draws the class emblem).
+   */
+  private async characterForGlasses(channel: Channel, data: unknown): Promise<unknown> {
+    if (typeof data !== 'object' || data === null) return data;
+    const character = data as CharacterSnapshot;
+    const out: Record<string, unknown> = { ...character };
+    const assets: MapAsset[] = [];
+    for (const field of ['portrait', 'token'] as const) {
+      const url = character[field]?.url;
+      if (url === undefined || url.startsWith(ASSET_REF_PREFIX)) continue;
+      const asset = await this.assets.picture(url, PORTRAIT_MAX_SIDE, 'png');
+      if (asset === null) {
+        delete out[field];
+        continue;
+      }
+      assets.push(asset);
+      out[field] = { url: `${ASSET_REF_PREFIX}${asset.id}` };
+    }
+    await this.sendAssets(channel, assets);
+    return out;
   }
 
   // ─── Outbound ───────────────────────────────────────────────────────────────
@@ -690,6 +732,14 @@ export class Projector {
   readonly pushDelta = (topic: string, data: unknown): void => {
     for (const { channel, pairing } of this.welcomedDevices()) {
       if (!concerns(pairing, data)) continue;
+      if (topic === CHARACTER_DELTA_TYPE) {
+        const next = channel.characterQueue.then(async () =>
+          this.sendDelta(channel, topic, await this.characterForGlasses(channel, data)),
+        );
+        channel.characterQueue = next.catch(() => undefined);
+        this.fireAndForget(next);
+        continue;
+      }
       this.fireAndForget(this.sendDelta(channel, topic, data));
     }
   };

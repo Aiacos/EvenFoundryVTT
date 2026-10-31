@@ -651,6 +651,40 @@ describe('online behaviour', () => {
     expect(map?.tokens[1]?.img).toBeUndefined();
   });
 
+  it('hydrates the portrait from asset messages; relative Foundry paths are dropped (regression)', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    const data = 'data:image/png;base64,AAAA';
+    await gm.reply({ t: 'asset', id: 'pt', data });
+    await gm.reply({
+      t: 'snapshot',
+      what: 'character',
+      data: {
+        ...makeCharacter(),
+        portrait: { url: 'evf-asset:pt' },
+        token: { url: 'worlds/w/thorin.png' },
+      },
+    });
+    await settle();
+    expect(h.store.get().character?.portrait?.url).toBe(data);
+    // A Foundry-relative path cannot load on Pages / the .ehpk: dropped → class emblem.
+    expect(h.store.get().character?.token).toBeUndefined();
+    // Deltas too; an absolute URL (older projector) is kept as is.
+    await gm.reply({
+      t: 'delta',
+      seq: 1,
+      topic: CHARACTER_DELTA_TYPE,
+      data: {
+        ...makeCharacter(),
+        portrait: { url: 'evf-asset:pt' },
+        token: { url: 'https://forge.example/t.png' },
+      },
+    });
+    await settle();
+    expect(h.store.get().character?.portrait?.url).toBe(data);
+    expect(h.store.get().character?.token?.url).toBe('https://forge.example/t.png');
+  });
+
   it('keeps at most ASSETS_MAX pictures', () => {
     const assets = new Map<string, string>();
     const map = hydrateMap(
