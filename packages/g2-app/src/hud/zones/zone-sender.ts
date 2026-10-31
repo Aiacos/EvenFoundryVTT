@@ -3,7 +3,9 @@
  * (docs/design/g2-sheet-ux.html §Vincolo hardware, SDK notes):
  *
  * - one image in flight at a time, ≥ {@link MIN_GAP_MS} between two sends;
- * - per-tile hash: a tile whose pixels did not change is never re-sent (an AC change
+ * - per-tile hash: a tile whose pixels did not change is never re-sent — neither while
+ *   the glasses show it nor while it is still in flight (a re-render during a send must
+ *   not queue the same tile again; an AC change
  *   resends only `tl`; the PF box straddles the two top tiles, so a PF change resends
  *   `tl` + `tr`; a map frame resends only `tr`);
  * - latest wins: a newer pixmap replaces a queued one of the same tile;
@@ -46,6 +48,8 @@ export class ZoneSender {
   /** Hash of what the glasses show per region. */
   private readonly shown = new Map<Tile, number>();
   private readonly pending = new Map<Tile, Pixmap>();
+  /** Hash of the tile currently being sent (at most one: sends are serial). */
+  private inFlight: { region: Tile; hash: number } | null = null;
   /** Earliest time a tile may be sent again (retry backoff). */
   private readonly notBefore = new Map<Tile, number>();
   private busy = false;
@@ -60,10 +64,15 @@ export class ZoneSender {
     private readonly timers: SenderTimers = realTimers,
   ) {}
 
-  /** Queues `pix` for `region` unless the glasses already show exactly these pixels. */
+  /**
+   * Queues `pix` for `region` unless the glasses already show — or are being sent —
+   * exactly these pixels (latest wins: an older queued pixmap of the tile is dropped).
+   */
   submit(region: Tile, pix: Pixmap): void {
     if (this.disposed) return;
-    if (this.shown.get(region) === pix.hash()) {
+    const hash = pix.hash();
+    const sending = this.inFlight?.region === region ? this.inFlight.hash : undefined;
+    if ((sending ?? this.shown.get(region)) === hash) {
       this.pending.delete(region);
       return;
     }
@@ -74,6 +83,7 @@ export class ZoneSender {
   /** Forgets what the glasses show (after a page placement or a return to foreground). */
   reset(): void {
     this.epoch += 1;
+    this.inFlight = null;
     this.shown.clear();
     this.pending.clear();
     this.notBefore.clear();
@@ -129,6 +139,7 @@ export class ZoneSender {
     this.lastSendAt = now;
     const epoch = this.epoch;
     const hash = pix.hash();
+    this.inFlight = { region, hash };
     let ok = false;
     try {
       const result = String(await this.send(region, encodePng(pix)));
@@ -140,6 +151,7 @@ export class ZoneSender {
     }
     this.busy = false;
     if (epoch === this.epoch) {
+      this.inFlight = null;
       if (ok) {
         this.shown.set(region, hash);
       } else {

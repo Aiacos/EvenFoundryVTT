@@ -105,6 +105,22 @@ describe('ZoneSender', () => {
     expect(sent.map((s) => s.region)).toEqual(['tl', 'tl']);
   });
 
+  it('does not re-send a tile identical to the one in flight (render during a send)', async () => {
+    sender.submit('tl', pix(4));
+    await vi.advanceTimersByTimeAsync(5); // send started, 30 ms in flight
+    sender.submit('tl', pix(4)); // e.g. the 1 s tick re-renders the same pixels
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(1);
+    // A newer pixmap queued behind the in-flight one is superseded by a re-submission
+    // of the in-flight pixels (latest wins).
+    sender.submit('bl', pix(1));
+    await vi.advanceTimersByTimeAsync(5);
+    sender.submit('bl', pix(2));
+    sender.submit('bl', pix(1));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent.map((s) => s.region)).toEqual(['tl', 'bl']);
+  });
+
   it('stops after dispose', async () => {
     sender.submit('tl', pix(1));
     sender.dispose();
