@@ -33,6 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `Specs.md` (**canonical source of truth**, v0.13.0; superseded sections carry `SUPERSEDED in v0.12.0` / `SUPERSEDED in v0.13.0` banners) — requirements, hardware constraints, APIs, data models, UI/UX mockups, roadmap, risk register
 - `README.md` — projection of `Specs.md` for GitHub readers; must stay coherent (see INV-3)
+- `PRODUCT.md` — product truth for design work (users, positioning, principles, accessibility; Impeccable `init`); read it before any UI change — it does not override `Specs.md`
 - `docs/showcase/index.html` — animated single-file showcase (GitHub Pages); `docs/index.html` redirects to it; `docs/privacy.md` = Even Hub privacy policy (→ `/privacy.html`)
 - `docs/wiki/` — project wiki (Italian, 25 pages), mirrored to the GitHub wiki by `wiki-sync.yml`; check with `node scripts/check-wiki-links.mjs docs/wiki`
 - `specs/NNN-*/` — Spec Kit features (`004-relay-pairing` = current; `003-direct-streaming` done, pairing superseded by 004; `002` superseded) · `.specify/memory/constitution.md`
