@@ -283,7 +283,7 @@ async function main(): Promise<void> {
   log('=========================');
   log(`Mode: ${skipHardware ? 'SKIP-HARDWARE (software checks only)' : 'FULL'}`);
 
-  const raw = process.env['RELAY_URL'];
+  const raw = process.env.RELAY_URL;
   const fromEnv = raw !== undefined && raw.trim() !== '';
   const normalized = normalizeRelayUrl(fromEnv ? raw : DEFAULT_RELAY_URL);
   if (!normalized.ok) {

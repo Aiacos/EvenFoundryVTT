@@ -38,7 +38,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function parseEnv(): Env {
-  const v = process.env['RF_ENV'];
+  const v = process.env.RF_ENV;
   if (!v) {
     console.error(
       'ERROR: RF_ENV env var is required. Set to one of: clean, 5ghz-loaded, 2-4ghz-microwave',
