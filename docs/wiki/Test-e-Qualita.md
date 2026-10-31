@@ -58,7 +58,7 @@ pnpm --filter @evf/validation-harness inv:all   # suite degli invarianti
 | 3 | `pnpm typecheck` | errori di tipo |
 | 4 | `pnpm test:coverage` | test rossi o copertura < 80 % |
 | 5 | disciplina dei `// TODO` | `// TODO` senza `(#NN)` o `(ADR-NNNN)` |
-| 6 | `pnpm vitest --run --update=false` | snapshot o fixture non aggiornati |
+| 6 | `CI=true pnpm test:coverage` (stessa run del gate 3) | snapshot o fixture non aggiornati — **non** usare `--update=false`: Vitest 4 lo legge come «aggiorna» |
 | 7 | `pnpm changeset:status` (solo PR, non sulla PR *Version Packages*) | PR senza changeset |
 | 8 | guardia ADR-0011 | `activity.use(` fuori da `packages/foundry-module/src/write-path/` |
 | 9 | confinamento socketlib (ADR-0016) | uso di socketlib fuori da `packages/foundry-module` |
