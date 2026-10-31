@@ -20,6 +20,29 @@ import {
   seal,
 } from '@evf/shared-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * `seal` passthrough that can hold back the next call until released — lets a test make
+ * an earlier frame finish sealing *after* a later one (WebCrypto gives no ordering
+ * guarantee between concurrent `encrypt` calls).
+ */
+const sealGate = vi.hoisted(() => ({ holdNext: false, release: null as (() => void) | null }));
+vi.mock('@evf/shared-protocol', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@evf/shared-protocol')>();
+  return {
+    ...real,
+    seal: async (...args: Parameters<typeof real.seal>) => {
+      if (sealGate.holdNext) {
+        sealGate.holdNext = false;
+        await new Promise<void>((resolve) => {
+          sealGate.release = resolve;
+        });
+      }
+      return real.seal(...args);
+    },
+  };
+});
+
 import { createAppStore, DEFAULT_SETTINGS } from '../state/app-store.js';
 import {
   type Decoded,
@@ -181,12 +204,7 @@ describe('connect flow (relay, ADR-0019)', () => {
       steps: { paired: true },
     });
     expect(h.session.info().moduleVersion).toBe('0.3.0');
-    expect((await gm.drain()).map((m) => m.what).sort()).toEqual([
-      'character',
-      'combat',
-      'log',
-      'map',
-    ]);
+    expect((await gm.drain()).map((m) => m.what)).toEqual(['character', 'combat', 'map', 'log']);
     await gm.reply({ t: 'snapshot', what: 'character', data: makeCharacter() });
     await gm.reply({ t: 'snapshot', what: 'map', data: makeMap() });
     await settle();
@@ -486,6 +504,18 @@ describe('online behaviour', () => {
     await settle();
     expect(h.store.get().map?.name).toBe('Cripta');
     expect(h.session.info().diagnostics.at(-1)?.message).toBe('invalid map snapshot');
+  });
+
+  it('sends frames in call order even when an earlier seal finishes last (regression)', async () => {
+    const h = setup();
+    const gm = await goOnline(h);
+    sealGate.holdNext = true;
+    void h.session.invoke('weapon-attack', { itemId: 'axe' });
+    void h.session.invoke('cast-spell', {});
+    await settle();
+    sealGate.release?.();
+    await settle();
+    expect((await gm.drain()).map((m) => m.tool)).toEqual(['weapon-attack', 'cast-spell']);
   });
 
   it('invokes tools with rid correlation and resolves results', async () => {

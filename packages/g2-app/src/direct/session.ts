@@ -315,6 +315,8 @@ export class DirectSession implements AppActions {
   private attempt = 0;
   private link: RelayLink | null = null;
   private key: DeviceKey | null = null;
+  /** Tail of the outbound queue: frames are sealed and sent one at a time, in call order. */
+  private outbox: Promise<void> = Promise.resolve();
   private welcomed = false;
   /** Every `hello` of the current link: the `welcome` may answer any of them. */
   private readonly helloRids = new Set<string>();
@@ -1107,15 +1109,24 @@ export class DirectSession implements AppActions {
 
   // ─── Outbound & helpers ──────────────────────────────────────────────────
 
+  /**
+   * Seals and sends `message` **in call order**: sealing is async (WebCrypto), so without
+   * this queue a later, faster seal could overtake an earlier one (an `invoke` before the
+   * `hello`, requests out of order). Mirrors the projector's per-device outbox. A failed
+   * seal is recorded and does not block the frames queued after it.
+   */
   private send(message: AppMessage): void {
     const link = this.link;
     const key = this.key;
     if (link === null || key === null) return;
-    seal(key, GLASSES_ADDRESS, PROJECTOR_ADDRESS, message, this.now()).then(
-      (env) => {
-        if (!link.send(env)) this.record('warn', `${message.t} dropped: relay link closed`);
-      },
-      (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
+    const sentAt = this.now();
+    this.outbox = this.outbox.then(() =>
+      seal(key, GLASSES_ADDRESS, PROJECTOR_ADDRESS, message, sentAt).then(
+        (env) => {
+          if (!link.send(env)) this.record('warn', `${message.t} dropped: relay link closed`);
+        },
+        (error: unknown) => this.record('error', `seal failed: ${String(error)}`),
+      ),
     );
   }
 
