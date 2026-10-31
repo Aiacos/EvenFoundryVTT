@@ -81,6 +81,17 @@ the release ships, move the line to [CHANGELOG.md](CHANGELOG.md) and delete it h
 - [ ] Clock skew > 120 s: surface `stale` on the phone page (today only the Foundry window shows it) —
       [`envelope.ts`](packages/shared-protocol/src/direct/envelope.ts)
 
+## 🔐 Project tailnet (ADR-0020, proposed 2026-11-01)
+
+- [ ] Spike gates T1–T6 on real hardware (`validate:tailnet`, defer-hardware): WebSocket through
+      `tailscale serve`, identity headers for shared users, MagicDNS in the Even WebView (iOS +
+      Android, 5-min lock), Foundry tab self-hosted + Forge, free-plan count, Even Hub review of a
+      `*.ts.net` origin — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [ ] Maintainer: pick the always-on hub machine and the tailnet name; decide whether the hub stays
+      blind (keep sealed envelopes) — [ADR-0020 §Decision 1/4](docs/architecture/0020-project-tailnet-replaces-relay.md)
+- [ ] After GO: Spec Kit feature `specs/005-project-tailnet/` (hub service, identity rooms,
+      remove QR pairing / relay deploy), INV-3 docs together — [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md)
+
 ## 🗺️ Next features
 
 - [ ] Skill / save rolls started from the glasses — [Specs §10](Specs.md)

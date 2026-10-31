@@ -160,7 +160,7 @@ Four non-negotiable invariants ([`Specs.md` §0.1](Specs.md)) — **INV-1** layo
 - [`Specs.md`](Specs.md) — canonical specification (v0.13.0)
 - [`docs/design/g2-sheet-ux.html`](docs/design/g2-sheet-ux.html) — D&D-sheet HUD design (zones, principles, gestures, 12 screens)
 - [`docs/design/g2-thirds-layout.md`](docs/design/g2-thirds-layout.md) — superseded thirds layout (history)
-- [`docs/architecture/`](docs/architecture/) — ADRs 0001–0019 (current: 0011 write path · 0012 R1 gestures · 0016 sealed envelope + projector role · 0018 D&D-sheet HUD · **0019 relay pairing**; 0017 superseded by 0019; index with statuses in [`docs/architecture/README.md`](docs/architecture/README.md))
+- [`docs/architecture/`](docs/architecture/) — ADRs 0001–0020 (current: 0011 write path · 0012 R1 gestures · 0016 sealed envelope + projector role · 0018 D&D-sheet HUD · **0019 relay pairing**; 0017 superseded by 0019; **0020 project tailnet — proposed**, would replace the relay; index with statuses in [`docs/architecture/README.md`](docs/architecture/README.md))
 - [`specs/`](specs/) — Spec Kit features (`004-relay-pairing` is the current one; `003-direct-streaming` the v0.12.0 port)
 - [`docs/privacy.md`](docs/privacy.md) — privacy policy of the FoundryVTT G2 HUD app
 - [`docs/setup-guide.md`](docs/setup-guide.md) · [`docs/runbook.md`](docs/runbook.md) · [`docs/showcase/index.html`](docs/showcase/index.html)

@@ -14,11 +14,12 @@ firmware text on the G2's 576×288 4-bit green display, driven through the Even 
 
 ## Users
 
-- **Primary: any Even Hub user who plays D&D 5e on Foundry VTT** and installs the app from the
-  store without knowing us. They sit at a physical table (minis, paper maps, a human GM) wearing
-  Even Realities G2 glasses and an R1 ring, and their job is to play their character without
-  looking away from the table. Onboarding, copy and error recovery must work with no help from
-  the authors.
+- **Primary: D&D 5e players on Foundry VTT invited into the project's Tailscale network**
+  (maintainer decision 2026-11-01, [ADR-0020](docs/architecture/0020-project-tailnet-replaces-relay.md),
+  proposed). They sit at a physical table (minis, paper maps, a human GM) wearing Even Realities
+  G2 glasses and an R1 ring, and their job is to play their character without looking away from
+  the table. They may not know us: onboarding (joining the tailnet included), copy and error
+  recovery must work with no help from the authors.
 - **Secondary: the GM** of such a group, who may install the module, help a player pair, or run
   the projector tab for a player without their own device.
 - The maintainer's own group (The Forge, Foundry V14, sessions in Italian) is the first real
@@ -41,8 +42,9 @@ that, it is wrong (Core Value, `Specs.md`).
   Foundry runs them through its real workflow (ADR-0011 write path), not a mirror.
 - **Deterministic, no AI**: every action is an explicit gesture. Voice/AI may only ever be an
   optional extra (new ADR), never a dependency.
-- **Nothing to run or log into**: no login on the phone, no GM required, works with The Forge;
-  the player's own Foundry tab is the projector (ADR-0019).
+- **No pairing, no login on the phone**: the player's Tailscale identity connects their glasses to
+  their own Foundry tab (the projector) — no QR, no code, no GM, works with The Forge
+  (ADR-0020, proposed; today ADR-0019's QR pairing over the relay).
 
 ## Operating Context
 
@@ -66,11 +68,10 @@ that, it is wrong (Core Value, `Specs.md`).
 - An Even Hub store app reaches only the exact origins whitelisted in its package (no wildcards).
 - Terminology is one glossary across glasses, phone page, Foundry window, docs and showcase
   (e.g. «Collega occhiali G2», «Scansiona QR», «Ingrandisci QR»).
-- **Open decision — connection layer.** The maintainer asked (2026-11-01) for a single project
-  tailnet (Tailscale) instead of the Cloudflare relay. That conflicts with two confirmed facts
-  above — a public Even Hub audience and "nothing to run or log into": every player would need
-  Tailscale on phone and laptop and to join the project's tailnet (free plan: 6 users). To be
-  settled in a new ADR before any implementation; the relay (ADR-0019) stays until then.
+- **Connection layer (decided 2026-11-01, ADR-0020 proposed):** a single project tailnet replaces
+  the Cloudflare relay; the audience is restricted to the tailnet's guests and the maintainer runs
+  an always-on hub node. Every player needs Tailscale on phone and laptop. Spike gates T1–T6 must
+  pass on real hardware before implementation; the relay (ADR-0019) stays in service until then.
 
 ## Brand Commitments
 
