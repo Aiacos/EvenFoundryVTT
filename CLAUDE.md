@@ -219,7 +219,7 @@ and cheap to update — checkable lists with references, never prose essays.
 
 ### P14 · 🪝 Pre-commit checks
 
-- Every commit automatically runs, via `.husky/pre-commit`: Biome format + lint on the staged files, `pnpm typecheck` (compilation of every package) and `vitest related --run` for the staged sources; `commit-msg` runs commitlint. Builds (`g2-app`, `foundry-module`) and the full coverage run stay in CI (P9) and in the pre-PR validation (P5).
+- Every commit automatically runs, via `.husky/pre-commit`: Biome format + lint on the staged files, `pnpm typecheck` (compilation of every package) and `vitest related --run` for the staged sources, plus `actionlint` when a workflow file is staged; `commit-msg` runs commitlint. Builds (`g2-app`, `foundry-module`) and the full coverage run stay in CI (P9) and in the pre-PR validation (P5).
 - A failing check is fixed, never bypassed (`--no-verify`, `HUSKY=0`, skipped tests, lowered thresholds).
 
 ### P15 · 🧩 Plugins & skills

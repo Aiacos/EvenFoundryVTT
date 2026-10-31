@@ -114,7 +114,8 @@ CI (`.github/workflows/ci.yml`, job `quality-gates`) then runs:
 10. g2-app build + relay-only contract (ADR-0019) — `scripts/check-relay-origin.mjs --bundle packages/g2-app/dist`
 11. Relay end-to-end — `wrangler dev` + real glasses session + real projector + the bundle in Chromium + `validate:relay`
 12. Wiki links, tracking files (`TODO.md` / `SECURITY.md` / `CHANGELOG.md`), module runtime assets,
-    Even Hub manifest (`app.json` version + icon), ShellCheck on `scripts/*.sh`
+    Even Hub manifest (`app.json` version + icon), ShellCheck on `scripts/*.sh`, actionlint on
+    `.github/workflows/`
 
 Plus a parallel job: PR title commitlint validation.
 

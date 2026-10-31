@@ -140,7 +140,8 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Merge the verified Version Packages PR
-        run: scripts/merge-when-ready.sh "$PR" "$SHA" "chore(release): version packages (#$PR)"
+        run: |
+          scripts/merge-when-ready.sh "$PR" "$SHA" "chore(release): version packages (#$PR)"
 
       - uses: actions/checkout@v4
         with:
@@ -247,5 +248,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Merge the sync PR into develop
-        run: scripts/merge-when-ready.sh "$PR" "$SHA" "chore(release): sync main into develop (#$PR)"
+        run: |
+          scripts/merge-when-ready.sh "$PR" "$SHA" "chore(release): sync main into develop (#$PR)"
 

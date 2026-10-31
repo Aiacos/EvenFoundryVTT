@@ -317,7 +317,8 @@ solve are complexity.
 
 Every commit MUST automatically run formatting and linting (Biome on the staged files), type
 checking/compilation of every package (`pnpm typecheck`) and the tests related to the staged
-sources (`vitest related --run`), via `.husky/pre-commit`; `commit-msg` runs commitlint. Builds
+sources (`vitest related --run`) and `actionlint` on staged workflow files, via
+`.husky/pre-commit`; `commit-msg` runs commitlint. Builds
 and the full coverage run are enforced by CI (IX). Failures MUST be resolved, never bypassed
 (`--no-verify`, `HUSKY=0`, skipped tests, lowered thresholds).
 
