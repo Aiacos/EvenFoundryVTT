@@ -188,6 +188,8 @@ interface Channel {
   mapTimer: ReturnType<typeof setTimeout> | null;
   /** Forgets the pairing when its unused QR expires (pending pairings only). */
   expiryTimer: ReturnType<typeof setTimeout> | null;
+  /** A first `hello` is handing over fresh secrets: the QR must not expire under it. */
+  rotating: boolean;
   /** Why the last frame from the glasses was refused, until a good one arrives. */
   rejected: OpenFailure | null;
 }
@@ -265,20 +267,11 @@ export class Projector {
       mapDigest: null,
       mapTimer: null,
       expiryTimer: null,
+      rotating: false,
       rejected: null,
     };
     this.channels.set(deviceId, channel);
-    if (pairing.expiresAt !== null) {
-      channel.expiryTimer = setTimeout(
-        () => {
-          channel.expiryTimer = null;
-          this.expire(deviceId).catch((err: unknown) => {
-            console.error(`[EVF] projector: could not forget the expired QR of ${deviceId}`, err);
-          });
-        },
-        Math.max(0, pairing.expiresAt - this.now()),
-      );
-    }
+    if (pairing.expiresAt !== null) this.armExpiry(channel, pairing.expiresAt);
     channel.release = this.lock(deviceId, () => {
       if (this.channels.get(deviceId) !== channel) return;
       // Re-read: while this tab waited for the lock, the tab holding it may have rotated
@@ -356,8 +349,29 @@ export class Projector {
     this.emit();
   }
 
-  /** The unused QR of `deviceId` expired: close its channel and forget it (no notice). */
+  /** Forgets the pairing of `channel` when its unused QR expires at `expiresAt`. */
+  private armExpiry(channel: Channel, expiresAt: number): void {
+    if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
+    channel.expiryTimer = setTimeout(
+      () => {
+        channel.expiryTimer = null;
+        this.expire(channel.deviceId).catch((err: unknown) => {
+          console.error(
+            `[EVF] projector: could not forget the expired QR of ${channel.deviceId}`,
+            err,
+          );
+        });
+      },
+      Math.max(0, expiresAt - this.now()),
+    );
+  }
+
+  /**
+   * The unused QR of `deviceId` expired: close its channel and forget it (no notice).
+   * No-op once the QR was used, or while its first `hello` is rotating the secrets.
+   */
   private async expire(deviceId: string): Promise<void> {
+    if (this.channels.get(deviceId)?.rotating === true) return;
     if (getPairing(deviceId)?.expiresAt === null) return;
     this.close(deviceId);
     await removePairing(deviceId);
@@ -496,14 +510,27 @@ export class Projector {
     if (pairing.expiresAt !== null) {
       // First contact through the QR/code: hand over fresh secrets and move rooms. The
       // glasses persist them, follow into the new room and say `hello` again.
+      // The QR was used in time: its expiry must not fire between the `welcome` leaving
+      // and the new secrets being stored (it would forget the pairing the glasses just
+      // moved to). Re-armed only if the `welcome` never left (the QR is still unused).
       const rotate = { room: generateRoomId(), key: generateDeviceKey() };
-      await this.send(channel, { ...welcome, rotate });
-      await updatePairing(pairing.deviceId, { ...rotate, expiresAt: null });
+      if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
+      channel.expiryTimer = null;
+      channel.rotating = true;
+      try {
+        try {
+          await this.send(channel, { ...welcome, rotate });
+        } catch (err) {
+          this.armExpiry(channel, pairing.expiresAt);
+          throw err;
+        }
+        await updatePairing(pairing.deviceId, { ...rotate, expiresAt: null });
+      } finally {
+        channel.rotating = false;
+      }
       channel.keyB64 = rotate.key;
       channel.welcomed = false;
       channel.sentAssets.clear();
-      if (channel.expiryTimer !== null) clearTimeout(channel.expiryTimer);
-      channel.expiryTimer = null;
       channel.link?.switchRoom(rotate.room);
       this.emit();
       return;

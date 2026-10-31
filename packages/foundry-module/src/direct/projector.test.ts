@@ -860,6 +860,53 @@ describe('Projector (ADR-0019)', () => {
     expect(links).toHaveLength(0);
   });
 
+  it('PJ-28 regression: the QR expiring while its rotation is in flight forgets nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const code = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+      const { link } = await boot(pairing({ ...code, expiresAt: now + 60_000 }));
+      let release = () => {};
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const send = link.send.bind(link);
+      let sending = false;
+      link.send = async (frame: object) => {
+        sending = true;
+        await gate; // the relay socket is slow to take the welcome
+        return send(frame);
+      };
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, code.key);
+      await vi.waitFor(() => expect(sending).toBe(true));
+      vi.advanceTimersByTime(60_000); // the 5-minute window closes mid-rotation
+      release();
+      await vi.waitFor(() => expect(getPairing('dev1')?.expiresAt).toBeNull());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getPairing('dev1')).not.toBeNull();
+      expect(link.stopped).toBe(false);
+      expect(link.rooms).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PJ-28b a rotation whose welcome never left still expires with its QR', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const code = await deriveCodePairing('7QK3-MX9P-2HRA-C4TE');
+      const { link } = await boot(pairing({ ...code, expiresAt: now + 60_000 }));
+      link.failNext = 1;
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, code.key);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      expect(getPairing('dev1')?.room).toBe(code.room);
+      vi.advanceTimersByTime(60_000);
+      await vi.waitFor(() => expect(getPairing('dev1')).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
