@@ -98,15 +98,13 @@ function listBody(
 }
 
 /**
- * Head value of a list longer than the body: `right · 2/6` when the position fits beside
- * `title` without cutting `right` (slots, weapon bonus outrank it); otherwise `right`
- * alone — the ▲ / ▼ row cues still say the list goes on.
+ * Head value of a list longer than the body: the position `2/6` when the head has nothing
+ * else to say. A head that already carries a value (spell slots `3/4 2/3`, the weapon
+ * bonus, the advantage state) keeps it alone — a second fraction beside slot counts
+ * reads as one more slot level; the ▲ / ▼ row cues still say the list goes on.
  */
-function withPosition(title: string, right: string, pos: string, budget: number): string {
-  if (right === '') return pos;
-  const joined = `${right} ${GLYPH.dot} ${pos}`;
-  const room = budget - getTextWidth(title) - 3 * getTextWidth(' ');
-  return getTextWidth(joined) <= room ? joined : right;
+function withPosition(right: string, pos: string): string {
+  return right === '' ? pos : right;
 }
 
 function rootExplore(app: AppState, ui: UiState, s: HudStrings, budget: number): ContextView {
@@ -347,7 +345,7 @@ export function contextView(
       const pos = `${Math.min(ui.cursor, entries.length - 1) + 1}/${entries.length}`;
       return {
         title: head.title,
-        right: overflow ? withPosition(head.title, head.right, pos, budget) : head.right,
+        right: overflow ? withPosition(head.right, pos) : head.right,
         body:
           entries.length === 0
             ? [ui.view === 'slot' ? s.noSlots : GLYPH.dash]

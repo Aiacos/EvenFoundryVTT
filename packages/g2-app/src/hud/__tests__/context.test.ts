@@ -123,7 +123,8 @@ describe('zone E content (IT, design persona)', () => {
     expect(head('S3')).toMatch(/^Azioni +1\/\d$/);
     expect(body('S3').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6 · 1d8\+3$/);
     // Pips (190 px) do not fit beside the title in the firmware font: remaining/max.
-    expect(head('S5')).toMatch(/^Incantesimi +3\/4 2\/3 1\/2 · 2\/4$/);
+    // Slot counts keep the head to themselves (a «· 2/4» would read as one more level).
+    expect(head('S5')).toMatch(/^Incantesimi +3\/4 2\/3 1\/2$/);
     expect(body('S5')).toMatch(/▶ +Benedizione {2}C +1° · 30 ft/);
     expect(body('S5')).toMatch(/Fiamma sacra +trucchetto\n/);
   });

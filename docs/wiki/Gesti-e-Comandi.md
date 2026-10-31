@@ -27,7 +27,7 @@ La pressione lunga apre il menu di sistema della pagina (`menuObject`). Ogni voc
 | **Lingua** | ciclo auto → IT → EN |
 | **Riconnetti** | nuova connessione a Foundry |
 
-Le liste del contesto mostrano tre righe: quando ce ne sono altre, il titolo dice la posizione (*Azioni  2/7*) e la prima / ultima riga visibile porta **▲** / **▼**.
+Le liste del contesto mostrano tre righe: quando ce ne sono altre, la prima / ultima riga visibile porta **▲** / **▼**; se il titolo non ha già un valore (slot, bonus dell'arma) dice anche la posizione (*Azioni  2/7*).
 
 ## 🕹️ Il flusso di un'azione
 
