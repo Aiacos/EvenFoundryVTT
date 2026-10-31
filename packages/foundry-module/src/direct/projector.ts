@@ -584,23 +584,28 @@ export class Projector {
     // The HUD picks targets by MapSnapshot token id; the write path / MidiQOL
     // `targetUuids` need document UUIDs. Only tokens visible on the projected scene pass.
     let targets: string[] | undefined;
+    let ownTargets: string[] | undefined;
     if (args.targets !== undefined) {
       const ids = args.targets;
       if (!Array.isArray(ids) || !ids.every((id): id is string => typeof id === 'string')) {
         return fail('invalid_input', 'targets must be an array of token ids');
       }
+      ownTargets = ids;
       const resolved = resolveTargetUuids(ids);
       if (!resolved.ok) {
         return fail('invalid_target', `token ${resolved.invalidId} is not visible on the scene`);
       }
       targets = resolved.uuids;
-      // A player's tab acts as that player: vanilla dnd5e reads `game.user.targets`.
-      if (!game.user.isGM) applyOwnTargets(ids);
     }
+    // A player's tab acts as that player: vanilla dnd5e reads `game.user.targets`. Set
+    // only when the tool really runs — a replayed `rid` must not reset the targets.
     const result = await dispatchTool(tool, {
       args: { ...args, ...(targets !== undefined ? { targets } : {}), actor_id: pairing.actorId },
       idempotencyKey: rid,
       bearer: principalOf(pairing.deviceId),
+      onExecute: () => {
+        if (ownTargets !== undefined && !game.user.isGM) applyOwnTargets(ownTargets);
+      },
     });
     if (result.success) {
       await this.send(channel, { t: 'result', rid, ok: true, data: result.data });

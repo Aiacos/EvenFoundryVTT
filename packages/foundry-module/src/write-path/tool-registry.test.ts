@@ -423,6 +423,34 @@ describe('dispatchTool', () => {
     expect(auditLogMock).toHaveBeenCalledOnce();
   });
 
+  it('regression: onExecute runs once, just before the handler — never for a replay or an overlapping duplicate', async () => {
+    const order: string[] = [];
+    const handler: ToolHandler = {
+      argsSchema: makeValidator(),
+      handle: async (): Promise<ToolResult> => {
+        order.push('handle');
+        await new Promise((r) => setTimeout(r, 0));
+        return { success: true, data: 1 };
+      },
+    };
+    registerToolHandler('cast-spell', handler);
+    const onExecute = vi.fn(() => order.push('onExecute'));
+    const payload = {
+      args: {},
+      idempotencyKey: '00000000-0000-4000-8000-0000000000e1',
+      bearer: 'test-bearer-on-execute',
+      onExecute,
+    };
+    await Promise.all([dispatchTool('cast-spell', payload), dispatchTool('cast-spell', payload)]);
+    await dispatchTool('cast-spell', payload); // replay: cache hit
+    expect(onExecute).toHaveBeenCalledOnce();
+    expect(order).toEqual(['onExecute', 'handle']);
+    // Invalid args: nothing runs, so nothing to prepare either.
+    registerToolHandler('move-token', { argsSchema: makeValidator(false), handle: handler.handle });
+    await dispatchTool('move-token', { ...payload, idempotencyKey: 'other' });
+    expect(onExecute).toHaveBeenCalledOnce();
+  });
+
   it('FIX D: in-flight entry is cleared after settle — a LATER (non-overlapping) call re-runs the handler', async () => {
     // The finally{} delete must ensure the map only holds OVERLAPPING calls, so a
     // sequential retry after the first settles re-executes (and then caches success).

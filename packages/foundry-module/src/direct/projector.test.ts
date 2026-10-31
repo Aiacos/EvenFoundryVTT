@@ -187,7 +187,11 @@ beforeEach(() => {
   links = [];
   readMapSnapshot.mockReturnValue(MAP);
   resolveTargetUuids.mockReturnValue({ ok: true, uuids: ['Scene.s1.Token.t9'] });
-  dispatchTool.mockResolvedValue({ success: true, data: { rolled: 17 } });
+  // Like the real dispatchTool: `onExecute` runs only when the handler really runs.
+  dispatchTool.mockImplementation(async (_tool: string, req: { onExecute?: () => void }) => {
+    req.onExecute?.();
+    return { success: true, data: { rolled: 17 } };
+  });
   projector = new Projector({
     relayBase: () => 'wss://relay.example',
     connect: (base, room, handlers) => {
@@ -336,10 +340,13 @@ describe('Projector (ADR-0019)', () => {
     resolveTargetUuids.mockReturnValueOnce({ ok: false, invalidId: 'tX' });
     await send('5', 'weapon-attack', { targets: ['tX'] });
     await send('6', 'weapon-attack', { item_id: 'axe', targets: ['t9'] });
-    dispatchTool.mockImplementation(async (_tool: string, req: { args: { item_id?: string } }) =>
-      req.args.item_id === 'wand'
-        ? { success: false, error: 'no_slots' }
-        : { success: true, data: { rolled: 17 } },
+    dispatchTool.mockImplementation(
+      async (_tool: string, req: { args: { item_id?: string }; onExecute?: () => void }) => {
+        req.onExecute?.();
+        return req.args.item_id === 'wand'
+          ? { success: false, error: 'no_slots' }
+          : { success: true, data: { rolled: 17 } };
+      },
     );
     await send('7', 'weapon-attack', { item_id: 'wand' });
     const out = await received(link, 7, p.key);
@@ -356,7 +363,20 @@ describe('Projector (ADR-0019)', () => {
       args: { item_id: 'axe', targets: ['Scene.s1.Token.t9'], actor_id: 'thorin' },
       idempotencyKey: '6',
       bearer: 'g2:dev1',
+      onExecute: expect.any(Function),
     });
+  });
+
+  it("PJ-07b regression: a replayed invoke (idempotent hit) does not reset the player's targets", async () => {
+    const { link, p } = await boot();
+    dispatchTool.mockResolvedValue({ success: true, data: { rolled: 17 } }); // cache hit
+    await glasses(
+      link,
+      { t: 'invoke', rid: 'r1', tool: 'weapon-attack', input: { targets: ['t9'] } },
+      p.key,
+    );
+    await received(link, 1, p.key);
+    expect(applyOwnTargets).not.toHaveBeenCalled();
   });
 
   it('PJ-08 ping → pong; a GM tab does not touch its own targets', async () => {
