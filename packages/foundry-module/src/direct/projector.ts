@@ -74,7 +74,7 @@ import { getMovementBudget } from '../write-path/combat-movement-tracker.js';
 import { hashBearer } from '../write-path/idempotency-cache.js';
 import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
 import { MapAssetCache } from './map-assets.js';
-import { readMapSnapshot, resolveTargetUuids } from './map-reader.js';
+import { isMapHookRelevant, readMapSnapshot, resolveTargetUuids } from './map-reader.js';
 import { applyOwnTargets } from './own-targets.js';
 import { glassesViewers, userOwnsActor } from './ownership.js';
 import {
@@ -104,7 +104,10 @@ export const SEEN_PERSIST_MS = 60_000;
  */
 const HELLO_SNAPSHOT_ORDER: readonly SnapshotTopic[] = ['character', 'map', 'combat', 'log'];
 
-/** Foundry hooks after which the map snapshot is refreshed. */
+/**
+ * Foundry hooks after which the map snapshot may need a refresh ({@link isMapHookRelevant}
+ * drops the ones of other scenes / users; the per-device digest drops unchanged maps).
+ */
 const MAP_HOOKS = [
   'createToken',
   'updateToken',
@@ -177,6 +180,11 @@ interface Channel {
   sentAssets: Set<string>;
   seenPersistedAt: number;
   mapLastSent: number;
+  /**
+   * Digest of the last map snapshot sent (its JSON before pictures are swapped for
+   * asset ids): a hook-driven refresh that would send the same map is skipped.
+   */
+  mapDigest: string | null;
   mapTimer: ReturnType<typeof setTimeout> | null;
   /** Forgets the pairing when its unused QR expires (pending pairings only). */
   expiryTimer: ReturnType<typeof setTimeout> | null;
@@ -215,7 +223,11 @@ export class Projector {
     await pruneExpired(this.now());
     for (const pairing of listPairings()) this.open(pairing.deviceId);
     for (const hook of MAP_HOOKS) {
-      this.hookIds.push(Hooks.on(hook, () => this.scheduleMapForAll()));
+      this.hookIds.push(
+        Hooks.on(hook, (...args: unknown[]) => {
+          if (isMapHookRelevant(hook, args)) this.scheduleMapForAll();
+        }),
+      );
     }
     this.hookIds.push(
       Hooks.on('createChatMessage', (message: unknown) => this.pushLogMessage(message)),
@@ -250,6 +262,7 @@ export class Projector {
       sentAssets: new Set(),
       seenPersistedAt: 0,
       mapLastSent: 0,
+      mapDigest: null,
       mapTimer: null,
       expiryTimer: null,
       rejected: null,
@@ -570,11 +583,17 @@ export class Projector {
     }
   }
 
+  /**
+   * Sends the snapshot of `what` (map pictures first). `onlyIfChanged`: a hook-driven map
+   * refresh, skipped when the map equals the last one sent to this device — HP-only token
+   * updates of enemies, another user's targets… (map budget: only on change).
+   */
   private async sendSnapshot(
     channel: Channel,
     pairing: Pairing,
     what: SnapshotTopic,
     rid?: string,
+    onlyIfChanged = false,
   ): Promise<void> {
     const ridPart = rid === undefined ? {} : { rid };
     if (what !== 'map') {
@@ -588,9 +607,12 @@ export class Projector {
     }
     const raw = readMapSnapshot({ actorId: pairing.actorId, userId: game.user.id });
     const parsed = raw === null ? null : MapSnapshotSchema.safeParse(raw);
+    const digest = parsed?.success === true ? JSON.stringify(parsed.data) : 'null';
+    if (onlyIfChanged && digest === channel.mapDigest) return;
     if (parsed === null || !parsed.success) {
       if (parsed !== null) console.warn('[EVF] projector: map snapshot failed validation');
       await this.send(channel, { t: 'snapshot', ...ridPart, what, data: null });
+      channel.mapDigest = digest;
       return;
     }
     const prepared = await this.assets.prepare(parsed.data);
@@ -608,6 +630,7 @@ export class Projector {
       }
     }
     await this.send(channel, { t: 'snapshot', ...ridPart, what, data: prepared.map });
+    channel.mapDigest = digest;
   }
 
   // ─── Outbound ───────────────────────────────────────────────────────────────
@@ -684,7 +707,7 @@ export class Projector {
       channel.mapLastSent = this.now();
       const pairing = getPairing(channel.deviceId);
       if (pairing === null || !channel.welcomed) return;
-      this.fireAndForget(this.sendSnapshot(channel, pairing, 'map'));
+      this.fireAndForget(this.sendSnapshot(channel, pairing, 'map', undefined, true));
     }, wait);
   }
 

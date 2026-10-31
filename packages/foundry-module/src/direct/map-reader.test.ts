@@ -1,7 +1,7 @@
 import { MapSnapshotSchema } from '@evf/shared-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFoundry, makeActor, makeUser } from '../__tests__/direct-fixtures.js';
-import { readMapSnapshot, resolveTargetUuids, toArtSrc } from './map-reader.js';
+import { isMapHookRelevant, readMapSnapshot, resolveTargetUuids, toArtSrc } from './map-reader.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -348,5 +348,33 @@ describe('resolveTargetUuids', () => {
     vi.unstubAllGlobals();
     installFoundry();
     expect(resolveTargetUuids(['tGob'])).toEqual({ ok: false, invalidId: 'tGob' });
+  });
+});
+
+describe('isMapHookRelevant (regression: hooks of other scenes cost nothing)', () => {
+  it('MR-H1 token / wall / tile documents count only on the projected scene', () => {
+    installFoundry({ scene: scene([]) });
+    const on = { parent: { id: 's1' } };
+    const off = { parent: { id: 'other' } };
+    for (const hook of ['createToken', 'updateToken', 'deleteWall', 'updateTile']) {
+      expect(isMapHookRelevant(hook, [on, {}])).toBe(true);
+      expect(isMapHookRelevant(hook, [off, {}])).toBe(false);
+    }
+    // No parent recorded: refreshed (the digest drops it if nothing changed).
+    expect(isMapHookRelevant('updateToken', [{}])).toBe(true);
+  });
+
+  it('MR-H2 scenes: the projected one, or any (de)activation; canvasReady always', () => {
+    installFoundry({ scene: scene([]) });
+    expect(isMapHookRelevant('updateScene', [{ id: 's1' }, { darkness: 1 }])).toBe(true);
+    expect(isMapHookRelevant('updateScene', [{ id: 'other' }, { name: 'x' }])).toBe(false);
+    expect(isMapHookRelevant('updateScene', [{ id: 'other' }, { active: true }])).toBe(true);
+    expect(isMapHookRelevant('canvasReady', [{}])).toBe(true);
+  });
+
+  it("MR-H3 targetToken counts only for this tab's user", () => {
+    installFoundry({ scene: scene([]) });
+    expect(isMapHookRelevant('targetToken', [{ id: 'gm1' }, {}, true])).toBe(true);
+    expect(isMapHookRelevant('targetToken', [{ id: 'p9' }, {}, true])).toBe(false);
   });
 });

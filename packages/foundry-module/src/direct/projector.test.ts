@@ -55,7 +55,11 @@ vi.mock('../write-path/combat-action-tracker.js', () => ({
 vi.mock('../write-path/combat-movement-tracker.js', () => ({
   getMovementBudget: (actorId: string) => ({ actorId, remaining: 30 }),
 }));
-vi.mock('./map-reader.js', () => ({ readMapSnapshot, resolveTargetUuids }));
+vi.mock('./map-reader.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./map-reader.js')>()),
+  readMapSnapshot,
+  resolveTargetUuids,
+}));
 vi.mock('./own-targets.js', () => ({ applyOwnTargets }));
 
 const MAP: MapSnapshot = {
@@ -70,6 +74,11 @@ const MAP: MapSnapshot = {
   tokens: [{ id: 't1', name: 'Thorin', kind: 'self', x: 1, y: 1, w: 1, h: 1 }],
   selfTokenId: 't1',
 };
+
+/** `map` with its first token one cell to the right (a real change of the map). */
+function moved(map: MapSnapshot): MapSnapshot {
+  return { ...map, tokens: map.tokens.map((t, i) => (i === 0 ? { ...t, x: t.x + 1 } : t)) };
+}
 
 /** Fake relay link: records frames, lets the test drive peer/link events. */
 class FakeLink {
@@ -410,6 +419,7 @@ describe('Projector (ADR-0019)', () => {
       await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
       await received(link, 6, p.key);
       now += MAP_THROTTLE_MS;
+      readMapSnapshot.mockReturnValue(moved(MAP));
       f.fire('updateToken');
       f.fire('updateToken');
       vi.advanceTimersByTime(MAP_THROTTLE_MS);
@@ -712,6 +722,48 @@ describe('Projector (ADR-0019)', () => {
     expect(link.sent).toHaveLength(10);
   });
 
+  it('PJ-25 regression: a map hook re-sends the map only when it changed, and other scenes cost nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await received(link, 6, p.key);
+      const settle = async () => {
+        now += MAP_THROTTLE_MS;
+        vi.advanceTimersByTime(MAP_THROTTLE_MS);
+        await vi.advanceTimersByTimeAsync(0);
+        for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      };
+      // targetToken by another user, a token of another scene: not even read.
+      readMapSnapshot.mockClear();
+      f.fire('targetToken', { id: 'someone' }, {}, true);
+      f.fire('updateToken', { parent: { id: 'elsewhere' } }, { x: 1 });
+      await settle();
+      expect(readMapSnapshot).not.toHaveBeenCalled();
+      // A relevant hook that changes nothing visible (e.g. an enemy's HP): read, not sent.
+      f.fire('updateToken', {}, { 'system.hp': 3 });
+      await settle();
+      expect(readMapSnapshot).toHaveBeenCalledTimes(1);
+      expect(link.sent).toHaveLength(6);
+      // A real change goes out; the same change again does not.
+      readMapSnapshot.mockReturnValue(moved(MAP));
+      f.fire('updateToken', {}, { x: 200 });
+      await settle();
+      const out = await received(link, 7, p.key);
+      expect(out[6]).toMatchObject({ t: 'snapshot', what: 'map' });
+      f.fire('updateToken', {}, { x: 200 });
+      await settle();
+      expect(link.sent).toHaveLength(7);
+      // An explicit get always answers.
+      await glasses(link, { t: 'get', rid: 'g', what: 'map' }, p.key);
+      vi.useRealTimers();
+      const again = await received(link, 8, p.key);
+      expect(again[7]).toMatchObject({ t: 'snapshot', rid: 'g', what: 'map' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
@@ -808,6 +860,7 @@ describe('Projector (ADR-0019)', () => {
       await untilQuiet();
       // The GM switches to another scene with 30 other pictures in the same second.
       pictures = scenePictures('forest');
+      readMapSnapshot.mockReturnValue({ ...MAP, sceneId: 's2', name: 'Forest' });
       f.fire('canvasReady');
       for (let second = 0; second < 4; second++) {
         await untilQuiet();

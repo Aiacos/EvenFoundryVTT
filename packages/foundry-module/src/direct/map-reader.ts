@@ -228,6 +228,38 @@ function projectedScene(): FoundryScene | null {
   return game.scenes.active ?? canvas?.scene ?? null;
 }
 
+/** Hooks whose first argument is a document embedded in a scene (`parent`). */
+const EMBEDDED_MAP_HOOK = /^(create|update|delete)(Token|Wall|Tile)$/;
+
+/**
+ * Whether a Foundry hook can change the map projected on the glasses — the projector
+ * refreshes only then (map budget, Specs §7.0: ≤ 1 fps and only on change):
+ *
+ * - token / wall / tile documents: only those of the projected scene (`document.parent`);
+ * - `updateScene`: the projected scene, or any change of `active` (the projection moves);
+ * - `targetToken`: only this tab's user (the map's `targetId` reads its targets);
+ * - anything else (`canvasReady`): always.
+ *
+ * Hook arguments are untrusted shapes; a document without a recorded parent counts.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#parent
+ * @see https://foundryvtt.com/api/v13/functions/hookEvents.updateDocument.html
+ * @see https://foundryvtt.com/api/v13/functions/hookEvents.targetToken.html
+ */
+export function isMapHookRelevant(hook: string, args: readonly unknown[]): boolean {
+  const [first, second] = args as [Record<string, unknown> | undefined, unknown];
+  if (EMBEDDED_MAP_HOOK.test(hook)) {
+    const parent = first?.parent as { id?: unknown } | null | undefined;
+    return typeof parent?.id !== 'string' || parent.id === projectedScene()?.id;
+  }
+  if (hook === 'updateScene') {
+    const changed = typeof second === 'object' && second !== null && 'active' in second;
+    return changed || first?.id === projectedScene()?.id;
+  }
+  if (hook === 'targetToken') return first?.id === game.user.id;
+  return true;
+}
+
 /** Tokens hidden from players are never projected (nor targetable). */
 function isProjectedToken(token: FoundryTokenDoc): boolean {
   return token.hidden !== true;
