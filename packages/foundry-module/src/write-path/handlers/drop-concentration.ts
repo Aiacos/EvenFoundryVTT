@@ -7,7 +7,9 @@
  *
  * # Error codes (constant-shape per T-07-05-01)
  * - `actor_not_found`   — `args.actor_id` not present in `game.actors`
- * - `effect_not_found`  — `args.effect_id` not in `actor.effects.contents`
+ * - `effect_not_found`  — `args.effect_id` is not a concentration effect of the actor
+ *   (its `statuses` lack `'concentrating'`, the marker `concentration-detector.ts` reads):
+ *   a device may end its concentration, never delete any other effect
  * - `no_gm_connected`   — Foundry threw "No connected GM"
  * - `<message>`         — any other error caught from `effect.delete()`
  *
@@ -29,6 +31,8 @@ import type { ToolHandler, ToolResult } from '../tool-registry.js';
 /** Minimal shape of a Foundry ActiveEffect needed by this handler. */
 interface FoundryEffect {
   id: string;
+  /** Status ids of the effect (`Set` or array depending on the data layer). */
+  statuses?: Iterable<string>;
   delete(): Promise<unknown>;
 }
 
@@ -36,6 +40,12 @@ interface FoundryEffect {
 interface FoundryActor {
   effects: { contents: FoundryEffect[] };
 }
+
+/**
+ * dnd5e's concentration status (`CONFIG.specialStatusEffects.CONCENTRATING`, default
+ * `'concentrating'`, dnd5e release-5.3.3 `module/documents/active-effect.mjs`).
+ */
+const CONCENTRATING = 'concentrating';
 
 // ─── Handler implementation ───────────────────────────────────────────────────
 
@@ -55,7 +65,9 @@ async function handle(args: DropConcentrationInput): Promise<ToolResult> {
   }
 
   // Resolve concentration effect
-  const effect = actor.effects.contents.find((e) => e.id === args.effect_id);
+  const effect = actor.effects.contents.find(
+    (e) => e.id === args.effect_id && Array.from(e.statuses ?? []).includes(CONCENTRATING),
+  );
   if (!effect) {
     return { success: false, error: 'effect_not_found' };
   }

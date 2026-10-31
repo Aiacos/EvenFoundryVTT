@@ -392,7 +392,7 @@ describe('Phase 7 Write-Path Integration Smoke (ISM-W7)', () => {
 
   it('ISM-W7-04: move-token calls tokenDoc.update({ x, y }) and returns success', async () => {
     const tokenUpdateMock = vi.fn().mockResolvedValue(undefined);
-    const tokenDoc = { id: 'token-hero', update: tokenUpdateMock };
+    const tokenDoc = { id: 'token-hero', actorId: 'actor-1', update: tokenUpdateMock };
 
     const gameMock = makeGameMock();
     gameMock.scenes.active = {
@@ -406,6 +406,7 @@ describe('Phase 7 Write-Path Integration Smoke (ISM-W7)', () => {
 
     const result = await dispatchTool('move-token', {
       args: {
+        actor_id: 'actor-1',
         token_id: 'token-hero',
         x: 300,
         y: 450,
@@ -591,7 +592,9 @@ describe('Phase 7 Write-Path Integration Smoke (ISM-W7)', () => {
       type: 'character',
       items: { contents: [] },
       effects: {
-        contents: [{ id: 'effect-conc-1', delete: effectDeleteMock }],
+        contents: [
+          { id: 'effect-conc-1', statuses: new Set(['concentrating']), delete: effectDeleteMock },
+        ],
       },
     };
     const gameMock = makeGameMock({ 'actor-8': actor });

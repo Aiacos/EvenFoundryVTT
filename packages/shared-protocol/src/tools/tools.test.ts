@@ -223,6 +223,7 @@ describe('SkillCheckInputSchema', () => {
 describe('MoveTokenInputSchema', () => {
   it('parses a valid move_token input', () => {
     const result = MoveTokenInputSchema.safeParse({
+      actor_id: 'actor-1',
       token_id: 'token-1',
       x: 5,
       y: 10,
@@ -230,8 +231,14 @@ describe('MoveTokenInputSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('regression: keeps actor_id (the token is bound to the acting actor)', () => {
+    const result = MoveTokenInputSchema.safeParse({ token_id: 't', x: 0, y: 0 });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects missing required field (no y)', () => {
     const result = MoveTokenInputSchema.safeParse({
+      actor_id: 'actor-1',
       token_id: 'token-1',
       x: 5,
     });
