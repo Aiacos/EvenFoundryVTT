@@ -64,15 +64,15 @@ jobs:
       pr: ${{ steps.changesets.outputs.pullRequestNumber }}
       headSha: ${{ steps.head.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # full history + tags needed for idempotent tag check
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.33.4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -134,7 +134,7 @@ jobs:
             -f "output[title]=quality-gates (release pipeline)" \
             -f "output[summary]=Verified by the reusable CI workflow in release run ${{ github.run_id }}."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: scripts/merge-when-ready.sh
           sparse-checkout-cone-mode: false
@@ -143,16 +143,16 @@ jobs:
         run: |
           scripts/merge-when-ready.sh "$PR" "$SHA" "chore(release): version packages (#$PR)"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0  # tags needed for the idempotent tag check
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.33.4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -190,7 +190,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
@@ -242,7 +242,7 @@ jobs:
             -f "output[title]=quality-gates (release pipeline)" \
             -f "output[summary]=Verified by the reusable CI workflow in release run ${{ github.run_id }}."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: scripts/merge-when-ready.sh
           sparse-checkout-cone-mode: false
