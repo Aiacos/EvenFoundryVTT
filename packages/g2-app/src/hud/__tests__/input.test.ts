@@ -90,6 +90,23 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
     expect(input.advantage).toBe('advantage');
   });
 
+  it('a Vantaggio toggle follows the weapons in Actions: one tap cycles it in place', () => {
+    const app = online();
+    const actions = drive(app, [{ t: 'tap' }]).ui;
+    expect(buildEntries(app, actions, s).map((e) => e.intent.k)).toEqual([
+      'weapon',
+      'weapon',
+      'op',
+      'open',
+      'open',
+      'open',
+    ]);
+    const { ui, effects } = drive(app, [{ t: 'down' }, { t: 'down' }, { t: 'tap' }], actions);
+    expect(ui).toMatchObject({ view: 'actions', cursor: 2, advantage: 'advantage' });
+    expect(effects).toEqual([]);
+    expect(buildEntries(app, ui, s)[2]?.left).toBe(s.advantage.advantage);
+  });
+
   it('cursor is clamped to the list', () => {
     const { ui } = drive(online(), [{ t: 'tap' }, { t: 'up' }, ...Array(20).fill({ t: 'down' })]);
     expect(ui.cursor).toBe(buildEntries(online(), ui, s).length - 1);
@@ -98,7 +115,14 @@ describe('weapon attack flow (S3 → S4 → S6)', () => {
 
 describe('spell flow (S5)', () => {
   const app = online('max');
-  const toSpells: HudInput[] = [{ t: 'tap' }, { t: 'down' }, { t: 'down' }, { t: 'tap' }];
+  // Actions: two weapons, «Vantaggio», then «Incantesimi…».
+  const toSpells: HudInput[] = [
+    { t: 'tap' },
+    { t: 'down' },
+    { t: 'down' },
+    { t: 'down' },
+    { t: 'tap' },
+  ];
 
   it('leveled spell: spells → slot → target → cast-spell with slot level', () => {
     const { ui, effects } = drive(app, [...toSpells, { t: 'down' }, { t: 'down' }, { t: 'tap' }]);
@@ -140,6 +164,7 @@ describe('items and options', () => {
     const app = online();
     const toTarget: HudInput[] = [
       { t: 'tap' },
+      { t: 'down' },
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },
@@ -196,6 +221,7 @@ describe('items and options', () => {
     const app = online('min', { settings: { ...online().settings, mapCellPx: 8 } });
     const opts = drive(app, [
       { t: 'tap' },
+      { t: 'down' },
       { t: 'down' },
       { t: 'down' },
       { t: 'down' },

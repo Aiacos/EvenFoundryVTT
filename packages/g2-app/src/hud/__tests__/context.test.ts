@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { character, mockStates, online } from '../../demo/fixtures.js';
 import type { AppState } from '../../state/app-store.js';
 import { strings } from '../i18n.js';
+import { buildEntries } from '../input/entries.js';
 import { initialUi } from '../input/ui-state.js';
 import { TEXT, type TextRegion } from '../layout.js';
 import { contextView } from '../text/context.js';
@@ -113,20 +114,48 @@ describe('zone E content (IT, design persona)', () => {
   });
 
   it('S3 actions carry bonus and damage right-aligned; S5 spells show slots in the title', () => {
-    expect(head('S3')).toMatch(/^Azioni +Thorin$/);
+    expect(body('S3').split('\n')[2]).toMatch(/^▼ +Vantaggio: no$/);
+    expect(head('S3')).toMatch(/^Azioni +1\/\d$/);
     expect(body('S3').split('\n')[0]).toMatch(/^▶ +Martello da guerra +\+6 · 1d8\+3$/);
     // Pips (190 px) do not fit beside the title in the firmware font: remaining/max.
-    expect(head('S5')).toMatch(/^Incantesimi +3\/4 2\/3 1\/2$/);
+    expect(head('S5')).toMatch(/^Incantesimi +3\/4 2\/3 1\/2 · 2\/4$/);
     expect(body('S5')).toMatch(/▶ +Benedizione {2}C +1° · 30 ft/);
     expect(body('S5')).toMatch(/Fiamma sacra +trucchetto\n/);
   });
 
+  it('a list longer than the 3 body lines says so: position in the title, ▼ on the last row', () => {
+    const n = buildEntries(
+      mockStates('min')[2]?.app ?? online(),
+      { ...initialUi(), view: 'actions' },
+      strings('it'),
+    ).length;
+    expect(n).toBeGreaterThan(3);
+    expect(head('S3')).toMatch(new RegExp(`^Azioni +1/${n}$`));
+    const rows = body('S3').split('\n');
+    expect(rows[0]).toMatch(/^▶ /);
+    expect(rows[2]).toMatch(/^▼ /);
+    // At the bottom the cue flips: ▲ on the first visible row.
+    const app = mockStates('min')[2]?.app ?? online();
+    const end = contextView(
+      app,
+      { ...initialUi(), view: 'actions', cursor: n - 1 },
+      strings('it'),
+      NOW,
+      282,
+    );
+    expect(end.body[0]).toMatch(/^▲ /);
+    expect(end.right).toBe(`${n}/${n}`);
+    // A list that fits shows no position and no cue (S8: two choices).
+    expect(body('S8')).not.toMatch(/▼|▲ /);
+  });
+
   it('S4 targets by distance with the weapon bonus in the title', () => {
+    // The weapon and its bonus outrank the position: only the ▼ cue says there is more.
     expect(head('S4')).toMatch(/^Bersaglio +Martello da guerra \+6$/);
     expect(body('S4').split('\n')).toEqual([
       expect.stringMatching(/^▶ +Goblin A +5 ft$/),
       expect.stringMatching(/^ +Goblin B +10 ft$/),
-      expect.stringMatching(/^ +Hobgoblin +30 ft$/),
+      expect.stringMatching(/^▼ +Hobgoblin +30 ft$/),
     ]);
   });
 

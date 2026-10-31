@@ -63,14 +63,19 @@ function scrolled(lines: string[], scroll: number): string[] {
   return lines.slice(start, start + CONTEXT_BODY_LINES);
 }
 
-/** Cursor cell: `▶ ` when selected, spaces of the same width otherwise. */
+/**
+ * Cursor cell: `▶ ` when selected; `▲ ` / `▼ ` on the first / last visible row when the
+ * list continues above / below (the firmware list has no scrollbar we control); spaces of
+ * the same width otherwise. The three glyphs have the same advance (pretext 0.1.4).
+ */
 const CURSOR_ON = `${GLYPH.cursor} `;
+const MORE_ABOVE = `${GLYPH.turn} `;
+const MORE_BELOW = `${GLYPH.down} `;
 const CURSOR_OFF = ' '.repeat(Math.round(getTextWidth(CURSOR_ON) / getTextWidth(' ')));
 
 /** One list line: cursor cell + left label + right-aligned value. */
-function entryLine(e: Pick<Entry, 'left' | 'right'>, selected: boolean, budget: number): string {
-  const cursor = selected ? CURSOR_ON : CURSOR_OFF;
-  return cursor + spread(e.left, e.right, budget - getTextWidth(cursor));
+function entryLine(e: Pick<Entry, 'left' | 'right'>, cell: string, budget: number): string {
+  return cell + spread(e.left, e.right, budget - getTextWidth(cell));
 }
 
 function listBody(
@@ -80,9 +85,28 @@ function listBody(
   budget: number,
 ): string[] {
   const indexed = entries.map((e, i) => ({ e, i }));
-  return windowAround(indexed, cursor, capacity).map(({ e, i }) =>
-    entryLine(e, i === cursor, budget),
-  );
+  const shown = windowAround(indexed, cursor, capacity);
+  const first = shown[0]?.i ?? 0;
+  const last = shown.at(-1)?.i ?? 0;
+  return shown.map(({ e, i }) => {
+    let cell = CURSOR_OFF;
+    if (i === cursor) cell = CURSOR_ON;
+    else if (i === last && last < entries.length - 1) cell = MORE_BELOW;
+    else if (i === first && first > 0) cell = MORE_ABOVE;
+    return entryLine(e, cell, budget);
+  });
+}
+
+/**
+ * Head value of a list longer than the body: `right · 2/6` when the position fits beside
+ * `title` without cutting `right` (slots, weapon bonus outrank it); otherwise `right`
+ * alone — the ▲ / ▼ row cues still say the list goes on.
+ */
+function withPosition(title: string, right: string, pos: string, budget: number): string {
+  if (right === '') return pos;
+  const joined = `${right} ${GLYPH.dot} ${pos}`;
+  const room = budget - getTextWidth(title) - 3 * getTextWidth(' ');
+  return getTextWidth(joined) <= room ? joined : right;
 }
 
 function rootExplore(app: AppState, ui: UiState, s: HudStrings, budget: number): ContextView {
@@ -149,14 +173,18 @@ function listHead(
   ui: UiState,
   s: HudStrings,
   budget: number,
+  overflow: boolean,
 ): { title: string; right: string } {
   const p = ui.pending;
   switch (ui.view) {
-    case 'actions':
+    case 'actions': {
+      // Long list: the position replaces the name (already in the header).
+      const name = overflow ? '' : (app.character?.name ?? '');
       return {
         title: s.actions,
-        right: ui.advantage === 'normal' ? (app.character?.name ?? '') : s.advantage[ui.advantage],
+        right: ui.advantage === 'normal' ? name : s.advantage[ui.advantage],
       };
+    }
     case 'spells':
       return { title: s.spells, right: slotsSummary(app, s.spells, budget) };
     case 'slot':
@@ -295,8 +323,12 @@ export function contextView(
       return requestView(app, ui, s, budget);
     default: {
       const entries = buildEntries(app, ui, s);
+      const overflow = entries.length > CONTEXT_BODY_LINES;
+      const head = listHead(app, ui, s, budget, overflow);
+      const pos = `${Math.min(ui.cursor, entries.length - 1) + 1}/${entries.length}`;
       return {
-        ...listHead(app, ui, s, budget),
+        title: head.title,
+        right: overflow ? withPosition(head.title, head.right, pos, budget) : head.right,
         body:
           entries.length === 0
             ? [ui.view === 'slot' ? s.noSlots : GLYPH.dash]

@@ -19,7 +19,10 @@ import { isMyTurn } from '../model.js';
 import { GLYPH } from '../text/measure.js';
 import type { Pending, UiState } from './ui-state.js';
 
-/** Contextual-menu / options operations (all reachable by tap via "Opzioni…"). */
+/**
+ * Contextual-menu / options operations (all reachable by tap via "Opzioni…";
+ * `advantage` also straight from the Actions list).
+ */
 export type MenuOp =
   | 'nextPage'
   | 'zoomIn'
@@ -99,7 +102,7 @@ function distanceFt(ax: number, ay: number, bx: number, by: number): number {
   return Math.round(Math.max(Math.abs(ax - bx), Math.abs(ay - by))) * 5;
 }
 
-function actionEntries(app: AppState, s: HudStrings): Entry[] {
+function actionEntries(app: AppState, ui: UiState, s: HudStrings): Entry[] {
   const ch = app.character;
   const out: Entry[] = [];
   if (ch) {
@@ -111,6 +114,8 @@ function actionEntries(app: AppState, s: HudStrings): Entry[] {
         intent: { k: 'weapon', itemId: it.id, name: it.name },
       });
     }
+    // One tap away from the attacks it changes (also in Opzioni… and the long-press menu).
+    out.push(label(s.advantage[ui.advantage], { k: 'op', op: 'advantage' }));
     if (ch.spells.spells.length > 0) {
       out.push(label(s.spellsMenu, { k: 'open', view: 'spells' }));
     }
@@ -315,7 +320,7 @@ function reactionEntries(app: AppState, s: HudStrings): Entry[] {
 export function buildEntries(app: AppState, ui: UiState, s: HudStrings): Entry[] {
   switch (ui.view) {
     case 'actions':
-      return actionEntries(app, s);
+      return actionEntries(app, ui, s);
     case 'spells':
       return spellEntries(app, s);
     case 'slot':
