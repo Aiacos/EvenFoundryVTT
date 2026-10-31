@@ -7,6 +7,19 @@ Design history: [Specs.md changelog](Specs.md). Rules: [CLAUDE.md P12](CLAUDE.md
 
 ## 🚀 Unreleased
 
+- [x] Glasses reaction prompt: reaction type and seconds left in the title, only the weapon per row,
+      header chip «▲ REAZIONE», a reflex ●● in the first second is ignored —
+      [`state-machine.ts`](packages/g2-app/src/hud/input/state-machine.ts), [ADR-0012](docs/architecture/0012-r1-gesture-model-overscroll-exit-lifecycle.md)
+- [x] Glasses failure screens: the cause is the headline, the stuck step is marked ✗ and the remedy
+      replaces the progress bar; unknown names never print «-» —
+      [`fullscreen.ts`](packages/g2-app/src/hud/zones/fullscreen.ts)
+- [x] Glasses lists: ▲ / ▼ on the edge rows when the list goes on, position in an empty title;
+      «Vantaggio» one tap away in Actions — [`context.ts`](packages/g2-app/src/hud/text/context.ts), [`entries.ts`](packages/g2-app/src/hud/input/entries.ts)
+- [x] Glasses result «d20 16 +6 = 22 · COLPITO» with action → target in the title; enemy health in
+      the target list; death saves say what is left; whole condition chips —
+      [`context.ts`](packages/g2-app/src/hud/text/context.ts), [`header.ts`](packages/g2-app/src/hud/zones/header.ts)
+- [x] Glasses offline: frozen zones dimmed to 30 % under a «■ CONGELATO» chip; «Occhiali usati da
+      un'altra app» — [`view.ts`](packages/g2-app/src/hud/view.ts), [`i18n.ts`](packages/g2-app/src/hud/i18n.ts)
 - [x] The glasses' combat tracker hides hidden combatants and enemy HP/AC; pushes stop when the
       tab loses the character; a GM tab never shows its whispers on a player's glasses —
       [`combat-reader.ts`](packages/foundry-module/src/readers/combat-reader.ts), [`ownership.ts`](packages/foundry-module/src/direct/ownership.ts)
