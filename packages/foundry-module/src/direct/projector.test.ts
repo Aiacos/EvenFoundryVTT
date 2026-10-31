@@ -606,6 +606,76 @@ describe('Projector (ADR-0019)', () => {
     }
   });
 
+  it('PJ-22 regression: pushes stop as soon as this tab no longer owns the projected actor', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { link, p } = await boot();
+      await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+      await received(link, 6, p.key);
+      (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
+      projector.pushDelta('character.delta', { actorId: 'thorin' });
+      projector.pushDelta('combat.turn', { round: 2 });
+      f.fire('createChatMessage', { id: 'm1', content: 'Hi', whisper: [] });
+      now += MAP_THROTTLE_MS;
+      f.fire('updateToken');
+      vi.advanceTimersByTime(MAP_THROTTLE_MS);
+      await vi.advanceTimersByTimeAsync(0);
+      await new Promise((r) => setImmediate(r));
+      expect(link.sent).toHaveLength(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("PJ-23 regression: a GM tab projecting a player's character shows that player's chat, never the GM's whispers", async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm;
+    const whisper = (id: string, to: string[]) => ({
+      id,
+      content: id,
+      author: { id: 'gm1', name: 'Anna' },
+      timestamp: 5,
+      whisper: to,
+    });
+    f.game.messages = {
+      contents: [whisper('toGm', ['gm1']), whisper('toLuca', ['p1']), whisper('all', [])],
+      get: () => undefined,
+    };
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 5, p.key);
+    const log = out.find((m) => m.t === 'snapshot' && m.what === 'log') as {
+      data: { events: Array<{ id: string }> };
+    };
+    expect(log.data.events.map((e) => e.id)).toEqual(['toLuca', 'all']);
+    f.fire('createChatMessage', whisper('liveGm', ['gm1']));
+    f.fire('createChatMessage', whisper('liveLuca', ['p1']));
+    const live = await received(link, out.length + 1, p.key);
+    await new Promise((r) => setTimeout(r, 20));
+    const deltas = (await received(link, live.length, p.key)).slice(out.length);
+    expect(deltas.map((m) => (m.data as { id: string }).id)).toEqual(['liveLuca']);
+  });
+
+  it("PJ-23b a GM tab projecting the GM's own actor (no player owner) sees the GM's whispers", async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm;
+    (f.actors.get('thorin') as { ownership: Record<string, number> }).ownership = {};
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 5, p.key);
+    f.fire('createChatMessage', {
+      id: 'liveGm',
+      content: 'x',
+      author: { id: 'gm1' },
+      timestamp: 5,
+      whisper: ['gm1'],
+    });
+    const live = await received(link, out.length + 1, p.key);
+    expect(live.at(-1)).toMatchObject({ topic: LOG_DELTA_TYPE, data: { id: 'liveGm' } });
+  });
+
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {

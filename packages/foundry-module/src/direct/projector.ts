@@ -20,7 +20,9 @@
  *
  * Every request re-checks, live, that this tab's user still owns the projected actor
  * (`forbidden_actor` otherwise, audited). Deltas from the hook subscribers, write-path
- * watchers, chat log and throttled map refreshes are pushed to every welcomed device.
+ * watchers, chat log and throttled map refreshes are pushed to every welcomed device whose
+ * actor is still owned (same live check). Chat visibility follows the glasses' viewers
+ * ({@link glassesViewers}): on a GM tab, the player who owns the character, not the GM.
  *
  * The projector also owns the lifetime of an unused QR: a pending pairing is forgotten
  * when its `expiresAt` passes (timer set when its channel opens; {@link Projector.start}
@@ -69,7 +71,7 @@ import { dispatchTool, isToolId } from '../write-path/tool-registry.js';
 import { MapAssetCache } from './map-assets.js';
 import { readMapSnapshot, resolveTargetUuids } from './map-reader.js';
 import { applyOwnTargets } from './own-targets.js';
-import { userOwnsActor } from './ownership.js';
+import { glassesViewers, userOwnsActor } from './ownership.js';
 import {
   getPairing,
   listPairings,
@@ -554,7 +556,7 @@ export class Projector {
       case 'combat':
         return getCombatSnapshot();
       case 'log':
-        return { events: getLogEventTail(50, [game.user.id]) };
+        return { events: getLogEventTail(50, glassesViewers(pairing.actorId)) };
     }
   }
 
@@ -626,10 +628,10 @@ export class Projector {
   private pushLogMessage(message: unknown): void {
     if (typeof message !== 'object' || message === null) return;
     const chat = message as ChatMessageLike & RollRequestMessage;
-    if (!isMessageVisibleTo(chat, [game.user.id])) return;
     const event = toLogEvent(chat);
     const request = parseRollRequest(chat);
-    for (const { channel } of this.welcomedDevices()) {
+    for (const { channel, pairing } of this.welcomedDevices()) {
+      if (!isMessageVisibleTo(chat, glassesViewers(pairing.actorId))) continue;
       if (event !== null) this.fireAndForget(this.sendDelta(channel, LOG_DELTA_TYPE, event));
       if (request !== null) {
         this.fireAndForget(this.sendDelta(channel, R1_ROLL_REQUEST_TYPE, request));
@@ -654,12 +656,18 @@ export class Projector {
     }, wait);
   }
 
+  /**
+   * Devices pushes may go to: welcomed, and — re-checked live like every request — whose
+   * actor this tab's user still owns (a GM removing the ownership stops the pushes at once).
+   */
   private welcomedDevices(): Array<{ channel: Channel; pairing: Pairing }> {
     const out: Array<{ channel: Channel; pairing: Pairing }> = [];
     for (const channel of this.channels.values()) {
       if (!channel.welcomed) continue;
       const pairing = getPairing(channel.deviceId);
-      if (pairing !== null) out.push({ channel, pairing });
+      if (pairing !== null && userOwnsActor(pairing.actorId, game.user.id)) {
+        out.push({ channel, pairing });
+      }
     }
     return out;
   }
