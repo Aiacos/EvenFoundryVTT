@@ -190,3 +190,26 @@ now goes to the modal, not the menu.
 **Implementation.** `quick-action-tap-dispatcher.ts` (`attachQuickActionTap`)
 replaces `quick-action-overscroll-dispatcher.ts`. `isAtTopBoundary()` on panels is
 retained (still used for in-panel scroll clamping) but no longer gates menu-open.
+
+## Amendment 3 — Reflex guard on the reaction prompt (2026-11-01)
+
+**Change.** On the reaction prompt (S7) a double-tap within the first
+`REACTION_DOUBLE_GUARD_MS` (1 s) after the prompt opened is dropped; after that it
+ignores the reaction as before. The tap-reachable «Ignora» entry is never guarded.
+
+**Why.** The prompt replaces whatever panel the player was on: a double-tap already in
+flight ("back") would otherwise throw away a reaction the player never saw (Impeccable
+critique 2026-10-31, P1). The meaning of ●● does not change — it is still "back / ignore"
+— only its first second on a freshly opened prompt is ignored.
+
+**Same amendment — advantage one tap away.** «Vantaggio» is also a row of the Actions
+list, right after the weapons: a tap cycles no → advantage → disadvantage in place (the
+cursor stays). It duplicates the `Opzioni…` entry and the long-press menu item; no
+gesture changes meaning.
+
+**Same amendment — root exit unchanged.** The critique asked for a second ●● within 2 s
+before exiting from the root. Not adopted: `shutDownPageContainer(1)` already shows the
+system exit-confirmation dialog, which Even Hub requires on the root page and QA checks;
+apps that replace it with a custom in-app exit UI are rejected
+(<https://hub.evenrealities.com/docs/build/page-lifecycle>, fetched 2026-11-01). An extra
+in-app step would be a second confirmation in front of the mandated one.

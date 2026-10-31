@@ -21,6 +21,7 @@ import { getAdvW, getTextWidth } from '@evenrealities/pretext';
 export const GLYPH = {
   cursor: '▶',
   turn: '▲',
+  down: '▼',
   full: '●',
   empty: '○',
   expert: '★',
@@ -127,10 +128,12 @@ export function block(lines: readonly string[], maxPx: number, maxLines: number)
 }
 
 /**
- * Returns a window of `max` items that keeps index `focus` visible (list scrolling).
+ * Returns a window of `max` items that keeps index `focus` visible (list scrolling): the
+ * focus sits in the middle row, or the first row of an even window, so the row below it
+ * — where the "more below" cue goes — is never the focus while items remain below.
  */
 export function windowAround<T>(items: readonly T[], focus: number, max: number): T[] {
   if (items.length <= max) return [...items];
-  const start = Math.min(Math.max(0, focus - Math.floor(max / 2)), items.length - max);
+  const start = Math.min(Math.max(0, focus - Math.floor((max - 1) / 2)), items.length - max);
   return items.slice(start, start + max);
 }

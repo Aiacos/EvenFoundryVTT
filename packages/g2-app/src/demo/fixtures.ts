@@ -454,7 +454,14 @@ export function mockStates(v: Variant): MockState[] {
       ui: {
         ...ui,
         view: 'result',
-        result: { title: 'Martello → Goblin A', shownAt: 0, ack: 'ok', payload: result() },
+        result: {
+          title: 'Martello da guerra',
+          target: 'Goblin A',
+          bonus: 6,
+          shownAt: 0,
+          ack: 'ok',
+          payload: result(),
+        },
       },
     },
     {

@@ -29,7 +29,12 @@ export type Pending =
 
 /** S6 result panel. */
 export interface ResultState {
+  /** Action name (weapon, spell, item, roll). */
   title: string;
+  /** Target name shown beside the title, or null (untargeted, self, roll). */
+  target: string | null;
+  /** Attack bonus when known (weapon attacks): the result line shows `d20 15 +6 = 21`. */
+  bonus: number | null;
   /** Epoch ms when the panel was (re)shown; drives the 8 s auto-close. */
   shownAt: number;
   /** Invoke acknowledgement from the projector. */
@@ -53,6 +58,8 @@ export interface UiState {
   result: ResultState | null;
   /** Epoch ms when the reaction prompt expires (S7). */
   reactionDeadline: number | null;
+  /** Epoch ms when the reaction prompt opened (reflex double-tap guard, S7). */
+  reactionSince: number | null;
 }
 
 export function initialUi(): UiState {
@@ -65,5 +72,6 @@ export function initialUi(): UiState {
     pending: null,
     result: null,
     reactionDeadline: null,
+    reactionSince: null,
   };
 }

@@ -28,7 +28,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S4 bersaglio](images/sheet-target.png)
 
-**Quando:** dopo aver scelto un attacco o un incantesimo. **Perché:** il **mirino** compare sulla mappa sul bersaglio sotto il cursore; tap = tira.
+**Quando:** dopo aver scelto un attacco o un incantesimo. **Perché:** il **mirino** compare sulla mappa sul bersaglio sotto il cursore; ogni riga ha la salute del bersaglio (■■□□) e la distanza; tap = tira.
 
 ### S5 · Incantesimi — `spells`
 
@@ -40,13 +40,13 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S6 esito](images/sheet-result.png)
 
-**Quando:** Foundry ha risolto l'azione. **Perché:** il d20 tirato da Foundry, *COLPITO* / *MANCATO* e i danni; l'economia d'azione si aggiorna (○ AZ = azione usata). Tap = di nuovo *Azioni*, si chiude da solo dopo 8 s.
+**Quando:** Foundry ha risolto l'azione. **Perché:** nel titolo l'azione e il bersaglio (*Martello da guerra → Goblin A*), poi il colpo in una riga — *d20 16 +6 = 22 · COLPITO* — e i danni; l'economia d'azione si aggiorna (○ AZ = azione usata). Tap = di nuovo *Azioni*, si chiude da solo dopo 8 s.
 
 ### S7 · Reazione — `reaction`
 
 ![S7 reazione](images/sheet-reaction.png)
 
-**Quando:** fuori dal tuo turno, Foundry offre una reazione (es. *Attacco di opportunità*). **Perché:** scelta rapida con *scade N s* e l'innesco; doppio tap = *Ignora*.
+**Quando:** fuori dal tuo turno, Foundry offre una reazione (es. *Attacco di opportunità*). **Perché:** il titolo dice quale reazione e quanti secondi restano (*▲ Attacco di opportunità  9 s*), ogni riga solo l'arma con il suo bonus, sotto l'innesco; nell'intestazione il chip diventa **▲ REAZIONE**. Doppio tap = *Ignora*, ma non nel primo secondo (un doppio tap riflesso non la butta via).
 
 ## 👓 Prove e pericolo
 
@@ -60,7 +60,7 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S9 a terra](images/sheet-dying.png)
 
-**Quando:** i PF scendono a 0. **Perché:** ritratto attenuato, i **tiri contro la morte** (3 + 3 cerchi) sostituiscono la scheda.
+**Quando:** i PF scendono a 0. **Perché:** ritratto attenuato, i **tiri contro la morte** (3 + 3 cerchi) sostituiscono la scheda; il contesto dice cosa manca (*Ancora 1 fallimento = morte*, *Ancora 2 successi = stabile*).
 
 ## 🐞 Stati di connessione
 
@@ -68,19 +68,19 @@ Le dodici schermate della «Scheda da tavolo G2», catturate dal **simulatore uf
 
 ![S10 non associato](images/sheet-unpaired.png)
 
-**Quando:** l'app non è ancora collegata, o qualcuno ha premuto **Scollega** (*OCCHIALI SCOLLEGATI DA FOUNDRY*). **Perché:** mai uno schermo muto — spiega in tre passi come collegare: su Foundry tasto destro sul tuo nome › «Collega occhiali G2», sul telefono «Scansiona QR» o il codice, poi la scheda compare da sola ([Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)). Dopo un codice a cui nessuna scheda di Foundry ha risposto in 5 minuti il sottotitolo diventa **NESSUNA RISPOSTA AL CODICE · GENERA UN NUOVO QR** (scenario `code-unanswered`).
+**Quando:** l'app non è ancora collegata, o qualcuno ha premuto **Scollega** (*OCCHIALI SCOLLEGATI DA FOUNDRY*). **Perché:** mai uno schermo muto — spiega in tre passi come collegare: su Foundry tasto destro sul tuo nome › «Collega occhiali G2», sul telefono «Scansiona QR» o il codice, poi la scheda compare da sola ([Collegare i tuoi occhiali](Associare-i-tuoi-Occhiali)). Dopo un codice a cui nessuna scheda di Foundry ha risposto in 5 minuti il titolo diventa la causa, **NESSUNA RISPOSTA AL CODICE**, e il sottotitolo dice cosa fare: *il QR è scaduto o già usato: generane uno nuovo (passo 1)* (scenario `code-unanswered`).
 
 ### S11 · Collegamento — `connecting`
 
 ![S11 collegamento](images/sheet-connecting.png)
 
-**Quando:** all'avvio. **Perché:** i passi del collegamento — relay raggiungibile, Foundry del giocatore aperto, collegato a «&lt;utente&gt;», scheda, scena; doppio tap = annulla.
+**Quando:** all'avvio. **Perché:** i passi del collegamento — relay raggiungibile, Foundry del giocatore aperto, collegato a «&lt;utente&gt;», scheda, scena; doppio tap = annulla. Se il collegamento si ferma prima della prima scheda, il **titolo è la causa** (es. *PERSONAGGIO NON DISPONIBILE*), il passo fermo ha il segno **✗** e al posto della barra compare **cosa fare** (es. *› Assegna il PG al tuo utente in Foundry*); un codice ancora in attesa resta *in corso*.
 
 ### S12 · Offline — `offline`
 
 ![S12 offline](images/sheet-offline.png)
 
-**Quando:** la connessione cade: *Foundry del giocatore chiuso* (la scheda che trasmette non è aperta: si ricollega da sola quando la riapri), *Relay non raggiungibile*, *Telefono in background*, *Codice in attesa di Foundry* (il primo `welcome` non è ancora arrivato), *Personaggio non disponibile* (la scheda ha rifiutato il personaggio: nuovo tentativo ogni 30 s), *Presi da un'altra app* (un'altra copia dell'app ha preso l'associazione: nessun nuovo tentativo, «Riconnetti» sul telefono la riprende). Senza un personaggio ancora ricevuto (primo collegamento: *Codice in attesa di Foundry*, *Personaggio non disponibile*, *Foundry del giocatore chiuso*) non c'è niente da congelare: gli occhiali mostrano S11 a schermo intero con la causa come sottotitolo. Scenari `?demo=`: `offline`, `code-pending`, `actor`, `replaced`. **Perché:** la causa, il conto alla rovescia del nuovo tentativo e l'età dei dati; scheda e mappa restano congelate. Tap = *riprova ora*.
+**Quando:** la connessione cade: *Foundry del giocatore chiuso* (la scheda che trasmette non è aperta: si ricollega da sola quando la riapri), *Relay non raggiungibile*, *Telefono in background*, *Codice in attesa di Foundry* (il primo `welcome` non è ancora arrivato), *Personaggio non disponibile* (la scheda ha rifiutato il personaggio: nuovo tentativo ogni 30 s), *Occhiali usati da un'altra app* (un'altra copia dell'app ha preso l'associazione: nessun nuovo tentativo, «Riconnetti» sul telefono la riprende). Senza un personaggio ancora ricevuto (primo collegamento: *Codice in attesa di Foundry*, *Personaggio non disponibile*, *Foundry del giocatore chiuso*) non c'è niente da congelare: gli occhiali mostrano S11 a schermo intero con la causa come titolo e il rimedio in fondo. Scenari `?demo=`: `offline`, `code-pending`, `actor`, `replaced`. **Perché:** la causa, il conto alla rovescia del nuovo tentativo e l'età dei dati; scheda, mappa e ritratto restano congelati e attenuati, con il chip **■ CONGELATO** nell'intestazione. Tap = *riprova ora*.
 
 ## 📚 Vedi anche
 

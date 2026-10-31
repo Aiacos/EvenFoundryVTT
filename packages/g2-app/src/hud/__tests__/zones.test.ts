@@ -4,16 +4,17 @@
  * digits, TEMP, chip overflow), full-screen tiles, PNG encoding and the luminance
  * loader. Pixel-exact layouts are pinned by `golden.test.ts`.
  */
-import { LABEL_FONT, measure, Pixmap } from '@evf/shared-render';
+import { LABEL_FONT, MEDIUM_FONT, measure, Pixmap } from '@evf/shared-render';
 import * as UPNG from 'upng-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { character, mapSnap, online } from '../../demo/fixtures.js';
+import { character, combat, mapSnap, online } from '../../demo/fixtures.js';
 import { dwarfPortrait } from '../../demo/portrait-art.js';
 import { strings } from '../i18n.js';
+import { initialUi } from '../input/ui-state.js';
 import { type SheetModel, sheetModel } from '../model.js';
-import { fullScreenOf, layoutModeFor, renderZones } from '../view.js';
-import { renderFullScreen } from '../zones/fullscreen.js';
-import { HEADER_BOX, renderHeader } from '../zones/header.js';
+import { fullScreenOf, layoutModeFor, OFFLINE_DIM, renderZones } from '../view.js';
+import { connectLayout, pairLayout, renderFullScreen } from '../zones/fullscreen.js';
+import { chipLayout, HEADER_BOX, renderHeader } from '../zones/header.js';
 import { browserDecoder, type Luma, LumaCache, rgbaToLuma } from '../zones/luma.js';
 import { computeViewport, LEVEL, MAP_VIEW, renderMap } from '../zones/map.js';
 import { encodePng } from '../zones/png.js';
@@ -181,6 +182,39 @@ describe('header zone edge cases', () => {
   });
 });
 
+describe('header alert chip (reaction prompt)', () => {
+  const chip = HEADER_BOX.turnChip;
+  const lit = (p: Pixmap) => p.get(chip.x + 2, chip.y + chip.h / 2);
+  const extras = { portrait: null, art: null, viewport: null, reach: false };
+  const app = online('min', {
+    reaction: { kind: 'opportunity-attack', sourceName: 'Goblin B', expiresAt: 9e9 },
+  });
+
+  it('repaints the turn chip as «▲ REAZIONE» while the reaction prompt is open', () => {
+    const ui = { ...initialUi(), view: 'reaction' as const };
+    const prompt = renderZones({ app, ui, strings: s, now: 0 }, extras).header;
+    const calm = renderZones({ app, ui: initialUi(), strings: s, now: 0 }, extras).header;
+    expect(lit(prompt)).toBe(15);
+    expect(lit(calm)).toBe(0);
+  });
+});
+
+describe('header chips in combat (Impeccable minor: «BENEDET…»)', () => {
+  it('shrinks concentration to its hourglass before truncating another chip', () => {
+    const model = sheetModel(online('min', { combat: combat('thorin') }), s) as SheetModel;
+    expect(model.economy).not.toBeNull();
+    const labels = model.chips.map((c) => c.label);
+    expect(labels).toEqual(['CONC.', 'BENEDETTO']);
+    const p = renderHeader(model, s);
+    // The «BENEDETTO» chip ends before the right edge: drawn whole, not cut with «…».
+    let lastInk = 0;
+    for (let x = 0; x < 288; x++) if (p.get(x, HEADER_BOX.bottomY + 9) > 0) lastInk = x;
+    expect(lastInk).toBeLessThan(284);
+    expect(chipLayout(model.chips, 172, 284).map((c) => c.compact)).toEqual([true, false]);
+    expect(chipLayout(model.chips, 8, 284).map((c) => c.compact)).toEqual([false, false]);
+  });
+});
+
 describe('full screens', () => {
   it('splits into four 288 × 144 tiles that reassemble the screen', () => {
     const screen = renderFullScreen(
@@ -211,7 +245,8 @@ describe('full-screen subtitles (INV-1 width budget)', () => {
   it('every S10 / S11 subtitle fits the 530 px line without truncation, IT and EN', () => {
     for (const loc of ['it', 'en'] as const) {
       const t = strings(loc);
-      for (const line of [t.unpairedSubtitle, t.revokedSubtitle, t.codeUnansweredSubtitle]) {
+      const notices = Object.values(t.pairNotices).flat();
+      for (const line of [t.unpairedSubtitle, ...notices]) {
         expect(measure(LABEL_FONT, line), `${loc}: ${line}`).toBeLessThanOrEqual(530);
       }
     }
@@ -257,6 +292,78 @@ describe('offline before any character (code pending, actor error, Foundry close
   });
 });
 
+describe('failure screens say what failed and what to do (Impeccable P1)', () => {
+  const causes = [
+    'no-projector',
+    'network',
+    'background',
+    'code-pending',
+    'actor',
+    'replaced',
+  ] as const;
+
+  it('puts the cause in the headline, marks the stuck step and names the remedy', () => {
+    for (const loc of ['it', 'en'] as const) {
+      const t = strings(loc);
+      for (const cause of causes) {
+        const c = {
+          status: 'offline' as const,
+          cause,
+          server: 'relay.example',
+          steps: { relay: true, projector: true, paired: false, character: false, scene: false },
+        };
+        const out = connectLayout(c, t);
+        expect(out.headline, cause).toBe(t.offlineCauses[cause]);
+        expect(out.remedy, cause).toBe(t.remedies[cause]);
+        const states = out.steps.map((st) => st.state);
+        // A pending code is a wait, not a failure: the step stays «in progress».
+        expect(states[2], cause).toBe(cause === 'code-pending' ? 'current' : 'failed');
+        expect(states.filter((st) => st === 'failed').length).toBe(
+          cause === 'code-pending' ? 0 : 1,
+        );
+      }
+    }
+  });
+
+  it('never prints a placeholder for a name the session does not know yet', () => {
+    for (const loc of ['it', 'en'] as const) {
+      const t = strings(loc);
+      const out = connectLayout({ status: 'offline', cause: 'actor' }, t);
+      const all = [out.headline, out.subtitle, ...out.steps.map((st) => st.label)].join('|');
+      expect(all, loc).not.toMatch(/—|«-»|«»/);
+    }
+  });
+
+  it('a plain connection shows progress only: app title, no failed step, no remedy', () => {
+    const out = connectLayout({ status: 'connecting', server: 'relay.example' }, s);
+    expect(out.headline).toBe(s.appTitle);
+    expect(out.remedy).toBeNull();
+    expect(out.steps[0]?.state).toBe('current');
+  });
+
+  it('S10 notices lead with the cause and give the remedy as subtitle', () => {
+    expect(pairLayout({ kind: 'pair', revoked: false }, s)).toEqual({
+      headline: s.appTitle,
+      subtitle: s.unpairedSubtitle,
+    });
+    expect(pairLayout({ kind: 'pair', revoked: true }, s)).toEqual({
+      headline: s.pairNotices.revoked[0],
+      subtitle: s.pairNotices.revoked[1],
+    });
+    expect(pairLayout({ kind: 'pair', revoked: false, unanswered: true }, s)).toEqual({
+      headline: s.pairNotices.unanswered[0],
+      subtitle: s.pairNotices.unanswered[1],
+    });
+  });
+
+  it('remedies fit the 528 px line in the medium face, IT and EN', () => {
+    for (const loc of ['it', 'en'] as const) {
+      for (const r of Object.values(strings(loc).remedies))
+        expect(measure(MEDIUM_FONT, `› ${r}`), r).toBeLessThanOrEqual(528);
+    }
+  });
+});
+
 describe('renderZones', () => {
   it('dims every zone offline and renders an empty sheet before the first snapshot', () => {
     const ui = {
@@ -268,6 +375,7 @@ describe('renderZones', () => {
       pending: null,
       result: null,
       reactionDeadline: null,
+      reactionSince: null,
     } as const;
     const extras = { portrait: null, art: null, viewport: null, reach: false };
     const on = renderZones({ app: online(), ui, strings: s, now: 0 }, extras);
@@ -275,7 +383,14 @@ describe('renderZones', () => {
       { app: online('min', { connection: { status: 'offline' } }), ui, strings: s, now: 0 },
       extras,
     );
-    expect(Math.max(...off.header.data)).toBeLessThan(Math.max(...on.header.data));
+    for (const z of ['map', 'sheet', 'portrait'] as const)
+      expect(Math.max(...off[z].data), z).toBeLessThanOrEqual(Math.round(15 * OFFLINE_DIM));
+    // Stale data never looks live: a full-brightness «■ CONGELATO» chip in the turn slot.
+    const chip = HEADER_BOX.turnChip;
+    expect(off.header.get(chip.x + 2, chip.y + chip.h / 2)).toBe(15);
+    expect(on.header.get(chip.x + 2, chip.y + chip.h / 2)).toBe(0);
+    const dimmed = off.header.crop(0, HEADER_BOX.rules[0], 288, 100);
+    expect(Math.max(...dimmed.data)).toBeLessThanOrEqual(Math.round(15 * OFFLINE_DIM));
     const empty = renderZones(
       { app: online('min', { character: null, map: null }), ui, strings: s, now: 0 },
       extras,

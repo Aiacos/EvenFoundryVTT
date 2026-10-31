@@ -100,20 +100,26 @@ export interface HudStrings {
   // ── Full screens S10 / S11 (bitmap caps) ─────────────────────────────────────
   appTitle: string;
   unpairedSubtitle: string;
-  revokedSubtitle: string;
-  /** S10 after a code got no answer (`notice: 'code-unanswered'`). */
-  codeUnansweredSubtitle: string;
+  /**
+   * S10 notices as `[headline (cause), subtitle (remedy)]`: `revoked` = pairing dropped
+   * by Foundry, `unanswered` = the last code got no answer (`notice: 'code-unanswered'`).
+   */
+  pairNotices: Record<'revoked' | 'unanswered', readonly [string, string]>;
   pairSteps: readonly (readonly [string, string])[];
   scan: string;
   exitHint: string;
-  connectingTo: (server: string) => string;
+  /** S11 subtitle; `undefined` = relay host not known yet. */
+  connectingTo: (server: string | undefined) => string;
+  /** S11 steps; a name the session does not know yet is left out, never a placeholder. */
   steps: {
     relay: string;
     projector: string;
-    paired: (user: string) => string;
-    character: (actor: string) => string;
+    paired: (user: string | undefined) => string;
+    character: (actor: string | undefined) => string;
     scene: string;
   };
+  /** S11 failure: what the player does about each offline cause (medium caps). */
+  remedies: Record<NonNullable<ConnectionState['cause']>, string>;
   cancelHint: string;
   // ── Zone E (firmware text) ────────────────────────────────────────────────────
   exploration: string;
@@ -138,7 +144,6 @@ export interface HudStrings {
   noTarget: string;
   cantrip: string;
   advantage: Record<'normal' | 'advantage' | 'disadvantage', string>;
-  result: string;
   pending: string;
   outcomes: Record<
     'hit' | 'miss' | 'save_success' | 'save_fail' | 'damage_dealt' | 'no_roll',
@@ -157,11 +162,13 @@ export interface HudStrings {
     | 'gm-rejected',
     string
   >;
-  reactionTitle: string;
+  /** Reaction prompt title per kind (zone E head, after `▲ `). */
+  reactionTitle: Record<'opportunity-attack' | 'shield' | 'counterspell', string>;
+  /** Header chip while a reaction prompt is open (bitmap caps). */
+  reactionChip: string;
   expiresIn: (seconds: number) => string;
   reactionTrigger: (source: string) => string;
   ignore: string;
-  opportunityAttack: string;
   shield: string;
   counterspell: string;
   requestTitle: string;
@@ -176,12 +183,16 @@ export interface HudStrings {
   requestRollFoundry: string;
   downTitle: string;
   downRoll: string;
-  downTally: (success: number, failure: number) => string;
+  /** Death saves left: failures before death, successes before stable (each ≥ 1). */
+  downFailuresLeft: (n: number) => string;
+  downSuccessesLeft: (n: number) => string;
   offlineTitle: string;
   offlineCauses: Record<NonNullable<ConnectionState['cause']>, string>;
   retryIn: (seconds: number, attempt: number) => string;
   dataAge: (minutes: number) => string;
   frozen: string;
+  /** Header chip over frozen data (S12, bitmap caps). */
+  frozenChip: string;
   endTurn: string;
   menu: {
     nextPage: string;
@@ -294,8 +305,13 @@ const IT: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'OCCHIALI NON ANCORA ASSOCIATI',
-  revokedSubtitle: 'OCCHIALI SCOLLEGATI DA FOUNDRY',
-  codeUnansweredSubtitle: 'NESSUNA RISPOSTA AL CODICE · GENERA UN NUOVO QR',
+  pairNotices: {
+    revoked: ['OCCHIALI SCOLLEGATI DA FOUNDRY', 'PER RICOLLEGARLI RIPETI I PASSI 1 E 2'],
+    unanswered: [
+      'NESSUNA RISPOSTA AL CODICE',
+      'IL QR È SCADUTO O GIÀ USATO: GENERANE UNO NUOVO (PASSO 1)',
+    ],
+  },
   pairSteps: [
     ['SU FOUNDRY: TASTO DESTRO SUL TUO NOME', '› «COLLEGA OCCHIALI G2» MOSTRA UN QR'],
     ['SUL TELEFONO: APP «FOUNDRYVTT G2 HUD»', '› «SCANSIONA QR» O INSERISCI IL CODICE'],
@@ -303,13 +319,21 @@ const IT: HudStrings = {
   ],
   scan: 'SCANSIONA',
   exitHint: '●● ESCI',
-  connectingTo: (s) => `COLLEGAMENTO A ${s}`,
+  connectingTo: (s) => (s ? `COLLEGAMENTO A ${s}` : 'COLLEGAMENTO AL RELAY'),
   steps: {
     relay: 'RELAY RAGGIUNGIBILE',
     projector: 'FOUNDRY DEL GIOCATORE APERTO',
-    paired: (u) => `COLLEGATO A «${u}»`,
-    character: (a) => `RICEVO LA SCHEDA DI ${a}…`,
+    paired: (u) => (u ? `COLLEGATO A «${u}»` : 'COLLEGATO AL TUO UTENTE FOUNDRY'),
+    character: (a) => (a ? `RICEVO LA SCHEDA DI ${a}…` : 'RICEVO LA SCHEDA DEL PERSONAGGIO…'),
     scene: 'RICEVO LA SCENA',
+  },
+  remedies: {
+    'no-projector': 'APRI FOUNDRY NEL BROWSER CHE HA MOSTRATO IL QR',
+    network: 'CONTROLLA LA RETE DEL TELEFONO: RIPROVO DA SOLO',
+    background: "RIAPRI L'APP SUL TELEFONO",
+    'code-pending': 'TIENI APERTA «COLLEGA OCCHIALI G2» IN FOUNDRY',
+    actor: 'ASSEGNA IL PG AL TUO UTENTE IN FOUNDRY',
+    replaced: "CHIUDI L'ALTRA APP, POI «RICONNETTI» SUL TELEFONO",
   },
   cancelHint: '●● ANNULLA',
   exploration: 'esplorazione',
@@ -333,7 +357,6 @@ const IT: HudStrings = {
   noTarget: '(nessun bersaglio)',
   cantrip: 'trucchetto',
   advantage: { normal: 'Vantaggio: no', advantage: 'Vantaggio: sì', disadvantage: 'Svantaggio' },
-  result: 'Esito',
   pending: 'in corso…',
   outcomes: {
     hit: 'COLPITO',
@@ -355,11 +378,15 @@ const IT: HudStrings = {
     'concentration-required': 'serve concentrazione',
     'gm-rejected': 'rifiutato dal GM',
   },
-  reactionTitle: '▲ Reazione',
-  expiresIn: (s) => `scade ${s} s`,
+  reactionTitle: {
+    'opportunity-attack': 'Attacco di opportunità',
+    shield: 'Scudo',
+    counterspell: 'Controincantesimo',
+  },
+  reactionChip: 'REAZIONE',
+  expiresIn: (s) => `${s} s`,
   reactionTrigger: (src) => `Innesco: ${src}`,
   ignore: 'Ignora',
-  opportunityAttack: 'Attacco di opportunità',
   shield: 'Scudo (1°)',
   counterspell: 'Controincantesimo (3°)',
   requestTitle: 'Prova richiesta',
@@ -372,7 +399,10 @@ const IT: HudStrings = {
   requestRollFoundry: 'Tira in Foundry',
   downTitle: 'Sei a terra',
   downRoll: 'Tiro salvezza contro la morte',
-  downTally: (s, f) => `Successi ${s}/3 · Fallimenti ${f}/3`,
+  downFailuresLeft: (n) =>
+    n === 1 ? 'Ancora 1 fallimento = morte' : `Ancora ${n} fallimenti = morte`,
+  downSuccessesLeft: (n) =>
+    n === 1 ? 'Ancora 1 successo = stabile' : `Ancora ${n} successi = stabile`,
   offlineTitle: '▲ Offline',
   offlineCauses: {
     'no-projector': 'Foundry del giocatore chiuso',
@@ -380,11 +410,12 @@ const IT: HudStrings = {
     background: 'Telefono in background',
     'code-pending': 'Codice in attesa di Foundry',
     actor: 'Personaggio non disponibile',
-    replaced: "Presi da un'altra app",
+    replaced: "Occhiali usati da un'altra app",
   },
   retryIn: (s, n) => `Riprovo tra ${s} s (tentativo ${n})`,
   dataAge: (m) => `dati di ${m} min fa`,
   frozen: 'Scheda e mappa congelate',
+  frozenChip: 'CONGELATO',
   endTurn: 'Fine turno',
   menu: {
     nextPage: 'Scheda',
@@ -497,8 +528,10 @@ const EN: HudStrings = {
   north: 'N',
   appTitle: 'EVENFOUNDRYVTT',
   unpairedSubtitle: 'GLASSES NOT PAIRED YET',
-  revokedSubtitle: 'GLASSES DISCONNECTED FROM FOUNDRY',
-  codeUnansweredSubtitle: 'NO ANSWER TO THE CODE · MAKE A NEW QR',
+  pairNotices: {
+    revoked: ['GLASSES DISCONNECTED FROM FOUNDRY', 'TO RECONNECT THEM REPEAT STEPS 1 AND 2'],
+    unanswered: ['NO ANSWER TO THE CODE', 'THE QR EXPIRED OR WAS USED: MAKE A NEW ONE (STEP 1)'],
+  },
   pairSteps: [
     ['ON FOUNDRY: RIGHT-CLICK YOUR NAME', '› «CONNECT G2 GLASSES» SHOWS A QR CODE'],
     ['ON THE PHONE: «FOUNDRYVTT G2 HUD» APP', '› «SCAN QR» OR ENTER THE CODE'],
@@ -506,13 +539,21 @@ const EN: HudStrings = {
   ],
   scan: 'SCAN',
   exitHint: '●● EXIT',
-  connectingTo: (s) => `CONNECTING TO ${s}`,
+  connectingTo: (s) => (s ? `CONNECTING TO ${s}` : 'CONNECTING TO THE RELAY'),
   steps: {
     relay: 'RELAY REACHABLE',
     projector: "PLAYER'S FOUNDRY TAB OPEN",
-    paired: (u) => `LINKED TO «${u}»`,
-    character: (a) => `RECEIVING ${a}'S SHEET…`,
+    paired: (u) => (u ? `LINKED TO «${u}»` : 'LINKED TO YOUR FOUNDRY USER'),
+    character: (a) => (a ? `RECEIVING ${a}'S SHEET…` : 'RECEIVING THE CHARACTER SHEET…'),
     scene: 'RECEIVING THE SCENE',
+  },
+  remedies: {
+    'no-projector': 'OPEN FOUNDRY IN THE BROWSER THAT SHOWED THE QR',
+    network: "CHECK THE PHONE'S NETWORK: RETRYING BY ITSELF",
+    background: 'REOPEN THE APP ON THE PHONE',
+    'code-pending': 'KEEP «CONNECT G2 GLASSES» OPEN IN FOUNDRY',
+    actor: 'ASSIGN THE CHARACTER TO YOUR FOUNDRY USER',
+    replaced: 'CLOSE THE OTHER APP, THEN «RECONNECT» ON THE PHONE',
   },
   cancelHint: '●● CANCEL',
   exploration: 'exploring',
@@ -536,7 +577,6 @@ const EN: HudStrings = {
   noTarget: '(no target)',
   cantrip: 'cantrip',
   advantage: { normal: 'Advantage: no', advantage: 'Advantage: yes', disadvantage: 'Disadvantage' },
-  result: 'Result',
   pending: 'in progress…',
   outcomes: {
     hit: 'HIT',
@@ -558,11 +598,15 @@ const EN: HudStrings = {
     'concentration-required': 'concentration required',
     'gm-rejected': 'rejected by GM',
   },
-  reactionTitle: '▲ Reaction',
-  expiresIn: (s) => `ends in ${s} s`,
+  reactionTitle: {
+    'opportunity-attack': 'Opportunity attack',
+    shield: 'Shield',
+    counterspell: 'Counterspell',
+  },
+  reactionChip: 'REACTION',
+  expiresIn: (s) => `${s} s`,
   reactionTrigger: (src) => `Trigger: ${src}`,
   ignore: 'Ignore',
-  opportunityAttack: 'Opportunity attack',
   shield: 'Shield (1st)',
   counterspell: 'Counterspell (3rd)',
   requestTitle: 'Roll requested',
@@ -575,7 +619,8 @@ const EN: HudStrings = {
   requestRollFoundry: 'Roll in Foundry',
   downTitle: 'You are down',
   downRoll: 'Death saving throw',
-  downTally: (s, f) => `Successes ${s}/3 · Failures ${f}/3`,
+  downFailuresLeft: (n) => (n === 1 ? '1 more failure = death' : `${n} more failures = death`),
+  downSuccessesLeft: (n) => (n === 1 ? '1 more success = stable' : `${n} more successes = stable`),
   offlineTitle: '▲ Offline',
   offlineCauses: {
     'no-projector': "Player's Foundry closed",
@@ -583,11 +628,12 @@ const EN: HudStrings = {
     background: 'Phone in background',
     'code-pending': 'Code waiting for Foundry',
     actor: 'Character unavailable',
-    replaced: 'Taken by another app',
+    replaced: 'Glasses used by another app',
   },
   retryIn: (s, n) => `Retry in ${s} s (attempt ${n})`,
   dataAge: (m) => `data from ${m} min ago`,
   frozen: 'Sheet and map frozen',
+  frozenChip: 'FROZEN',
   endTurn: 'End turn',
   menu: {
     nextPage: 'Sheet',

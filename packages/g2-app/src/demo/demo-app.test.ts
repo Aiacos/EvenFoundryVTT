@@ -98,7 +98,8 @@ describe('startDemo', { timeout: 20_000 }, () => {
     expect(demo.current()).toBe('result');
     expect(log.entries().some((x) => x.message === 'invoke weapon-attack')).toBe(true);
     expect(demo.store.get().lastResult?.toolId).toBe('weapon-attack');
-    expect(demo.tap?.mirror()['ctx-head']).toMatch(/Result|Esito/);
+    // S6 head: the action and its target (`Martello da guerra → Goblin A`).
+    expect(demo.tap?.mirror()['ctx-head']).toMatch(/→ Goblin A$/);
     for (let i = 0; i < 4; i++) {
       void demo.next();
       await vi.advanceTimersByTimeAsync(2000);

@@ -79,7 +79,7 @@ interface Recipe {
 
 /**
  * Gesture scripts reaching each design screen from the root view (actions order:
- * weapons, «Incantesimi…», «Oggetti…», «Fine turno», «Opzioni…»; targets: enemies by
+ * weapons, «Vantaggio», «Incantesimi…», «Oggetti…», «Fine turno», «Opzioni…»; targets: enemies by
  * distance).
  */
 const RECIPES: Readonly<Record<ScenarioName, Recipe>> = {
@@ -87,7 +87,7 @@ const RECIPES: Readonly<Record<ScenarioName, Recipe>> = {
   'combat-my-turn': { mock: 'S2', gestures: [] },
   actions: { mock: 'S3', gestures: ['tap'] },
   target: { mock: 'S4', gestures: ['tap', 'tap'] },
-  spells: { mock: 'S5', gestures: ['tap', 'down', 'down', 'tap', 'down'] },
+  spells: { mock: 'S5', gestures: ['tap', 'down', 'down', 'down', 'tap', 'down'] },
   // Attack with the war hammer on the nearest enemy → invoke → S6.
   result: { mock: 'S6', gestures: ['tap', 'tap', 'tap'] },
   reaction: { mock: 'S7', gestures: [] },
