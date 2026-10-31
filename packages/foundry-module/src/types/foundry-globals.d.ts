@@ -874,6 +874,19 @@ interface FoundryCombatant {
   actor: FoundryActor | null;
   /** Initiative roll result (null if not yet rolled). */
   initiative: number | null;
+  /**
+   * "Is this combatant currently hidden?" — hidden from players in the tracker.
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.documents.Combatant.html#hidden
+   */
+  hidden?: boolean;
+  /**
+   * "A reference to the TokenDocument which this Combatant represents, if any" (its
+   * `disposition` / `hidden` drive what the glasses may see).
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.documents.Combatant.html#token
+   */
+  token?: FoundryTokenDoc | null;
 }
 
 // ─── Foundry Combat (minimal read shape) ──────────────────────────────────────

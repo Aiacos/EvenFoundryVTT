@@ -1,4 +1,6 @@
 import {
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
   deriveCodePairing,
   GLASSES_ADDRESS,
   generateDeviceKey,
@@ -37,6 +39,7 @@ const writeAuditLog = vi.hoisted(() => vi.fn(async () => {}));
 const readMapSnapshot = vi.hoisted(() => vi.fn());
 const resolveTargetUuids = vi.hoisted(() => vi.fn());
 const applyOwnTargets = vi.hoisted(() => vi.fn());
+const getCombatSnapshot = vi.hoisted(() => vi.fn((_viewer: unknown): unknown => null));
 vi.mock('../write-path/tool-registry.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../write-path/tool-registry.js')>()),
   dispatchTool,
@@ -45,7 +48,7 @@ vi.mock('../write-path/audit-log.js', () => ({ writeAuditLog }));
 vi.mock('../readers/character-reader.js', () => ({
   getCharacterSnapshot: (id: string) => ({ actorId: id, name: 'Thorin' }),
 }));
-vi.mock('../readers/combat-reader.js', () => ({ getCombatSnapshot: () => null }));
+vi.mock('../readers/combat-reader.js', () => ({ getCombatSnapshot }));
 vi.mock('../write-path/combat-action-tracker.js', () => ({
   getActionEconomy: (actorId: string) => ({ actorId, action: true }),
 }));
@@ -674,6 +677,35 @@ describe('Projector (ADR-0019)', () => {
     });
     const live = await received(link, out.length + 1, p.key);
     expect(live.at(-1)).toMatchObject({ topic: LOG_DELTA_TYPE, data: { id: 'liveGm' } });
+  });
+
+  it('PJ-24 regression: the combat tracker is built per device, for its viewers (hidden combatants, enemy HP)', async () => {
+    const gm = f.users[0] as MockUser;
+    gm.isGM = true;
+    f.game.user = gm; // a GM tab projecting Luca's character
+    f.game.combat = {} as never;
+    getCombatSnapshot.mockImplementation((viewer) => ({ for: viewer }));
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    const out = await received(link, 8, p.key);
+    const viewer = { actorId: 'thorin', userIds: ['p1'], gm: false };
+    expect(out.find((m) => m.what === 'combat')).toMatchObject({ data: { for: viewer } });
+    f.fire('updateCombat', {}, { turn: 1 });
+    f.fire('combatStart', {});
+    const live = (await received(link, 10, p.key)).slice(8);
+    expect(live).toEqual([
+      expect.objectContaining({ t: 'delta', topic: COMBAT_TURN_DELTA_TYPE, data: { for: viewer } }),
+      expect.objectContaining({
+        t: 'delta',
+        topic: COMBAT_STATE_DELTA_TYPE,
+        data: { for: viewer },
+      }),
+    ]);
+    // No combat: nothing pushed.
+    getCombatSnapshot.mockReturnValue(null);
+    f.fire('updateCombat', {}, { turn: 2 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(link.sent).toHaveLength(10);
   });
 
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {

@@ -1,17 +1,16 @@
 /**
- * Foundry hook subscribers — character / combat deltas for the direct projector.
+ * Foundry hook subscribers — character / target deltas for the direct projector.
  *
  * Registers Foundry hooks that observe game state changes and push delta payloads
  * through the injected `emitFn` (the projector's `pushDelta`, ADR-0016; a spy in tests).
  *
  * Hooks registered:
  * 1. `updateActor`  → `character.delta` (HP, AC, conditions, exhaustion)
- * 2. `updateCombat` → `combat.turn`
- * 3. `combatStart`  → `combat.state`
- * 4. `targetToken`  → `combat.targets` (FOUN-04 read-side)
+ * 2. `targetToken`  → `combat.targets` (FOUN-04 read-side)
  *
- * Map/scene changes and chat log events are pushed by the projector itself because
- * they need per-device filtering (visible tokens, whisper recipients).
+ * Map/scene changes, combat tracker changes and chat log events are pushed by the
+ * projector itself because they need per-device filtering (visible tokens, hidden
+ * combatants and enemy HP, whisper recipients).
  *
  * Read-only contract: no `actor.update()`, no `game.settings.set()`, no
  * `combat.advance()`. Performance (D-2.15 zero polling): push-only via hooks.
@@ -22,14 +21,8 @@
  * @see packages/foundry-module/src/direct/projector.ts (emitFn implementation)
  */
 
-import {
-  CHARACTER_DELTA_TYPE,
-  COMBAT_STATE_DELTA_TYPE,
-  COMBAT_TARGETS_DELTA_TYPE,
-  COMBAT_TURN_DELTA_TYPE,
-} from '@evf/shared-protocol';
+import { CHARACTER_DELTA_TYPE, COMBAT_TARGETS_DELTA_TYPE } from '@evf/shared-protocol';
 import { getCharacterSnapshot } from './character-reader.js';
-import { getCombatSnapshot } from './combat-reader.js';
 
 /**
  * Function that emits a typed delta to the paired G2 devices.
@@ -87,24 +80,6 @@ function handleUpdateActor(actor: FoundryActor, changes: unknown, emitFn: EmitFn
 }
 
 /**
- * Handles the `updateCombat` hook.
- * Emits `combat.turn` on every round/turn change.
- *
- * Note: `combat.state` (full snapshot on combat creation) is emitted separately by
- * the `combatStart` hook lambda in `registerHookSubscribers`. This function only
- * emits `combat.turn`.
- *
- * @param _combat  - Combat document (unused; we always read from game.combat)
- * @param emitFn   - Delta emission function
- */
-function handleUpdateCombat(_combat: unknown, emitFn: EmitFn): void {
-  const snapshot = getCombatSnapshot();
-  if (snapshot !== null) {
-    emitFn(COMBAT_TURN_DELTA_TYPE, snapshot);
-  }
-}
-
-/**
  * Handles the `targetToken` hook (FOUN-04 — read-side observation).
  *
  * Emits `combat.targets` with the user's current target set.
@@ -141,7 +116,7 @@ function handleTargetToken(user: unknown, token: unknown, targeted: unknown, emi
 // ─── Registration ──────────────────────────────────────────────────────────────
 
 /**
- * Registers the character / combat Foundry hook subscribers.
+ * Registers the character / target Foundry hook subscribers.
  *
  * Returns a cleanup function that calls `Hooks.off(id)` for all registered hooks.
  * Call the cleanup function to deregister (e.g. on module teardown or in tests).
@@ -163,22 +138,6 @@ export function registerHookSubscribers(emitFn: EmitFn): () => void {
   hookIds.push(
     Hooks.on('updateActor', (actor: unknown, changes: unknown) => {
       handleUpdateActor(actor as FoundryActor, changes, emitFn);
-    }),
-  );
-
-  hookIds.push(
-    Hooks.on('updateCombat', (_combat: unknown) => {
-      handleUpdateCombat(_combat, emitFn);
-    }),
-  );
-
-  hookIds.push(
-    Hooks.on('combatStart', (_combat: unknown) => {
-      // combatStart fires on new combat creation — emit full state
-      const snapshot = getCombatSnapshot();
-      if (snapshot !== null) {
-        emitFn(COMBAT_STATE_DELTA_TYPE, snapshot);
-      }
     }),
   );
 

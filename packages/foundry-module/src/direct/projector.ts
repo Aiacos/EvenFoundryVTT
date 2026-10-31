@@ -18,6 +18,9 @@
  *   translated to UUIDs and, on a player's tab, become that player's own targets
  * - `ping`   → `pong`
  *
+ * - hooks → deltas: map refreshes, chat log, combat tracker (`updateCombat` → `combat.turn`,
+ *   `combatStart` → `combat.state`), each built per device for its viewers
+ *
  * Every request re-checks, live, that this tab's user still owns the projected actor
  * (`forbidden_actor` otherwise, audited). Deltas from the hook subscribers, write-path
  * watchers, chat log and throttled map refreshes are pushed to every welcomed device whose
@@ -36,6 +39,8 @@
 import {
   type AppMessage,
   AppMessageSchema,
+  COMBAT_STATE_DELTA_TYPE,
+  COMBAT_TURN_DELTA_TYPE,
   type DeviceKey,
   GLASSES_ADDRESS,
   generateDeviceKey,
@@ -56,7 +61,7 @@ import {
 } from '@evf/shared-protocol';
 import { MODULE_ID } from '../module-id.js';
 import { getCharacterSnapshot } from '../readers/character-reader.js';
-import { getCombatSnapshot } from '../readers/combat-reader.js';
+import { type CombatViewer, getCombatSnapshot } from '../readers/combat-reader.js';
 import {
   type ChatMessageLike,
   getLogEventTail,
@@ -212,6 +217,8 @@ export class Projector {
     }
     this.hookIds.push(
       Hooks.on('createChatMessage', (message: unknown) => this.pushLogMessage(message)),
+      Hooks.on('updateCombat', () => this.pushCombat(COMBAT_TURN_DELTA_TYPE)),
+      Hooks.on('combatStart', () => this.pushCombat(COMBAT_STATE_DELTA_TYPE)),
     );
   }
 
@@ -554,7 +561,7 @@ export class Projector {
       case 'character':
         return getCharacterSnapshot(pairing.actorId);
       case 'combat':
-        return getCombatSnapshot();
+        return getCombatSnapshot(combatViewer(pairing.actorId));
       case 'log':
         return { events: getLogEventTail(50, glassesViewers(pairing.actorId)) };
     }
@@ -636,6 +643,17 @@ export class Projector {
       if (request !== null) {
         this.fireAndForget(this.sendDelta(channel, R1_ROLL_REQUEST_TYPE, request));
       }
+    }
+  }
+
+  /**
+   * Pushes the combat tracker after a turn change (`combat.turn`) or a new combat
+   * (`combat.state`), built per device for its viewers (hidden combatants, enemy HP).
+   */
+  private pushCombat(topic: string): void {
+    for (const { channel, pairing } of this.welcomedDevices()) {
+      const snapshot = getCombatSnapshot(combatViewer(pairing.actorId));
+      if (snapshot !== null) this.fireAndForget(this.sendDelta(channel, topic, snapshot));
     }
   }
 
@@ -743,6 +761,12 @@ export class Projector {
       console.error('[EVF] projector: failed to push to a G2 device', err);
     });
   }
+}
+
+/** The combat tracker's viewer for the glasses of `actorId` ({@link glassesViewers}). */
+function combatViewer(actorId: string): CombatViewer {
+  const userIds = glassesViewers(actorId);
+  return { actorId, userIds, gm: userIds.every((id) => game.users.get(id)?.isGM === true) };
 }
 
 /** Routing rule of {@link Projector.pushDelta}. */
