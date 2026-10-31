@@ -99,17 +99,26 @@ function clamp01(value: number): number {
 }
 
 /**
+ * Whether the ownership recorded on `actor` makes `userId` its OWNER — Foundry's
+ * `getUserLevel` (per-user level, else `default`), **ignoring the user's role**: a GM
+ * projecting does not turn every token into an ally.
+ *
+ * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#getuserlevel
+ */
+function recordedOwner(actor: FoundryActor | null | undefined, userId: string): boolean {
+  const user = game.users.get(userId);
+  if (actor === null || actor === undefined || user === undefined) return false;
+  return actor.getUserLevel(user) === CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
+}
+
+/**
  * Classifies a token for `viewer`: `self` (the paired actor), `ally` (friendly
  * disposition or owned by the player), `enemy` (hostile), else `neutral`.
  */
 export function classifyToken(token: FoundryTokenDoc, viewer: MapViewer): TokenKind {
   if (token.actorId === viewer.actorId) return 'self';
-  const owner = CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
   const dispositions = CONST.TOKEN_DISPOSITIONS;
-  if (
-    token.disposition === dispositions.FRIENDLY ||
-    token.actor?.ownership?.[viewer.userId] === owner
-  ) {
+  if (token.disposition === dispositions.FRIENDLY || recordedOwner(token.actor, viewer.userId)) {
     return 'ally';
   }
   if (token.disposition === dispositions.HOSTILE) return 'enemy';

@@ -103,6 +103,21 @@ export function makeActor(id: string, name: string, extra: Record<string, unknow
     items: { contents: [] },
     ...extra,
   };
+  // Foundry `Document#getUserLevel` / `#testUserPermission` (v13): the per-user level wins
+  // over `default`; a GM passes every permission test.
+  const level = (user: { id: string }): number => {
+    const ownership = actor.ownership as Record<string, number>;
+    return ownership[user.id] ?? ownership.default ?? 0;
+  };
+  actor.getUserLevel = level;
+  actor.testUserPermission = (
+    user: { id: string; isGM?: boolean },
+    permission: number,
+    options: { exact?: boolean } = {},
+  ): boolean => {
+    const userLevel = user.isGM === true ? 3 : level(user);
+    return options.exact === true ? userLevel === permission : userLevel >= permission;
+  };
   actor.update = vi.fn(async (changes: { ownership?: Record<string, number> }) => {
     if (changes.ownership !== undefined) {
       actor.ownership = { ...(actor.ownership as Record<string, number>), ...changes.ownership };

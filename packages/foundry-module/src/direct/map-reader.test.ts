@@ -77,6 +77,7 @@ describe('readMapSnapshot', () => {
     const ownedByPlayer = makeActor('pet', 'Pet', { ownership: { p1: 3 } });
     const goblin = makeActor('gob', 'Goblin');
     installFoundry({
+      users: [makeUser('p1', 'Luca')],
       scene: scene([
         token('tSelf', { actorId: 'thorin', actor: self }),
         token('tAlly', { disposition: 1, actor: makeActor('mira', 'Mira') }),
@@ -96,6 +97,26 @@ describe('readMapSnapshot', () => {
     expect(byId.tGob?.hp).toBeUndefined();
     expect(byId.tNeutral?.kind).toBe('neutral');
     expect(snap?.selfTokenId).toBe('tSelf');
+  });
+
+  it('MR-03b ally by ownership follows Foundry levels: default OWNER counts, an explicit lower per-user level wins, a GM viewer does not make everything an ally', () => {
+    const shared = makeActor('shared', 'Shared', { ownership: { default: 3 } });
+    const lent = makeActor('lent', 'Lent', { ownership: { default: 3, p1: 1 } });
+    const goblin = makeActor('gob', 'Goblin');
+    installFoundry({
+      users: [makeUser('p1', 'Luca')],
+      scene: scene([
+        token('tShared', { actor: shared }),
+        token('tLent', { actor: lent }),
+        token('tGob', { actor: goblin }),
+      ]),
+    });
+    const kinds = (userId: string) =>
+      Object.fromEntries(
+        (readMapSnapshot({ actorId: 'thorin', userId })?.tokens ?? []).map((t) => [t.id, t.kind]),
+      );
+    expect(kinds('p1')).toEqual({ tShared: 'ally', tLent: 'neutral', tGob: 'neutral' });
+    expect(kinds('gm1').tGob).toBe('neutral');
   });
 
   it('MR-04 targetId comes from the projecting user targets, only if the token is visible', () => {

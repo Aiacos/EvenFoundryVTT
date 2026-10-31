@@ -721,6 +721,21 @@ interface FoundryActor {
    * Read by the projector's live ownership check and map-reader (ally detection).
    */
   ownership?: Record<string, number>;
+  /**
+   * "Get the explicit permission level that a User has over this Document" — the value
+   * recorded in `ownership` (per user, else `default`), **regardless of the User's role**.
+   * Used for ally detection, where a GM must not turn every token into an ally.
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#getuserlevel
+   */
+  getUserLevel(user: FoundryUser): number;
+  /**
+   * "Test whether a certain User has a requested permission level (or greater) over the
+   * Document" — a GM passes every test; an explicit per-user level wins over `default`.
+   *
+   * @see https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html#testuserpermission
+   */
+  testUserPermission(user: FoundryUser, permission: number, options?: { exact?: boolean }): boolean;
   /** Actor display name. */
   name: string;
   /** Actor type ("character", "npc", "vehicle", etc.). */
