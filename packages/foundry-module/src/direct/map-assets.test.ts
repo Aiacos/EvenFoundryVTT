@@ -9,6 +9,7 @@ import {
   type AssetEncoder,
   assetIdOf,
   BACKGROUND_MAX_SIDE,
+  ENCODE_CONCURRENCY,
   FAILED_RETRY_MS,
   fitSize,
   MAX_CACHED,
@@ -152,5 +153,36 @@ describe('map assets', () => {
     fail = false;
     now = 2 * FAILED_RETRY_MS;
     expect((await cache.prepare(scene)).map.background?.src).toMatch(/^evf-asset:/);
+  });
+
+  it('MA-08 regression: a cold scene encodes pictures in parallel, never more than the bound, assets in map order', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const encode = vi.fn<AssetEncoder>(async (src) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      return `data:image/png;base64,${src}`;
+    });
+    const cache = new MapAssetCache(encode);
+    const tokens = Array.from({ length: 12 }, (_, i) => ({
+      id: `t${i}`,
+      name: `T${i}`,
+      kind: 'enemy' as const,
+      x: i,
+      y: 0,
+      w: 1,
+      h: 1,
+      img: `tokens/${i}.png`,
+    }));
+    const { assets, map } = await cache.prepare({ ...SNAP, tiles: [], tokens });
+    expect(peak).toBe(ENCODE_CONCURRENCY);
+    expect(ENCODE_CONCURRENCY).toBeGreaterThan(1);
+    expect(assets.map((a) => a.data.split(',')[1])).toEqual([
+      'worlds/w/bg.webp',
+      ...tokens.map((t) => t.img),
+    ]);
+    expect(map.tokens.every((t) => t.img?.startsWith('evf-asset:'))).toBe(true);
   });
 });

@@ -764,6 +764,47 @@ describe('Projector (ADR-0019)', () => {
     }
   });
 
+  it('PJ-26 regression: the hello push does not hold later frames behind picture encoding', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow = new Projector({
+      relayBase: () => 'wss://relay.example',
+      connect: (base, room, handlers) => {
+        const link = new FakeLink(room, handlers, base);
+        links.push(link);
+        return link as unknown as RelayConnection;
+      },
+      assets: {
+        prepare: async (map: MapSnapshot) => {
+          await gate;
+          return { map, assets: [] };
+        },
+      } as unknown as MapAssetCache,
+      lock: (_id, hold) => {
+        hold();
+        return () => {};
+      },
+      now: () => now,
+    });
+    projector = slow;
+    const { link, p } = await boot();
+    await glasses(link, { t: 'hello', rid: 'h', proto: 2, app: '1' }, p.key);
+    await glasses(link, { t: 'ping', rid: 'p' }, p.key);
+    const early = await received(link, 3, p.key);
+    expect(early.map((m) => m.t)).toEqual(['welcome', 'snapshot', 'pong']);
+    release();
+    const all = await received(link, 6, p.key);
+    // The push keeps its own order: character, map, combat, log.
+    expect(all.filter((m) => m.t === 'snapshot').map((m) => m.what)).toEqual([
+      'character',
+      'map',
+      'combat',
+      'log',
+    ]);
+  });
+
   it('PJ-18 regression: pairing on a scene with 30 pictures, then a scene change, stays under a 60 frames/s relay (no eject)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {

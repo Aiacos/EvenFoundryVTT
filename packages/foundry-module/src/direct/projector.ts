@@ -506,7 +506,11 @@ export class Projector {
     channel.welcomed = true;
     channel.sentAssets.clear();
     this.emit();
-    await this.pushAllSnapshots(channel, pairing);
+    // Not awaited: the push (pictures encoded on a cold cache) must not hold the inbox —
+    // an `invoke` or `ping` right after the `hello` is answered meanwhile. The push keeps
+    // its own order (each send is queued on the outbox in call order) and the `welcome`
+    // above is already queued ahead of it.
+    this.fireAndForget(this.pushAllSnapshots(channel, pairing));
   }
 
   private async pushAllSnapshots(channel: Channel, pairing: Pairing): Promise<void> {
